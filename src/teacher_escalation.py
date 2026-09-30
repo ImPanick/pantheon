@@ -743,6 +743,12 @@ async def run_teacher_inline(
         'data: ' + json.dumps({
             "type": "teacher_takeover",
             "teacher_model": teacher_spec,
+            # `B922`. The model the teacher's run requests — what its own
+            # events and saved record name — so the bubbles below the banner
+            # are headed with it rather than the student's. `teacher_model` is
+            # the setting it was resolved from (`model@endpoint` is allowed,
+            # and a partial name matches), and is what the banner prints.
+            "model": teacher_model,
             "student_failure": reason,
         }) + '\n\n'
     )

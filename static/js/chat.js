@@ -5009,6 +5009,8 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
                 lastToolThread = null;
                 const _teacherBody = _openRoundBubble();
                 if (_teacherBody) {
+                  // `B922`: headed with the teacher's model, not the student's.
+                  _headWithTeacher(roundHolder, json);
                   // `B917`: the spinner a resumed takeover opens too — a
                   // step's, without the meter until the teacher's first frame.
                   spinner = _openRoundSpinner(_teacherBody, null);
@@ -6216,6 +6218,38 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
   }
 
   /**
+   * `B922`. The teacher's first bubble names the teacher's model. A step's
+   * bubble copies the route of the bubble above it (`inheritModelRouteState`),
+   * so the one opened below a takeover banner was headed with the student's
+   * model, and every teacher step after it inherited that. Nothing in the
+   * teacher's run put it right: `model_actual` is sent only when a provider
+   * resolves a different model from the one requested, and the teacher's
+   * `metrics` relabel only its last bubble, at the end. The takeover now names
+   * the model the teacher's run requests (`model`; the setting it was resolved
+   * from is `teacher_model`, which the banner prints). It names no endpoint, and
+   * neither does the teacher's own record — its run is started without a route
+   * descriptor — so the bubble claims none rather than keeping the student's,
+   * which the teacher's `metrics` would later set against "Selected route" as
+   * a change of route. Later steps inherit all of it from here.
+   */
+  function _headWithTeacher(bubble, event) {
+    const model = String((event && (event.model || event.teacher_model)) || '').trim();
+    if (!bubble || !model) return bubble;
+    bubble._requestedModel = model;
+    bubble._actualModel = model;
+    for (const key of ['_requestedEndpointId', '_requestedEndpointLabel',
+                       '_actualEndpointId', '_actualEndpointLabel']) {
+      delete bubble[key];
+    }
+    const role = bubble.querySelector('.role');
+    if (role) {
+      role.textContent = _modelRouteLabel(model, model) || '';
+      _applyModelColor(role, model);
+    }
+    return bubble;
+  }
+
+  /**
    * `B919`. At a new step, the thread directly above its bubble runs its line
    * on down into it (`has-bottom`). Both streams gave that connector to the
    * first `.agent-thread.streaming` on the page — and every thread a turn draws
@@ -6783,6 +6817,7 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
             toolNode = null;
             toolThread = null;
             openRound(true, null);
+            _headWithTeacher(roundHolder, json);   // `B922`
           } else if (json.type === 'skill_saved' || json.type === 'escalation_failed'
                      || json.type === 'skill_save_failed') {
             // `B917`: the skill notes, by the live stream's builder.

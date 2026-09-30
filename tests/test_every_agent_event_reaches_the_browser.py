@@ -429,6 +429,8 @@ def _script(body: str) -> str:
         _definition("function _startToolCard("),
         # `B917`: the teacher's spinner is the one a step opens with.
         _definition("function _openRoundSpinner("),
+        # `B922`: and its bubble is headed with the teacher's model.
+        _definition("function _headWithTeacher("),
         "function toolBlocked(json, _isBg = false) { for (const _ of [0]) {"
         + _arm("} else if (json.type === 'tool_blocked') {",
                "} else if (json.type === 'auto_escalated') {") + "} }",

@@ -288,6 +288,7 @@ _MODULE_LEVEL = (
     "_metricsCostRecordId", "_appendGeneratedImageBubble",
     "_createWaitSpinners", "_openRoundSpinner", "_newRoundBubble", "_threadForNextCard",
     "_threadIntoNextStep",   # `B919`
+    "_headWithTeacher",      # `B922`
     "_threadOrBare", "_stopCardTickers", "_startToolCard", "_drawToolProgress",
     "_finishToolCard", "_removeViewFrom",
     "checkBackgroundStream", "_showBackgroundStreamSpinner",
@@ -812,6 +813,30 @@ def test_a_takeover_draws_the_same_in_both_streams(sandbox):
     assert [c["tool"] for c in final[6]["thread"]] == ["Terminal"]
     assert final[6]["bottom"] and not final[1]["bottom"], final
     assert final[-1]["note"] == "Skill not saved: teacher said NO_SKILL (problem not reproducible)"
+
+
+def test_a_teachers_bubbles_are_headed_with_the_teachers_model(sandbox):
+    """`B922`. A step's bubble copies the route of the bubble above it, so the
+    teacher's first bubble — and every teacher step after it — was headed with
+    the student's model, right under a banner naming the teacher. The takeover
+    heads it with the model the teacher's run requests (`model`), in both
+    streams, and the teacher's next step inherits that."""
+    out = _page(sandbox, """
+        const events = %s;
+        const heads = () => history.children
+          .filter((n) => n.classList.contains('msg') && !n.classList.contains('agent-thinking-dots'))
+          .map((n) => n.querySelector('.role').textContent.trim());
+        runLive(events, []);
+        const live = heads();
+        clear();
+        let resumed = null;
+        await runResumed(events, [], { onEvent(i) { if (i === events.length - 2) resumed = heads(); } });
+        console.log(JSON.stringify({ live, resumed }));
+    """ % json.dumps(TAKEOVER))
+    # The first bubble is headed with its time as well in a resumed view, so
+    # the heads compared are the student's second step and the teacher's two.
+    assert out["live"][1:] == ["test-model", "big-model", "big-model"], out["live"]
+    assert out["resumed"][1:] == out["live"][1:], out
 
 
 def test_a_step_limit_offers_continue_in_both_streams(sandbox):
