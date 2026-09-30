@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Dict, Any
 from core.platform_compat import IS_APPLE_SILICON, which_tool
 from core.middleware import INTERNAL_TOOL_USER, require_admin
-from src.tmux_attach import attach_command
+from src.tmux_attach import attach_command, list_command
 from src.host_docker_access import (
     HOST_DOCKER_ACCESS_HINT,
     host_docker_access_enabled as _host_docker_access_enabled,
@@ -960,7 +960,8 @@ def setup_shell_routes() -> APIRouter:
     router = APIRouter(tags=["shell"])
 
     @router.get("/api/shell/tmux-attach")
-    async def tmux_attach(request: Request, session: str = "", host: str = "") -> Dict[str, Any]:
+    async def tmux_attach(request: Request, session: str = "", host: str = "",
+                          action: str = "attach") -> Dict[str, Any]:
         """`B909`. How a person opens one of these tmux sessions in their own
         terminal: `src/tmux_attach.attach_command`, the one builder, over HTTP.
         It runs nothing — it only says what to type, because the answer depends
@@ -974,9 +975,19 @@ def setup_shell_routes() -> APIRouter:
         (its docstring: "RCE-after-signup"), and whether those should open with
         auth off is the owner's question (`B543`). This route executes nothing,
         so it takes the one gate `Law 14` points at — the one the Forge's
-        state and status routes already use."""
+        state and status routes already use.
+
+        `B913`: ``action=list`` answers how to list the sessions instead — the
+        same placement, `tmux ls` in place of `tmux attach` — for the Forge's
+        kill-failure notice, which told a Docker user to run `tmux ls` on a
+        host where it names nothing. ``session`` is then optional: named, the
+        answer says what to look for. An enum, not a flag (`Law 10`)."""
         require_admin(request)
+        if action not in ("attach", "list"):
+            raise HTTPException(400, "action must be attach or list")
         try:
+            if action == "list":
+                return list_command(session, remote_host=host)
             return attach_command(session, remote_host=host)
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from None

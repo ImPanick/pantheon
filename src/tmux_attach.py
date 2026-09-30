@@ -133,6 +133,57 @@ def _remote_note(host: str) -> str:
     )
 
 
+def _where_the_sessions_are(
+    tmux: str,
+    *,
+    remote_host: str = "",
+    in_container: Optional[bool] = None,
+    uid: Optional[int] = None,
+    user: Optional[str] = None,
+) -> Dict[str, object]:
+    """Where a person runs the tmux command `tmux` so it reaches the sessions
+    Pantheon made, and as whom: ``{where, command, note, alternative}``.
+
+    `B913`: the attach command's placement, lifted out of `attach_command` so
+    the command that lists the sessions is placed by the same rule rather than
+    by a second copy of it. Raises ``ValueError`` for a host with a control
+    character or longer than ``MAX_LENGTH``.
+    """
+    host = "" if remote_host is None else str(remote_host).strip()
+    if host:
+        _refuse_control_characters(host, "host")
+        return {"where": WHERE_REMOTE, "command": tmux, "note": _remote_note(host),
+                "alternative": None}
+
+    containerised = running_in_container() if in_container is None else bool(in_container)
+    if containerised:
+        if uid is None:
+            getuid = getattr(os, "getuid", None)
+            uid = getuid() if getuid is not None else None
+        as_user = f"-u {int(uid)} " if uid is not None else ""
+        return {
+            "where": WHERE_CONTAINER,
+            "command": f"docker compose exec {as_user}{COMPOSE_SERVICE} {tmux}",
+            "note": NOTE_COMPOSE,
+            "alternative": {
+                "command": f"docker exec -it {as_user}{CONTAINER_PLACEHOLDER} {tmux}",
+                "note": NOTE_PLAIN_DOCKER,
+            },
+        }
+
+    who = _server_user() if user is None else user
+    return {
+        "where": WHERE_NATIVE,
+        "command": tmux,
+        "note": (
+            f"Run this on the machine Pantheon runs on, logged in as {who}."
+            if who
+            else "Run this on the machine Pantheon runs on, logged in as the user Pantheon runs as."
+        ),
+        "alternative": None,
+    }
+
+
 def attach_command(
     session: str,
     *,
@@ -172,38 +223,43 @@ def attach_command(
         "detach": NOTE_DETACH,
         "alternative": None,
     }
+    result.update(_where_the_sessions_are(
+        tmux, remote_host=remote_host, in_container=in_container, uid=uid, user=user))
+    return result
 
-    host = "" if remote_host is None else str(remote_host).strip()
-    if host:
-        _refuse_control_characters(host, "host")
-        result.update(where=WHERE_REMOTE, command=tmux, note=_remote_note(host))
-        return result
 
-    containerised = running_in_container() if in_container is None else bool(in_container)
-    if containerised:
-        if uid is None:
-            getuid = getattr(os, "getuid", None)
-            uid = getuid() if getuid is not None else None
-        as_user = f"-u {int(uid)} " if uid is not None else ""
-        result.update(
-            where=WHERE_CONTAINER,
-            command=f"docker compose exec {as_user}{COMPOSE_SERVICE} {tmux}",
-            note=NOTE_COMPOSE,
-            alternative={
-                "command": f"docker exec -it {as_user}{CONTAINER_PLACEHOLDER} {tmux}",
-                "note": NOTE_PLAIN_DOCKER,
-            },
-        )
-        return result
+def list_command(
+    session: str = "",
+    *,
+    remote_host: str = "",
+    in_container: Optional[bool] = None,
+    uid: Optional[int] = None,
+    user: Optional[str] = None,
+) -> Dict[str, object]:
+    """`B913`. How a person lists the tmux sessions Pantheon made, to see
+    whether one is still running.
 
-    who = _server_user() if user is None else user
-    result.update(
-        where=WHERE_NATIVE,
-        command=tmux,
-        note=(
-            f"Run this on the machine Pantheon runs on, logged in as {who}."
-            if who
-            else "Run this on the machine Pantheon runs on, logged in as the user Pantheon runs as."
+    The Forge's kill-failure toast said *"Check `tmux ls` on the server."* On
+    the shipped Docker install `tmux ls` on the host names nothing, and inside
+    the container root's answers *"no server running on /tmp/tmux-0/default"*
+    — which reads as "the session is gone" when it is not. It is `B909`'s
+    defect as a sentence, so it takes `B909`'s answer: the same placement
+    (`_where_the_sessions_are`), with `tmux ls` in place of `tmux attach`.
+
+    Returns ``{where, session, command, note, alternative, detach, expect}``:
+    ``detach`` is None (listing attaches to nothing), and ``expect`` says what
+    to look for — the session's name as tmux holds it — or is None when no
+    session was named. Raises ``ValueError`` as `attach_command` does.
+    """
+    name = "" if session is None else str(session)
+    held = tmux_target(name)[1:] if name.strip() else None
+    result: Dict[str, object] = {
+        "session": held,
+        "detach": None,
+        "expect": (
+            f"If {held} is in the list, it is still running." if held else None
         ),
-    )
+    }
+    result.update(_where_the_sessions_are(
+        "tmux ls", remote_host=remote_host, in_container=in_container, uid=uid, user=user))
     return result

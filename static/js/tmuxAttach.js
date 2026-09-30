@@ -16,22 +16,30 @@
 // Two callers are meant to share this: the Forge's task menu
 // (`cookbookRunning.js`), and `P4-15`'s attach affordance for the agent's own
 // shell once `B908` gives that shell a session. Neither builds a command.
+//
+// `B913`. And the command that lists the sessions (`action: 'list'`), placed by
+// the same rule: the Forge's kill-failure notice told a Docker user to run
+// `tmux ls` on a host where it names nothing, and inside the container root's
+// `tmux ls` says there is no server — "gone", when the session is not.
 
 import uiModule from './ui.js';
 
 /**
- * Ask the server how to attach to `session` (on `host`, for a remote task).
+ * Ask the server how to attach to `session` (on `host`, for a remote task) —
+ * or, with `action: 'list'`, how to list the sessions to see whether it is
+ * still there (`B913`).
  *
  * Returns a handle at once — `{ value, error, ready }` — so a click that comes
  * after the answer can copy synchronously, inside its own gesture (`B59`: an
  * `await` before the copy ends the gesture). `ready` never rejects; a failure
  * lands in `error`.
  */
-export function prefetchTmuxAttach(session, { host = '' } = {}) {
+export function prefetchTmuxAttach(session, { host = '', action = 'attach' } = {}) {
   const handle = { value: null, error: null, ready: null };
   const params = new URLSearchParams();
   params.set('session', String(session ?? ''));
   if (host) params.set('host', String(host));
+  if (action && action !== 'attach') params.set('action', String(action));
   handle.ready = fetch(`/api/shell/tmux-attach?${params.toString()}`, { credentials: 'same-origin' })
     .then(async (res) => {
       let body = null;
@@ -103,24 +111,27 @@ function _fill(body, box, handle) {
     if (other.note) body.appendChild(_line('tmux-attach-note', other.note));
     body.appendChild(_commandRow(other.command));
   }
+  if (value.expect) body.appendChild(_line('tmux-attach-note', value.expect));   // `B913`
   if (value.detach) body.appendChild(_line('tmux-attach-note', value.detach));
 }
 
 /**
  * The panel: what to run, where, and how to leave without stopping it. Drawn
  * at once — with the answer if it is here, or saying it is on its way and
- * filling in when it lands. The caller decides where it goes.
+ * filling in when it lands. The caller decides where it goes. `title` is what
+ * the panel is for (`B913`: *Check whether it is still running*, for the list
+ * command).
  */
-export function renderTmuxAttach(handle) {
+export function renderTmuxAttach(handle, { title: heading = 'Open this session in a terminal' } = {}) {
   const box = document.createElement('div');
   box.className = 'tmux-attach';
   box.setAttribute('role', 'group');
-  box.setAttribute('aria-label', 'Open this session in a terminal');
+  box.setAttribute('aria-label', heading);
 
   const head = document.createElement('div');
   head.className = 'tmux-attach-head';
   const title = document.createElement('span');
-  title.textContent = 'Open this session in a terminal';
+  title.textContent = heading;
   const close = document.createElement('button');
   close.type = 'button';
   close.className = 'tmux-attach-close';

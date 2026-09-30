@@ -1153,12 +1153,32 @@ function _tmuxAttachMenuItem(task, el) {
 }
 
 // Under the task's name and above its output, so it shows while the output is
-// folded. One per card: opening it again replaces the last one.
-function _showTaskAttach(el, attach) {
+// folded. One per card: opening it again replaces the last one. `opts` is
+// `renderTmuxAttach`'s (`B913`: the kill-failure panel's title).
+function _showTaskAttach(el, attach, opts) {
   el.querySelectorAll('.tmux-attach').forEach((old) => old.remove());
-  const panel = renderTmuxAttach(attach);
+  const panel = renderTmuxAttach(attach, opts);
   const wrap = el.querySelector('.cookbook-output-wrap');
   el.insertBefore(panel, wrap && wrap.parentNode === el ? wrap : null);
+  return panel;
+}
+
+// `B913`. A kill that left the session alive. The toast said "Check `tmux ls`
+// on the server", which on the shipped Docker install is a command that cannot
+// see the session: on the host it names nothing, and inside the container
+// root's answer is "no server running" — the session reads as gone when it is
+// not. The server builds the command that lists the sessions for where
+// Pantheon runs (`src/tmux_attach.py`, the one builder `B909` made), and the
+// panel under the task's name shows it with what to look for. A Windows task
+// has no tmux; its log is the menu's Copy log cmd.
+function _showKillFailure(task, el) {
+  if (_isWindows(task)) {
+    uiModule.showToast('Kill failed — the process may still be running. Watch its log: ⋮ → Copy log cmd.', 'error');
+    return null;
+  }
+  const check = prefetchTmuxAttach(task.sessionId, { host: _taskRemoteHost(task), action: 'list' });
+  const panel = _showTaskAttach(el, check, { title: 'Check whether it is still running' });
+  uiModule.showToast('Kill failed — the session may still be running. Check it with the command under the task name.', 'error');
   return panel;
 }
 
@@ -2990,7 +3010,7 @@ export function _renderRunningTab() {
         }
       } catch (_) { killOk = false; }
       if (!killOk) {
-        try { uiModule.showToast('Kill failed — session may still be running. Check `tmux ls` on the server.', 'error'); } catch (_) {}
+        try { _showKillFailure(task, el); } catch (_) {}   // `B913`
         return;  // leave the row so the user can retry
       }
       if (task.type === 'serve' && task.payload) {
