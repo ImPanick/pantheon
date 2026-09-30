@@ -837,7 +837,12 @@
         </div>
         <div class="theme-adv-group">
           <div class="theme-adv-group-label">Custom Fonts</div>
-          <div class="theme-fd-label" style="opacity:0.4;">Drop <code>.woff2</code>, <code>.ttf</code>, or <code>.otf</code> files into <code>static/fonts/custom/</code> and reload — they'll appear in the Font dropdown above.</div>
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <button type="button" id="theme-font-upload-btn" class="theme-io-btn" style="height:26px;font-size:12px;flex:0 0 auto;width:auto;padding:0 12px;">Add a font</button>
+            <input type="file" id="theme-font-upload-input" hidden />
+            <span id="theme-font-upload-status" class="theme-fd-label" role="status" aria-live="polite"></span>
+          </div>
+          <div class="theme-fd-label" style="opacity:0.6;margin-top:6px;">WOFF2, WOFF, TTF or OTF. It joins the Font menu above for everyone on this server.</div>
         </div>
         <button class="theme-adv-clear-btn" id="theme-adv-clear">Clear Advanced Overrides</button>
       </div>

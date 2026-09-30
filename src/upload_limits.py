@@ -57,6 +57,8 @@ def read_byte_limit_env(name: str, default: int) -> int:
 # `services/tts/tts_service.py` — and resolve through the same
 # `settings.resolve_limit`. Re-measured 2026-09-18: ten distinct
 # `PANTHEON_*BYTES` environment names across non-test Python, in three files.
+# `P2-24` added the eleventh, `PANTHEON_FONT_UPLOAD_MAX_BYTES`, here — nine in
+# this file now, eleven in all.
 #
 # The settings key is the variable minus `PANTHEON_`, lowercased, and that is
 # load-bearing twice: an operator who knows the variable can find the setting
@@ -71,6 +73,9 @@ BYTE_LIMITS: dict[str, tuple[str, int]] = {
     "stt_max_audio_bytes": ("PANTHEON_STT_MAX_AUDIO_BYTES", 25 * 1024 * 1024),
     "ics_max_bytes": ("PANTHEON_ICS_MAX_BYTES", 10 * 1024 * 1024),
     "chat_upload_max_bytes": (CHAT_UPLOAD_MAX_BYTES_ENV, DEFAULT_CHAT_UPLOAD_MAX_BYTES),
+    # `P2-24`. A custom font added from the theme panel. 25 MB clears the large
+    # CJK OpenType families (16–20 MB) with room; a Latin family is well under 1.
+    "font_upload_max_bytes": ("PANTHEON_FONT_UPLOAD_MAX_BYTES", 25 * 1024 * 1024),
 }
 
 # A byte cap is not a rate: there is no sane upper bound to clamp to, because
@@ -155,6 +160,9 @@ PERSONAL_UPLOAD_MAX_BYTES = read_byte_limit_env(*BYTE_LIMITS["personal_upload_ma
 EMAIL_COMPOSE_UPLOAD_MAX_BYTES = read_byte_limit_env(*BYTE_LIMITS["email_compose_upload_max_bytes"])
 STT_MAX_AUDIO_BYTES = read_byte_limit_env(*BYTE_LIMITS["stt_max_audio_bytes"])
 ICS_MAX_BYTES = read_byte_limit_env(*BYTE_LIMITS["ics_max_bytes"])
+# `P2-24`. Read here for the same reason as the seven above it: a malformed
+# value stops the process at boot, not at somebody's upload.
+FONT_UPLOAD_MAX_BYTES = read_byte_limit_env(*BYTE_LIMITS["font_upload_max_bytes"])
 
 
 async def read_upload_limited(upload: UploadFile, limit: int, label: str = "Upload") -> bytes:

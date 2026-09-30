@@ -84,6 +84,12 @@ ALLOWED = {
     "/openapi.json": "src/tools/system.py's do_app_api (action: endpoints) fetches it over the loopback",
     "/docs": "the API browser, served by app.py from static/lib/swagger-ui; an operator types this URL",
     "/redoc": "kept as a route so a build that vendors ReDoc can serve it; answers 404 naming /docs until then",
+    # `P2-24`. Same shape as the OAuth entry above: the browser never spells
+    # this path. `GET /api/fonts/custom` returns each uploaded font's `url`, and
+    # static/js/theme.js writes it into an `@font-face` `src`, so the caller is
+    # the browser's font loader. A literal in the JS would be a second copy of
+    # a path the server already owns.
+    "/api/fonts/custom/{filename}": "the @font-face src theme.js builds from the url GET /api/fonts/custom returns",
 }
 
 _FRONTEND_GLOBS = ("static/*.js", "static/js", "static/*.html")

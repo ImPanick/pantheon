@@ -343,6 +343,7 @@ DEFAULT_SETTINGS = {
     "chat_upload_max_bytes": None,
     "backup_import_max_bytes": None,
     "tts_cache_max_bytes": None,
+    "font_upload_max_bytes": None,  # `P2-24`
     # The throttles. `P12-05b`: these were literals — `15/60`, `3/300`, `3/300`
     # in `routes/auth_routes.py` and `self.upload_rate_limit = 60` in
     # `src/upload_handler.py` — so after every other row in this phase landed,
@@ -674,6 +675,7 @@ LIMIT_RANGES: dict[str, tuple[int, int]] = {
     "chat_upload_max_bytes": (1, 1024 * _GIB),
     "backup_import_max_bytes": (1, 1024 * _GIB),
     "tts_cache_max_bytes": (1, 1024 * _GIB),
+    "font_upload_max_bytes": (1, 1024 * _GIB),
     "auth_login_rate_limit": (1, 100_000),
     "auth_login_rate_window_seconds": (1, 86_400),
     "auth_signup_rate_limit": (1, 100_000),

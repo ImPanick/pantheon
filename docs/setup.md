@@ -788,6 +788,7 @@ Key settings:
 | `PANTHEON_EMAIL_COMPOSE_UPLOAD_MAX_BYTES` | `26214400` | Email compose attachment cap in bytes (25 MB). |
 | `PANTHEON_STT_MAX_AUDIO_BYTES` | `26214400` | Speech-to-text audio cap in bytes (25 MB). |
 | `PANTHEON_ICS_MAX_BYTES` | `10485760` | Calendar `.ics` import cap in bytes (10 MB). |
+| `PANTHEON_FONT_UPLOAD_MAX_BYTES` | `26214400` | Custom font upload cap in bytes (25 MB), for the theme panel's **Add a font**. |
 
 All upload-limit vars are validated (must be a positive integer) and optional; an invalid value fails fast at startup.
 

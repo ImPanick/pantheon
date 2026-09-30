@@ -64,6 +64,9 @@ services:
       - PANTHEON_EMAIL_COMPOSE_UPLOAD_MAX_BYTES=${PANTHEON_EMAIL_COMPOSE_UPLOAD_MAX_BYTES:-26214400}
       - PANTHEON_STT_MAX_AUDIO_BYTES=${PANTHEON_STT_MAX_AUDIO_BYTES:-26214400}
       - PANTHEON_ICS_MAX_BYTES=${PANTHEON_ICS_MAX_BYTES:-10485760}
+      # `P2-24`. `:-` like the TTS cap below (`B63`): the number lives in
+      # `src/upload_limits.py` and nowhere else.
+      - PANTHEON_FONT_UPLOAD_MAX_BYTES=${PANTHEON_FONT_UPLOAD_MAX_BYTES:-}
       - PANTHEON_BACKUP_IMPORT_MAX_BYTES=${PANTHEON_BACKUP_IMPORT_MAX_BYTES:-26214400}
       # `B63`. `:-` and not `:-524288000`: the number lives in
       # `services/tts/tts_service.py` and duplicating it here would be two

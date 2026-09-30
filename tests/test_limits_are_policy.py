@@ -75,8 +75,10 @@ def _upload(name: str, data: bytes) -> UploadFile:
 
 # ── `P12-01` · the count, re-measured rather than carried (`Law 6`) ─────────
 
-def test_there_are_exactly_ten_byte_caps_and_each_has_a_settings_key():
-    """The row said ten and admitted eleven had been one too many. Ten it is."""
+def test_every_byte_cap_is_counted_and_has_a_settings_key():
+    """The row said ten and admitted eleven had been one too many. Ten it was;
+    `P2-24` added the font upload cap, re-measured here as eleven rather than
+    carried (`Law 6`)."""
     found = {}
     for path in REPO.rglob("*.py"):
         rel = path.relative_to(REPO).as_posix()
@@ -86,14 +88,15 @@ def test_there_are_exactly_ten_byte_caps_and_each_has_a_settings_key():
                                path.read_text(encoding="utf-8", errors="ignore")):
             found.setdefault(name, set()).add(rel)
 
-    assert len(found) == 10, f"the ten byte caps are now {len(found)}: {sorted(found)}"
+    assert len(found) == 11, f"the eleven byte caps are now {len(found)}: {sorted(found)}"
     assert set(found) == set(TEN_BYTE_CAPS.values())
-    # Eight in one file, one each in the other two — the row's own breakdown.
+    # Nine in one file, one each in the other two — the row's own breakdown,
+    # plus `P2-24`'s font cap in `src/upload_limits.py`.
     by_file = {}
     for name, files in found.items():
         for rel in files:
             by_file.setdefault(rel, set()).add(name)
-    assert len(by_file["src/upload_limits.py"]) == 8
+    assert len(by_file["src/upload_limits.py"]) == 9
     assert len(by_file["routes/backup_routes.py"]) == 1
     assert len(by_file["services/tts/tts_service.py"]) == 1
 
@@ -172,13 +175,17 @@ IMPORT_TIME_CONSTANTS = {
     "stt_max_audio_bytes": (UL, "STT_MAX_AUDIO_BYTES"),
     "ics_max_bytes": (UL, "ICS_MAX_BYTES"),
     "backup_import_max_bytes": (BR, "BACKUP_IMPORT_MAX_BYTES"),
+    # `P2-24`. Not one of `P12-03`'s eight — it was born resolving per request —
+    # but it keeps an import-time snapshot for the same boot-time validation.
+    "font_upload_max_bytes": (UL, "FONT_UPLOAD_MAX_BYTES"),
 }
 
 
-def test_eight_of_the_ten_were_read_at_import_and_are_the_set_below():
+def test_the_import_time_snapshots_are_the_set_below():
     """The row's other number, re-measured. Eight import-time, one at instance
-    init (TTS), one per call (chat)."""
-    assert len(IMPORT_TIME_CONSTANTS) == 8
+    init (TTS), one per call (chat) — and `P2-24`'s font cap, a ninth snapshot
+    that exists only so a malformed value fails at boot."""
+    assert len(IMPORT_TIME_CONSTANTS) == 9
     assert set(IMPORT_TIME_CONSTANTS) | {"tts_cache_max_bytes", "chat_upload_max_bytes"} \
         == set(TEN_BYTE_CAPS)
     for key, (mod, name) in IMPORT_TIME_CONSTANTS.items():

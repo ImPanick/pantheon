@@ -435,6 +435,77 @@ function _injectFontFace(familyName, variants) {
   _injectedFonts.add(familyName);
 }
 
+// Fill the Font menu with the server's custom fonts, then restore `keepValue`.
+// `P2-24`: it also hands the upload picker the server's allowlist (`accepted`),
+// so the four suffixes it offers are the four the route takes — one list.
+export function loadCustomFonts(select, keepValue) {
+  return fetch('/api/fonts/custom', { credentials: 'same-origin' })
+    .then(r => r.json())
+    .then(data => {
+      _customFonts = data.fonts || {};
+      select.querySelectorAll('option[data-custom-font]').forEach(o => o.remove());
+      for (const fam of Object.keys(_customFonts)) {
+        const opt = document.createElement('option');
+        opt.value = fam;
+        opt.textContent = fam;
+        opt.dataset.customFont = '1';
+        select.appendChild(opt);
+      }
+      // Restore the chosen value after the options are populated
+      select.value = keepValue;
+      const input = document.getElementById('theme-font-upload-input');
+      if (input && Array.isArray(data.accepted)) input.accept = data.accepted.join(',');
+      return data;
+    })
+    .catch(e => { console.warn('Custom fonts fetch failed:', e); return null; });
+}
+
+// `P2-24`. "Add a font": post the file, put its family in the Font menu and
+// switch to it through the menu's own change handler, which applies and saves
+// it exactly as picking it by hand does. What the server refused, it says why.
+export async function addCustomFont(file) {
+  const status = document.getElementById('theme-font-upload-status');
+  const say = (msg) => { if (status) status.textContent = msg; };
+  say(`Adding ${file.name}…`);
+  const body = new FormData();
+  body.append('file', file);
+  let res;
+  let data = {};
+  try {
+    res = await fetch('/api/fonts/custom', { method: 'POST', credentials: 'same-origin', body });
+    data = await res.json().catch(() => ({}));
+  } catch (e) {
+    say("Couldn't reach the server.");
+    return null;
+  }
+  if (!res.ok) {
+    if (res.status === 403) say('Only an admin can add fonts.');
+    else say(typeof data.detail === 'string' ? data.detail : "Couldn't add that font.");
+    return null;
+  }
+  const select = document.getElementById('theme-font-select');
+  if (select) {
+    await loadCustomFonts(select, data.family);
+    select.value = data.family;
+    select.dispatchEvent(new Event('change'));
+  }
+  say(`Added ${data.family}.`);
+  return data;
+}
+
+function wireFontUpload() {
+  const btn = document.getElementById('theme-font-upload-btn');
+  const input = document.getElementById('theme-font-upload-input');
+  if (!btn || !input || btn.dataset.wired) return;
+  btn.dataset.wired = '1';
+  btn.addEventListener('click', () => input.click());
+  input.addEventListener('change', () => {
+    const file = input.files && input.files[0];
+    if (!file) return;
+    addCustomFont(file).finally(() => { input.value = ''; });
+  });
+}
+
 export function applyFontDensity(font, density) {
   const f = font || DEFAULT_FONT;
   const d = density || DEFAULT_DENSITY;
@@ -1209,24 +1280,9 @@ export function initThemeUI() {
       applyFontDensity(nf.value, document.getElementById('theme-density-select').value);
       const s = getSaved(); if (s) _saveFull(s.name, s.colors);
     });
-    // Fetch custom fonts from local folder and populate dropdown
-    fetch('/api/fonts/custom', { credentials: 'same-origin' })
-      .then(r => r.json())
-      .then(data => {
-        _customFonts = data.fonts || {};
-        const families = Object.keys(_customFonts);
-        nf.querySelectorAll('option[data-custom-font]').forEach(o => o.remove());
-        for (const fam of families) {
-          const opt = document.createElement('option');
-          opt.value = fam;
-          opt.textContent = fam;
-          opt.dataset.customFont = '1';
-          nf.appendChild(opt);
-        }
-        // Restore saved value after options are populated
-        nf.value = _initFont;
-      })
-      .catch(e => console.warn('Custom fonts fetch failed:', e));
+    // Fetch custom fonts from the server and populate dropdown
+    loadCustomFonts(nf, _initFont);
+    wireFontUpload();
   }
   if (densitySelect) {
     const nd = densitySelect.cloneNode(true); densitySelect.parentNode.replaceChild(nd, densitySelect);
