@@ -74,18 +74,18 @@ The four tiers are `P11-02b`'s own question. A site is exactly one of them:
   ownership check or a privilege key that does not exist. The fix is a data model, not
   an auth change.
 
-derived: direct 97 · Depends 20 · total 117
+derived: direct 98 · Depends 20 · total 118
 
 ### tier summary
 
 | tier | sites |
 |---|---|
-| `superuser` | 44 |
+| `superuser` | 45 |
 | `operator` | 48 |
 | `power-user` | 4 |
 | `only-because-nothing-finer-existed` | 21 |
 
-### `superuser` — **44 superuser sites.** A credential, an execution surface, or the whole instance's data. These stay `is_admin` under any role model — `P11-02` says so in its own words: *"keep `is_admin` as the superuser role rather than replacing it"*.
+### `superuser` — **45 superuser sites.** A credential, an execution surface, or the whole instance's data. These stay `is_admin` under any role model — `P11-02` says so in its own words: *"keep `is_admin` as the superuser role rather than replacing it"*.
 
 | file | function | route | protects |
 |---|---|---|---|
@@ -123,6 +123,7 @@ derived: direct 97 · Depends 20 · total 117
 | `routes/mcp/mcp_routes.py` | `check_registration` | `POST /api/mcp/check` | says whether this machine has a stdio command's launcher and whether the agent path would register it, before a server is added. Reads the host's `PATH` and runs `_validate_mcp_command`; stores and starts nothing. `P8-45` |
 | `routes/session_routes.py` | `delete_all_sessions` | `DELETE /api/sessions/all` | deletes every chat session and message on the instance, and their gallery images with them |
 | `routes/skills_routes.py` | `import_skill_from_url` | `POST /api/skills/import-from-url` | fetches a skill bundle over the network and installs it. A supply-chain decision; `FORBIDDEN.md` keeps the host allowlist and the IP-pinned transport under it |
+| `routes/skills_routes.py` | `update_package` | `POST /api/skills/packages/{package_id}/update` | fetches an installed skill package from GitHub again and rewrites its skills — `import_skill_from_url`'s surface on a package already here. `P8-49` |
 | `routes/vault/vault_routes.py` | `get_config` | `GET /api/vault/config` | the credential vault's configuration |
 | `routes/vault/vault_routes.py` | `save_config` | `POST /api/vault/config` | rewrites it |
 | `routes/vault/vault_routes.py` | `lock` | `POST /api/vault/lock` | locks them |
@@ -471,7 +472,7 @@ this file's hand-rolled pattern, so the population that this map covers grew by 
 the number of admin decisions added — which is the behaviour the map was built to give.
 The paragraph above is about the 107 that predate roles; the counts below are live.
 
-- **44 superuser sites do not move.** They are already right.
+- **45 superuser sites do not move.** They are already right.
 - **48 operator sites are the phase's return.** Today the only way to let someone keep
   the instance up is to make them the owner. An `operator` overlay on
   `DEFAULT_PRIVILEGES` retires 48 gates without touching a single one of the 37.

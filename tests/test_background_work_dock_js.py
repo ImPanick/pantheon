@@ -226,15 +226,24 @@ def test_two_jobs_in_one_window_do_not_erase_each_other(dock):
     assert out["empty"] is None
 
 
-def test_the_brain_really_does_hold_both_of_those_jobs():
-    """The premise under the test above, read out of the shipped markup rather
-    than asserted. If either moves to its own window the collision stops being
-    real and the keying stops being load-bearing."""
-    html = INDEX_HTML.read_text(encoding="utf-8")
-    start = html.index('<div id="memory-modal"')
+def _window(html, modal_id):
+    start = html.index(f'<div id="{modal_id}"')
     end = re.compile(r'\n  <div id="[^"]+" class="modal').search(html, start).start()
-    brain = html[start:end]
-    assert 'id="skills-audit-panel"' in brain
+    return html[start:end]
+
+
+def test_the_audit_and_the_tidy_are_in_two_windows_now():
+    """The premise under the test above, read out of the shipped markup.
+
+    It said: *"If either moves to its own window the collision stops being real
+    and the keying stops being load-bearing."* `P9-06` moved Skills out of the
+    Brain on 2026-09-30 (`D-2026-09-30-01`), so the audit's panel is in the
+    Skills window and the tidy stays in the Brain. The keying stays — it is how
+    any window holds two jobs — and this now pins where each one is, so the
+    chip test below names the right window."""
+    html = INDEX_HTML.read_text(encoding="utf-8")
+    brain, skills = _window(html, "memory-modal"), _window(html, "skills-modal")
+    assert 'id="skills-audit-panel"' in skills and 'id="skills-audit-panel"' not in brain
     assert 'id="memory-tidy-btn"' in brain
 
 
@@ -419,8 +428,9 @@ def _call_js(tmp_path, harness: str) -> dict:
 
 
 def test_the_skills_audit_names_its_job_so_the_tidy_cannot_erase_it(tmp_path):
-    """The audit's chip body, run for real. It shares `memory-modal` with the
-    memory tidy, so an unkeyed write from here is the collision."""
+    """The audit's chip body, run for real. It shared `memory-modal` with the
+    memory tidy until `P9-06`; it reports on the Skills window now, still keyed,
+    because a second job in that window would otherwise be the collision."""
     body = js_function(SKILLS_JS.read_text(encoding="utf-8"), "function _syncAuditChip")
     out = _call_js(tmp_path, f"""
         const calls = [];
@@ -434,7 +444,7 @@ def test_the_skills_audit_names_its_job_so_the_tidy_cannot_erase_it(tmp_path):
         _syncAuditChip({{ status: 'done', done: 19, total: 19, results: [{{ result: 'fail' }}] }});
         console.log(JSON.stringify({{ calls, toasts }}));
     """)
-    assert [c["id"] for c in out["calls"]] == ["memory-modal"] * 3
+    assert [c["id"] for c in out["calls"]] == ["skills-modal"] * 3
     assert {c["work"]["key"] for c in out["calls"]} == {"skills-audit"}
     assert out["calls"][0]["work"]["label"] == "Auditing 4/19"
     assert "summarise-pdf" in out["calls"][0]["work"]["detail"]

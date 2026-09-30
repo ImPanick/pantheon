@@ -161,6 +161,10 @@ def test_the_prompt_builder_asks_the_resolver_and_honours_a_role(monkeypatch):
         def load(self, owner=None):
             return []
 
+        # `P8-51`: the prompt builder reads the skills the model may be shown,
+        # which is `load()` less what a switched-off package or group holds.
+        load_active = load
+
         def get_relevant_skills(self, text, skills=None, threshold=None,
                                 max_items=None, min_confidence=None):
             seen["max_items"] = max_items

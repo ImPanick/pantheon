@@ -8,7 +8,7 @@ import spinnerModule from './spinner.js';
 import { styledConfirm, showToast, emptyStateIcon, esc } from './ui.js';  // `B866`: three local `esc` lambdas escaped `& < "` and not `> '`
 import { folderDisplayName, sortedFolders } from './emailInbox.js?v=20260815approvalsave1';
 import settingsModule from './settings.js?v=20260927mcppresets1';
-import * as Modals from './modalManager.js?v=20260930skillimport1';
+import * as Modals from './modalManager.js?v=20260930skillpkgs1';
 import { topPortalZ } from './toolWindowZOrder.js';
 import { makeWindowDraggable } from './windowDrag.js';
 import {

@@ -6,7 +6,7 @@
 
 import uiModule from './ui.js';
 import { spawnConfetti } from './compare/vote.js';
-import * as Modals from './modalManager.js?v=20260930skillimport1';
+import * as Modals from './modalManager.js?v=20260930skillpkgs1';
 import { attachColorPicker } from './colorPicker.js';
 import { makeWindowDraggable } from './windowDrag.js';
 import { snapModalToZone } from './tileManager.js';

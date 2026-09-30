@@ -40,7 +40,7 @@
  * }}
  */
 import { state } from '../state.js';
-import modalManager from '../../modalManager.js?v=20260930skillimport1';
+import modalManager from '../../modalManager.js?v=20260930skillpkgs1';
 import {
   ADJ_ICONS,
   adjLayerLabel,

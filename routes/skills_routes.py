@@ -105,6 +105,26 @@ class SkillImportUrlRequest(BaseModel):
     url: str = Field(..., min_length=8, max_length=2000)
 
 
+class SkillGroupCreateRequest(BaseModel):
+    title: str = Field(..., min_length=1, max_length=200)
+    skills: List[str] = Field(default_factory=list, max_length=2000)
+
+
+class SkillGroupUpdateRequest(BaseModel):
+    title: Optional[str] = Field(None, max_length=200)
+    enabled: Optional[bool] = None
+    add: List[str] = Field(default_factory=list, max_length=2000)
+    remove: List[str] = Field(default_factory=list, max_length=2000)
+
+
+class SkillPackageUpdateRequest(BaseModel):
+    enabled: Optional[bool] = None
+
+
+class SkillForkRequest(BaseModel):
+    name: Optional[str] = Field(None, max_length=128)
+
+
 class SkillUpdateRequest(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
@@ -1743,50 +1763,179 @@ def setup_skills_routes(skills_manager: SkillsManager) -> APIRouter:
             save_settings(settings)
         return {"ok": True, "name": name, "is_overridden": False}
 
+    def _import_answer(user, result: dict) -> dict:
+        """What an import tells the page: the package, what it installed, and
+        the one skill to open — the one the link named, else the first."""
+        installed, updated = result.get("installed") or [], result.get("updated") or []
+        named = result.get("named") or (installed + updated or [""])[0]
+        entry = next((s for s in skills_manager.load(owner=user) if s.get("name") == named),
+                     {"name": named})
+        notes = [f"A skill named {want} already exists, so this one was saved as {got}."
+                 for want, got in (result.get("renamed") or {}).items()]
+        notes += list(result.get("notes") or [])
+        for name in installed:
+            _fire_skill_added(user, name)
+        return {"ok": True, "skill": entry, "files": result.get("files", 0), "notes": notes,
+                "package": _package_view(result.get("package") or {}, user),
+                "installed": installed, "updated": updated}
+
+    def _package_view(rec: dict, user) -> dict:
+        from services.memory.skill_collections import package_skills
+
+        return {"id": rec.get("id"), "title": rec.get("title"),
+                "description": rec.get("description") or "",
+                "version": rec.get("version") or "", "commit": rec.get("commit") or "",
+                "source": rec.get("source") or {}, "mode": rec.get("mode") or "full",
+                "enabled": rec.get("enabled", True) is not False,
+                "installed_at": rec.get("installed_at"), "updated_at": rec.get("updated_at"),
+                "sections": [{"id": sec.get("id"), "title": sec.get("title"),
+                              "description": sec.get("description") or "",
+                              "skills": list(sec.get("skills") or [])}
+                             for sec in rec.get("sections") or []],
+                "skills": package_skills(rec)}
+
+    def _import_errors(e: Exception):
+        from services.memory.skill_importer import SkillImportError
+
+        if isinstance(e, SkillImportError):
+            return HTTPException(400, str(e))
+        if isinstance(e, httpx.HTTPError):
+            logger.warning("skill import fetch failed: %s", e)
+            return HTTPException(502, str(e).strip() or "Could not download skill from URL")
+        logger.error("skill import failed: %s", e, exc_info=True)
+        # `B926`: say what failed. "Skill import failed" with nothing after
+        # it is the sentence the owner could not act on.
+        return HTTPException(500, f"Skill import failed — {type(e).__name__}: {e}".strip()[:340])
+
     @router.post("/import-from-url")
     async def import_skill_from_url(request: Request, body: SkillImportUrlRequest):
-        """Install a SKILL.md bundle from a public GitHub URL (skills.sh links supported)."""
+        """Install skills from a public GitHub link (skills.sh links and the
+        `npx skills add` line supported).
+
+        `P8-49`. A link to a repository, a skills.sh page or an install line
+        imports **the whole package** — every skill in the repository, filed
+        under the sections it declares — even when it names one skill
+        (`D-2026-09-30-01`). A link to one skill's folder or SKILL.md imports
+        that skill, filed under the package it belongs to.
+        """
         require_admin(request)
         user = _owner(request)
-        from services.memory.skill_importer import (
-            SkillImportError,
-            fetch_skill_bundle_report,
-        )
+        from services.memory import skill_importer as si
         from starlette.concurrency import run_in_threadpool
 
         url = body.url.strip()
         try:
             # `B926`. The fetch is synchronous and paced — the outbound limiter
-            # sleeps a second between api.github.com calls — and it ran on the
-            # event loop, so for the whole import every other request the
-            # server had (the page's polls, a chat's stream) waited behind it.
-            # To the person that read as an app that had stopped. Off the loop.
-            files, _src, notes = await run_in_threadpool(fetch_skill_bundle_report, url)
-            entry = await run_in_threadpool(
-                skills_manager.import_bundle_from_files,
-                files,
-                owner=user,
-                source_url=url,
-            )
-        except SkillImportError as e:
-            raise HTTPException(400, str(e)) from e
-        except httpx.HTTPError as e:
-            logger.warning("skill import fetch failed: %s", e)
-            detail = str(e).strip() or "Could not download skill from URL"
-            raise HTTPException(502, detail) from e
+            # sleeps between GitHub calls — and it ran on the event loop, so for
+            # the whole import every other request the server had (the page's
+            # polls, a chat's stream) waited behind it. Off the loop.
+            if si.is_package_link(url):
+                pkg = await run_in_threadpool(si.fetch_skill_package, url)
+            else:
+                files, src, notes = await run_in_threadpool(si.fetch_skill_bundle_report, url)
+                pkg = si.single_skill_package(files, src, notes)
+            result = await run_in_threadpool(skills_manager.install_package, pkg, owner=user)
         except Exception as e:
-            logger.error("skill import failed: %s", e, exc_info=True)
-            # `B926`: say what failed. "Skill import failed" with nothing after
-            # it is the sentence the owner could not act on.
-            reason = f"{type(e).__name__}: {e}".strip()[:300]
-            raise HTTPException(500, f"Skill import failed — {reason}") from e
+            raise _import_errors(e) from e
+        return _import_answer(user, result)
 
-        renamed_from = (entry or {}).pop("_renamed_from", None)
-        if renamed_from:
-            notes = [f"A skill named {renamed_from} already exists, so this one was "
-                     f"saved as {entry.get('name')}."] + list(notes)
-        _fire_skill_added(user, (entry or {}).get("name"))
-        return {"ok": True, "skill": entry, "files": len(files), "notes": notes}
+    # ── packages and groups — `P8-49` … `P8-52` ────────────────────────────
+    # Declared before `/{skill_id}` so `GET /collections` is not read as a
+    # skill called "collections".
+
+    @router.get("/collections")
+    async def list_collections(request: Request):
+        """Packages, groups, and which skills are switched off and by what."""
+        user = _owner(request)
+        col = skills_manager.collections
+        groups = [{"id": g.get("id"), "title": g.get("title"),
+                   "enabled": g.get("enabled", True) is not False,
+                   "skills": list(g.get("skills") or [])} for g in col.groups(user)]
+        return {"packages": [_package_view(p, user) for p in col.packages(user)],
+                "groups": groups, "off": col.switched_off(user)}
+
+    @router.post("/packages/{package_id}/update")
+    async def update_package(request: Request, package_id: str):
+        """Fetch the package again from GitHub and refresh its skills."""
+        require_admin(request)
+        user = _owner(request)
+        rec = skills_manager.collections.package(user, package_id)
+        if rec is None:
+            raise HTTPException(404, "Package not found")
+        from services.memory import skill_importer as si
+        from starlette.concurrency import run_in_threadpool
+
+        src = rec.get("source") or {}
+        owner, repo, ref = src.get("owner"), src.get("repo"), src.get("ref") or "main"
+        if not owner or not repo:
+            raise HTTPException(400, "This package does not say where it came from.")
+        url = f"https://github.com/{owner}/{repo}/tree/{ref}"
+        only = list((rec.get("names") or {}).keys()) if rec.get("mode") == "partial" else None
+        try:
+            pkg = await run_in_threadpool(si.fetch_skill_package, url, only_folders=only)
+            result = await run_in_threadpool(skills_manager.install_package, pkg, owner=user)
+        except Exception as e:
+            raise _import_errors(e) from e
+        return _import_answer(user, result)
+
+    @router.patch("/packages/{package_id}")
+    async def patch_package(request: Request, package_id: str, body: SkillPackageUpdateRequest):
+        user = _owner(request)
+        col = skills_manager.collections
+        if body.enabled is not None:
+            rec = col.set_package_enabled(user, package_id, body.enabled)
+        else:
+            rec = col.package(user, package_id)
+        if rec is None:
+            raise HTTPException(404, "Package not found")
+        return {"ok": True, "package": _package_view(rec, user)}
+
+    @router.delete("/packages/{package_id}")
+    async def delete_package(request: Request, package_id: str, keep_skills: bool = False):
+        """Remove a package and — unless `keep_skills` — every skill it installed."""
+        user = _owner(request)
+        out = skills_manager.remove_package(package_id, owner=user, keep_skills=keep_skills)
+        if out is None:
+            raise HTTPException(404, "Package not found")
+        return {"ok": True, "removed": out["removed"]}
+
+    def _known_names(user, names) -> List[str]:
+        have = {s.get("name") for s in skills_manager.load(owner=user)}
+        missing = [n for n in names if n not in have]
+        if missing:
+            raise HTTPException(400, "No skill called " + ", ".join(missing[:5]))
+        return list(names)
+
+    @router.post("/groups")
+    async def create_group(request: Request, body: SkillGroupCreateRequest):
+        user = _owner(request)
+        try:
+            rec = skills_manager.collections.create_group(
+                user, body.title, _known_names(user, body.skills))
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from e
+        return {"ok": True, "group": {k: rec.get(k) for k in ("id", "title", "enabled", "skills")}}
+
+    @router.patch("/groups/{group_id}")
+    async def patch_group(request: Request, group_id: str, body: SkillGroupUpdateRequest):
+        user = _owner(request)
+        try:
+            rec = skills_manager.collections.update_group(
+                user, group_id, title=body.title, enabled=body.enabled,
+                add=_known_names(user, body.add), remove=body.remove)
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from e
+        if rec is None:
+            raise HTTPException(404, "Group not found")
+        return {"ok": True, "group": {k: rec.get(k) for k in ("id", "title", "enabled", "skills")}}
+
+    @router.delete("/groups/{group_id}")
+    async def delete_group(request: Request, group_id: str):
+        """Delete a group. Its skills are not touched — a group only lists them."""
+        user = _owner(request)
+        if not skills_manager.collections.delete_group(user, group_id):
+            raise HTTPException(404, "Group not found")
+        return {"ok": True}
 
     @router.post("/add")
     async def add_skill(request: Request, body: SkillAddRequest):
@@ -1829,6 +1978,19 @@ def setup_skills_routes(skills_manager: SkillsManager) -> APIRouter:
                 "overlaps": entry.get("_overlaps") or [],
                 "duplicate_score": entry.get("_duplicate_score"),
                 "skill": entry}
+
+    @router.post("/{skill_id}/fork")
+    async def fork_skill(request: Request, skill_id: str, body: SkillForkRequest):
+        """A separately named copy of a skill, for when it should diverge. `P8-52`."""
+        user = _owner(request)
+        visible = {s.get("name") for s in skills_manager.load(owner=user)}
+        if skill_id not in visible:
+            raise HTTPException(404, "Skill not found")
+        entry = skills_manager.fork_skill(skill_id, body.name, owner=user)
+        if entry is None:
+            raise HTTPException(404, "Skill not found")
+        _fire_skill_added(user, entry.get("name"))
+        return {"ok": True, "skill": entry}
 
     @router.post("/{skill_id}/invoke")
     async def invoke_skill(request: Request, skill_id: str):

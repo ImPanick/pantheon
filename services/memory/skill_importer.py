@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import ipaddress
+import json
 import logging
 import os
 import re
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Dict, Iterable, List, Optional, Tuple, cast
 from urllib.parse import quote, urljoin, urlparse
 
@@ -55,6 +56,12 @@ ALLOWED_SUFFIXES = (
 TEXT_NAMES = {"skill.md", "license", "license.md", "readme.md"}
 _GITHUB_HOSTS = frozenset({
     "github.com", "www.github.com", "api.github.com", "raw.githubusercontent.com",
+    # `P8-49`. Where GitHub serves a repository's archive — every
+    # `github.com/<o>/<r>/archive/…` link redirects here. It serves the same
+    # repository's files raw.githubusercontent.com does, one request for all
+    # of them, so it widens no supply chain; the SSRF property is still held
+    # by the outbound-URL check and the pinned transport (`FORBIDDEN.md`).
+    "codeload.github.com",
 })
 _SKILLS_SH_HOSTS = frozenset({"skills.sh", "www.skills.sh"})
 
@@ -269,8 +276,12 @@ _HTTPCORE_TO_HTTPX_EXC = {
 class _PinnedTransport(httpx.BaseTransport):
     """Pin socket connects while preserving URL authority, Host, and TLS SNI."""
 
-    def __init__(self, ips: List[ipaddress._BaseAddress]):
+    def __init__(self, ips: List[ipaddress._BaseAddress], max_bytes: Optional[int] = None):
         self._pinned_ips = list(ips)
+        # `P8-49`. A ceiling on the body, enforced while it streams: a
+        # repository archive is the one response here whose size is not
+        # bounded by what GitHub serves for a single file.
+        self._max_bytes = max_bytes
         self._pool = httpcore.ConnectionPool(
             ssl_context=httpx.create_ssl_context(),
             http1=True,
@@ -294,7 +305,17 @@ class _PinnedTransport(httpx.BaseTransport):
         core_response = None
         try:
             core_response = self._pool.handle_request(core_request)
-            content = b"".join(cast(Iterable[bytes], core_response.stream))
+            if self._max_bytes is None:
+                content = b"".join(cast(Iterable[bytes], core_response.stream))
+            else:
+                chunks, got = [], 0
+                for chunk in cast(Iterable[bytes], core_response.stream):
+                    got += len(chunk)
+                    if got > self._max_bytes:
+                        raise SkillImportError(
+                            f"download larger than {self._max_bytes:,} bytes")
+                    chunks.append(chunk)
+                content = b"".join(chunks)
         except Exception as exc:
             mapped = _HTTPCORE_TO_HTTPX_EXC.get(type(exc))
             if mapped is not None:
@@ -356,6 +377,7 @@ def _get_checked(
     *,
     headers: Optional[dict] = None,
     timeout: float = 30.0,
+    max_bytes: Optional[int] = None,
 ) -> httpx.Response:
     """GET that follows redirects manually, re-running the SSRF guard per hop.
 
@@ -390,7 +412,7 @@ def _get_checked(
             raise SkillImportError(str(e)) from e
 
         with httpx.Client(
-            transport=_PinnedTransport(pinned_ips),
+            transport=_PinnedTransport(pinned_ips, max_bytes=max_bytes),
             follow_redirects=False,
             timeout=timeout,
         ) as client:
@@ -887,16 +909,44 @@ def _find_skill_in_tree(src: ResolvedSource, refs: List[str]) -> Optional[Tuple[
             tree = r.json().get("tree") or []
         except Exception:
             continue
-        hits = sorted(
+        folders = sorted(
             (e.get("path") or "")[: -len("/SKILL.md")]
             for e in tree
             if isinstance(e, dict) and e.get("type") == "blob"
             and (e.get("path") or "").endswith("/SKILL.md")
-            and (e.get("path") or "")[: -len("/SKILL.md")].split("/")[-1].lower() == want
         )
+        hits = [f for f in folders if f.split("/")[-1].lower() == want]
         if hits:
             return min(hits, key=len), ref
+        # `B928`. The name `npx skills add … --skill <name>` takes is the one
+        # the skill's SKILL.md gives itself, and its folder need not share it:
+        # `Leonxlnx/taste-skill` keeps `design-taste-frontend` in
+        # `skills/taste-skill/`. Read the names — raw files, not the API —
+        # before saying the skill is not there.
+        src.ref = ref
+        for folder in folders[:_NAME_SCAN_LIMIT]:
+            try:
+                head = _fetch_text(_raw_url(src, f"{folder}/SKILL.md"))
+            except SkillImportError:
+                continue
+            if _frontmatter_name(head).lower() == want:
+                return folder, ref
     return None
+
+
+# How many SKILL.md files `_find_skill_in_tree` will read to match a name.
+_NAME_SCAN_LIMIT = 60
+
+
+def _frontmatter_name(text: str) -> str:
+    """The `name:` a SKILL.md gives itself, or "" — never raises."""
+    try:
+        from .skill_format import parse_frontmatter
+
+        fm, _body = parse_frontmatter(text or "")
+        return str((fm or {}).get("name") or "").strip()
+    except Exception:
+        return ""
 
 
 def _locate_named_skill(src: ResolvedSource) -> None:
@@ -970,3 +1020,455 @@ def pick_skill_md(files: Dict[str, str]) -> Tuple[str, str]:
 
 def default_category_from_source(src: ResolvedSource) -> str:
     return "imported"
+
+
+
+# ── Whole packages — `P8-49` ────────────────────────────────────────────────
+#
+# The owner, 2026-09-30: *"adding a multi-layer skill package also does not
+# build its segmented 'category' and group skills together... Which it
+# should."* Asked what importing a repository that holds many skills should
+# do, he chose **the whole package, even when `--skill` names one**
+# (`D-2026-09-30-01`).
+#
+# One request brings the whole repository: GitHub's archive of it, from
+# codeload.github.com, which is not the 60-an-hour API. That is also what
+# `npx skills` does in effect — it clones — and it is the difference between
+# one paced request and one per file. Nothing in the archive is written to
+# disk from here: the members this module wants are read into memory by
+# repository path, every path goes through `_safe_relpath`, only regular files
+# are read (no links, no devices), and the byte and count caps below hold at
+# every step. The writer is `SkillsManager.install_package`, which applies
+# `_safe_relpath` again on the way to disk.
+
+MAX_ARCHIVE_BYTES = 100_000_000      # the download, compressed
+MAX_ARCHIVE_UNPACKED = 500_000_000   # how far into the unpacked stream we read
+MAX_PACKAGE_SKILLS = 100
+MAX_PACKAGE_BYTES = 40_000_000       # text kept across every skill of one package
+# A package import makes: a skills.sh short link's redirect (rare), then one
+# archive request per branch tried. Everything else is read out of the archive.
+MAX_PACKAGE_REQUESTS = 8
+_MAX_NOTES = 20
+
+_MARKETPLACE = ".claude-plugin/marketplace.json"
+_PLUGIN = ".claude-plugin/plugin.json"
+# `<anything>/skills/<name>/SKILL.md` is where every agent tool keeps skills
+# (`skills/`, `.claude/skills/`, `.agents/skills/`, a plugin's own
+# `skills/`), and `skills/.curated|.experimental|.system/` is the layout of
+# the agent-skills catalogues.
+_SKILLS_PARENT = re.compile(r"(^|/)skills(/\.[a-z]+)?$")
+
+
+def package_id(owner: str, repo: str) -> str:
+    """`owner--repo`, lower-cased. GitHub never allows `--` in an owner name,
+    so the id splits back one way only, and it is a safe path segment."""
+    return f"{owner}--{repo}".lower()
+
+
+@dataclass
+class PackageSkill:
+    folder: str                 # the skill's folder in the repository; "" is the root
+    name: str                   # the name its SKILL.md gives itself, else its folder's
+    files: Dict[str, str]       # path relative to `folder` → text
+    section: str = ""           # `PackageSection.id`
+
+
+@dataclass
+class PackageSection:
+    id: str
+    title: str
+    description: str = ""
+    folders: List[str] = field(default_factory=list)
+
+
+@dataclass
+class FetchedPackage:
+    src: ResolvedSource
+    title: str
+    description: str = ""
+    version: str = ""
+    commit: str = ""
+    skills: List[PackageSkill] = field(default_factory=list)
+    sections: List[PackageSection] = field(default_factory=list)
+    named: str = ""             # folder of the skill the link named, when it named one
+    notes: List[str] = field(default_factory=list)
+    partial: bool = False       # a link to one skill's folder, not to the package
+
+    @property
+    def id(self) -> str:
+        return package_id(self.src.owner, self.src.repo)
+
+    @property
+    def source_url(self) -> str:
+        return f"https://github.com/{self.src.owner}/{self.src.repo}"
+
+
+def _note(notes: List[str], text: str) -> None:
+    if len(notes) < _MAX_NOTES:
+        notes.append(text)
+    elif len(notes) == _MAX_NOTES:
+        notes.append("More files were left out than are listed here.")
+
+
+class _Archive:
+    """A repository archive, held compressed and read by walking it.
+
+    Two walks at most: one for the list of files and their sizes, one for the
+    handful of files an import keeps. Seeking inside a gzip stream restarts it
+    from the top, so a walk per wanted file would be quadratic.
+    """
+
+    def __init__(self, data: bytes):
+        self.data = data
+        self.sizes: Dict[str, int] = {}
+        self.commit = ""
+        self._walk(None)
+
+    def _walk(self, want: Optional[set]) -> Dict[str, str]:
+        import io
+        import tarfile
+        import zlib
+
+        out: Dict[str, str] = {}
+        root: Optional[str] = None
+        try:
+            with tarfile.open(fileobj=io.BytesIO(self.data), mode="r|gz") as tar:
+                for m in tar:
+                    if not self.commit:
+                        # GitHub's archives carry the commit in a pax global header.
+                        self.commit = str((tar.pax_headers or {}).get("comment") or "")[:64]
+                    size = max(int(m.size or 0), 0)
+                    if m.offset_data + size > MAX_ARCHIVE_UNPACKED:
+                        raise SkillImportError(
+                            f"the repository unpacks to more than "
+                            f"{MAX_ARCHIVE_UNPACKED // 1_000_000} MB. Paste the GitHub link to "
+                            "one skill's folder instead — that imports just that skill.")
+                    if not m.isfile():
+                        continue
+                    first, _, rest = m.name.partition("/")
+                    if root is None:
+                        root = first
+                    if first != root or not rest:
+                        continue
+                    try:
+                        rel = _safe_relpath(rest)
+                    except SkillImportError:
+                        continue
+                    if any(p in ("node_modules", ".git") for p in rel.split("/")):
+                        continue
+                    if want is None:
+                        self.sizes[rel] = size
+                        continue
+                    if rel not in want or size > MAX_FILE_BYTES:
+                        continue
+                    fh = tar.extractfile(m)
+                    if fh is None:
+                        continue
+                    raw = fh.read(MAX_FILE_BYTES + 1)
+                    if len(raw) > MAX_FILE_BYTES:
+                        continue
+                    try:
+                        out[rel] = raw.decode("utf-8")
+                    except UnicodeDecodeError:
+                        continue
+        except SkillImportError:
+            raise
+        except (tarfile.TarError, EOFError, OSError, zlib.error) as e:
+            raise SkillImportError(
+                f"GitHub's archive of this repository could not be read ({type(e).__name__}: {e})"
+            ) from e
+        return out
+
+    def read(self, paths: Iterable[str]) -> Dict[str, str]:
+        want = {p for p in paths if p in self.sizes}
+        return self._walk(want) if want else {}
+
+
+def _fetch_archive(src: ResolvedSource) -> _Archive:
+    refs = [src.ref] if src.ref_known else ["main", "master"]
+    for ref in refs:
+        url = (f"https://codeload.github.com/{quote(src.owner, safe='')}/"
+               f"{quote(src.repo, safe='')}/tar.gz/{quote(ref, safe='/')}")
+        try:
+            r = _get_checked(url, timeout=120.0, max_bytes=MAX_ARCHIVE_BYTES)
+        except SkillImportError as e:
+            if "download larger than" not in str(e):
+                raise
+            raise SkillImportError(
+                f"{src.owner}/{src.repo} is larger than {MAX_ARCHIVE_BYTES // 1_000_000} MB, more "
+                "than a whole-package import downloads. Paste the GitHub link to one skill's "
+                "folder instead — that imports just that skill."
+            ) from e
+        if r.status_code == 404:
+            continue
+        if r.status_code >= 400:
+            raise _github_response_error(r)
+        _assert_github_url(str(r.url), context="redirect target")
+        src.ref, src.ref_known = ref, True
+        return _Archive(r.content)
+    raise SkillImportError(
+        f"GitHub has no {src.owner}/{src.repo} with a "
+        + " or ".join(f"`{r}`" for r in refs)
+        + " branch that this server can see. Check the link — a private repository "
+        "cannot be imported — or paste the link to the branch you want (…/tree/<branch>)."
+    )
+
+
+def _json_object(text: Optional[str]) -> dict:
+    try:
+        value = json.loads(text or "")
+    except (TypeError, ValueError):
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
+def _join_folder(base: str, rel: str) -> Optional[str]:
+    parts: List[str] = []
+    for p in f"{base}/{rel}".replace("\\", "/").split("/"):
+        if p in ("", "."):
+            continue
+        if p == "..":
+            return None
+        parts.append(p)
+    return "/".join(parts)
+
+
+def _parent(folder: str) -> str:
+    return folder.rsplit("/", 1)[0] if "/" in folder else ""
+
+
+def _choose_folders(folders: List[str], declared: List[str]) -> List[str]:
+    """Which folders holding a SKILL.md are the package's skills.
+
+    What the package declares, the conventional `…/skills/<name>/` folders and
+    a root SKILL.md, in that order. Only when there are none of those does a
+    folder at the top level count, and only when there are none of *those* does
+    any folder at all — which is what keeps `anthropics/skills`' `template/`
+    out of it, and a repository of loose skills importable.
+    """
+    chosen = list(declared)
+    for f in folders:
+        if f not in chosen and (f == "" or _SKILLS_PARENT.search(_parent(f))):
+            chosen.append(f)
+    if chosen:
+        return chosen
+    top = [f for f in folders if f and "/" not in f]
+    return top or [f for f in folders if f.count("/") < 6]
+
+
+def _discover_package(arc: _Archive, src: ResolvedSource, *, named_skill: str = "",
+                      only_folders: Optional[Iterable[str]] = None) -> FetchedPackage:
+    from .skill_format import slugify
+
+    notes: List[str] = []
+    md_path = {}
+    for p in sorted(arc.sizes):
+        if p.rsplit("/", 1)[-1].lower() == "skill.md":
+            md_path.setdefault(_parent(p) if "/" in p else "", p)
+    folders = sorted(md_path)
+
+    meta = arc.read([p for p in (_MARKETPLACE, _PLUGIN) if p in arc.sizes])
+    market, plugin = _json_object(meta.get(_MARKETPLACE)), _json_object(meta.get(_PLUGIN))
+    mdata = market.get("metadata") if isinstance(market.get("metadata"), dict) else {}
+    title = (str(market.get("name") or plugin.get("name") or src.repo).strip() or src.repo)[:80]
+    description = str(plugin.get("description") or mdata.get("description")
+                      or market.get("description") or "").strip()[:500]
+    version = str(plugin.get("version") or mdata.get("version") or "").strip()[:40]
+
+    # The sections a marketplace declares: `anthropics/skills` splits into
+    # document-skills, example-skills, claude-api and more.
+    sections: List[PackageSection] = []
+    declared: List[str] = []
+    plugins = market.get("plugins") if isinstance(market.get("plugins"), list) else []
+    for pl in plugins:
+        if not isinstance(pl, dict):
+            continue
+        base = _join_folder("", pl.get("source") if isinstance(pl.get("source"), str) else "") or ""
+        listed: List[str] = []
+        if isinstance(pl.get("skills"), list):
+            for item in pl["skills"]:
+                f = _join_folder(base, item) if isinstance(item, str) else None
+                if f is not None and f in md_path and f not in listed and f not in declared:
+                    listed.append(f)
+        elif base:
+            listed = [f for f in folders
+                      if (f == base or f.startswith(base + "/")) and f not in declared]
+        if listed:
+            st = (str(pl.get("name") or "").strip() or title)[:80]
+            sections.append(PackageSection(
+                id=slugify(st, fallback="section"), title=st,
+                description=str(pl.get("description") or "").strip()[:300], folders=listed))
+            declared.extend(listed)
+
+    chosen = _choose_folders(folders, declared)
+
+    named = ""
+    if named_skill:
+        want = named_skill.lower()
+        by_folder = [f for f in folders if (f.rsplit("/", 1)[-1] if f else src.repo).lower() == want]
+        if not by_folder:
+            heads = arc.read([md_path[f] for f in folders])
+            by_folder = [f for f in folders if _frontmatter_name(heads.get(md_path[f], "")).lower() == want]
+        if by_folder:
+            named = min(by_folder, key=len)
+            if named not in chosen:
+                chosen.append(named)
+        else:
+            _note(notes, f"{src.owner}/{src.repo} has no skill called “{named_skill}”, so the "
+                         "whole package was imported without it.")
+
+    if only_folders is not None:
+        keep = list(dict.fromkeys(only_folders))
+        for f in keep:
+            if f not in md_path:
+                _note(notes, f"{f or 'The root skill'} is no longer in {src.owner}/{src.repo}; "
+                             "the copy here was left as it is.")
+        chosen = [f for f in keep if f in md_path]
+
+    if len(chosen) > MAX_PACKAGE_SKILLS:
+        _note(notes, f"{src.owner}/{src.repo} holds {len(chosen)} skills; the first "
+                     f"{MAX_PACKAGE_SKILLS} were imported.")
+        chosen = chosen[:MAX_PACKAGE_SKILLS]
+    if not chosen:
+        raise SkillImportError(
+            f"{src.owner}/{src.repo} has no SKILL.md in it, so there is no skill to import.")
+
+    # Every file belongs to the deepest chosen folder above it, so a skill
+    # nested inside another keeps its own files.
+    chosen_set = set(chosen)
+
+    def _home(path: str) -> Optional[str]:
+        cur = _parent(path)
+        while True:
+            if cur in chosen_set:
+                return cur
+            if not cur:
+                return None
+            cur = _parent(cur)
+
+    wanted: Dict[str, List[str]] = {f: [] for f in chosen}
+    per_count: Dict[str, int] = {f: 0 for f in chosen}
+    per_bytes: Dict[str, int] = {f: 0 for f in chosen}
+    package_bytes = 0
+    # SKILL.md first, so a cap never costs a skill its procedure.
+    order = sorted(arc.sizes, key=lambda p: (p.rsplit("/", 1)[-1].lower() != "skill.md", p))
+    for path in order:
+        home = _home(path)
+        if home is None:
+            continue
+        name = path.rsplit("/", 1)[-1]
+        rel = path[len(home) + 1:] if home else path
+        size = arc.sizes[path]
+        if not _is_text_file(name):
+            continue
+        if name.lower() in _SKIPPED_NAMES:
+            _note(notes, f"Left out {path}: a dependency lockfile, not part of the skill.")
+            continue
+        if size > MAX_FILE_BYTES:
+            _note(notes, f"Left out {path}: {size:,} bytes, over the {MAX_FILE_BYTES:,}-byte "
+                         "limit for one file.")
+            continue
+        if rel.lower() != "skill.md" and (per_count[home] >= MAX_FILES
+                                          or per_bytes[home] + size > MAX_TOTAL_BYTES):
+            _note(notes, f"Left out {path}: its skill reached the limit of {MAX_FILES} files "
+                         f"or {MAX_TOTAL_BYTES:,} bytes.")
+            continue
+        if package_bytes + size > MAX_PACKAGE_BYTES:
+            _note(notes, f"Left out {path}: the package passed the {MAX_PACKAGE_BYTES:,}-byte "
+                         "limit for one import.")
+            continue
+        wanted[home].append(path)
+        per_count[home] += 1
+        per_bytes[home] += size
+        package_bytes += size
+
+    texts = arc.read(p for paths in wanted.values() for p in paths)
+    section_of = {f: s.id for s in sections for f in s.folders}
+    rest_id = slugify(title, fallback="skills")
+    skills: List[PackageSkill] = []
+    for folder in chosen:
+        md = texts.get(md_path[folder])
+        if md is None:
+            _note(notes, f"Left out {folder or 'the root skill'}: its SKILL.md could not be read.")
+            continue
+        files = {}
+        for path in wanted[folder]:
+            if path in texts:
+                files[path[len(folder) + 1:] if folder else path] = texts[path]
+        name = _frontmatter_name(md) or (folder.rsplit("/", 1)[-1] if folder else src.repo)
+        skills.append(PackageSkill(folder=folder, name=name, files=files,
+                                   section=section_of.get(folder, rest_id)))
+    if not skills:
+        raise SkillImportError(f"none of the skills in {src.owner}/{src.repo} could be read.")
+
+    present = {s.folder for s in skills}
+    sections = [PackageSection(s.id, s.title, s.description, [f for f in s.folders if f in present])
+                for s in sections]
+    sections = [s for s in sections if s.folders]
+    rest = [s.folder for s in skills if s.section == rest_id and s.folder not in section_of]
+    if rest:
+        sections.append(PackageSection(id=rest_id, title=title, description=description,
+                                       folders=rest))
+    return FetchedPackage(src=src, title=title, description=description, version=version,
+                          commit=arc.commit, skills=skills, sections=sections,
+                          named=named if named in present else "", notes=notes,
+                          partial=only_folders is not None)
+
+
+def is_package_link(url: str) -> bool:
+    """True when the text names a repository or a skill by name — the forms
+    that import the whole package — rather than one folder or file in it.
+
+    No request is made. A one-segment skills.sh short link is resolved by
+    following its redirect, so it is left to the single-skill path it has
+    always taken.
+    """
+    text = (url or "").strip()
+    if _INSTALL_LINE.match(text.replace("\\\n", " ")):
+        return True
+    rough = urlparse(text if "://" in text else "https://" + text)
+    host = (rough.hostname or "").lower()
+    if host in _SKILLS_SH_HOSTS:
+        return len([b for b in rough.path.split("/") if b]) >= 2
+    if host not in _GITHUB_HOSTS or host in ("raw.githubusercontent.com", "codeload.github.com"):
+        return False
+    try:
+        return not parse_skill_source(text).path
+    except SkillImportError:
+        return False
+
+
+def fetch_skill_package(url: str, *, only_folders: Optional[Iterable[str]] = None) -> FetchedPackage:
+    """Every skill in the repository a link names, with its sections.
+
+    `only_folders` narrows it to those folders — a package that was imported
+    one skill at a time is refreshed one skill at a time.
+    """
+    budget = _Budget(MAX_PACKAGE_REQUESTS, bool(_github_credentials()))
+    token = _request_budget.set(budget)
+    try:
+        src = parse_skill_source(url)
+        named, src.path = src.skill, ""
+        return _discover_package(_fetch_archive(src), src, named_skill=named,
+                                 only_folders=only_folders)
+    finally:
+        _request_budget.reset(token)
+
+
+def single_skill_package(files: Dict[str, str], src: ResolvedSource,
+                         notes: Optional[List[str]] = None) -> FetchedPackage:
+    """One skill fetched by its folder link, as a package of one.
+
+    So a skill imported on its own is still filed under the repository it
+    came from, and importing the rest of that repository later joins it.
+    """
+    from .skill_format import slugify
+
+    rel, md = pick_skill_md(files)
+    folder = _parent(rel) if "/" in rel else ""
+    prefix = f"{folder}/" if folder else ""
+    own = {(k[len(prefix):] if prefix and k.startswith(prefix) else k): v for k, v in files.items()}
+    name = _frontmatter_name(md) or (folder.rsplit("/", 1)[-1] if folder else src.repo)
+    section = PackageSection(id=slugify(src.repo, fallback="skills"), title=src.repo, folders=[folder])
+    return FetchedPackage(src=src, title=src.repo, skills=[PackageSkill(folder, name, own, section.id)],
+                          sections=[section], named=folder, notes=list(notes or []), partial=True)

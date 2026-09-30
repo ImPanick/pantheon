@@ -181,6 +181,9 @@ _HOST_POLICIES = {
     "api.github.com": HostPolicy(min_interval=1.0, max_concurrent=1, max_wait=10.0),
     "raw.githubusercontent.com": HostPolicy(min_interval=0.5, max_concurrent=1, max_wait=10.0),
     "github.com": HostPolicy(min_interval=1.0, max_concurrent=1, max_wait=10.0),
+    # `P8-49`. Repository archives for a whole-package skill import: one
+    # request per import, paced like the host that redirects to it.
+    "codeload.github.com": HostPolicy(min_interval=1.0, max_concurrent=1, max_wait=10.0),
     "huggingface.co": HostPolicy(min_interval=0.5, max_concurrent=2),
     "html.duckduckgo.com": HostPolicy(min_interval=2.0, max_concurrent=1),
     "cdn.jsdelivr.net": HostPolicy(min_interval=0.05, max_concurrent=8),

@@ -84,7 +84,11 @@ async def do_manage_skills(content: str, owner: Optional[str] = None) -> Dict:
     name = (args.get("name") or args.get("skill_id") or "").strip()
 
     if action in ("list", "index"):
-        all_skills = sm.load(owner=owner)
+        # `P8-51`. What the model browses is what it may be shown: a skill a
+        # switched-off package or group holds is left out here as it is from
+        # the injected catalogue. `view` by exact name still opens it — that
+        # is a person naming a skill, not the model finding one.
+        all_skills = sm.load_active(owner=owner)
         if not all_skills:
             return {"results": "No skills yet. Create one with action='add'."}
         published = [s for s in all_skills if s.get("status") == "published"]
@@ -289,7 +293,7 @@ async def do_manage_skills(content: str, owner: Optional[str] = None) -> Dict:
         query = (args.get("query") or "").strip()
         if not query:
             return {"error": "query is required for search", "exit_code": 1}
-        results = sm.get_relevant_skills(query, sm.load(owner=owner), max_items=5)
+        results = sm.get_relevant_skills(query, sm.load_active(owner=owner), max_items=5)
         if not results:
             return {"results": "No matching skills found."}
         lines = []

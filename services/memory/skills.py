@@ -651,32 +651,9 @@ class SkillsManager:
         path = self._find_skill_path(name, owner)
         if path is None:
             return None
-        from .skill_importer import MAX_FILES, MAX_FILE_BYTES, MAX_TOTAL_BYTES
-
-        base = os.path.dirname(path)
-        out: Dict[str, str] = {}
-        total = 0
-        for root, dirs, files in os.walk(base, followlinks=False):
-            dirs[:] = sorted(d for d in dirs if d != VERSIONS_DIRNAME)
-            for fn in sorted(files):
-                if len(out) >= MAX_FILES or total >= MAX_TOTAL_BYTES:
-                    return out
-                full = os.path.join(root, fn)
-                rel = os.path.relpath(full, base).replace(os.sep, "/")
-                try:
-                    if os.path.getsize(full) > MAX_FILE_BYTES:
-                        logger.info("Skill export: skipping oversized %s", rel)
-                        continue
-                    with open(full, encoding="utf-8") as f:
-                        text = f.read()
-                except (OSError, UnicodeDecodeError):
-                    # A binary or unreadable extra file is not a reason to fail
-                    # the export of the procedure somebody actually wants.
-                    logger.info("Skill export: skipping unreadable %s", rel)
-                    continue
-                total += len(text.encode("utf-8", "ignore"))
-                out[rel] = text
-        return out
+        # A binary or unreadable extra file is not a reason to fail the export
+        # of the procedure somebody actually wants; `_files_under` skips it.
+        return self._files_under(os.path.dirname(path))
 
     def _write_skill(self, sk: Skill, *, bump: bool = True) -> str:
         """Persist a skill, keeping whatever it replaced.
@@ -839,6 +816,263 @@ class SkillsManager:
         # Hide them now; the owner needs to be backfilled on disk if those
         # skills should be visible to a specific user.
         return [s for s in entries if s.get("owner") == owner]
+
+    # ----------------------------------------------------------------------
+    # Packages and groups — `P8-49` … `P8-52`
+    # ----------------------------------------------------------------------
+
+    @property
+    def collections(self):
+        """The package and group records for this store (`skill_collections`)."""
+        from .skill_collections import SkillCollections
+
+        return SkillCollections(self.skills_root)
+
+    def load_active(self, owner: Optional[str] = None) -> List[Dict]:
+        """`load()` without the skills a switched-off package or group holds.
+
+        `P8-51`. What the model may be shown — the injected catalogue, the
+        keyword retrieval and the tool-selection pass all read this and not
+        `load()`, which is what the Skills window reads, so a switched-off
+        skill stays in view and editable while it is left out of every prompt.
+        """
+        entries = self.load(owner=owner)
+        try:
+            off = self.collections.disabled_names(owner)
+        except Exception:
+            logger.warning("skill switches unreadable; every skill treated as on", exc_info=True)
+            off = set()
+        return [s for s in entries if s.get("name") not in off] if off else entries
+
+    def _library_path(self, name: str) -> Optional[str]:
+        for path in self._iter_library_files():
+            d = self._read_skill_dict(path)
+            if d and d.get("name") == name:
+                return path
+        return None
+
+    def _files_under(self, base: str) -> Dict[str, str]:
+        """A skill folder as `{relative path: text}` — `export_skill`'s walk."""
+        from .skill_importer import MAX_FILES, MAX_FILE_BYTES, MAX_TOTAL_BYTES
+
+        out: Dict[str, str] = {}
+        total = 0
+        for root, dirs, files in os.walk(base, followlinks=False):
+            dirs[:] = sorted(d for d in dirs if d != VERSIONS_DIRNAME)
+            for fn in sorted(files):
+                if len(out) >= MAX_FILES or total >= MAX_TOTAL_BYTES:
+                    return out
+                full = os.path.join(root, fn)
+                rel = os.path.relpath(full, base).replace(os.sep, "/")
+                try:
+                    if os.path.getsize(full) > MAX_FILE_BYTES:
+                        logger.info("Skill export: skipping oversized %s", rel)
+                        continue
+                    with open(full, encoding="utf-8") as f:
+                        text = f.read()
+                except (OSError, UnicodeDecodeError):
+                    logger.info("Skill export: skipping unreadable %s", rel)
+                    continue
+                total += len(text.encode("utf-8", "ignore"))
+                out[rel] = text
+        return out
+
+    def install_package(self, pkg, *, owner: Optional[str] = None) -> Dict:
+        """Install, or refresh, every skill of a fetched package. `P8-49`.
+
+        Each skill is written once, under its section's category — or the
+        package's, when it declares no sections — and the package is recorded
+        with the local name of each of its folders. A second import of the same
+        repository **refreshes** the skills it installed the first time: same
+        names, same folders, the previous SKILL.md kept in `versions/`, and the
+        status and confidence a person gave them left alone. A name that is
+        taken by any other skill — the person's own, another package's, or a
+        bundled one — is not overwritten; the imported skill is saved under the
+        next free name and the result says so.
+
+        Returns `{"package", "installed", "updated", "renamed", "notes",
+        "files", "named"}`.
+        """
+        from core.atomic_io import atomic_write_text
+        from .skill_importer import SkillImportError, _safe_relpath
+
+        col = self.collections
+        prior = col.package(owner, pkg.id) or {}
+        names: Dict[str, str] = dict(prior.get("names") or {})
+        entries = self.load_all()
+        taken = {e.get("name") for e in entries}
+        own_paths = {}
+        for path in self._iter_skill_files():
+            d = self._read_skill_dict(path)
+            if d and (d.get("owner") or "") == (owner or ""):
+                own_paths[d.get("name")] = path
+        sections = {sec.id: sec for sec in pkg.sections}
+        many = len(pkg.sections) > 1
+        installed: List[str] = []
+        updated: List[str] = []
+        renamed: Dict[str, str] = {}
+        files_written = 0
+        local_of: Dict[str, str] = {}
+
+        for ps in pkg.skills:
+            if "SKILL.md" not in ps.files:
+                continue
+            sk = Skill.from_markdown(ps.files["SKILL.md"])
+            local = names.get(ps.folder)
+            current = own_paths.get(local) if local else None
+            if current is not None:
+                old = self._read_skill(current)
+                cat = (old.category if old else None) or "imported"
+                target_dir = os.path.dirname(current)
+            else:
+                want = slugify(ps.name or sk.name or ps.folder.rsplit("/", 1)[-1] or "skill")
+                local, i = want, 2
+                while local in taken:
+                    local, i = f"{want}-{i}", i + 1
+                if local != want:
+                    renamed[want] = local
+                sec = sections.get(ps.section)
+                cat = slugify((sec.id if (many and sec) else "") or pkg.title, fallback="imported")
+                target_dir = self._skill_dir(cat, local)
+                old = None
+            for rel, text in ps.files.items():
+                if rel == "SKILL.md":
+                    continue
+                safe = _safe_relpath(rel)
+                if safe.split("/")[0] == VERSIONS_DIRNAME:
+                    continue
+                dest = os.path.join(target_dir, safe)
+                os.makedirs(os.path.dirname(dest), exist_ok=True)
+                atomic_write_text(dest, text)
+                files_written += 1
+            sk.name, sk.category, sk.owner, sk.source = local, cat, owner, "imported"
+            note = f"Imported from {pkg.source_url} ({ps.folder or 'the repository root'})"
+            extra = (sk.body_extra or "").strip()
+            sk.body_extra = f"{extra}\n\n{note}".strip() if extra else note
+            if old is not None:
+                sk.status, sk.confidence, sk.version = old.status, old.confidence, old.version
+                self._write_skill(sk)
+                updated.append(local)
+            else:
+                path = self._skill_file(cat, local)
+                os.makedirs(os.path.dirname(path), exist_ok=True)
+                atomic_write_text(path, sk.to_markdown())
+                installed.append(local)
+                taken.add(local)
+            files_written += 1
+            names[ps.folder] = local
+            local_of[ps.folder] = local
+
+        if not local_of:
+            raise SkillImportError("none of the package's skills had a SKILL.md to install")
+
+        # Sections as fetched, then any skill this package installed before
+        # that the fetch did not bring (a one-skill refresh, or a skill the
+        # repository has since dropped) — kept where it was, not forgotten.
+        out_sections = []
+        placed = set()
+        for sec in pkg.sections:
+            members = [local_of[f] for f in sec.folders if f in local_of]
+            if members:
+                out_sections.append({"id": sec.id, "title": sec.title,
+                                     "description": sec.description, "skills": members})
+                placed.update(members)
+        for old_sec in prior.get("sections") or []:
+            keep = [n for n in old_sec.get("skills") or []
+                    if n not in placed and n in own_paths]
+            if not keep:
+                continue
+            same = next((s for s in out_sections if s["id"] == old_sec.get("id")), None)
+            if same is None:
+                same = {"id": old_sec.get("id"), "title": old_sec.get("title"),
+                        "description": old_sec.get("description") or "", "skills": []}
+                out_sections.append(same)
+            same["skills"].extend(keep)
+            placed.update(keep)
+
+        now = time.time()
+        full = (not pkg.partial) or prior.get("mode") == "full"
+        rec = {
+            "id": pkg.id,
+            "title": pkg.title if (not pkg.partial or not prior) else prior.get("title") or pkg.title,
+            "description": pkg.description or prior.get("description") or "",
+            "version": pkg.version or prior.get("version") or "",
+            "commit": pkg.commit or prior.get("commit") or "",
+            "source": {"owner": pkg.src.owner, "repo": pkg.src.repo, "ref": pkg.src.ref,
+                       "url": pkg.source_url},
+            "mode": "full" if full else "partial",
+            "enabled": prior.get("enabled", True),
+            "installed_at": prior.get("installed_at") or now,
+            "updated_at": now,
+            "sections": out_sections,
+            "names": {f: n for f, n in names.items() if n in placed},
+        }
+        rec = col.put_package(owner, rec)
+        return {"package": rec, "installed": installed, "updated": updated,
+                "renamed": renamed, "notes": list(pkg.notes), "files": files_written,
+                "named": local_of.get(pkg.named) or ""}
+
+    def remove_package(self, pid: str, *, owner: Optional[str] = None,
+                       keep_skills: bool = False) -> Optional[Dict]:
+        """Forget a package and, unless asked to keep them, delete its skills."""
+        from .skill_collections import package_skills
+
+        col = self.collections
+        rec = col.package(owner, pid)
+        if rec is None:
+            return None
+        removed: List[str] = []
+        if not keep_skills:
+            for name in package_skills(rec):
+                if self.delete_skill(name, owner=owner):
+                    removed.append(name)
+        col.drop_package(owner, pid)
+        return {"package": rec, "removed": removed}
+
+    def fork_skill(self, name: str, new_name: Optional[str] = None,
+                   owner: Optional[str] = None) -> Optional[Dict]:
+        """A separately named copy, for when a skill should diverge. `P8-52`.
+
+        The one time a copy is right (`D-2026-09-30-01`): the person means the
+        two to differ. The fork is theirs — no package, no groups — and says
+        in its body which skill it came from. A bundled skill can be forked
+        too; that is the other way, beside shadowing it under its own name.
+        """
+        path = self._find_skill_path(name, owner) or self._library_path(name)
+        if path is None:
+            return None
+        src = self._read_skill(path)
+        if src is None:
+            return None
+        taken = {e.get("name") for e in self.load_all()}
+        want = slugify(new_name or f"{name}-fork")
+        local, i = want, 2
+        while local in taken:
+            local, i = f"{want}-{i}", i + 1
+        from core.atomic_io import atomic_write_text
+        from .skill_importer import _safe_relpath
+
+        cat = src.category or "general"
+        target_dir = self._skill_dir(cat, local)
+        for rel, text in self._files_under(os.path.dirname(path)).items():
+            if rel == "SKILL.md":
+                continue
+            dest = os.path.join(target_dir, _safe_relpath(rel))
+            os.makedirs(os.path.dirname(dest), exist_ok=True)
+            atomic_write_text(dest, text)
+        sk = src
+        sk.name, sk.owner, sk.source = local, owner, "user"
+        sk.version = "1.0.0"
+        note = f"Forked from `{name}`."
+        extra = (sk.body_extra or "").strip()
+        sk.body_extra = f"{extra}\n\n{note}".strip() if extra else note
+        dest = self._skill_file(cat, local)
+        os.makedirs(os.path.dirname(dest), exist_ok=True)
+        atomic_write_text(dest, sk.to_markdown())
+        sk.path = dest
+        out = sk.to_dict()
+        out["forked_from"] = name
+        return out
 
     # ----------------------------------------------------------------------
     # CRUD — disk-backed
@@ -1090,6 +1324,13 @@ class SkillsManager:
                     usage[self._usage_key(sk.name, sk.owner)] = usage.pop(old_usage_key)
                     self._save_usage(usage)
             self._write_skill(sk)
+            if sk.name != skill_id:
+                # `P8-50`. Groups and packages hold names, so a rename is
+                # carried to them — a reference that could dangle is a copy.
+                try:
+                    self.collections.rename_skill(owner, skill_id, sk.name)
+                except Exception:
+                    logger.warning("skill rename not carried to its groups", exc_info=True)
             return True
         return False
 
@@ -1117,6 +1358,10 @@ class SkillsManager:
             if usage_key in usage:
                 del usage[usage_key]
                 self._save_usage(usage)
+            try:
+                self.collections.forget_skill(owner, skill_id)
+            except Exception:
+                logger.warning("deleted skill not removed from its groups", exc_info=True)
             return True
         return False
 
@@ -1221,7 +1466,7 @@ class SkillsManager:
         prompt with half-finished procedures.
         """
         out = []
-        for s in self.load(owner=owner):
+        for s in self.load_active(owner=owner):
             status = s.get("status")
             # Published + None (pre-status legacy) always included.
             # Drafts only if the teacher wrote them.

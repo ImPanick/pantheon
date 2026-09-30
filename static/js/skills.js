@@ -1,5 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// skills.js — Skills tab in the Memory modal.
+// skills.js — the Skills window (`#skills-modal`, `P9-06`).
+//
+// It was a tab in the Brain until 2026-09-30. The owner asked for skills to be
+// groupable — packages that arrive together and groups a person makes — and
+// chose a window of its own for them (`D-2026-09-30-01`). The Brain's Skills
+// tab now opens this window.
 //
 // Skills are SKILL.md files (frontmatter + body) under data/skills/.
 // This UI supports: list, search, view (read SKILL.md), edit (replace
@@ -10,7 +15,7 @@ import uiModule from './ui.js';
 import * as spinnerModule from './spinner.js';
 import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
 import { topPortalZ } from './toolWindowZOrder.js';
-import { setBackgroundWork } from './modalManager.js?v=20260930skillimport1';
+import { setBackgroundWork } from './modalManager.js?v=20260930skillpkgs1';
 import { PLAY_GLYPH, chevronIcon } from './icons.js';
 
 const API = window.location.origin;
@@ -22,6 +27,38 @@ let _loadPromise = null;
 function esc(s) { return uiModule.esc(String(s ?? '')); }
 
 let _pendingFocusSkill = null;
+
+// ── packages and groups — `P8-49` … `P8-52` ─────────────────────────────────
+// `GET /api/skills/collections`: `{ packages, groups, off }`. A group is a list
+// of names — a skill in two groups is one skill (`D-2026-09-30-01`) — and
+// `off` is `{ name: [what holds it off] }`, read from the server that decides
+// injection rather than recomputed here.
+let _collections = { packages: [], groups: [], off: {} };
+const _SCOPE_KEY = 'skillsScope';
+let _scope = (() => {
+  try {
+    const v = JSON.parse(localStorage.getItem(_SCOPE_KEY) || 'null');
+    if (v && typeof v.kind === 'string') return v;
+  } catch (_) {}
+  return { kind: 'all' };
+})();
+
+async function _fetchCollections() {
+  try {
+    const res = await fetch(`${API}/api/skills/collections`);
+    if (!res.ok) return;
+    const data = await res.json();
+    _collections = {
+      packages: Array.isArray(data && data.packages) ? data.packages : [],
+      groups: Array.isArray(data && data.groups) ? data.groups : [],
+      off: (data && data.off && typeof data.off === 'object') ? data.off : {},
+    };
+  } catch (_) {
+    // The list is the point of this window; a sidebar that could not load
+    // leaves every skill shown as on, which is what the server does too when
+    // it cannot read its switches.
+  }
+}
 let _cascadeNext = false;   // set true to play the domino-in entrance on the next render
 
 function _playSkillsCascade(container = document.getElementById('skills-list')) {
@@ -92,7 +129,7 @@ export async function loadSkills(cascade = false) {
   if (_loadPromise) return _loadPromise;
   _loadPromise = (async () => {
   try {
-    const res = await fetch(`${API}/api/skills`);
+    const [res] = await Promise.all([fetch(`${API}/api/skills`), _fetchCollections()]);
     const data = await res.json();
     // Dedupe by name (case-insensitive) — the API has occasionally
     // returned the same skill twice (built-in shadow + user copy, or
@@ -110,6 +147,7 @@ export async function loadSkills(cascade = false) {
     await _loadBuiltinCapabilities();
     loaded = true;
     renderSkillsList();
+    _renderSkillsSide();
     updateCount();
     if (_pendingFocusSkill) {
       _focusSkillRow(_pendingFocusSkill);
@@ -164,19 +202,17 @@ function _focusSkillRow(name) {
   }, 200);
 }
 
-// Open the Memory modal → Skills tab → focus a specific skill row.
-// Used by the chat anchor-link delegate ([name](#skill-<name>)).
-export function openSkill(name) {
+// Open the Skills window and focus one skill's card. Used by the chat
+// anchor-link delegate ([name](#skill-<name>)), the "skills used" pill and an
+// import's "Open it". `opts.scope` narrows the list first — an import opens on
+// the package it just installed.
+export function openSkill(name, opts = {}) {
   _pendingFocusSkill = name || null;
-  // Open the memory modal if not already open.
-  const memBtn = document.getElementById('tool-memory-btn');
-  if (memBtn) memBtn.click();
-  // Switch to the skills tab (triggers lazy loadSkills()).
-  setTimeout(() => {
-    const tab = document.querySelector('.memory-tab[data-memory-tab="skills"]');
-    if (tab) tab.click();
-    else loadSkills();  // fallback if tab structure differs
-  }, 120);
+  if (opts && opts.scope) _setScope(opts.scope, { render: false });
+  else if (name && !_inScope(skills.find(s => (s.name || s.id) === name) || {})) {
+    _setScope({ kind: 'all' }, { render: false });
+  }
+  openSkillsWindow('browse');
 }
 
 let _skillsSort = 'confidence';
@@ -192,6 +228,13 @@ function updateCount() {
   if (el) el.textContent = skills.length || '0';
   const elH = document.getElementById('skills-count-h2');
   if (elH) elH.textContent = skills.length + ' skill' + (skills.length === 1 ? '' : 's');
+  const summary = document.getElementById('skills-launcher-summary');
+  if (summary) {
+    const n = (k, one, many) => `${k} ${k === 1 ? one : many}`;
+    summary.textContent = `${n(skills.length, 'skill', 'skills')} · `
+      + `${n(_collections.packages.length, 'package', 'packages')} · `
+      + `${n(_collections.groups.length, 'group', 'groups')}.`;
+  }
 }
 
 function _sortSkills(list) {
@@ -239,6 +282,16 @@ function _statusPill(sk) {
   if (s === 'published') return `<span class="memory-cat-badge skill-status-pill" data-status="published" title="${esc(_STATUS_PILL_TITLE.published)}" style="background:color-mix(in srgb, var(--accent, #4ade80) 30%, transparent)">published</span>`;
   if (s === 'draft')     return `<span class="memory-cat-badge skill-status-pill" data-status="draft" title="${esc(_STATUS_PILL_TITLE.draft)}" style="background:color-mix(in srgb, var(--fg) 14%, transparent)">uncatalogued</span>`;
   return `<span class="memory-cat-badge skill-status-pill" data-status="${esc(s)}" style="opacity:0.6">${esc(s)}</span>`;
+}
+
+// `P8-51`. A skill whose package or group is switched off is still listed and
+// still editable — it is left out of everything the model is shown, and the
+// pill says by what.
+function _offPill(sk) {
+  const why = (_collections.off || {})[sk.name || sk.id];
+  if (!Array.isArray(why) || !why.length) return '';
+  const title = `Not shown to the AI — switched off with ${why.join(' and ')}. Switch that back on in the sidebar to use it again.`;
+  return `<span class="memory-cat-badge skill-off-pill" title="${esc(title)}">off</span>`;
 }
 
 // Show a "teacher" badge for skills written by the auto-escalation
@@ -422,6 +475,11 @@ const _ICON = {
   approve: '<polyline points="20 6 9 17 4 12"/>',
   unpublish: '<path d="M5 12l5 5L20 7"/>',
   test:  PLAY_GLYPH,
+  group: '<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/>',
+  fork:  '<circle cx="6" cy="5" r="2"/><circle cx="18" cy="5" r="2"/><circle cx="12" cy="19" r="2"/><path d="M6 7v2a3 3 0 0 0 3 3h6a3 3 0 0 0 3-3V7"/><line x1="12" y1="12" x2="12" y2="17"/>',
+  update: '<polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>',
+  rename: '<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>',
+  check: '<polyline points="20 6 9 17 4 12"/>',
 };
 function _svg(paths, { fill = 'none', size = 13 } = {}) {
   const stroke = fill === 'currentColor' ? '' : 'stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"';
@@ -467,6 +525,10 @@ function _openSkillMenu(btn, card, sk, name, isPublished) {
   mk(_ICON.test, 'Compare with previous', {}, () => _compareSkill(card, name));
   // Audit kicks off the bulk audit-all loop (test → judge → fix → retry → demote).
   mk(_ICON.test, 'Audit', {}, () => _auditAllSkills());
+  // `P8-50`. A group lists the skill; it is not copied into it.
+  mk(_ICON.group, 'Groups…', {}, () => _openGroupMenu(btn, [name]));
+  // `P8-52`. The one deliberate copy — a separate skill to change freely.
+  mk(_ICON.fork, 'Fork', {}, () => _forkSkill(name));
   mk(_ICON.del, 'Delete', { danger: true }, () => _deleteSkill(name, card));
 
   // Mobile-only Cancel — mirrors the email/documents/brain popup pattern.
@@ -511,6 +573,9 @@ function _openSkillMenu(btn, card, sk, name, isPublished) {
 // typing a tool's name is looking for that tool wherever it lives.
 function _getFilteredBuiltins() {
   if (_showDraftsOnly || _showPublishedOnly || _confMax != null) return [];
+  // A package, a group or "Built-in" is a list of SKILL.md files; the native
+  // tool capabilities belong to none of them.
+  if (_scope.kind !== 'all') return [];
   const query = (document.getElementById('skills-search')?.value || '').toLowerCase();
   if (!query) return builtinSkills;
   return builtinSkills.filter(b =>
@@ -665,7 +730,8 @@ async function _revertBuiltin(name) {
 
 function _getFilteredSkills() {
   const query = (document.getElementById('skills-search')?.value || '').toLowerCase();
-  let filtered = query ? skills.filter(sk => _matches(sk, query)) : skills;
+  let filtered = _scope.kind === 'all' ? skills : skills.filter(_inScope);
+  if (query) filtered = filtered.filter(sk => _matches(sk, query));
   if (_showDraftsOnly) {
     filtered = filtered.filter(sk => (sk.status || 'draft') !== 'published');
   }
@@ -702,7 +768,7 @@ function renderSkillsList() {
     const selectBtn = document.getElementById('skills-select-btn');
     if (selectBtn) selectBtn.disabled = true;
     if (_selectMode) _exitSelectMode();
-    container.innerHTML = `<div style="text-align:center;opacity:0.4;padding:24px 0;font-size:11px;">${loaded ? 'No skills yet, use agent for it to auto extract them.' : 'Loading…'}</div>`;
+    container.innerHTML = `<div style="text-align:center;opacity:0.4;padding:24px 0;font-size:11px;">${loaded ? esc(_emptyListText()) : 'Loading…'}</div>`;
     return;
   }
 
@@ -764,6 +830,7 @@ function renderSkillsList() {
       </div>
       <div class="skill-card-right">
         ${_statusPill(sk)}
+        ${_offPill(sk)}
         ${_sourcePill(sk)}
         ${_auditModelPills(sk)}
         ${_necessityPill(sk)}
@@ -2062,11 +2129,10 @@ function _syncAuditChip(st) {
   if (status === 'running') {
     const done = st.done || 0, total = st.total || 0;
     _auditSaid = 'running';
-    setBackgroundWork('memory-modal', {
-      // The Brain holds two jobs that can run at once — this audit and the
-      // memory tidy — so the key is not optional here. Without it whichever
-      // started second would erase the first from the dock and whichever
-      // finished first would clear the survivor.
+    setBackgroundWork('skills-modal', {
+      // Keyed although the Skills window holds one job today (`P9-06` moved
+      // it out of the Brain, where it shared a window with the memory tidy):
+      // a second job here must not erase this one from the dock.
       key: 'skills-audit',
       label: total ? `Auditing ${done}/${total}` : 'Auditing skills',
       detail: st.current
@@ -2075,7 +2141,7 @@ function _syncAuditChip(st) {
     });
     return;
   }
-  setBackgroundWork('memory-modal', { key: 'skills-audit' });
+  setBackgroundWork('skills-modal', { key: 'skills-audit' });
   if (_auditSaid !== 'running') { _auditSaid = status || null; return; }
   _auditSaid = status || null;
   const total = st && st.total ? st.total : 0;
@@ -2192,6 +2258,8 @@ function _updateBulkBar() {
   if (countEl) countEl.textContent = `${_selectedNames.size} Selected`;
   if (delBtn) delBtn.disabled = _selectedNames.size === 0;
   if (auditBtn) auditBtn.disabled = _selectedNames.size === 0;
+  const groupBtn = document.getElementById('skills-bulk-group');
+  if (groupBtn) groupBtn.disabled = _selectedNames.size === 0;
   if (delNonPassingBtn) {
     const count = _selectedNonPassingSkills().length;
     delNonPassingBtn.disabled = count === 0;
@@ -2804,12 +2872,21 @@ async function importSkillFromUrl() {
     const name = data.skill?.name || 'skill';
     const count = Number(data.files || 1);
     const notes = Array.isArray(data.notes) ? data.notes : [];
+    // `P8-49`. A package is said as a package: how many skills, how many
+    // were new, and the window opens on it rather than on one of them.
+    const pkg = data.package && data.package.id ? data.package : null;
+    const fresh = Array.isArray(data.installed) ? data.installed.length : 0;
+    const again = Array.isArray(data.updated) ? data.updated.length : 0;
+    const many = pkg && fresh + again > 1;
+    const headline = many
+      ? `Imported ${pkg.title} — ${fresh + again} skills${again ? ` (${fresh} new, ${again} refreshed)` : ''}.`
+      : `Imported ${name} — ${count} file${count === 1 ? '' : 's'}.`;
     clearInterval(timer);
-    _importStatus(notes.length ? 'warn' : 'ok',
-      [`Imported ${name} — ${count} file${count === 1 ? '' : 's'}.`, ...notes], name);
-    uiModule.showToast(`Imported ${name} (${count} file${count === 1 ? '' : 's'})`);
+    _importStatus(notes.length ? 'warn' : 'ok', [headline, ...notes], name);
+    uiModule.showToast(many ? `Imported ${pkg.title} (${fresh + again} skills)`
+                            : `Imported ${name} (${count} file${count === 1 ? '' : 's'})`);
     await loadSkills();
-    if (name) openSkill(name);
+    if (name) openSkill(name, many ? { scope: { kind: 'package', id: pkg.id } } : undefined);
   } catch (err) {
     clearInterval(timer);
     const msg = (err && err.message) || String(err);
@@ -3015,6 +3092,504 @@ async function addSkill() {
   }
 }
 
+// ── scope: which skills the list shows — `P8-49` / `P8-50` ─────────────────
+
+function _isBundled(sk) { return !!(sk && (sk.bundled || sk.source === 'bundled')); }
+
+function _packageOf(name) {
+  return _collections.packages.find(p => (p.skills || []).includes(name)) || null;
+}
+
+function _scopeNames() {
+  const sc = _scope;
+  if (sc.kind === 'package' || sc.kind === 'section') {
+    const p = _collections.packages.find(x => x.id === sc.id);
+    if (!p) return null;
+    if (sc.kind === 'package') return new Set(p.skills || []);
+    const sec = (p.sections || []).find(x => x.id === sc.section);
+    return sec ? new Set(sec.skills || []) : null;
+  }
+  if (sc.kind === 'group') {
+    const g = _collections.groups.find(x => x.id === sc.id);
+    return g ? new Set(g.skills || []) : null;
+  }
+  return null;
+}
+
+function _inScope(sk) {
+  const kind = _scope.kind;
+  if (kind === 'all') return true;
+  const name = sk.name || sk.id;
+  if (kind === 'bundled') return _isBundled(sk);
+  if (kind === 'mine') return !_isBundled(sk) && !_packageOf(name);
+  const names = _scopeNames();
+  // A package or group removed elsewhere leaves nothing to narrow to.
+  return names ? names.has(name) : true;
+}
+
+function _setScope(scope, { render = true } = {}) {
+  _scope = (scope && typeof scope.kind === 'string') ? scope : { kind: 'all' };
+  try { localStorage.setItem(_SCOPE_KEY, JSON.stringify(_scope)); } catch (_) {}
+  if (!render) return;
+  renderSkillsList();
+  _renderSkillsSide();
+}
+
+function _scopeTitle() {
+  const sc = _scope;
+  if (sc.kind === 'package' || sc.kind === 'section') {
+    const p = _collections.packages.find(x => x.id === sc.id);
+    const sec = p && sc.kind === 'section' ? (p.sections || []).find(x => x.id === sc.section) : null;
+    return sec ? sec.title : (p ? p.title : '');
+  }
+  if (sc.kind === 'group') return (_collections.groups.find(x => x.id === sc.id) || {}).title || '';
+  return '';
+}
+
+function _emptyListText() {
+  const sc = _scope;
+  if (sc.kind === 'group') {
+    return `No skills in “${_scopeTitle()}” yet. Press Select and then Group, or open a skill's ⋯ menu and choose Groups, to add some.`;
+  }
+  if (sc.kind === 'package' || sc.kind === 'section') return 'This package has no skills left here.';
+  if (sc.kind === 'mine') return 'None yet. Skills you write under Add, and the ones the AI learns, appear here.';
+  if (sc.kind === 'bundled') return 'No built-in skills on this install.';
+  if ((document.getElementById('skills-search')?.value || '').trim()) return 'No skill matches that search.';
+  return 'No skills yet. Import a package under Add, write one, or let the agent learn them.';
+}
+
+// ── the sidebar — `P9-06` ────────────────────────────────────────────────────
+
+function _sideHead(title, extra) {
+  const h = document.createElement('div');
+  h.className = 'skills-side-head';
+  const t = document.createElement('span');
+  t.textContent = title;
+  h.appendChild(t);
+  if (extra) h.appendChild(extra);
+  return h;
+}
+
+function _sameScope(a, b) {
+  return a.kind === b.kind && (a.id || '') === (b.id || '') && (a.section || '') === (b.section || '');
+}
+
+function _sideRow({ title, count, scope, hint = '', sub = false, toggle = null, menu = null }) {
+  const row = document.createElement('div');
+  row.className = 'skills-side-row' + (sub ? ' skills-side-sub' : '')
+    + (_sameScope(scope, _scope) ? ' is-active' : '')
+    + (toggle && !toggle.on ? ' is-off' : '');
+  const pick = document.createElement('button');
+  pick.type = 'button';
+  pick.className = 'skills-side-pick';
+  if (hint) pick.title = hint;
+  if (_sameScope(scope, _scope)) pick.setAttribute('aria-current', 'true');
+  const t = document.createElement('span');
+  t.className = 'skills-side-title';
+  t.textContent = title;
+  const c = document.createElement('span');
+  c.className = 'skills-side-count';
+  c.textContent = String(count);
+  pick.appendChild(t);
+  pick.appendChild(c);
+  pick.addEventListener('click', () => _setScope(scope));
+  row.appendChild(pick);
+  if (toggle) {
+    const label = document.createElement('label');
+    label.className = 'admin-switch skills-side-switch';
+    label.title = toggle.on
+      ? `On — the AI can be shown the skills in ${title}. Switch off to leave them out.`
+      : `Off — the skills in ${title} are left out of what the AI is shown.`;
+    const input = document.createElement('input');
+    input.type = 'checkbox';
+    input.checked = !!toggle.on;
+    input.setAttribute('aria-label', `Use the skills in ${title}`);
+    input.addEventListener('change', () => toggle.onChange(input.checked, input));
+    const slider = document.createElement('span');
+    slider.className = 'admin-slider';
+    label.appendChild(input);
+    label.appendChild(slider);
+    row.appendChild(label);
+  }
+  if (menu) {
+    const kb = document.createElement('button');
+    kb.type = 'button';
+    kb.className = 'skills-side-kebab';
+    kb.setAttribute('aria-label', `More for ${title}`);
+    kb.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>';
+    kb.addEventListener('click', (e) => { e.stopPropagation(); _popMenu(kb, menu()); });
+    row.appendChild(kb);
+  }
+  return row;
+}
+
+function _renderSkillsSide() {
+  const side = document.getElementById('skills-side');
+  if (!side) return;
+  // A scope whose package or group has gone is not a place to leave someone.
+  if (['package', 'section', 'group'].includes(_scope.kind) && !_scopeNames()) {
+    _scope = { kind: 'all' };
+  }
+  const bundled = skills.filter(_isBundled).length;
+  const mine = skills.filter(sk => !_isBundled(sk) && !_packageOf(sk.name || sk.id)).length;
+  side.replaceChildren();
+  side.appendChild(_sideHead('Library'));
+  side.appendChild(_sideRow({ title: 'All skills', count: skills.length, scope: { kind: 'all' } }));
+  side.appendChild(_sideRow({
+    title: 'Yours', count: mine, scope: { kind: 'mine' },
+    hint: 'Skills you wrote and skills the AI learned — not built in, not from a package',
+  }));
+  if (bundled) {
+    side.appendChild(_sideRow({
+      title: 'Built-in', count: bundled, scope: { kind: 'bundled' },
+      hint: 'Shipped with Pantheon. Fork one to make a copy you can change.',
+    }));
+  }
+
+  side.appendChild(_sideHead('Packages'));
+  if (!_collections.packages.length) {
+    const e = document.createElement('div');
+    e.className = 'skills-side-empty';
+    e.textContent = 'Import a skills.sh page or a GitHub repository under Add, and its skills arrive here together.';
+    side.appendChild(e);
+  }
+  for (const p of _collections.packages) {
+    const count = (p.skills || []).length;
+    const src = p.source && p.source.owner ? `${p.source.owner}/${p.source.repo}` : '';
+    side.appendChild(_sideRow({
+      title: p.title || p.id, count, scope: { kind: 'package', id: p.id },
+      hint: [p.description, src && `From ${src}${p.version ? ` · version ${p.version}` : ''}`,
+             p.mode === 'partial' ? 'Imported one skill at a time' : ''].filter(Boolean).join('\n'),
+      toggle: { on: p.enabled !== false, onChange: (on, input) => _switchPackage(p, on, input) },
+      menu: () => [
+        { icon: _ICON.update, label: 'Update from GitHub', onClick: () => _updatePackage(p) },
+        { icon: _ICON.del, label: `Remove package and its ${count} ${count === 1 ? 'skill' : 'skills'}`,
+          danger: true, onClick: () => _removePackage(p, false) },
+        { icon: _ICON.del, label: 'Remove package, keep its skills', onClick: () => _removePackage(p, true) },
+      ],
+    }));
+    if ((p.sections || []).length > 1) {
+      for (const sec of p.sections) {
+        side.appendChild(_sideRow({
+          title: sec.title || sec.id, count: (sec.skills || []).length, sub: true,
+          scope: { kind: 'section', id: p.id, section: sec.id }, hint: sec.description || '',
+        }));
+      }
+    }
+  }
+
+  const add = document.createElement('button');
+  add.type = 'button';
+  add.className = 'skills-side-new';
+  add.textContent = '+ New';
+  add.title = 'Make a group';
+  add.addEventListener('click', () => _newGroup([]));
+  side.appendChild(_sideHead('Groups', add));
+  if (!_collections.groups.length) {
+    const e = document.createElement('div');
+    e.className = 'skills-side-empty';
+    e.textContent = 'Make a group to keep skills together. A skill can be in as many groups as you like and is still one skill — change it once, and every group has the change.';
+    side.appendChild(e);
+  }
+  for (const g of _collections.groups) {
+    const count = (g.skills || []).length;
+    side.appendChild(_sideRow({
+      title: g.title || g.id, count, scope: { kind: 'group', id: g.id },
+      toggle: { on: g.enabled !== false, onChange: (on, input) => _switchGroup(g, on, input) },
+      menu: () => [
+        { icon: _ICON.rename, label: 'Rename', onClick: () => _renameGroup(g) },
+        { icon: _ICON.del, label: 'Delete group', danger: true, onClick: () => _deleteGroup(g) },
+      ],
+    }));
+  }
+}
+
+// ── menus ────────────────────────────────────────────────────────────────────
+
+function _placeMenu(menu, btn) {
+  document.body.appendChild(menu);
+  menu.style.zIndex = String(topPortalZ());
+  const r = btn.getBoundingClientRect();
+  menu.style.top = (r.bottom + 4) + 'px';
+  menu.style.right = Math.max(6, window.innerWidth - r.right) + 'px';
+  const mr = menu.getBoundingClientRect();
+  if (mr.bottom > window.innerHeight - 6) menu.style.top = Math.max(6, r.top - mr.height - 4) + 'px';
+  if (mr.left < 6) menu.style.right = Math.max(6, window.innerWidth - 6 - mr.width) + 'px';
+  const mr2 = menu.getBoundingClientRect();
+  if (mr2.bottom > window.innerHeight - 6) {
+    menu.style.maxHeight = Math.max(80, window.innerHeight - 12 - mr2.top) + 'px';
+    menu.style.overflowY = 'auto';
+  }
+  return bindMenuDismiss(menu, () => { menu.remove(); }, (ev) => !menu.contains(ev.target));
+}
+
+/** `items`: `[{ icon, label, onClick, danger, checked }]` — `checked` draws a
+ *  tick column, for a menu that is a list of memberships. */
+function _popMenu(btn, items) {
+  document.querySelectorAll('.skill-kebab-menu').forEach(dismissOrRemove);
+  const menu = document.createElement('div');
+  menu.className = 'skill-kebab-menu';
+  let close = () => menu.remove();
+  for (const it of items) {
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.className = 'skill-kebab-item' + (it.danger ? ' danger' : '');
+    if (typeof it.checked === 'boolean') {
+      item.setAttribute('role', 'menuitemcheckbox');
+      item.setAttribute('aria-checked', it.checked ? 'true' : 'false');
+      item.innerHTML = `<span class="skill-group-menu-check">${it.checked ? _svg(_ICON.check) : ''}</span>`;
+    } else {
+      item.innerHTML = it.icon ? _svg(it.icon) : '';
+    }
+    const label = document.createElement('span');
+    label.textContent = it.label;
+    item.appendChild(label);
+    item.addEventListener('click', (e) => { e.stopPropagation(); close(); it.onClick(); });
+    menu.appendChild(item);
+  }
+  close = _placeMenu(menu, btn);
+}
+
+// ── packages, groups, fork — the calls ───────────────────────────────────────
+
+async function _skillsApi(method, path, body) {
+  const res = await fetch(`${API}${path}`, {
+    method,
+    headers: body ? { 'Content-Type': 'application/json' } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
+  return data;
+}
+
+async function _refreshAfterCollections() {
+  await _fetchCollections();
+  renderSkillsList();
+  _renderSkillsSide();
+  updateCount();
+}
+
+async function _switchPackage(p, on, input) {
+  try {
+    await _skillsApi('PATCH', `/api/skills/packages/${encodeURIComponent(p.id)}`, { enabled: on });
+    uiModule.showToast(on ? `${p.title}: its skills can be used again` : `${p.title}: switched off — its skills are left out of what the AI is shown`);
+  } catch (e) {
+    if (input) input.checked = !on;
+    uiModule.showError('Could not switch the package: ' + e.message);
+    return;
+  }
+  await _refreshAfterCollections();
+}
+
+async function _switchGroup(g, on, input) {
+  try {
+    await _skillsApi('PATCH', `/api/skills/groups/${encodeURIComponent(g.id)}`, { enabled: on });
+    uiModule.showToast(on ? `${g.title}: switched on` : `${g.title}: switched off — its skills are left out of what the AI is shown`);
+  } catch (e) {
+    if (input) input.checked = !on;
+    uiModule.showError('Could not switch the group: ' + e.message);
+    return;
+  }
+  await _refreshAfterCollections();
+}
+
+async function _updatePackage(p) {
+  uiModule.showToast(`Updating ${p.title} from GitHub…`);
+  try {
+    const data = await _skillsApi('POST', `/api/skills/packages/${encodeURIComponent(p.id)}/update`);
+    const fresh = (data.installed || []).length;
+    const again = (data.updated || []).length;
+    const notes = Array.isArray(data.notes) ? data.notes : [];
+    uiModule.showToast(`${p.title}: ${again} refreshed${fresh ? `, ${fresh} new` : ''}${notes.length ? ` — ${notes[0]}` : ''}`);
+  } catch (e) {
+    uiModule.showError(`Could not update ${p.title}: ${e.message}`);
+    return;
+  }
+  _mdCache.clear();
+  await loadSkills();
+}
+
+async function _removePackage(p, keepSkills) {
+  const n = (p.skills || []).length;
+  const q = keepSkills
+    ? `Forget the package “${p.title}”? Its ${n} ${n === 1 ? 'skill stays' : 'skills stay'}, filed under Yours.`
+    : `Remove “${p.title}” and delete its ${n} ${n === 1 ? 'skill' : 'skills'}? Import it again to get them back.`;
+  if (!(await uiModule.styledConfirm(q, { confirmText: keepSkills ? 'Forget it' : 'Remove', danger: !keepSkills }))) return;
+  try {
+    await _skillsApi('DELETE', `/api/skills/packages/${encodeURIComponent(p.id)}${keepSkills ? '?keep_skills=true' : ''}`);
+    uiModule.showToast(keepSkills ? `Forgot ${p.title}` : `Removed ${p.title}`);
+  } catch (e) {
+    uiModule.showError('Could not remove the package: ' + e.message);
+    return;
+  }
+  if (_scope.id === p.id) _scope = { kind: 'all' };
+  await loadSkills();
+}
+
+async function _newGroup(names) {
+  const title = await uiModule.styledPrompt(
+    names.length
+      ? `Name a group for ${names.length === 1 ? `“${names[0]}”` : `these ${names.length} skills`}. They stay one skill each, wherever they are listed.`
+      : 'Name the group. A skill can be in as many groups as you like and is still one skill.',
+    { title: 'New group', placeholder: 'e.g. Design', confirmText: 'Make group', maxLength: 60 });
+  if (!title || !String(title).trim()) return;
+  try {
+    const data = await _skillsApi('POST', '/api/skills/groups', { title: String(title).trim(), skills: names });
+    uiModule.showToast(names.length ? `Made ${data.group.title} with ${names.length} ${names.length === 1 ? 'skill' : 'skills'}` : `Made ${data.group.title}`);
+    if (!names.length) _scope = { kind: 'group', id: data.group.id };
+  } catch (e) {
+    uiModule.showError('Could not make the group: ' + e.message);
+    return;
+  }
+  if (_selectMode && names.length) _exitSelectMode();
+  await _refreshAfterCollections();
+}
+
+/** A skill's groups, or a selection's: tick to add, untick to take out. */
+function _openGroupMenu(btn, names) {
+  names = (names || []).filter(Boolean);
+  if (!names.length) return;
+  const items = _collections.groups.map(g => {
+    const have = names.every(n => (g.skills || []).includes(n));
+    return {
+      label: g.title || g.id,
+      checked: have,
+      onClick: async () => {
+        try {
+          await _skillsApi('PATCH', `/api/skills/groups/${encodeURIComponent(g.id)}`,
+                           have ? { remove: names } : { add: names });
+          uiModule.showToast(have
+            ? `Took ${names.length === 1 ? names[0] : `${names.length} skills`} out of ${g.title}`
+            : `Added ${names.length === 1 ? names[0] : `${names.length} skills`} to ${g.title}`);
+        } catch (e) {
+          uiModule.showError('Could not change the group: ' + e.message);
+          return;
+        }
+        await _refreshAfterCollections();
+      },
+    };
+  });
+  items.push({ icon: _ICON.group, label: 'New group…', onClick: () => _newGroup(names) });
+  _popMenu(btn, items);
+}
+
+async function _renameGroup(g) {
+  const title = await uiModule.styledPrompt('Rename the group. Its skills are not touched.',
+    { title: 'Rename group', defaultValue: g.title || '', confirmText: 'Rename', maxLength: 60 });
+  if (!title || !String(title).trim() || String(title).trim() === g.title) return;
+  try {
+    await _skillsApi('PATCH', `/api/skills/groups/${encodeURIComponent(g.id)}`, { title: String(title).trim() });
+  } catch (e) {
+    uiModule.showError('Could not rename the group: ' + e.message);
+    return;
+  }
+  await _refreshAfterCollections();
+}
+
+async function _deleteGroup(g) {
+  const n = (g.skills || []).length;
+  if (!(await uiModule.styledConfirm(
+    `Delete the group “${g.title}”? Its ${n} ${n === 1 ? 'skill is' : 'skills are'} not touched — a group only lists them.`,
+    { confirmText: 'Delete group', danger: true }))) return;
+  try {
+    await _skillsApi('DELETE', `/api/skills/groups/${encodeURIComponent(g.id)}`);
+  } catch (e) {
+    uiModule.showError('Could not delete the group: ' + e.message);
+    return;
+  }
+  if (_scope.kind === 'group' && _scope.id === g.id) _scope = { kind: 'all' };
+  await _refreshAfterCollections();
+}
+
+async function _forkSkill(name) {
+  const title = await uiModule.styledPrompt(
+    `A fork is a separate skill you can change without touching “${name}”. Name the copy.`,
+    { title: 'Fork skill', defaultValue: `${name}-fork`, confirmText: 'Fork', maxLength: 80 });
+  if (!title || !String(title).trim()) return;
+  let made;
+  try {
+    made = (await _skillsApi('POST', `/api/skills/${encodeURIComponent(name)}/fork`, { name: String(title).trim() })).skill;
+  } catch (e) {
+    uiModule.showError('Could not fork the skill: ' + e.message);
+    return;
+  }
+  uiModule.showToast(`Forked ${name} as ${made.name}`);
+  await loadSkills();
+  openSkill(made.name, { scope: { kind: 'mine' } });
+}
+
+// ── the window — `P9-06` ─────────────────────────────────────────────────────
+
+let _windowWired = false;
+
+function _showSkillsView(view) {
+  const modal = document.getElementById('skills-modal');
+  if (!modal) return;
+  const want = view === 'add' ? 'add' : 'browse';
+  modal.querySelectorAll('[data-skills-view]').forEach(tab => {
+    const on = tab.getAttribute('data-skills-view') === want;
+    tab.classList.toggle('active', on);
+    tab.setAttribute('aria-selected', on ? 'true' : 'false');
+  });
+  modal.querySelectorAll('[data-skills-view-panel]').forEach(panel => {
+    panel.classList.toggle('hidden', panel.getAttribute('data-skills-view-panel') !== want);
+  });
+  if (want === 'add') setTimeout(() => document.getElementById('skill-import-url')?.focus(), 60);
+}
+
+function _wireSkillsWindow() {
+  if (_windowWired) return;
+  const modal = document.getElementById('skills-modal');
+  if (!modal) return;
+  _windowWired = true;
+  document.getElementById('close-skills-modal')?.addEventListener('click', closeSkillsWindow);
+  modal.querySelectorAll('[data-skills-view]').forEach(tab => {
+    tab.addEventListener('click', () => _showSkillsView(tab.getAttribute('data-skills-view')));
+  });
+  const content = modal.querySelector('.modal-content');
+  const header = modal.querySelector('.modal-header');
+  if (content && header) {
+    import('./windowDrag.js').then(m => m.makeWindowDraggable(modal, {
+      content, header, skipSelector: 'button, input, select, label',
+      enableDock: true, enableLeftDock: true,
+    })).catch(() => {});
+  }
+}
+
+/** Open the Skills window on `view` ('browse' | 'add'), or bring it forward. */
+export async function openSkillsWindow(view) {
+  const modal = document.getElementById('skills-modal');
+  if (!modal) return false;
+  _wireSkillsWindow();
+  if (view) _showSkillsView(view);
+  try {
+    const Modals = await import('./modalManager.js?v=20260930skillpkgs1');
+    if (Modals.isMinimized('skills-modal')) Modals.restore('skills-modal');
+    else Modals.openClosedWindow('skills-modal');
+  } catch (_) {
+    modal.classList.remove('hidden');
+    modal.style.display = '';
+  }
+  loadSkills(true);
+  return true;
+}
+
+export function closeSkillsWindow() {
+  const modal = document.getElementById('skills-modal');
+  if (!modal || modal.classList.contains('hidden')) return;
+  if (_selectMode) _exitSelectMode();
+  const content = modal.querySelector('.modal-content');
+  const done = () => {
+    modal.classList.add('hidden');
+    if (content) content.classList.remove('modal-closing');
+  };
+  if (!content) { done(); return; }
+  content.classList.add('modal-closing');
+  content.addEventListener('animationend', done, { once: true });
+  setTimeout(() => { if (!modal.classList.contains('hidden')) done(); }, 250);
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('skill-import-url-btn')?.addEventListener('click', importSkillFromUrl);
   document.getElementById('skill-import-url')?.addEventListener('keydown', (e) => {
@@ -3048,6 +3623,15 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('skills-bulk-delete')?.addEventListener('click', _bulkDelete);
   document.getElementById('skills-bulk-delete-nonpassing')?.addEventListener('click', _bulkDeleteNonPassing);
   document.getElementById('skills-bulk-publish')?.addEventListener('click', _bulkApprove);
+  document.getElementById('skills-bulk-group')?.addEventListener('click', (e) => {
+    _openGroupMenu(e.currentTarget, [..._selectedNames]);
+  });
+  // `P9-06`. Every "Open Skills" door — the Brain's launcher card and its Add
+  // tab — is one delegated listener, so a door added later needs no wiring.
+  document.addEventListener('click', (e) => {
+    const door = e.target && e.target.closest && e.target.closest('[data-open-skills]');
+    if (door) openSkillsWindow(door.getAttribute('data-open-skills') || 'browse');
+  });
   document.getElementById('new-skill-title')?.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') addSkill();
   });
@@ -3066,7 +3650,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 });
 
-export default { loadSkills, openSkill };
+export default { loadSkills, openSkill, openSkillsWindow, closeSkillsWindow };
 
 // Populate the Skills badge on first load so the count is right before the
 // user clicks into the tab. Cheap fetch — same as the lazy path.

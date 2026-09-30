@@ -8,7 +8,7 @@ import spinnerModule from './spinner.js';
 import { makeWindowDraggable } from './windowDrag.js';
 import { snapModalToZone } from './tileManager.js';
 import { topPortalZ } from './toolWindowZOrder.js';
-import { setBackgroundWork } from './modalManager.js?v=20260930skillimport1';
+import { setBackgroundWork } from './modalManager.js?v=20260930skillpkgs1';
 
 var escapeHtml = uiModule.esc;
 
@@ -272,7 +272,7 @@ async function syncToggles() {
   // Same dim treatment for the Skills toggle — dims the skills panel when off.
   const skillsToggle = document.getElementById('skills-enabled-header-toggle');
   if (skillsToggle) {
-    const skillsPanel = document.querySelector('[data-memory-panel="skills"]');
+    const skillsPanel = document.querySelector('#skills-modal [data-skills-view-panel="browse"]');
     const applyDim = () => { if (skillsPanel) skillsPanel.style.opacity = skillsToggle.checked ? '' : '0.3'; };
     applyDim();
     if (!skillsToggle.dataset.boundUx) {
@@ -1801,13 +1801,25 @@ document.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('.memory-tab[data-memory-tab]').forEach(tab => {
     tab.addEventListener('click', () => {
       const target = tab.dataset.memoryTab;
-      document.querySelectorAll('.memory-tab').forEach(t => t.classList.toggle('active', t === tab));
-      document.querySelectorAll('.memory-tab-panel[data-memory-panel]').forEach(p => {
+      // Scoped to this tab strip: `.memory-tab` is also the class of the
+      // Tasks window's tabs and the Skills window's, and a document-wide
+      // toggle switched those off whenever a Brain tab was pressed.
+      const strip = tab.closest('.memory-tabs') || document;
+      strip.querySelectorAll('.memory-tab').forEach(t => t.classList.toggle('active', t === tab));
+      const brain = tab.closest('.memory-modal-body') || document;
+      brain.querySelectorAll('.memory-tab-panel[data-memory-panel]').forEach(p => {
         p.classList.toggle('hidden', p.dataset.memoryPanel !== target);
       });
-      // Lazy-load skills tab (cascade=true → play the domino-in entrance)
+      // `P9-06`. Skills have their own window; this tab opens it. The tab
+      // still shows its card behind the window, and the Brain tour — which
+      // walks the tabs by clicking them — shows that card without opening
+      // the window over its own tooltip.
       if (target === 'skills') {
-        import('./skills.js').then(m => { if (m.loadSkills) m.loadSkills(true); else if (m.default?.loadSkills) m.default.loadSkills(true); });
+        import('./skills.js').then(m => {
+          const mod = m.openSkillsWindow ? m : (m.default || {});
+          if (document.body.classList.contains('tour-active')) mod.loadSkills?.();
+          else mod.openSkillsWindow?.('browse');
+        });
       }
     });
   });

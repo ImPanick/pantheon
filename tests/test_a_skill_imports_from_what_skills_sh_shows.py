@@ -261,7 +261,10 @@ async def test_the_server_keeps_answering_while_an_import_is_paced(tmp_path, mon
 
     def slow_fetch(url):
         time.sleep(1.0)
-        return {"SKILL.md": SKILL_MD.format(name="slow")}, None, ["a note"]
+        # `P8-49`: the source comes back as the real fetch returns it, because
+        # the route now files the skill under the package it came from.
+        return ({"SKILL.md": SKILL_MD.format(name="slow")},
+                si.ResolvedSource(owner="o", repo="r", ref="main", path="slow"), ["a note"])
 
     monkeypatch.setattr(si, "fetch_skill_bundle_report", slow_fetch)
     app = FastAPI()

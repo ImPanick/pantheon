@@ -308,14 +308,14 @@
        real request is discarded and the font fetched a second time. -->
   <link rel="preload" as="font" type="font/woff2" crossorigin href="/static/fonts/FiraCode-Regular.woff2">
   <link rel="preload" as="font" type="font/woff2" crossorigin href="/static/fonts/FiraCode-SemiBold.woff2">
-  <link rel="stylesheet" href="/static/style.css?v=20260930skillimport1">
-  <link rel="modulepreload" href="/static/app.js?v=20260930skillimport1">
+  <link rel="stylesheet" href="/static/style.css?v=20260930skillpkgs1">
+  <link rel="modulepreload" href="/static/app.js?v=20260930skillpkgs1">
   <!-- B58. This must carry the SAME query as the <script> tag below, or the
        browser fetches chat.js twice: the cache and the module map are keyed on
        the full URL. It sat at toolapproval4 while the tag moved to
        approvalcontrol1 and then trustladder1 — bumped twice by people who did
        not know this line existed. check-specifiers.py reads it now. -->
-  <link rel="modulepreload" href="/static/js/chat.js?v=20260930skillimport1">
+  <link rel="modulepreload" href="/static/js/chat.js?v=20260930skillpkgs1">
   <link rel="modulepreload" href="/static/js/ui.js">
   <link rel="modulepreload" href="/static/js/sessions.js">
   <link rel="modulepreload" href="/static/js/markdown.js">
@@ -502,139 +502,31 @@
               <button type="button" id="new-memory-add-btn" class="theme-io-btn" title="Save this memory" style="flex:none;height:28px;font-size:12px;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Add</button>
             </div>
           </div>
+          <!-- `P9-06`. Skills are added in their own window now; this card is
+               the door to it from where people have always looked. -->
           <div class="admin-card">
             <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:2px;">
               <h2 style="margin:0;padding:0;line-height:1;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px;color:var(--accent, var(--red));"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>Add Skill</h2>
             </div>
-            <p class="memory-desc doclib-desc" style="margin-top:6px;">Import a skill from <a href="https://skills.sh" target="_blank" rel="noopener noreferrer">skills.sh</a> or GitHub. Paste the skill's skills.sh page, the <code>npx skills add …</code> line it shows, or a GitHub link to the skill's folder.</p>
-            <div class="memory-add-row" style="margin-top:6px;margin-bottom:10px;">
-              <div class="skill-ph-wrap" style="flex:1;min-width:0;">
-                <input type="text" inputmode="url" autocomplete="off" spellcheck="false" id="skill-import-url" placeholder=" " class="memory-add-input skill-hint-input" aria-label="Skill link or install line" />
-                <span class="skill-rich-ph"><span class="k">Skill link</span> — skills.sh page, npx skills add line, or GitHub folder</span>
-              </div>
-              <button type="button" id="skill-import-url-btn" class="theme-io-btn" title="Import skill from URL" style="flex:none;height:28px;font-size:12px;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Import</button>
-            </div>
-            <!-- `B926`. Where the import says what it is doing and how it ended,
-                 beside the box it was started from. A toast alone was the only
-                 answer, and a slow import gave none until it finished. -->
-            <p id="skill-import-status" class="memory-desc skill-import-status" role="status" aria-live="polite" hidden></p>
-            <p class="memory-desc doclib-desc" style="margin-top:0;">Or create a skill by hand — name, description, when to use it, and the procedure.</p>
-            <div class="skill-ph-wrap" style="margin-top:4px;margin-bottom:6px;">
-              <input type="text" id="new-skill-name" placeholder=" " maxlength="80" class="memory-add-input skill-hint-input" aria-label="Skill name" />
-              <span class="skill-rich-ph"><span class="k">Name</span> — what /skill calls it, e.g. “build-vllm-wheel”</span>
-            </div>
-            <div class="skill-ph-wrap" style="margin-bottom:6px;">
-              <input type="text" id="new-skill-description" placeholder=" " maxlength="200" class="memory-add-input skill-hint-input" aria-label="Skill description" />
-              <span class="skill-rich-ph"><span class="k">Description</span> — one line the AI reads when deciding to use it</span>
-            </div>
-            <div class="skill-ph-wrap" style="margin-bottom:6px;">
-              <input type="text" id="new-skill-when" placeholder=" " class="memory-add-input skill-hint-input" aria-label="When to use this skill" />
-              <span class="skill-rich-ph"><span class="k">When to use</span> — the situation that should trigger it</span>
-            </div>
-            <div class="skill-ph-wrap" style="margin-bottom:6px;">
-              <textarea id="new-skill-procedure" placeholder=" " class="memory-add-input skill-hint-input" rows="3" style="resize:vertical;" aria-label="Procedure — one step per line"></textarea>
-              <span class="skill-rich-ph skill-rich-ph-top"><span class="k">Procedure</span> — one step per line</span>
-            </div>
-            <div class="skill-ph-wrap" style="margin-bottom:8px;">
-              <input type="text" id="new-skill-category" placeholder=" " maxlength="40" class="memory-add-input skill-hint-input" aria-label="Skill category" />
-              <span class="skill-rich-ph"><span class="k">Category</span> — folder to file it under; blank means “general”</span>
-            </div>
-            <div class="skill-ph-wrap" hidden style="margin-top:4px;margin-bottom:6px;">
-              <input type="text" id="new-skill-title" placeholder=" " class="memory-add-input skill-hint-input" aria-label="Skill title" />
-              <span class="skill-rich-ph"><span class="k">Title</span> — short name, e.g. “build-vllm-wheel”</span>
-            </div>
-            <div class="skill-ph-wrap" hidden style="margin-bottom:6px;">
-              <input type="text" id="new-skill-problem" placeholder=" " class="memory-add-input skill-hint-input" aria-label="When to use this skill" />
-              <span class="skill-rich-ph"><span class="k">When to use</span> — what problem does this skill solve?</span>
-            </div>
-            <div class="skill-ph-wrap" hidden style="margin-bottom:6px;">
-              <textarea id="new-skill-solution" placeholder=" " class="memory-add-input skill-hint-input" rows="2" style="resize:vertical;" aria-label="How — the approach or steps"></textarea>
-              <span class="skill-rich-ph skill-rich-ph-top"><span class="k">How</span> — the approach, steps, commands, or rules to follow</span>
-            </div>
-            <div class="skill-ph-wrap" style="margin-bottom:8px;">
-              <input type="text" id="new-skill-tags" placeholder=" " class="memory-add-input skill-hint-input" aria-label="Tags" />
-              <span class="skill-rich-ph"><span class="k">Tags</span> — comma-separated, e.g. python, build, vllm</span>
-            </div>
-            <details class="skill-more">
-              <summary>More fields &mdash; pitfalls, verification, platforms, required tools</summary>
-              <p class="memory-desc doclib-desc" style="margin:4px 0 8px;">All four are optional, and all four change what happens. <b>Pitfalls</b> go to the AI with the procedure. <b>Verification</b> is kept in the file and never sent &mdash; it is there for you and for the skill test to check against. <b>Platforms</b> and <b>required tools</b> hide the skill when they do not match.</p>
-              <div class="skill-ph-wrap" style="margin-bottom:6px;">
-                <textarea id="new-skill-pitfalls" placeholder=" " class="memory-add-input skill-hint-input" rows="2" style="resize:vertical;" aria-label="Pitfalls &mdash; one per line"></textarea>
-                <span class="skill-rich-ph skill-rich-ph-top"><span class="k">Pitfalls</span> &mdash; one per line; what usually goes wrong</span>
-              </div>
-              <div class="skill-ph-wrap" style="margin-bottom:6px;">
-                <textarea id="new-skill-verification" placeholder=" " class="memory-add-input skill-hint-input" rows="2" style="resize:vertical;" aria-label="Verification &mdash; one per line"></textarea>
-                <span class="skill-rich-ph skill-rich-ph-top"><span class="k">Verification</span> &mdash; one per line; how you tell it worked</span>
-              </div>
-              <div class="skill-ph-wrap" style="margin-bottom:6px;">
-                <input type="text" id="new-skill-platforms" placeholder=" " class="memory-add-input skill-hint-input" aria-label="Platforms" />
-                <span class="skill-rich-ph"><span class="k">Platforms</span> &mdash; comma-separated; blank means all</span>
-              </div>
-              <div class="skill-ph-wrap" style="margin-bottom:6px;">
-                <input type="text" id="new-skill-toolsets" placeholder=" " class="memory-add-input skill-hint-input" aria-label="Required tools" />
-                <span class="skill-rich-ph"><span class="k">Required tools</span> &mdash; comma-separated; hidden unless all are on</span>
-              </div>
-            </details>
-            <!-- `P8-12`. The lint's findings, beside the form that produced
-                 them. Empty until a field loses focus or Save is pressed; it
-                 never stops a save, and the panel says so in the one place a
-                 person would wonder. -->
-            <div id="skill-lint-panel" class="skill-lint-panel hidden" role="status" aria-live="polite"></div>
-            <div style="display:flex;justify-content:flex-end;">
-              <button id="add-skill-btn" class="confirm-btn confirm-btn-primary">Add Skill</button>
+            <p class="memory-desc doclib-desc" style="margin-top:6px;">Skills are imported and written in the Skills window. Paste a skills.sh page, an <code>npx skills add …</code> line or a GitHub link there — a whole package comes in together — or write one by hand.</p>
+            <div style="display:flex;margin-top:8px;">
+              <button type="button" class="theme-io-btn" data-open-skills="add" style="height:28px;font-size:12px;">Open Skills — Add</button>
             </div>
           </div>
         </div>
         <!-- ── Skills tab ── -->
         <div class="memory-tab-panel hidden" data-memory-panel="skills">
-          <div class="admin-card" style="display:flex;flex-direction:column;overflow:hidden;flex:1;min-height:0;">
+          <!-- `P9-06`. The Brain's Skills tab opens the Skills window
+               (`#skills-modal`), which is where the list, its packages and
+               its groups live now. This card is what the tab shows behind it. -->
+          <div class="admin-card skills-launcher">
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px;">
-              <h2 style="display:flex;align-items:center;gap:6px;margin:0;padding:0;line-height:1;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--accent, var(--red));flex-shrink:0;"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>Skills <span id="skills-count-h2" class="memory-count" style="font-size:0.6em;opacity:0.6;font-weight:normal"></span></h2>
-              <span style="flex:1"></span>
-              <span class="admin-toggle-state"></span>
-              <label class="admin-switch" title="Inject relevant skills into chat context"><input type="checkbox" id="skills-enabled-header-toggle" checked /><span class="admin-slider"></span></label>
+              <h2 style="margin:0;padding:0;line-height:1;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px;color:var(--accent, var(--red));"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>Skills</h2>
             </div>
-            <p class="memory-desc doclib-desc" style="margin-top:6px;">Reusable procedures the AI can call via /skill — sort by confidence to surface the proven ones.</p>
-            <div class="memory-toolbar">
-              <div class="memory-toolbar-row">
-                <select id="skills-sort" class="memory-sort-select">
-                  <optgroup label="Sort">
-                    <option value="sort:confidence">Confidence</option>
-                    <option value="sort:uses">Most used</option>
-                    <option value="sort:mentions">Most said</option>
-                    <option value="sort:alpha">A-Z</option>
-                    <option value="sort:recent">Recent</option>
-                  </optgroup>
-                  <optgroup label="Filter">
-                    <option value="filter:all">All skills</option>
-                    <option value="filter:drafts">Uncatalogued only</option>
-                    <option value="filter:published">Published only</option>
-                    <option value="filter:conf95">Confidence ≤ 95%</option>
-                    <option value="filter:conf90">Confidence ≤ 90%</option>
-                    <option value="filter:conf85">Confidence ≤ 85%</option>
-                    <option value="filter:conf80">Confidence ≤ 80%</option>
-                    <option value="filter:conf75">Confidence ≤ 75%</option>
-                    <option value="filter:conf70">Confidence ≤ 70%</option>
-                  </optgroup>
-                </select>
-                <button id="skills-audit-btn" class="memory-toolbar-btn" title="Test every skill, auto-fix the weak ones, flag what still fails"><svg width="11" height="11" viewBox="0 0 24 24" fill="var(--accent, var(--red))" style="vertical-align:-1px;margin-right:3px;"><path d="M12 0L14.59 8.41L23 12L14.59 15.59L12 24L9.41 15.59L1 12L9.41 8.41Z"/></svg>Audit</button>
-                <button id="skills-preview-btn" class="memory-toolbar-btn" title="Show the catalogue of skills exactly as the AI is handed it"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px;"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg>Prompt preview</button>
-                <button id="skills-select-btn" class="memory-toolbar-btn" title="Select multiple skills"><svg class="memory-select-btn-icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:3px;"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"/></svg>Select</button>
-              </div>
-              <input type="text" id="skills-search" placeholder="Search skills…" class="memory-search-input" aria-label="Search skills" />
+            <p class="memory-desc doclib-desc" style="margin-top:6px;">Skills have their own window, with the packages you import and the groups you make. <span id="skills-launcher-summary"></span></p>
+            <div style="display:flex;margin-top:8px;">
+              <button type="button" class="confirm-btn confirm-btn-primary" data-open-skills="browse">Open Skills</button>
             </div>
-            <div id="skills-audit-panel" class="skills-audit-panel hidden"></div>
-            <div id="skills-prompt-panel" class="skills-audit-panel hidden"></div>
-            <div id="skills-bulk-bar" class="memory-bulk-bar hidden">
-              <label class="memory-bulk-check-all" style="position:relative;top:0px;"><input type="checkbox" id="skills-select-all" /> All</label>
-              <span id="skills-selected-count">0 Selected</span>
-              <button id="skills-bulk-publish" class="memory-toolbar-btn" disabled title="Publish selected drafts" style="margin-left:auto;"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px;"><polyline points="20 6 9 17 4 12"/></svg>Approve</button>
-              <button id="skills-bulk-audit" class="memory-toolbar-btn" disabled title="Audit selected draft skills"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px;"><polygon points="5 3 19 12 5 21 5 3"/></svg>Audit</button>
-              <button id="skills-bulk-delete-nonpassing" class="memory-toolbar-btn danger" disabled title="Delete the selected skills that are duplicates, generic or irrelevant, or that failed an audit. Skills that have not been audited yet are never included. You can undo it."><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px;"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11l4 4"/><path d="M14 11l-4 4"/></svg>Delete non passing</button>
-              <button id="skills-bulk-delete" class="memory-toolbar-btn danger" disabled><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px;"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>Delete</button>
-              <button id="skills-bulk-cancel" class="memory-toolbar-btn" title="Cancel (Esc)" style="padding:3px 6px;"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
-            </div>
-            <div id="skills-list" class="memory-list"></div>
           </div>
         </div>
         <!-- ── RAG tab ── -->
@@ -693,6 +585,166 @@
             </div>
             <span class="admin-toggle-sub" style="display:block;margin-top:6px;opacity:0.5">Set to 0 to disable skill injection.</span>
             <span class="admin-toggle-sub skill-gate-note" style="display:block;margin-top:8px;opacity:0.6">A skill reaches the AI as untrusted text, the same as a web page or an email does &mdash; because you, or a teacher model, wrote it and it can say anything. So any reply a skill is injected into asks you first before anything that writes, runs, sends or deletes. That is also why testing a skill can stop halfway and wait for you.</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Skills window — `P9-06`, `P8-49` … `P8-52` ──
+       Skills left the Brain on 2026-09-30 (`D-2026-09-30-01`): a list of 300
+       with the packages they came from and the groups a person makes needed a
+       window of its own. The ids inside are the ones the Brain's Skills and
+       Add tabs carried, unchanged, so `skills.js` reaches the same controls.
+       `#skills-side` is drawn by `skills.js` from `GET /api/skills/collections`. -->
+  <div id="skills-modal" class="modal hidden">
+    <div class="modal-content memory-modal-content skills-modal-content" role="dialog" aria-label="Skills" style="background:var(--bg)">
+      <div class="modal-header">
+        <h4><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>Skills</h4>
+        <button class="close-btn" id="close-skills-modal" aria-label="Close the Skills window">✖</button>
+      </div>
+      <div class="modal-body memory-modal-body skills-modal-body">
+        <nav id="skills-side" class="skills-side" aria-label="Packages and groups"></nav>
+        <div class="skills-main">
+          <div class="memory-tabs skills-view-tabs" role="tablist">
+            <button type="button" class="memory-tab active" data-skills-view="browse" role="tab" aria-selected="true"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>Skills</button>
+            <button type="button" class="memory-tab" data-skills-view="add" role="tab" aria-selected="false"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>Add</button>
+          </div>
+          <div class="memory-tab-panel skills-view" data-skills-view-panel="browse">
+              <div class="admin-card" style="display:flex;flex-direction:column;overflow:hidden;flex:1;min-height:0;">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px;">
+                  <h2 style="display:flex;align-items:center;gap:6px;margin:0;padding:0;line-height:1;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--accent, var(--red));flex-shrink:0;"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>Skills <span id="skills-count-h2" class="memory-count" style="font-size:0.6em;opacity:0.6;font-weight:normal"></span></h2>
+                  <span style="flex:1"></span>
+                  <span class="admin-toggle-state"></span>
+                  <label class="admin-switch" title="Inject relevant skills into chat context"><input type="checkbox" id="skills-enabled-header-toggle" checked /><span class="admin-slider"></span></label>
+                </div>
+                <p class="memory-desc doclib-desc" style="margin-top:6px;">Reusable procedures the AI can call via /skill — sort by confidence to surface the proven ones.</p>
+                <div class="memory-toolbar">
+                  <div class="memory-toolbar-row">
+                    <select id="skills-sort" class="memory-sort-select">
+                      <optgroup label="Sort">
+                        <option value="sort:confidence">Confidence</option>
+                        <option value="sort:uses">Most used</option>
+                        <option value="sort:mentions">Most said</option>
+                        <option value="sort:alpha">A-Z</option>
+                        <option value="sort:recent">Recent</option>
+                      </optgroup>
+                      <optgroup label="Filter">
+                        <option value="filter:all">All skills</option>
+                        <option value="filter:drafts">Uncatalogued only</option>
+                        <option value="filter:published">Published only</option>
+                        <option value="filter:conf95">Confidence ≤ 95%</option>
+                        <option value="filter:conf90">Confidence ≤ 90%</option>
+                        <option value="filter:conf85">Confidence ≤ 85%</option>
+                        <option value="filter:conf80">Confidence ≤ 80%</option>
+                        <option value="filter:conf75">Confidence ≤ 75%</option>
+                        <option value="filter:conf70">Confidence ≤ 70%</option>
+                      </optgroup>
+                    </select>
+                    <button id="skills-audit-btn" class="memory-toolbar-btn" title="Test every skill, auto-fix the weak ones, flag what still fails"><svg width="11" height="11" viewBox="0 0 24 24" fill="var(--accent, var(--red))" style="vertical-align:-1px;margin-right:3px;"><path d="M12 0L14.59 8.41L23 12L14.59 15.59L12 24L9.41 15.59L1 12L9.41 8.41Z"/></svg>Audit</button>
+                    <button id="skills-preview-btn" class="memory-toolbar-btn" title="Show the catalogue of skills exactly as the AI is handed it"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px;"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg>Prompt preview</button>
+                    <button id="skills-select-btn" class="memory-toolbar-btn" title="Select multiple skills"><svg class="memory-select-btn-icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:3px;"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"/></svg>Select</button>
+                  </div>
+                  <input type="text" id="skills-search" placeholder="Search skills…" class="memory-search-input" aria-label="Search skills" />
+                </div>
+                <div id="skills-audit-panel" class="skills-audit-panel hidden"></div>
+                <div id="skills-prompt-panel" class="skills-audit-panel hidden"></div>
+                <div id="skills-bulk-bar" class="memory-bulk-bar hidden">
+                  <label class="memory-bulk-check-all" style="position:relative;top:0px;"><input type="checkbox" id="skills-select-all" /> All</label>
+                  <span id="skills-selected-count">0 Selected</span>
+                  <button id="skills-bulk-publish" class="memory-toolbar-btn" disabled title="Publish selected drafts" style="margin-left:auto;"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px;"><polyline points="20 6 9 17 4 12"/></svg>Approve</button>
+                  <button id="skills-bulk-audit" class="memory-toolbar-btn" disabled title="Audit selected draft skills"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px;"><polygon points="5 3 19 12 5 21 5 3"/></svg>Audit</button>
+                  <button id="skills-bulk-group" class="memory-toolbar-btn" disabled title="Add the selected skills to a group"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px;"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>Group</button>
+                  <button id="skills-bulk-delete-nonpassing" class="memory-toolbar-btn danger" disabled title="Delete the selected skills that are duplicates, generic or irrelevant, or that failed an audit. Skills that have not been audited yet are never included. You can undo it."><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px;"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11l4 4"/><path d="M14 11l-4 4"/></svg>Delete non passing</button>
+                  <button id="skills-bulk-delete" class="memory-toolbar-btn danger" disabled><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px;"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>Delete</button>
+                  <button id="skills-bulk-cancel" class="memory-toolbar-btn" title="Cancel (Esc)" style="padding:3px 6px;"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+                </div>
+                <div id="skills-list" class="memory-list"></div>
+              </div>
+          </div>
+          <div class="memory-tab-panel skills-view hidden" data-skills-view-panel="add">
+              <div class="admin-card">
+                <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:2px;">
+                  <h2 style="margin:0;padding:0;line-height:1;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px;color:var(--accent, var(--red));"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>Add Skill</h2>
+                </div>
+                <p class="memory-desc doclib-desc" style="margin-top:6px;">Import skills from <a href="https://skills.sh" target="_blank" rel="noopener noreferrer">skills.sh</a> or GitHub. A skills.sh page, the <code>npx skills add …</code> line it shows, or a repository link brings the <b>whole package</b> — every skill in it, filed together under its sections. A link to one skill's folder brings just that skill.</p>
+                <div class="memory-add-row" style="margin-top:6px;margin-bottom:10px;">
+                  <div class="skill-ph-wrap" style="flex:1;min-width:0;">
+                    <input type="text" inputmode="url" autocomplete="off" spellcheck="false" id="skill-import-url" placeholder=" " class="memory-add-input skill-hint-input" aria-label="Skill link or install line" />
+                    <span class="skill-rich-ph"><span class="k">Skill link</span> — skills.sh page, npx skills add line, or GitHub link</span>
+                  </div>
+                  <button type="button" id="skill-import-url-btn" class="theme-io-btn" title="Import skill from URL" style="flex:none;height:28px;font-size:12px;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Import</button>
+                </div>
+                <!-- `B926`. Where the import says what it is doing and how it ended,
+                     beside the box it was started from. A toast alone was the only
+                     answer, and a slow import gave none until it finished. -->
+                <p id="skill-import-status" class="memory-desc skill-import-status" role="status" aria-live="polite" hidden></p>
+                <p class="memory-desc doclib-desc" style="margin-top:0;">Or create a skill by hand — name, description, when to use it, and the procedure.</p>
+                <div class="skill-ph-wrap" style="margin-top:4px;margin-bottom:6px;">
+                  <input type="text" id="new-skill-name" placeholder=" " maxlength="80" class="memory-add-input skill-hint-input" aria-label="Skill name" />
+                  <span class="skill-rich-ph"><span class="k">Name</span> — what /skill calls it, e.g. “build-vllm-wheel”</span>
+                </div>
+                <div class="skill-ph-wrap" style="margin-bottom:6px;">
+                  <input type="text" id="new-skill-description" placeholder=" " maxlength="200" class="memory-add-input skill-hint-input" aria-label="Skill description" />
+                  <span class="skill-rich-ph"><span class="k">Description</span> — one line the AI reads when deciding to use it</span>
+                </div>
+                <div class="skill-ph-wrap" style="margin-bottom:6px;">
+                  <input type="text" id="new-skill-when" placeholder=" " class="memory-add-input skill-hint-input" aria-label="When to use this skill" />
+                  <span class="skill-rich-ph"><span class="k">When to use</span> — the situation that should trigger it</span>
+                </div>
+                <div class="skill-ph-wrap" style="margin-bottom:6px;">
+                  <textarea id="new-skill-procedure" placeholder=" " class="memory-add-input skill-hint-input" rows="3" style="resize:vertical;" aria-label="Procedure — one step per line"></textarea>
+                  <span class="skill-rich-ph skill-rich-ph-top"><span class="k">Procedure</span> — one step per line</span>
+                </div>
+                <div class="skill-ph-wrap" style="margin-bottom:8px;">
+                  <input type="text" id="new-skill-category" placeholder=" " maxlength="40" class="memory-add-input skill-hint-input" aria-label="Skill category" />
+                  <span class="skill-rich-ph"><span class="k">Category</span> — folder to file it under; blank means “general”</span>
+                </div>
+                <div class="skill-ph-wrap" hidden style="margin-top:4px;margin-bottom:6px;">
+                  <input type="text" id="new-skill-title" placeholder=" " class="memory-add-input skill-hint-input" aria-label="Skill title" />
+                  <span class="skill-rich-ph"><span class="k">Title</span> — short name, e.g. “build-vllm-wheel”</span>
+                </div>
+                <div class="skill-ph-wrap" hidden style="margin-bottom:6px;">
+                  <input type="text" id="new-skill-problem" placeholder=" " class="memory-add-input skill-hint-input" aria-label="When to use this skill" />
+                  <span class="skill-rich-ph"><span class="k">When to use</span> — what problem does this skill solve?</span>
+                </div>
+                <div class="skill-ph-wrap" hidden style="margin-bottom:6px;">
+                  <textarea id="new-skill-solution" placeholder=" " class="memory-add-input skill-hint-input" rows="2" style="resize:vertical;" aria-label="How — the approach or steps"></textarea>
+                  <span class="skill-rich-ph skill-rich-ph-top"><span class="k">How</span> — the approach, steps, commands, or rules to follow</span>
+                </div>
+                <div class="skill-ph-wrap" style="margin-bottom:8px;">
+                  <input type="text" id="new-skill-tags" placeholder=" " class="memory-add-input skill-hint-input" aria-label="Tags" />
+                  <span class="skill-rich-ph"><span class="k">Tags</span> — comma-separated, e.g. python, build, vllm</span>
+                </div>
+                <details class="skill-more">
+                  <summary>More fields &mdash; pitfalls, verification, platforms, required tools</summary>
+                  <p class="memory-desc doclib-desc" style="margin:4px 0 8px;">All four are optional, and all four change what happens. <b>Pitfalls</b> go to the AI with the procedure. <b>Verification</b> is kept in the file and never sent &mdash; it is there for you and for the skill test to check against. <b>Platforms</b> and <b>required tools</b> hide the skill when they do not match.</p>
+                  <div class="skill-ph-wrap" style="margin-bottom:6px;">
+                    <textarea id="new-skill-pitfalls" placeholder=" " class="memory-add-input skill-hint-input" rows="2" style="resize:vertical;" aria-label="Pitfalls &mdash; one per line"></textarea>
+                    <span class="skill-rich-ph skill-rich-ph-top"><span class="k">Pitfalls</span> &mdash; one per line; what usually goes wrong</span>
+                  </div>
+                  <div class="skill-ph-wrap" style="margin-bottom:6px;">
+                    <textarea id="new-skill-verification" placeholder=" " class="memory-add-input skill-hint-input" rows="2" style="resize:vertical;" aria-label="Verification &mdash; one per line"></textarea>
+                    <span class="skill-rich-ph skill-rich-ph-top"><span class="k">Verification</span> &mdash; one per line; how you tell it worked</span>
+                  </div>
+                  <div class="skill-ph-wrap" style="margin-bottom:6px;">
+                    <input type="text" id="new-skill-platforms" placeholder=" " class="memory-add-input skill-hint-input" aria-label="Platforms" />
+                    <span class="skill-rich-ph"><span class="k">Platforms</span> &mdash; comma-separated; blank means all</span>
+                  </div>
+                  <div class="skill-ph-wrap" style="margin-bottom:6px;">
+                    <input type="text" id="new-skill-toolsets" placeholder=" " class="memory-add-input skill-hint-input" aria-label="Required tools" />
+                    <span class="skill-rich-ph"><span class="k">Required tools</span> &mdash; comma-separated; hidden unless all are on</span>
+                  </div>
+                </details>
+                <!-- `P8-12`. The lint's findings, beside the form that produced
+                     them. Empty until a field loses focus or Save is pressed; it
+                     never stops a save, and the panel says so in the one place a
+                     person would wonder. -->
+                <div id="skill-lint-panel" class="skill-lint-panel hidden" role="status" aria-live="polite"></div>
+                <div style="display:flex;justify-content:flex-end;">
+                  <button id="add-skill-btn" class="confirm-btn confirm-btn-primary">Add Skill</button>
+                </div>
+              </div>
           </div>
         </div>
       </div>
@@ -3470,11 +3522,11 @@
 <script type="module" src="/static/js/markdown.js"></script>
 <script type="module" src="/static/js/dragSort.js"></script>
 <script type="module" src="/static/js/sessions.js"></script>
-<script type="module" src="/static/js/memory.js?v=20260930skillimport1"></script>
+<script type="module" src="/static/js/memory.js?v=20260930skillpkgs1"></script>
 <script type="module" src="/static/js/skills.js"></script>
 <script type="module" src="/static/js/tourHints.js"></script>
 <script type="module" src="/static/js/tourAutoplay.js"></script>
-<script type="module" src="/static/js/fileHandler.js?v=20260930skillimport1"></script>
+<script type="module" src="/static/js/fileHandler.js?v=20260930skillpkgs1"></script>
 <script type="module" src="/static/js/voiceRecorder.js"></script>
 <script type="module" src="/static/js/models.js?v=20260715startupcalm2"></script>  <!-- This must come BEFORE app.js -->
 <script type="module" src="/static/js/rag.js"></script>
@@ -3484,10 +3536,10 @@
 <script type="module" src="/static/js/tts-ai.js"></script>
 <script type="module" src="/static/js/document.js?v=20260815approvalsave1"></script>
 <script type="module" src="/static/js/gallery.js?v=20260708match1"></script>
-<script type="module" src="/static/js/chatRenderer.js?v=20260930skillimport1"></script>
+<script type="module" src="/static/js/chatRenderer.js?v=20260930skillpkgs1"></script>
 <script type="module" src="/static/js/codeRunner.js"></script>
-<script type="module" src="/static/js/chatStream.js?v=20260930skillimport1"></script>
-  <script type="module" src="/static/js/chat.js?v=20260930skillimport1"></script>
+<script type="module" src="/static/js/chatStream.js?v=20260930skillpkgs1"></script>
+  <script type="module" src="/static/js/chat.js?v=20260930skillpkgs1"></script>
 <script type="module" src="/static/js/cookbook.js"></script>
 <script src="/static/js/cookbookSchedule.js"></script>
 <script type="module" src="/static/js/search-chat.js"></script>
@@ -3495,7 +3547,7 @@
 <script type="module" src="/static/js/censor.js"></script>
 <script type="module" src="/static/js/settings.js?v=20260927mcppresets1"></script>
 <script type="module" src="/static/js/assistant.js"></script>
-<script type="module" src="/static/app.js?v=20260930skillimport1"></script>  <!-- app.js must be LAST -->
+<script type="module" src="/static/app.js?v=20260930skillpkgs1"></script>  <!-- app.js must be LAST -->
   <script type="module" src="/static/js/init.js?v=20260918a11yfocus1"></script>
 <script type="module" src="/static/js/a11y.js"></script>
 <script>if('serviceWorker' in navigator){navigator.serviceWorker.register('/static/sw.js').catch(()=>{});}</script>

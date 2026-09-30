@@ -2447,3 +2447,45 @@ arriving untouched; it goes red the day client-side validation exists, which is 
 
 **What it cost.** An operator who wants to hide a parameter from the model cannot. They can say in the
 description not to use it.
+
+## D-2026-09-30-01 — skills are stored once and grouped by reference; a repository imports as a package; Skills get their own window
+
+**Asked.** The owner, 2026-09-30: *"adding a multi-layer skill package also does not build its
+segmented 'category' and group skills together... Which it should. Honestly we need to revamp the
+'Skills' entirely... under brain... These should be groupable - either assembled as a preset package
+... - or custom grouped as well. Groups that have skills that may overlap, should these be
+duplicated? Or cross-referenced? What is better to do here because as of right now - as standard
+practice (in mcp's) - I duplicate them."* Four questions came out of it, and he answered each.
+
+**Decided by the owner, 2026-09-30:**
+
+1. **Reference, with Fork for a deliberate copy.** A skill exists once; a group is a list of names.
+   Recommended because a skill's `name` is its identity, folder and API id (`FORBIDDEN.md` Part 1):
+   two copies need two names, the model's catalogue lists both, retrieval scores both, both are
+   injected, and the nightly de-duplication flags one of them — while every edit, version, test and
+   audit lands on one copy and the other goes stale (`Law 7`). Duplicating in MCP configs is forced
+   by their format — each client's config is its own file with nothing to point at — and Pantheon
+   has one registry. The one copy that is right is the one a person means to diverge: **Fork**, a
+   new name, with where it came from written in its body.
+2. **A repository imports as the whole package, even when `--skill` names one.** The package is the
+   repository (`owner--repo`), its sections are the ones its `.claude-plugin/marketplace.json`
+   declares, and each skill is filed under its section's category (the package's own, when it
+   declares one). A link to one skill's folder still imports just that skill, filed under its
+   package. Re-importing refreshes in place and keeps what a person decided (status, confidence).
+3. **A group organises and filters, and switches its skills on and off as a set.** Scoping a chat
+   or an agent to a group, and exporting a group as a bundle, were offered and not chosen. **Off
+   wins**: a skill is left out of what the model is shown when its package or any group it is in
+   is off, and the card says by what.
+4. **Skills get their own window (`P9-06`), opened from the Brain's Skills tab.** The Brain keeps
+   the tab as the door; the list, the import and the hand-written form moved with their ids.
+
+**One call made here, not by the owner, and why.** A whole package is fetched as GitHub's archive
+of the repository from `codeload.github.com` — one paced request instead of one per file, and not
+the 60-an-hour API. That widens the importer's host allowlist by one GitHub host, which
+`FORBIDDEN.md` calls a supply-chain decision: it serves the same repository's files that
+`raw.githubusercontent.com` already does, and the SSRF property is still held by the outbound-URL
+check and the pinned transport, which now also caps the body while it streams (100 MB).
+
+**What it cost.** Groups cannot hold two versions of a skill — that is what Fork is for, and a fork
+is a separate skill to maintain. A repository larger than 100 MB cannot be imported whole; the
+error says to link one skill's folder, which still works through the old path.

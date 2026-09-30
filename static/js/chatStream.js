@@ -794,16 +794,15 @@ export function handleUIControl(uiData) {
         // checker count *this comment* as a fourth unresolved lookup — it does
         // not strip comments before scanning. Filed with the rest of P3-15.)
         if (panel === 'memories' || panel === 'skills') {
-          var memBtn = document.getElementById('tool-memory-btn');
-          if (memBtn) memBtn.click();
-          // Skills is not a panel of its own — it is a tab inside the memory
-          // panel (`static/index.html:350`). Select it the way memory.js's own
-          // code does, after the panel has had a frame to render its tabs.
           if (panel === 'skills') {
-            setTimeout(function () {
-              var tab = document.querySelector('.memory-tab[data-memory-tab="skills"]');
-              if (tab) tab.click();
-            }, 0);
+            // `P9-06`. Skills have their own window now.
+            import('./skills.js').then(function (m) {
+              var open = m.openSkillsWindow || (m.default && m.default.openSkillsWindow);
+              if (open) open('browse');
+            }).catch(function () {});
+          } else {
+            var memBtn = document.getElementById('tool-memory-btn');
+            if (memBtn) memBtn.click();
           }
         } else {
           // Settings is a body-level modal with a module opener — the same one

@@ -74,6 +74,11 @@ STORES: dict[tuple[str, str], tuple[str, str]] = {
         GUARDED, "integration API keys, encrypted at rest"),
     ("src/preset_manager.py", "self.presets_file"): (
         GUARDED, "user-authored personas; `load` falls back to DEFAULT_PRESETS"),
+    ("services/memory/skill_collections.py", "self.path"): (
+        GUARDED, "`P8-50`. The groups a person made and the packages and groups they "
+                 "switched off; `_load` answers a damaged file with an empty store "
+                 "so injection keeps working, and that empty store must never be "
+                 "saved over it"),
 
     # ── strict-read: the read raises, so the write never happens ─────────────
     ("src/upload_handler.py", "uploads_db_path"): (

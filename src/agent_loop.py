@@ -3164,7 +3164,8 @@ def _build_system_prompt(
                     owner, preference=_prefs.get("skill_max_injected"))
                 relevant_skills = sm.get_relevant_skills(
                     last_user,
-                    skills=sm.load(owner=owner),
+                    # `P8-51`: switched-off packages and groups stay out.
+                    skills=sm.load_active(owner=owner),
                     threshold=0.25,
                     max_items=_skill_max_injected,
                     min_confidence=_skill_min_conf,
@@ -5148,7 +5149,7 @@ async def stream_agent_loop(
             except Exception:
                 pass
             _sm = SkillsManager(DATA_DIR)
-            _owner_skills = _sm.load(owner=owner) if _skills_on else []
+            _owner_skills = _sm.load_active(owner=owner) if _skills_on else []
             if _owner_skills:
                 _relevant_tools.add("manage_skills")
                 if _retrieval_query:

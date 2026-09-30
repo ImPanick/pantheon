@@ -6442,7 +6442,8 @@ body.bg-pattern-sparkles {
          the spacing inside an expanded doc card on mobile. */
       #doclib-modal .doclib-card.doclib-card-expanded,
       #email-lib-modal .doclib-card.doclib-card-expanded,
-      #memory-modal .doclib-card.doclib-card-expanded {
+      #memory-modal .doclib-card.doclib-card-expanded,
+      #skills-modal .doclib-card.doclib-card-expanded {
         gap: 2px !important;
         padding: 4px 6px !important;
         height: 100% !important;
@@ -6460,10 +6461,12 @@ body.bg-pattern-sparkles {
          support never applied the gated rule, so the absolute card lost its
          anchor and only filled ~50% — while Chromium/desktop-narrow worked.
          Relative-when-collapsed is harmless (no abs children then). */
-      #memory-modal #skills-list.doclib-grid {
+      #memory-modal #skills-list.doclib-grid,
+      #skills-modal #skills-list.doclib-grid {
         position: relative !important;
       }
-      #memory-modal .doclib-card.skill-card.doclib-card-expanded {
+      #memory-modal .doclib-card.skill-card.doclib-card-expanded,
+      #skills-modal .doclib-card.skill-card.doclib-card-expanded {
         position: absolute !important;
         inset: 0 !important;
         /* Height is set in JS (skills.js _fillSkillCardHeight) as an explicit
@@ -6486,7 +6489,8 @@ body.bg-pattern-sparkles {
       }
       /* Preview is the 1fr grid track — give it a definite-height flex column
          so the <pre> (flex:1) fills and the footer pins at the bottom. */
-      #memory-modal .doclib-card.skill-card.doclib-card-expanded > .doclib-card-preview {
+      #memory-modal .doclib-card.skill-card.doclib-card-expanded > .doclib-card-preview,
+      #skills-modal .doclib-card.skill-card.doclib-card-expanded > .doclib-card-preview {
         display: flex !important;
         flex-direction: column !important;
         min-height: 0 !important;
@@ -6499,11 +6503,13 @@ body.bg-pattern-sparkles {
          Force the preview AND the <pre> to FILL the card. Extra .skill-card
          in the selector out-specifies both the base and the generic mobile
          rule so this wins without ambiguity. */
-      #memory-modal .doclib-card.skill-card.doclib-card-expanded > .doclib-card-preview {
+      #memory-modal .doclib-card.skill-card.doclib-card-expanded > .doclib-card-preview,
+      #skills-modal .doclib-card.skill-card.doclib-card-expanded > .doclib-card-preview {
         flex: 1 1 auto !important;
         min-height: 0 !important;
       }
-      #memory-modal .doclib-card.skill-card.doclib-card-expanded .skill-md-pre {
+      #memory-modal .doclib-card.skill-card.doclib-card-expanded .skill-md-pre,
+      #skills-modal .doclib-card.skill-card.doclib-card-expanded .skill-md-pre {
         flex: 1 1 auto !important;
         min-height: 0 !important;
       }
@@ -6514,7 +6520,8 @@ body.bg-pattern-sparkles {
          paints a 2px accent border + box-shadow with !important. */
       body #doclib-modal .doclib-card.doclib-card-expanded,
       body #email-lib-modal .doclib-card.doclib-card-expanded,
-      body #memory-modal .doclib-card.doclib-card-expanded {
+      body #memory-modal .doclib-card.doclib-card-expanded,
+      body #skills-modal .doclib-card.doclib-card-expanded {
         background: transparent !important;
         border: none !important;
         border-radius: 0 !important;
@@ -6526,7 +6533,8 @@ body.bg-pattern-sparkles {
          above the iOS safe-area / home-indicator strip. */
       #doclib-modal .doclib-card.doclib-card-expanded .doclib-card-preview,
       #email-lib-modal .doclib-card.doclib-card-expanded .doclib-card-preview,
-      #memory-modal .doclib-card.doclib-card-expanded .doclib-card-preview {
+      #memory-modal .doclib-card.doclib-card-expanded .doclib-card-preview,
+      #skills-modal .doclib-card.doclib-card-expanded .doclib-card-preview {
         padding: 4px 6px 20px !important;
         flex: 1 1 auto !important;
         min-height: 82dvh !important;
@@ -6554,7 +6562,9 @@ body.bg-pattern-sparkles {
       #email-lib-modal .doclib-card.doclib-card-expanded .doclib-card-preview pre,
       #email-lib-modal .doclib-card.doclib-card-expanded .doclib-card-preview .email-reader-body,
       #memory-modal .doclib-card.doclib-card-expanded .doclib-card-preview pre,
-      #memory-modal .doclib-card.doclib-card-expanded .doclib-card-preview .skill-md-editor {
+      #memory-modal .doclib-card.doclib-card-expanded .doclib-card-preview .skill-md-editor,
+      #skills-modal .doclib-card.doclib-card-expanded .doclib-card-preview pre,
+      #skills-modal .doclib-card.doclib-card-expanded .doclib-card-preview .skill-md-editor {
         flex: 1 1 auto !important;
         min-height: 0 !important;
         overflow-y: auto !important;
@@ -6570,7 +6580,8 @@ body.bg-pattern-sparkles {
       }
       /* The skill editor textarea keeps a light frame on mobile (it's an
          input, not read-only text) — override the strip-down above. */
-      #memory-modal .doclib-card.doclib-card-expanded .doclib-card-preview .skill-md-editor {
+      #memory-modal .doclib-card.doclib-card-expanded .doclib-card-preview .skill-md-editor,
+      #skills-modal .doclib-card.doclib-card-expanded .doclib-card-preview .skill-md-editor {
         background: var(--bg) !important;
         border: 1px solid var(--border) !important;
         padding: 8px !important;
@@ -6579,7 +6590,8 @@ body.bg-pattern-sparkles {
       #doclib-modal .doclib-card.doclib-card-expanded .doclib-card-preview code.hljs,
       #email-lib-modal .doclib-card.doclib-card-expanded .doclib-card-preview pre code,
       #email-lib-modal .doclib-card.doclib-card-expanded .doclib-card-preview code.hljs,
-      #memory-modal .doclib-card.doclib-card-expanded .doclib-card-preview pre code {
+      #memory-modal .doclib-card.doclib-card-expanded .doclib-card-preview pre code,
+      #skills-modal .doclib-card.doclib-card-expanded .doclib-card-preview pre code {
         background: transparent !important;
         border: none !important;
         padding: 0 !important;
@@ -6587,7 +6599,8 @@ body.bg-pattern-sparkles {
       }
       #doclib-modal .doclib-card.doclib-card-expanded .doclib-card-expanded-actions,
       #email-lib-modal .doclib-card.doclib-card-expanded .doclib-card-expanded-actions,
-      #memory-modal .doclib-card.doclib-card-expanded .doclib-card-expanded-actions {
+      #memory-modal .doclib-card.doclib-card-expanded .doclib-card-expanded-actions,
+      #skills-modal .doclib-card.doclib-card-expanded .doclib-card-expanded-actions {
         padding: 6px 4px 0 !important;
         margin-top: 4px !important;
         flex-shrink: 0 !important;
@@ -6824,14 +6837,16 @@ body.bg-pattern-sparkles {
          need a hard height fallback because the parent uses dvh which
          desktop-tuned selectors don't always trickle through. */
       #doclib-modal .admin-card:has(.doclib-card-expanded) > .doclib-grid,
-      #memory-modal .admin-card:has(.doclib-card-expanded) > .doclib-grid {
+      #memory-modal .admin-card:has(.doclib-card-expanded) > .doclib-grid,
+      #skills-modal .admin-card:has(.doclib-card-expanded) > .doclib-grid {
         height: 100% !important;
       }
       /* Skills modal: keep the header + tab strip visible; the expanded
          card fills the skills-list area below them via position:absolute
          (see the #skills-list rule above). Just make sure the tab-panel +
          its card give the list its full height. */
-      #memory-modal .memory-tab-panel[data-memory-panel="skills"] > .admin-card:has(.doclib-card-expanded) {
+      #memory-modal .memory-tab-panel[data-memory-panel="skills"] > .admin-card:has(.doclib-card-expanded),
+      #skills-modal .skills-view[data-skills-view-panel="browse"] > .admin-card:has(.doclib-card-expanded) {
         flex: 1 1 auto !important;
         min-height: 0 !important;
       }
@@ -7044,7 +7059,8 @@ body.bg-pattern-sparkles {
       #research-overlay,
       #theme-modal,
       #settings-modal,
-      #email-lib-modal {
+      #email-lib-modal,
+      #skills-modal {
         left: calc(var(--icon-rail-w, 48px) + var(--sidebar-w, 0px));
         width: calc(100% - (var(--icon-rail-w, 48px) + var(--sidebar-w, 0px)));
         box-sizing: border-box;
@@ -8858,7 +8874,8 @@ pre { background: var(--code-bg, var(--hl-bg, #282c34)) !important; }
       #memory-modal .memory-modal-content,
       #settings-modal .settings-modal-content,
       #email-lib-modal .modal-content,
-      #doclib-modal .doclib-modal-content {
+      #doclib-modal .doclib-modal-content,
+      #skills-modal .memory-modal-content {
         max-height: 100vh !important;
         max-height: 100dvh !important;
         height: 100vh !important;
@@ -8948,7 +8965,8 @@ pre { background: var(--code-bg, var(--hl-bg, #282c34)) !important; }
          sheet (overflow:hidden) it grew past the viewport and clipped the
          bottom of the skills list + its row action buttons with no way to
          scroll there. Bound the body so the inner list scrolls internally. */
-      #memory-modal .memory-modal-content {
+      #memory-modal .memory-modal-content,
+      #skills-modal .memory-modal-content {
         display: flex !important;
         flex-direction: column !important;
       }
@@ -8957,18 +8975,21 @@ pre { background: var(--code-bg, var(--hl-bg, #282c34)) !important; }
          to its content (~half height) instead of filling, while Chromium
          fills it regardless — which is exactly why the skill expand worked
          on desktop/Chromium but stuck at ~50% on Firefox mobile. */
-      #memory-modal .memory-modal-body {
+      #memory-modal .memory-modal-body,
+      #skills-modal .memory-modal-body {
         flex: 1 1 0 !important;
         min-height: 0 !important;
         overflow: hidden !important;
       }
       /* Same basis:0 fix down the rest of the skills chain so every layer
          fills instead of sizing to content under Firefox. */
-      #memory-modal .memory-tab-panel[data-memory-panel="skills"] {
+      #memory-modal .memory-tab-panel[data-memory-panel="skills"],
+      #skills-modal .skills-view[data-skills-view-panel="browse"] {
         flex: 1 1 0 !important;
         min-height: 0 !important;
       }
-      #memory-modal .memory-tab-panel[data-memory-panel="skills"] > .admin-card {
+      #memory-modal .memory-tab-panel[data-memory-panel="skills"] > .admin-card,
+      #skills-modal .skills-view[data-skills-view-panel="browse"] > .admin-card {
         flex: 1 1 0 !important;
         min-height: 0 !important;
       }
@@ -8978,7 +8999,8 @@ pre { background: var(--code-bg, var(--hl-bg, #282c34)) !important; }
          Edit / Run) off the bottom of the screen. Let flexbox size it from
          the resolved card height instead, so the footer always pins inside
          the visible area. */
-      #memory-modal .doclib-card.doclib-card-expanded .doclib-card-preview {
+      #memory-modal .doclib-card.doclib-card-expanded .doclib-card-preview,
+      #skills-modal .doclib-card.doclib-card-expanded .doclib-card-preview {
         min-height: 0 !important;
       }
       /* Once enter animation finishes, clear it so inline transform works for dragging */
@@ -13021,6 +13043,144 @@ details a:hover {
   min-height: 0;
 }
 .memory-tab-panel.hidden { display: none; }
+
+/* ===== SKILLS WINDOW — `P9-06`, `P8-49` … `P8-52` =====
+   The Brain's card-and-list styling carries over by class (`memory-modal-
+   content`, `memory-modal-body`) and by the `#skills-modal` variants beside
+   every `#memory-modal` skill rule. What is new is the two columns: packages
+   and groups on the left, the list on the right; stacked on a phone. */
+.skills-modal-content {
+  width: min(1040px, 94vw);
+  height: min(84vh, 900px);
+  max-height: 84vh;
+}
+.skills-modal-body {
+  flex-direction: row;
+  align-items: stretch;
+  gap: 12px;
+  overflow: hidden;
+}
+.skills-side {
+  flex: 0 0 214px;
+  min-width: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 2px 8px 8px 0;
+  border-right: 1px solid var(--border);
+  font-size: 12px;
+}
+.skills-main {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow: hidden;
+}
+.skills-side-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 12px 0 3px;
+  padding: 0 6px;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  opacity: 0.6;
+}
+.skills-side-head:first-child { margin-top: 2px; }
+.skills-side-new {
+  margin-left: auto;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: inherit;
+  font: inherit;
+  font-size: 10.5px;
+  text-transform: none;
+  letter-spacing: 0;
+  padding: 1px 6px;
+  cursor: pointer;
+}
+.skills-side-new:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); }
+.skills-side-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 6px;
+}
+.skills-side-row.is-active { background: color-mix(in srgb, var(--fg) 10%, transparent); }
+.skills-side-row.is-off .skills-side-title,
+.skills-side-row.is-off .skills-side-count { opacity: 0.45; }
+.skills-side-pick {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  padding: 5px 6px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.skills-side-pick:hover { background: color-mix(in srgb, var(--fg) 6%, transparent); }
+.skills-side-sub .skills-side-pick { padding-left: 20px; font-size: 11.5px; }
+.skills-side-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.skills-side-count {
+  flex-shrink: 0;
+  opacity: 0.55;
+  font-variant-numeric: tabular-nums;
+}
+.skills-side-switch {
+  flex-shrink: 0;
+  transform: scale(0.78);
+  transform-origin: center;
+  margin: 0 -3px;
+}
+.skills-side-kebab {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: inherit;
+  opacity: 0.6;
+  cursor: pointer;
+  padding: 2px 3px;
+  border-radius: 4px;
+  line-height: 0;
+}
+.skills-side-kebab:hover { opacity: 1; background: color-mix(in srgb, var(--fg) 8%, transparent); }
+.skills-side-empty {
+  opacity: 0.55;
+  padding: 2px 6px 4px;
+  font-size: 11px;
+  line-height: 1.45;
+}
+.skill-off-pill { background: color-mix(in srgb, var(--fg) 12%, transparent); }
+.skill-group-menu-check { width: 14px; display: inline-flex; justify-content: center; flex-shrink: 0; }
+@media (max-width: 768px) {
+  .skills-modal-body { flex-direction: column; gap: 6px; }
+  .skills-side {
+    flex: 0 0 auto;
+    max-height: 32vh;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    padding: 0 0 6px;
+  }
+}
 /* Browse: bounded flex column so #memory-list gets remaining height (not 0px).
    height:min(78vh,max-content) gives a definite cap when long, natural height
    when short. flex-basis:auto (not 0) on the list avoids collapse in auto-sized
@@ -13442,7 +13602,13 @@ textarea.memory-add-input {
 #memory-modal .memory-bulk-bar #skills-bulk-publish,
 #memory-modal .memory-bulk-bar #skills-bulk-audit,
 #memory-modal .memory-bulk-bar #skills-bulk-delete-nonpassing,
-#memory-modal .memory-bulk-bar #skills-bulk-delete {
+#memory-modal .memory-bulk-bar #skills-bulk-delete,
+#skills-modal .memory-bulk-bar #skills-bulk-cancel,
+#skills-modal .memory-bulk-bar #skills-bulk-publish,
+#skills-modal .memory-bulk-bar #skills-bulk-audit,
+#skills-modal .memory-bulk-bar #skills-bulk-delete-nonpassing,
+#skills-modal .memory-bulk-bar #skills-bulk-delete,
+#skills-modal .memory-bulk-bar #skills-bulk-group {
   position: relative;
   top: -2px;
 }
@@ -13474,7 +13640,8 @@ textarea.memory-add-input {
 #gallery-bulk-bar #gallery-bulk-actions,
 #gallery-editor-drafts-bulk #gallery-editor-drafts-bulk-delete,
 #memory-modal .memory-bulk-bar #memory-bulk-delete,
-#memory-modal .memory-bulk-bar #skills-bulk-publish {
+#memory-modal .memory-bulk-bar #skills-bulk-publish,
+#skills-modal .memory-bulk-bar #skills-bulk-publish {
   margin-left: auto;
   position: relative;
   top: -1px;
@@ -13494,7 +13661,8 @@ textarea.memory-add-input {
 #serve-bulk-bar,
 #gallery-bulk-bar,
 #gallery-editor-drafts-bulk,
-#memory-modal .memory-bulk-bar {
+#memory-modal .memory-bulk-bar,
+#skills-modal .memory-bulk-bar {
   padding-right: 18px;
 }
 #email-lib-bulk-delete.email-bulk-loading,
@@ -13529,7 +13697,8 @@ textarea.memory-add-input {
 }
 /* Nudge the whole memory + skills bulk buttons (icon + label together) up. */
 #memory-modal #memory-bulk-bar .memory-toolbar-btn,
-#memory-modal #skills-bulk-bar .memory-toolbar-btn {
+#memory-modal #skills-bulk-bar .memory-toolbar-btn,
+#skills-modal #skills-bulk-bar .memory-toolbar-btn {
   position: relative;
   top: -2px;
 }
@@ -18560,7 +18729,8 @@ body.right-dock-active:not(.email-doc-split-active) .doc-editor-pane {
 #doclib-panel-research .memory-search-input,
 [data-doclib-panel="documents"] .memory-search-input,
 #memory-modal .memory-search-input,
-#tasks-modal .memory-search-input {
+#tasks-modal .memory-search-input,
+#skills-modal .memory-search-input {
   height: 30px;
   min-height: 30px;
   font-size: 11px;
@@ -18698,13 +18868,15 @@ body.right-dock-active:not(.email-doc-split-active) .doc-editor-pane {
    height instead of filling — which is why the skill preview stopped at
    partial height. Flip the grid back to a constrained flex container and
    let the expanded card fill it, exactly like the email reader. */
-#memory-modal .admin-card:has(.doclib-card-expanded) > .doclib-grid {
+#memory-modal .admin-card:has(.doclib-card-expanded) > .doclib-grid,
+#skills-modal .admin-card:has(.doclib-card-expanded) > .doclib-grid {
   overflow: hidden !important;
   display: flex !important;
   flex-direction: column !important;
   flex: 1 1 auto !important;
 }
-#memory-modal .doclib-card.doclib-card-expanded {
+#memory-modal .doclib-card.doclib-card-expanded,
+#skills-modal .doclib-card.doclib-card-expanded {
   flex: 1 1 auto !important;
   height: 100% !important;
 }

@@ -1822,7 +1822,7 @@ document.addEventListener('click', function(e) {
       if (open) open(id);
     }).catch(() => {});
   } else if (kind === 'research') {
-    import('./research/panel.js?v=20260930skillimport1').then(mod => {
+    import('./research/panel.js?v=20260930skillpkgs1').then(mod => {
       const open = mod.openPanel || (mod.default && mod.default.openPanel);
       if (open) open(id);
     }).catch(() => {});
@@ -1932,7 +1932,7 @@ export function buildImageBubble(imageUrl, prompt, model, size, quality, imageId
         : 'png';
       const base = (prompt || 'generated-image').slice(0, 36).replace(/[^a-zA-Z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'generated-image';
       const file = new File([blob], `${base}.${ext}`, { type: blob.type || 'image/png', lastModified: Date.now() });
-      const mod = await import('./fileHandler.js?v=20260930skillimport1');
+      const mod = await import('./fileHandler.js?v=20260930skillpkgs1');
       const addFiles = mod.addFiles || (mod.default && mod.default.addFiles);
       if (!addFiles) throw new Error('attachment handler unavailable');
       await addFiles([file], { skipCrop: true });
@@ -2334,7 +2334,7 @@ export function createMsgFooter(msgElement) {
         const row = document.createElement('div');
         row.className = 'skills-used-row';
         row.style.cursor = 'pointer';
-        row.title = 'Click to open the skills tab';
+        row.title = 'Open this skill';
         const badge = document.createElement('span');
         const teacherWritten = s.source === 'teacher-escalation';
         badge.className = 'skills-used-badge' + (teacherWritten ? ' taught' : '');
@@ -2354,15 +2354,11 @@ export function createMsgFooter(msgElement) {
         row.addEventListener('click', (ev) => {
           ev.stopPropagation();
           closeDetail();
-          // Skills are a tab inside the Brain modal, not a panel of their own,
-          // so this opens the modal and then selects that tab — landing on the
-          // list rather than one screen short of it (Law 15). The first guess
-          // here was a `skills-panel` id that does not exist, and the wiring
-          // ratchet is what caught it.
-          const memModal = document.getElementById('memory-modal');
-          if (memModal) memModal.classList.remove('hidden');
-          const tab = document.querySelector('[data-memory-tab="skills"]');
-          if (tab) tab.click();
+          // `P9-06`. Skills have their own window now; this opens it on the
+          // skill the row names, rather than on the list one screen short of
+          // it (Law 15).
+          import('./skills.js').then(m => (m.openSkill || m.default?.openSkill)?.(s.name))
+            .catch(() => {});
         });
         detail.appendChild(row);
       });

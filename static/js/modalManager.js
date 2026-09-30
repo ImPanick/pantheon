@@ -10,7 +10,7 @@
  *
  * Usage from a tool module:
  *
- *   import * as Modals from './modalManager.js?v=20260930skillimport1';
+ *   import * as Modals from './modalManager.js?v=20260930skillpkgs1';
  *
  *   // After building the modal element and adding it to the body:
  *   Modals.register('gallery-modal', {
@@ -136,6 +136,8 @@ const _LABELS = {
   // Full SVG markup (not a single path-d) — the rounded-lobe brain needs
   // three sub-paths, which the dock renderer supports when the icon string
   // contains '<'.
+  // `P9-06`. The Skills window — the bolt the Brain's Skills tab has always used.
+  'skills-modal':      { label: 'Skills',    icon: 'M13 2 3 14h9l-1 8 10-12h-9l1-8z' },
   'memory-modal':      { label: 'Brain',     icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"/><path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z"/><path d="M15 13a4.5 4.5 0 0 1-3-4 4.5 4.5 0 0 1-3 4"/></svg>' },
   'notes-panel':       { label: 'Notes',     icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3h10l4 4v14H5z"/><path d="M15 3v5h5"/><path d="M8 17.5 15.5 10l2.5 2.5L10.5 20H8z"/></svg>' },
   'email-lib-modal':   { label: 'Email',     icon: 'M2 4h20v16H2zM22 7l-9.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7' },
@@ -1603,6 +1605,9 @@ const _AUTO_WIRE = {
   'tasks-modal':          { rail: 'rail-tasks',     sidebar: 'tool-tasks-btn' },
   'doclib-modal':         { rail: 'rail-archive',   sidebar: 'tool-library-btn' },
   'memory-modal':         { rail: null,             sidebar: 'tool-memory-btn' },
+  // `P9-06`. Opened from the Brain, a chat's skills pill or `ui_control`; no
+  // button of its own, so a closed-window chip un-hides it.
+  'skills-modal':         { rail: null,             sidebar: null },
   'notes-panel':          { rail: 'rail-notes',     sidebar: 'tool-notes-btn' },
   // Email already has its own #email-unread-dot inline next to the title —
   // don't add a second modalManager badge that lands at the right edge.
