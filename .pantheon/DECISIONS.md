@@ -2518,3 +2518,59 @@ error says to link one skill's folder, which still works through the old path.
    its reading of `D-2026-09-08-04` beside `D-2026-09-10-02`; the other reading, announce and go
    ahead, was offered and declined.
 
+
+## D-2026-09-30-03 — the agents get an Ubuntu workstation: a container desktop first, a VM backend next, one per person, full network, and the agent's own tools run inside it
+
+**Asked.** The owner, 2026-09-30: *"Time to add more to the task - a far more robust coding
+environment. How possible would it be to also add VM's like Ubuntu built in, that Agents can use,
+with full computer use mode etc...? Configurable in settings, admin controlled.. basically a
+lightweight Ubuntu environment with super basic setup for agents to interact with..."* This takes up
+two parked entries at once: `DEFERRED.md` D-02 (the container station — the sandbox the threat model
+has been pointing at) and D-03 (the VM station).
+
+**Decided by the owner, 2026-09-30, in four answers:**
+
+1. **Both backends, the container desktop first.** An Ubuntu userland with a light desktop and a
+   browser, in a container beside Pantheon, driven by screenshots and mouse/keyboard (the shape of
+   Anthropic's own computer-use reference). A real VM (QEMU/KVM, with a remote-machine option that
+   covers Proxmox and libvirt) follows as a second backend behind the same protocol, so nothing above
+   the protocol knows which one it is talking to.
+2. **One workstation per person, kept**, with *Reset to clean*. Installed tools and files survive
+   between chats, like a dev box.
+3. **Full network access** — the internet and the LAN — as the default. The recommended answer was
+   *internet yes, home LAN no*; the owner chose full, and it is a setting an admin can narrow
+   (`P20-06`). The adversary this accepts, named (`Law 17`): an agent steered by injected content
+   runs code that reaches devices on the owner's network. `P17-01` measured that a container on the
+   owner's Docker Desktop cannot reach the LAN at all, so whether *full* reaches it there is measured
+   in `P20-06`, not assumed.
+4. **When the workstation is on, the agent's `bash`, `python` and file tools run inside it**, not in
+   Pantheon's own container — which closes the threat model's largest acknowledged gap. Where they run
+   today stays one admin switch away (`workstation_route_tools`, on by default once the workstation
+   is on); with it off, or the workstation off, nothing changes from today (`Law 1`). `host_shell`
+   (`P17-11`, the machine itself) is a third place and is untouched.
+
+**Calls made here, not by the owner, and why.**
+
+- **"One per person" is one Unix account and one X display per person inside one workstation
+  container**, not one container per person. A container per person needs Pantheon to create
+  containers, which needs the host Docker socket — root on the host (`FORBIDDEN.md`: the host-Docker
+  flag stays off). Unix accounts need nothing from the host. The isolation between two people is
+  therefore Unix permissions, not a container boundary; the VM backend is the stronger boundary when
+  that matters.
+- **The agent may use `sudo` by default**, so *super basic setup* can install what a task needs. With
+  it on, one person's agent can read another's home, and the Settings panel says so beside the switch.
+- **The workstation speaks one small HTTP protocol** (`workstation/protocol.py`), served by a
+  standard-library daemon inside it (`workstation/agentd.py`) that imports nothing from Pantheon —
+  `netagent`'s rule — so the same daemon runs in the container, in a VM, or on any machine an admin
+  points Pantheon at. Pantheon imports the protocol module rather than restating it (`Law 7`); the
+  client is `src/workstation_client.py`, beside `src/netagent_client.py`.
+- **The live view is a screenshot stream, not VNC, for now.** Measured 2026-09-30: Pantheon serves no
+  websocket today — `uvicorn` is installed without `websockets` or `wsproto` — so noVNC would need a new
+  dependency, and widening dependencies is its own decision. A person watches the same screenshots the
+  agent sees, a few a second, unchanged frames skipped, and takes over by clicking and typing into
+  them through the same input route. It needs nothing new on either side, and VNC stays open as a
+  later row if the frame rate is not enough.
+- **Zero-config pairing.** The daemon writes its token into a volume only the two services mount; an
+  environment variable overrides it. No token to paste.
+- **Admin-controlled, role-granted.** An admin turns it on; `can_use_workstation` (default off, on for
+  admins) decides who else may use it.

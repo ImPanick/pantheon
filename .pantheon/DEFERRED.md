@@ -63,6 +63,8 @@ launder an action.
 
 ## D-02 · Container station
 
+**TAKEN UP 2026-09-30** as `P20` (`D-2026-09-30-03`): the owner asked for an Ubuntu workstation the agents use, with computer use, container first and a VM backend after. What follows is the reasoning that parked it, kept because `P20` answers its open questions rather than ignoring them.
+
 **What it is.** Deploying and managing containers from inside Pantheon.
 
 **Why it's parked, not dropped.** It's a good idea framed badly. The obvious pitch is
@@ -103,6 +105,8 @@ rather than a feature-shaped one.
 ---
 
 ## D-03 · VM station
+
+**TAKEN UP 2026-09-30** as `P20` (`D-2026-09-30-03`): the owner asked for an Ubuntu workstation the agents use, with computer use, container first and a VM backend after. What follows is the reasoning that parked it, kept because `P20` answers its open questions rather than ignoring them.
 
 **What it is.** Running full virtual machines inside Pantheon.
 

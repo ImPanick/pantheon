@@ -332,7 +332,7 @@ _MUST_BE_REAL_AFTER_COLLECTION = (
 # it to the pre-import block", which is a list being extended by hand each time
 # somebody loses an afternoon. Every loaded module under these package roots is
 # production code, and production code is never a stub.
-_PRODUCTION_ROOTS = ("src.", "core.", "routes.", "integrations.", "netagent.")
+_PRODUCTION_ROOTS = ("src.", "core.", "routes.", "integrations.", "netagent.", "workstation.")
 
 
 def _module_stubs() -> list:

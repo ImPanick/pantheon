@@ -29,6 +29,11 @@ DEFAULT_PRIVILEGES = {
     "can_use_agent": True,
     "can_use_browser": True,
     "can_use_bash": False,
+    # `P20-02`. The workstation (`D-2026-09-30-03`): a separate Ubuntu machine
+    # the agent's shell, Python, files and screen work run in. Off for everyone
+    # but admins until an admin grants it, like `can_use_bash` — but granting it
+    # hands out a shell on the workstation, not on the machine holding the keys.
+    "can_use_workstation": False,
     "can_use_documents": True,
     "can_use_research": True,
     "can_generate_images": True,

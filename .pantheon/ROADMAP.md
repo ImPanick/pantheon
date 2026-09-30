@@ -80,8 +80,9 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P17 | The network the agent is hosted on | 14 | 0 | 0 | **14** |
 | P18 | One button, and it links | 9 | 0 | 0 | **9** |
 | P19 | The proof ledger | 8 | 0 | 0 | **8** |
+| P20 | The workstation | 7 | 7 | 0 | **0** |
 | Backlog | Bugs and hardening found in flight | 533 | 225 | 0 | **308** |
-| **Total** | | **919** | **273** | **8** | **638** |
+| **Total** | | **926** | **280** | **8** | **638** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -243,6 +244,14 @@ they are for.*
 > `check-tracker.py` now validates the newest entry against the table and fails on drift.
 > Entries below the `P0-31` one keep the figure they were written with: a record of what
 > was claimed at the time is worth more than a quietly corrected one (`B44`).
+
+### The workstation opens: an Ubuntu desktop the agents work in, one per person
+`55a712a..HEAD`. **926 tracked, 638 done. 7 new phase rows, 0 regressions. Nothing closed; `P20-01` … `P20-07` filed.**
+The owner asked for a far more robust coding environment — an Ubuntu machine built in, that agents use
+with full computer use, admin-controlled — and answered four questions (`D-2026-09-30-03`): the container
+desktop first and a VM behind the same protocol; one workstation per person, kept; full network; and the
+agent's own shell, Python and file tools run inside it when it is on, which takes them out of the process
+that holds every key. `DEFERRED.md` D-02 and D-03 are taken up as `P20`.
 
 ### Wave three lands: how far a run may go, the command palette, a keyboard pass, and a turn that survives a reload
 `37999b2..HEAD`. **919 tracked, 638 done. 0 new phase rows, 0 regressions. `P2-05`, `P2-12`, `P2-13`,
@@ -9343,6 +9352,129 @@ deletions — 537 files added, 1,387 modified, and 4 removed.** `Law 1` is that 
   **Not cherry-picked by sha**, because our three files have diverged and the change is larger than
   upstream's. Upstream's authorship is credited in the row and the test rather than claimed by a
   rewritten commit. 16 tests, 9 mutations, all caught.
+
+# P20 · The workstation
+
+*Opened 2026-09-30 from the owner: **"Time to add more to the task - a far more robust coding
+environment. How possible would it be to also add VM's like Ubuntu built in, that Agents can use,
+with full computer use mode etc...? Configurable in settings, admin controlled.. basically a
+lightweight Ubuntu environment with super basic setup for agents to interact with..."*** Decided in
+four answers the same day (`D-2026-09-30-03`): both backends with the container first; one
+workstation per person, kept; full network; and the agent's own `bash`, `python` and file tools run
+inside it whenever it is on. It takes up `DEFERRED.md` D-02 and D-03 together.
+
+**THE PHASE OPENS ON WHAT IS ALREADY TRUE, BECAUSE THAT IS WHAT IT FIXES.** Today every shell and
+Python call an agent makes runs **inside Pantheon's own container**, as the process that holds the
+auth file, the model keys and every person's data (`_direct_fallback`, `src/tool_execution.py`,
+hands the child Pantheon's whole `os.environ`). `THREAT_MODEL.md` lists that as a known gap and `SECURITY.md`
+calls it *by design* for admins; `can_use_bash` is off for everyone else precisely because there is
+nowhere safer to put it. A workstation is that somewhere. **The largest single gain in this phase is
+not the desktop — it is that a shell stops being a key to the house.**
+
+**Nothing reaches a model as an image today, and computer use is nothing without it.** A browser
+tool's screenshot is forwarded to the page as `screenshot` (`src/agent_loop.py`, the `images` key of
+the tool envelope) and the model is handed text. `CAP_VISION` exists (`src/model_capabilities.py`)
+and decides nothing about tool results. `P20-04` is therefore two rows' worth of work in one: the
+tool, and the path by which what it sees reaches the model that asked.
+
+**The adversary, named (`Law 17`).** Content the agent reads — a web page, a repository's README, a
+mail — tells it to run something. With the owner's *full network* answer, that something can reach
+the LAN. What stands between it and the rest of Pantheon is: the workstation holds **no** Pantheon
+secret (its only credential is the pairing token, which lets a caller drive the workstation and
+nothing else); it is a separate container with no Docker socket and no Pantheon volume except the
+pairing one; and per person it is a Unix account. With `sudo` on (the default, so *super basic
+setup* can install what a task needs) one person's agent can read another's home, and the panel says
+so. The VM backend is the stronger wall when that matters.
+
+**One protocol, three backends, nothing above it knows which.** The daemon inside the workstation
+(`agentd`) is standard-library Python that imports nothing from Pantheon — `netagent`'s rule — and
+speaks the contract in `workstation/protocol.py`, which Pantheon imports rather than restates. The container image runs it; a VM image runs
+the same file; an admin can point Pantheon at any machine running it.
+
+- [ ] **P20-01** **An Ubuntu workstation exists, and a daemon inside it answers for it.** A
+  `workstation` compose service, opt-in through an overlay beside `docker/host-docker.yml` and
+  switched on from Settings: Ubuntu 24.04, Xvfb with a light window manager, `xdotool`, a screen grabber,
+  Firefox (from Mozilla's apt repository — the snap does not run in a container), `python3`, `git`,
+  `curl` and build tools. `agentd` (`workstation/agentd.py`) serves protocol v1
+  (`workstation/protocol.py`) on port 7040: per-person accounts made on first
+  use (`ensure`), each with its own home and its own X display; `exec` with a timeout and capped
+  output; file read, write and list jailed to that person's home unless `sudo` is on; `screenshot`;
+  `input` (click, drag, type, key, scroll); `control` (who holds the mouse — `P20-05`'s take-over);
+  `reset` (the home back to the image's). The token is
+  generated into a volume only the two services mount, or taken from `PANTHEON_WORKSTATION_TOKEN`.
+  `Verify:` the image builds; a test drives the real daemon over HTTP for every endpoint, the
+  refusals included (no token, wrong token, a path out of the home, an oversized write), and one
+  end-to-end run in this container takes a screenshot of a real display after typing into it. —
+  owner 2026-09-30 — agent:`P20`
+
+- [ ] **P20-02** **Pantheon knows whether there is a workstation, and an admin decides who may use
+  it.** `src/workstation_client.py`, beside `src/netagent_client.py`: the client (it imports the protocol
+  module rather than restating it, one `httpx` client, errors a person can read),
+  the settings (`workstation_enabled`, `workstation_url`, `workstation_token`, `workstation_backend`,
+  `workstation_sudo`, `workstation_network`, and `workstation_route_tools` — *the agent's tools run in
+  the workstation*, on by default once it is on),
+  and `can_use_workstation` in `DEFAULT_PRIVILEGES` (off; on for admins). A Settings section an admin
+  reads without a manual (`Law 15`): on/off, where it is, whether it answers right now and what it
+  said, the `sudo` switch with its consequence beside it, the network mode, *Reset my workstation*.
+  The URL is an admin setting and Pantheon calls it on purpose, so it is not an SSRF surface, and the
+  row says why rather than skipping the validator silently. `Verify:` routes driven with TestClient
+  against the fake daemon: a non-admin cannot change a setting, a person without the privilege is
+  refused by the tools, a down workstation is reported as down with the reason, and the token never
+  leaves the server. — owner 2026-09-30 — agent:`P20`
+
+- [ ] **P20-03** **When the workstation is on, the agent's hands are in it.** `bash`, `python` and
+  the file tools (`read_file`, `write_file`, `edit_file`, `apply_patch`, `ls`, `glob`, `grep`) run
+  through the client as the person the turn belongs to, in their home; a long command keeps
+  streaming progress the way it does today; the tool card says where it ran. With the workstation
+  off, or `workstation_route_tools` switched off by an admin, nothing changes from today (`Law 1`).
+  A turn is never silently moved from one to the other: if the workstation is on and down, the tool
+  says so and does not fall back to Pantheon's container. `can_use_bash` keeps its meaning there;
+  `can_use_workstation` governs the workstation. `host_shell` (`P17-11`, the machine itself) is a
+  third place and is untouched. `Verify:` the real
+  handlers, driven against the fake daemon: each tool's call reaches the daemon with the right
+  account, output and exit code come back in the envelope keys `FORBIDDEN.md` protects, a down
+  workstation is an error and not a host run, and the host path is unchanged with the workstation
+  off. — owner 2026-09-30 — agent:`P20`
+
+- [ ] **P20-04** **Computer use: the agent sees the screen and works the mouse and keyboard.** A
+  `computer` tool (screenshot, click, double and right click, move, drag, type, key, scroll, wait),
+  coordinates in the screenshot's own pixels. **What it sees reaches the model**: for a model with
+  `CAP_VISION`, the screenshot goes into the next request as an image part, and only the newest few
+  are kept so a long session does not fill the context with pictures; a model without vision is told
+  in words that it cannot see the screen and offered the text tools. The chat draws each screenshot
+  on the tool card, as browser tools already do. `Verify:` the tool driven against the fake daemon;
+  the request a vision model is sent carries the image and one without vision carries the sentence;
+  the kept-screenshot bound holds over a twenty-step run. — owner 2026-09-30 — agent:`P20`
+
+- [ ] **P20-05** **A window onto the workstation: watch it, take it over, hand it back.** A tool
+  window that shows the person's display live — a stream of the same screenshots the agent sees, a
+  few a second, an unchanged frame not sent again — with *Take over* (the agent's input is refused
+  with a sentence saying a person has the mouse, through `control`), clicks and keys typed into the
+  picture going to the workstation through `input`, *Hand back*, and *Reset to clean* behind a
+  confirmation. **Not VNC, measured:** Pantheon serves no websocket today (`uvicorn` without
+  `websockets` or `wsproto`), so noVNC would need a new dependency, and that is its own decision
+  (`D-2026-09-30-03`). Opened from the tool card of any workstation call and from the command
+  palette. `Verify:` the stream refuses a person without the privilege and another person's display;
+  the window's controls are driven in the node harness; screenshots on one dark and one light
+  palette. — owner 2026-09-30 — agent:`P20`
+
+- [ ] **P20-06** **The network the workstation has is the one the admin chose, and it is measured.**
+  The owner chose *full* (internet and LAN) as the default. `workstation_network` also offers
+  *internet only* and *none*, enforced inside the workstation (not asked of the agent), and the panel
+  says which is in force and what that means. **Measured, not assumed:** `P17-01` found a container
+  on Docker Desktop cannot reach the owner's LAN at all, so whether *full* does is measured there and
+  written on the row; if it cannot, the panel says so rather than claiming a reach it lacks. `Verify:`
+  in each mode, a probe from inside the workstation to a public host and to a private address gives
+  the answer the mode promises. — owner 2026-09-30 — agent:`P20`
+
+- [ ] **P20-07** **A real VM behind the same protocol.** The second backend: an Ubuntu cloud image run
+  by QEMU (KVM when the host has it), provisioned by cloud-init with the same `agentd`; and the
+  *remote* backend — any machine an admin points `workstation_url` at, which is how a Proxmox or
+  libvirt VM is used without Pantheon becoming a hypervisor manager (`DEFERRED.md` D-03's own
+  reasoning). Nothing above `src/workstation_client.py` changes. `Verify:` the protocol conformance
+  tests run against each backend that can start here; the remote backend is driven against a daemon on
+  another address; what could not be started here is written down as not measured. — owner
+  2026-09-30 — agent:`P20`
 
 - [x] **B69** **There are two complete email-account forms and one of them is mounted nowhere.**
   Found by `P18-07` 2026-09-11, after `P18-01` and the first pass of `P18-07` were both written
