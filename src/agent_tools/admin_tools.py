@@ -15,7 +15,7 @@ import logging
 from typing import Optional, Dict
 
 from src.env_flags import tool_arg_truthy
-from src.tool_capabilities import TrustRung
+from src.tool_capabilities import TrustRung, rung_move_sentence
 
 from src.tool_utils import get_mcp_manager, _parse_tool_args
 from src.tool_security import BUILTIN_EMAIL_TOOLS
@@ -761,6 +761,20 @@ async def do_manage_settings(content: str, owner: Optional[str] = None) -> Dict:
         #
         # So: shipping a refusal here would have been a security change resting
         # on an ordering the codebase says does not hold. Filed as `P7-13`.
+        #
+        # `P7-13`, answered 2026-09-27. The ordering exists now, in one place:
+        # `TRUST_LADDER` (`src/tool_capabilities.py`), where each rung is the
+        # set of situations it stops and asks in, a strict superset of the one
+        # below — and `decision_for` reads those sets, so the ladder is the
+        # gate. The direction this write should not take unasked can be named —
+        # *looser* (`rung_direction`) — and it already does not take it
+        # unasked: this tool is `admin_change`, which every rung that has a
+        # looser rung below it stops and asks about in a clean chat, and every
+        # rung asks about once untrusted content is in. The one path with no
+        # card is a standing allow rule the person saved for this call on
+        # `allow_listed` — their own standing yes. So the key stays writable,
+        # as `D-2026-09-11-01` and `D-2026-09-12-01` decided, and the reply
+        # below says which way a move went, in the ladder's words.
 
         # One sentence per key, because they are not the same kind of thing and
         # a refusal that describes the wrong one reads as a canned excuse.
@@ -970,6 +984,9 @@ async def do_manage_settings(content: str, owner: Optional[str] = None) -> Dict:
             if key in _ENUMS and str(value).lower() not in _ENUMS[key]:
                 return {"error": f"{key} must be one of: {', '.join(_ENUMS[key])}.", "exit_code": 1}
             s = load_settings()
+            # `P7-13`. Which way the ladder moved, said on the reply — read
+            # before the write, so "stricter than" names what it was.
+            rung_before = s.get("trust_rung") if key == "trust_rung" else None
             s[key] = value
             if key in {"default_model", "research_model", "utility_model", "task_model", "vision_model", "image_model"}:
                 resolved = _endpoint_model_from_cache(str(value))
@@ -981,6 +998,11 @@ async def do_manage_settings(content: str, owner: Optional[str] = None) -> Dict:
             save_settings(s)
             if key.endswith("_model") and s.get(f"{key[:-6]}_endpoint_id"):
                 return {"response": f"Set {key} = {value} (endpoint {s.get(f'{key[:-6]}_endpoint_id')}).", "exit_code": 0}
+            if key == "trust_rung":
+                return {
+                    "response": f"Set {key} = {value}. {rung_move_sentence(rung_before, value)}",
+                    "exit_code": 0,
+                }
             return {"response": f"Set {key} = {value}.", "exit_code": 0}
 
         elif action == "delete" or action == "reset":

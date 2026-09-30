@@ -997,7 +997,12 @@ RUNG_BLOCKED_EFFECTS = POST_EXTERNAL_BLOCKED_EFFECTS - frozenset({ToolEffect.REA
 #                                 these two rows. Adding it would be a second name
 #                                 for `GATE_ON_UNTRUSTED` in a clean session.
 #
-# Ordered strictest first. Only the order is meaningful.
+# CORRECTED 2026-09-27 (`P7-13`). This said *"Ordered strictest first. Only the
+# order is meaningful."* Nothing read the order, and nothing could: which rung
+# is stricter was written nowhere, and `D-2026-09-08-05` records that it could
+# not be read from outside. `TRUST_LADDER` below is where the order now lives,
+# derived from what each rung asks about; the declaration order here is kept
+# (`Law 1`) and means nothing.
 class TrustRung(str, Enum):
     ASK_EVERY_TIME = "ask_every_time"
     ALLOW_LISTED = "allow_listed"
@@ -1006,12 +1011,214 @@ class TrustRung(str, Enum):
 
 DEFAULT_TRUST_RUNG = TrustRung.GATE_ON_UNTRUSTED
 
-# The two rungs that ask in a clean session. `GATE_ON_UNTRUSTED` is the current
-# behaviour and stays exactly as it was: an untainted run is never gated.
-_RUNGS_THAT_ASK_UNTAINTED = frozenset({
-    TrustRung.ASK_EVERY_TIME,
-    TrustRung.ALLOW_LISTED,
+
+# ── The ladder, defined by what each rung stops and asks about (P7-13) ───────
+#
+# `D-2026-09-08-05`: *"we make our own trust rungs. Because the current
+# posturing of failure detection etc is incorrectly done."* The row asked
+# whether an order exists among the three inherited rungs, because two callers
+# talk as if one does — a role profile *"may only raise strictness"*, and a turn
+# that says "ask me before using tools" is raised to the strictest rung — while
+# nothing said what "stricter" meant. The owner's test for an order is the
+# only one that can be checked: **a rung is a set of conditions under which the
+# assistant stops and asks the person, and rung N's set is a strict superset of
+# rung N−1's.** Two rungs that fail it are two switches wearing one field.
+#
+# So each rung is written down here as its set of `StopCondition`s, and
+# `decision_for` asks *that set* rather than the rung's name — the ladder is the
+# behaviour, not a description of it beside the behaviour (`Law 7`, `Law 13`).
+# The inherited names keep working and keep their meaning (`Law 1`); each is one
+# rung of this ladder.
+#
+# **Measured before it was written, and the premise had moved since the
+# decision.** On 2026-09-08 the three were not ordered in behaviour; `P7-03`'s
+# fix — a blanket yes no longer outranks a rung that asks — and `P7-04`'s — a
+# standing rule does not survive untrusted content — are what made them nest.
+# The sets below are exactly what `decision_for` did before this block existed,
+# which a test proves by driving the gate through every case and asking which
+# condition it was in when it asked. What was missing was never the order; it
+# was any one place that said it, so every caller that needed it assumed it.
+#
+# A condition is a *situation*, and the five partition every consequential
+# action — a registered effect the relevant gate set blocks, or an unrecognised
+# tool — by who could be steering it and what the person has already said:
+class StopCondition(str, Enum):
+    # The assistant would give itself more reach than the person left it, or
+    # raise a limit the person set (`P7-02`, `P7-12`: `self_escalation_for`).
+    MORE_REACH = "more_reach"
+    # Untrusted content has entered the run — a fetched page, an email, a file
+    # someone else wrote — and nothing the person said covers the action.
+    AFTER_UNTRUSTED = "after_untrusted"
+    # Nothing untrusted has entered, and no standing allow rule covers it.
+    IN_A_CLEAN_CHAT = "in_a_clean_chat"
+    # Untrusted content has entered, after the person pressed "allow for this
+    # task" or "for this chat" on an earlier card: a yes given for one action,
+    # not for whatever a stranger's text asks for next.
+    AFTER_UNTRUSTED_DESPITE_A_YES = "after_untrusted_despite_a_yes"
+    # Nothing untrusted has entered, and a standing allow rule (`P7-04`) covers
+    # it — the one condition that separates "ask every time" from "allow-listed".
+    DESPITE_A_STANDING_RULE = "despite_a_standing_rule"
+
+
+# What each condition means to a person, in the words `manage_settings` uses to
+# say which way a move of the rung went. Each completes both "Pantheon now also
+# stops and asks ..." and "Pantheon no longer stops and asks ...".
+STOP_CONDITION_WORDS: Mapping[StopCondition, str] = MappingProxyType({
+    StopCondition.MORE_REACH:
+        "before it gives itself more reach, or a higher limit than you set",
+    StopCondition.AFTER_UNTRUSTED:
+        "before anything consequential once something from outside the chat "
+        "(a web page, an email, a file it fetched) has come in",
+    StopCondition.IN_A_CLEAN_CHAT:
+        "before anything that changes or sends something in a clean chat",
+    StopCondition.AFTER_UNTRUSTED_DESPITE_A_YES:
+        "after something from outside has come in, when you had already "
+        "allowed the task or the whole chat",
+    StopCondition.DESPITE_A_STANDING_RULE:
+        "before an action you saved an allow rule for",
 })
+
+# The conditions no rung may drop. Below them there is nothing to call a gate:
+# a rung without `AFTER_UNTRUSTED` would lift the post-external gate
+# `FORBIDDEN.md` Part 2 says never lifts, and one without `MORE_REACH` would let
+# the assistant hand itself what the person withheld (`P7-02`).
+FLOOR_STOP_CONDITIONS = frozenset({StopCondition.MORE_REACH, StopCondition.AFTER_UNTRUSTED})
+
+# Least asking first. Each rung is the one before it plus what it adds.
+TRUST_LADDER: tuple[tuple[TrustRung, frozenset[StopCondition]], ...] = (
+    (TrustRung.GATE_ON_UNTRUSTED, FLOOR_STOP_CONDITIONS),
+    (TrustRung.ALLOW_LISTED, FLOOR_STOP_CONDITIONS | {
+        StopCondition.AFTER_UNTRUSTED_DESPITE_A_YES,
+        StopCondition.IN_A_CLEAN_CHAT,
+    }),
+    (TrustRung.ASK_EVERY_TIME, FLOOR_STOP_CONDITIONS | {
+        StopCondition.AFTER_UNTRUSTED_DESPITE_A_YES,
+        StopCondition.IN_A_CLEAN_CHAT,
+        StopCondition.DESPITE_A_STANDING_RULE,
+    }),
+)
+
+
+def validate_trust_ladder(ladder) -> None:
+    """Raise `ValueError` unless `ladder` is one: every rung exactly once, the
+    floor in all of them, and each a strict superset of the one below.
+
+    Run on `TRUST_LADDER` at import, so a ladder that is not one cannot ship —
+    the failure `D-2026-09-08-05` diagnosed is "an order everybody assumed and
+    nobody checked", and a check that runs only in a test is a check someone
+    can skip.
+    """
+    rungs = [rung for rung, _ in ladder]
+    if sorted(r.value for r in rungs) != sorted(r.value for r in TrustRung):
+        raise ValueError(f"the ladder must name every rung exactly once: {rungs}")
+    below = None
+    for rung, conditions in ladder:
+        if not FLOOR_STOP_CONDITIONS <= conditions:
+            raise ValueError(f"{rung.value} drops a floor condition")
+        if below is not None and not conditions > below:
+            raise ValueError(
+                f"{rung.value} is not a strict superset of the rung below it, "
+                "so the two cannot be ordered: they are two switches, not two rungs"
+            )
+        below = conditions
+
+
+validate_trust_ladder(TRUST_LADDER)
+
+_STOP_CONDITIONS: Mapping[TrustRung, frozenset[StopCondition]] = MappingProxyType(dict(TRUST_LADDER))
+_RUNG_RANK: Mapping[TrustRung, int] = MappingProxyType(
+    {rung: rank for rank, (rung, _) in enumerate(TRUST_LADDER)}
+)
+
+
+def stop_conditions(rung: Any) -> frozenset[StopCondition]:
+    """When a run on `rung` stops and asks. An unreadable rung is the default,
+    by `coerce_trust_rung`'s rule."""
+    return _STOP_CONDITIONS[coerce_trust_rung(rung)]
+
+
+def rung_rank(rung: Any) -> int:
+    """`0` for the rung that asks least; one more for each rung above it."""
+    return _RUNG_RANK[coerce_trust_rung(rung)]
+
+
+def is_stricter(rung: Any, than: Any) -> bool:
+    """Whether `rung` asks in every situation `than` asks in, and more. The
+    owner's definition, applied to the sets rather than to a rank."""
+    return stop_conditions(rung) > stop_conditions(than)
+
+
+def stricter_of(*rungs: Any) -> TrustRung:
+    """The rung that asks most of `rungs` — how a rule that *"may only raise
+    strictness"* combines a floor with what it was given."""
+    if not rungs:
+        return DEFAULT_TRUST_RUNG
+    return max((coerce_trust_rung(r) for r in rungs), key=lambda r: _RUNG_RANK[r])
+
+
+def strictest_rung() -> TrustRung:
+    return TRUST_LADDER[-1][0]
+
+
+# The three answers to "which way did the rung move" (`Law 10`: an enum, not a
+# boolean — "not stricter" is two different things).
+RUNG_STRICTER = "stricter"
+RUNG_LOOSER = "looser"
+RUNG_UNCHANGED = "unchanged"
+
+
+def rung_direction(before: Any, after: Any) -> str:
+    """Which way moving from `before` to `after` goes on the ladder."""
+    if is_stricter(after, before):
+        return RUNG_STRICTER
+    if is_stricter(before, after):
+        return RUNG_LOOSER
+    return RUNG_UNCHANGED
+
+
+def rung_move_sentence(before: Any, after: Any) -> str:
+    """What moving the rung from `before` to `after` changes, in words.
+
+    `P7-13`'s chat-side reader. `manage_settings set trust_rung` used to answer
+    *"Set trust_rung = allow_listed."* and nothing else, so neither the person
+    reading the tool card nor the model could tell a tightening from a
+    loosening — the question `B42` got wrong in both directions. The answer is
+    read off the ladder: the conditions the move adds or drops, in
+    `STOP_CONDITION_WORDS`, in the order the enum lists them.
+    """
+    before_rung, after_rung = coerce_trust_rung(before), coerce_trust_rung(after)
+    direction = rung_direction(before_rung, after_rung)
+    if direction == RUNG_UNCHANGED:
+        return f"It was already {after_rung.value}."
+    gained = stop_conditions(after_rung) - stop_conditions(before_rung)
+    lost = stop_conditions(before_rung) - stop_conditions(after_rung)
+    changed = [STOP_CONDITION_WORDS[c] for c in StopCondition if c in (gained | lost)]
+    if direction == RUNG_STRICTER:
+        return (f"That is stricter than {before_rung.value}: Pantheon now also stops "
+                f"and asks {'; '.join(changed)}.")
+    return (f"That is looser than {before_rung.value}: Pantheon no longer stops "
+            f"and asks {'; '.join(changed)}.")
+
+
+def rung_consults_allow_rules(rung: Any) -> bool:
+    """Whether a standing allow rule can answer for this rung: it asks in a
+    clean chat, and not despite a rule. `src/agent_loop.py` builds the rule
+    lookup only when this is true, since no other rung would read it."""
+    asks = stop_conditions(rung)
+    return (
+        StopCondition.IN_A_CLEAN_CHAT in asks
+        and StopCondition.DESPITE_A_STANDING_RULE not in asks
+    )
+
+
+# The rungs that ask in a clean session — derived from the ladder now, and kept
+# under its old name because tests and readers use it (`Law 1`).
+# `GATE_ON_UNTRUSTED` is the current behaviour and stays exactly as it was: an
+# untainted run is never gated.
+_RUNGS_THAT_ASK_UNTAINTED = frozenset(
+    rung for rung, conditions in TRUST_LADDER
+    if StopCondition.IN_A_CLEAN_CHAT in conditions
+)
 
 
 def coerce_trust_rung(value: Any) -> TrustRung:
@@ -1286,7 +1493,7 @@ class ToolRunSecurityContext:
         """
         return bool(
             self.external_untrusted_context_seen
-            or self.rung in _RUNGS_THAT_ASK_UNTAINTED
+            or StopCondition.IN_A_CLEAN_CHAT in stop_conditions(self.rung)
         )
 
     def asks_for(self, tool_name: Any, content: Any = None) -> bool:
@@ -1301,6 +1508,10 @@ class ToolRunSecurityContext:
         return self.gate_is_armed or self_escalation_for(tool_name, content) is not None
 
     def decision_for(self, tool_name: Any, content: Any = None) -> ToolGateDecision:
+        # `P7-13`. Every question below is asked of this set — the rung's stop
+        # conditions from `TRUST_LADDER` — and never of the rung's name, so the
+        # ladder that says which rung is stricter is the gate that enforces it.
+        asks = stop_conditions(self.rung)
         # B70. Checked before the bypasses below, because neither may lift it,
         # and kept independent of `external_untrusted_context_seen` so it holds
         # on a run where that gate never arms and raises no prompt to bypass.
@@ -1318,7 +1529,7 @@ class ToolRunSecurityContext:
         # a person choosing to give it more to act with. Below B70, whose
         # refusal no approval lifts — this one an approval does, once.
         escalation = self_escalation_for(tool_name, content)
-        if escalation is not None:
+        if escalation is not None and StopCondition.MORE_REACH in asks:
             return self._self_escalation_decision(escalation)
         # The bypass does not outrank a rung that asks. **Refutation proved the
         # ladder inverted without this line**, and the reproduction is worth
@@ -1338,7 +1549,13 @@ class ToolRunSecurityContext:
         # The approved action itself still runs: it is authorised by the sealed
         # exact grant, which is bound to that owner, session, tool and content —
         # not by this blanket flag.
-        if self.approval_gate_bypassed and self.rung not in _RUNGS_THAT_ASK_UNTAINTED:
+        #
+        # `P7-13`: "a rung that asks" is the one whose set holds
+        # `AFTER_UNTRUSTED_DESPITE_A_YES` — the condition this line exists for.
+        if (
+            self.approval_gate_bypassed
+            and StopCondition.AFTER_UNTRUSTED_DESPITE_A_YES not in asks
+        ):
             return ToolGateDecision(True)
 
         # The untainted early exit is preserved exactly for the default rung,
@@ -1369,7 +1586,7 @@ class ToolRunSecurityContext:
         # `capabilities_for_action` answers `_UNKNOWN_CAPABILITIES`, so a
         # pathological argument is refused with a truthful card instead of
         # ending the turn and discarding its reply.
-        asks_untainted = self.rung in _RUNGS_THAT_ASK_UNTAINTED
+        asks_untainted = StopCondition.IN_A_CLEAN_CHAT in asks
         if not self.external_untrusted_context_seen and not asks_untainted:
             return ToolGateDecision(True)
 
@@ -1393,7 +1610,9 @@ class ToolRunSecurityContext:
         # classification and be allowed anyway.
         #
         # Only at `ALLOW_LISTED`. `ASK_EVERY_TIME` honouring a saved rule would
-        # be the control lying about its own name.
+        # be the control lying about its own name. `P7-13`: that is the rung
+        # without `DESPITE_A_STANDING_RULE` among those that ask at all in a
+        # clean chat — the default never reaches this line untainted.
         #
         # And **never once untrusted content has entered**. Refutation found the
         # rung asking *less* than the default without this: a standing "anything
@@ -1404,7 +1623,7 @@ class ToolRunSecurityContext:
         # any more. The ladder's own copy promises the strict rungs "only ever
         # make Pantheon ask more often"; this is what makes that true.
         if (
-            self.rung is TrustRung.ALLOW_LISTED
+            StopCondition.DESPITE_A_STANDING_RULE not in asks
             and not self.external_untrusted_context_seen
             and self._allow_rule_matches(tool_name, content)
         ):

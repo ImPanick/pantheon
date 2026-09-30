@@ -56,6 +56,9 @@ from src.tool_capabilities import (
     capabilities_for_tool,
     coerce_trust_rung,
     describe_effects,
+    rung_consults_allow_rules,
+    strictest_rung,
+    stricter_of,
     tool_result_is_successful,
     tool_result_should_arm_gate,
 )
@@ -93,6 +96,15 @@ _BROWSER_MCP_PREFIX = "mcp__builtin_browser__"
 # it may only raise strictness — a profile that lowers the rung hands a user a
 # way to switch their own confirmation gate off.
 #
+# `P7-13`. That rule was a sentence here and in nobody's code, and "strictness"
+# was defined nowhere (`D-2026-09-08-05`). It is code now: `apply_role_floor`
+# reads the role layer `settings.role_limit` already provides for every limit
+# (no role system installs a provider yet, so it answers nothing today — the
+# state every `P12` limit is in), and combines it with the stored rung through
+# `stricter_of`, which asks `TRUST_LADDER` in `src/tool_capabilities.py`. A
+# role can raise the rung and cannot lower it, by the ladder's own definition
+# of higher.
+#
 # There is no environment layer, and that is a decision rather than an omission.
 # `set_settings` (routes/auth_routes.py) writes back `DEFAULT_SETTINGS` merged
 # with the saved file, so the first admin save materialises `trust_rung` into
@@ -115,6 +127,42 @@ def resolve_trust_rung() -> TrustRung:
         logger.debug("Trust rung: settings read failed", exc_info=True)
         return DEFAULT_TRUST_RUNG
     return coerce_trust_rung(stored)
+
+
+def role_trust_rung_floor(owner: Any) -> Optional[TrustRung]:
+    """The rung this owner's role profile says a run must be at least. `P7-13`.
+
+    Read through `settings.role_limit` — the one role layer `P12-01` built for
+    every limit — under the setting's own key. `None` when no role system is
+    installed (today), when the role says nothing, or when what it says is not
+    a rung: a floor nobody can read is no floor, and "no floor" is the state
+    the install already had, so nothing gets looser by failing here.
+    """
+    try:
+        from src.settings import role_limit
+        raw = role_limit(TRUST_RUNG_SETTING, owner)
+    except Exception:
+        logger.debug("Trust rung: role layer unreadable", exc_info=True)
+        return None
+    if raw is None:
+        return None
+    try:
+        return raw if isinstance(raw, TrustRung) else TrustRung(str(raw).strip().casefold())
+    except ValueError:
+        logger.warning("Trust rung: role profile for %r names no rung (%r); no floor",
+                       owner, raw)
+        return None
+
+
+def apply_role_floor(rung: Any, owner: Any) -> TrustRung:
+    """`rung`, raised to the role's floor if the role asks for more. `P7-13`.
+
+    *"It may only raise strictness"*: `stricter_of` answers which of the two
+    asks more from `TRUST_LADDER`, so a role naming a looser rung than the one
+    stored changes nothing, and one naming a stricter rung is obeyed.
+    """
+    floor = role_trust_rung_floor(owner)
+    return coerce_trust_rung(rung) if floor is None else stricter_of(rung, floor)
 
 
 def _resolve_allow_rule_lookup(owner: Any, session_id: Any):
@@ -4560,22 +4608,25 @@ async def stream_agent_loop(
     # P7-03. Read once, here, and carried on the context for the rest of the
     # run: re-reading per tool call would let a settings save land between two
     # blocks of one model turn and answer them under two different policies.
-    _run_rung = resolve_trust_rung()
+    # `P7-13`: and raised to the owner's role floor, if a role sets one.
+    _run_rung = apply_role_floor(resolve_trust_rung(), owner)
     # `P2-14`. *"Ask me before using tools"* used to strip all 82 tools and MCP
     # for the turn. It is a request for confirmation, and confirmation is what
     # `P7-03`'s ladder already does — so the turn is raised to the rung that
     # mints an approval card for every action, and keeps its tools.
     #
-    # It only ever RAISES. `ASK_EVERY_TIME` is the strictest rung, so a person
-    # asking to be consulted cannot, by asking, end up consulted less often
-    # than their stored setting already had them.
+    # It only ever RAISES: a person asking to be consulted cannot, by asking,
+    # end up consulted less often than their stored setting already had them.
+    # `P7-13`: "the strictest rung" and "raise" are the ladder's words now
+    # (`strictest_rung`, `stricter_of`), not an assumption about one name.
     _confirm_tools = bool(tool_policy and tool_policy.require_tool_confirmation)
-    if _confirm_tools and _run_rung is not TrustRung.ASK_EVERY_TIME:
+    if _confirm_tools and _run_rung is not strictest_rung():
+        _raised = stricter_of(_run_rung, strictest_rung())
         logger.info(
             "[agent] turn asked for confirmation before tools; rung %s -> %s",
-            _run_rung.value, TrustRung.ASK_EVERY_TIME.value,
+            _run_rung.value, _raised.value,
         )
-        _run_rung = TrustRung.ASK_EVERY_TIME
+        _run_rung = _raised
     run_security = ToolRunSecurityContext(
         external_untrusted_context_seen=(
             bool(external_untrusted_context_seen)
@@ -4591,7 +4642,7 @@ async def stream_agent_loop(
         rung=_run_rung,
         allow_rule_lookup=(
             _resolve_allow_rule_lookup(owner, session_id)
-            if _run_rung is TrustRung.ALLOW_LISTED
+            if rung_consults_allow_rules(_run_rung)
             else None
         ),
     )
