@@ -2497,3 +2497,24 @@ check and the pinned transport, which now also caps the body while it streams (1
 **What it cost.** Groups cannot hold two versions of a skill — that is what Fork is for, and a fork
 is a separate skill to maintain. A repository larger than 100 MB cannot be imported whole; the
 error says to link one skill's folder, which still works through the old path.
+
+## D-2026-09-30-02 — four calls from wave three: Tab moves the focus, the qwen3 cap guards every door, compare-forge is finished, and a typed cap is raised only by asking
+
+**Asked** by the integrator on 2026-09-30, as wave three merged; **decided by the owner** the same day.
+
+1. **`B948` — Tab in the message box toggled Plan mode, so forward Tab never left the composer.**
+   Decided: **Plan mode moves to a modifier shortcut and Tab moves the focus.** Built as Ctrl+Alt+P
+   in the keybind registry (Control+Option+P on a Mac, where Option+P types a character and
+   Cmd+Option+P is Chrome's Page Setup), listed and rebindable, and named on the Plan button. It
+   closes `P10-06`.
+2. **`B935` — the `pantheon-qwen3` default temperature cap (0.2) guarded the agent path only.**
+   Decided: **cap in every mode**; a temperature the person chose is always honoured, as `P2-13`
+   made the agent path. The other option, dropping the cap, was the purer un-nerf and was declined
+   because the finetune is unstable above 0.2.
+3. **`compare-forge` (`B913`, `B916`, `B918`, `B921`)** had been stopped and was not merged.
+   Decided: **finish it.** A fresh agent did, from the committed and half-done work.
+4. **A loop cap the person typed.** Decided: **the agent asks each time** — the approval card, and a
+   yes raises it for that run only; the saved setting never changes. This is what `P7-12` built on
+   its reading of `D-2026-09-08-04` beside `D-2026-09-10-02`; the other reading, announce and go
+   ahead, was offered and declined.
+

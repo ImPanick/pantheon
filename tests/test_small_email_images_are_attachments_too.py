@@ -53,6 +53,7 @@ from routes.email_helpers import (
     _list_attachments_from_msg,
     require_owner,
 )
+from tests.helpers.esc_stub import esc_source
 from tests.helpers.js_source import js_definition
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -311,8 +312,6 @@ def _reader_markup(attachments, related=()):
         for name in ("_isLikelySignatureImage", "_buildAttsHtmlFor"))
     script = (
         "const { iconsSource } = require(%s);\n"
-        "const _esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;')"
-        ".replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\"/g, '&quot;');\n"
         "const make = new Function('_esc', 'state', iconsSource() + '\\n' + %s + "
         "'\\nreturn { _buildAttsHtmlFor, _isLikelySignatureImage };');\n"
         "const api = make(_esc, { _libFolder: 'INBOX' });\n"
@@ -334,6 +333,8 @@ def _reader_markup(attachments, related=()):
         "attachments": [dict(a, index=i) for i, a in enumerate(attachments)],
         "related_attachments": list(related),
     }))
+    # `B874`: the shipped escaper, not a hand-written one (`test_one_esc_stub_js`).
+    script = esc_source("_esc") + script
     proc = subprocess.run(["node", "-e", script], capture_output=True, text=True)
     assert proc.returncode == 0, proc.stderr
     return json.loads(proc.stdout)

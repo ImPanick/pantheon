@@ -39,7 +39,7 @@ import {
   buildTodoCard,
   demoteSupersededTodoCards,
   safeToolScreenshotSrc,
-} from './chatRenderer.js?v=20260930wavethree1';
+} from './chatRenderer.js?v=20260930wavethree2';
 import { applyAgentThreadNode, agentThreadContent, toolOutputPanesHtml } from './agentThread.js';
 
 function scrollAfter(opts) {
