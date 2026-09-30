@@ -19,7 +19,7 @@ Style them freely. Do not rename them.
 | `.ask-user-card` · `.ask-user-*` | **Two CI tests assert literal source strings** from this file, including exact class assignments and event-dispatch lines. See `DEFERRED.md` D-01. |
 | `.minimized-dock-chip` · `data-modal-id` | The modal auto-wire map, swipe-dismiss and tab-down all key off these. |
 | `data-ui-key` values | Persisted preference keys for 30 visibility toggles. A rename silently resets what users have hidden. |
-| `#search-overlay` · `#search-input` · `#search-results` | Must stay in the DOM even after the command palette supersedes them — five call sites including the rail button and `/find`. |
+| `#search-overlay` · `#search-input` · `#search-results` | The command palette (`P9-01`) is this overlay, extended; the ids carry it. Callers: the rail and sidebar Search buttons, `init` and the page-wide Escape chain in `app.js`, and the `search` keybind (Ctrl+K) in `keyboard-shortcuts.js`. `/find` is not one — it asks `/api/search` itself and replies in the chat. |
 | `ADV_KEYS` + `computeAdvancedDefaults()` | Any new theme token must extend **both in lockstep**, or all 16 themes break. |
 | `.skill-md-editor` + its guard shape | A CI test greps for the literal guard in two functions. |
 | Frontmatter keys + the four `##` headings | The on-disk skill contract. `## Steps` must keep parsing as `procedure`. |

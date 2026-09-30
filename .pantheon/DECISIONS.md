@@ -896,6 +896,10 @@ detection, not a restored refusal — that path was already measured and rejecte
 
 ## D-2026-09-08-05 — we define the trust rungs ourselves; the inherited ones are not a ladder
 
+*Built 2026-09-27 as `TRUST_LADDER` (`P7-13`). On that tree the three inherited rungs already nested by
+the superset test below (after `P7-03`/`P7-04`), so the ladder is the old rungs, stated once and read
+by the gate.*
+
 **What it decides.** `P7-13` asked whether an ordering exists among the trust rungs, since
 `agent_loop.py` says a role profile *"may only raise strictness"* — a sentence that presumes an order
 nothing defines — while `decision_for` carries a reproduction in which *"the two 'stricter' rungs
@@ -1461,6 +1465,10 @@ knowing what they are reversing:
 - The owner's answer to fork three was *inherit*. Adding `trust_rung` to `_SELF_RESTRAINT_KEYS`
   because of this row would be answering a question the owner already answered.
 - `allow_bash` is still upstream of all of it and is per-turn and off by default.
+
+*Measured 2026-09-27 (`P7-13`): the loop is narrower than recorded. Every rung with a looser one below
+it asks before `manage_settings` in a clean chat, and every rung asks after untrusted content, so the
+agent cannot lower its own rung unasked except through an allow rule the person saved for that call.*
 
 **What would reopen this.** Any path by which Pantheon can change what the host agent will run —
 a settings-sourced guard, a route that writes rules, an agent-reachable restart with different

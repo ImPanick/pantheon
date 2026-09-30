@@ -42,8 +42,8 @@
 // start a new chat.
 
 import sessionModule from './sessions.js';
-import settingsModule from './settings.js?v=20260927mcppresets1';
-import { listWindows, showWindow } from './modalManager.js?v=20260930skillpkgs1';
+import settingsModule from './settings.js?v=20260930wavethree1';
+import { listWindows, showWindow } from './modalManager.js?v=20260930wavethree1';
 import { openSkillsWindow } from './skills.js';
 import { slashCatalog, insertSlashToken } from './slashAutocomplete.js';
 import { SETTINGS_GROUPS, searchSettingsPanels } from './settings/registry.js';
