@@ -69,7 +69,16 @@ export const WAITING_FOR_MODEL = 'Waiting for the model';
 export const METER_EVENT_TYPES = Object.freeze(
   new Set(['agent_prep', 'agent_budget', 'rounds_exhausted', 'budget_exceeded']));
 
-const ROUND_LIMIT_SOURCES = ['configured', 'local_lift', 'forced_lift'];
+// `P7-12`: `raised_for_run` — a cap the agent raised for this run, never saved.
+const RAISED_FOR_RUN = 'raised_for_run';
+const ROUND_LIMIT_SOURCES = ['configured', 'local_lift', 'forced_lift', RAISED_FOR_RUN];
+
+/** A step cap the local-inference lift (or `PANTHEON_FORCE_UNLIMITED`) set,
+ *  which is said as lifted and drawn with no bar. A raised one is a number the
+ *  run is really held to, and keeps its bar. */
+function isLifted(b) {
+  return b.source === 'local_lift' || b.source === 'forced_lift';
+}
 
 /** Where a person changes the two limits. Admin-only, and said so. */
 const SETTINGS_PATH = 'Settings › Agent Tools';
@@ -164,6 +173,8 @@ function limitsFrom(payload) {
     toolLimit: hasToolLimitKey
       ? (payload.tool_call_limit === null ? null : positiveInt(payload.tool_call_limit))
       : undefined,
+    // `P7-12`. Absent on a frame from before it, which is the same as configured.
+    toolSource: payload.tool_call_limit_source === RAISED_FOR_RUN ? RAISED_FOR_RUN : 'configured',
   };
 }
 
@@ -378,13 +389,15 @@ export function budgetView(state) {
   const b = state && state.budget;
   if (!b) return null;
   const who = state.teacher ? 'Teacher · ' : '';
-  const lifted = b.source !== 'configured';
+  const lifted = isLifted(b);
   const liftedWhere = b.source === 'local_lift' ? 'local model' : 'this server';
+  const raised = b.source === RAISED_FOR_RUN;
+  const toolsRaised = b.toolSource === RAISED_FOR_RUN;
 
   let steps;
   if (b.roundLimit && !lifted) {
     steps = {
-      text: `${who}Step ${num(b.round)} of ${num(b.roundLimit)}`,
+      text: `${who}Step ${num(b.round)} of ${num(b.roundLimit)}${raised ? ' · raised for this run' : ''}`,
       value: Math.min(b.round, b.roundLimit),
       max: b.roundLimit,
       tone: toneFor(b.round, b.roundLimit),
@@ -399,13 +412,16 @@ export function budgetView(state) {
   if (b.toolCalls !== null) {
     if (b.toolLimit) {
       tools = {
-        text: `Tool calls ${num(b.toolCalls)} of ${num(b.toolLimit)}`,
+        text: `Tool calls ${num(b.toolCalls)} of ${num(b.toolLimit)}${toolsRaised ? ' · raised for this run' : ''}`,
         value: Math.min(b.toolCalls, b.toolLimit),
         max: b.toolLimit,
         tone: toneFor(b.toolCalls, b.toolLimit),
       };
     } else if (b.toolLimit === null) {
-      tools = { text: `Tool calls ${num(b.toolCalls)} · no limit`, value: b.toolCalls, max: null, tone: '' };
+      tools = {
+        text: `Tool calls ${num(b.toolCalls)} · ${toolsRaised ? 'limit removed for this run' : 'no limit'}`,
+        value: b.toolCalls, max: null, tone: '',
+      };
     } else {
       tools = { text: `Tool calls ${num(b.toolCalls)}`, value: b.toolCalls, max: null, tone: '' };
     }
@@ -415,6 +431,13 @@ export function budgetView(state) {
   // run (step 1), and again once either limit is close.
   const start = b.round <= 1;
   const clauses = [];
+  // `P7-12`. A limit the agent raised for itself is said for as long as it
+  // holds: the run was given more than Settings says, and nothing was saved.
+  if (raised && b.roundLimit) clauses.push(`Raised to ${num(b.roundLimit)} steps for this run — nothing saved`);
+  if (toolsRaised) {
+    clauses.push(b.toolLimit ? `Tool-call limit raised to ${num(b.toolLimit)} for this run — nothing saved`
+      : 'Tool-call limit removed for this run — nothing saved');
+  }
   if (b.roundLimit && !lifted) {
     if (steps.tone === 'at') clauses.push('Last step — if it needs more, it stops here and offers Continue');
     else if (steps.tone === 'near' || start) clauses.push(`Stops after step ${num(b.roundLimit)} and offers Continue`);
@@ -452,6 +475,10 @@ export function budgetView(state) {
  *  stops: *This run* under the spinner, *Each message in Agent mode* before
  *  there is a run. */
 function stepRuleText(b, subject) {
+  if (b.roundLimit && b.source === RAISED_FOR_RUN) {
+    return `The assistant raised this run's step limit from ${num(b.configured)} to ${num(b.roundLimit)}, `
+      + `for this run only; nothing was saved. ${subject} stops after step ${num(b.roundLimit)} and offers Continue.`;
+  }
   if (b.roundLimit && b.source === 'configured') {
     return `${subject} stops after step ${num(b.roundLimit)} and offers Continue.`;
   }
@@ -464,6 +491,12 @@ function stepRuleText(b, subject) {
 }
 
 function toolRuleText(b) {
+  if (b.toolSource === RAISED_FOR_RUN) {
+    return b.toolLimit
+      ? `The assistant raised its tool-call limit to ${num(b.toolLimit)} for this run only; nothing was saved. `
+        + `It stops outright after ${num(b.toolLimit)} tool calls.`
+      : 'The assistant removed its tool-call limit for this run only; nothing was saved.';
+  }
   if (b.toolLimit) return `It stops outright after ${num(b.toolLimit)} tool calls.`;
   if (b.toolLimit === null) return 'There is no tool-call limit.';
   return 'The tool-call limit for this run was not reported.';
@@ -490,15 +523,43 @@ export function limitsPreview(payload) {
   if (!payload || typeof payload !== 'object') return null;
   const b = limitsFrom(payload);
   if (!b.roundLimit) return null;
-  const lifted = b.source !== 'configured';
+  const lifted = isLifted(b);
   const liftedWhere = b.source === 'local_lift' ? 'local model' : 'this server';
   const steps = lifted ? `Step limit lifted (${liftedWhere})` : `Up to ${num(b.roundLimit)} steps`;
   const tools = b.toolLimit ? `${num(b.toolLimit)} tool call${b.toolLimit === 1 ? '' : 's'}` : '';
+  const raise = raiseRules(b, payload);
   return {
     text: tools ? `${steps} · ${tools}` : steps,
-    title: limitsTitle(b, 'Each message in Agent mode'),
+    title: `${stepRuleText(b, 'Each message in Agent mode')}${raise.steps} `
+      + `${toolRuleText(b)}${raise.tools} Both are set in ${SETTINGS_PATH}.`,
     source: b.source,
   };
+}
+
+/**
+ * `P7-12`. Who may raise the limits for one run, from the route's
+ * `round_limit_raise` / `tool_call_limit_raise` (`without_asking` ·
+ * `asks_you`). Said before the run because it is part of the answer to *how
+ * far can it run unattended*: a step limit nobody typed, the assistant may
+ * lengthen for one run on its own, up to what a person could type. Each part
+ * is `''` when the route did not say, or when a lifted limit leaves nothing to
+ * raise; otherwise it starts with a space, to follow the rule it qualifies.
+ */
+function raiseRules(b, payload) {
+  const out = { steps: '', tools: '' };
+  if (b.source === 'configured') {
+    const ceiling = positiveInt(payload.round_limit_raise_ceiling);
+    if (payload.round_limit_raise === 'without_asking' && ceiling) {
+      out.steps = ` The assistant may raise it for one run, up to ${num(ceiling)} steps, without `
+        + 'asking; it is stopped sooner if a few rounds in a row bring nothing new.';
+    } else if (payload.round_limit_raise === 'asks_you') {
+      out.steps = ' The assistant has to ask you before it raises a step limit you set.';
+    }
+  }
+  if (b.toolLimit && payload.tool_call_limit_raise === 'asks_you') {
+    out.tools = ' It has to ask you before it raises the tool-call limit.';
+  }
+  return out;
 }
 
 /** Draw `payload` into the composer's hint node (`#agent-limits-hint`). Text

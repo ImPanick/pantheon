@@ -18,6 +18,7 @@ from typing import Any, Iterable, Mapping
 from src.tool_approval_scopes import CHAT_SESSION_APPROVAL_CONTEXT_MARKER
 from src.tool_security import BUILTIN_EMAIL_TOOLS, is_public_blocked_tool
 from src.ui_switches import switch_request
+from src.run_limits import cap_label, configured_cap, describe_cap, owner_set_cap_raise
 
 
 class ToolEffect(str, Enum):
@@ -364,9 +365,12 @@ def capabilities_for_tool(tool_name: Any) -> ToolCapabilities:
 
 @dataclass(frozen=True)
 class SelfEscalation:
-    """One `ui_control` request that would widen what the assistant may do."""
+    """One request that would widen what the assistant may do: a `ui_control`
+    switch turned on (`P7-02`), or a loop cap the owner typed raised
+    (`P7-12`)."""
 
-    # The switch after aliasing: a toggle name, or `agent` for `set_mode agent`.
+    # The switch after aliasing: a toggle name, or `agent` for `set_mode agent`;
+    # for a loop cap, the setting's key.
     switch: str
     # What the card says the assistant wants to do, in the words on the switch.
     words: str
@@ -374,6 +378,10 @@ class SelfEscalation:
     # phrases it through `describe_effects` like every other action (`P7-06`) —
     # not a second vocabulary for "this one is serious".
     grants: frozenset[ToolEffect]
+    # Why only a person can say yes — the card's second sentence begins with
+    # this. `P7-12` gives a raised limit its own words, because a step limit is
+    # not "access"; `P7-02`'s sentence is the default and is unchanged.
+    only_you: str = "Only you can give it more access"
 
 
 def _effects_of(*tool_names: str) -> frozenset[ToolEffect]:
@@ -428,7 +436,12 @@ def self_escalation_for(tool_name: Any, content: Any) -> SelfEscalation | None:
     module already applies to unknown tools. A new switch should be added to
     `_REACH_SWITCHES` with its own words — the test for that is what stops this
     fallback being the one a person ever reads.
+
+    `P7-12`: and `manage_settings` raising a loop cap the owner typed
+    (`_loop_cap_escalation`).
     """
+    if tool_name == "manage_settings":
+        return _loop_cap_escalation(content)
     if tool_name != "ui_control":
         return None
     request = switch_request(content)
@@ -452,6 +465,41 @@ def self_escalation_for(tool_name: Any, content: Any) -> SelfEscalation | None:
         (f"turn on {switch}", _UNKNOWN_CAPABILITIES.effects),
     )
     return SelfEscalation(switch=switch, words=words, grants=grants)
+
+
+def _loop_cap_escalation(content: Any) -> SelfEscalation | None:
+    """`P7-12`. A `manage_settings` call that raises a loop cap the owner typed.
+
+    `D-2026-09-08-04`: the agent may set its own loop caps — *"a number the
+    owner typed is not raised by the agent without saying so"* — and
+    `D-2026-09-10-02` generalises it: *"the agent may move within the ceiling but
+    never raise it."* So a raise of a pinned cap (`setting_is_explicit`, the pin
+    `H08`'s lift honours) is the assistant widening its own reach, and it goes
+    through the one mechanism for that (`Law 14`): asked every time, at every
+    rung, under any blanket yes. A raise of a cap nobody typed is not asked
+    about — that is the full automation the decision is for — and is held to
+    the run by `manage_settings` itself.
+
+    Read through `src/run_limits.loop_cap_request`, the executor's own reading
+    of the call. Grants `admin_change`, which `manage_settings` already has, so
+    the sealed effects of the card are exactly those of the action and an
+    approval matches whatever the pin says by then.
+    """
+    try:
+        request = owner_set_cap_raise(content)
+    except Exception:
+        return None
+    if request is None:
+        return None
+    what = cap_label(request.key)
+    words = (f"raise the {what} you set, {describe_cap(request.key, configured_cap(request.key))}, "
+             f"to {describe_cap(request.key, request.requested)} for this run")
+    return SelfEscalation(
+        switch=request.key,
+        words=words,
+        grants=frozenset({ToolEffect.ADMIN_CHANGE}),
+        only_you="Only you can raise a limit you set",
+    )
 
 
 _PRIVATE_ACTION_READS: Mapping[str, frozenset[str]] = MappingProxyType(
@@ -1692,8 +1740,8 @@ class ToolRunSecurityContext:
         return ToolGateDecision(
             False,
             (
-                f"{why}The assistant wants to {escalation.words}. Only you can "
-                "give it more access, so it asks every time — even after you "
+                f"{why}The assistant wants to {escalation.words}. "
+                f"{escalation.only_you}, so it asks every time — even after you "
                 "have allowed other actions."
             ),
             tripped_effects=tuple(describe_effects(tripped).get("effects", ())),

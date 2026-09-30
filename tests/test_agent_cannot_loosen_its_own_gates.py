@@ -124,10 +124,18 @@ def test_the_agent_can_still_read_them(agent):
 
 
 def test_ordinary_settings_are_untouched(agent):
-    """The restriction has to be narrow or it stops being kept."""
+    """The restriction has to be narrow or it stops being kept.
+
+    `P7-12` changed the value this used: it set the step cap to 42, a *raise*
+    from 20, and `D-2026-09-08-04`'s non-negotiable failsafe is that a raise the
+    agent grants itself is scoped to its run and *never becomes the stored
+    default* — `tests/test_the_agent_raises_its_own_limits_for_the_run.py`
+    pins that. What this test is for is unchanged: `B42`'s refusal does not
+    reach the loop caps, so a write of one is still saved — shown with a
+    lowering, which is saved exactly as before."""
     call, S = agent
-    call(action="set", key="agent_max_rounds", value=42)
-    assert S.get_setting("agent_max_rounds") == 42
+    call(action="set", key="agent_max_rounds", value=12)
+    assert S.get_setting("agent_max_rounds") == 12
 
 
 def test_the_loop_caps_are_deliberately_not_in_the_set(agent):

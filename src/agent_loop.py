@@ -68,7 +68,15 @@ from src.tool_approvals import (
     tool_approval_store,
 )
 from src.tool_utils import _truncate, get_mcp_manager
-from src.agent_stops import call_signature, loop_breaker_stop, unkept_promise_stop
+from src.agent_stops import (
+    ROUNDS_WITHOUT_NEW_INFORMATION,
+    call_signature,
+    information_key,
+    loop_breaker_stop,
+    no_new_information_stop,
+    unkept_promise_stop,
+)
+from src.run_limits import CAPS_FROM_CALLER, RunLimits, bind_run_limits
 from src.agent_tools import (
     parse_tool_blocks,
     strip_tool_blocks,
@@ -4460,8 +4468,14 @@ def _agent_budget_frame(
     round_limit_configured: int,
     tool_calls: int,
     tool_call_limit: int,
+    tool_call_limit_source: str = "configured",
 ) -> str:
     """One `agent_budget` SSE frame. `P4-23`.
+
+    `P7-12`: a cap the agent raised for this run says so —
+    `round_limit_source` and `tool_call_limit_source` are `raised_for_run` —
+    so the meter can tell a person the run was given more, and that nothing
+    was saved.
 
     The limits a run is held to were on the wire exactly once, inside the event
     that announced the run had hit one — `rounds_exhausted`, `budget_exceeded`
@@ -4484,6 +4498,7 @@ def _agent_budget_frame(
         "round_limit_configured": round_limit_configured,
         "tool_calls": tool_calls,
         "tool_call_limit": _tool_call_limit_on_wire(tool_call_limit),
+        "tool_call_limit_source": tool_call_limit_source,
     }
     return f"data: {json.dumps(frame)}\n\n"
 
@@ -4562,6 +4577,7 @@ async def stream_agent_loop(
     history_session=None,
     defer_context_shaping: bool = False,
     suppress_skills: bool = False,
+    loop_caps_source: str = CAPS_FROM_CALLER,
 ) -> AsyncGenerator[str, None]:
     """Streaming agent loop generator.
 
@@ -4583,7 +4599,10 @@ async def stream_agent_loop(
       - data: {"type": "agent_budget", "round": N, ...}     (P4-23: the caps in
                                                              force and what is
                                                              used, per round and
-                                                             per tool call)
+                                                             per tool call; P7-12:
+                                                             again when a tool
+                                                             raised one for this
+                                                             run)
       - data: {"type": "metrics", "data": {...}}            (final metrics)
       - data: [DONE]                                        (end)
 
@@ -5772,6 +5791,16 @@ async def stream_agent_loop(
     # backstop. Counting identical repeats — not distinct same-tool calls —
     # lets a legit batch (e.g. 18 calendar events at once) through.
     _call_freq: collections.Counter = collections.Counter()
+    # `P7-12`. The information ledger, the third loop signal
+    # (`D-2026-09-08-04`: *"producing no new information across N rounds — no
+    # new file read, no new command, no new content"*). Every call made, every
+    # result seen and every sentence written in this reply, by identity; and
+    # how many tool rounds in a row have added none of the three. Run-wide, not
+    # a six-round window, so a cycle longer than six rounds is still a cycle.
+    _seen_calls: set = set()
+    _seen_results: set = set()
+    _seen_texts: set = set()
+    _rounds_without_news = 0
     _force_answer = False  # set by loop-breaker → next round runs with NO tools
     # Supervisor: how many times we've nudged the model after it announced
     # an action without emitting the tool call. Capped to prevent a model
@@ -5858,6 +5887,20 @@ async def stream_agent_loop(
         schemas = route_mcp_schemas if wants_mcp and route_mcp_schemas else []
         return _filter_route_tool_schemas(schemas)
 
+    # `P7-12`. The run's two caps, held where `manage_settings` can raise them
+    # for this run and nothing else (`src/run_limits.py`). Built here, before
+    # the approved-action replay, because an approved card for a raise runs
+    # first; resolved with the same helpers `agent_run_limits` uses, and settled
+    # onto the loop's own lift below, where the loop has always resolved it.
+    _preview_limits = agent_run_limits(endpoint_url, max_rounds, max_tool_calls)
+    _run_limits = RunLimits(
+        round_limit=_preview_limits["round_limit"],
+        round_limit_source=_preview_limits["round_limit_source"],
+        round_limit_configured=max_rounds,
+        tool_call_limit=max_tool_calls,
+        caps_source=loop_caps_source,
+    )
+
     _approved_result_injected = False
     if exact_approval is not None:
         approved = exact_approval.pending
@@ -5912,6 +5955,9 @@ async def stream_agent_loop(
             await approved_progress_q.put(payload)
 
         async def _run_approved_tool():
+            # `P7-12`. This task's context is a copy of the loop's, so the
+            # binding is the approved call's and ends with it.
+            bind_run_limits(_run_limits)
             try:
                 return await execute_tool_block(
                     approved_block,
@@ -6200,6 +6246,21 @@ async def stream_agent_loop(
     # lift, and the counter the budget check reads — never a second copy of any
     # of them, which is the only way a progress bar cannot lie about a stop.
     _max_rounds_source = _round_limit_source(_configured_max_rounds, max_rounds, endpoint_url)
+    # `P7-12`. The holder adopts the lift the loop just resolved; a raise an
+    # approved card granted at the top of the run stays on top of it. From here
+    # on `max_rounds` / `max_tool_calls` are the holder's, re-read whenever a
+    # tool raises one (`_adopt_run_limits`), so the `for`, the budget check, the
+    # stop and the meter keep reading one number each.
+    _run_limits.settle(max_rounds, _max_rounds_source)
+    _run_limits.changed = False
+
+    def _adopt_run_limits():
+        nonlocal max_rounds, max_tool_calls, _max_rounds_source
+        max_rounds = _run_limits.round_limit
+        max_tool_calls = _run_limits.tool_call_limit
+        _max_rounds_source = _run_limits.round_limit_source
+
+    _adopt_run_limits()
 
     def _budget_frame(current_round: int) -> str:
         return _agent_budget_frame(
@@ -6209,7 +6270,18 @@ async def stream_agent_loop(
             round_limit_configured=_configured_max_rounds,
             tool_calls=total_tool_calls,
             tool_call_limit=max_tool_calls,
+            tool_call_limit_source=_run_limits.tool_call_limit_source,
         )
+
+    def _round_numbers():
+        """`range(1, max_rounds + 1)`, except that it reads `max_rounds` at
+        every step: a raise granted mid-run (`P7-12`) lengthens the run it was
+        granted in, and the `for ... else` below still means "every allowed
+        round ran"."""
+        n = 0
+        while n < max_rounds:
+            n += 1
+            yield n
 
     def _next_step_frame(current_round: int) -> Optional[str]:
         """`B906`. The `agent_step` that announces step `current_round + 1`, or
@@ -6222,7 +6294,7 @@ async def stream_agent_loop(
             return None
         return f'data: {json.dumps({"type": "agent_step", "round": current_round + 1})}\n\n'
 
-    for round_num in range(1, max_rounds + 1):
+    for round_num in _round_numbers():
         yield _budget_frame(round_num)   # `P4-23`: a round only starts here
         round_response = ""
         round_reasoning = ""  # reasoning_content deltas (DeepSeek-thinking, vLLM --reasoning-parser)
@@ -7140,24 +7212,51 @@ async def stream_agent_loop(
         # Distinct calls to one tool (a real batch) are legitimate work, so we
         # count identical call signatures, not raw per-tool-type totals.
         _runaway = _detect_runaway_call(_call_freq)
-        if _stuck_rounds >= 4 or _runaway:
+        # `P7-12`. The ledger's question, asked before this round's calls run:
+        # does it make any call not already made in this reply, or write
+        # anything not already written? If not, and the rounds before it
+        # brought nothing new either — no new call, no new result, no new words
+        # — this is the Nth round of going round in circles, narrated or not.
+        # Its results are not known yet; the rounds before it are the evidence
+        # that repeating these calls returns what it returned before.
+        _round_calls = [call_signature(b.tool_type, b.content) for b in tool_blocks]
+        _round_text_key = information_key(_real_text)
+        _round_calls_new = any(sig not in _seen_calls for sig in _round_calls)
+        _round_text_new = _round_text_key is not None and _round_text_key not in _seen_texts
+        _nothing_new = (
+            not _round_calls_new
+            and not _round_text_new
+            and _rounds_without_news >= ROUNDS_WITHOUT_NEW_INFORMATION - 1
+        )
+        if _stuck_rounds >= 4 or _runaway or _nothing_new:
             reason = (f"calling {_runaway} with identical arguments over and over" if _runaway
-                      else "repeating the same tool calls without new progress")
+                      else "repeating the same tool calls without new progress" if _stuck_rounds >= 4
+                      else "bringing nothing new round after round")
             _off = [t for t in ("web_search", "bash")
                     if disabled_tools and t in disabled_tools]
             # `P4-10`. Which tool, how many times, with what, and what to do
             # next — instead of one fixed sentence for both conditions. The
             # arguments are quoted only through `safe_arguments`, which
             # withholds anything that may be a credential.
-            _stop = loop_breaker_stop(
-                round_num=round_num,
-                tool_blocks=tool_blocks,
-                call_freq=_call_freq,
-                runaway=bool(_runaway),
-                rounds_without_progress=_stuck_rounds,
-                detail=reason,
-                switched_off=_off,
-            )
+            if _stuck_rounds >= 4 or _runaway:
+                _stop = loop_breaker_stop(
+                    round_num=round_num,
+                    tool_blocks=tool_blocks,
+                    call_freq=_call_freq,
+                    runaway=bool(_runaway),
+                    rounds_without_progress=_stuck_rounds,
+                    detail=reason,
+                    switched_off=_off,
+                )
+            else:
+                _stop = no_new_information_stop(
+                    round_num=round_num,
+                    tool_blocks=tool_blocks,
+                    call_freq=_call_freq,
+                    rounds=_rounds_without_news + 1,
+                    detail=reason,
+                    switched_off=_off,
+                )
             _agent_stops.append(_stop)
             logger.warning(f"[agent] loop-breaker tripped on round {round_num} ({reason}): {_stop['message']}")
             yield f"data: {json.dumps(_stop)}\n\n"
@@ -7395,6 +7494,9 @@ async def stream_agent_loop(
                     await _progress_q.put(payload)
 
                 async def _run_tool():
+                    # `P7-12`. The run a `manage_settings` raise belongs to;
+                    # this task's context is a copy, so it ends with the call.
+                    bind_run_limits(_run_limits)
                     try:
                         return await execute_tool_block(
                             block,
@@ -7438,6 +7540,13 @@ async def stream_agent_loop(
                             pass
 
             run_security.observe_tool_result(block.tool_type, result, block.content)
+
+            # `P7-12`. A cap raised for this run by the call that just ran:
+            # adopt it, and say so on the meter before the card lands.
+            if _run_limits.changed:
+                _run_limits.changed = False
+                _adopt_run_limits()
+                yield _budget_frame(round_num)
 
             # A skill the model just loaded can prescribe tools that weren't
             # RAG-selected this turn (declared via requires_toolsets in its
@@ -7952,6 +8061,23 @@ async def stream_agent_loop(
         if (_pan_notes_finetune_mode or _pan_qwen_finetune_model) and _pan_notes_tool_completed:
             logger.info("[agent] pantheon completed from deterministic tool output")
             break
+
+        # `P7-12`. What this round added to the ledger: a call not made before,
+        # a result not seen before, words not written before. A round with none
+        # of the three is one more round without news; any of them resets it.
+        _round_results_new = False
+        for _record in tool_result_records:
+            _key = information_key(_record.get("text"))
+            if _key is not None and _key not in _seen_results:
+                _seen_results.add(_key)
+                _round_results_new = True
+        _seen_calls.update(_round_calls)
+        if _round_text_key is not None:
+            _seen_texts.add(_round_text_key)
+        if _round_calls_new or _round_text_new or _round_results_new:
+            _rounds_without_news = 0
+        else:
+            _rounds_without_news += 1
 
         # Feed results back to LLM for next round
         # Pass the CONVERTED calls (aligned 1:1 with tool_result_texts), not the

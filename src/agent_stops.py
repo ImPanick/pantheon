@@ -45,6 +45,13 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence
 KIND_IDENTICAL_CALLS = "identical_calls"
 KIND_NO_PROGRESS = "no_progress"
 KIND_UNKEPT_PROMISE = "unkept_promise"
+#: `P7-12`. Rounds that brought nothing new — the information ledger's stop.
+KIND_NO_NEW_INFORMATION = "no_new_information"
+
+#: `P7-12`. How many rounds in a row may bring nothing new before the loop
+#: stops them. Four, the stall detector's own number: the ledger is a sharper
+#: test of the same thing, not a more impatient one.
+ROUNDS_WITHOUT_NEW_INFORMATION = 4
 
 #: `arguments_state` — whether the repeated call's arguments are on the event.
 ARGS_SHOWN = "shown"
@@ -86,6 +93,16 @@ def call_signature(tool_type: Any, content: Any) -> str:
     text = content if isinstance(content, str) else ("" if content is None else str(content))
     digest = hashlib.sha256(text.strip().encode("utf-8", "replace")).hexdigest()[:32]
     return f"{tool_type}:{digest}"
+
+
+def information_key(text: Any) -> Optional[str]:
+    """`P7-12`. One piece of information's identity: a tool result, or the
+    model's own words in a round. Whitespace and case do not make text new;
+    anything else does. `None` for nothing at all, which is never new."""
+    flat = " ".join(str(text or "").split()).casefold()
+    if not flat:
+        return None
+    return hashlib.sha256(flat.encode("utf-8", "replace")).hexdigest()[:32]
 
 
 def _one_line(text: str, limit: int) -> str:
@@ -209,6 +226,59 @@ def loop_breaker_stop(
     return event
 
 
+def no_new_information_stop(
+    *,
+    round_num: int,
+    tool_blocks: Sequence[Any],
+    call_freq: Counter,
+    rounds: int,
+    detail: str,
+    switched_off: Iterable[str] = (),
+) -> Dict[str, Any]:
+    """The `loop_breaker_triggered` event for the information ledger. `P7-12`.
+
+    `D-2026-09-08-04` made loop detection the precondition for letting the
+    agent raise its own step limit, and said what *smarter* means: round-count
+    is not a loop signal — the same call with the same arguments is, cycling
+    between two states is, and *"producing no new information across N rounds —
+    no new file read, no new command, no new content"* is. The stall detector
+    above counts a repeated call only in a round that wrote nothing, over the
+    last six rounds; a model that narrates ("Checking again.") or cycles over a
+    longer period never trips it, and meets only the fifteen-call backstop.
+    This stop is the third signal: `rounds` rounds in a row with no call not
+    already made in this reply, no result not already seen, and no words not
+    already written.
+
+    Same event, same keys, same `next` as the loop-breaker (`Law 1`), with its
+    own `kind` and the count of empty rounds.
+    """
+    block, count = _repeated_call(tool_blocks, call_freq)
+    tool = str(getattr(block, "tool_type", "") or "a tool")
+    return {
+        "type": "loop_breaker_triggered",
+        "reason": "loop_breaker_no_new_information",
+        "kind": KIND_NO_NEW_INFORMATION,
+        "round": round_num,
+        "tool": tool,
+        "count": count,
+        **safe_arguments(tool, getattr(block, "content", None)),
+        "message": (
+            f"Stopped: {int(rounds)} rounds in a row brought nothing new — every "
+            f"call had already been made in this reply and gave the same result "
+            f"(it called {tool} {_times(count)})."
+        ),
+        "next": (
+            "That last attempt was not run, and tools are off for the rest of "
+            "this reply, so the answer below uses only what it had already "
+            "found. To go further, tell it what to try instead, or run it "
+            "yourself and paste the result."
+            + _switched_off_note(switched_off)
+        ),
+        "detail": detail,
+        "rounds_without_new_information": int(rounds),
+    }
+
+
 def unkept_promise_stop(
     *,
     round_num: int,
@@ -256,6 +326,8 @@ def unkept_promise_stop(
 
 __all__: List[str] = [
     "ARGS_EMPTY", "ARGS_SHOWN", "ARGS_WITHHELD",
-    "KIND_IDENTICAL_CALLS", "KIND_NO_PROGRESS", "KIND_UNKEPT_PROMISE",
-    "call_signature", "loop_breaker_stop", "safe_arguments", "unkept_promise_stop",
+    "KIND_IDENTICAL_CALLS", "KIND_NO_NEW_INFORMATION", "KIND_NO_PROGRESS",
+    "KIND_UNKEPT_PROMISE", "ROUNDS_WITHOUT_NEW_INFORMATION",
+    "call_signature", "information_key", "loop_breaker_stop", "no_new_information_stop",
+    "safe_arguments", "unkept_promise_stop",
 ]

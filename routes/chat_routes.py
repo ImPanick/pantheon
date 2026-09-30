@@ -2920,6 +2920,10 @@ def setup_chat_routes(
                         suppress_skills=not ctx.skills_enabled,
                         max_tool_calls=_tool_budget,
                         max_rounds=_max_rounds,
+                        # `P7-12`. These two are Settings' `agent_max_rounds`
+                        # and `agent_max_tool_calls`, so a `manage_settings`
+                        # raise of either may lengthen this run (never saved).
+                        loop_caps_source="settings",
                         context_length=_selected_context_length,
                         active_document=active_doc,
                         active_email=active_email_ctx,
@@ -3584,7 +3588,13 @@ def setup_chat_routes(
         would be held to — the four limit keys of the run's first
         `agent_budget` frame, before there is a run."""
         from src.agent_loop import agent_run_limits
-        from src.run_limits import configured_agent_caps
+        from src.run_limits import (
+            AGENT_MAX_ROUNDS_KEY,
+            AGENT_MAX_ROUNDS_RANGE,
+            AGENT_MAX_TOOL_CALLS_KEY,
+            cap_is_owner_set,
+            configured_agent_caps,
+        )
 
         owner = effective_user(request)
         selected_id = str(endpoint_id or "").strip()
@@ -3598,7 +3608,20 @@ def setup_chat_routes(
                 resolved = None
             run_url = resolved[0] if resolved else selected_url
         caps = configured_agent_caps()
-        return agent_run_limits(run_url, caps.rounds, caps.tool_calls)
+        limits = agent_run_limits(run_url, caps.rounds, caps.tool_calls)
+        # `P7-12`. Part of "how far can it run unattended": the assistant may
+        # raise a limit nobody typed for one run on its own, up to what a
+        # person could type, and has to ask before raising one somebody did.
+        # The same pin the gate reads (`cap_is_owner_set`), so the promise and
+        # the card cannot disagree about which limits are whose.
+        limits.update({
+            "round_limit_raise": (
+                "asks_you" if cap_is_owner_set(AGENT_MAX_ROUNDS_KEY) else "without_asking"),
+            "round_limit_raise_ceiling": AGENT_MAX_ROUNDS_RANGE[1],
+            "tool_call_limit_raise": (
+                "asks_you" if cap_is_owner_set(AGENT_MAX_TOOL_CALLS_KEY) else "without_asking"),
+        })
+        return limits
 
     # ------------------------------------------------------------------ #
     # Standing allow rules for the `allow_listed` trust rung (P7-04)

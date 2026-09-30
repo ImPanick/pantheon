@@ -191,7 +191,9 @@ JSON events are dispatched by "type":
                        line under it lists the finished ones with measured times
                        (P4-08)
   agent_budget       → agentMeter.js: step / tool-call meter under the spinner, and
-                       what happens at each limit, before it happens (P4-23)
+                       what happens at each limit, before it happens (P4-23); a cap
+                       the agent raised for this run is `raised_for_run` and says
+                       nothing was saved (P7-12)
   tool_start         → finalize text bubble; create agent-thread node with wave animation
                        (the thread it joins: `_cardThread`, shared with tool_blocked)
   tool_blocked       → refusal card where a tool card would go; closes the step the

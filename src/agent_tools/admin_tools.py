@@ -16,6 +16,13 @@ from typing import Optional, Dict
 
 from src.env_flags import tool_arg_truthy
 from src.tool_capabilities import TrustRung, rung_move_sentence
+from src.run_limits import (
+    LOOP_CAP_ALIASES,
+    configured_cap,
+    loop_cap_request,
+    raise_for_current_run,
+    raises,
+)
 
 from src.tool_utils import get_mcp_manager, _parse_tool_args
 from src.tool_security import BUILTIN_EMAIL_TOOLS
@@ -696,6 +703,13 @@ async def do_manage_settings(content: str, owner: Optional[str] = None) -> Dict:
         # They are runaway and cost caps with no approval semantics, "give
         # yourself more steps" is a real thing to ask for, and a restriction
         # that has to be argued each time is one nobody keeps. Filed as `P7-12`.
+        #
+        # `P7-12`, decided (`D-2026-09-08-04`) and built 2026-09-27: they stay
+        # writable, with the decision's failsafes. A raise is for the run that
+        # asked and is never saved (`_loop_cap_raise` below, through
+        # `src/run_limits.py`); a raise of a number the owner typed asks every
+        # time (`self_escalation_for`); a lowering is saved as it always was;
+        # and the loop's information ledger stops a run that brings nothing new.
         _SELF_RESTRAINT_KEYS = {
             "agent_email_confirm",
             # `P12-10`. The deadline after which an unanswered approval card
@@ -836,7 +850,9 @@ async def do_manage_settings(content: str, owner: Optional[str] = None) -> Dict:
             "ntfy topic": "reminder_ntfy_topic",
             "webhook integration": "reminder_webhook_integration_id",
             "webhook template": "reminder_webhook_payload_template", "webhook payload": "reminder_webhook_payload_template",
-            "agent tool calls": "agent_max_tool_calls", "max tool calls": "agent_max_tool_calls",
+            # `P7-12`: the loop caps' friendly names live in `src/run_limits.py`,
+            # where the approval gate reads a call through the same table.
+            **LOOP_CAP_ALIASES,
             "agent timeout": "agent_stream_timeout_seconds", "stream timeout": "agent_stream_timeout_seconds",
             "token budget": "agent_input_token_budget", "input budget": "agent_input_token_budget",
             "hard max": "agent_input_token_hard_max",
@@ -925,6 +941,29 @@ async def do_manage_settings(content: str, owner: Optional[str] = None) -> Dict:
         def _mask(k, v):
             return "••••• (set in panel)" if _is_secret(k) and v else v
 
+        def _loop_cap_raise(call_args):
+            """`P7-12`. A `set`, `reset` or `delete` that would *raise* a loop
+            cap: raised for the running agent run and never saved. `None` for
+            anything else, including a lowering, which is saved below exactly as
+            before. The gate has already asked the person if the cap was theirs
+            (`self_escalation_for`), so by the time this runs, it may."""
+            request = loop_cap_request(call_args)
+            if request is None or not raises(
+                request.key, configured_cap(request.key), request.requested
+            ):
+                return None
+            outcome = raise_for_current_run(request)
+            return {
+                "response": outcome.words,
+                "run_limit": {
+                    "key": outcome.key,
+                    "outcome": outcome.outcome,
+                    "limit": outcome.limit,
+                    "saved": False,
+                },
+                "exit_code": 0,
+            }
+
         if action == "list":
             s = load_settings()
             shown = {
@@ -961,6 +1000,9 @@ async def do_manage_settings(content: str, owner: Optional[str] = None) -> Dict:
                                     f"asking for that looks the same whether it came from you or "
                                     f"from something I was reading. Open Settings and change it "
                                     f"there.", "exit_code": 0}
+            raised = _loop_cap_raise(args)
+            if raised is not None:
+                return raised
             # Structured settings (dicts/lists like keybinds or vision fallbacks)
             # have no safe scalar coercion; _coerce would pass a bare string
             # straight through and clobber the structure. Refuse them here; they
@@ -1021,6 +1063,11 @@ async def do_manage_settings(content: str, owner: Optional[str] = None) -> Dict:
                 # than one it can touch carefully.
                 return {"response": f"'{key}' {_self_restraint_why(key)}. Reset it in Settings.",
                         "exit_code": 0}
+            # `P7-12`. Resetting a cap below its default *raises* it: a run's,
+            # never the saved one.
+            raised = _loop_cap_raise(args)
+            if raised is not None:
+                return raised
             # `B68`. The `set` branch above refuses every structured setting and
             # says "(You can reset it to default here.)" on the reasoning, in its
             # own comment, that "reset/delete still restore the default

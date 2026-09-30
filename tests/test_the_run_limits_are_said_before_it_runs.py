@@ -258,7 +258,10 @@ def endpoints(monkeypatch):
 def test_the_route_resolves_the_selection_the_way_a_send_does(endpoints, query, source):
     answer = _limits(endpoints, **{"endpoint_id": "", "endpoint_url": "", **query})
     assert answer["round_limit_source"] == source
-    assert set(answer) == set(LIMIT_KEYS), "the answer names no endpoint, host or key"
+    # `P7-12` adds who may raise each limit for a run; still nothing about the
+    # endpoint itself.
+    raise_keys = {"round_limit_raise", "round_limit_raise_ceiling", "tool_call_limit_raise"}
+    assert set(answer) == set(LIMIT_KEYS) | raise_keys, "the answer names no endpoint, host or key"
 
 
 # ── the words, under node ───────────────────────────────────────────────────
