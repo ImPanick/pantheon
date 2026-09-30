@@ -1370,6 +1370,7 @@ def save_assistant_response(
     do_research: bool = False,
     tool_events: list = None,
     incognito: bool = False,
+    agent_notes: list = None,
 ):
     """Add assistant response to session history.
 
@@ -1417,6 +1418,12 @@ def save_assistant_response(
         md["research_clarification"] = True
     if tool_events:
         md["tool_events"] = tool_events
+    # `B915`. The notes the turn drew in the history beside its reply — the step
+    # limit and its Continue offer, the tool budget, a teacher's takeover, the
+    # skill notes — so a reload draws them where the live stream did
+    # (`AgentNotes` in `src/agent_stops.py`). Absent when there were none.
+    if agent_notes:
+        md["agent_notes"] = agent_notes
 
     # Extract thinking into metadata (don't pollute message content with <think> tags)
     _think_info = _extract_thinking_meta(full_response)

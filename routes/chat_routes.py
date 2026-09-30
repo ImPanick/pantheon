@@ -2873,6 +2873,9 @@ def setup_chat_routes(
                 _agent_tool_calls = 0
                 _answered_by = None  # set if the selected model failed and a fallback answered
                 _fallback_chain = None  # `P4-05`: every candidate tried, with its status
+                # `B915`: the notes the turn draws beside its reply, kept for the save.
+                from src.agent_stops import AgentNotes
+                _agent_notes = AgentNotes()
                 _requested_model = sess.model
                 _actual_model = None
                 _agent_requested_route = _foreground_route_descriptors[0]
@@ -2966,6 +2969,7 @@ def setup_chat_routes(
                         if chunk.startswith("data: ") and not chunk.startswith("data: [DONE]"):
                             try:
                                 data = json.loads(chunk[6:])
+                                _agent_notes.observe(data)   # `B915`
                                 if "delta" in data:
                                     # Reasoning tokens arrive flagged thinking:true.
                                     # Forward them for the live indicator, but keep
@@ -3083,6 +3087,7 @@ def setup_chat_routes(
                                             fallback_chain=_fallback_chain,
                                             auto_escalation=_auto_escalation_payload if auto_escalated else None,
                                             incognito=incognito,
+                                            agent_notes=_agent_notes.saved(),   # `B915`
                                         )
                                         _terminal_saved = True
                                         accumulate_token_usage(session, terminal_metadata, outcome="error")
@@ -3155,6 +3160,7 @@ def setup_chat_routes(
                                     fallback_chain=_fallback_chain,
                                     auto_escalation=_auto_escalation_payload if auto_escalated else None,
                                     incognito=incognito,
+                                    agent_notes=_agent_notes.saved(),   # `B915`
                                 )
                                 if _saved_id:
                                     yield f'data: {json.dumps({"type": "message_saved", "id": _saved_id})}\n\n'

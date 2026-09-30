@@ -27,8 +27,9 @@ import { createStreamRenderer } from './streamingRenderer.js';
 import { applyAgentThreadNode, verifierCardOptions, blockedCardOptions,
          toolOutputPanesHtml, agentThreadContent, ensureThreadToggleAll,
          toggleThreadAll, syncThreadToggleAll, TOOL_LABELS } from './agentThread.js';
-// `P4-10`. The line that says why the agent stopped itself.
-import { renderAgentStop } from './agentStops.js';
+// `P4-10`. The line that says why the agent stopped itself — and (`B915`) the
+// turn's other notes, drawn by the same module for the reload.
+import { renderAgentStop, renderAgentNote } from './agentStops.js';
 import { wireArrowUpRecall, getUserMessagesFromChatHistory } from './composerArrowUpRecall.js?v=20260714promptrecall';
 import {
   createIncrementalDisplayProjector,
@@ -4437,35 +4438,17 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
                   // the pending spinner is called off here.
                   _cancelThinkingTimer();
                   _removeThinkingSpinner();
-                  // Drop any prior box so repeated cap-hits each get a fresh
-                  // Continue at the bottom (multiple continues in a row).
-                  const _old = _chatBox.querySelector('.rounds-exhausted');
-                  if (_old) _old.remove();
-                  const note = document.createElement('div');
-                  note.className = 'stopped-indicator rounds-exhausted';
-                  const label = document.createElement('span');
-                  label.className = 'rounds-exhausted-label';
-                  label.textContent = `Reached the ${json.rounds || ''}-step limit — not finished.`;
-                  note.appendChild(label);
-                  const contBtn = document.createElement('button');
-                  contBtn.className = 'continue-btn';
-                  contBtn.title = 'Continue the task';
-                  contBtn.textContent = 'Continue ▸';
-                  const _holder = holder;
-                  contBtn.addEventListener('click', () => {
-                    note.remove();
-                    _hideUserBubble = true;
-                    _pendingContinue = _holder;
-                    const msgInput = uiModule.el('message');
-                    if (msgInput) {
-                      msgInput.value = 'You hit the step limit before finishing — the task is not complete. Continue from exactly where you left off and keep going until it is done. Do NOT repeat work already done.';
-                      const sb = document.querySelector('.send-btn');
-                      if (sb) sb.click();
-                    }
-                  });
-                  note.appendChild(contBtn);
-                  _chatBox.appendChild(note);
-                  try { note.scrollIntoView({ block: 'end', behavior: 'smooth' }); } catch (_) { uiModule.scrollHistory && uiModule.scrollHistory(); }
+                  // `B915`. The note and its Continue are drawn by the one
+                  // builder history replay and a resumed stream use, so a
+                  // reload offers Continue too (the route saves the event with
+                  // the reply). It drops any prior box first, so repeated
+                  // cap-hits each get a fresh Continue at the bottom (multiple
+                  // continues in a row), and Continue picks up from this
+                  // turn's first bubble, as it always did.
+                  const note = renderAgentNote(_chatBox, json, { reply: holder });
+                  if (note) {
+                    try { note.scrollIntoView({ block: 'end', behavior: 'smooth' }); } catch (_) { uiModule.scrollHistory && uiModule.scrollHistory(); }
+                  }
                 }
               } else if (json.type === 'model_actual') {
                 if (!_isBg) {
@@ -4973,11 +4956,8 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
                 if (_isBg) continue;
                 _cancelThinkingTimer();
                 _removeThinkingSpinner();
-                const budgetDiv = document.createElement('div');
-                budgetDiv.style.cssText = 'font-size:11px;opacity:0.6;font-style:italic;padding:4px 8px;margin:4px 0;';
-                budgetDiv.textContent = `Tool budget reached (${json.used}/${json.limit} calls). Agent stopped.`;
-                const chatBox = document.getElementById('chat-history');
-                chatBox.appendChild(budgetDiv);
+                // `B915`: drawn by the builder a reload and a resumed stream use.
+                renderAgentNote(document.getElementById('chat-history'), json);
 
               } else if (json.type === 'loop_breaker_triggered' || json.type === 'intent_nudge_exhausted') {
                 if (_isBg) continue;
@@ -5017,14 +4997,10 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
                 else _cancelLiveThinkingWork();
                 _finalizeRoundRender();
                 if (spinner && spinner.element) { try { spinner.destroy(); } catch(_){} spinner = null; }
-                const chatBox = document.getElementById('chat-history');
-                const banner = document.createElement('div');
-                banner.className = 'teacher-takeover-banner';
-                banner.style.cssText = 'margin:10px 0;padding:8px 12px;border-left:3px solid #c08a3e;background:rgba(192,138,62,0.08);font-size:12px;color:var(--fg);border-radius:4px;';
-                const teacherName = json.teacher_model || 'teacher';
-                const why = json.student_failure ? ` &mdash; <span style="opacity:0.7">${esc(json.student_failure)}</span>` : '';
-                banner.innerHTML = `<strong>Teacher takeover:</strong> escalating to <code>${esc(teacherName)}</code>${why}`;
-                chatBox.appendChild(banner);
+                // `B915` / `B917`: the banner is drawn by the builder a reload
+                // and a resumed stream use, as text — the student's failure
+                // can quote a tool's output.
+                renderAgentNote(document.getElementById('chat-history'), json);
                 // The teacher's first text starts a new bubble, below the
                 // banner, with a spinner of its own for the teacher's
                 // preparation and meter to hang under. Its cards start a new
@@ -5033,31 +5009,21 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
                 lastToolThread = null;
                 const _teacherBody = _openRoundBubble();
                 if (_teacherBody) {
-                  spinner = spinnerModule.create('Generating response', 'right', 'wave');
-                  _teacherBody.appendChild(spinner.createElement());
-                  spinner.start();
+                  // `B917`: the spinner a resumed takeover opens too — a
+                  // step's, without the meter until the teacher's first frame.
+                  spinner = _openRoundSpinner(_teacherBody, null);
                 }
                 uiModule.scrollHistory();
 
               } else if (json.type === 'skill_saved') {
                 if (_isBg) continue;
-                const chatBox = document.getElementById('chat-history');
-                const note = document.createElement('div');
-                note.className = 'skill-saved-note';
-                note.style.cssText = 'margin:6px 0;padding:6px 10px;border-left:3px solid #4a8a4a;background:rgba(74,138,74,0.07);font-size:12px;color:var(--fg);border-radius:4px;';
-                note.innerHTML = `<strong>Skill learned:</strong> <code>${esc(json.name || '')}</code>${json.category ? ` <span style="opacity:0.6">[${esc(json.category)}]</span>` : ''}`;
-                chatBox.appendChild(note);
+                // `B915`: one builder for the live stream, a resumed one and a reload.
+                renderAgentNote(document.getElementById('chat-history'), json);
                 uiModule.scrollHistory();
 
               } else if (json.type === 'escalation_failed' || json.type === 'skill_save_failed') {
                 if (_isBg) continue;
-                const chatBox = document.getElementById('chat-history');
-                const note = document.createElement('div');
-                note.className = 'escalation-failed-note';
-                note.style.cssText = 'margin:6px 0;padding:6px 10px;border-left:3px solid #8a4a4a;background:rgba(138,74,74,0.07);font-size:12px;color:var(--fg);border-radius:4px;';
-                const label = json.type === 'escalation_failed' ? 'Teacher could not solve it' : 'Skill not saved';
-                note.innerHTML = `<strong>${label}:</strong> <span style="opacity:0.75">${esc(json.reason || '')}</span>`;
-                chatBox.appendChild(note);
+                renderAgentNote(document.getElementById('chat-history'), json);   // `B915`
                 uiModule.scrollHistory();
 
               } else if (json.error) {
@@ -6652,11 +6618,13 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
 
     // A new step's bubble, opened as `agent_step` opens it live — with its
     // spinner and the meter under it — or, without a spinner, when text arrives
-    // for a step whose bubble was hidden (`_ensureVisibleRoundForDelta`).
-    const openRound = (withSpinner) => {
+    // for a step whose bubble was hidden (`_ensureVisibleRoundForDelta`). A
+    // teacher's first bubble (`B917`) has a spinner and, until the teacher's
+    // own first frame, no meter, as live.
+    const openRound = (withSpinner, spinnerMeter = meter) => {
       roundHolder = _newRoundBubble(box, holder, roundHolder, sessionId, meta && meta.model);
       const body = roundHolder.querySelector('.body');
-      if (withSpinner) spinner = _openRoundSpinner(body, meter);
+      if (withSpinner) spinner = _openRoundSpinner(body, spinnerMeter);
       contentDiv = document.createElement('div');
       contentDiv.className = 'stream-content';
       body.appendChild(contentDiv);
@@ -6745,12 +6713,15 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
                 presentMeterEvent(meter, json, wait.host());
                 break;
               default:
-                // The stop the meter was counting toward, recorded. The live
-                // stream also draws the Continue offer or the tool-budget
-                // note beside it. Neither is saved with the reply, so the
-                // reload this stream ends in would take either away again;
-                // they are not drawn here.
+                // The stop the meter was counting toward, recorded — and
+                // (`B917`) the Continue offer or the tool-budget note beside
+                // it, drawn as the live stream draws them. They are saved with
+                // the reply now (`B915`), so the reload this stream ends in
+                // draws them again rather than taking them away.
                 presentMeterEvent(meter, json, null);
+                wait.cancel();
+                wait.remove();
+                renderAgentNote(box, json, { reply: holder });
                 rich = true;
             }
           } else if (json.type === 'tool_start') {
@@ -6800,6 +6771,23 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
             wait.cancel();
             wait.remove();
             if (renderAgentStop(box, json)) uiModule.scrollHistory();
+          } else if (json.type === 'teacher_takeover') {
+            // `B917`. The takeover, as the live arm draws it: the student's
+            // step is closed where it stands, the banner goes below it, and
+            // the teacher's run opens a bubble of its own below that, with the
+            // spinner its preparation and meter hang under. Its cards start a
+            // thread of their own (the banner ends the search for one).
+            rich = true;
+            closeRound();
+            renderAgentNote(box, json);
+            toolNode = null;
+            toolThread = null;
+            openRound(true, null);
+          } else if (json.type === 'skill_saved' || json.type === 'escalation_failed'
+                     || json.type === 'skill_save_failed') {
+            // `B917`: the skill notes, by the live stream's builder.
+            rich = true;
+            if (renderAgentNote(box, json)) uiModule.scrollHistory();
           } else if (json.type === 'agent_step') {
             rich = true;
             closeRound();
@@ -6941,15 +6929,16 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
   //   research_* — research keeps its own progress view, and a resumed stream
   //       is never attached to a research run (`_checkServerStream`);
   //   ask_user — the question or approval card, from the saved tool event;
-  //   teacher_takeover, skill_saved, escalation_failed, skill_save_failed —
-  //       notes the live stream draws and nothing saves;
   //   plan_update, doc_update, doc_suggestions, ui_control — these act on the
   //       plan, the document editor and the page. A replay from the run's
   //       first event would act again on something already done.
+  // `B917`: `teacher_takeover`, `skill_saved`, `escalation_failed` and
+  // `skill_save_failed` left this list. They are saved with the reply now
+  // (`B915`), and the resumed view draws them as the live one does.
   const _RESUME_RELOAD_TYPES = new Set([
     'web_sources', 'rag_sources', 'memories_used', 'skills_injected', 'auto_escalated',
     'research_progress', 'research_sources', 'research_findings', 'research_done',
-    'ask_user', 'teacher_takeover', 'skill_saved', 'escalation_failed', 'skill_save_failed',
+    'ask_user',
     'plan_update', 'doc_update', 'doc_suggestions', 'ui_control',
   ]);
 

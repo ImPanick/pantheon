@@ -52,6 +52,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CHAT_JS = ROOT / "static" / "js" / "chat.js"
 AGENT_METER = ROOT / "static" / "js" / "agentMeter.js"
 PROVENANCE = ROOT / "static" / "js" / "chatModelProvenance.js"
+AGENT_STOPS = ROOT / "static" / "js" / "agentStops.js"
 
 #: The modules whose events go out through the route's agent branch: the loop,
 #: the two guard stops it yields, and the teacher, which relays a recursive
@@ -313,6 +314,9 @@ def sandbox(tmp_path_factory):
         pytest.skip("node binary not on PATH")
     d = _make_sandbox(tmp_path_factory.mktemp("everyevent"), AGENT_METER, _SHIM, {})
     shutil.copy(PROVENANCE, d / PROVENANCE.name)
+    # `B915` / `B917`: the takeover's banner is drawn by the one builder the
+    # reload and a resumed stream use, so the real module is in the sandbox.
+    shutil.copy(AGENT_STOPS, d / AGENT_STOPS.name)
     return d
 
 
@@ -407,6 +411,7 @@ def _script(body: str) -> str:
     parts = [
         "import { document, Node, box, bubble, thread, history } from './shim.js';",
         "import { inheritModelRouteState } from './chatModelProvenance.js';",
+        "import { renderAgentNote } from './agentStops.js';   // B915 / B917",
         esc_source(),
         _STUBS,
         "let holder = null; let roundHolder = null;",
@@ -422,6 +427,8 @@ def _script(body: str) -> str:
         _definition("function _newRoundBubble("),
         _definition("function _threadForNextCard("),
         _definition("function _startToolCard("),
+        # `B917`: the teacher's spinner is the one a step opens with.
+        _definition("function _openRoundSpinner("),
         "function toolBlocked(json, _isBg = false) { for (const _ of [0]) {"
         + _arm("} else if (json.type === 'tool_blocked') {",
                "} else if (json.type === 'auto_escalated') {") + "} }",

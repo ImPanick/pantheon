@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// agentStops.js — the line that says why the agent stopped itself.
+// agentStops.js — the line that says why the agent stopped itself, and (`B915`,
+// at the end of this file) the turn's other notes: the step limit and its
+// Continue offer, the tool budget, the teacher's takeover, and the skill notes.
 //
 // `P4-10`. Two guards in the agent loop end work the model did not end: the
 // loop-breaker (the same call over and over) and the unkept-promise stop (it
@@ -104,7 +106,172 @@ export function renderAgentStop(box, event) {
   return node;
 }
 
+// ── `B915` · The turn's other notes ──────────────────────────────────────────
+//
+// Six more events draw a line into the history beside the reply, as siblings
+// and never inside a bubble, for the reason above: the step limit and its
+// Continue offer (`rounds_exhausted`), the tool budget (`budget_exceeded`), the
+// teacher taking over (`teacher_takeover`), and what became of a skill
+// (`skill_saved`, `escalation_failed`, `skill_save_failed`). Each was drawn by
+// its own arm in `chat.js` and saved nowhere, so any reload dropped them — and
+// Continue ▸ went with its note, so a run that hit the step limit could not be
+// continued from the button after a reload; a resumed stream, which ends in a
+// reload, drew two of them and lost those at its end. The route saves them now
+// (`agent_notes`, collected by `AgentNotes` in `src/agent_stops.py`), and this
+// is the one place that draws them: the live stream, a resumed one and history
+// replay. Every word is set through `textContent` — a skill's name, a teacher's
+// model and the reason a student failed (which can quote a tool's output) are
+// all somebody else's text — where the three teacher arms used `innerHTML`.
+
+/** The events drawn here. `AGENT_NOTE_TYPES` in `src/agent_stops.py` is the
+ *  server's copy, and a test holds the two equal. */
+export const AGENT_NOTE_TYPES = Object.freeze(['rounds_exhausted', 'budget_exceeded',
+  'teacher_takeover', 'skill_saved', 'escalation_failed', 'skill_save_failed']);
+
+/** What Continue ▸ asks for after the step limit. */
+export const STEP_LIMIT_CONTINUE_PROMPT = 'You hit the step limit before finishing — the task is not '
+  + 'complete. Continue from exactly where you left off and keep going until it is done. Do NOT '
+  + 'repeat work already done.';
+
+export function isAgentNote(event) {
+  return !!event && AGENT_NOTE_TYPES.includes(event.type);
+}
+
+function textPart(d, tag, text, { cls = '', opacity = '' } = {}) {
+  const n = d.createElement(tag);
+  if (cls) n.className = cls;
+  if (opacity) n.style.opacity = opacity;
+  n.textContent = text;
+  return n;
+}
+
+function words(d, text) {
+  return d.createTextNode(text);
+}
+
+/**
+ * Continue ▸ after the step limit: the note goes, the next send is a
+ * continuation of `reply` (the turn's first bubble — merged with what comes
+ * back, as a stopped reply's Continue merges), its prompt is hidden, and it is
+ * sent. Through `window.chatModule`, which owns the send, as the history
+ * renderer's own Continue already goes (`chatRenderer.js`).
+ */
+function continueAfterStepLimit(d, note, reply) {
+  note.remove();
+  const chat = (typeof window !== 'undefined' && window.chatModule) || null;
+  const target = typeof reply === 'function' ? reply() : reply;
+  if (chat) {
+    if (typeof chat.setHideUserBubble === 'function') chat.setHideUserBubble();
+    if (typeof chat.setPendingContinue === 'function') chat.setPendingContinue(target || null);
+  }
+  const input = d.getElementById('message');
+  if (input) {
+    input.value = STEP_LIMIT_CONTINUE_PROMPT;
+    const send = d.querySelector('.send-btn');
+    if (send) send.click();
+  }
+}
+
+/** Build the note for `event`, or `null` for anything else. `opts.reply` is the
+ *  turn's first bubble (or a function returning it), for Continue ▸. */
+export function agentNoteNode(doc, event, opts = {}) {
+  const d = doc || (typeof document !== 'undefined' ? document : null);
+  if (!d || !isAgentNote(event)) return null;
+  const node = d.createElement('div');
+  node.setAttribute('role', 'note');
+  switch (event.type) {
+    case 'rounds_exhausted': {
+      node.className = 'stopped-indicator rounds-exhausted';
+      node.appendChild(textPart(d, 'span', `Reached the ${event.rounds || ''}-step limit — not finished.`,
+        { cls: 'rounds-exhausted-label' }));
+      const btn = d.createElement('button');
+      btn.className = 'continue-btn';
+      btn.title = 'Continue the task';
+      btn.textContent = 'Continue ▸';
+      btn.addEventListener('click', () => continueAfterStepLimit(d, node, opts.reply));
+      node.appendChild(btn);
+      return node;
+    }
+    case 'budget_exceeded':
+      node.className = 'budget-exceeded-note';
+      node.style.cssText = 'font-size:11px;opacity:0.6;font-style:italic;padding:4px 8px;margin:4px 0;';
+      node.textContent = `Tool budget reached (${event.used}/${event.limit} calls). Agent stopped.`;
+      return node;
+    case 'teacher_takeover': {
+      node.className = 'teacher-takeover-banner';
+      node.style.cssText = 'margin:10px 0;padding:8px 12px;border-left:3px solid #c08a3e;background:rgba(192,138,62,0.08);font-size:12px;color:var(--fg);border-radius:4px;';
+      node.appendChild(textPart(d, 'strong', 'Teacher takeover:'));
+      node.appendChild(words(d, ' escalating to '));
+      node.appendChild(textPart(d, 'code', String(event.teacher_model || 'teacher')));
+      if (event.student_failure) {
+        node.appendChild(words(d, ' — '));
+        node.appendChild(textPart(d, 'span', String(event.student_failure), { opacity: '0.7' }));
+      }
+      return node;
+    }
+    case 'skill_saved':
+      node.className = 'skill-saved-note';
+      node.style.cssText = 'margin:6px 0;padding:6px 10px;border-left:3px solid #4a8a4a;background:rgba(74,138,74,0.07);font-size:12px;color:var(--fg);border-radius:4px;';
+      node.appendChild(textPart(d, 'strong', 'Skill learned:'));
+      node.appendChild(words(d, ' '));
+      node.appendChild(textPart(d, 'code', String(event.name || '')));
+      if (event.category) {
+        node.appendChild(words(d, ' '));
+        node.appendChild(textPart(d, 'span', `[${event.category}]`, { opacity: '0.6' }));
+      }
+      return node;
+    default:   // escalation_failed, skill_save_failed
+      node.className = 'escalation-failed-note';
+      node.style.cssText = 'margin:6px 0;padding:6px 10px;border-left:3px solid #8a4a4a;background:rgba(138,74,74,0.07);font-size:12px;color:var(--fg);border-radius:4px;';
+      node.appendChild(textPart(d, 'strong',
+        event.type === 'escalation_failed' ? 'Teacher could not solve it:' : 'Skill not saved:'));
+      node.appendChild(words(d, ' '));
+      node.appendChild(textPart(d, 'span', String(event.reason || ''), { opacity: '0.75' }));
+      return node;
+  }
+}
+
+/**
+ * Draw `event` at the end of `box` (the `#chat-history` element) and return the
+ * note, or `null` when there is nothing to draw. One Continue at a time: a
+ * later step limit takes an earlier one's box away first, as the live arm
+ * always did, so a reloaded history keeps only the last.
+ */
+export function renderAgentNote(box, event, opts = {}) {
+  if (!box || typeof box.appendChild !== 'function') return null;
+  const node = agentNoteNode(box.ownerDocument || (typeof document !== 'undefined' ? document : null),
+    event, opts);
+  if (!node) return null;
+  if (event.type === 'rounds_exhausted' && typeof box.querySelectorAll === 'function') {
+    Array.from(box.querySelectorAll('.rounds-exhausted')).forEach((old) => old.remove());
+  }
+  box.appendChild(node);
+  return node;
+}
+
+/**
+ * A later message withdraws a step limit's Continue offer: the note stays, its
+ * button goes. Continue carries on the conversation's latest reply — the
+ * server merges the last two — so offered from an earlier turn it would merge
+ * the wrong ones; and once the offer is saved, a reload would put it back under
+ * every turn that ever hit the limit. Called where a user message is drawn,
+ * live and on reload alike (`addMessage`). Returns how many it withdrew.
+ */
+export function withdrawContinueOffers(root) {
+  if (!root || typeof root.querySelectorAll !== 'function') return 0;
+  let withdrawn = 0;
+  for (const note of Array.from(root.querySelectorAll('.rounds-exhausted'))) {
+    for (const btn of Array.from(note.querySelectorAll('.continue-btn'))) {
+      btn.remove();
+      withdrawn += 1;
+    }
+  }
+  return withdrawn;
+}
+
 export default {
   AGENT_STOP_TYPES, ARGUMENTS_WITHHELD_TEXT,
   isAgentStop, agentStopHeadline, agentStopNode, renderAgentStop,
+  AGENT_NOTE_TYPES, STEP_LIMIT_CONTINUE_PROMPT,
+  isAgentNote, agentNoteNode, renderAgentNote, withdrawContinueOffers,
 };

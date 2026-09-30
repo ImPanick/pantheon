@@ -29,6 +29,9 @@ was saved there.
 import asyncio
 import json
 import re
+import shutil
+import subprocess
+import textwrap
 from pathlib import Path
 
 import pytest
@@ -172,10 +175,45 @@ def test_a_result_without_the_key_emits_nothing(marker):
     assert "isinstance(" in block
 
 
-def test_the_handler_renders_the_name_it_is_sent():
-    text = _CHAT.read_text(encoding="utf-8")
-    handler = text[text.index("json.type === 'skill_saved'"):]
-    handler = handler[:handler.index("} else if")]
-    assert "esc(json.name" in handler, "the name is interpolated unescaped"
-    assert "esc(json.category" in handler
-    assert "Skill learned" in handler
+@pytest.mark.skipif(not shutil.which("node"), reason="node binary not on PATH")
+def test_the_handler_renders_the_name_it_is_sent(tmp_path):
+    # `B915`. This read the handler's source for `esc(json.name` (`Law 20`: a
+    # test of the file). The note is drawn now by `renderAgentNote`
+    # (`static/js/agentStops.js`), the builder a reload and a resumed stream
+    # use too, and it is text by construction — so the live arm is cut out of
+    # `handleChatSubmit` and run against the real builder, with a name and a
+    # category that would be markup if they were ever assigned as such.
+    from tests.helpers.js_source import js_definition, js_function
+    from tests.helpers.source_text import blank_text
+    from test_tool_effect_surfaces_js import _DOM
+
+    chat = _CHAT.read_text(encoding="utf-8")
+    handler = js_definition(chat, blank_text(chat, "js").index("export async function handleChatSubmit("))
+    arm = js_function(handler, "} else if (json.type === 'skill_saved') {")
+    (tmp_path / "dom.js").write_text(_DOM, encoding="utf-8")
+    shutil.copy(_REPO / "static" / "js" / "agentStops.js", tmp_path / "agentStops.js")
+    (tmp_path / "case.mjs").write_text(textwrap.dedent("""
+        import { installDom, Node } from './dom.js';
+        import { renderAgentNote } from './agentStops.js';
+        const document = installDom();
+        const box = document.body.appendChild(new Node('div'));
+        box.setAttribute('id', 'chat-history');
+        const uiModule = { scrollHistory() {} };
+        const json = { type: 'skill_saved', name: '<img src=x onerror=alert(1)>tidy-logs',
+                       category: '<b>ops</b>', status: 'draft' };
+        for (const _isBg of [false]) %s
+        const note = box.children[0];
+        console.log(JSON.stringify({
+          cls: note.className,
+          text: note.textContent,
+          markup: note._walk([]).filter((n) => n._html).map((n) => n._html),
+          elements: note._walk([]).filter((n) => n.tagName !== '#TEXT').map((n) => n.tagName),
+        }));
+    """) % arm, encoding="utf-8")
+    proc = subprocess.run(["node", "case.mjs"], cwd=tmp_path, capture_output=True, text=True, timeout=30)
+    assert proc.returncode == 0, proc.stderr
+    out = json.loads(proc.stdout.strip().splitlines()[-1])
+    assert out["cls"] == "skill-saved-note"
+    assert out["text"] == "Skill learned: <img src=x onerror=alert(1)>tidy-logs [<b>ops</b>]"
+    assert out["markup"] == [], "a part of the note was assigned as markup"
+    assert out["elements"] == ["STRONG", "CODE", "SPAN"], out["elements"]

@@ -203,6 +203,13 @@ export function describe(box) {
                top: cls.includes('has-top'), bottom: cls.includes('has-bottom') };
     }
     if (cls.includes('agent-stop')) return { stop: text(n.querySelector('.agent-stop-headline')) };
+    // `B915` / `B917`: the turn's other notes, with whether Continue is offered.
+    if (cls.includes('rounds-exhausted')) {
+      return { note: text(n.querySelector('.rounds-exhausted-label')), continue: !!n.querySelector('.continue-btn') };
+    }
+    for (const kind of ['budget-exceeded-note', 'teacher-takeover-banner', 'skill-saved-note', 'escalation-failed-note']) {
+      if (cls.includes(kind)) return { note: text(n), kind };
+    }
     if (cls.includes('agent-thinking-dots')) return { waiting: spinnerWords(n), meter: meterWords(n) };
     if (cls.includes('generated-image-wrap')) return { image: true };
     if (cls.includes('msg')) {
@@ -245,9 +252,17 @@ def _defn(name: str, prefix: str = "function ") -> str:
     return js_definition(src, code.index(f"{prefix}{name}("))
 
 
+def _live_handler() -> str:
+    """`handleChatSubmit`, the function the live stream runs in. `resumeStream`
+    has arms that open the same way (`teacher_takeover` since `B917`), so the
+    live arms are cut from here, not from the whole file."""
+    chat = _chat()
+    return js_definition(chat, blank_text(chat, "js").index("export async function handleChatSubmit("))
+
+
 def _arm(anchor: str) -> str:
     """One arm of the live stream's dispatch, braces and all."""
-    return js_function(_chat(), anchor)
+    return js_function(_live_handler(), anchor)
 
 
 def _assigned(name: str, marker: str) -> str:
@@ -290,7 +305,7 @@ _PREAMBLE = r"""
 import { document, Node, flushTimers, describe } from './shim.js';
 import { applyAgentThreadNode, verifierCardOptions, blockedCardOptions, toolOutputPanesHtml,
          agentThreadContent, TOOL_LABELS } from './agentThread.js';
-import { renderAgentStop } from './agentStops.js';
+import { renderAgentStop, renderAgentNote } from './agentStops.js';
 import { createAgentMeter, presentMeterEvent, METER_EVENT_TYPES } from './agentMeter.js';
 import spinnerModule from './spinner.js';
 import uiModule from './ui.js';
@@ -372,12 +387,19 @@ def _live_driver() -> str:
         ("tool_blocked", "} else if (json.type === 'tool_blocked') {"),
         ("verifier", "} else if (json.type === 'verifier') {"),
         ("agent_step", "} else if (json.type === 'agent_step') {"),
+        # `B915` / `B917`: the turn's notes and the takeover.
+        ("rounds_exhausted", "} else if (json.type === 'rounds_exhausted') {"),
+        ("budget_exceeded", "} else if (json.type === 'budget_exceeded') {"),
+        ("teacher_takeover", "} else if (json.type === 'teacher_takeover') {"),
+        ("skill_saved", "} else if (json.type === 'skill_saved') {"),
     ]
     dispatch = "\n".join(
         f"      {'if' if i == 0 else 'else if'} (json.type === '{name}') {_arm(anchor)}"
         for i, (name, anchor) in enumerate(arms))
     dispatch += ("\n      else if (json.type === 'loop_breaker_triggered' || json.type === 'intent_nudge_exhausted') "
                  + _arm("} else if (json.type === 'loop_breaker_triggered'"))
+    dispatch += ("\n      else if (json.type === 'escalation_failed' || json.type === 'skill_save_failed') "
+                 + _arm("} else if (json.type === 'escalation_failed' || json.type === 'skill_save_failed') {"))
     return (r"""
 function runLive(events, snaps, { runId = 'run-1', stopAfter = Infinity } = {}) {
   const box = history;
@@ -682,6 +704,139 @@ def test_refusals_and_text_after_a_tool_draw_the_same_in_both_streams(sandbox):
     assert at_step_2[1]["bottom"], "the first thread lost the line down to the text below it"
 
 
+# ── B915 × B917: the turn's notes and a takeover, through both streams ──────
+# `P4-24` left the takeover banner and the skill notes out of the resumed view
+# (nothing saved them, and `B904` was reworking their live arms), and drew
+# neither the Continue offer nor the tool-budget note, because the reload the
+# resumed stream ends in would take them away again. They are saved with the
+# reply now (`B915`) and drawn by one builder (`renderAgentNote`); a resumed
+# takeover closes the student's step and opens the teacher's as the live arm does.
+
+def _cap(round_, calls, limit=2):
+    return {"type": "agent_budget", "round": round_, "round_limit": limit,
+            "round_limit_source": "configured", "tool_calls": calls, "tool_call_limit": 10}
+
+
+TAKEOVER = RUN[:4] + [
+    _budget(1, 0),
+    {"delta": "Let me look."},
+    {"type": "tool_start", "tool": "bash", "command": "ls /srv", "round": 1},
+    {"type": "tool_output", "tool": "bash", "command": "ls /srv", "round": 1, "exit_code": 2,
+     "output": "ls: cannot access '/srv': No such file or directory"},
+    {"type": "skill_saved", "name": "list-dirs", "category": "files", "status": "draft"},
+    {"type": "agent_step", "round": 2},
+    _budget(2, 1),
+    {"delta": "I can't find it."},
+    # A pause: the Thinking spinner comes up under the student's answer, and
+    # the takeover has to take it down, as it closes the student's step.
+    "flush",
+    {"type": "teacher_takeover", "teacher_model": "big-model@lab", "model": "big-model",
+     "student_failure": "agent reply matched give-up pattern <can't find>"},
+    dict(_budget(1, 0), teacher=True),
+    {"delta": "Checking the mounts.", "teacher": True},
+    {"type": "tool_start", "tool": "bash", "command": "mount", "round": 1, "teacher": True},
+    {"type": "tool_output", "tool": "bash", "command": "mount", "round": 1, "exit_code": 0,
+     "output": "/dev/sdb1 on /data", "teacher": True},
+    {"type": "agent_step", "round": 2, "teacher": True},
+    dict(_budget(2, 1), teacher=True),
+    {"delta": "It is under /data.", "teacher": True},
+    {"type": "skill_save_failed", "reason": "teacher said NO_SKILL (problem not reproducible)"},
+    "[DONE]",
+]
+
+STEP_LIMIT = RUN[:4] + [
+    _cap(1, 0),
+    {"delta": "Working through the list."},
+    {"type": "tool_start", "tool": "bash", "command": "ls a", "round": 1},
+    _cap(1, 1),
+    {"type": "tool_output", "tool": "bash", "command": "ls a", "round": 1, "exit_code": 0, "output": "a1"},
+    "flush",
+    {"type": "agent_step", "round": 2},
+    _cap(2, 1),
+    {"type": "tool_start", "tool": "bash", "command": "ls b", "round": 2},
+    _cap(2, 2),
+    {"type": "tool_output", "tool": "bash", "command": "ls b", "round": 2, "exit_code": 0, "output": "b1"},
+    {"type": "rounds_exhausted", "rounds": 2},
+    "[DONE]",
+]
+
+BUDGET = RUN[:4] + [
+    _budget(1, 0),
+    {"type": "tool_start", "tool": "bash", "command": "ls", "round": 1},
+    _budget(1, 1),
+    {"type": "tool_output", "tool": "bash", "command": "ls", "round": 1, "exit_code": 0, "output": "ok"},
+    {"type": "budget_exceeded", "limit": 1, "used": 1},
+    "[DONE]",
+]
+
+
+def _same_after_every_event(out, events):
+    live, resumed = out["live"], out["resumed"]
+    steps = len([e for e in events if e != "[DONE]"])
+    assert len(live) == steps and len(resumed) == steps
+    for i, (a, b) in enumerate(zip(live, resumed)):
+        event = events[i] if events[i] == "flush" else events[i].get("type", "delta")
+        assert b == a, f"after event {i} ({event}) the resumed view differs from the live one"
+
+
+def _kinds(snap):
+    return [e.get("kind") or next(iter(e)) for e in snap]
+
+
+def test_a_takeover_draws_the_same_in_both_streams(sandbox):
+    out = _both(sandbox, TAKEOVER)
+    _same_after_every_event(out, TAKEOVER)
+    at = {i: snap for i, snap in enumerate(out["resumed"])}
+    index = {e.get("type"): i for i, e in enumerate(TAKEOVER) if isinstance(e, dict) and "type" in e}
+    takeover = index["teacher_takeover"]
+    # The student's skill note follows the thread it came from.
+    skill = at[index["skill_saved"]]
+    assert _kinds(skill) == ["bubble", "thread", "skill-saved-note"], skill
+    assert skill[-1]["note"] == "Skill learned: list-dirs [files]"
+    # The takeover: the student's answer stays, finished; the banner follows it,
+    # as text; the teacher's own bubble opens below with a spinner.
+    banner_at = at[takeover]
+    assert _kinds(banner_at) == ["bubble", "thread", "skill-saved-note", "bubble",
+                                 "teacher-takeover-banner", "bubble"], banner_at
+    assert banner_at[3]["text"] == "I can't find it." and banner_at[3]["spinner"] is None
+    assert banner_at[4]["note"] == ("Teacher takeover: escalating to big-model@lab — "
+                                    "agent reply matched give-up pattern <can't find>")
+    assert banner_at[5] == {"bubble": "shown", "text": "", "spinner": "Generating response", "meter": None}
+    # The teacher's work: its text in its own bubble, its card in a thread of
+    # its own below the banner, and at its next step the line of the thread
+    # directly above runs on down (`B919`) — not the student's, above the banner.
+    final = out["resumed"][-1]
+    assert _kinds(final) == ["bubble", "thread", "skill-saved-note", "bubble", "teacher-takeover-banner",
+                             "bubble", "thread", "bubble", "escalation-failed-note"], final
+    assert final[5]["text"] == "Checking the mounts." and final[7]["text"] == "It is under /data."
+    assert [c["tool"] for c in final[6]["thread"]] == ["Terminal"]
+    assert final[6]["bottom"] and not final[1]["bottom"], final
+    assert final[-1]["note"] == "Skill not saved: teacher said NO_SKILL (problem not reproducible)"
+
+
+def test_a_step_limit_offers_continue_in_both_streams(sandbox):
+    out = _both(sandbox, STEP_LIMIT)
+    _same_after_every_event(out, STEP_LIMIT)
+    final = out["resumed"][-1]
+    assert final[-1] == {"note": "Reached the 2-step limit — not finished.", "continue": True}, final
+    assert not any("waiting" in e for e in final), "a Thinking spinner is left waiting for a step past the limit"
+
+
+def test_a_tool_budget_note_draws_in_both_streams(sandbox):
+    out = _both(sandbox, BUDGET)
+    _same_after_every_event(out, BUDGET)
+    final = out["resumed"][-1]
+    assert final[-1] == {"note": "Tool budget reached (1/1 calls). Agent stopped.",
+                         "kind": "budget-exceeded-note"}, final
+
+
+def test_a_resumed_takeover_leaves_nothing_of_its_own_for_the_reload(sandbox):
+    """The notes are saved with the reply now, and the reload draws them from
+    there; the view that drew them first is gone by then, so none is doubled."""
+    out = _both(sandbox, TAKEOVER)
+    assert len(out["reloads"]) == 1 and out["reloads"][0]["view"] == []
+
+
 def test_a_new_step_continues_the_thread_directly_above_it_and_no_other(sandbox):
     """`B919`, the rule both `agent_step` arms now call (`_threadIntoNextStep`),
     over the shapes a turn's bottom can have when a step begins. The connector
@@ -896,6 +1051,8 @@ def test_a_stop_at_a_limit_is_on_the_meter_and_sends_the_reply_to_the_reload(san
         console.log(JSON.stringify({ resumed, reloads }));
     """ % json.dumps(events))
     assert out["resumed"][-1][0]["meter"].endswith("Stopped at the 20-step limit")
+    # `B917`: and the offer beside it, drawn as live, since the reload keeps it.
+    assert out["resumed"][-1][-1] == {"note": "Reached the 20-step limit — not finished.", "continue": True}
     assert len(out["reloads"]) == 1
 
 

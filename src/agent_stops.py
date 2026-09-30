@@ -32,6 +32,10 @@ calls with a long shared prefix — the "18 calendar events" case
 `tests/test_loop_breaker_runaway.py` was written for — was aborted exactly as it
 was before that fix, just with longer arguments. A digest of the whole text
 makes "identical" mean identical, in one definition both uses share.
+
+**`B915`** (at the end): the turn's other notes — the step limit, the tool
+budget, a teacher's takeover, the skill notes — kept for the saved reply by the
+route, through `AgentNotes`.
 """
 
 from __future__ import annotations
@@ -324,10 +328,99 @@ def unkept_promise_stop(
     }
 
 
+# ── `B915` · The turn's other notes, kept for the reply they belong to ─────────
+#
+# Six events draw a line into the chat history beside the reply, the way the
+# two stops above do: the step limit and its Continue offer, the tool budget, a
+# teacher taking over, and what became of a skill. None was saved, so a reload
+# dropped every one — Continue ▸ with it — and a resumed stream, which ends in a
+# reload, lost them too.
+#
+# They are collected where the reply is saved, not on the loop's metrics
+# envelope as the stops are, because three of them cannot ride that envelope:
+# `teacher_takeover`, `escalation_failed` and `skill_save_failed` are sent by
+# `run_teacher_inline` *after* the loop's `metrics` (and one `escalation_failed`
+# before any later one exists), and a turn the teacher answered is saved from
+# the teacher's own `metrics`, which the loop that sent the student's notes
+# never sees. The route sees every frame of the turn in order, so it keeps them
+# here and saves them as `agent_notes`, each exactly as streamed plus where it
+# goes.
+
+#: The events that draw a note. `AGENT_NOTE_TYPES` in `static/js/agentStops.js`
+#: is the browser's copy, and a test holds the two equal.
+AGENT_NOTE_TYPES = ("rounds_exhausted", "budget_exceeded", "teacher_takeover",
+                    "skill_saved", "escalation_failed", "skill_save_failed")
+
+
+def _positive_round(value: Any) -> Optional[int]:
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        return None
+    return number if number >= 1 else None
+
+
+class AgentNotes:
+    """The notes one turn drew, in order, for the reply they are saved with.
+
+    `observe` every frame the turn streams; `saved()` returns the notes with
+    `round` set to the round of the **saved record** each one followed, which is
+    how history replay places them (`addMessage`): after that round's text,
+    tools and stops; `0` for before the first round; no `round` for the end.
+
+    The saved record is one run's rounds. A turn the teacher answered is saved
+    from the teacher's `metrics` — the student's rounds are not in it — so its
+    rounds are the teacher's: the student's notes and the takeover banner go
+    before them, and what the teacher's own run drew goes in its rounds. A turn
+    saved from the student's record keeps its notes in their rounds, and the
+    takeover and everything after it at the end.
+    """
+
+    def __init__(self) -> None:
+        self._seen: List[tuple] = []     # (event, phase, round in its own run)
+        self._round = 1                  # the round now streaming, in its run's numbering
+        self._taken_over = False
+        self._teacher_record = False     # the record to be saved is the teacher's
+
+    def observe(self, data: Any) -> None:
+        if not isinstance(data, dict):
+            return
+        kind = data.get("type")
+        teacher = data.get("teacher") is True
+        if kind == "agent_step":
+            self._round = _positive_round(data.get("round")) or self._round
+        elif kind in ("metrics", "agent_terminal"):
+            # The route saves the last of these it saw, so its run is the record.
+            self._teacher_record = teacher
+        elif kind == "teacher_takeover":
+            self._seen.append((dict(data), "takeover", self._round))
+            self._taken_over = True
+            self._round = 1              # the teacher's run numbers its own rounds
+        elif kind in AGENT_NOTE_TYPES:
+            phase = "teacher" if teacher else ("after" if self._taken_over else "student")
+            self._seen.append((dict(data), phase, _positive_round(data.get("round")) or self._round))
+
+    def saved(self) -> List[Dict[str, Any]]:
+        notes = []
+        for event, phase, round_ in self._seen:
+            note = dict(event)
+            note.pop("round", None)
+            if self._teacher_record:
+                if phase in ("student", "takeover"):
+                    note["round"] = 0
+                elif phase == "teacher":
+                    note["round"] = round_
+            elif phase == "student":
+                note["round"] = round_
+            notes.append(note)
+        return notes
+
+
 __all__: List[str] = [
     "ARGS_EMPTY", "ARGS_SHOWN", "ARGS_WITHHELD",
     "KIND_IDENTICAL_CALLS", "KIND_NO_NEW_INFORMATION", "KIND_NO_PROGRESS",
     "KIND_UNKEPT_PROMISE", "ROUNDS_WITHOUT_NEW_INFORMATION",
     "call_signature", "information_key", "loop_breaker_stop", "no_new_information_stop",
     "safe_arguments", "unkept_promise_stop",
+    "AGENT_NOTE_TYPES", "AgentNotes",
 ]

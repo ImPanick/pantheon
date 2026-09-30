@@ -139,13 +139,16 @@ def test_at_the_stop_nothing_is_left_waiting_for_the_next_step():
     """The last tool result schedules a *Thinking* spinner for the step after
     it (`_scheduleThinkingSpinner`). At the limit there is no such step: the
     stop calls it off, and still draws the Continue box."""
+    # `B915`: the arm draws its note through `renderAgentNote`, the builder the
+    # reload and a resumed stream use, so the real `agentStops.js` is imported.
     script = textwrap.dedent("""
+        import { renderAgentNote } from %s;
         const calls = [];
         const made = [];
         const node = (tag) => ({
-          tag, className: '', textContent: '', children: [], title: '',
+          tag, className: '', textContent: '', children: [], title: '', style: {},
           appendChild(c) { this.children.push(c); return c; },
-          addEventListener() {}, remove() {}, scrollIntoView() {},
+          addEventListener() {}, remove() {}, scrollIntoView() {}, setAttribute() {},
         });
         const box = {
           children: [], querySelector: () => null,
@@ -156,7 +159,9 @@ def test_at_the_stop_nothing_is_left_waiting_for_the_next_step():
           createElement: node,
           querySelector: () => null,
         };
-        const uiModule = { el: () => null, scrollHistory() {} };
+        globalThis.document = document;
+        const uiModule = { el: () => null, scrollHistory() {} };""" % json.dumps(
+        (ROOT / "static" / "js" / "agentStops.js").as_uri()) + """
         const _cancelThinkingTimer = () => calls.push('cancelThinkingTimer');
         const _removeThinkingSpinner = () => calls.push('removeThinkingSpinner');
         let _hideUserBubble = false, _pendingContinue = null;

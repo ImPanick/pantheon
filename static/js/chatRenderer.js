@@ -21,7 +21,7 @@ import { CHECKLIST_SURFACES, checklistProgress, stepChipClass } from './checklis
 // the rung is the one that reads them — see the header of that module.
 import { buildAllowRuleChooser } from './trustLadder.js';
 // `P4-10`. Why the agent stopped itself — the same line the live stream draws.
-import { renderAgentStop } from './agentStops.js';
+import { renderAgentStop, renderAgentNote, withdrawContinueOffers } from './agentStops.js';
 import { applyAgentThreadNode, verifierCardOptions,
          blockedCardOptions, toolOutputPanesHtml } from './agentThread.js';
 import { prepBreakdownRows } from './agentMeter.js';   // P4-08
@@ -3788,6 +3788,9 @@ export function addMessage(role, content, modelName, metadata) {
     // answered.  This also removes the live card as soon as a manual reply is
     // appended, even when the user did not click one of its buttons.
     if (role === 'user') removeAskUserCards(box);
+    // `B915`: and a step limit's Continue offer is withdrawn the same way — it
+    // continues the latest reply, so it belongs only to the last turn.
+    if (role === 'user') withdrawContinueOffers(box);
 
     var esc = uiModule.esc;
     const textRaw = Array.isArray(content) ? markdownModule.renderContent(content) : content;
@@ -3802,6 +3805,8 @@ export function addMessage(role, content, modelName, metadata) {
         // `P4-10`. A stop is drawn only by this branch, so a reply that carries
         // one must reach it even in the one-round case.
         || (Array.isArray(metadata.agent_stops) && metadata.agent_stops.length > 0)
+        // `B915`. So is a note.
+        || (Array.isArray(metadata.agent_notes) && metadata.agent_notes.length > 0)
       )
     ) {
       const roundTexts = metadata.round_texts || [];
@@ -3810,6 +3815,7 @@ export function addMessage(role, content, modelName, metadata) {
       const roundEndpointLabels = metadata.round_endpoint_labels || [];
       const toolEvents = metadata.tool_events || [];
       const agentStops = Array.isArray(metadata.agent_stops) ? metadata.agent_stops : [];
+      const agentNotes = Array.isArray(metadata.agent_notes) ? metadata.agent_notes : [];
       let pendingAskUser = null;
       let lastWrap = null;
       let firstMsgAi = null;
@@ -3826,6 +3832,21 @@ export function addMessage(role, content, modelName, metadata) {
       const maxRound = Math.max(toolRounds.length ? Math.max(...toolRounds) : 0, roundTexts.length);
 
       const firstRound = (toolsByRound[0] || []).length ? 0 : 1;
+      // `B915`. The turn's notes, where the live stream drew them: after the
+      // round each followed (its text, tools and stops), `0` before the first
+      // round, and at the end when the saved record says no round. Continue ▸
+      // continues from the turn's first bubble, as it does live.
+      const noteOpts = { reply: () => firstMsgAi || lastWrap };
+      const noteSlot = (note) => {
+        if (!note || note.round == null) return 'end';
+        const r = Number(note.round);
+        if (!Number.isInteger(r)) return 'end';
+        if (r === 0 && firstRound > 0) return 'start';
+        return (r >= firstRound && r <= maxRound) ? r : 'end';
+      };
+      for (const note of agentNotes) {
+        if (noteSlot(note) === 'start') renderAgentNote(box, note, noteOpts);
+      }
       for (let roundNum = firstRound; roundNum <= maxRound; roundNum++) {
         const r = roundNum - 1;
         const txt = r >= 0
@@ -3982,12 +4003,22 @@ export function addMessage(role, content, modelName, metadata) {
         for (const stop of agentStops) {
           if (Number(stop?.round) === roundNum) renderAgentStop(box, stop);
         }
+        for (const note of agentNotes) {
+          if (noteSlot(note) !== roundNum) continue;
+          const drawn = renderAgentNote(box, note, noteOpts);
+          // A note ends the thread above it: the next round's cards start a
+          // thread of their own below it, as live (`_threadForNextCard`).
+          if (drawn) lastWrap = drawn;
+        }
       }
       // A stop whose round the loop never visited is still said, at the end,
       // rather than dropped.
       for (const stop of agentStops) {
         const stopRound = Number(stop?.round);
         if (!(stopRound >= firstRound && stopRound <= maxRound)) renderAgentStop(box, stop);
+      }
+      for (const note of agentNotes) {
+        if (noteSlot(note) === 'end') renderAgentNote(box, note, noteOpts);
       }
 
       const firstWrap = lastMsgAi || lastWrap;
