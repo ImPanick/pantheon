@@ -566,7 +566,7 @@ def _p7_10_block():
 def test_the_hint_is_only_drawn_in_agent_mode_and_goes_first_when_narrow():
     block = _p7_10_block()
     assert ".chat-input-right:not(:has(#mode-agent-btn.active)) .agent-limits-hint" in block
-    assert "@container chatbar (max-width: 560px)" in block
+    assert "@container chatbar (max-width: 660px)" in block, "before it costs a tool chip"
     assert "var(--color-muted-alt)" in block
     assert "--accent" not in block.split("*/", 1)[1], "no hue carries meaning here"
     assert "transition" not in block and "animation" not in block

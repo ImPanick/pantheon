@@ -12067,7 +12067,10 @@ body.fullwidth-chat .chat-history {
    so it is not drawn while Chat is the active mode. Capped and cut with an
    ellipsis rather than pushing the row (its full sentence is its hover text,
    and the Agent button's description), and it is the first thing to go when
-   the bar narrows — the mode toggle itself drops out at 340px. No motion. */
+   the bar narrows: below 660px, where it would otherwise push the Plan / Web /
+   Shell chips into the + menu (measured: at a 626px bar the long form folded
+   Plan away) — a control outranks a sentence about it. The mode toggle itself
+   drops out at 340px. No motion. */
 .agent-limits-hint {
   flex: 0 1 auto;
   min-width: 0;
@@ -12083,7 +12086,7 @@ body.fullwidth-chat .chat-history {
 .chat-input-right:not(:has(#mode-agent-btn.active)) .agent-limits-hint {
   display: none;
 }
-@container chatbar (max-width: 560px) {
+@container chatbar (max-width: 660px) {
   .agent-limits-hint {
     display: none;
   }
@@ -34539,7 +34542,7 @@ button .spinner-whirlpool {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 50ch;
+  max-width: 34ch;
 }
 .email-bubble-date {
   opacity: 0.7;
