@@ -296,7 +296,7 @@ _MODULE_LEVEL = (
     "_stripDocumentFenceForChat", "_stripIncompleteRawToolJsonForChat", "_streamDisplayText",
     "_showDocumentWritingStatus", "_finishDocumentWritingStatus", "hasActiveStream",
     "_metricsCostRecordId", "_appendGeneratedImageBubble",
-    "_createWaitSpinners", "_openRoundSpinner", "_newRoundBubble", "_threadForNextCard",
+    "_createWaitSpinners", "_newRoundBubble", "_threadForNextCard",
     "_threadIntoNextStep",   # `B919`
     "_headWithTeacher",      # `B922`
     "_threadOrBare", "_removeViewFrom",
@@ -317,9 +317,11 @@ import { applyAgentThreadNode, verifierCardOptions, blockedCardOptions, toolOutp
          agentThreadContent, TOOL_LABELS } from './agentThread.js';
 import { renderAgentStop, renderAgentNote } from './agentStops.js';
 import { createAgentMeter, presentMeterEvent, METER_EVENT_TYPES } from './agentMeter.js';
-// `B918`: the card's life, the real module, under the names chat.js imports it as.
+// `B918` / `B916`: the card's life and a new step's spinner, the real module,
+// under the names chat.js imports them as.
 import { startToolCard as _startToolCard, drawToolProgress as _drawToolProgress,
-         finishToolCard as _finishToolCard, stopCardTickers as _stopCardTickers } from './agentTurn.js';
+         finishToolCard as _finishToolCard, stopCardTickers as _stopCardTickers,
+         openRoundSpinner as _openRoundSpinner } from './agentTurn.js';
 import spinnerModule from './spinner.js';
 import uiModule from './ui.js';
 import { inheritModelRouteState, applyModelRouteEventState } from './chatModelProvenance.js';

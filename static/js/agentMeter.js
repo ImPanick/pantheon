@@ -45,7 +45,8 @@
 // "Thinking" spinner between tools, the spinner a new round opens with — and it
 // goes when that spinner goes (`Spinner.attachDetail`). Every stream handler
 // hands it events through `presentMeterEvent`, which is the call a resumed
-// background stream (`P4-24`) makes to draw the same thing the same way.
+// background stream (`P4-24`) and a compare pane (`B916`) make to draw the
+// same thing the same way.
 //
 // This module imports nothing, so a test can load it without the app.
 
@@ -384,10 +385,17 @@ function toneFor(used, limit) {
  *   tools  { text, value, max, tone } | null
  *   note   { text, tone }               what happens at the limit, in words
  *   title  string                       the whole rule, and where it is set
+ *
+ * `opts.offersContinue` — whether the surface drawing this offers Continue at
+ * the step limit. The chat does (`rounds_exhausted`'s box); a compare pane
+ * does not (`B916`), and a meter there that said "and offers Continue" would
+ * promise a button that never comes (`Law 10`). Defaults to true.
  */
-export function budgetView(state) {
+export function budgetView(state, opts = {}) {
   const b = state && state.budget;
   if (!b) return null;
+  const offersContinue = !(opts && opts.offersContinue === false);
+  const andContinue = offersContinue ? ' and offers Continue' : '';
   const who = state.teacher ? 'Teacher · ' : '';
   const lifted = isLifted(b);
   const liftedWhere = b.source === 'local_lift' ? 'local model' : 'this server';
@@ -439,8 +447,8 @@ export function budgetView(state) {
       : 'Tool-call limit removed for this run — nothing saved');
   }
   if (b.roundLimit && !lifted) {
-    if (steps.tone === 'at') clauses.push('Last step — if it needs more, it stops here and offers Continue');
-    else if (steps.tone === 'near' || start) clauses.push(`Stops after step ${num(b.roundLimit)} and offers Continue`);
+    if (steps.tone === 'at') clauses.push(`Last step — if it needs more, it stops here${andContinue}`);
+    else if (steps.tone === 'near' || start) clauses.push(`Stops after step ${num(b.roundLimit)}${andContinue}`);
   } else if (b.roundLimit && start) {
     clauses.push(`Step limit lifted to ${num(b.roundLimit)} on this ${liftedWhere}`);
   }
@@ -465,7 +473,7 @@ export function budgetView(state) {
 
   return {
     steps, tools, note,
-    title: limitsTitle(b, 'This run'),
+    title: limitsTitle(b, 'This run', andContinue),
   };
 }
 
@@ -474,13 +482,13 @@ export function budgetView(state) {
 /** The step rule for limits `b` (`limitsFrom`'s shape). `subject` names who
  *  stops: *This run* under the spinner, *Each message in Agent mode* before
  *  there is a run. */
-function stepRuleText(b, subject) {
+function stepRuleText(b, subject, andContinue = ' and offers Continue') {
   if (b.roundLimit && b.source === RAISED_FOR_RUN) {
     return `The assistant raised this run's step limit from ${num(b.configured)} to ${num(b.roundLimit)}, `
-      + `for this run only; nothing was saved. ${subject} stops after step ${num(b.roundLimit)} and offers Continue.`;
+      + `for this run only; nothing was saved. ${subject} stops after step ${num(b.roundLimit)}${andContinue}.`;
   }
   if (b.roundLimit && b.source === 'configured') {
-    return `${subject} stops after step ${num(b.roundLimit)} and offers Continue.`;
+    return `${subject} stops after step ${num(b.roundLimit)}${andContinue}.`;
   }
   if (b.roundLimit && b.source === 'local_lift') {
     return `On a local model the ${num(b.configured)}-step limit is lifted to ${num(b.roundLimit)}; `
@@ -504,8 +512,8 @@ function toolRuleText(b) {
 
 /** The whole rule, and where it is set: the meter's hover text, and the
  *  composer's before a run. */
-function limitsTitle(b, subject) {
-  return `${stepRuleText(b, subject)} ${toolRuleText(b)} Both are set in ${SETTINGS_PATH}.`;
+function limitsTitle(b, subject, andContinue) {
+  return `${stepRuleText(b, subject, andContinue)} ${toolRuleText(b)} Both are set in ${SETTINGS_PATH}.`;
 }
 
 // ── before the run (`P7-10`) ──────────────────────────────────────────────
@@ -633,8 +641,9 @@ function paintText(n, text, tone) {
 }
 
 /** Draw `state` into a node from `buildMeterNode`. Text only, never markup: the
- *  words are this module's, but the numbers come off the wire. */
-export function renderMeterNode(node, state, nowMs = Date.now()) {
+ *  words are this module's, but the numbers come off the wire. `opts` is
+ *  `budgetView`'s. */
+export function renderMeterNode(node, state, nowMs = Date.now(), opts = {}) {
   if (!node) return node;
   const prepText = prepLineText(state, nowMs);
   const prep = part(node, 'agent-meter-prep');
@@ -646,7 +655,7 @@ export function renderMeterNode(node, state, nowMs = Date.now()) {
       : '';
   }
 
-  const view = budgetView(state);
+  const view = budgetView(state, opts);
   const budget = part(node, 'agent-meter-budget');
   if (budget) budget.hidden = !view;
   if (view) {
@@ -672,12 +681,16 @@ export function renderMeterNode(node, state, nowMs = Date.now()) {
  * The ticker runs only while a prep step is running and the node is on the
  * page, and stops itself otherwise, so a turn that ends mid-prep leaves nothing
  * behind to clean up.
+ *
+ * `opts.offersContinue: false` is for a surface with no Continue at the step
+ * limit — a compare pane (`B916`) — so the meter's words do not promise one.
  */
 export function createAgentMeter(opts = {}) {
   const doc = opts.document || (typeof document !== 'undefined' ? document : null);
   const now = typeof opts.now === 'function' ? opts.now : () => Date.now();
   const every = opts.setInterval || ((fn, ms) => setInterval(fn, ms));
   const stopEvery = opts.clearInterval || ((id) => clearInterval(id));
+  const words = { offersContinue: opts.offersContinue !== false };
   let state = createMeterState();
   let node = null;
   let ticker = null;
@@ -687,7 +700,7 @@ export function createAgentMeter(opts = {}) {
     return node;
   };
   const paint = () => {
-    if (node) renderMeterNode(node, state, now());
+    if (node) renderMeterNode(node, state, now(), words);
   };
   const stopTicker = () => {
     if (ticker !== null) {
@@ -735,6 +748,24 @@ export function createAgentMeter(opts = {}) {
     },
     /** Redraw now — the `~` counter, after a pause the ticker did not see. */
     refresh() { paint(); },
+    /**
+     * `B916`. Leave the meter at the end of `container` as a line of its own,
+     * under no spinner, so no spinner takes it away. For a stream that stops
+     * at a limit with nothing after it to wait for — a compare pane, which has
+     * no Continue box to say why — the meter, ending on the stop, is the last
+     * word. Nothing to say, nothing placed.
+     */
+    placeIn(container) {
+      if (!container || typeof container.appendChild !== 'function') return false;
+      if (!meterHasContent(state) || !ensureNode()) return false;
+      // The spinner it last hung under keeps a stale reference and removes the
+      // node only while it is still the host (`Spinner.attachDetail`).
+      node._spinnerHost = null;
+      paint();
+      container.appendChild(node);
+      stopTicker();
+      return true;
+    },
     dispose() { stopTicker(); },
   };
 }

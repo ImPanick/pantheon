@@ -441,8 +441,11 @@ def _script(body: str) -> str:
         _turn_definition("function scrollAfter("),
         _turn_definition("function startToolCard("),
         "const _startToolCard = startToolCard;",
-        # `B917`: the teacher's spinner is the one a step opens with.
-        _definition("function _openRoundSpinner("),
+        # `B917`: the teacher's spinner is the one a step opens with —
+        # `agentTurn.js`'s since `B916`, which a compare pane opens its steps
+        # with too, bound to the name chat.js imports it under.
+        _turn_definition("function openRoundSpinner("),
+        "const _openRoundSpinner = openRoundSpinner;",
         # `B922`: and its bubble is headed with the teacher's model.
         _definition("function _headWithTeacher("),
         "function toolBlocked(json, _isBg = false) { for (const _ of [0]) {"

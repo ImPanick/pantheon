@@ -72,9 +72,10 @@ def compare_sandbox(tmp_path_factory):
         (d / name).write_text(src, encoding="utf-8")
     (d / "compare").mkdir(exist_ok=True)
     shutil.copy(COMPARE_STREAM, d / "compare" / "stream.js")
-    # `B918`: the card's life, which a pane shares with the main chat.
+    # `B918` / `B916`: the card's life and the meter, which a pane shares with
+    # the main chat.
     for name in ("agentThread.js", "agentStops.js", "spinner.js", "langIcons.js",
-                 "agentTurn.js"):
+                 "agentTurn.js", "agentMeter.js"):
         shutil.copy(JS / name, d / name)
     return d
 

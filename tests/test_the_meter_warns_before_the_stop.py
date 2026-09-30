@@ -54,6 +54,7 @@ ROOT = Path(__file__).resolve().parents[1]
 AGENT_METER = ROOT / "static" / "js" / "agentMeter.js"
 SPINNER = ROOT / "static" / "js" / "spinner.js"
 CHAT_JS = ROOT / "static" / "js" / "chat.js"
+AGENT_TURN = ROOT / "static" / "js" / "agentTurn.js"   # `B916`
 STYLE = ROOT / "static" / "style.css"
 
 node_only = pytest.mark.skipif(not shutil.which("node"), reason="node binary not on PATH")
@@ -495,13 +496,14 @@ def test_the_stops_are_recorded_and_still_reach_their_own_arms():
     assert ["fell-through", "budget_exceeded"] in calls
 
 
-def _function(name: str) -> str:
-    """One whole function declaration out of chat.js, through the suite's one
-    JavaScript scanner (`B876`: a hand-counted brace walk is the defect it
-    exists to stop). Located in comment-blanked text, whose offsets are the
-    file's, so a name quoted in a comment cannot be mistaken for the code."""
-    code = blank(CHAT_JS)
-    return js_definition(CHAT_JS.read_text(encoding="utf-8"),
+def _function(name: str, path: Path = CHAT_JS) -> str:
+    """One whole function declaration out of chat.js (or `path`), through the
+    suite's one JavaScript scanner (`B876`: a hand-counted brace walk is the
+    defect it exists to stop). Located in comment-blanked text, whose offsets
+    are the file's, so a name quoted in a comment cannot be mistaken for the
+    code."""
+    code = blank(path)
+    return js_definition(path.read_text(encoding="utf-8"),
                          code.index(f"function {name}("))
 
 
@@ -547,7 +549,11 @@ def test_every_new_wait_spinner_carries_the_meter():
         const round = _openRoundSpinner({ appendChild() {} }, _meter).label;
         spinner = null; nodes.length = 0;
         console.log(JSON.stringify({ attached, before, after, round, none: _waitSpinner() }));
-    """) % (_function("_createWaitSpinners"), _function("_openRoundSpinner"), wiring)
+    """) % (_function("_createWaitSpinners"),
+            # `B916`: moved to `agentTurn.js` so a compare pane opens its steps
+            # with it too; chat.js imports it under the name used here.
+            _function("openRoundSpinner", AGENT_TURN)
+            + "\nconst _openRoundSpinner = openRoundSpinner;", wiring)
     proc = subprocess.run(["node", "--input-type=module", "-e", script],
                           capture_output=True, text=True, timeout=30)
     assert proc.returncode == 0, proc.stderr

@@ -26,8 +26,14 @@
 //              (`P6-17`) — the whole page when it is not given; a pane passes
 //              its own history, so one model's plan does not grey out
 //              another's.
+//
+// `B916`. And the spinner a new step opens with, which carries the step and
+// tool-call meter (`P4-23`): a pane had no spinner after its first tool, so the
+// meter had nowhere to hang for the rest of the run. It opens its steps with
+// this one now, as the chat and a resumed stream do.
 
 import uiModule from './ui.js';
+import spinnerModule from './spinner.js';
 import {
   buildDiffHtml,
   buildTodoCard,
@@ -39,6 +45,15 @@ import { applyAgentThreadNode, agentThreadContent, toolOutputPanesHtml } from '.
 function scrollAfter(opts) {
   const scroll = opts && opts.scroll !== undefined ? opts.scroll : () => uiModule.scrollHistory();
   if (typeof scroll === 'function') scroll();
+}
+
+/** The spinner a new step opens with, carrying the meter (`P4-23`). */
+export function openRoundSpinner(body, meter) {
+  const roundSpinner = spinnerModule.create('Generating response', 'right', 'wave');
+  body.appendChild(roundSpinner.createElement());
+  if (meter) meter.attachTo(roundSpinner);
+  roundSpinner.start();
+  return roundSpinner;
 }
 
 /** Stop a card's wave and clock. A card still running when its stream ends
@@ -219,4 +234,4 @@ export function finishToolCard(currentToolBubble, json, opts = {}) {
   scrollAfter(opts);
 }
 
-export default { stopCardTickers, startToolCard, drawToolProgress, finishToolCard };
+export default { openRoundSpinner, stopCardTickers, startToolCard, drawToolProgress, finishToolCard };

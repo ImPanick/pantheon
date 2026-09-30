@@ -27,9 +27,11 @@ import { createStreamRenderer } from './streamingRenderer.js';
 import { applyAgentThreadNode, verifierCardOptions, blockedCardOptions,
          toolOutputPanesHtml, agentThreadContent, ensureThreadToggleAll,
          toggleThreadAll, syncThreadToggleAll, TOOL_LABELS } from './agentThread.js';
-// `B918`. A tool card's life on screen, shared with a compare pane.
+// `B918` / `B916`. A tool card's life on screen, and the spinner a new step
+// opens with, shared with a compare pane.
 import { startToolCard as _startToolCard, drawToolProgress as _drawToolProgress,
-         finishToolCard as _finishToolCard, stopCardTickers as _stopCardTickers } from './agentTurn.js';
+         finishToolCard as _finishToolCard, stopCardTickers as _stopCardTickers,
+         openRoundSpinner as _openRoundSpinner } from './agentTurn.js';
 // `P4-10`. The line that says why the agent stopped itself — and (`B915`) the
 // turn's other notes, drawn by the same module for the reload.
 import { renderAgentStop, renderAgentNote } from './agentStops.js';
@@ -6155,14 +6157,9 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
     return wait;
   }
 
-  /** The spinner a new step opens with, carrying the meter (`P4-23`). */
-  function _openRoundSpinner(body, meter) {
-    const roundSpinner = spinnerModule.create('Generating response', 'right', 'wave');
-    body.appendChild(roundSpinner.createElement());
-    if (meter) meter.attachTo(roundSpinner);
-    roundSpinner.start();
-    return roundSpinner;
-  }
+  // `B916`. `_openRoundSpinner` — the spinner a new step opens with, carrying
+  // the meter — lives in `agentTurn.js` (imported at the top under this name),
+  // so a compare pane opens its steps with it too.
 
   /**
    * A new step's bubble at the bottom of `box`, labelled with the model the step

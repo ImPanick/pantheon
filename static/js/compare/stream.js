@@ -7,8 +7,10 @@ import { applyAgentThreadNode, blockedCardOptions, verifierCardOptions } from '.
 // `B910`. The line that says why the agent stopped itself (`P4-10`).
 import { renderAgentStop } from '../agentStops.js';
 // `B918`. A tool card's life on screen — the functions the main chat and a
-// resumed stream draw theirs with.
-import { startToolCard, drawToolProgress, finishToolCard, stopCardTickers } from '../agentTurn.js';
+// resumed stream draw theirs with. `B916`: and the spinner a new step opens with.
+import { startToolCard, drawToolProgress, finishToolCard, stopCardTickers, openRoundSpinner } from '../agentTurn.js';
+// `B916`. The prep line and the step and tool-call meter (`P4-08`, `P4-23`).
+import { createAgentMeter, presentMeterEvent, METER_EVENT_TYPES } from '../agentMeter.js';
 import markdownModule from '../markdown.js';
 import spinnerModule from '../spinner.js';
 import uiModule from '../ui.js';
@@ -324,6 +326,21 @@ async function streamToPane(paneIdx, sessionId, message, aiMsgEl, opts) {
   // behind it) and where an older todo card is greyed out (this pane's history,
   // not the other models').
   const paneCard = { scroll: () => { if (hist) hist.scrollTop = hist.scrollHeight; }, todoScope: hist };
+  // `B916`. This pane's meter — `P4-08`'s prep line and `P4-23`'s step and
+  // tool-call meter — fed through the call the main chat makes. A pane offers
+  // no Continue at the step limit, so its words do not promise one.
+  const meter = createAgentMeter({ offersContinue: false });
+  // After the pane's first spinner goes, each new step waits on a spinner of
+  // its own; the meter hangs under whichever of the two is on screen.
+  let stepSpinner = null;
+  const dropStepSpinner = () => {
+    if (stepSpinner) { stepSpinner.destroy(); stepSpinner = null; }
+  };
+  const meterHost = () => {
+    if (stepSpinner && stepSpinner.element) return stepSpinner;
+    const first = aiMsgEl._spinner;
+    return first && first.element ? first : null;
+  };
   // Idle timeout — abort only if no data is received for this many seconds.
   // Long generations (SVG, big code) are fine as long as the stream stays
   // active. opts.timeout may still tighten this for specific paths.
@@ -459,6 +476,35 @@ async function streamToPane(paneIdx, sessionId, message, aiMsgEl, opts) {
           if (json.type === 'metrics') {
             metrics = json.data;
 
+          // ── The prep line and the step / tool-call meter (`B916`) ──
+          } else if (METER_EVENT_TYPES.has(json.type)) {
+            if (json.type === 'rounds_exhausted' || json.type === 'budget_exceeded') {
+              // A stop at a limit. Nothing comes after it, so nothing waits for
+              // it, and the meter — ending on the stop — stays in the pane's
+              // message as its word on why it stopped. The main chat says it
+              // with its Continue box and its budget note; a pane has neither.
+              dropStepSpinner();
+              presentMeterEvent(meter, json, null);
+              meter.placeIn(aiBody);
+            } else {
+              // The spinner's words while it prepares, and the meter under
+              // whichever spinner the pane is waiting on.
+              presentMeterEvent(meter, json, meterHost());
+            }
+            if (hist) hist.scrollTop = hist.scrollHeight;
+
+          // ── A new step (`B916`) ──
+          } else if (json.type === 'agent_step') {
+            // The pane waits on the spinner a new step opens with in the main
+            // chat, with the meter under it. It had no spinner at all after its
+            // first tool, so the meter had nowhere to hang. The pane's first
+            // spinner, while it is still up, already carries it.
+            if (!(aiMsgEl._spinner && aiMsgEl._spinner.element)) {
+              dropStepSpinner();
+              stepSpinner = openRoundSpinner(aiBody, meter);
+            }
+            if (hist) hist.scrollTop = hist.scrollHeight;
+
           // ── Research progress (spinner updates) ──
           } else if (json.type === 'research_progress') {
             const rp = json.data;
@@ -489,6 +535,7 @@ async function streamToPane(paneIdx, sessionId, message, aiMsgEl, opts) {
               box.innerHTML = '<span class="sources-label">' + sources.length + ' ' + label + ' sources</span>';
               box.title = sources.map(s => s.title || s.url).join('\n');
               // Replace spinner with sources + new spinner
+              dropStepSpinner();   // `B916`
               aiBody.innerHTML = '';
               aiBody.appendChild(box);
               if (spinnerModule) {
@@ -502,6 +549,7 @@ async function streamToPane(paneIdx, sessionId, message, aiMsgEl, opts) {
           // ── Pane-local question / approval selector ──
           } else if (json.type === 'ask_user') {
             awaitingChoice = true;
+            dropStepSpinner();   // `B916`: the pane waits on the person now
             _renderPaneAskUserCard(
               paneIdx,
               sessionId,
@@ -533,6 +581,7 @@ async function streamToPane(paneIdx, sessionId, message, aiMsgEl, opts) {
           } else if (json.type === 'tool_start') {
             // Finalize any accumulated text before the tool block
             _drawTextFinal();
+            dropStepSpinner();   // `B916`: the card takes the bottom of the pane
             // Destroy spinner if still present
             if (aiMsgEl._spinner && aiMsgEl._spinner.element) {
               aiMsgEl._spinner.destroy();
@@ -634,6 +683,7 @@ async function streamToPane(paneIdx, sessionId, message, aiMsgEl, opts) {
             // it. It is never the running card — the `tool_output` that follows
             // for the same call must not rewrite a card that ran.
             _drawTextFinal();
+            dropStepSpinner();   // `B916`
             if (aiMsgEl._spinner) {
               if (aiMsgEl._spinner.element) aiMsgEl._spinner.destroy();
               aiMsgEl._spinner = null;
@@ -653,6 +703,7 @@ async function streamToPane(paneIdx, sessionId, message, aiMsgEl, opts) {
             // it judged, above the answer. Here that is right after the last
             // card, above any text written since — which also keeps the answer
             // the pane's last text, where grading and the HTML preview read it.
+            dropStepSpinner();   // `B916`: the check the step waited on is over
             const verdict = document.createElement('div');
             applyAgentThreadNode(verdict, verifierCardOptions(json));
             aiBody.insertBefore(verdict,
@@ -665,6 +716,7 @@ async function streamToPane(paneIdx, sessionId, message, aiMsgEl, opts) {
             // `P4-10`'s line, drawn by its one drawer. It goes in the pane's own
             // message, after the work it stopped: compare draws a whole turn as
             // one message, and its tool cards are already in there.
+            dropStepSpinner();   // `B916`
             if (aiMsgEl._spinner) {
               if (aiMsgEl._spinner.element) aiMsgEl._spinner.destroy();
               aiMsgEl._spinner = null;
@@ -684,6 +736,8 @@ async function streamToPane(paneIdx, sessionId, message, aiMsgEl, opts) {
             renderAgentStop(aiBody, json);
             if (hist) hist.scrollTop = hist.scrollHeight;
           } else if (json.delta) {
+            // `B916`: text ends a step's wait — even text the image path skips.
+            dropStepSpinner();
             // Skip text deltas if we already rendered an image
             if (aiMsgEl._imageData) continue;
             // Capture TTFT on very first text delta
@@ -718,7 +772,7 @@ async function streamToPane(paneIdx, sessionId, message, aiMsgEl, opts) {
     }
 
     streamOk = true;
-    // Destroy any remaining spinner
+    // Destroy any remaining spinner (a step's own goes in `finally`, `B916`)
     if (aiMsgEl._spinner && aiMsgEl._spinner.element) aiMsgEl._spinner.destroy();
     aiMsgEl._spinner = null;
     // Final render
@@ -900,6 +954,10 @@ async function streamToPane(paneIdx, sessionId, message, aiMsgEl, opts) {
       stopCardTickers(currentToolBlock);
       currentToolBlock.classList.remove('running');
     }
+    // `B916`. A step still waiting when the stream is cancelled, times out or
+    // fails is not waiting on anything; the prep line's counter stops too.
+    dropStepSpinner();
+    meter.dispose();
     // Show final time with TTFT
     const _totalMs = performance.now() - _timerStart;
     if (_timerEl) {
