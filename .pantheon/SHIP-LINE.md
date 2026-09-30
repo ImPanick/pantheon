@@ -401,6 +401,8 @@ weakest one in this document: it means nobody adjudicated them individually.
 | `B907` | tracked | claim | a wait message that says the model is "pre-filling context" is a guess, and it never fires anyway — nothing false reaches a screen today |
 | `B912` | tracked | security | `manage_settings enable_tool` re-enables an admin-disabled tool unasked in a clean run; a tainted run's gate already stops it, and which switches may move is the owner's call with `B897` |
 | `B921` | tracked | claim | an agent turn's own compaction is announced with no figures and not saved — a notice that says less than happened, not one that says something false |
+| `B930` | tracked | claim | the untrusted-content card names Pantheon's own two-integer run-limit reply as outside content — it over-asks, which is safe; the sentence is what is false |
+| `B937` | tracked | security | a font uploaded by mistake has no remove button and needs a server-side delete — nothing is exposed; the upload itself is admin-only, magic-checked and served nosniff |
 | `P8-48` | tracked | security | the read-only verdict shipped and is read by the panel and the plan-mode gate alike; the schema editor did not, on a recommendation the owner has to rule on |
 | `P11-02d` | landed | security | six route files whose gating is unreconciled — an unknown on an auth surface |
 | `B71` | blocking | claim | upstream's artwork under this fork's filenames, and it is the macOS app icon |

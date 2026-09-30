@@ -269,6 +269,14 @@ def _drive(monkeypatch, replies, *, outputs=None):
     monkeypatch.setattr(agent_loop, "estimate_tokens", lambda *a, **k: 10, raising=False)
     monkeypatch.setattr(agent_loop, "blocked_tools_for_owner", lambda owner: set(), raising=False)
     monkeypatch.setattr(tool_execution, "_owner_is_admin", lambda owner: True)
+    # The admin check the loop actually runs is the one in the globals of the
+    # `execute_tool_block` it holds. In a full-suite run another file can leave
+    # `src.tool_execution` re-imported, so the module this file imported and the
+    # one that function reads are no longer the same object; patch the one that
+    # is read. Measured: without this line, four of these cases failed in the
+    # suite with "Tool 'manage_settings' requires an admin user." and passed alone.
+    monkeypatch.setitem(agent_loop.execute_tool_block.__globals__, "_owner_is_admin",
+                        lambda owner: True)
     scripted = iter(replies)
 
     async def fake_stream(*args, **kwargs):
