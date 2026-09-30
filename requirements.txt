@@ -41,7 +41,7 @@
 # deleting them would lose that reason.
 
 fastapi==0.141.1
-uvicorn==0.53.0
+uvicorn==0.54.0
 python-multipart==0.0.32
 python-dotenv==1.2.3
 httpx==0.28.1
@@ -53,7 +53,7 @@ httpcore==1.0.9
 # Do not pin below those.
 pydantic==2.13.5
 pydantic-settings==2.15.0
-SQLAlchemy==2.0.54
+SQLAlchemy==2.1.1
 pypdf==6.19.0
 beautifulsoup4==4.15.0
 charset-normalizer==3.5.1
@@ -64,11 +64,11 @@ numpy==2.4.6
 # chromadb-client is the lightweight HTTP client (talks to a standalone
 # ChromaDB service); fastembed runs local ONNX embeddings.
 chromadb-client==1.5.9
-fastembed==0.8.0
+fastembed==0.8.1
 youtube-transcript-api==1.2.4
 # Markdown rendering for research reports (src/visual_report.py).
 # Imported at module-top so it's a hard core dep, not optional.
-markdown==3.10.3
+markdown==3.11
 # HTML sanitizer for rendered research reports (src/visual_report.py). Report
 # content is untrusted (LLM output over crawled pages) and report pages run
 # under a relaxed CSP, so the rendered HTML is allowlist-sanitized.
@@ -107,7 +107,7 @@ bcrypt==5.0.0
 # (PyPI, read 2026-09-18), and installed here on the same day it gives 1283
 # passed and nothing failing across the same tests. It is current for the line
 # the product is written against.
-mcp==1.30.0
+mcp==2.2.0
 pyotp==2.10.0
 qrcode[pil]==8.2
 croniter==6.2.4
@@ -116,7 +116,7 @@ pytest-asyncio==1.4.0
 # starlette.testclient prefers httpx2 since Starlette 1.2.0 and warns on every
 # TestClient import when only classic httpx is present. Runtime code keeps
 # using `httpx` above; this is test-client only.
-httpx2==2.13.0
+httpx2==2.13.1
 # DATABASE_URL defaults to sqlite (core/database.py), but when pointed at an
 # external Postgres, SQLAlchemy's postgresql dialect imports psycopg2 inside
 # create_engine() and raises ModuleNotFoundError if missing. -binary avoids
