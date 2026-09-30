@@ -1501,6 +1501,9 @@ export function parseTodoList(ev) {
  * @returns {string} HTML, or '' when there is nothing to show
  */
 export function buildDiffHtml(diff) {
+  // `B938`. This module binds no `esc` at its top, so the bare calls below
+  // threw on every diff — live, on reload and in a compare pane.
+  const esc = uiModule.esc;
   const d = diff || {};
   if (!d.text) return '';
   // Collapsed summary: filename + +adds (green) / −dels (red).
