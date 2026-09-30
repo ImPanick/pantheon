@@ -42,7 +42,7 @@ import {
   inheritModelRouteState,
 } from './chatModelProvenance.js';
 import { createTerminalStreamError, isRecoverableStreamError } from './chatStreamErrors.js';
-import { createAgentMeter, presentMeterEvent, METER_EVENT_TYPES } from './agentMeter.js';   // P4-08 / P4-23 / P4-24
+import { createAgentMeter, presentMeterEvent, METER_EVENT_TYPES, renderLimitsHint } from './agentMeter.js';   // P4-08 / P4-23 / P4-24 / P7-10
 import { loadPanel } from './panels.js';
 import planWindow from './planWindow.js';
 import * as contextUsage from './contextUsage.js';
@@ -83,6 +83,85 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
   let _contextHeaderData = null;
   let _contextHeaderBound = false;
   let _pendingToolApproval = null;
+
+  /**
+   * The model route a send would use right now: the one picked in the last ten
+   * minutes, else the pending chat's, else the open chat's. It is what
+   * `handleChatSubmit` posts as `selected_*`, and `P7-10` lifted it out of that
+   * function unchanged so the composer's limits hint asks the server about the
+   * very route the next send will run on, rather than a second guess at it.
+   */
+  export function selectedRoute() {
+    try {
+      const lastPicked = window.__pantheonLastPickedRoute || null;
+      if (lastPicked && lastPicked.model && Date.now() - (lastPicked.picked_at || 0) < 10 * 60 * 1000) {
+        return {
+          model: lastPicked.model || '',
+          endpoint_url: lastPicked.endpoint_url || '',
+          endpoint_id: lastPicked.endpoint_id || '',
+          source: 'last-picked',
+        };
+      }
+      const pending = sessionModule.getPendingChat && sessionModule.getPendingChat();
+      if (pending && pending.modelId) {
+        return {
+          model: pending.modelId || '',
+          endpoint_url: pending.url || '',
+          endpoint_id: pending.endpointId || '',
+          source: pending.source || '',
+        };
+      }
+      return {
+        model: sessionModule.getCurrentModel ? (sessionModule.getCurrentModel() || '') : '',
+        endpoint_url: sessionModule.getCurrentEndpointUrl ? (sessionModule.getCurrentEndpointUrl() || '') : '',
+        endpoint_id: '',
+        source: '',
+      };
+    } catch (_) {
+      return { model: '', endpoint_url: '', endpoint_id: '', source: '' };
+    }
+  }
+
+  // `P7-10`. How far one message in Agent mode may go, said beside the mode
+  // toggle before it is sent. The server answers with the limits the loop will
+  // enforce on the selected route — the step cap after the local lift, and the
+  // tool-call cap — and `agentMeter.renderLimitsHint` says them in the meter's
+  // own words. Asked again whenever the answer can have changed: the model or
+  // chat changes, Agent is chosen, the Agent settings are saved, or the page
+  // comes back into view. The sequence number drops an answer that arrives
+  // after a newer question, so a slow reply cannot paint a stale model's limit.
+  let _agentLimitsSeq = 0;
+  export async function refreshAgentLimitsHint() {
+    const node = document.getElementById('agent-limits-hint');
+    if (!node) return null;
+    const route = selectedRoute();
+    const query = new URLSearchParams();
+    if (route.endpoint_id) query.set('endpoint_id', route.endpoint_id);
+    if (route.endpoint_url) query.set('endpoint_url', route.endpoint_url);
+    const qs = query.toString();
+    const seq = ++_agentLimitsSeq;
+    let limits = null;
+    try {
+      const res = await fetch(API_BASE + '/api/chat/agent-limits' + (qs ? '?' + qs : ''),
+        { credentials: 'same-origin' });
+      if (res && res.ok) limits = await res.json();
+    } catch (_) {
+      limits = null;
+    }
+    if (seq !== _agentLimitsSeq) return null;
+    return renderLimitsHint(node, limits);
+  }
+
+  function _wireAgentLimitsHint() {
+    const refresh = () => { refreshAgentLimitsHint(); };
+    document.addEventListener('pantheon:model-picked', refresh);
+    document.addEventListener('pantheon:session-changed', refresh);
+    document.addEventListener('pantheon:agent-limits-changed', refresh);
+    const agentBtn = document.getElementById('mode-agent-btn');
+    if (agentBtn) agentBtn.addEventListener('click', refresh);
+    window.addEventListener('focus', refresh);
+    refresh();
+  }
 
   function _submitToolApprovalWhenIdle(approvalId) {
     if (
@@ -969,6 +1048,9 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
     // Restore the persisted message queue and start watching #chat-history so
     // queued bubbles are re-drawn after every session switch (P6-01, P6-02).
     _initQueuedRequests();
+
+    // `P7-10`. The run limits beside the mode toggle.
+    _wireAgentLimitsHint();
   }
 
   // addMessage, createMsgFooter, displayMetrics, hideWelcomeScreen, showWelcomeScreen
@@ -2281,36 +2363,7 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
       await _adoptOpenedSessionBeforeAutoCreate();
     }
 
-    const selectedRouteForSend = (() => {
-      try {
-        const lastPicked = window.__pantheonLastPickedRoute || null;
-        if (lastPicked && lastPicked.model && Date.now() - (lastPicked.picked_at || 0) < 10 * 60 * 1000) {
-          return {
-            model: lastPicked.model || '',
-            endpoint_url: lastPicked.endpoint_url || '',
-            endpoint_id: lastPicked.endpoint_id || '',
-            source: 'last-picked',
-          };
-        }
-        const pending = sessionModule.getPendingChat && sessionModule.getPendingChat();
-        if (pending && pending.modelId) {
-          return {
-            model: pending.modelId || '',
-            endpoint_url: pending.url || '',
-            endpoint_id: pending.endpointId || '',
-            source: pending.source || '',
-          };
-        }
-        return {
-          model: sessionModule.getCurrentModel ? (sessionModule.getCurrentModel() || '') : '',
-          endpoint_url: sessionModule.getCurrentEndpointUrl ? (sessionModule.getCurrentEndpointUrl() || '') : '',
-          endpoint_id: '',
-          source: '',
-        };
-      } catch (_) {
-        return { model: '', endpoint_url: '', endpoint_id: '', source: '' };
-      }
-    })();
+    const selectedRouteForSend = selectedRoute();
 
     // Materialize pending session (deferred from model click) on first message
     if (sessionModule.hasPendingChat && sessionModule.hasPendingChat()) {

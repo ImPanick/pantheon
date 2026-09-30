@@ -4313,13 +4313,45 @@ def _resolve_local_lifts(max_rounds: int, max_tokens: int, *, unlimited: bool):
     """
     return (
         # ~unlimited rounds for long autonomous local runs
-        _lift_cap(max_rounds, 100_000, unlimited=unlimited,
-                  pinned=_setting_pinned("agent_max_rounds")),
+        _lift_round_cap(max_rounds, unlimited=unlimited),
         # The machine's local-inference ceiling; the preset is the floor.
         _lift_cap(max_tokens, _local_max_tokens_ceiling(),
                   unlimited=unlimited, pinned=False),
         _setting_pinned("agent_stream_timeout_seconds"),
     )
+
+
+# `H08`'s lift for the step cap. `P7-10` takes it out of `_resolve_local_lifts`
+# so the one rule has two askers: the loop, as it starts a run, and
+# `agent_run_limits`, which the composer's route calls before a run exists.
+LOCAL_ROUND_LIFT = 100_000
+
+
+def _lift_round_cap(max_rounds: int, *, unlimited: bool) -> int:
+    """The step cap a run is held to, given the cap it was handed. `H08`.
+
+    A cap nobody pinned is lifted to `LOCAL_ROUND_LIFT` on local inference (or
+    everywhere, with `PANTHEON_FORCE_UNLIMITED`); one a person typed is left
+    exactly alone. See `runtime_limits.lift_cap`.
+    """
+    return _lift_cap(max_rounds, LOCAL_ROUND_LIFT, unlimited=unlimited,
+                     pinned=_setting_pinned("agent_max_rounds"))
+
+
+def run_is_unlimited(endpoint_url: str) -> bool:
+    """Whether a run on `endpoint_url` would have its caps lifted. `P7-10`.
+
+    The question `stream_agent_loop` asks through `set_local_mode` and
+    `unlimited()` once a run has started, asked of an endpoint before one has:
+    the same classification of the URL, the same rule
+    (`runtime_limits.unlimited_for`). An unimportable `runtime_limits` answers
+    `False`, which is what the loop's own fallback does.
+    """
+    try:
+        from src.runtime_limits import unlimited_for
+    except Exception:  # pragma: no cover — stdlib-only module
+        return False
+    return unlimited_for(_is_local_openai_compat_url(endpoint_url))
 
 
 # `P4-08` / `P4-23`. The two events the live meter is drawn from. The chat
@@ -4403,9 +4435,48 @@ def _agent_budget_frame(
         "round_limit_source": round_limit_source,
         "round_limit_configured": round_limit_configured,
         "tool_calls": tool_calls,
-        "tool_call_limit": tool_call_limit if tool_call_limit and tool_call_limit > 0 else None,
+        "tool_call_limit": _tool_call_limit_on_wire(tool_call_limit),
     }
     return f"data: {json.dumps(frame)}\n\n"
+
+
+def _tool_call_limit_on_wire(tool_call_limit: Any) -> Optional[int]:
+    """The tool-call cap as the wire says it: a number, or `None` for none.
+
+    The setting's `0` (and anything not above it) means unlimited, and a `0`
+    on the wire would read as "none allowed" (`Law 10`). One rule for the
+    budget frame and the pre-run limits (`P7-10`).
+    """
+    try:
+        limit = int(tool_call_limit)
+    except (TypeError, ValueError):
+        return None
+    return limit if limit > 0 else None
+
+
+def agent_run_limits(endpoint_url: str, max_rounds: int, max_tool_calls: int) -> Dict[str, Any]:
+    """The limits a run on `endpoint_url` would be held to, before it starts.
+
+    `P7-10`. "How far can it run unattended" sat in a settings tab, and the
+    settings tab is not even the answer: on local inference `H08` lifts a step
+    cap nobody pinned to 100,000, so the 20 in *Max steps per message* is not
+    the 20 the loop enforces. This answers with the loop's own helpers — the
+    lift in `_lift_round_cap`, the reason in `_round_limit_source`, the
+    tool-call rule in `_tool_call_limit_on_wire` — so the composer can say what
+    a run will be held to without re-deriving any of it in JavaScript
+    (`Law 7`). The keys are the limit half of an `agent_budget` frame, and the
+    first frame of the run carries the same four values; a test drives both.
+
+    `max_rounds` / `max_tool_calls` are what the caller will hand the loop —
+    for the chat route, `run_limits.configured_agent_caps()`.
+    """
+    enforced = _lift_round_cap(max_rounds, unlimited=run_is_unlimited(endpoint_url))
+    return {
+        "round_limit": enforced,
+        "round_limit_source": _round_limit_source(max_rounds, enforced, endpoint_url),
+        "round_limit_configured": max_rounds,
+        "tool_call_limit": _tool_call_limit_on_wire(max_tool_calls),
+    }
 
 
 async def stream_agent_loop(

@@ -1028,6 +1028,48 @@ def _recover_empty_session_model(sess, session_id: str, owner: str | None = None
     return False
 
 
+def _selected_registered_endpoint(
+    endpoint_id: str,
+    endpoint_url: str,
+    *,
+    owner: str | None = None,
+):
+    """The registered, enabled endpoint the browser selected, as `(chat_url,
+    headers)`, or `None` if it names none the caller may use.
+
+    Taken out of `_reconcile_selected_route_from_request` unchanged by `P7-10`,
+    so `GET /api/chat/agent-limits` resolves a selection exactly as a send will
+    — an id first, else a URL matched against the owner's endpoints — rather
+    than with a second lookup that could land on a different endpoint. Raises
+    only what the database raises; both callers decide what a failure means.
+    """
+    from src.auth_helpers import owner_filter
+    from src.endpoint_resolver import build_headers, normalize_base
+    db = SessionLocal()
+    try:
+        q = db.query(ModelEndpoint).filter(ModelEndpoint.is_enabled == True)
+        if endpoint_id:
+            q = q.filter(ModelEndpoint.id == endpoint_id)
+        if owner:
+            q = owner_filter(q, ModelEndpoint, owner)
+        candidates = q.all() if endpoint_url and not endpoint_id else [q.first()]
+        ep = None
+        for cand in candidates:
+            if not cand:
+                continue
+            if endpoint_id or _session_url_matches_endpoint(endpoint_url, cand.base_url or ""):
+                ep = cand
+                break
+        if not ep:
+            return None
+        return (
+            build_chat_url(normalize_base(ep.base_url or "")),
+            build_headers(ep.api_key or "", ep.base_url or "") if ep.api_key else {},
+        )
+    finally:
+        db.close()
+
+
 def _reconcile_selected_route_from_request(
     request: Request,
     sess,
@@ -1052,32 +1094,15 @@ def _reconcile_selected_route_from_request(
     headers = None
     if selected_endpoint_id or selected_endpoint_url:
         try:
-            from src.auth_helpers import owner_filter
-            from src.endpoint_resolver import build_headers, normalize_base
-            db = SessionLocal()
-            try:
-                q = db.query(ModelEndpoint).filter(ModelEndpoint.is_enabled == True)
-                if selected_endpoint_id:
-                    q = q.filter(ModelEndpoint.id == selected_endpoint_id)
-                if owner:
-                    q = owner_filter(q, ModelEndpoint, owner)
-                candidates = q.all() if selected_endpoint_url and not selected_endpoint_id else [q.first()]
-                ep = None
-                for cand in candidates:
-                    if not cand:
-                        continue
-                    if selected_endpoint_id or _session_url_matches_endpoint(selected_endpoint_url, cand.base_url or ""):
-                        ep = cand
-                        break
-                if not ep:
-                    return False
-                endpoint_url = build_chat_url(normalize_base(ep.base_url or ""))
-                headers = build_headers(ep.api_key or "", ep.base_url or "") if ep.api_key else {}
-            finally:
-                db.close()
+            resolved = _selected_registered_endpoint(
+                selected_endpoint_id, selected_endpoint_url, owner=owner,
+            )
         except Exception as e:
             logger.warning("Failed to resolve selected endpoint %s/%s for %s: %s", selected_endpoint_id, selected_endpoint_url, session_id, e)
             return False
+        if not resolved:
+            return False
+        endpoint_url, headers = resolved
 
     if not endpoint_url:
         return False
@@ -2850,24 +2875,25 @@ def setup_chat_routes(
                 _agent_round_endpoint_ids = {1: _agent_actual_endpoint_id}
                 _agent_round_endpoint_labels = {1: _agent_actual_endpoint_label}
                 try:
-                    from src.settings import get_setting
                     from src.agent_tools import MAX_AGENT_ROUNDS as _DEFAULT_ROUNDS
                     from src.agent_loop import AGENT_METER_EVENT_TYPES   # `P4-08`/`P4-23`
-                    # Per-message tool budget from settings; guard defensively in
-                    # case settings.json was hand-edited to a non-numeric value
-                    # (the HTTP admin endpoint validates, but direct edits bypass
-                    # it). 0 = unlimited, matching auth_routes set_settings().
+                    from src.run_limits import configured_agent_caps   # `P7-10`
+                    # Per-message tool budget and round cap from settings, read
+                    # by `configured_agent_caps` — the one reading, which
+                    # `GET /api/chat/agent-limits` also asks so the composer can
+                    # say how far a run will go before it starts (`P7-10`,
+                    # `Law 7`). It guards a hand-edited non-numeric value (the
+                    # HTTP admin endpoint validates, but direct edits bypass it:
+                    # 0 = unlimited, matching auth_routes set_settings()) and
+                    # clamps the round cap to 1..200. The `try` stays so a
+                    # failure here still cannot take the stream down.
                     try:
-                        _tool_budget = int(get_setting("agent_max_tool_calls", 0))
+                        _agent_caps = configured_agent_caps()
+                        _tool_budget = _agent_caps.tool_calls
+                        _max_rounds = _agent_caps.rounds
                     except (TypeError, ValueError):
                         _tool_budget = 0
-                    # Per-message round cap from settings; clamp defensively in
-                    # case settings.json was hand-edited to a bad value.
-                    try:
-                        _max_rounds = int(get_setting("agent_max_rounds", _DEFAULT_ROUNDS) or _DEFAULT_ROUNDS)
-                    except (TypeError, ValueError):
                         _max_rounds = _DEFAULT_ROUNDS
-                    _max_rounds = max(1, min(_max_rounds, 200))
 
                     _forced_tools = None
                     if _search_enabled:
@@ -3525,6 +3551,54 @@ def setup_chat_routes(
                 yield f'event: error\ndata: {json.dumps({"error": str(e), "status": 500})}\n\n'
 
         return StreamingResponse(stream_rewrite(), media_type="text/event-stream")
+
+    # ------------------------------------------------------------------ #
+    # P7-10 — how far an agent run may go, asked before it starts.
+    #
+    # "How far can it run unattended" sat in the Tools tab, and the tab is not
+    # even the answer: on local inference `H08` lifts a step cap nobody pinned
+    # to 100,000. The loop has sent the limits it actually enforces since
+    # `P4-23`, but only once a run is under way. This is the same answer before
+    # one exists, for the model the composer has selected: the caps are read
+    # the way `chat_stream` reads them (`configured_agent_caps`), the selected
+    # endpoint is resolved the way a send resolves it
+    # (`_selected_registered_endpoint`, owner-filtered), and the lift is the
+    # loop's own (`agent_run_limits`). Nothing is re-derived here or in the
+    # browser (`Law 7`).
+    #
+    # What an unregistered URL does: the send falls back to the session's own
+    # stored URL, which is the string the composer sends as `endpoint_url` — so
+    # that string is classified as it stands. Classifying is string parsing and
+    # nothing else; no request leaves for it (`Law 16`), and the answer names no
+    # endpoint, key or host (`Law 17`: the reader is the caller, about the
+    # caller's own next run).
+    # ------------------------------------------------------------------ #
+
+    @router.get("/api/chat/agent-limits")
+    async def agent_limits(
+        request: Request,
+        endpoint_id: str = "",
+        endpoint_url: str = "",
+    ) -> Dict[str, Any]:
+        """The step and tool-call limits an agent run on the selected model
+        would be held to — the four limit keys of the run's first
+        `agent_budget` frame, before there is a run."""
+        from src.agent_loop import agent_run_limits
+        from src.run_limits import configured_agent_caps
+
+        owner = effective_user(request)
+        selected_id = str(endpoint_id or "").strip()
+        selected_url = str(endpoint_url or "").strip()
+        run_url = ""
+        if selected_id or selected_url:
+            try:
+                resolved = _selected_registered_endpoint(selected_id, selected_url, owner=owner)
+            except Exception:
+                logger.warning("agent limits: selected endpoint lookup failed", exc_info=True)
+                resolved = None
+            run_url = resolved[0] if resolved else selected_url
+        caps = configured_agent_caps()
+        return agent_run_limits(run_url, caps.rounds, caps.tool_calls)
 
     # ------------------------------------------------------------------ #
     # Standing allow rules for the `allow_listed` trust rung (P7-04)

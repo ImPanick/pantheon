@@ -316,10 +316,11 @@ routes: 39
 
 The router carries `dependencies=[Depends(require_chat_api_token_scope)]`, so every route below gets it whether or not the handler mentions auth, and every session route reaches `_verify_session_owner` (imported from `routes/session_routes.py`). `P11-02d` named `chat_routes.py:338/367` as the admin check; those two lines are `_candidate_index` and `_message_plain_text`. The real admin check is `owner_is_admin_or_single_user` at 481 and 510, reached only from `chat_stream`, and it gates workspace binding rather than the route.
 
-routes: 14
+routes: 15
 
 | route | handler | gate | intended |
 |---|---|---|---|
+| `GET /api/chat/agent-limits` | `agent_limits` | `middleware + effective_user + owner_filter + require_chat_api_token_scope` | yes (`P7-10`) — the chat scope, as `chat_stream`, because it answers for the caller's own next agent run: the two loop caps and whether the selected endpoint is local. `effective_user` then `owner_filter` scope the endpoint lookup to the caller's endpoints, and the answer names no endpoint, host or key. |
 | `POST /api/chat` | `chat_endpoint` | `middleware + _verify_session_owner + effective_user + owner_filter + require_api_token_scope + require_chat_api_token_scope` | yes — token scope, then `effective_user`, then `owner_filter` on every row it reads. |
 | `POST /api/chat_stream` | `chat_stream` | `middleware + _verify_session_owner + effective_user + get_current_user + owner_filter + owner_is_admin_or_single_user + require_api_token_scope + require_chat_api_token_scope` | yes — the same, plus `owner_is_admin_or_single_user` before any workspace is bound. |
 | `GET /api/chat/resume/{session_id}` | `chat_resume` | `middleware + _verify_session_owner + require_chat_api_token_scope` | yes — `_verify_session_owner` refuses another user's session, and refuses "not yours" and "no such session" identically. |

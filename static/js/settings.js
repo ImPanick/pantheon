@@ -2028,6 +2028,10 @@ async function initAgentSettings() {
     }
     try {
       await _postSettings(payload);
+      // `P7-10`. The composer says these two limits beside the mode toggle;
+      // tell it they moved rather than leave it on the old numbers until the
+      // next model or chat change.
+      try { document.dispatchEvent(new CustomEvent('pantheon:agent-limits-changed')); } catch (_) {}
       msg.textContent = (tools > 0 ? 'Limit: ' + tools + ' tool calls' : 'Unlimited tool calls') +
         (rounds != null ? ' · ' + rounds + ' steps/message' : '') +
         (supInput && supInput.checked ? ' · supervisor on' : '') +

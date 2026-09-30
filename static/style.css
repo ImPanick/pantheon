@@ -12059,6 +12059,35 @@ body.fullwidth-chat .chat-history {
     transition: none;
   }
 }
+/* `P7-10`. How far one message in Agent mode may go — the limits the loop will
+   enforce on the selected model, lifted or not — beside the mode toggle, where
+   Agent is chosen and next to the send button (`agentMeter.renderLimitsHint`).
+   Muted like the context wheel beside it, from `--color-muted-alt`; the words
+   carry everything and no hue does, so no `--accent`. It is about Agent mode,
+   so it is not drawn while Chat is the active mode. Capped and cut with an
+   ellipsis rather than pushing the row (its full sentence is its hover text,
+   and the Agent button's description), and it is the first thing to go when
+   the bar narrows — the mode toggle itself drops out at 340px. No motion. */
+.agent-limits-hint {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 34ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.7rem;
+  line-height: 1.2;
+  color: var(--color-muted-alt);
+}
+.agent-limits-hint[hidden],
+.chat-input-right:not(:has(#mode-agent-btn.active)) .agent-limits-hint {
+  display: none;
+}
+@container chatbar (max-width: 560px) {
+  .agent-limits-hint {
+    display: none;
+  }
+}
 
 .agent-tool-output[open] {
   background: color-mix(in srgb, var(--red) 6%, transparent);

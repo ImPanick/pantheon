@@ -39,6 +39,7 @@ from src.settings import (
     without_retired_settings,
 )
 from src.tool_capabilities import TrustRung
+from src.run_limits import AGENT_MAX_ROUNDS_RANGE, AGENT_MAX_TOOL_CALLS_RANGE
 from src.integrations import (
     load_integrations,
     add_integration,
@@ -1094,8 +1095,10 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
             "approval_timeout_seconds": (
                 MIN_APPROVAL_TTL_SECONDS, MAX_APPROVAL_TTL_SECONDS,
             ),
-            "agent_max_rounds": (1, 200),
-            "agent_max_tool_calls": (0, 1000),  # 0 = unlimited
+            # `P7-10`. The same two ranges `src/run_limits.py` states for the
+            # chat route's reading and the composer's pre-run limits.
+            "agent_max_rounds": AGENT_MAX_ROUNDS_RANGE,
+            "agent_max_tool_calls": AGENT_MAX_TOOL_CALLS_RANGE,  # 0 = unlimited
             # `P3-21`. 0 means "no lift — run presets at their own numbers",
             # which is a reachable, documented value rather than a disabled
             # setting. The top is a machine ceiling, not a budget: ten million

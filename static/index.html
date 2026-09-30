@@ -1615,9 +1615,18 @@
                (`static/js/contextUsage.js`); it moved here from the chat
                header, same id. -->
           <button type="button" class="chat-context-pill" id="chat-context-pill" title="Context window" aria-haspopup="dialog" aria-expanded="false" hidden><span class="chat-context-dot"></span><span id="chat-context-pill-label">0%</span></button>
+          <!-- `P7-10`. How far one message in Agent mode may go on its own —
+               the step limit the loop will actually enforce (lifted on a local
+               model) and the tool-call limit — said where Agent mode is chosen
+               and beside the send button, instead of only in Settings › Tools.
+               Filled by `chat.js` from `GET /api/chat/agent-limits` through
+               `agentMeter.renderLimitsHint`; shown only while Agent is the
+               active mode (`style.css`), and it is the Agent button's
+               description for a screen reader. -->
+          <span class="agent-limits-hint" id="agent-limits-hint" hidden></span>
           <!-- Agent / Chat mode toggle -->
           <div class="mode-toggle">
-            <button type="button" class="mode-toggle-btn active" id="mode-agent-btn" aria-pressed="true">Agent</button>
+            <button type="button" class="mode-toggle-btn active" id="mode-agent-btn" aria-pressed="true" aria-describedby="agent-limits-hint">Agent</button>
             <button type="button" class="mode-toggle-btn" id="mode-chat-btn" aria-pressed="false">Chat</button>
           </div>
           <button type="submit" form="chat-form" class="send-btn newchat-mode" data-mode="newchat" aria-label="New chat">

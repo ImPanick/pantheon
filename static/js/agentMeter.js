@@ -23,6 +23,15 @@
 // than guessing why (`firstTokenWaitText`), and which events end that wait
 // (`endsFirstTokenWait`).
 //
+// `P7-10`. And before any of it: *how far can it run unattended* was a
+// settings tab away from the moment of choosing Agent mode. The composer now
+// says it beside the mode toggle (`limitsPreview`, `renderLimitsHint`), from
+// `GET /api/chat/agent-limits` — the four limit keys of a run's first
+// `agent_budget` frame, resolved on the server with the loop's own helpers
+// before there is a run. Read by the same parser and put into the same rule
+// sentences as the live meter, so the promise before the run and the meter
+// during it are one vocabulary (`Law 14`) and neither re-derives the lift.
+//
 // ── Measured, estimated, unknown (`Law 10`) ────────────────────────────────
 // A figure printed plainly was measured on the server. A figure with `~` is the
 // browser counting up while a step is still running, and it is replaced by the
@@ -134,6 +143,30 @@ export function createMeterState() {
   return { teacher: false, prep: null, budget: null, stop: null };
 }
 
+/**
+ * The limit half of an `agent_budget` frame — or of `GET /api/chat/agent-limits`,
+ * which answers with the same four keys before a run exists (`P7-10`). One
+ * reader for both, so the promise before a run and the meter during it cannot
+ * read a payload two ways.
+ */
+function limitsFrom(payload) {
+  const roundLimit = positiveInt(payload.round_limit);
+  const source = ROUND_LIMIT_SOURCES.includes(payload.round_limit_source)
+    ? payload.round_limit_source : 'configured';
+  const hasToolLimitKey = Object.prototype.hasOwnProperty.call(payload, 'tool_call_limit');
+  return {
+    roundLimit,
+    source,
+    configured: positiveInt(payload.round_limit_configured) || roundLimit,
+    // Three states, not two: a number, `null` for "no limit", and
+    // `undefined` for a frame that did not say — which is not the same as
+    // saying there is none.
+    toolLimit: hasToolLimitKey
+      ? (payload.tool_call_limit === null ? null : positiveInt(payload.tool_call_limit))
+      : undefined,
+  };
+}
+
 function timingsFrom(data) {
   const out = {};
   if (!data || typeof data !== 'object') return out;
@@ -188,24 +221,12 @@ export function reduceMeter(state, event, nowMs = Date.now()) {
   if (event.type === 'agent_budget') {
     const round = positiveInt(event.round);
     if (round === null) return s0;
-    const roundLimit = positiveInt(event.round_limit);
-    const source = ROUND_LIMIT_SOURCES.includes(event.round_limit_source)
-      ? event.round_limit_source : 'configured';
-    const hasToolLimitKey = Object.prototype.hasOwnProperty.call(event, 'tool_call_limit');
     return {
       ...s,
       budget: {
         round,
-        roundLimit,
-        source,
-        configured: positiveInt(event.round_limit_configured) || roundLimit,
+        ...limitsFrom(event),
         toolCalls: countOf(event.tool_calls),
-        // Three states, not two: a number, `null` for "no limit", and
-        // `undefined` for a frame that did not say — which is not the same as
-        // saying there is none.
-        toolLimit: hasToolLimitKey
-          ? (event.tool_call_limit === null ? null : positiveInt(event.tool_call_limit))
-          : undefined,
       },
     };
   }
@@ -419,22 +440,79 @@ export function budgetView(state) {
       : { text: state.stop.limit ? `Stopped at the ${num(state.stop.limit)}-tool-call limit` : 'Stopped at the tool-call limit', tone: 'at' };
   }
 
-  let stepRule;
-  if (b.roundLimit && !lifted) stepRule = `This run stops after step ${num(b.roundLimit)} and offers Continue.`;
-  else if (b.roundLimit && b.source === 'local_lift') {
-    stepRule = `On a local model the ${num(b.configured)}-step limit is lifted to ${num(b.roundLimit)}; `
-      + 'saving "Max steps per message" keeps it.';
-  } else if (b.roundLimit) stepRule = `This server lifts the ${num(b.configured)}-step limit to ${num(b.roundLimit)}.`;
-  else stepRule = 'The step limit for this run was not reported.';
-  let toolRule;
-  if (b.toolLimit) toolRule = `It stops outright after ${num(b.toolLimit)} tool calls.`;
-  else if (b.toolLimit === null) toolRule = 'There is no tool-call limit.';
-  else toolRule = 'The tool-call limit for this run was not reported.';
-
   return {
     steps, tools, note,
-    title: `${stepRule} ${toolRule} Both are set in ${SETTINGS_PATH}.`,
+    title: limitsTitle(b, 'This run'),
   };
+}
+
+// ── the rule, in words (`P4-23`, `P7-10`) ──────────────────────────────────
+
+/** The step rule for limits `b` (`limitsFrom`'s shape). `subject` names who
+ *  stops: *This run* under the spinner, *Each message in Agent mode* before
+ *  there is a run. */
+function stepRuleText(b, subject) {
+  if (b.roundLimit && b.source === 'configured') {
+    return `${subject} stops after step ${num(b.roundLimit)} and offers Continue.`;
+  }
+  if (b.roundLimit && b.source === 'local_lift') {
+    return `On a local model the ${num(b.configured)}-step limit is lifted to ${num(b.roundLimit)}; `
+      + 'saving "Max steps per message" keeps it.';
+  }
+  if (b.roundLimit) return `This server lifts the ${num(b.configured)}-step limit to ${num(b.roundLimit)}.`;
+  return 'The step limit for this run was not reported.';
+}
+
+function toolRuleText(b) {
+  if (b.toolLimit) return `It stops outright after ${num(b.toolLimit)} tool calls.`;
+  if (b.toolLimit === null) return 'There is no tool-call limit.';
+  return 'The tool-call limit for this run was not reported.';
+}
+
+/** The whole rule, and where it is set: the meter's hover text, and the
+ *  composer's before a run. */
+function limitsTitle(b, subject) {
+  return `${stepRuleText(b, subject)} ${toolRuleText(b)} Both are set in ${SETTINGS_PATH}.`;
+}
+
+// ── before the run (`P7-10`) ──────────────────────────────────────────────
+
+/**
+ * What the composer says beside the mode toggle, from `GET /api/chat/agent-limits`.
+ * `null` when the answer has no step limit in it — the chip then says nothing
+ * rather than guessing (`Law 10`).
+ *
+ *   text   the short form, e.g. *Up to 20 steps · 10 tool calls*
+ *   title  the whole rule and where it is set, in the meter's own sentences
+ *   source the step limit's `round_limit_source`
+ */
+export function limitsPreview(payload) {
+  if (!payload || typeof payload !== 'object') return null;
+  const b = limitsFrom(payload);
+  if (!b.roundLimit) return null;
+  const lifted = b.source !== 'configured';
+  const liftedWhere = b.source === 'local_lift' ? 'local model' : 'this server';
+  const steps = lifted ? `Step limit lifted (${liftedWhere})` : `Up to ${num(b.roundLimit)} steps`;
+  const tools = b.toolLimit ? `${num(b.toolLimit)} tool call${b.toolLimit === 1 ? '' : 's'}` : '';
+  return {
+    text: tools ? `${steps} · ${tools}` : steps,
+    title: limitsTitle(b, 'Each message in Agent mode'),
+    source: b.source,
+  };
+}
+
+/** Draw `payload` into the composer's hint node (`#agent-limits-hint`). Text
+ *  only: the words are this module's, the numbers came off the wire. Hidden
+ *  when there is nothing true to say. Returns the preview drawn, or `null`. */
+export function renderLimitsHint(node, payload) {
+  if (!node) return null;
+  const view = limitsPreview(payload);
+  node.textContent = view ? view.text : '';
+  node.title = view ? view.title : '';
+  node.hidden = !view;
+  if (view) node.dataset.source = view.source;
+  else delete node.dataset.source;
+  return view;
 }
 
 // ── DOM ───────────────────────────────────────────────────────────────────
@@ -631,4 +709,5 @@ export default {
   prepSpinnerLabel, prepLineVisible, prepLineText, budgetView,
   buildMeterNode, renderMeterNode, createAgentMeter, presentMeterEvent,
   FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText,
+  limitsPreview, renderLimitsHint,
 };

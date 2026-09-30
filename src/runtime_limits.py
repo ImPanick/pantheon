@@ -44,16 +44,29 @@ def set_local_mode(is_local: bool):
         return None
 
 
-def unlimited() -> bool:
-    """True when guardrail caps should be lifted for the current request."""
+def unlimited_for(is_local: bool) -> bool:
+    """True when caps are lifted for a request on (or off) local inference.
+
+    `P7-10`. The rule `unlimited()` has always applied, taken out of it so it
+    can be asked about an endpoint *before* a request to it exists: the chat
+    composer says how far an agent run will go before the person sends one, and
+    it has to say what the loop will enforce rather than a second guess at it
+    (`Law 7`). `unlimited()` below is this, asked about the current request.
+    """
     if _FORCE_UNLIMITED:
         return True
     if not _LIFT_WHEN_LOCAL:
         return False
+    return bool(is_local)
+
+
+def unlimited() -> bool:
+    """True when guardrail caps should be lifted for the current request."""
     try:
-        return bool(_local_mode.get())
+        is_local = bool(_local_mode.get())
     except Exception:
-        return False
+        is_local = False
+    return unlimited_for(is_local)
 
 
 def lift_cap(value: int, lifted: int, *, unlimited: bool, pinned: bool) -> int:
