@@ -113,6 +113,7 @@ function _applySectionCollapse(container) {
   if (!container) return;
   container.querySelectorAll('.skills-section-header').forEach(h => {
     h.classList.toggle('collapsed', _collapsedSections.has(h.dataset.section));
+    h.setAttribute('aria-expanded', String(!_collapsedSections.has(h.dataset.section)));
   });
   container.querySelectorAll('.doclib-card[data-skill-section]').forEach(c => {
     c.classList.toggle('skill-card-section-hidden', _collapsedSections.has(c.dataset.skillSection));
@@ -595,11 +596,12 @@ function _buildBuiltinCards(rows) {
 
     const header = document.createElement('div');
     header.className = 'doclib-card-header skill-card-header';
+    // `P10-06`. The name is the card's keyboard control — see `_CARD_OWN`.
     header.innerHTML = `
       <span class="skill-conf-dot" style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--accent, var(--red));flex-shrink:0;margin-right:6px;opacity:0.55;"></span>
-      <div style="flex:1;min-width:0;overflow:hidden;">
+      <div style="flex:1;min-width:0;">
         <div class="doclib-card-title" style="display:flex;align-items:center;gap:6px;min-width:0;">
-          <code style="font-weight:600;font-size:0.9em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:1;min-width:0;">${esc(b.name)}</code>
+          <button type="button" class="skill-card-toggle" aria-expanded="false" style="width:auto;flex:0 1 auto;overflow:hidden;"><code style="display:block;font-weight:600;font-size:0.9em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(b.name)}</code></button>
           <span class="memory-cat-badge" style="background:color-mix(in srgb, var(--fg) 14%, transparent)">built-in</span>
           ${b.is_overridden ? '<span class="memory-cat-badge" title="You have edited this built-in capability" style="background:color-mix(in srgb, var(--color-warning, #f0ad4e) 30%, transparent);">edited</span>' : ''}
         </div>
@@ -649,7 +651,7 @@ function _buildBuiltinCards(rows) {
     card.appendChild(preview);
 
     card.addEventListener('click', (e) => {
-      if (e.target.closest('button, input, textarea')) return;
+      if (e.target.closest(_CARD_OWN)) return;
       // Editing in progress → don't collapse on an outside-the-textarea click.
       if (card.querySelector('.skill-md-editor')) return;
       _expandBuiltinCard(card, b.name);
@@ -658,14 +660,46 @@ function _buildBuiltinCards(rows) {
   });
 }
 
+// `P10-06`. The controls INSIDE a skill card that answer a click themselves,
+// so a click on one of them is not also a click on the card. The card's name
+// is deliberately not among them: it is a `<button class="skill-card-toggle">`
+// so a keyboard can reach and press it — a card holds its own buttons (the
+// kebab, Edit, Delete), so the card itself cannot be one (`P10-02`'s rule) —
+// and pressing it is a click on the card, which opens it, closes it, or in
+// Select mode ticks it, exactly as clicking anywhere else on the card does.
+// Measured 2026-09-27 before this: Tab reached a skill card's kebab and
+// nothing else, so no card could be opened to read its SKILL.md.
+const _CARD_OWN = 'button:not(.skill-card-toggle), input, textarea';
+
+/** `P10-06`. The name button says whether its card is open. The class is the
+ *  state every open and close path already writes; this reads it after them.
+ *  A card closed with the focus on something in its body — Escape from Edit,
+ *  say — would drop the focus to <body> as the body hides (measured: it did);
+ *  it goes back to the name instead. */
+function _syncCardToggle(card) {
+  const toggle = card && card.querySelector('.skill-card-toggle');
+  if (!toggle) return;
+  const open = card.classList.contains('doclib-card-expanded');
+  toggle.setAttribute('aria-expanded', String(open));
+  const body = card.querySelector('.doclib-card-preview');
+  if (!open && body && body.contains(document.activeElement)) {
+    try { toggle.focus(); } catch (_) {}
+  }
+}
+
 async function _expandBuiltinCard(card, name) {
   const grid = card.closest('.doclib-grid');
   if (card.classList.contains('doclib-card-expanded')) {
     card.classList.remove('doclib-card-expanded');
+    _syncCardToggle(card);
     return;
   }
-  if (grid) grid.querySelectorAll('.doclib-card-expanded').forEach(c => c.classList.remove('doclib-card-expanded'));
+  if (grid) grid.querySelectorAll('.doclib-card-expanded').forEach(c => {
+    c.classList.remove('doclib-card-expanded');
+    _syncCardToggle(c);
+  });
   card.classList.add('doclib-card-expanded');
+  _syncCardToggle(card);
   if (grid) grid.scrollTop = 0;
   const pre = card.querySelector('.skill-md-pre');
   if (pre && !card._loaded) {
@@ -825,7 +859,7 @@ function renderSkillsList() {
       ${cbHtml}
       ${_auditDot(sk)}
       <div class="skill-card-textcol">
-        <code class="skill-card-name">${esc(name)}</code>
+        <button type="button" class="skill-card-toggle" aria-expanded="false"><code class="skill-card-name">${esc(name)}</code></button>
         ${sk.description ? `<div class="skill-card-desc">${esc(sk.description)}</div>` : ''}
       </div>
       <div class="skill-card-right">
@@ -930,7 +964,8 @@ function renderSkillsList() {
     // Click to expand/collapse (unless in select mode → toggle checkbox).
     card.addEventListener('click', (e) => {
       if (card._suppressNextClick) { card._suppressNextClick = false; return; }
-      if (e.target.closest('button, input, textarea')) return;
+      // `P10-06`: not the name button — pressing it is a click on the card.
+      if (e.target.closest(_CARD_OWN)) return;
       // While editing, a click on the card body (outside the textarea) must
       // NOT collapse the card — that silently discards unsaved edits. Only
       // Save/Cancel exit edit mode.
@@ -952,7 +987,7 @@ function renderSkillsList() {
       let start = null;
       const _lpCancel = () => { if (hold) { clearTimeout(hold); hold = null; } start = null; };
       card.addEventListener('pointerdown', (e) => {
-        if (e.target.closest('.skill-kebab-btn, .skill-select-cb, button, input, textarea')) return;
+        if (e.target.closest('.skill-kebab-btn, .skill-select-cb') || e.target.closest(_CARD_OWN)) return;
         start = { x: e.clientX, y: e.clientY };
         hold = setTimeout(() => {
           hold = null;
@@ -979,23 +1014,7 @@ function renderSkillsList() {
   // data-skill-section) so the global expand rule — which hides sibling
   // .doclib-card elements by direct-child selector — keeps working.
   // Collapse just toggles display on the tagged cards.
-  const _mkSectionHeader = (sectionId, title, count) => {
-    const collapsed = _collapsedSections.has(sectionId);
-    const hdr = document.createElement('div');
-    hdr.className = 'skills-section-label skills-section-header' + (collapsed ? ' collapsed' : '');
-    hdr.dataset.section = sectionId;
-    hdr.innerHTML =
-      chevronIcon({ className: 'skills-section-chevron' }) +
-      `<span>${esc(title)}</span>` +
-      `<span class="skills-section-count">${count}</span>`;
-    hdr.addEventListener('click', () => {
-      if (_collapsedSections.has(sectionId)) _collapsedSections.delete(sectionId);
-      else _collapsedSections.add(sectionId);
-      _saveCollapsedSections();
-      _applySectionCollapse(container);
-    });
-    return hdr;
-  };
+  const _mkSectionHeader = (sectionId, title, count) => _skillsSectionHeader(container, sectionId, title, count);
 
   // The SKILL.md section — show the header only when there's also a
   // built-in section to distinguish from (otherwise it's just the list).
@@ -1059,8 +1078,39 @@ function renderSkillsList() {
 // Collapse an expanded skill card: drop the class AND clear the inline
 // heights skills.js pinned on the card/preview/<pre> (otherwise a collapsed
 // card keeps its full expanded height) and detach its resize listener.
+// One of the two collapsible section headers in the Skills list ("Skills" /
+// "Built-in capabilities"). Lifted out of `renderSkillsList` by `P10-06` so a
+// test can build one and press it.
+function _skillsSectionHeader(container, sectionId, title, count) {
+  const collapsed = _collapsedSections.has(sectionId);
+  // `P10-06`. A `<button>`, not a `<div>`: the Built-in section ships
+  // collapsed, and as a click-only `<div>` its header was the only way in, so
+  // every built-in capability — sixty on the install measured, each with its
+  // Edit and Revert — had no keyboard path at all (2026-09-27, when this list
+  // lived in the Brain: Tab went from the search box straight out of the
+  // window). The classes did not move, the tag did (`P10-02`'s shape);
+  // `aria-expanded` follows `_applySectionCollapse`.
+  const hdr = document.createElement('button');
+  hdr.type = 'button';
+  hdr.className = 'skills-section-label skills-section-header' + (collapsed ? ' collapsed' : '');
+  hdr.setAttribute('aria-expanded', String(!collapsed));
+  hdr.dataset.section = sectionId;
+  hdr.innerHTML =
+    chevronIcon({ className: 'skills-section-chevron' }) +
+    `<span>${esc(title)}</span>` +
+    `<span class="skills-section-count">${count}</span>`;
+  hdr.addEventListener('click', () => {
+    if (_collapsedSections.has(sectionId)) _collapsedSections.delete(sectionId);
+    else _collapsedSections.add(sectionId);
+    _saveCollapsedSections();
+    _applySectionCollapse(container);
+  });
+  return hdr;
+}
+
 function _collapseSkillCardEl(c) {
   c.classList.remove('doclib-card-expanded', 'skill-expand-instant');
+  _syncCardToggle(c);
   c.style.removeProperty('height');
   const pv = c.querySelector('.doclib-card-preview');
   const pr = c.querySelector('.skill-md-pre') || c.querySelector('.skill-md-editor');
@@ -1085,6 +1135,7 @@ async function _expandSkillCard(card, name) {
   // Collapse any other expanded sibling (full cleanup, not just the class).
   if (grid) grid.querySelectorAll('.doclib-card-expanded').forEach(_collapseSkillCardEl);
   card.classList.add('doclib-card-expanded');
+  _syncCardToggle(card);
   if (switching) card.classList.add('skill-expand-instant');
   // Explicit class on the admin-card so CSS doesn't depend on :has()
   // (Firefox mobile builds without :has left the expand at ~50%).

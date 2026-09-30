@@ -979,6 +979,12 @@ function _taskClearCacheLabel(taskOrEntry) {
   return _TASK_CACHE_LABELS[taskOrEntry?.action || ''] || '';
 }
 
+/** `P10-06`. A task card's name, as the card's keyboard control (see
+ *  `_renderList`). Its own function so a test can render one. */
+function _taskNameButton(task) {
+  return `<button type="button" class="memory-item-title task-card-toggle" aria-expanded="false">${_escHtml(task && task.name)}</button>`;
+}
+
 function _renderList() {
   const list = document.getElementById('tasks-list');
   if (!list) return;
@@ -1047,7 +1053,15 @@ function _renderList() {
     const builtinBadge = task.is_builtin
       ? `<span class="task-builtin-badge${task.is_modified ? ' modified' : ''}" title="${task.is_modified ? 'Built-in task — edited from its default' : 'Built-in task'}">built-in${task.is_modified ? ' · edited' : ''}</span>`
       : '';
-    titleRow.innerHTML = `${_taskIcon(task)}<span class="memory-item-title">${_escHtml(task.name)}</span>${_taskAiMark(task)}${builtinBadge}<span style="flex:1;"></span>${statusBadge}`;
+    // `P10-06`. The task's name is the card's keyboard control: a real
+    // `<button>` that opens the card's detail (last run, what it does, Run
+    // and Edit) the way a click on the row does, because pressing it IS a
+    // click on the row (the handler below). The row itself cannot be the
+    // button — it holds two of its own, the status pill and the kebab
+    // (`P10-02`'s rule). Measured 2026-09-27 before this: Tab reached a
+    // card's status pill and kebab and never its detail. The class did not
+    // move; the tag did.
+    titleRow.innerHTML = `${_taskIcon(task)}${_taskNameButton(task)}${_taskAiMark(task)}${builtinBadge}<span style="flex:1;"></span>${statusBadge}`;
 
     // ... menu button (hover to show)
     const actionsWrap = document.createElement('div');
@@ -1247,6 +1261,8 @@ function _renderList() {
       const open = detail.style.display === 'none';
       detail.style.display = open ? '' : 'none';
       card.classList.toggle('expanded', open);
+      const toggle = titleRow.querySelector('.task-card-toggle');
+      if (toggle) toggle.setAttribute('aria-expanded', String(open));
     });
 
     // Long-press (mobile) opens the ⋮ actions menu.

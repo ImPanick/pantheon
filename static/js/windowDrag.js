@@ -36,9 +36,19 @@
 //                        Default true.
 //     enableFullscreen: bool — enable top-edge fullscreen snap.
 //                        Default true when onEnterFullscreen is supplied.
+//
+// `P10-06` / `B660`: every window wired here also gets a keyboard handle as
+// the first control in its header — arrow keys move it, Shift + arrow keys
+// resize it (see `_wireKeyboard` below).
 
-import { makeEdgeDockController } from './modalSnap.js';
+import { makeEdgeDockController, clearRightDock } from './modalSnap.js';
 import { makeWindowResizable } from './windowResize.js';
+
+// `P10-06`. How far one arrow press moves or resizes a window: the step the
+// three separators take (`P10-03`), so an arrow key means one distance
+// everywhere in the window system.
+const KEY_STEP = 16;
+const KEY_DIRS = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
 
 const SNAP_PX = 6;        // cursor distance from top edge for fullscreen snap
 const UNSNAP_PX = 24;     // cursor distance from top before fullscreen exits
@@ -78,9 +88,10 @@ export function makeWindowDraggable(modal, options = {}) {
   // Skipped on mobile (windows are full-screen sheets there) and while the
   // window is fullscreen-snapped or docked. Wired here so all ~12 callsites
   // get it without per-file changes.
+  let resizer = null;
   if (options.enableResize !== false) {
     const _dockClasses = ['modal-right-docked', 'modal-left-docked'];
-    makeWindowResizable(content, {
+    resizer = makeWindowResizable(content, {
       modal,
       mobileSkip,
       minWidth: options.minWidth,
@@ -330,5 +341,95 @@ export function makeWindowDraggable(modal, options = {}) {
       document.addEventListener('touchend', onEnd);
       document.addEventListener('touchcancel', onEnd);
     }, { passive: true });
+  }
+
+  // ── The keyboard (`P10-06` / `B660`) ──────────────────────────────────────
+  // Every move and resize above is a pointer drag. `P10-06` measured zero
+  // keydown handlers between this file and `windowResize.js` on 2026-09-18,
+  // and there were still zero on 2026-09-27: a keyboard could open a tool
+  // window and close it, and never get it out of the way of what was under
+  // it. So the header gets a real button as its FIRST control — the first
+  // stop inside the window, and the one `a11y.js` hands the focus to when the
+  // window was opened from the keyboard. It is not painted until it has the
+  // focus, when it shows what it does, so nothing changes for a mouse.
+  //
+  //   * an arrow key moves the window 16px, kept whole on the screen — a
+  //     keyboard cannot drag back a title bar it pushed off the edge;
+  //   * Shift + an arrow key resizes it from the right and bottom edges,
+  //     through `windowResize.js`, so a size set this way persists as a
+  //     dragged one does. A window wired with `enableResize: false` has no
+  //     resize, and its handle does not offer one;
+  //   * a docked window is un-docked by the first arrow, as dragging it off
+  //     the edge does, and moves from where it was before it docked.
+  //
+  // Both report through the same `onDragStart`/`onDragEnd` a drag does, so a
+  // caller that saves its position (the Library) saves this one too.
+  _wireKeyboard();
+
+  function _docked() {
+    return !!(modal && (modal.classList.contains('modal-right-docked')
+      || modal.classList.contains('modal-left-docked')));
+  }
+
+  function _keyMove(dx, dy) {
+    if (mobileSkip > 0 && window.innerWidth <= mobileSkip) return false;
+    if (_isFullscreen()) return false;
+    if (_docked()) {
+      try { clearRightDock(modal); } catch (_) {}
+    }
+    if (onDragStart) {
+      const rect = content.getBoundingClientRect();
+      try { onDragStart({ rect, cx: rect.left, cy: rect.top }); } catch (_) {}
+    }
+    try {
+      content.getAnimations()
+        .filter(a => a.playState !== 'finished')
+        .forEach(a => a.cancel());
+    } catch (_) {}
+    const r = content.getBoundingClientRect();
+    const vw = window.innerWidth, vh = window.innerHeight;
+    const left = Math.max(0, Math.min(r.left + dx, vw - r.width));
+    const top = Math.max(0, Math.min(r.top + dy, vh - r.height));
+    content.style.position = 'fixed';
+    content.style.left = left + 'px';
+    content.style.top = top + 'px';
+    content.style.transform = 'none';
+    content.style.margin = '0';
+    if (onDragEnd) {
+      try { onDragEnd({ rect: content.getBoundingClientRect() }); } catch (_) {}
+    }
+    return true;
+  }
+
+  function _wireKeyboard() {
+    // Wired once per header. The guard is its own attribute: `a11y.js` finds
+    // windows by `[data-window-keys]`, and a header carrying that too would
+    // count as a window of its own.
+    if (header.dataset.windowKeysWired === '1') return;
+    header.dataset.windowKeysWired = '1';
+    content.setAttribute('data-window-keys', '');
+    const handle = document.createElement('button');
+    handle.type = 'button';
+    handle.className = 'window-move-handle';
+    handle.textContent = resizer
+      ? 'Move: arrow keys · Resize: Shift + arrows'
+      : 'Move: arrow keys';
+    // The chip is positioned inside the header; a header that is not a
+    // positioned box would place it against the window instead.
+    try {
+      if (getComputedStyle(header).position === 'static') header.style.position = 'relative';
+    } catch (_) {}
+    header.insertBefore(handle, header.firstChild);
+    // A header's own click handler (Library's "back to the list") must not
+    // run because Enter was pressed on the handle.
+    handle.addEventListener('click', (e) => { e.stopPropagation(); });
+    handle.addEventListener('keydown', (e) => {
+      const dir = KEY_DIRS[e.key];
+      if (!dir || e.altKey || e.ctrlKey || e.metaKey) return;
+      const done = e.shiftKey
+        ? !!(resizer && resizer.resizeBy(dir[0] * KEY_STEP, dir[1] * KEY_STEP))
+        : _keyMove(dir[0] * KEY_STEP, dir[1] * KEY_STEP);
+      if (done) e.preventDefault();
+    });
   }
 }

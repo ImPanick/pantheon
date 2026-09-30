@@ -3841,6 +3841,13 @@ async function initUnifiedIntegrations() {
 
   function renderCard(item) {
     const t = INTG_TYPES[item.type] || INTG_TYPES.api;
+    // `P10-06`. The name is the card's keyboard control. A click anywhere on
+    // the card opens the integration's own page — for an MCP server, its tool
+    // list and `P8-48`'s wording editor — and the card was a click-only
+    // `<div>`, so from a keyboard the only thing on it was Remove (measured
+    // 2026-09-27). The card cannot be the button: it holds that Remove button
+    // (`P10-02`'s rule). Pressing the name IS a click on the card: it bubbles
+    // to the handler in `renderList`, which skips only `.intg-del-btn`.
     // Static enabled/disabled indicator — same dot every integration
     // type gets. (The clickable glow-on-test variant for email was
     // removed earlier; this matches the API/CalDAV/MCP pattern.)
@@ -3850,7 +3857,7 @@ async function initUnifiedIntegrations() {
     return `<div class="intg-card" data-intg-id="${item.id}" data-intg-type="${item.type}" style="display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:color-mix(in srgb, var(--fg) 3%, transparent);margin-bottom:6px;cursor:pointer;transition:all 0.15s;" title="Click to edit">
       <span style="color:var(--accent, var(--red));flex-shrink:0">${t.icon}</span>
       <div style="flex:1;min-width:0">
-        <div style="font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px">${item.name} <span style="font-size:9px;text-transform:uppercase;letter-spacing:0.5px;padding:1px 5px;border:1px solid color-mix(in srgb, var(--accent, var(--red)) 50%, transparent);border-radius:3px;color:var(--accent, var(--red));background:color-mix(in srgb, var(--accent, var(--red)) 12%, transparent);">${t.label}</span></div>
+        <div style="font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px"><button type="button" class="intg-card-open">${item.name}</button> <span style="font-size:9px;text-transform:uppercase;letter-spacing:0.5px;padding:1px 5px;border:1px solid color-mix(in srgb, var(--accent, var(--red)) 50%, transparent);border-radius:3px;color:var(--accent, var(--red));background:color-mix(in srgb, var(--accent, var(--red)) 12%, transparent);">${t.label}</span></div>
         <div style="font-size:11px;opacity:0.5;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${item.detail || ''}</div>
       </div>
       ${statusDot}

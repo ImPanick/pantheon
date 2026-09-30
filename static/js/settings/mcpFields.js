@@ -627,6 +627,35 @@ const OVERRIDE_CHOICES = [
 ];
 
 /**
+ * `P10-06`. The focus, kept through a round trip that disables the control
+ * that started it.
+ *
+ * "Save wording" and the three read-only buttons disable themselves while the
+ * server answers, and a disabled control cannot hold the focus: Chromium drops
+ * it to <body>. Measured 2026-09-30 from the keyboard on a connected server —
+ * Enter on "Save wording" said "Saved." and left the person at the top of the
+ * page, and Enter on "Read-only" did the same. Call this with the control that
+ * was pressed BEFORE disabling anything; call what it returns when the trip is
+ * over. The focus goes back to that control if it can take it again, else to
+ * `fallback` — and only if it was on the control to begin with and nothing has
+ * taken it since, so a mouse click elsewhere mid-save is left alone.
+ */
+function keepFocus(pressed, fallback) {
+  const had = !!pressed && typeof document !== 'undefined' && document.activeElement === pressed;
+  return () => {
+    if (!had) return;
+    const now = document.activeElement;
+    if (now && now !== document.body && now !== pressed) return;
+    for (const node of [pressed, fallback]) {
+      if (!node || node.disabled || node.isConnected === false) continue;
+      if (node.style && node.style.display === 'none') continue;
+      try { node.focus(); } catch (_) {}
+      return;
+    }
+  };
+}
+
+/**
  * One field of the MCP form, in two modes over one value.
  *
  * Fields mode is the default and is the whole point of the row: a box per
@@ -1193,6 +1222,7 @@ export function createMcpToolRow(tool, options) {
     function apply(value) {
       if (!setter) return;
       const previous = verdictEntry;
+      const refocus = keepFocus(document.activeElement, null);   // `P10-06`
       for (const { button } of choices) button.disabled = true;
       // Disabled for the whole round trip, which is also why `previous` cannot
       // go stale: a second answer cannot be sent while the first is in flight.
@@ -1230,6 +1260,7 @@ export function createMcpToolRow(tool, options) {
         for (const { button } of choices) button.disabled = false;
         paintBadge();
         paintVerdictDetail();
+        refocus();
       });
     }
 
@@ -1392,6 +1423,8 @@ export function createMcpToolRow(tool, options) {
     }
 
     function apply(value) {
+      // Before `paint()` disables the button that was pressed (`P10-06`).
+      const refocus = keepFocus(document.activeElement, input);
       busy = true;
       paint();
       say('Saving…', false);
@@ -1421,6 +1454,7 @@ export function createMcpToolRow(tool, options) {
         busy = false;
         paint();
         paintDescriptionLine();
+        refocus();
       });
     }
 

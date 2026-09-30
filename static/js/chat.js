@@ -47,6 +47,9 @@ import { createAgentMeter, presentMeterEvent, METER_EVENT_TYPES, renderLimitsHin
 import { loadPanel } from './panels.js';
 import planWindow from './planWindow.js';
 import * as contextUsage from './contextUsage.js';
+// `P10-06`. The context panel closes through the one popup registry, like
+// every other popup appended to <body> (see `_openContextPanel`).
+import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
 import queuePanel from './queuePanel.js?v=20260930skillpkgs1';
 import { runStatusLabel } from './runStatus.js';
 import { playIcon, stopIcon } from './icons.js';
@@ -265,7 +268,9 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
   }
 
   function _closeContextHeaderPopup() {
-    document.querySelectorAll('.chat-context-popup').forEach(el => el.remove());
+    // `P10-06`. Through the panel's own dismiss, so its Escape-stack entry and
+    // outside-click listener go with it; a bare `remove()` left both behind.
+    document.querySelectorAll('.chat-context-popup').forEach(dismissOrRemove);
     _returnContextMeterHome();
     const pill = document.getElementById('chat-context-pill');
     if (pill) {
@@ -369,19 +374,32 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
     pill.classList.add('open');
     pill.setAttribute('aria-expanded', 'true');
     _positionContextHeaderPopup(popup, pill);
-    setTimeout(() => {
-      const close = (ev) => {
-        if (ev.type === 'keydown' && ev.key !== 'Escape') return;
-        if (ev.type !== 'keydown' && (popup.contains(ev.target) || pill.contains(ev.target))) return;
-        document.removeEventListener('pointerdown', close, true);
-        document.removeEventListener('keydown', close, true);
-        const wasOurs = popup.isConnected;
-        _closeContextHeaderPopup();
-        if (ev.type === 'keydown' && wasOurs) { try { pill.focus(); } catch (_) {} }
-      };
-      document.addEventListener('pointerdown', close, true);
-      document.addEventListener('keydown', close, true);
-    }, 0);
+    // `P10-06`. This panel is one of the popups `escMenuStack.js` exists for,
+    // and it was the one that did not use it: it put a `pointerdown` and a
+    // capture-phase `keydown` listener on `document` and took them off only
+    // from inside its own handler. Measured 2026-09-27 in Chromium against the
+    // running app: (1) closed from the wheel and opened again, the first
+    // panel's listeners were still there, so a click INSIDE the second panel
+    // closed it; (2) with the docked Notes pane open, one Escape closed the
+    // panel AND Notes — the arbiter in `ui.js` did not know the panel existed,
+    // so it let the key through to the next listener; (3) opened with Enter,
+    // the focus stayed on the wheel, six Tab presses (Agent, Chat, Send, the
+    // scroll button, a toast) from the panel's first row. `bindMenuDismiss`
+    // answers all three: one entry on the Escape stack, one outside-click
+    // listener that goes when the panel goes, and — opened from the keyboard —
+    // the focus on the panel's first row and back on the wheel when it shuts.
+    //
+    // The allowance meter goes home BEFORE the panel leaves the page. The
+    // other order — which the old close had — detaches the meter inside the
+    // panel, `getElementById('context-meter')` no longer finds it, and it is
+    // gone until a reload: measured the same day, one file waiting, panel
+    // opened and closed, `#context-meter` absent from the document.
+    bindMenuDismiss(popup, () => {
+      _returnContextMeterHome();
+      popup.remove();
+      pill.classList.remove('open');
+      pill.setAttribute('aria-expanded', 'false');
+    }, (ev) => !popup.contains(ev.target) && !pill.contains(ev.target));
   }
 
   // `B892`. The attachments section of an open panel follows the composer: a

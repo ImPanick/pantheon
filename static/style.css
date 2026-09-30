@@ -45924,3 +45924,124 @@ body.settings-sidebar-resize-active {
   margin-bottom: 6px;
   color: var(--fg);
 }
+
+/* ===========================================================================
+   `P10-06` — the window system and the Workshop, from a keyboard.
+
+   **The move handle (`B660`).** `windowDrag.js` puts a real `<button>` first in
+   every tool window's header. It is not painted until it has the focus — a
+   mouse never sees it, and nothing in the header moves: it is taken out of
+   the flow, so a `space-between` header lays out exactly as before. Focused,
+   it shows what the arrow keys do, centred on the title bar so it covers
+   neither the title nor the window's buttons. `:focus` and not
+   `:focus-visible` on purpose: nothing but a keyboard can focus it (`a11y.js`
+   does so only for a window opened from the keyboard), and the ring itself is
+   `P10-01`'s, so this block adds no `:focus-visible` rule and no accent. Hidden
+   at phone width, where `windowDrag.js` does not move windows at all.
+   =========================================================================== */
+.window-move-handle {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+}
+.window-move-handle:focus {
+  width: auto;
+  height: auto;
+  padding: 3px 10px;
+  overflow: visible;
+  clip-path: none;
+  opacity: 1;
+  pointer-events: auto;
+  transform: translate(-50%, -50%);
+  z-index: 1;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--fg);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
+  letter-spacing: normal;
+  text-transform: none;
+  cursor: move;
+  box-shadow: 0 2px 10px color-mix(in srgb, #000 22%, transparent);
+}
+@media (max-width: 768px) {
+  .window-move-handle { display: none; }
+}
+
+/* `P10-06` — the Workshop's cards, from a keyboard. A card that holds buttons
+   of its own cannot itself be a button (`P10-02`), so its NAME is: a skill's,
+   a task's and an integration's. These undo what a `<button>` brings with it —
+   platform chrome, `buttontext`, a 13.333px system face, centred text — so the
+   names look exactly as they did as `<code>`, `<span>` and text. The two that
+   changed tag rather than gained a wrapper keep their own class's size,
+   weight, padding and margin, so their rule sets only the rest. */
+.skill-card-toggle,
+.intg-card-open {
+  -webkit-appearance: none;
+  appearance: none;
+  background: none;
+  border: 0;
+  margin: 0;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  letter-spacing: inherit;
+  line-height: inherit;
+  text-align: left;
+  cursor: inherit;
+  min-width: 0;
+}
+.skill-card-toggle { display: block; width: 100%; }
+/* The name column clips (a long description ellipsises inside it), and a
+   ring drawn 2px outside a full-width name was clipped with it: only its top
+   and bottom showed. While the name has the focus the column does not clip;
+   the name and the description still ellipsise themselves. A built-in card's
+   title row clips the same way (`.doclib-card-title`), and its wrapper no
+   longer clips at all, for the same reason (`skills.js`). */
+.skill-card-textcol:focus-within,
+.skill-builtin-card .doclib-card-title:focus-within { overflow: visible; }
+button.skills-section-header,
+button.task-card-toggle {
+  -webkit-appearance: none;
+  appearance: none;
+  background: none;
+  border: 0;
+  color: inherit;
+  font-family: inherit;
+  line-height: inherit;
+  text-align: left;
+}
+button.skills-section-header { width: 100%; }
+button.task-card-toggle {
+  margin: 0;
+  padding: 0;
+  letter-spacing: inherit;
+  cursor: inherit;
+  min-width: 0;
+}
+
+/* `P10-06` — a switch shows where the keyboard is. `.admin-switch` hides its
+   checkbox at 0x0 and `opacity: 0` and paints `.admin-slider` beside it, so
+   `P10-01`'s ring lands on the invisible checkbox and nothing on screen says a
+   switch has the focus — measured 2026-09-30 on the Skills window's group and
+   package switches, the Workshop's own on/off controls, and true of every
+   `.admin-switch` in Settings. The same ring, drawn on what is painted. This
+   is a new `:focus-visible` rule on purpose; `tests/test_one_focus_ring_css.py`
+   counts it. */
+.admin-switch input:focus-visible + .admin-slider {
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}

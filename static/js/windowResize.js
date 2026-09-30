@@ -22,6 +22,7 @@
 //     storageKey,   // localStorage key to persist {w,h}; null disables
 //     onResizeEnd,  // ({rect}) => void
 //   })
+//   → { resizeBy(dw, dh) }   `P10-06`: the keyboard's way in (see below).
 
 const EDGE = 7;          // px proximity to a border that arms a resize grip
 const MIN_W = 320;       // smallest a window may be dragged to
@@ -206,6 +207,39 @@ export function makeWindowResizable(content, options = {}) {
     document.addEventListener('touchcancel', te);
   }, true);
 
+  // `P10-06` / `B660`. The same resize, from the keyboard: `windowDrag.js`
+  // calls this from the window's move handle on Shift + an arrow key. It is
+  // the drag above with the pointer replaced by a step — the right and bottom
+  // edges move, the top-left corner stays — so it pins, clamps, persists and
+  // reports exactly as a drag of those two edges does, and a size set from the
+  // keyboard is the size the window reopens at. Refused (null) wherever the
+  // drag is refused: on a phone-width screen and while docked or fullscreen.
+  function resizeBy(dw, dh) {
+    if (_skip() || resizing) return null;
+    content.style.animation = 'none';
+    const r = content.getBoundingClientRect();
+    const vw = window.innerWidth, vh = window.innerHeight;
+    let width = Math.max(minW, r.width + dw);
+    let height = Math.max(minH, r.height + dh);
+    if (r.left + width > vw) width = Math.max(minW, vw - r.left);
+    if (r.top + height > vh) height = Math.max(minH, vh - r.top);
+    content.style.position = 'fixed';
+    content.style.margin = '0';
+    content.style.transform = 'none';
+    content.style.left = r.left + 'px';
+    content.style.top = r.top + 'px';
+    content.style.width = width + 'px';
+    content.style.height = height + 'px';
+    content.style.maxWidth = 'none';
+    content.style.maxHeight = 'none';
+    const done = content.getBoundingClientRect();
+    if (storageKey) {
+      try { localStorage.setItem(storageKey, JSON.stringify({ w: Math.round(done.width), h: Math.round(done.height) })); } catch (_) {}
+    }
+    if (onResizeEnd) { try { onResizeEnd({ rect: done }); } catch (_) {} }
+    return done;
+  }
+
   // Restore a previously chosen size on (re)open. Applying width/height inline
   // while the window is still centered by its overlay keeps it centered at the
   // new size; once dragged/resized it pins to fixed as usual.
@@ -231,4 +265,5 @@ export function makeWindowResizable(content, options = {}) {
       } catch (_) {}
     });
   }
+  return { resizeBy };
 }

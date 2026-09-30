@@ -156,6 +156,108 @@
     return next;
   }
 
+  // ---- Tool windows, from the keyboard -------------------------------------
+  // `P10-06`. A tool window opened from the rail, the sidebar or the dock with
+  // Enter or Space used to leave the focus on the button that opened it, and
+  // the window is appended at the end of <body> (or sits at the top of it):
+  // measured 2026-09-27 in Chromium, the Tasks window was twenty Shift+Tab
+  // presses from its own launcher, and forward Tab never reached it at all,
+  // because it ran into the composer's textarea on the way (`Tab` there
+  // toggles Plan mode — filed on the row, the owner's call). Closing it by its
+  // own ✕ from the keyboard then dropped the focus to <body>.
+  //
+  // So a window that appears while the focus is still on the control a
+  // person just pressed takes the focus — on the move handle `windowDrag.js`
+  // puts first in its header, which is also where it says what the arrow keys
+  // do — and when that window goes away with the focus inside it, the focus
+  // goes back to the control that opened it. A window a script opens (the
+  // assistant opening Notes mid-reply) is never handed the focus: the person
+  // did not just press its launcher. A window opened with the mouse is left
+  // as it was.
+  //
+  // Windows are the ones `windowDrag.js` wired (`[data-window-keys]`), and the
+  // launchers are the controls in the rail, the sidebar (its user bar holds
+  // the Settings gear), the minimized-window dock, and other tool windows —
+  // the Skills window has no launcher of its own and opens from the Brain's
+  // Skills tab and its "Open Skills" buttons (`P9-06`).
+  var WINDOW_SEL = '[data-window-keys]';
+  var LAUNCH_WAIT_MS = 2000;   // a window that fetches before it shows (Tasks) is still "this press"
+  var LAUNCH_POLL_MS = 50;
+
+  /** Shown on screen, by the browser's own answer where it has one. */
+  function shown(el) {
+    if (!el) return false;
+    if (typeof el.checkVisibility === 'function') return el.checkVisibility();
+    for (var n = el; n && n !== document && n.style; n = n.parentNode) {
+      if (n.hidden || (n.getAttribute && n.getAttribute('hidden') != null)) return false;
+      if (n.style && n.style.display === 'none') return false;
+      if (n.className && typeof n.className === 'string'
+          && n.className.split(/\s+/).indexOf('hidden') >= 0) return false;
+    }
+    return true;
+  }
+
+  function isLauncher(el) {
+    if (!el || !el.matches) return false;
+    if (!el.matches('button, [data-a11y-activatable]')) return false;
+    return !!(up(el, '#' + RAIL_ID) || up(el, '#sidebar') || up(el, '.minimized-dock-chip')
+      || up(el, WINDOW_SEL));
+  }
+
+  function shownWindows() {
+    return Array.prototype.filter.call(document.querySelectorAll(WINDOW_SEL), shown);
+  }
+
+  function firstFocusable(win) {
+    var handle = win.querySelector('.window-move-handle');
+    if (handle && shown(handle)) return handle;
+    var all = win.querySelectorAll(
+      'button:not([disabled]), a[href], input:not([type="hidden"]):not([disabled]), '
+      + 'select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])');
+    for (var i = 0; i < all.length; i++) {
+      if (shown(all[i])) return all[i];
+    }
+    return null;
+  }
+
+  var pendingLaunch = null;
+
+  function noteLaunch(from) {
+    var before = shownWindows();
+    var launch = { from: from, before: before, started: Date.now() };
+    pendingLaunch = launch;
+    (function check() {
+      if (pendingLaunch !== launch) return;
+      var fresh = shownWindows().filter(function (w) { return before.indexOf(w) < 0; });
+      if (fresh.length) {
+        pendingLaunch = null;
+        var win = fresh[fresh.length - 1];
+        // Only if the person has not moved on since pressing the launcher —
+        // and a window that focused something of its own keeps it.
+        if (document.activeElement !== from) return;
+        var target = firstFocusable(win);
+        if (!target) return;
+        win._a11yOpener = from;
+        try { target.focus(); } catch (_) {}
+        return;
+      }
+      if (Date.now() - launch.started < LAUNCH_WAIT_MS) setTimeout(check, LAUNCH_POLL_MS);
+      else pendingLaunch = null;
+    })();
+  }
+
+  /** The window the focus just left has gone: hand the focus back. */
+  function giveFocusBack(win) {
+    var opener = win._a11yOpener;
+    if (!opener) return;
+    if (win.isConnected !== false && shown(win)) return;   // still open: a click elsewhere
+    win._a11yOpener = null;
+    var a = document.activeElement;
+    if (a && a !== document.body && a !== document.documentElement) return;
+    if (opener.isConnected === false || !shown(opener)) return;
+    try { opener.focus(); } catch (_) {}
+  }
+
   // ---- Modal dialogs -----------------------------------------------------
   // Pantheon modals are plain <div class="modal-content"> boxes. Marking
   // them as ARIA dialogs lets screen readers announce them as dialogs and
@@ -214,6 +316,10 @@
   document.addEventListener('keydown', function (e) {
     var el = e.target;
     if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+      // `P10-06`. Noted before the press is answered: a native button runs
+      // its click after this listener, and the window it opens is looked for
+      // from then on (see `noteLaunch`).
+      if (isLauncher(el)) noteLaunch(el);
       if (!el || !el.matches || !el.matches('[data-a11y-activatable]')) return;
       e.preventDefault(); // Space would otherwise scroll the page
       el.click();
@@ -242,6 +348,20 @@
     if (!btn) return;
     var rail = up(btn, '#' + RAIL_ID);
     if (rail) setRailTabStop(rail, btn);
+  });
+
+  // `P10-06`. A focused control that is hidden or removed loses the focus to
+  // <body> — Chromium fires `focusout` with no `relatedTarget` when it does
+  // (measured, Chrome 141, for both). If that control was in a window this
+  // module handed the focus to, and the window is what went away, the focus
+  // goes back to the launcher. A `focusout` into nothing while the window is
+  // still open is a click on the page, and is left alone.
+  document.addEventListener('focusout', function (e) {
+    var el = e.target;
+    if (!el || e.relatedTarget) return;
+    var win = up(el, WINDOW_SEL);
+    if (!win || !win._a11yOpener) return;
+    setTimeout(function () { giveFocusBack(win); }, 0);
   });
 
   function init() {
