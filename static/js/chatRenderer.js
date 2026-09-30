@@ -1822,7 +1822,7 @@ document.addEventListener('click', function(e) {
       if (open) open(id);
     }).catch(() => {});
   } else if (kind === 'research') {
-    import('./research/panel.js?v=20260927wavetwo1').then(mod => {
+    import('./research/panel.js?v=20260930hotfix1').then(mod => {
       const open = mod.openPanel || (mod.default && mod.default.openPanel);
       if (open) open(id);
     }).catch(() => {});
@@ -1932,7 +1932,7 @@ export function buildImageBubble(imageUrl, prompt, model, size, quality, imageId
         : 'png';
       const base = (prompt || 'generated-image').slice(0, 36).replace(/[^a-zA-Z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'generated-image';
       const file = new File([blob], `${base}.${ext}`, { type: blob.type || 'image/png', lastModified: Date.now() });
-      const mod = await import('./fileHandler.js?v=20260927wavetwo1');
+      const mod = await import('./fileHandler.js?v=20260930hotfix1');
       const addFiles = mod.addFiles || (mod.default && mod.default.addFiles);
       if (!addFiles) throw new Error('attachment handler unavailable');
       await addFiles([file], { skipCrop: true });

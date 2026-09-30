@@ -9,14 +9,14 @@
 import Storage from './storage.js';
 import uiModule from './ui.js';
 import sessionModule from './sessions.js';
-import chatRenderer, { buildDiffHtml } from './chatRenderer.js?v=20260927wavetwo1';
-import chatStream from './chatStream.js?v=20260927wavetwo1';
+import chatRenderer, { buildDiffHtml } from './chatRenderer.js?v=20260930hotfix1';
+import chatStream from './chatStream.js?v=20260930hotfix1';
 import { addAITTSButton } from './tts-ai.js';
 import { prefersReducedMotion } from './motion.js';
 import markdownModule from './markdown.js';
 import spinnerModule from './spinner.js';
 import presetsModule from './presets.js';
-import fileHandlerModule from './fileHandler.js?v=20260927wavetwo1';
+import fileHandlerModule from './fileHandler.js?v=20260930hotfix1';
 import searchModule from './search.js';
 import documentModule from './document.js?v=20260815approvalsave1';
 import * as emailInbox from './emailInbox.js?v=20260815approvalsave1';
@@ -46,7 +46,7 @@ import { createAgentMeter, presentMeterEvent, METER_EVENT_TYPES } from './agentM
 import { loadPanel } from './panels.js';
 import planWindow from './planWindow.js';
 import * as contextUsage from './contextUsage.js';
-import queuePanel from './queuePanel.js?v=20260927wavetwo1';
+import queuePanel from './queuePanel.js?v=20260930hotfix1';
 import { runStatusLabel } from './runStatus.js';
 import { playIcon, stopIcon } from './icons.js';
 import {
@@ -8591,6 +8591,11 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
       _sweepThreads(document.body);
       new MutationObserver((muts) => {
         for (const m of muts) {
+          // `B923`. The control's own writes are not news about the thread.
+          // Skipping them is the second guard: `syncThreadToggleAll` already
+          // writes only what changed, and this keeps a future write there
+          // from turning the observer back into a loop that never yields.
+          if (m.target && m.target.closest && m.target.closest('.agent-thread-toolbar')) continue;
           if (m.target && m.target.closest) {
             const t = m.target.closest('.agent-thread');
             if (t) ensureThreadToggleAll(t);

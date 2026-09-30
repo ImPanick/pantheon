@@ -80,8 +80,8 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P17 | The network the agent is hosted on | 14 | 0 | 0 | **14** |
 | P18 | One button, and it links | 9 | 0 | 0 | **9** |
 | P19 | The proof ledger | 8 | 0 | 0 | **8** |
-| Backlog | Bugs and hardening found in flight | 501 | 211 | 0 | **290** |
-| **Total** | | **883** | **270** | **8** | **605** |
+| Backlog | Bugs and hardening found in flight | 504 | 213 | 0 | **291** |
+| **Total** | | **886** | **272** | **8** | **606** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -243,6 +243,16 @@ they are for.*
 > `check-tracker.py` now validates the newest entry against the table and fails on drift.
 > Entries below the `P0-31` one keep the figure they were written with: a record of what
 > was claimed at the time is worth more than a quietly corrected one (`B44`).
+
+### Hotfix: a document froze the browser, because a control kept rewriting itself
+`c1c11f4..HEAD`. **886 tracked, 606 done. 0 new phase rows, 0 regressions. `B923` closed; `B924` and
+`B925` filed.** The owner: *"When the LLM starts creating a document, it locks up the browser so badly
+I can't even close the browser."* Reproduced in Chromium against the running app with a scripted model
+writing a document — the tab stopped answering at the moment the document landed — and a debugger pause
+inside the frozen tab named the loop: `P5-08`'s Expand-all control rewrote its own label on every
+mutation inside its thread, and its observer took that rewrite as a mutation inside the thread. Any thread
+of two cards set it off; a document turn is the commonest way to get two. The label is written only when
+it changes now, and the observer ignores the control's own writes. The same run, re-driven: no freeze.
 
 ### Wave two: the assistant's API bridge stops being the owner, and a turn draws live wherever you watch it
 `3fdcf00..HEAD`. **883 tracked, 605 done. 0 new phase rows, 0 regressions. `P4-24`, `B896`, `B899`,
@@ -19496,3 +19506,40 @@ this is the same thing happening to the row that corrected the store.
 - [ ] **B921** **An agent turn's own compaction is announced without figures and never saved.** The loop's `compacted` frame (`src/agent_loop.py`, four sites) carries `context_length` only. The route's `_compacted_event` (`P4-13`) sends the messages and tokens before and after in `data`, and `chat.js`'s arm reads `json.data`, so in agent mode the toast — live since `B904` — says *older messages summarized* with no counts. And the agent branch calls `_apply_shaping_metrics(last_metrics, ctx)` with no route compaction, while `ctx.was_compacted` is false when the loop does the shaping (`defer_context_shaping`, i.e. the foreground policy is on), so the saved record never says the turn was compacted: the reload says less than the live stream, which is `P4-13`'s own complaint, in agent mode. Read, not driven. Fix: the loop's `compacted` carries the figures `maybe_compact` measured, in the `data` shape the route uses, and the loop's metrics carry `context_compacted` and those figures for the candidate that answered. `Verify:` an agent turn whose context the loop compacts draws the counts live and after a reload. — found by `B904` — agent:`wire-events`
 
 - [ ] **B922** **A teacher takeover's bubbles are headed with the student's model.** `_openRoundBubble` and the `agent_step` arm copy the model route from the bubble above (`inheritModelRouteState`), and nothing in the teacher's stream relabels them: `model_actual` is sent only when a provider resolves a *different* model from the one requested (`_model_actual_event`, `src/llm_core.py`), and the teacher's `metrics` relabel only the last bubble, at the final render. So directly under *Teacher takeover: escalating to big-model* the teacher's reply is headed with the student's model name until the turn ends, and earlier teacher bubbles keep it. Older than `B904` — the teacher's steps were always drawn as continuation bubbles — but the banner, live since `B904`, now sits right above the wrong name. Read, not driven. Fix: `teacher_takeover` sets the opened bubble's route from `teacher_model` (and its endpoint, which the event does not carry yet), so later steps inherit the teacher's. `Verify:` the bubble under the banner, and every teacher step after it, names the teacher's model. — found by `B904` — agent:`wire-events`
+
+- [x] **B923** **A turn that created a document froze the browser so hard it could not be closed.** Reported by
+  the owner 2026-09-30. Reproduced before anything was changed: the app served locally, a scripted
+  OpenAI-compatible model streaming a reply that writes a document, and Chromium driving the composer with a
+  50ms heartbeat — streaming stayed responsive (worst gap 366ms), and the tab stopped answering the moment the
+  document landed. `Debugger.pause` inside the frozen tab stopped three times running in a `MutationObserver`
+  callback whose batch was the same record over and over: `childList` on `.agent-thread-expand-all`, one node
+  added and one removed. **The loop:** `P5-08` draws Expand all / Collapse all from one observer on
+  `document.body` (`static/js/chat.js`) that calls `ensureThreadToggleAll` for any mutation inside an
+  `.agent-thread`; `syncThreadToggleAll` (`static/js/agentThread.js`) assigned `btn.textContent` every time,
+  and assigning `textContent` replaces the text node even when the words are identical — a mutation inside
+  the thread, delivered as a microtask, which called it again. Microtasks never yield to the event loop, so
+  nothing else ran again, including the browser's own close. It needed a thread of two cards, which is when
+  the control first appears; a document turn is the commonest way to get two. **Fixed twice, on purpose:**
+  the label and `aria-expanded` are written only when they change, and the observer skips mutations inside
+  the control's own toolbar, so a future write there cannot rebuild the loop. `Verify:` the same Chromium run
+  against the fixed tree — the document opens, the heartbeat never stops, the thread carries its control;
+  `tests/test_the_thread_reads_in_one_go_js.py::test_keeping_the_control_current_writes_nothing_when_nothing_changed`
+  counts writes to the real control: none when nothing changed, one per value when something did. **Red on the
+  previous `agentThread.js`.** `Depends:` nothing. — reported by the owner — agent:`integrator`
+
+- [ ] **B924** **Forty-seven `MutationObserver`s, and nothing checks that one does not write inside what it
+  watches.** `B923` was an observer on `document.body` whose callback wrote into its own subtree; the loop it
+  made froze the tab, and no test could have seen it, because the node DOM shim the JS suite runs on has no
+  `MutationObserver` and delivers no records. Audit every observer under `static/js/` for a write into its own
+  observed subtree, and make the idempotent-write rule (`write only what changed`) a stated convention with a
+  harness that can deliver mutation records — or a real-browser smoke that sends one agent turn with two tool
+  cards and a document and fails on a stalled heartbeat. `Verify:` the audit table on this row, and a test that
+  goes red when `B923`'s old `syncThreadToggleAll` is put back. `Depends:` nothing. — found by `B923` — agent:`integrator`
+
+- [ ] **B925** **The moment a document lands, the main thread stalls for about two seconds.** Measured in the
+  `B923` repro after the fix: a 44,000-character document streamed with worst heartbeat gaps of 100–190ms, and
+  then one gap of 2,023ms with long tasks of 1,182ms and 611ms as the reply finalised and the document opened.
+  Not a freeze — the tab recovers — but a person clicking then waits two seconds for nothing. Profile which
+  work runs in those tasks (the final round render, highlighting, the editor's first highlight, the preview)
+  and move what can be deferred off the path. `Verify:` the same repro's worst gap at completion is under 200ms.
+  `Depends:` nothing. — found by `B923` — agent:`integrator`

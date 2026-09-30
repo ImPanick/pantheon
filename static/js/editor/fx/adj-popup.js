@@ -40,7 +40,7 @@
  * }}
  */
 import { state } from '../state.js';
-import modalManager from '../../modalManager.js?v=20260927wavetwo1';
+import modalManager from '../../modalManager.js?v=20260930hotfix1';
 import {
   ADJ_ICONS,
   adjLayerLabel,

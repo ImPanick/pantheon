@@ -627,8 +627,18 @@ export function syncThreadToggleAll(thread) {
     ? thread.querySelector('.agent-thread-expand-all') : null;
   if (!btn) return null;
   const allOpen = threadIsAllOpen(thread);
-  btn.textContent = allOpen ? COLLAPSE_ALL_LABEL : EXPAND_ALL_LABEL;
-  btn.setAttribute('aria-expanded', allOpen ? 'true' : 'false');
+  // `B923`. Write only what changed. This runs from a `MutationObserver` on
+  // `document.body` (`chat.js`), and assigning `textContent` replaces the
+  // button's text node even when the words are the same — a childList
+  // mutation inside the thread, which fired the observer, which called this,
+  // which replaced the text node again. The loop ran in microtasks, so the
+  // event loop never got a turn back: the first thread to earn this control
+  // (two cards — a document tool and anything beside it) froze the tab so
+  // hard the browser could not close it.
+  const label = allOpen ? COLLAPSE_ALL_LABEL : EXPAND_ALL_LABEL;
+  if (btn.textContent !== label) btn.textContent = label;
+  const expanded = allOpen ? 'true' : 'false';
+  if (btn.getAttribute('aria-expanded') !== expanded) btn.setAttribute('aria-expanded', expanded);
   return btn;
 }
 

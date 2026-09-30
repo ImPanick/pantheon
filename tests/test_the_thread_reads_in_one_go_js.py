@@ -237,6 +237,51 @@ def test_the_control_says_what_it_will_do_after_a_card_is_opened_by_hand(thread_
     assert out["some"] == "Expand all"
 
 
+def test_keeping_the_control_current_writes_nothing_when_nothing_changed(thread_sandbox):
+    """`B923`. `chat.js` calls `ensureThreadToggleAll` from a `MutationObserver`
+    on `document.body` for every mutation inside a thread. Writing the label
+    again — even the same words — replaces the button's text node, which is a
+    mutation inside the thread, which calls this again: a microtask loop that
+    froze the tab the first time a thread held two cards (reproduced in
+    Chromium against the running app while a document was being created). So
+    keeping the control current must be a no-op when it is already current,
+    and exactly one write when it is not."""
+    out = _drive(thread_sandbox, _replay([
+        {"round": 1, "tool": "bash", "command": "ls", "output": "a", "exit_code": 0},
+        {"round": 1, "tool": "python", "command": "print(1)", "output": "1",
+         "exit_code": 0},
+    ]) + """
+        const el = history.querySelector('.agent-thread');
+        thread.ensureThreadToggleAll(el);
+        const btn = el.querySelector('.agent-thread-expand-all');
+        let writes = 0;
+        const proto = Object.getPrototypeOf(btn);
+        const desc = Object.getOwnPropertyDescriptor(proto, 'textContent');
+        Object.defineProperty(btn, 'textContent', {
+          get() { return desc.get.call(this); },
+          set(v) { writes += 1; desc.set.call(this, v); },
+          configurable: true,
+        });
+        const setAttr = btn.setAttribute.bind(btn);
+        btn.setAttribute = (k, v) => { writes += 1; setAttr(k, v); };
+        thread.ensureThreadToggleAll(el);
+        thread.syncThreadToggleAll(el);
+        thread.ensureThreadToggleAll(el);
+        const idle = writes;
+        el.querySelectorAll('.agent-thread-node').forEach(n => n.classList.add('open'));
+        thread.syncThreadToggleAll(el);
+        const changed = writes - idle;
+        thread.syncThreadToggleAll(el);
+        thread.ensureThreadToggleAll(el);
+        const after = writes - idle - changed;
+        console.log(JSON.stringify({ idle, changed, after, label: btn.textContent }));
+    """)
+    assert out["idle"] == 0, "the control rewrote itself with nothing to say — the B923 loop"
+    assert out["changed"] == 2, out   # the words and aria-expanded, once each
+    assert out["after"] == 0
+    assert out["label"] == "Collapse all"
+
+
 def test_the_control_is_built_in_exactly_one_place():
     """`Law 14`, stated as a property of the tree. Three modules create an
     `.agent-thread`; a control written into each of them is three controls that

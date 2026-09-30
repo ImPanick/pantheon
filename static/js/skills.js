@@ -10,7 +10,7 @@ import uiModule from './ui.js';
 import * as spinnerModule from './spinner.js';
 import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
 import { topPortalZ } from './toolWindowZOrder.js';
-import { setBackgroundWork } from './modalManager.js?v=20260927wavetwo1';
+import { setBackgroundWork } from './modalManager.js?v=20260930hotfix1';
 import { PLAY_GLYPH, chevronIcon } from './icons.js';
 
 const API = window.location.origin;
