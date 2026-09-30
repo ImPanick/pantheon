@@ -1082,6 +1082,23 @@ def test_a_stop_line_alone_sends_the_reply_to_the_reload(sandbox):
     assert out["added"] == [] and len(out["reloads"]) == 1
 
 
+def test_a_compaction_sends_the_reply_to_the_reload(sandbox):
+    """`B921`. An agent turn's compaction is saved with the reply as one of its
+    notes, and the reload draws it as a line; a plain reply finalized in place
+    would not have it. The view draws nothing of it itself — live it is a
+    toast, which a replay from the first event would raise again."""
+    compacted = {"type": "compacted", "context_length": 8192,
+                 "data": {"context_length": 8192, "messages_before": 12, "messages_after": 6,
+                          "tokens_before": 7000, "tokens_after": 2100}}
+    out = _page(sandbox, """
+        const resumed = [];
+        await runResumed(%s, resumed);
+        console.log(JSON.stringify({ added, reloads, left: describe(history) }));
+    """ % json.dumps(RUN[:5] + [compacted, {"delta": "Just an answer."}, "[DONE]"]))
+    assert out["added"] == [] and len(out["reloads"]) == 1
+    assert out["left"] == []
+
+
 def test_a_stop_at_a_limit_is_on_the_meter_and_sends_the_reply_to_the_reload(sandbox):
     events = RUN[:5] + [{"type": "rounds_exhausted", "rounds": 20}, "[DONE]"]
     out = _page(sandbox, """

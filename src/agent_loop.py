@@ -29,6 +29,9 @@ from src.model_context import estimate_tokens
 from src.context_compactor import (
     apply_compaction_state,
     apply_compaction_state_for_session,
+    compacted_frame,
+    compaction_figures,
+    compaction_metric_figures,
     maybe_compact,
 )
 from src.settings import get_setting
@@ -5835,6 +5838,16 @@ async def stream_agent_loop(
     # `P4-10`. The guard stops this turn, for the metrics envelope — the same
     # events the stream carried, so a reloaded thread says what the live one did.
     _agent_stops: list = []
+    # `B921`. The compaction the answering candidate committed, as the turn's
+    # metrics carry it (`context_compacted` and `P4-13`'s four figures). Empty
+    # when the loop did not shape the context (`_committed_compaction_frame`).
+    _committed_compaction: Dict[str, Any] = {}
+
+    def _compaction_metrics() -> Dict[str, Any]:
+        if not _committed_compaction:
+            return {}
+        return {"context_compacted": True,
+                **compaction_metric_figures(_committed_compaction.get("figures"))}
 
     # "I said I would, then didn't" detector. The pattern that breaks debug
     # loops on weak models (deepseek-v4-flash mid-2026): the model writes
@@ -6454,6 +6467,24 @@ async def stream_agent_loop(
                 session_id,
                 state.get("compaction_state"),
             )
+
+        def _committed_compaction_frame(index: int) -> Optional[str]:
+            """`B921`. The `compacted` notice for candidate `index`'s compaction,
+            once, when that candidate commits output — or `None`.
+
+            It said `context_length` and nothing else, so an agent turn's toast
+            read *older messages summarized* with no counts, where the route's
+            says how many. It carries what `maybe_compact` measured now, through
+            the route's builder, and the answering candidate's figures are kept
+            for the turn's metrics (`_committed_compaction`)."""
+            if not _apply_candidate_compaction(index):
+                return None
+            state = _candidate_request_states.get(index) or {}
+            figures = compaction_figures(state.get("compaction_state"))
+            # A later candidate's compaction in the same turn replaces an
+            # earlier one here: the last is what the last request was shaped to.
+            _committed_compaction["figures"] = figures
+            return f"data: {json.dumps(compacted_frame(_last_route_context_length, figures))}\n\n"
         # stream_llm enforces a per-read INACTIVITY timeout (httpx read=timeout),
         # which kills a wedged/silent endpoint. This wall-clock deadline is the
         # complementary cap for the rare stream that trickles bytes forever and
@@ -6629,6 +6660,7 @@ async def stream_agent_loop(
                         terminal_metadata["endpoint_cost_tracked"] = (
                             actual_endpoint_cost_tracked
                         )
+                    terminal_metadata.update(_compaction_metrics())   # `B921`
                     yield f'data: {json.dumps({"type": "agent_terminal", "data": terminal_metadata})}\n\n'
                 yield chunk
                 # A terminal provider/request failure is not a completed Agent
@@ -6651,8 +6683,9 @@ async def stream_agent_loop(
                         # from the parsed ToolBlock only after successful dispatch.
                         continue
                     elif data.get("type") == "tool_calls":
-                        if _apply_candidate_compaction(candidate_index):
-                            yield f'data: {json.dumps({"type": "compacted", "context_length": _last_route_context_length})}\n\n'
+                        _compaction_frame = _committed_compaction_frame(candidate_index)   # `B921`
+                        if _compaction_frame:
+                            yield _compaction_frame
                         native_tool_calls = data.get("calls", [])
                         logger.info(f"Agent round {round_num}: received {len(native_tool_calls)} native tool call(s)")
                     elif data.get("type") == "usage":
@@ -6772,8 +6805,9 @@ async def stream_agent_loop(
                                     "manage_notes", "manage_calendar", "manage_tasks",
                                 })
                             data["pinned_for_run"] = True
-                        if _apply_candidate_compaction(candidate_index):
-                            yield f'data: {json.dumps({"type": "compacted", "context_length": _last_route_context_length})}\n\n'
+                        _compaction_frame = _committed_compaction_frame(candidate_index)   # `B921`
+                        if _compaction_frame:
+                            yield _compaction_frame
                         _round_actual_model = data.get("answered_by") or model
                         _round_actual_endpoint_id = actual_endpoint_id
                         _round_actual_endpoint_label = actual_endpoint_label
@@ -6782,10 +6816,11 @@ async def stream_agent_loop(
                                        f"{data.get('selected_model')} -> {data.get('answered_by')}")
                         yield f"data: {json.dumps(data)}\n\n"
                     elif data.get("type") == "model_actual":
-                        if _apply_candidate_compaction(
+                        _compaction_frame = _committed_compaction_frame(
                             candidate_index if isinstance(candidate_index, int) else 0
-                        ):
-                            yield f'data: {json.dumps({"type": "compacted", "context_length": _last_route_context_length})}\n\n'
+                        )   # `B921`
+                        if _compaction_frame:
+                            yield _compaction_frame
                         actual_model = data.get("model") or actual_model
                         _round_actual_model = data.get("model") or _round_actual_model
                         data["requested_model"] = requested_model
@@ -6796,10 +6831,11 @@ async def stream_agent_loop(
                         data["round"] = round_num
                         yield f"data: {json.dumps(data)}\n\n"
                     elif "delta" in data:
-                        if _apply_candidate_compaction(
+                        _compaction_frame = _committed_compaction_frame(
                             candidate_index if isinstance(candidate_index, int) else 0
-                        ):
-                            yield f'data: {json.dumps({"type": "compacted", "context_length": _last_route_context_length})}\n\n'
+                        )   # `B921`
+                        if _compaction_frame:
+                            yield _compaction_frame
                         if not first_token_received:
                             time_to_first_token = time.time() - total_start
                             first_token_received = True
@@ -8239,6 +8275,11 @@ async def stream_agent_loop(
     # same line in the same round. Absent when no guard fired.
     if _agent_stops:
         metrics["agent_stops"] = list(_agent_stops)
+    # `B921`. The loop's own compaction, on the record the reply is saved from,
+    # under the keys the route writes for its own (`P4-13`). The route's
+    # `_apply_shaping_metrics` saw a context it had not compacted and said
+    # nothing, so a reload of an agent turn the loop compacted never said so.
+    metrics.update(_compaction_metrics())
     metrics["requested_model"] = requested_model
     metrics["endpoint_id"] = actual_endpoint_id
     metrics["endpoint_label"] = actual_endpoint_label

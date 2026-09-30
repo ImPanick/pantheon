@@ -416,6 +416,7 @@ async def maybe_compact(
     }
 
     compacted = system_msgs + [summary_msg] + recent
+    new_used = estimate_tokens(compacted)
 
     # Update session history to match. Pass len(system_msgs) so the
     # recent_history slice in _update_session_history uses the correct
@@ -428,13 +429,22 @@ async def maybe_compact(
             "summary": summary,
             "system_msg_count": len(system_msgs),
             "applied": False,
+            # `B921`. What this compaction measured, in `shaping_stats` shape
+            # (`routes/chat_helpers.py`): the list it was handed and the list it
+            # returns. The agent loop compacts through here when it shapes the
+            # context itself, and its `compacted` notice had nothing to say but
+            # `context_length`, because the plan it kept held the summary to
+            # apply and not the two lists it was measured between.
+            "messages_before": len(messages),
+            "messages_after": len(compacted),
+            "tokens_before": used,
+            "tokens_after": new_used,
         })
     if persist:
         _update_session_history(session, split_point, summary, system_msg_count=len(system_msgs))
         if compaction_state is not None:
             compaction_state["applied"] = True
 
-    new_used = estimate_tokens(compacted)
     logger.info(
         f"Compacted: {used} -> {new_used} tokens "
         f"({len(older)} messages summarized, {len(recent)} kept)"
@@ -468,6 +478,61 @@ def apply_compaction_state(session, compaction_state: Optional[Dict[str, Any]]) 
     )
     state["applied"] = True
     return True
+
+
+#: `P4-13`'s four figures for one shaping step, in `shaping_stats` order.
+SHAPING_FIGURES = ("messages_before", "messages_after", "tokens_before", "tokens_after")
+
+
+def shaping_shrank(stats) -> bool:
+    """`P4-13`. Did this shaping step actually remove anything?
+
+    A `shaping_stats` dict whose after equals its before is a step that ran and
+    changed nothing, and reporting it is how a reader learns to ignore the
+    report. (`B921`: moved here from `routes/chat_routes.py`, which imports it
+    under its old name, so the route and the agent loop ask one predicate.)
+    """
+    if not stats:
+        return False
+    return (
+        (stats.get("messages_after") or 0) < (stats.get("messages_before") or 0)
+        or (stats.get("tokens_after") or 0) < (stats.get("tokens_before") or 0)
+    )
+
+
+def compaction_figures(compaction_state: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """`B921`. The figures `maybe_compact` recorded in a compaction plan, or
+    `{}` when it recorded none (a plan made before `B921`, or a stand-in)."""
+    state = compaction_state if isinstance(compaction_state, dict) else {}
+    figures = {key: state[key] for key in SHAPING_FIGURES if isinstance(state.get(key), int)}
+    return figures if len(figures) == len(SHAPING_FIGURES) else {}
+
+
+def compacted_frame(context_length, stats=None) -> Dict[str, Any]:
+    """`P4-13` / `B921`. The `compacted` event, as a dict: `context_length`, and
+    in `data` the messages and tokens before and after when the step shrank
+    anything. One builder for the route (`_compacted_event`) and the agent loop,
+    which sent `context_length` alone. The reasons for the shape are
+    `_compacted_event`'s."""
+    data = {"context_length": context_length}
+    if shaping_shrank(stats):
+        data.update({key: stats.get(key) for key in SHAPING_FIGURES})
+    return {"type": "compacted", "data": data, "context_length": context_length}
+
+
+def compaction_metric_figures(stats) -> Dict[str, Any]:
+    """`P4-13` / `B921`. A compaction's figures under the keys a turn's saved
+    metrics carry them (`context_messages_before_compact` …), or `{}` when the
+    step shrank nothing. The flag, `context_compacted`, is the caller's: a
+    compaction that happened is said even when nothing measured it."""
+    if not shaping_shrank(stats):
+        return {}
+    return {
+        "context_messages_before_compact": stats.get("messages_before"),
+        "context_messages_after_compact": stats.get("messages_after"),
+        "context_tokens_before_compact": stats.get("tokens_before"),
+        "context_tokens_after_compact": stats.get("tokens_after"),
+    }
 
 
 def apply_compaction_state_for_session(

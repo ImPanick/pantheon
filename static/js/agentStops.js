@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // agentStops.js — the line that says why the agent stopped itself, and (`B915`,
 // at the end of this file) the turn's other notes: the step limit and its
-// Continue offer, the tool budget, the teacher's takeover, and the skill notes.
+// Continue offer, the tool budget, the teacher's takeover, the skill notes, and
+// (`B921`) a compaction of the turn's context.
 //
 // `P4-10`. Two guards in the agent loop end work the model did not end: the
 // loop-breaker (the same call over and over) and the unkept-promise stop (it
@@ -126,7 +127,36 @@ export function renderAgentStop(box, event) {
 /** The events drawn here. `AGENT_NOTE_TYPES` in `src/agent_stops.py` is the
  *  server's copy, and a test holds the two equal. */
 export const AGENT_NOTE_TYPES = Object.freeze(['rounds_exhausted', 'budget_exceeded',
-  'teacher_takeover', 'skill_saved', 'escalation_failed', 'skill_save_failed']);
+  'teacher_takeover', 'skill_saved', 'escalation_failed', 'skill_save_failed',
+  // `B921`. The turn's context summarised to fit (`P4-13`'s event). Live it is
+  // a toast (`chat.js`), which a reload cannot redraw; the route saves it with
+  // the reply now, and the reload draws it as a line where it happened.
+  'compacted']);
+
+/**
+ * `P4-13` / `B921`. What a `compacted` event says, in the trim notice's words:
+ * *Context compacted — older messages summarized (9/42 messages kept, 81,400 →
+ * 12,200 tokens)*. The figures are read out of `data`, where the event puts
+ * them; with none, or with none that shrank, it is the bare sentence, never a
+ * `0/0` that would read as a measurement. The live toast and the saved line
+ * both say it through here, so the two cannot drift.
+ */
+export function compactionNoticeText(event) {
+  const cd = (event && event.data) || {};
+  const cBefore = Number(cd.messages_before || 0);
+  const cAfter = Number(cd.messages_after || 0);
+  const tBefore = Number(cd.tokens_before || 0);
+  const tAfter = Number(cd.tokens_after || 0);
+  const parts = [];
+  if (cBefore && cAfter && cBefore > cAfter) {
+    parts.push(`${cAfter}/${cBefore} messages kept`);
+  }
+  if (tBefore && tAfter && tBefore > tAfter) {
+    parts.push(`${tBefore.toLocaleString()} → ${tAfter.toLocaleString()} tokens`);
+  }
+  const cDetail = parts.length ? ` (${parts.join(', ')})` : '';
+  return `Context compacted — older messages summarized${cDetail}`;
+}
 
 /** What Continue ▸ asks for after the step limit. */
 export const STEP_LIMIT_CONTINUE_PROMPT = 'You hit the step limit before finishing — the task is not '
@@ -172,6 +202,9 @@ function continueAfterStepLimit(d, note, reply) {
   }
 }
 
+/** The small muted line the tool budget's note is, and a compaction's. */
+const QUIET_NOTE_STYLE = 'font-size:11px;opacity:0.6;font-style:italic;padding:4px 8px;margin:4px 0;';
+
 /** Build the note for `event`, or `null` for anything else. `opts.reply` is the
  *  turn's first bubble (or a function returning it), for Continue ▸. */
 export function agentNoteNode(doc, event, opts = {}) {
@@ -194,8 +227,13 @@ export function agentNoteNode(doc, event, opts = {}) {
     }
     case 'budget_exceeded':
       node.className = 'budget-exceeded-note';
-      node.style.cssText = 'font-size:11px;opacity:0.6;font-style:italic;padding:4px 8px;margin:4px 0;';
+      node.style.cssText = QUIET_NOTE_STYLE;
       node.textContent = `Tool budget reached (${event.used}/${event.limit} calls). Agent stopped.`;
+      return node;
+    case 'compacted':   // `B921`: the tool budget's quiet line, in the toast's words
+      node.className = 'context-compacted-note';
+      node.style.cssText = QUIET_NOTE_STYLE;
+      node.textContent = compactionNoticeText(event);
       return node;
     case 'teacher_takeover': {
       node.className = 'teacher-takeover-banner';
@@ -274,4 +312,5 @@ export default {
   isAgentStop, agentStopHeadline, agentStopNode, renderAgentStop,
   AGENT_NOTE_TYPES, STEP_LIMIT_CONTINUE_PROMPT,
   isAgentNote, agentNoteNode, renderAgentNote, withdrawContinueOffers,
+  compactionNoticeText,
 };

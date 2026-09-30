@@ -3809,7 +3809,15 @@ export function addMessage(role, content, modelName, metadata) {
         || (Array.isArray(metadata.agent_notes) && metadata.agent_notes.length > 0)
       )
     ) {
-      const roundTexts = metadata.round_texts || [];
+      // `B921`. A reply saved with a note and no rounds of its own — an agent
+      // turn answered before any step ran (a one-line direct reply) after its
+      // context was compacted — is one round, and its content is that round's
+      // text. Without this the branch drew the note and dropped the reply.
+      const hasRounds = (Array.isArray(metadata.round_texts) && metadata.round_texts.length > 0)
+        || (Array.isArray(metadata.tool_events) && metadata.tool_events.length > 0);
+      const roundTexts = hasRounds
+        ? (metadata.round_texts || [])
+        : (typeof textRaw === 'string' && textRaw.trim() ? [textRaw] : []);
       const roundModels = metadata.round_models || [];
       const roundEndpointIds = metadata.round_endpoint_ids || [];
       const roundEndpointLabels = metadata.round_endpoint_labels || [];

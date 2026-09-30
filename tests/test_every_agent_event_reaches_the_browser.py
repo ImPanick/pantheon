@@ -58,8 +58,10 @@ AGENT_TURN = ROOT / "static" / "js" / "agentTurn.js"
 
 #: The modules whose events go out through the route's agent branch: the loop,
 #: the two guard stops it yields, and the teacher, which relays a recursive
-#: run of the loop and adds its own.
-EMITTERS = ("src/agent_loop.py", "src/agent_stops.py", "src/teacher_escalation.py")
+#: run of the loop and adds its own. `B921`: and the compactor, whose
+#: `compacted_frame` builds the loop's `compacted` notice (and the route's).
+EMITTERS = ("src/agent_loop.py", "src/agent_stops.py", "src/teacher_escalation.py",
+            "src/context_compactor.py")
 
 #: The row's list — its `Verify:` line. Held against the derived set below, so
 #: the derivation cannot quietly lose one of the types the row is about.

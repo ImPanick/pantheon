@@ -28,9 +28,14 @@ from src import agent_runs
 from src.model_context import estimate_tokens
 from src.context_compactor import (
     apply_compaction_state,
+    compacted_frame,
+    compaction_metric_figures,
     maybe_compact,
     trim_for_context,
 )
+# `B921`: `P4-13`'s predicate moved to the compactor, so the agent loop's own
+# `compacted` notice asks it too; imported under the name every caller here uses.
+from src.context_compactor import shaping_shrank as _shaping_shrank
 from src.chat_helpers import coerce_message_and_session
 from src.endpoint_resolver import normalize_base as _normalize_base, build_chat_url
 from src.foreground_model_routing import (
@@ -500,21 +505,6 @@ def _chat_candidate_request_factory(
     return factory, state
 
 
-def _shaping_shrank(stats) -> bool:
-    """`P4-13`. Did this shaping step actually remove anything?
-
-    A `shaping_stats` dict whose after equals its before is a step that ran and
-    changed nothing, and reporting it is how a reader learns to ignore the
-    report.
-    """
-    if not stats:
-        return False
-    return (
-        (stats.get("messages_after") or 0) < (stats.get("messages_before") or 0)
-        or (stats.get("tokens_after") or 0) < (stats.get("tokens_before") or 0)
-    )
-
-
 def _ctx_shaping(ctx, step: str) -> dict:
     """The `ChatContext` figures for one shaping step, in `shaping_stats` shape.
 
@@ -561,11 +551,8 @@ def _apply_shaping_metrics(metrics, ctx, *, route_trim=None, route_compaction=No
     )
     if _shaping_shrank(route_compaction) or getattr(ctx, "was_compacted", False):
         metrics["context_compacted"] = True
-    if _shaping_shrank(compaction):
-        metrics["context_messages_before_compact"] = compaction.get("messages_before")
-        metrics["context_messages_after_compact"] = compaction.get("messages_after")
-        metrics["context_tokens_before_compact"] = compaction.get("tokens_before")
-        metrics["context_tokens_after_compact"] = compaction.get("tokens_after")
+    # `B921`: the keys are the compactor's, which the agent loop writes too.
+    metrics.update(compaction_metric_figures(compaction))
     return metrics
 
 
@@ -591,15 +578,9 @@ def _compacted_event(context_length, stats=None) -> str:
     (`Law 1`); nothing in `static/` reads it today, so the copy costs an
     integer and buys every existing reader staying correct.
     """
-    data = {"context_length": context_length}
-    if _shaping_shrank(stats):
-        data.update({
-            "messages_before": stats.get("messages_before"),
-            "messages_after": stats.get("messages_after"),
-            "tokens_before": stats.get("tokens_before"),
-            "tokens_after": stats.get("tokens_after"),
-        })
-    return f'data: {json.dumps({"type": "compacted", "data": data, "context_length": context_length})}\n\n'
+    # `B921`: built by `compacted_frame`, which the agent loop's own notice
+    # uses as well; it sent `context_length` alone.
+    return f"data: {json.dumps(compacted_frame(context_length, stats))}\n\n"
 
 
 def _candidate_index(candidates, actual_candidate) -> int:
@@ -2876,6 +2857,12 @@ def setup_chat_routes(
                 # `B915`: the notes the turn draws beside its reply, kept for the save.
                 from src.agent_stops import AgentNotes
                 _agent_notes = AgentNotes()
+                # `B921`. The compaction this route did before the loop started
+                # (the notice above), kept with the reply as the loop's own is,
+                # so a reload says it whichever of the two shaped the context.
+                if ctx.was_compacted:
+                    _agent_notes.observe(
+                        compacted_frame(ctx.context_length, _ctx_shaping(ctx, "compact")))
                 _requested_model = sess.model
                 _actual_model = None
                 _agent_requested_route = _foreground_route_descriptors[0]

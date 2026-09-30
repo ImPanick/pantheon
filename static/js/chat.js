@@ -33,8 +33,9 @@ import { startToolCard as _startToolCard, drawToolProgress as _drawToolProgress,
          finishToolCard as _finishToolCard, stopCardTickers as _stopCardTickers,
          openRoundSpinner as _openRoundSpinner } from './agentTurn.js';
 // `P4-10`. The line that says why the agent stopped itself — and (`B915`) the
-// turn's other notes, drawn by the same module for the reload.
-import { renderAgentStop, renderAgentNote } from './agentStops.js';
+// turn's other notes, drawn by the same module for the reload; (`B921`) the
+// compaction notice's words.
+import { renderAgentStop, renderAgentNote, compactionNoticeText } from './agentStops.js';
 import { wireArrowUpRecall, getUserMessagesFromChatHistory } from './composerArrowUpRecall.js?v=20260714promptrecall';
 import {
   createIncrementalDisplayProjector,
@@ -4631,20 +4632,12 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
                   // is set independently of them on purpose — so the sentence
                   // degrades to the one it has always shown rather than printing
                   // a `0/0` that would read as a measurement.
-                  const cd = json.data || {};
-                  const cBefore = Number(cd.messages_before || 0);
-                  const cAfter = Number(cd.messages_after || 0);
-                  const tBefore = Number(cd.tokens_before || 0);
-                  const tAfter = Number(cd.tokens_after || 0);
-                  const parts = [];
-                  if (cBefore && cAfter && cBefore > cAfter) {
-                    parts.push(`${cAfter}/${cBefore} messages kept`);
-                  }
-                  if (tBefore && tAfter && tBefore > tAfter) {
-                    parts.push(`${tBefore.toLocaleString()} → ${tAfter.toLocaleString()} tokens`);
-                  }
-                  const cDetail = parts.length ? ` (${parts.join(', ')})` : '';
-                  uiModule.showToast(`Context compacted — older messages summarized${cDetail}`);
+                  //
+                  // `B921`: the sentence is `compactionNoticeText`'s, because an
+                  // agent turn's compaction is saved with the reply now and the
+                  // reload draws it as a line (`renderAgentNote`) in these words.
+                  // The agent loop's own notice carries the figures too.
+                  uiModule.showToast(compactionNoticeText(json));
                 }
               } else if (json.type === 'context_trimmed') {
                 if (!_isBg) {
@@ -6815,11 +6808,15 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
   // `B917`: `teacher_takeover`, `skill_saved`, `escalation_failed` and
   // `skill_save_failed` left this list. They are saved with the reply now
   // (`B915`), and the resumed view draws them as the live one does.
+  //   compacted — (`B921`) live, a toast; saved with the reply as one of its
+  //       notes, which the reload draws as a line where it happened. A reply
+  //       finalized in place would lose it.
   const _RESUME_RELOAD_TYPES = new Set([
     'web_sources', 'rag_sources', 'memories_used', 'skills_injected', 'auto_escalated',
     'research_progress', 'research_sources', 'research_findings', 'research_done',
     'ask_user',
     'plan_update', 'doc_update', 'doc_suggestions', 'ui_control',
+    'compacted',
   ]);
 
   /**

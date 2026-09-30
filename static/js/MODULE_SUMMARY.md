@@ -217,7 +217,15 @@ JSON events are dispatched by "type":
   teacher_takeover   → finish the student's last step, insert escalation banner, open
                        the teacher's own bubble below it (B904)
   skill_saved        → show skill-learned banner
+  compacted          → toast with the messages and tokens kept (P4-13); an agent
+                       turn's (the route's or the loop's own) is saved with the reply
+                       as a note, and the reload draws it as a line (B921)
 ```
+
+A compare pane (`compare/stream.js`) draws an agent turn with the same functions:
+the cards through `agentTurn.js` (B918), the prep line and the step / tool-call
+meter through `presentMeterEvent` under a step spinner from `openRoundSpinner`
+(B916).
 
 The route forwards every agent event it does not handle itself (`B904`), so a
 type added to the loop reaches this table's dispatcher without a route change.

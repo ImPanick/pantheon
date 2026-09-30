@@ -49,6 +49,9 @@ from tests.helpers.source_text import blank  # B290
 
 ROOT = Path(__file__).resolve().parents[1]
 CHAT_JS = ROOT / "static" / "js" / "chat.js"
+# `B921`: the arm says its sentence through `compactionNoticeText`, which the
+# saved line on reload says it through too; the real one is imported below.
+AGENT_STOPS = ROOT / "static" / "js" / "agentStops.js"
 
 pytestmark = pytest.mark.skipif(not shutil.which("node"), reason="node binary not on PATH")
 
@@ -75,6 +78,7 @@ def _arm(opening: str, closing: str) -> str:
 def _run(arm: str, events: list) -> list:
     """Drive the arm over a list of `[json, isBg]` pairs; return the toasts."""
     script = textwrap.dedent("""
+        import { compactionNoticeText } from %s;
         const toasts = [];
         const uiModule = { showToast: (m) => { toasts.push(String(m)); } };
         function draw(json, _isBg) {
@@ -82,7 +86,8 @@ def _run(arm: str, events: list) -> list:
         }
         for (const [event, bg] of %s) draw(event, bg);
         console.log(JSON.stringify(toasts));
-    """) % (textwrap.indent(arm, "          "), json.dumps(events))
+    """) % (json.dumps(AGENT_STOPS.as_uri()), textwrap.indent(arm, "          "),
+            json.dumps(events))
     proc = subprocess.run(["node", "--input-type=module", "-e", script],
                           capture_output=True, text=True, timeout=30)
     assert proc.returncode == 0, proc.stderr

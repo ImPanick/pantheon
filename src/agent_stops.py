@@ -347,9 +347,12 @@ def unkept_promise_stop(
 # goes.
 
 #: The events that draw a note. `AGENT_NOTE_TYPES` in `static/js/agentStops.js`
-#: is the browser's copy, and a test holds the two equal.
+#: is the browser's copy, and a test holds the two equal. `B921` added
+#: `compacted`: an agent turn's context summarised to fit, said live by a toast
+#: and saved nowhere a reload drew from.
 AGENT_NOTE_TYPES = ("rounds_exhausted", "budget_exceeded", "teacher_takeover",
-                    "skill_saved", "escalation_failed", "skill_save_failed")
+                    "skill_saved", "escalation_failed", "skill_save_failed",
+                    "compacted")
 
 
 def _positive_round(value: Any) -> Optional[int]:
@@ -396,6 +399,12 @@ class AgentNotes:
             self._seen.append((dict(data), "takeover", self._round))
             self._taken_over = True
             self._round = 1              # the teacher's run numbers its own rounds
+        elif kind == "compacted":
+            # `B921`. A compaction shapes the request of the round now starting,
+            # so it is drawn before that round: after the one before it, or
+            # before the first (`0`).
+            phase = "teacher" if teacher else ("after" if self._taken_over else "student")
+            self._seen.append((dict(data), phase, self._round - 1))
         elif kind in AGENT_NOTE_TYPES:
             phase = "teacher" if teacher else ("after" if self._taken_over else "student")
             self._seen.append((dict(data), phase, _positive_round(data.get("round")) or self._round))
