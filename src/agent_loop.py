@@ -2763,8 +2763,8 @@ def _pan_qwen_temperature_cap(temperature):
         return 0.2
 
 
-def _pan_qwen_route_temperature(temperature, model, explicit_params=frozenset()):
-    """The temperature one route candidate is sent. `P2-13`.
+def pan_qwen_route_temperature(temperature, model, explicit_params=frozenset()):
+    """The temperature one route candidate is sent. `P2-13`, `B935`.
 
     The cap above, applied per candidate exactly as before — a ``pantheon-qwen3``
     candidate gets it and any other candidate gets the caller's value, so a
@@ -2773,6 +2773,14 @@ def _pan_qwen_route_temperature(temperature, model, explicit_params=frozenset())
     qwen or not: it is the person's number, not the primary's, so sending it to
     a fallback is not a leak. `D-2026-08-26-06`: the clamp is the default for
     everything nobody chose, never an override of a choice.
+
+    **Every door, not only this loop (`B935`).** The owner's call: the default
+    cap applies in every mode. So the chat routes call this too — for the
+    selected model's base temperature and inside
+    ``_chat_candidate_request_factory`` for each fallback — on chat-mode
+    streaming and on ``/api/chat``, which used to send a qwen finetune the
+    preset's temperature (1.0 with no preset) uncapped. Public, and imported
+    there, rather than a second copy of the rule (`Law 7`, `Law 14`).
     """
     if "temperature" in (explicit_params or ()):
         return temperature
@@ -4773,7 +4781,7 @@ async def stream_agent_loop(
     # factories for fallbacks), so neither direction of a mixed qwen/non-qwen
     # fallback chain inherits the other's value.
     _requested_temperature = temperature
-    temperature = _pan_qwen_route_temperature(temperature, model, explicit_params)
+    temperature = pan_qwen_route_temperature(temperature, model, explicit_params)
     _pan_memory_identity_turn = _looks_like_memory_identity_turn(_last_user)
     _intent = _classify_agent_request(messages, _last_user)
     _low_signal_turn = bool(_intent.get("low_signal"))
@@ -4880,7 +4888,7 @@ async def stream_agent_loop(
             return {
                 "messages": candidate_messages,
                 "kwargs": {
-                    "temperature": _pan_qwen_route_temperature(
+                    "temperature": pan_qwen_route_temperature(
                         _requested_temperature, candidate_model, explicit_params),
                 },
             }
@@ -6451,7 +6459,7 @@ async def stream_agent_loop(
                 "kwargs": {
                     "tools": candidate_tools or None,
                     "tool_choice_none": state["pan_doc_finetune_mode"],
-                    "temperature": _pan_qwen_route_temperature(
+                    "temperature": pan_qwen_route_temperature(
                         _requested_temperature, candidate_model, explicit_params),
                 },
             }

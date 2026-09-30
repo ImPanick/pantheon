@@ -23,7 +23,12 @@ from src.llm_core import (
     stream_llm,
     stream_llm_with_fallback,
 )
-from src.agent_loop import pending_steers, stream_agent_loop, submit_steer
+from src.agent_loop import (
+    pan_qwen_route_temperature,
+    pending_steers,
+    stream_agent_loop,
+    submit_steer,
+)
 from src import agent_runs
 from src.model_context import estimate_tokens
 from src.context_compactor import (
@@ -460,8 +465,19 @@ def _chat_candidate_request_factory(
     *,
     session=None,
     owner: Optional[str] = None,
+    temperature=None,
+    explicit_params=frozenset(),
 ):
-    """Shape one route-neutral Chat prompt for each candidate window."""
+    """Shape one route-neutral Chat prompt for each candidate window.
+
+    `B935`. Given the turn's *temperature*, each candidate also gets its own:
+    ``pan_qwen_route_temperature`` holds a ``pantheon-qwen3`` candidate at the
+    finetune's 0.2 unless the person chose the number (*explicit_params*), and
+    leaves every other candidate at the caller's value — the per-candidate rule
+    the agent loop already uses, so a mixed fallback chain leaks the cap in
+    neither direction on these doors either. ``None`` asks for nothing and the
+    request keeps its old shape.
+    """
 
     state = {
         "requests": {},
@@ -500,7 +516,11 @@ def _chat_candidate_request_factory(
         state["compaction_stats"][index] = (
             shaping_stats(messages, candidate_messages) if was_compacted else {}
         )
-        return {"messages": request_messages}
+        request = {"messages": request_messages}
+        if temperature is not None:
+            request["kwargs"] = {"temperature": pan_qwen_route_temperature(
+                temperature, candidate_model, explicit_params)}
+        return request
 
     return factory, state
 
@@ -1276,6 +1296,10 @@ def setup_chat_routes(
             "trim_stats": {},
         }
         request_messages = ctx.messages
+        # `P2-13`. Whether the preset's temperature is the person's. Read
+        # through `getattr` like the `P4-13` shaping figures, so a context
+        # double without the field asks for nothing rather than raising.
+        explicit_params = getattr(ctx.preset, "explicit_params", frozenset())
         if foreground_policy.enabled:
             request_messages = getattr(ctx, "route_messages", ctx.messages)
             candidate_request_factory, candidate_request_state = _chat_candidate_request_factory(
@@ -1283,6 +1307,8 @@ def setup_chat_routes(
                 selected_context_length,
                 session=sess,
                 owner=owner,
+                temperature=ctx.preset.temperature,
+                explicit_params=explicit_params,
             )
         requested_model = sess.model
         reply, actual_candidate, actual_model = await llm_call_async_with_route_fallback(
@@ -1290,15 +1316,18 @@ def setup_chat_routes(
             request_messages,
             fallback_statuses=foreground_policy.eligible_statuses,
             candidate_request_factory=candidate_request_factory,
-            temperature=ctx.preset.temperature,
+            # `B935`. The selected model's temperature: a `pantheon-qwen3`
+            # model is held at the finetune's 0.2 unless the person chose the
+            # number, as on the agent path. With fallbacks on, the factory
+            # sets each candidate's own.
+            temperature=pan_qwen_route_temperature(
+                ctx.preset.temperature, sess.model, explicit_params),
             max_tokens=ctx.preset.max_tokens,
             prompt_type=preset_id,
             session_id=session,
-            # `P2-13`. Whether that temperature is the person's, so a local
-            # MiniMax endpoint honours it rather than clamping it to 0.2. Read
-            # through `getattr` like the `P4-13` shaping figures, so a context
-            # double without the field asks for nothing rather than raising.
-            explicit_params=getattr(ctx.preset, "explicit_params", frozenset()),
+            # `P2-13`. So a local MiniMax endpoint honours a chosen temperature
+            # rather than clamping it to 0.2.
+            explicit_params=explicit_params,
         )
         actual_index = _candidate_index(foreground_candidates, actual_candidate)
         apply_compaction_state(
@@ -2331,12 +2360,16 @@ def setup_chat_routes(
                 "requests": {0: messages},
                 "trim_stats": {},
             }
+            # `P2-13`, as on `/api/chat`.
+            _explicit_params = getattr(ctx.preset, "explicit_params", frozenset())
             if _foreground_policy.enabled:
                 _chat_request_factory, _chat_request_state = _chat_candidate_request_factory(
                     messages,
                     _selected_context_length,
                     session=sess,
                     owner=_user,
+                    temperature=ctx.preset.temperature,
+                    explicit_params=_explicit_params,
                 )
 
             # Send model name early so the frontend can show it during streaming
@@ -2486,7 +2519,11 @@ def setup_chat_routes(
                     async for chunk in stream_llm_with_fallback(
                         _foreground_candidates,
                         messages,
-                        temperature=ctx.preset.temperature,
+                        # `B935`, as on `/api/chat` above: the selected model's
+                        # temperature, held at 0.2 for `pantheon-qwen3` unless
+                        # chosen; the factory sets each fallback's own.
+                        temperature=pan_qwen_route_temperature(
+                            ctx.preset.temperature, sess.model, _explicit_params),
                         # Respect the preset; 0/unset = let the server decide (no
                         # cap), matching agent mode. The old hard 4096 fallback
                         # truncated reasoning models mid-<think> — they'd burn the
@@ -2497,7 +2534,7 @@ def setup_chat_routes(
                         tools=None,
                         session_id=session,
                         # `P2-13`, as on `/api/chat` above.
-                        explicit_params=getattr(ctx.preset, "explicit_params", frozenset()),
+                        explicit_params=_explicit_params,
                         fallback_statuses=_foreground_policy.eligible_statuses,
                         fallback_on_empty=_foreground_policy.fallback_on_empty,
                         candidate_request_factory=_chat_request_factory,

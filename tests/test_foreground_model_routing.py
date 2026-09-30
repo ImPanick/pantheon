@@ -98,13 +98,14 @@ def _chat_stream_endpoint(
     capture_context=False,
     endpoint_url="https://selected.example/v1",
     context_overrides=None,
+    model="selected-model",
 ):
     def add_message(message):
         captured.setdefault("added_messages", []).append(message)
 
     session = SimpleNamespace(
         endpoint_url=endpoint_url,
-        model="selected-model",
+        model=model,
         headers={"Authorization": "Bearer selected"},
         name="test",
         history=[],
@@ -1119,11 +1120,12 @@ def _chat_endpoint(
     *,
     owner="alice",
     endpoint_url="https://selected.example/v1",
+    model="selected-model",
 ):
     saved = []
     session = SimpleNamespace(
         endpoint_url=endpoint_url,
-        model="selected-model",
+        model=model,
         headers={"Authorization": "Bearer selected"},
         history=[],
         add_message=saved.append,
