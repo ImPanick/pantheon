@@ -1486,6 +1486,73 @@ export function openClosedWindow(id) {
 }
 
 /**
+ * `P9-01` — the tool windows, as the command palette offers them.
+ *
+ * Read out of the two tables this module already keeps — `_AUTO_WIRE` for the
+ * doors, `_LABELS` for the names — so the palette cannot grow a third list of
+ * tools that disagrees with the dock (`Law 14`).
+ *
+ * `door` is whether a person could press one of the window's buttons: the
+ * button exists and is not hidden **on its own**. All three things that take a
+ * tool away write `style.display = 'none'` on the button itself — an admin's
+ * feature flag (`app.js`, `H05`), a privilege gate (`init.js`) and the person's
+ * own Customize UI toggle (`applyUIVis`) — so that is what is read. An ancestor
+ * being hidden is not: a collapsed sidebar or a hidden rail is exactly when the
+ * palette is the way in.
+ */
+function _doorShown(btn) {
+  return !!btn && !btn.hidden && !btn.classList.contains('hidden')
+    && btn.style.display !== 'none';
+}
+
+export function listWindows() {
+  return Object.keys(_AUTO_WIRE).map((id) => {
+    const wire = _AUTO_WIRE[id] || {};
+    const door = [wire.rail, wire.sidebar]
+      .some((btnId) => _doorShown(btnId ? document.getElementById(btnId) : null));
+    return { id, label: (_LABELS[id] && _LABELS[id].label) || id, door };
+  });
+}
+
+/**
+ * `P9-01` — bring a tool window to the person, whatever state it is in.
+ *
+ * A door is a toggle for most tools (`calendar`, `gallery`, `tasks`, `notes`,
+ * `research` and `compare` all close an open window on a second press), so
+ * "open Calendar" cannot simply press the Calendar button: with the window
+ * already up it would close it. The three cases are the dock chip's three
+ * cases, in the chip's own order:
+ *
+ *   minimized → `restore`, as the chip does;
+ *   open      → raise it, and press nothing;
+ *   closed    → `openClosedWindow`, the door a person would press (`P9-11`).
+ *
+ * "Open" is read off the element, not off `_state` alone: tools that are only
+ * auto-registered on minimize keep their entry after their own × closes them.
+ * The one exception is a window registered under a key that is not its
+ * element's id — Notes registers `notes-panel` and draws `#notes-pane` — which
+ * registers on open and unregisters on close, so there registered means open.
+ *
+ * Returns `restored` · `raised` · `opened` · `none`, an enum rather than a
+ * boolean because "it was already there" and "it opened" are different news
+ * (`Law 10`).
+ */
+export function showWindow(id) {
+  const s = _state.get(id);
+  if (s && s.isMinimized) return restore(id) ? 'restored' : 'none';
+  const modal = document.getElementById(id);
+  if (modal) {
+    const shown = !modal.classList.contains('hidden')
+      && !modal.classList.contains('modal-minimized')
+      && modal.style.display !== 'none';
+    if (shown) { _bringToFront(modal); return 'raised'; }
+  } else if (s) {
+    return 'raised';
+  }
+  return openClosedWindow(id) ? 'opened' : 'none';
+}
+
+/**
  * If the modal is currently MINIMIZED, restore it and return true.
  * Otherwise return false so the caller falls through to its own
  * open/close handling. We deliberately do NOT minimize on toggle —
@@ -1758,4 +1825,5 @@ document.addEventListener('click', (e) => {
 }, true);
 
 export default { register, unregister, isRegistered, isMinimized, minimize, restore, toggle, close,
-  injectMinimizeButton, setBackgroundWork, getBackgroundWork, listBackgroundWork, openClosedWindow };
+  injectMinimizeButton, setBackgroundWork, getBackgroundWork, listBackgroundWork, openClosedWindow,
+  listWindows, showWindow };

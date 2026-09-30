@@ -1002,7 +1002,7 @@
          aria-valuemin="0" aria-valuemax="700" aria-valuenow="0"
          tabindex="0"></div>
     <!-- Static: core actions -->
-    <button class="icon-rail-btn" id="rail-search-btn" title="Search conversations (Ctrl+K)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="10" cy="10" r="7"/><path d="M21 21l-4.35-4.35"/></svg></button>
+    <button class="icon-rail-btn" id="rail-search-btn" title="Search chats and commands (Ctrl+K)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="10" cy="10" r="7"/><path d="M21 21l-4.35-4.35"/></svg></button>
     <button class="icon-rail-btn rail-new-chat" id="rail-new-session" title="New chat"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
     <button class="icon-rail-btn" id="rail-delete-session" title="Delete session">&#x2715;</button>
     <div class="rail-separator"></div>
@@ -1049,7 +1049,7 @@
         <svg class="sidebar-action-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="position:relative;left:-2px;"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         <span class="grow" style="position:relative;left:-3px;">New Chat</span>
       </button>
-      <button type="button" class="list-item" id="sidebar-search-btn" title="Search conversations (Ctrl+K)">
+      <button type="button" class="list-item" id="sidebar-search-btn" title="Search chats and commands (Ctrl+K)">
         <svg class="sidebar-action-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="10" cy="10" r="7"/><path d="M21 21l-4.35-4.35"/></svg>
         <span class="grow" style="position:relative;left:-1px;">Search</span>
       </button>
@@ -3517,11 +3517,18 @@
     </div>
   </div>
 
-  <!-- Search overlay (Ctrl+K command palette) -->
+  <!-- Search overlay (Ctrl+K command palette). `P9-01`: it finds chats, tools,
+       Settings panels and slash commands (static/js/search-chat.js). The three
+       ids are FORBIDDEN.md Part 1 and do not move. The box keeps the caret and
+       names the highlighted option with aria-activedescendant; #search-status
+       is the line a person reads and a screen reader hears. -->
   <div class="search-overlay hidden" id="search-overlay">
-    <div class="search-popup">
-      <input type="text" id="search-input" placeholder="Search conversations..." autocomplete="off" />
-      <div class="search-results" id="search-results"></div>
+    <div class="search-popup" role="dialog" aria-modal="true" aria-label="Search chats and commands">
+      <input type="text" id="search-input" placeholder="Search chats, tools, settings and commands…" autocomplete="off" spellcheck="false"
+             role="combobox" aria-expanded="false" aria-controls="search-results" aria-autocomplete="list"
+             aria-label="Search chats, tools, settings and commands" />
+      <div class="search-results" id="search-results" role="listbox" aria-label="Results"></div>
+      <div class="search-palette-status" id="search-status" role="status" aria-live="polite"></div>
     </div>
   </div>
 

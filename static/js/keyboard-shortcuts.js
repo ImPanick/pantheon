@@ -48,7 +48,10 @@ export const KEYBIND_LOCAL_ONLY = new Set(['doc_find']);
 
 /** Human labels, so three files stop inventing their own wording. `H19`. */
 export const KEYBIND_LABELS = {
-  search: 'Search conversations',
+  // `P9-01`. Same id, same Ctrl+K: the search it opens is the command palette
+  // now, so the Shortcuts panel and `/shortcuts` say what it finds. The id is
+  // a persisted key (`keybinds.search`) and does not move.
+  search: 'Search chats and commands',
   toggle_sidebar: 'Toggle sidebar',
   new_session: 'New session',
   fav_session: 'Favorite session',

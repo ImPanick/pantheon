@@ -83,6 +83,32 @@ function _flatten() {
   return out;
 }
 
+/**
+ * `P9-01`. The commands this popup offers, for the command palette in
+ * `search-chat.js`. The same list — hidden and easter-egg commands left out,
+ * the short aliases people type promoted — so the two places a person can find
+ * a command never disagree about which commands exist (`Law 14`).
+ */
+export function slashCatalog() {
+  return _flatten();
+}
+
+/**
+ * Put a command in the message box, ready for its arguments. `P9-01`.
+ *
+ * This popup's own `insert` and the palette both call it, so a command reaches
+ * the composer one way. Nothing here runs the command: the person presses
+ * Enter, and the composer's submit path — with its approval, setup-mode and
+ * in-flight checks — is the only thing that ever does.
+ */
+export function insertSlashToken(textarea, token) {
+  textarea.value = token + ' ';
+  textarea.dispatchEvent(new Event('input', { bubbles: true }));
+  textarea.focus();
+  const len = textarea.value.length;
+  if (typeof textarea.setSelectionRange === 'function') textarea.setSelectionRange(len, len);
+}
+
 async function _loadSkillEntries() {
   try {
     const res = await fetch('/api/skills/slash-catalog', { credentials: 'same-origin' });
@@ -260,11 +286,7 @@ export function initSlashAutocomplete(textarea) {
   });
 
   const insert = (token) => {
-    textarea.value = token + ' ';
-    textarea.dispatchEvent(new Event('input', { bubbles: true }));
-    textarea.focus();
-    const len = textarea.value.length;
-    textarea.setSelectionRange(len, len);
+    insertSlashToken(textarea, token);
     hide();
   };
 
@@ -316,4 +338,4 @@ export function initSlashAutocomplete(textarea) {
   });
 }
 
-export default { initSlashAutocomplete };
+export default { initSlashAutocomplete, slashCatalog, insertSlashToken };

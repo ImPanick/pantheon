@@ -63,7 +63,7 @@ The largest and most central subsystem. Chat submission → backend SSE → prog
 | **`streamingSegmenter.js`** | Splits a token stream into display units (text vs code fences) for `streamingRenderer.js`. |
 | **`liveThinkingThrottle.js`** | Trailing-edge coalescer for the live thinking block in `chat.js`: one DOM commit per 100 ms carrying the latest reasoning text, with `flush`/`cancel` for terminal and session-switch paths. |
 | **`slashCommands.js`** | Slash-command registry (`/help`, `/setup`, etc.), parsing, and dispatch handlers. Exported functions are consumed by `chat.js` and `slashAutocomplete.js`. |
-| **`slashAutocomplete.js`** | Composer autocomplete popup for `/` commands. |
+| **`slashAutocomplete.js`** | Composer autocomplete popup for `/` commands. Its catalogue (`slashCatalog`) and its insert (`insertSlashToken`) are shared with the command palette in `search-chat.js`. |
 | **`composerArrowUpRecall.js`** | Recall last user message with `↑` on an empty composer. |
 | **`assistant.js`** | Assistant/persona behaviors and message styling helpers. |
 | **`tts-ai.js`** | AI text-to-speech manager, enqueueing, streaming TTS, and playback button injection. |
@@ -97,7 +97,7 @@ The largest and most central subsystem. Chat submission → backend SSE → prog
 |---|---|
 | **`sessions.js`** | Chat session list loading, creation, switching, renaming, archiving, library modal, and direct-chat creation. Tracks current session, streaming/research indicators in the sidebar. |
 | **`workspace.js`** | Workspace folder path management for shell/file tool confinement. |
-| **`search-chat.js`** | In-chat history search. |
+| **`search-chat.js`** | The Ctrl+K search overlay, which is also the command palette (`P9-01`): chats (`/api/search`), tools (`modalManager.listWindows`), Settings panels (the settings registry) and slash commands (`slashAutocomplete.slashCatalog`) in one box. Opens windows and Settings through their own doors and puts commands in the message box; runs nothing itself. |
 | **`skills.js`** | Client-side skill library UI (load, edit, delete, test, and audit status display). |
 
 ---

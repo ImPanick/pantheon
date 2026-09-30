@@ -8530,6 +8530,43 @@ pre { background: var(--code-bg, var(--hl-bg, #282c34)) !important; }
       flex-shrink: 0;
       white-space: nowrap;
     }
+    /* `P9-01` — the same overlay is the command palette. Tools, Settings panels
+       and slash commands are options in the listbox beside the chat hits and
+       share `.search-result-item`'s hover and selected states; these rules only
+       lay out what is new. No `var(--accent)` and no `:focus-visible` rule: the
+       caret stays in the box (`aria-activedescendant`), so the global ring is on
+       the input, and the highlighted option is marked by the existing tint plus
+       an inset bar — a shape, so it is not told apart by hue alone. */
+    .search-result-item.selected { box-shadow: inset 2px 0 0 var(--red); }
+    .search-palette-row { align-items: center; }
+    .search-palette-label {
+      flex-shrink: 0;
+      max-width: 60%;
+      font-size: 12px;
+      color: var(--fg);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .search-palette-row[data-palette-kind="command"] .search-palette-label {
+      font-family: 'Fira Code', monospace;
+    }
+    .search-palette-detail {
+      flex: 1;
+      min-width: 0;
+      font-size: 11px;
+      color: var(--color-muted-alt);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .search-palette-status {
+      padding: 6px 14px 8px;
+      border-top: 1px solid var(--border);
+      font-size: 11px;
+      color: var(--color-muted-alt);
+    }
+    .search-palette-status:empty { display: none; }
     mark.search-highlight {
       /* Was orange-on-orange (0.35 alpha bg + orange text) — too low-contrast
          to read. Solid accent fill with bg-colored text reads clearly. */

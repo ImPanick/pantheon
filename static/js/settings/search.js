@@ -16,7 +16,10 @@ const _boundModals = new WeakSet();
 // quietly miss the rest — which is a subtler version of the bug being fixed.
 const _controlText = new WeakMap();
 
-function controlTextFor(modalEl) {
+// Exported for `P9-01`: the command palette searches the same panels with the
+// same harvested words, and shares this cache rather than walking the modal a
+// second way.
+export function controlTextFor(modalEl) {
   if (!modalEl) return {};
   const cached = _controlText.get(modalEl);
   // Re-harvest when a panel that had no text now has some: panel bodies are
