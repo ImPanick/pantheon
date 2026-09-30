@@ -32,6 +32,14 @@ export const KEYBIND_DEFAULTS = {
   fav_session: 'ctrl+alt+f', delete_session: 'ctrl+alt+d',
   cancel: 'escape', tts: 'alt+shift+t',
   incognito: 'ctrl+alt+i', settings: 'ctrl+,', focus_input: 'ctrl+/',
+  // `B948`. Plan mode was an unmodified Tab in the message box, so forward Tab
+  // never left the composer; the owner moved it here. Not Alt+P: on macOS
+  // Option+P types "π", a character taken from the composer. Ctrl+Alt+<letter>
+  // is this table's own convention, and Ctrl+Alt+P is in none of the published
+  // Chrome, Edge or Firefox page shortcuts (Firefox uses it inside its PDF
+  // viewer only). On a Mac it is Control+Option+P: Cmd+Option+P is Chrome's
+  // Page Setup and stays the browser's (see `_matchesCombo`).
+  plan_mode: 'ctrl+alt+p',
   // Open-tool shortcuts (Calendar bound by default; rest unbound).
   open_calendar: 'ctrl+alt+c', open_compare: '', open_cookbook: '',
   open_research: '', open_gallery: '', open_library: '', open_memory: '',
@@ -59,6 +67,7 @@ export const KEYBIND_LABELS = {
   cancel: 'Cancel / close',
   tts: 'Play/stop TTS',
   incognito: 'Toggle incognito',
+  plan_mode: 'Toggle Plan mode',
   settings: 'Toggle Window',
   focus_input: 'Focus chat input',
   open_calendar: 'Open Calendar',
@@ -89,7 +98,33 @@ export function _matchesCombo(e, combo, isMac = IS_MAC) {
   if (needCtrl !== (e.ctrlKey || e.metaKey)) return false;
   if (needAlt !== e.altKey) return false;
   if (needShift !== e.shiftKey) return false;
-  return e.key.toLowerCase() === key;
+  if (e.key.toLowerCase() === key) return true;
+  // `B948`. On macOS Option composes, so Control+Option+P can arrive as
+  // `e.key === 'π'` and a Ctrl+Alt+<letter> bind would never match there. With
+  // the Control key held nothing is typed, so read the letter the layout puts
+  // on that key (`keyCode`; `code` is the QWERTY position, wrong on Dvorak).
+  // Control only: Cmd+Option+<letter> is where Chrome keeps its own Mac
+  // shortcuts, and Option alone is left to type its characters.
+  return isMac && !!e.ctrlKey && needCtrl && needAlt && /^[a-z]$/.test(key)
+    && e.keyCode === key.toUpperCase().charCodeAt(0);
+}
+
+/** A combo as a person reads it — `ctrl+alt+p` → `Ctrl+Alt+P`. `ctrl` is Ctrl
+ *  or Cmd (`_matchesCombo` takes either), as the Shortcuts panel says it. */
+export function formatKeybind(combo) {
+  if (typeof combo !== 'string' || !combo) return '';
+  return combo.split('+').map((p) => ({ ctrl: 'Ctrl', alt: 'Alt', shift: 'Shift', escape: 'Esc' }[p]
+    || p.charAt(0).toUpperCase() + p.slice(1))).join('+');
+}
+
+/** The same combo as an `aria-keyshortcuts` value (`Control+Alt+P`). */
+export function ariaKeyshortcuts(combo) {
+  if (typeof combo !== 'string' || !combo) return '';
+  const parts = combo.split('+');
+  const key = parts.filter((p) => !['ctrl', 'alt', 'shift'].includes(p))[0] || '';
+  const name = { escape: 'Escape', space: 'Space' }[key] || key.charAt(0).toUpperCase() + key.slice(1);
+  return [parts.includes('ctrl') && 'Control', parts.includes('alt') && 'Alt',
+    parts.includes('shift') && 'Shift', name].filter(Boolean).join('+');
 }
 
 /**
@@ -318,6 +353,15 @@ export function initKeyboardShortcuts(modules) {
       // state, welcome-screen guard, checkbox sync) — flipping the hidden
       // checkbox alone did nothing.
       const btn = el('incognito-btn');
+      if (btn) btn.click();
+      return;
+    }
+    // `B948`. The Plan button's own click, so the key and the button are one
+    // door into `setPlanMode` (app.js), toast and all. A held chord flips once.
+    if (_matchesCombo(e, kb.plan_mode)) {
+      e.preventDefault();
+      if (e.repeat) return;
+      const btn = el('plan-toggle-btn');
       if (btn) btn.click();
       return;
     }

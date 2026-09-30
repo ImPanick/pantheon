@@ -50,7 +50,7 @@ import groupModule from './js/group.js';
 import * as researchPanelModule from './js/research/panel.js?v=20260930wavethree1';
 import ttsModule from './js/tts-ai.js';
 import spinnerModule from './js/spinner.js';
-import { initKeyboardShortcuts } from './js/keyboard-shortcuts.js';
+import { initKeyboardShortcuts, KEYBIND_DEFAULTS, formatKeybind, ariaKeyshortcuts } from './js/keyboard-shortcuts.js';
 import { getSettings } from './js/appConfig.js';
 // `syncRailSide` is not named here: initSidebarLayout() publishes it as
 // window.syncRailSide, which is how the two call sites left in this file reach
@@ -1798,10 +1798,20 @@ function initializeEventListeners() {
     if (btn) {
       btn.classList.toggle('active', !!active);
       btn.setAttribute('aria-pressed', String(!!active));
-      btn.title = active
+      // `B948`. The button names its key, read from the live table because
+      // Settings can rebind it and the saved binds arrive after first paint.
+      const combo = planModeCombo();
+      btn.title = (active
         ? 'Plan mode on - next message proposes a plan only'
-        : 'Plan mode';
+        : 'Plan mode') + (combo ? ` (${formatKeybind(combo)})` : '');
+      if (combo) btn.setAttribute('aria-keyshortcuts', ariaKeyshortcuts(combo));
+      else btn.removeAttribute('aria-keyshortcuts');
     }
+  }
+
+  function planModeCombo() {
+    const live = window._pantheonKeybinds;
+    return (live && typeof live.plan_mode === 'string' ? live.plan_mode : KEYBIND_DEFAULTS.plan_mode) || '';
   }
 
   function setPlanMode(active, options = {}) {
@@ -1899,15 +1909,33 @@ function initializeEventListeners() {
     if (statusToggle) {
       statusToggle.addEventListener('click', () => setPlanMode(false));
     }
+    if (btn) {
+      const refresh = () => syncPlanToggle(!!loadToggleState().plan_mode);
+      btn.addEventListener('pointerenter', refresh);
+      btn.addEventListener('focus', refresh);
+    }
+    // `B948`. An unmodified Tab here toggled Plan mode and never left the box,
+    // so nothing after it in the composer, or on the page, was reachable
+    // forward. Tab moves the focus now and Plan mode has a key of its own in
+    // the keybind registry. Someone who has used Plan mode is told so once,
+    // the first time a Tab really does leave the box — never a Tab that
+    // another handler (a slash completion) kept.
     const msgInput = el('message');
-    if (msgInput && !msgInput._pantheonPlanTabToggle) {
-      msgInput._pantheonPlanTabToggle = true;
+    if (msgInput && !msgInput._pantheonPlanKeyNotice) {
+      msgInput._pantheonPlanKeyNotice = true;
       msgInput.addEventListener('keydown', (e) => {
         if (e.key !== 'Tab' || e.shiftKey || e.altKey || e.ctrlKey || e.metaKey || e.isComposing) return;
-        e.preventDefault();
-        e.stopPropagation();
         const st = loadToggleState();
-        setPlanMode(!st.plan_mode);
+        if (st.plan_key_told || !('plan_mode' in st)) return;
+        setTimeout(() => {
+          const combo = planModeCombo();
+          if (document.activeElement === msgInput || !combo || !uiModule?.showToast) return;
+          const now = loadToggleState();
+          if (now.plan_key_told) return;
+          now.plan_key_told = true;
+          saveToggleState(now);
+          uiModule.showToast(`Plan mode moved to ${formatKeybind(combo)} - Tab now moves to the next control`, 5000);
+        }, 0);
       });
     }
     const chatBar = document.querySelector('.chat-input-bar');
