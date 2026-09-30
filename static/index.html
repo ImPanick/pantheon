@@ -308,14 +308,14 @@
        real request is discarded and the font fetched a second time. -->
   <link rel="preload" as="font" type="font/woff2" crossorigin href="/static/fonts/FiraCode-Regular.woff2">
   <link rel="preload" as="font" type="font/woff2" crossorigin href="/static/fonts/FiraCode-SemiBold.woff2">
-  <link rel="stylesheet" href="/static/style.css?v=20260930hotfix1">
-  <link rel="modulepreload" href="/static/app.js?v=20260930hotfix1">
+  <link rel="stylesheet" href="/static/style.css?v=20260930skillimport1">
+  <link rel="modulepreload" href="/static/app.js?v=20260930skillimport1">
   <!-- B58. This must carry the SAME query as the <script> tag below, or the
        browser fetches chat.js twice: the cache and the module map are keyed on
        the full URL. It sat at toolapproval4 while the tag moved to
        approvalcontrol1 and then trustladder1 — bumped twice by people who did
        not know this line existed. check-specifiers.py reads it now. -->
-  <link rel="modulepreload" href="/static/js/chat.js?v=20260930hotfix1">
+  <link rel="modulepreload" href="/static/js/chat.js?v=20260930skillimport1">
   <link rel="modulepreload" href="/static/js/ui.js">
   <link rel="modulepreload" href="/static/js/sessions.js">
   <link rel="modulepreload" href="/static/js/markdown.js">
@@ -506,14 +506,18 @@
             <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:2px;">
               <h2 style="margin:0;padding:0;line-height:1;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px;color:var(--accent, var(--red));"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>Add Skill</h2>
             </div>
-            <p class="memory-desc doclib-desc" style="margin-top:6px;">Import a skill from GitHub or <a href="https://skills.sh" target="_blank" rel="noopener noreferrer">skills.sh</a> (folder with <code>SKILL.md</code> and optional templates).</p>
+            <p class="memory-desc doclib-desc" style="margin-top:6px;">Import a skill from <a href="https://skills.sh" target="_blank" rel="noopener noreferrer">skills.sh</a> or GitHub. Paste the skill's skills.sh page, the <code>npx skills add …</code> line it shows, or a GitHub link to the skill's folder.</p>
             <div class="memory-add-row" style="margin-top:6px;margin-bottom:10px;">
               <div class="skill-ph-wrap" style="flex:1;min-width:0;">
-                <input type="url" id="skill-import-url" placeholder=" " class="memory-add-input skill-hint-input" aria-label="Skill import URL" />
-                <span class="skill-rich-ph"><span class="k">Import URL</span> — e.g. GitHub tree link to a skill folder</span>
+                <input type="text" inputmode="url" autocomplete="off" spellcheck="false" id="skill-import-url" placeholder=" " class="memory-add-input skill-hint-input" aria-label="Skill link or install line" />
+                <span class="skill-rich-ph"><span class="k">Skill link</span> — skills.sh page, npx skills add line, or GitHub folder</span>
               </div>
               <button type="button" id="skill-import-url-btn" class="theme-io-btn" title="Import skill from URL" style="flex:none;height:28px;font-size:12px;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Import</button>
             </div>
+            <!-- `B926`. Where the import says what it is doing and how it ended,
+                 beside the box it was started from. A toast alone was the only
+                 answer, and a slow import gave none until it finished. -->
+            <p id="skill-import-status" class="memory-desc skill-import-status" role="status" aria-live="polite" hidden></p>
             <p class="memory-desc doclib-desc" style="margin-top:0;">Or create a skill by hand — name, description, when to use it, and the procedure.</p>
             <div class="skill-ph-wrap" style="margin-top:4px;margin-bottom:6px;">
               <input type="text" id="new-skill-name" placeholder=" " maxlength="80" class="memory-add-input skill-hint-input" aria-label="Skill name" />
@@ -3466,11 +3470,11 @@
 <script type="module" src="/static/js/markdown.js"></script>
 <script type="module" src="/static/js/dragSort.js"></script>
 <script type="module" src="/static/js/sessions.js"></script>
-<script type="module" src="/static/js/memory.js?v=20260930hotfix1"></script>
+<script type="module" src="/static/js/memory.js?v=20260930skillimport1"></script>
 <script type="module" src="/static/js/skills.js"></script>
 <script type="module" src="/static/js/tourHints.js"></script>
 <script type="module" src="/static/js/tourAutoplay.js"></script>
-<script type="module" src="/static/js/fileHandler.js?v=20260930hotfix1"></script>
+<script type="module" src="/static/js/fileHandler.js?v=20260930skillimport1"></script>
 <script type="module" src="/static/js/voiceRecorder.js"></script>
 <script type="module" src="/static/js/models.js?v=20260715startupcalm2"></script>  <!-- This must come BEFORE app.js -->
 <script type="module" src="/static/js/rag.js"></script>
@@ -3480,10 +3484,10 @@
 <script type="module" src="/static/js/tts-ai.js"></script>
 <script type="module" src="/static/js/document.js?v=20260815approvalsave1"></script>
 <script type="module" src="/static/js/gallery.js?v=20260708match1"></script>
-<script type="module" src="/static/js/chatRenderer.js?v=20260930hotfix1"></script>
+<script type="module" src="/static/js/chatRenderer.js?v=20260930skillimport1"></script>
 <script type="module" src="/static/js/codeRunner.js"></script>
-<script type="module" src="/static/js/chatStream.js?v=20260930hotfix1"></script>
-  <script type="module" src="/static/js/chat.js?v=20260930hotfix1"></script>
+<script type="module" src="/static/js/chatStream.js?v=20260930skillimport1"></script>
+  <script type="module" src="/static/js/chat.js?v=20260930skillimport1"></script>
 <script type="module" src="/static/js/cookbook.js"></script>
 <script src="/static/js/cookbookSchedule.js"></script>
 <script type="module" src="/static/js/search-chat.js"></script>
@@ -3491,7 +3495,7 @@
 <script type="module" src="/static/js/censor.js"></script>
 <script type="module" src="/static/js/settings.js?v=20260927mcppresets1"></script>
 <script type="module" src="/static/js/assistant.js"></script>
-<script type="module" src="/static/app.js?v=20260930hotfix1"></script>  <!-- app.js must be LAST -->
+<script type="module" src="/static/app.js?v=20260930skillimport1"></script>  <!-- app.js must be LAST -->
   <script type="module" src="/static/js/init.js?v=20260918a11yfocus1"></script>
 <script type="module" src="/static/js/a11y.js"></script>
 <script>if('serviceWorker' in navigator){navigator.serviceWorker.register('/static/sw.js').catch(()=>{});}</script>

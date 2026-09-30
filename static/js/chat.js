@@ -9,14 +9,14 @@
 import Storage from './storage.js';
 import uiModule from './ui.js';
 import sessionModule from './sessions.js';
-import chatRenderer, { buildDiffHtml } from './chatRenderer.js?v=20260930hotfix1';
-import chatStream from './chatStream.js?v=20260930hotfix1';
+import chatRenderer, { buildDiffHtml } from './chatRenderer.js?v=20260930skillimport1';
+import chatStream from './chatStream.js?v=20260930skillimport1';
 import { addAITTSButton } from './tts-ai.js';
 import { prefersReducedMotion } from './motion.js';
 import markdownModule from './markdown.js';
 import spinnerModule from './spinner.js';
 import presetsModule from './presets.js';
-import fileHandlerModule from './fileHandler.js?v=20260930hotfix1';
+import fileHandlerModule from './fileHandler.js?v=20260930skillimport1';
 import searchModule from './search.js';
 import documentModule from './document.js?v=20260815approvalsave1';
 import * as emailInbox from './emailInbox.js?v=20260815approvalsave1';
@@ -46,7 +46,7 @@ import { createAgentMeter, presentMeterEvent, METER_EVENT_TYPES } from './agentM
 import { loadPanel } from './panels.js';
 import planWindow from './planWindow.js';
 import * as contextUsage from './contextUsage.js';
-import queuePanel from './queuePanel.js?v=20260930hotfix1';
+import queuePanel from './queuePanel.js?v=20260930skillimport1';
 import { runStatusLabel } from './runStatus.js';
 import { playIcon, stopIcon } from './icons.js';
 import {

@@ -1750,15 +1750,23 @@ def setup_skills_routes(skills_manager: SkillsManager) -> APIRouter:
         user = _owner(request)
         from services.memory.skill_importer import (
             SkillImportError,
-            fetch_skill_bundle,
+            fetch_skill_bundle_report,
         )
+        from starlette.concurrency import run_in_threadpool
 
+        url = body.url.strip()
         try:
-            files, _src = fetch_skill_bundle(body.url.strip())
-            entry = skills_manager.import_bundle_from_files(
+            # `B926`. The fetch is synchronous and paced — the outbound limiter
+            # sleeps a second between api.github.com calls — and it ran on the
+            # event loop, so for the whole import every other request the
+            # server had (the page's polls, a chat's stream) waited behind it.
+            # To the person that read as an app that had stopped. Off the loop.
+            files, _src, notes = await run_in_threadpool(fetch_skill_bundle_report, url)
+            entry = await run_in_threadpool(
+                skills_manager.import_bundle_from_files,
                 files,
                 owner=user,
-                source_url=body.url.strip(),
+                source_url=url,
             )
         except SkillImportError as e:
             raise HTTPException(400, str(e)) from e
@@ -1767,11 +1775,18 @@ def setup_skills_routes(skills_manager: SkillsManager) -> APIRouter:
             detail = str(e).strip() or "Could not download skill from URL"
             raise HTTPException(502, detail) from e
         except Exception as e:
-            logger.error("skill import failed: %s", e)
-            raise HTTPException(500, "Skill import failed") from e
+            logger.error("skill import failed: %s", e, exc_info=True)
+            # `B926`: say what failed. "Skill import failed" with nothing after
+            # it is the sentence the owner could not act on.
+            reason = f"{type(e).__name__}: {e}".strip()[:300]
+            raise HTTPException(500, f"Skill import failed — {reason}") from e
 
+        renamed_from = (entry or {}).pop("_renamed_from", None)
+        if renamed_from:
+            notes = [f"A skill named {renamed_from} already exists, so this one was "
+                     f"saved as {entry.get('name')}."] + list(notes)
         _fire_skill_added(user, (entry or {}).get("name"))
-        return {"ok": True, "skill": entry, "files": len(files)}
+        return {"ok": True, "skill": entry, "files": len(files), "notes": notes}
 
     @router.post("/add")
     async def add_skill(request: Request, body: SkillAddRequest):

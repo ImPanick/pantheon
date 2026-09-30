@@ -5,6 +5,7 @@ from __future__ import annotations
 import ipaddress
 import logging
 import os
+import re
 import time
 from dataclasses import dataclass
 from typing import Dict, Iterable, List, Optional, Tuple, cast
@@ -33,9 +34,20 @@ _USER_AGENT = "Pantheon-SkillImporter/1.0 (+https://github.com/ImPanick/pantheon
 MAX_REQUESTS_UNAUTHENTICATED = 40
 MAX_REQUESTS_AUTHENTICATED = 200
 
-MAX_FILES = 64
-MAX_TOTAL_BYTES = 2_000_000
-MAX_FILE_BYTES = 400_000
+# `B926`: raised at the owner's request (2026-09-30) after
+# `vercel-labs/agent-browser` failed on "file too large". The caps stay caps
+# (`FORBIDDEN.md` Part 2, "keep the byte/count caps"); what changed is their
+# size, and that a file over the per-file cap is now left out with a note
+# instead of failing the whole import.
+MAX_FILES = 256
+MAX_TOTAL_BYTES = 10_000_000
+MAX_FILE_BYTES = 2_000_000
+# Files that are never part of what a skill tells a model — a dependency
+# lockfile is the usual reason a bundle blew its size cap.
+_SKIPPED_NAMES = frozenset({
+    "package-lock.json", "npm-shrinkwrap.json", "pnpm-lock.yaml", "yarn.lock",
+    "composer.lock", "poetry.lock", "cargo.lock", "gemfile.lock", "bun.lock",
+})
 ALLOWED_SUFFIXES = (
     ".md", ".txt", ".json", ".yaml", ".yml", ".py", ".sh", ".toml",
     ".js", ".ts", ".css", ".html", ".xml", ".csv",
@@ -115,6 +127,13 @@ class ResolvedSource:
     repo: str
     ref: str
     path: str  # directory or file path inside repo (no leading slash)
+    # `B926`. A skill named rather than located — a skills.sh page or its
+    # `npx skills add <repo> --skill <name>` line say which skill, not where
+    # in the repository it lives. Found by `_locate_named_skill`.
+    skill: str = ""
+    # False when the link named no branch (a bare repository or a skills.sh
+    # link): `main` is tried, then `master`.
+    ref_known: bool = True
 
 
 class SkillImportError(ValueError):
@@ -391,11 +410,106 @@ def _get_checked(
     raise SkillImportError("too many redirects while fetching skill bundle")
 
 
+# `B926`. What skills.sh actually offers a person to copy. Its skill pages show
+# `npx skills add https://github.com/<owner>/<repo> --skill <name>`, and the
+# page's own address is `skills.sh/<owner>/<repo>/<name>`. Neither worked: the
+# line has no scheme and was refused as "Only GitHub or skills.sh URLs", and
+# the page answers 200 rather than redirecting to GitHub, which is the only
+# thing the old skills.sh branch accepted. Both are read here, with no request
+# to skills.sh at all — the owner, repository and skill name are in the text.
+_INSTALL_LINE = re.compile(
+    r"^\s*(?:npx|pnpx|bunx|pnpm\s+dlx|yarn\s+dlx)\s+(?:-y\s+|--yes\s+)?"
+    r"skills(?:@\S+)?\s+(?:add|install|use)\s+(?P<rest>.+)$",
+    re.IGNORECASE | re.DOTALL,
+)
+_VALUED_FLAGS = {"--agent", "-a", "--dir", "--target"}
+_REPO_SLUG = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,99})$")
+_SKILL_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+
+
+def _skill_name_or_error(name: str) -> str:
+    name = (name or "").strip().strip("/")
+    if name and not _SKILL_NAME.match(name):
+        raise SkillImportError(f"“{name}” is not a skill name this importer can look up")
+    return name
+
+
+def _from_install_line(text: str) -> Optional[ResolvedSource]:
+    """`npx skills add <repo> [--skill <name>]` → a source, or None if it is not one."""
+    import shlex
+
+    m = _INSTALL_LINE.match(text.replace("\\\n", " "))
+    if not m:
+        return None
+    try:
+        tokens = shlex.split(m.group("rest").replace("\\", " "))
+    except ValueError as e:
+        raise SkillImportError(f"could not read that install line: {e}") from e
+    repo_ref, skill, i = None, "", 0
+    while i < len(tokens):
+        tok = tokens[i]
+        if tok in ("--skill", "-s") and i + 1 < len(tokens):
+            skill, i = tokens[i + 1], i + 2
+            continue
+        if tok.startswith("--skill="):
+            skill, i = tok.split("=", 1)[1], i + 1
+            continue
+        if tok in _VALUED_FLAGS:
+            i += 2
+            continue
+        if tok.startswith("-"):
+            i += 1
+            continue
+        if repo_ref is None:
+            repo_ref = tok
+        i += 1
+    if not repo_ref:
+        raise SkillImportError("that install line names no repository")
+    if "@" in repo_ref and not repo_ref.lower().startswith(("http://", "https://")):
+        repo_ref, _, at_skill = repo_ref.partition("@")
+        skill = skill or at_skill
+    skill = _skill_name_or_error(skill)
+    if repo_ref.lower().startswith(("http://", "https://", "github.com/", "www.github.com/")):
+        src = parse_skill_source(repo_ref)
+    else:
+        bits = [b for b in repo_ref.split("/") if b]
+        if len(bits) < 2 or not all(_REPO_SLUG.match(b) for b in bits[:2]):
+            raise SkillImportError(f"“{repo_ref}” is not a GitHub owner/repository")
+        src = ResolvedSource(owner=bits[0], repo=bits[1], ref="main", path="/".join(bits[2:]),
+                             ref_known=False)
+        if not skill and len(bits) >= 3 and not src.path.lower().endswith("skill.md"):
+            skill, src.path = _skill_name_or_error(bits[-1]), "/".join(bits[2:-1])
+    if skill and not src.path:
+        src.skill = skill
+    return src
+
+
+def _from_skills_sh(parsed) -> ResolvedSource:
+    """`skills.sh/<owner>/<repo>[/<skill>]` → a source, from the address alone."""
+    bits = [b for b in parsed.path.split("/") if b]
+    if len(bits) >= 2 and all(_REPO_SLUG.match(b) for b in bits[:2]):
+        return ResolvedSource(owner=bits[0], repo=bits[1], ref="main", path="",
+                              skill=_skill_name_or_error(bits[2]) if len(bits) >= 3 else "",
+                              ref_known=False)
+    raise SkillImportError(
+        "That skills.sh page is not a skill. Open a skill on skills.sh and paste "
+        "its page link, or the `npx skills add …` line it shows."
+    )
+
+
 def parse_skill_source(url: str) -> ResolvedSource:
-    """Normalize skills.sh / GitHub web URLs into owner/repo/ref/path."""
+    """Normalize skills.sh / GitHub web URLs into owner/repo/ref/path.
+
+    `B926`: also a skills.sh page link and the `npx skills add` line skills.sh
+    shows, which name a skill instead of a path (`ResolvedSource.skill`).
+    """
     url = (url or "").strip()
     if not url:
         raise SkillImportError("URL is required")
+
+    installed = _from_install_line(url)
+    if installed is not None:
+        return installed
 
     # ``urlparse`` only reports an unambiguous scheme when the URL carries the
     # ``scheme://`` form. Opaque schemes (``mailto:``, ``javascript:``) and a
@@ -421,6 +535,14 @@ def parse_skill_source(url: str) -> ResolvedSource:
     # skill pages only ever link the repository root, never the skill's
     # subdirectory, so the scrape resolves every skill in a repo to the same
     # (wrong) bundle. Fail with an actionable message instead.
+    if hostname in _SKILLS_SH_HOSTS:
+        # `B926`: a skills.sh page's address is `/<owner>/<repo>/<skill>`, so it
+        # names the skill itself and nothing on skills.sh is fetched. A link of
+        # one segment is a short link, and keeps being unwrapped by following
+        # its redirect, as below; a link of none is not a skill.
+        segments = [b for b in parsed.path.split("/") if b]
+        if len(segments) != 1:
+            return _from_skills_sh(parsed)
     if hostname in _SKILLS_SH_HOSTS:
         r = _get_checked(url, timeout=20.0)
         if r.status_code >= 400:
@@ -461,7 +583,9 @@ def parse_skill_source(url: str) -> ResolvedSource:
         ref = bits[3]
         path = "/".join(bits[4:])
     elif len(bits) == 2:
-        path = ""
+        # A bare repository names no branch (`B926`): `main`, then `master`.
+        return ResolvedSource(owner=owner, repo=repo.removesuffix(".git"), ref=ref, path="",
+                              ref_known=False)
     else:
         raise SkillImportError("GitHub URL must include /tree/<branch>/... or /blob/<branch>/...")
 
@@ -541,7 +665,8 @@ def _fetch_text(url: str) -> str:
         raise SkillImportError(f"non-text file: {url}") from e
 
 
-def _list_github_dir(src: ResolvedSource, rel_dir: str, out: Dict[str, str], *, depth: int = 0) -> None:
+def _list_github_dir(src: ResolvedSource, rel_dir: str, out: Dict[str, str], *, depth: int = 0,
+                     notes: Optional[List[str]] = None) -> None:
     if depth > 4 or len(out) >= MAX_FILES:
         return
     url = _api_contents_url(src, rel_dir)
@@ -562,24 +687,63 @@ def _list_github_dir(src: ResolvedSource, rel_dir: str, out: Dict[str, str], *, 
         ent_type = ent.get("type")
         rel = _safe_relpath(f"{rel_dir}/{name}" if rel_dir else name)
         if ent_type == "dir":
-            _list_github_dir(src, rel, out, depth=depth + 1)
+            if name in ("node_modules", ".git"):
+                continue
+            _list_github_dir(src, rel, out, depth=depth + 1, notes=notes)
             total = sum(len(v.encode("utf-8")) for v in out.values())
             continue
         if ent_type != "file" or not _is_text_file(name):
+            continue
+        if name.lower() in _SKIPPED_NAMES:
+            if notes is not None:
+                notes.append(f"Left out {rel}: a dependency lockfile, not part of the skill.")
+            continue
+        size = ent.get("size")
+        if isinstance(size, int) and size > MAX_FILE_BYTES:
+            # `B926`: one big file no longer sinks the import. It is left out,
+            # and the person is told which and why.
+            if notes is not None:
+                notes.append(f"Left out {rel}: {size:,} bytes, over the {MAX_FILE_BYTES:,}-byte "
+                             "limit for one file.")
             continue
         dl = ent.get("download_url")
         if not dl:
             continue
         _assert_github_url(dl, context="download URL")
-        text = _fetch_text(dl)
+        try:
+            text = _fetch_text(dl)
+        except SkillImportError as e:
+            if "too large" not in str(e):
+                raise
+            if notes is not None:
+                notes.append(f"Left out {rel}: over the {MAX_FILE_BYTES:,}-byte limit for one file.")
+            continue
+        if total + len(text.encode("utf-8")) > MAX_TOTAL_BYTES:
+            if notes is not None:
+                notes.append(f"Stopped at {len(out)} files: the skill's files passed the "
+                             f"{MAX_TOTAL_BYTES:,}-byte limit for one import, so the rest were left out.")
+            return
         total += len(text.encode("utf-8"))
-        if total > MAX_TOTAL_BYTES:
-            raise SkillImportError("skill bundle exceeds size limit")
         out[rel] = text
 
 
 def fetch_skill_bundle(url: str) -> Tuple[Dict[str, str], ResolvedSource]:
     """Download SKILL.md and sibling text assets. Returns relative_path → content.
+
+    The two-value form every existing caller uses (`Law 1`). `B926`:
+    `fetch_skill_bundle_report` is the same fetch and also says what it could
+    not bring, which the import route shows the person.
+    """
+    files, src, _notes = fetch_skill_bundle_report(url)
+    return files, src
+
+
+def fetch_skill_bundle_report(url: str) -> Tuple[Dict[str, str], ResolvedSource, List[str]]:
+    """Download SKILL.md and sibling text assets, and say what was left behind.
+
+    Returns ``(files, source, notes)``: relative_path → content, the resolved
+    GitHub source, and one plain sentence per thing the import could not fetch
+    but did not need (a folder that could not be listed, so only SKILL.md came).
 
     Every request made under here is paced by the shared outbound limiter and
     counted against one budget, so a single import cannot spend an hour's worth
@@ -592,19 +756,40 @@ def fetch_skill_bundle(url: str) -> Tuple[Dict[str, str], ResolvedSource]:
         authed,
     )
     token = _request_budget.set(budget)
+    notes: List[str] = []
     try:
         # parse_skill_source can itself make a request — a skills.sh link is
         # resolved by following its redirect — so it has to be inside the budget
         # or the first call of every import is untracked and unpaced.
         src = parse_skill_source(url)
-        return _fetch_skill_bundle_inner(url, src, {})
+        files, src = _fetch_skill_bundle_inner(url, src, {}, notes)
+        return files, src, notes
     finally:
         _request_budget.reset(token)
 
 
+def _listing_note(err: Exception) -> str:
+    text = str(err)
+    if "rate-limit" in text.lower() or "rate limit" in text.lower():
+        # GitHub's own sentence is long and addressed to a developer. Say what
+        # happened and the one thing that lifts it.
+        wait = re.search(r"not retrying for (\d+ minutes?)", text)
+        return ("Only SKILL.md was imported: GitHub allows 60 folder lookups an hour "
+                "without a token, and this server has used them"
+                + (f" (it resets in {wait.group(1)})" if wait else "")
+                + ". Import the skill again later for its other files, or set "
+                "PANTHEON_GITHUB_TOKEN so imports can list whole folders.")
+    return f"Only SKILL.md was imported. The folder's other files could not be listed: {text}"
+
+
 def _fetch_skill_bundle_inner(
-    url: str, src: ResolvedSource, files: Dict[str, str]
+    url: str, src: ResolvedSource, files: Dict[str, str],
+    notes: Optional[List[str]] = None,
 ) -> Tuple[Dict[str, str], ResolvedSource]:
+    notes = notes if notes is not None else []
+
+    if not src.path:
+        _locate_named_skill(src)
 
     path = _safe_relpath(src.path) if src.path else ""
     if path.lower().endswith("skill.md"):
@@ -612,18 +797,32 @@ def _fetch_skill_bundle_inner(
         parent = "/".join(path.split("/")[:-1])
         if parent:
             try:
-                _list_github_dir(src, parent, files)
-            except SkillImportError:
-                pass
+                _list_github_dir(src, parent, files, notes=notes)
+            except SkillImportError as e:
+                notes.append(_listing_note(e))
         return files, src
 
     if path:
+        # `B926`. SKILL.md comes from raw.githubusercontent.com; listing the
+        # folder's other files needs api.github.com, which allows 60 requests
+        # an hour without a token and is the first thing to run out. The
+        # SKILL.md fetched here used to be thrown away, and a listing that
+        # failed sent the import on to two more readings of the same path —
+        # the last of which listed the folder again and failed the whole
+        # import with the rate-limit sentence. A skill whose SKILL.md arrived
+        # is imported; what could not be listed is said, not hidden.
+        skill_md = None
         try:
-            _fetch_text(_raw_url(src, f"{path}/SKILL.md"))
-            _list_github_dir(src, path, files)
-            return files, src
+            skill_md = _fetch_text(_raw_url(src, f"{path}/SKILL.md"))
         except Exception:
-            pass
+            skill_md = None
+        if skill_md is not None:
+            files[f"{path}/SKILL.md"] = skill_md
+            try:
+                _list_github_dir(src, path, files, notes=notes)
+            except SkillImportError as e:
+                notes.append(_listing_note(e))
+            return files, src
         try:
             text = _fetch_text(_raw_url(src, path))
             if path.lower().endswith(".md"):
@@ -631,9 +830,17 @@ def _fetch_skill_bundle_inner(
                 return files, src
         except Exception:
             pass
-        _list_github_dir(src, path, files)
+        _list_github_dir(src, path, files, notes=notes)
     else:
-        _list_github_dir(src, "", files)
+        # A repository that is itself one skill (`_locate_named_skill` found
+        # its root SKILL.md). The same rule as a folder: SKILL.md first, and a
+        # listing that fails is a note, not a failed import.
+        files["SKILL.md"] = _fetch_text(_raw_url(src, "SKILL.md"))
+        try:
+            _list_github_dir(src, "", files, notes=notes)
+        except SkillImportError as e:
+            notes.append(_listing_note(e))
+        return files, src
 
     if not any(p.lower().endswith("skill.md") for p in files):
         # Flat repo root with SKILL.md only
@@ -644,6 +851,114 @@ def _fetch_skill_bundle_inner(
                 "No SKILL.md found — link to a skill folder or SKILL.md on GitHub"
             ) from e
     return files, src
+
+
+# Where a repository keeps a named skill, in the order they are tried. The
+# layouts of the repositories skills.sh lists: `skills/<name>` (anthropics,
+# vercel-labs), `<name>` at the root, and the agent-tool folders.
+_SKILL_DIR_CANDIDATES = ("skills/{name}", "{name}", ".claude/skills/{name}",
+                         ".agents/skills/{name}", "skills/.curated/{name}")
+
+
+def _raw_exists(src: ResolvedSource, rel: str) -> bool:
+    try:
+        r = _get_checked(_raw_url(src, rel), timeout=20.0)
+    except SkillImportError:
+        raise
+    return r.status_code == 200
+
+
+def _find_skill_in_tree(src: ResolvedSource, refs: List[str]) -> Optional[Tuple[str, str]]:
+    """`(folder, ref)` of `<anything>/<skill>/SKILL.md` in the repo, or None.
+
+    One `git/trees?recursive=1` request per branch tried. A rate-limited API
+    is an error the person is told about, not a silent "not found".
+    """
+    want = src.skill.lower()
+    for ref in refs:
+        url = (f"https://api.github.com/repos/{quote(src.owner, safe='')}/"
+               f"{quote(src.repo, safe='')}/git/trees/{quote(ref, safe='')}?recursive=1")
+        r = _get_checked(url, headers={"Accept": "application/vnd.github+json"}, timeout=30.0)
+        if r.status_code == 404:
+            continue
+        if r.status_code >= 400:
+            raise _github_response_error(r)
+        try:
+            tree = r.json().get("tree") or []
+        except Exception:
+            continue
+        hits = sorted(
+            (e.get("path") or "")[: -len("/SKILL.md")]
+            for e in tree
+            if isinstance(e, dict) and e.get("type") == "blob"
+            and (e.get("path") or "").endswith("/SKILL.md")
+            and (e.get("path") or "")[: -len("/SKILL.md")].split("/")[-1].lower() == want
+        )
+        if hits:
+            return min(hits, key=len), ref
+    return None
+
+
+def _locate_named_skill(src: ResolvedSource) -> None:
+    """Point `src.path` at the named skill's folder, or at a root SKILL.md.
+
+    `B926`. Raw files only — raw.githubusercontent.com is not the 60-an-hour
+    API — so finding the folder costs a handful of paced requests and no
+    listing. A repository link with no skill named is imported only when the
+    repository is itself one skill; walking a whole repository of skills to
+    pick one was how the old path imported the wrong skill or ran out of budget.
+    """
+    refs = [src.ref] if src.ref_known else ["main", "master"]
+    if src.skill:
+        for ref in refs:
+            src.ref = ref
+            for pattern in _SKILL_DIR_CANDIDATES:
+                folder = pattern.format(name=src.skill)
+                if _raw_exists(src, f"{folder}/SKILL.md"):
+                    src.path, src.ref_known = folder, True
+                    return
+        # Not in a usual place: ask GitHub for the repository's file list
+        # once (one API request, however large the tree) and look for a
+        # folder of that name holding a SKILL.md.
+        try:
+            found = _find_skill_in_tree(src, refs)
+        except SkillImportError as e:
+            if "rate-limit" not in str(e).lower() and "rate limit" not in str(e).lower():
+                raise
+            wait = re.search(r"not retrying for (\d+ minutes?)", str(e))
+            raise SkillImportError(
+                f"“{src.skill}” is not in the usual folders of {src.owner}/{src.repo}, and "
+                "looking through the whole repository needs GitHub's API, which has "
+                "rate-limited this server" + (f" for {wait.group(1)}" if wait else "")
+                + ". Try again then, set PANTHEON_GITHUB_TOKEN, or paste the GitHub link "
+                "to the skill's own folder."
+            ) from e
+        if found:
+            src.path, src.ref, src.ref_known = found[0], found[1], True
+            return
+        raise SkillImportError(
+            f"Couldn't find a skill called “{src.skill}” in {src.owner}/{src.repo}. "
+            "Open the skill's folder on GitHub and paste that link instead."
+        )
+    for ref in refs:
+        src.ref = ref
+        if _raw_exists(src, "SKILL.md"):
+            src.ref_known = True
+            return
+    # A one-skill repository usually names the skill after itself
+    # (`vercel-labs/agent-browser` keeps `skills/agent-browser/SKILL.md`).
+    for ref in refs:
+        src.ref = ref
+        for pattern in _SKILL_DIR_CANDIDATES[:1] + _SKILL_DIR_CANDIDATES[2:]:
+            folder = pattern.format(name=src.repo)
+            if _raw_exists(src, f"{folder}/SKILL.md"):
+                src.path, src.ref_known = folder, True
+                return
+    raise SkillImportError(
+        f"{src.owner}/{src.repo} is a whole repository, not one skill. Paste a skill's "
+        "skills.sh page, its `npx skills add … --skill <name>` line, or the GitHub "
+        "link to the skill's own folder."
+    )
 
 
 def pick_skill_md(files: Dict[str, str]) -> Tuple[str, str]:

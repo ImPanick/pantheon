@@ -990,7 +990,15 @@ class SkillsManager:
         os.makedirs(skill_dir, exist_ok=True)
 
         # Preserve bundle layout (templates/, references/, etc.) under the skill dir.
+        # `B926`: relative to the skill's own folder. The keys are repository
+        # paths (`skills/pdf/forms.md`), so a bundle fetched from a subfolder
+        # landed at `<skill>/skills/pdf/forms.md`, where SKILL.md's own
+        # `forms.md` reference no longer pointed.
+        bundle_dir = "/".join(_rel.split("/")[:-1])
+        prefix = f"{bundle_dir}/" if bundle_dir else ""
         for rel, content in files.items():
+            if prefix and rel.startswith(prefix):
+                rel = rel[len(prefix):]
             safe = _safe_relpath(rel)
             dest = os.path.join(skill_dir, safe)
             os.makedirs(os.path.dirname(dest), exist_ok=True)
@@ -1006,7 +1014,11 @@ class SkillsManager:
             sk.body_extra = f"{extra}\n\n{note}".strip() if extra else note
         atomic_write_text(self._skill_file(cat, nm), sk.to_markdown())
         sk.path = self._skill_file(cat, nm)
-        return sk.to_dict()
+        out = sk.to_dict()
+        if nm != base:
+            # `B926`: the import says when it did not keep the name it was given.
+            out["_renamed_from"] = base
+        return out
 
     def update_skill(self, skill_id: str, updates: Dict, owner: Optional[str] = None) -> bool:
         """`skill_id` is the slug name. Allows updating any field plus

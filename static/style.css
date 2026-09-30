@@ -13123,6 +13123,25 @@ details a:hover {
   /* 65% keeps this description text above WCAG AA 4.5:1 (50% was ~3.9:1). */
   color: color-mix(in srgb, var(--fg) 65%, transparent);
 }
+/* `B926`. The skill import's own status line: what it is doing while it runs,
+   and how it ended, beside the box it was started from. Words carry the state;
+   colour only reinforces it. */
+.skill-import-status { margin: -4px 0 10px; font-size: 11.5px; line-height: 1.45; }
+.skill-import-status[hidden] { display: none; }
+.skill-import-status.is-busy { color: var(--color-muted-alt); }
+.skill-import-status.is-ok { color: var(--green); }
+.skill-import-status.is-warn { color: var(--warn); }
+.skill-import-status.is-error { color: var(--red); }
+.skill-import-open {
+  margin-left: 4px;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  cursor: pointer;
+}
 
 .memory-add-row {
   display: flex;

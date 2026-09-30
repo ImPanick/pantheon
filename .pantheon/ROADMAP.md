@@ -80,8 +80,8 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P17 | The network the agent is hosted on | 14 | 0 | 0 | **14** |
 | P18 | One button, and it links | 9 | 0 | 0 | **9** |
 | P19 | The proof ledger | 8 | 0 | 0 | **8** |
-| Backlog | Bugs and hardening found in flight | 504 | 213 | 0 | **291** |
-| **Total** | | **886** | **272** | **8** | **606** |
+| Backlog | Bugs and hardening found in flight | 506 | 214 | 0 | **292** |
+| **Total** | | **888** | **273** | **8** | **607** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -243,6 +243,17 @@ they are for.*
 > `check-tracker.py` now validates the newest entry against the table and fails on drift.
 > Entries below the `P0-31` one keep the figure they were written with: a record of what
 > was claimed at the time is worth more than a quietly corrected one (`B44`).
+
+### Skills import from what skills.sh shows you, and say what they are doing
+`b2e001f..HEAD`. **888 tracked, 607 done. 0 new phase rows, 0 regressions. `B926` closed; `B927`
+filed.** The owner: *"I tried to import a skills by pasting a github link … No success, no progress, and
+very seldom a failure message. Just complete disregard"* — from skills.sh, *"not entirely what to paste
+from there.. Is it the full npx line? or just the github url...?"* — and `vercel-labs/agent-browser`
+refused as *"File too large"*. Five defects under one complaint, each reproduced against the running app:
+nothing skills.sh shows a person to copy was accepted; the paced GitHub fetch ran on the server's event
+loop, so the whole app stopped answering for the length of an import; a folder whose file list GitHub
+refused (60 an hour without a token) failed outright although its SKILL.md had arrived; one big file
+failed the lot; and the only answer was a toast. All of it answers now, beside the box, while it runs.
 
 ### Hotfix: a document froze the browser, because a control kept rewriting itself
 `c1c11f4..HEAD`. **886 tracked, 606 done. 0 new phase rows, 0 regressions. `B923` closed; `B924` and
@@ -19543,3 +19554,46 @@ this is the same thing happening to the row that corrected the store.
   work runs in those tasks (the final round render, highlighting, the editor's first highlight, the preview)
   and move what can be deferred off the path. `Verify:` the same repro's worst gap at completion is under 200ms.
   `Depends:` nothing. — found by `B923` — agent:`integrator`
+
+- [x] **B926** **Importing a skill did nothing a person could see: no progress, no confirmation, rarely an
+  error — and nothing skills.sh shows could be pasted.** Reported by the owner 2026-09-30, with the question
+  underneath it: *"Is it the full npx line? or just the github url...?"* — and `vercel-labs/agent-browser`
+  failing on *"File too large"*. Reproduced against the locally served app, in Chromium and through the route,
+  before anything changed. **Five defects.** (1) **Nothing skills.sh offers was accepted.** Its skill pages show
+  `npx skills add https://github.com/<owner>/<repo> --skill <name>`, refused as not a URL; and the page's own
+  address, `skills.sh/<owner>/<repo>/<name>`, answers 200 rather than redirecting to GitHub, which was the only
+  skills.sh shape the importer took. Both are read now, from the text alone — nothing on skills.sh is fetched —
+  as are `owner/repo@skill`, `--skill=`, the trailing backslash a copy picks up, and a bare repository that is
+  one skill named after itself. A named skill is looked for in the usual folders (`skills/<name>`, `<name>`,
+  `.claude/skills/<name>`, …) on `main` then `master` through raw files, and anywhere else through one
+  `git/trees` request; a name that is not a name is refused before any request. A repository of many skills
+  says so and what to paste instead, rather than being walked. One-segment skills.sh short links keep the old
+  redirect unwrap and its per-hop SSRF check (`Law 1`); two tests moved to that shape with the reason. (2) **The
+  server stopped while an import ran.** `fetch_skill_bundle` is synchronous and the outbound limiter sleeps a
+  second between GitHub calls, on the event loop: every other request — the page's polls, a chat's stream —
+  waited for the whole import. It runs in the threadpool now; a test pings the app mid-import. (3) **A refused
+  folder listing sank an import whose SKILL.md had already arrived** — the listing needs `api.github.com`
+  (60 an hour without a token, and the limiter then holds off for the reset), and on failure the import
+  retried two other readings of the path and listed again. SKILL.md is kept, and the person is told what was
+  left out and the one thing that lifts it (`PANTHEON_GITHUB_TOKEN`). (4) **One big file failed the lot.** The
+  caps are raised at the owner's request — 2 MB a file, 10 MB and 256 files a skill — and stay caps
+  (`FORBIDDEN.md` Part 2); a file over the per-file cap is left out by name, the total cap stops with a note,
+  and dependency lockfiles are never fetched. (5) **The only answer was a toast.** The button says
+  *Importing…* and a status line under the box counts the wait (and says why it can be long), then keeps the
+  result where the person is looking: *"Imported frontend-design — 1 file."* with what was left out and an
+  *Open it* button, or *"Import failed: …"* with the server's own sentence; Enter pressed again does not start a
+  second import. Also: files land beside SKILL.md instead of under the repository path they came from, a
+  renamed import says so, an unexpected failure names its cause instead of *"Skill import failed"*, and the box
+  says what to paste. `Verify:` paste `npx skills add https://github.com/anthropics/skills --skill
+  frontend-design` into Brain → Add → Skill link: the line under it counts, then says it imported, and the skill
+  opens. `tests/test_a_skill_imports_from_what_skills_sh_shows.py` — 29 cases against a fake GitHub, the real
+  route (a mid-import ping) and, under node, the real `importSkillFromUrl`; **all 29 red on the previous code.**
+  The 90 existing importer cases pass. `Depends:` nothing. — reported by the owner — agent:`integrator`
+
+- [ ] **B927** **A GitHub token lifts skill imports from 60 lookups an hour to 5,000, and only a file or an
+  environment variable can set it.** `_github_credentials` reads `github_token` from settings, then
+  `PANTHEON_GITHUB_TOKEN`; no surface shows either. `B926`'s notes now tell a person the token is the fix, and
+  "set an environment variable" is `Law 15`'s tutorial in miniature. Put it in Settings beside the other
+  integration secrets — write-only, masked, admin-only, with the rate it buys stated — and have the import
+  line link to it. `Verify:` an admin sets the token in Settings and the next import lists the whole folder.
+  `Depends:` nothing. — found by `B926` — agent:`integrator`

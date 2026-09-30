@@ -111,7 +111,9 @@ def test_fetch_bytes_blocks_redirect_to_internal(monkeypatch, internal):
 
 def test_skills_sh_entry_blocks_redirect_to_metadata(monkeypatch):
     # The skills.sh unwrap path (user-supplied host) must also revalidate hops.
-    raw = "https://skills.sh/example/skill"
+    # `B926`: a one-segment link, because `/<owner>/<repo>` is read from the
+    # address and never fetched; the unwrap path is what this pins.
+    raw = "https://skills.sh/example"
     checked = []
 
     def _check_hop(url):

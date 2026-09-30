@@ -62,10 +62,15 @@ def test_parse_skill_source_rejects_skills_sh_page_that_never_reaches_github():
         mock_response.text = body
         mock_get.return_value = mock_response
 
+        # `B926`: a skills.sh page of the form `/<owner>/<repo>/<skill>` is now
+        # read from its own address and never fetched — which still scrapes
+        # nothing, the hazard this test exists for. A one-segment link is
+        # still unwrapped by its redirect, and still refused when it does not
+        # reach GitHub.
         with pytest.raises(
             SkillImportError, match="did not redirect to GitHub"
         ) as exc_info:
-            parse_skill_source("https://skills.sh/anthropics/skills/pdf")
+            parse_skill_source("https://skills.sh/pdf")
 
     message = str(exc_info.value)
     assert "exact skill folder or SKILL.md file" in message

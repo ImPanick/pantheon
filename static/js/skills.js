@@ -10,7 +10,7 @@ import uiModule from './ui.js';
 import * as spinnerModule from './spinner.js';
 import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
 import { topPortalZ } from './toolWindowZOrder.js';
-import { setBackgroundWork } from './modalManager.js?v=20260930hotfix1';
+import { setBackgroundWork } from './modalManager.js?v=20260930skillimport1';
 import { PLAY_GLYPH, chevronIcon } from './icons.js';
 
 const API = window.location.origin;
@@ -2735,15 +2735,63 @@ async function _showSkillSource(name) {
   });
 }
 
+// `B926`. The import's own status line (`#skill-import-status`), under the box
+// it was started from. Everything it says is text.
+function _importStatus(kind, lines, openName) {
+  const el = document.getElementById('skill-import-status');
+  if (!el) return null;
+  el.hidden = false;
+  el.className = `memory-desc skill-import-status${kind ? ` is-${kind}` : ''}`;
+  el.replaceChildren();
+  (Array.isArray(lines) ? lines : [lines]).filter(Boolean).forEach((line, i) => {
+    if (i) el.appendChild(document.createElement('br'));
+    el.appendChild(document.createTextNode(String(line)));
+  });
+  if (openName) {
+    el.appendChild(document.createTextNode(' '));
+    const open = document.createElement('button');
+    open.type = 'button';
+    open.className = 'skill-import-open';
+    open.textContent = 'Open it';
+    open.addEventListener('click', () => openSkill(openName));
+    el.appendChild(open);
+  }
+  return el;
+}
+
+let _importInFlight = false;
+
 async function importSkillFromUrl() {
   const input = document.getElementById('skill-import-url');
   const url = (input?.value || '').trim();
   if (!url) {
+    _importStatus('error', 'Paste a GitHub or skills.sh link to a skill folder or its SKILL.md first.');
     uiModule.showError('Paste a GitHub or skills.sh URL first');
     return;
   }
+  // `B926`. Enter while an import runs used to start a second one.
+  if (_importInFlight) return;
+  _importInFlight = true;
   const btn = document.getElementById('skill-import-url-btn');
-  if (btn) btn.disabled = true;
+  const btnHtml = btn ? btn.innerHTML : '';
+  if (btn) {
+    btn.disabled = true;
+    btn.setAttribute('aria-busy', 'true');
+    btn.textContent = 'Importing…';
+  }
+  // `B926`. The fetch is paced — about a request a second to GitHub — so a
+  // folder of files takes a while, and nothing on screen used to say anything
+  // was happening. Count the wait, and say why it can be long.
+  const started = Date.now();
+  const tick = () => {
+    const s = Math.round((Date.now() - started) / 1000);
+    _importStatus('busy', [
+      `Downloading from GitHub… ${s}s`,
+      s >= 8 ? 'Pantheon asks GitHub for about one file a second, so a skill with many files takes a while.' : '',
+    ]);
+  };
+  tick();
+  const timer = setInterval(tick, 1000);
   try {
     const res = await fetch(`${API}/api/skills/import-from-url`, {
       method: 'POST',
@@ -2753,14 +2801,28 @@ async function importSkillFromUrl() {
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.detail || data.error || `HTTP ${res.status}`);
     if (input) input.value = '';
-    await loadSkills();
     const name = data.skill?.name || 'skill';
-    uiModule.showToast(`Imported ${name} (${data.files || 1} file(s))`);
+    const count = Number(data.files || 1);
+    const notes = Array.isArray(data.notes) ? data.notes : [];
+    clearInterval(timer);
+    _importStatus(notes.length ? 'warn' : 'ok',
+      [`Imported ${name} — ${count} file${count === 1 ? '' : 's'}.`, ...notes], name);
+    uiModule.showToast(`Imported ${name} (${count} file${count === 1 ? '' : 's'})`);
+    await loadSkills();
     if (name) openSkill(name);
   } catch (err) {
-    uiModule.showError('Import failed: ' + err.message);
+    clearInterval(timer);
+    const msg = (err && err.message) || String(err);
+    _importStatus('error', `Import failed: ${msg}`);
+    uiModule.showError('Import failed: ' + msg);
   } finally {
-    if (btn) btn.disabled = false;
+    clearInterval(timer);
+    _importInFlight = false;
+    if (btn) {
+      btn.disabled = false;
+      btn.removeAttribute('aria-busy');
+      btn.innerHTML = btnHtml;
+    }
   }
 }
 

@@ -2,7 +2,7 @@
 // compare/stream.js — SSE streaming to panes
 import state from './state.js';
 import { addFinishBadge } from './vote.js';
-import { getModelCost, renderAskUserCard, safeDisplayImageSrc, buildTodoCard, buildDiffHtml } from '../chatRenderer.js?v=20260930hotfix1';
+import { getModelCost, renderAskUserCard, safeDisplayImageSrc, buildTodoCard, buildDiffHtml } from '../chatRenderer.js?v=20260930skillimport1';
 import { applyAgentThreadNode } from '../agentThread.js';
 // `B910`. The line that says why the agent stopped itself (`P4-10`).
 import { renderAgentStop } from '../agentStops.js';
