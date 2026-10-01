@@ -12,10 +12,16 @@ chain into a new workflow **switched off** and writes nothing to any task of
 the chain; switching it on pauses the chain's first step and says so; *Put the
 old chain back* resumes that step and switches the workflow off; a converted
 webhook chain gets a new address and the person is told both, at conversion
-and at switch-on. Refused in words: a chain that starts in two places, a
-chain with a workflow in it, a loop, another owner's task. Real routes, real
-store, real SQLite file; the engine's `chain_to_document` is `C1`'s (stood in
-for by `tests/helpers/workflow_contract.py` until `wf-engine` merges).
+and at switch-on. The workflow starts where the chain does — the one first
+step that leads to the step picked; a second chain that only shares a step
+further down is not part of it and is named as still running. Refused in
+words: a step two chains reach (which one to start from is the person's
+call), a chain with a workflow in it, a loop, another owner's task. Real
+routes, real store, real SQLite file; the engine's `chain_to_document` is
+`C1`'s (stood in for by `tests/helpers/workflow_contract.py` until
+`wf-engine` merges, its checks and notes following wf-engine's `1b3dbb5`) —
+so what the store says is asserted word for word, and what the engine says
+by its reason key or by the names in it.
 """
 
 from __future__ import annotations
@@ -96,9 +102,11 @@ def test_a_chain_is_copied_into_a_switched_off_workflow_and_no_task_changes(clie
     assert wf["name"] == "Nightly backup (workflow)"
     assert wf["converted_from"] == {"head_task_id": "backup", "head_name": "Nightly backup",
                                     "head_status": "active"}
-    assert out["notes"][0] == ("Made “Nightly backup (workflow)” from 3 steps. It is switched off, "
-                               "and the chain still runs as before.")
-    assert any("starts at “Nightly backup”" in n for n in out["notes"]), "picked mid-chain: said where it starts"
+    # The store says what only it knows; the engine says what was made from
+    # what — and, picked mid-chain, where it starts.
+    assert "“Nightly backup (workflow)” is switched off, and the chain still runs as before." in out["notes"]
+    assert any("“Nightly backup”" in n for n in out["notes"]), "picked mid-chain: said where it starts"
+    assert len(out["notes"]) == len(set(out["notes"])), "nothing said twice"
     (row,) = rows(wf_db, wc.models()[1], workflow_id=wf["id"])
     assert (row.version, row.source) == (1, "converted")
     # Nothing in the chain moved; one start, one document, one version added.
@@ -162,21 +170,55 @@ def test_a_converted_webhook_chain_has_a_new_address_and_both_are_told(client, w
     said = " ".join(out["notes"])
     assert new_url in said and old_url in said
     assert "only answers while the chain is on" in said
+    assert sum("webhook" in n.lower() for n in out["notes"]) == 1, (
+        "the two addresses are said once, by the store — not again by the engine's note")
     on = call(client, "POST", f"/api/workflows/{out['workflow']['id']}/switch", json={"on": True})
     said = " ".join(on.json()["notes"])
     assert new_url in said and old_url in said
 
 
+def _second_chain_into_clean_up(factory):
+    """Weekly report → Clean up: a second chain sharing the backup's last step."""
+    db = factory()
+    try:
+        db.add(ScheduledTask(id="second", owner="alice", name="Weekly report", task_type="llm",
+                             prompt="x", trigger_type="webhook", status="active",
+                             then_task_id="clean"))
+        db.commit()
+    finally:
+        db.close()
+
+
+def test_a_second_chain_sharing_a_step_is_left_running_and_named(client, wf_db):
+    """Picked on a step only the backup's chain reaches, the workflow is that
+    chain; the other chain into its last step is not a second start — it is
+    named as one that keeps running as it does now."""
+    _chain(wf_db)
+    _second_chain_into_clean_up(wf_db)
+    tasks_before, _ = _snapshot(wf_db)
+    res = _convert(client, from_task_id="told")
+    assert res.status_code == 200, res.text
+    out = res.json()
+    labels = sorted(n["label"] for n in out["workflow"]["graph"]["nodes"])
+    assert labels == ["Clean up", "Nightly backup", "Tell me it worked"]
+    assert out["workflow"]["converted_from"]["head_task_id"] == "backup"
+    assert any("“Weekly report”" in n for n in out["notes"]), "the other chain is named"
+    tasks_after, _ = _snapshot(wf_db)
+    assert {k: v for k, v in tasks_after.items() if k in tasks_before} == tasks_before
+
+
 @pytest.mark.parametrize("case", ["two_heads", "workflow_member", "loop", "other_owner", "missing"])
 def test_a_chain_that_cannot_be_one_document_is_refused_in_words(client, wf_db, case):
     _chain(wf_db)
+    picked = "told"
+    if case == "two_heads":
+        # Clean up is reached from both first steps: which one the workflow
+        # starts at is the person's to say.
+        _second_chain_into_clean_up(wf_db)
+        picked = "clean"
     db = wf_db()
     try:
-        if case == "two_heads":
-            db.add(ScheduledTask(id="second", owner="alice", name="Weekly report", task_type="llm",
-                                 prompt="x", trigger_type="webhook", status="active",
-                                 then_task_id="clean"))
-        elif case == "loop":
+        if case == "loop":
             db.query(ScheduledTask).filter(ScheduledTask.id == "clean").first().then_task_id = "backup"
         elif case == "other_owner":
             db.add(ScheduledTask(id="bobs", owner="bob", name="Bob's", task_type="llm",
@@ -195,21 +237,24 @@ def test_a_chain_that_cannot_be_one_document_is_refused_in_words(client, wf_db, 
         finally:
             db.close()
     before = _snapshot(wf_db)
-    res = _convert(client, from_task_id="missing" if case == "missing" else "told")
+    res = _convert(client, from_task_id="missing" if case == "missing" else picked)
     expected = {"two_heads": 400, "workflow_member": 400, "loop": 400, "other_owner": 400,
                 "missing": 404}[case]
     assert res.status_code == expected, res.text
     detail = res.json()["detail"]
     assert isinstance(detail, str) and detail.strip()
     if case == "two_heads":
-        assert "starts in 2 places" in detail and "“Weekly report”" in detail
+        assert detail == ("“Clean up” is reached from 2 first steps, “Nightly backup” and "
+                          "“Weekly report”, and a workflow starts in one place. Make it from "
+                          "the one it should start at.")
     if case == "workflow_member":
-        assert "cannot be a step of another one" in detail
+        assert res.json()["reason"] == "workflow_member", "the engine's own refusal"
     if case == "loop":
         from src.task_scheduler import CHAIN_REFUSAL_REASONS, CHAIN_CYCLE
         lead = CHAIN_REFUSAL_REASONS[CHAIN_CYCLE]
         assert detail.startswith(lead[:1].upper() + lead[1:]), "the engine's one sentence (`P22-01`)"
     if case == "other_owner":
+        assert res.json()["reason"] == "cross_owner", "the engine's own refusal"
         assert "Bob's" not in detail, "another owner's task is never named"
     assert _snapshot(wf_db) == before, "a refusal writes nothing"
 

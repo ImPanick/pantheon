@@ -124,7 +124,8 @@ class Scheduler:
                            finished_at=cdb.utcnow_naive()))
             db.flush()
             for seq, entry in enumerate(doc.reachable_bfs(graph), 1):
-                node = by_id[entry["node_id"] if isinstance(entry, dict) else entry[0]]
+                # The engine's entry is `{node, when, depth, parent}`.
+                node = by_id[entry["node"]["id"]]
                 line = f"Would run “{node['label']}”."
                 steps.append({"kind": "dry-run", "detail": line})
                 db.add(TaskRunNode(id=str(uuid.uuid4()), run_id=run_id, node_id=node["id"],

@@ -208,3 +208,43 @@ def test_a_test_is_checked_as_a_save_is(client, wf, sched, admins):
     odd = _test(client, wf, DOC["nodes"][0], source="yesterday")
     assert odd.status_code == 400 and "source must be one of" in odd.json()["detail"]
     assert sched.tests == []
+
+
+def test_a_sample_typed_as_plain_text_goes_where_the_step_reads_text(client, wf, sched):
+    """The person's own text, not only JSON (design § 4.1, *custom*). A step
+    after another is handed what that step made, so plain text is its
+    `result`; a step handed only ids and names (the first step here: an
+    `email_received`) is asked for JSON with its own fields, named — never
+    given a field it does not read."""
+    res = _test(client, wf, DOC["nodes"][1], source="custom", input="Three mails, one urgent.")
+    assert res.status_code == 200, res.text
+    assert sched.tests[-1]["input"]["data"]["result"] == "Three mails, one urgent."
+    as_json = _test(client, wf, DOC["nodes"][1], source="custom",
+                    input=json.dumps({"result": "From JSON.", "status": "success"}))
+    assert sched.tests[-1]["input"]["data"]["result"] == "From JSON."
+    assert as_json.json()["dropped"] == []
+    first = _test(client, wf, DOC["nodes"][0], source="custom", input="Three mails.")
+    assert first.status_code == 400
+    assert first.json()["detail"] == (
+        "“Summarise my inbox” is handed account, folder, message_key. Paste the sample as JSON "
+        "with those fields, for example {\"account\": \"…\"}.")
+    assert len(sched.tests) == 2
+
+
+def test_a_sample_the_engine_will_not_take_is_refused_in_its_words(client, wf_db):
+    """`build_pin`'s refusals (`C1`) are a 400 with the engine's sentence and
+    reason — at the pin door and the test door alike — never a 500: a sample
+    on a first step that is handed nothing, and one that is not an object."""
+    plain = save(client, new(client, "On a schedule"), graph([step("n1"), step("n2")],
+                                                             [("n1", "success", "n2")]))
+    plain = plain.json()["workflow"]
+    url = f"/api/workflows/{plain['id']}"
+    unused = call(client, "PUT", url, json={"pins": {"n1": {"result": "x"}}})
+    assert unused.status_code == 400, unused.text
+    assert unused.json()["reason"] == "pin_unused" and unused.json()["node_ids"] == ["n1"]
+    not_an_object = call(client, "PUT", url, json={"pins": {"n2": ["a", "list"]}})
+    assert not_an_object.status_code == 400 and not_an_object.json()["reason"] == "bad_pin"
+    tested = _test(client, plain, step("n1"), source="custom", input='{"result": "x"}')
+    assert tested.status_code == 400 and tested.json()["reason"] == "pin_unused"
+    assert all(n["pinned"] is None for n in json.loads(
+        rows(wf_db, wc.models()[0], id=plain["id"])[0].graph)["nodes"])

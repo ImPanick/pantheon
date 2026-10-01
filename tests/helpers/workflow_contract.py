@@ -163,19 +163,29 @@ def _document_module():
     m.WORKFLOW_GRAPH_MAX_BYTES = 256 * 1024
     m.NODE_LABEL_MAX = 120
     m.START_KEY = "start"
+    # The reason keys are wf-engine's (`1b3dbb5`, measured 2026-10-01), so a
+    # test that names one names the real one; the words are this fake's own.
     m.WORKFLOW_REFUSAL_REASONS = {
         "unreadable": "this workflow could not be read",
         "too_big": "this workflow is too big to keep",
         "no_steps": "this workflow has no steps yet",
-        "too_many": "this workflow has more steps than a workflow may have",
-        "bad_step": "a step is not one this workflow can run",
-        "needs": "a step is missing something it needs",
-        "bad_target": "a step runs a task it may not run",
-        "bad_arrow": "an arrow does not join two steps",
+        "too_many_steps": "this workflow has more steps than a workflow may have",
+        "bad_kind": "a step is not one this workflow can run",
+        "missing_setting": "a step is missing something it needs",
+        "unknown_action": "a step runs an action Pantheon does not have",
+        "unknown_task": "a step runs a task that is not yours",
+        "workflow_target": "a step runs a workflow",
+        "own_trigger": "a step runs this workflow's own start",
+        "unknown_crew": "a step is given to a crew member that is not yours",
+        "bad_edge": "an arrow does not join two steps",
         "two_arrows": "a step has two arrows for one outcome",
-        "starts": "a workflow starts in one place",
+        "several_starts": "a workflow starts in one place",
         "cycle": "these steps would run in a circle",
         "admin_only": "a step needs an admin",
+        "pin_unused": "this step is handed nothing, so a sample would never be used",
+        "bad_pin": "a sample must be an object",
+        "workflow_member": "a workflow cannot be a step",
+        "cross_owner": "the chain reaches a task that is not yours",
     }
     WEBHOOK_FIELDS = ("body", "json", "query", "headers")
     TEST_CONFIRM_EFFECTS = ("notifies", "touches-remote", "deletes", "rewrites", "runs-code")
@@ -212,10 +222,10 @@ def _document_module():
         seen, nodes = set(), []
         for n in g.get("nodes") or []:
             if not isinstance(n, dict) or not str(n.get("id") or "").strip():
-                raise DocumentError(refuse("bad_step"))
+                raise DocumentError(refuse("unreadable"))
             nid = str(n["id"])
             if nid in seen or n.get("kind") not in m.NODE_KINDS:
-                raise DocumentError(refuse("bad_step", (nid,)))
+                raise DocumentError(refuse("bad_kind", (nid,)))
             seen.add(nid)
             config = n.get("config") if isinstance(n.get("config"), dict) else {}
             nodes.append({"id": nid, "kind": n["kind"],
@@ -226,7 +236,7 @@ def _document_module():
         edges = []
         for e in g.get("edges") or []:
             if not isinstance(e, dict):
-                raise DocumentError(refuse("bad_arrow"))
+                raise DocumentError(refuse("unreadable"))
             edges.append({"from": str(e.get("from")), "port": e.get("port"), "to": str(e.get("to"))})
         start = g.get(m.START_KEY) if isinstance(g.get(m.START_KEY), dict) else {}
         return {"v": m.GRAPH_VERSION, m.START_KEY: {"position": start.get("position")},
@@ -241,38 +251,43 @@ def _document_module():
         if not nodes:
             return refuse("no_steps")
         if len(nodes) > m.WORKFLOW_MAX_NODES:
-            return refuse("too_many")
+            return refuse("too_many_steps")
         ids = {n["id"] for n in nodes}
         for n in nodes:
             c = n.get("config") or {}
             k = n["kind"]
             if k in ("llm", "research") and not str(c.get("prompt") or "").strip():
-                return refuse("needs", (n["id"],), f"“{n['label']}” needs a prompt")
+                return refuse("missing_setting", (n["id"],), f"“{n['label']}” needs a prompt")
             if k == "action":
+                if not c.get("action"):
+                    return refuse("missing_setting", (n["id"],), f"“{n['label']}” needs an action")
                 if c.get("action") not in BUILTIN_ACTIONS:
-                    return refuse("needs", (n["id"],), f"“{n['label']}” needs an action")
+                    return refuse("unknown_action", (n["id"],))
                 if is_admin_only_task_action("action", c.get("action")) and not owner_is_admin:
                     return refuse("admin_only", (n["id"],))
                 params = (BUILTIN_ACTION_META.get(c["action"]) or {}).get("params") or []
                 if any(p.get("required") for p in params) and not str(c.get("prompt") or "").strip():
-                    return refuse("needs", (n["id"],))
+                    return refuse("missing_setting", (n["id"],))
             if k == "run_task":
-                target = tasks_by_id.get(str(c.get("task_id") or ""))
-                if target is None or (target.task_type or "") == "workflow" \
-                        or target.id == own_task_id:
-                    return refuse("bad_target", (n["id"],))
+                target_id = str(c.get("task_id") or "")
+                if not target_id:
+                    return refuse("missing_setting", (n["id"],))
+                if target_id == own_task_id:
+                    return refuse("own_trigger", (n["id"],))
+                target = tasks_by_id.get(target_id)
+                if target is None or getattr(target, "owner", None) != owner:
+                    return refuse("unknown_task", (n["id"],))
+                if (target.task_type or "") == "workflow":
+                    return refuse("workflow_target", (n["id"],))
             if c.get("crew_member_id") and c["crew_member_id"] not in crew_ids:
-                return refuse("needs", (n["id"],))
+                return refuse("unknown_crew", (n["id"],))
         seen = set()
         for e in graph.get("edges") or []:
             if e["from"] not in ids or e["to"] not in ids or e.get("port") not in m.PORTS:
-                return refuse("bad_arrow")
+                return refuse("bad_edge")
             if (e["from"], e["port"]) in seen:
                 return refuse("two_arrows", (e["from"],))
             seen.add((e["from"], e["port"]))
-        roots = entries(graph)
-        if len(roots) != 1:
-            return refuse("starts", tuple(n["id"] for n in roots))
         out = {}
         for e in graph.get("edges") or []:
             out.setdefault(e["from"], []).append(e["to"])
@@ -289,6 +304,9 @@ def _document_module():
             found = loop(n["id"], [])
             if found:
                 return refuse("cycle", found)
+        roots = entries(graph)
+        if len(roots) > 1:
+            return refuse("several_starts", tuple(n["id"] for n in roots))
         return None
 
     def content_fingerprint(name, graph):
@@ -317,33 +335,10 @@ def _document_module():
     def by_id(g):
         return {n["id"]: n for n in nodes_of(g)}
 
-    def node_input_shape(graph, node_id, trigger_task):
-        preds = [e for e in graph.get("edges") or [] if e.get("to") == node_id]
-        if preds:
-            pred = by_id(graph).get(preds[0]["from"]) or {}
-            return ("task", pred.get("label"), TASK_HANDOFF_FIELDS)
-        kind = getattr(trigger_task, "trigger_type", None) or "schedule"
-        if kind == "event":
-            event = getattr(trigger_task, "trigger_event", None)
-            return ("event", event, EVENT_PAYLOAD_FIELDS.get(event, ()))
-        if kind == "webhook":
-            return ("webhook", WEBHOOK_FIELDS)
-        return None
-
-    def build_pin(graph, node_id, trigger_task, data):
-        shape = node_input_shape(graph, node_id, trigger_task)
-        fields = tuple(shape[-1]) if shape else ()
-        if isinstance(data, str):
-            try:
-                parsed = json.loads(data)
-            except (TypeError, ValueError):
-                parsed = {fields[0]: data} if fields else {}
-            data = parsed
-        data = data if isinstance(data, dict) else {}
-        dropped = sorted(set(data) - set(fields))
-        source = shape[0] if shape else "event"
-        name = shape[1] if shape and len(shape) > 2 else source
-        return build_trigger(source, str(name or source), data, fields=fields), dropped
+    class InputShape(NamedTuple):
+        source: object
+        name: object
+        fields: tuple
 
     def entry_node(g):
         roots = entries(g)
@@ -356,21 +351,51 @@ def _document_module():
         return None
 
     def reachable_bfs(g):
+        """The real one's shape: `[{node, when, depth, parent}]`."""
         first = entry_node(g)
         if first is None:
             return []
-        out, seen, frontier = [], {first["id"]}, [(first["id"], None, 0)]
+        nodes = by_id(g)
+        out, seen, frontier = [], {first["id"]}, [(first["id"], None, 0, None)]
         while frontier:
             nxt = []
-            for node_id, when, depth in frontier:
-                out.append({"node_id": node_id, "when": when, "depth": depth})
+            for node_id, when, depth, parent in frontier:
+                out.append({"node": nodes[node_id], "when": when, "depth": depth, "parent": parent})
                 for port in m.PORTS:
                     for e in g.get("edges") or []:
                         if e["from"] == node_id and e.get("port") == port and e["to"] not in seen:
                             seen.add(e["to"])
-                            nxt.append((e["to"], port, depth + 1))
+                            nxt.append((e["to"], port, depth + 1, node_id))
             frontier = nxt
         return out
+
+    def node_input_shape(graph, node_id, trigger_task):
+        """The real one's answer: `(source, name, fields)`, `(None, None, ())`
+        for a first step that is handed nothing."""
+        found = next((e for e in reachable_bfs(graph) if e["node"]["id"] == node_id), None)
+        if found is None:
+            return InputShape("task", None, TASK_HANDOFF_FIELDS)
+        if found["parent"] is not None:
+            parent = by_id(graph).get(found["parent"]) or {}
+            return InputShape("task", parent.get("label") or found["parent"], TASK_HANDOFF_FIELDS)
+        kind = getattr(trigger_task, "trigger_type", None) or "schedule"
+        if kind == "event":
+            event = getattr(trigger_task, "trigger_event", None)
+            return InputShape("event", event, EVENT_PAYLOAD_FIELDS.get(event, ()))
+        if kind == "webhook":
+            return InputShape("webhook", "webhook", WEBHOOK_FIELDS)
+        return InputShape(None, None, ())
+
+    def build_pin(graph, node_id, trigger_task, data):
+        """As the real one: a step handed nothing takes no sample, and a
+        sample is an object — each refused with a `DocumentError`."""
+        shape = node_input_shape(graph, node_id, trigger_task)
+        if shape.source is None:
+            raise DocumentError(refuse("pin_unused", (node_id,)))
+        if not isinstance(data, dict):
+            raise DocumentError(refuse("bad_pin", (node_id,)))
+        dropped = tuple(sorted(k for k in data if k not in shape.fields))
+        return build_trigger(shape.source, shape.name or node_id, data, fields=shape.fields), dropped
 
     def node_effects(node, tasks_by_id):
         k = node.get("kind")
@@ -387,7 +412,27 @@ def _document_module():
         return bool(set(node_effects(node, tasks_by_id)) & set(TEST_CONFIRM_EFFECTS))
 
     def chain_to_document(rows, head_id, *, positions=None):
-        rows = {r.id: r for r in rows}
+        """As the real one: the engine's chain rule (`validate_graph` from the
+        head, with its owner), a member that is a workflow refused, and notes
+        saying what was made and what else leads in."""
+        from src.task_scheduler import (
+            CHAIN_CROSS_OWNER, CHAIN_CYCLE, describe_graph_refusal, task_edges, validate_graph,
+        )
+        all_rows = list(rows)
+        rows = {r.id: r for r in all_rows}
+        head_row = rows[head_id]
+        owner = getattr(head_row, "owner", None)
+        refusal = validate_graph(all_rows, starts=[head_id], owner=owner,
+                                 max_depth=m.WORKFLOW_MAX_NODES + 1)
+        if refusal is not None:
+            names = {r.id: r.name for r in all_rows if getattr(r, "owner", None) == owner}
+            if refusal.reason == CHAIN_CYCLE:
+                raise DocumentError(DocumentRefusal(
+                    "cycle", (), describe_graph_refusal(refusal, names, first=head_id)))
+            if refusal.reason == CHAIN_CROSS_OWNER:
+                raise DocumentError(DocumentRefusal(
+                    "cross_owner", (), describe_graph_refusal(refusal, names)))
+            raise DocumentError(refuse("too_many_steps"))
         order, seen, frontier = [], {head_id}, [head_id]
         while frontier:
             nxt = []
@@ -399,6 +444,9 @@ def _document_module():
                         seen.add(to)
                         nxt.append(to)
             frontier = nxt
+        for tid in order:
+            if (rows[tid].task_type or "") == "workflow":
+                raise DocumentError(refuse("workflow_member", detail=f"“{rows[tid].name}” is a workflow"))
         ids = {tid: f"n{i + 1}" for i, tid in enumerate(order)}
         nodes, edges = [], []
         for tid in order:
@@ -420,9 +468,19 @@ def _document_module():
             "timeout_seconds", "notifications_enabled")}
         graph = {"v": m.GRAPH_VERSION, m.START_KEY: {"position": None}, "nodes": nodes,
                  "edges": edges}
-        return graph, trigger, []
+        notes = [f"Made from {len(order)} step{'s' if len(order) != 1 else ''}, "
+                 f"starting with “{head.name}”."]
+        for name in sorted({r.name for r in all_rows if r.id not in seen
+                            and getattr(r, "owner", None) == owner
+                            and any(e["to"] in seen for e in task_edges(r))}):
+            notes.append(f"“{name}” also leads into this chain. It is not part of the "
+                         f"workflow and keeps running as it does now.")
+        if (getattr(head, "trigger_type", None) or "schedule") == "webhook":
+            notes.append("The workflow has its own webhook address. The chain's old "
+                         "address only answers while the chain is on.")
+        return graph, trigger, notes
 
-    for fn in (DocumentRefusal, DocumentError, parse_graph, validate_document,
+    for fn in (DocumentRefusal, DocumentError, InputShape, parse_graph, validate_document,
                content_fingerprint, without_pins, merge_positions, node_input_shape, build_pin,
                entry_node, next_node, reachable_bfs, node_effects, needs_test_confirmation,
                chain_to_document):

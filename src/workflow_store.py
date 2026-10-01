@@ -81,12 +81,14 @@ SAVED_PINS = "pins"
 
 # The columns of a chain's first step that say when it runs — what a converted
 # workflow's trigger takes from it. An allowlist, so whatever else the engine's
-# `chain_to_document` hands back can never reach a row unasked.
+# `chain_to_document` hands back can never reach a row unasked (an `id`, an
+# `owner`, a `status`). The same twelve as the engine's `TRIGGER_FIELDS`
+# (measured in wf-engine's `1b3dbb5`; not in `C1`, so not imported — a merge
+# point: at the merge this should read that tuple).
 TRIGGER_COLUMNS = (
     "schedule", "scheduled_time", "scheduled_day", "scheduled_date",
     "cron_expression", "trigger_type", "trigger_event", "trigger_count",
     "tz_name", "max_retries", "timeout_seconds", "notifications_enabled",
-    "crew_member_id",
 )
 
 
@@ -673,7 +675,7 @@ def save_positions(db, wf, positions) -> str:
 def save_pins(db, wf, trigger, pins) -> dict:
     """Pin (or, with `null`, unpin) a sample on steps. Returns what each pin
     dropped — the keys that step is never handed — so the person is told."""
-    from src.workflow_document import build_pin
+    from src.workflow_document import DocumentError, build_pin
     if not isinstance(pins, dict) or not pins:
         raise WorkflowRefused(400, "pins must map a step's id to a sample, or to null to unpin it.")
     graph = stored_graph(wf)
@@ -687,7 +689,13 @@ def save_pins(db, wf, trigger, pins) -> dict:
         if data is None:
             node["pinned"] = None
             continue
-        envelope, lost = build_pin(graph, str(node_id), trigger, data)
+        try:
+            # The engine refuses a sample for a step that is handed nothing (a
+            # first step on a schedule) and one that is not an object, in its
+            # own words — a 400 the person reads, never a 500.
+            envelope, lost = build_pin(graph, str(node_id), trigger, data)
+        except DocumentError as err:
+            raise _document_error_refusal(err) from None
         node["pinned"] = envelope
         dropped[str(node_id)] = list(lost or ())
     wf.graph = json.dumps(graph)
@@ -738,42 +746,70 @@ def webhook_path(task) -> str | None:
     return f"/api/tasks/{task.id}/webhook/{task.webhook_token}"
 
 
-def chain_component(tasks_by_id: dict, task_id: str) -> list:
-    """Every task joined to `task_id` by an edge either way, in the owner's rows."""
+def heads_reaching(tasks_by_id: dict, task_id: str) -> tuple:
+    """`(heads, upstream)` for one step of a chain.
+
+    `upstream` is every task an arrow path leads from into `task_id`, itself
+    included; `heads` are those no task of the owner's leads to — the first
+    steps of every chain that reaches it, in the owner's own task order. A
+    task that only leads INTO the chain further down (a second chain sharing a
+    step) does not reach `task_id` and is not a head of it: the engine converts
+    the chain from its head and names such a task as one that keeps running
+    as it does now (`chain_to_document`).
+    """
     from src.task_scheduler import task_edges
-    links = {}
+    parents = {}
     for task in tasks_by_id.values():
         for edge in task_edges(task):
-            links.setdefault(edge["from"], set()).add(edge["to"])
-            links.setdefault(edge["to"], set()).add(edge["from"])
-    seen, frontier = {task_id}, [task_id]
+            if edge["to"] in tasks_by_id:
+                parents.setdefault(edge["to"], []).append(task.id)
+    upstream, frontier = {task_id}, [task_id]
     while frontier:
-        nxt = []
+        following = []
         for node in frontier:
-            for other in links.get(node, ()):
-                if other not in seen and other in tasks_by_id:
-                    seen.add(other)
-                    nxt.append(other)
-        frontier = nxt
-    return [tid for tid in tasks_by_id if tid in seen]
+            for parent in parents.get(node, ()):
+                if parent not in upstream:
+                    upstream.add(parent)
+                    following.append(parent)
+        frontier = following
+    heads = [tasks_by_id[i] for i in tasks_by_id if i in upstream and i not in parents]
+    return heads, upstream
+
+
+def _chain_from(tasks_by_id: dict, head_id: str) -> list:
+    """The task ids the chain from `head_id` runs, each once, breadth first —
+    the walk `chain_to_document` turns into steps."""
+    from src.task_scheduler import task_edges
+    order, seen, frontier = [head_id], {head_id}, [head_id]
+    while frontier:
+        following = []
+        for node in frontier:
+            for edge in task_edges(tasks_by_id[node]):
+                if edge["to"] in tasks_by_id and edge["to"] not in seen:
+                    seen.add(edge["to"])
+                    order.append(edge["to"])
+                    following.append(edge["to"])
+        frontier = following
+    return order
 
 
 def convert_chain(db, *, owner, from_task_id, name=None, positions=None, name_of=None):
     """`P22-06`. A chain, copied into a new workflow that is switched off.
 
     `from_task_id` may be any step of the chain; the workflow starts where the
-    chain does. Refused, in words: a step that is itself a workflow, a chain
-    that starts in more than one place (a document has one start), and a chain
-    the engine refuses (`validate_graph` — a loop, or a step that is not the
-    owner's). Nothing is written to any task of the chain. Returns
-    `(wf, trigger, notes)`.
+    chain does — the one first step that leads to it. Refused, in words: a
+    step that is itself a workflow; a step two chains reach (which one it
+    starts from is the person's choice, so they are named); a chain that goes
+    round in a circle. What the chain from its head may be — a loop, another
+    owner's task, a member that is a workflow, too many steps — is the
+    engine's rule, asked once, in `chain_to_document` (`Law 7`). Nothing is
+    written to any task of the chain. Returns `(wf, trigger, notes)`.
     """
-    from src.task_scheduler import (
-        describe_graph_refusal, load_chain_rows, task_edges, validate_graph,
-    )
+    from src.task_scheduler import describe_graph_refusal, load_chain_rows, validate_graph
     from src.workflow_document import DocumentError, WORKFLOW_MAX_NODES, chain_to_document
     _, _, Workflow, _ = _models()
     name_of = name_of or (lambda task: task.name)
+    depth = WORKFLOW_MAX_NODES + 1
 
     tasks_by_id, crew_ids = owner_rows(db, owner)
     picked = tasks_by_id.get(str(from_task_id or ""))
@@ -781,38 +817,28 @@ def convert_chain(db, *, owner, from_task_id, name=None, positions=None, name_of
         raise WorkflowRefused(404, "No such task.")
     if (picked.task_type or "") == "workflow":
         raise WorkflowRefused(400, f"{quoted(name_of(picked))} is already a workflow.")
-    members = chain_component(tasks_by_id, picked.id)
-    inner = [tasks_by_id[m] for m in members if (tasks_by_id[m].task_type or "") == "workflow"]
-    if inner:
-        said = ", ".join(quoted(name_of(t)) for t in inner)
+    heads, upstream = heads_reaching(tasks_by_id, picked.id)
+    if not heads:
+        # Every way back from this step comes round again, so the chain has
+        # no first step: a loop, said in the engine's own words (`P22-01`).
+        rows = load_chain_rows(db, list(upstream), known=tasks_by_id, max_depth=depth)
+        refusal = validate_graph(rows, starts=sorted(upstream), owner=owner, max_depth=depth)
+        names = {row.id: name_of(row) for row in rows if row.id in tasks_by_id}
+        raise WorkflowRefused(400, describe_graph_refusal(refusal, names, first=picked.id)
+                              if refusal is not None else
+                              "This chain goes round in a circle, so it has no first step to start from.")
+    if len(heads) > 1:
+        said = " and ".join(quoted(name_of(t)) for t in sorted(heads, key=name_of))
         raise WorkflowRefused(
-            400, f"{said} {'is a workflow' if len(inner) == 1 else 'are workflows'}, and a "
-                 f"workflow cannot be a step of another one. Take "
-                 f"{'it' if len(inner) == 1 else 'them'} out of the chain first.")
-    # The engine's rule for the chain as it is, walked from every member so a
-    # loop anywhere in it is found — and to `WORKFLOW_MAX_NODES` deep, because
-    # the document's own cap (not the chain's ten) is what the workflow will run
-    # under. No owner filter on the rows: a chain into another owner's task is
-    # a refusal, not a missing row (`load_chain_rows`).
-    rows = load_chain_rows(db, members, known={m: tasks_by_id[m] for m in members},
-                           max_depth=WORKFLOW_MAX_NODES + 1)
-    refusal = validate_graph(rows, starts=members, owner=owner,
-                             max_depth=WORKFLOW_MAX_NODES + 1)
-    if refusal is not None:
-        names = {row.id: name_of(row) for row in rows}
-        raise WorkflowRefused(400, describe_graph_refusal(refusal, names, first=picked.id))
-    led_to = {edge["to"] for m in members for edge in task_edges(tasks_by_id[m])}
-    heads = [tasks_by_id[m] for m in members if m not in led_to]
-    if len(heads) != 1:
-        said = " and ".join(quoted(name_of(t)) for t in heads)
-        raise WorkflowRefused(
-            400, f"This chain starts in {len(heads)} places, {said}, and a workflow starts "
-                 f"in one. Join them under one first step, or make each its own workflow.")
+            400, f"{quoted(name_of(picked))} is reached from {len(heads)} first steps, {said}, "
+                 f"and a workflow starts in one place. Make it from the one it should start at.")
     head = heads[0]
-    component_rows = [tasks_by_id[m] for m in members]
+    # Every task of the owner's (what leads into the chain from outside it is
+    # named in the engine's notes), and any other owner's task an arrow
+    # reaches — a refusal, never a missing row (`load_chain_rows`).
+    rows = load_chain_rows(db, [head.id], known=tasks_by_id, max_depth=depth)
     try:
-        graph, trigger_fields, engine_notes = chain_to_document(
-            component_rows, head.id, positions=positions)
+        graph, trigger_fields, engine_notes = chain_to_document(rows, head.id, positions=positions)
     except DocumentError as err:
         raise _document_error_refusal(err) from None
     name = clean_name(name, required=False) or clean_name(f"{name_of(head)}{CONVERTED_SUFFIX}")
@@ -826,7 +852,7 @@ def convert_chain(db, *, owner, from_task_id, name=None, positions=None, name_of
                   graph=json.dumps(parsed), version=1,
                   source_chain=json.dumps({
                       "head_task_id": head.id,
-                      "task_ids": [t.id for t in component_rows],
+                      "task_ids": _chain_from(tasks_by_id, head.id),
                       "head_was": head.status or "active",
                       "converted_at": _utcnow().isoformat() + "Z",
                       "paused_by_switch": False,
@@ -835,13 +861,16 @@ def convert_chain(db, *, owner, from_task_id, name=None, positions=None, name_of
     db.flush()
     _write_version(db, wf, parsed, source=VERSION_SOURCE_CONVERTED)
     db.commit()
-    steps = len(nodes_of(parsed))
-    notes = [f"Made {quoted(name)} from {steps} step{'s' if steps != 1 else ''}. It is "
-             f"switched off, and the chain still runs as before."]
-    if head.id != picked.id:
-        notes.append(f"The chain starts at {quoted(name_of(head))}, so the workflow starts there too.")
-    notes.extend(str(n) for n in (engine_notes or ()) if n)
-    notes.extend(_address_notes(trigger, head))
+    # The engine says what was made from what (how many steps, the first one,
+    # a task that also leads in); the store says what only it knows — the new
+    # workflow's name, that it is off, and the two webhook addresses. The
+    # engine's own webhook line is left out where the store names both
+    # addresses, so the fact is said once (`Law 7`).
+    addresses = _address_notes(trigger, head)
+    notes = [str(n) for n in (engine_notes or ()) if n
+             and not (addresses and "webhook" in str(n).lower())]
+    notes.append(f"{quoted(name)} is switched off, and the chain still runs as before.")
+    notes.extend(addresses)
     return wf, trigger, notes
 
 

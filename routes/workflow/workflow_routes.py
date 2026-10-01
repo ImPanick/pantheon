@@ -449,10 +449,52 @@ def _declared_fields(shape) -> tuple:
     return ()
 
 
+# `P22-08`. Where a sample typed as plain text goes: the first of these the
+# step is handed — what the step before it made (`result`, the hand-off), a
+# webhook's `body`, an event's `text`. A step handed none of them is asked for
+# JSON with its own fields, named, rather than given a field it never reads.
+PLAIN_TEXT_FIELDS = ("result", "body", "text")
+
+
+def _sample_data(raw, fields, label) -> dict:
+    """The person's sample as the object `build_pin` takes. JSON that is an
+    object is used as it is; any other text goes into the step's text field
+    (`PLAIN_TEXT_FIELDS`). A step that is handed nothing gets `{}`, and the
+    engine's own refusal says why (`build_pin`)."""
+    if isinstance(raw, dict):
+        return raw
+    if not isinstance(raw, str):
+        raise WorkflowRefused(400, "The sample must be text, or a JSON object.")
+    if not fields:
+        return {}
+    try:
+        value = json.loads(raw)
+    except (TypeError, ValueError):
+        value = None
+    if isinstance(value, dict):
+        return value
+    field = next((f for f in PLAIN_TEXT_FIELDS if f in fields), None)
+    if field is None:
+        raise WorkflowRefused(
+            400, f"{label} is handed {', '.join(fields)}. Paste the sample as JSON with those "
+                 f"fields, for example {{\"{fields[0]}\": \"…\"}}.")
+    return {field: raw}
+
+
+def _pinned_envelope(graph, node_id, trigger, data):
+    """`build_pin`, its refusals answered as sentences (`{detail}`, 400)."""
+    from src.workflow_document import DocumentError, build_pin
+    try:
+        envelope, dropped = build_pin(graph, node_id, trigger, data)
+    except DocumentError as err:
+        raise store._document_error_refusal(err) from None
+    return envelope, list(dropped or ())
+
+
 async def _test_input(db, wf, trigger, stored, graph, node, source, raw):
     """The envelope the step would really be handed, from the chosen source,
     and the keys a sample lost because the step is never handed them."""
-    from src.workflow_document import build_pin
+    from src.workflow_document import node_input_shape
     label = store.quoted(node.get("label") or node.get("id"))
     node_id = str(node.get("id"))
     if source == "none":
@@ -483,20 +525,17 @@ async def _test_input(db, wf, trigger, stored, graph, node, source, raw):
             raise WorkflowRefused(
                 400, f"Nothing is pinned on {label}. Pin a sample first, or choose another source.")
         return pinned, []
+    fields = _declared_fields(node_input_shape(graph, node_id, trigger))
     if source == "custom":
         if raw is None or (isinstance(raw, str) and not raw.strip()):
             raise WorkflowRefused(400, "Paste the sample to test with.")
-        envelope, dropped = build_pin(graph, node_id, trigger, raw)
-        return envelope, list(dropped or ())
+        return _pinned_envelope(graph, node_id, trigger, _sample_data(raw, fields, label))
     # example
-    from src.workflow_document import node_input_shape
-    fields = _declared_fields(node_input_shape(graph, node_id, trigger))
     if not fields:
         raise WorkflowRefused(
             400, f"{label} is handed nothing when it runs, so there is nothing to write an example of.")
     data = await _write_example(wf.owner, node.get("label") or node_id, fields)
-    envelope, dropped = build_pin(graph, node_id, trigger, data)
-    return envelope, list(dropped or ())
+    return _pinned_envelope(graph, node_id, trigger, data)
 
 
 async def _write_example(owner, label, fields) -> dict:
