@@ -970,16 +970,26 @@ def _tidy(db, owner: Optional[str], session_id: Optional[str]) -> Dict:
     q = db.query(Document).filter(Document.is_active == True)  # noqa: E712 — SQL
     docs = _owned_document_query(q, Document, owner).all()
     # `B1006`: the scheduled tidy reads the verdicts the same way (`Law 7`).
-    reasons: Dict[str, str] = tidy_reasons(docs)
+    # `B1019`: and a document the person kept when it asked is left out of
+    # both, and said to be.
+    kept: list = []
+    reasons: Dict[str, str] = tidy_reasons(docs, kept=kept)
+    kept_line = (f"{len(kept)} you chose to keep when Documents Tidy asked "
+                 f"{'is' if len(kept) == 1 else 'are'} left out.") if kept else ""
     if not reasons:
+        if kept:
+            return {"response": (f"Nothing to tidy — of your {len(docs)} document(s), the "
+                                 f"only ones that look like clutter are the {len(kept)} you "
+                                 "chose to keep when Documents Tidy asked."),
+                    "outcome": "unchanged", "changes": [], "exit_code": 0}
         return {"response": (f"Nothing to tidy — none of your {len(docs)} document(s) is "
                              "empty, a throwaway or a duplicate."),
                 "outcome": "unchanged", "changes": [], "exit_code": 0}
     ids = list(reasons)
-    note = ""
+    note = kept_line
     if len(ids) > MAX_CHANGES_PER_CALL:
         note = (f"That is the first {MAX_CHANGES_PER_CALL} of {len(ids)}; tidy again after "
-                "this to see the rest.")
+                "this to see the rest." + (f" {kept_line}" if kept_line else ""))
         ids = ids[:MAX_CHANGES_PER_CALL]
     return _manage_folders(db, owner, session_id, "delete", {"document_ids": ids},
                            reasons=reasons, note=note)

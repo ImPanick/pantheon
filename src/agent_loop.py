@@ -18,9 +18,14 @@ from typing import Any, AsyncGenerator, List, Dict, Optional, Set
 from urllib.parse import urlparse
 
 from src.llm_core import (
+    # `B934`: defined beside the one reader of the ceiling, which the chat
+    # doors and the local MiniMax profile read too; named here as before.
+    LOCAL_MAX_TOKENS_DEFAULT,
+    LOCAL_MAX_TOKENS_KEY,
     dedupe_model_candidates,
     stream_llm,
     stream_llm_with_fallback,
+    typed_local_max_tokens_ceiling as _typed_local_max_tokens_ceiling,
     _is_ollama_native_url,
     _normalize_http_status,
     _normalize_usage_counts,
@@ -4384,10 +4389,6 @@ def _lift_cap(value: int, lifted: int, *, unlimited: bool, pinned: bool) -> int:
     return lift_cap(value, lifted, unlimited=unlimited, pinned=pinned)
 
 
-LOCAL_MAX_TOKENS_KEY = "local_inference_max_tokens"
-LOCAL_MAX_TOKENS_DEFAULT = 1_000_000
-
-
 def _local_max_tokens_ceiling() -> int:
     """How many tokens this machine will generate for one local reply. `P3-21`.
 
@@ -4407,17 +4408,14 @@ def _local_max_tokens_ceiling() -> int:
     Anything unreadable, unparseable or negative falls back to the default,
     which is the shipped behaviour and therefore the least surprising thing a
     broken settings file can do.
+
+    `B934`: the read itself is `llm_core.typed_local_max_tokens_ceiling`, the
+    one the chat doors and the local MiniMax profile ask (`Law 7`); this adds
+    the agent path's own default for a ceiling nobody typed, which the other
+    doors do not have — on them, untyped means "as before".
     """
-    try:
-        from src.settings import get_setting, setting_is_explicit
-        if not setting_is_explicit(LOCAL_MAX_TOKENS_KEY):
-            return LOCAL_MAX_TOKENS_DEFAULT
-        ceiling = int(get_setting(LOCAL_MAX_TOKENS_KEY, LOCAL_MAX_TOKENS_DEFAULT))
-    except Exception:
-        logger.debug("P3-21: could not read %s; using the shipped default",
-                     LOCAL_MAX_TOKENS_KEY, exc_info=True)
-        return LOCAL_MAX_TOKENS_DEFAULT
-    return ceiling if ceiling >= 0 else LOCAL_MAX_TOKENS_DEFAULT
+    ceiling = _typed_local_max_tokens_ceiling()
+    return LOCAL_MAX_TOKENS_DEFAULT if ceiling is None else ceiling
 
 
 def _resolve_local_lifts(max_rounds: int, max_tokens: int, *, unlimited: bool):

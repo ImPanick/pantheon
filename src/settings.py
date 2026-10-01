@@ -646,6 +646,12 @@ DEFAULT_SETTINGS = {
     # more. Set 0 to turn the lift off entirely and run presets at their own
     # numbers. Clamped to [0, 10_000_000]. No effect on cloud endpoints, which
     # never get the lift at all.
+    #
+    # `B934`: a value a person typed is read on every door — chat mode, Agent
+    # mode and `/api/chat` — and replaces the local MiniMax profile's 2048 where
+    # a request names no length. Untyped, the chat doors and the 2048 are as
+    # they were, and only the agent path lifts, to this default
+    # (`src/llm_core.py`, `typed_local_max_tokens_ceiling`).
     "local_inference_max_tokens": 1_000_000,
     # Soft input-token budget for the agent loop. The DEFAULT value (6000) is the
     # "auto" sentinel: it means "scale the budget to the model's context window"

@@ -20,6 +20,7 @@ from src.llm_core import (
     _normalize_http_status,
     llm_call_async,
     llm_call_async_with_route_fallback,
+    local_door_max_tokens,
     stream_llm,
     stream_llm_with_fallback,
 )
@@ -467,6 +468,7 @@ def _chat_candidate_request_factory(
     owner: Optional[str] = None,
     temperature=None,
     explicit_params=frozenset(),
+    max_tokens=None,
 ):
     """Shape one route-neutral Chat prompt for each candidate window.
 
@@ -477,6 +479,12 @@ def _chat_candidate_request_factory(
     the agent loop already uses, so a mixed fallback chain leaks the cap in
     neither direction on these doors either. ``None`` asks for nothing and the
     request keeps its old shape.
+
+    `B934`. Given the turn's *max_tokens* (the preset's), each candidate gets
+    ``local_door_max_tokens`` for its own URL: the ceiling a person typed for
+    local inference, on a local candidate, and the preset's number on anything
+    else — so a cloud fallback is never sent a local machine's number. With no
+    ceiling typed it is the preset's number for every candidate, as before.
     """
 
     state = {
@@ -520,6 +528,9 @@ def _chat_candidate_request_factory(
         if temperature is not None:
             request["kwargs"] = {"temperature": pan_qwen_route_temperature(
                 temperature, candidate_model, explicit_params)}
+        if max_tokens is not None:
+            request.setdefault("kwargs", {})["max_tokens"] = local_door_max_tokens(
+                max_tokens, candidate_url)
         return request
 
     return factory, state
@@ -1381,6 +1392,7 @@ def setup_chat_routes(
                 owner=owner,
                 temperature=ctx.preset.temperature,
                 explicit_params=explicit_params,
+                max_tokens=ctx.preset.max_tokens,
             )
         requested_model = sess.model
         reply, actual_candidate, actual_model = await llm_call_async_with_route_fallback(
@@ -1394,7 +1406,10 @@ def setup_chat_routes(
             # sets each candidate's own.
             temperature=pan_qwen_route_temperature(
                 ctx.preset.temperature, sess.model, explicit_params),
-            max_tokens=ctx.preset.max_tokens,
+            # `B934`. The ceiling a person typed for local inference, on a
+            # local endpoint — the agent path's rule; with none typed, the
+            # preset's number as before. The factory sets each fallback's own.
+            max_tokens=local_door_max_tokens(ctx.preset.max_tokens, sess.endpoint_url),
             prompt_type=preset_id,
             session_id=session,
             # `P2-13`. So a local MiniMax endpoint honours a chosen temperature
@@ -2462,6 +2477,7 @@ def setup_chat_routes(
                     owner=_user,
                     temperature=ctx.preset.temperature,
                     explicit_params=_explicit_params,
+                    max_tokens=ctx.preset.max_tokens,
                 )
 
             # Send model name early so the frontend can show it during streaming
@@ -2620,8 +2636,11 @@ def setup_chat_routes(
                         # cap), matching agent mode. The old hard 4096 fallback
                         # truncated reasoning models mid-<think> — they'd burn the
                         # whole budget thinking and never emit the answer (seen in
-                        # Compare on heavy generation prompts).
-                        max_tokens=ctx.preset.max_tokens,
+                        # Compare on heavy generation prompts). `B934`: and the
+                        # ceiling a person typed for local inference, on a local
+                        # endpoint, as on `/api/chat` above.
+                        max_tokens=local_door_max_tokens(ctx.preset.max_tokens,
+                                                         sess.endpoint_url),
                         prompt_type=preset_id,
                         tools=None,
                         session_id=session,
