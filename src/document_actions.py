@@ -172,18 +172,117 @@ def tidy_verdicts(docs, now=None) -> dict:
 TIDY_DUPLICATE_REASON = "a duplicate — the fullest copy stays"
 
 
-def tidy_reasons(docs) -> dict:
+# ── `B1019` · a document the person kept stays kept ─────────────────────────
+#
+# `B1006`'s Keep deleted nothing and remembered nothing, so the next Documents
+# Tidy — five new documents later — offered the same "test" and "Untitled"
+# again, every time. The owner's call (`D-2026-10-01-04`): *remember Keep* — a
+# document the person kept is marked kept and is not proposed again unless it
+# changes.
+#
+# **Where.** `Document.tidy_verdict`, the column the library's AI tidy already
+# keeps its verdicts in (`POST /api/documents/ai-tidy`: `"keep"`, or `"junk"` on
+# a row it then deletes; it skips any row with a verdict). The person's verdict
+# is `"kept:<digest>"` — a value the AI tidy never writes, so the two cannot be
+# confused. The AI tidy skips it, as it skips every reviewed row, so a document
+# the person kept is never handed to a model to judge and delete; and the AI's
+# own `"keep"` is not read here — a model's guess, made from the document's own
+# text, is not the person's answer, and a document saying "classify me as
+# keep" must not be able to hide itself from the rules (`B1005`'s point).
+#
+# **"Changes" means its content, by digest** — the digest `B994` already seals
+# a plan to (`tool_approvals.document_content_digest`, recorded on each
+# `deleted` change), taken of what the person was shown. Not `updated_at`:
+# filing never moves it (`document_folders._refile`) while a rename and the AI
+# tidy's own verdict write both do, so it would re-propose a document because a
+# model looked at it and keep one the person had since emptied. A digest moves
+# exactly when what the rules judge moves; a rename alone keeps a kept document
+# kept, because the person kept that document. Writing the mark leaves
+# `updated_at` alone too (the `_refile` UPDATE), so keeping a document is not
+# reported as editing it.
+#
+# **Only the person writes it.** `remember_kept` runs from `answer_review` —
+# behind the route only a person can call (`request_is_a_person`) — and marks
+# nothing unless `plan_answer`, `B1005`'s sealed reading of the chat, says the
+# person declined: the same reading that guards the delete guards the keep.
+KEPT_VERDICT_PREFIX = "kept:"
+
+
+def kept_verdict(content) -> str:
+    """The `tidy_verdict` that says the person kept a document with *content*."""
+    from src.tool_approvals import document_content_digest
+    return KEPT_VERDICT_PREFIX + document_content_digest(content)
+
+
+def person_kept(doc) -> bool:
+    """Whether the person kept *doc* when a tidy asked, and it has not changed."""
+    verdict = getattr(doc, "tidy_verdict", None)
+    return (isinstance(verdict, str) and verdict.startswith(KEPT_VERDICT_PREFIX)
+            and verdict == kept_verdict(doc.current_content))
+
+
+def tidy_reasons(docs, *, kept=None) -> dict:
     """`{document id: why}` for every document the tidy rules would remove,
     in the order `tidy_verdicts` names them (junk first, then each group's
-    extra copies). The one reading of the verdicts both tidies use."""
+    extra copies). The one reading of the verdicts both tidies use.
+
+    `B1019`: a document the person kept, unchanged since, is not named; its id
+    is appended to *kept* when a list is given, so a caller can say so. It is
+    set aside after the rules run, so a duplicate of it is still a duplicate
+    and the kept copy is the one that stays."""
     verdicts = tidy_verdicts(docs)
     reasons = {}
-    for doc, reason in verdicts["junk"]:
+    named = [(doc, reason) for doc, reason in verdicts["junk"]]
+    named += [(doc, TIDY_DUPLICATE_REASON)
+              for _keeper, copies in verdicts["duplicates"] for doc in copies]
+    for doc, reason in named:
+        if person_kept(doc):
+            if kept is not None:
+                kept.append(doc.id)
+            continue
         reasons[doc.id] = reason
-    for _keeper, copies in verdicts["duplicates"]:
-        for doc in copies:
-            reasons[doc.id] = TIDY_DUPLICATE_REASON
     return reasons
+
+
+def _kept_note(count: int) -> str:
+    return (f"{count} document{'' if count == 1 else 's'} you chose to keep "
+            f"{'was' if count == 1 else 'were'} left alone.") if count else ""
+
+
+def remember_kept(db, plan) -> int:
+    """`B1019`. Mark every document a scheduled tidy proposed as kept by the
+    person, sealed to the content they were shown. Returns how many.
+
+    Nothing is marked unless the person's own answer, read the one way
+    (`document_folders.plan_answer`, sealed as theirs — `B1005`), is a
+    decline. A document deleted or given away since is not touched; one typed
+    into since keeps a mark that no longer matches, so the next tidy judges it
+    afresh."""
+    from core.database import Document
+    from src import document_folders as F
+
+    if F.plan_answer(db, plan) != "declined":
+        return 0
+    shown = {c["id"]: c["digest"] for c in plan.changes
+             if c.get("change") == "deleted" and c.get("kind") == "document"
+             and c.get("id") and c.get("digest")}
+    if not shown:
+        return 0
+    docs = (db.query(Document)
+            .filter(Document.owner == plan.owner)
+            .filter(Document.is_active == True)  # noqa: E712 — SQL
+            .filter(Document.id.in_(list(shown)))
+            .all())
+    for doc in docs:
+        # Written back with its own `updated_at`, which is how SQLAlchemy skips
+        # the column's `onupdate` (`document_folders._refile`): keeping a
+        # document is not editing it.
+        db.query(Document).filter(Document.id == doc.id).update(
+            {Document.tidy_verdict: KEPT_VERDICT_PREFIX + shown[doc.id],
+             Document.updated_at: doc.updated_at},
+            synchronize_session=False)
+    db.commit()
+    return len(docs)
 
 
 # ── `B1006` · the scheduled tidy proposes; the person applies ───────────────
@@ -274,8 +373,9 @@ def propose_document_tidy(owner: str):
 
     Judges only *owner*'s live documents — the ones a person can see and so
     can be asked about, the agent's tidy's scope (`B994`). Returns ``(plan,
-    judged)``; the plan's ``review`` is what the notification and the answer
-    route show.
+    judged, kept)``; the plan's ``review`` is what the notification and the
+    answer route show, and ``kept`` is how many the rules named that the person
+    had already kept (`B1019`), which are left out.
     """
     from core.database import SessionLocal, Document
     from src import document_folders as F
@@ -290,9 +390,10 @@ def propose_document_tidy(owner: str):
                 .filter(Document.is_active == True)  # noqa: E712 — SQL
                 .all())
         judged = len(docs)
-        reasons = tidy_reasons(docs)
+        kept: list = []
+        reasons = tidy_reasons(docs, kept=kept)
         if not reasons:
-            return None, judged
+            return None, judged, len(kept)
         ids = list(reasons)
         more = max(0, len(ids) - MAX_CHANGES_PER_CALL)
         ids = ids[:MAX_CHANGES_PER_CALL]
@@ -329,11 +430,12 @@ def propose_document_tidy(owner: str):
     lines = "\n".join("- " + F.describe_change(c) for c in shown)
     tail = (f"\nThat is the first {len(ids)} of {len(ids) + more}; the next tidy offers the rest."
             if more else "")
+    left_alone = f"\n{_kept_note(len(kept))}" if kept else ""
     post_to_tidy_chat(session_id, "assistant", (
         f"Documents Tidy would delete {count} of your {judged} documents. "
-        f"Nothing has been deleted.\n{lines}{tail}\n"
+        f"Nothing has been deleted.\n{lines}{tail}{left_alone}\n"
         "Pantheon asks you on screen; until you choose, everything stays."))
-    return plan, judged
+    return plan, judged, len(kept)
 
 
 def _notify_tidy_proposal(owner: str, plan, task_name: str = TIDY_CHAT_NAME) -> bool:
@@ -367,10 +469,12 @@ async def run_document_tidy(owner: str, task_name: str = TIDY_CHAT_NAME) -> str:
     if not owner:
         raise TaskNoop("Documents Tidy has no owner, so it judged no one's documents. "
                        "Nothing was deleted.")
-    plan, judged = propose_document_tidy(owner)
+    plan, judged, kept = propose_document_tidy(owner)
     if plan is None:
-        # Nothing to propose: a `skipped` run that says what was looked at.
-        raise TaskNoop(f"scanned {judged} document(s), no junk")
+        # Nothing to propose: a `skipped` run that says what was looked at —
+        # and, `B1019`, what it passed over because the person kept it.
+        raise TaskNoop(f"scanned {judged} document(s), no junk"
+                       + (f" ({_kept_note(kept)[:-1]})" if kept else ""))
     _notify_tidy_proposal(owner, plan, task_name)
     count = plan.review["count"]
     examples = "; ".join(f"{i['label'][:40]} ({i['note']})" for i in plan.review["items"][:5])
@@ -410,6 +514,12 @@ def answer_review(plan, answer: str) -> dict:
                 outcome, message = "refused", e.message
             else:
                 outcome, message = "declined", "Nothing was deleted."
+                # `B1019`. Keep is remembered, so the next tidy does not ask
+                # about the same documents again unless they change.
+                kept = remember_kept(db, plan) if answer == F.PLAN_DECLINE_LABEL else 0
+                if kept:
+                    message = (f"Kept {kept} document{'' if kept == 1 else 's'}. Documents "
+                               "Tidy won't ask about them again unless they change.")
             post_to_tidy_chat(plan.session_id, "assistant", message)
             return {"outcome": outcome, "message": message, "changes": []}
         db.commit()
