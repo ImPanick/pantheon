@@ -6,6 +6,7 @@ Single source of truth for reading/writing data/settings.json and data/features.
 All modules should import from here instead of accessing files directly.
 """
 
+import copy
 import json
 import time
 import logging
@@ -34,9 +35,48 @@ WITHHELD_SETTING_KEYS = frozenset({"workstation_token"})
 # Tiny TTL cache for settings/features. get_setting() is called on hot paths
 # (every chat, every preprocess); without this it re-parses the JSON each call.
 # Picks up edits within _CACHE_TTL seconds, which is fine for human-edited config.
+#
+# `B957`. **The cache is never handed out.** `load_settings` and `load_features`
+# return a copy the caller owns, and `get_setting` copies the one value it
+# returns when that value is a dict or a list. Until 2026-10-01 both loaders
+# returned the cached dict itself, and nearly every writer here is
+# `s = load_settings(); s[k] = v; save_settings(s)` — eight functions in six
+# modules, measured by AST and then driven — so a writer that assigned and then
+# raised, refused or failed to save had already changed the answer every other
+# reader got for up to `_CACHE_TTL`, and the next unrelated save in that window
+# wrote it to disk. (The row counted seventeen: its AST walk also counted the
+# six `setup_*_routes` functions enclosing the route writers, and three more
+# writers read the file through their own `_load_settings` and never saw this
+# cache.) `P20-02` found it on `POST /api/auth/settings`, where a refusal is
+# the designed path, and fixed that one caller; this fixes the source.
 _CACHE_TTL = 2.0
 _settings_cache: tuple[float, dict] | None = None
 _features_cache: tuple[float, dict] | None = None
+
+# Values a copy may share: nothing reachable through them can be assigned into.
+_SHAREABLE = (str, int, float, bool, type(None))
+
+
+def _owned_copy(value: Any) -> Any:
+    """A copy of a settings value that shares nothing mutable with `value`.
+
+    Settings are JSON on disk and JSON-shaped in `DEFAULT_SETTINGS`, so dicts
+    and lists are walked by hand and anything else falls back to
+    `copy.deepcopy`. Measured on `DEFAULT_SETTINGS` (131 keys, 12 of them a dict
+    or a list), 2026-10-01: **~23µs** per whole-dict copy this way against ~90µs
+    for `copy.deepcopy` and ~0.5µs for `dict()`. A shallow `dict()` was the
+    row's first suggestion and is not enough: `set_builtin_override` assigns
+    into the nested `builtin_tool_overrides` map before it saves, and the
+    unreadable-file path's `dict(DEFAULT_SETTINGS)` shared every nested default
+    with the module constant itself.
+    """
+    if isinstance(value, _SHAREABLE):
+        return value
+    if type(value) is dict:
+        return {k: _owned_copy(v) for k, v in value.items()}
+    if type(value) is list:
+        return [_owned_copy(v) for v in value]
+    return copy.deepcopy(value)
 
 # Distinguishes "caller passed no default" from "caller passed None", which is
 # a real default for several keys. See `setting_is_explicit`.
@@ -891,7 +931,16 @@ DEFAULT_FEATURES = {
 # ── Settings (data/settings.json) ──
 
 def load_settings() -> dict:
-    """Load settings merged with defaults. Always returns a complete dict."""
+    """Load settings merged with defaults. Always returns a complete dict, and
+    the caller owns it: assigning into it changes nothing anyone else reads
+    until it is passed to `save_settings` (`B957`)."""
+    return _owned_copy(_cached_settings())
+
+
+def _cached_settings() -> dict:
+    """The merged settings this process is serving — **never returned to a
+    caller outside this module.** `load_settings` copies it; `get_setting`
+    copies only the value it hands back. `B957`."""
     global _settings_cache
     now = time.monotonic()
     if _settings_cache and (now - _settings_cache[0]) < _CACHE_TTL:
@@ -927,6 +976,25 @@ def load_settings() -> dict:
     return merged
 
 
+# `load_settings` as this module defined it. `_serving_settings` compares
+# against it so a replaced loader is still the one every read goes through.
+_LOAD_SETTINGS = load_settings
+
+
+def _serving_settings() -> dict:
+    """What a read is answered from, without copying it: the cache — or, when
+    `load_settings` has been replaced, whatever the replacement returns.
+
+    `load_settings` is the one door every settings read has gone through, and
+    thirteen test files steer `get_setting` by replacing it (measured
+    2026-10-01, `B957`). Reading the cache directly is what keeps
+    `get_setting` cheap; honouring a replaced loader is what keeps that door
+    the only one (`Law 7`). Callers outside this module never see this dict."""
+    if load_settings is not _LOAD_SETTINGS:
+        return load_settings()
+    return _cached_settings()
+
+
 def save_settings(settings: dict):
     """Persist settings to disk (atomic; see core.atomic_io).
 
@@ -939,8 +1007,17 @@ def save_settings(settings: dict):
 
 
 def get_setting(key: str, default: Any = None) -> Any:
-    """Read a single setting value."""
-    return load_settings().get(key, default)
+    """Read a single setting value.
+
+    The hot path: it reads the cache directly instead of copying the whole
+    dict the way `load_settings` does, and copies only a dict or list value it
+    returns, so a caller that appends to `get_setting("networks")` edits its
+    own list and not the process's (`B957`). A scalar costs one `isinstance`.
+    A missing key returns `default` itself — that object is the caller's."""
+    settings = _serving_settings()
+    if key not in settings:
+        return default
+    return _owned_copy(settings[key])
 
 
 def setting_is_explicit(key: str, *, default: Any = _UNSET) -> bool:
@@ -987,7 +1064,7 @@ def setting_is_explicit(key: str, *, default: Any = _UNSET) -> bool:
         default = DEFAULT_SETTINGS[key]
     if not is_setting_overridden(key):
         return False
-    return load_settings().get(key) != default
+    return _serving_settings().get(key) != default
 
 
 def env_backed(settings: dict, key: str, env_name: str, default: str = "") -> str:
@@ -1380,7 +1457,7 @@ def resolve_limit_detail(key: str, default: int, *,
 
     try:
         if setting_is_explicit(key):
-            stored = _coerce_limit(load_settings().get(key),
+            stored = _coerce_limit(get_setting(key),
                                    source="instance setting", minimum=minimum,
                                    maximum=maximum, label=label)
             if stored is not None:
@@ -1442,7 +1519,14 @@ def get_user_setting(key: str, owner: str = "", default: Any = None) -> Any:
 # ── Features (data/features.json) ──
 
 def load_features() -> dict:
-    """Load feature flags merged with defaults."""
+    """Load feature flags merged with defaults. The caller owns the dict it
+    gets back — the same defect as `load_settings` had, on the same cache
+    (`B957`): `POST /api/import` updates what this returns before it saves."""
+    return _owned_copy(_cached_features())
+
+
+def _cached_features() -> dict:
+    """The merged feature flags; never returned outside this module (`B957`)."""
     global _features_cache
     now = time.monotonic()
     if _features_cache and (now - _features_cache[0]) < _CACHE_TTL:
