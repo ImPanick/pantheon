@@ -558,6 +558,33 @@ def _resolve_crew_member_id(db, crew_member_id, owner):
     return crew.id
 
 
+def _admin_refusal(owner, task_type, action) -> Optional[Dict]:
+    """The route's admin gate, asked of the same policy, as a tool reply.
+
+    `B1038`. `routes/task/task_routes.py` refuses a non-admin an admin-only
+    action at four doors — create, edit (with the type and action the task
+    would have after it), resume and run — through
+    `_require_admin_for_task_action`. This tool reaches the same four and asked
+    nothing: measured with `owner_has_admin_task_privileges` answering False,
+    a non-admin's create of `ssh_command` stored the task and said "Created
+    task 'reboot'", an edit switched a task to `ssh_command`, a resume put a
+    refused task back on, and a run said "triggered" — exit 0 each time, while
+    the engine refused and PAUSED the task. No command ran (the engine's gate,
+    `FORBIDDEN.md` Part 2, holds); the defect was a tool telling the model a
+    refused thing had happened (`Law 17`'s adversary is an injected prompt,
+    and what it gets told matters). One question, asked before anything is
+    written or dispatched, with the route's own sentence (`Law 7`). `None`
+    when the action is allowed.
+    """
+    from src.task_action_policy import (
+        admin_refusal_message, is_admin_only_task_action,
+        owner_has_admin_task_privileges,
+    )
+    if is_admin_only_task_action(task_type, action) and not owner_has_admin_task_privileges(owner):
+        return {"error": admin_refusal_message(action), "exit_code": 1}
+    return None
+
+
 async def do_manage_tasks(content: str, owner: Optional[str] = None) -> Dict:
     """Handle manage_tasks tool calls: CRUD on scheduled tasks."""
     import uuid as _uuid
@@ -624,6 +651,9 @@ async def do_manage_tasks(content: str, owner: Optional[str] = None) -> Dict:
                 return {"error": "Prompt is required for llm/research tasks", "exit_code": 1}
             if task_type == "action" and not args.get("action_name"):
                 return {"error": "action_name is required for action tasks", "exit_code": 1}
+            refused = _admin_refusal(owner, task_type, args.get("action_name"))
+            if refused:
+                return refused
 
             # Compute next_run for schedule triggers
             next_run = None
@@ -688,6 +718,14 @@ async def do_manage_tasks(content: str, owner: Optional[str] = None) -> Dict:
             # reach it. `list` already scopes to an exact owner match.
             if owner and task.owner != owner:
                 return {"error": "Access denied", "exit_code": 1}
+            # `B1038`. With the type and action the edit would leave, as the
+            # route's update asks.
+            refused = _admin_refusal(
+                owner,
+                args["task_type"] if args.get("task_type") is not None else task.task_type,
+                args["action_name"] if args.get("action_name") is not None else task.action)
+            if refused:
+                return refused
 
             changed = []
             for field in ("name", "prompt", "output_target"):
@@ -757,6 +795,12 @@ async def do_manage_tasks(content: str, owner: Optional[str] = None) -> Dict:
                 return {"error": f"Task {task_id} not found", "exit_code": 1}
             if owner and task.owner != owner:
                 return {"error": "Access denied", "exit_code": 1}
+            if action == "resume":
+                # `B1038`. Pausing is always allowed; putting a refused task
+                # back on its schedule is not, as at the route.
+                refused = _admin_refusal(owner, task.task_type, task.action)
+                if refused:
+                    return refused
 
             if action == "pause":
                 task.status = "paused"
@@ -778,6 +822,9 @@ async def do_manage_tasks(content: str, owner: Optional[str] = None) -> Dict:
                 return {"error": f"Task {task_id} not found", "exit_code": 1}
             if owner and task.owner != owner:
                 return {"error": "Access denied", "exit_code": 1}
+            refused = _admin_refusal(owner, task.task_type, task.action)  # `B1038`
+            if refused:
+                return refused
 
             from src.event_bus import get_task_scheduler
             scheduler = get_task_scheduler()
@@ -809,14 +856,11 @@ async def do_manage_tasks(content: str, owner: Optional[str] = None) -> Dict:
             # The route's admin gate, asked of the same policy before the
             # scheduler is reached. Left to the engine, a refused admin-only
             # task is PAUSED (`record_admin_refusal`) — a dry run that changed
-            # the task would break the one promise it makes.
-            from src.task_action_policy import (
-                admin_refusal_message, is_admin_only_task_action,
-                owner_has_admin_task_privileges,
-            )
-            if (is_admin_only_task_action(task.task_type, task.action)
-                    and not owner_has_admin_task_privileges(owner)):
-                return {"error": admin_refusal_message(task.action), "exit_code": 1}
+            # the task would break the one promise it makes. (`B1038`: the same
+            # question the other four doors now ask, in one place.)
+            refused = _admin_refusal(owner, task.task_type, task.action)
+            if refused:
+                return refused
 
             from src.event_bus import get_task_scheduler
             scheduler = get_task_scheduler()
