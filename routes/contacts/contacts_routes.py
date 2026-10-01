@@ -29,23 +29,25 @@ from src.env_flags import env_flag
 
 logger = logging.getLogger(__name__)
 
-from src.constants import DATA_DIR as _DATA_DIR, SETTINGS_FILE as _SETTINGS_FILE, CONTACTS_FILE as _CONTACTS_FILE
+from src.constants import DATA_DIR as _DATA_DIR, CONTACTS_FILE as _CONTACTS_FILE
 DATA_DIR = Path(_DATA_DIR)
-SETTINGS_FILE = Path(_SETTINGS_FILE)
 LOCAL_CONTACTS_FILE = Path(_CONTACTS_FILE)
 
 
+# `B988`. A second door onto `settings.json` until 2026-10-01 — its own raw
+# read and `atomic_write_json`, so `PUT /api/contacts/config` never invalidated
+# `src.settings`' cache and an unrelated save inside `_CACHE_TTL` wrote the
+# CardDAV change away again (measured, with `email_helpers`' twin). Now the one
+# door (`Law 7`); `P3-16`'s refusal to overwrite an unreadable file comes with
+# it. Looked up at call time so a redirected `src.settings` redirects this.
 def _load_settings():
-    if SETTINGS_FILE.exists():
-        return json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
-    return {}
+    import src.settings as _settings
+    return _settings.load_settings()
 
 
 def _save_settings(settings):
-    from core.atomic_io import atomic_write_json
-    # `P3-16`: the same settings.json `src/settings.py` guards, written here
-    # through a second door. Both doors need the same lock.
-    atomic_write_json(str(SETTINGS_FILE), settings, indent=2, preserve_unreadable=True)
+    import src.settings as _settings
+    _settings.save_settings(settings)
 
 
 # `H07`. These three read `settings.get(k, os.environ.get(K, ""))`, and a dict

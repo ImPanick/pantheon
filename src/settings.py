@@ -60,7 +60,7 @@ WITHHELD_SETTING_KEYS = frozenset(WITHHELD_SETTING_LABELS)
 # wrote it to disk. (The row counted seventeen: its AST walk also counted the
 # six `setup_*_routes` functions enclosing the route writers, and three more
 # writers read the file through their own `_load_settings` and never saw this
-# cache.) `P20-02` found it on `POST /api/auth/settings`, where a refusal is
+# cache — `B988` sent those through this module too.) `P20-02` found it on `POST /api/auth/settings`, where a refusal is
 # the designed path, and fixed that one caller; this fixes the source.
 _CACHE_TTL = 2.0
 _settings_cache: tuple[float, dict] | None = None

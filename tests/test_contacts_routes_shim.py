@@ -6,8 +6,10 @@ replacement so the legacy import path and the canonical ``routes.contacts.*``
 path resolve to the *same* module object. This is required because:
 
 * ``test_carddav_password_encryption.py`` uses string-targeted
-  ``monkeypatch.setattr("routes.contacts_routes.SETTINGS_FILE", ...)`` which
-  must reach the canonical module to take effect;
+  ``monkeypatch.setattr("routes.contacts_routes.DATA_DIR", ...)`` which
+  must reach the canonical module to take effect (it patched
+  ``SETTINGS_FILE`` the same way until `B988` sent settings through
+  ``src.settings``);
 * ``test_contacts_add_null_name.py`` / ``test_contacts_carddav_security.py``
   use ``import routes.contacts_routes as cr`` + ``setattr(cr, ...)``;
 * the module owns mutable state (``_contact_cache``) that must be shared
@@ -34,7 +36,7 @@ def test_string_targeted_monkeypatch_reaches_canonical(monkeypatch):
     the canonical module.
 
     ``test_carddav_password_encryption.py`` patches
-    ``"routes.contacts_routes.SETTINGS_FILE"`` as a fixture setup; for that
+    ``"routes.contacts_routes.DATA_DIR"`` as a fixture setup; for that
     to take effect at runtime, the legacy module name and the canonical
     module must be identical.
     """

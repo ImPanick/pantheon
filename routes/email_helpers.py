@@ -606,9 +606,8 @@ def _cleanup_compose_uploads(tokens) -> None:
             pass
 
 
-from src.constants import DATA_DIR as _DATA_DIR, MAIL_ATTACHMENTS_DIR, SETTINGS_FILE as _SETTINGS_FILE, SCHEDULED_EMAILS_DB
+from src.constants import DATA_DIR as _DATA_DIR, MAIL_ATTACHMENTS_DIR, SCHEDULED_EMAILS_DB
 DATA_DIR = Path(_DATA_DIR)
-SETTINGS_FILE = Path(_SETTINGS_FILE)
 # Override at deploy time via PANTHEON_MAIL_ATTACHMENTS_DIR. Defaults to a
 # subdir of the install's data/ tree so the app works out-of-the-box without
 # a hardcoded /home/<user>/ path.
@@ -1057,17 +1056,27 @@ def _init_scheduled_db():
 _init_scheduled_db()
 
 
+# `B988`. These two were a second door onto `settings.json`: a raw
+# `json.loads` of the file and an `atomic_write_json` back, beside
+# `src.settings`' cached one. The save never invalidated that cache, so for up
+# to `_CACHE_TTL` every `get_setting` reader answered the value from before the
+# save, and any `src.settings` writer in that window saved its cached copy over
+# it. Measured on `0317787`: `PUT /api/email/config` stored `email_auto_tag:
+# true`, `get_setting` still answered `False`, and one unrelated
+# `save_settings(load_settings())` put `false` back on disk. They are now the
+# one door (`Law 7`) — the `P3-16` refusal to overwrite an unreadable file, the
+# defaults merge and the cache invalidation come with it. The names stay
+# because `email_routes` and `email_pollers` import them, and the module is
+# looked up at call time so a test (or a reload) that redirects
+# `src.settings` redirects these too.
 def _load_settings():
-    if SETTINGS_FILE.exists():
-        return json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
-    return {}
+    import src.settings as _settings
+    return _settings.load_settings()
 
 
 def _save_settings(settings):
-    from core.atomic_io import atomic_write_json
-    # `P3-16`: settings.json holds mail credentials. Same lock as the other
-    # two doors onto this file (`src/settings.py`, `contacts_routes.py`).
-    atomic_write_json(str(SETTINGS_FILE), settings, indent=2, preserve_unreadable=True)
+    import src.settings as _settings
+    _settings.save_settings(settings)
 
 
 def _get_email_config(account_id: str | None = None, owner: str = "") -> dict:

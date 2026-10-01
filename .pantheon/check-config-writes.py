@@ -54,10 +54,9 @@ STORES: dict[tuple[str, str], tuple[str, str]] = {
         GUARDED, "credentials and every operator choice, written by ~20 read-modify-write callers"),
     ("src/settings.py", "FEATURES_FILE"): (
         GUARDED, "admin feature flags; H05 is the record of one coming back on by itself"),
-    ("routes/contacts/contacts_routes.py", "str(SETTINGS_FILE)"): (
-        GUARDED, "second door onto settings.json"),
-    ("routes/email_helpers.py", "str(SETTINGS_FILE)"): (
-        GUARDED, "third door onto settings.json, and it carries mail credentials"),
+    # `B988`: `contacts_routes.py` and `email_helpers.py` wrote settings.json
+    # through doors of their own (two entries here until 2026-10-01). Both now
+    # call `src.settings.save_settings`, so the file has one write site.
     ("routes/contacts/contacts_routes.py", "str(LOCAL_CONTACTS_FILE)"): (
         GUARDED, "an address book; the loader answers a bad read with []"),
     ("routes/prefs_routes.py", "PREFS_FILE"): (

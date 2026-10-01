@@ -11,10 +11,13 @@ import pytest
 def _import_contacts(tmp_path, monkeypatch):
     sys.modules.setdefault("core.database", MagicMock())
 
-    monkeypatch.setattr(
-        "routes.contacts_routes.SETTINGS_FILE",
-        tmp_path / "settings.json",
-    )
+    # `B988`: the contacts routes read and write settings.json through
+    # `src.settings` now, so that is the module to point at the temp file
+    # (patching the contacts module's old `SETTINGS_FILE` would leave every
+    # case here reading and writing the real data dir).
+    import src.settings as _settings
+    monkeypatch.setattr(_settings, "SETTINGS_FILE", str(tmp_path / "settings.json"))
+    _settings._invalidate_caches()
     monkeypatch.setattr(
         "routes.contacts_routes.DATA_DIR",
         tmp_path,

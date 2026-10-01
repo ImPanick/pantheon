@@ -207,10 +207,10 @@ def test_import_features_that_fail_to_save(store, monkeypatch):
 
 
 def test_contacts_config_that_fails_to_save(store, monkeypatch):
-    """`PUT /api/contacts/config` reads `settings.json` through its own module's `_load_settings`
-    (a second door onto the file, named at its definition), so it never saw the
-    cache and never leaked through it — this passes on the old tree too, and
-    pins that it still does not leak."""
+    """`PUT /api/contacts/config` read `settings.json` through a door of its own
+    until `B988`, so it never saw the cache and never leaked through it. It
+    reads through `src.settings` now, so this is the `B957` copy holding for one
+    more writer."""
     import routes.contacts.contacts_routes as C
     S = store
     S.get_setting("carddav_username")
@@ -223,10 +223,10 @@ def test_contacts_config_that_fails_to_save(store, monkeypatch):
 
 
 def test_email_config_that_fails_to_save(store, monkeypatch):
-    """`PUT /api/email/config` reads `settings.json` through its own module's `_load_settings`
-    (a second door onto the file, named at its definition), so it never saw the
-    cache and never leaked through it — this passes on the old tree too, and
-    pins that it still does not leak."""
+    """`PUT /api/email/config` read `settings.json` through a door of its own
+    until `B988`, so it never saw the cache and never leaked through it. It
+    reads through `src.settings` now, so this is the `B957` copy holding for one
+    more writer."""
     import routes.email_routes as E
     from routes.email_helpers import require_owner
     S = store
@@ -321,10 +321,10 @@ def test_manage_settings_that_fails_to_save(store, db, monkeypatch):
 
 
 def test_an_email_scan_whose_flag_save_fails(store, monkeypatch):
-    """`_run_auto_summarize_once` reads `settings.json` through its own module's `_load_settings`
-    (a second door onto the file, named at its definition), so it never saw the
-    cache and never leaked through it — this passes on the old tree too, and
-    pins that it still does not leak."""
+    """`_run_auto_summarize_once` read `settings.json` through a door of its own
+    until `B988`, so it never saw the cache and never leaked through it. It
+    reads through `src.settings` now, so this is the `B957` copy holding for one
+    more writer."""
     import routes.email_pollers as P
     S = store
     before = S.get_setting("email_auto_summarize")
