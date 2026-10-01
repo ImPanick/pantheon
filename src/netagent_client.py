@@ -1,9 +1,13 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Pantheon's side of the network agent. A credential, not a capability.
 
-`P17-01`. The agent runs on the host and has the LAN; this module holds a token
-for it. The container still cannot reach `192.168.1.1` and that stays true —
-adding this must not become the hole `FORBIDDEN.md` Part 2 says never opens.
+`P17-01`. The agent runs on the host and sees the LAN as the host does; this
+module holds a token for it. Whether the container itself reaches `192.168.1.1`
+is Docker's answer, not this module's — it timed out on the owner's Docker
+Desktop on 2026-09-11 and answered on Docker Desktop 29.7.2 for Windows on
+2026-10-01 (`B975`) — and nothing below rests on it: adding the agent must not
+become the hole `FORBIDDEN.md` Part 2 says never opens, whatever the container
+can reach on its own.
 
 **HOW THAT IS GUARANTEED, because "we'll be careful" is not a control.**
 

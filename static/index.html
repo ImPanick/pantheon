@@ -3097,9 +3097,10 @@
           <div class="admin-card" style="margin-top:12px;">
             <h2>Network agent</h2>
             <div class="admin-toggle-sub" style="margin-bottom:10px;line-height:1.5;">
-              Pantheon runs in a container and cannot reach your LAN &mdash; that is deliberate,
-              not a limitation to work around. The agent is a small read-only process you run
-              on the host; Pantheon holds a credential for it rather than the reach itself.
+              The agent is a small read-only process you run on the host. It sees your
+              network the way the host does &mdash; the host&rsquo;s own addresses and the devices
+              it has talked to &mdash; which Pantheon&rsquo;s container cannot see from inside
+              Docker. Pantheon holds a credential for it rather than the reach itself.
               Leave both blank and nothing is called.
               <br><br>
               Start it with <code>python -m netagent.server</code> on the machine that has the

@@ -1,11 +1,16 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""`P17-01`'s third Verify clause: the container still cannot reach the LAN.
+"""`P17-01`'s third Verify clause: the network agent adds no reach of its own.
 
 The row reads: *"Pantheon reaches the agent, the agent reaches the LAN, the
-container still cannot, and a test proves the third."*
+container still cannot, and a test proves the third."* Its premise — that the
+container cannot reach the LAN — was measured on the owner's Docker Desktop on
+2026-09-11 (`192.168.1.1:80` TimeoutError) and **no longer holds there**:
+measured 2026-10-01 on Docker Desktop 29.7.2 for Windows, a container on the
+default bridge and on a compose network reached `192.168.1.1:80`/`:443` and the
+host's `:445` (`B975`). What this file proves never depended on it, and is what
+it always was: **the agent is not a way for content to name an address.**
 
-The third is the one that needs proving, because it is the one adding this
-capability could quietly undo. `FORBIDDEN.md` Part 2 says the five SSRF
+That is the part adding this capability could quietly undo. `FORBIDDEN.md` Part 2 says the five SSRF
 validators never lift, and `P17-02` exists to keep `P17` from becoming a hole in
 them. So: the validators are still strict, and the new client offers no
 parameter through which a target address can arrive.

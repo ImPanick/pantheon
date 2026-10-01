@@ -1,16 +1,18 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """`P17-01`. The process that actually has the LAN.
 
-Measured from inside the running container on the owner's machine: `1.1.1.1:53`
-reachable, `192.168.1.1:80` TimeoutError. The agent had more reach to the public
-internet than to the network it lives on, and for a project whose first law about
-dependence is "we drop external dependence" that is exactly backwards.
+Measured from inside the running container on the owner's machine, 2026-09-11:
+`1.1.1.1:53` reachable, `192.168.1.1:80` TimeoutError. The agent had more reach to
+the public internet than to the network it lives on, and for a project whose first
+law about dependence is "we drop external dependence" that is exactly backwards.
 
-**The container staying unable to reach the LAN is a feature.** The alternative
-is handing LAN reach to a 2.9GB container that runs agent-authored code, which
-puts the owner's network inside its blast radius by construction. So the
-capability lives in a small process on the host and Pantheon holds a credential
-rather than the capability.
+**That no longer holds on the owner's machine (`B975`)**: measured 2026-10-01 on
+Docker Desktop 29.7.2 for Windows, a container on the default bridge and on a
+compose network reached `192.168.1.1:80`/`:443` and the host's `:445`. How much
+LAN a container reaches is Docker's answer, and it changed. What a bridged
+container still cannot see is the network as the host sees it — its neighbour
+table and its addresses are the bridge's — so that capability lives in a small
+process on the host and Pantheon holds a credential rather than the capability.
 
 These tests drive the real server over a real socket. A handler asserted about
 rather than called is how an auth check gets deleted and nothing notices.

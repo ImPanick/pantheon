@@ -1,14 +1,22 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # The network agent
 
-Pantheon runs in a container and cannot reach your LAN. **That is deliberate.**
-The alternative is handing LAN reach to a 2.9 GB container that runs
-agent-authored code, which would put your network inside its blast radius by
-construction.
+Pantheon runs in a container, and how much of your LAN a container reaches is
+Docker's answer, not Pantheon's. When this agent was written the answer on the
+owner's Docker Desktop was *nothing* — `192.168.1.1:80` timed out from inside
+the container (measured 2026-09-11, `P17-01`). **It is no longer that answer**:
+measured 2026-10-01 on Docker Desktop 29.7.2 for Windows, a container on the
+default bridge and one on a compose network both reached the router
+(`192.168.1.1:80` and `:443`) and the host's own `:445` (`B975`). So do not count
+on Pantheon's container being cut off from your network; `THREAT_MODEL.md`
+(Known Gap 1) says what that means for the agent's shell.
 
-So the capability lives here instead: a small read-only process you run on the
-machine that has the network, and Pantheon holds a *credential* for it rather
-than the reach itself.
+What a container still cannot do from inside Docker is see the network the way
+the host does. Its neighbour table is the bridge's (`172.18.0.x`) and never your
+devices, its addresses are the bridge's and never the host's — topology, not
+permission, and on Docker Desktop no flag changes it. So that capability lives
+here: a small read-only process you run on the machine that has the network, and
+Pantheon holds a *credential* for it rather than the reach itself.
 
 ## What it is
 
