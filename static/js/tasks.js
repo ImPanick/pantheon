@@ -27,7 +27,7 @@ import {
   DAYS_OF_WEEK,
 } from './tasks/taskFields.js';
 import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
-import { PLAY_GLYPH, playIcon, stopIcon } from './icons.js';
+import { PLAY_GLYPH, playIcon, stopIcon, WORKFLOW_GLYPH } from './icons.js';
 import {
   runStatusLabel, runStaleLabel, runStatusTone, runStatusDotClass, isRunFinished,
   runLeftNoAnswer,
@@ -715,7 +715,12 @@ function _renderList() {
       items.push({ label: 'History', icon: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>', action: () => _showRunHistory(task.id, task.name) });
       // `P8-34`. Beside History because they are the same question asked two
       // ways — History is what this task did, Workflow is what it is part of.
-      items.push({ label: 'Workflow', icon: '<rect x="4" y="3" width="7" height="5" rx="1"/><rect x="13" y="16" width="7" height="5" rx="1"/><rect x="2" y="16" width="7" height="5" rx="1"/><path d="M7.5 8v4h9v4"/><path d="M5.5 16v-4"/>', action: () => _showWorkflowDiagram(task.id, task.name) });
+      // `P22-02`: Workflow opens the Workbench on this task's workflow, and the
+      // Mermaid drawing stays one item down as *Read as a diagram*.
+      items.push({ label: 'Workflow', icon: WORKFLOW_GLYPH, action: () => import('./workbench/workbench.js')
+        .then((wb) => wb.openWorkbench({ focusId: task.id, describeTrigger: _scheduleLabel }))
+        .catch(() => uiModule.showError('The Workbench did not load. Reload the page and try again.')) });
+      items.push({ label: 'Read as a diagram', icon: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>', action: () => _showWorkflowDiagram(task.id, task.name) });
       if (task.is_builtin && task.is_modified) {
         items.push({ label: 'Revert to default', icon: '<polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>', action: () => _doRevert(task.id) });
       }
@@ -3352,6 +3357,9 @@ const tasksModule = {
   // `_activitySources`.
   registerActivitySource, unregisterActivitySource, refreshActivityView,
   activityEntryControls, collectActivitySourceEntries,
+  // `P22-02`. The words for what starts a task, for the Workbench's door in
+  // `app.js` to hand its canvas — one wording of a schedule, and it lives here.
+  scheduleLabel: _scheduleLabel,
 };
 export default tasksModule;
 window.tasksModule = tasksModule;

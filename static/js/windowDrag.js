@@ -46,8 +46,13 @@ import { makeWindowResizable } from './windowResize.js';
 
 // `P10-06`. How far one arrow press moves or resizes a window: the step the
 // three separators take (`P10-03`), so an arrow key means one distance
-// everywhere in the window system.
-const KEY_STEP = 16;
+// everywhere in the window system. Exported for `P22-02`: an arrow key moves a
+// step on the Workbench's canvas by the same distance.
+export const KEY_STEP = 16;
+// How far the pointer has to travel before a press is a drag rather than a
+// click. Module-level and exported for `P22-02`, whose canvas tells a click on
+// a step (open it) from a drag (move it) by the same distance a title bar does.
+export const MOVE_THRESHOLD = 4;
 const KEY_DIRS = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
 
 const SNAP_PX = 6;        // cursor distance from top edge for fullscreen snap
@@ -121,7 +126,6 @@ export function makeWindowDraggable(modal, options = {}) {
   // header click handlers (e.g. "collapse expanded card / back to list")
   // would otherwise fire after a drag and collapse the modal contents.
   let movedDuringDrag = false;
-  const MOVE_THRESHOLD = 4;
 
   const _showSnapHint = (on) => {
     // Top-edge fullscreen hint. Side hints come from the dock controllers.

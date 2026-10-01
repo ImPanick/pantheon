@@ -334,7 +334,9 @@ def test_no_module_hand_writes_a_play_stop_or_chevron_svg_any_more():
     """The other half of one-place: a module could import the table and still
     inline its own `<svg>` around a glyph. Every site goes through
     `playIcon`/`stopIcon`/`chevronIcon`/`iconSvg` or takes a bare glyph, so the
-    modules importing the table are the modules drawing these three.
+    modules importing the table are the modules drawing these three — and, since
+    `P22-02`, the two drawing the workflow glyph (`WORKFLOW_GLYPH`: ⋮ → Workflow
+    in `tasks.js` and the Workbench's dock chip in `modalManager.js`).
 
     The names are read out of the IMPORT STATEMENT and not out of the file.
     `B83`'s version scanned the whole module for the word, and three modules
@@ -380,6 +382,7 @@ def test_no_module_hand_writes_a_play_stop_or_chevron_svg_any_more():
         "static/js/galleryEditor.js": ["chevronIcon"],
         "static/js/gallery.js": ["chevronIcon"],
         "static/js/markdown.js": ["playIcon"],
+        "static/js/modalManager.js": ["WORKFLOW_GLYPH", "iconSvg"],
         "static/js/modelPicker.js": ["chevronIcon"],
         "static/js/notes.js": ["chevronIcon", "stopIcon"],
         "static/js/planWindow.js": ["chevronIcon"],
@@ -389,7 +392,7 @@ def test_no_module_hand_writes_a_play_stop_or_chevron_svg_any_more():
         "static/js/sessions.js": ["chevronIcon"],
         "static/js/settings.js": ["chevronIcon"],
         "static/js/skills.js": ["PLAY_GLYPH", "chevronIcon"],
-        "static/js/tasks.js": ["PLAY_GLYPH", "playIcon", "stopIcon"],
+        "static/js/tasks.js": ["PLAY_GLYPH", "WORKFLOW_GLYPH", "playIcon", "stopIcon"],
         "static/js/tts-ai.js": ["playIcon", "stopIcon"],
     }, importers
     # `checklist.js` re-exports rather than imports, which the test below pins.

@@ -30,6 +30,7 @@ import { previewZoneAt, clearPreview, snapModalToZone } from './tileManager.js';
 import { suspendDock, resumeDock, clearRightDock, applyEdgeDock } from './modalSnap.js';
 import { dismissOrRemove } from './escMenuStack.js';
 import { nextToolWindowZ } from './toolWindowZOrder.js';
+import { WORKFLOW_GLYPH, iconSvg } from './icons.js';
 
 const _state = new Map(); // id -> { restoreFn, closeFn, railBtnId, isMinimized, restoreMinHeight }
 
@@ -155,6 +156,9 @@ const _LABELS = {
   // `P20-05`. The workstation's screen — the same monitor the Settings panel
   // and the tool card's *workstation* label draw.
   'workstation-screen-modal': { label: 'Workstation screen', icon: 'M4 3h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zM8 21h8M12 17v4' },
+  // `P22-02`. The Workbench — the workflow glyph from the shared table, the
+  // same picture as its two doors and ⋮ → Workflow on a task card.
+  'workbench-modal':   { label: 'Workbench', icon: iconSvg(WORKFLOW_GLYPH, { outline: true }) },
 };
 
 // ── `P9-11` — background work, on the dock, whether or not its window is open ──
@@ -1723,6 +1727,10 @@ const _AUTO_WIRE = {
   // the palette, all through `openWorkstationScreen` (`workstationScreen.js`);
   // no rail or sidebar button of its own.
   'workstation-screen-modal': { rail: null,         sidebar: null },
+  // `P22-02`. The Workbench: the last of the sidebar's Tools and its rail twin
+  // (`app.js`), and ⋮ → Workflow on a task card — all through
+  // `workbench/workbench.js:openWorkbench`.
+  'workbench-modal':      { rail: 'rail-workbench', sidebar: 'tool-workbench-btn' },
 };
 
 function _autoRegister(id) {

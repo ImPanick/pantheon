@@ -30,6 +30,7 @@ export const UI_VIS_MAP = {
   'tool-notes':          '#tool-notes-btn, #rail-notes',
   'tool-tasks':          '#tool-tasks-btn, #rail-tasks',
   'tool-theme':          '#tool-theme-btn, #rail-theme',
+  'tool-workbench':      '#tool-workbench-btn, #rail-workbench',   // P22-02
   'user-bar':            '#user-bar-profile',
   'sidebar-settings-btn':'#user-bar-settings',
   'chat-meta':           '.chat-meta-overlay',

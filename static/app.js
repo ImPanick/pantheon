@@ -195,6 +195,7 @@ function initRailHoverLabels() {
     'rail-notes': 'Notes',
     'rail-tasks': 'Tasks',
     'rail-theme': 'Theme',
+    'rail-workbench': 'Workbench',   // P22-02
     'rail-settings': 'Settings',
   };
   document.querySelectorAll('#icon-rail .icon-rail-btn').forEach(btn => {
@@ -1108,6 +1109,30 @@ function initializeEventListeners() {
     toolTasksBtn.addEventListener('click', () => {
       if (tasksModule) {
         tasksModule.isTasksOpen() ? tasksModule.closeTasks() : tasksModule.openTasks();
+      }
+    });
+  }
+
+  // `P22-02`. The Workbench's own door: the last row of the sidebar's Tools,
+  // which `#rail-workbench` presses (`_railToolMap`) — the rail is hidden
+  // whenever the sidebar is open, so a rail-only door is one a person with the
+  // default layout never sees (measured in Chromium at 1400px). ⋮ → Workflow
+  // on a task card is the other way in. A toggle like Calendar's: a minimized
+  // window comes back, an open one closes, a closed one opens. The module is
+  // fetched on first press, and the schedule words it puts on a step are the
+  // Tasks window's own (`tasks.js:_scheduleLabel`).
+  const toolWorkbenchBtn = el('tool-workbench-btn');
+  if (toolWorkbenchBtn) {
+    toolWorkbenchBtn.addEventListener('click', async () => {
+      const Modals = await import('./js/modalManager.js?v=20261001wavefive');
+      if (Modals.toggle('workbench-modal')) return;
+      try {
+        const wb = await import('./js/workbench/workbench.js');
+        if (wb.isWorkbenchOpen()) wb.closeWorkbench();
+        else wb.openWorkbench({ describeTrigger: tasksModule && tasksModule.scheduleLabel });
+      } catch (err) {
+        console.error('The Workbench did not load:', err);
+        uiModule.showError('The Workbench did not load. Reload the page and try again.');
       }
     });
   }
@@ -3880,6 +3905,7 @@ function startPantheonApp() {
     'rail-notes':     'tool-notes-btn',
     'rail-memory':    'tool-memory-btn',
     'rail-theme':     'tool-theme-btn',
+    'rail-workbench': 'tool-workbench-btn',   // P22-02
     'rail-email':     'email-section-title',
   };
   Object.entries(_railToolMap).forEach(([railId, toolId]) => {
