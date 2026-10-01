@@ -69,6 +69,7 @@ import json
 import logging
 import os
 import posixpath
+import re
 import shlex
 import time
 from typing import Any, Awaitable, Callable, Dict, FrozenSet, Optional, Tuple
@@ -169,6 +170,9 @@ class _Station:
         # whether the daemon holds commands to the home (`sudo` off).
         self.chat = chat
         self.jailed = True
+        # `B977`: the network mode holding this workstation's commands, from
+        # the sync before the call (`workstation_access.network_held`).
+        self.network: Optional[str] = None
 
     async def home(self) -> str:
         if self._home is None:
@@ -430,7 +434,82 @@ async def _shell(st: _Station, tool: str, shell: str, command: str, timeout: flo
         from workstation.protocol import MAX_OUTPUT_BYTES
         result["note"] = (f"The workstation keeps the last {MAX_OUTPUT_BYTES:,} bytes of each "
                           "stream; the start of this output was dropped there.")
+    notes.append(network_refusal_note(st.network, stdout, stderr))
     return sp.add_note(result, *notes)
+
+
+# ── a connection the network mode refused (`B977`) ───────────────────────────
+#
+# Under *internet* or *none* the gate's rules refuse at once (`reject with icmpx
+# admin-prohibited`, `workstation/netrules.py`), and what a program prints then
+# names no policy. Measured 2026-10-01 in the image under the real rules: Python,
+# bash's `/dev/tcp` and `curl -v` say *No route to host* (EHOSTUNREACH, errno
+# 113); **curl 8.5 and git over http say only *Couldn't connect to server***;
+# under *none* a name does not resolve either — *Could not resolve host* (curl,
+# git), *Temporary failure in name resolution* (Python, getent). An agent reading
+# those debugs a network that is working as an admin set it. So a result whose
+# output shows one of them, from a workstation whose mode is held, says the mode.
+# Not read as one: a UDP send's *Operation not permitted* — a file permission
+# error says the same words — and *Network is unreachable*, which the rules never
+# cause (no route at all).
+_REFUSED_RE = re.compile(r"No route to host|Couldn't connect to server|EHOSTUNREACH")
+_UNRESOLVED_RE = re.compile(r"Could not resolve host|Temporary failure in name resolution|"
+                            r"Temporary failure resolving|unable to resolve host address")
+# An address the refusal names: dotted IPv4, or IPv6 in brackets — and not the
+# one after "from", which `curl -v` prints for the workstation's own end.
+_ADDRESS_RE = re.compile(r"(?<!from )(?<![\w.:])(\d{1,3}(?:\.\d{1,3}){3})(?![\w.])"
+                         r"|(?<!from )\[([0-9A-Fa-f:.]+)\]")
+
+NETWORK_NONE_NOTE = (
+    "This workstation has no network: an admin set its network mode to none, so every "
+    "connection out of it is refused at once and names do not resolve. That is the setting, "
+    "not a fault to debug — ask an admin if the work needs the network.")
+NETWORK_PRIVATE_NOTE = (
+    "{address} is a private address, and this workstation's network mode is internet only "
+    "(an admin's setting): it refuses your local network and every other private address at "
+    "once. That is the setting, not a fault to debug — ask an admin if the work needs it.")
+NETWORK_INTERNET_NOTE = (
+    "This workstation's network mode is internet only (an admin's setting): it refuses your "
+    "local network and every other private address at once, which shows as \"No route to "
+    "host\" or \"Couldn't connect to server\". If this connection was to one, that is the "
+    "setting, not a fault to debug.")
+
+
+def network_refusal_note(mode: Optional[str], *outputs: str) -> Optional[str]:
+    """The sentence for a command whose output shows a connection refused the
+    way the network mode `mode` refuses one, or None — when no narrowing mode
+    is held, when nothing in the output is such a refusal, or when every
+    address the refusal names is one the mode lets through (the refusal was
+    somebody else's)."""
+    if mode not in ("internet", "none"):
+        return None
+    text = "\n".join(o for o in outputs if o)
+    lines = [ln for ln in text.splitlines() if _REFUSED_RE.search(ln)]
+    if mode == "none":
+        return NETWORK_NONE_NOTE if lines or _UNRESOLVED_RE.search(text) else None
+    if not lines:
+        return None
+    from workstation import netrules
+    # The address the refusal names, where it names one (curl, git, bash);
+    # else the output's (a Python traceback quotes the line with the address
+    # above the error that has none).
+    named = _addresses(lines) or _addresses(text.splitlines())
+    private = [a for a in named if netrules.excluded(a)]
+    if private:
+        return NETWORK_PRIVATE_NOTE.format(address=private[0])
+    return None if named else NETWORK_INTERNET_NOTE
+
+
+def _addresses(lines) -> list:
+    import ipaddress
+    out = []
+    for ln in lines:
+        for a, b in _ADDRESS_RE.findall(ln):
+            try:
+                out.append(str(ipaddress.ip_address(a or b)))
+            except ValueError:
+                continue
+    return out
 
 
 def _end_folder(chat: Tuple, start: str, ran_in: str, ended_in: Optional[str],
@@ -770,7 +849,8 @@ async def run_in_workstation(tool: str, content: Any, *, owner: Optional[str],
     person's workstation home (`B968`); `session_id` is the chat, whose shell
     keeps its folder between calls (`B962`)."""
     from src.tool_execution import _split_bg_marker
-    from src.workstation_access import account_of as account_for, sync_config, workstation_for
+    from src.workstation_access import account_of as account_for
+    from src.workstation_access import network_held, sync_config, workstation_for
 
     desc = _describe(tool, content)
     if tool == "bash" and session_id and isinstance(content, str):
@@ -796,6 +876,7 @@ async def run_in_workstation(tool: str, content: Any, *, owner: Optional[str],
     st = _Station(client, account, asyncio.get_running_loop(), progress_cb,
                   workspace=workspace, chat=sp.chat_key("workstation", account, session_id))
     st.jailed = (daemon or {}).get("sudo") is not True
+    st.network = network_held(daemon)   # `B977`
     try:
         result = await _HANDLERS[tool](content, st)
     except WorkstationError as e:
@@ -859,4 +940,5 @@ async def describe_workspace(owner: Optional[str], workspace: Optional[str]) -> 
 
 
 __all__ = ["WORKSTATION_TOOLS", "describe_workspace", "lifted_tools", "routes",
-           "run_in_workstation", "vet_workspace"]
+           "run_in_workstation", "vet_workspace",
+           "network_refusal_note"]  # `B977`

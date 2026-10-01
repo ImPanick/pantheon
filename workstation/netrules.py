@@ -82,6 +82,13 @@ def _excluded(address: str) -> bool:
     return any(ip in ipaddress.ip_network(n) for n in nets)
 
 
+def excluded(address: str) -> bool:
+    """Whether *internet* refuses `address` — the rules' own test, for a caller
+    outside this module (`B977`: Pantheon's tool layer asks it of an address in
+    a refused command's output). False for anything that is not an address."""
+    return _excluded(address)
+
+
 def lan_resolvers(resolv_conf: Path = Path("/etc/resolv.conf")) -> List[str]:
     """The nameservers this machine was given that *internet* would otherwise
     refuse — LAN addresses, not loopback (loopback is open in every mode)."""
@@ -248,4 +255,5 @@ def capabilities(field: str = "CapEff",
 __all__ = ["ACCOUNTS_TABLE", "CAP_NET_ADMIN", "COMMENT_PREFIX", "DOCKER_DNS", "GATE_TABLE",
            "RulesError", "SELF_TEST_ADDRESS", "apply", "capability", "in_force", "lan_resolvers",
            "nft_path", "ruleset", "self_test",
-           "capabilities"]  # `B976`, added
+           "capabilities",  # `B976`, added
+           "excluded"]  # `B977`, added

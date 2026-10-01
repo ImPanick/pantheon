@@ -419,6 +419,16 @@ def network_view(chosen: str, daemon: Optional[Dict[str, Any]]) -> Dict[str, Any
     return out
 
 
+def network_held(daemon: Optional[Dict[str, Any]]) -> Optional[str]:
+    """`B977`: the mode actually holding this workstation's commands, from one
+    synced answer — the gate's rules or the daemon's own — or None when
+    nothing holds one (no gate on a container, a machine that cannot, nobody
+    asked). What a refused connection is explained by, so never the setting
+    alone: a mode that is chosen and not held refuses nothing."""
+    view = network_view(network_setting(), daemon)
+    return view["in_force"] if view["enforcement"] in ("gate", "accounts") else None
+
+
 class Ready(NamedTuple):
     client: WorkstationClient
     account: str
@@ -534,4 +544,6 @@ __all__ = [
     "NETWORK_ENFORCED", "NETWORK_ENFORCED_SUDO_OFF", "NETWORK_LIFTABLE", "NETWORK_NEEDS_RECREATE",
     "NETWORK_NOT_ENFORCED", "NETWORK_PENDING", "NETWORK_STATES", "NETWORK_UNKNOWN",
     "NETWORK_UNRESTRICTED", "network_view",
+    # `B977`
+    "network_held",
 ]
