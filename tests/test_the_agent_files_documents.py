@@ -295,6 +295,9 @@ def test_a_plan_belongs_to_its_owner_and_its_chat(lib):
     assert call({"action": "apply_plan", "plan_id": plan}, session_id="chat-b")["exit_code"] == 1
     assert call({"action": "apply_plan", "plan_id": plan}, owner="bob",
                 session_id="chat-bob")["exit_code"] == 1
+    # Even in the chat the yes was given in, somebody else's call finds no plan.
+    intruder = call({"action": "apply_plan", "plan_id": plan}, owner="bob")
+    assert intruder["exit_code"] == 1 and "No plan with that id" in intruder["error"]
     assert all(where(lib, i) is None for i in ids)
     assert call({"action": "apply_plan", "plan_id": plan})["exit_code"] == 0
 

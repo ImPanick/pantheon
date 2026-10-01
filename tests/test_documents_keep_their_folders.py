@@ -330,6 +330,16 @@ def test_an_empty_folder_is_removed_without_a_choice(lib):
     assert _paths(lib) == ["Clients"], "removing the last folder inside took the parent too"
 
 
+def test_removing_the_only_folder_a_document_named_keeps_the_one_above(lib):
+    """A folder can exist only because a document names it ("Clients", above
+    "Clients/Acme"). Deleting what is in "Acme" must not take "Clients" with
+    it — removing a folder removes that folder."""
+    _doc(lib, "alice", "Board pack", folder="Clients/Acme")
+    res = _post(lib, "/api/document-folders/remove", {"folder": "Clients/Acme", "contents": "delete"})
+    assert res.status_code == 200, res.text
+    assert _paths(lib) == ["Clients"]
+
+
 def test_an_unknown_choice_is_refused(lib):
     doc = _doc(lib, "alice", "Board pack", folder="Clients")
     res = _post(lib, "/api/document-folders/remove", {"folder": "Clients", "contents": "shred"})

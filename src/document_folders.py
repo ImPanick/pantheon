@@ -386,8 +386,7 @@ def rename_folder(db, owner, raw_path: Any, raw_name: Any) -> Dict[str, Any]:
 def move_folder(db, owner, raw_path: Any, raw_to: Any) -> Dict[str, Any]:
     path = _existing(db, owner, raw_path)
     to = normalize_folder_path(raw_to)
-    if to is not None and within(to, path):
-        raise FolderError("A folder can't be moved into itself or one of its own folders.")
+    # Into itself or a folder inside it: refused once, in `_relocate`.
     new = join_path(to, folder_name(path))
     if new == path:
         return {"path": path, "changes": []}

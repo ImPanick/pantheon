@@ -519,13 +519,15 @@ def test_filing_from_the_tab_posts_once_and_says_what_moved(sandbox):
     body = _cut("async function libraryFileDocuments(", "async function libraryFileDocuments(ids, to)")
     out = _js(sandbox, _FILE.replace("__FILE__", body) + """
         await libraryFileDocuments(['a', 'b', 'a'], 'Clients');
+        const afterOk = fetched;
         failWith = "Document 'x' not found";
         await libraryFileDocuments(['x'], null);
-        console.log(JSON.stringify({ posted, toasts, errors, exited, fetched }));
+        console.log(JSON.stringify({ posted, toasts, errors, exited, afterOk, fetched }));
     """)
     assert out["posted"] == [{"ids": ["a", "b"], "to": "Clients"}, {"ids": ["x"], "to": None}]
     assert out["toasts"] == ["Moved 2 documents to Clients"]
     assert out["errors"] == ["Could not move the document — Document 'x' not found"]
+    assert out["afterOk"] == 1, "a move that worked must redraw the list"
     assert (out["exited"], out["fetched"]) == (1, 1), "a failed move must not redraw as if it worked"
 
 
