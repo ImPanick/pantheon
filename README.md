@@ -187,7 +187,7 @@ proved it dead.
 
 ## Status
 
-**945 tracked tasks, 649 done.** The tracker is [`.pantheon/ROADMAP.md`](.pantheon/ROADMAP.md) and
+**968 tracked tasks, 668 done.** The tracker is [`.pantheon/ROADMAP.md`](.pantheon/ROADMAP.md) and
 it is the only place work is tracked — one list, one progress area, validated by a script that
 recounts every phase row against its own ticks. It exists because the summary line was once wrong
 by nineteen and carried forward unread from entry to entry, because each author copied the line
@@ -234,7 +234,7 @@ test nobody had looked at, and turned out to be upstream's logo wearing our file
 - **More themes** — new palettes, and subtle ASCII-art backgrounds as a ninth pattern, picked
   the same way the seven animated ones already are: independently of the palette.
 
-Twenty-one phases, every task written down: [`.pantheon/ROADMAP.md`](.pantheon/ROADMAP.md).
+Twenty-two phases, every task written down: [`.pantheon/ROADMAP.md`](.pantheon/ROADMAP.md).
 
 ---
 

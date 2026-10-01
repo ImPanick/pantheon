@@ -294,7 +294,7 @@ def test_research_spinoff_rejects_wrong_owner():
 # pop_notifications owner filter
 # ---------------------------------------------------------------------------
 
-def test_pop_notifications_owner_filtered():
+def test_pop_notifications_owner_filtered(monkeypatch):
     """pop_notifications(owner='alice') must return only alice's items.
     bob's and legacy ownerless items stay behind in the queue."""
     # Build a minimal scheduler instance that we can hit directly.
@@ -306,8 +306,13 @@ def test_pop_notifications_owner_filtered():
     for s in ["src.builtin_actions", "src.ai_interaction", "src.endpoint_resolver",
               "src.agent_loop", "src.session_manager"]:
         if s not in sys.modules:
-            mod = types.ModuleType(s)
-            sys.modules[s] = mod
+            # `B990`: through monkeypatch, so the bare stub leaves with this
+            # test instead of answering every later `from src.builtin_actions
+            # import …` with an ImportError.
+            monkeypatch.setitem(sys.modules, s, types.ModuleType(s))
+    if "src.task_scheduler" not in sys.modules:
+        monkeypatch.setitem(sys.modules, "src.task_scheduler", None)
+        sys.modules.pop("src.task_scheduler")
     from src.task_scheduler import TaskScheduler
     sch = TaskScheduler.__new__(TaskScheduler)  # bypass __init__ network etc.
     sch._pending_notifications = []

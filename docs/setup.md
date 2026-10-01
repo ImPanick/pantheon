@@ -208,6 +208,16 @@ another's workstation home, and the panel says so beside the switch. With a GPU
 overlay, list all three:
 `COMPOSE_FILE=docker-compose.yml:docker/gpu.nvidia.yml:docker/workstation.yml`.
 
+**Three kinds of workstation** (`P20-07`) — one line in `.env` each, then `docker compose up -d --build` and **Settings → Workstation → On**. Nothing else to type for the first two: Pantheon finds the workstation and pairs with it on its own.
+
+| | `.env` | What it is |
+|---|---|---|
+| **Container** | `COMPOSE_FILE=docker-compose.yml:docker/workstation.yml` | An Ubuntu container beside Pantheon. Each person is a Unix account in it. Smallest and quickest. |
+| **Virtual machines** | `COMPOSE_FILE=docker-compose.yml:docker/workstation-vm.yml` | An Ubuntu VM for each person: a hypervisor between people, and *Reset to clean* is a fresh machine. Uses KVM when the host has it (Linux with `/dev/kvm`); without it the machines are emulated and slow, and the panel says so. The first start makes the machine image (minutes with KVM, an hour or more without); each person's machine then starts on their first use and takes up to 2 GB of RAM while it runs (`PANTHEON_WORKSTATION_VM_MEMORY_MIB`). |
+| **Another machine** | the lines `install.py` prints | Any Ubuntu 24.04 machine — a Proxmox or libvirt VM, a spare box. Copy the repository's `workstation/` folder to it and run `sudo python3 workstation/install.py`; it prints the four lines to put in Pantheon's `.env` (this overlay's `COMPOSE_FILE`, the address, the token and the certificate's fingerprint). HTTPS with that one certificate pinned by default; `--no-tls` for a LAN or a VPN. Pantheon never sends the workstation's token over plain http to a public address. |
+
+On Windows, separate `COMPOSE_FILE` entries with `;` instead of `:`. With a GPU overlay, list both.
+
 **Docker GPU overlays.** CPU-only users can skip this section. Forge can
 only detect GPUs that Docker exposes to the container — if the host runtime or
 device passthrough is not configured, Forge sees the iGPU, another card, or

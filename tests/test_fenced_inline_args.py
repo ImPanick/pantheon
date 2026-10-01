@@ -6,21 +6,22 @@ with the args on the same line as the tag; the parser must execute those. The
 relaxed tag pattern must NOT prefix-match longer fence tags: ```python3 is a
 language hint, not a "python" tool call with content "3\n...".
 """
-import sys
-from unittest.mock import MagicMock
 
-for mod in ['src.agent_tools', 'src.tool_parsing', 'src.tool_schemas', 'src.tool_execution']:
-    sys.modules.pop(mod, None)
-for mod in [
-    'sqlalchemy', 'sqlalchemy.orm', 'sqlalchemy.ext', 'sqlalchemy.ext.declarative',
-    'sqlalchemy.ext.hybrid', 'sqlalchemy.sql', 'sqlalchemy.sql.expression',
-    'src.database', 'core.models', 'core.database', 'core.auth'
-]:
-    if mod not in sys.modules:
-        sys.modules[mod] = MagicMock()
+from tests.helpers.fresh_import import reimported_under_stubs  # noqa: E402
 
-import src.agent_tools  # noqa: E402, F401
-from src.tool_parsing import parse_tool_blocks, strip_tool_blocks  # noqa: E402
+# `B983`: the re-import below no longer leaves its second copies, or its stubs,
+# for every file collected after this one.
+with reimported_under_stubs(
+    pop=['src.agent_tools', 'src.tool_parsing', 'src.tool_schemas', 'src.tool_execution'],
+    stub_if_absent=[
+        'sqlalchemy', 'sqlalchemy.orm', 'sqlalchemy.ext', 'sqlalchemy.ext.declarative',
+        'sqlalchemy.ext.hybrid', 'sqlalchemy.sql', 'sqlalchemy.sql.expression',
+        'src.database', 'core.models', 'core.database', 'core.auth'
+    ],
+):
+
+    import src.agent_tools  # noqa: E402, F401
+    from src.tool_parsing import parse_tool_blocks, strip_tool_blocks  # noqa: E402
 
 
 def test_inline_args_on_tag_line_parse():

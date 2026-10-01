@@ -4,21 +4,22 @@ can't be converted (e.g. a hyphenated/namespaced tool name that _XML_INVOKE_RE's
 \\w+ won't match, or an unknown tool) must NOT fall through and ship the raw XML
 to the code executor as if it were python/bash.
 """
-import sys
-from unittest.mock import MagicMock
 
-for mod in ['src.agent_tools', 'src.tool_parsing', 'src.tool_schemas', 'src.tool_execution']:
-    sys.modules.pop(mod, None)
-for mod in [
-    'sqlalchemy', 'sqlalchemy.orm', 'sqlalchemy.ext', 'sqlalchemy.ext.declarative',
-    'sqlalchemy.ext.hybrid', 'sqlalchemy.sql', 'sqlalchemy.sql.expression',
-    'src.database', 'core.models', 'core.database', 'core.auth'
-]:
-    if mod not in sys.modules:
-        sys.modules[mod] = MagicMock()
+from tests.helpers.fresh_import import reimported_under_stubs  # noqa: E402
 
-import src.agent_tools  # noqa: E402, F401
-from src.tool_parsing import parse_tool_blocks  # noqa: E402
+# `B983`: the re-import below no longer leaves its second copies, or its stubs,
+# for every file collected after this one.
+with reimported_under_stubs(
+    pop=['src.agent_tools', 'src.tool_parsing', 'src.tool_schemas', 'src.tool_execution'],
+    stub_if_absent=[
+        'sqlalchemy', 'sqlalchemy.orm', 'sqlalchemy.ext', 'sqlalchemy.ext.declarative',
+        'sqlalchemy.ext.hybrid', 'sqlalchemy.sql', 'sqlalchemy.sql.expression',
+        'src.database', 'core.models', 'core.database', 'core.auth'
+    ],
+):
+
+    import src.agent_tools  # noqa: E402, F401
+    from src.tool_parsing import parse_tool_blocks  # noqa: E402
 
 
 def test_unconvertible_invoke_in_fence_is_not_executed_as_code():

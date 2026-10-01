@@ -41,8 +41,9 @@ def settings_file(monkeypatch):
     monkeypatch.setattr(C, "SETTINGS_FILE", path, raising=False)
 
     def fresh():
-        S._cache = None
-        S._cache_time = 0
+        # `B989`: the module's own invalidation. `_cache`/`_cache_time` are not
+        # names `src/settings.py` has, so this used to invalidate nothing.
+        S._invalidate_caches()
 
     fresh()
     yield S, fresh
@@ -107,9 +108,13 @@ def test_a_structured_setting_with_a_real_default_still_resets(settings_file):
 
 def test_a_scalar_setting_still_resets(settings_file):
     S, fresh = settings_file
+    # `B989`: not a key the agent is refused (`P20-02` put the workstation's
+    # switches among the self-restraint keys, and the first of them came first).
+    from src.workstation_access import SETTING_KEYS as WORKSTATION_KEYS
     key = next(k for k, v in DEFAULT_SETTINGS.items()
                if isinstance(v, bool) and k not in RETIRED_SETTING_KEYS
-               and k not in ("agent_email_confirm", "agent_verifier_subagent"))
+               and k not in ("agent_email_confirm", "agent_verifier_subagent")
+               and k not in WORKSTATION_KEYS)
     cfg = S.load_settings()
     cfg[key] = not DEFAULT_SETTINGS[key]
     S.save_settings(cfg)
