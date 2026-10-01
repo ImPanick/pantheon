@@ -262,22 +262,23 @@ def _text(content: Any) -> str:
     return str(content or "")
 
 
-def _find_turn(messages: List[Dict[str, Any]]):
+def _find_turn(messages: List[Dict[str, Any]], conversations: Optional[List[Dict[str, Any]]] = None):
     """The scripted turn this request belongs to, whether it is the turn's first
     request, and what it carries.
 
     The turn is found by the person's words, in the latest user message that
-    holds them — not simply the last user message: a turn the person approved
-    part-way through comes back with the approved tool's result as a user
-    message after an assistant *"Allow this task to continue?"*, and a
-    `computer` result comes back as a user message carrying the screenshot.
+    holds them — not simply the last user message: a tool result can come back
+    as a user message (a `computer` result carrying the screenshot, and every
+    result on a model that is sent no tools), and a turn the person approved
+    part-way through came back, until `B1069`, with the approved tool's result
+    as a user message after an assistant *"Allow this task to continue?"*.
     A request with nothing after the person's words starts the turn.
     """
     for i in range(len(messages) - 1, -1, -1):
         if messages[i].get("role") != "user":
             continue
         said = _text(messages[i].get("content"))
-        for conv in CONVERSATIONS:
+        for conv in (CONVERSATIONS if conversations is None else conversations):
             for turn in conv["turns"]:
                 if turn["user"] not in said:
                     continue
@@ -294,10 +295,11 @@ class _Progress:
     """Where each scripted turn is, kept by the model the way a model keeps
     its own plan.
 
-    Counting what a request carries is not enough, and that was measured, not
-    assumed: after a card the person approves **part-way through** a turn, the
-    next request carries the person's words, the card and the approved result —
-    and not the tool results from the rounds before the card. So the script
+    Counting what a request carries was not enough, and that was measured, not
+    assumed: after a card the person approved **part-way through** a turn, the
+    next request carried the person's words, the card and the approved result —
+    and not the tool results from the rounds before the card (`B1069`, since
+    fixed: the continuation now carries the whole turn). So the script
     remembers which step it is on and every result it has been shown in this
     turn, and a step that needs an id from an earlier round still finds it.
     """
@@ -322,8 +324,9 @@ class _Progress:
 class _Handler(BaseHTTPRequestHandler):
     server_version = "scripted-demo/1"
     pace = 0.0        # seconds between streamed words; set by DemoModel
-    log = None        # a list to append request summaries to; set by DemoModel
+    log = None        # a list to append each request to; set by DemoModel
     progress = None   # a `_Progress`, one per DemoModel
+    conversations = None  # the script; `CONVERSATIONS` unless DemoModel is given one
 
     def log_message(self, *args):  # quiet
         pass
@@ -350,11 +353,14 @@ class _Handler(BaseHTTPRequestHandler):
             return self._json(400, {"error": {"message": "bad json"}})
         messages = body.get("messages") or []
         system = " ".join(_text(m.get("content")) for m in messages if m.get("role") == "system")
-        conv, turn, first, ctx = _find_turn(messages)
+        conv, turn, first, ctx = _find_turn(messages, self.conversations)
         if self.log is not None:
+            # The whole request as it arrived, beside the summary: a model that
+            # records what it is sent is how `B1069` was measured and is held.
             self.log.append({"stream": bool(body.get("stream")), "tools": len(body.get("tools") or []),
                              "roles": [m.get("role") for m in messages],
-                             "conv": (conv or {}).get("key"), "first": first})
+                             "conv": (conv or {}).get("key"), "first": first,
+                             "messages": messages})
 
         side = None
         if not body.get("stream") and not body.get("tools"):
@@ -378,12 +384,25 @@ class _Handler(BaseHTTPRequestHandler):
         deltas: List[Dict[str, Any]] = []
         if step.get("think"):
             deltas += [{"reasoning_content": w} for w in _words(step["think"])]
-        if "call" in step and body.get("tools"):
-            args = step["args"](ctx) if callable(step["args"]) else step["args"]
-            deltas.append({"tool_calls": [{"index": 0, "id": "call_" + uuid.uuid4().hex[:12],
+        # A step makes one call (`call`, `args`) or several at once (`calls`, a
+        # list of them) — the second is a model asking for two things in one
+        # message, which is where a card can stop a round part-way.
+        calls = step.get("calls") or ([{"call": step["call"], "args": step["args"]}]
+                                      if "call" in step else [])
+        calls = [(c["call"], c["args"](ctx) if callable(c["args"]) else c["args"]) for c in calls]
+        if calls and conv.get("fenced"):
+            # A conversation on an endpoint that is sent no tools: the calls are
+            # written into the reply as fenced blocks, the way such a model
+            # calls a tool, and Pantheon's parser finds them.
+            text = "".join(f"\n\n```{name}\n{json.dumps(args)}\n```" for name, args in calls)
+            deltas += [{"content": w} for w in _words((step.get("say") or "") + text)]
+            return self._stream(deltas, finish="stop")
+        if calls and body.get("tools"):
+            deltas.append({"tool_calls": [{"index": n, "id": "call_" + uuid.uuid4().hex[:12],
                                            "type": "function",
-                                           "function": {"name": step["call"],
-                                                        "arguments": json.dumps(args)}}]})
+                                           "function": {"name": name,
+                                                        "arguments": json.dumps(args)}}
+                                          for n, (name, args) in enumerate(calls)]})
             return self._stream(deltas, finish="tool_calls")
         deltas += [{"content": w} for w in _words(step.get("say") or "Done.")]
         return self._stream(deltas, finish="stop")
@@ -426,8 +445,12 @@ def _words(text: str) -> List[str]:
 class DemoModel:
     """The scripted model on a loopback port, in a daemon thread."""
 
-    def __init__(self, port: int = 0, pace: float = 0.0, log: Optional[list] = None):
-        handler = type("Handler", (_Handler,), {"pace": pace, "log": log, "progress": _Progress()})
+    def __init__(self, port: int = 0, pace: float = 0.0, log: Optional[list] = None,
+                 conversations: Optional[List[Dict[str, Any]]] = None):
+        """`conversations` replaces the showcase's script (a test plays its own
+        through the same model); `log` receives every request it is sent."""
+        handler = type("Handler", (_Handler,), {"pace": pace, "log": log, "progress": _Progress(),
+                                                "conversations": conversations})
         self.httpd = ThreadingHTTPServer(("127.0.0.1", port), handler)
         self.httpd.daemon_threads = True
         self.port = self.httpd.server_address[1]

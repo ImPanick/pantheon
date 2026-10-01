@@ -342,6 +342,24 @@ class PendingToolApproval:
     # and an approved `bash` command is the same command whichever box runs it;
     # sealing the words would make a replay fail to match for a display reason.
     runs_in: str = ""
+    # `B1069`. What the interrupted turn had already gathered when it stopped
+    # for this card — every message it added before the card, and the round
+    # the card stopped, waiting for the approved call's result — so the
+    # continuation asks the model again with all of it rather than with the
+    # approved result alone. `agent_loop.PausedTurn`, built and read only
+    # there; `None` from every producer with no turn to resume (the teacher
+    # escalation, the skill tester, a card minted before this field).
+    #
+    # Outside `_binding_payload` and the digest, like `requested_round`: it
+    # authorises nothing. The dispatcher runs the sealed tool and content and
+    # nothing else, and the taint the transcript carries is already sealed as
+    # `external_untrusted_context_seen` — every result in it that armed the
+    # gate armed it before this card was minted, so the resumed run's gate
+    # stands exactly where the interrupted one stood (`FORBIDDEN.md` Part 2).
+    # Server-only, never in `public_payload`. In memory for the card's life
+    # and no longer: one per chat (a new card supersedes it), dropped on
+    # consume, expiry or the next ordinary message — it is what the run held.
+    continuation_turn: Any = None
 
     def default_reason(self) -> str:
         """`P4-04`. The card's own sentence when its producer wrote none.
@@ -702,13 +720,16 @@ class ToolApprovalStore:
         gate_decision: ToolGateDecision | None = None,
         taint_trail: Any = None,
         runs_in: Any = None,
+        continuation_turn: Any = None,
     ) -> PendingToolApproval:
         """`gate_decision` and `taint_trail` are display-only (`P7-07`,
         `P7-08`). Both default to nothing so the producers that have no run
         security context to hand — the teacher escalation, the skill tester —
         are untouched and keep minting exactly the card they minted before.
         `runs_in` (`B967`) is display-only in the same way and defaults the
-        same way: the card says "on this machine" unless told otherwise."""
+        same way: the card says "on this machine" unless told otherwise.
+        `continuation_turn` (`B1069`) is the interrupted turn's own record,
+        outside the seal for the reason given on the field."""
         now = time.time()
         effects = tuple(sorted(effect.value for effect in capabilities.effects))
         result_integrity = capabilities.result_integrity.value
@@ -762,6 +783,7 @@ class ToolApprovalStore:
                 tainted=payload["external_untrusted_context_seen"],
             ),
             runs_in=runs_in if isinstance(runs_in, str) else "",
+            continuation_turn=continuation_turn,
         )
         with self._lock:
             expired = self._purge_expired_locked(now)
