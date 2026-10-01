@@ -263,6 +263,17 @@ export const server = { calls: [], tasks: [
 globalThis.fetch = async (url, init = {}) => {
   server.calls.push({ url: String(url), method: init.method || 'GET' });
   const ok = (body) => ({ ok: true, status: 200, json: async () => JSON.parse(JSON.stringify(body)) });
+  // `P22-04`: a chain dry run, in the contract's shape (P22-WAVE-B.md).
+  const dry = /^\/api\/tasks\/([^/]+)\/run\?dry=true&chain=true$/.exec(String(url));
+  if (dry && init.method === 'POST') {
+    const steps = [{ kind: 'dry-run', detail: 'Would run: tidy_sessions — Tidy sessions' }];
+    return ok({ ok: true, dry: true, message: 'Dry run — planned, nothing executed', run_id: 'r1',
+      run: { id: 'r1', status: 'skipped', steps },
+      chain: [{ task_id: 'a', name: 'Nightly backup', when: null, depth: 0, steps, declined: null },
+              { task_id: 'b', name: 'Message me', when: 'success', depth: 1,
+                steps: [{ kind: 'dry-run', detail: 'Would send this task’s prompt to a model, with tools.' }],
+                declined: null }] });
+  }
   if (String(url).startsWith('/api/tasks')) {
     const edges = server.tasks.filter((t) => t.then_task_id)
       .map((t) => ({ from: t.id, to: t.then_task_id, when: 'success', dangling: false }));
@@ -298,6 +309,13 @@ _GLUE_STUBS = {
         "export function isMinimized() { return globalThis.__minimized; }\n"
         "export function restore(id) { globalThis.__restored.push(id); globalThis.__minimized = false;"
         " document.getElementById(id).classList.remove('hidden'); return true; }\n"
+    ),
+    # `P22-04`. The glue imports the Tasks card's step renderer from the
+    # `tasks.js` instance already on the page (`?v=` and all); recorded here.
+    "tasks.js": (
+        "globalThis.__rendered = [];\n"
+        "export function renderRunSteps(run, opts) { globalThis.__rendered.push({ run, opts });\n"
+        "  return '<ol class=\"task-run-step-list\"><li>rendered by tasks.js</li></ol>'; }\n"
     ),
 }
 
@@ -388,6 +406,28 @@ def test_selecting_a_step_mounts_the_task_form_through_the_contract(glue):
     """)
     assert o == {"n": 1, "task": "a", "tasks": ["a", "b"], "host": "wb-panel-host",
                  "fns": ["function", "function"]}
+
+
+def test_a_steps_full_plan_is_drawn_by_the_tasks_cards_renderer(glue):
+    """`P22-04`: the glue hands `tasks.js:renderRunSteps` to the canvas, so the
+    Workbench draws a plan with the renderer the Tasks card draws one with
+    (`Law 7`) — exported, not copied."""
+    o = _run(glue, _GLUE_PREAMBLE, """
+        wb.openWorkbench({});
+        await settle(5);
+        fire(nodeOf('a'), 'click');
+        fire($('workbench-room').querySelector('.wb-panel-dry'), 'click');
+        await settle(5);
+        fire(nodeOf('b').querySelector('.wb-node-plan-btn'), 'click');
+        const box = $('workbench-room').querySelector('.wb-plan-box');
+        out({ posts: server.calls.filter((c) => c.method === 'POST').map((c) => c.url),
+              rendered: globalThis.__rendered.map((r) => ({ steps: r.run.steps.map((s) => s.detail), opts: r.opts })),
+              html: box && box.querySelector('.wb-plan-steps').innerHTML });
+    """)
+    assert o["posts"] == ["/api/tasks/a/run?dry=true&chain=true"]
+    assert o["rendered"] == [{"steps": ["Would send this task’s prompt to a model, with tools."],
+                              "opts": {"open": True, "summary": "What a real run would do"}}]
+    assert o["html"] == '<ol class="task-run-step-list"><li>rendered by tasks.js</li></ol>'
 
 
 def test_closing_takes_the_room_down_and_the_close_button_is_wired(glue):

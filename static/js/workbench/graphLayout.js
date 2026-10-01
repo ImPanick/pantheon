@@ -342,6 +342,76 @@ export function edgeMid(a, b) {
   return { x: _r((a.x + b.x) / 2), y: _r((a.y + b.y) / 2) };
 }
 
+/** `B1053`. How far a routed arrow runs straight out of its port and straight
+ *  into its step before it turns, how far it keeps from the steps it goes
+ *  round, and the radius of its corners. */
+const ROUTE_STUB = 24;
+const ROUTE_CLEAR = 20;
+const ROUTE_CORNER = 10;
+/** The narrowest gap the plain curve crosses without dipping under either
+ *  step. Measured on `edgePath`'s own control points: at a gap of 16 its
+ *  lowest x is the source's right edge, and below that it goes under it. */
+const CURVE_MIN_GAP = 16;
+
+/** A polyline of axis-aligned points as a path with rounded corners. */
+function _rounded(points) {
+  let d = `M ${_r(points[0].x)} ${_r(points[0].y)}`;
+  for (let i = 1; i < points.length - 1; i++) {
+    const prev = points[i - 1];
+    const p = points[i];
+    const next = points[i + 1];
+    const k = Math.min(ROUTE_CORNER,
+      (Math.abs(p.x - prev.x) + Math.abs(p.y - prev.y)) / 2,
+      (Math.abs(next.x - p.x) + Math.abs(next.y - p.y)) / 2);
+    const toward = (q) => ({ x: p.x + Math.sign(q.x - p.x) * k, y: p.y + Math.sign(q.y - p.y) * k });
+    const a = toward(prev);
+    const b = toward(next);
+    d += ` L ${_r(a.x)} ${_r(a.y)} Q ${_r(p.x)} ${_r(p.y)} ${_r(b.x)} ${_r(b.y)}`;
+  }
+  const last = points[points.length - 1];
+  return d + ` L ${_r(last.x)} ${_r(last.y)}`;
+}
+
+/**
+ * `B1053`. The arrow for condition `when` from the step at `from` to the step
+ * at `to`: `{ d, label: { x, y }, end, routed }`.
+ *
+ * An arrow leaves a step's right edge and arrives at another's left edge.
+ * When the target is to the right that is `edgePath`'s curve, unchanged. When
+ * it is not — a step on the left, or stacked under — that same curve ran back
+ * UNDER both steps, and its one visible piece, with its words, sat between
+ * them leaving the TARGET's port: measured on the merged tree, an *if it
+ * fails* from Ann target to Zed source read as "if Zed source fails, run Ann
+ * target", 12 of 21 sampled points under the two boxes. So it is routed round:
+ * out of the port, along a lane that clears both steps — between their rows
+ * when there is room, otherwise above them for the first port and below for
+ * the second, so the two arrows of one step take different lanes — and into
+ * the target from its left, where the arrowhead points in. The words sit on
+ * the lane, clear of both boxes.
+ */
+export function edgeRoute(from, to, when) {
+  const a = portPoint(from, when);
+  const b = inputPoint(to);
+  if (b.x - a.x >= CURVE_MIN_GAP) {
+    const m = edgeMid(a, b);
+    return { d: edgePath(a, b), label: { x: m.x, y: _r(m.y - 6) }, end: b, routed: false };
+  }
+  const fromTop = from.y;
+  const fromBottom = from.y + NODE_H;
+  const toTop = to.y;
+  const toBottom = to.y + NODE_H;
+  let lane;
+  if (toBottom + ROUTE_CLEAR * 2 <= fromTop) lane = (toBottom + fromTop) / 2;
+  else if (fromBottom + ROUTE_CLEAR * 2 <= toTop) lane = (fromBottom + toTop) / 2;
+  else if (_portIndex(when) === 0) lane = Math.min(fromTop, toTop) - ROUTE_CLEAR;
+  else lane = Math.max(fromBottom, toBottom) + ROUTE_CLEAR;
+  const out = a.x + ROUTE_STUB;
+  const into = b.x - ROUTE_STUB;
+  const d = _rounded([a, { x: out, y: a.y }, { x: out, y: lane }, { x: into, y: lane },
+    { x: into, y: b.y }, b]);
+  return { d, label: { x: _r((out + into) / 2), y: _r(lane - 6) }, end: b, routed: true };
+}
+
 /** The arrowhead at `b`, pointing the way the curve arrives (rightwards). */
 export function arrowPath(b) {
   return `M ${_r(b.x)} ${_r(b.y)} L ${_r(b.x - 9)} ${_r(b.y - 5)} L ${_r(b.x - 9)} ${_r(b.y + 5)} Z`;
@@ -389,7 +459,7 @@ export function fitView(bounds, width, height, pad = MARGIN) {
 }
 
 export default {
-  layoutGraph, boundsOf, portPoint, portOffset, inputPoint, edgePath, edgeMid,
+  layoutGraph, boundsOf, portPoint, portOffset, inputPoint, edgePath, edgeMid, edgeRoute,
   arrowPath, nodeAt, clampZoom, fitView,
   NODE_W, NODE_H, GAP_X, GAP_Y, MARGIN, LONE_COLUMNS, ZOOM_MIN, ZOOM_MAX, PORTS,
 };

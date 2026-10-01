@@ -236,7 +236,10 @@ def test_every_task_is_a_step_and_every_edge_an_arrow_in_the_diagrams_words(box)
     assert o["c"]["sub"] == "Research · paused"
     for k in "abc":
         assert o[k]["ports"] == [["success", "if it works"], ["error", "if it fails"]], o[k]
-        assert o[k]["connect"] is True and o[k]["focusable"] is True
+        assert o[k]["connect"] is True
+    # `B1048`: the canvas is one tab stop — the first step in reading order —
+    # and the arrow keys reach the rest (`test_the_workbench_opens_on_your_own_steps_js.py`).
+    assert [o[k]["focusable"] for k in "abc"] == [True, False, False]
     assert o["edges"] == [{
         "from": "a", "to": "c", "when": "success", "words": "if it works",
         "label": "After Nightly backup, if it works, Post summary runs. Press Delete to remove this arrow.",
@@ -446,9 +449,12 @@ def test_connect_on_the_only_task_says_there_is_nothing_to_connect_to(box):
 # ── moving a step ───────────────────────────────────────────────────────────
 
 def test_arrow_keys_move_a_focused_step_by_the_window_step_and_keep_it(box):
+    """`B1048`: the arrow keys go from step to step now, so a step is picked up
+    with M first; the move itself is what it was."""
     o = _case(box, """
         const { root, c } = await mount();
         const a = nodeOf(root, 'a'), p0 = at(a);
+        fire(a, 'keydown', { key: 'm' });
         fire(a, 'keydown', { key: 'ArrowRight' });
         fire(a, 'keydown', { key: 'ArrowDown', shiftKey: true });
         const p1 = at(nodeOf(root, 'a'));
@@ -671,10 +677,12 @@ def test_an_empty_list_says_what_a_step_is_and_offers_the_first_one(box):
         const { root } = await mount();
         const empty = root.querySelector('.wb-empty');
         fire(empty.querySelector('.wb-tool-new'), 'click');
-        out({ hidden: empty.hidden, text: empty.readable, task: panel.mounts[0].args.task });
+        out({ hidden: empty.hidden, text: empty.readable, task: panel.mounts[0].args.task,
+              note: !root.querySelector('.wb-empty-builtins').hidden });
     """, tasks=[])
     assert o["hidden"] is False
     assert o["text"].startswith("No automations yet.")
+    assert o["note"] is False, "`B1048`: nothing is hidden, so nothing says so"
     assert o["task"] is None
 
 

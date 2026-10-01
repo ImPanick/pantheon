@@ -46756,8 +46756,151 @@ button.task-card-toggle {
 @media (max-width: 768px) {
   .wb-panel { position: absolute; inset: 0; z-index: 4; }
   .wb-hint { display: none; }
+  /* `B1051` (branch wb-polish). At phone width every window is a bottom sheet,
+     and the sheet rule `.modal-content { height: auto !important }` beat
+     `.workbench-modal-content`'s height — measured in Chromium at 390 and 768px:
+     a 183px sheet holding the toolbar and a 0px canvas, every step off-screen and
+     the step form mounted in a 0px panel. A canvas has no content height of its
+     own (`flex: 1; min-height: 0` all the way down), so `auto` is 0. The tool
+     windows that hold a pane — Tasks, Calendar, Library — are full height at this
+     width for the same reason; this is their full-height rule, scoped by the
+     window's id so it wins on specificity over the sheet's class rule. (Tasks
+     also anchors its sheet to the top; measured, a full-height sheet needs no
+     anchor, so this one rule is the whole fix.) */
+  #workbench-modal .workbench-modal-content {
+    max-height: 100vh !important;
+    max-height: 100dvh !important;
+    height: 100vh !important;
+    height: 100dvh !important;
+    padding-bottom: env(safe-area-inset-bottom, 0px) !important;
+  }
 }
 @media (prefers-reduced-motion: no-preference) {
   .wb-node { transition: box-shadow 0.12s ease, opacity 0.12s ease; }
   .wb-edge-line { transition: stroke-width 0.12s ease; }
 }
+
+/* ===== wb-polish — `P22-04` (the canvas's dry run), `B1048` (P22 wave B) =====
+   A dry run's plan on the Workbench canvas. A plan is not a run, so a planned
+   step trades its last-run border for a dashed one — the dashed rule the step
+   log already gives a plan line (`.task-run-step-dry-run`) — and says what it
+   would do in a line of its own; what the run would not reach is dimmed and
+   dotted; what the engine would not plan is solid and bold; what a dry run
+   cannot describe is in italics. Shape and weight before hue, tokens only, no
+   `--accent`, and no ring of its own. */
+.wb-node[data-plan] { border-width: 2px; }
+.wb-node[data-plan="planned"],
+.wb-node[data-plan="cannot"] { border-style: dashed; }
+.wb-node[data-plan="declined"] { border-style: solid; }
+.wb-node[data-plan="aside"] { opacity: 0.4; border-width: 1px; border-style: dotted; }
+.wb-node-plan {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  padding-right: 76px;
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.wb-node-plan-line { overflow: hidden; text-overflow: ellipsis; }
+/* While a plan is up a step is read, not wired: its port words step back (the
+   ports stay, and every arrow keeps its own words), so how it is reached and
+   what it would do have the width. */
+.wb-node[data-plan] .wb-port-label { display: none; }
+.wb-node[data-plan] .wb-node-sub,
+.wb-node[data-plan] .wb-node-plan { padding-right: 8px; }
+.wb-node[data-plan="declined"] .wb-node-plan { font-weight: 700; }
+.wb-node[data-plan="cannot"] .wb-node-plan { font-style: italic; }
+.wb-node[data-plan="aside"] .wb-node-plan { color: var(--color-muted-alt); }
+.wb-edge[data-plan="aside"] { opacity: 0.3; }
+.wb-node-plan-btn,
+.wb-panel-dry,
+.wb-plan-close {
+  font: inherit;
+  font-size: 11px;
+  color: var(--fg);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 7px;
+  cursor: pointer;
+}
+.wb-panel-dry,
+.wb-plan-close { font-size: 12px; padding: 4px 10px; border-radius: 6px; }
+.wb-panel-dry { margin-left: auto; white-space: nowrap; }
+.wb-panel-dry[hidden] { display: none; }
+.wb-panel-dry:disabled { opacity: 0.6; cursor: default; }
+/* A step's buttons share its last row: Connect…, and Plan while a plan is up.
+   Their own height: the sheet's `button { height: 32px }` made Connect… 32px
+   in a 96px step, which squeezed the rows above it — measured, the title one
+   pixel short of its line (descenders cut), and five under a failed step's
+   4px border. */
+.wb-node-actions { display: flex; align-items: center; gap: 6px; margin-top: auto; }
+.wb-node-actions .wb-node-connect { margin-top: 0; align-self: center; }
+.wb-node-connect,
+.wb-node-plan-btn { height: auto; }
+/* The sentence's button keeps one line; at 390px "Clear the plan" wrapped to
+   three inside the sheet's 32px-high button. The sentence wraps instead. */
+.wb-say-action { flex: 0 0 auto; white-space: nowrap; height: auto; }
+.wb-node-plan-btn:hover,
+.wb-panel-dry:hover,
+.wb-plan-close:hover { background: color-mix(in srgb, var(--fg) 8%, var(--panel)); }
+.wb-plan-box {
+  position: absolute;
+  z-index: 3;
+  box-sizing: border-box;
+  width: 320px;
+  max-width: calc(100% - 16px);
+  max-height: calc(100% - 16px);
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  font-size: 12px;
+  color: var(--fg);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--fg) 18%, transparent);
+}
+.wb-plan-head { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
+.wb-plan-when { margin: 0; font-size: 11px; color: var(--color-muted-alt); overflow-wrap: anywhere; }
+.wb-plan-declined { margin: 0; padding-left: 6px; font-weight: 600; border-left: 3px solid var(--border); overflow-wrap: anywhere; }
+.wb-plan-steps .task-run-step-detail { overflow-wrap: anywhere; }
+.wb-plan-steps .task-run-step-dry-run .task-run-step-kind { display: none; }
+.wb-plan-lines { margin: 0; padding-left: 18px; }
+.wb-plan-close { align-self: flex-end; }
+/* `B1048`. The switch that shows the built-in tasks, in the toolbar's own
+   size; and a step picked up from the keyboard (M), lifted the way a step
+   dragged with the mouse is (`.wb-node-dragging`) — not outlined, because the
+   focus ring is the outline and stays on it. */
+.wb-tool-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--fg);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.wb-tool-switch[hidden] { display: none; }
+.wb-toolbar-zoom { display: inline-flex; align-items: center; gap: 6px; flex-wrap: nowrap; }
+.wb-tool-switch-box { width: auto; height: auto; margin: 0; }
+.wb-empty-builtins[hidden] { display: none; }
+.wb-node-moving {
+  z-index: 2;
+  cursor: move;
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--fg) 24%, transparent);
+}
+/* `B1056`. The first-run tour hint takes its z from the live stack
+   (`toolWindowZOrder.js:topPortalZ`, at least 10031), and the toast sat at
+   9999 under it: measured, the loop refusal's last line ("Remove one of those
+   links to save it.") was hidden behind the hint from x=1134. A toast is what
+   the person is being told right now, so it sits above every window, every
+   portaled overlay and the confirm dialog (99999) — at the top of the z range,
+   because the window counter climbs for as long as a session lasts and a
+   literal it can reach is the `#4720` defect again
+   (`tests/test_portal_dropdown_z_js.py`). It takes no clicks but its own
+   button, so it covers nothing it could block. */
+#toast.toast { z-index: 2147483000; }

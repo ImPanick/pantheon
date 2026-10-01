@@ -28,6 +28,12 @@ import { mountTaskFields } from '../tasks/taskFields.js';
 import { mountCanvas } from './canvas.js';
 import { makeWindowDraggable } from '../windowDrag.js';
 import * as Modals from '../modalManager.js?v=20261001workbench';
+// `P22-04`. The step renderer the Tasks card draws a plan with, for the
+// canvas's full plan. Spelled exactly as `app.js` imports `tasks.js` — a
+// different spelling is a second module instance (`runStatus.js`'s header) —
+// so this is the instance already on the page, and the cache-buster moves with
+// the other importers.
+import { renderRunSteps } from '../tasks.js?v=20260919workflowdiagram1';
 
 export const WORKBENCH_ID = 'workbench-modal';
 
@@ -37,7 +43,7 @@ export const ROOMS = [
   {
     id: 'automations',
     label: 'Automations',
-    mount: (host, opts) => mountCanvas(host, { ...opts, mountPanel: mountTaskFields }),
+    mount: (host, opts) => mountCanvas(host, { ...opts, mountPanel: mountTaskFields, renderSteps: renderRunSteps }),
   },
 ];
 

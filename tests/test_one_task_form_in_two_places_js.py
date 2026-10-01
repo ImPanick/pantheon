@@ -116,7 +116,7 @@ mockFetch(async (url, opts) => {
   if (url.includes('/api/email/accounts')) return res(200, { accounts: [] });
   if (method === 'POST' && /\/api\/tasks$/.test(url)) return res(ROUTES.status || 200, ROUTES.saved || {});
   if (method === 'PUT') return res(ROUTES.status || 200, ROUTES.saved || {});
-  if (method === 'GET' && /\/api\/tasks$/.test(url)) {
+  if (method === 'GET' && /\/api\/tasks(\?|$)/.test(url)) {
     return res(200, { tasks: ROUTES.tasks || [],
       graph: { nodes: [], edges: [], conditions: ['success', 'error'], max_depth: 10 } });
   }
@@ -593,7 +593,8 @@ def test_the_tasks_window_form_is_this_form(sandbox, task_db):
         }));
     """ % (json.dumps(row), json.dumps(row)))
     assert out["drawn"] and out["afterCancel"], out
-    assert out["sequence"][:2] == ["PUT /api/tasks/t1", "GET /api/tasks"], out["sequence"]
+    # `B1043`: the list asks for each task's last run.
+    assert out["sequence"][:2] == ["PUT /api/tasks/t1", "GET /api/tasks?include_last_run=true"], out["sequence"]
     assert out["afterSave"]
 
 

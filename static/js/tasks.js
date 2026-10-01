@@ -13,7 +13,7 @@ import { ordinalSuffix } from './util/ordinal.js';
 // and this file is not: the test drives it with no DOM and no stubs, and then
 // hands what it produced to the real vendored Mermaid to parse.
 import {
-  componentOf, longestChain, workflowMermaid, workflowSentence, SHAPE_WORDS,
+  componentOf, longestChain, workflowMermaid, workflowSentence, SHAPE_WORDS, KIND_WORDS,
 } from './tasks/workflowDiagram.js';
 // `P22-03`. The New/Edit form lives in `tasks/taskFields.js` now, mounted here
 // and by the Workbench's side panel, so there is one form (`Law 7`). The other
@@ -77,9 +77,17 @@ function _setTaskCompletionPending(active) {
 
 // ---- API ----
 
+// `B1043`. The card's last-run badge (`.task-lastrun`, drawn from
+// `last_run_status`) never rendered: `GET /api/tasks` puts the last run on a
+// row only when asked (`include_last_run`), and this — the list's only fetch —
+// never asked. The Workbench asks the same door the same way (`canvas.js:
+// TASKS_URL`). The server reads the last runs in one statement and leaves dry
+// runs out of them (`wb-runs`, `B1043`'s server half and `B1054`).
+const TASKS_LIST_URL = '/api/tasks?include_last_run=true';
+
 async function _fetchTasks() {
   try {
-    const res = await fetch(`${API_BASE}/api/tasks`, { credentials: 'same-origin' });
+    const res = await fetch(`${API_BASE}${TASKS_LIST_URL}`, { credentials: 'same-origin' });
     const data = await res.json();
     _tasks = data.tasks || [];
     _graph = data.graph || { nodes: [], edges: [], conditions: [], max_depth: 0 };
@@ -229,6 +237,15 @@ async function _fetchRuns(taskId, limit = 10) {
 // cache are imported back above, because the list reads the same palette.
 
 // ---- Helpers ----
+
+/** `P22-02` / `B1046`. The Workbench on this task's workflow, with this
+ *  window's schedule words — the one way a card opens it, for both doors
+ *  (⋮ → *Workflow* and the workflow chip). Loaded on first use. */
+function _openInWorkbench(task) {
+  return import('./workbench/workbench.js')
+    .then((wb) => wb.openWorkbench({ focusId: task.id, describeTrigger: _scheduleLabel }))
+    .catch(() => uiModule.showError('The Workbench did not load. Reload the page and try again.'));
+}
 
 function _scheduleLabel(task) {
   const tt = task.trigger_type || 'schedule';
@@ -719,9 +736,7 @@ function _renderList() {
       // ways — History is what this task did, Workflow is what it is part of.
       // `P22-02`: Workflow opens the Workbench on this task's workflow, and the
       // Mermaid drawing stays one item down as *Read as a diagram*.
-      items.push({ label: 'Workflow', icon: WORKFLOW_GLYPH, action: () => import('./workbench/workbench.js')
-        .then((wb) => wb.openWorkbench({ focusId: task.id, describeTrigger: _scheduleLabel }))
-        .catch(() => uiModule.showError('The Workbench did not load. Reload the page and try again.')) });
+      items.push({ label: 'Workflow', icon: WORKFLOW_GLYPH, action: () => _openInWorkbench(task) });
       items.push({ label: 'Read as a diagram', icon: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>', action: () => _showWorkflowDiagram(task.id, task.name) });
       if (task.is_builtin && task.is_modified) {
         items.push({ label: 'Revert to default', icon: '<polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>', action: () => _doRevert(task.id) });
@@ -759,19 +774,21 @@ function _renderList() {
     // has been on every task in this payload since `P8-26` and nothing drew it,
     // so the only way to find out that finishing this task starts another was
     // to open Edit and read the "Then run" dropdown. The chip says so on the
-    // card and opens the diagram; the kebab keeps the entry for anyone who
-    // goes looking there first.
+    // card; the kebab keeps the entry for anyone who goes looking there first.
+    // `B1046`: the chip — the most visible door on a chained card — opens the
+    // Workbench on that workflow, where it can be changed, as ⋮ → *Workflow*
+    // does; the read-only drawing stays one item under it, *Read as a diagram*.
     if (_graph.edges && _graph.edges.length) {
       const steps = componentOf(_graph, task.id).nodes.length;
       if (steps > 1) {
         const chip = document.createElement('button');
         chip.type = 'button';
         chip.className = 'task-workflow-chip';
-        chip.title = 'Draw this workflow';
+        chip.title = 'Open this workflow in the Workbench';
         chip.textContent = `Part of a ${steps}-step workflow`;
         chip.addEventListener('click', (e) => {
           e.stopPropagation();
-          _showWorkflowDiagram(task.id, task.name);
+          _openInWorkbench(task);
         });
         content.appendChild(chip);
       }
@@ -1360,13 +1377,16 @@ async function _showRunHistory(taskId, taskName) {
 function _workflowDetail(task) {
   if (!task) return '';
   const kind = task.task_type || 'llm';
+  // `B1045`. The kind's word is `workflowDiagram.js:KIND_WORDS`, the table the
+  // Workbench's canvas names a step with, so the diagram and the canvas say the
+  // same word for a step (`Law 7`); an unknown kind reads as a prompt, as here
+  // and there it always did.
   if (kind === 'action') {
     const node = _actionNode(task.action);
-    const said = (node && (node.description || node.name)) || task.action || 'Action';
-    return 'Action · ' + (said.length > 58 ? said.slice(0, 57) + '…' : said);
+    const said = (node && (node.description || node.name)) || task.action || KIND_WORDS.action;
+    return KIND_WORDS.action + ' · ' + (said.length > 58 ? said.slice(0, 57) + '…' : said);
   }
-  if (kind === 'research') return 'Research';
-  return 'Prompt';
+  return KIND_WORDS[kind] || KIND_WORDS.llm;
 }
 
 /**
@@ -3329,6 +3349,14 @@ function stopNotificationPolling() {
     _notifInterval = null;
   }
 }
+
+// `P22-04`, the canvas half. The Workbench draws a step's full plan with the
+// renderer above (`_renderRunSteps`), handed in by its glue
+// (`workbench/workbench.js`) — one renderer for a run's steps, so the card and
+// the canvas cannot word a plan two ways (`Law 7`). Exported here, beside the
+// module's other surface, rather than under the function: a test harness
+// lifts the text between `_renderRunSteps` and `_showRunHistory` as it is.
+export { _renderRunSteps as renderRunSteps };
 
 const tasksModule = {
   openTasks, closeTasks, isTasksOpen, startNotificationPolling, stopNotificationPolling,

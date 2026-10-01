@@ -18,17 +18,24 @@
 // says no, the sentence it answered with is what the canvas shows. Nothing
 // here second-guesses that rule — one rule, checked in one place (`Law 7`).
 //
-// **The keyboard path is a peer, not an afterthought.** A step is focusable;
-// its *Connect…* button picks the outcome and the next step by name from two
-// `<select>`s; arrow keys move a focused step by the window system's own step
-// (`windowDrag.js:KEY_STEP`); an arrow is focusable too, and Delete removes it
-// only after saying which arrow it is. Escape goes through `escMenuStack.js`,
+// **The keyboard path is a peer, not an afterthought.** The canvas is one tab
+// stop and the arrow keys go from step to step and along the arrows
+// (`B1048`); a step's *Connect…* button picks the outcome and the next step by
+// name from two `<select>`s; M picks a step up and the arrow keys then move it
+// by the window system's own step (`windowDrag.js:KEY_STEP`); an arrow is
+// focusable too, and Delete removes it only after saying which arrow it is. Escape goes through `escMenuStack.js`,
 // so it closes the innermost thing — the picker, the pending removal, the side
-// panel — before `ui.js`'s arbiter closes the window.
+// panel — before `ui.js`'s arbiter closes the window; while one is open the
+// room carries `data-esc-layer`, which is what makes the arbiter ask the stack
+// first when the pointer is on the window (`B1052`, `holdEscape`).
 //
 // **Every word a person wrote is set as text.** Task names reach the page
 // through `textContent` and attribute values only — never `innerHTML` — which
 // is the property `P22`'s preamble weighed Drawflow on and found it lacked.
+// One markup assignment exists, and its markup is not data's: a step's full
+// dry-run plan is drawn by the Tasks card's own step renderer
+// (`tasks.js:renderRunSteps`), which escapes every value with `ui.js:esc`
+// (`P22-04`, so a plan is worded one way, `Law 7`).
 //
 // **A step's last outcome is a shape and a weight before it is a colour**
 // (`P8-34`'s rule for sixteen palettes): a mark (✓ ✗ … · ○), the shared word
@@ -46,7 +53,7 @@
 // under `workbench_positions` — see `POSITIONS_PREF` for why that name.
 
 import {
-  layoutGraph, boundsOf, portPoint, portOffset, inputPoint, edgePath, edgeMid,
+  layoutGraph, boundsOf, portPoint, portOffset, edgePath, edgeRoute,
   arrowPath, nodeAt, clampZoom, fitView, NODE_W, NODE_H, PORTS,
 } from './graphLayout.js';
 import { EDGE_WORDS, EDGE_COLUMNS, KIND_WORDS, componentOf } from '../tasks/workflowDiagram.js';
@@ -76,6 +83,22 @@ const SAVE_DELAY_MS = 400;
 /** How long after a drag ends the click a browser fires for it is ignored. */
 const SWALLOW_MS = 400;
 const ZOOM_STEP = 1.2;
+/** `.wb-connect`'s width in the sheet, so the picker can be kept on the stage. */
+const CONNECT_W = 260;
+/** `P22-04`. The Tasks card's words for the dry run (`tasks.js`), on purpose. */
+const DRY_LABEL = 'Show me what this would do';
+/** `.wb-plan-box`'s width in the sheet. */
+const PLAN_W = 320;
+/** The mark beside a step's line in a plan, by what the plan says of it. */
+const PLAN_MARKS = { planned: '→', cannot: '?', declined: '⊘', aside: '–' };
+/**
+ * The sentence `dry_run_plan` (`src/builtin_actions.py`) writes for the two
+ * actions a dry run cannot describe (`DRY_UNCOVERABLE_ACTIONS`). The plan is
+ * lines of text and says which actions those are in no other way, so the
+ * canvas finds the sentence to put it on the step; filed for a structured
+ * field on the wire so this stops being read off words.
+ */
+const CANNOT_SAY = 'A dry run cannot tell you what this would change';
 const KEY_DIRS = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
 /** The mark beside a step's last-run word, by `runStatusTone`. `none` is a
  *  step that has not run. */
@@ -140,6 +163,9 @@ export function outcomeOf(task) {
  */
 export function mountCanvas(root, opts = {}) {
   const mountPanel = typeof opts.mountPanel === 'function' ? opts.mountPanel : null;
+  // `P22-04`. `tasks.js:renderRunSteps`, the Tasks card's step renderer,
+  // handed in by the glue so a step's full plan is drawn the one way.
+  const renderSteps = typeof opts.renderSteps === 'function' ? opts.renderSteps : null;
   const net = typeof opts.fetch === 'function' ? opts.fetch : (url, init) => globalThis.fetch(url, init);
   const describe = (task) => {
     if (typeof opts.describeTrigger !== 'function') return '';
@@ -155,6 +181,9 @@ export function mountCanvas(root, opts = {}) {
     selected: null, panel: null, connect: null,
     drag: null, link: null, pan: null, swallow: null,
     pending: null, sayRun: null, saveTimer: null,
+    plan: null, planBox: null, dryBusy: false,
+    // `B1048`.
+    showBuiltins: false, reveal: new Set(), hidden: new Set(), current: null, moving: null,
   };
 
   // ── the skeleton ─────────────────────────────────────────────────────────
@@ -180,11 +209,29 @@ export function mountCanvas(root, opts = {}) {
   const fitBtn = _el('button', 'wb-tool', 'Fit');
   fitBtn.type = 'button';
   fitBtn.title = 'Show every step (0)';
-  for (const n of [newBtn, tidyBtn, spacer, outBtn, zoomWord, inBtn, fitBtn]) toolbar.appendChild(n);
+  // `B1048`. The housekeeping tasks every install comes with are not the
+  // person's, and on a fresh install they were the whole first view. Set
+  // aside until asked for, by a switch that says what they are — the word the
+  // Tasks card puts on them, "built-in".
+  const builtinsSwitch = _el('label', 'wb-tool-switch');
+  builtinsSwitch.title = 'The housekeeping tasks Pantheon comes with, such as Memory Tidy and Email Tags. '
+    + 'Hidden here so your own steps come first; a built-in task joined to one of yours is always shown.';
+  const builtinsBox = _el('input', 'wb-tool-switch-box');
+  builtinsBox.type = 'checkbox';
+  const builtinsWord = _el('span', 'wb-tool-switch-word', 'Show built-in tasks');
+  builtinsSwitch.appendChild(builtinsBox);
+  builtinsSwitch.appendChild(builtinsWord);
+  builtinsSwitch.hidden = true;
+  // The zoom controls wrap as one group: at phone width they split across two
+  // rows, "−" on one and "52% + Fit" on the next (seen at 390px).
+  const zoomGroup = _el('span', 'wb-toolbar-zoom');
+  for (const n of [outBtn, zoomWord, inBtn, fitBtn]) zoomGroup.appendChild(n);
+  for (const n of [newBtn, tidyBtn, builtinsSwitch, spacer, zoomGroup]) toolbar.appendChild(n);
 
   const hint = _el('p', 'wb-hint',
     'Drag from a step’s “' + EDGE_WORDS.success + '” or “' + EDGE_WORDS.error
-    + '” onto the step that should run next, or use its Connect… button. Click a step to edit it.');
+    + '” onto the step that should run next, or use its Connect… button. Click a step to edit it. '
+    + 'Keys: the arrows go from step to step and along the arrows, Enter opens a step, M moves it.');
 
   const sayBox = _el('div', 'wb-say');
   const sayText = _el('span', 'wb-say-text');
@@ -216,9 +263,14 @@ export function mountCanvas(root, opts = {}) {
   viewport.appendChild(world);
 
   const empty = _el('div', 'wb-empty');
-  empty.appendChild(_el('p', 'wb-empty-title', 'No automations yet.'));
+  const emptyTitle = _el('p', 'wb-empty-title', 'No automations yet.');
+  empty.appendChild(emptyTitle);
   empty.appendChild(_el('p', 'wb-empty-text',
     'A step is a task: a prompt, a research run or an action, started by a schedule, an event or a webhook. Make one, make another, then join them.'));
+  const emptyBuiltins = _el('p', 'wb-empty-text wb-empty-builtins',
+    'Pantheon’s built-in tasks are hidden here. “Show built-in tasks” above shows them.');
+  emptyBuiltins.hidden = true;
+  empty.appendChild(emptyBuiltins);
   const emptyNew = _el('button', 'wb-tool wb-tool-new', 'New step');
   emptyNew.type = 'button';
   empty.appendChild(emptyNew);
@@ -230,9 +282,16 @@ export function mountCanvas(root, opts = {}) {
   panel.hidden = true;
   const panelHead = _el('div', 'wb-panel-head');
   const panelTitle = _el('h3', 'wb-panel-title');
+  // `P22-04`. The question the Tasks card asks, on the step that is open — the
+  // same words, so a person who met it on the card knows it here.
+  const panelDry = _el('button', 'wb-panel-dry', DRY_LABEL);
+  panelDry.type = 'button';
+  panelDry.title = 'Plans a run of this step and every step after it, and shows the plan on the canvas. Nothing runs and nothing changes.';
+  panelDry.hidden = true;
   const panelClose = _el('button', 'wb-panel-close', 'Close');
   panelClose.type = 'button';
   panelHead.appendChild(panelTitle);
+  panelHead.appendChild(panelDry);
   panelHead.appendChild(panelClose);
   const panelBody = _el('div', 'wb-panel-body');
   panel.appendChild(panelHead);
@@ -266,6 +325,34 @@ export function mountCanvas(root, opts = {}) {
     }
   }
   sayAction.addEventListener('click', () => { const run = S.sayRun; if (run) run(); });
+
+  // ── Escape ───────────────────────────────────────────────────────────────
+  // `B1052`. Everything this room opens over itself — the step panel, the
+  // Connect… picker, an arrow being drawn, a removal waiting for its second
+  // Delete — is a layer on `escMenuStack.js`, so Escape closes the innermost
+  // thing first. `ui.js`'s arbiter closes the window under the pointer BEFORE
+  // it asks that stack, and a mouse user's pointer is on the window they just
+  // clicked in: measured on the merged tree, one Escape took the Workbench and
+  // an unsaved step form with it. So while any layer is open the room says so
+  // — `data-esc-layer` on its root — and the arbiter asks the stack first for
+  // a window holding one. Every layer is registered through here, so the mark
+  // and the stack cannot disagree.
+  let escHeld = 0;
+  function holdEscape(dismiss) {
+    let released = false;
+    let unregister = () => {};
+    const release = () => {
+      if (released) return;
+      released = true;
+      unregister();
+      escHeld = Math.max(0, escHeld - 1);
+      if (!escHeld) delete root.dataset.escLayer;
+    };
+    unregister = registerMenuDismiss(() => { release(); dismiss(); });
+    escHeld += 1;
+    root.dataset.escLayer = 'open';
+    return release;
+  }
 
   // ── the wire ─────────────────────────────────────────────────────────────
   async function put(path, body) {
@@ -361,6 +448,8 @@ export function mountCanvas(root, opts = {}) {
       return false;
     }
     if (S.destroyed) return false;
+    // A plan was of the tasks as they were; after a change it may not be.
+    dropPlan();
     take(data);
     render();
     applyFocusChain();
@@ -446,7 +535,10 @@ export function mountCanvas(root, opts = {}) {
 
   function focusNode(id) {
     const node = S.nodeEls.get(String(id));
-    if (node && typeof node.focus === 'function') node.focus();
+    if (node) {
+      setCurrent({ kind: 'node', id: String(id) });
+      if (typeof node.focus === 'function') node.focus();
+    }
     return node || null;
   }
 
@@ -468,6 +560,7 @@ export function mountCanvas(root, opts = {}) {
       node.setAttribute('aria-hidden', 'true');
       node.appendChild(_el('div', 'wb-node-title', 'A task you cannot see'));
       node.appendChild(_el('div', 'wb-node-sub', 'Not in your list of tasks'));
+      if (S.plan && !S.plan.partial && !S.plan.byId.has(id)) node.dataset.plan = 'aside';
       return node;
     }
 
@@ -479,24 +572,33 @@ export function mountCanvas(root, opts = {}) {
     const trigger = targeted.has(id) ? '' : describe(task);
     const paused = task.status === 'paused';
     const out = outcomeOf(task);
-    const subText = [KIND_WORDS[kind] || KIND_WORDS.llm, trigger, paused ? 'paused' : '']
+    // `P22-04`. While a dry run's plan is on the canvas, a step says what the
+    // run would do there instead of how its last run went.
+    const plan = planFor(id, task);
+    const subText = plan ? plan.sub : [KIND_WORDS[kind] || KIND_WORDS.llm, trigger, paused ? 'paused' : '']
       .filter(Boolean).join(' · ');
 
-    node.setAttribute('tabindex', '0');
+    // `B1048`. One tab stop for the whole canvas (`applyRoving`): a step is
+    // reached with the arrow keys, and the one that is the stop says so.
+    node.setAttribute('tabindex', '-1');
     node.setAttribute('role', 'group');
-    node.setAttribute('aria-label', `${name}. ${subText}. ${out.word}.`);
+    node.setAttribute('aria-label', `${name}. ${subText}. ${(plan ? plan.line : out.word).replace(/\.$/, '')}.`);
     node.dataset.kind = kind;
-    node.dataset.outcome = out.tone;
+    if (plan) node.dataset.plan = plan.state;
+    else node.dataset.outcome = out.tone;
     if (paused) node.dataset.paused = 'true';
 
     const title = _el('div', 'wb-node-title', name);
     title.title = name;
     const sub = _el('div', 'wb-node-sub', subText);
-    const last = _el('div', 'wb-node-last');
-    const mark = _el('span', 'wb-node-mark', OUTCOME_MARKS[out.tone] || OUTCOME_MARKS.info);
+    const last = _el('div', plan ? 'wb-node-plan' : 'wb-node-last');
+    const mark = _el('span', 'wb-node-mark', plan ? PLAN_MARKS[plan.state]
+      : (OUTCOME_MARKS[out.tone] || OUTCOME_MARKS.info));
     mark.setAttribute('aria-hidden', 'true');
     last.appendChild(mark);
-    last.appendChild(_el('span', 'wb-node-word', out.word));
+    const word = _el('span', plan ? 'wb-node-plan-line' : 'wb-node-word', plan ? plan.line : out.word);
+    if (plan) word.title = plan.line;
+    last.appendChild(word);
     const connectBtn = _el('button', 'wb-node-connect', 'Connect…');
     connectBtn.type = 'button';
     connectBtn.title = `Choose what runs after ${name}`;
@@ -504,7 +606,21 @@ export function mountCanvas(root, opts = {}) {
       if (e && e.stopPropagation) e.stopPropagation();
       openConnect(id, connectBtn);
     });
-    for (const n of [title, sub, last, connectBtn]) node.appendChild(n);
+    const actions = _el('div', 'wb-node-actions');
+    actions.appendChild(connectBtn);
+    if (plan && plan.entry) {
+      // The whole plan, on demand: the short line is one of several.
+      const planBtn = _el('button', 'wb-node-plan-btn', 'Plan');
+      planBtn.type = 'button';
+      planBtn.title = `What ${name} would do, line by line`;
+      planBtn.setAttribute('aria-label', `What ${name} would do`);
+      planBtn.addEventListener('click', (e) => {
+        if (e && e.stopPropagation) e.stopPropagation();
+        openPlanBox(id);
+      });
+      actions.appendChild(planBtn);
+    }
+    for (const n of [title, sub, last, actions]) node.appendChild(n);
 
     for (const when of PORTS) {
       const port = _el('span', 'wb-port');
@@ -531,14 +647,16 @@ export function mountCanvas(root, opts = {}) {
       select(id);
     });
     node.addEventListener('keydown', (e) => onNodeKey(e, id));
+    node.addEventListener('focus', () => setCurrent({ kind: 'node', id }));
+    node.addEventListener('blur', () => { if (S.moving && S.moving.id === id) putDown(); });
     if (S.selected === id) node.classList.add('wb-node-selected');
     return node;
   }
 
-  function drawEdges() {
+  function drawEdges(graph) {
     const kids = [];
     S.edgeEls = [];
-    for (const edge of S.graph.edges || []) {
+    for (const edge of (graph || S.graph).edges || []) {
       const from = String(edge.from);
       const to = String(edge.to);
       const when = String(edge.when || '');
@@ -547,7 +665,12 @@ export function mountCanvas(root, opts = {}) {
       g.setAttribute('data-from', from);
       g.setAttribute('data-to', to);
       g.setAttribute('data-when', when);
-      g.setAttribute('tabindex', '0');
+      // `P22-04`. An arrow the planned run would not follow is set aside with
+      // the steps it joins.
+      if (S.plan && !S.plan.partial && !(S.plan.byId.has(from) && S.plan.byId.has(to))) {
+        g.setAttribute('data-plan', 'aside');
+      }
+      g.setAttribute('tabindex', '-1');
       g.setAttribute('role', 'button');
       g.setAttribute('aria-label', edgeSentence(from, when, to) + ' Press Delete to remove this arrow.');
       const hit = _svg('path', 'wb-edge-hit');
@@ -560,7 +683,7 @@ export function mountCanvas(root, opts = {}) {
       const rec = { edge, from, to, when, key: `${from}\u0000${when}\u0000${to}`, g, hit, line, head, label };
       g.addEventListener('pointerdown', (e) => { if (e && e.stopPropagation) e.stopPropagation(); });
       g.addEventListener('click', () => { if (typeof g.focus === 'function') g.focus(); showEdge(rec); });
-      g.addEventListener('focus', () => showEdge(rec));
+      g.addEventListener('focus', () => { setCurrent({ kind: 'edge', id: from, key: rec.key }); showEdge(rec); });
       g.addEventListener('blur', () => { if (S.pending && S.pending.key === rec.key) clearPending(); });
       g.addEventListener('keydown', (e) => onEdgeKey(e, rec));
       S.edgeEls.push(rec);
@@ -572,15 +695,15 @@ export function mountCanvas(root, opts = {}) {
 
   function updateEdges() {
     for (const r of S.edgeEls) {
-      const a = portPoint(S.pos.get(r.from), r.when);
-      const b = inputPoint(S.pos.get(r.to));
-      const d = edgePath(a, b);
-      r.hit.setAttribute('d', d);
-      r.line.setAttribute('d', d);
-      r.head.setAttribute('d', arrowPath(b));
-      const m = edgeMid(a, b);
-      r.label.setAttribute('x', String(m.x));
-      r.label.setAttribute('y', String(m.y - 6));
+      // `B1053`. Routed round both steps when the target is not to the right,
+      // so an arrow to a step on the left reads the way it was saved.
+      const route = edgeRoute(S.pos.get(r.from), S.pos.get(r.to), r.when);
+      r.hit.setAttribute('d', route.d);
+      r.line.setAttribute('d', route.d);
+      r.head.setAttribute('d', arrowPath(route.end));
+      r.label.setAttribute('x', String(route.label.x));
+      r.label.setAttribute('y', String(route.label.y));
+      r.g.setAttribute('data-routed', route.routed ? 'true' : 'false');
     }
     sizeSvg();
   }
@@ -601,23 +724,59 @@ export function mountCanvas(root, opts = {}) {
     guides.replaceChildren(...kids);
   }
 
+  // ── what is shown: the built-ins set aside (`B1048`) ─────────────────────
+  /** The built-in tasks set aside: every workflow made only of built-ins,
+   *  unless the switch shows them or the Workbench was opened on one. A
+   *  built-in joined to a step of the person's own is part of their workflow
+   *  and is never hidden. */
+  function hiddenIds() {
+    const out = new Set();
+    if (S.showBuiltins) return out;
+    const seen = new Set();
+    for (const t of S.tasks) {
+      const id = String(t.id);
+      if (!t.is_builtin || seen.has(id)) continue;
+      const ids = componentOf(S.graph, id).ids;
+      ids.forEach((x) => seen.add(x));
+      const builtinsOnly = [...ids].every((x) => { const o = S.byId.get(x); return !!(o && o.is_builtin); });
+      if (builtinsOnly && ![...ids].some((x) => S.reveal.has(x))) ids.forEach((x) => out.add(x));
+    }
+    return out;
+  }
+
   function render() {
+    S.hidden = hiddenIds();
+    const shown = (id) => !S.hidden.has(String(id));
+    const graph = {
+      ...S.graph,
+      nodes: (S.graph.nodes || []).filter((n) => shown(n.id)),
+      edges: (S.graph.edges || []).filter((e) => shown(e.from) && shown(e.to)),
+    };
     // Everything already on the canvas stays where it is — a person who drew
     // one arrow must not have to find both steps again — and what the person
     // placed in an earlier visit is where it was left. Only steps nobody has
     // placed are laid out (`graphLayout.js`).
     const fixed = new Map(S.pinned);
     for (const [id, p] of S.pos) fixed.set(id, p);
-    const lay = layoutGraph(S.graph, fixed);
+    const lay = layoutGraph(graph, fixed);
     S.pos = new Map(lay.nodes.map((n) => [n.id, { x: n.x, y: n.y }]));
     S.missing = new Set(lay.nodes.filter((n) => n.missing).map((n) => n.id));
     S.order = lay.nodes.map((n) => n.id);
-    const targeted = new Set((S.graph.edges || []).map((e) => String(e.to)));
+    const targeted = new Set((graph.edges || []).map((e) => String(e.to)));
     S.nodeEls = new Map();
     nodesLayer.replaceChildren(...lay.nodes.map((n) => buildNode(n, targeted)));
-    drawEdges();
-    empty.hidden = S.tasks.length > 0;
-    root.classList.toggle('wb-room-empty', S.tasks.length === 0);
+    drawEdges(graph);
+    const builtins = S.tasks.filter((t) => t.is_builtin).length;
+    const own = S.tasks.length - S.tasks.filter((t) => S.hidden.has(String(t.id))).length;
+    builtinsSwitch.hidden = builtins === 0;
+    builtinsBox.checked = S.showBuiltins;
+    builtinsWord.textContent = `Show built-in tasks (${builtins})`;
+    empty.hidden = own > 0;
+    emptyTitle.textContent = S.tasks.length ? 'No automations of your own yet.' : 'No automations yet.';
+    emptyBuiltins.hidden = !S.hidden.size;
+    root.classList.toggle('wb-room-empty', own === 0);
+    if (S.moving && S.nodeEls.has(S.moving.id)) S.nodeEls.get(S.moving.id).classList.add('wb-node-moving');
+    applyRoving();
     if (!S.viewed) { S.viewed = true; fitAll(); } else applyView();
   }
 
@@ -691,17 +850,144 @@ export function mountCanvas(root, opts = {}) {
     }
   }
 
+  // ── the keyboard: one tab stop, the arrows within it (`B1048`) ───────────
+  // Every step was a tab stop and so was its Connect…, with the arrows after
+  // them: measured on the merged tree, 24 to 28 presses of Tab to reach one
+  // step. The canvas is one stop now — the step (or arrow) last visited, the
+  // first step to begin with — and the arrow keys go through the steps in
+  // reading order (top to bottom, left to right), each followed by the arrows
+  // that leave it, "if it works" first; Home and End go to the ends. The
+  // stop's own buttons (Connect…, Plan) follow it in the Tab order, so Tab
+  // from a step still reaches its Connect…. Moving a step was the arrow keys
+  // themselves; they go between steps now, so a step is picked up with M,
+  // moved with the arrows exactly as before (Shift for four times the step),
+  // and put down with Enter or M — or put back with Escape.
+  const BAND = NODE_H / 2;
+  const sameItem = (a, b) => !!(a && b && a.kind === b.kind && (a.kind === 'node' ? a.id === b.id : a.key === b.key));
+
+  function rovingItems() {
+    const steps = S.order.filter((id) => !S.missing.has(id) && S.nodeEls.has(id))
+      .map((id) => ({ id, p: S.pos.get(id) }))
+      .sort((a, b) => (Math.round(a.p.y / BAND) - Math.round(b.p.y / BAND)) || (a.p.x - b.p.x));
+    const items = [];
+    for (const s of steps) {
+      items.push({ kind: 'node', id: s.id, el: S.nodeEls.get(s.id) });
+      S.edgeEls.filter((r) => r.from === s.id)
+        .sort((a, b) => PORTS.indexOf(a.when) - PORTS.indexOf(b.when))
+        .forEach((r) => items.push({ kind: 'edge', id: r.from, key: r.key, el: r.g }));
+    }
+    return items;
+  }
+
+  function applyRoving() {
+    const items = rovingItems();
+    const cur = items.find((it) => sameItem(it, S.current)) || items[0] || null;
+    S.current = cur ? { kind: cur.kind, id: cur.id, key: cur.key } : null;
+    for (const it of items) {
+      const on = it === cur;
+      it.el.setAttribute('tabindex', on ? '0' : '-1');
+      if (it.kind === 'node') {
+        for (const b of it.el.querySelectorAll('button')) b.setAttribute('tabindex', on ? '0' : '-1');
+      }
+    }
+    return cur;
+  }
+
+  function setCurrent(item) {
+    if (sameItem(item, S.current)) return;
+    S.current = item;
+    applyRoving();
+  }
+
+  /** Move the stop by `delta` items, or to the first or last, and focus it. */
+  function rove(e, delta, end) {
+    const items = rovingItems();
+    if (!items.length) return;
+    const i = items.findIndex((it) => sameItem(it, S.current));
+    const j = end === 'first' ? 0 : end === 'last' ? items.length - 1
+      : Math.min(items.length - 1, Math.max(0, (i < 0 ? 0 : i) + delta));
+    if (e && e.preventDefault) e.preventDefault();
+    const next = items[j];
+    S.current = { kind: next.kind, id: next.id, key: next.key };
+    applyRoving();
+    if (typeof next.el.focus === 'function') next.el.focus();
+  }
+
+  /** The arrow keys and Home/End, on a step or an arrow. True when used. */
+  function roveKeys(e) {
+    if (e.altKey || e.ctrlKey || e.metaKey) return false;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowRight') { rove(e, 1); return true; }
+    if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') { rove(e, -1); return true; }
+    if (e.key === 'Home') { rove(e, 0, 'first'); return true; }
+    if (e.key === 'End') { rove(e, 0, 'last'); return true; }
+    return false;
+  }
+
   // ── moving a step: keyboard ──────────────────────────────────────────────
+  function pickUp(id) {
+    const p = S.pos.get(id);
+    if (!p) return;
+    putDown(true);
+    S.moving = {
+      id, x: p.x, y: p.y, pinned: S.pinned.has(id) ? { ...S.pinned.get(id) } : null,
+      unregister: holdEscape(() => putBack()),
+    };
+    const node = S.nodeEls.get(id);
+    if (node) node.classList.add('wb-node-moving');
+    say(`Moving ${nameOf(id)}: the arrow keys move it, with Shift in bigger steps. Enter puts it down; Escape puts it back.`);
+  }
+
+  function endMove() {
+    const m = S.moving;
+    if (!m) return null;
+    S.moving = null;
+    m.unregister();
+    const node = S.nodeEls.get(m.id);
+    if (node) node.classList.remove('wb-node-moving');
+    return m;
+  }
+
+  function putDown(quiet) {
+    const m = endMove();
+    if (!m) return;
+    if (S.saveTimer) savePositions();
+    if (!quiet) say(`Put ${nameOf(m.id)} down.`);
+  }
+
+  function putBack() {
+    const m = endMove();
+    if (!m) return;
+    moveNode(m.id, m.x, m.y);
+    if (m.pinned) S.pinned.set(m.id, m.pinned); else S.pinned.delete(m.id);
+    savePositions();
+    focusNode(m.id);
+    say(`${nameOf(m.id)} is back where it was.`);
+  }
+
   function onNodeKey(e, id) {
     if (e.target && e.target !== S.nodeEls.get(id)) return;   // keys inside Connect…
-    const dir = KEY_DIRS[e.key];
-    if (dir && !e.altKey && !e.ctrlKey && !e.metaKey) {
+    const plain = !e.altKey && !e.ctrlKey && !e.metaKey;
+    if (S.moving && S.moving.id === id) {
+      const dir = KEY_DIRS[e.key];
+      if (dir && plain) {
+        e.preventDefault();
+        const step = KEY_STEP * (e.shiftKey ? 4 : 1);
+        const p = S.pos.get(id);
+        moveNode(id, p.x + dir[0] * step, p.y + dir[1] * step);
+        pin(id);
+        scheduleSave();
+        return;
+      }
+      if (plain && (e.key === 'Enter' || e.key === 'm' || e.key === 'M')) {
+        e.preventDefault();
+        putDown();
+      }
+      return;
+    }
+    if (roveKeys(e)) return;
+    if (plain && (e.key === 'm' || e.key === 'M')) {
       e.preventDefault();
-      const step = KEY_STEP * (e.shiftKey ? 4 : 1);
-      const p = S.pos.get(id);
-      moveNode(id, p.x + dir[0] * step, p.y + dir[1] * step);
-      pin(id);
-      scheduleSave();
+      pickUp(id);
       return;
     }
     if (e.key === 'Enter' || e.key === ' ') {
@@ -721,7 +1007,7 @@ export function mountCanvas(root, opts = {}) {
     S.link = {
       from, when, port, pointerId: e.pointerId, over: null,
       start: portPoint(S.pos.get(from), when),
-      unregister: registerMenuDismiss(() => endLink(null)),
+      unregister: holdEscape(() => endLink(null)),
     };
     try { if (port.setPointerCapture) port.setPointerCapture(e.pointerId); } catch (_) { /* a synthetic pointer */ }
     ghost.setAttribute('d', edgePath(S.link.start, S.link.start));
@@ -824,13 +1110,27 @@ export function mountCanvas(root, opts = {}) {
       // before anything is written, and a second press is the yes.
       S.pending = {
         key: rec.key,
-        unregister: registerMenuDismiss(() => { S.pending = null; say('Kept. ' + edgeSentence(rec.from, rec.when, rec.to)); }),
+        unregister: holdEscape(() => { S.pending = null; say('Kept. ' + edgeSentence(rec.from, rec.when, rec.to)); }),
       };
       say(`Remove this arrow? ${edgeSentence(rec.from, rec.when, rec.to)} Press Delete again to remove it, or Escape to keep it.`,
         { action: { label: 'Remove this arrow', run: () => removeEdge(rec) } });
       return;
     }
+    if (roveKeys(e)) return;
     zoomKeys(e);
+  }
+
+  // ── a box beside a step ──────────────────────────────────────────────────
+  /** Put `box` (`width` wide in the sheet) beside step `id`, on the stage. */
+  function besideStep(box, id, width) {
+    const p = S.pos.get(id) || { x: 0, y: 0 };
+    let left = Math.round(S.view.x + (p.x + NODE_W) * S.view.zoom + 12);
+    // `B1051`. Beside the step, unless that is past the stage's right edge — at
+    // phone width it always is, and the picker opened off-screen.
+    const stageW = (() => { try { return stage.getBoundingClientRect().width || 0; } catch (_) { return 0; } })();
+    if (stageW) left = Math.min(left, Math.round(stageW - width - 8));
+    box.style.left = Math.max(8, left) + 'px';
+    box.style.top = Math.max(8, Math.round(S.view.y + p.y * S.view.zoom)) + 'px';
   }
 
   // ── Connect… — the keyboard's way to the same write ──────────────────────
@@ -929,11 +1229,9 @@ export function mountCanvas(root, opts = {}) {
       if (e.key === 'Enter' && e.target !== go && e.target !== cancel) { e.preventDefault(); submit(); }
     });
 
-    const p = S.pos.get(from) || { x: 0, y: 0 };
-    box.style.left = Math.max(8, Math.round(S.view.x + (p.x + NODE_W) * S.view.zoom + 12)) + 'px';
-    box.style.top = Math.max(8, Math.round(S.view.y + p.y * S.view.zoom)) + 'px';
+    besideStep(box, from, CONNECT_W);
     stage.appendChild(box);
-    S.connect = { box, from, opener, submit, whenSel, toSel, unregister: registerMenuDismiss(() => closeConnect(true)) };
+    S.connect = { box, from, opener, submit, whenSel, toSel, unregister: holdEscape(() => closeConnect(true)) };
     whenSel.focus();
   }
 
@@ -964,6 +1262,26 @@ export function mountCanvas(root, opts = {}) {
     say(saved && saved.name ? `Saved ${saved.name}.` : 'Saved.');
   }
 
+  // `B1052`. Escape on a form with unsaved edits says so before it throws them
+  // away, and a second Escape is the yes — the canvas's own rule for removing
+  // an arrow (said first, done second). An edit is anything typed or chosen in
+  // the form (`input` / `change` reaching the panel's host); the form is the
+  // `P22` contract's and says nothing about itself, so the panel listens
+  // rather than asking it. Cancel, Close and Save are deliberate and do not ask.
+  function panelEscape() {
+    const p = S.panel;
+    if (!p) return;
+    const name = p.id ? nameOf(p.id) : 'This new step';
+    if (p.dirty && !p.asked) {
+      p.asked = true;
+      p.unregister = holdEscape(() => panelEscape());
+      say(`${name} has changes that are not saved. Press Escape again to close it without saving them, or Save.`);
+      return;
+    }
+    closePanel(true);
+    if (p.asked) say(`Closed ${p.id ? name : 'the new step'} without saving.`);
+  }
+
   function openPanel(task) {
     closeConnect(false);
     closePanel(false);
@@ -973,9 +1291,17 @@ export function mountCanvas(root, opts = {}) {
     panel.hidden = false;
     root.classList.add('wb-panel-open');
     panelTitle.textContent = task ? taskName(task) : 'New step';
+    // A new step has nothing saved to plan yet.
+    panelDry.hidden = !id;
     const host = _el('div', 'wb-panel-host');
     panelBody.replaceChildren(host);
-    S.panel = { id, host, handle: null, unregister: registerMenuDismiss(() => closePanel(true)) };
+    S.panel = { id, host, handle: null, dirty: false, asked: false, unregister: holdEscape(() => panelEscape()) };
+    const edited = () => {
+      const p = S.panel;
+      if (p && p.host === host) { p.dirty = true; p.asked = false; }
+    };
+    host.addEventListener('input', edited);
+    host.addEventListener('change', edited);
     if (!mountPanel) {
       host.textContent = 'The step editor did not load. Edit this task from the Tasks window.';
       return;
@@ -993,11 +1319,210 @@ export function mountCanvas(root, opts = {}) {
     if (task) openPanel(task);
   }
 
+  // ── a dry run of a chain: every step says what it would do ───────────────
+  // `P22-04`. *Show me what this would do* on an open step asks the route the
+  // Tasks card asks — `POST /api/tasks/{id}/run?dry=true` — with `chain=true`,
+  // whose reply carries `chain`: every task the run could reach along either
+  // arrow, once each, breadth first, the head first, each with its plan
+  // (`steps`, in a run's shape), the arrow that leads to it (`when`) and, when
+  // the engine would not plan it, why (`declined`) — the contract in
+  // `/work/notes/P22-WAVE-B.md`. The server half plans and records nothing for
+  // the steps after the head; this half only draws. A dry run sends no mail
+  // and runs nothing, and that promise is the server's, not this function's,
+  // which only ever sends `dry=true`.
+  //
+  // On the canvas: each step the run would reach says, in one short line, what
+  // it would do — the plan's own "Would …" line, or for the two actions a dry
+  // run cannot describe its sentence saying so — with how it is reached
+  // ("After Nightly backup, if it fails"), and *Plan* opens the whole plan
+  // drawn by the Tasks card's renderer. A step it would not reach is set aside
+  // (dimmed, dotted, "Not reached by this run"); a step the engine would not
+  // plan shows the engine's sentence. Escape, *Clear the plan* or any change
+  // puts the steps back.
+
+  /** What a step says while a plan is on the canvas, or `null` (no plan, or
+   *  the server planned the head only and says nothing of this step). */
+  function planFor(id, task) {
+    const P = S.plan;
+    if (!P) return null;
+    const kindWord = KIND_WORDS[(task && task.task_type) || 'llm'] || KIND_WORDS.llm;
+    const entry = P.byId.get(id);
+    if (!entry) {
+      return P.partial ? null : { state: 'aside', sub: kindWord, line: 'Not reached by this run', entry: null };
+    }
+    // A paused step is planned (`B1036`) and says it is paused, from its own
+    // status — the server's half plans it with `declined: null`.
+    const sub = [entry.depth === 0 ? 'Starts here' : entry.after, kindWord,
+      task && task.status === 'paused' ? 'paused' : ''].filter(Boolean).join(' · ');
+    const lines = entry.steps.map((s) => String((s && s.detail) || '').trim()).filter(Boolean);
+    if (!lines.length) {
+      return { state: 'declined', sub, line: `Would not run: ${entry.declined || 'nothing was planned'}`, entry };
+    }
+    const cannot = lines.find((l) => l.startsWith(CANNOT_SAY));
+    const what = cannot
+      ? cannot.slice(0, cannot.indexOf('.') + 1 || cannot.length)
+      : (lines.find((l) => /^Would\b/.test(l)) || lines[0]);
+    return { state: cannot ? 'cannot' : 'planned', sub, line: entry.declined ? `${entry.declined} · ${what}` : what, entry };
+  }
+
+  function dropPlan() {
+    closePlanBox(false);
+    const P = S.plan;
+    if (!P) return;
+    S.plan = null;
+    P.unregister();
+  }
+
+  function clearPlan() {
+    if (!S.plan) return;
+    const head = S.plan.head;
+    dropPlan();
+    render();
+    focusNode(head);
+    say('');
+  }
+
+  function showPlan(headId, reply) {
+    dropPlan();
+    const chain = Array.isArray(reply && reply.chain) ? reply.chain : null;
+    // A reply with no `chain` is the head's plan alone (`run`): drawn, and
+    // nothing said of the rest — not "would not reach", which is not known.
+    const run = (reply && reply.run) || {};
+    const entries = chain || [{
+      task_id: headId, when: null, depth: 0, steps: run.steps,
+      declined: Array.isArray(run.steps) && run.steps.length ? null : (run.error || run.result || null),
+    }];
+    const byId = new Map();
+    for (const e of entries) {
+      const id = e && e.task_id != null ? String(e.task_id) : '';
+      if (!id || byId.has(id)) continue;
+      byId.set(id, {
+        id, when: e.when ? String(e.when) : null, depth: Number(e.depth) || 0,
+        steps: Array.isArray(e.steps) ? e.steps : [], declined: e.declined ? String(e.declined) : null, after: '',
+      });
+    }
+    // How each step is reached: from its first parent in the reply's order,
+    // which is where the contract takes `when` from.
+    const order = [...byId.keys()];
+    order.forEach((id, i) => {
+      const e = byId.get(id);
+      if (!e.depth || !e.when) return;
+      const parent = order.slice(0, i).find((p) => (S.graph.edges || [])
+        .some((g) => String(g.from) === p && String(g.to) === id && String(g.when) === e.when));
+      const words = EDGE_WORDS[e.when] || e.when;
+      e.after = parent ? `After ${nameOf(parent)}, ${words}` : _cap(words);
+    });
+    const head = String(headId);
+    const dirty = !!(S.panel && S.panel.dirty);
+    if (S.panel && !dirty) closePanel(false);
+    S.plan = { head, byId, partial: !chain, unregister: holdEscape(() => clearPlan()) };
+    render();
+    focusNode(head);
+    const name = nameOf(head);
+    let sentence = `Dry run of ${name}: nothing ran and nothing changed.`;
+    if (chain) {
+      const reached = byId.size;
+      const aside = S.order.filter((id) => !byId.has(id) && S.nodeEls.has(id)).length;
+      sentence += ` ${reached} ${reached === 1 ? 'step says what it' : 'steps say what they'} would do`
+        + (aside ? `; ${aside} it would not reach ${aside === 1 ? 'is' : 'are'} dimmed.` : '.');
+    } else {
+      sentence += ` Only ${name} was planned: this Pantheon did not plan the steps after it.`;
+    }
+    if (dirty) sentence += ` Your unsaved changes to ${name} are not in this plan.`;
+    say(sentence, { action: { label: 'Clear the plan', run: () => clearPlan() } });
+  }
+
+  async function dryRun(id) {
+    if (S.dryBusy || !id) return null;
+    S.dryBusy = true;
+    panelDry.disabled = true;
+    panelDry.textContent = 'Working it out…';
+    const name = nameOf(id);
+    say(`Working out what a run of ${name} would do. Nothing is running.`);
+    let res = null;
+    let reply = null;
+    let sentence = '';
+    try {
+      res = await net(`/api/tasks/${encodeURIComponent(id)}/run?dry=true&chain=true`,
+        { method: 'POST', credentials: 'same-origin' });
+      if (res.ok) reply = await res.json();
+      else {
+        try { sentence = refusalText((await res.json()).detail); } catch (_) { sentence = ''; }
+      }
+    } catch (_) {
+      sentence = 'Pantheon could not be reached';
+    }
+    S.dryBusy = false;
+    panelDry.disabled = false;
+    panelDry.textContent = DRY_LABEL;
+    if (S.destroyed) return null;
+    if (!reply) {
+      // The route's own sentence: a loop (`P22-01`'s rule, as a save is
+      // answered), "Task is already running", an admin-only action.
+      if (!sentence && res && res.status === 409) sentence = 'Task is already running';
+      say(`Nothing was planned: ${(sentence || `the server answered ${res ? res.status : 'nothing'}`).replace(/\.$/, '')}.`,
+        { refusal: true });
+      return null;
+    }
+    showPlan(id, reply);
+    return reply;
+  }
+
+  // ── the whole plan, on demand ────────────────────────────────────────────
+  function closePlanBox(restoreFocus) {
+    const b = S.planBox;
+    if (!b) return;
+    S.planBox = null;
+    b.unregister();
+    b.box.remove();
+    if (restoreFocus) focusNode(b.id);
+  }
+
+  function openPlanBox(id) {
+    closePlanBox(false);
+    closeConnect(false);
+    const entry = S.plan && S.plan.byId.get(id);
+    if (!entry) return;
+    const name = nameOf(id);
+    const box = _el('div', 'wb-plan-box');
+    box.setAttribute('role', 'dialog');
+    box.setAttribute('aria-label', `What ${name} would do`);
+    box.appendChild(_el('p', 'wb-plan-head', `What ${name} would do`));
+    if (entry.after) box.appendChild(_el('p', 'wb-plan-when', `${entry.after}.`));
+    if (entry.declined) box.appendChild(_el('p', 'wb-plan-declined', entry.declined));
+    const body = _el('div', 'wb-plan-steps');
+    if (entry.steps.length && renderSteps) {
+      // The Tasks card's step renderer (`tasks.js:renderRunSteps`), which
+      // escapes every value it is given with `ui.js:esc`: the one place this
+      // room assigns markup, and the markup is that renderer's, not data's.
+      body.innerHTML = renderSteps({ steps: entry.steps }, { open: true, summary: 'What a real run would do' });
+    } else if (entry.steps.length) {
+      const list = _el('ol', 'wb-plan-lines');
+      for (const s of entry.steps) list.appendChild(_el('li', null, String((s && s.detail) || '')));
+      body.appendChild(list);
+    }
+    box.appendChild(body);
+    const close = _el('button', 'wb-plan-close', 'Close');
+    close.type = 'button';
+    close.addEventListener('click', () => closePlanBox(true));
+    box.appendChild(close);
+    besideStep(box, id, PLAN_W);
+    stage.appendChild(box);
+    S.planBox = { box, id, unregister: holdEscape(() => closePlanBox(true)) };
+    close.focus();
+  }
+
   // ── opening on one workflow ──────────────────────────────────────────────
   function applyFocusChain() {
     const id = S.focusId;
     if (!id || !S.loaded) return;
     S.focusId = null;
+    // `B1048`. Opened on a built-in task (⋮ → Workflow on its card): its
+    // workflow is shown, the other built-ins stay aside.
+    if (S.hidden.has(id)) {
+      componentOf(S.graph, id).ids.forEach((x) => S.reveal.add(x));
+      render();
+    }
     if (!S.pos.has(id) || S.missing.has(id)) {
       say('That task is not on the canvas any more.');
       return;
@@ -1050,9 +1575,19 @@ export function mountCanvas(root, opts = {}) {
   newBtn.addEventListener('click', () => openPanel(null));
   emptyNew.addEventListener('click', () => openPanel(null));
   panelClose.addEventListener('click', () => closePanel(true));
+  panelDry.addEventListener('click', () => { if (S.panel && S.panel.id) dryRun(S.panel.id); });
   outBtn.addEventListener('click', () => zoomBy(1 / ZOOM_STEP));
   inBtn.addEventListener('click', () => zoomBy(ZOOM_STEP));
   fitBtn.addEventListener('click', () => fitAll());
+  builtinsBox.addEventListener('change', () => {
+    S.showBuiltins = !!builtinsBox.checked;
+    if (!S.showBuiltins) S.reveal = new Set();
+    render();
+    fitAll();
+    const n = S.tasks.filter((t) => t.is_builtin).length;
+    say(S.showBuiltins ? `Showing the ${n} built-in tasks Pantheon comes with.`
+      : 'The built-in tasks are hidden. A built-in task joined to one of yours stays.');
+  });
   tidyBtn.addEventListener('click', () => {
     S.pinned = new Map();
     S.pos = new Map();
@@ -1082,12 +1617,15 @@ export function mountCanvas(root, opts = {}) {
     if (S.destroyed) return;
     if (S.saveTimer) savePositions();
     S.destroyed = true;
+    endMove();
     endLink(null);
     clearPending();
     closeConnect(false);
+    dropPlan();
     closePanel(false);
     root.replaceChildren();
     root.classList.remove('wb-room', 'wb-panel-open', 'wb-room-empty', 'wb-linking', 'wb-panning');
+    delete root.dataset.escLayer;
   }
 
   return {
