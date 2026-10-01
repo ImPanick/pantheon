@@ -12,6 +12,7 @@ from fastapi import APIRouter, Request, HTTPException
 from core.models import ChatMessage
 from core.database import SessionLocal, ChatMessage as DbChatMessage, Session as DbSession
 from src.auth_helpers import effective_user
+from src.tool_approval_scopes import sanitize_client_message_metadata
 from src.topic_analyzer import analyze_topics
 from src.upload_handler import reserve_message_upload_references
 from routes.session_routes import (
@@ -324,7 +325,10 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
             content = body.get("content", "")
             if not content:
                 raise HTTPException(400, "content is required")
-            metadata = body.get("metadata")
+            # `B1005`. The caller's blob, as `inject_messages` treats it (`B70`):
+            # the keys only the server writes — an approval card, a grant, the
+            # seal that a person said this — are dropped before it is stored.
+            metadata = sanitize_client_message_metadata(body.get("metadata"))
             _reserve_message_uploads(request, content, metadata)
             msg = ChatMessage(role=role, content=content, metadata=metadata)
             session_manager.add_message(session_id, msg)

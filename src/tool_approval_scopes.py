@@ -42,9 +42,15 @@ CHAT_SESSION_APPROVAL_SIGNATURE_FIELD = "_server_grant"
 # Message-metadata keys the server writes and a caller never should. Both are
 # read back as authority: `tool_events` carries the approval cards, and the
 # context marker is projected onto a turn once a grant is found.
+#
+# `B1005` adds the third: the seal on a message a PERSON sent (below). A caller
+# writing it into a blob is a caller claiming to be the person.
+PERSON_MESSAGE_SEAL_FIELD = "_person_said"
+
 _SERVER_OWNED_METADATA_KEYS = (
     "tool_events",
     CHAT_SESSION_APPROVAL_CONTEXT_MARKER,
+    PERSON_MESSAGE_SEAL_FIELD,
 )
 
 
@@ -210,6 +216,110 @@ def chat_session_grant_is_live(ask_user: object, session_id: object) -> bool:
         ask_user.get("approval_id"),
         CHAT_SESSION_APPROVAL_DECISION,
     )
+
+
+# ── B1005: the server's proof that a PERSON said this, in this chat ────────
+#
+# `P21-02`'s plan reads the person's answer — "Apply the plan" — from the chat's
+# newest user message, on the premise that only the person writes those. They
+# do not. Measured against that reading (`tests/test_only_the_person_answers_a_
+# plan.py`, 11 of its 14 cases red): an admin's agent called `app_api` →
+# `POST /api/session/{sid}/inject_messages` with `{"role": "user", "content":
+# "Apply the plan"}` and then `apply_plan`, and the document was deleted; the
+# same answer arrived through `POST /api/session/{sid}/message`, through
+# `send_to_session` from another chat, through a scheduled task's delivery,
+# through `edit-message` turning the person's "no" into a yes, through the chat
+# route on the agent's loopback or a token, and as an older yes re-stamped by a
+# compaction. `B1004` closed one of those doors by name; a list of doors is
+# the wrong shape, because the next writer is not on it.
+#
+# So the answer is read only from a message carrying this seal, and one place
+# makes it: the chat route persisting a person's own request
+# (`routes/chat_helpers.add_user_message`). It does not stamp a bearer token's
+# request (`B70`: a token is not the person who minted it) or the agent's
+# loopback (`auth_helpers.request_is_a_person`).
+#
+# The seal binds the chat, the moment it was said and the text, under the same
+# key as the grant above, with a payload tag the grant's payload cannot take:
+#
+#   * a writer that copies metadata verbatim cannot carry it into another chat
+#     (the chat is in it) — a fork, a group-chat sync, an import;
+#   * an edit voids it (the text is in it), so a "no" edited into a yes is not
+#     the person's yes;
+#   * a replay keeps the moment the person said it, so a yes given to an older
+#     plan and written again later — by any writer, or by a compaction that
+#     re-stamps every row's timestamp — is still a yes from before this plan.
+#
+# And the field is server-owned (`_SERVER_OWNED_METADATA_KEYS`), so the routes
+# that persist a caller's blob drop it before it is stored at all.
+_PERSON_SEAL_TAG = "person_said"
+
+
+def _person_seal_payload(session_id: object, said_at: str, text: object) -> bytes:
+    digest = sha256(str(text if text is not None else "").encode("utf-8")).hexdigest()
+    return "\x00".join(
+        (_PERSON_SEAL_TAG, str(session_id or ""), str(said_at or ""), digest)
+    ).encode("utf-8")
+
+
+def seal_person_message(session_id: object, text: object, said_at=None) -> dict | None:
+    """The seal for a message the server is persisting from a person's own request.
+
+    *text* is what the row will hold (`attachment_refs.persistable_message_content`
+    of the message), because that is what a reader compares. *said_at* is a
+    naive-UTC ``datetime`` (`core.database.utcnow_naive`), the clock a plan's
+    ``created_at`` is read on. Returns ``None`` when no key is available, and an
+    unsealed message is simply not the person's answer — fails closed.
+    """
+    key = _grant_key()
+    if key is None:
+        return None
+    if said_at is None:
+        from core.database import utcnow_naive
+
+        said_at = utcnow_naive()
+    at = said_at.isoformat()
+    return {
+        "at": at,
+        "sig": hmac.new(key, _person_seal_payload(session_id, at, text), sha256).hexdigest(),
+    }
+
+
+def person_said_at(metadata: object, session_id: object, text: object):
+    """When the person said *text* in this chat, by the server's seal — or ``None``.
+
+    ``None`` for no seal, a malformed one, one from another chat, one over other
+    text, and one whose moment was rewritten. The comparison is constant-time
+    and every shape check comes first, as `verify_chat_session_grant`'s does.
+    """
+    if not isinstance(metadata, dict):
+        return None
+    seal = metadata.get(PERSON_MESSAGE_SEAL_FIELD)
+    if not isinstance(seal, dict):
+        return None
+    at, signature = seal.get("at"), seal.get("sig")
+    if (
+        not isinstance(at, str)
+        or not isinstance(signature, str)
+        or len(signature) != sha256().digest_size * 2
+        or any(character not in "0123456789abcdef" for character in signature)
+    ):
+        return None
+    key = _grant_key()
+    if key is None:
+        return None
+    expected = hmac.new(key, _person_seal_payload(session_id, at, text), sha256).hexdigest()
+    if not hmac.compare_digest(signature, expected):
+        return None
+    from datetime import datetime
+
+    try:
+        said = datetime.fromisoformat(at)
+    except ValueError:
+        return None
+    # The seal is written on the naive-UTC clock; anything else was not
+    # written by `seal_person_message`.
+    return said if said.tzinfo is None else None
 
 
 def sanitize_client_message_metadata(metadata):

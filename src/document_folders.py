@@ -40,6 +40,7 @@ says nothing about whether the thing exists.
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 import secrets
@@ -684,7 +685,9 @@ def describe_change(c: Dict[str, Any]) -> str:
 # before the agent runs. The card sends the option's label as that message, so
 # "Apply the plan", typed or clicked, after the plan was made, is the yes; any
 # other answer is a no, and so is no answer. The agent cannot approve its own
-# plan, because it does not write the person's messages.
+# plan, because it does not write the person's messages — which was true of
+# the chat route and false of five other writers of user messages until
+# `B1005` made the answer only a message sealed as the person's (`plan_answer`).
 #
 # And the plan is the change list, not just the steps. `apply_plan` re-runs the
 # steps and refuses if they would now do something different from what the
@@ -851,18 +854,47 @@ def discard_plan(plan_id: str) -> None:
         _plans.pop(plan_id, None)
 
 
+def _row_metadata(message: ChatMessage) -> Dict[str, Any]:
+    try:
+        meta = json.loads(message.meta_data or "{}")
+    except (TypeError, ValueError):
+        return {}
+    return meta if isinstance(meta, dict) else {}
+
+
 def plan_answer(db, plan: FolderPlan) -> str:
-    """`approved` · `declined` · `unanswered` — read from the chat, not the agent."""
-    message = (db.query(ChatMessage)
-               .filter(ChatMessage.session_id == plan.session_id)
-               .filter(ChatMessage.role == "user")
-               .order_by(ChatMessage.timestamp.desc())
-               .first())
-    if message is None or message.timestamp is None or message.timestamp < plan.created_at:
-        return "unanswered"
-    if (message.content or "").strip() == PLAN_APPROVE_LABEL:
-        return "approved"
-    return "declined"
+    """`approved` · `declined` · `unanswered` — what the PERSON said in the chat.
+
+    `B1005`. This read the chat's newest user message, and a user message is
+    not the person's: `inject_messages`, `POST …/message`, `send_to_session`
+    from another chat, a scheduled task's delivery, `edit-message` and the chat
+    route on the agent's own loopback all write one. Now only a message sealed
+    as the person's counts (`tool_approval_scopes.person_said_at`) — sealed by
+    the chat route for a person's own request — and only when the seal says
+    it was said after the plan was made; every
+    other row is passed over as if it were not there. The newest such message
+    is the answer: the yes, exactly, or a no; none is no answer yet.
+
+    The rows are bounded by their stored timestamp first (a person's message is
+    stored after it is sealed, so it is never older than its seal); the seal's
+    own moment decides, because a compaction re-stamps every row it keeps.
+    """
+    from src.tool_approval_scopes import person_said_at
+
+    rows = (db.query(ChatMessage)
+            .filter(ChatMessage.session_id == plan.session_id)
+            .filter(ChatMessage.role == "user")
+            .filter(ChatMessage.timestamp >= plan.created_at)
+            .order_by(ChatMessage.timestamp.desc())
+            .all())
+    for message in rows:
+        said = person_said_at(_row_metadata(message), plan.session_id, message.content)
+        if said is None or said < plan.created_at:
+            continue
+        if (message.content or "").strip() == PLAN_APPROVE_LABEL:
+            return "approved"
+        return "declined"
+    return "unanswered"
 
 
 def apply_plan(db, owner: str, session_id: Optional[str], plan_id: Any) -> Dict[str, Any]:

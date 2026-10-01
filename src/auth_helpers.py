@@ -59,6 +59,38 @@ def is_delegated_credential(request: Request) -> bool:
     return _is_api_token_request(request)
 
 
+def request_is_a_person(request: Request) -> bool:
+    """Whether this request is a person using Pantheon — and not something
+    acting in a person's name.
+
+    `B1005`. Two things arrive attributed to a person and are not one: a bearer
+    token (`B70` — minted by a person, held by something else) and the agent's
+    own loopback, which `app_api` and the other tool bridges reach with the
+    internal-tool token and `X-Pantheon-Owner`, and which the auth middleware
+    then names as that owner. Asked where the server records that *a person
+    said this* (`tool_approval_scopes.seal_person_message`).
+
+    Any internal-tool header counts against the request, valid or not: a
+    browser never sends one, so a request carrying it is not a person's
+    whatever else it is. A request the middleware already named the internal
+    tool user is not one either. A same-host request under `LOCALHOST_BYPASS`
+    is the operator's own machine and is answered as a person — reaching it
+    takes a shell, and an agent with a shell is not held by this (`Law 17`).
+    """
+    try:
+        if is_delegated_credential(request):
+            return False
+        from core.middleware import INTERNAL_TOOL_HEADER
+        from src.owner_identity import INTERNAL_TOOL_USER
+
+        if request.headers.get(INTERNAL_TOOL_HEADER):
+            return False
+        return getattr(request.state, "current_user", None) != INTERNAL_TOOL_USER
+    except Exception:
+        # Something that is not a request cannot vouch for a person.
+        return False
+
+
 def require_api_token_scope(request: Request, scope: str) -> Optional[str]:
     """Require ``scope`` when the request is authenticated by an API token.
 

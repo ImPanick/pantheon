@@ -17,7 +17,7 @@ from src.llm_core import normalize_model_id
 from src.endpoint_resolver import normalize_base
 from src.context_compactor import maybe_compact, trim_for_context
 from src.model_context import estimate_tokens, get_context_length
-from src.auth_helpers import effective_user
+from src.auth_helpers import effective_user, request_is_a_person
 from src.prompt_security import untrusted_context_message
 from src.attachment_refs import attachment_ref
 from routes.prefs_routes import _load_for_user as load_prefs_for_user
@@ -492,13 +492,30 @@ def build_uploaded_file_manifest(att_ids: list, upload_handler, owner: Optional[
     return manifest
 
 
-def add_user_message(sess, chat_handler, preprocessed: PreprocessedMessage, incognito: bool = False):
+def add_user_message(sess, chat_handler, preprocessed: PreprocessedMessage, incognito: bool = False,
+                     *, from_person: bool = False):
     """Add user message to session history and update session name.
     Incognito messages must not mutate persistent session history, even in
-    memory, because a later normal turn can persist the same session object."""
+    memory, because a later normal turn can persist the same session object.
+
+    `B1005`. `from_person` is the route's answer to `request_is_a_person`: when
+    it is true the message carries the server's seal that a person said it,
+    here, now (`tool_approval_scopes.seal_person_message`) — the only thing a
+    document plan accepts as the person's answer. Off by default, so a caller
+    that has not asked the question stamps nothing."""
     if incognito:
         return
     user_meta = {"attachments": preprocessed.attachment_meta} if preprocessed.attachment_meta else None
+    if from_person:
+        from src.attachment_refs import persistable_message_content
+        from src.tool_approval_scopes import PERSON_MESSAGE_SEAL_FIELD, seal_person_message
+
+        seal = seal_person_message(
+            getattr(sess, "id", None),
+            persistable_message_content(preprocessed.user_content, user_meta),
+        )
+        if seal:
+            user_meta = {**(user_meta or {}), PERSON_MESSAGE_SEAL_FIELD: seal}
     sess.add_message(ChatMessage("user", preprocessed.user_content, metadata=user_meta))
     chat_handler.update_session_name_if_needed(sess, preprocessed.text_for_context)
 
@@ -960,7 +977,8 @@ async def build_chat_context(
         user_meta = {"attachments": preprocessed.attachment_meta} if preprocessed.attachment_meta else None
         _append_incognito_message(session_id, "user", preprocessed.user_content, user_meta)
     elif persist_user_message:
-        add_user_message(sess, chat_handler, preprocessed, incognito=False)
+        add_user_message(sess, chat_handler, preprocessed, incognito=False,
+                         from_person=request_is_a_person(request))
 
     # Fire events
     if persist_user_message and not incognito:

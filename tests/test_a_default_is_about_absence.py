@@ -146,7 +146,8 @@ def _harness(monkeypatch, chat_helpers):
             system_prompt="You are Pantheon.", character_name=None,
         )
 
-    def fake_add_user_message(sess, chat_handler, preprocessed, incognito=False):
+    def fake_add_user_message(sess, chat_handler, preprocessed, incognito=False,
+                              from_person=False):  # `B1005`'s seal flag
         sess.messages.append({"role": "user", "content": preprocessed.user_content})
 
     async def fake_maybe_compact(sess, endpoint_url, model, messages, headers, owner=None):

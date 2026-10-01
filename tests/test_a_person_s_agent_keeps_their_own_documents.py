@@ -152,10 +152,17 @@ def alive(db_factory, doc_id):
 
 
 def say(db_factory, text, session_id="chat-bob", later=1):
-    """The person's answer, as the chat route persists it — after the plan."""
+    """The person's answer, as the chat route persists it — after the plan, and
+    sealed as the person's (`B1005`: the chat route seals a person's own
+    request, and a plan reads only a sealed answer)."""
+    from src.tool_approval_scopes import PERSON_MESSAGE_SEAL_FIELD, seal_person_message
+
+    when = datetime.utcnow() + timedelta(seconds=later)
+    seal = seal_person_message(session_id, text, said_at=when)
     db = db_factory()
     db.add(cdb.ChatMessage(id=str(uuid.uuid4()), session_id=session_id, role="user",
-                           content=text, timestamp=datetime.utcnow() + timedelta(seconds=later)))
+                           content=text, timestamp=when,
+                           meta_data=json.dumps({PERSON_MESSAGE_SEAL_FIELD: seal})))
     db.commit()
     db.close()
 
