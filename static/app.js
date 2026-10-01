@@ -283,6 +283,18 @@ async function _createDirectChatFromPreferredModel() {
 // ============================================
 // EVENT LISTENERS INITIALIZATION
 // ============================================
+// `B966` (`D-2026-10-01-01`). Is the composer's Shell switch hidden from the
+// person signed in? `shell` is the server's answer to where their agent's
+// shell runs (`/api/auth/status`), and `none` hides it. Not `can_use_bash`:
+// that grants a non-admin nothing — Pantheon's own shell is admin-only — and
+// someone whose shell runs in their workstation needs the switch whatever it
+// says. A status without `shell` falls back to the privilege, as before.
+function shellSwitchHidden(status) {
+  const d = status || {};
+  if (d.shell) return d.shell === 'none';
+  return !(d.privileges || {}).can_use_bash;
+}
+
 function initializeEventListeners() {
   // Chat form submission
 //  document.getElementById('chat-form').addEventListener('submit', chatModule.handleChatSubmit);
@@ -1367,7 +1379,7 @@ function initializeEventListeners() {
           }
         }
         // Hide bash toggle
-        if (!p.can_use_bash) {
+        if (shellSwitchHidden(d)) {
           const bashToggle = document.getElementById('bash-toggle');
           if (bashToggle) bashToggle.closest('.chat-input-toggle')?.style.setProperty('display', 'none');
           const bashBtn = document.getElementById('bash-toggle-btn');

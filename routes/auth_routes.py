@@ -303,9 +303,22 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
             u = result.get("username")
             if u:
                 result["privileges"] = auth_manager.get_privileges(u)
+                result["shell"] = _shell_for(u, is_admin=bool(result.get("is_admin")))
         except Exception:
             pass
         return result
+
+    def _shell_for(username: str, *, is_admin: bool) -> str:
+        """Where this person's agent shell runs: `workstation`, `pantheon` or
+        `none`. `B966` (`D-2026-10-01-01`): the composer offers its Shell switch
+        on this answer rather than on `can_use_bash`, which grants a non-admin
+        nothing — `NON_ADMIN_BLOCKED_TOOLS` keeps Pantheon's own shell for
+        admins — while a person whose shell runs in their workstation needs the
+        switch. `routes_tools` is the rule the dispatcher itself follows."""
+        from src.workstation_access import routes_tools
+        if routes_tools(username, auth_manager=auth_manager):
+            return "workstation"
+        return "pantheon" if is_admin else "none"
 
     @router.get("/policy")
     async def auth_policy():

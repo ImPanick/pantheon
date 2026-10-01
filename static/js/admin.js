@@ -39,6 +39,17 @@ const PRIV_LABELS = {
   can_manage_memory: 'Memory & skills',
 };
 
+// `B966`, the owner's call (`D-2026-10-01-01`). A privilege this panel no
+// longer offers, and what it says in the switch's place. `can_use_bash` granted
+// a non-admin nothing: `NON_ADMIN_BLOCKED_TOOLS` refuses the shell, Python and
+// the file tools to every non-admin whatever it says, and admins — the only
+// people it could mean anything for — have no privilege panel. The stored key
+// and the server's refusal are unchanged; `can_use_workstation` is the grant
+// that gives a person a shell.
+const NON_ADMIN_RETIRED_PRIVS = {
+  can_use_bash: "Pantheon's own shell is for admins only — turn on Workstation below to give this person a shell in the workstation.",
+};
+
 async function loadUsers() {
   const list = el('adm-userList');
   try {
@@ -81,6 +92,10 @@ async function loadUsers() {
         // Boolean toggles
         let html = '<div style="font-size:10px;text-transform:uppercase;letter-spacing:0.5px;opacity:0.35;font-weight:600;margin-bottom:4px;">Features</div>';
         for (const [key, label] of Object.entries(PRIV_LABELS)) {
+          if (NON_ADMIN_RETIRED_PRIVS[key]) {
+            html += `<div class="admin-toggle-sub" style="padding:4px 0;">${esc(NON_ADMIN_RETIRED_PRIVS[key])}</div>`;
+            continue;
+          }
           const checked = u.privileges && u.privileges[key] ? 'checked' : '';
           html += `<div style="display:flex;align-items:center;justify-content:space-between;padding:4px 0;">
             <span style="font-size:12px;">${label}</span>
