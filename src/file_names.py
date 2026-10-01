@@ -221,6 +221,27 @@ def create_unique(directory: str, name: str, *, max_tries: int = 10_000) -> str:
     raise FileExistsError(f"no free name for {name!r} in {directory!r}")
 
 
+def ascii_filename(raw: Any, fallback: str = "download") -> str:
+    """The display name folded to printable ASCII, safe inside a quoted header
+    parameter: accents decomposed and dropped, ``"`` and ``\\`` made ``_``,
+    nothing invisible (:func:`display_name` already removed it). The old
+    clients' half of RFC 6266, and the only name a header that cannot carry
+    ``filename*`` gets (`B1000`: the mailbox's inline-image route)."""
+    def fold(text: str) -> str:
+        text = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode("ascii")
+        return re.sub(r"\s+", " ", re.sub(r'["\\]', "_", text)).strip()
+
+    name = display_name(raw, fallback) or fallback
+    stem, ext = split_extension(name)
+    ascii_stem = fold(stem)
+    # A name in another script folds to its extension alone — `схема.png` to
+    # `.png`, which a client saving it makes a hidden file (measured on the
+    # mailbox's inline images, `B1000`). The fallback stands in for the stem.
+    if not ascii_stem.strip(" ."):
+        ascii_stem = fallback
+    return ascii_stem + fold(ext)
+
+
 def attachment_disposition(raw: Any, fallback: str = "download") -> str:
     """``Content-Disposition: attachment`` naming the file as the person named it.
 
@@ -230,13 +251,75 @@ def attachment_disposition(raw: Any, fallback: str = "download") -> str:
     exact name in ``filename*=UTF-8''…`` for everything since.
     """
     name = display_name(raw, fallback) or fallback
-    ascii_name = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode("ascii")
-    ascii_name = re.sub(r'["\\]', "_", ascii_name)
-    ascii_name = re.sub(r"\s+", " ", ascii_name).strip() or fallback
     return (
-        f'attachment; filename="{ascii_name}"; '
+        f'attachment; filename="{ascii_filename(name, fallback)}"; '
         f"filename*=UTF-8''{quote(name, safe='')}"
     )
+
+
+# `B1000`. One line of an outgoing message's header stays under RFC 5322's
+# recommended 78 characters, so an encoded name is cut into pieces this long:
+# ` filename*0*=utf-8''` is 20 characters, and 20 + 56 + `;` is 77.
+_MIME_SEGMENT = 56
+
+# A name sent as a plain quoted parameter: printable ASCII with nothing that
+# needs escaping, short enough that `Content-Disposition: attachment;
+# filename="…"` fits on one line. Anything else goes out RFC 2231-encoded.
+_MIME_PLAIN_RE = re.compile(r'[ !#-\[\]-~]{1,%d}' % (78 - len('Content-Disposition: attachment; filename=""')))
+
+
+def _mime_segments(encoded: str) -> list:
+    """*encoded* cut into :data:`_MIME_SEGMENT`-sized pieces, never inside a
+    ``%XX`` escape (a split escape is two broken bytes to every reader)."""
+    out, i = [], 0
+    while i < len(encoded):
+        j = min(i + _MIME_SEGMENT, len(encoded))
+        cut = encoded.rfind("%", max(i, j - 2), j)
+        if j < len(encoded) and cut > i:
+            j = cut
+        out.append(encoded[i:j])
+        i = j
+    return out
+
+
+def mime_attachment_disposition(raw: Any, fallback: str = "attachment") -> str:
+    """The ``Content-Disposition`` of a file attached to an outgoing message,
+    naming it as the person named it (`B1000`).
+
+    The mail-header twin of :func:`attachment_disposition`, and the same name:
+    :func:`display_name`, so a recipient receives ``Q3 Board Pack – final
+    (v2).pdf`` — not the ``Q3 Board Pack _ final _v2_.pdf`` the mailbox's own
+    regex used to send. Always ``attachment``.
+
+    A short printable-ASCII name with nothing to escape is a plain quoted
+    ``filename="…"``. Everything else — any non-ASCII letter, a quote, a
+    backslash, a long name — is RFC 2231, folded onto a line of its own:
+    ``filename*=utf-8''<percent-encoded>``, or past one line, continuations
+    (``filename*0*=…;`` ``filename*1*=…``) one to a line, every line under 78
+    characters and never split inside a ``%XX``. Measured before this: Python's own
+    ``add_header(filename=…)`` writes a 250-letter Cyrillic name as one
+    1,554-character header line, past RFC 5322's hard limit of 998.
+
+    No ASCII ``filename=`` beside an encoded one: Python's parser (and so this
+    product reading its own Sent folder) answers the first ``filename`` it
+    finds, which would be the fold.
+
+    **Header injection.** A sender's name can carry CR/LF (an RFC 2047 or 2231
+    encoded word decodes to anything). :func:`display_name` makes every
+    whitespace character a space, and a name that is not plain ASCII is
+    percent-encoded whole, so nothing in the result can end the header. The
+    only line breaks in it are the folds this function writes, each followed by
+    a space, which is what a folded header is.
+    """
+    name = display_name(raw, fallback) or fallback
+    if _MIME_PLAIN_RE.fullmatch(name):
+        return f'attachment; filename="{name}"'
+    segments = _mime_segments(quote(name, safe=""))
+    if len(segments) == 1:
+        return f"attachment;\n filename*=utf-8''{segments[0]}"
+    params = [f"filename*0*=utf-8''{segments[0]}"]
+    params += [f"filename*{n}*={seg}" for n, seg in enumerate(segments[1:], start=1)]
+    return "attachment;\n " + ";\n ".join(params)
 
 
 def upload_display_name(info: Dict[str, Any], fallback_path: Optional[str] = None) -> str:

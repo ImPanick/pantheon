@@ -44,11 +44,14 @@ from src import mail_auth, providers
 
 from src.llm_core import llm_call_async
 from src.upload_limits import read_upload_limited, resolve_byte_limit
+from src.file_names import display_name as _file_display_name  # `B1000`
 
 from routes.email_helpers import (
     _strip_think, _extract_reply, _apply_email_style_mechanics, require_owner, require_user, _assert_owns_account,
     _account_visible_to_owner,
     _q, _attach_compose_uploads, _cleanup_compose_uploads,
+    _new_compose_token, _remember_compose_name, _compose_name_path, _attachment_name,
+    _shown_listed_name,
     _load_settings, _save_settings, _get_email_config,
     _send_smtp_message, _smtp_security_mode,
     _IMAP_TIMEOUT_SECONDS, _open_imap_connection,
@@ -1421,7 +1424,9 @@ def _email_attachment_meta_cache_get(owner: str, account_id: str | None, folder:
         if not row:
             return None
         data = json.loads(row[0] or "[]")
-        return data if isinstance(data, list) else []
+        # `B1000`: an entry cached before the listing named attachments by
+        # `display_name` is shown the way a fresh listing would show it.
+        return [_shown_listed_name(a) for a in data] if isinstance(data, list) else []
     except Exception:
         logger.debug("email attachment metadata cache read skipped", exc_info=True)
     return None
@@ -3566,10 +3571,18 @@ def setup_email_routes():
             if not filepath:
                 return {"error": f"Attachment index {index} not found"}
 
+            # `B1000`. Downloaded under the name the sender gave it — the one
+            # the reader's chip shows — not the extraction cache's file name,
+            # which until this row was `Q3 Board Pack _ final _v2_.pdf`. Still
+            # `attachment` (`FORBIDDEN.md` Part 2): the header comes from
+            # `attachment_disposition`, which has no way to say `inline`.
+            shown = _attachment_name(msg, index) or filepath.name
+            from src.file_names import attachment_disposition
             return FileResponse(
                 path=str(filepath),
-                filename=filepath.name,
+                filename=shown,
                 media_type="application/octet-stream",
+                headers={"Content-Disposition": attachment_disposition(shown, "attachment")},
             )
         except Exception as e:
             logger.error(f"Failed to download attachment {uid}/{index}: {e}")
@@ -3667,10 +3680,18 @@ def setup_email_routes():
                 filepath = _extract_attachment_to_disk(msg, idx, target_dir)
                 if not filepath:
                     raise HTTPException(status_code=404, detail="Inline image not found")
+                # `B1000`. The name went into this header raw. A Cyrillic
+                # name made the header unencodable and the image failed to
+                # load; the extraction cache keeping `–` now would have done
+                # the same to `Q3 – chart.png`. Only an image reaches here
+                # (the `image/` check above, `FORBIDDEN.md` Part 2), so it
+                # stays `inline`, named by the ASCII fold.
+                from src.file_names import ascii_filename
+                shown = _attachment_name(msg, idx) or filepath.name
                 return FileResponse(
                     path=str(filepath),
                     media_type=ct,
-                    headers={"Content-Disposition": f'inline; filename="{filepath.name}"'},
+                    headers={"Content-Disposition": f'inline; filename="{ascii_filename(shown, "image")}"'},
                 )
             raise HTTPException(status_code=404, detail="Inline image not found")
         except HTTPException:
@@ -3718,25 +3739,26 @@ def setup_email_routes():
                 return {"error": "Invalid attachment path"}
             filepath = _Path(filepath_str)
             base = _Path(filepath).name
-            if base.startswith("."):
-                return {"error": "Invalid filename", "filename": base}
-            ext = _Path(base).suffix.lower()
 
-            import os as _os
             # `P21-03`. The title was `splitext(filepath.name)[0]`, and the
-            # extracted file's name has been through `[^\w\s\-.]` → `_`, so
+            # extracted file's name had been through `[^\w\s\-.]` → `_`, so
             # `Q3 Board Pack – final (v2).pdf` became a document titled
             # `Q3 Board Pack _ final _v2_`. The sender's name for the file is in
             # the message, decoded by the same walk that numbered the
-            # attachments (`_list_attachments_from_msg`), so ask it; the
+            # attachments (`_attachment_name`, `B1000`), so ask it; the
             # extracted name is the fallback when the walk has none.
             from src.file_names import display_name as _display_name, document_title
-            _listed = next(
-                (a.get("filename") for a in _list_attachments_from_msg(msg)
-                 if a.get("index") == index),
-                None,
-            )
-            source_name = _display_name(_listed) or _display_name(filepath.name) or base
+            source_name = _attachment_name(msg, index) or _display_name(filepath.name) or base
+            # `B04`'s dotfile refusal, asked of the sender's name. `B1000`
+            # stores the extraction as `stored_name`, which is never a
+            # dotfile, so asking only the stored name would have let a sender's
+            # `.bashrc` through as `bashrc`; asking the sender's name refuses it
+            # exactly as when it was extracted as `.bashrc`.
+            if source_name.startswith(".") or base.startswith("."):
+                return {"error": "Invalid filename", "filename": source_name}
+            ext = _Path(base).suffix.lower()
+
+            import os as _os
             title = document_title(source_name)
 
             # The registers and the readers this door shares with chat ingest.
@@ -4383,19 +4405,20 @@ def setup_email_routes():
     async def compose_upload(file: UploadFile = File(...), owner: str = Depends(require_owner)):
         """Upload a file for attaching to a compose email. Returns a token."""
         try:
-            # Sanitize filename and generate a unique token
-            safe_name = re.sub(r"[^\w\s\-.]", "_", file.filename or "file").strip()
-            token = f"{uuid.uuid4().hex}_{safe_name}"
+            # `B1000`: staged under a readable stored name, sent under the
+            # person's own (`_new_compose_token`).
+            token, shown = _new_compose_token(file.filename, "file")
             filepath = COMPOSE_UPLOADS_DIR / token
             content = await read_upload_limited(
                 file, resolve_byte_limit("email_compose_upload_max_bytes"),
                 "Attachment")
             with open(filepath, "wb") as f:
                 f.write(content)
+            _remember_compose_name(token, shown)
             return {
                 "success": True,
                 "token": token,
-                "filename": safe_name,
+                "filename": shown,
                 "size": len(content),
             }
         except HTTPException:
@@ -4405,18 +4428,21 @@ def setup_email_routes():
             return {"success": False, "error": "Mail operation failed"}
 
     def _safe_compose_filename(name: str, fallback: str = "attachment") -> str:
-        safe_name = re.sub(r"[^\w\s\-.]", "_", Path(str(name or fallback)).name).strip(". ")[:180]
-        return safe_name or fallback
+        """The name a Pantheon document or image is attached under: the
+        person's (`B1000`; it was `[^\\w\\s\\-.]` → `_`, so a document
+        titled `Q3 Board Pack – final (v2)` went out as `Q3 Board Pack _ final
+        _v2_.md`)."""
+        return _file_display_name(str(name or ""), fallback) or fallback
 
     def _stage_compose_bytes(filename: str, content: bytes) -> dict:
         if len(content) > resolve_byte_limit("email_compose_upload_max_bytes"):
             raise HTTPException(status_code=413, detail="Attachment too large")
-        safe_name = _safe_compose_filename(filename)
-        token = f"{uuid.uuid4().hex}_{safe_name}"
+        token, shown = _new_compose_token(_safe_compose_filename(filename))
         filepath = COMPOSE_UPLOADS_DIR / token
         with open(filepath, "wb") as f:
             f.write(content)
-        return {"success": True, "token": token, "filename": safe_name, "size": len(content)}
+        _remember_compose_name(token, shown)
+        return {"success": True, "token": token, "filename": shown, "size": len(content)}
 
     def _stage_compose_file(filename: str, src: Path) -> dict:
         if not src.exists() or not src.is_file():
@@ -4424,12 +4450,12 @@ def setup_email_routes():
         size = src.stat().st_size
         if size > resolve_byte_limit("email_compose_upload_max_bytes"):
             raise HTTPException(status_code=413, detail="Attachment too large")
-        safe_name = _safe_compose_filename(filename)
-        token = f"{uuid.uuid4().hex}_{safe_name}"
+        token, shown = _new_compose_token(_safe_compose_filename(filename))
         dest = COMPOSE_UPLOADS_DIR / token
         import shutil as _shutil
         _shutil.copyfile(str(src), str(dest))
-        return {"success": True, "token": token, "filename": safe_name, "size": size}
+        _remember_compose_name(token, shown)
+        return {"success": True, "token": token, "filename": shown, "size": size}
 
     def _load_pantheon_attachment_source(db, kind: str, item_id: str, owner: str):
         from core.database import Document as _Doc, GalleryImage as _GI
@@ -4458,7 +4484,10 @@ def setup_email_routes():
                 "xml": "xml",
                 "text": "txt",
             }.get(lang, "txt")
-            base = _safe_compose_filename(doc.title or "document", "document")
+            # A `/` in a title is part of the title, not a folder: kept as `_`
+            # rather than cutting `Q3/Q4 plan` down to `Q4 plan` (`B1000`).
+            base = _safe_compose_filename(
+                (doc.title or "document").replace("/", "_").replace("\\", "_"), "document")
             if not base.lower().endswith(f".{ext}"):
                 base = f"{base}.{ext}"
             return {"filename": base, "content": (doc.current_content or "").encode("utf-8")}
@@ -4578,15 +4607,20 @@ def setup_email_routes():
             filepath = _extract_attachment_to_disk(msg, index, target_dir)
             if not filepath:
                 return {"success": False, "error": f"Attachment index {index} not found"}
-            safe_name = re.sub(r"[^\w\s\-.]", "_", filepath.name or "attachment").strip() or "attachment"
-            token = f"{uuid.uuid4().hex}_{safe_name}"
+            # `B1000`. Forwarded under the sender's name for it. This copied
+            # the extraction cache's name, which kept every `\s` — so a
+            # sender's name carrying CR/LF reached the token and from there the
+            # outgoing `Content-Disposition` (measured: the stdlib then refused
+            # to write the message, and the forward failed).
+            token, shown = _new_compose_token(_attachment_name(msg, index) or filepath.name)
             dest = COMPOSE_UPLOADS_DIR / token
             import shutil as _shutil
             _shutil.copyfile(str(filepath), str(dest))
+            _remember_compose_name(token, shown)
             return {
                 "success": True,
                 "token": token,
-                "filename": safe_name,
+                "filename": shown,
                 "size": dest.stat().st_size,
             }
         except Exception as e:
@@ -4602,6 +4636,9 @@ def setup_email_routes():
             filepath = COMPOSE_UPLOADS_DIR / safe_token
             if filepath.exists():
                 filepath.unlink()
+            kept = _compose_name_path(safe_token)  # `B1000`: the name beside it
+            if kept is not None:
+                kept.unlink(missing_ok=True)
             return {"success": True}
         except Exception as e:
             logger.error(f"delete_compose_upload {token!r} failed: {e}")

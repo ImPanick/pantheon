@@ -37,6 +37,7 @@ server = Server("email")
 EMAIL_SOCKET_TIMEOUT = float(os.environ.get("EMAIL_SOCKET_TIMEOUT", "20"))
 from src.constants import DATA_DIR as _DATA_DIR, APP_DB, EMAIL_CACHE_DB, SETTINGS_FILE as _SETTINGS_FILE, MAIL_ATTACHMENTS_DIR
 from src.env_flags import env_flag
+from src.file_names import display_name as _display_name, stored_name as _stored_name  # `B1000`
 # P18-02/P18-03. In `src/` rather than `routes/` precisely so this process
 # can import it without reaching into a request-handler module.
 from src import mail_auth as _mail_auth
@@ -1254,7 +1255,13 @@ def _extract_attachment_to_disk(msg, index, target_dir):
                 filename = _decode_header(filename)
             else:
                 filename = f"attachment_{idx}"
-            safe_name = re.sub(r"[^\w\s\-.]", "_", filename).strip()
+            # `B1000`. The name the person sees, made safe to store
+            # (`src/file_names.stored_name`) — the same answer the mailbox
+            # routes give. It was `[^\w\s\-.]` → `_`, which kept CR/LF and
+            # had no length cap, so the agent was handed `Q3 Board Pack _ final
+            # _v2_.pdf`, and a long non-Latin name could not be saved at all
+            # (`ENAMETOOLONG`, measured through the routes' copy of the regex).
+            safe_name = _stored_name(filename, f"attachment_{idx}")
             payload = part.get_payload(decode=True)
             if not payload:
                 return None
@@ -2156,7 +2163,12 @@ def _download_attachment(uid, index, folder="INBOX", account=None):
     if not filepath:
         return {"error": f"Attachment index {index} not found"}
     size = os.path.getsize(filepath)
-    return {"path": filepath, "filename": os.path.basename(filepath), "size": size}
+    # `B1000`: the agent is told the sender's name for the file; `path` is
+    # where it was stored.
+    shown = next((a.get("filename") for a in _list_attachments_from_msg(msg)
+                  if a.get("index") == index), None)
+    return {"path": filepath, "filename": _display_name(shown or "") or os.path.basename(filepath),
+            "size": size}
 
 
 # ── MCP Tool Registration ──

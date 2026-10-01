@@ -36,6 +36,7 @@ from pydantic import BaseModel
 from typing import Optional, List
 
 from src.auth_helpers import _auth_disabled, get_current_user
+from src.file_names import display_name, mime_attachment_disposition, stored_name  # `B1000`
 from src.secret_storage import decrypt as _decrypt
 
 from src import mail_auth as _mail_auth
@@ -568,6 +569,69 @@ def _q(name: str) -> str:
     return '"' + (name or "").replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
+# ── Staged compose attachments (`B1000`) ─────────────────────────────────────
+#
+# A staged attachment is one file in `COMPOSE_UPLOADS_DIR` called by its
+# token, `<32 hex>_<stored name>`. The hex is the key (the browser holds the
+# token, a draft and the scheduled-email table save it, `DELETE
+# /compose-upload/{token}` names it); the rest is the file's name made safe to
+# store (`src/file_names.stored_name`). Until `B1000` the rest was
+# `re.sub(r"[^\w\s\-.]", "_", name)`, and it was also what the recipient
+# received: `Q3 Board Pack – final (v2).pdf` went out as `Q3 Board Pack _ final
+# _v2_.pdf`, and a 250-letter Cyrillic name could not be staged at all
+# (`ENAMETOOLONG`). Where the person's name for the file is not its stored
+# name — `Minutes: what we agreed?.pdf` is stored `Minutes_ what we
+# agreed_.pdf` — it is kept beside the file as `<hex>.name`, and that is what
+# the recipient is sent. A token from before this has no `.name` and keeps the
+# name it was staged with.
+
+_COMPOSE_KEY_RE = re.compile(r"[0-9a-f]{32}")
+
+
+def _compose_key(token: str) -> str:
+    """The hex key of a token, or "" when it does not start with one."""
+    key = str(token or "").split("_", 1)[0]
+    return key if _COMPOSE_KEY_RE.fullmatch(key) else ""
+
+
+def _compose_name_path(token: str) -> Path | None:
+    key = _compose_key(Path(str(token or "")).name)
+    return COMPOSE_UPLOADS_DIR / f"{key}.name" if key else None
+
+
+def _new_compose_token(raw_name, fallback: str = "attachment") -> tuple[str, str]:
+    """``(token, shown)`` for a file about to be staged: a fresh key and the
+    name stored on disk, and the person's own name for it. Writes nothing —
+    the caller writes the file, then :func:`_remember_compose_name`."""
+    import uuid as _uuid
+    shown = display_name(str(raw_name or ""), fallback) or fallback
+    return f"{_uuid.uuid4().hex}_{stored_name(shown, fallback)}", shown
+
+
+def _remember_compose_name(token: str, shown: str) -> None:
+    """Keep *shown* beside the staged file when its stored name is not it."""
+    path = _compose_name_path(token)
+    if path is None or shown == Path(token).name.split("_", 1)[1]:
+        return
+    path.write_text(shown, encoding="utf-8")
+
+
+def _compose_upload_name(safe_token: str) -> str:
+    """The name a staged attachment is sent under: the person's name kept
+    beside it, else the token's stored name (every token from before
+    `B1000`, and every one whose stored name is the person's name)."""
+    stored = safe_token.split("_", 1)[1] if "_" in safe_token else safe_token
+    path = _compose_name_path(safe_token)
+    if path is not None:
+        try:
+            kept = display_name(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError):
+            kept = ""
+        if kept:
+            return kept
+    return stored
+
+
 def _attach_compose_uploads(outer: MIMEMultipart, tokens) -> None:
     """Read each staged upload token, build a MIMEBase part, and attach to
     `outer`. Tokens are sanitized via Path(token).name to prevent traversal.
@@ -589,19 +653,25 @@ def _attach_compose_uploads(outer: MIMEMultipart, tokens) -> None:
             part = MIMEBase(maintype, subtype)
             part.set_payload(f.read())
         encoders.encode_base64(part)
-        # Token format: "<uuid>_<original_name>"
-        original_name = safe_token.split("_", 1)[1] if "_" in safe_token else safe_token
-        part.add_header("Content-Disposition", "attachment", filename=original_name)
+        # `B1000`: the person's name, RFC 2231-encoded when it is not plain
+        # ASCII, folded when long; never a raw header parameter a CR/LF in a
+        # sender's name could end (`mime_attachment_disposition`).
+        part.add_header("Content-Disposition",
+                        mime_attachment_disposition(_compose_upload_name(safe_token)))
         outer.attach(part)
 
 
 def _cleanup_compose_uploads(tokens) -> None:
-    """Best-effort unlink of staged uploads after delivery (or failure)."""
+    """Best-effort unlink of staged uploads after delivery (or failure), with
+    the name kept beside each (`B1000`)."""
     if not tokens:
         return
     for token in tokens:
         try:
             (COMPOSE_UPLOADS_DIR / Path(token).name).unlink(missing_ok=True)
+            kept = _compose_name_path(token)
+            if kept is not None:
+                kept.unlink(missing_ok=True)
         except Exception:
             pass
 
@@ -1610,11 +1680,56 @@ def _extract_attachment_text(msg, max_chars: int = 6000) -> str:
     return "\n\n---\n\n".join(out_parts)
 
 
-def _list_attachments_from_msg(msg):
-    """Return a list of attachment metadata from an email message."""
-    attachments = []
+def _made_up_attachment_name(idx, ct: str) -> str:
+    """The name of an attachment its sender did not name: from its type."""
+    ct = str(ct or "")
+    ext = "eml" if ct == "message/rfc822" else (ct.split("/")[-1] if "/" in ct else "bin")
+    return f"attachment_{idx}.{ext}"
+
+
+def _shown_listed_name(item: dict) -> dict:
+    """A listing entry saved before `B1000` (`email_attachment_metadata_cache`)
+    holds the raw decoded name — a folder, a bidi override — so it is shown
+    the way a fresh listing shows it, and agrees with the download."""
+    if not isinstance(item, dict) or not isinstance(item.get("filename"), str):
+        return item
+    shown = display_name(item["filename"]) or _made_up_attachment_name(
+        item.get("index", 0), item.get("content_type"))
+    return item if shown == item["filename"] else {**item, "filename": shown}
+
+
+def _attachment_filename(part, idx: int) -> str:
+    """What attachment *idx* is called: the sender's name for it, decoded and
+    made safe to show (`src/file_names.display_name` — no folder, no control
+    or bidi characters, so `invoice<U+202E>FDP.exe` cannot draw itself as
+    `invoiceexe.PDF`), or a name made up from its type when it has none.
+
+    `B1000`. The one answer the listing, the extraction cache, the download,
+    the forward and the document opener all give. The listing and the
+    extraction each computed it, and the extraction then mangled it (every
+    character outside `\\w`, `\\s`, `-` and `.` → `_`), so the chip said
+    `Q3 Board Pack – final (v2).pdf` and the file that downloaded said
+    `Q3 Board Pack _ final _v2_.pdf`.
+    """
+    ct = part.get_content_type()
+    made_up = _made_up_attachment_name(idx, ct)
+    filename = part.get_filename()
+    if not filename:
+        return made_up
+    filename = display_name(_decode_header(filename))
+    if not filename:
+        return made_up
+    if ct == "message/rfc822" and not re.search(r"\.[A-Za-z0-9]{1,8}$", filename):
+        filename = f"{filename}.eml"
+    return filename
+
+
+def _iter_attachment_parts(msg):
+    """``(index, part)`` for every part the reader lists as an attachment, in
+    the order that numbers them. One walk, so an index means the same part to
+    the listing, the extraction and the name lookup."""
     if not msg.is_multipart():
-        return attachments
+        return
     idx = 0
     for part in msg.walk():
         cd = str(part.get("Content-Disposition", ""))
@@ -1625,15 +1740,26 @@ def _list_attachments_from_msg(msg):
         # Skip text/html body parts (only consider real attachments)
         if ct in ("text/plain", "text/html") and "attachment" not in cd:
             continue
-        filename = part.get_filename()
-        if filename:
-            filename = _decode_header(filename)
-            if ct == "message/rfc822" and not re.search(r"\.[A-Za-z0-9]{1,8}$", filename):
-                filename = f"{filename}.eml"
-        else:
-            # Inline images, etc. - generate a name
-            ext = "eml" if ct == "message/rfc822" else (ct.split("/")[-1] if "/" in ct else "bin")
-            filename = f"attachment_{idx}.{ext}"
+        yield idx, part
+        idx += 1
+
+
+def _attachment_name(msg, index: int) -> str | None:
+    """The name attachment *index* is shown, downloaded and sent under, or
+    None when the message has no such attachment."""
+    for idx, part in _iter_attachment_parts(msg):
+        if idx == index:
+            return _attachment_filename(part, idx)
+    return None
+
+
+def _list_attachments_from_msg(msg):
+    """Return a list of attachment metadata from an email message."""
+    attachments = []
+    for idx, part in _iter_attachment_parts(msg):
+        cd = str(part.get("Content-Disposition", ""))
+        ct = part.get_content_type()
+        filename = _attachment_filename(part, idx)
         payload = part.get_payload(decode=True)
         if payload is None and ct == "message/rfc822":
             try:
@@ -1650,7 +1776,6 @@ def _list_attachments_from_msg(msg):
             "is_inline": "inline" in cd.lower(),
             "content_id": content_id,
         })
-        idx += 1
     return attachments
 
 
@@ -1723,43 +1848,35 @@ def _has_visible_attachments(msg) -> bool:
 
 
 def _extract_attachment_to_disk(msg, index, target_dir):
-    """Extract a specific attachment to disk and return the file path."""
-    if not msg.is_multipart():
-        return None
-    idx = 0
-    for part in msg.walk():
-        cd = str(part.get("Content-Disposition", ""))
+    """Extract a specific attachment to disk and return the file path.
+
+    `B1000`. Stored as `stored_name(<its name>)` — the name the person sees,
+    made safe to store, so the extraction cache reads `Q3 Board Pack – final
+    (v2).pdf` and not `Q3 Board Pack _ final _v2_.pdf`. That regex kept every
+    `\\s`, so a sender's name carrying CR/LF reached the disk, the forward
+    token and from there an outgoing header; and it had no length cap, so a
+    long non-Latin name failed with `ENAMETOOLONG`. `stored_name` never makes
+    a dotfile: a sender's `.bashrc` is stored `bashrc`, and the routes that
+    refuse dotfiles ask the sender's name, not this one.
+    """
+    for idx, part in _iter_attachment_parts(msg):
+        if idx != index:
+            continue
         ct = part.get_content_type()
-        is_attached_email = ct == "message/rfc822" and ("attachment" in cd.lower() or part.get_filename())
-        if part.is_multipart() and not is_attached_email:
-            continue
-        if ct in ("text/plain", "text/html") and "attachment" not in cd:
-            continue
-        if idx == index:
-            filename = part.get_filename()
-            if filename:
-                filename = _decode_header(filename)
-                if ct == "message/rfc822" and not re.search(r"\.[A-Za-z0-9]{1,8}$", filename):
-                    filename = f"{filename}.eml"
-            else:
-                ext = "eml" if ct == "message/rfc822" else (ct.split("/")[-1] if "/" in ct else "bin")
-                filename = f"attachment_{idx}.{ext}"
-            # Sanitize
-            safe_name = re.sub(r"[^\w\s\-.]", "_", filename).strip()
-            payload = part.get_payload(decode=True)
-            if payload is None and ct == "message/rfc822":
-                try:
-                    payload = part.as_bytes()
-                except Exception:
-                    payload = b""
-            if payload is None:
-                return None
-            target_dir.mkdir(parents=True, exist_ok=True)
-            filepath = target_dir / safe_name
-            with open(filepath, "wb") as f:
-                f.write(payload)
-            return filepath
-        idx += 1
+        safe_name = stored_name(_attachment_filename(part, idx), f"attachment_{idx}")
+        payload = part.get_payload(decode=True)
+        if payload is None and ct == "message/rfc822":
+            try:
+                payload = part.as_bytes()
+            except Exception:
+                payload = b""
+        if payload is None:
+            return None
+        target_dir.mkdir(parents=True, exist_ok=True)
+        filepath = target_dir / safe_name
+        with open(filepath, "wb") as f:
+            f.write(payload)
+        return filepath
     return None
 
 
