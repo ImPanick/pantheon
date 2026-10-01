@@ -20,6 +20,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.helpers.fresh_import import drop_for_fresh_import
+
 
 # ── prompt-injection context wrapper ────────────────────────────
 
@@ -402,8 +404,14 @@ def test_build_user_content_skips_cross_owner_attachments(tmp_path):
 def test_chat_preprocess_does_not_surface_cross_owner_attachment(tmp_path, monkeypatch):
     import asyncio
     from types import SimpleNamespace
-    for mod_name in ("src.chat_handler", "routes.chat_helpers"):
-        sys.modules.pop(mod_name, None)
+    # `B1020`. Through the shared helper, which puts both modules — and the
+    # package attributes that name them — back at teardown. This popped them
+    # here and again at the end, so every later file that imported
+    # `routes.chat_helpers` got a second copy, re-bound on the `routes` package:
+    # `test_chat_helpers.py` then patched `effective_user` on that copy by name
+    # while calling the gate it imported at collection, and four of its cases
+    # failed after `test_review_regressions.py` re-imported it.
+    drop_for_fresh_import(monkeypatch, "src.chat_handler", "routes.chat_helpers")
     _stub_core_database_for_route_imports(monkeypatch)
     from src.chat_handler import ChatHandler
     from src.upload_handler import UploadHandler
@@ -431,8 +439,6 @@ def test_chat_preprocess_does_not_surface_cross_owner_attachment(tmp_path, monke
 
     assert attachment_meta == []
     assert user_content == "hello"
-    for mod_name in ("src.chat_handler", "routes.chat_helpers"):
-        sys.modules.pop(mod_name, None)
 
 
 def test_document_upload_lookup_rejects_cross_owner_marker(tmp_path, monkeypatch):
@@ -524,7 +530,7 @@ def test_require_user_rejects_unauthenticated(monkeypatch):
     didn't attach a user AND auth is configured. Mirrors the
     defense-in-depth check on /api/contacts/*, /api/personal/*,
     /api/email/*."""
-    sys.modules.pop("src.auth_helpers", None)
+    drop_for_fresh_import(monkeypatch, "src.auth_helpers")   # `B1020`: restored at teardown
     from fastapi import HTTPException
 
     from src import auth_helpers  # noqa: WPS433
@@ -581,7 +587,7 @@ def test_require_user_accepts_loopback_when_unconfigured(monkeypatch):
     """First-run mode (no users set up yet) must still let loopback
     callers through — otherwise the install can't bootstrap. Public
     callers in the same mode are rejected."""
-    sys.modules.pop("src.auth_helpers", None)
+    drop_for_fresh_import(monkeypatch, "src.auth_helpers")   # `B1020`: restored at teardown
     from src import auth_helpers  # noqa: WPS433
 
     class _State:
@@ -612,7 +618,7 @@ def test_require_user_accepts_anyone_when_auth_disabled(monkeypatch):
     the frontend's global 401 redirect doesn't bounce the user to /login
     despite the operator turning auth off (issue #622)."""
     monkeypatch.setenv("AUTH_ENABLED", "false")
-    sys.modules.pop("src.auth_helpers", None)
+    drop_for_fresh_import(monkeypatch, "src.auth_helpers")   # `B1020`: restored at teardown
     from src import auth_helpers  # noqa: WPS433
 
     class _State:
@@ -646,7 +652,7 @@ def test_require_user_localhost_bypass_admits_loopback(monkeypatch):
     through."""
     monkeypatch.setenv("AUTH_ENABLED", "true")
     monkeypatch.setenv("LOCALHOST_BYPASS", "true")
-    sys.modules.pop("src.auth_helpers", None)
+    drop_for_fresh_import(monkeypatch, "src.auth_helpers")   # `B1020`: restored at teardown
     from src import auth_helpers  # noqa: WPS433
 
     class _State:
@@ -677,7 +683,7 @@ def test_require_user_localhost_bypass_still_rejects_lan(monkeypatch):
     from fastapi import HTTPException
     monkeypatch.setenv("AUTH_ENABLED", "true")
     monkeypatch.setenv("LOCALHOST_BYPASS", "true")
-    sys.modules.pop("src.auth_helpers", None)
+    drop_for_fresh_import(monkeypatch, "src.auth_helpers")   # `B1020`: restored at teardown
     from src import auth_helpers  # noqa: WPS433
 
     class _State:
@@ -702,6 +708,39 @@ def test_require_user_localhost_bypass_still_rejects_lan(monkeypatch):
     with pytest.raises(HTTPException) as exc:
         auth_helpers.require_user(_LanReq())
     assert exc.value.status_code == 401
+
+
+def test_the_tests_that_drop_a_module_put_it_back(tmp_path):
+    """`B1020`. Two tests above drop a module to import it again, and used to
+    leave the hole: after them `routes.chat_helpers` and `src.auth_helpers`
+    were gone from `sys.modules`, so the next importer made a second copy and
+    bound it on the package, while every file collected earlier still held the
+    first. Four `test_chat_helpers.py` cases failed that way, after this file
+    and `test_review_regressions.py`. And `src.chat_handler`, which the first
+    re-imports under a stub `core.database`, was left on the `src` package as
+    that stub-bound copy. Both tests are run here under a monkeypatch of their
+    own; once it is undone, each module is the one that was there before — by
+    name, by import, and as the package's attribute."""
+    import routes
+    import src
+    import routes.chat_helpers as chat_helpers
+    import src.auth_helpers as auth_helpers
+    import src.chat_handler as chat_handler
+
+    patch = pytest.MonkeyPatch()
+    try:
+        test_chat_preprocess_does_not_surface_cross_owner_attachment(tmp_path, patch)
+        test_require_user_rejects_unauthenticated(patch)
+    finally:
+        patch.undo()
+    for name, module in (("routes.chat_helpers", chat_helpers),
+                         ("src.auth_helpers", auth_helpers),
+                         ("src.chat_handler", chat_handler)):
+        assert sys.modules.get(name) is module, name
+        assert importlib.import_module(name) is module, name
+    assert routes.chat_helpers is chat_helpers
+    assert src.auth_helpers is auth_helpers
+    assert src.chat_handler is chat_handler
 
 
 def test_require_admin_rejects_unconfigured_public_api(monkeypatch):

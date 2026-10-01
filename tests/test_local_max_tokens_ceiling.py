@@ -171,11 +171,21 @@ def test_the_admin_endpoint_clamps_it():
 def test_the_number_is_no_longer_a_literal_in_the_loop():
     """The owner's complaint was that they could not answer *what does this box
     actually do* without editing source. Assert the literal is gone from the
-    resolver rather than trusting that it is."""
+    resolver rather than trusting that it is.
+
+    `B1034` moved the token arm into `_lift_max_tokens`, so each candidate in a
+    fallback chain is asked the same rule; the resolver calls it, and it reads
+    the ceiling."""
     import inspect, src.agent_loop as AL
-    body = inspect.getsource(AL._resolve_local_lifts)
-    code = "\n".join(line for line in body.splitlines()
-                     if not line.lstrip().startswith("#"))
-    code = code.split('"""')[0] + code.split('"""')[-1]
-    assert "1_000_000" not in code and "1000000" not in code
-    assert "_local_max_tokens_ceiling()" in code
+
+    def code_of(fn):
+        body = inspect.getsource(fn)
+        code = "\n".join(line for line in body.splitlines()
+                         if not line.lstrip().startswith("#"))
+        return code.split('"""')[0] + code.split('"""')[-1]
+
+    resolver, rule = code_of(AL._resolve_local_lifts), code_of(AL._lift_max_tokens)
+    for code in (resolver, rule):
+        assert "1_000_000" not in code and "1000000" not in code
+    assert "_lift_max_tokens(max_tokens" in resolver
+    assert "_local_max_tokens_ceiling()" in rule

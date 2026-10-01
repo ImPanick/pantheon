@@ -1223,6 +1223,7 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
         from src.task_endpoint import resolve_task_endpoint
         from src.endpoint_resolver import resolve_endpoint
         from src.llm_core import llm_call_async
+        from src.document_actions import write_tidy_verdict
 
         user = get_current_user(request)
         url, model, headers = resolve_task_endpoint(owner=user or None)
@@ -1293,7 +1294,10 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
                     db.delete(doc)
                     deleted += 1
                 else:
-                    doc.tidy_verdict = "keep"
+                    # `B1035`: a review is not an edit — the verdict is written
+                    # without moving `updated_at`, by the one writer both
+                    # tidies' verdicts share.
+                    write_tidy_verdict(db, doc, "keep")
                 reviewed += 1
 
             db.commit()
