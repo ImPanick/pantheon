@@ -12,10 +12,11 @@ from sqlalchemy import case, func, or_
 from core.database import SessionLocal, Document, DocumentVersion
 from core.database import Session as DbSession
 from src.auth_helpers import get_current_user, _auth_disabled
-from src.constants import MAIL_ATTACHMENTS_DIR
 from src.upload_handler import reserve_upload_references
 # `P21-03`: one answer to "what is this file called" for every door.
-from src.file_names import display_name, document_title, upload_display_name
+from src.file_names import (
+    attachment_disposition, display_name, document_title, upload_display_name,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +75,7 @@ from routes.document_helpers import (
     DocumentCreate, DocumentUpdate, DocumentPatch,
     _doc_to_dict, _version_to_dict,
     _verify_doc_owner, _owner_session_filter,
-    _slug, _resolve_user_upload_path, _assert_pdf_marker_upload_owned, _derive_title,
+    _pdf_export_name, _resolve_user_upload_path, _assert_pdf_marker_upload_owned, _derive_title,
     _PDF_RENDER_SCALE,
 )
 
@@ -1851,11 +1852,14 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
                 except Exception as e:
                     logger.error(f"stamp_annotations failed for doc {doc_id}: {e}")
 
-            download_name = _slug(doc.title or "form") + "_annotated.pdf"
+            # `B1007`: named by its title, and sent with the one header builder
+            # every download uses (always `attachment`, the name whole in
+            # `filename*`), not Starlette's.
+            download_name = _pdf_export_name(doc.title, "annotated")
             return FileResponse(
                 out_path,
                 media_type="application/pdf",
-                filename=download_name,
+                headers={"Content-Disposition": attachment_disposition(download_name)},
                 background=BackgroundTask(_cleanup_temps),
             )
         finally:
@@ -1875,7 +1879,6 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
         import base64
         import tempfile
         import shutil
-        import uuid as _uuid
         import email as _email_mod
         from src.pdf_form_doc import (
             find_source_upload_id, parse_markdown_to_values,
@@ -1883,12 +1886,15 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
         )
         from src.pdf_forms import fill_fields, stamp_signatures, stamp_annotations
         from core.database import Signature
-        # COMPOSE_UPLOADS_DIR lives in email_routes — re-derive here so we
-        # don't import from a routes file (cycle-prone). Same env override
-        # as email_routes (PANTHEON_MAIL_ATTACHMENTS_DIR).
-        from pathlib import Path as _Path
-        _COMPOSE_DIR = _Path(MAIL_ATTACHMENTS_DIR) / "_compose"
-        _COMPOSE_DIR.mkdir(parents=True, exist_ok=True)
+        # `B1007`. The reply's attachment is staged the way every compose
+        # attachment is (`B1000`): `COMPOSE_UPLOADS_DIR`, a `<hex>_<stored
+        # name>` token, and the person's name kept beside it when it is not
+        # storable as given. Imported here, at call time, as `_q` is below —
+        # every routes module is loaded by then, so there is no cycle — rather
+        # than re-deriving the directory and the token format a second time.
+        from routes.email_helpers import (
+            COMPOSE_UPLOADS_DIR, _new_compose_token, _remember_compose_name,
+        )
 
         user = get_current_user(request)
         db = SessionLocal()
@@ -1984,11 +1990,12 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
                     logger.warning(f"stamp_annotations failed for {doc_id}: {e}")
 
             # 2) Move/copy into COMPOSE_UPLOADS_DIR with the token format
-            #    `<uuid>_<original_name>` that /api/email/send expects.
-            filename = _slug(doc.title or "signed") + "_signed.pdf"
-            token = f"{_uuid.uuid4().hex}_{filename}"
-            dest = _COMPOSE_DIR / token
+            #    `<uuid>_<stored name>` that /api/email/send expects.
+            token, filename = _new_compose_token(_pdf_export_name(doc.title, "signed"),
+                                                 "signed.pdf")
+            dest = COMPOSE_UPLOADS_DIR / token
             shutil.copyfile(out_path, str(dest))
+            _remember_compose_name(token, filename)
             # Unlink the intermediate temp PDFs now that they've been
             # copied into COMPOSE_UPLOADS_DIR.
             for _p in _to_unlink:

@@ -128,20 +128,32 @@ def _owner_session_filter(q, user):
 
 
 
-def _slug(name: str) -> str:
-    """Filesystem-friendly version of a document title.
+def _pdf_export_name(title, variant: str, fallback: str = "form") -> str:
+    """The name a form PDF leaves Pantheon under: the document's title, then
+    what was done to it — `Q3 Board Pack – final (v2) (signed).pdf`.
 
-    Whitespace becomes underscores; other unsafe punctuation is dropped.
-    Preserves letters, digits, dot, hyphen, underscore. Idempotent.
+    `B1007`. This was `_slug`, which kept `[A-Za-z0-9._-]` and dropped every
+    other letter, so `Q3 Board Pack – final (v2)` went out as
+    `Q3_Board_Pack_final_v2_signed.pdf` and `схема договора` as
+    `form_signed.pdf` — the name a recipient saw on the signed reply and the
+    name the annotated export downloaded under. It is `src/file_names`' answer
+    now, as every other name a person's file leaves under (`P21-03`, `B1000`):
+    `display_name`, with a `/` in a title kept as `_` rather than read as a
+    folder (`B1000`'s rule for a document attached by its title), and a `.pdf`
+    the title already ends in not doubled. Making it storable on disk and safe
+    in a header is the caller's door's job (`stored_name`,
+    `attachment_disposition`), not this name's.
     """
     import re as _re
-    s = (name or "").strip()
-    # Drop the trailing extension if the title happens to include one
-    s = _re.sub(r'\.pdf$', '', s, flags=_re.IGNORECASE)
-    s = _re.sub(r'\s+', '_', s)
-    s = _re.sub(r'[^A-Za-z0-9._-]', '', s)
-    s = _re.sub(r'_+', '_', s).strip('_')
-    return s or "form"
+    from src.file_names import DISPLAY_NAME_MAX_CHARS, display_name
+
+    tail = f" ({variant}).pdf"
+    base = str(title or "").replace("/", "_").replace("\\", "_")
+    base = display_name(base, "")
+    base = _re.sub(r"\.pdf$", "", base, flags=_re.IGNORECASE).strip()
+    # Cut the title, not the tail: a long title still says it was signed.
+    base = base[: DISPLAY_NAME_MAX_CHARS - len(tail)].rstrip() or fallback
+    return display_name(base + tail, fallback + tail)
 
 
 # DPI scale for the interactive PDF view. ~150 DPI (2x of 72 PDF user-units).
