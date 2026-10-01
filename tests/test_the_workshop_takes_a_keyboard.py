@@ -309,9 +309,12 @@ def test_a_task_card_names_itself_as_a_button(tmp_path):
 
 
 def test_an_integration_card_names_itself_as_a_button(tmp_path):
-    d = _make_sandbox(tmp_path, JS / "icons.js", _SKILLS_SHIM, {})
-    out = _run(d, "const INTG_TYPES = { mcp: { icon: '', label: 'MCP' }, api: { icon: '', label: 'API' } };\n"
-               + _cut(JS / "settings.js", "renderCard") + "\n", """
+    # `B951`: the card escapes what it draws through the module's own `esc`,
+    # so `esc` is cut out beside it, over the canonical escaper.
+    d = _make_sandbox(tmp_path, JS / "icons.js", _SKILLS_SHIM, {"ui.js": ui_default_stub()})
+    out = _run(d, "import uiModule from './ui.js';\n"
+               "const INTG_TYPES = { mcp: { icon: '', label: 'MCP' }, api: { icon: '', label: 'API' } };\n"
+               + _cut(JS / "settings.js", "esc", "renderCard") + "\n", """
         console.log(JSON.stringify({ html: renderCard({ type: 'mcp', id: 's1', name: 'Probe memory',
           detail: 'Connected', enabled: true }) }));
         """)

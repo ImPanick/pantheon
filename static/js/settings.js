@@ -2231,7 +2231,10 @@ function _formatKeyCaps(combo) {
     else if (p === '/') label = '/';
     else if (p === 'space') label = 'Space';
     else label = p.charAt(0).toUpperCase() + p.slice(1);
-    return `<kbd>${label}</kbd>`;
+    // `B951`. A stored combo is the person's own, but it reaches the markup
+    // through the same template shape as the integration list, so it is
+    // escaped the same way.
+    return `<kbd>${esc(label)}</kbd>`;
   }).join('');
 }
 
@@ -2892,7 +2895,7 @@ async function initReminderSettings() {
   function populateReminderEmailAccounts(selectedId = '') {
     if (!emailAcctSel) return;
     emailAcctSel.innerHTML = emailAccounts.map(a =>
-      `<option value="${a.id}">${esc(a.name || a.from_address || a.imap_user || 'Unnamed')}${a.is_default ? ' (default)' : ''}</option>`
+      `<option value="${esc(a.id)}">${esc(a.name || a.from_address || a.imap_user || 'Unnamed')}${a.is_default ? ' (default)' : ''}</option>`
     ).join('');
     const fallback = (emailAccounts.find(a => a.is_default) || emailAccounts[0] || {}).id || '';
     emailAcctSel.value = (selectedId && emailAccounts.some(a => a.id === selectedId)) ? selectedId : fallback;
@@ -3553,8 +3556,8 @@ async function initIntegrations() {
             <div style="font-size:11px;opacity:0.5;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(i.base_url || '')}</div>
           </div>
           <div style="display:flex;gap:4px;flex-shrink:0;">
-            <button class="admin-btn-sm intg-edit-btn" data-id="${i.id}" style="font-size:11px;">Edit</button>
-            <button class="admin-btn-sm intg-del-btn" data-id="${i.id}" style="font-size:11px;opacity:0.6;">Del</button>
+            <button class="admin-btn-sm intg-edit-btn" data-id="${esc(i.id)}" style="font-size:11px;">Edit</button>
+            <button class="admin-btn-sm intg-del-btn" data-id="${esc(i.id)}" style="font-size:11px;opacity:0.6;">Del</button>
           </div>
         </div>
       `).join('');
@@ -3859,20 +3862,28 @@ async function initUnifiedIntegrations() {
     // 2026-09-27). The card cannot be the button: it holds that Remove button
     // (`P10-02`'s rule). Pressing the name IS a click on the card: it bubbles
     // to the handler in `renderList`, which skips only `.intg-del-btn`.
+    //
+    // `B951`. Every value from the server goes through the module's `esc` (the
+    // canonical `uiModule.esc`): the name and the detail were interpolated raw.
+    // They are not ours to trust — an MCP server's name can be set by the agent
+    // (`manage_mcp add`), an integration's base URL and a mail or calendar
+    // account's label and host by whoever typed them — and the CSP stops a
+    // script but not a fake link or form drawn into Settings. The id and the
+    // type ride in attributes, so they are escaped too.
     // Static enabled/disabled indicator — same dot every integration
     // type gets. (The clickable glow-on-test variant for email was
     // removed earlier; this matches the API/CalDAV/MCP pattern.)
     const statusDot = item.enabled
       ? '<span style="width:8px;height:8px;border-radius:50%;background:var(--color-success,#50fa7b);flex-shrink:0;--notif-glow:var(--color-success,#50fa7b);animation:cookbook-notif-pulse 2s ease-in-out infinite;" title="Active"></span>'
       : '<span style="width:8px;height:8px;border-radius:50%;background:var(--fg);opacity:0.3;flex-shrink:0" title="Disabled"></span>';
-    return `<div class="intg-card" data-intg-id="${item.id}" data-intg-type="${item.type}" style="display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:color-mix(in srgb, var(--fg) 3%, transparent);margin-bottom:6px;cursor:pointer;transition:all 0.15s;" title="Click to edit">
+    return `<div class="intg-card" data-intg-id="${esc(item.id)}" data-intg-type="${esc(item.type)}" style="display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:color-mix(in srgb, var(--fg) 3%, transparent);margin-bottom:6px;cursor:pointer;transition:all 0.15s;" title="Click to edit">
       <span style="color:var(--accent, var(--red));flex-shrink:0">${t.icon}</span>
       <div style="flex:1;min-width:0">
-        <div style="font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px"><button type="button" class="intg-card-open">${item.name}</button> <span style="font-size:9px;text-transform:uppercase;letter-spacing:0.5px;padding:1px 5px;border:1px solid color-mix(in srgb, var(--accent, var(--red)) 50%, transparent);border-radius:3px;color:var(--accent, var(--red));background:color-mix(in srgb, var(--accent, var(--red)) 12%, transparent);">${t.label}</span></div>
-        <div style="font-size:11px;opacity:0.5;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${item.detail || ''}</div>
+        <div style="font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px"><button type="button" class="intg-card-open">${esc(item.name)}</button> <span style="font-size:9px;text-transform:uppercase;letter-spacing:0.5px;padding:1px 5px;border:1px solid color-mix(in srgb, var(--accent, var(--red)) 50%, transparent);border-radius:3px;color:var(--accent, var(--red));background:color-mix(in srgb, var(--accent, var(--red)) 12%, transparent);">${t.label}</span></div>
+        <div style="font-size:11px;opacity:0.5;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(item.detail || '')}</div>
       </div>
       ${statusDot}
-      <button class="admin-btn-sm intg-del-btn" data-intg-id="${item.id}" data-intg-type="${item.type}" data-intg-name="${(item.name || '').replace(/"/g, '&quot;')}" title="Remove" style="background:none;border:none;padding:4px;cursor:pointer;color:var(--red);opacity:0.55;display:inline-flex;align-items:center;justify-content:center;">
+      <button class="admin-btn-sm intg-del-btn" data-intg-id="${esc(item.id)}" data-intg-type="${esc(item.type)}" data-intg-name="${esc(item.name || '')}" title="Remove" style="background:none;border:none;padding:4px;cursor:pointer;color:var(--red);opacity:0.55;display:inline-flex;align-items:center;justify-content:center;">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
       </button>
     </div>`;
@@ -5596,7 +5607,7 @@ async function initUnifiedIntegrations() {
             </div>
             <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:8px;justify-content:flex-end;">
               <span id="uf-mcp-msg" style="font-size:11px;flex:1;margin-right:8px"></span>
-              ${srv.needs_oauth ? `<a href="/api/mcp/oauth/authorize/${srv.id}" target="_blank" class="admin-btn-add" style="background:transparent;color:var(--accent, var(--red));border-color:color-mix(in srgb, var(--accent, var(--red)) 45%, var(--border));text-decoration:none;font-weight:600;">Authorize</a>` : ''}
+              ${srv.needs_oauth ? `<a href="/api/mcp/oauth/authorize/${esc(encodeURIComponent(srv.id))}" target="_blank" class="admin-btn-add" style="background:transparent;color:var(--accent, var(--red));border-color:color-mix(in srgb, var(--accent, var(--red)) 45%, var(--border));text-decoration:none;font-weight:600;">Authorize</a>` : ''}
               <button class="admin-btn-add" id="uf-mcp-reconnect" style="background:transparent;color:var(--accent, var(--red));border-color:color-mix(in srgb, var(--accent, var(--red)) 45%, var(--border));">Reconnect</button>
               <button class="admin-btn-add" id="uf-mcp-toggle" style="background:transparent;color:var(--accent, var(--red));border-color:color-mix(in srgb, var(--accent, var(--red)) 45%, var(--border));">${srv.is_enabled ? 'Disable' : 'Enable'}</button>
               <button class="admin-btn-add" id="uf-mcp-cancel" style="background:transparent;color:var(--accent, var(--red));border-color:color-mix(in srgb, var(--accent, var(--red)) 45%, var(--border));">Close</button>
