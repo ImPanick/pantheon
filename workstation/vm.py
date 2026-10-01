@@ -55,6 +55,7 @@ from __future__ import annotations
 import argparse
 import base64
 import collections
+import contextlib
 import errno
 import hashlib
 import http.client
@@ -113,6 +114,10 @@ ENV = {
     "cpus": "PANTHEON_WORKSTATION_VM_CPUS",
     "disk": "PANTHEON_WORKSTATION_VM_DISK_GIB",
     "accel": "PANTHEON_WORKSTATION_VM_ACCEL",
+    # `B979`: minutes a machine may sit unused before it is powered off (0:
+    # never), and how many may run at once (`auto`: what the memory holds).
+    "idle": "PANTHEON_WORKSTATION_VM_IDLE_MIN",
+    "max_running": "PANTHEON_WORKSTATION_VM_MAX_RUNNING",
     # Build-time knobs for making the image, like the container image's
     # `APT_MIRROR` and `build-ca` (`provision.sh`). None stays in the image.
     "apt_mirror": "PANTHEON_WORKSTATION_VM_APT_MIRROR",
@@ -129,6 +134,82 @@ IMAGE_TIMEOUT_S = 4 * 3600.0
 # 2.5 GB measured (`P20-07`), with headroom for apt's downloads.
 IMAGE_NEEDS_BYTES = 5 * 10**9
 STOP_GRACE_S = 90.0
+
+# ── `B979`: a machine nobody uses is powered off ─────────────────────────────
+#
+# A running machine keeps its memory: measured `P20-07`, 760 MiB resident for
+# a 2048 MiB machine under TCG after five idle minutes — until the host
+# restarted, and nothing capped how many ran. So a machine with no request in
+# flight and none for `PANTHEON_WORKSTATION_VM_IDLE_MIN` minutes is powered off
+# cleanly (`Machine.stop`, ACPI then QMP `quit`), its disk kept: the next call
+# boots it, as the first one did. A program left running in it stops with it
+# — the protocol has no command running past its answer, and the panel says the
+# machine is off. The time is the operator's, in `.env` beside the machine's
+# memory and CPUs, because it is the host's capacity that it trades against;
+# `health.machines` says what it is.
+#
+# And at most `PANTHEON_WORKSTATION_VM_MAX_RUNNING` machines run at once. The
+# default is what the host's memory holds — its memory (the container's cgroup
+# limit when lower) less `MEMORY_RESERVE_MIB` for the host itself and
+# Pantheon, over each machine's — and never less than one; a machine past it
+# is refused with a sentence naming the limit and when one frees up.
+DEFAULT_IDLE_STOP_MIN = 30
+MEMORY_RESERVE_MIB = 2048
+HOUSEKEEPING_S = 30.0
+
+
+def idle_stop_from_env(raw: str) -> Optional[float]:
+    """Seconds, from the minutes in `PANTHEON_WORKSTATION_VM_IDLE_MIN`; None
+    for 0 (never). Empty is the default."""
+    raw = (raw or "").strip()
+    if not raw:
+        return DEFAULT_IDLE_STOP_MIN * 60.0
+    if not raw.isdigit() or int(raw) > 7 * 24 * 60:
+        raise SystemExit(f"{ENV['idle']} is a whole number of minutes from 0 (never) to "
+                         f"{7 * 24 * 60}.")
+    return int(raw) * 60.0 or None
+
+
+def host_memory_mib(meminfo: Path = Path("/proc/meminfo"),
+                    cgroup: Path = Path("/sys/fs/cgroup/memory.max")) -> Optional[int]:
+    """The memory this host's machines share, in MiB: the machine's, or this
+    container's cgroup limit when it is lower. None when neither can be read."""
+    total = None
+    try:
+        for line in meminfo.read_text().splitlines():
+            if line.startswith("MemTotal:"):
+                total = int(line.split()[1]) // 1024
+                break
+    except (OSError, ValueError, IndexError):
+        total = None
+    try:
+        limit = cgroup.read_text().strip()
+        if limit.isdigit():
+            capped = int(limit) // (1024 * 1024)
+            total = capped if total is None else min(total, capped)
+    except OSError:
+        pass  # no cgroup v2 limit to read: the machine's memory is the answer
+    return total
+
+
+def max_running_from_env(raw: str, memory_mib: int, total_mib: Optional[int]) -> Optional[int]:
+    """`PANTHEON_WORKSTATION_VM_MAX_RUNNING`: a number (0: no limit), or `auto`
+    / empty for what the memory holds — None when the memory cannot be read,
+    rather than a number made up."""
+    raw = (raw or "").strip().lower()
+    if raw in ("", "auto"):
+        if total_mib is None:
+            return None
+        return max(1, (total_mib - MEMORY_RESERVE_MIB) // max(1, int(memory_mib)))
+    if not raw.isdigit() or int(raw) > 1024:
+        raise SystemExit(f"{ENV['max_running']} is auto, or a whole number of machines from 0 "
+                         "(no limit) to 1024.")
+    return int(raw) or None
+
+
+def _minutes(seconds: float) -> str:
+    n = max(1, round(seconds / 60))
+    return "1 minute" if n == 1 else f"{n} minutes"
 
 
 # ── what the host can do ─────────────────────────────────────────────────────
@@ -496,7 +577,10 @@ class Fleet(System):
                  disk_gib: int = DEFAULT_DISK_GIB,
                  machine_factory: Optional[Callable[["Fleet", str], Machine]] = None,
                  image_options: Optional[Dict] = None, need_image: bool = True,
-                 start_timeout: float = P.MACHINE_START_S - 30.0) -> None:
+                 start_timeout: float = P.MACHINE_START_S - 30.0,
+                 idle_stop_s: Optional[float] = DEFAULT_IDLE_STOP_MIN * 60.0,
+                 max_running: Optional[int] = None,
+                 clock: Callable[[], float] = time.monotonic) -> None:
         super().__init__()
         self.state = Path(state)
         (self.state / "machines").mkdir(parents=True, exist_ok=True)
@@ -515,6 +599,14 @@ class Fleet(System):
         self._locks: Dict[str, threading.Lock] = collections.defaultdict(threading.Lock)
         self._registry = threading.Lock()
         self.sudo = self._persisted_sudo()
+        # `B979`: when each machine was last used and how many requests are in
+        # it now; the idle time and the cap (module comment above).
+        self.idle_stop_s = idle_stop_s
+        self.max_running = max_running
+        self._clock = clock
+        self._use: Dict[str, List] = {}          # account -> [requests in flight, last use]
+        self._use_lock = threading.Lock()
+        self._start_lock = threading.Lock()
 
     # -- the System interface ---------------------------------------------------
 
@@ -534,6 +626,16 @@ class Fleet(System):
     def machine(self) -> Dict:
         return {"virtualization": "kvm" if self.accel == "kvm" else "qemu",
                 "accel": self.accel, "image": self.image_state}
+
+    def machines(self) -> Dict:
+        """`B979`: `health.machines` — how many run, the most that may, and
+        how long one may sit unused (None: no limit / never)."""
+        return {"running": len(self.running_accounts()), "max_running": self.max_running,
+                "idle_stop_s": self.idle_stop_s}
+
+    def running_accounts(self) -> List[str]:
+        with self._registry:
+            return sorted(a for a, m in self._machines.items() if m.running())
 
     def set_sudo(self, on: bool) -> None:
         on = bool(on)
@@ -705,13 +807,18 @@ class Fleet(System):
     def ready(self, account: str) -> Machine:
         """This person's machine, started and answering — or a sentence."""
         m = self.machine_for(account)
+        self._touch(account)  # `B979`
         with self._locks[account]:
             if m.running() and m.port is not None:
                 return m
             if not m.exists() and self.image_state != "ready":
                 raise WorkstationError("unavailable", self.image_sentence())
             started = time.monotonic()
-            m.start()
+            with self._start_lock:  # `B979`: counted and started as one step
+                others = [a for a in self.running_accounts() if a != account]
+                if self.max_running is not None and len(others) >= self.max_running:
+                    raise WorkstationError("unavailable", self.cap_sentence(len(others)))
+                m.start()
             self._wait_answering(m, started)
             logger.info("the machine for %s answered after %.1f s", account,
                         time.monotonic() - started)
@@ -749,6 +856,70 @@ class Fleet(System):
             m.destroy()
             with self._registry:
                 self._machines.pop(account, None)
+
+    # -- `B979`: use, idleness and the cap --------------------------------------
+
+    def _touch(self, account: str) -> None:
+        with self._use_lock:
+            self._use.setdefault(account, [0, self._clock()])[1] = self._clock()
+
+    @contextlib.contextmanager
+    def _using(self, account: str):
+        """A request in this person's machine: it is not idle while one is in
+        flight, and its end is a use."""
+        with self._use_lock:
+            use = self._use.setdefault(account, [0, self._clock()])
+            use[0] += 1
+            use[1] = self._clock()
+        try:
+            yield
+        finally:
+            with self._use_lock:
+                use[0] -= 1
+                use[1] = self._clock()
+
+    def _idle(self, account: str) -> bool:
+        with self._use_lock:
+            busy, last = self._use.get(account, [0, self._clock()])
+            return (self.idle_stop_s is not None and busy == 0
+                    and self._clock() - last >= self.idle_stop_s)
+
+    def reap_idle(self) -> List[str]:
+        """Power off every machine idle for `idle_stop_s`, cleanly, its disk
+        kept; the accounts whose machines were stopped. One that is starting
+        or being reset (its lock held) is left for the next round."""
+        stopped: List[str] = []
+        for account in self.running_accounts():
+            if not self._idle(account):
+                continue
+            lock = self._locks[account]
+            if not lock.acquire(blocking=False):
+                continue
+            try:
+                m = self.machine_for(account)
+                if m.running() and self._idle(account):
+                    logger.info("powering off the machine for %s: unused for %s", account,
+                                _minutes(self.idle_stop_s or 0))
+                    m.stop(graceful=True)
+                    stopped.append(account)
+            finally:
+                lock.release()
+        return stopped
+
+    def housekeeping(self, stop: threading.Event, *, interval: float = HOUSEKEEPING_S) -> None:
+        """What the host does on its own, every `interval` until `stop`."""
+        while not stop.wait(interval):
+            try:
+                self.reap_idle()
+            except Exception:  # noqa: BLE001 — one bad round must not end the next ones
+                logger.exception("workstation housekeeping failed")
+
+    def cap_sentence(self, running: int) -> str:
+        machines = "1 machine" if running == 1 else f"{running} machines"
+        then = (f"A machine nobody has used for {_minutes(self.idle_stop_s)} stops on its own; "
+                "try again then, or ask" if self.idle_stop_s else "Ask")
+        return (f"The workstation already runs {machines}, the most this host is set to hold "
+                f"({ENV['max_running']}). {then} an admin to raise the limit.")
 
     def stop_all(self) -> None:
         threads = [threading.Thread(target=m.stop, daemon=True)
@@ -790,16 +961,25 @@ class Fleet(System):
     def forward(self, account: str, name: str, body: Optional[Dict] = None, *,
                 query: Optional[Dict] = None, timeout: float = 120.0, start: bool = True,
                 allow_304: bool = False) -> Optional[Dict]:
-        m = self.ready(account) if start else self.machine_for(account)
-        if not m.running():
-            raise WorkstationError("unavailable", "Your workstation machine is not running.")
-        return self._call(m, name, account, body, query, timeout, allow_304=allow_304)
+        if not start:
+            m = self.machine_for(account)
+            if not m.running():
+                raise WorkstationError("unavailable", "Your workstation machine is not running.")
+            return self._call(m, name, account, body, query, timeout, allow_304=allow_304)
+        with self._using(account):  # `B979`
+            m = self.ready(account)
+            return self._call(m, name, account, body, query, timeout, allow_304=allow_304)
 
     def stream_exec(self, account: str, body: Dict, on_chunk: Callable[[str, str], None],
                     caller_gone: Optional[Callable[[], bool]], timeout: float) -> Dict:
         """`exec` with `stream: true`, relayed line by line. If the caller
         hangs up, the connection to the machine is closed, and the daemon
         there kills the command (`B965`) — the hang-up travels through."""
+        with self._using(account):  # `B979`: not idle while the command runs
+            return self._stream_exec(account, body, on_chunk, caller_gone, timeout)
+
+    def _stream_exec(self, account: str, body: Dict, on_chunk: Callable[[str, str], None],
+                     caller_gone: Optional[Callable[[], bool]], timeout: float) -> Dict:
         m = self.ready(account)
         method, path = P.route_path("exec", account)
         conn = self._connection(m, timeout)
@@ -891,16 +1071,28 @@ class VmStation(Workstation):
 
     system: Fleet
 
+    def health(self, authorised: bool) -> Dict:
+        out = super().health(authorised)
+        if authorised:
+            out["machines"] = self.system.machines()  # `B979`
+        return out
+
     def account(self, account: str) -> Dict:
         """`B959`: from the machine itself when it is already running (the
-        exact home it has), else from its disk — and never by starting it."""
+        exact home it has), else from its disk — and never by starting it.
+        `B979`: and whether that machine is running or powered off."""
         m = self.system.machine_for(account)
         if m.running() and m.port is not None:
             try:
-                return self.system._call(m, "account", account, timeout=10.0)
+                answer = dict(self.system._call(m, "account", account, timeout=10.0) or {})
+                answer["machine"] = "running"
+                return answer
             except WorkstationError:
                 pass  # what the disk says is still true
-        return super().account(account)
+        answer = super().account(account)
+        if answer.get("exists"):
+            answer["machine"] = "running" if m.running() else "stopped"
+        return answer
 
     def ensure(self, account: str) -> Dict:
         return self.system.forward(account, "ensure", {}, timeout=120.0)
@@ -990,6 +1182,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     memory = _int_env(ENV["memory"], DEFAULT_MEMORY_MIB, 1024, 262_144)
     cpus = _int_env(ENV["cpus"], DEFAULT_CPUS, 1, 64)
     disk = _int_env(ENV["disk"], DEFAULT_DISK_GIB, 8, 4096)
+    idle = idle_stop_from_env(os.environ.get(ENV["idle"], ""))  # `B979`
+    cap = max_running_from_env(os.environ.get(ENV["max_running"], ""), memory, host_memory_mib())
     want = (os.environ.get(ENV["accel"]) or "auto").strip().lower()
     if want not in ("auto", "kvm", "tcg"):
         logger.error("%s is auto, kvm or tcg.", ENV["accel"])
@@ -1005,7 +1199,8 @@ def main(argv: Optional[List[str]] = None) -> int:
                    for k in ("apt_mirror", "apt_proxy", "apt_ca")}
         fleet = Fleet(Path(args.state), accel=accel, accel_why=why,
                       base_image=Path(args.base_image), payload=Path(args.payload),
-                      memory_mib=memory, cpus=cpus, disk_gib=disk, image_options=options)
+                      memory_mib=memory, cpus=cpus, disk_gib=disk, image_options=options,
+                      idle_stop_s=idle, max_running=cap)
     except (WorkstationError, argparse.ArgumentTypeError) as e:
         logger.error("%s", getattr(e, "message", None) or e)
         return 2
@@ -1013,9 +1208,15 @@ def main(argv: Optional[List[str]] = None) -> int:
     station = VmStation(fleet, token)
     server = make_server(fleet, token, bind=args.bind, port=args.port, station=station)
     threading.Thread(target=fleet.prepare_image, name="image", daemon=True).start()
+    done = threading.Event()
+    threading.Thread(target=fleet.housekeeping, args=(done,), name="housekeeping",
+                     daemon=True).start()  # `B979`
     host, port = server.server_address[:2]
     logger.info("workstation VM backend listening on %s:%s — %s, %d MiB and %d CPUs a machine, "
                 "protocol v%s", host, port, accel, memory, cpus, P.PROTOCOL_VERSION)
+    logger.info("%s; %s", f"a machine unused for {_minutes(idle)} is powered off" if idle
+                else "machines are never powered off for being unused",
+                f"at most {cap} run at once" if cap is not None else "any number may run")
 
     def stop(signum, _frame):
         raise KeyboardInterrupt
@@ -1026,6 +1227,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     except KeyboardInterrupt:
         logger.info("stopping: powering off every machine")
     finally:
+        done.set()
         server.server_close()
         fleet.stop_all()
     return 0
@@ -1035,6 +1237,8 @@ if __name__ == "__main__":
     raise SystemExit(main())
 
 
-__all__ = ["Fleet", "Machine", "QemuMachine", "VmStation", "choose_accel", "guest_unit",
+__all__ = ["DEFAULT_IDLE_STOP_MIN", "MEMORY_RESERVE_MIB", "host_memory_mib",  # `B979`
+           "idle_stop_from_env", "max_running_from_env",
+           "Fleet", "Machine", "QemuMachine", "VmStation", "choose_accel", "guest_unit",
            "image_meta_data", "image_user_data", "make_iso", "payload_digest", "payload_files",
            "qemu_argv", "read_verdict"]

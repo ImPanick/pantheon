@@ -145,6 +145,33 @@ const IMAGE_WORDS = {
   failed: 'the machine image could not be prepared',
 };
 
+// `B979`: on the VM backend, a machine nobody has used for a while is powered
+// off (its disk kept) and the host caps how many run. Said beside the daemon's
+// facts, and to a person whose own machine is off.
+const YOUR_MACHINE_WORDS = {
+  stopped: 'your machine is off — it starts when you or your agent next work there',
+};
+
+function minutes(seconds) {
+  const n = Math.max(1, Math.round(seconds / 60));
+  return n === 1 ? '1 minute' : `${n} minutes`;
+}
+
+/** `health.machines` as words: how many run, of how many, and when one stops. */
+function describeMachines(machines) {
+  if (!machines || typeof machines.running !== 'number') return [];
+  const parts = [];
+  const what = machines.running === 1 && typeof machines.max_running !== 'number'
+    ? 'machine' : 'machines';
+  parts.push(typeof machines.max_running === 'number'
+    ? `${machines.running} of ${machines.max_running} ${what} running`
+    : `${machines.running} ${what} running`);
+  if (typeof machines.idle_stop_s === 'number') {
+    parts.push(`a machine stops after ${minutes(machines.idle_stop_s)} unused`);
+  }
+  return parts;
+}
+
 let _status = null;
 let _wired = false;
 
@@ -186,6 +213,7 @@ function describeDaemon(daemon) {
     if (ACCEL_WORDS[machine.accel]) parts.push(ACCEL_WORDS[machine.accel]);
     if (IMAGE_WORDS[machine.image]) parts.push(IMAGE_WORDS[machine.image]);
   }
+  parts.push(...describeMachines(daemon.machines));  // `B979`
   return parts.join(' · ');
 }
 
@@ -197,6 +225,7 @@ function describeYou(you) {
     const when = HOME_WORDS[you.home_state];
     line += ` · home ${you.home}${when ? ` (${when})` : ''}`;
   }
+  if (YOUR_MACHINE_WORDS[you.machine]) line += ` · ${YOUR_MACHINE_WORDS[you.machine]}`;  // `B979`
   return line;
 }
 
@@ -526,6 +555,7 @@ export async function open() {
 }
 
 export const _test = {
+  describeMachines,  // `B979`
   describeDaemon, describeYou, render, apply, fillSettings, renderEffects, networkStateSentence,
   renderRecreate, renderSudo, machineKind,
 };

@@ -538,7 +538,8 @@ async def reset_home(owner: Optional[str], *, auth_manager: Any = None) -> Dict[
 def _daemon_view(daemon: Dict[str, Any]) -> Dict[str, Any]:
     """The daemon's own answer, in the fields the panel shows."""
     keep = ("agent", "protocol", "backend", "version", "sudo", "network", "screen", "accounts",
-            "machine")  # `P20-07`: what it runs on, and for a VM whether it is emulated
+            "machine",   # `P20-07`: what it runs on, and for a VM whether it is emulated
+            "machines")  # `B979`: on the VM backend, how many run and when one stops
     return {k: daemon.get(k) for k in keep if k in daemon}
 
 
@@ -597,6 +598,10 @@ async def status_for(owner: Optional[str], *, is_admin: bool, auth_manager: Any 
             out["you"].update(home=seen.get("home") if exists else None,
                               home_state=(HOME_KEPT if exists is True else HOME_NONE
                                           if exists is False else HOME_UNKNOWN))
+            if seen.get("machine") in P.MACHINE_STATES:
+                # `B979`: on the VM backend, whether the person's machine is up
+                # or powered off until their next call — looked at, not booted.
+                out["you"]["machine"] = seen["machine"]
     except WorkstationError as e:
         out.update(probe=PROBE_FAILED, error={"code": e.code, "message": e.message})
         if enabled:

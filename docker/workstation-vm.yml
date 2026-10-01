@@ -18,7 +18,9 @@
 #
 # Measured `P20-07` — see the row for the numbers, and for what was not
 # measured. Each machine takes up to PANTHEON_WORKSTATION_VM_MEMORY_MIB of RAM
-# while it runs (default 2048).
+# while it runs (default 2048); one nobody uses is powered off after
+# PANTHEON_WORKSTATION_VM_IDLE_MIN minutes, and no more run at once than the
+# host's memory holds (PANTHEON_WORKSTATION_VM_MAX_RUNNING) — `B979`.
 #
 # What it is given, and what it deliberately is not:
 #   * KVM when the host has it: ONE device-cgroup rule, for the KVM device
@@ -46,6 +48,10 @@ services:
       - PANTHEON_WORKSTATION_VM_CPUS=${PANTHEON_WORKSTATION_VM_CPUS:-2}
       - PANTHEON_WORKSTATION_VM_DISK_GIB=${PANTHEON_WORKSTATION_VM_DISK_GIB:-20}
       - PANTHEON_WORKSTATION_VM_ACCEL=${PANTHEON_WORKSTATION_VM_ACCEL:-auto}
+      # `B979`: minutes unused before a machine is powered off (0: never), and
+      # how many may run at once (`auto`: what the host's memory holds).
+      - PANTHEON_WORKSTATION_VM_IDLE_MIN=${PANTHEON_WORKSTATION_VM_IDLE_MIN:-30}
+      - PANTHEON_WORKSTATION_VM_MAX_RUNNING=${PANTHEON_WORKSTATION_VM_MAX_RUNNING:-auto}
     volumes:
       # The image and every person's disk. Kept: removing it is everyone's
       # machine gone.

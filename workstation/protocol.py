@@ -203,6 +203,15 @@ BACKENDS = ("container", "vm", "remote")
 # machine starts from is ready (`workstation/vm.py`).
 ACCELS = ("kvm", "tcg")
 MACHINE_IMAGE_STATES = ("ready", "preparing", "failed")
+# `B979`, added. The VM backend's host powers off a machine nobody has used for
+# a while and caps how many run (`workstation/vm.py`). Its `health`, for a
+# caller with the token, also answers
+#   "machines": {"running": int, "max_running": int|None, "idle_stop_s": float|None}
+# (None: no cap / never stopped for being unused), and its `account` route adds
+#   "machine": one of MACHINE_STATES
+# for a person whose machine exists — whether it is up, or powered off with its
+# disk kept until their next call boots it. No other backend says either.
+MACHINE_STATES = ("running", "stopped")
 # `P20-06`. What the admin chose; where it is enforced is that row's subject.
 NETWORK_MODES = ("full", "internet", "none")
 
@@ -366,6 +375,8 @@ def error_body(code: str, message: str) -> Dict[str, str]:
 __all__ = [
     # `P20-07`, added.
     "ACCELS", "MACHINE_IMAGE_STATES", "MACHINE_START_S", "TLS_PIN_ENV",
+    # `B979`, added.
+    "MACHINE_STATES",
     "ACCOUNT_PREFIX", "ACCOUNT_RE", "AGENT_NAME", "BACKENDS", "DEFAULT_EXEC_TIMEOUT_S",
     "DEFAULT_HOST", "DEFAULT_PAIRING_DIR", "DEFAULT_PORT", "ENTRY_TYPES",
     "ERRORS", "HOLDERS", "INPUT_ACTIONS", "LOCAL_OWNER_SLUG", "MAX_BODY_BYTES",
