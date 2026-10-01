@@ -299,6 +299,11 @@ export function createWorkflowPanels({
     const result = _el('div', 'wf-test-result');
     result.hidden = true;
     box.appendChild(result);
+    // What is typed or chosen here is a test's input, not an edit to the step:
+    // the canvas counts `input` / `change` reaching the panel as unsaved edits
+    // (`B1052`, `B1067`), and found in Chromium, a test input typed on one step
+    // made opening the next one ask about "changes that are not saved".
+    for (const type of ['input', 'change']) box.addEventListener(type, (e) => e.stopPropagation());
     parent.appendChild(box);
 
     function syncSources() {

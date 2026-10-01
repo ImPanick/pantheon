@@ -399,6 +399,36 @@ def test_cancelling_the_confirmation_runs_nothing(box):
     assert o == {"calls": 1, "said": "Not tested. Nothing ran.", "result": True, "confirm": True}
 
 
+def test_typing_a_test_input_is_not_an_edit_to_the_step(box):
+    # Found in Chromium: the canvas counts `input` / `change` reaching the
+    # panel as unsaved edits (`B1052`, `B1067`), and a test's input typed on
+    # one step made opening the next one ask about "changes that are not
+    # saved". Events bubble here the way a browser's do.
+    o = _case(box, """
+        const bubble = (node, type) => {
+          const ev = { type, target: node, _stopped: false, stopPropagation() { this._stopped = true; }, preventDefault() {} };
+          for (let n = node; n && !ev._stopped; n = n.parentNode) n.dispatchEvent(ev);
+        };
+        const { root } = await room();
+        await openW(root);
+        fire(itemOf(root, 'n2'), 'click'); await settle(5);
+        const sel = by(root, 'wf-test-source');
+        sel.value = 'custom'; bubble(sel, 'change');
+        const input = by(root, 'wf-test-input');
+        input.value = '{"subject": "Your statement is ready"}'; bubble(input, 'input');
+        const pinOffered = !by(root, 'wf-test-pin').hidden;
+        fire(itemOf(root, 'n1'), 'click'); await settle(5);
+        const moved = { title: root.querySelector('.wb-panel-title').textContent, said: sayOf(root) };
+        // The step's own form still counts: typed in, the next step asks.
+        bubble(root.querySelector('.stub-field'), 'input');
+        fire(itemOf(root, 'n2'), 'click'); await settle(5);
+        out({ pinOffered, moved, asked: sayOf(root), title: root.querySelector('.wb-panel-title').textContent });
+    """)
+    assert o["pinOffered"] is True, "the test section still hears its own input"
+    assert o["moved"]["title"] == "Summarise my inbox" and "not saved" not in o["moved"]["said"]
+    assert "Summarise my inbox has changes that are not saved" in o["asked"]
+    assert o["title"] == "Summarise my inbox"
+
 def test_a_pinned_sample_is_marked_and_says_a_scheduled_run_never_uses_it(box):
     o = _case(box, """
         const { root } = await room();
