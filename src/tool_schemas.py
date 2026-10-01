@@ -163,7 +163,7 @@ FUNCTION_TOOL_SCHEMAS = [
         "type": "function",
         "function": {
             "name": "get_workspace",
-            "description": "Return the absolute path of the active workspace folder the user is working in. File tools are confined to it; the shell starts there but is not sandboxed. Call this first when the user refers to 'the project'/'the code'/'this folder' without a path, instead of asking them. Takes no arguments.",
+            "description": "Return the absolute path of the active workspace folder the user is working in. On Pantheon's own machine the file tools are confined to it and the shell starts there but is not sandboxed. When the tools run in the user's workstation (the answer says so), the shell and file tools start there and read relative paths from it, and it is not a boundary. Call this first when the user refers to 'the project'/'the code'/'this folder' without a path, instead of asking them. Takes no arguments.",
             "parameters": {"type": "object", "properties": {}, "required": []}
         }
     },

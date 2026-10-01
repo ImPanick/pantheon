@@ -152,7 +152,9 @@ NON_ADMIN_BLOCKED_REASONS: dict = {
     "ls": "enumerates directory contents on the host",
     "get_workspace": (
         "discloses the absolute host path of the workspace — the same "
-        "disclosure `require_admin` refuses on `GET /api/workspace/browse`"
+        "disclosure `require_admin` refuses on `GET /api/workspace/browse`. "
+        "Not refused to a person whose tools run in their workstation: there it "
+        "answers about their own workstation home instead (`B985`)"
     ),
 
     # ── Other people's data ──

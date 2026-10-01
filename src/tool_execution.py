@@ -362,6 +362,14 @@ def _runs_in_workstation(tool: Any, owner: Optional[str]) -> bool:
     return routes(tool, owner)
 
 
+def _lifted_for(tool: Any, owner: Optional[str]) -> bool:
+    """`B985`: is this blocked tool lifted for this person because their tools
+    run in the workstation? `workstation_tools.lifted_tools`, the set the agent
+    loop advertises from, so offered and allowed cannot disagree."""
+    from src.agent_tools.workstation_tools import LIFTED_TOOLS, lifted_tools
+    return isinstance(tool, str) and tool in LIFTED_TOOLS and tool in lifted_tools(owner)
+
+
 def _works_in_workstation(owner: Optional[str]) -> bool:
     """`B968`: does this person's shell and file work happen in their
     workstation? Then the workspace they picked is a folder there
@@ -1170,8 +1178,12 @@ async def _execute_tool_block_impl(
     # A non-admin is refused `bash` and the file tools because here they reach
     # the process that holds every secret. In the workstation they reach the
     # person's own home, which is what `can_use_workstation` granted — so the
-    # refusal is lifted for exactly those calls and nothing wider.
-    if is_public_blocked_tool(tool) and not _owner_is_admin(owner) and not in_workstation:
+    # refusal is lifted for exactly those calls and nothing wider. `B985`:
+    # `get_workspace` with them, because for that person it answers about that
+    # home (`workstation_tools.LIFTED_TOOLS`, the one list the advertised set
+    # reads too).
+    if (is_public_blocked_tool(tool) and not _owner_is_admin(owner) and not in_workstation
+            and not _lifted_for(tool, owner)):
         desc = f"{tool}: BLOCKED"
         # `P2-25`. The refusal used to say only *that* it was refused. The
         # register in `tool_security` exists so nobody has to re-litigate an

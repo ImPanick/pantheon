@@ -125,6 +125,16 @@ def routes(tool: Optional[str], owner: Optional[str]) -> bool:
     return isinstance(tool, str) and tool in WORKSTATION_TOOLS and _routes_tools(owner)
 
 
+#: `B985`. `get_workspace` is refused to a non-admin because on this machine it
+#: discloses the absolute host path of the workspace. For a person whose tools
+#: run in the workstation it answers a folder in their own workstation home, or
+#: the home itself (`describe_workspace`, `B968`) — one they picked in a picker
+#: they may use and that their own `ls` would show. So it is lifted with the
+#: nine, for exactly the people they are lifted for, and nothing else is.
+WORKSPACE_TOOL = "get_workspace"
+LIFTED_TOOLS: FrozenSet[str] = WORKSTATION_TOOLS | {WORKSPACE_TOOL}
+
+
 def lifted_tools(owner: Optional[str]) -> FrozenSet[str]:
     """The part of the non-admin blocklist that does not apply to this person.
 
@@ -132,10 +142,11 @@ def lifted_tools(owner: Optional[str]) -> FrozenSet[str]:
     because on this machine they reach the process holding every secret
     (`tool_security.NON_ADMIN_BLOCKED_REASONS`). Routed to the workstation they
     reach the person's own workstation home instead, which is what
-    `can_use_workstation` grants — so those nine, and nothing else, are lifted
-    for someone `routes_tools` says yes to. `manage_bg_jobs` and `get_workspace`
-    stay refused: both still act on this machine."""
-    return WORKSTATION_TOOLS if _routes_tools(owner) else frozenset()
+    `can_use_workstation` grants — so those nine are lifted for someone
+    `routes_tools` says yes to, and `get_workspace` with them (`B985`: it then
+    answers about that home). `manage_bg_jobs` stays refused: it still acts on
+    this machine."""
+    return LIFTED_TOOLS if _routes_tools(owner) else frozenset()
 
 
 # ── the bridge from a worker thread to the client ─────────────────────────────
@@ -941,4 +952,4 @@ async def describe_workspace(owner: Optional[str], workspace: Optional[str]) -> 
 
 __all__ = ["WORKSTATION_TOOLS", "describe_workspace", "lifted_tools", "routes",
            "run_in_workstation", "vet_workspace",
-           "network_refusal_note"]  # `B977`
+           "LIFTED_TOOLS", "WORKSPACE_TOOL", "network_refusal_note"]  # `B985`, `B977`

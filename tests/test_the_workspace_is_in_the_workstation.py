@@ -281,8 +281,8 @@ def test_get_workspace_says_where_the_tools_work(ws, settings, people, home):
     assert r == {"output": "No workspace is set. The shell and file tools run in your workstation "
                            f"and start in your workstation home ({bhome}); relative paths are "
                            "relative to it.", "exit_code": 0}
-    # A person who is not an admin is refused it, as before: pinned by
-    # `P20-03`'s `test_the_grant_lifts_the_nine_and_nothing_wider`.
+    # A person who is not an admin gets the same answer about their own home
+    # since `B985` (`test_get_workspace_is_lifted_with_the_nine.py`).
     # Off: this machine's answer, unchanged.
     settings["workstation_enabled"] = False
     _, r = _call("get_workspace", "", "boss", workspace=str(home / "proj"))

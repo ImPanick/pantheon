@@ -672,7 +672,8 @@ def test_the_lifted_set_is_the_nine_for_whoever_may_use_the_workstation(ws, sett
     from src.agent_tools.workstation_tools import lifted_tools
     assert lifted_tools("ann") == frozenset()          # off
     _on(settings, ws)
-    assert lifted_tools("ann") == WORKSTATION_TOOLS == lifted_tools("boss")
+    # `B985`: and `get_workspace`, which then answers about the same home.
+    assert lifted_tools("ann") == WORKSTATION_TOOLS | {"get_workspace"} == lifted_tools("boss")
     assert lifted_tools("bob") == frozenset()
     settings["workstation_route_tools"] = False
     assert lifted_tools("ann") == frozenset()
@@ -804,7 +805,9 @@ def test_the_privilege_matrix(ws, settings, people, host_dir, tool, owner, switc
         assert "ran_in" not in r, r
 
 
-@pytest.mark.parametrize("tool", ["manage_bg_jobs", "get_workspace", "host_shell", "api_call"])
+# `B985` lifted `get_workspace` with the nine (`test_get_workspace_is_lifted_with_the_nine.py`);
+# nothing else is.
+@pytest.mark.parametrize("tool", ["manage_bg_jobs", "host_shell", "api_call"])
 def test_the_grant_lifts_the_nine_and_nothing_wider(ws, settings, people, tool):
     _on(settings, ws)
     _, r = _call(tool, "{}", "ann")

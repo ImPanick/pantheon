@@ -1062,7 +1062,7 @@ Maintain a structured task list for multi-step coding work. Use it when the task
     "get_workspace": """\
 ```get_workspace
 ```
-Return the absolute path of the active workspace folder. File tools are CONFINED to it (paths can be RELATIVE to it); the shell starts there (cwd) but is NOT sandboxed. Call this first when the user says "the project"/"the code"/"this folder" without a path, instead of asking them. No arguments.""",
+Return the absolute path of the active workspace folder. On Pantheon's own machine file tools are CONFINED to it (paths can be RELATIVE to it) and the shell starts there (cwd) but is NOT sandboxed. When the tools run in the user's workstation (the answer says so), the shell and file tools start there and read RELATIVE paths from it, but it is NOT a boundary. Call this first when the user says "the project"/"the code"/"this folder" without a path, instead of asking them. No arguments.""",
 
     "create_document": """\
 ```create_document
