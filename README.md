@@ -45,6 +45,77 @@
   <a href="docs/setup.md">Setup guide</a>
 </p>
 
+<p align="center">
+  <picture><source media="(prefers-color-scheme: dark)" srcset="docs/media/workstation-dark.png"><img src="docs/media/workstation-light.png" alt="Pantheon with an agent's chat on the left — it wrote a web page, ran a command in a terminal and opened the page in Firefox — and, docked on the right, the live screen of the Ubuntu desktop it did that in" width="100%"></picture>
+</p>
+<p align="center"><sub>
+  The agent working in an Ubuntu desktop of its own while you watch: it wrote the page, ran the command and opened
+  Firefox, and every step is in the chat. The <a href="docs/setup.md">workstation</a> is opt-in; you can take over the
+  mouse and keyboard at any time.<br>
+  <em>Every screen in this README uses demo data — a fictional studio, its clients and its files — and a scripted stand-in
+  model shown as <code>scripted-demo</code>; Pantheon runs every tool call for real. One command regenerates them all:
+  <a href="docs/media/README.md"><code>scripts/showcase/capture.py</code></a>.</em>
+</sub></p>
+
+---
+
+## What's inside
+
+<table>
+<tr>
+<td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/media/chat-dark.png"><img src="docs/media/chat-light.png" alt="A chat where the agent listed the scheduled tasks, read the launch checklist, checked the calendar and booked a slot, each step listed above its answer" width="100%"></picture><br><sub><b>Agents you can follow</b> — every tool call in the turn, the one you approved marked as such, and the answer.</sub></td>
+<td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/media/workbench-dark.png"><img src="docs/media/workbench-light.png" alt="The Workbench canvas: a four-step chain with a dashed failure branch, each step saying what a run would do, and three steps dimmed as not reached" width="100%"></picture><br><sub><b>Workbench</b> — automations on a canvas, wired <i>if it works</i> or <i>if it fails</i>; <i>Show me what this would do</i> plans the whole chain and runs nothing.</sub></td>
+</tr>
+<tr>
+<td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/media/tasks-dark.png"><img src="docs/media/tasks-light.png" alt="The Tasks window listing scheduled tasks with their schedules, retry counts and a Part of a workflow chip on each" width="100%"></picture><br><sub><b>Tasks</b> — scheduled prompts and actions with retries, time zones and time limits; each card says which workflow it is part of.</sub></td>
+<td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/media/documents-dark.png"><img src="docs/media/documents-light.png" alt="The Library's documents tab with folder chips for Unfiled, Clients, Finance, Personal and Projects, and documents listed with their folder paths" width="100%"></picture><br><sub><b>Documents</b> — folders that nest, filed by you or by the agent, and every file keeps the name it arrived with.</sub></td>
+</tr>
+<tr>
+<td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/media/skills-dark.png"><img src="docs/media/skills-light.png" alt="The Skills window with the person's own skills, an imported package split into Writing and Research sections, and a group called Launch week" width="100%"></picture><br><sub><b>Skills</b> — your own, whole packages imported from skills.sh or GitHub, and groups you switch on and off as one.</sub></td>
+<td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/media/settings-dark.png"><img src="docs/media/settings-light.png" alt="Settings open on the Workstation panel, saying the workstation is answering, with its address, token, kind of machine and the sudo switch" width="100%"></picture><br><sub><b>Workstation settings</b> — one switch, who may use it, its network and sudo — and what each choice cannot undo.</sub></td>
+</tr>
+<tr>
+<td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/media/palette-dark.png"><img src="docs/media/palette-light.png" alt="The command palette after typing work, offering the Workstation screen, the Workbench, settings pages, a slash command and a matching chat" width="100%"></picture><br><sub><b>Command palette</b> — <kbd>Ctrl</kbd>+<kbd>K</kbd>: one box for windows, settings, commands and chats.</sub></td>
+<td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/media/themes-dark.png"><img src="docs/media/themes-light.png" alt="The Theme window with sixteen palette swatches over a chat" width="100%"></picture><br><sub><b>Themes</b> — sixteen palettes, and background patterns chosen separately.</sub></td>
+</tr>
+<tr>
+<td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/media/brain-dark.png"><img src="docs/media/brain-light.png" alt="The Brain window listing memories tagged preference, project, contact, fact and identity" width="100%"></picture><br><sub><b>Brain</b> — what the assistant remembers about you — each memory with its kind, where it came from and how often it was used.</sub></td>
+<td width="50%" valign="top" align="center"><img src="docs/media/phone-chat.png" alt="The launch-week chat at phone width" width="31%"> <img src="docs/media/phone-documents.png" alt="The Library at phone width" width="31%"> <img src="docs/media/phone-tasks.png" alt="The Tasks window at phone width" width="31%"><br><sub><b>At phone width</b> — the same app, in one hand.</sub></td>
+</tr>
+</table>
+
+- **Agents** — local or API models, tool execution, MCP servers, shell, filesystem, skills, memory
+- **Workstation** — an opt-in Ubuntu desktop beside Pantheon, a private account and desktop per
+  person, kept between chats; with it on, the agent's shell, files and computer use run there
+- **Model serving** — hardware-aware recommendations, downloads, and vLLM / llama.cpp / Ollama
+  serving on this machine or a remote host over SSH
+- **Deep research** — multi-step web research with source reading and report generation
+- **Compare** — blind side-by-side model testing
+- **Documents** — writing-first editor with AI edits, suggestions, Markdown, HTML, CSV, and folders the agent can file into
+- **Email** — IMAP/SMTP with triage, tags, summaries, reminders and reply drafts
+- **Notes, tasks, calendar** — reminders, todos, scheduled agent tasks, CalDAV sync
+- **Extras** — gallery and image editor, sixteen themes and eight background patterns
+  (seven of them animated) chosen independently of each other, web search,
+  presets, sessions, 2FA
+
+**What this fork has added, and what proves it, is in the [proof ledger](LEDGER.md)** — 26 claims,
+each with where its number came from and a command you can run to check it. The short version:
+the Brain rebuilt around a local embedding model that needs no service, an agent that can reach
+the host it runs on behind a denylist it cannot edit, a checker in CI for each way a fact in this
+project has been caught rotting, every outbound call paced, mailbox and service sign-in reduced to
+one record type, and full AGPL attribution for code that shipped without it. The checker count is
+a ledger claim rather than a sentence here, because it is read out of `.github/workflows/ci.yml`
+and a number typed twice is a number that will disagree with itself.
+
+### In motion
+
+<table>
+<tr><td colspan="2"><img src="docs/media/agent.gif" alt="Animation: a question typed into a new chat, the agent's thinking streaming in, an approval card answered with Allow for this task, two tool calls completing and an answer with a table" width="100%"><br><sub><b>An agent turn, live</b> — the model's thinking as it streams, the card asking before it reads your files, each tool call, then the answer.</sub></td></tr>
+<tr><td colspan="2"><img src="docs/media/workflow.gif" alt="Animation: on the Workbench canvas a dashed arrow is dragged from a step's if-it-fails port to another step, the step is opened and Show me what this would do lays a plan across the chain" width="100%"><br><sub><b>Wiring a workflow</b> — drag a step's <i>if it fails</i> onto the step that should run next, then ask what the chain would do — every step answers, nothing runs.</sub></td></tr>
+<tr><td colspan="2"><img src="docs/media/filing.gif" alt="Animation: two documents are dragged from the list onto the Finance and Personal folder chips, and each folder's count goes up" width="100%"><br><sub><b>Filing documents</b> — drag a document onto a folder.</sub></td></tr>
+<tr><td width="50%" valign="top"><img src="docs/media/palette.gif" alt="Animation: Ctrl+K opens the command palette; typing work offers the Workstation, the Workbench, settings and a chat, and skills then Enter opens the Skills window" width="100%"><br><sub><b>Command palette</b> — type, and Enter.</sub></td><td width="50%" valign="top"><img src="docs/media/themes.gif" alt="Animation: the Theme window switching through light, paper, copper, cyberpunk, lavender and claude palettes and back" width="100%"><br><sub><b>Themes</b> — one click a palette.</sub></td></tr>
+</table>
+
 ---
 
 ## Quick start
@@ -70,33 +141,6 @@ default.
 Native installs, GPU setup, Windows and macOS, HTTPS and configuration are in the
 [setup guide](docs/setup.md). `main` is the only branch here; upstream's `dev` is available on
 the `upstream` remote.
-
----
-
-## What's inside
-
-- **Agents** — local or API models, tool execution, MCP servers, shell, filesystem, skills, memory
-- **Workstation** — an opt-in Ubuntu desktop beside Pantheon, a private account and desktop per
-  person, kept between chats; with it on, the agent's shell, files and computer use run there
-- **Model serving** — hardware-aware recommendations, downloads, and vLLM / llama.cpp / Ollama
-  serving on this machine or a remote host over SSH
-- **Deep research** — multi-step web research with source reading and report generation
-- **Compare** — blind side-by-side model testing
-- **Documents** — writing-first editor with AI edits, suggestions, Markdown, HTML, CSV, and folders the agent can file into
-- **Email** — IMAP/SMTP with triage, tags, summaries, reminders and reply drafts
-- **Notes, tasks, calendar** — reminders, todos, scheduled agent tasks, CalDAV sync
-- **Extras** — gallery and image editor, sixteen themes and eight background patterns
-  (seven of them animated) chosen independently of each other, web search,
-  presets, sessions, 2FA
-
-**What this fork has added, and what proves it, is in the [proof ledger](LEDGER.md)** — 26 claims,
-each with where its number came from and a command you can run to check it. The short version:
-the Brain rebuilt around a local embedding model that needs no service, an agent that can reach
-the host it runs on behind a denylist it cannot edit, a checker in CI for each way a fact in this
-project has been caught rotting, every outbound call paced, mailbox and service sign-in reduced to
-one record type, and full AGPL attribution for code that shipped without it. The checker count is
-a ledger claim rather than a sentence here, because it is read out of `.github/workflows/ci.yml`
-and a number typed twice is a number that will disagree with itself.
 
 ---
 
@@ -138,6 +182,9 @@ quickly. We forked it to finish that last step.
 ---
 
 ## Switching it back on
+
+<details>
+<summary>The wiring count: why it read 78, then 120, then 40 — and the six areas it found</summary>
 
 We wrote a script that counts element lookups with nothing behind them. It found **78**, across
 six subsystems, which is the point of writing the script rather than writing the list. What
@@ -182,6 +229,8 @@ rest are open rows in the tracker's `P2` section, which is where their current s
 Each is classified before anything changes — a stale reference to a renamed element gets fixed,
 a real feature gets its markup and its event wiring, and code is deleted only when an audit has
 proved it dead.
+
+</details>
 
 ---
 
