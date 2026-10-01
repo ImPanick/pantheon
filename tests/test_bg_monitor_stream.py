@@ -86,3 +86,29 @@ def test_background_drain_preserves_exact_approval_card(monkeypatch):
     _, events = asyncio.run(bg_monitor._drain_agent(sess, []))
 
     assert events[0]["ask_user"] == approval
+
+
+def test_background_drain_keeps_a_tools_picture_for_the_reload(monkeypatch):
+    """`P20-04`. The live path saves the card's copy of a tool's picture on the
+    tool event; a background continuation's mirror of that event keeps it
+    too, or its screenshot would vanish on the reload the live one survives."""
+    shot = "data:image/jpeg;base64,AAAA"
+
+    async def fake_stream_agent_loop(*args, **kwargs):
+        yield "data: " + json.dumps({
+            "type": "tool_output", "tool": "computer", "command": "click at (1, 2)",
+            "output": "Did: click at (1, 2).", "exit_code": 0, "status": "ok",
+            "screenshot": shot, "screenshot_caption": "Screen after click at (1, 2)",
+        })
+        yield "data: [DONE]"
+
+    agent_loop = types.ModuleType("src.agent_loop")
+    agent_loop.stream_agent_loop = fake_stream_agent_loop
+    monkeypatch.setitem(sys.modules, "src.agent_loop", agent_loop)
+    sess = SimpleNamespace(endpoint_url="http://example.test", model="model", headers=None,
+                           context_length=0, id="s1", owner="owner")
+
+    _, events = asyncio.run(bg_monitor._drain_agent(sess, []))
+
+    assert events[0]["screenshot"] == shot
+    assert events[0]["screenshot_caption"] == "Screen after click at (1, 2)"

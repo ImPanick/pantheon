@@ -93,6 +93,13 @@ from src.agent_tools import (
     ToolBlock,
     MAX_AGENT_ROUNDS,
 )
+from src.agent_tools.computer_tools import (
+    ACTIONS as _COMPUTER_ACTIONS,
+    command_line as _computer_command_line,
+    unavailable_reason as _computer_unavailable_reason,
+)
+from src import tool_result_images
+from workstation import protocol as _WORKSTATION
 
 logger = logging.getLogger(__name__)
 
@@ -1190,6 +1197,24 @@ Body for POST/PUT/PATCH goes in `body` (object). Query params in `query` (object
 **When to prefer named tools over app_api:** if a named wrapper exists (list_email_accounts, list_emails, read_email, scan_email_unsubscribes, manage_calendar, manage_notes, list_served_models, etc.) USE IT — it has nicer output formatting and clearer schema. Reach for `app_api` only when there's no wrapper for what you need.
 
 Blocked paths/routes (refused for safety): /api/auth/, /api/users/, /api/tokens/, /api/admin/, /api/shell/, /api/backup/restore, /api/email/accounts, POST /api/cookbook/packages/install, POST /api/cookbook/rebuild-engine, POST /api/cookbook/kill-pid.""",
+
+    # `P20-04`. The fenced form of the `computer` schema, for a model with no
+    # native tool channel. The actions and the screen size are read from the
+    # workstation protocol (`Law 7`), as the schema's are.
+    "computer": (
+        "```computer\n"
+        '{"action": "click", "x": 640, "y": 400}\n'
+        "```\n"
+        "Work the workstation's desktop — an Ubuntu machine with a browser — through its "
+        "screen, mouse and keyboard, one action per block. Actions: "
+        + ", ".join(_COMPUTER_ACTIONS) + ". "
+        f"Coordinates are pixels in the screenshot ({_WORKSTATION.SCREEN_WIDTH}×"
+        f"{_WORKSTATION.SCREEN_HEIGHT}). drag takes x, y, to_x, to_y; scroll takes x, y and "
+        "dy (wheel clicks, positive is down) or dx; type takes text; key takes keys in "
+        "xdotool names such as \"ctrl+l\" or \"Return\"; wait takes ms. Every action "
+        "but screenshot returns a screenshot of the result — look at it before the next "
+        "action. For commands and files use bash, python and the file tools instead."
+    ),
 }
 
 def get_builtin_overrides() -> dict:
@@ -3809,6 +3834,19 @@ def _append_tool_results(
             )
         )
 
+    # `P20-04`. What the tools saw, for the model that asked. A picture in a
+    # result's `images` follows the results as one user message of image parts
+    # — an OpenAI `tool` message cannot carry an image, and an `image_url` part
+    # is what a person's attachment already is, so every provider converter
+    # takes it unchanged. Then only the newest few are kept; older ones become
+    # a line saying so. Whether the next model can see them at all is decided
+    # per candidate, at request time (`_candidate_request`). Both paths, native
+    # and fenced, and the approved-action replay, come through here.
+    images_message = tool_result_images.images_message(tool_result_records)
+    if images_message is not None:
+        messages.append(images_message)
+        tool_result_images.bound_images(messages)
+
 
 def _compute_final_metrics(
     messages: List[Dict],
@@ -4763,6 +4801,16 @@ async def stream_agent_loop(
     # prompt cache key below, and one set of tests (`Law 14`).
     disabled_tools.update(feature_disabled_tools())
 
+    # `P20-04`. The workstation's screen is offered only to a turn whose person
+    # the workstation would answer: switched on, with an address, and this
+    # person allowed (`workstation_for`, asked the way the tool asks it). Hidden
+    # otherwise, through the same denylist every other per-turn rule feeds, so
+    # the schema, the prompt and the dispatcher agree (`Law 14`). A token-driven
+    # run is not offered it either (`B70`; `unavailable_reason` says why).
+    if "computer" not in disabled_tools and _computer_unavailable_reason(
+            owner, delegated_credential=bool(delegated_credential)):
+        disabled_tools.add("computer")
+
     if plan_mode:
         # Plan mode: investigate read-only, propose a plan, don't execute. The
         # route also unions the read-only-disabled set, but enforce here too so
@@ -5518,6 +5566,14 @@ async def stream_agent_loop(
                 return _without_protection(route_messages)
             before_trim_tokens = estimate_tokens(route_messages)
             reserve_tokens = min(max(max_tokens or 1024, 512), 2048)
+            # `P20-04`. `estimate_tokens` counts text, so a picture is neither
+            # its base64 nor anything at all to it — right for the context
+            # wheel, which lists a picture as not counted (`B892`), and blind
+            # for this gate. Each picture about to be sent gets a stated
+            # estimate of room instead, at most `KEEP_NEWEST_IMAGES` of them
+            # from the tools.
+            reserve_tokens += (tool_result_images.count_image_parts(route_messages)
+                               * tool_result_images.IMAGE_TOKEN_RESERVE)
             try:
                 hard_max = int(
                     get_setting("agent_input_token_hard_max", DEFAULT_HARD_MAX)
@@ -6167,11 +6223,18 @@ async def stream_agent_loop(
         ):
             if key in approved_result:
                 approved_event[key] = approved_result[key]
-        if approved_result.get("images"):
-            approved_image = approved_result["images"][0]
-            approved_event["screenshot"] = (
-                f"data:{approved_image['mimeType']};base64,{approved_image['data']}"
-            )
+        # `P20-04`. The card's copy of the picture, as on the main path, and
+        # saved with the event below for the same reason.
+        approved_shot_fields = {}
+        approved_shot = (await asyncio.to_thread(tool_result_images.card_screenshot,
+                                                 approved_result.get("images"))
+                         if approved_result.get("images") else None)
+        if approved_shot:
+            approved_shot_fields["screenshot"] = approved_shot
+            if approved_result.get("screenshot_caption"):
+                approved_shot_fields["screenshot_caption"] = str(
+                    approved_result["screenshot_caption"])[:200]
+        approved_event.update(approved_shot_fields)
         yield "data: " + json.dumps(approved_event) + "\n\n"
         if approved_result.get("image_url"):
             yield (
@@ -6254,6 +6317,7 @@ async def stream_agent_loop(
         if approved_result.get("doc_id"):
             approved_tool_event["doc_id"] = approved_result["doc_id"]
             approved_tool_event["doc_title"] = approved_result.get("title", "")
+        approved_tool_event.update(approved_shot_fields)   # `P20-04`
         tool_events.append(approved_tool_event)
         if approved.tool_name in _VERIFIER_EFFECTFUL_TOOLS:
             _effectful_used = True
@@ -6449,10 +6513,17 @@ async def stream_agent_loop(
                 )
             request_messages = state.get("request_messages")
             if request_messages is None:
+                # `P20-04`. The pictures the tools returned, for this candidate:
+                # kept for a model that can see, put into words for one that
+                # cannot. Per candidate, because a fallback may be another
+                # model; before the trim, so the trim reserves room for exactly
+                # the pictures that will be sent.
+                candidate_messages = await tool_result_images.for_model(
+                    state["messages"], candidate_model, candidate_url)
                 request_messages = _trim_route_request_messages(
                     candidate_url,
                     candidate_model,
-                    state["messages"],
+                    candidate_messages,
                 )
                 state["request_messages"] = request_messages
             _last_route_request_messages = request_messages
@@ -7388,6 +7459,11 @@ async def stream_agent_loop(
             block_effects = _effect_fields(block.tool_type, block.content)
             if is_doc_tool:
                 cmd_display = block.content.split("\n")[0].strip()[:80]
+            elif block.tool_type == "computer":
+                # `P20-04`. The card's line says what was done — "click at
+                # (640, 400)" — and the raw arguments stay behind it as
+                # `full_command` (`P4-09`'s expansion).
+                cmd_display = _computer_command_line(block.content)
             else:
                 cmd_display = full_command
 
@@ -7860,9 +7936,22 @@ async def stream_agent_loop(
                 if k in result:
                     tool_output_data[k] = result[k]
             # Forward screenshots from browser tools (base64 images)
-            if result.get("images"):
-                img = result["images"][0]
-                tool_output_data["screenshot"] = f"data:{img['mimeType']};base64,{img['data']}"
+            #
+            # `P20-04`: the card's copy of the picture (`card_screenshot`), and
+            # what it is a picture of. Computed once and used twice — here and
+            # on the saved event below — because the history renderer has
+            # always read `screenshot` off a saved event and nothing ever saved
+            # one, so every browser screenshot vanished on a reload. Off the event
+            # loop: decoding and re-encoding a 1280×800 screen measured ~55 ms.
+            _card_shot = (await asyncio.to_thread(tool_result_images.card_screenshot,
+                                                  result.get("images"))
+                          if result.get("images") else None)
+            _card_shot_fields = {}
+            if _card_shot:
+                _card_shot_fields["screenshot"] = _card_shot
+                if result.get("screenshot_caption"):
+                    _card_shot_fields["screenshot_caption"] = str(result["screenshot_caption"])[:200]
+            tool_output_data.update(_card_shot_fields)
             # Forward a file-write diff for inline before/after rendering
             if "diff" in result:
                 tool_output_data["diff"] = result["diff"]
@@ -8082,6 +8171,8 @@ async def stream_agent_loop(
             for k in ("ran_in", "ran_as"):
                 if result.get(k):
                     tool_event[k] = result[k]
+            # `P20-04`. The picture the live card drew, the same copy.
+            tool_event.update(_card_shot_fields)
             if _pending_ask_user_event:
                 # Persist the structured question with the tool event.  On a
                 # reload, chatRenderer can restore the card; a later user

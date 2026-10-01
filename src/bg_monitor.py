@@ -128,6 +128,10 @@ async def _drain_agent(sess, messages):
                 # and `_stream_fields` use — because a `status: None` on the
                 # record is a key that reads as an answer and is not one.
                 **({"status": d["status"]} if d.get("status") else {}),
+                # `P20-04`. The picture the card draws, and what it is of —
+                # saved by the live path too, so a background continuation's
+                # screenshot survives a reload the same way.
+                **{k: d[k] for k in ("screenshot", "screenshot_caption") if d.get(k)},
             }
             if isinstance(d.get("ask_user"), dict):
                 # Preserve exact-approval cards from a tainted background-job

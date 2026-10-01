@@ -1139,6 +1139,10 @@ async def do_manage_settings(content: str, owner: Optional[str] = None) -> Dict:
             _ALIASES = {
                 "shell": ["bash", "host_shell"],  # `P17-11`: one switch, two places
                 "host": ["host_shell"],
+                # `P20-04`. The workstation's screen, mouse and keyboard; the
+                # bare name `computer` needs no alias.
+                "desktop": ["computer"],
+                "computer_use": ["computer"],
                 "terminal": ["bash"],
                 "search": ["web_search", "web_fetch"],
                 "web": ["web_search", "web_fetch"],

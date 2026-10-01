@@ -23,7 +23,7 @@ import { buildAllowRuleChooser } from './trustLadder.js';
 // `P4-10`. Why the agent stopped itself — the same line the live stream draws.
 import { renderAgentStop, renderAgentNote, withdrawContinueOffers } from './agentStops.js';
 import { applyAgentThreadNode, verifierCardOptions,
-         blockedCardOptions, toolOutputPanesHtml } from './agentThread.js';
+         blockedCardOptions, toolOutputPanesHtml, screenshotSummary } from './agentThread.js';
 import { prepBreakdownRows } from './agentMeter.js';   // P4-08
 
 // The decisions that mean yes, and the whole of that set.
@@ -3953,7 +3953,8 @@ export function addMessage(role, content, modelName, metadata) {
             let outHtml = toolOutputPanesHtml(ev);
             const screenshotSrc = safeToolScreenshotSrc(ev.screenshot);
             if (screenshotSrc) {
-              outHtml += `<details class="agent-tool-output"><summary>Screenshot</summary><img src="${esc(screenshotSrc)}" style="max-width:100%;border-radius:6px;margin-top:6px;border:1px solid var(--border)" /></details>`;
+              // `P20-04`: the fold's words from the one builder the live card uses.
+              outHtml += `<details class="agent-tool-output"><summary>${esc(screenshotSummary(ev))}</summary><img src="${esc(screenshotSrc)}" alt="${esc(screenshotSummary(ev))}" style="max-width:100%;border-radius:6px;margin-top:6px;border:1px solid var(--border)" /></details>`;
             }
             // File-write/edit diff (persisted in the tool event) \u2014 re-render it
             // so it survives reload, matching the live stream.

@@ -120,7 +120,9 @@ def test_every_tool_the_thread_can_name_it_can_also_draw(sandbox):
           labels: Object.keys(m.TOOL_LABELS).length, missing, wrong,
         }));
     """)
-    assert out["labels"] == 21, out["labels"]
+    # 22 since `P20-04` added the workstation's `computer`, with its glyph —
+    # the property this pins is the second assertion, one icon per label.
+    assert out["labels"] == 22, out["labels"]
     assert out["missing"] == [], out["missing"]
     # Monochrome and inline, as the row asks: a glyph that names its own colour
     # is a glyph that is wrong on fifteen of the sixteen palettes.

@@ -174,7 +174,8 @@ def test_the_surface_is_three_shapes_and_the_rows_numbers_were_stale():
     from src.builtin_mcp import _BUILTIN_SERVERS
 
     assert len(TOOL_TAGS) >= 80, "the surface is the tag set, not one directory"
-    assert classes == 29 and len(modules) == 12, (classes, len(modules))
+    # 30 and 13 since `P20-04` added `computer_tools.ComputerTool`.
+    assert classes == 30 and len(modules) == 13, (classes, len(modules))
     assert len(_BUILTIN_SERVERS) == 3, "memory stopped being connected in B67"
     assert len(list((ROOT / "mcp_servers").glob("*_server.py"))) == 4, (
         "four server files, three of them connected — the row counted files")

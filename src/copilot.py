@@ -220,6 +220,17 @@ def fetch_models(base: str, token: str, *, timeout: float = 15.0) -> List[Dict]:
 _IMAGE_PART_TYPES = ("image_url", "input_image", "image")
 
 
+def _is_tool_picture(message) -> bool:
+    """A user message made only of captions and image parts, at least one
+    image — the shape `tool_result_images.images_message` sends."""
+    content = message.get("content") if isinstance(message, dict) else None
+    if not isinstance(content, list) or not content:
+        return False
+    kinds = [p.get("type") for p in content if isinstance(p, dict)]
+    return (len(kinds) == len(content) and any(k in _IMAGE_PART_TYPES for k in kinds)
+            and all(k == "text" or k in _IMAGE_PART_TYPES for k in kinds))
+
+
 def request_flags(messages) -> tuple:
     """Derive ``(agent, vision)`` from an OpenAI-style message list.
 
@@ -235,6 +246,15 @@ def request_flags(messages) -> tuple:
     # the vision loop below already guards each element with isinstance, so do
     # the same here rather than call .get() on a bare string.
     agent = isinstance(last, dict) and last.get("role") != "user"
+    # `P20-04`. A tool's picture reaches the model as a user message of image
+    # parts straight after the tool messages (an OpenAI `tool` message cannot
+    # carry an image — `src/tool_result_images.py`). That message is the tool's
+    # answer, not the person speaking, so it must not turn every screenshot
+    # step into a user-initiated request. Measured before this: the same
+    # native tool round read `agent` without its picture and `user` with it.
+    if (not agent and len(msgs) >= 2 and isinstance(msgs[-2], dict)
+            and msgs[-2].get("role") == "tool" and _is_tool_picture(last)):
+        agent = True
     vision = False
     for m in msgs:
         content = m.get("content") if isinstance(m, dict) else None

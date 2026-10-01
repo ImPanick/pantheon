@@ -21,6 +21,7 @@ from src.tool_utils import _truncate, get_mcp_manager, set_mcp_manager
 logger = logging.getLogger(__name__)
 
 from .host_tools import HostShellTool
+from .computer_tools import ComputerTool
 from .subprocess_tools import BashTool, PythonTool
 from .web_tools import WebSearchTool, WebFetchTool
 from .filesystem_tools import ReadFileTool, WriteFileTool, EditFileTool, ApplyPatchTool, LsTool, GlobTool, GrepTool, GetWorkspaceTool
@@ -66,6 +67,10 @@ TOOL_HANDLERS = {
     "list_sessions": ListSessionsTool().execute,
     "send_to_session": SendToSessionTool().execute,
     "manage_session": ManageSessionTool().execute,
+    # `P20-04`. The workstation's screen, mouse and keyboard. Dispatched by name
+    # in `tool_execution` (it needs the owner, which the registry fallback does
+    # not pass), offered only when the workstation would answer this person.
+    "computer": ComputerTool().execute,
 }
 # Config/integration admin tools (manage_endpoints/mcp/webhooks/tokens/settings).
 TOOL_HANDLERS.update(ADMIN_TOOL_HANDLERS)
@@ -109,6 +114,8 @@ TOOL_TAGS = {"bash", "python", "web_search", "web_fetch", "read_file", "write_fi
              # second one is a second thing to forget to turn off (`Law 14`).
              "host_shell",
              "resolve_contact", "manage_contact",
+             # `P20-04`. Computer use on the workstation (`D-2026-09-30-03`).
+             "computer",
              # Email tool names come from BUILTIN_EMAIL_TOOLS (unioned below)
              # so the fence regex, dispatch, and non-admin blocklist all cover
              # the same set.

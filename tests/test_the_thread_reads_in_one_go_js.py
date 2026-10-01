@@ -133,7 +133,8 @@ def test_a_reloaded_card_never_falls_back_to_the_wire_name(thread_sandbox):
         }
         console.log(JSON.stringify({ count: ids.length, raw }));
     """)
-    assert out["count"] == 21
+    # 22 since `P20-04` added `computer`.
+    assert out["count"] == 22
     assert out["raw"] == [], out["raw"]
 
 

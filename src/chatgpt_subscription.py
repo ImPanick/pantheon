@@ -307,10 +307,23 @@ def build_responses_input(messages: list[dict]) -> list[dict]:
         if role == "tool":
             role = "user"
         content = msg.get("content")
+        images: list[dict] = []
         if isinstance(content, list):
             text = "\n".join(str(part.get("text") or part.get("content") or "") for part in content if isinstance(part, dict))
+            # `P20-04`. An `image_url` part became an empty line of text here, so
+            # a picture never reached a ChatGPT-subscription model — a person's
+            # attachment as much as a tool's screenshot. The Responses API takes
+            # it as an `input_image` part beside the text; an assistant turn
+            # carries none.
+            if role != "assistant":
+                for part in content:
+                    if isinstance(part, dict) and part.get("type") == "image_url":
+                        url = (part.get("image_url") or {}).get("url") \
+                            if isinstance(part.get("image_url"), dict) else part.get("image_url")
+                        if isinstance(url, str) and url:
+                            images.append({"type": "input_image", "image_url": url})
         else:
             text = "" if content is None else str(content)
         input_type = "output_text" if role == "assistant" else "input_text"
-        input_items.append({"role": role, "content": [{"type": input_type, "text": text}]})
+        input_items.append({"role": role, "content": [{"type": input_type, "text": text}] + images})
     return input_items

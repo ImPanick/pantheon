@@ -155,6 +155,25 @@ _register(
     result_integrity=ResultIntegrity.WORKSPACE_UNTRUSTED,
 )
 _register(
+    # `P20-04`. Driving a desktop is running code and reaching the network,
+    # whatever the click is on: a terminal is one click away on it, so typing
+    # into the screen is typing into a shell, and its browser reaches the
+    # internet and — on the owner's *full* network answer (`D-2026-09-30-03`) —
+    # the LAN. So a click carries what `bash` and `web_fetch` carry, and the
+    # approval card says both. It is **not** `DESTRUCTIVE` like `host_shell`:
+    # that one is the operator's own machine; this one is a separate box that
+    # holds no Pantheon secret and has *Reset to clean*. Its results are
+    # `EXTERNAL_UNTRUSTED` because a screen shows whatever a web page or a file
+    # put on it, so a screenshot arms the post-external gate like any fetched
+    # page — which `FORBIDDEN.md` Part 2 says never lifts, and means a click
+    # after reading a stranger's page asks first. Looking without touching is
+    # narrowed below (`_OBSERVE_ONLY_ACTIONS`).
+    {"computer"},
+    ToolEffect.EXECUTE_CODE,
+    ToolEffect.NETWORK_EGRESS,
+    result_integrity=ResultIntegrity.EXTERNAL_UNTRUSTED,
+)
+_register(
     {"apply_patch", "edit_file", "write_file"},
     ToolEffect.WRITE_WORKSPACE,
     # Successful writes include unified diffs that can echo arbitrary existing
@@ -716,6 +735,21 @@ def _action_from_content(tool_name: str, content: Any) -> str | None:
     return _ACTION_ALIASES.get(tool_name, {}).get(normalized, normalized)
 
 
+# `P20-04`. Actions of a multiplexed tool that look and change nothing. A
+# screenshot, or a wait before the next one, reads the person's own workstation
+# screen: `read_workspace`, the effect `read_file` carries, which no rung's gate
+# set blocks — so watching the screen never asks, and every click still does
+# after untrusted content (the tool's own classification above). The result
+# stays `EXTERNAL_UNTRUSTED`: what the screen shows is still a stranger's page.
+_OBSERVE_ONLY_ACTIONS: Mapping[str, frozenset[str]] = MappingProxyType({
+    "computer": frozenset({"screenshot", "wait"}),
+})
+_OBSERVE_ONLY_CAPABILITIES = _capabilities(
+    ToolEffect.READ_WORKSPACE,
+    result_integrity=ResultIntegrity.EXTERNAL_UNTRUSTED,
+)
+
+
 def capabilities_for_action(tool_name: Any, content: Any) -> ToolCapabilities:
     """Classify a sealed multiplexed action; ambiguous actions fail high."""
     base = capabilities_for_tool(tool_name)
@@ -756,6 +790,8 @@ def capabilities_for_action(tool_name: Any, content: Any) -> ToolCapabilities:
         # truthful by construction and no second vocabulary is invented
         # (`Law 14`).
         return _UNKNOWN_CAPABILITIES
+    if action in _OBSERVE_ONLY_ACTIONS.get(tool_name, ()):
+        return _OBSERVE_ONLY_CAPABILITIES
     destructive = action in _ACTION_DESTRUCTIVE.get(tool_name, ())
     if tool_name not in _PRIVATE_ACTION_READS:
         if not destructive:

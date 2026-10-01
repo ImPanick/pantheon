@@ -15,10 +15,12 @@ import logging
 from typing import Optional
 
 from src.agent_tools import ToolBlock, TOOL_TAGS
+from src.agent_tools.computer_tools import ACTIONS as _COMPUTER_ACTIONS
 from src.event_bus import EVENT_NAMES
 from src.theme_advanced_keys import BASE_COLOR_KEYS, advanced_schema_properties
 from src.tool_parsing import _TOOL_NAME_MAP
 from src.tool_security import BUILTIN_EMAIL_TOOLS
+from workstation import protocol as _WS
 
 logger = logging.getLogger(__name__)
 
@@ -484,6 +486,55 @@ FUNCTION_TOOL_SCHEMAS = [
                                 "description": "Seconds before the command is killed"}
                 },
                 "required": ["command"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            # `P20-04`. The action list and every `{…}` below are filled in from
+            # the workstation protocol after this literal
+            # (`_install_computer_bounds`), which states them once (`Law 7`):
+            # the daemon enforces the numbers this describes.
+            "name": "computer",
+            "description": (
+                "Work the workstation's desktop — an Ubuntu machine with a browser, "
+                "separate from Pantheon — by looking at its screen and using its mouse "
+                "and keyboard. One call is one action. `screenshot` shows the screen; "
+                "every other action returns a screenshot taken after it, so look at it "
+                "before the next action. Coordinates are pixels in the screenshot: the "
+                "screen is always {width}×{height}, x from 0 to {max_x} left to right "
+                "and y from 0 to {max_y} top to bottom. For work that does not need the "
+                "screen — running commands, reading and writing files — use bash, python "
+                "and the file tools instead. If a person has taken over the screen the "
+                "action is refused; ask them or wait."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "action": {"type": "string", "enum": ["screenshot"],
+                               "description": "What to do."},
+                    "x": {"type": "integer",
+                          "description": "Pixel column in the screenshot: where to click, "
+                                         "move, press, scroll or start a drag."},
+                    "y": {"type": "integer", "description": "Pixel row in the screenshot."},
+                    "to_x": {"type": "integer", "description": "drag: the column to release at."},
+                    "to_y": {"type": "integer", "description": "drag: the row to release at."},
+                    "dx": {"type": "integer",
+                           "description": "scroll: wheel clicks sideways, positive is right."},
+                    "dy": {"type": "integer",
+                           "description": "scroll: wheel clicks, positive is down."},
+                    "text": {"type": "string",
+                             "description": "type: the text to type, at most "
+                                            "{max_type_chars} characters."},
+                    "keys": {"type": "string",
+                             "description": "key: xdotool key names such as \"ctrl+l\", "
+                                            "\"Return\" or \"alt+Tab\"; several separated by "
+                                            "spaces are pressed in turn."},
+                    "ms": {"type": "integer",
+                           "description": "wait: milliseconds, 0 to {max_wait_ms}."},
+                },
+                "required": ["action"]
             }
         }
     },
@@ -1434,6 +1485,37 @@ def _install_trigger_event_enum() -> None:
 
 
 _install_trigger_event_enum()
+
+
+def _install_computer_bounds() -> None:
+    """Fill the `computer` schema's actions and bounds from the workstation
+    protocol. `P20-04`.
+
+    After the literal for the reason the two helpers above give (`B21`): the
+    parity test reads `FUNCTION_TOOL_SCHEMAS` with `ast.literal_eval`, and an
+    f-string or a `list(...)` inside it makes that parse raise. The literal
+    keeps `{width}`-style placeholders, so a copy that was never filled in says
+    so on its face rather than carrying a stale number.
+    """
+    bounds = {
+        "width": _WS.SCREEN_WIDTH, "height": _WS.SCREEN_HEIGHT,
+        "max_x": _WS.SCREEN_WIDTH - 1, "max_y": _WS.SCREEN_HEIGHT - 1,
+        "max_type_chars": f"{_WS.MAX_TYPE_CHARS:,}", "max_wait_ms": f"{_WS.MAX_WAIT_MS:,}",
+    }
+    for schema in FUNCTION_TOOL_SCHEMAS:
+        function = schema.get("function", {})
+        if function.get("name") != "computer":
+            continue
+        function["description"] = function["description"].format(**bounds)
+        properties = function["parameters"]["properties"]
+        properties["action"]["enum"] = list(_COMPUTER_ACTIONS)
+        for prop in properties.values():
+            prop["description"] = prop["description"].format(**bounds)
+        return
+    logger.error("computer schema not found; the model cannot use the workstation's screen")
+
+
+_install_computer_bounds()
 
 
 # ---------------------------------------------------------------------------

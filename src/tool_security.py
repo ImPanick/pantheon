@@ -107,6 +107,12 @@ NON_ADMIN_BLOCKED_TOOLS = BUILTIN_EMAIL_TOOLS | {
     "stop_served_model",
     "cancel_download",
     "adopt_served_model",
+    # `P20-04`. `computer` is deliberately NOT here. What it reaches is the
+    # person's own display on the workstation, and who may reach that is
+    # `can_use_workstation` — the privilege `P20-02` made for exactly this, off
+    # for non-admins until an admin grants it and checked by the tool itself
+    # (`workstation_for`). Listing it here would make that grant mean nothing
+    # for the one tool that is nothing but the workstation.
 }
 
 
@@ -331,6 +337,10 @@ _PLAN_MODE_KNOWN_MUTATORS = {
     "bash", "python",
     # Controls shell processes (kill); plan mode can't run bash anyway.
     "manage_bg_jobs",
+    # `P20-04`. A click on a desktop can do anything a shell can. Its
+    # `screenshot` action only looks, but plan mode's allowlist is by tool
+    # name, so the whole tool stays out rather than trusting the action.
+    "computer",
 }
 
 

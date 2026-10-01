@@ -93,6 +93,7 @@ BUILTIN_TOOL_DESCRIPTIONS: Dict[str, str] = {
     "manage_session": "Chat management: rename, archive, delete, or fork chats (the UI calls these 'chats'; internally 'sessions'). Use for 'rename my chats', 'rename this chat', 'archive/delete a chat'.",
     "manage_memory": "Memory management: list, add, edit, delete, or search persistent memories. For facts about the USER (their name, preferences, where they live). NOT for info about ANOTHER person — addresses, phones, emails belonging to a contact go in manage_contact, not memory.",
     "host_shell": "Run a shell command on the HOST machine, outside the Docker container, through the network agent the operator installed there. Use for anything that must touch the real computer — its filesystem, its services, its network stack — which `bash` cannot reach because it runs inside the container. Requires the host agent to be configured and shell to be enabled.",
+    "computer": "Use the workstation's desktop (an Ubuntu machine with a browser) by looking at its screen and working its mouse and keyboard: take a screenshot, click, double/right/middle click, move, drag, scroll, type text, press keys, wait. Every action returns a screenshot of the result. Use for GUI work — clicking through a web page or an app on the workstation, filling a form, checking what something looks like. Not for running commands or editing files; bash, python and the file tools do that.",
     "manage_rag": "RAG document index: list indexed files, add or remove a directory, store arbitrary text (add_text), or search the vector store (search). Use add_text to offload a large tool result you must retain and search to get it back, instead of holding it all in context. NOT for durable facts about the user — those go in manage_memory.",
     "manage_skills": "Skill management: add, update, publish, or search reusable skills/presets.",
     "manage_tasks": "Scheduled task management: list, create, edit, delete, pause, resume, or run cron tasks.",
@@ -496,6 +497,12 @@ class ToolIndex:
                    "show my", "the file", "my file", "the report", "the write-up",
                    "the writeup", "saved document", "in my library", "in the library"}):
             {"manage_documents", "edit_document"},
+        # `P20-04`. Computer use on the workstation. Phrases, not bare "click",
+        # "screen" or "ubuntu", which a document or a shell request says just as
+        # often; the tool is hidden anyway unless the workstation would answer.
+        frozenset({"workstation", "the desktop", "on the desktop", "computer use",
+                   "use the computer", "on the screen", "take a screenshot", "gui"}):
+            {"computer"},
         # Theme / UI control intent
         frozenset({"theme", "color scheme", "colors of the ui", "make it dark",
                    "make it light", "make the ui", "switch theme", "change theme",

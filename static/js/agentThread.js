@@ -72,6 +72,8 @@ export const TOOL_LABELS = {
   'deep_research':    { running: 'Researching',  done: 'Deep Research' },
   'list_models':      { running: 'Browsing',     done: 'Models' },
   'ui_control':       { running: 'Adjusting',    done: 'Interface' },
+  // `P20-04`. The workstation's screen, mouse and keyboard.
+  'computer':         { running: 'Using computer', done: 'Computer' },
 };
 
 /**
@@ -193,7 +195,24 @@ export const TOOL_ICONS = {
     + '<line x1="4" y1="17" x2="20" y2="17"/>'
     + '<circle cx="9" cy="7" r="2.2"/><circle cx="15" cy="12" r="2.2"/>'
     + '<circle cx="8" cy="17" r="2.2"/>'),
+  // Using the workstation's desktop — a screen on a stand (`P20-04`).
+  'computer': icon('<rect x="3" y="4" width="18" height="12" rx="2"/>'
+    + '<line x1="12" y1="16" x2="12" y2="20"/>'
+    + '<line x1="8" y1="20" x2="16" y2="20"/>'),
 };
+
+/**
+ * `P20-04`. The words on a tool screenshot's fold. A tool that says what its
+ * picture is of (`screenshot_caption`, e.g. "Screen after click at (640, 400)")
+ * is named by that — the action and where, on the line a person reads without
+ * opening anything; a browser screenshot reads "Screenshot", as it always has.
+ * One function for the live card and the reloaded one, so the two cannot drift.
+ */
+export function screenshotSummary(o) {
+  const caption = o && typeof o.screenshot_caption === 'string'
+    ? o.screenshot_caption.trim() : '';
+  return caption || 'Screenshot';
+}
 
 /** What to call `tool` in `state` ('running' | 'done'). Unknown tools keep
  *  their id: a name nobody chose is better than a wrong one. */
@@ -737,6 +756,7 @@ export function applyAgentThreadNode(node, o) {
 }
 
 export default { agentThreadNodeHtml, applyAgentThreadNode, agentThreadContent,
+                 screenshotSummary,
                  ensureThreadToggleAll, toggleThreadAll, syncThreadToggleAll,
                  threadIsAllOpen, prettyJson,
                  toolLabel, toolIcon,

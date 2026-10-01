@@ -1205,6 +1205,14 @@ async def _execute_tool_block_impl(
         desc = f"{tool}: {first_line}" if first_line else tool
         result = await _direct_fallback(tool, content, session_id=session_id, owner=owner) \
             or {"error": f"{tool}: execution failed", "exit_code": 1}
+    elif tool == "computer":
+        # `P20-04`. A registry tool dispatched by name, because the registry
+        # fallback at the end of this chain passes no owner — and whose
+        # workstation display the click lands on is the whole question.
+        from src.agent_tools.computer_tools import command_line
+        desc = f"computer: {command_line(content)}"
+        result = await _direct_fallback(tool, content, session_id=session_id, owner=owner) \
+            or {"error": "computer: execution failed", "exit_code": 1}
     elif tool == "manage_bg_jobs":
         # Inspect/kill detached `bash` jobs; needs session_id to scope to chat.
         desc = f"manage_bg_jobs: {content.split(chr(10))[0][:80]}"
@@ -1433,6 +1441,10 @@ _FORMATTER_HANDLED_KEYS = {
     "response", "results", "session_id", "name", "model", "session_name",
     "success", "path", "action", "title", "doc_id", "version", "applied",
     "error", "output",
+    # `P20-04`. A picture reaches the model as an image part, beside this text
+    # (`src/tool_result_images.py`). Serialised here it was 8,000 characters of
+    # base64 per browser screenshot that no model can read as a picture.
+    "images", "screenshot_caption",
 }
 
 

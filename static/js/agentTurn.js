@@ -40,7 +40,8 @@ import {
   demoteSupersededTodoCards,
   safeToolScreenshotSrc,
 } from './chatRenderer.js?v=20260930wavethree2';
-import { applyAgentThreadNode, agentThreadContent, toolOutputPanesHtml } from './agentThread.js';
+import { applyAgentThreadNode, agentThreadContent, toolOutputPanesHtml,
+         screenshotSummary } from './agentThread.js';
 
 function scrollAfter(opts) {
   const scroll = opts && opts.scroll !== undefined ? opts.scroll : () => uiModule.scrollHistory();
@@ -222,9 +223,10 @@ export function finishToolCard(currentToolBubble, json, opts = {}) {
         const details = document.createElement('details');
         details.className = 'agent-tool-output';
         const summary = document.createElement('summary');
-        summary.textContent = 'Screenshot';
+        summary.textContent = screenshotSummary(json);   // `P20-04`
         const img = document.createElement('img');
         img.src = screenshotSrc;
+        img.alt = summary.textContent;
         img.style.cssText = 'max-width:100%;border-radius:6px;margin-top:6px;border:1px solid var(--border)';
         details.appendChild(summary);
         details.appendChild(img);
