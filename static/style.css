@@ -46898,6 +46898,9 @@ button.task-card-toggle {
    9999 under it: measured, the loop refusal's last line ("Remove one of those
    links to save it.") was hidden behind the hint from x=1134. A toast is what
    the person is being told right now, so it sits above every window, every
-   portaled overlay and the confirm dialog (99999); it takes no clicks but its
-   own button, so it covers nothing it could block. */
-#toast.toast { z-index: 100000; }
+   portaled overlay and the confirm dialog (99999) — at the top of the z range,
+   because the window counter climbs for as long as a session lasts and a
+   literal it can reach is the `#4720` defect again
+   (`tests/test_portal_dropdown_z_js.py`). It takes no clicks but its own
+   button, so it covers nothing it could block. */
+#toast.toast { z-index: 2147483000; }
