@@ -79,6 +79,41 @@ from routes.document_helpers import (
 )
 
 
+def _import_folder(raw: Optional[str]) -> Optional[str]:
+    """`B997`. The folder an import is filed into, read before anything is saved.
+
+    Every library import door takes the folder that was open, so a file imported
+    from inside *Clients/Acme* lands there instead of in Unfiled. Read by the
+    folders' own normaliser (`Law 7`), and up front: a path it refuses is a 400
+    before `save_upload` has written a byte or charged the rate limiter.
+    """
+    from src.document_folders import FolderError, normalize_folder_path
+    if raw is not None and not isinstance(raw, str):
+        # FastAPI and pydantic hand these routes a string or None. Anything
+        # else is the `Form(None)` default object itself, which is what a
+        # handler called directly (not through a request) receives: no folder.
+        raw = None
+    try:
+        return normalize_folder_path(raw)
+    except FolderError as e:
+        raise HTTPException(e.status, e.message)
+
+
+def _file_imported_document(db, doc: Document, user: Optional[str],
+                            folder: Optional[str]) -> None:
+    """`B997`. File a document an import just made; the caller commits.
+
+    Scoped the way the folder routes scope (`document_folder_routes._scope`), so
+    the folder made or used is the importer's own — a path another person also
+    uses is a different folder, theirs untouched.
+    """
+    if not folder:
+        return
+    from routes.document.document_folder_routes import _scope
+    from src.document_folders import file_new_document
+    file_new_document(db, _scope(user), doc, folder)
+
+
 def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
     # `H05` — the `document_editor` flag. The UI hid two launchers; the routes
     # answered regardless, and so did the document tools.
@@ -115,6 +150,7 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
     async def create_document(request: Request, req: DocumentCreate) -> Dict[str, Any]:
         from src.auth_helpers import require_privilege
         user = require_privilege(request, "can_use_documents")
+        folder = _import_folder(req.folder)
         db = SessionLocal()
         try:
             # session_id is optional: a doc can be a session-less "library" doc
@@ -221,6 +257,7 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
             )
             db.add(doc)
             db.add(ver)
+            _file_imported_document(db, doc, user, folder)   # `B997`
             db.commit()
             db.refresh(doc)
             try:
@@ -247,6 +284,7 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
         request: Request,
         file: UploadFile = File(...),
         session_id: Optional[str] = Form(None),
+        folder: Optional[str] = Form(None),
     ) -> Dict[str, Any]:
         """Upload a PDF and create the matching Document.
 
@@ -266,6 +304,7 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
 
         from src.auth_helpers import require_privilege
         user = require_privilege(request, "can_use_documents")
+        folder = _import_folder(folder)   # `B997`, before the file is saved
 
         # session_id is optional — a library import isn't tied to a chat. When
         # given, validate it; otherwise the PDF becomes a session-less library
@@ -347,6 +386,10 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
                 doc.owner = user
                 db.commit()
                 db.refresh(doc)
+            if folder:
+                _file_imported_document(db, doc, user, folder)   # `B997`
+                db.commit()
+                db.refresh(doc)
             return _doc_to_dict(doc)
         finally:
             db.close()
@@ -357,6 +400,7 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
         request: Request,
         file: UploadFile = File(...),
         session_id: Optional[str] = Form(None),
+        folder: Optional[str] = Form(None),
     ) -> Dict[str, Any]:
         """Upload an Office/EPUB document and create the Document it extracts to.
 
@@ -390,6 +434,7 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
         from src.auth_helpers import require_privilege
 
         user = require_privilege(request, "can_use_documents")
+        folder = _import_folder(folder)   # `B997`, before the file is saved
 
         if session_id:
             db = SessionLocal()
@@ -470,6 +515,7 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
                 summary=f"Imported from {source_name}",
                 source="user",
             ))
+            _file_imported_document(db, doc, user, folder)   # `B997`
             db.commit()
             db.refresh(doc)
             try:

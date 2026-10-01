@@ -48,7 +48,9 @@ if (typeof global.window.mammoth === 'undefined') {
 
 const SRC = path.join(__dirname, '..', '..', 'static', 'js', 'documentLibrary.js');
 const START = '  async function readFileContent(file) {';
-const END = '  async function libraryImportFiles(fileList) {';
+// `B997` gave the function a second parameter (the open folder); the
+// anchor is the name and the first one, so either signature is found.
+const END = '  async function libraryImportFiles(fileList';
 const source = fs.readFileSync(SRC, 'utf8');
 const from = source.indexOf(START);
 const to = source.indexOf(END, from);

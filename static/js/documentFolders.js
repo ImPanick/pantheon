@@ -96,6 +96,15 @@ export function applyViewParams(view, params) {
   return params;
 }
 
+/**
+ * `B997`. The folder a file imported from this view is filed into: the open
+ * folder, or none — from All documents or Unfiled an import lands in Unfiled,
+ * which is where it already lands.
+ */
+export function importFolder(view) {
+  return view && view.kind === 'folder' && view.path ? view.path : null;
+}
+
 /** The view to show after `path` was moved/renamed to `to` (or removed, `to` null). */
 export function viewAfterRelocate(view, path, to) {
   if (!view || view.kind !== 'folder' || !isWithin(view.path, path)) return view;

@@ -518,6 +518,20 @@ def remove_folder(db, owner, raw_path: Any, contents: Any = None, *,
     return {**summary, "changes": changes}
 
 
+def file_new_document(db, owner, doc: Document, path: Optional[str]) -> None:
+    """`B997`. A document an import is making lands in the folder that was open.
+
+    The folder is made (with its parents) if it has gone since the library drew
+    it — `file_documents`' rule for a destination — and the caller commits, so
+    the document and its folder arrive together or not at all. A new document is
+    not "moved", so there is no change to report and no `updated_at` to protect.
+    """
+    if not path:
+        return
+    _ensure_rows(db, owner, path)
+    doc.folder = path
+
+
 def _deleted(doc: Document) -> Dict[str, Any]:
     """The change a deleted document makes, sealed to the content it had.
 

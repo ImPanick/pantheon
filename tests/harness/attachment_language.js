@@ -47,7 +47,7 @@ function slice(startMark, endMark, label) {
 // are lifted together — the whole question for a `.docx` is which of the two
 // answers wins.
 const converted = slice('  const CONVERTED_TO = {',
-                        '  async function libraryImportFiles(fileList) {',
+                        '  async function libraryImportFiles(fileList',
                         'CONVERTED_TO');
 // `B233` added a second module-level register `libraryImportFiles` reads: the
 // office formats the SERVER extracts and this browser has no converter for.
@@ -59,7 +59,7 @@ const registers = slice('  const CLIENT_CONVERTED_EXTS = new Set(',
 // `OFFICE_EXTS` itself needs nothing extra here: `shared` above already inlines
 // the whole of `attachmentLanguage.js`, generated registers and all, which is
 // exactly where `documentLibrary.js` imports it from.
-const importer = slice('  async function libraryImportFiles(fileList) {',
+const importer = slice('  async function libraryImportFiles(fileList',
                        '  export function openLibrary(opts) {',
                        'libraryImportFiles');
 

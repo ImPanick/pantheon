@@ -78,6 +78,9 @@ async function ensureXLSX() {}
     'ext', 'file', 'name', 'baseTitle', 'language', 'isPdf', 'API_BASE',
     'readFileContent', 'ensureXLSX', 'fetch', 'FormData', 'OFFICE_EXTS',
     'SERVER_EXTRACTED_EXTS', 'window',
+    // `B997`: the folder the library had open, which every branch sends. This
+    // harness imports from All documents, so there is none.
+    'folder',
     // Wrapped in a one-iteration loop because the block is the BODY of
     // `for (const file of fileList)` and uses `continue` to mean "this file is
     // done". Lifting it out of its loop would change what those statements do.
@@ -103,7 +106,7 @@ async function ensureXLSX() {}
   try {
     imported = await run(ext, file, name, baseTitle, language, isPdf, API_BASE,
                          readFileContent, ensureXLSX, global.fetch, FormData,
-                         OFFICE, SERVER, global.window);
+                         OFFICE, SERVER, global.window, null);
   } catch (e) {
     console.log(JSON.stringify({ error: String(e && e.message || e), posts }));
     process.exit(0);

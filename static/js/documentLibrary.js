@@ -18,7 +18,7 @@ import { chevronIcon } from './icons.js';
 import {
   folderApi, renderFolderBar, showFolderPicker, showFolderMenu, removeFolderFlow,
   describeRemovalOutcome, describeFiled, applyViewParams, startDocumentDrag,
-  viewAfterRelocate, joinPath, folderName, parentOf, VIEW_ALL, VIEW_UNFILED,
+  viewAfterRelocate, joinPath, folderName, parentOf, VIEW_ALL, importFolder,
 } from './documentFolders.js';
 
 // ── Injected references from documentModule ──
@@ -1899,7 +1899,12 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
     '.doc': 'markdown',
   };
 
-  async function libraryImportFiles(fileList) {
+  /**
+   * `B997`. `folder` is the library folder that was open (`importFolder`), and
+   * every door below files into it: the two upload routes take it as a form
+   * field, `POST /api/document` in its body. None means Unfiled, as before.
+   */
+  async function libraryImportFiles(fileList, folder = null) {
 
     let imported = 0;
     let failed = 0;
@@ -1925,6 +1930,7 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
           // view, and plain PDFs get the static page-image viewer.
           const fd = new FormData();
           fd.append('file', file);
+          if (folder) fd.append('folder', folder);
           const res = await fetch(`${API_BASE}/api/documents/import-pdf`, {
             method: 'POST',
             body: fd,
@@ -1952,6 +1958,7 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
           // are different things to tell someone (`B162`).
           const fd = new FormData();
           fd.append('file', file);
+          if (folder) fd.append('folder', folder);
           const res = await fetch(`${API_BASE}/api/documents/import-office`, {
             method: 'POST',
             body: fd,
@@ -1979,7 +1986,7 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               // `P21-03`: the workbook's own name rides along as the source.
-              body: JSON.stringify({ title: sheetTitle, language: 'csv', content: csv, source_name: name }),
+              body: JSON.stringify({ title: sheetTitle, language: 'csv', content: csv, source_name: name, folder }),
             });
             if (!res.ok) throw new Error('Server error');
           }
@@ -1992,7 +1999,7 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
           const res = await fetch(`${API_BASE}/api/document`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ source_name: name, language, content }),
+            body: JSON.stringify({ source_name: name, language, content, folder }),
           });
           if (!res.ok) throw new Error('Server error');
           imported++;
@@ -2009,6 +2016,37 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
     if (failed && uiModule) uiModule.showError(msg);
     else if (uiModule) uiModule.showToast(msg);
     await libraryFetch(false);
+  }
+
+  /**
+   * The Import button's files, imported. `B997`: from inside a folder they are
+   * filed into that folder, so the view stays where it is and the import shows
+   * up in it. (`P21-01` switched the view to Unfiled here, because that is
+   * where an import used to land.) A named function rather than the `change`
+   * listener's body so the wiring can be driven, not read.
+   */
+  async function libraryImportPicked(fileInput, importFileBtn) {
+    if (fileInput.files.length === 0) return;
+    const files = Array.from(fileInput.files);
+    fileInput.value = '';
+    // Swap the import icon for a whirlpool while files upload.
+    const _orig = importFileBtn.innerHTML;
+    importFileBtn.disabled = true;
+    let _sp = null;
+    try {
+      _sp = spinnerModule.createWhirlpool(12);
+      _sp.element.style.cssText = 'width:12px;height:12px;margin:0 4px 0 0;display:inline-block;vertical-align:middle;position:relative;top:-2px;';
+      importFileBtn.innerHTML = '';
+      importFileBtn.appendChild(_sp.element);
+      importFileBtn.appendChild(document.createTextNode('Import'));
+    } catch {}
+    try {
+      await libraryImportFiles(files, importFolder(_libraryFolderView));
+    } finally {
+      try { _sp && _sp.stop(); } catch {}
+      importFileBtn.innerHTML = _orig;
+      importFileBtn.disabled = false;
+    }
   }
 
   export function openLibrary(opts) {
@@ -3840,34 +3878,7 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
     const fileInput = document.getElementById('doclib-file-input');
     if (importFileBtn && fileInput) {
       importFileBtn.addEventListener('click', () => fileInput.click());
-      fileInput.addEventListener('change', async () => {
-        if (fileInput.files.length === 0) return;
-        const files = Array.from(fileInput.files);
-        fileInput.value = '';
-        // Swap the import icon for a whirlpool while files upload.
-        const _orig = importFileBtn.innerHTML;
-        importFileBtn.disabled = true;
-        let _sp = null;
-        try {
-          _sp = spinnerModule.createWhirlpool(12);
-          _sp.element.style.cssText = 'width:12px;height:12px;margin:0 4px 0 0;display:inline-block;vertical-align:middle;position:relative;top:-2px;';
-          importFileBtn.innerHTML = '';
-          importFileBtn.appendChild(_sp.element);
-          importFileBtn.appendChild(document.createTextNode('Import'));
-        } catch {}
-        // `P21-01`. The import doors file nothing yet (`P21-03` is changing
-        // them), so a file imported from inside a folder lands in Unfiled.
-        // Show it there rather than leave the folder looking as if the
-        // import did nothing.
-        if (_libraryFolderView.kind === 'folder') _libraryFolderView = VIEW_UNFILED;
-        try {
-          await libraryImportFiles(files);
-        } finally {
-          try { _sp && _sp.stop(); } catch {}
-          importFileBtn.innerHTML = _orig;
-          importFileBtn.disabled = false;
-        }
-      });
+      fileInput.addEventListener('change', () => libraryImportPicked(fileInput, importFileBtn));
     }
 
     // Create button — new blank document

@@ -30,6 +30,10 @@ class DocumentCreate(BaseModel):
     # person named it. Optional — a document typed from scratch has none — and
     # passed through `file_names.display_name` before it is stored.
     source_name: Optional[str] = None
+    # `B997`. The library folder that was open when the person imported this
+    # (`'Clients/Acme'`); none, or `''`, is Unfiled. Read by the folders'
+    # own `normalize_folder_path`, so a name it refuses is a 400 here too.
+    folder: Optional[str] = None
 
 class DocumentUpdate(BaseModel):
     content: str
