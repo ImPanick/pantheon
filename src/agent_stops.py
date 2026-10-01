@@ -363,6 +363,135 @@ def _positive_round(value: Any) -> Optional[int]:
     return number if number >= 1 else None
 
 
+# ── `B939` / `B941` · Two runs, one reply ───────────────────────────────────
+#
+# A reply can be the work of two runs of the agent loop: a student's and the
+# teacher's that took over from it (`B939`), or a run that hit the step limit
+# and the one Continue ▸ started (`B941`). Each run keeps its own record — its
+# rounds numbered from 1, and its own figures — and the reply was saved from one
+# of them. The teacher's record replaced the student's, so a reload drew the
+# teacher's rounds and none of the student's; Continue's merge kept the
+# continuation's rounds and none of the first run's. The live stream drew both
+# runs, one after the other. `merge_runs` is the one way two records become
+# one: the second run's rounds numbered after the first's, and the first run's
+# own figures kept as an `earlier_runs` entry, which history replay labels that
+# run's rounds from and draws its footer from, as the live stream did.
+
+#: The parts of a run's record that are one entry per round, in round order.
+ROUND_LISTS = ("round_texts", "round_models", "round_endpoint_ids", "round_endpoint_labels")
+#: The events in a run's record that name the round they belong to.
+ROUND_EVENTS = ("tool_events", "agent_stops", "verifier_findings")
+#: Everything about a record that is per round, or about the whole reply
+#: rather than one run of it. What is left is the run's own figures.
+RUN_KEYS = ROUND_LISTS + ROUND_EVENTS + ("agent_notes", "earlier_runs")
+#: Left out of an earlier run's figures: the last request's breakdown, which
+#: `GET /api/session/{id}/context` reads from the reply's own record (`B892`)
+#: and nothing reads for an earlier run.
+_NOT_AN_EARLIER_RUNS_FIGURE = ("context_breakdown",)
+
+
+def rounds_in(record: Any) -> int:
+    """How many of a reply's rounds a run's record holds, counted as history
+    replay counts them (`addMessage`): its per-round lists, or the last round
+    one of its events names, whichever is further."""
+    if not isinstance(record, dict):
+        return 0
+    count = max((len(record.get(key) or []) for key in ROUND_LISTS), default=0)
+    for key in ROUND_EVENTS:
+        for event in record.get(key) or []:
+            if isinstance(event, dict):
+                count = max(count, _positive_round(event.get("round")) or 0)
+    return count
+
+
+def _shifted(event: Dict[str, Any], by: int, *, roundless: Optional[int]) -> Dict[str, Any]:
+    """`event` with its round moved `by` rounds later. A round of `0` (before
+    the run's first) becomes the round before that run's first, too. An event
+    with no round keeps none unless `roundless` says where such an event is."""
+    out = dict(event)
+    try:
+        number = int(out.get("round"))
+    except (TypeError, ValueError):
+        number = None
+    if number is not None and number >= 0:
+        out["round"] = number + by
+    elif roundless is not None:
+        out["round"] = roundless + by
+    return out
+
+
+def merge_notes(first: Iterable[Any], second: Iterable[Any], first_rounds: int) -> List[Dict[str, Any]]:
+    """Two runs' `agent_notes`, as one reply's. A note in a round keeps it, the
+    second run's moved after the first run's rounds; a note the first run drew
+    at its end (no round) is after its last round now, because the second run's
+    rounds follow it; one the second run drew at its end stays at the end."""
+    notes = []
+    for note in first or ():
+        if isinstance(note, dict):
+            out = dict(note)
+            if out.get("round") is None:
+                out["round"] = first_rounds
+            notes.append(out)
+    for note in second or ():
+        if isinstance(note, dict):
+            out = dict(note)
+            if out.get("round") is not None:
+                out = _shifted(out, first_rounds, roundless=None)
+            notes.append(out)
+    return notes
+
+
+def run_figures(record: Any) -> Dict[str, Any]:
+    """A run's own figures: its record without what is per round or about the
+    whole reply. What its footer is drawn from and its rounds labelled from."""
+    if not isinstance(record, dict):
+        return {}
+    return {key: value for key, value in record.items()
+            if key not in RUN_KEYS and key not in _NOT_AN_EARLIER_RUNS_FIGURE}
+
+
+def merge_runs(first: Any, second: Any) -> Dict[str, Any]:
+    """One reply's record from two runs', `second` after `first`.
+
+    The reply's figures are the last run's (`second`'s): its footer is the one
+    the turn ends on. Its rounds are the first run's and then the second's,
+    each of the second run's events and notes moved by the first run's round
+    count. The first run's own figures are appended to `earlier_runs` with
+    `last_round`, the reply's round its last round is, and a run that already
+    had earlier runs keeps them, moved with its rounds."""
+    first = dict(first) if isinstance(first, dict) else {}
+    second = dict(second) if isinstance(second, dict) else {}
+    offset = rounds_in(first)
+    merged = {key: value for key, value in second.items() if key not in RUN_KEYS}
+    for key in ROUND_LISTS:
+        before = list(first.get(key) or [])
+        after = list(second.get(key) or [])
+        if not before and not after:
+            continue
+        pad = "" if key == "round_texts" else None
+        merged[key] = before + [pad] * (offset - len(before)) + after
+    for key in ROUND_EVENTS:
+        events = [dict(e) for e in first.get(key) or [] if isinstance(e, dict)]
+        # A tool event with no round is drawn in round 1 (`ev.round ?? 1`).
+        roundless = 1 if key == "tool_events" else None
+        events += [_shifted(e, offset, roundless=roundless)
+                   for e in second.get(key) or [] if isinstance(e, dict)]
+        if events:
+            merged[key] = events
+    notes = merge_notes(first.get("agent_notes"), second.get("agent_notes"), offset)
+    if notes:
+        merged["agent_notes"] = notes
+    earlier = [dict(run) for run in first.get("earlier_runs") or [] if isinstance(run, dict)]
+    earlier.append(dict(run_figures(first), last_round=offset))
+    for run in second.get("earlier_runs") or []:
+        if isinstance(run, dict):
+            moved = dict(run)
+            moved["last_round"] = (_positive_round(run.get("last_round")) or 0) + offset
+            earlier.append(moved)
+    merged["earlier_runs"] = earlier
+    return merged
+
+
 class AgentNotes:
     """The notes one turn drew, in order, for the reply they are saved with.
 
@@ -371,12 +500,13 @@ class AgentNotes:
     how history replay places them (`addMessage`): after that round's text,
     tools and stops; `0` for before the first round; no `round` for the end.
 
-    The saved record is one run's rounds. A turn the teacher answered is saved
-    from the teacher's `metrics` — the student's rounds are not in it — so its
-    rounds are the teacher's: the student's notes and the takeover banner go
-    before them, and what the teacher's own run drew goes in its rounds. A turn
-    saved from the student's record keeps its notes in their rounds, and the
-    takeover and everything after it at the end.
+    A turn the teacher answered is saved as one reply of two runs (`B939`,
+    `merge_runs`): the student's rounds, then the teacher's numbered after
+    them. So the student's notes stay in their rounds, the takeover banner
+    follows the student's last round, what the teacher's own run drew goes in
+    its rounds (moved after the student's), and what came after the teacher's
+    run is at the end. A turn saved from the student's record alone keeps its
+    notes in their rounds, and the takeover and everything after it at the end.
     """
 
     def __init__(self) -> None:
@@ -384,6 +514,7 @@ class AgentNotes:
         self._round = 1                  # the round now streaming, in its run's numbering
         self._taken_over = False
         self._teacher_record = False     # the record to be saved is the teacher's
+        self._student_rounds = 0         # `B939`: the student's rounds, before the teacher's
 
     def observe(self, data: Any) -> None:
         if not isinstance(data, dict):
@@ -395,6 +526,8 @@ class AgentNotes:
         elif kind in ("metrics", "agent_terminal"):
             # The route saves the last of these it saw, so its run is the record.
             self._teacher_record = teacher
+            if not teacher:
+                self._student_rounds = rounds_in(data.get("data"))
         elif kind == "teacher_takeover":
             self._seen.append((dict(data), "takeover", self._round))
             self._taken_over = True
@@ -410,16 +543,24 @@ class AgentNotes:
             self._seen.append((dict(data), phase, _positive_round(data.get("round")) or self._round))
 
     def saved(self) -> List[Dict[str, Any]]:
+        if self._teacher_record:
+            # `B939`. Each run's notes in its own numbering — the student's in
+            # their rounds and the takeover at the end of its run; the teacher's
+            # in its rounds and what followed its run at the end — and then
+            # joined as `merge_runs` joins the two records they are saved with.
+            student, teacher = [], []
+            for event, phase, round_ in self._seen:
+                note = dict(event)
+                note.pop("round", None)
+                if phase in ("student", "teacher"):
+                    note["round"] = round_
+                (student if phase in ("student", "takeover") else teacher).append(note)
+            return merge_notes(student, teacher, self._student_rounds)
         notes = []
         for event, phase, round_ in self._seen:
             note = dict(event)
             note.pop("round", None)
-            if self._teacher_record:
-                if phase in ("student", "takeover"):
-                    note["round"] = 0
-                elif phase == "teacher":
-                    note["round"] = round_
-            elif phase == "student":
+            if phase == "student":
                 note["round"] = round_
             notes.append(note)
         return notes
@@ -432,4 +573,6 @@ __all__: List[str] = [
     "call_signature", "information_key", "loop_breaker_stop", "no_new_information_stop",
     "safe_arguments", "unkept_promise_stop",
     "AGENT_NOTE_TYPES", "AgentNotes",
+    "ROUND_LISTS", "ROUND_EVENTS", "RUN_KEYS", "rounds_in", "merge_notes", "run_figures",
+    "merge_runs",
 ]

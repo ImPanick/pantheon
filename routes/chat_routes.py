@@ -2984,8 +2984,21 @@ def setup_chat_routes(
                 _answered_by = None  # set if the selected model failed and a fallback answered
                 _fallback_chain = None  # `P4-05`: every candidate tried, with its status
                 # `B915`: the notes the turn draws beside its reply, kept for the save.
-                from src.agent_stops import AgentNotes
+                from src.agent_stops import AgentNotes, merge_runs
                 _agent_notes = AgentNotes()
+                # `B939`. The student's own record, kept for the save. A turn the
+                # teacher answered was saved from the teacher's record alone —
+                # the last `metrics` the route saw — so a reload drew the
+                # teacher's rounds and none of the student's, under a reply whose
+                # text was both. It is saved as one reply of two runs now, the
+                # student's rounds and then the teacher's (`merge_runs`).
+                _student_record = None
+                _teacher_answered = False
+
+                def _reply_record(record):
+                    if _teacher_answered and _student_record is not None and record is not _student_record:
+                        return merge_runs(_student_record, record)
+                    return record
                 # `B921`. The compaction this route did before the loop started
                 # (the notice above), kept with the reply as the loop's own is,
                 # so a reload says it whichever of the two shaped the context.
@@ -3170,6 +3183,7 @@ def setup_chat_routes(
                                 elif data.get("type") == "agent_terminal":
                                     terminal_metadata = dict(data.get("data") or {})
                                     last_metrics = terminal_metadata
+                                    _teacher_answered = data.get("teacher") is True   # `B939`
                                     failure = terminal_metadata.get("failure") or {}
                                     failure_status = _normalize_http_status(
                                         failure.get("status")
@@ -3195,7 +3209,7 @@ def setup_chat_routes(
                                             session_manager,
                                             session,
                                             terminal_content,
-                                            terminal_metadata,
+                                            _reply_record(terminal_metadata),   # `B939`
                                             character_name=ctx.preset.character_name,
                                             web_sources=web_sources,
                                             rag_sources=ctx.rag_sources,
@@ -3217,6 +3231,13 @@ def setup_chat_routes(
                                     last_metrics["requested_model"] = last_metrics.get("requested_model") or _requested_model
                                     last_metrics["model"] = _reported_model or _actual_model or _answered_by or _requested_model
                                     _apply_shaping_metrics(last_metrics, ctx)
+                                    # `B939`. Whose record this is. The frame
+                                    # still goes out as the run sent it: the
+                                    # browser keeps each run's cost under its
+                                    # own key (`_metricsCostRecordId`).
+                                    _teacher_answered = data.get("teacher") is True
+                                    if not _teacher_answered:
+                                        _student_record = last_metrics
                                     _metrics_event = {"type": "metrics", "data": last_metrics}
                                     # Inline teacher escalation marks its
                                     # recursively emitted events at the SSE
@@ -3261,10 +3282,13 @@ def setup_chat_routes(
                         elif chunk.startswith("event: "):
                             yield chunk
                         elif chunk == "data: [DONE]\n\n":
-                            _has_tool_events = bool((last_metrics or {}).get("tool_events"))
+                            _reply = _reply_record(last_metrics or {})   # `B939`
+                            _has_tool_events = bool(_reply.get("tool_events"))
                             if full_response or _has_tool_events:
                                 _response_to_save = full_response or "Done."
-                                _metrics_to_save = dict(last_metrics or {})
+                                # The reply's figures are the last run's, so the
+                                # totals below count what they counted before.
+                                _metrics_to_save = dict(_reply)
                                 if thinking_response.strip() and not _metrics_to_save.get("thinking"):
                                     _metrics_to_save["thinking"] = thinking_response.strip()
                                 _saved_id = save_assistant_response(

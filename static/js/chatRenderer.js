@@ -3827,6 +3827,35 @@ export function addMessage(role, content, modelName, metadata) {
       const toolEvents = metadata.tool_events || [];
       const agentStops = Array.isArray(metadata.agent_stops) ? metadata.agent_stops : [];
       const agentNotes = Array.isArray(metadata.agent_notes) ? metadata.agent_notes : [];
+      // `B939` / `B941`. A reply two runs made — a student's and the teacher's
+      // that took over, or a run and the one Continue ▸ started — is saved as
+      // one (`merge_runs`, `src/agent_stops.py`): the rounds of both, and each
+      // earlier run's own record, with the reply's round its last round is.
+      // That run's rounds are headed from its record, not the last run's, and
+      // its footer goes under its last bubble, as the live stream drew them.
+      const earlierRuns = (Array.isArray(metadata.earlier_runs) ? metadata.earlier_runs : [])
+        .filter((run) => run && typeof run === 'object' && Number.isInteger(Number(run.last_round)))
+        .sort((a, b) => Number(a.last_round) - Number(b.last_round));
+      const runOf = (roundNum) => earlierRuns.find((run) => roundNum <= Number(run.last_round)) || metadata;
+      // The step a card names is the step of its own run — the teacher's and a
+      // continuation's count from 1 live, on their cards and their meter — not
+      // the reply's round it is placed by.
+      const stepOf = (round) => {
+        const n = Number(round);
+        if (!Number.isInteger(n) || n < 1) return round;
+        const start = earlierRuns.reduce((s, run) => (Number(run.last_round) < n
+          ? Math.max(s, Number(run.last_round)) : s), 0);
+        return n - start;
+      };
+      // A footer, with the turn's pills (`B920`) and a run's own figures.
+      const footWith = (wrap, figures) => {
+        if (metadata?.memories_used?.length) wrap._memoriesUsed = metadata.memories_used;
+        if (figures?.skills_injected?.length) wrap._skillsInjected = figures.skills_injected;
+        if (metadata?.auto_escalated) wrap._autoEscalated = metadata.auto_escalated;
+        if (metadata?.fallback_chain) wrap._fallbackChain = metadata.fallback_chain;
+        wrap.appendChild(createMsgFooter(wrap));
+        if (figures) displayMetrics(wrap, figures);
+      };
       let pendingAskUser = null;
       let lastWrap = null;
       let firstMsgAi = null;
@@ -3869,7 +3898,7 @@ export function addMessage(role, content, modelName, metadata) {
           wrap.className = 'msg msg-ai' + (r > 0 ? ' msg-continuation' : '');
           const roleEl = document.createElement('div');
           roleEl.className = 'role';
-          const pair = replyModelPair(modelName, metadata);
+          const pair = replyModelPair(modelName, runOf(roundNum));
           const contModel = roundModels[r] || pair.actualModel || pair.requestedModel;
           const contEndpointId = r < roundEndpointIds.length
             ? roundEndpointIds[r]
@@ -3975,11 +4004,11 @@ export function addMessage(role, content, modelName, metadata) {
             // wrong would draw.
             applyAgentThreadNode(node, ev.blocked
               ? { ...blockedCardOptions({
-                    tool: ev.tool, round: ev.round, command: ev.command,
+                    tool: ev.tool, round: stepOf(ev.round), command: ev.command,
                     full_command: ev.full_command, reason: ev.output,
                   }) }
               : {
-                tool: ev.tool, state: 'done', ok, round: ev.round, approved: ev.approved,
+                tool: ev.tool, state: 'done', ok, round: stepOf(ev.round), approved: ev.approved,
                 // `P20-03`: persisted with the event, so a reload says where it ran.
                 ranIn: ev.ran_in, ranAs: ev.ran_as,
                 command: ev.command, fullCommand: ev.full_command,
@@ -3996,7 +4025,7 @@ export function addMessage(role, content, modelName, metadata) {
           for (const finding of (metadata?.verifier_findings || [])) {
             if (Number(finding?.round) !== r + 1) continue;
             const vNode = document.createElement('div');
-            applyAgentThreadNode(vNode, verifierCardOptions(finding));
+            applyAgentThreadNode(vNode, verifierCardOptions({ ...finding, round: stepOf(finding.round) }));
             threadWrap.appendChild(vNode);
           }
           // Check if next round has text — extend line down to connect
@@ -4017,6 +4046,15 @@ export function addMessage(role, content, modelName, metadata) {
         for (const stop of agentStops) {
           if (Number(stop?.round) === roundNum) renderAgentStop(box, stop);
         }
+        // `B939` / `B941`. The end of an earlier run: its footer, under its
+        // last bubble (the end footer's rule, below).
+        for (const run of earlierRuns) {
+          if (Number(run.last_round) !== roundNum) continue;
+          if (lastMsgAi && !lastMsgAi.querySelector('.msg-footer')) {
+            // Its cost was counted when its own `metrics` arrived, live.
+            footWith(lastMsgAi, Object.assign({}, run, { _fromHistory: true }));
+          }
+        }
         for (const note of agentNotes) {
           if (noteSlot(note) !== roundNum) continue;
           const drawn = renderAgentNote(box, note, noteOpts);
@@ -4036,13 +4074,10 @@ export function addMessage(role, content, modelName, metadata) {
       }
 
       const firstWrap = lastMsgAi || lastWrap;
-      if (firstWrap && firstWrap.classList.contains('msg-ai')) {
-        if (metadata?.memories_used?.length) firstWrap._memoriesUsed = metadata.memories_used;
-        if (metadata?.skills_injected?.length) firstWrap._skillsInjected = metadata.skills_injected;
-        if (metadata?.auto_escalated) firstWrap._autoEscalated = metadata.auto_escalated;
-        if (metadata?.fallback_chain) firstWrap._fallbackChain = metadata.fallback_chain;
-        firstWrap.appendChild(createMsgFooter(firstWrap));
-        if (metadata) displayMetrics(firstWrap, metadata);
+      // Not on a bubble an earlier run's footer is already under (a last run
+      // that wrote nothing): one bubble, one footer.
+      if (firstWrap && firstWrap.classList.contains('msg-ai') && !firstWrap.querySelector('.msg-footer')) {
+        footWith(firstWrap, metadata);
       }
 
       if (window.hljs) {

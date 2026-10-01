@@ -133,10 +133,12 @@ _STUDENT = [
 
 
 def test_a_teachers_turn_keeps_its_notes_where_they_were_drawn(monkeypatch):
-    """A turn the teacher answered is saved from the teacher's own record, so
-    its rounds are the teacher's: what the student's run drew, and the banner,
-    go before them; what the teacher's run drew goes in its rounds; what came
-    after it, at the end."""
+    """A turn the teacher answered is saved as one reply of two runs (`B939`):
+    the student's rounds, then the teacher's numbered after them. What the
+    student's run drew stays in its rounds; the banner follows the student's
+    last round; what the teacher's run drew goes in its rounds, moved after the
+    student's two; what came after it, at the end. (`B915` saved the teacher's
+    record alone, and put the student's notes and the banner before it.)"""
     teacher = [
         _frame({"type": "teacher_takeover", "teacher_model": "big-model@lab", "model": "big-model",
                 "student_failure": "agent reply matched give-up pattern"}),
@@ -156,9 +158,10 @@ def test_a_teachers_turn_keeps_its_notes_where_they_were_drawn(monkeypatch):
     saved = _saved_through_route(monkeypatch, _STUDENT + teacher)
     notes = [(n["type"], n.get("round")) for n in saved[0]["agent_notes"]]
     # The teacher's run numbers its own rounds: its first note is in its round 1,
-    # not the student's last.
-    assert notes == [("skill_saved", 0), ("teacher_takeover", 0), ("skill_saved", 1),
-                     ("skill_saved", 2), ("skill_save_failed", None)], notes
+    # which is the reply's round 3.
+    assert notes == [("skill_saved", 1), ("teacher_takeover", 2), ("skill_saved", 3),
+                     ("skill_saved", 4), ("skill_save_failed", None)], notes
+    assert saved[0]["round_texts"] == ["Let me look.", "I can't find it.", "", "It is under /data."]
     takeover = saved[0]["agent_notes"][1]
     assert takeover["teacher_model"] == "big-model@lab"
     assert takeover["student_failure"] == "agent reply matched give-up pattern"
