@@ -2574,3 +2574,20 @@ has been pointing at) and D-03 (the VM station).
   environment variable overrides it. No token to paste.
 - **Admin-controlled, role-granted.** An admin turns it on; `can_use_workstation` (default off, on for
   admins) decides who else may use it.
+
+## D-2026-10-01-01 — four calls the workstation's first wave raised: the old shell switch retires for non-admins, the shell keeps its folder, the backup drops pairing keys, the workspace is a folder in the workstation
+
+**Asked**, 2026-10-01, after wave A of `P20` landed; each was filed as a row needing the owner.
+
+1. **`B966` — `can_use_bash` grants a non-admin nothing.** *Retire it for non-admins.* The switch is hidden
+   for non-admins in Settings → Users with a sentence pointing at the Workstation permission; Pantheon's
+   own machine stays admin-only, which is what the non-admin blocklist already enforced.
+2. **`B962` — the tmux persistent shell is unreachable.** *Keep the working folder only.* Each chat
+   remembers its shell's working directory, on Pantheon's machine and in the workstation alike;
+   environment variables still reset per call. Predictable, and covers `cd` then work.
+3. **`B958` — the backup carries every secret.** *Leave out the keys that re-pair on their own.* The
+   workstation token (and any setting of that kind) is dropped from the export; provider API keys stay,
+   because a restore needs them, and the export says so where it is offered.
+4. **`B968` — the workspace picker names a folder the workstation never sees.** *A folder in my
+   workstation.* With the workstation on, the picker lists folders in the person's workstation home and
+   the routed tools start there.
