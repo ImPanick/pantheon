@@ -933,6 +933,31 @@ async def vet_workspace(owner: Optional[str], raw: Optional[str]) -> Optional[st
     return path
 
 
+async def workspace_named(owner: Optional[str], raw: Optional[str]) -> Optional[str]:
+    """`B986`: the workspace a path named in a chat message means, in the
+    person's workstation — the folder itself, or the folder of a file there —
+    held to `vet_workspace`'s rules (a folder in the home, not a sensitive one),
+    or None. Raises `WorkstationError` when the workstation itself cannot
+    answer, as `vet_workspace` does.
+
+    The message is the person's own words, and what it can bind is a folder of
+    their own home: the same reach as the picker, which they may use."""
+    folder = await vet_workspace(owner, raw)
+    if folder or not (raw or "").strip():
+        return folder
+    from src.workstation_access import workstation_for
+    client, account = workstation_for(owner)
+    try:
+        # A file: the daemon resolves it (`~`, symlinks, the jail) without
+        # reading a byte, and its folder is what is bound.
+        path = str((await client.read(account, raw.strip(), max_bytes=0))["path"])
+    except WorkstationError as e:
+        if e.code in _STATION_FAILURES:
+            raise
+        return None
+    return await vet_workspace(owner, posixpath.dirname(path))
+
+
 async def describe_workspace(owner: Optional[str], workspace: Optional[str]) -> Dict:
     """`get_workspace`'s answer when the person's tools run in the workstation:
     the same question, answered about the machine the tools work on."""
@@ -952,4 +977,5 @@ async def describe_workspace(owner: Optional[str], workspace: Optional[str]) -> 
 
 __all__ = ["WORKSTATION_TOOLS", "describe_workspace", "lifted_tools", "routes",
            "run_in_workstation", "vet_workspace",
-           "LIFTED_TOOLS", "WORKSPACE_TOOL", "network_refusal_note"]  # `B985`, `B977`
+           "LIFTED_TOOLS", "WORKSPACE_TOOL", "network_refusal_note",  # `B985`, `B977`
+           "workspace_named"]  # `B986`

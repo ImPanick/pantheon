@@ -829,6 +829,39 @@ def _resolve_workspace_from_message_path(request, message: str) -> tuple[str, st
     return "", ""
 
 
+async def _resolve_message_path_workspace(request, message: str) -> tuple[str, str]:
+    """`_resolve_workspace_from_message_path`, asked where this person's tools
+    run: `(workspace, "")`.
+
+    `B986`. With the workstation on, a path the message names — "fix
+    ~/proj/app.py", "look in /home/pw-…/proj" — is looked up in the person's
+    workstation (`workstation_tools.workspace_named`: the folder, or a file's
+    folder, vetted as the posted workspace is) and binds that folder for the
+    turn, as a host path does for an admin here. Anyone the workstation answers
+    for, not only an admin: it binds a folder of their own home, the picker's
+    reach. A workstation that does not answer binds nothing — every routed tool
+    will say it is down. With the workstation off, the host rule as it was."""
+    text = str(message or "")
+    if not text or not _LOCAL_FILE_TASK_RE.search(text):
+        # The host rule's own first test, asked before anything else is: a
+        # message that names no task binds nothing on either machine.
+        return "", ""
+    if not _works_in_workstation(request):
+        return _resolve_workspace_from_message_path(request, message)
+    from src.agent_tools.workstation_tools import workspace_named
+    from src.workstation_client import WorkstationError
+    owner = get_current_user(request)
+    for match in _ABS_PATH_RE.finditer(text):
+        raw = match.group(1).rstrip(".,;:)]}")
+        try:
+            workspace = await workspace_named(owner, raw)
+        except WorkstationError:
+            return "", ""
+        if workspace:
+            return workspace, ""
+    return "", ""
+
+
 def _session_url_matches_endpoint(session_url: str, endpoint_base: str) -> bool:
     if not session_url or not endpoint_base:
         return False
@@ -1779,7 +1812,8 @@ def setup_chat_routes(
                         "a follow-up to something already open in the browser")
                     _workspace_agent_intent = False
             if not workspace and isinstance(message, str):
-                _auto_workspace, _ = _resolve_workspace_from_message_path(request, message)
+                # `B986`: in the workstation when that is where this person's tools run.
+                _auto_workspace, _ = await _resolve_message_path_workspace(request, message)
                 if _auto_workspace:
                     workspace = _auto_workspace
                     chat_mode = "agent"
