@@ -2904,6 +2904,16 @@ class TaskScheduler:
                 err_text = f"{type(exec_exc).__name__}: {exec_exc}"
                 run_obj = db.query(TaskRun).filter(TaskRun.id == run_id).first()
                 if run_obj and run_obj.status in ("running", "success"):
+                    if run_obj.status == "running":
+                        # `B1055`. A run that raised before it produced anything
+                        # still held "Starting…" (or its last progress line) in
+                        # `result` — which History shows ahead of `error`, and
+                        # which `_handoff_from` hands to the failure branch, so
+                        # "tell me the backup failed" was told `result=Starting…`.
+                        # The reason is the result. A run that RETURNED its
+                        # output and then failed delivering it (`success` here)
+                        # keeps that output.
+                        run_obj.result = err_text[:2000]
                     run_obj.status = "error"
                     run_obj.error = err_text[:2000]
                     run_obj.finished_at = _utcnow()
