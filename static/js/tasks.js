@@ -13,7 +13,7 @@ import { ordinalSuffix } from './util/ordinal.js';
 // and this file is not: the test drives it with no DOM and no stubs, and then
 // hands what it produced to the real vendored Mermaid to parse.
 import {
-  componentOf, longestChain, workflowMermaid, workflowSentence, SHAPE_WORDS,
+  componentOf, longestChain, workflowMermaid, workflowSentence, SHAPE_WORDS, KIND_WORDS,
 } from './tasks/workflowDiagram.js';
 // `P22-03`. The New/Edit form lives in `tasks/taskFields.js` now, mounted here
 // and by the Workbench's side panel, so there is one form (`Law 7`). The other
@@ -1369,13 +1369,16 @@ async function _showRunHistory(taskId, taskName) {
 function _workflowDetail(task) {
   if (!task) return '';
   const kind = task.task_type || 'llm';
+  // `B1045`. The kind's word is `workflowDiagram.js:KIND_WORDS`, the table the
+  // Workbench's canvas names a step with, so the diagram and the canvas say the
+  // same word for a step (`Law 7`); an unknown kind reads as a prompt, as here
+  // and there it always did.
   if (kind === 'action') {
     const node = _actionNode(task.action);
-    const said = (node && (node.description || node.name)) || task.action || 'Action';
-    return 'Action · ' + (said.length > 58 ? said.slice(0, 57) + '…' : said);
+    const said = (node && (node.description || node.name)) || task.action || KIND_WORDS.action;
+    return KIND_WORDS.action + ' · ' + (said.length > 58 ? said.slice(0, 57) + '…' : said);
   }
-  if (kind === 'research') return 'Research';
-  return 'Prompt';
+  return KIND_WORDS[kind] || KIND_WORDS.llm;
 }
 
 /**

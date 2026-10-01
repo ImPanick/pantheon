@@ -44,7 +44,7 @@
 import uiModule from '../ui.js';
 import { sortModelIds } from '../modelSort.js';
 import { getSettings, invalidateSettings } from '../appConfig.js';
-import { EDGE_WORDS } from './workflowDiagram.js';
+import { EDGE_WORDS, EDGE_COLUMNS } from './workflowDiagram.js';
 
 const API_BASE = window.location.origin;
 
@@ -67,14 +67,16 @@ export const DAYS_OF_WEEK = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Frid
 // payload field, and the condition the wire calls it.
 //
 // `src/task_scheduler.py:112` is the server's own table —
-// `{success: "then_task_id", error: "else_task_id"}` — and this is the browser
-// half of it. The served graph carries the condition words (`graph.conditions`)
-// but not the column they live in, so the pairing has to be written here; one
-// table, read by the markup, the populate loop and the save, so a third branch
-// added server-side is one line here rather than three edits that can disagree.
+// `{success: "then_task_id", error: "else_task_id"}` — and the browser's half of
+// it is `workflowDiagram.js:EDGE_COLUMNS`, which the Workbench's canvas writes
+// an edge with. `B1045`: this spelled the same pairing a second time; it reads
+// the columns from there now, so the form's save and the canvas's write cannot
+// disagree about which column a condition lives in (`Law 7`). What is this
+// table's own is the select each condition has in the form. Read by the
+// markup, the populate loop and the save.
 export const CHAIN_FIELDS = [
-  ['task-form-chain', 'then_task_id', 'success'],
-  ['task-form-chain-else', 'else_task_id', 'error'],
+  ['task-form-chain', EDGE_COLUMNS.success, 'success'],
+  ['task-form-chain-else', EDGE_COLUMNS.error, 'error'],
 ];
 
 /**

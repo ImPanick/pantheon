@@ -51,16 +51,17 @@ export const EDGE_WORDS = Object.freeze({
  *  graph carries the condition words but not the column they are written to,
  *  so something on this side has to say it; the Workbench's canvas writes an
  *  edge through `PUT /api/tasks/{id}` with exactly one of these keys, and an
- *  omitted key leaves the other edge alone (`B873`). `tasks.js:CHAIN_FIELDS`
- *  still spells the same pairing for the form's two selects. */
+ *  omitted key leaves the other edge alone (`B873`). `B1045`: the task form's
+ *  two selects (`tasks/taskFields.js:CHAIN_FIELDS`) read their columns from
+ *  here too — one table for the browser. */
 export const EDGE_COLUMNS = Object.freeze({
   success: 'then_task_id',
   error: 'else_task_id',
 });
 
-/** `P22-02`. A step's kind in one word, per `task_type` — the words
- *  `tasks.js:_workflowDetail` writes on a diagram node, so the canvas and the
- *  diagram name a step the same way. */
+/** `P22-02`. A step's kind in one word, per `task_type` — read by the
+ *  Workbench's canvas and (`B1045`) by `tasks.js:_workflowDetail` for a diagram
+ *  node, so the canvas and the diagram name a step from one table. */
 export const KIND_WORDS = Object.freeze({
   llm: 'Prompt',
   research: 'Research',
