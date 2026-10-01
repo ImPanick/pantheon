@@ -22,6 +22,7 @@ from src.event_bus import (
     trigger_context_message as _trigger_context_message,
     trigger_summary as _trigger_summary,
 )
+from src.interactive_gate import STARTED_BY, STARTED_BY_BACKGROUND, STARTED_BY_PERSON
 from src.owner_identity import REQUEST_SENTINEL_OWNERS
 from src import paced_http  # `B1014`: NO_PROXY ranges, read for every client
 from src.task_action_policy import (
@@ -1123,6 +1124,21 @@ def _normalize_chat_endpoint(url: str) -> str:
 # by this line rather than by a second copy of it (`Law 7`).
 DRY_RUN_HEADLINE = "Dry run — nothing ran, nothing changed."
 
+# `B1047`. Why an `aborted` run ended, in the words its row carries. Named once
+# because three places write them — the stop button (`stop_task`), the
+# foreground gate (`stop_background_tasks_for_foreground` and the running-run
+# monitor) and the cancel branch that has to keep whichever of the first two
+# got there first — and `core/database.py`'s `aborted` entry promises the
+# message says which event it was. The gate wrote "Stopped by user" for its own
+# pre-emption (`_mark_run_aborted`'s default), so a run nobody stopped told the
+# person they had stopped it.
+STOPPED_BY_USER = "Stopped by user"
+FOREGROUND_TAKEOVER = "Paused because Pantheon became active"
+# `B1047`. The row of a run a person started while a chat reply is being
+# written, beside `_execute_task`'s "Queued — waiting for a free slot…" and the
+# background gate's "Queued — waiting for Pantheon to be idle…".
+WAITING_FOR_CHAT = "Queued — waiting for the chat reply in progress to finish…"
+
 
 class TaskScheduler:
     def __init__(self, session_manager):
@@ -1152,6 +1168,11 @@ class TaskScheduler:
         self._slot_permits = self._concurrency_cap
         self._slot_drain = None
         self._task_handles = {}
+        # `B1047`. Who started the run each handle belongs to (`STARTED_BY`),
+        # set and dropped beside `_task_handles`, so the foreground gate can
+        # tell a run a person asked for from background work before it stops
+        # anything.
+        self._task_started_by = {}
         # `P8-27` / `B603`. Per-run state, keyed by run.
         #
         # `_last_run_model` and `_last_run_steps` were single instance
@@ -1285,6 +1306,14 @@ class TaskScheduler:
             self._run_state = state
         return state
 
+    def _started_by_map(self) -> dict:
+        """`B1047`. `_task_started_by`, created on demand — for the same
+        `__new__`-built test schedulers `_runs()` allows for."""
+        started = getattr(self, "_task_started_by", None)
+        if started is None:
+            started = self._task_started_by = {}
+        return started
+
     def _state_for(self, run_id):
         """This run's slot, created on first write."""
         runs = self._runs()
@@ -1324,6 +1353,22 @@ class TaskScheduler:
         """
         state = self._runs().get(run_id)
         return state["trigger"] if state else None
+
+    def _run_started_by(self, run_id) -> str:
+        """`B1047`. Who started this run (`STARTED_BY`). A run with no slot —
+        an executor driven directly — is background work, which is what every
+        run was before the word existed."""
+        state = self._runs().get(run_id)
+        return (state or {}).get("started_by") or STARTED_BY_BACKGROUND
+
+    def _run_waits_for(self, run_id) -> str | None:
+        """`B1047`. What this run's model work waits for: `"idle"`, `"chat"`, or
+        `None` for a run a person forced to start now. Read by
+        `_run_agent_loop`'s wait, which is the second of the two."""
+        state = self._runs().get(run_id)
+        if not state or "waits_for" not in state:
+            return "idle"
+        return state["waits_for"]
 
     def set_run_model(self, run_id, model) -> None:
         self._state_for(run_id)["model"] = model
@@ -1427,8 +1472,15 @@ class TaskScheduler:
             # built — step two had no way to name what step one made. Built
             # here, where the predecessor's row is already loaded, rather than
             # re-read at the far end.
+            #
+            # `B1047`. And who started the chain: the step a person's Run now
+            # leads to is part of what they asked for, so it waits the way that
+            # run waited, not the way background work does — otherwise the
+            # failure branch of a run somebody is watching waits for them to
+            # leave the page.
             asyncio.create_task(self._run_chained(
-                chain_id, handoff=self._handoff_from(db, task, run_id, run_status)))
+                chain_id, handoff=self._handoff_from(db, task, run_id, run_status),
+                started_by=self._run_started_by(run_id)))
             return
         # `P8-26`. This said "cycle detected" for all three reasons, including
         # a chain that is simply longer than `CHAIN_MAX_DEPTH` and has no cycle
@@ -1586,8 +1638,16 @@ class TaskScheduler:
             logger.warning("Could not serialise the step log for run %s",
                            getattr(run, "id", "?"))
 
-    def _mark_run_aborted(self, task_id: str, run_id: str | None = None, message: str = "Stopped by user") -> bool:
-        """Mark an active run as aborted. Used by stop/cancel paths."""
+    def _mark_run_aborted(self, task_id: str, run_id: str | None = None,
+                          message: str = STOPPED_BY_USER) -> bool:
+        """Mark an active run as aborted. Used by stop/cancel paths.
+
+        `B1047`. `message` is why, and it replaces `result` too: an active
+        run's `result` is only ever a placeholder ("Queued — waiting for
+        Pantheon to be idle…", "Starting…") or a progress line — a run's output
+        is written when it finishes — so keeping it left an aborted run saying
+        it was still waiting.
+        """
         try:
             from core.database import SessionLocal, TaskRun, TASK_RUN_ACTIVE_STATUSES
             db = SessionLocal()
@@ -1605,7 +1665,7 @@ class TaskScheduler:
                     return False
                 run.status = "aborted"
                 run.error = message
-                run.result = run.result or message
+                run.result = message
                 run.finished_at = _utcnow()
                 db.commit()
                 return True
@@ -1614,6 +1674,29 @@ class TaskScheduler:
         except Exception:
             logger.debug("Task abort marker failed for %s", task_id, exc_info=True)
             return False
+
+    def _stopped_as(self, run_id: str) -> str | None:
+        """Why this run was stopped, if whoever stopped it already said.
+
+        `B1047`. `stop_task` and the foreground gate write the row (with
+        `_mark_run_aborted`) and then cancel the run; the cancel lands in
+        `_execute_task_locked`, which used to overwrite their words with its
+        own guess — "Stopped by user" unless its own monitor had fired. Read in
+        a fresh session, because the run's own session may hold the row as it
+        loaded it, before the stop was committed.
+        """
+        try:
+            from core.database import SessionLocal, TaskRun
+            db = SessionLocal()
+            try:
+                run = db.query(TaskRun).filter(TaskRun.id == run_id).first()
+                if run is not None and run.status == "aborted" and run.error:
+                    return run.error
+            finally:
+                db.close()
+        except Exception:
+            logger.debug("Could not read how run %s was stopped", run_id, exc_info=True)
+        return None
 
     def add_notification(self, task_name: str, status: str, task_id: str = None, owner: str = None, body: str = None,
                          review: dict = None):
@@ -2040,7 +2123,8 @@ class TaskScheduler:
 
     async def _execute_task(self, task_id: str, *, bypass_model_slot: bool = False,
                             release_executing: bool = True, trigger: dict | None = None,
-                            dry: bool = False):
+                            dry: bool = False,
+                            started_by: str = STARTED_BY_BACKGROUND):
         # Create the run record with status="queued" BEFORE waiting on the
         # semaphore so the UI can show that a manually-triggered task is in
         # line behind another. Once we acquire the slot, flip to "running"
@@ -2049,6 +2133,7 @@ class TaskScheduler:
         current = asyncio.current_task()
         if current:
             self._task_handles[task_id] = current
+            self._started_by_map()[task_id] = started_by
         run_id = str(uuid.uuid4())
         _q_db = SessionLocal()
         try:
@@ -2079,6 +2164,7 @@ class TaskScheduler:
                     gate_foreground=not (bypass_model_slot or dry),
                     trigger=trigger,
                     dry=dry,
+                    started_by=started_by,
                 )
                 # `P22-04`. The run's id, so a caller that awaited this — a dry
                 # run, below in `run_task_now` — can read back what it wrote.
@@ -2092,11 +2178,14 @@ class TaskScheduler:
                     release_executing=release_executing,
                     gate_foreground=True,
                     trigger=trigger,
+                    started_by=started_by,
                 )
             return run_id
         except asyncio.CancelledError:
             # If cancellation happens while queued behind the semaphore,
             # _execute_task_locked never runs and cannot update the Activity row.
+            # (`B1047`: a stop that already wrote why is kept — this only
+            # writes a row nobody has ended.)
             self._mark_run_aborted(task_id, run_id)
             self._defer_immediately_due_task(task_id, delay=timedelta(minutes=15))
             raise
@@ -2104,6 +2193,7 @@ class TaskScheduler:
             handle = self._task_handles.get(task_id)
             if handle is current:
                 self._task_handles.pop(task_id, None)
+                self._started_by_map().pop(task_id, None)
             if release_executing:
                 async with self._executing_lock:
                     self._executing.discard(task_id)
@@ -2139,6 +2229,7 @@ class TaskScheduler:
         gate_foreground: bool = True,
         trigger: dict | None = None,
         dry: bool = False,
+        started_by: str = STARTED_BY_BACKGROUND,
     ):
         from core.database import SessionLocal, ScheduledTask, TaskRun
 
@@ -2202,7 +2293,28 @@ class TaskScheduler:
                 self._record_dry_run(db, task, run_id)
                 return
 
-            if gate_foreground:
+            # `B1047`. Who started this run decides what it waits for, here and
+            # in `_run_agent_loop` (the second wait, for a model call), so both
+            # read it off the run's slot. Background work waits for Pantheon to
+            # be idle and is stopped when somebody arrives — unchanged. A run a
+            # person started waits only while a chat reply is being written,
+            # and only if it needs the model; forced ("Start now") waits for
+            # nothing. Measured before this: Run now waited for the page it was
+            # pressed on to close (the tab's heartbeat alone keeps the idle gate
+            # shut), and the page's own polls stopped it within seconds.
+            person = started_by == STARTED_BY_PERSON
+            slot = self._state_for(run_id)
+            slot["started_by"] = started_by
+            slot["waits_for"] = ("chat" if gate_foreground else None) if person else "idle"
+            if gate_foreground and person:
+                from src.interactive_gate import chat_in_progress, wait_for_chat_quiet
+                if chat_in_progress() and self._task_needs_model_slot(task_id):
+                    waiting = db.query(TaskRun).filter(TaskRun.id == run_id).first()
+                    if waiting and waiting.status == "queued":
+                        waiting.result = WAITING_FOR_CHAT
+                        db.commit()
+                    await wait_for_chat_quiet(f"task {task.name}")
+            elif gate_foreground:
                 waiting = db.query(TaskRun).filter(TaskRun.id == run_id).first()
                 if waiting and waiting.status == "queued":
                     waiting.result = "Queued — waiting for Pantheon to be idle…"
@@ -2254,7 +2366,9 @@ class TaskScheduler:
             # the runs in flight and no others.
             foreground_cancel = {"hit": False}
             foreground_monitor = None
-            if gate_foreground:
+            # `B1047`. Background work only: a run a person started is not
+            # stopped because they went on using Pantheon.
+            if gate_foreground and not person:
                 current_task = asyncio.current_task()
 
                 async def _cancel_if_foreground_active():
@@ -2371,23 +2485,34 @@ class TaskScheduler:
                 db.commit()
                 return
             except asyncio.CancelledError:
-                msg = (
-                    "Paused because Pantheon became active"
+                # `B1047`. Whoever stopped the run wrote why before cancelling
+                # it (`stop_task`, the foreground gate); keep their words. This
+                # branch's own guess is for the monitor above, which writes
+                # nothing first, and for a cancel nobody explained.
+                said = self._stopped_as(run_id)
+                msg = said or (
+                    FOREGROUND_TAKEOVER
                     if foreground_cancel.get("hit")
-                    else "Stopped by user"
+                    else STOPPED_BY_USER
                 )
+                takeover = msg == FOREGROUND_TAKEOVER
                 logger.info("Task '%s' %s", task.name, msg)
                 run_obj = db.query(TaskRun).filter(TaskRun.id == run_id).first()
                 if run_obj:
+                    if run_obj.status in ("queued", "running"):
+                        # Nothing was produced yet: `result` holds "Starting…"
+                        # or a progress line, which would read as still going.
+                        run_obj.result = msg
+                    else:
+                        run_obj.result = run_obj.result or msg
                     run_obj.status = "aborted"
                     run_obj.error = msg
-                    run_obj.result = run_obj.result or msg
                     run_obj.finished_at = _utcnow()
                     # An interrupted run is one of the two people most want the
                     # steps for; the other is the one that errored, below.
                     self._attach_run_steps(run_id, run_obj)
                 task.last_run = _utcnow()
-                if foreground_cancel.get("hit"):
+                if takeover:
                     task.next_run = _utcnow() + timedelta(minutes=15)
                 elif (task.trigger_type or "schedule") == "schedule":
                     task.next_run = compute_next_run(
@@ -2659,6 +2784,7 @@ class TaskScheduler:
             handle = self._task_handles.get(task_id)
             if handle is asyncio.current_task():
                 self._task_handles.pop(task_id, None)
+                self._started_by_map().pop(task_id, None)
             if release_executing:
                 async with self._executing_lock:
                     self._executing.discard(task_id)
@@ -3457,8 +3583,17 @@ class TaskScheduler:
         # behind the primary endpoint so a downed primary won't silently yield
         # `(no output)`.
         try:
-            from src.interactive_gate import wait_for_interactive_quiet
-            await wait_for_interactive_quiet(f"agent task {task.name}")
+            # `B1047`. The second wait, before the model call, follows the
+            # run's own: background work waits for Pantheon to be idle, a run a
+            # person started waits only for a chat reply, a forced one for
+            # nothing. It was the idle wait for every run, so a person's Run
+            # now — even a forced one — sat here while their tab was open.
+            from src.interactive_gate import wait_for_chat_quiet, wait_for_interactive_quiet
+            _waits = self._run_waits_for(run_id)
+            if _waits == "idle":
+                await wait_for_interactive_quiet(f"agent task {task.name}")
+            elif _waits == "chat":
+                await wait_for_chat_quiet(f"agent task {task.name}")
             from src.task_endpoint import resolve_task_candidates
             _task_fallbacks = resolve_task_candidates(
                 fallback_url=endpoint_url,
@@ -3762,7 +3897,8 @@ class TaskScheduler:
 
         return report
 
-    async def _run_chained(self, task_id: str, *, handoff: dict | None = None):
+    async def _run_chained(self, task_id: str, *, handoff: dict | None = None,
+                           started_by: str = STARTED_BY_BACKGROUND):
         """Run a chained task whose `_executing` claim is already held.
 
         `P22-01`. This used to take the claim itself, so an overlapping
@@ -3778,8 +3914,11 @@ class TaskScheduler:
         trigger payload already travels on, and `trigger_context_message` wraps
         it untrusted the way it wraps a webhook body. `None` is a chain with
         nothing to hand on, which is what every chain did before this row.
+
+        `B1047`. `started_by` is the chain's: a step a person's Run now leads
+        to waits as that run did.
         """
-        await self._execute_task(task_id, trigger=handoff)
+        await self._execute_task(task_id, trigger=handoff, started_by=started_by)
 
     def _chain_refusal(self, db, start_id: str, max_depth: int = CHAIN_MAX_DEPTH,
                        owner: str | None = None) -> str | None:
@@ -3907,7 +4046,8 @@ class TaskScheduler:
             logger.error(f"Task {task.id} MCP delivery failed: {e}")
 
     async def run_task_now(self, task_id: str, *, force: bool = False,
-                           trigger: dict | None = None, dry: bool = False):
+                           trigger: dict | None = None, dry: bool = False,
+                           started_by: str = STARTED_BY_BACKGROUND):
         """Manually trigger a task execution.
 
         `P8-23`. `trigger` is what fired it — the event bus's envelope or the
@@ -3930,11 +4070,17 @@ class TaskScheduler:
         nor the wait for Pantheon to go idle (`P8-33`), reaches no executor,
         and has no `await` between its first statement and its plan. A real
         run is spawned and answers `True`, exactly as before.
+
+        `B1047`. `started_by` says who asked (`src.interactive_gate.STARTED_BY`).
+        The default is background work — the event bus and the webhook call
+        this — and the task route passes `STARTED_BY_PERSON` for its buttons.
         """
+        if started_by not in STARTED_BY:
+            raise ValueError(f"started_by must be one of {STARTED_BY}, not {started_by!r}")
         if force:
             coro = self._execute_task(
                 task_id, bypass_model_slot=True, release_executing=False,
-                trigger=trigger, dry=dry)
+                trigger=trigger, dry=dry, started_by=started_by)
             if dry:
                 return await coro
             asyncio.create_task(coro)
@@ -3943,7 +4089,8 @@ class TaskScheduler:
             if task_id in self._executing:
                 return False
             self._executing.add(task_id)
-        coro = self._execute_task(task_id, trigger=trigger, dry=dry)
+        coro = self._execute_task(task_id, trigger=trigger, dry=dry,
+                                  started_by=started_by)
         if dry:
             return await coro
         asyncio.create_task(coro)
@@ -3961,7 +4108,7 @@ class TaskScheduler:
                 self._executing.discard(task_id)
                 stopped = True
 
-        stopped = self._mark_run_aborted(task_id) or stopped
+        stopped = self._mark_run_aborted(task_id, message=STOPPED_BY_USER) or stopped
         return stopped
 
     async def stop_background_tasks_for_foreground(self, *, reason: str = "Pantheon became active") -> int:
@@ -3971,16 +4118,28 @@ class TaskScheduler:
         user opens or uses Pantheon, foreground interaction wins immediately.
         Manual force-runs can be restarted by the user; automatic jobs will be
         deferred by their cancellation path instead of stealing the app.
+
+        `B1047`. Background work only. A run a person started (Run now, Start
+        now, and the steps they chain into) is what that person is waiting
+        for; the page they are waiting on — its own polls, its heartbeat — was
+        stopping it within seconds, and recording it as "Stopped by user"
+        (`_mark_run_aborted`'s default), so a run nobody stopped said its owner
+        had. What this stops now says what happened: `FOREGROUND_TAKEOVER`.
+        The row is written before the cancel lands, and the cancel branch keeps
+        it (`_stopped_as`).
         """
         async with self._executing_lock:
             task_ids = list(self._executing)
+        started_by = self._started_by_map()
         stopped = 0
         for task_id in task_ids:
+            if started_by.get(task_id) == STARTED_BY_PERSON:
+                continue
             handle = self._task_handles.get(task_id)
             if handle and not handle.done():
                 handle.cancel()
                 stopped += 1
-            if self._mark_run_aborted(task_id):
+            if self._mark_run_aborted(task_id, message=FOREGROUND_TAKEOVER):
                 stopped += 1
         if stopped:
             logger.info("Stopped %d background scheduler task(s): %s", stopped, reason)

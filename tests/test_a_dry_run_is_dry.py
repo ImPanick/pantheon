@@ -97,7 +97,7 @@ def _scheduler(chained=None):
     s._log_to_assistant = MagicMock()
     s._deliver_task_result = AsyncMock(return_value=None)
 
-    async def _run_chained(task_id, *, handoff=None):
+    async def _run_chained(task_id, *, handoff=None, started_by=None):  # `B1047` passes who started the chain
         (chained if chained is not None else []).append(task_id)
 
     s._run_chained = _run_chained
@@ -364,7 +364,7 @@ async def test_the_route_passes_dry_through_and_says_which_it_did(
     _seed(task_db)
     seen = {}
 
-    async def _run_task_now(task_id, *, force=False, trigger=None, dry=False):
+    async def _run_task_now(task_id, *, force=False, trigger=None, dry=False, started_by=None):
         seen.update(task_id=task_id, force=force, dry=dry)
         return True
 

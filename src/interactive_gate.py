@@ -20,6 +20,28 @@ _LAST_BROWSER_ACTIVITY = 0.0
 _COND: asyncio.Condition | None = None
 _COND_LOOP: asyncio.AbstractEventLoop | None = None
 
+# `B1047`. Who started a task run, which decides what it waits for. Two words
+# rather than a boolean whose polarity can be read either way (`Law 10`); the
+# scheduler records one on every run and hands it to the steps a run chains
+# into, and this module is the only place either word is given a meaning.
+#
+#   background  a schedule, an event or a webhook, and every step chained from
+#               one. Waits until nobody is using Pantheon — no request in the
+#               quiet window, no visible tab's heartbeat, no chat reply being
+#               written — and is stopped when somebody starts. What this gate
+#               was built for, unchanged.
+#   person      somebody pressed Run now (or Start now), and every step chained
+#               from that. Waits only while a chat reply is being written, and
+#               only if it needs the model; the open page, its own polls and
+#               the heartbeat never stop it. The person IS the foreground: the
+#               page they pressed the button on is not a reason to hold back
+#               the thing they just asked for — and measured on the old gate it
+#               never ran while that page stayed open, because the tab's
+#               heartbeat alone keeps "busy" true (`B1047`).
+STARTED_BY_BACKGROUND = "background"
+STARTED_BY_PERSON = "person"
+STARTED_BY = (STARTED_BY_BACKGROUND, STARTED_BY_PERSON)
+
 
 def _enabled() -> bool:
     from src.env_flags import env_flag
@@ -215,7 +237,60 @@ async def wait_for_interactive_quiet(label: str = "") -> bool:
                 if remaining <= 0:
                     return waited
                 timeout = min(timeout, remaining)
-            try:
-                await asyncio.wait_for(cond.wait(), timeout=timeout)
-            except asyncio.TimeoutError:
-                pass
+            await _wait_on(cond, timeout)
+
+
+async def _wait_on(cond: asyncio.Condition, timeout: float) -> None:
+    """Wait for a notify or `timeout` seconds, with `cond` held. Never swallows
+    a cancel.
+
+    `B1047`. This was `asyncio.wait_for(cond.wait(), timeout)`. On Python 3.11
+    — the venv, CI, and every native install `setup.py` builds — `wait_for`
+    returns the inner result when its task is cancelled in the same loop tick
+    as the inner wait completes, and drops the cancel. That is exactly how a
+    foreground request arrives: `_InteractiveActivityMiddleware` schedules
+    `stop_background_tasks_for_foreground` (which cancels the waiting run) and
+    then `track_interactive_request` notifies this condition, in one tick.
+    Measured on 3.11.15 through the real scheduler: the run was marked aborted,
+    its task kept waiting with its claim held, and once the page closed it ran
+    and chained. 3.12 rewrote `wait_for` on `asyncio.timeout`; this is that,
+    here, so the version does not decide whether a stopped run stays stopped.
+    `asyncio.timeout` is 3.11+, the floor CI runs (`src/mcp_scaffold.py`
+    already uses it).
+    """
+    try:
+        async with asyncio.timeout(timeout):
+            await cond.wait()
+    except TimeoutError:
+        pass
+
+
+def chat_in_progress() -> bool:
+    """Is a chat reply or an agent turn being written right now?
+
+    `B1047`. What a run a person started waits for — the one kind of
+    foreground work a task run would slow down, because both use the model.
+    """
+    return _enabled() and _has_active_chat_stream()
+
+
+async def wait_for_chat_quiet(label: str = "") -> bool:
+    """Wait until no chat reply or agent turn is being written.
+
+    `B1047`. The wait for a run a person started (`STARTED_BY_PERSON`): a
+    person's chat is not slowed by the run, and the run is not held back by the
+    page the person pressed Run now on. Request traffic and the tab's heartbeat
+    do not count here — `wait_for_interactive_quiet` is the background wait.
+    Returns True if it had to wait. Streams do not notify the condition, so it
+    looks again every quarter second, as the background wait does for them.
+    """
+    if not _enabled():
+        return False
+    cond = _condition()
+    waited = False
+    while True:
+        async with cond:
+            if not _has_active_chat_stream():
+                return waited
+            waited = True
+            await _wait_on(cond, 0.25)

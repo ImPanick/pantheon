@@ -1190,7 +1190,12 @@ def setup_task_routes(task_scheduler) -> APIRouter:
             _require_admin_for_task_action(user, task.task_type, task.action)
         finally:
             db.close()
-        started = await task_scheduler.run_task_now(task_id, force=force, dry=dry)
+        # `B1047`. A person pressed this, so the run waits only for a chat
+        # reply in progress and is not stopped by the page they pressed it on;
+        # background work keeps the idle gate (`src.interactive_gate.STARTED_BY`).
+        from src.interactive_gate import STARTED_BY_PERSON
+        started = await task_scheduler.run_task_now(
+            task_id, force=force, dry=dry, started_by=STARTED_BY_PERSON)
         if not started:
             raise HTTPException(409, "Task is already running")
         if dry:

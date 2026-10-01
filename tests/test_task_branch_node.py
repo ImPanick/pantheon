@@ -272,7 +272,7 @@ def _scheduler(chained):
     async def _deliver(*a, **k):
         return None
 
-    async def _run_chained(task_id, *, handoff=None):
+    async def _run_chained(task_id, *, handoff=None, started_by=None):  # `B1047` passes who started the chain
         # `P8-29` gave the chain a payload to hand on, so the stub takes it.
         # A stub that pins an internal signature is a test to update when that
         # signature grows, which is what `B603` says about the one in
