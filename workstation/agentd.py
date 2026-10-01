@@ -66,6 +66,7 @@ _ENV_KEY_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,127}$")
 # xdotool key syntax: names joined by `+`, several combos separated by spaces.
 _KEYS_RE = re.compile(r"^[A-Za-z0-9_+\-]{1,64}( [A-Za-z0-9_+\-]{1,64}){0,15}$")
 _ROUTE_RE = re.compile(r"^/v1/users/(?P<account>[^/]+)/(?P<rest>[a-z/]+)$")
+_ACCOUNT_PATH_RE = re.compile(r"^/v1/users/(?P<account>[^/]+)$")  # `B959`
 
 
 class WorkstationError(Exception):
@@ -197,6 +198,14 @@ class System:
     def screen(self, account: str) -> Screen:
         return NoScreen("This workstation has no display.")
 
+    def has_home(self, account: str) -> bool:
+        """Whether the account's home is there — looked at, never made
+        (`B959`). Every system keeps homes at `home(account)`, so one answer
+        serves them all; a home that is a symlink is not counted, because
+        `ensure` would not have made one (`reset` replaces it)."""
+        home = self.home(account)
+        return home.is_dir() and not home.is_symlink()
+
 
 class SingleUserSystem(System):
     """Every account is a directory under `root`; every command runs as the
@@ -318,6 +327,13 @@ class Workstation:
             out.update(self.settings())
             out["accounts"] = len(self.system.accounts())
         return out
+
+    def account(self, account: str) -> Dict:
+        """`B959`: whether the home exists, without making it. Deliberately
+        not `ensure`: nothing is made, started or woken."""
+        exists = self.system.has_home(account)
+        return {"account": account, "exists": exists,
+                "home": str(self.system.home(account)) if exists else None}
 
     def settings(self) -> Dict:
         return {"sudo": self.system.sudo, "network": self.system.network,
@@ -766,6 +782,12 @@ class Handler(BaseHTTPRequestHandler):
                 raise WorkstationError("unauthorized", "The workstation token is missing or wrong.")
             if method == "POST" and path == P.ROUTES["config"][1]:
                 self._send(200, self.station.config(self._body()))
+                return
+            # `B959`: the account itself, looked at and not made.
+            bare = _ACCOUNT_PATH_RE.match(path)
+            if bare and method == P.ROUTES["account"][0]:
+                self._send(200, self.station.account(self.station.check_account(
+                    bare.group("account"))))
                 return
             m = _ROUTE_RE.match(path)
             if not m:

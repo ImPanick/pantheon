@@ -264,6 +264,18 @@ class WorkstationClient:
                                f"Pantheon speaks {P.PROTOCOL_VERSION}. Update the older one.")
         return payload
 
+    async def account(self, account: str) -> Dict:
+        """`B959`: `{"account", "exists", "home"}` — whether this person's
+        home is there, without making it. A daemon older than the route
+        answers `not_found` for the route itself; that comes back as
+        `exists: None` — "cannot tell" — never as "does not exist"."""
+        try:
+            return await self._call("account", account)
+        except WorkstationError as e:
+            if e.status == 404:
+                return {"account": account, "exists": None, "home": None}
+            raise
+
     async def config(self, **settings: Any) -> Dict:
         return await self._call("config", body=settings)
 

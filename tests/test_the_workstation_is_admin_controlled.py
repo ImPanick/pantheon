@@ -404,13 +404,18 @@ def test_a_person_with_it_is_let_in_and_sees_only_their_own(app, ws):
     assert first["may_use"] is True and first["is_admin"] is False
     assert "settings" not in first, "a non-admin was shown the admin's settings"
     assert first["you"]["account"] == account_for(ALLOWED)
-    assert first["you"]["home_state"] == wa.HOME_MADE_NOW
-    assert Path(first["you"]["home"]) == ws.root / account_for(ALLOWED)
+    # `B959` (`P20-07`): looking makes nothing. The home is not there until
+    # the person or their agent works there, and the panel says so.
+    assert first["you"]["home_state"] == wa.HOME_NONE and first["you"]["home"] is None
+    assert account_for(ALLOWED) not in ws.system.accounts()
     daemon = first["daemon"]
     assert (daemon["agent"], daemon["protocol"], daemon["backend"]) == (
         P.AGENT_NAME, P.PROTOCOL_VERSION, "container")
     assert daemon["screen"] == [P.SCREEN_WIDTH, P.SCREEN_HEIGHT]
-    assert allowed.get("/api/workstation/status").json()["you"]["home_state"] == wa.HOME_KEPT
+    asyncio.run(wa.ensure_ready(ALLOWED, auth_manager=app.state.auth_manager))
+    kept = allowed.get("/api/workstation/status").json()["you"]
+    assert kept["home_state"] == wa.HOME_KEPT
+    assert Path(kept["home"]) == ws.root / account_for(ALLOWED)
     assert allowed.post("/api/workstation/check").status_code == 403
     assert wa.routes_tools(ALLOWED, auth_manager=app.state.auth_manager) is True
     client, account = wa.workstation_for(ALLOWED, auth_manager=app.state.auth_manager)
@@ -512,15 +517,17 @@ def test_a_down_workstation_is_reported_down_with_the_reason(app, ws, stranger, 
 
 
 def test_the_daemons_own_sentence_is_the_one_shown(app, ws):
-    """Down for a reason only the daemon knows — here, the account could not be
-    made — is shown in the daemon's words, not a paraphrase."""
+    """Down for a reason only the daemon knows — here, the home could not be
+    looked at — is shown in the daemon's words, not a paraphrase. (`B959`,
+    `P20-07`: the status asks `account` now, never `ensure`, so that is the
+    answer that fails.)"""
     switch_on(app, ws)
 
     def refuse(account):
         from workstation.agentd import WorkstationError as DaemonError
         raise DaemonError("unavailable", "The disk the homes live on is full.")
 
-    ws.system.ensure = refuse
+    ws.system.has_home = refuse
     status = as_user(app, ALLOWED).get("/api/workstation/status").json()
     assert status["state"] == wa.STATE_DOWN
     assert status["sentence"] == "The disk the homes live on is full."

@@ -127,6 +127,14 @@ ROUTES: Dict[str, Tuple[str, str]] = {
     # {"holder": "agent"|"person"} -> {"holder", "since"}. GET-less on
     # purpose: the current holder is also in `ensure`'s answer.
     "control": ("POST", "/v1/users/{account}/control"),
+    # `B959`: whether this account's home exists, asked WITHOUT making it —
+    # every other account route runs `ensure` first, so until this route a
+    # panel that only looked made an account (and, on the Ubuntu backend, a
+    # Unix user and a desktop). Never `ensure`s, never starts anything.
+    # -> {"account", "exists": bool, "home": str|None}
+    # A daemon older than this answers `404 not_found`; a caller reads that
+    # as "cannot tell", never as "does not exist".
+    "account": ("GET", "/v1/users/{account}"),
 }
 
 # ── what the fields may hold ──────────────────────────────────────────────────

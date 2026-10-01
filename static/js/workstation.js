@@ -88,6 +88,10 @@ const HOME_WORDS = {
   made_now: 'made just now',
 };
 
+// `B959`: the status looks without making, so a person who has never used the
+// workstation has no home yet — and is told when one appears.
+const HOME_NONE_WORDS = 'no home yet — it is made the first time you or your agent work there';
+
 let _status = null;
 let _wired = false;
 
@@ -130,6 +134,7 @@ function describeDaemon(daemon) {
 function describeYou(you) {
   if (!you || !you.account) return '';
   let line = `Your account: ${you.account}`;
+  if (you.home_state === 'none') return `${line} · ${HOME_NONE_WORDS}`;
   if (you.home) {
     const when = HOME_WORDS[you.home_state];
     line += ` · home ${you.home}${when ? ` (${when})` : ''}`;

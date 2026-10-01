@@ -99,6 +99,13 @@ PROBE_NOT_CHECKED = "not_checked"
 HOME_KEPT = "kept"
 HOME_MADE_NOW = "made_now"
 HOME_UNKNOWN = "unknown"
+# `B959`. Protocol v1 now answers "does it exist" without making it (the
+# `account` route), so the status asks that and makes nothing: `kept` when the
+# home is there, `none` when it is not yet — it is made the first time the
+# person or their agent works there — and `unknown` from a daemon older than
+# the route. `made_now` is no longer said by the status; it stays declared
+# because a stored answer or a caller may still carry it (`Law 1`).
+HOME_NONE = "none"
 
 OFF_SENTENCE = ("The workstation is switched off. An admin turns it on in "
                 "Settings → Workstation.")
@@ -420,9 +427,12 @@ async def status_for(owner: Optional[str], *, is_admin: bool, auth_manager: Any 
         daemon = await sync_config(client)
         out["daemon"] = _daemon_view(daemon)
         if enabled and permitted:
-            made = await client.ensure(out["you"]["account"])
-            out["you"].update(home=made.get("home"),
-                              home_state=HOME_MADE_NOW if made.get("created") else HOME_KEPT)
+            # `B959`: looked at, not made — opening the panel makes no account.
+            seen = await client.account(out["you"]["account"])
+            exists = seen.get("exists")
+            out["you"].update(home=seen.get("home") if exists else None,
+                              home_state=(HOME_KEPT if exists is True else HOME_NONE
+                                          if exists is False else HOME_UNKNOWN))
     except WorkstationError as e:
         out.update(probe=PROBE_FAILED, error={"code": e.code, "message": e.message})
         if enabled:
@@ -435,7 +445,8 @@ async def status_for(owner: Optional[str], *, is_admin: bool, auth_manager: Any 
 
 
 __all__ = [
-    "ADMIN_OFF_SENTENCE", "HOME_KEPT", "HOME_MADE_NOW", "HOME_UNKNOWN", "NOT_PERMITTED_SENTENCE", "OFF_SENTENCE",
+    "ADMIN_OFF_SENTENCE", "HOME_KEPT", "HOME_MADE_NOW", "HOME_NONE", "HOME_UNKNOWN",
+    "NOT_PERMITTED_SENTENCE", "OFF_SENTENCE",
     "PRIVILEGE", "PROBE_FAILED", "PROBE_NOT_CHECKED", "PROBE_OK", "RECREATE_COMMAND", "Ready",
     "SETTING_KEYS",
     "STATES", "STATE_DOWN", "STATE_NOT_PERMITTED", "STATE_OFF", "STATE_UNCONFIGURED",
