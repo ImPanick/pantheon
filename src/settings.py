@@ -367,6 +367,17 @@ DEFAULT_SETTINGS = {
     # reaches a browser, not even an admin's (`WITHHELD_SETTING_KEYS`). The panel
     # is told whether there is one and where it came from.
     "workstation_token": "",
+    # `B980`. The SHA-256 fingerprint of a remote workstation's certificate
+    # (what `workstation/install.py` prints), beside the token: Pantheon then
+    # trusts exactly that certificate for an `https://` address. Ships EMPTY —
+    # `PANTHEON_WORKSTATION_CERT_SHA256` beneath it, then the system's trust
+    # store — and `workstation_client.resolve_pin` holds the order. Not a
+    # secret (a certificate's hash), so it is shown; admin-only to write, and
+    # refused to the agent, because which certificate is trusted is where the
+    # token and every command go. Stored as 64 hex digits
+    # (`workstation_client.normalise_pin`); nothing it can hold turns
+    # verification off.
+    "workstation_tls_pin": "",
     # Which backend the admin says this is (`protocol.BACKENDS`): the container
     # image (`P20-01`), a VM (`P20-07`), or a remote machine. Stored and shown;
     # the daemon reports its own, and the panel shows both when they differ.

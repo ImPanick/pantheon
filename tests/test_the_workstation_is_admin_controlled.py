@@ -172,6 +172,7 @@ def test_the_keys_ship_off_and_the_destination_ships_empty():
         "workstation_enabled": False,
         "workstation_url": "",
         "workstation_token": "",
+        "workstation_tls_pin": "",            # `B980`: empty, the environment's beneath it
         "workstation_backend": "container",
         "workstation_sudo": True,
         "workstation_network": "full",

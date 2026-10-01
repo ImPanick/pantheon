@@ -3254,6 +3254,15 @@
                 <input type="password" id="ws-token" class="settings-select" placeholder="Paste one only to pair by hand" autocomplete="off" aria-describedby="ws-token-effect">
               </div>
               <div id="ws-token-effect" class="admin-toggle-sub ws-effect"></div>
+
+              <!-- `B980`. The certificate a remote workstation's installer made,
+                   pinned by the fingerprint it printed. Not a secret, so the
+                   field shows what is stored; saved with the address. -->
+              <div class="settings-row ws-field">
+                <label class="settings-label" for="ws-tls-pin">Certificate</label>
+                <input type="text" id="ws-tls-pin" class="settings-select" placeholder="Empty &mdash; or the fingerprint workstation/install.py printed" autocomplete="off" spellcheck="false" aria-describedby="ws-tls-pin-effect">
+              </div>
+              <div id="ws-tls-pin-effect" class="admin-toggle-sub ws-effect"></div>
               <div class="settings-row ws-actions">
                 <button type="button" id="ws-save-address" class="memory-toolbar-btn">Save address and token</button>
                 <button type="button" id="ws-forget-token" class="memory-toolbar-btn" hidden>Forget the token set here</button>

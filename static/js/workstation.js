@@ -117,6 +117,14 @@ const TOKEN_SOURCE_WORDS = {
     + 'sides, or paste it here.',
 };
 
+// `B980`. Where the pinned certificate came from, said beside its fingerprint.
+const PIN_SOURCE_WORDS = {
+  setting: 'set here',
+  environment: 'from PANTHEON_WORKSTATION_CERT_SHA256',
+};
+const PIN_NONE_WORDS = 'None: an https:// address is checked against the system\'s trusted '
+  + 'certificates. For one workstation/install.py set up, paste the fingerprint it printed.';
+
 const HOME_WORDS = {
   kept: 'kept from before',
   made_now: 'made just now',
@@ -261,6 +269,8 @@ function fillSettings(settings) {
   if ($('ws-sudo')) $('ws-sudo').checked = !!settings.sudo;
   if ($('ws-route-tools')) $('ws-route-tools').checked = !!settings.route_tools;
   if ($('ws-url')) $('ws-url').value = settings.url_setting || '';
+  // `B980`: shown, unlike the token — a certificate's fingerprint is no secret.
+  if ($('ws-tls-pin')) $('ws-tls-pin').value = settings.tls_pin_setting || '';
   fillSelect($('ws-backend'), settings.backends, BACKEND_WORDS, settings.backend);
   fillSelect($('ws-network'), settings.network_modes, NETWORK_WORDS, settings.network);
 }
@@ -281,6 +291,13 @@ function renderEffects(settings, daemon, network) {
       || TOKEN_SOURCE_WORDS.none;
   }
   show($('ws-forget-token'), settings.token_source === 'setting');
+  const pin = $('ws-tls-pin-effect');
+  if (pin) {
+    const where = PIN_SOURCE_WORDS[settings.tls_pin_source];
+    pin.textContent = settings.tls_pin
+      ? `Pinned: ${settings.tls_pin} — ${where || settings.tls_pin_source}.`
+      : PIN_NONE_WORDS;
+  }
 
   const backend = $('ws-backend-effect');
   if (backend) {
@@ -434,6 +451,12 @@ async function saveAddress() {
   // as the network agent's. Forgetting a token is its own button.
   const token = ($('ws-token')?.value || '').trim();
   if (token) body.workstation_token = token;
+  // `B980`: the pin only when it was changed, so saving an address never
+  // rewrites one by accident; emptied, it goes back to the environment's.
+  const pin = ($('ws-tls-pin')?.value || '').trim();
+  if ($('ws-tls-pin') && pin !== ((_status && _status.settings && _status.settings.tls_pin_setting) || '')) {
+    body.workstation_tls_pin = pin;
+  }
   const ok = await save(body);
   if ($('ws-token')) $('ws-token').value = '';
   return ok;

@@ -63,6 +63,7 @@ SETTING_KEYS = (
     "workstation_enabled",
     "workstation_url",
     "workstation_token",
+    "workstation_tls_pin",  # `B980`
     "workstation_backend",
     "workstation_sudo",
     "workstation_network",
@@ -270,6 +271,9 @@ def settings_view() -> Dict[str, Any]:
     base, base_source = wc.resolve_base()
     token, token_source = wc.resolve_token()
     stored_url = _setting("workstation_url")
+    pin, pin_source, _raw = wc.resolve_pin()
+    stored_pin = _setting("workstation_tls_pin")
+    stored_pin = stored_pin if isinstance(stored_pin, str) else ""
     return {
         "enabled": wc.enabled(),
         "url": base or "",
@@ -277,6 +281,12 @@ def settings_view() -> Dict[str, Any]:
         "url_setting": stored_url if isinstance(stored_url, str) else "",
         "token_present": bool(token),
         "token_source": token_source,
+        # `B980`. The certificate pinned for an `https://` address: the
+        # fingerprint in force as the installer prints it, where it came from,
+        # and what is stored here (shown — a certificate's hash is no secret).
+        "tls_pin": wc.display_pin(pin),
+        "tls_pin_source": pin_source,
+        "tls_pin_setting": wc.display_pin(stored_pin) or stored_pin,
         "backend": backend_setting(),
         "sudo": sudo_wanted(),
         "network": network_setting(),
@@ -339,6 +349,24 @@ def validate_setting(key: str, value: Any) -> Any:
             raise ValueError("workstation_token is one line of visible characters, at most "
                              "512, with no spaces.")
         return text
+    if key == "workstation_tls_pin":
+        # `B980`. Stored as the 64 hex digits the client compares, from any
+        # spelling `normalise_pin` reads; empty leaves it to the environment.
+        if value is None:
+            return ""
+        if not isinstance(value, str):
+            raise ValueError("workstation_tls_pin is text: a certificate's SHA-256 "
+                             "fingerprint, or empty.")
+        text = value.strip()
+        if not text:
+            return ""
+        pin = wc.normalise_pin(text)
+        if pin is None:
+            raise ValueError(
+                "workstation_tls_pin is the SHA-256 fingerprint of the workstation's "
+                "certificate — the line workstation/install.py printed, such as AB:CD:…:EF "
+                f"(64 hex digits) — or empty to use {P.TLS_PIN_ENV}.")
+        return pin
     raise KeyError(key)
 
 

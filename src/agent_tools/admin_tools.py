@@ -762,6 +762,9 @@ async def do_manage_settings(content: str, owner: Optional[str] = None) -> Dict:
             "workstation_sudo",
             "workstation_network",
             "workstation_route_tools",
+            # `B980`: which certificate is trusted decides who receives the
+            # token and every command over `https://`.
+            "workstation_tls_pin",
         }
         #
         # `trust_rung` is NOT here, and the first version of this set had it.
@@ -837,6 +840,9 @@ async def do_manage_settings(content: str, owner: Optional[str] = None) -> Dict:
                 "decides whether I can act as root inside the workstation",
             "workstation_network":
                 "is how much of the network the workstation may reach",
+            "workstation_tls_pin":
+                "is which certificate Pantheon trusts for the workstation, and so who gets "
+                "my commands",
         }
 
         def _is_self_restraint(k):

@@ -30,7 +30,8 @@ and this is the side that decides whether to send it, so the rule
 byte goes out: `http://` only to an address that is not globally routable (a
 name only when every address it resolves to is one), and `https://` verified
 — by the system's trust store, or by the certificate's SHA-256 fingerprint
-when `PANTHEON_WORKSTATION_CERT_SHA256` names one, compared on the handshake
+when one is pinned — in Settings → Workstation or by
+`PANTHEON_WORKSTATION_CERT_SHA256` (`resolve_pin`, `B980`) — compared on the handshake
 and so before the request carrying the token is written. A redirect is not
 followed: a workstation never sends one, and following it is how a request
 with the token in it ends up somewhere nobody configured.
@@ -219,12 +220,41 @@ def normalise_pin(raw: str) -> Optional[str]:
     return text
 
 
-def configured_pin() -> tuple[Optional[str], bool]:
-    """`(pin, set)`: the pinned fingerprint, and whether the variable was set
-    at all — so a value that is not a fingerprint is refused with a sentence
-    rather than quietly falling back to the trust store."""
+def resolve_pin() -> tuple[Optional[str], str, str]:
+    """`(pin, source, raw)` — `B980`. The setting (`workstation_tls_pin`,
+    Settings → Workstation), then `PANTHEON_WORKSTATION_CERT_SHA256`, then
+    nothing (the trust store). The order lives here only, like the address's
+    and the token's (`Law 7`). A layer that holds something that is not a
+    fingerprint still answers — `pin` None, `raw` what it holds — so the
+    client refuses with a sentence rather than falling through to a weaker
+    check."""
+    raw = str(_setting("workstation_tls_pin", "") or "").strip()
+    if raw:
+        return normalise_pin(raw), SOURCE_SETTING, raw
     raw = (os.environ.get(P.TLS_PIN_ENV) or "").strip()
-    return (normalise_pin(raw) if raw else None), bool(raw)
+    if raw:
+        return normalise_pin(raw), SOURCE_ENVIRONMENT, raw
+    return None, SOURCE_NONE, ""
+
+
+def configured_pin() -> tuple[Optional[str], bool]:
+    """`(pin, set)`: the pinned fingerprint, and whether one was set at all —
+    so a value that is not a fingerprint is refused with a sentence rather
+    than quietly falling back to the trust store. `resolve_pin`'s first half."""
+    pin, _source, raw = resolve_pin()
+    return pin, bool(raw)
+
+
+def display_pin(pin: Optional[str]) -> str:
+    """A fingerprint the way `workstation/install.py` and `openssl` print it —
+    `AB:CD:…` — or "" (`B980`)."""
+    pin = normalise_pin(pin or "")
+    return ":".join(pin[i:i + 2] for i in range(0, 64, 2)).upper() if pin else ""
+
+
+# Where a pin was set, as a sentence's words (`B980`).
+_PIN_WHERE = {SOURCE_SETTING: "the fingerprint set in Settings → Workstation",
+              SOURCE_ENVIRONMENT: P.TLS_PIN_ENV}
 
 
 def cert_fingerprint(der: bytes) -> str:
@@ -298,6 +328,7 @@ class WorkstationClient:
         # `P20-07`: learnt from this workstation's own `health`.
         self._starts_machines = False
         self._verify: Any = None
+        self._pin_source = SOURCE_NONE  # `B980`: where the pin in force came from
         # `B982`: httpx `mounts` that keep this workstation off an environment
         # proxy when `NO_PROXY` names its address by range (`paced_http.
         # direct_mounts`), worked out with `_verify`, once.
@@ -313,11 +344,14 @@ class WorkstationClient:
         parts = urlsplit(self.base)
         host = parts.hostname or ""
         if parts.scheme == "https":
-            pin, pin_set = configured_pin()
-            if pin_set and pin is None:
+            pin, source, raw = resolve_pin()  # `B980`: the setting, then the environment
+            self._pin_source = source
+            if raw and pin is None:
+                where = ("The certificate fingerprint in Settings → Workstation"
+                         if source == SOURCE_SETTING else P.TLS_PIN_ENV)
                 raise WorkstationError(
                     "bad_request",
-                    f"{P.TLS_PIN_ENV} is not a SHA-256 fingerprint. It is the line "
+                    f"{where} is not a SHA-256 fingerprint. It is the line "
                     "workstation/install.py printed, such as AB:CD:…:EF (64 hex digits).")
             self._mounts = await self._direct(host, parts.port or 443)  # `B982`
             self._verify = _pinned_context(pin) if pin else True
@@ -381,10 +415,11 @@ class WorkstationClient:
         while cause is not None and id(cause) not in seen:
             seen.add(id(cause))
             if isinstance(cause, CertificatePinMismatch):
+                where = _PIN_WHERE.get(self._pin_source, P.TLS_PIN_ENV)
                 return WorkstationError(
                     "unavailable",
                     f"The workstation at {self.base} presented a certificate (sha256 "
-                    f"{cause.got}) that is not the one {P.TLS_PIN_ENV} names, so Pantheon sent "
+                    f"{cause.got}) that is not the one {where} names, so Pantheon sent "
                     "nothing. If the workstation was reinstalled, use the fingerprint its "
                     "installer printed; if it was not, something else is answering there.")
             if isinstance(cause, ssl.SSLCertVerificationError):
@@ -392,8 +427,9 @@ class WorkstationClient:
                     "unavailable",
                     f"The workstation at {self.base} presented a certificate Pantheon cannot "
                     f"verify ({getattr(cause, 'verify_message', None) or cause}), so it sent "
-                    f"nothing. For the certificate workstation/install.py made, set "
-                    f"{P.TLS_PIN_ENV} to the fingerprint it printed.")
+                    f"nothing. For the certificate workstation/install.py made, paste the "
+                    f"fingerprint it printed into Settings → Workstation (or set "
+                    f"{P.TLS_PIN_ENV}).")
             cause = cause.__cause__ or cause.__context__
         return None
 
@@ -703,7 +739,8 @@ class NetGateClient(WorkstationClient):
         return payload
 
 
-__all__ = ["CertificatePinMismatch", "NetGateClient", "SOURCE_ENVIRONMENT", "SOURCE_NONE",
+__all__ = ["display_pin", "resolve_pin",  # `B980`
+           "CertificatePinMismatch", "NetGateClient", "SOURCE_ENVIRONMENT", "SOURCE_NONE",
            "SOURCE_PAIRING", "SOURCE_SETTING", "URL_ENV", "WorkstationClient", "WorkstationError",
            "WorkstationUnreachable",  # `B978`, added
            "account_for", "cert_fingerprint", "configured_base", "configured_pin", "configured_token",
