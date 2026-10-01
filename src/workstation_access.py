@@ -478,6 +478,9 @@ def network_view(chosen: str, daemon: Optional[Dict[str, Any]]) -> Dict[str, Any
         in_force, by, holds_against_root = gate.get("mode"), "gate", not root_can
     elif daemon.get("network_enforcement") == "accounts":
         in_force, by, holds_against_root = daemon.get("network_in_force"), "accounts", False
+    elif daemon.get("network_enforcement") == "hypervisor":
+        # `B992`: the VM backend's host, outside every machine (`restrict=on`).
+        in_force, by, holds_against_root = daemon.get("network_in_force"), "hypervisor", True
     else:
         in_force, by, holds_against_root = None, "none", False
     out.update(in_force=in_force if in_force in P.NETWORK_MODES else None, enforcement=by)

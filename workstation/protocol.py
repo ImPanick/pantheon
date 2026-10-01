@@ -246,7 +246,13 @@ NETWORK_MODES = ("full", "internet", "none")
 #             VM or another machine running `--system ubuntu` can do.
 #   none      nothing enforces a mode: the workstation has whatever network its
 #             machine gives it.
-NETWORK_ENFORCEMENT = ("gate", "accounts", "none")
+#   hypervisor  (`B992`, added) the VM backend's host holds it outside each
+#             person's machine: QEMU starts the machine's network with
+#             `restrict=on`, so nothing it sends is routed out or to the host
+#             but the one forwarded port. Root in the machine cannot change it.
+#             `none` only — user-mode networking cannot filter by destination,
+#             so *internet* on that backend is `accounts`, held in each machine.
+NETWORK_ENFORCEMENT = ("gate", "accounts", "none", "hypervisor")
 
 # What *internet* excludes: every address that is not on the public internet —
 # private and shared ranges (the LAN, Docker's own networks, CGNAT/Tailscale),

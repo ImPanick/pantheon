@@ -238,6 +238,16 @@ def max_running_from_env(raw: str, memory_mib: int, total_mib: Optional[int]) ->
     return int(raw) or None
 
 
+# `B992`: how much of the network each mode leaves (narrowest last), who holds
+# each on this backend, and what a machine that cannot hold *internet* is told.
+_NETWORK_WIDTH = {"full": 0, "internet": 1, "none": 2}
+_HOLDER = {"none": "hypervisor", "internet": "accounts", "full": "none"}
+INTERNET_UNHELD_SENTENCE = (
+    "Your workstation machine cannot hold the network an admin chose (internet only): it was "
+    "made from an older image without the rules for it, so it was not started. Reset your "
+    "workstation to make it from the current image.")
+
+
 def _minutes(seconds: float) -> str:
     n = max(1, round(seconds / 60))
     return "1 minute" if n == 1 else f"{n} minutes"
@@ -282,7 +292,8 @@ def choose_accel(dev: Path = Path("/dev/kvm"), *, want: str = "auto",
 def qemu_argv(*, name: str, accel: str, cpus: int, memory_mib: int, disk: Path,
               iso: Optional[Path], console: Path, qmp: Path,
               forward: Optional[Tuple[str, int]] = None,
-              dump: Optional[Path] = None, qemu: str = "qemu-system-x86_64") -> List[str]:
+              dump: Optional[Path] = None, qemu: str = "qemu-system-x86_64",
+              restrict: bool = False) -> List[str]:
     """One machine's command line. No display device (the desktop is Xvfb
     inside), no default devices, the serial console to a file, one virtio
     disk, the read-only seed or app disk (`iso`), user-mode network with at most one
@@ -306,6 +317,9 @@ def qemu_argv(*, name: str, accel: str, cpus: int, memory_mib: int, disk: Path,
         # (measured `P20-07`: "Dependency failed for /opt/pantheon-workstation/app").
         argv += ["-drive", f"if=virtio,file={iso},format=raw,readonly=on"]
     netdev = "user,id=net0"
+    if restrict:
+        # `B992`: the admin's *none*, held by QEMU itself (`Fleet.network_report`).
+        netdev += ",restrict=on"
     if forward is not None:
         host, port = forward
         netdev += f",hostfwd=tcp:{host}:{int(port)}-:{P.DEFAULT_PORT}"
@@ -546,17 +560,14 @@ class QemuMachine(Machine):
         if not self.exists():
             self._create()
         self.token = mint_machine_token(self.dir / "token")
-        app = self._app_disk()
+        self._app_disk()  # at the path `Fleet.machine_argv` names
         self.port = free_port()
         try:
             self.qmp.unlink()
         except FileNotFoundError:
             pass  # no socket left from a previous run: nothing to clear
         self.console.write_bytes(b"")
-        argv = qemu_argv(name=f"pantheon-{self.account}", accel=self.fleet.accel,
-                         cpus=self.fleet.cpus, memory_mib=self.fleet.memory_mib, disk=self.disk,
-                         iso=app, console=self.console, qmp=self.qmp,
-                         forward=("127.0.0.1", self.port))
+        argv = self.fleet.machine_argv(self)
         logger.info("starting the machine for %s (%s)", self.account, self.fleet.accel)
         # QEMU's own messages to a file, not a pipe: nothing reads a pipe
         # while the machine runs, and a full one would stall it.
@@ -622,7 +633,12 @@ class Fleet(System):
         self.factory = machine_factory or QemuMachine
         self.image_options = dict(image_options or {})
         self.start_timeout = start_timeout
-        self.network = "full"
+        self.network = self._persisted_network()  # `B992`
+        # Per machine: whether it was started with `restrict=on`, and what its
+        # own daemon last said it holds (`network_report`).
+        self._restricted: Dict[str, bool] = {}
+        self._guest_net: Dict[str, Dict] = {}
+        self._retiring: List[threading.Thread] = []
         self.image_state = "preparing" if need_image else "ready"
         self.image_why = ""
         self._image: Optional[Path] = None
@@ -685,6 +701,126 @@ class Fleet(System):
                 except WorkstationError as e:
                     logger.warning("could not tell %s's machine sudo is %s: %s",
                                    account, "on" if on else "off", e.message)
+
+    # -- `B992`: the admin's network mode, held as far as this backend can ------
+    #
+    # *none* is held OUTSIDE each machine: its user-mode network is started with
+    # `restrict=on`, and libslirp — QEMU's network stack, in QEMU's own process —
+    # then drops every packet the machine sends out or to the host, except DHCP
+    # and the one forwarded port the daemon answers on (read in libslirp's
+    # `udp.c`, `udp6.c`, `tcp_input.c`, `ip_icmp.c`, `ip6_icmp.c`, 2026-10-01: a
+    # new TCP connection is answered with a reset, UDP and ICMP dropped). Root in
+    # the machine cannot change a netdev it has no handle on. A netdev cannot be
+    # changed on a running machine, so a running machine whose network is not
+    # the admin's is powered off (cleanly, its disk kept) and boots with it on
+    # its next use; until then the report says the mode is still pending.
+    #
+    # *internet* cannot be said to user mode — it does not filter by
+    # destination — so it is held INSIDE each machine: pushed to the machine's
+    # daemon like `sudo`, which holds it for workstation accounts with `nft`
+    # (`P20-06`'s accounts layer; the machine image has `nftables` since then).
+    # That holds while `sudo` is off: an agent with `sudo` is root in its
+    # machine and can delete the table — and the panel says exactly that. A
+    # machine that answers without holding it (made from an older image) is
+    # powered off and refused with a sentence, never run under a wider network.
+    #
+    # Not done: a gate in front of the VM host (`P20-06`'s, as the container
+    # has). Its rules hold for the whole namespace QEMU's sockets live in, which
+    # is also where this host makes the machine image on its first start, from
+    # Ubuntu's and Mozilla's repositories: under *none* or *internet* the image
+    # could not be made. Holding *internet* against root here needs rules
+    # scoped to the machines' QEMU processes alone — filed, not built.
+
+    def _network_path(self) -> Path:
+        return self.state / "network.json"
+
+    def _persisted_network(self) -> str:
+        try:
+            value = json.loads(self._network_path().read_text(encoding="utf-8")).get("network")
+        except (OSError, ValueError, AttributeError):
+            return "full"  # the product's default (`D-2026-09-30-03`)
+        return value if value in P.NETWORK_MODES else "full"
+
+    def set_network(self, mode: str) -> None:
+        path = self._network_path()
+        tmp = path.with_name(path.name + ".tmp")
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump({"network": mode}, f)
+        os.replace(tmp, path)
+        self.network = mode
+        for account in self.running_accounts():
+            if self._restricted.get(account, False) != (mode == "none"):
+                self._retire(account)
+                continue
+            try:
+                self._hold(account, self.machine_for(account))
+            except WorkstationError as e:
+                logger.warning("%s's machine did not take network %s: %s", account, mode,
+                               e.message)
+                self._retire(account)
+
+    def _hold(self, account: str, m: Machine) -> None:
+        """Tell the machine's daemon the mode and keep what it says it holds;
+        a machine that cannot hold *internet* is a `WorkstationError`."""
+        answer = self._call(m, "config", body={"network": self.network}) or {}
+        self._guest_net[account] = {k: answer.get(k) for k in
+                                    ("network_in_force", "network_enforcement")}
+        if self.network == "internet" and not self._holds_internet(account):
+            raise WorkstationError("unavailable", INTERNET_UNHELD_SENTENCE)
+
+    def _holds_internet(self, account: str) -> bool:
+        said = self._guest_net.get(account) or {}
+        return (said.get("network_enforcement") == "accounts"
+                and said.get("network_in_force") == "internet")
+
+    def _wrong_network(self, account: str) -> bool:
+        return (self._restricted.get(account, False) != (self.network == "none")
+                or (self.network == "internet" and not self._holds_internet(account)))
+
+    def _retire(self, account: str) -> None:
+        """Power the machine off in the background (a clean power-off takes up
+        to `STOP_GRACE_S`), holding its lock so a call waits and then boots it
+        with the network it should have."""
+        def go() -> None:
+            with self._locks[account]:
+                m = self.machine_for(account)
+                if m.running() and self._wrong_network(account):
+                    logger.info("powering off %s's machine: its network is not %s yet",
+                                account, self.network)
+                    m.stop(graceful=True)
+        t = threading.Thread(target=go, name=f"retire-{account}", daemon=True)
+        self._retiring.append(t)
+        t.start()
+
+    def wait_retired(self, timeout: float = STOP_GRACE_S + 20) -> None:
+        for t in list(self._retiring):
+            t.join(timeout)
+        self._retiring = [t for t in self._retiring if t.is_alive()]
+
+    def _held(self, account: str) -> str:
+        if self._restricted.get(account, False):
+            return "none"
+        said = self._guest_net.get(account) or {}
+        if said.get("network_enforcement") == "accounts" and \
+                said.get("network_in_force") in P.NETWORK_MODES:
+            return said["network_in_force"]
+        return "full"
+
+    def network_report(self) -> Dict:
+        """What is in force on every machine that can reach anything: the
+        widest mode any running machine holds — never more than is kept — or,
+        with none running, the mode a machine starts with (it is not let run
+        otherwise). `network_enforcement` names who holds the chosen mode
+        (`hypervisor` for *none*, `accounts` for *internet*), or, under *full*,
+        whoever still holds a narrower one. Root in a machine cannot reach
+        this host's namespace, so `root_can_change_network` is false here; how
+        far `accounts` holds is the panel's to say (`network_view`)."""
+        held = [self._held(a) for a in self.running_accounts()] or [self.network]
+        in_force = min(held, key=_NETWORK_WIDTH.__getitem__)
+        by = _HOLDER[self.network if self.network != "full" else in_force]
+        return {"network_in_force": in_force, "network_enforcement": by,
+                "root_can_change_network": False}
 
     def _persisted_sudo(self) -> bool:
         try:
@@ -829,6 +965,17 @@ class Fleet(System):
 
     # -- machines ---------------------------------------------------------------
 
+    def machine_argv(self, m: Machine) -> List[str]:
+        """The QEMU command line for a person's machine: its files under its
+        own folder, its forwarded port, and `restrict=on` when the network it
+        is started with is *none* (`B992`)."""
+        folder = self.state / "machines" / m.account
+        return qemu_argv(name=f"pantheon-{m.account}", accel=self.accel, cpus=self.cpus,
+                         memory_mib=self.memory_mib, disk=folder / "disk.qcow2",
+                         iso=folder / "app.iso", console=folder / "console.log",
+                         qmp=folder / "qmp.sock", forward=("127.0.0.1", int(m.port or 0)),
+                         restrict=self._restricted.get(m.account, False))
+
     def machine_for(self, account: str) -> Machine:
         with self._registry:
             m = self._machines.get(account)
@@ -842,7 +989,11 @@ class Fleet(System):
         self._touch(account)  # `B979`
         with self._locks[account]:
             if m.running() and m.port is not None:
-                return m
+                if not self._wrong_network(account):
+                    return m
+                # Started under another network mode (`B992`): it boots again
+                # with this one.
+                m.stop(graceful=True)
             if not m.exists() and self.image_state != "ready":
                 raise WorkstationError("unavailable", self.image_sentence())
             started = time.monotonic()
@@ -850,6 +1001,8 @@ class Fleet(System):
                 others = [a for a in self.running_accounts() if a != account]
                 if self.max_running is not None and len(others) >= self.max_running:
                     raise WorkstationError("unavailable", self.cap_sentence(len(others)))
+                self._restricted[account] = self.network == "none"  # `B992`
+                self._guest_net.pop(account, None)
                 m.start()
             self._wait_answering(m, started)
             logger.info("the machine for %s answered after %.1f s", account,
@@ -861,6 +1014,12 @@ class Fleet(System):
                 m.stop(graceful=False)
                 raise WorkstationError("unavailable", f"Your workstation machine started but "
                                                       f"refused its settings: {e.message}")
+            # …and the network mode (`B992`): held, or the machine does not run.
+            try:
+                self._hold(account, m)
+            except WorkstationError as e:
+                m.stop(graceful=True)
+                raise e
             # …and only the time its RTC gave it (`B984`). Not fatal: a daemon
             # older than the route answers `not_found`, and runs as it did.
             try:
@@ -894,6 +1053,8 @@ class Fleet(System):
             m.destroy()
             with self._registry:
                 self._machines.pop(account, None)
+            self._restricted.pop(account, None)  # `B992`
+            self._guest_net.pop(account, None)
 
     # -- `B979`: use, idleness and the cap --------------------------------------
 

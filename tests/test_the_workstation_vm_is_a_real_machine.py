@@ -313,3 +313,74 @@ def test_the_installer_sets_up_a_remote_workstation_on_real_ubuntu(host, shared)
         run(c.exec(account, "sudo -n systemctl stop pws-remote-e2e 2>/dev/null; "
                             "sudo -n rm -rf /tmp/inst; true"))
         run(c.config(sudo=was))
+
+
+# ── `B992`, `B984`: written for a real VM, not run where they were written ───
+# (no machine image there: making one is 33-67 min of TCG; see `ws-vm2`'s
+# handoff). Each restores what it changed.
+
+_PROBE = """
+import errno, socket
+for host, port in (("1.1.1.1", 443), ("10.0.2.2", {port}), ("192.168.1.1", 80)):
+    s = socket.socket(); s.settimeout(8)
+    print(host, s.connect_ex((host, port)))
+"""
+
+
+def _probe(c, account, port) -> dict:
+    out = run(c.exec(account, _PROBE.format(port=port), shell="python", timeout_s=120))
+    assert out["exit_code"] == 0, out
+    return {ln.split()[0]: int(ln.split()[1]) for ln in out["stdout"].splitlines() if ln.strip()}
+
+
+def test_none_refuses_a_public_and_a_private_probe_from_inside_a_machine(host, shared):
+    """`B992`'s `Verify:`. `10.0.2.2` is QEMU's alias for the VM host's own
+    loopback, where its port answers: reached under *full*, so its refusal
+    under *none* is the rule's and not a closed port. Under `restrict=on` a
+    connection is answered with a reset by QEMU itself (libslirp)."""
+    c = _client(host)
+    account = shared.fresh()
+    port = int(host[0].rsplit(":", 1)[1])
+    before = run(c.health())
+    was, was_sudo = before["network"], before["sudo"]
+    try:
+        run(c.config(network="full"))
+        assert _probe(c, account, port)["10.0.2.2"] == 0, "premise: the private probe answers"
+        run(c.config(network="none"))
+        codes = _probe(c, account, port)        # the machine restarts with restrict=on first
+        assert all(code != 0 for code in codes.values()), codes
+        health = run(c.health())
+        assert (health["network_in_force"], health["network_enforcement"]) == ("none",
+                                                                                "hypervisor")
+        # As root, too: the rule is outside the machine.
+        run(c.config(sudo=True))
+        root = run(c.exec(account, "sudo -n nft flush ruleset; sudo -n python3 -c "
+                                   + shlex.quote(_PROBE.format(port=port)), timeout_s=120))
+        codes = [int(ln.split()[1]) for ln in root["stdout"].splitlines() if len(ln.split()) == 2]
+        assert len(codes) == 3 and all(code != 0 for code in codes), root
+    finally:
+        run(c.config(network=was, sudo=was_sudo))
+
+
+def test_a_machine_clock_pushed_off_is_brought_back_to_the_hosts(host, shared):
+    """`B984`: root in the machine moves its clock 30 s ahead; within a sync
+    period the host has stepped it back to its own, within a second."""
+    c = _client(host)
+    account = shared.fresh()
+    was = run(c.health())["sudo"]
+    try:
+        run(c.config(sudo=True))
+        run(c.exec(account, "sudo -n date -s @$(( $(date +%s) + 30 )) >/dev/null"))
+        deadline = time.monotonic() + vm.CLOCK_SYNC_S + vm.HOUSEKEEPING_S + 60
+        offset = None
+        while time.monotonic() < deadline:
+            t0 = time.time()
+            got = float(run(c.exec(account, "date +%s.%N"))["stdout"])
+            t1 = time.time()
+            offset = got - (t0 + t1) / 2
+            if abs(offset) < 1.0:
+                break
+            time.sleep(10)
+        assert offset is not None and abs(offset) < 1.0, offset
+    finally:
+        run(c.config(sudo=was))

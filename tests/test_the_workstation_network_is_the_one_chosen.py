@@ -106,7 +106,9 @@ def test_what_internet_lets_through_and_what_it_refuses(address, excluded):
 
 
 def test_the_protocol_names_who_holds_the_mode_in_one_word_each():
-    assert P.NETWORK_ENFORCEMENT == ("gate", "accounts", "none")
+    # `B992` added `hypervisor`: the VM backend's host holding *none* outside
+    # each machine (`tests/test_the_vm_backend_holds_the_network_mode.py`).
+    assert P.NETWORK_ENFORCEMENT == ("gate", "accounts", "none", "hypervisor")
     assert set(P.GATE_SELF_TESTS) == {"refused", "not_needed"}
     assert P.GATE_PORT != P.DEFAULT_PORT
     assert set(P.GATE_ROUTES) == {"health", "mode"}

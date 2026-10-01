@@ -124,12 +124,13 @@ class InProcessMachine(vm.Machine):
             return
         (self.dir / "homes").mkdir(parents=True, exist_ok=True)
         self.token = vm.mint_machine_token(self.dir / "token")
-        self.argv = self.fleet.machine_argv(self) if hasattr(self.fleet, "machine_argv") else []
         self.system = GuestSystem(self.dir / "homes", holds_network=self.holds_network)
         self.server = make_server(self.system, self.token, bind="127.0.0.1", port=0)
         threading.Thread(target=self.server.serve_forever, kwargs={"poll_interval": 0.02},
                          daemon=True).start()
         self.port = self.server.server_address[1]
+        # What QEMU would have been started with, had this been QEMU (`B992`).
+        self.argv = self.fleet.machine_argv(self) if hasattr(self.fleet, "machine_argv") else []
         self.starts += 1
 
     def stop(self, *, graceful: bool = True) -> None:
