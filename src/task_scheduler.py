@@ -52,8 +52,10 @@ def _utcnow() -> datetime:
 #
 # THE INVARIANT THAT IS PRESERVED, and it is a different one: **a single task
 # never runs twice concurrently.** That is held by `_executing` under
-# `_executing_lock` — claimed in `_check_due_tasks` and `_run_chained`,
-# released in `_execute_task`'s `finally` — and is completely independent of
+# `_executing_lock` — claimed in `_check_due_tasks`, in `run_task_now` and,
+# for a chain, in `_advance_chain` through `_claim_chained` (`P22-01` moved it
+# there from `_run_chained`, so the run's "Continued to" line and the claim are
+# one decision), released in `_execute_task`'s `finally` — and is completely independent of
 # this cap. Raising the cap lets *different* tasks overlap; it cannot make one
 # task overlap itself.
 #
@@ -175,6 +177,230 @@ def build_task_graph(tasks) -> dict:
         "conditions": list(EDGE_CONDITIONS),
         "max_depth": CHAIN_MAX_DEPTH,
     }
+
+
+# ── `P22-01` · one rule for what a workflow may be ──────────────────────────
+#
+# `_chain_refusal` walked `then_task_id` and nothing else, while `_advance_chain`
+# takes both `EDGE_COLUMNS` edges. So a failure edge went round the loop check
+# AND the depth cap: *"if the backup fails run cleanup; when cleanup works run
+# the backup"* was saved without a word, and the two could run each other for
+# ever. Measured on the tree before this block by driving it: `PUT` accepted
+# that edit, `_chain_refusal` answered `None` from both ends of the loop, and
+# `None` again from step two of a thirteen-step chain wired on failure alone.
+# Nothing checked at save — `_validate_then_task_id` checks one edge's target
+# (not itself, same owner) and nothing about where the edges lead.
+#
+# `validate_graph` is the rule, once. It takes rows, as `build_task_graph` does,
+# so the route at save and the engine at run hand it what they already hold and
+# it cannot be asked two different questions (`Law 7`). It answers in
+# `CHAIN_REFUSAL_REASONS`' three words and no fourth (`Law 10`).
+#
+# **Nothing that was refused is now permitted.** The walk follows
+# `EDGE_CONDITIONS` in order, success first, so the first path it walks from any
+# task is exactly the success-only path the old loop walked — with the same
+# checks in the same order (the cap once its budget is spent, then loop, then
+# owner) — and it reaches whatever the old
+# loop refused, for the same reason, before it looks at a failure edge at all.
+# `tests/test_one_rule_for_what_a_workflow_may_be.py` holds that against the old
+# walk itself, on graphs it generates.
+
+# The words a person reads for each condition. Keyed by `EDGE_CONDITIONS`, so a
+# third condition cannot ship without a sentence for it (a test asserts that).
+EDGE_WORDS = {
+    EDGE_WHEN_SUCCESS: "works",
+    EDGE_WHEN_ERROR: "fails",
+}
+
+# `P22-01`. Not a refusal of the graph, which is why it is not in
+# `CHAIN_REFUSAL_REASONS`: the chain is fine, and its next task is busy.
+CHAIN_ALREADY_RUNNING = "it was already running"
+
+
+class GraphRefusal(NamedTuple):
+    """Why a workflow may not run as drawn. `P22-01`.
+
+    `reason` is a `CHAIN_REFUSAL_REASONS` key — an enum, never a sentence.
+    `start` is the task the refused walk began at: a task some edge leads to,
+    which is where `_advance_chain` asks. `path` is the edges, shaped as
+    `task_edges` shapes them, from `start` to the defect — for `cycle`, exactly
+    the loop and nothing before it, so the sentence names the tasks in it.
+    """
+    reason: str
+    start: str
+    path: tuple
+
+
+def chain_entry_points(tasks) -> list:
+    """Every task an edge leads to, in row order. Each is a place
+    `_advance_chain` can be asked to continue to, and so a place the engine
+    walks from; a task nothing leads to is a head, and is never walked from."""
+    seen = set()
+    out = []
+    for task in tasks:
+        for edge in task_edges(task):
+            if edge["to"] not in seen:
+                seen.add(edge["to"])
+                out.append(edge["to"])
+    return out
+
+
+def chain_starts_through(tasks, task_id: str) -> list:
+    """The walks a change to `task_id`'s edges can alter.
+
+    From each entry point whose chain reaches `task_id` (so a mid-chain edit
+    that makes an EARLIER step's chain too long is caught where it is made),
+    and from `task_id`'s own successors. A defect elsewhere in the person's
+    tasks is not this save's to refuse — the engine still refuses it at run,
+    in that run's step log.
+    """
+    feeds = {}
+    by_id = {}
+    for task in tasks:
+        by_id[task.id] = task
+        for edge in task_edges(task):
+            feeds.setdefault(edge["to"], []).append(edge["from"])
+    upstream = {task_id}
+    frontier = [task_id]
+    while frontier:
+        nxt = []
+        for node in frontier:
+            for pred in feeds.get(node, ()):
+                if pred not in upstream:
+                    upstream.add(pred)
+                    nxt.append(pred)
+        frontier = nxt
+    own = by_id.get(task_id)
+    successors = {e["to"] for e in task_edges(own)} if own is not None else set()
+    return [s for s in chain_entry_points(tasks) if s in upstream or s in successors]
+
+
+def validate_graph(tasks, *, starts=None, owner: str | None = None,
+                   max_depth: int = CHAIN_MAX_DEPTH) -> "GraphRefusal | None":
+    """The first reason this workflow may not run, or `None`. Pure.
+
+    `tasks` is rows — anything with `id`, `owner` and the `EDGE_COLUMNS`
+    columns — the ones the caller already holds (`Law 7`). `starts` is where
+    to walk from; by default every `chain_entry_points` task. Every path from
+    each start, along every edge, is walked:
+
+      * **`too_deep`** — a path of more than `max_depth` tasks from its start;
+      * **`cycle`** — a path that comes back to a task already on it;
+      * **`cross_owner`** — a task on it that `owner` does not own (skipped when
+        `owner` is `None`, as the old walk skipped it).
+
+    A successor that is not among `tasks` ends that path and is not a refusal,
+    as a missing row was not before. Out of a task the edges are taken in
+    `EDGE_CONDITIONS` order, which is what makes the success-only path the first
+    one walked (see the block comment above).
+    """
+    by_id = {task.id: task for task in tasks}
+    if starts is None:
+        starts = chain_entry_points(tasks)
+
+    def visit(start, node_id, on_path, taken):
+        if len(on_path) >= max_depth:
+            return GraphRefusal(CHAIN_TOO_DEEP, start, tuple(taken))
+        if node_id in on_path:
+            return GraphRefusal(CHAIN_CYCLE, start,
+                                tuple(taken[on_path.index(node_id):]))
+        row = by_id.get(node_id)
+        if row is None:
+            return None
+        if owner is not None and getattr(row, "owner", None) != owner:
+            return GraphRefusal(CHAIN_CROSS_OWNER, start, tuple(taken))
+        on_path.append(node_id)
+        try:
+            for edge in task_edges(row):
+                found = visit(start, edge["to"], on_path, taken + [edge])
+                if found is not None:
+                    return found
+        finally:
+            on_path.pop()
+        return None
+
+    for start in starts:
+        found = visit(start, start, [], [])
+        if found is not None:
+            return found
+    return None
+
+
+def load_chain_rows(db, start_ids, *, known=None,
+                    max_depth: int = CHAIN_MAX_DEPTH) -> list:
+    """The rows a walk from `start_ids` reads, fetched by id a level at a time.
+
+    `P22-01`. The session half of `validate_graph`, kept apart so the rule
+    itself takes rows. `known` is rows the caller already holds — and the one
+    the route is about to save, whose edges are not in the database yet — and
+    those win over the database. No owner filter: a chain that reaches someone
+    else's task is a refusal, and a query scoped to the caller would make that
+    task look missing, which is not.
+
+    `max_depth` levels are enough: a task at depth `d` on some path is at most
+    `d` levels from a start, and the walk refuses at depth `max_depth` before
+    it reads that row.
+    """
+    from core.database import ScheduledTask
+
+    rows = dict(known or {})
+    frontier = [i for i in dict.fromkeys(start_ids) if i]
+    seen = set(frontier)
+    for _ in range(max_depth):
+        missing = [i for i in frontier if i not in rows]
+        if missing:
+            for row in db.query(ScheduledTask).filter(
+                    ScheduledTask.id.in_(missing)).all():
+                rows[row.id] = row
+        nxt = []
+        for node_id in frontier:
+            row = rows.get(node_id)
+            for edge in (task_edges(row) if row is not None else ()):
+                if edge["to"] not in seen:
+                    seen.add(edge["to"])
+                    nxt.append(edge["to"])
+        if not nxt:
+            break
+        frontier = nxt
+    return list(rows.values())
+
+
+def describe_graph_refusal(refusal: GraphRefusal, names=None, *,
+                           first: str | None = None) -> str:
+    """The sentence a person is told on Save, naming the tasks. `P22-01`.
+
+    Led by `CHAIN_REFUSAL_REASONS[reason]`, the same words the run's step log
+    uses, so a refusal reads the same at save and at run (`Law 10`). `names`
+    maps task id to the name a person knows it by; an id stands in for a name
+    nobody passed. Another owner's task is never named — only the person's own
+    task that leads to it. `first` is the task the person is saving: a loop
+    through it is told starting from it, because that is the link they just
+    drew.
+    """
+    names = names or {}
+
+    def called(task_id):
+        return f"“{names.get(task_id) or task_id}”"
+
+    lead = CHAIN_REFUSAL_REASONS[refusal.reason]
+    lead = lead[:1].upper() + lead[1:]
+    path = list(refusal.path)
+    if refusal.reason == CHAIN_CYCLE and path:
+        turn = next((i for i, e in enumerate(path) if e["from"] == first), 0)
+        path = path[turn:] + path[:turn]
+        hops = [f"if {called(e['from'])} {EDGE_WORDS.get(e['when'], e['when'])} "
+                f"it runs {called(e['to'])}" for e in path]
+        hops[-1] += " again"
+        said = hops[0] if len(hops) == 1 else ", ".join(hops[:-1]) + ", and " + hops[-1]
+        return f"{lead}: {said}. Remove one of those links to save it."
+    if refusal.reason == CHAIN_TOO_DEEP and path:
+        return (f"{lead}: from {called(refusal.start)} to {called(path[-1]['to'])} "
+                f"is {len(path) + 1} tasks in a row. Shorten it, or give part of "
+                f"it its own trigger.")
+    if refusal.reason == CHAIN_CROSS_OWNER and path:
+        return (f"{lead}, after {called(path[-1]['from'])}. A chain can only "
+                f"run your own tasks.")
+    return f"{lead}."
 
 
 # `P12-01` removed two private helpers from this module and nothing else moved:
@@ -1173,6 +1399,19 @@ class TaskScheduler:
         label = chain_task.name or chain_id
         lead = "Continued to" if when == EDGE_WHEN_SUCCESS else "Failed, so continued to"
         if refusal is None:
+            # `P22-01`. The claim is taken HERE, in the same synchronous
+            # statement that chooses the line to write. It was taken in
+            # `_run_chained`, after this function had already written
+            # "Continued to X" and handed X to `asyncio.create_task` — so when
+            # X was already in flight, the run said it continued and X was
+            # dropped by a bare `return` nobody saw. Now the line and the drop
+            # are one decision and cannot disagree.
+            if not self._claim_chained(chain_id):
+                logger.info("Not chaining on %s: %r → task %s is already running",
+                            when, task.name, chain_id)
+                self._record_chain_outcome(
+                    db, run_id, f"Did not continue to {label}: {CHAIN_ALREADY_RUNNING}")
+                return
             logger.info("Chaining on %s: %r → task %s", when, task.name, chain_id)
             self._record_chain_outcome(db, run_id, f"{lead} {label}")
             # `P8-29`. What this run produced, handed to the step that follows
@@ -1229,6 +1468,28 @@ class TaskScheduler:
             task_name=task.name or task.id, task_id=task.id, run_id=run_id,
             status=run_status, result=text, payload=payload,
         )
+
+    def _claim_chained(self, task_id: str) -> bool:
+        """Take `task_id`'s `_executing` claim now, or say somebody holds it.
+
+        `P22-01`. Synchronous on purpose, so `_advance_chain` decides whether
+        it continued and what its run says about it in one statement. That is
+        safe without `_executing_lock`: this runs on the event loop with no
+        `await` between the check and the add, and every holder of the lock in
+        this file does its whole critical section without an `await` either,
+        so no coroutine can be inside one while this runs (`_dispatch_after`
+        already discards from the set the same way).
+
+        A scheduler built with `__new__` for a test has no `_executing` until
+        something makes one, which is `_runs()`'s allowance for the same tests.
+        """
+        executing = getattr(self, "_executing", None)
+        if executing is None:
+            executing = self._executing = set()
+        if task_id in executing:
+            return False
+        executing.add(task_id)
+        return True
 
     def _record_chain_outcome(self, db, run_id, detail: str) -> None:
         """Append one step about what happened AFTER this run finished.
@@ -3491,9 +3752,15 @@ class TaskScheduler:
         return report
 
     async def _run_chained(self, task_id: str, *, handoff: dict | None = None):
-        """Run a chained task. Acquires _executing membership the same way
-        run_task_now does so an overlapping scheduler tick can't double-dispatch
-        the same task while the chain run is in flight.
+        """Run a chained task whose `_executing` claim is already held.
+
+        `P22-01`. This used to take the claim itself, so an overlapping
+        scheduler tick could not double-dispatch the task — and when the claim
+        was already held it returned without a word, after `_advance_chain` had
+        written "Continued to X". The claim is now taken by `_advance_chain`
+        through `_claim_chained` before the line is chosen, and this runs only
+        what that decided to run. The double-dispatch guard is the same set, the
+        same check and the same release (`_execute_task`'s `finally`).
 
         `P8-29`. `handoff` is what the step before produced, in the `P8-23`
         envelope — so it arrives at the successor through the one channel a
@@ -3501,10 +3768,6 @@ class TaskScheduler:
         it untrusted the way it wraps a webhook body. `None` is a chain with
         nothing to hand on, which is what every chain did before this row.
         """
-        async with self._executing_lock:
-            if task_id in self._executing:
-                return  # already in flight (manual trigger, scheduler tick, or another chain)
-            self._executing.add(task_id)
         await self._execute_task(task_id, trigger=handoff)
 
     def _chain_refusal(self, db, start_id: str, max_depth: int = CHAIN_MAX_DEPTH,
@@ -3520,33 +3783,27 @@ class TaskScheduler:
         way for anyone to find out it existed** — the only symptom was a chain
         that stopped at step ten and a log line that named the wrong cause.
 
-        Nothing is permitted that was refused before (`Law 1` runs both ways
-        here: the cap stays, and the cycle check stays). What changes is that
-        the caller can say which one happened, and `build_task_graph` can put
-        the same answer on the wire.
+        `P22-01`. It walked `then_task_id` alone, while `_advance_chain` takes
+        both edges, so a failure edge went round all three checks. It now asks
+        `validate_graph` — the rule the save routes ask — about the rows a walk
+        from here can reach. Nothing refused before is permitted (the success
+        path is walked first, with the old checks in the old order); what is new
+        is that a failure edge is walked too.
         """
-        from core.database import ScheduledTask
-        visited = set()
-        current = start_id
-        for _ in range(max_depth):
-            if current in visited:
-                return CHAIN_CYCLE
-            visited.add(current)
-            task = db.query(ScheduledTask).filter(ScheduledTask.id == current).first()
-            if owner is not None and task and task.owner != owner:
-                return CHAIN_CROSS_OWNER
-            if not task or not task.then_task_id:
-                return None
-            current = task.then_task_id
-        return CHAIN_TOO_DEEP
+        refusal = validate_graph(
+            load_chain_rows(db, [start_id], max_depth=max_depth),
+            starts=[start_id], owner=owner, max_depth=max_depth)
+        return refusal.reason if refusal is not None else None
 
     def _has_chain_cycle(self, db, start_id: str, max_depth: int = CHAIN_MAX_DEPTH,
                          owner: str | None = None) -> bool:
         """Kept, with its old name and its old answer.
 
-        Three callers and two tests ask this question as a boolean and the
-        answer they get is unchanged. `_chain_refusal` is the same walk with
-        the reason kept instead of thrown away.
+        `P22-01`, measured 2026-10-01: nothing in the product calls this any
+        more — `_advance_chain` reads `_chain_refusal`'s reason — and tests
+        do (`grep -rn "_has_chain_cycle(" tests/` for today's count, which is
+        not copied here). It stays for them (`Law 1`), the same boolean over
+        the same walk.
         """
         return self._chain_refusal(db, start_id, max_depth, owner) is not None
 

@@ -558,6 +558,46 @@ def setup_task_routes(task_scheduler) -> APIRouter:
             raise HTTPException(404, "Chained task not found")
         return target.id
 
+    def _refuse_a_workflow_that_cannot_run(db, *, task_id: str, owner: Optional[str],
+                                           name: Optional[str], action: Optional[str],
+                                           then_task_id: Optional[str],
+                                           else_task_id: Optional[str],
+                                           user: Optional[str]) -> None:
+        """400, naming the tasks, if these edges make a workflow the engine refuses.
+
+        `P22-01`. `_validate_then_task_id` checks one edge's target — not
+        itself, the caller's own — and nothing about where the edges lead, so
+        *"if the backup fails run cleanup; when cleanup works run the backup"*
+        saved cleanly and only a run could find out, by looping. This asks
+        `validate_graph`, the function `_advance_chain` asks before it
+        continues, over the caller's own tasks with this one's edges as they
+        would be saved — so what Save refuses is exactly what a run would
+        refuse, in the same words.
+
+        Walked from where a change to this task's edges can matter
+        (`chain_starts_through`) rather than over everything the person owns:
+        an older defect somewhere else is not this save's to refuse, and the
+        engine still says so in that run's step log.
+        """
+        from types import SimpleNamespace
+        from src.task_scheduler import (
+            chain_starts_through, describe_graph_refusal, load_chain_rows,
+            validate_graph,
+        )
+        proposed = SimpleNamespace(id=task_id, owner=owner, name=name, action=action,
+                                   then_task_id=then_task_id, else_task_id=else_task_id)
+        q = db.query(ScheduledTask)
+        if user:
+            q = q.filter(ScheduledTask.owner == user)
+        known = {row.id: row for row in q.all()}
+        known[task_id] = proposed
+        starts = chain_starts_through(list(known.values()), task_id)
+        rows = load_chain_rows(db, starts, known=known)
+        refusal = validate_graph(rows, starts=starts, owner=owner)
+        if refusal is not None:
+            names = {row.id: _display_task_name(row) for row in rows}
+            raise HTTPException(400, describe_graph_refusal(refusal, names, first=task_id))
+
     def _task_tz(db, *, crew_member_id=None, tz_name=None, task=None):
         """The zone a task's wall-clock time means, before it exists as a row.
 
@@ -712,6 +752,13 @@ def setup_task_routes(task_scheduler) -> APIRouter:
         try:
             then_task_id = _validate_then_task_id(db, req.then_task_id, user)
             else_task_id = _validate_then_task_id(db, req.else_task_id, user)
+            if then_task_id or else_task_id:
+                # `P22-01`. Nothing leads to a task that does not exist yet, so
+                # what this can find at create is a defect waiting downstream —
+                # a loop or an over-long chain this task would lead into.
+                _refuse_a_workflow_that_cannot_run(
+                    db, task_id=task_id, owner=user, name=name, action=req.action,
+                    then_task_id=then_task_id, else_task_id=else_task_id, user=user)
             crew_member_id = _validate_crew_member_id(db, req.crew_member_id, user)
             execution = _validate_execution_settings(req)
             # `P8-32`. In the task's own zone, from the moment it is created.
@@ -926,10 +973,20 @@ def setup_task_routes(task_scheduler) -> APIRouter:
                 task.trigger_event = req.trigger_event
             if req.trigger_count is not None:
                 task.trigger_count = req.trigger_count
+            edges_before = (task.then_task_id, task.else_task_id)
             if req.then_task_id is not None:
                 task.then_task_id = _validate_then_task_id(db, req.then_task_id, user, current_task_id=task.id)
             if req.else_task_id is not None:
                 task.else_task_id = _validate_then_task_id(db, req.else_task_id, user, current_task_id=task.id)
+            if (task.then_task_id, task.else_task_id) != edges_before:
+                # `P22-01`. Only when this save moves an edge: an edit that
+                # renames a task in an older broken chain is not refused for
+                # the chain, which it did not change. Raising here leaves the
+                # row unsaved — `finally` closes the session uncommitted.
+                _refuse_a_workflow_that_cannot_run(
+                    db, task_id=task.id, owner=task.owner, name=task.name,
+                    action=task.action, then_task_id=task.then_task_id,
+                    else_task_id=task.else_task_id, user=user)
             if req.notifications_enabled is not None:
                 task.notifications_enabled = bool(req.notifications_enabled)
             if req.character_id is not None:
