@@ -47,9 +47,13 @@ async def _browse_workstation(owner: Optional[str], raw: str) -> Dict:
     plus `where` and `home`. Never above the home: with `sudo` on the daemon
     would list `/`, and the owner's call is a folder in the home."""
     from src.agent_tools.workstation_tools import _home_path, _sensitive, within
-    from src.workstation_access import workstation_for
+    from src.workstation_access import sync_config, workstation_for
     from src.workstation_client import WorkstationError
     client, account = workstation_for(owner)
+    # `B987`: the admin's `sudo` and network pushed first, as every tool call
+    # does — this reads files through the daemon, and the daemon's jail is
+    # whatever it was last told. (The answer stays in the home either way.)
+    await sync_config(client)
     home = await _home_path(client, account)
     target = home
     text = (raw or "").strip()
@@ -81,6 +85,8 @@ async def _browse_workstation(owner: Optional[str], raw: str) -> Dict:
 
 async def _vet_workstation(owner: Optional[str], raw: str) -> Dict:
     from src.agent_tools.workstation_tools import vet_workspace
+    from src.workstation_access import sync_config, workstation_for
+    await sync_config(workstation_for(owner)[0])   # `B987`, as `_browse_workstation`
     path = await vet_workspace(owner, raw)
     return {"ok": path is not None, "path": path, "where": "workstation"}
 

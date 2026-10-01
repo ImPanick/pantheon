@@ -186,7 +186,21 @@ def may_use(owner: Optional[str], *, auth_manager: Any = None) -> bool:
 def workstation_for(owner: Optional[str], *, auth_manager: Any = None
                     ) -> Tuple[WorkstationClient, str]:
     """`(client, account)` for this person, or a `WorkstationError` saying which
-    condition failed and who can change it."""
+    condition failed and who can change it.
+
+    **A caller that reads files or runs commands through the client pushes the
+    admin's settings first** — `sync_config(client)`, or `ensure_ready`, which
+    does it — because the daemon enforces what it was last *told*: the home
+    jail follows `sudo`, the network follows the mode, and a daemon that
+    restarted has forgotten both. Nothing here does it for the caller, since
+    asking is a round trip and not every caller works there (`B987`). Who does:
+    the routed tools (`run_in_workstation`, every call), `computer`
+    (`ensure_ready`), the panel (`status_for`) and the workspace picker's two
+    routes (`routes/workspace_routes.py`, since `B987`). Who does not, and
+    why: the screen window's routes (`P20-05`) — a screenshot, a click and who
+    holds the mouse are none of them a file or a command, and neither the jail
+    nor the network applies to them — and `vet_workspace`/`describe_workspace`,
+    which judge a folder by the home whatever the jail (`B968`)."""
     if not wc.enabled():
         raise WorkstationError("off", OFF_SENTENCE)
     client = wc.from_settings()

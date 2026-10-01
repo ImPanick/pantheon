@@ -118,14 +118,13 @@ def test_the_picker_never_leaves_the_home(ws, settings, picker, home, path):
 
 def test_with_sudo_on_the_picker_still_stays_in_the_home(ws, settings, picker, home):
     _on(settings, ws, workstation_sudo=True)
-    # The jail lifted in the daemon itself: the picker's routes do not push the
-    # admin's `sudo` (a tool call does), and this case is about the daemon
-    # answering `/etc` and the picker declining it anyway.
-    ws.system.set_sudo(True)
+    # `B987`: the picker's routes push the admin's `sudo` as a tool call does,
+    # so the setting itself lifts the daemon's jail — this case is about the
+    # daemon answering `/etc` and the picker declining it anyway.
+    assert picker("browse", "ann", path="/etc").json()["path"] == str(home)
     import src.workstation_client as wc
     client = wc.WorkstationClient(ws.url, ws.token)
     assert asyncio.run(client.list(account_for("ann"), "/etc", max_entries=0))["path"] == "/etc"
-    assert picker("browse", "ann", path="/etc").json()["path"] == str(home)
     assert picker("vet", "ann", path="/etc").json() == {"ok": False, "path": None,
                                                         "where": "workstation"}
 
