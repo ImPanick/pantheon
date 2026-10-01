@@ -22,6 +22,12 @@ note rather than a guess hidden in a test:
     source keeps a draft, saves with ``base_version``, and hands the room's
     panels exactly the arguments C3 names.
 
+Where C3 names a verb and not its answer, the fakes answer the way wf-api's
+module was being written when this was (read on its branch, 2026-10-01, not
+copied): a source's verbs answer `{ ok: false, sentence }` rather than throw,
+`ready` settles with `state().loadError`, `state().viewing` is an object and
+`state().failed` names a failed run's step. The room reads either way.
+
 Nothing here is the product; nothing here is copied from wf-api's branch.
 """
 
@@ -226,29 +232,45 @@ export default { createWorkflowApi, WorkflowRefusal };
 
 WORKFLOW_SOURCE_JS = r"""
 // A fake of `workflowSource.js` (C3): a canvas source over one workflow, with
-// a draft, built on the (fake) API and the panels the room hands it.
+// a draft, built on the (fake) API and the panels the room hands it. Its
+// verbs ANSWER a refusal (`{ ok: false, status, sentence, nodeIds }`) rather
+// than throw it, `ready` settles even when the document could not be read
+// (`state().loadError` says why), `state().viewing` is `{ version, … }` and
+// `state().failed` names the step a failed run ended on — the shapes the
+// room must read whichever way C3's open points are settled.
 import { KIND_WORDS } from '../tasks/workflowDiagram.js';
 const copy = (o) => JSON.parse(JSON.stringify(o));
+const no = (err) => ({ ok: false, status: err.status || 0, sentence: err.sentence || err.message,
+  reason: err.reason || null, nodeIds: err.nodeIds || [] });
 export function createWorkflowSource({ api, workflowId, mode = 'edit', runId = null, describeTrigger, panels, onState }) {
   const W = globalThis.__wf;
   W.sources = W.sources || [];
-  let doc = null, draft = null, dirty = false, name = '', viewing = null, exec = null, destroyed = false;
-  const touch = () => { dirty = true; if (onState) onState(); };
+  let doc = null, draft = null, dirty = false, name = '', viewing = null, exec = null, loadError = null;
+  const emit = () => { if (onState) onState(); };
+  const touch = () => { dirty = true; emit(); };
   const nodeOf = (id) => (draft ? draft.nodes.find((n) => n.id === id) : null);
   const recOf = (id) => (exec ? exec.nodes.find((r) => r.node_id === id) : null);
   const ready = (async () => {
-    const r = await api.getWorkflow(workflowId);
-    doc = r.workflow; draft = copy(doc.graph); name = doc.name;
-    if (mode === 'run') exec = await api.getExecution(workflowId, runId);
-    if (onState) onState();
+    try {
+      const r = await api.getWorkflow(workflowId);
+      doc = r.workflow; draft = copy(doc.graph); name = doc.name;
+      if (mode === 'run') exec = await api.getExecution(workflowId, runId);
+    } catch (err) { loadError = err.sentence || err.message; }
+    emit();
   })();
+  function failed() {
+    if (mode !== 'run' || !exec || !exec.run || exec.run.status !== 'error') return null;
+    const last = exec.nodes[exec.nodes.length - 1];
+    return last && last.status === 'error' ? { nodeId: last.node_id, label: last.label, firstLine: String(last.error || '').split('\n')[0] } : null;
+  }
   const src = {
     ready,
     get readOnly() { return mode === 'run' || viewing != null; },
     words: { region: 'Steps of this workflow', emptyTitle: 'No steps yet.', emptyText: 'Add a step.',
       hint: 'Click a step to change it.', newLabel: 'Add a step' },
     async load() {
-      const g = mode === 'run' ? exec.graph : draft;
+      if (loadError) throw new Error(loadError);
+      const g = mode === 'run' ? exec.graph : viewing ? viewing.graph : draft;
       const trig = doc.trigger_task || {};
       const items = [{ id: '__start__', name: 'Starts · ' + (describeTrigger ? describeTrigger(trig) : ''), kind: 'start',
         sub: '', ports: [], accepts: false, fixed: true, marks: [], outcome: { tone: 'none', word: '' } }];
@@ -271,11 +293,15 @@ export function createWorkflowSource({ api, workflowId, mode = 'edit', runId = n
     async savePositions(map) { return api.savePositions(workflowId, Object.fromEntries([...map].map(([k, p]) => [k, [p.x, p.y]]))).then(() => ({ ok: true })); },
     openPanel(host, item, { onSaved, onCancel }) {
       W.opened = (W.opened || []).concat([[mode, item ? item.id : null]]);
-      if (item && item.id === '__start__') return panels.start(host, { triggerTask: doc.trigger_task, tasks: W.tasks, onSaved, onCancel });
-      if (mode === 'run') return panels.record(host, { node: copy(nodeOf(item.id) || exec.graph.nodes.find((n) => n.id === item.id)), record: copy(recOf(item.id) || null), run: copy(exec.run) });
+      if (item && item.id === '__start__') {
+        return panels.start(host, { triggerTask: doc.trigger_task, tasks: W.tasks,
+          onSaved: (task) => { if (task) doc.trigger_task = task; emit(); onSaved({ id: '__start__', name: 'Starts', sentence: 'Saved when it starts.' }); },
+          onCancel });
+      }
+      if (mode === 'run') return panels.record(host, { node: copy(exec.graph.nodes.find((n) => n.id === item.id) || null), record: copy(recOf(item.id) || null), run: copy(exec.run) });
       const n = nodeOf(item.id);
       return panels.node(host, { node: copy(n), tasks: W.tasks, workflow: doc, source: src,
-        onApply: (change) => { Object.assign(n, { label: change.label, kind: change.kind, config: change.config }); touch(); onSaved({ id: n.id, label: change.label }); },
+        onApply: (change) => { Object.assign(n, { label: change.label, kind: change.kind, config: change.config }); touch(); onSaved({ id: n.id, name: change.label, sentence: `Changed “${change.label}”. Save the workflow to keep it.` }); },
         onCancel });
     },
     async newItem(anchor) {
@@ -286,26 +312,63 @@ export function createWorkflowSource({ api, workflowId, mode = 'edit', runId = n
       touch();
       return id;
     },
-    async removeItem(id) { draft.nodes = draft.nodes.filter((n) => n.id !== id); draft.edges = draft.edges.filter((e) => e.from !== id && e.to !== id); touch(); return { ok: true }; },
-    async dryRun() { const r = await api.runWorkflow(doc.task_id, { dry: true }); return { ok: true, plans: new Map() }; },
-    state() { return { workflow: doc, name, dirty, viewing, nodes: exec ? exec.nodes : undefined }; },
-    rename(n) { name = n; touch(); },
-    async save() {
-      const r = await api.saveWorkflow(workflowId, { name, graph: draft, baseVersion: doc.version });
-      doc = r.workflow; draft = copy(doc.graph); name = doc.name; dirty = false; if (onState) onState();
-      return r;
+    async removeItem(id) { draft.nodes = draft.nodes.filter((n) => n.id !== id); draft.edges = draft.edges.filter((e) => e.from !== id && e.to !== id); touch(); return { ok: true, sentence: 'Save the workflow to keep the change.' }; },
+    async dryRun() {
+      try { await api.runWorkflow(doc.task_id, { dry: true }); } catch (err) { return no(err); }
+      return { ok: true, plans: new Map(W.plans || []), head: '__start__', partial: !W.plans };
     },
-    async discard() { W.discarded = (W.discarded || 0) + 1; draft = copy(doc.graph); name = doc.name; dirty = false; if (onState) onState(); },
-    async setPin(id, data) { const r = await api.savePins(workflowId, { [id]: data }); const n = nodeOf(id); if (n) n.pinned = data; return r; },
-    async test(id, b) { return api.testNode(workflowId, id, { node: copy(nodeOf(id)), ...b }); },
-    async runNow() { return api.runWorkflow(doc.task_id); },
-    async switchOn(on) { const r = await api.switchWorkflow(workflowId, on); doc = r.workflow; if (onState) onState(); return r; },
-    async restoreChain() { const r = await api.restoreChain(workflowId); doc = r.workflow; if (onState) onState(); return r; },
-    async versions() { return api.listVersions(workflowId); },
-    async showVersion(v) { viewing = v; if (onState) onState(); },
-    async restoreVersion(v) { const r = await api.restoreVersion(workflowId, v, doc.version); doc = r.workflow; viewing = null; dirty = false; if (onState) onState(); return r; },
-    destroy() { destroyed = true; },
+    state() {
+      return { mode, workflow: doc, name, dirty, loadError,
+        viewing: viewing ? { version: viewing.version, name: viewing.name } : null,
+        run: exec ? exec.run : null, failed: failed() };
+    },
+    rename(n) { name = n; touch(); return { ok: true }; },
+    async save() {
+      try {
+        const r = await api.saveWorkflow(workflowId, { name, graph: draft, baseVersion: doc.version });
+        doc = r.workflow; draft = copy(doc.graph); name = doc.name; dirty = false; emit();
+        return { ok: true, saved: r.saved, sentence: r.saved === 'new_version' ? `Saved as version ${doc.version}.` : 'Nothing to save.' };
+      } catch (err) { return { ...no(err), stale: err.status === 409 }; }
+    },
+    async discard() { W.discarded = (W.discarded || 0) + 1; draft = copy(doc.graph); name = doc.name; dirty = false; emit(); return { ok: true }; },
+    async setPin(id, data) {
+      try {
+        const r = await api.savePins(workflowId, { [id]: data });
+        const n = nodeOf(id); if (n) n.pinned = data; emit();
+        return { ok: true, pinned: data, dropped: r.dropped || [] };
+      } catch (err) { return no(err); }
+    },
+    async test(id, b) {
+      try { return { ok: true, ...(await api.testNode(workflowId, id, { node: copy(nodeOf(id)), ...b })) }; } catch (err) { return no(err); }
+    },
+    async runNow() { try { await api.runWorkflow(doc.task_id); return { ok: true, sentence: 'Started.' }; } catch (err) { return no(err); } },
+    async switchOn(on) {
+      try {
+        const r = await api.switchWorkflow(workflowId, on); doc = r.workflow; emit();
+        return { ok: true, notes: r.notes || [], chainPaused: r.chain_paused || null, sentence: (r.notes || []).join(' ') };
+      } catch (err) { return no(err); }
+    },
+    async restoreChain() {
+      try {
+        const r = await api.restoreChain(workflowId); doc = r.workflow; emit();
+        return { ok: true, notes: r.notes || [], chainResumed: r.chain_resumed || null, sentence: (r.notes || []).join(' ') };
+      } catch (err) { return no(err); }
+    },
+    async versions() { try { const r = await api.listVersions(workflowId); return { ok: true, versions: r.versions || [] }; } catch (err) { return no(err); } },
+    async showVersion(v) {
+      if (v == null) { viewing = null; emit(); return { ok: true }; }
+      try { const r = await api.getVersion(workflowId, v); viewing = { version: r.version, name: r.name, graph: r.graph }; emit(); return { ok: true }; } catch (err) { return no(err); }
+    },
+    async restoreVersion(v) {
+      if (dirty) return { ok: false, sentence: 'You have changes that are not saved. Save them or throw them away first, then restore.' };
+      try {
+        const r = await api.restoreVersion(workflowId, v, doc.version); doc = r.workflow; draft = copy(doc.graph); viewing = null; emit();
+        return { ok: true, saved: r.saved, sentence: `Restored version ${v} as version ${doc.version}.` };
+      } catch (err) { return no(err); }
+    },
+    destroy() {},
   };
+  if (mode === 'run') { delete src.newItem; delete src.removeItem; }
   W.sources.push({ mode, runId, src });
   return src;
 }

@@ -335,6 +335,22 @@ export function mountAutomations(host, opts = {}) {
   function docDirty() {
     return !!(R.view === 'workflow' && R.wf && R.wf.source && stateOf(R.wf.source).dirty);
   }
+  /** The version being looked at, or null. C3 leaves its shape open: a
+   *  number, or `{ version, … }` (what `workflowSource.js` keeps). */
+  function viewingOf(source) {
+    const v = stateOf(source).viewing;
+    if (v == null) return null;
+    return typeof v === 'object' ? (v.version != null ? v.version : null) : v;
+  }
+  /** Why a source could not be read, or ''. A source may reject `ready`, or
+   *  settle it and keep the refusal (`state().loadError`); both are a refusal. */
+  function loadErrorOf(source) {
+    const e = stateOf(source).loadError;
+    return e ? String(e.sentence || e) : '';
+  }
+  /** A source's answer that is a refusal: C3's sources answer `{ ok: false,
+   *  sentence }` where a door throws (`WorkflowRefusal`); both are read. */
+  const refused = (err, reply) => !!(err || (reply && reply.ok === false));
 
   // ── the shelf ────────────────────────────────────────────────────────────
   function selectedKey() {
@@ -596,6 +612,8 @@ export function mountAutomations(host, opts = {}) {
       });
       w.source = source;
       await source.ready;
+      const why = loadErrorOf(source);
+      if (why) throw new Error(why);
     } catch (err) {
       if (R.destroyed || R.wf !== w) return false;
       const sentence = _sentence(err, 'it could not be read');
@@ -658,7 +676,7 @@ export function mountAutomations(host, opts = {}) {
     switchWord.textContent = on ? ON_WORDS : OFF_WORDS;
     const from = doc.converted_from;
     chainBtn.hidden = !(from && from.head_status === 'paused');
-    const v = st.viewing != null ? st.viewing : null;
+    const v = viewingOf(w.source);
     viewing.hidden = v == null;
     if (v != null) {
       viewingText.textContent = `You are looking at version ${v}. It cannot be changed here.`;
@@ -698,10 +716,12 @@ export function mountAutomations(host, opts = {}) {
     if (R.destroyed || R.wf !== w) return false;
     saveBtn.disabled = false;
     saveBtn.textContent = 'Save';
-    if (err || (reply && reply.ok === false)) {
-      const sentence = _sentence(err || reply, 'the workflow was not saved');
-      const stale = (err && err.status === 409) || (reply && reply.status === 409);
-      const nodeIds = (err && Array.isArray(err.nodeIds)) ? err.nodeIds : [];
+    if (refused(err, reply)) {
+      const why = err || reply;
+      const sentence = _sentence(why, 'the workflow was not saved');
+      const stale = why.status === 409 || why.stale === true;
+      // The steps the server's refusal names: the first is shown.
+      const nodeIds = Array.isArray(why.nodeIds) ? why.nodeIds.map(String) : [];
       if (nodeIds.length && w.canvas) w.canvas.focusChain(nodeIds[0]);
       say(`Not saved: ${sentence}`, {
         refusal: true,
@@ -748,7 +768,8 @@ export function mountAutomations(host, opts = {}) {
     const notes = (Array.isArray(reply && reply.notes) ? reply.notes : []).map(String).filter(Boolean);
     let words = notes.join(' ') || (on ? 'Switched on.' : OFF_WORDS);
     if (on && stateOf(w.source).dirty) words += ' It runs the saved version; your unsaved changes are not in it.';
-    const paused = on && reply && reply.chain_paused;
+    // The route's `chain_paused`, or the same as a source names it.
+    const paused = on && reply && (reply.chain_paused || reply.chainPaused);
     say(words, { action: paused ? { label: 'Put the old chain back', run: () => restoreChain() } : null });
     syncBar();
     refreshShelf();
@@ -878,9 +899,13 @@ export function mountAutomations(host, opts = {}) {
     closeVersions();
     if (w.tab !== 'edit') setTab('edit', { quiet: true });
     let err = null;
-    try { await w.source.showVersion(version); } catch (e) { err = e; }
+    let reply = null;
+    try { reply = await w.source.showVersion(version); } catch (e) { err = e; }
     if (R.destroyed || R.wf !== w) return;
-    if (err) { say(`Version ${version} could not be shown: ${_sentence(err, 'no answer')}`, { refusal: true }); return; }
+    if (refused(err, reply)) {
+      say(`Version ${version} could not be shown: ${_sentence(err || reply, 'no answer')}`, { refusal: true });
+      return;
+    }
     await w.canvas.reload();
     syncBar();
     say(`This is version ${version}. Nothing here can be changed; put it back to use it again.`);
@@ -927,7 +952,7 @@ export function mountAutomations(host, opts = {}) {
   }
 
   viewingBack.addEventListener('click', () => {
-    const v = stateOf(R.wf && R.wf.source).viewing;
+    const v = R.wf ? viewingOf(R.wf.source) : null;
     if (v != null) restoreVersion(v);
   });
   viewingCurrent.addEventListener('click', () => backToCurrent());
@@ -1012,6 +1037,11 @@ export function mountAutomations(host, opts = {}) {
    *  else from what the canvas draws. */
   function failedStep(runSource, canvas) {
     const st = stateOf(runSource);
+    // A source that names it (`state().failed`: the step a failed run ended
+    // on, or null when the run did not fail) is taken at its word.
+    if (Object.prototype.hasOwnProperty.call(st, 'failed')) {
+      return st.failed && st.failed.nodeId != null ? String(st.failed.nodeId) : null;
+    }
     const recs = [st.nodes, st.records, st.execution && st.execution.nodes].find(Array.isArray);
     if (recs) {
       const failed = recs.filter((n) => n && runStatusTone(n.status) === 'error')
@@ -1036,6 +1066,8 @@ export function mountAutomations(host, opts = {}) {
       });
       w.runSource = rs;
       await rs.ready;
+      const why = loadErrorOf(rs);
+      if (why) throw new Error(why);
     } catch (err) {
       if (R.destroyed || R.wf !== w || w.runSource !== rs) return;
       runHost.replaceChildren(_el('p', 'wf-run-empty', `This run could not be drawn: ${_sentence(err, 'no answer')}`));
@@ -1146,9 +1178,18 @@ export function mountAutomations(host, opts = {}) {
     openTasks(taskId);
   }
 
+  /** Whether the window may close now. With unsaved work it asks, and once
+   *  answered (Save worked, or Discard) calls `onClose` — which asks this
+   *  again, and is told yes: an open step's own edits are still in its form
+   *  after a Discard, and asking twice about one close would be a loop. */
   function canClose(onClose) {
+    if (R.closeAnswered) { R.closeAnswered = false; return true; }
     if (!unsaved()) return true;
-    guardLeave(() => { if (typeof onClose === 'function') onClose(); });
+    guardLeave(() => {
+      R.closeAnswered = true;
+      if (typeof onClose === 'function') onClose();
+      R.closeAnswered = false;
+    });
     return false;
   }
 

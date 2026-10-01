@@ -517,3 +517,59 @@ def test_when_the_workflow_layer_cannot_load_every_chain_still_works(box):
     assert o["note"] == ("Your workflows could not be loaded (Failed to fetch dynamically imported module). "
                          "The tasks and chains still work.")
     assert o["newDisabled"] is True and o["shelf"] == ["tasks"]
+
+
+def test_closing_the_window_with_an_edited_step_open_asks_once(box):
+    # The window's close asks the room (`canClose`), and once the question is
+    # answered the room closes the window — which asks the room again. After
+    # Discard the open step's form still holds what was typed in it, so the
+    # second ask must not be a second question.
+    o = _case(box, """
+        const { root, h } = await room();
+        await openW(root);
+        fire(itemOf(root, 'n1'), 'click'); await settle(5);
+        const ph = root.querySelector('.wb-panel-host');
+        ph.dispatchEvent({ type: 'input', target: ph, stopPropagation() {}, preventDefault() {} });
+        let closed = 0;
+        const close = () => { if (h.canClose(close)) closed += 1; };
+        close();
+        const asked = { text: by(root, 'wf-ask').querySelector('.wf-ask-text').textContent, closed };
+        fire(named(root, 'Discard'), 'click'); await settle(10);
+        out({ asked, closed, askShown: !by(root, 'wf-ask').hidden, discards: W.discarded });
+    """)
+    assert o["asked"] == {"text": "“Morning brief” has changes that are not saved. The open step’s own changes "
+                                  "are only kept if you press Done in it first.", "closed": 0}
+    assert o["closed"] == 1 and o["askShown"] is False and o["discards"] == 1
+
+
+def test_a_workflow_that_cannot_be_read_says_so_and_the_chains_stay(box):
+    o = _case(box, """
+        const { root, h } = await room();
+        h.openWorkflow('w404'); await settle(20);
+        out({ said: sayOf(root), tasks: ['a', 'b', 'c'].map((id) => !!nodeOf(root, id)),
+              view: by(root, 'wf-view').hidden, current: shelf(root)[0].current });
+    """)
+    assert o["said"] == "That workflow could not be opened: Workflow not found."
+    assert o["tasks"] == [True, True, True] and o["view"] is True and o["current"] is True
+
+
+def test_a_run_that_worked_after_a_handled_failure_is_not_opened_as_a_failure(box):
+    world = json.loads(json.dumps(_WORLD))
+    world["runs"] = [{"id": "r3", "task_id": "tw1", "status": "success",
+                      "started_at": "2026-10-01T08:00:00Z", "finished_at": "2026-10-01T08:00:20Z", "steps": []}]
+    world["executions"] = {"r3": {"run": {"id": "r3", "status": "success"}, "nodes": [
+        {"id": "x1", "node_id": "n1", "kind": "llm", "label": "Summarise my inbox", "seq": 1, "status": "error",
+         "port": "error", "input": None, "output": {"text": ""}, "error": "RuntimeError: busy", "steps": []},
+        {"id": "x2", "node_id": "n2", "kind": "action", "label": "Send me the summary", "seq": 2,
+         "status": "success", "port": "success", "input": None, "output": {"text": "sent"}, "steps": []}]}}
+    o = _case(box, """
+        const { root } = await room();
+        await openW(root);
+        fire(root.querySelectorAll('.wf-tab').find((t) => t.textContent === 'Runs'), 'click'); await settle(20);
+        const run = by(root, 'wf-run-canvas');
+        out({ said: sayOf(root), panel: !run.querySelector('.wb-panel').hidden,
+              marks: ['n1', 'n2'].map((id) => itemOf(run, id).dataset.outcome) });
+    """, world)
+    assert o["marks"] == ["error", "ok"], "the step that failed still reads failed"
+    assert o["panel"] is False, "a run that worked is not opened as a failure"
+    assert o["said"] == "This run worked. Open a step to read what it was handed and what it made."
