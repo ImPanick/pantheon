@@ -49,6 +49,15 @@ def run(coro):
     return asyncio.run(coro)
 
 
+@pytest.fixture(autouse=True)
+def never_the_real_clock(monkeypatch):
+    """Whatever the code under test does — or a mutant of it — this machine's
+    own clock is never stepped here: the machines' clocks are the test's
+    (`GuestSystem.drift`), and a test that wants a step records it instead."""
+    monkeypatch.setattr(agentd.time, "clock_settime",
+                        lambda *a: pytest.fail("something stepped the real clock"))
+
+
 class Drifting(vm_fleet.InProcessMachine):
     """A machine whose clock is 30 s ahead of the host's when it boots."""
     boot_drift = 30.0
@@ -109,6 +118,9 @@ def test_a_round_trip_too_slow_to_measure_by_steps_nothing(tmp_path, monkeypatch
 # ── the daemon's side of it ──────────────────────────────────────────────────
 
 def test_the_clock_route_reads_anywhere_and_steps_only_a_vm_machine(tmp_path, monkeypatch):
+    # Never this machine's real clock, whatever the code under test does.
+    monkeypatch.setattr(agentd.time, "clock_settime",
+                        lambda *a: pytest.fail("a container's daemon stepped the clock"))
     with running_workstation(tmp_path) as ws:          # the container backend
         c = WorkstationClient(ws.url, ws.token)
         before = time.time()

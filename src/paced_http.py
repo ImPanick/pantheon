@@ -119,8 +119,7 @@ def direct_mounts(url: str, *, addresses: Iterable[str] = ()) -> Dict[str, None]
                 ips.append(ipaddress.ip_address(str(a).split("%", 1)[0]))
             except ValueError:
                 return {}
-    if not ips or not all(any(ip.version == net.version and ip in net for net in ranges)
-                          for ip in ips):
+    if not ips or not all(any(ip in net for net in ranges) for ip in ips):
         return {}
     pattern = f"[{host}]" if literal and ips[0].version == 6 else host
     return {f"all://{pattern}": None}

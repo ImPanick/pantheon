@@ -145,8 +145,9 @@ def test_what_goes_direct_and_what_the_environment_keeps(proxy, url, addresses, 
 
 
 def test_an_ipv6_range_is_read_too(proxy, monkeypatch):
+    # `::/96` holds every IPv4 address's number; an IPv4 address is still not in it.
     for name in ("NO_PROXY", "no_proxy"):
-        monkeypatch.setenv(name, "fd00::/8")
+        monkeypatch.setenv(name, "fd00::/8,::/96")
     assert paced_http.direct_mounts("https://[fd00::5]:7040") == {"all://[fd00::5]": None}
     assert paced_http.direct_mounts("https://10.1.2.3") == {}, "a v4 address is in no v6 range"
 
