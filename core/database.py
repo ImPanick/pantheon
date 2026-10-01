@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 from urllib.parse import unquote, urlparse
-from sqlalchemy import DDL, event, create_engine, Column, String, Text, Boolean, DateTime, Integer, ForeignKey, JSON, Index, func, inspect, text
+from sqlalchemy import DDL, event, create_engine, Column, String, Text, Boolean, DateTime, Integer, ForeignKey, JSON, Index, UniqueConstraint, func, inspect, text
 from sqlalchemy.engine import Engine, make_url
 from sqlalchemy.types import TypeDecorator
 from sqlalchemy.ext.declarative import declarative_base, declared_attr
@@ -896,7 +896,7 @@ class ScheduledTask(TimestampMixin, Base):
     owner          = Column(String, nullable=True, index=True)
     name           = Column(String, nullable=False, default="Untitled Task")
     prompt         = Column(Text, nullable=True)              # LLM prompt (for task_type="llm")
-    task_type      = Column(String, default="llm")            # "llm" | "action"
+    task_type      = Column(String, default="llm")            # "llm" | "research" | "action" | "workflow" (`P22-05`: the trigger of a `Workflow`)
     action         = Column(String, nullable=True)            # builtin action name (for task_type="action")
     schedule       = Column(String, nullable=True)            # "once", "daily", "weekly", "monthly"
     scheduled_time = Column(String, nullable=True)            # "HH:MM" (24h, stored UTC)
@@ -1158,6 +1158,124 @@ class TaskRun(Base):
 
     __table_args__ = (
         Index('ix_task_runs_task', 'task_id', 'started_at'),
+    )
+
+
+# ── `P22-05` · a workflow is one document, started by one task ─────────────
+#
+# `D-2026-10-01-05` §1. The trigger stays a `ScheduledTask` with
+# `task_type="workflow"`, so schedule, events, the webhook URL, retries, the
+# timeout, the time zone, both gates and dry run apply to it unchanged; what it
+# runs is this document. Three NEW tables and no ALTER of an existing one: the
+# link is `workflows.task_id` (not a `scheduled_tasks.workflow_id`), and the
+# version a run used lives on its node records — so `init_db`'s `create_all` is
+# the whole migration and an existing install gains the tables on its next boot
+# (`tests/test_workflow_tables_on_an_old_install.py` builds the old schema by
+# hand and holds that).
+#
+# No `status` column, though the row asked for one: the trigger task's own
+# `status` (active / paused) IS the on/off switch, and a second copy of it would
+# be two answers to "is this workflow on" (`Law 7`).
+class Workflow(TimestampMixin, Base):
+    """A named, versioned graph of steps, started by one `ScheduledTask`."""
+    __tablename__ = "workflows"
+
+    id           = Column(String, primary_key=True, index=True)
+    owner        = Column(String, nullable=True, index=True)
+    # Kept equal to the trigger task's `name` on every save, so the Tasks
+    # window and Activity, which read the task, say the same name.
+    name         = Column(String, nullable=False, default="Untitled workflow")
+    # The trigger. SET NULL, not CASCADE: a trigger deleted by some path that
+    # does not know about workflows leaves the document (and its versions)
+    # rather than taking them with it (`Law 1`).
+    task_id      = Column(String, ForeignKey("scheduled_tasks.id", ondelete="SET NULL"),
+                          nullable=True, unique=True)
+    # The current document, `src/workflow_document.py`'s schema (`GRAPH_VERSION`).
+    graph        = Column(Text, nullable=False)
+    # The current content version; `workflow_versions` holds every kept one,
+    # the current one included.
+    version      = Column(Integer, nullable=False, default=1)
+    # `P22-06` only: where a converted workflow came from —
+    # `{head_task_id, task_ids, head_was, converted_at}` as JSON.
+    source_chain = Column(Text, nullable=True)
+
+
+class WorkflowVersion(Base):
+    """One kept content version of a workflow — `P8-10`'s policy (a version
+    only on a real edit, twenty kept, restore writes a new one) in
+    `DocumentVersion`'s shape. Pins are stripped before a graph lands here."""
+    __tablename__ = "workflow_versions"
+
+    id          = Column(String, primary_key=True, index=True)
+    workflow_id = Column(String, ForeignKey("workflows.id", ondelete="CASCADE"),
+                         nullable=False, index=True)
+    version     = Column(Integer, nullable=False)
+    name        = Column(String, nullable=False)
+    graph       = Column(Text, nullable=False)
+    # `src.workflow_document.content_fingerprint` — what has to move before a
+    # save is an edit (position, pins and the start's place do not).
+    fingerprint = Column(String, nullable=False)
+    # `user` · `converted` · `restored` (`WORKFLOW_VERSION_SOURCES`). Stored.
+    source      = Column(String, nullable=False, default="user")
+    created_at  = Column(DateTime, default=utcnow_naive, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint('workflow_id', 'version', name='uq_workflow_versions_version'),
+    )
+
+
+class TaskRunNode(Base):
+    """`P22-07`. One step of one workflow run: what it was handed, what it
+    made, how it ended. The record `B806` says `TaskRun` cannot hold.
+
+    `status` is `TASK_RUN_STATUSES`' vocabulary and nothing else —
+    `running / success / error / skipped / aborted`; never `queued`, and a
+    step that asked to be deferred is recorded `skipped` with why.
+    `.pantheon/check-run-statuses.py` reads this model as it reads `TaskRun`,
+    so a literal outside the six fails the build.
+
+    `run_id` is ON DELETE CASCADE, so every way a run row goes — the admin
+    wipe's bulk delete, `ensure_defaults`, a task deleted with its runs —
+    takes its step records with it (`PRAGMA foreign_keys=ON`, above).
+    """
+    __tablename__ = "task_run_nodes"
+
+    id               = Column(String, primary_key=True, index=True)
+    run_id           = Column(String, ForeignKey("task_runs.id", ondelete="CASCADE"),
+                              nullable=False)
+    node_id          = Column(String, nullable=False)
+    kind             = Column(String, nullable=True)
+    label            = Column(String, nullable=True)        # as at run time
+    seq              = Column(Integer, nullable=False, default=0)  # execution order
+    status           = Column(String, default="running")
+    # Reserved for node retries (`P22-11`/`P22-12`). `P8-32`'s retries stay
+    # whole-run, as separate runs.
+    attempt          = Column(Integer, nullable=False, default=1)
+    # A dry run's per-step plan (`P8-33`). A flag, so a plan can never be read
+    # as a step's last run (`B1054`'s defect, closed here by construction).
+    dry              = Column(Boolean, nullable=False, default=False)
+    # The outcome edge this step left by (`EDGE_CONDITIONS`), or NULL where
+    # the branch ended there.
+    port             = Column(String, nullable=True)
+    # A dry plan only: how the plan reaches this step — the port of the edge
+    # from its first parent, breadth first — and how far from the start. A
+    # real run's path is its records' `port`s in `seq` order, so these stay
+    # NULL there rather than saying it twice (`Law 7`).
+    reached_by       = Column(String, nullable=True)
+    depth            = Column(Integer, nullable=True)
+    workflow_version = Column(Integer, nullable=True)
+    started_at       = Column(DateTime, nullable=True, default=utcnow_naive)
+    finished_at      = Column(DateTime, nullable=True)
+    input            = Column(Text, nullable=True)   # JSON: the envelope it was handed
+    output           = Column(Text, nullable=True)   # JSON: {text, data}
+    error            = Column(Text, nullable=True)
+    steps            = Column(Text, nullable=True)   # JSON: this step's own step log
+    model            = Column(String, nullable=True)
+
+    __table_args__ = (
+        Index('ix_task_run_nodes_run', 'run_id', 'seq'),
+        Index('ix_task_run_nodes_finished', 'finished_at'),
+        Index('ix_task_run_nodes_node', 'node_id'),
     )
 
 

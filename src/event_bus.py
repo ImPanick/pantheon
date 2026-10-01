@@ -129,6 +129,12 @@ TRIGGER_SOURCE_TASK = "task"
 # first consumer that needed the distinction.
 TASK_HANDOFF_FIELDS = ("task", "task_id", "run_id", "status", "result", "data")
 
+# `P22-08`. The keys a webhook's envelope carries, named once so the shape a
+# workflow's first step is handed (`workflow_document.node_input_shape`) is the
+# shape the webhook route builds. `routes/task/task_routes.py:webhook_trigger`
+# spells the same four inline today; it can import this (a merge point).
+WEBHOOK_PAYLOAD_FIELDS = ("body", "json", "query", "headers")
+
 # The payload rides into a model prompt and into a run's step log, and both are
 # things a person loads to read a summary. One field, then the whole envelope.
 # Two caps and not one, because a single enormous field and forty small ones are

@@ -250,6 +250,22 @@ DEFAULT_SETTINGS = {
     #
     # SETTINGS-ONLY, for the reason spelled out at `events_retention_days`.
     "min_task_interval_minutes": 5,
+    # `P22-07`. How much of what one workflow step was handed and what it made
+    # is kept on its record, in characters, each. Past it the record keeps a
+    # preview and says it was cut (`src/workflow_runs.py`). Resolves with the
+    # step's owner, so a role may carry it (`role_limit_ranges`); the bounds
+    # and the default belong to `src/workflow_runs.py` and the test that pins
+    # this number to that one keeps them equal.
+    #
+    # SETTINGS-ONLY, for the reason spelled out at `events_retention_days`.
+    "workflow_node_record_max_chars": 16000,
+    # `P22-07`. How many days a workflow step's record (input, output, steps)
+    # is kept. The run's own row in Activity is never touched; past the window
+    # its steps say they were cleared and name this setting. Finite for the
+    # reason `events_retention_days` is.
+    #
+    # SETTINGS-ONLY, for the reason spelled out at `events_retention_days`.
+    "workflow_node_records_days": 30,
     # Serve GET /metrics for a Prometheus scrape (`P16-12`). Ships OFF.
     #
     # Off is not shyness about telemetry — `Law 16` clause 4 explicitly permits
@@ -892,8 +908,12 @@ def role_limit_ranges() -> dict[str, tuple[int, int]]:
         MIN_SKILL_INJECTION,
         SKILL_INJECTION_LIMIT,
     )
+    # `P22-07`. A workflow step's record cap resolves with the step's owner and
+    # ships a real default — the sixth of that kind, here for the same reason.
+    from src.workflow_runs import NODE_RECORD_MAX_CHARS_RANGE, NODE_RECORD_MAX_CHARS_SETTING
 
     ranges = dict(LIMIT_RANGES)
+    ranges[NODE_RECORD_MAX_CHARS_SETTING] = NODE_RECORD_MAX_CHARS_RANGE
     ranges[TASK_CONCURRENCY_CAP_SETTING] = (1, TASK_CONCURRENCY_CAP_MAX)
     ranges[APPROVAL_TIMEOUT_SETTING] = (
         MIN_APPROVAL_TTL_SECONDS, MAX_APPROVAL_TTL_SECONDS)
@@ -927,6 +947,12 @@ def int_setting_ranges() -> dict[str, tuple[int, int]]:
     from src.tool_approvals import (
         MAX_APPROVAL_TTL_SECONDS,
         MIN_APPROVAL_TTL_SECONDS,
+    )
+    from src.workflow_runs import (
+        NODE_RECORD_MAX_CHARS_RANGE,
+        NODE_RECORD_MAX_CHARS_SETTING,
+        NODE_RECORDS_DAYS_RANGE,
+        NODE_RECORDS_DAYS_SETTING,
     )
     from src.upload_limits import (
         MAX_UPLOAD_BURST_LIMIT,
@@ -992,6 +1018,10 @@ def int_setting_ranges() -> dict[str, tuple[int, int]]:
         # LAN is entitled to; a day is the top, because past that the floor
         # is not a floor, it is the schedule.
         "min_task_interval_minutes": (0, 1440),
+        # `P22-07`. A workflow step's record cap and how long records are
+        # kept, imported from the module that owns them (`Law 7`).
+        NODE_RECORD_MAX_CHARS_SETTING: NODE_RECORD_MAX_CHARS_RANGE,
+        NODE_RECORDS_DAYS_SETTING: NODE_RECORDS_DAYS_RANGE,
     }
 
 

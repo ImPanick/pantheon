@@ -367,7 +367,8 @@ def load_chain_rows(db, start_ids, *, known=None,
 
 
 def describe_graph_refusal(refusal: GraphRefusal, names=None, *,
-                           first: str | None = None) -> str:
+                           first: str | None = None,
+                           lead: str | None = None) -> str:
     """The sentence a person is told on Save, naming the tasks. `P22-01`.
 
     Led by `CHAIN_REFUSAL_REASONS[reason]`, the same words the run's step log
@@ -377,13 +378,17 @@ def describe_graph_refusal(refusal: GraphRefusal, names=None, *,
     task that leads to it. `first` is the task the person is saving: a loop
     through it is told starting from it, because that is the link they just
     drew.
+
+    `P22-05`. `lead` replaces the reason's words for a caller whose thing is
+    not a chain — a workflow document's loop is told "The workflow loops back
+    on itself: …", the rest of the sentence built here exactly as for a chain.
     """
     names = names or {}
 
     def called(task_id):
         return f"“{names.get(task_id) or task_id}”"
 
-    lead = CHAIN_REFUSAL_REASONS[refusal.reason]
+    lead = lead or CHAIN_REFUSAL_REASONS[refusal.reason]
     lead = lead[:1].upper() + lead[1:]
     path = list(refusal.path)
     if refusal.reason == CHAIN_CYCLE and path:

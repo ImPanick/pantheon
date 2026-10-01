@@ -3645,6 +3645,20 @@ ACTION_EFFECTS = (
     EFFECT_TOUCHES_REMOTE, EFFECT_NOTIFIES, EFFECT_RUNS_CODE,
     EFFECT_CALLS_MODEL,
 )
+# `P22-08`. The effects that make *Test this step* show its plan and ask before
+# it runs for real: the step would tell somebody something, change a machine or
+# service that is not this one, delete, overwrite what a person wrote, or run a
+# command. A subset of `ACTION_EFFECTS`, named here beside them so a ninth
+# effect is decided about in the same place it is declared.
+#
+# Not a control (`Law 17`): nobody hostile is involved — the owner can already
+# run the whole workflow — so this prevents a mistake and stops there. What is
+# left out is what a test may simply do: read the mailbox, write new data inside
+# Pantheon, call a model.
+TEST_CONFIRM_EFFECTS = (
+    EFFECT_NOTIFIES, EFFECT_TOUCHES_REMOTE, EFFECT_DELETES, EFFECT_REWRITES,
+    EFFECT_RUNS_CODE,
+)
 
 # One sentence per effect, in consequences rather than jargon — the plan a
 # person reads is assembled from these, so the English and the declaration
@@ -3978,5 +3992,10 @@ def build_action_palette(*, include_admin_only: bool = True) -> list:
             "model_backed": bool(meta.get("model_backed")),
             "admin_only": admin_only,
             "params": [dict(p) for p in (meta.get("params") or ())],
+            # `P22-08`. Added, nothing renamed: what a real run would do, so
+            # the Workbench can say "Testing this will ask first" before the
+            # press. The decision itself is the server's
+            # (`workflow_document.needs_test_confirmation`); this is the reason.
+            "effects": list(meta.get("effects") or ()),
         })
     return nodes
