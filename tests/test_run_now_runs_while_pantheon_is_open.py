@@ -256,11 +256,20 @@ async def test_a_cancel_that_lands_with_the_requests_notify_stops_the_wait(gate,
 # ── (a)+(b) background work stopped by the page says so and stays stopped ───
 
 @pytest.mark.asyncio
-async def test_a_background_run_the_page_stops_says_pantheon_was_busy_and_never_runs(
+async def test_a_background_run_the_page_finds_waiting_keeps_waiting_and_runs_once_idle(
         task_db, gate):
     """A run nobody pressed — the event bus, the webhook and the schedule call
-    `run_task_now` with no `started_by` — keeps the gate it was built for, and
-    when the gate stops it the row says why and nothing runs afterwards."""
+    `run_task_now` with no `started_by` — keeps the gate it was built for: it
+    waits for Pantheon to be idle.
+
+    `B1060` changed the second half of this test, on the integrator's call
+    recorded on that row. It said the page STOPPED a waiting background run —
+    "Paused because Pantheon became active" — and nothing ran afterwards; and
+    for a webhook's or an event's run that was the payload gone for good. A
+    waiting run now waits before it takes the model slot, holding nothing, so
+    the page leaves it waiting, and once the tab closes it runs (and its
+    failure branch with it). `tests/test_a_background_run_waits_for_idle_with_its_trigger.py`
+    holds the rest of `B1060`."""
     _seed(task_db)
     ran = []
     s = _scheduler(ran)
@@ -272,18 +281,16 @@ async def test_a_background_run_the_page_stops_says_pantheon_was_busy_and_never_
     await _settled_in_the_wait()
 
     await _page_request(s)
-    await _until(lambda: "bk" not in s._executing, "the claim is let go")
-
+    await _turns(100)
     (run,) = _runs(task_db, "bk")
-    assert run["status"] == "aborted"
-    assert run["error"] == run["result"] == "Paused because Pantheon became active"
-    assert "bk" not in s._task_handles
+    assert run["status"] == "queued", "the page stopped a run that was only waiting"
+    assert "bk" in s._executing and ran == []
 
     await _tab_closes()
-    await _turns(200)
-    assert ran == [], "a run reported stopped ran afterwards"
-    assert [r["status"] for r in _runs(task_db, "bk")] == ["aborted"]
-    assert _runs(task_db, "msg") == []
+    await _until(lambda: [r["status"] for r in _runs(task_db, "msg")] == ["error"],
+                 "the run and its failure branch, once idle")
+    assert ran == ["bk", "msg"]
+    assert [r["status"] for r in _runs(task_db, "bk")] == ["error"]
 
 
 @pytest.mark.asyncio
@@ -291,25 +298,36 @@ async def test_a_running_background_run_the_page_stops_keeps_the_gates_words_and
         task_db, gate):
     """The same stop landing while the executor is running. The cancel branch
     used to overwrite the row with its own guess — "Stopped by user", since its
-    monitor had not fired — and reschedule the task as if the person had."""
+    monitor had not fired — and reschedule the task as if the person had.
+
+    `B1060` changed how it comes back: it was `next_run = now + 15 min` for any
+    trigger; it is back in the queue at once, waiting for Pantheon to be idle,
+    and its row says so. The gate's own words stay the run's `error`."""
     _seed(task_db, wire_failure=False)
     ran = []
-    s = _scheduler(ran, block=asyncio.Event())
+    release = asyncio.Event()
+    s = _scheduler(ran, block=release)
     before = _next_run(task_db, "bk")
 
     assert await s.run_task_now("bk") is True
     await _until(lambda: ran == ["bk"], "the run starts")
+    await _heartbeat(s)          # the tab is open: whatever goes back waits
     await _page_request(s)
-    await _until(lambda: "bk" not in s._executing, "the run ends")
+    await _until(lambda: len(_runs(task_db, "bk")) == 2, "the run goes back in the queue")
+    await _settled_in_the_wait()
 
-    (run,) = _runs(task_db, "bk")
-    assert run["status"] == "aborted"
-    assert run["error"] == run["result"] == "Paused because Pantheon became active"
-    # A foreground takeover comes back in 15 minutes (`B112`'s statement).
-    after = _next_run(task_db, "bk")
-    assert after is not None and after != before
-    gap = (after - ts._utcnow()).total_seconds()
-    assert 14 * 60 < gap <= 15 * 60, gap
+    stopped, again = _runs(task_db, "bk")
+    assert stopped["status"] == "aborted"
+    assert stopped["error"] == "Paused because Pantheon became active"
+    assert stopped["result"] == ("Paused because Pantheon became active. It will run "
+                                 "again, with what started it, once Pantheon is idle.")
+    assert again["status"] == "queued"
+    assert _next_run(task_db, "bk") == before, "the schedule moved for a run still to come"
+
+    release.set()
+    await _tab_closes()
+    await _until(lambda: [r["status"] for r in _runs(task_db, "bk")] == ["aborted", "success"],
+                 "it ran again once idle")
 
 
 @pytest.mark.asyncio

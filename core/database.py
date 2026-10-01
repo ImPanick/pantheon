@@ -1123,10 +1123,10 @@ TASK_RUN_NOTIFY: "dict[str, tuple[bool, str]]" = {
         False,
         "an infrastructure event, not a decision about the task. The restart "
         "sweep in TaskScheduler.start marks every in-flight run aborted on every "
-        "boot, and a foreground takeover re-queues this run 15 minutes later — "
-        "one toast per task per restart, about something already rescheduled, is "
-        "noise. The Activity row carries it, and _mark_run_aborted's message says "
-        "which event it was.",
+        "boot, and a foreground takeover re-queues this run, with its trigger, "
+        "for when Pantheon is idle (B1060) — one toast per task per restart, "
+        "about something already rescheduled, is noise. The Activity row carries "
+        "it, and _mark_run_aborted's message says which event it was.",
     ),
 }
 

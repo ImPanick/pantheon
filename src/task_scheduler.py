@@ -1342,6 +1342,42 @@ FOREGROUND_TAKEOVER = "Paused because Pantheon became active"
 # written, beside `_execute_task`'s "Queued — waiting for a free slot…" and the
 # background gate's "Queued — waiting for Pantheon to be idle…".
 WAITING_FOR_CHAT = "Queued — waiting for the chat reply in progress to finish…"
+WAITING_FOR_IDLE = "Queued — waiting for Pantheon to be idle…"
+
+# `B1060`. How many times in a row one trigger's run may be stopped by the
+# foreground gate WHILE RUNNING; the stops before the last put it back in the
+# queue, the last one lets it go and says so. Each attempt starts again from the
+# beginning — the model calls and whatever the steps did are spent again — so a
+# run longer than the person's idle spells would otherwise restart every time
+# they look away, for ever. Mistake prevention, not a control (`Law 17`): three
+# is "the person came back three times while it ran".
+FOREGROUND_STOPS_LIMIT = 3
+
+
+class _Requeued:
+    """`B1060`. What `_execute_task_locked` answers when the foreground gate
+    stopped the run while it was running and the run goes back in the queue
+    with its trigger. One instance, compared by identity; never stored."""
+
+    __slots__ = ()
+
+    def __repr__(self):  # pragma: no cover - diagnostics
+        return "REQUEUED"
+
+
+REQUEUED = _Requeued()
+
+
+def _waited_words(seconds: float) -> str:
+    """`B1060`. How long a run waited for Pantheon to be idle, for its step log."""
+    seconds = max(0, int(round(seconds)))
+    if seconds < 1:
+        return "under a second"
+    if seconds < 120:
+        return f"{seconds} s"
+    if seconds < 7200:
+        return f"{seconds // 60} min"
+    return f"{seconds // 3600} h {(seconds % 3600) // 60} min"
 
 
 class TaskScheduler:
@@ -1377,6 +1413,12 @@ class TaskScheduler:
         # tell a run a person asked for from background work before it stops
         # anything.
         self._task_started_by = {}
+        # `B1060`. The background runs the foreground gate may stop: task id →
+        # run id, from the moment the run flips to `running` until it ends. A
+        # background run that is still QUEUED is not here — it waits for
+        # Pantheon to be idle before it takes the model slot, so it holds
+        # nothing and there is nothing to stop.
+        self._gate_stoppable = {}
         # `P8-27` / `B603`. Per-run state, keyed by run.
         #
         # `_last_run_model` and `_last_run_steps` were single instance
@@ -1517,6 +1559,14 @@ class TaskScheduler:
         if started is None:
             started = self._task_started_by = {}
         return started
+
+    def _gate_stoppable_map(self) -> dict:
+        """`B1060`. `_gate_stoppable`, created on demand, for the same
+        `__new__`-built test schedulers."""
+        found = getattr(self, "_gate_stoppable", None)
+        if found is None:
+            found = self._gate_stoppable = {}
+        return found
 
     def _state_for(self, run_id):
         """This run's slot, created on first write."""
@@ -2344,66 +2394,184 @@ class TaskScheduler:
                 raise
         await self._execute_task(task_id)
 
-    async def _execute_task(self, task_id: str, *, bypass_model_slot: bool = False,
-                            release_executing: bool = True, trigger: dict | None = None,
-                            dry: bool = False,
-                            started_by: str = STARTED_BY_BACKGROUND):
-        # Create the run record with status="queued" BEFORE waiting on the
-        # semaphore so the UI can show that a manually-triggered task is in
-        # line behind another. Once we acquire the slot, flip to "running"
-        # and hand off to _execute_task_locked.
+    def _new_queued_run(self, task_id: str) -> str:
+        """Write a `queued` run row and answer its id.
+
+        Created BEFORE any wait, so the UI can show that a run is in line behind
+        another one or behind the person using Pantheon. `B1060` writes a second
+        one when a run the foreground gate stopped goes back in the queue.
+        """
         from core.database import SessionLocal, TaskRun
-        current = asyncio.current_task()
-        if current:
-            self._task_handles[task_id] = current
-            self._started_by_map()[task_id] = started_by
         run_id = str(uuid.uuid4())
         _q_db = SessionLocal()
         try:
-            run = TaskRun(
+            _q_db.add(TaskRun(
                 id=run_id,
                 task_id=task_id,
                 started_at=_utcnow(),
                 status="queued",
                 result="Queued — waiting for a free slot…",
-            )
-            _q_db.add(run)
+            ))
             _q_db.commit()
         except Exception:
             logger.exception(f"Failed to create queued run row for task {task_id}")
         finally:
             _q_db.close()
+        return run_id
+
+    async def _wait_until_idle(self, task_id: str, run_id: str) -> float:
+        """`B1060`. A background run's wait for Pantheon to be idle, while it is
+        still `queued` and holds nothing. Answers how long it waited.
+
+        It was inside `_execute_task_locked`, i.e. INSIDE the model slot, so a
+        background run waiting for a person to stop using Pantheon held the one
+        slot every other run needed — and the foreground gate stopped waiting
+        runs for that reason. Stopped, a webhook's or an event's run was gone
+        with its payload (`_defer_immediately_due_task` only re-queues a task
+        whose `next_run` has passed, which those never have) while its row said
+        "Paused". It now waits here, holding nothing, and the gate leaves it be.
+        """
+        from core.database import SessionLocal, TaskRun
+        from src.interactive_gate import wait_for_interactive_quiet
+
+        db = SessionLocal()
+        try:
+            waiting = db.query(TaskRun).filter(TaskRun.id == run_id).first()
+            if waiting is not None and waiting.status == "queued":
+                waiting.result = WAITING_FOR_IDLE
+                db.commit()
+        except Exception:
+            logger.debug("Could not mark run %s waiting for idle", run_id, exc_info=True)
+        finally:
+            db.close()
+        started = time.monotonic()
+        waited = await wait_for_interactive_quiet(f"scheduled task {task_id}")
+        return (time.monotonic() - started) if waited else 0.0
+
+    async def _take_model_slot(self, task_id: str, run_id: str, *,
+                               idle_first: bool):
+        """Take one permit of the model slot. Answers `(semaphore, seconds
+        waited for idle)` — release THAT semaphore, because `_sync_run_slot`
+        may replace the attribute while the permit is held.
+
+        `B1060`. With `idle_first` — a background run under the foreground gate
+        — Pantheon must be idle before the slot is taken AND still idle once it
+        is held: a person who arrived while this run waited for the slot gets
+        the slot back at once, and this run waits for idle again, holding
+        nothing.
+        """
+        from src.interactive_gate import has_foreground_activity
+
+        waited = 0.0
+        while True:
+            if idle_first:
+                waited += await self._wait_until_idle(task_id, run_id)
+            sem = self._run_semaphore
+            await sem.acquire()
+            if not idle_first or not has_foreground_activity():
+                return sem, waited
+            sem.release()
+
+    async def _execute_task(self, task_id: str, *, bypass_model_slot: bool = False,
+                            release_executing: bool = True, trigger: dict | None = None,
+                            dry: bool = False,
+                            started_by: str = STARTED_BY_BACKGROUND,
+                            register_handle: bool = True):
+        # Create the run record with status="queued" BEFORE waiting on the
+        # semaphore so the UI can show that a manually-triggered task is in
+        # line behind another. Once we acquire the slot, flip to "running"
+        # and hand off to _execute_task_locked.
+        #
+        # `P22-05`. `register_handle=False` keeps `_task_handles[task_id]` off
+        # this asyncio task: a workflow's *Run task* step awaits its target from
+        # inside the WORKFLOW's task, and a handle pointing there would let a
+        # later `stop_task(target)` cancel the whole workflow.
+        current = asyncio.current_task()
+
+        def _hold_handle():
+            if current and register_handle:
+                self._task_handles[task_id] = current
+                self._started_by_map()[task_id] = started_by
+
+        _hold_handle()
+        run_id = self._new_queued_run(task_id)
+        # `B1060`. Background work waits for Pantheon to be idle BEFORE it takes
+        # the model slot. A person's run keeps `B1047`'s chat wait, inside
+        # `_execute_task_locked`; a dry run and a forced run wait for nothing.
+        gated = not (bypass_model_slot or dry)
+        idle_first = gated and started_by != STARTED_BY_PERSON
+        takeovers = 0
 
         try:
-            # `P8-33`. A dry run makes no model call and touches nothing, so it
-            # neither waits for the model slot nor waits for Pantheon to go
-            # idle. Queueing a plan behind a real run's semaphore would make the
-            # one button that is safe to press the slowest one.
-            if dry or bypass_model_slot or not self._task_needs_model_slot(task_id):
-                await self._execute_task_locked(
-                    task_id,
-                    run_id,
-                    release_executing=release_executing,
-                    gate_foreground=not (bypass_model_slot or dry),
-                    trigger=trigger,
-                    dry=dry,
-                    started_by=started_by,
-                )
-                # `P22-04`. The run's id, so a caller that awaited this — a dry
-                # run, below in `run_task_now` — can read back what it wrote.
-                # Every spawned caller ignores it, as it ignored `None`.
-                return run_id
-
-            async with self._run_semaphore:
-                await self._execute_task_locked(
-                    task_id,
-                    run_id,
-                    release_executing=release_executing,
-                    gate_foreground=True,
-                    trigger=trigger,
-                    started_by=started_by,
-                )
-            return run_id
+            while True:
+                waited = 0.0
+                # `P8-33`. A dry run makes no model call and touches nothing, so
+                # it neither waits for the model slot nor waits for Pantheon to
+                # go idle. Queueing a plan behind a real run's semaphore would
+                # make the one button that is safe to press the slowest one.
+                if dry or bypass_model_slot or not self._task_needs_model_slot(task_id):
+                    if idle_first:
+                        waited = await self._wait_until_idle(task_id, run_id)
+                    outcome = await self._execute_task_locked(
+                        task_id,
+                        run_id,
+                        release_executing=False,
+                        gate_foreground=gated,
+                        trigger=trigger,
+                        dry=dry,
+                        started_by=started_by,
+                        waited_for_idle=waited,
+                        may_requeue=takeovers + 1 < FOREGROUND_STOPS_LIMIT,
+                    )
+                else:
+                    sem, waited = await self._take_model_slot(
+                        task_id, run_id, idle_first=idle_first)
+                    try:
+                        outcome = await self._execute_task_locked(
+                            task_id,
+                            run_id,
+                            release_executing=False,
+                            gate_foreground=True,
+                            trigger=trigger,
+                            started_by=started_by,
+                            waited_for_idle=waited,
+                            may_requeue=takeovers + 1 < FOREGROUND_STOPS_LIMIT,
+                        )
+                    finally:
+                        sem.release()
+                if outcome is not REQUEUED:
+                    # `P22-04`. The run's id, so a caller that awaited this — a
+                    # dry run, below in `run_task_now` — can read back what it
+                    # wrote. Every spawned caller ignores it, as it ignored `None`.
+                    return run_id
+                # `B1060`. The foreground gate stopped this run while it ran,
+                # and its row says it will run again. It goes back in the queue
+                # with the SAME trigger — the webhook body, the event, the step
+                # before it — still holding its `_executing` claim, so no other
+                # path can start the task in between.
+                #
+                # The cancel that stopped it was answered in
+                # `_execute_task_locked`, so asyncio is told so — once, for the
+                # one cancel that was delivered. Not down to zero: a Stop pressed
+                # since is a cancel still pending, and on 3.13+ `uncancel()`
+                # reaching zero drops a pending cancel. (Measured on 3.11.15
+                # without it: a later `asyncio.timeout` in this task still timed
+                # out, so this is correctness for `TaskGroup`/`timeout`
+                # bookkeeping, not a behaviour that was seen to break.)
+                if current is not None and current.cancelling():
+                    current.uncancel()
+                if release_executing and task_id not in self._executing:
+                    # A Stop pressed between the two attempts. `stop_task` lets
+                    # the claim go before anything else, and its cancel can be
+                    # absorbed while the stopped attempt tears down its monitor
+                    # (`await foreground_monitor` swallows a cancel), so the
+                    # claim is the one sure sign. The person's stop is the last
+                    # word on the row that promised another attempt.
+                    self._restate_stopped_by_user(run_id)
+                    return run_id
+                takeovers += 1
+                _hold_handle()
+                run_id = self._new_queued_run(task_id)
         except asyncio.CancelledError:
             # If cancellation happens while queued behind the semaphore,
             # _execute_task_locked never runs and cannot update the Activity row.
@@ -2413,6 +2581,9 @@ class TaskScheduler:
             self._defer_immediately_due_task(task_id, delay=timedelta(minutes=15))
             raise
         finally:
+            # A run stopped while it waited never reached `_execute_task_locked`,
+            # whose `finally` drops the slot; this one does, for that case.
+            self._clear_run_state(run_id)
             handle = self._task_handles.get(task_id)
             if handle is current:
                 self._task_handles.pop(task_id, None)
@@ -2420,6 +2591,23 @@ class TaskScheduler:
             if release_executing:
                 async with self._executing_lock:
                     self._executing.discard(task_id)
+
+    def _restate_stopped_by_user(self, run_id: str) -> None:
+        """`B1060`. A run the gate stopped said it would run again; the person
+        stopped it before it did. Its `result` says so; its `error` keeps why
+        the attempt itself ended."""
+        try:
+            from core.database import SessionLocal, TaskRun
+            db = SessionLocal()
+            try:
+                run = db.query(TaskRun).filter(TaskRun.id == run_id).first()
+                if run is not None and run.status == "aborted":
+                    run.result = STOPPED_BY_USER
+                    db.commit()
+            finally:
+                db.close()
+        except Exception:
+            logger.debug("Could not restate run %s as stopped", run_id, exc_info=True)
 
     def _defer_immediately_due_task(self, task_id: str, *, delay: timedelta):
         """A queued task can be cancelled before _execute_task_locked gets a DB
@@ -2453,7 +2641,18 @@ class TaskScheduler:
         trigger: dict | None = None,
         dry: bool = False,
         started_by: str = STARTED_BY_BACKGROUND,
+        waited_for_idle: float = 0.0,
+        may_requeue: bool = True,
     ):
+        """Run one queued run to its end. Answers `REQUEUED` when the
+        foreground gate stopped it while it ran and it goes back in the queue
+        (`B1060`), and `None` otherwise.
+
+        `waited_for_idle` is how long `_execute_task` held it in the queue for
+        Pantheon to be idle (`B1060`), said in its step log after the cause.
+        `may_requeue` is whether a stop by the gate puts it back
+        (`FOREGROUND_STOPS_LIMIT`).
+        """
         from core.database import SessionLocal, ScheduledTask, TaskRun
 
         db = SessionLocal()
@@ -2546,13 +2745,10 @@ class TaskScheduler:
                         waiting.result = WAITING_FOR_CHAT
                         db.commit()
                     await wait_for_chat_quiet(f"task {task.name}")
-            elif gate_foreground:
-                waiting = db.query(TaskRun).filter(TaskRun.id == run_id).first()
-                if waiting and waiting.status == "queued":
-                    waiting.result = "Queued — waiting for Pantheon to be idle…"
-                    db.commit()
-                from src.interactive_gate import wait_for_interactive_quiet
-                await wait_for_interactive_quiet(f"scheduled task {task.name}")
+            # `B1060`. A background run's wait for Pantheon to be idle was here,
+            # inside the model slot. It is `_execute_task`'s now, before the
+            # slot is taken (`_wait_until_idle`), so a waiting run holds nothing
+            # and the foreground gate has no reason to stop it.
 
             # Flip the run from queued → running. Reset started_at to the
             # actual execution start so queue wait time is visible from
@@ -2575,6 +2771,10 @@ class TaskScheduler:
                 )
                 db.add(run)
                 db.commit()
+            if gate_foreground and not person:
+                # `B1060`. From here until it ends, this is a RUNNING background
+                # run, the one kind the foreground gate stops.
+                self._gate_stoppable_map()[task_id] = run_id
 
             task_type = task.task_type or "llm"
 
@@ -2588,6 +2788,14 @@ class TaskScheduler:
                 self._record_run_step(
                     run_id, kind="trigger",
                     detail=_trigger_summary(trigger),
+                )
+            # `B1060`. A run the queue held for Pantheon to be idle says so, after
+            # its cause: "its row says it waited".
+            if waited_for_idle > 0:
+                self._record_run_step(
+                    run_id, kind="progress",
+                    detail=(f"Waited {_waited_words(waited_for_idle)} for Pantheon "
+                            f"to be idle, then started"),
                 )
             # `P8-27`. Nothing to clear: this run's slot is keyed by `run_id`
             # and is created empty on first write. The two lines that used to be
@@ -2729,12 +2937,38 @@ class TaskScheduler:
                 )
                 takeover = msg == FOREGROUND_TAKEOVER
                 logger.info("Task '%s' %s", task.name, msg)
+                # `B1060`. A run the foreground gate stopped goes back in the
+                # queue with its trigger, unless the task was switched off or
+                # deleted meanwhile, or this trigger has already been stopped
+                # `FOREGROUND_STOPS_LIMIT` times — and the row says which. It
+                # was `next_run = now + 15 min` for every trigger type, so an
+                # event's or a webhook's task came back a quarter of an hour
+                # later as a plain run with no payload, and a chained step came
+                # back as a run nothing had chained.
+                requeue = False
+                said = msg
+                if takeover:
+                    try:
+                        db.refresh(task)     # switched off while it ran?
+                        why_not = (None if task.status == "active"
+                                   else not_active_words(task))
+                    except Exception:
+                        why_not = "the task was deleted"
+                    if why_not is None and not may_requeue:
+                        why_not = (f"it was stopped {FOREGROUND_STOPS_LIMIT} times "
+                                   f"in a row because Pantheon became active")
+                    requeue = why_not is None
+                    said = (f"{msg}. It will run again, with what started it, once "
+                            f"Pantheon is idle." if requeue
+                            else f"{msg}. It will not be retried: {why_not}.")
                 run_obj = db.query(TaskRun).filter(TaskRun.id == run_id).first()
                 if run_obj:
-                    if run_obj.status in ("queued", "running"):
+                    if run_obj.status in ("queued", "running") or takeover:
                         # Nothing was produced yet: `result` holds "Starting…"
                         # or a progress line, which would read as still going.
-                        run_obj.result = msg
+                        # (`B1060`: a takeover's row says what happens next,
+                        # over the gate's own placeholder.)
+                        run_obj.result = said
                     else:
                         run_obj.result = run_obj.result or msg
                     run_obj.status = "aborted"
@@ -2744,8 +2978,13 @@ class TaskScheduler:
                     # steps for; the other is the one that errored, below.
                     self._attach_run_steps(run_id, run_obj)
                 task.last_run = _utcnow()
-                if takeover:
-                    task.next_run = _utcnow() + timedelta(minutes=15)
+                if requeue:
+                    # `_execute_task` writes the next queued row and holds the
+                    # task's claim throughout; `next_run` is left where it was,
+                    # because the run it describes has not happened yet.
+                    db.commit()
+                    self._notify_run_outcome(task, "aborted", body=said, task_id=task_id)
+                    return REQUEUED
                 elif (task.trigger_type or "schedule") == "schedule":
                     task.next_run = compute_next_run(
                         task.schedule, task.scheduled_time,
@@ -2759,11 +2998,11 @@ class TaskScheduler:
                 db.commit()
                 # `B112`. Declared silent in `TASK_RUN_NOTIFY`, with the reason:
                 # the restart sweep aborts every in-flight run on every boot and
-                # a foreground takeover re-queues this one in 15 minutes. The
-                # call is here anyway so the silence is the policy's answer and
-                # not this branch forgetting the notify block, which is how it
-                # read before.
-                self._notify_run_outcome(task, "aborted", body=msg, task_id=task_id)
+                # a foreground takeover re-queues this one for when Pantheon is
+                # idle (`B1060`). The call is here anyway so the silence is the
+                # policy's answer and not this branch forgetting the notify
+                # block, which is how it read before.
+                self._notify_run_outcome(task, "aborted", body=said, task_id=task_id)
                 return
             except TaskNoop as noop:
                 # Action reported "nothing to do". Mark the run as `skipped`
@@ -3023,6 +3262,9 @@ class TaskScheduler:
             # that never reached an executor. Dropping the slot here and nowhere
             # else is what keeps `_run_state` the size of what is in flight.
             self._clear_run_state(run_id)
+            stoppable = self._gate_stoppable_map()
+            if stoppable.get(task_id) == run_id:
+                stoppable.pop(task_id, None)
             handle = self._task_handles.get(task_id)
             if handle is asyncio.current_task():
                 self._task_handles.pop(task_id, None)
@@ -4369,19 +4611,30 @@ class TaskScheduler:
         had. What this stops now says what happened: `FOREGROUND_TAKEOVER`.
         The row is written before the cancel lands, and the cancel branch keeps
         it (`_stopped_as`).
+
+        `B1060`. Running background runs only. A QUEUED one waits for Pantheon
+        to be idle before it takes the model slot (`_execute_task`), so it
+        holds nothing and is left to wait; stopping it threw away its trigger —
+        a webhook's body, an event, the step before it — because nothing could
+        put it back. A running one is stopped, and its cancel branch puts it
+        back in the queue with its trigger or says it will not be retried.
         """
         async with self._executing_lock:
             task_ids = list(self._executing)
         started_by = self._started_by_map()
+        running = self._gate_stoppable_map()
         stopped = 0
         for task_id in task_ids:
             if started_by.get(task_id) == STARTED_BY_PERSON:
+                continue
+            run_id = running.get(task_id)
+            if run_id is None:
                 continue
             handle = self._task_handles.get(task_id)
             if handle and not handle.done():
                 handle.cancel()
                 stopped += 1
-            if self._mark_run_aborted(task_id, message=FOREGROUND_TAKEOVER):
+            if self._mark_run_aborted(task_id, run_id=run_id, message=FOREGROUND_TAKEOVER):
                 stopped += 1
         if stopped:
             logger.info("Stopped %d background scheduler task(s): %s", stopped, reason)
