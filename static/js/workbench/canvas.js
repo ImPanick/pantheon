@@ -24,7 +24,9 @@
 // (`windowDrag.js:KEY_STEP`); an arrow is focusable too, and Delete removes it
 // only after saying which arrow it is. Escape goes through `escMenuStack.js`,
 // so it closes the innermost thing — the picker, the pending removal, the side
-// panel — before `ui.js`'s arbiter closes the window.
+// panel — before `ui.js`'s arbiter closes the window; while one is open the
+// room carries `data-esc-layer`, which is what makes the arbiter ask the stack
+// first when the pointer is on the window (`B1052`, `holdEscape`).
 //
 // **Every word a person wrote is set as text.** Task names reach the page
 // through `textContent` and attribute values only — never `innerHTML` — which
@@ -268,6 +270,34 @@ export function mountCanvas(root, opts = {}) {
     }
   }
   sayAction.addEventListener('click', () => { const run = S.sayRun; if (run) run(); });
+
+  // ── Escape ───────────────────────────────────────────────────────────────
+  // `B1052`. Everything this room opens over itself — the step panel, the
+  // Connect… picker, an arrow being drawn, a removal waiting for its second
+  // Delete — is a layer on `escMenuStack.js`, so Escape closes the innermost
+  // thing first. `ui.js`'s arbiter closes the window under the pointer BEFORE
+  // it asks that stack, and a mouse user's pointer is on the window they just
+  // clicked in: measured on the merged tree, one Escape took the Workbench and
+  // an unsaved step form with it. So while any layer is open the room says so
+  // — `data-esc-layer` on its root — and the arbiter asks the stack first for
+  // a window holding one. Every layer is registered through here, so the mark
+  // and the stack cannot disagree.
+  let escHeld = 0;
+  function holdEscape(dismiss) {
+    let released = false;
+    let unregister = () => {};
+    const release = () => {
+      if (released) return;
+      released = true;
+      unregister();
+      escHeld = Math.max(0, escHeld - 1);
+      if (!escHeld) delete root.dataset.escLayer;
+    };
+    unregister = registerMenuDismiss(() => { release(); dismiss(); });
+    escHeld += 1;
+    root.dataset.escLayer = 'open';
+    return release;
+  }
 
   // ── the wire ─────────────────────────────────────────────────────────────
   async function put(path, body) {
@@ -723,7 +753,7 @@ export function mountCanvas(root, opts = {}) {
     S.link = {
       from, when, port, pointerId: e.pointerId, over: null,
       start: portPoint(S.pos.get(from), when),
-      unregister: registerMenuDismiss(() => endLink(null)),
+      unregister: holdEscape(() => endLink(null)),
     };
     try { if (port.setPointerCapture) port.setPointerCapture(e.pointerId); } catch (_) { /* a synthetic pointer */ }
     ghost.setAttribute('d', edgePath(S.link.start, S.link.start));
@@ -826,7 +856,7 @@ export function mountCanvas(root, opts = {}) {
       // before anything is written, and a second press is the yes.
       S.pending = {
         key: rec.key,
-        unregister: registerMenuDismiss(() => { S.pending = null; say('Kept. ' + edgeSentence(rec.from, rec.when, rec.to)); }),
+        unregister: holdEscape(() => { S.pending = null; say('Kept. ' + edgeSentence(rec.from, rec.when, rec.to)); }),
       };
       say(`Remove this arrow? ${edgeSentence(rec.from, rec.when, rec.to)} Press Delete again to remove it, or Escape to keep it.`,
         { action: { label: 'Remove this arrow', run: () => removeEdge(rec) } });
@@ -941,7 +971,7 @@ export function mountCanvas(root, opts = {}) {
     box.style.left = Math.max(8, left) + 'px';
     box.style.top = Math.max(8, Math.round(S.view.y + p.y * S.view.zoom)) + 'px';
     stage.appendChild(box);
-    S.connect = { box, from, opener, submit, whenSel, toSel, unregister: registerMenuDismiss(() => closeConnect(true)) };
+    S.connect = { box, from, opener, submit, whenSel, toSel, unregister: holdEscape(() => closeConnect(true)) };
     whenSel.focus();
   }
 
@@ -972,6 +1002,26 @@ export function mountCanvas(root, opts = {}) {
     say(saved && saved.name ? `Saved ${saved.name}.` : 'Saved.');
   }
 
+  // `B1052`. Escape on a form with unsaved edits says so before it throws them
+  // away, and a second Escape is the yes — the canvas's own rule for removing
+  // an arrow (said first, done second). An edit is anything typed or chosen in
+  // the form (`input` / `change` reaching the panel's host); the form is the
+  // `P22` contract's and says nothing about itself, so the panel listens
+  // rather than asking it. Cancel, Close and Save are deliberate and do not ask.
+  function panelEscape() {
+    const p = S.panel;
+    if (!p) return;
+    const name = p.id ? nameOf(p.id) : 'This new step';
+    if (p.dirty && !p.asked) {
+      p.asked = true;
+      p.unregister = holdEscape(() => panelEscape());
+      say(`${name} has changes that are not saved. Press Escape again to close it without saving them, or Save.`);
+      return;
+    }
+    closePanel(true);
+    if (p.asked) say(`Closed ${p.id ? name : 'the new step'} without saving.`);
+  }
+
   function openPanel(task) {
     closeConnect(false);
     closePanel(false);
@@ -983,7 +1033,13 @@ export function mountCanvas(root, opts = {}) {
     panelTitle.textContent = task ? taskName(task) : 'New step';
     const host = _el('div', 'wb-panel-host');
     panelBody.replaceChildren(host);
-    S.panel = { id, host, handle: null, unregister: registerMenuDismiss(() => closePanel(true)) };
+    S.panel = { id, host, handle: null, dirty: false, asked: false, unregister: holdEscape(() => panelEscape()) };
+    const edited = () => {
+      const p = S.panel;
+      if (p && p.host === host) { p.dirty = true; p.asked = false; }
+    };
+    host.addEventListener('input', edited);
+    host.addEventListener('change', edited);
     if (!mountPanel) {
       host.textContent = 'The step editor did not load. Edit this task from the Tasks window.';
       return;
@@ -1096,6 +1152,7 @@ export function mountCanvas(root, opts = {}) {
     closePanel(false);
     root.replaceChildren();
     root.classList.remove('wb-room', 'wb-panel-open', 'wb-room-empty', 'wb-linking', 'wb-panning');
+    delete root.dataset.escLayer;
   }
 
   return {

@@ -119,6 +119,13 @@ function _closeHoveredWindow() {
   }
   if (!win) win = hoveredToggleWindow;
   if (!win || !document.contains(win)) return false;
+  // `B1052`. A window can hold layers of its own on the Escape stack — the
+  // Workbench's step panel and Connect… picker — and this branch runs before
+  // the stack is asked, so with the pointer on the window one Escape closed it
+  // and an unsaved form with it. A window that marks an open layer with
+  // `[data-esc-layer]` has the stack answer first: innermost thing, then the
+  // window. Only such a window changes; every other one closes as before.
+  if (win.querySelector?.('[data-esc-layer]') && dismissTopMenu()) return true;
   const modalForWin = win.closest?.('.modal[id]');
   if (modalForWin?.id === 'email-lib-modal') {
     const closeBtn = document.getElementById('email-lib-close') || modalForWin.querySelector('.close-btn');
