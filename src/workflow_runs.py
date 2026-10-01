@@ -51,6 +51,9 @@ NODE_ERROR_MAX_CHARS = 2000
 # How much of an over-long value the record keeps to show, as a share of the
 # cap: the marker around it has to fit too.
 _PREVIEW_SHARE = 0.9
+# A cut input's one-line summary rides inside the marker; it is a line, not a
+# second copy of the input.
+_SUMMARY_MAX = 300
 
 _PRUNE_INTERVAL_SECONDS = 60 * 60
 # None means "never pruned in this process", not "pruned at time zero" — the
@@ -105,11 +108,18 @@ def cap_json(value, *, limit: int, summary: str | None = None) -> str | None:
         text = json.dumps(str(value), ensure_ascii=False)
     if len(text) <= limit:
         return text
-    marker = {"truncated": True, "chars": len(text),
-              "preview": text[: max(0, int(limit * _PREVIEW_SHARE))]}
-    if summary:
-        marker["summary"] = summary
-    return json.dumps(marker, ensure_ascii=False)
+    # The preview is JSON inside JSON, so every quote in it is escaped again
+    # and the stored text is longer than the slice; it shrinks until what is
+    # STORED fits, which is the number the setting promises.
+    keep = max(0, int(limit * _PREVIEW_SHARE))
+    while True:
+        marker = {"truncated": True, "chars": len(text), "preview": text[:keep]}
+        if summary:
+            marker["summary"] = summary[:_SUMMARY_MAX]
+        stored = json.dumps(marker, ensure_ascii=False)
+        if len(stored) <= limit or keep == 0:
+            return stored
+        keep = max(0, keep - (len(stored) - limit) - 8)
 
 
 def is_truncated(value) -> bool:
