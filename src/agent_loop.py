@@ -6784,6 +6784,13 @@ async def stream_agent_loop(
                             actual_endpoint_cost_tracked
                         )
                     terminal_metadata.update(_compaction_metrics())   # `B921`
+                    # `B942`. A guard that stopped an earlier round, on this
+                    # record as on the final metrics (`P4-10`): a loop-breaker
+                    # stop is followed by a forced-answer round, and when that
+                    # round's request failed the turn was saved from here, and
+                    # the stop line was gone after a reload.
+                    if _agent_stops:
+                        terminal_metadata["agent_stops"] = list(_agent_stops)
                     yield f'data: {json.dumps({"type": "agent_terminal", "data": terminal_metadata})}\n\n'
                 yield chunk
                 # A terminal provider/request failure is not a completed Agent
