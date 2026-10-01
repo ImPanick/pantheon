@@ -17,6 +17,7 @@ from core.database import SessionLocal, GalleryImage, GalleryAlbum, ModelEndpoin
 from core.database import Session as DbSession
 from src.auth_helpers import get_current_user, owner_filter, require_privilege
 from src.env_flags import env_flag
+from src import paced_http  # `B1014`: NO_PROXY ranges, read for every client
 from src.upload_limits import (
     read_upload_limited,
     resolve_byte_limit,
@@ -339,7 +340,7 @@ async def _fetch_result_image_b64(url: str) -> Optional[str]:
     )
     if not ok:
         raise HTTPException(502, f"Upstream returned an unsafe image URL: {reason}")
-    async with httpx.AsyncClient(timeout=60) as c2:
+    async with httpx.AsyncClient(timeout=60, mounts=paced_http.direct_mounts(url)) as c2:
         ir = await c2.get(url)
         if ir.status_code == 200:
             return base64.b64encode(ir.content).decode()
@@ -597,7 +598,8 @@ def setup_gallery_routes() -> APIRouter:
 
         # Use img2img endpoint if available, otherwise upscale via canvas on client
         try:
-            async with httpx.AsyncClient(timeout=120) as client:
+            async with httpx.AsyncClient(timeout=120,
+                                         mounts=paced_http.direct_mounts(base_url)) as client:
                 resp = await client.post(f"{base_url}/images/upscale", json={
                     "image": b64, "scale": scale,
                 })
@@ -642,7 +644,8 @@ def setup_gallery_routes() -> APIRouter:
             base_url += "/v1"
 
         try:
-            async with httpx.AsyncClient(timeout=180) as client:
+            async with httpx.AsyncClient(timeout=180,
+                                         mounts=paced_http.direct_mounts(base_url)) as client:
                 resp = await client.post(f"{base_url}/images/generations", json={
                     "prompt": prompt,
                     "image": b64,
@@ -1385,7 +1388,8 @@ def setup_gallery_routes() -> APIRouter:
             }
             headers = {"Authorization": f"Bearer {api_key}"}
             try:
-                async with httpx.AsyncClient(timeout=120) as client:
+                async with httpx.AsyncClient(timeout=120,
+                                             mounts=paced_http.direct_mounts(base)) as client:
                     r = await client.post(_join_checked_gallery_endpoint(base, "/images/edits"), headers=headers, data=data, files=files)
                     if r.status_code != 200:
                         logger.error("inpaint_proxy OpenAI edit: status %s", r.status_code)
@@ -1439,7 +1443,8 @@ def setup_gallery_routes() -> APIRouter:
             # supports multiple models per process. Harmless if ignored.
             if chosen_model:
                 body["model"] = chosen_model
-            async with httpx.AsyncClient(timeout=240) as client:
+            async with httpx.AsyncClient(timeout=240,
+                                         mounts=paced_http.direct_mounts(base)) as client:
                 try:
                     import base64, io
                     from PIL import Image
@@ -1679,7 +1684,7 @@ def setup_gallery_routes() -> APIRouter:
         # Cold-start SDXL inpaint can take 60-90s on first request (loading
         # weights to GPU). 240s gives headroom for both that and a full
         # 1024×1024 inference pass on slower setups.
-        async with httpx.AsyncClient(timeout=240) as client:
+        async with httpx.AsyncClient(timeout=240, mounts=paced_http.direct_mounts(base)) as client:
             for path, kind, payload in candidates:
                 _effective_base = base_root if path.startswith("/sdapi") else base
                 target = _join_checked_gallery_endpoint(_effective_base, path)
@@ -2343,7 +2348,8 @@ def setup_gallery_routes() -> APIRouter:
             if headers:
                 h.update(headers)
 
-            async with httpx.AsyncClient(timeout=60) as client:
+            async with httpx.AsyncClient(timeout=60,
+                                         mounts=paced_http.direct_mounts(chat_url)) as client:
                 resp = await client.post(chat_url, json=payload, headers=h)
                 if resp.status_code != 200:
                     logger.error("ai_tag vision model: status %s: %s", resp.status_code, resp.text[:500])

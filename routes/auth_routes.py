@@ -23,6 +23,7 @@ from src.events import record_auth_event
 # is the exact defect that hid five `require_admin` gates in
 # `webhook_routes.py` and made `P11-02b`'s count wrong in both directions.
 from src.auth_helpers import get_current_user
+from src import paced_http  # `B1014`: NO_PROXY ranges, read for every client
 from src.roles import RoleError, describe as describe_role
 from src.constants import DEEP_RESEARCH_DIR, MEMORY_FILE, PASSWORD_MIN_LENGTH, SKILLS_DIR
 from src.rate_limiter import RateLimiter
@@ -1450,9 +1451,11 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
                 elif auth_type == "header":
                     headers[integ.get("auth_header") or "Authorization"] = api_key
             try:
-                async with httpx.AsyncClient(timeout=8.0) as client:
-                    r = await client.post(
-                        full_url,
+                # `B1014`: paced (ntfy.sh limits) and routed by NO_PROXY's ranges.
+                async with httpx.AsyncClient(timeout=8.0,
+                                             mounts=paced_http.direct_mounts(full_url)) as client:
+                    r = await paced_http.request(
+                        "POST", full_url, client=client, authenticated=bool(api_key),
                         content="Connectivity test from Pantheon. If you see this on your phone, ntfy is wired up correctly.",
                         headers=headers,
                     )
@@ -1490,8 +1493,10 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
                 }]
             }
             try:
-                async with httpx.AsyncClient(timeout=8.0) as client:
-                    r = await client.post(webhook_url, json=payload)
+                # `B1014`: paced (Discord answers 429 to a burst) and routed.
+                async with httpx.AsyncClient(timeout=8.0,
+                                             mounts=paced_http.direct_mounts(webhook_url)) as client:
+                    r = await paced_http.request("POST", webhook_url, client=client, json=payload)
                 if r.is_success:
                     return {"ok": True, "message": "Test embed sent — check your Discord channel to confirm it arrived."}
                 return {"ok": False, "message": f"Discord returned HTTP {r.status_code}: {r.text[:200]}"}

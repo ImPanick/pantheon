@@ -319,7 +319,9 @@ async def push_once(*, url: str = "", client=None) -> Dict[str, Any]:
     body = json.dumps(payload)
     owns_client = client is None
     if owns_client:
-        client = httpx.AsyncClient(timeout=REQUEST_TIMEOUT_SECONDS)
+        from src import paced_http   # `B1014`
+        client = httpx.AsyncClient(timeout=REQUEST_TIMEOUT_SECONDS,
+                                   mounts=paced_http.direct_mounts(target))
     try:
         response = await client.post(target, content=body, headers=_headers())
     except Exception as e:

@@ -10,6 +10,7 @@ back function-locally where needed.
 from typing import Dict, Optional
 
 from src.tools._common import _parse_tool_args
+from src import paced_http  # `B1014`: NO_PROXY ranges, read for every client
 
 
 async def do_resolve_contact(content: str, owner: Optional[str] = None) -> Dict:
@@ -54,7 +55,8 @@ async def do_resolve_contact(content: str, owner: Optional[str] = None) -> Dict:
     except Exception:
         pass
 
-    async with httpx.AsyncClient(timeout=30) as client:
+    async with httpx.AsyncClient(timeout=30,
+                                 mounts=paced_http.direct_mounts(_INTERNAL_BASE)) as client:
         # 2. Email history (sent/received)
         try:
             resp = await client.get(f"{_INTERNAL_BASE}/api/email/resolve-contact", params={"name": name})

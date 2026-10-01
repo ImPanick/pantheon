@@ -20,6 +20,7 @@ from fastapi import HTTPException
 from routes._validators import validate_remote_host, validate_ssh_port
 
 from src.tools._common import _parse_tool_args
+from src import paced_http  # `B1014`: NO_PROXY ranges, read for every client
 
 logger = logging.getLogger(__name__)
 
@@ -93,7 +94,7 @@ async def _cookbook_servers() -> Dict[str, Any]:
     from src.tool_implementations import _internal_headers, _INTERNAL_BASE  # shared, lives in facade
     import httpx
     try:
-        async with httpx.AsyncClient(timeout=10) as client:
+        async with httpx.AsyncClient(timeout=10, mounts=paced_http.direct_mounts(_INTERNAL_BASE)) as client:
             r = await client.get(f"{_INTERNAL_BASE}/api/cookbook/state", headers=_internal_headers())
             state = r.json() if r.headers.get("content-type", "").startswith("application/json") else {}
     except Exception:
@@ -160,7 +161,7 @@ async def _cookbook_env_for_host(host: str) -> Dict[str, Any]:
     headers = _internal_headers()
     state: Dict[str, Any] = {}
     try:
-        async with httpx.AsyncClient(timeout=10) as client:
+        async with httpx.AsyncClient(timeout=10, mounts=paced_http.direct_mounts(_INTERNAL_BASE)) as client:
             r = await client.get(f"{_INTERNAL_BASE}/api/cookbook/state", headers=headers)
             state = r.json() if r.headers.get("content-type", "").startswith("application/json") else {}
     except Exception as e:
@@ -261,7 +262,7 @@ async def _ensure_served_endpoint(
         "container_local": "true" if container_local else "false",
     }
     try:
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with httpx.AsyncClient(timeout=30, mounts=paced_http.direct_mounts(_INTERNAL_BASE)) as client:
             resp = await client.post(
                 f"{_INTERNAL_BASE}/api/model-endpoints",
                 data=payload,
@@ -305,7 +306,7 @@ async def _cookbook_register_task(
     import time as _time
     headers = _internal_headers()
     try:
-        async with httpx.AsyncClient(timeout=10) as client:
+        async with httpx.AsyncClient(timeout=10, mounts=paced_http.direct_mounts(_INTERNAL_BASE)) as client:
             r = await client.get(f"{_INTERNAL_BASE}/api/cookbook/state", headers=headers)
             state = r.json() if r.headers.get("content-type", "").startswith("application/json") else {}
     except Exception as e:
@@ -350,7 +351,7 @@ async def _cookbook_register_task(
     })
     state["tasks"] = tasks
     try:
-        async with httpx.AsyncClient(timeout=10) as client:
+        async with httpx.AsyncClient(timeout=10, mounts=paced_http.direct_mounts(_INTERNAL_BASE)) as client:
             r = await client.post(f"{_INTERNAL_BASE}/api/cookbook/state",
                                   json=state, headers=headers)
         return r.status_code < 400
@@ -647,7 +648,7 @@ async def do_download_model(content: str, owner: Optional[str] = None) -> Dict:
     if env_cfg.get("platform"):   payload["platform"]   = env_cfg["platform"]
     if env_cfg.get("ssh_port"):   payload["ssh_port"]   = env_cfg["ssh_port"]
     try:
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with httpx.AsyncClient(timeout=30, mounts=paced_http.direct_mounts(_INTERNAL_BASE)) as client:
             resp = await client.post(f"{_INTERNAL_BASE}/api/model/download",
                                      json=payload, headers=_internal_headers())
             data = resp.json()
@@ -732,7 +733,7 @@ async def do_serve_model(content: str, owner: Optional[str] = None) -> Dict:
     if env_cfg.get("platform"):   payload["platform"]   = env_cfg["platform"]
     if env_cfg.get("ssh_port"):   payload["ssh_port"]   = env_cfg["ssh_port"]
     try:
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with httpx.AsyncClient(timeout=30, mounts=paced_http.direct_mounts(_INTERNAL_BASE)) as client:
             resp = await client.post(f"{_INTERNAL_BASE}/api/model/serve",
                                      json=payload, headers=_internal_headers())
             data = resp.json()
@@ -801,7 +802,7 @@ async def do_list_served_models(content: str, owner: Optional[str] = None) -> Di
     # this is unreachable).
     cookbook_tasks: List[Dict[str, Any]] = []
     try:
-        async with httpx.AsyncClient(timeout=15) as client:
+        async with httpx.AsyncClient(timeout=15, mounts=paced_http.direct_mounts(_INTERNAL_BASE)) as client:
             resp = await client.get(f"{_INTERNAL_BASE}/api/cookbook/tasks/status",
                                     headers=_internal_headers())
             cookbook_tasks = (resp.json() or {}).get("tasks") or []
@@ -921,7 +922,7 @@ async def _cookbook_kill_session(session_id: str, *, remote_host: str = "",
     # Look up the task's host + confirm it exists in state.
     state: Dict[str, Any] = {}
     try:
-        async with httpx.AsyncClient(timeout=10) as client:
+        async with httpx.AsyncClient(timeout=10, mounts=paced_http.direct_mounts(_INTERNAL_BASE)) as client:
             resp = await client.get(f"{_INTERNAL_BASE}/api/cookbook/state", headers=headers)
             state = resp.json() or {}
     except Exception as e:
@@ -954,7 +955,7 @@ async def _cookbook_kill_session(session_id: str, *, remote_host: str = "",
         target_label = session_id
 
     try:
-        async with httpx.AsyncClient(timeout=15) as client:
+        async with httpx.AsyncClient(timeout=15, mounts=paced_http.direct_mounts(_INTERNAL_BASE)) as client:
             resp = await client.post(f"{_INTERNAL_BASE}/api/shell/exec",
                                      json={"command": cmd}, headers=headers)
         if resp.status_code >= 400:
@@ -979,7 +980,7 @@ async def _cookbook_kill_session(session_id: str, *, remote_host: str = "",
         if matched is not None:
             try:
                 matched["status"] = "stopped"
-                async with httpx.AsyncClient(timeout=10) as client:
+                async with httpx.AsyncClient(timeout=10, mounts=paced_http.direct_mounts(_INTERNAL_BASE)) as client:
                     await client.post(f"{_INTERNAL_BASE}/api/cookbook/state",
                                       json=state, headers=headers)
             except Exception as e:
@@ -1043,7 +1044,7 @@ async def do_tail_serve_output(content: str, owner: Optional[str] = None) -> Dic
     if not remote:
         state: Dict[str, Any] = {}
         try:
-            async with httpx.AsyncClient(timeout=10) as client:
+            async with httpx.AsyncClient(timeout=10, mounts=paced_http.direct_mounts(_INTERNAL_BASE)) as client:
                 resp = await client.get(f"{_INTERNAL_BASE}/api/cookbook/state", headers=headers)
                 state = resp.json() or {}
         except Exception as e:
@@ -1087,7 +1088,7 @@ async def do_tail_serve_output(content: str, owner: Optional[str] = None) -> Dic
         cmd = inner
         host_label = "local"
     try:
-        async with httpx.AsyncClient(timeout=20) as client:
+        async with httpx.AsyncClient(timeout=20, mounts=paced_http.direct_mounts(_INTERNAL_BASE)) as client:
             resp = await client.post(f"{_INTERNAL_BASE}/api/shell/exec",
                                      json={"command": cmd}, headers=headers)
         if resp.status_code >= 400:
@@ -1152,7 +1153,7 @@ async def do_list_downloads(content: str, owner: Optional[str] = None) -> Dict:
     from src.tool_implementations import _internal_headers, _INTERNAL_BASE  # shared, lives in facade
     import httpx
     try:
-        async with httpx.AsyncClient(timeout=15) as client:
+        async with httpx.AsyncClient(timeout=15, mounts=paced_http.direct_mounts(_INTERNAL_BASE)) as client:
             resp = await client.get(f"{_INTERNAL_BASE}/api/cookbook/tasks/status",
                                     headers=_internal_headers())
             data = resp.json()
@@ -1204,7 +1205,7 @@ async def do_search_hf_models(content: str, owner: Optional[str] = None) -> Dict
     if limit:
         params["limit"] = str(limit)
     try:
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with httpx.AsyncClient(timeout=30, mounts=paced_http.direct_mounts(_INTERNAL_BASE)) as client:
             resp = await client.get(f"{_INTERNAL_BASE}/api/cookbook/hf-latest",
                                     params=params, headers=_internal_headers())
             data = resp.json()
@@ -1277,7 +1278,7 @@ async def do_adopt_served_model(content: str, owner: Optional[str] = None) -> Di
     else:
         check = f"tmux has-session -t {shlex.quote(sess)} 2>&1"
     try:
-        async with httpx.AsyncClient(timeout=10) as client:
+        async with httpx.AsyncClient(timeout=10, mounts=paced_http.direct_mounts(_INTERNAL_BASE)) as client:
             r = await client.post(f"{_INTERNAL_BASE}/api/shell/exec",
                                   json={"command": check}, headers=headers)
             data = r.json() if r.headers.get("content-type", "").startswith("application/json") else {}
@@ -1294,7 +1295,7 @@ async def do_adopt_served_model(content: str, owner: Optional[str] = None) -> Di
         health_cmd = f"curl -s -m 3 http://localhost:{int(port)}/v1/models"
     server_up = False
     try:
-        async with httpx.AsyncClient(timeout=10) as client:
+        async with httpx.AsyncClient(timeout=10, mounts=paced_http.direct_mounts(_INTERNAL_BASE)) as client:
             r = await client.post(f"{_INTERNAL_BASE}/api/shell/exec",
                                   json={"command": health_cmd}, headers=headers)
             body = (r.json() or {}).get("stdout", "") if r.headers.get("content-type", "").startswith("application/json") else ""
@@ -1307,7 +1308,7 @@ async def do_adopt_served_model(content: str, owner: Optional[str] = None) -> Di
     # Read+modify+write cookbook state. APPEND a task entry; do NOT
     # overwrite the whole file (that'd nuke presets).
     try:
-        async with httpx.AsyncClient(timeout=10) as client:
+        async with httpx.AsyncClient(timeout=10, mounts=paced_http.direct_mounts(_INTERNAL_BASE)) as client:
             r = await client.get(f"{_INTERNAL_BASE}/api/cookbook/state", headers=headers)
             state = r.json() if r.headers.get("content-type", "").startswith("application/json") else {}
     except Exception as e:
@@ -1343,7 +1344,7 @@ async def do_adopt_served_model(content: str, owner: Optional[str] = None) -> Di
         tasks.append(new_task)
         state["tasks"] = tasks
         try:
-            async with httpx.AsyncClient(timeout=10) as client:
+            async with httpx.AsyncClient(timeout=10, mounts=paced_http.direct_mounts(_INTERNAL_BASE)) as client:
                 await client.post(f"{_INTERNAL_BASE}/api/cookbook/state",
                                   json=state, headers=headers)
         except Exception as e:
@@ -1421,7 +1422,7 @@ async def do_list_serve_presets(content: str, owner: Optional[str] = None) -> Di
     from src.tool_implementations import _internal_headers, _INTERNAL_BASE  # shared, lives in facade
     import httpx
     try:
-        async with httpx.AsyncClient(timeout=10) as client:
+        async with httpx.AsyncClient(timeout=10, mounts=paced_http.direct_mounts(_INTERNAL_BASE)) as client:
             resp = await client.get(f"{_INTERNAL_BASE}/api/cookbook/state",
                                     headers=_internal_headers())
             state = resp.json() or {}
@@ -1470,7 +1471,7 @@ async def do_serve_preset(content: str, owner: Optional[str] = None) -> Dict:
         return {"error": "name (preset name) is required. Call list_serve_presets to see what's available.", "exit_code": 1}
 
     try:
-        async with httpx.AsyncClient(timeout=10) as client:
+        async with httpx.AsyncClient(timeout=10, mounts=paced_http.direct_mounts(_INTERNAL_BASE)) as client:
             resp = await client.get(f"{_INTERNAL_BASE}/api/cookbook/state",
                                     headers=_internal_headers())
             state = resp.json() or {}
@@ -1515,7 +1516,7 @@ async def do_serve_preset(content: str, owner: Optional[str] = None) -> Dict:
         payload["ssh_port"] = env_cfg["ssh_port"]
 
     try:
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with httpx.AsyncClient(timeout=30, mounts=paced_http.direct_mounts(_INTERNAL_BASE)) as client:
             resp = await client.post(f"{_INTERNAL_BASE}/api/model/serve",
                                      json=payload, headers=_internal_headers())
             data = resp.json()
@@ -1576,7 +1577,7 @@ async def do_list_cached_models(content: str, owner: Optional[str] = None) -> Di
         elif args.get("platform"):
             p["platform"] = args["platform"]
         try:
-            async with httpx.AsyncClient(timeout=60) as client:
+            async with httpx.AsyncClient(timeout=60, mounts=paced_http.direct_mounts(_INTERNAL_BASE)) as client:
                 resp = await client.get(f"{_INTERNAL_BASE}/api/model/cached",
                                         params=p, headers=headers)
                 data = resp.json()
@@ -1596,7 +1597,7 @@ async def do_list_cached_models(content: str, owner: Optional[str] = None) -> Di
         # modelDirs both when caller specifies a host and when we scan all).
         servers: list = []
         try:
-            async with httpx.AsyncClient(timeout=10) as client:
+            async with httpx.AsyncClient(timeout=10, mounts=paced_http.direct_mounts(_INTERNAL_BASE)) as client:
                 st = await client.get(f"{_INTERNAL_BASE}/api/cookbook/state", headers=headers)
                 st_data = st.json() if st.headers.get("content-type", "").startswith("application/json") else {}
             servers = (st_data.get("env", {}) or {}).get("servers") or []
@@ -1667,7 +1668,7 @@ async def do_list_cached_models(content: str, owner: Optional[str] = None) -> Di
             # a model is absent and re-download it.
             downloaded = []
             try:
-                async with httpx.AsyncClient(timeout=10) as client:
+                async with httpx.AsyncClient(timeout=10, mounts=paced_http.direct_mounts(_INTERNAL_BASE)) as client:
                     st = await client.get(f"{_INTERNAL_BASE}/api/cookbook/state", headers=headers)
                     state = st.json() if st.headers.get("content-type", "").startswith("application/json") else {}
                 for t in (state.get("tasks") or []):

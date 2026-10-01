@@ -14,6 +14,7 @@ from pydantic import BaseModel
 from core.database import SessionLocal, ScheduledTask, TaskRun, CrewMember
 from core.constants import internal_api_base
 from src.auth_helpers import get_current_user
+from src import paced_http  # `B1014`: NO_PROXY ranges, read for every client
 from src.constants import DATA_DIR, EMAIL_URGENCY_CACHE_DIR
 from src.event_bus import (
     DEFAULT_TRIGGER_COUNT,
@@ -75,7 +76,8 @@ def _maybe_cascade_calendar_event(task) -> None:
 
     def _try_delete(uid: str) -> bool:
         try:
-            with httpx.Client(timeout=10) as client:
+            with httpx.Client(timeout=10,
+                              mounts=paced_http.direct_mounts(internal_api_base())) as client:
                 r = client.delete(
                     f"{internal_api_base()}/api/calendar/events/{uid}",
                     headers=headers,
@@ -100,7 +102,8 @@ def _maybe_cascade_calendar_event(task) -> None:
     if not task.name:
         return
     try:
-        with httpx.Client(timeout=10) as client:
+        with httpx.Client(timeout=10,
+                          mounts=paced_http.direct_mounts(internal_api_base())) as client:
             # Find the Forge calendar.
             cal_r = client.get(f"{internal_api_base()}/api/calendar/calendars", headers=headers)
             if cal_r.status_code >= 400:

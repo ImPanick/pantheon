@@ -55,6 +55,12 @@ class _SpyAsyncClient:
         resp.status_code = 200
         return resp
 
+    async def request(self, method, url, **kw):
+        # `B1014`: the send goes through `paced_http.request`, which calls the
+        # client's `request`.
+        assert method == "POST"
+        return await self.post(url, **kw)
+
 
 def _dispatch():
     return asyncio.run(dispatch_reminder(

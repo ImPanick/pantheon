@@ -27,6 +27,7 @@ from src.mcp_manager import (
     tool_override_name,
 )
 from src.env_flags import request_flag
+from src import paced_http  # `B1014`: NO_PROXY ranges, read for every client
 
 logger = logging.getLogger(__name__)
 
@@ -1175,9 +1176,11 @@ def setup_mcp_routes(mcp_manager: McpManager):
 
             redirect_uri = _mcp_oauth_redirect_uri()
 
-            async with httpx.AsyncClient() as client:
-                resp = await client.post(
-                    "https://oauth2.googleapis.com/token",
+            # `B1014`: Google's token endpoint — paced, and routed.
+            token_url = "https://oauth2.googleapis.com/token"
+            async with httpx.AsyncClient(mounts=paced_http.direct_mounts(token_url)) as client:
+                resp = await paced_http.request(
+                    "POST", token_url, client=client, authenticated=True,
                     data={
                         "code": code,
                         "client_id": client_id,

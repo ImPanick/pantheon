@@ -23,6 +23,7 @@ import time
 from typing import Any, Awaitable, Callable, Dict, Optional, Tuple
 
 from src.constants import GENERATED_IMAGES_DIR
+from src import paced_http  # `B1014`: NO_PROXY ranges, read for every client
 from src.env_flags import env_flag, tool_arg_truthy
 from src.memory import MemoryStoreUnreadable
 from src.theme_advanced_keys import advanced_keys_prose, is_advanced_key
@@ -1076,7 +1077,8 @@ async def do_generate_image(content: str, session_id: Optional[str] = None, owne
 
     try:
         # GPT image models can take 30-120s+ depending on quality
-        async with httpx.AsyncClient(timeout=httpx.Timeout(connect=30.0, read=300.0, write=30.0, pool=30.0)) as client:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(connect=30.0, read=300.0, write=30.0, pool=30.0),
+                                     mounts=paced_http.direct_mounts(images_url)) as client:
             resp = await client.post(images_url, json=payload, headers=headers)
 
             if resp.status_code != 200:
@@ -1339,7 +1341,8 @@ async def do_edit_image(
             return {"error": f"Image edit fallback error: {fallback_error}"}
 
     try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(connect=30.0, read=600.0, write=60.0, pool=30.0)) as client:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(connect=30.0, read=600.0, write=60.0, pool=30.0),
+                                     mounts=paced_http.direct_mounts(base_url)) as client:
             progress_task = None
             if progress_callback:
                 progress_url = base_url + f"/images/progress/{request_id}"

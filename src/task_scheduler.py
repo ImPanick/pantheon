@@ -23,6 +23,7 @@ from src.event_bus import (
     trigger_summary as _trigger_summary,
 )
 from src.owner_identity import REQUEST_SENTINEL_OWNERS
+from src import paced_http  # `B1014`: NO_PROXY ranges, read for every client
 from src.task_action_policy import (
     is_admin_only_task_action,
     owner_has_admin_task_privileges,
@@ -2661,9 +2662,12 @@ class TaskScheduler:
                 # Miniflux: fetch unread entries (cached 3 min across tasks)
                 if preset == "miniflux":
                     async def _fetch_miniflux(_base=base_url, _headers=dict(headers)):
-                        async with httpx.AsyncClient(timeout=10) as client:
-                            resp = await client.get(
-                                f"{_base}/v1/entries",
+                        # `B1014`: paced (a hosted Miniflux is a third party) and routed.
+                        async with httpx.AsyncClient(
+                                timeout=10, mounts=paced_http.direct_mounts(_base)) as client:
+                            resp = await paced_http.request(
+                                "GET", f"{_base}/v1/entries", client=client,
+                                authenticated=bool(_headers),
                                 params={"status": "unread", "limit": 15, "order": "published_at", "direction": "desc"},
                                 headers=_headers,
                             )

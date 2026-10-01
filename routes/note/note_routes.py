@@ -14,6 +14,7 @@ from core.database import SessionLocal, Note
 from core.middleware import INTERNAL_TOOL_USER
 from src.auth_helpers import require_user
 from src.env_flags import env_flag
+from src import paced_http  # `B1014`: NO_PROXY ranges, read for every client
 from src.constants import DATA_DIR
 from src.upload_handler import reserve_upload_references
 from sqlalchemy.orm.attributes import flag_modified
@@ -464,8 +465,12 @@ async def dispatch_reminder(
                         if not _ok:
                             webhook_error = f"Webhook URL rejected: {_reason}"
                         else:
-                            async with httpx.AsyncClient(timeout=10.0) as client:
-                                resp = await client.post(url, content=rendered.encode(), headers=hdrs)
+                            # `B1014`: paced and routed by NO_PROXY's ranges.
+                            async with httpx.AsyncClient(
+                                    timeout=10.0, mounts=paced_http.direct_mounts(url)) as client:
+                                resp = await paced_http.request(
+                                    "POST", url, client=client, content=rendered.encode(),
+                                    headers=hdrs)
                                 webhook_sent = resp.is_success
                                 if not webhook_sent:
                                     webhook_error = f"Webhook returned HTTP {resp.status_code}"
@@ -505,8 +510,13 @@ async def dispatch_reminder(
                 if not _ok:
                     ntfy_error = f"ntfy URL rejected: {_reason}"
                 else:
-                    async with httpx.AsyncClient(timeout=10.0) as client:
-                        resp = await client.post(f"{base}/{topic}", content=ntfy_body, headers=hdrs)
+                    # `B1014`: paced (ntfy.sh limits) and routed.
+                    async with httpx.AsyncClient(
+                            timeout=10.0,
+                            mounts=paced_http.direct_mounts(f"{base}/{topic}")) as client:
+                        resp = await paced_http.request(
+                            "POST", f"{base}/{topic}", client=client, content=ntfy_body,
+                            headers=hdrs)
                         ntfy_sent = resp.is_success
                         if not ntfy_sent:
                             ntfy_error = f"ntfy returned HTTP {resp.status_code}"

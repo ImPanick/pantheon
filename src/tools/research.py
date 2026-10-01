@@ -13,6 +13,7 @@ from typing import Any, Dict, Optional
 
 from src.constants import DEEP_RESEARCH_DIR
 from src.tools._common import _parse_tool_args
+from src import paced_http  # `B1014`: NO_PROXY ranges, read for every client
 
 
 async def do_manage_research(content: str, owner: Optional[str] = None) -> Dict:
@@ -120,7 +121,8 @@ async def do_trigger_research(content: str, owner: Optional[str] = None) -> Dict
     if args.get("search_provider"):
         payload["search_provider"] = args["search_provider"]
     try:
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with httpx.AsyncClient(
+                timeout=30, mounts=paced_http.direct_mounts(_INTERNAL_BASE)) as client:
             resp = await client.post(f"{_INTERNAL_BASE}/api/research/start",
                                      json=payload, headers=_internal_headers(owner))
         if resp.status_code >= 400:

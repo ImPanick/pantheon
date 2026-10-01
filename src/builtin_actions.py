@@ -18,6 +18,7 @@ from core.constants import internal_api_base
 from src.constants import DATA_DIR, DEEP_RESEARCH_DIR, TIDY_CALENDAR_STATE_FILE, EMAIL_URGENCY_CACHE_DIR, COOKBOOK_STATE_FILE
 from src.interactive_gate import wait_for_interactive_quiet
 from src.env_flags import tool_arg_truthy
+from src import paced_http  # `B1014`: NO_PROXY ranges, read for every client
 
 logger = logging.getLogger(__name__)
 
@@ -3422,7 +3423,8 @@ async def action_cookbook_serve(
     if srv.get("platform"): body["platform"] = srv["platform"]
 
     try:
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with httpx.AsyncClient(
+                timeout=30, mounts=paced_http.direct_mounts(internal_api_base())) as client:
             r = await client.post(f"{internal_api_base()}/api/model/serve",
                                   json=body, headers=headers)
             data = r.json() if r.content else {}

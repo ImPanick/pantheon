@@ -22,6 +22,7 @@ from pathlib import Path
 import httpx
 from core.constants import internal_api_base
 from src.constants import COOKBOOK_STATE_FILE
+from src import paced_http  # `B1014`: NO_PROXY ranges, read for every client
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +67,8 @@ async def _delete_endpoint_for_task(task: dict) -> None:
         port = 8080
     base_url = f"http://{host}:{port}/v1"
     try:
-        async with httpx.AsyncClient(timeout=8) as client:
+        async with httpx.AsyncClient(
+                timeout=8, mounts=paced_http.direct_mounts(internal_api_base())) as client:
             r = await client.get(
                 f"{internal_api_base()}/api/model-endpoints",
                 headers=_internal_headers(),
@@ -113,7 +115,8 @@ async def _stop_serve(session_id: str, remote_host: str = "", ssh_port: str = ""
     else:
         cmd = f"tmux kill-session -t {shlex.quote(session_id)}"
     try:
-        async with httpx.AsyncClient(timeout=15) as client:
+        async with httpx.AsyncClient(
+                timeout=15, mounts=paced_http.direct_mounts(internal_api_base())) as client:
             r = await client.post(
                 f"{internal_api_base()}/api/shell/exec",
                 json={"command": cmd},

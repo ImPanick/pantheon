@@ -547,16 +547,41 @@ def _clear_host_dead(url: str) -> None:
 # 100-500ms TCP+TLS handshake. Lazy init so we bind to the running event loop.
 _http_client: Optional[httpx.AsyncClient] = None
 _http_limits = httpx.Limits(max_connections=100, max_keepalive_connections=30, keepalive_expiry=30.0)
+# `B1014`. httpx reads no range in `NO_PROXY` (`B982`), so a model server on the
+# LAN behind an operator's proxy was sent to the proxy. A destination
+# `paced_http.direct_mounts` sends direct gets a shared client of its own, kept
+# per host so its connections stay warm too (`_client_for`); every other
+# destination — all of them, without a proxy or a range — shares the one client,
+# as before.
+_direct_clients: Dict[str, httpx.AsyncClient] = {}
 
 def _get_http_client() -> httpx.AsyncClient:
     """Return process-wide AsyncClient. Per-request timeout is passed at call time."""
     global _http_client
     if _http_client is None or _http_client.is_closed:
         from src.tls_overrides import llm_verify
+        # `{}`: this client carries only destinations `_client_for` found no
+        # range for, which the environment routes as it always did.
         _http_client = httpx.AsyncClient(
-            limits=_http_limits, http2=False, verify=llm_verify(),
+            limits=_http_limits, http2=False, verify=llm_verify(), mounts={},
         )
     return _http_client
+
+
+def _client_for(url: str) -> httpx.AsyncClient:
+    """The shared client a call to `url` is made with (`B1014`)."""
+    from src.paced_http import direct_mounts
+    mounts = direct_mounts(url) if url else {}
+    if not mounts:
+        return _get_http_client()
+    key = next(iter(mounts))
+    client = _direct_clients.get(key)
+    if client is None or client.is_closed:
+        from src.tls_overrides import llm_verify
+        client = _direct_clients[key] = httpx.AsyncClient(
+            limits=_http_limits, http2=False, verify=llm_verify(), mounts=mounts,
+        )
+    return client
 
 def _get_cached_response(cache_key: str) -> Optional[str]:
     """Get cached response if it exists."""
@@ -2563,7 +2588,7 @@ async def llm_call_async(
         try:
             async with _local_model_slot(target_url, model, workload):
                 note_model_activity(target_url, model)
-                client = _get_http_client()
+                client = _client_for(target_url)
                 r = await httpx_post_kimi_aware_async(client, target_url, h, json=payload, timeout=call_timeout)
             duration = time.time() - start
             if not r.is_success:
@@ -2943,7 +2968,7 @@ async def _stream_llm_inner(url: str, model: str, messages: List[Dict], temperat
         _responses_actual_model = ""
         _responses_model_announced = False
         try:
-            client = _get_http_client()
+            client = _client_for(target_url)
             async with client.stream('POST', target_url, json=payload, headers=h, timeout=stream_timeout) as r:
                 _clear_host_dead(target_url)
                 if r.status_code != 200:
@@ -3064,7 +3089,7 @@ async def _stream_llm_inner(url: str, model: str, messages: List[Dict], temperat
         _ollama_actual_model = ""
         _ollama_model_announced = False
         try:
-            client = _get_http_client()
+            client = _client_for(target_url)
             async with client.stream('POST', target_url, json=payload, headers=h, timeout=stream_timeout) as r:
                 _clear_host_dead(target_url)
                 if r.status_code != 200:
@@ -3165,7 +3190,7 @@ async def _stream_llm_inner(url: str, model: str, messages: List[Dict], temperat
         _anth_block_idx = -1
         _anth_block_type = ""
         try:
-            client = _get_http_client()
+            client = _client_for(target_url)
             async with client.stream('POST', target_url, json=payload, headers=h, timeout=stream_timeout) as r:
                 _clear_host_dead(target_url)
                 if r.status_code != 200:
@@ -3349,7 +3374,7 @@ async def _stream_llm_inner(url: str, model: str, messages: List[Dict], temperat
         return events
 
     try:
-        client = _get_http_client()
+        client = _client_for(target_url)
         h = await apply_kimi_code_headers_async(client, h, target_url)
         async with client.stream('POST', target_url, json=payload, headers=h, timeout=stream_timeout) as r:
             _clear_host_dead(target_url)

@@ -1497,9 +1497,11 @@ async def _startup_event():
                     await asyncio.to_thread(model_discovery.warmup_ping_urls)
                     if model_discovery else []
                 )
+                from src import paced_http
                 for url in urls:
                     try:
-                        async with httpx.AsyncClient(timeout=5.0) as client:
+                        async with httpx.AsyncClient(
+                                timeout=5.0, mounts=paced_http.direct_mounts(url)) as client:
                             await client.get(url)
                         logger.info(f"Warmup ping OK: {url}")
                     except Exception as e:

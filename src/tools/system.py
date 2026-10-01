@@ -14,6 +14,7 @@ import re
 from typing import Any, Dict, List, Optional
 
 from src.tools._common import _parse_tool_args
+from src import paced_http  # `B1014`: NO_PROXY ranges, read for every client
 
 logger = logging.getLogger(__name__)
 
@@ -1024,7 +1025,8 @@ async def do_app_api(content: str, owner: Optional[str] = None) -> Dict:
         # `filter` keyword (substring match on path or summary).
         kw = (args.get("filter") or "").lower()
         try:
-            async with httpx.AsyncClient(timeout=15) as client:
+            async with httpx.AsyncClient(timeout=15,
+                                         mounts=paced_http.direct_mounts(base)) as client:
                 resp = await client.get(f"{base}/openapi.json",
                                         headers=_internal_headers())
                 data = resp.json()
@@ -1129,7 +1131,8 @@ async def do_app_api(content: str, owner: Optional[str] = None) -> Dict:
     headers = {**_internal_headers(owner=owner), "Content-Type": "application/json"}
 
     try:
-        async with httpx.AsyncClient(timeout=60) as client:
+        async with httpx.AsyncClient(timeout=60,
+                                     mounts=paced_http.direct_mounts(base)) as client:
             resp = await client.request(
                 method, f"{base}{path}",
                 json=body if body is not None and method in ("POST", "PUT", "PATCH") else None,

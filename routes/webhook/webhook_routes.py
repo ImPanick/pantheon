@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 
 from core.database import SessionLocal, Webhook, ModelEndpoint
 from src.auth_helpers import owner_filter
+from src import paced_http  # `B1014`: NO_PROXY ranges, read for every client
 from src.url_security import validate_public_http_url
 from src.webhook_manager import WebhookManager, validate_webhook_url, validate_events
 
@@ -347,7 +348,8 @@ def setup_webhook_routes(
 
             if model == "auto":
                 try:
-                    async with httpx.AsyncClient(timeout=5) as client:
+                    async with httpx.AsyncClient(
+                            timeout=5, mounts=paced_http.direct_mounts(base_url)) as client:
                         models_url = build_models_url(base_url)
                         hdrs = build_headers(api_key, base_url)
                         if models_url:

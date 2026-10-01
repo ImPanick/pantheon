@@ -61,7 +61,9 @@ class EmbeddingClient:
         # running on :11434) fast-fails to the local FastEmbed fallback instead
         # of stalling startup ~30s per probe. Read stays generous for a real
         # endpoint (embedding a short string returns in well under a second).
-        self._client = httpx.Client(timeout=httpx.Timeout(connect=3.0, read=10.0, write=5.0, pool=3.0))
+        from src import paced_http   # `B1014`
+        self._client = httpx.Client(timeout=httpx.Timeout(connect=3.0, read=10.0, write=5.0, pool=3.0),
+                                    mounts=paced_http.direct_mounts(self.url))
         self._batch_size = max(1, int(os.getenv("EMBEDDING_BATCH_SIZE", "8")))
         self._max_chars = max(200, int(os.getenv("EMBEDDING_MAX_CHARS", "900")))
 
