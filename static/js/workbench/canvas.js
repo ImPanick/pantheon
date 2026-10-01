@@ -48,7 +48,7 @@
 // under `workbench_positions` — see `POSITIONS_PREF` for why that name.
 
 import {
-  layoutGraph, boundsOf, portPoint, portOffset, inputPoint, edgePath, edgeMid,
+  layoutGraph, boundsOf, portPoint, portOffset, edgePath, edgeRoute,
   arrowPath, nodeAt, clampZoom, fitView, NODE_W, NODE_H, PORTS,
 } from './graphLayout.js';
 import { EDGE_WORDS, EDGE_COLUMNS, KIND_WORDS, componentOf } from '../tasks/workflowDiagram.js';
@@ -604,15 +604,15 @@ export function mountCanvas(root, opts = {}) {
 
   function updateEdges() {
     for (const r of S.edgeEls) {
-      const a = portPoint(S.pos.get(r.from), r.when);
-      const b = inputPoint(S.pos.get(r.to));
-      const d = edgePath(a, b);
-      r.hit.setAttribute('d', d);
-      r.line.setAttribute('d', d);
-      r.head.setAttribute('d', arrowPath(b));
-      const m = edgeMid(a, b);
-      r.label.setAttribute('x', String(m.x));
-      r.label.setAttribute('y', String(m.y - 6));
+      // `B1053`. Routed round both steps when the target is not to the right,
+      // so an arrow to a step on the left reads the way it was saved.
+      const route = edgeRoute(S.pos.get(r.from), S.pos.get(r.to), r.when);
+      r.hit.setAttribute('d', route.d);
+      r.line.setAttribute('d', route.d);
+      r.head.setAttribute('d', arrowPath(route.end));
+      r.label.setAttribute('x', String(route.label.x));
+      r.label.setAttribute('y', String(route.label.y));
+      r.g.setAttribute('data-routed', route.routed ? 'true' : 'false');
     }
     sizeSvg();
   }
