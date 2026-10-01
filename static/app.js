@@ -37,6 +37,11 @@ import adminModule from './js/admin.js?v=20261001workstation';
 import settingsModule from './js/settings.js?v=20261001workstation';
 // Eagerly bind unified minimize/restore behavior across all tool modals.
 import './js/modalManager.js?v=20261001workstation';
+// `P20-05`. The workstation screen window: loaded here for its one delegated
+// listener, which answers every `[data-open-workstation-screen]` door — a
+// workstation tool card's *View screen*, Settings → Workstation's *Open the
+// screen*. It builds nothing until one is pressed.
+import './js/workstationScreen.js';
 // Desktop window tiling — drag a modal near an edge/corner to snap.
 import './js/tileManager.js';
 import themeModule from './js/theme.js';

@@ -45600,6 +45600,115 @@ body.settings-sidebar-resize-active {
   .ws-field .settings-label { min-width: 0; flex: 1 0 100%; }
 }
 
+/* ── `P20-05` / `B956`: the workstation screen, and what the sudo switch cannot do ──
+   The window reuses the panel's status line (`.ws-status`, a dot and a
+   sentence, the state never on colour alone) and the shared toolbar buttons.
+   The picture keeps the screen's shape at any window size — sized by the
+   browser from its own pixels, never stretched — so a point on it maps
+   straight back to the screen's pixels (`workstationScreen.js:mapPoint`). The
+   stage is a positioned box and the picture is limited by it, which is what
+   makes the limit a real size at every window size. While the person holds
+   the screen the stage's own border turns `--green` — outside the picture, so
+   nothing it shows covers it — and the sentence above says so in words. Every colour is an existing token or a `--fg` mix; no
+   `--accent`, no focus rule of its own (the global ring reaches the stage),
+   nothing animated here — the shared buttons' hover fade is held to a frame
+   under reduced motion by `P1-12`'s guard above, like every other.
+   `[hidden]` is restated where a rule here sets `display`. */
+@media (min-width: 769px) {
+  #workstation-screen-modal {
+    left: calc(var(--icon-rail-w, 48px) + var(--sidebar-w, 0px));
+    width: calc(100% - (var(--icon-rail-w, 48px) + var(--sidebar-w, 0px)));
+    box-sizing: border-box;
+  }
+}
+#workstation-screen-modal .wsv-content {
+  width: min(980px, 94vw);
+  height: min(720px, 88vh);
+  max-height: 88vh;
+  overflow: hidden;
+  gap: 8px;
+}
+.wsv-title { display: inline-flex; align-items: center; gap: 6px; }
+.wsv-title-icon { display: inline-flex; opacity: 0.7; }
+.wsv-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.wsv-status { flex: 1 1 240px; min-width: 0; }
+.wsv-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.wsv-stage {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 160px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--fg) 6%, var(--panel));
+  overflow: hidden;
+}
+.wsv-stage[hidden] { display: none; }
+.wsv-screen {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 7px;
+}
+.wsv-stage.wsv-held {
+  border-color: var(--green);
+  box-shadow: 0 0 0 1px var(--green);
+}
+.wsv-screen.wsv-holding { cursor: crosshair; }
+.wsv-frame {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+.wsv-frame[hidden] { display: none; }
+.wsv-empty {
+  padding: 24px;
+  font-size: 13px;
+  text-align: center;
+  color: color-mix(in srgb, var(--fg) 70%, transparent);
+}
+.wsv-empty[hidden] { display: none; }
+.wsv-hint {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: color-mix(in srgb, var(--fg) 75%, transparent);
+}
+.wsv-hint[hidden] { display: none; }
+/* The door on a workstation tool card: the *workstation* label's shape, as a
+   button — a border and a hover, no fill until pointed at. */
+.agent-thread-ws-door {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 6px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--fg) 30%, transparent);
+  background: transparent;
+  color: color-mix(in srgb, var(--fg) 80%, transparent);
+  font-family: inherit;
+  font-size: 0.7em;
+  font-weight: 600;
+  line-height: 15px;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.agent-thread-ws-door:hover {
+  background: color-mix(in srgb, var(--fg) 10%, transparent);
+  color: var(--fg);
+}
 /* `B956`. The command that gives a clean system back, to copy. */
 .ws-recreate { display: flex; flex-direction: column; gap: 6px; margin-top: -4px; }
 .ws-recreate[hidden],

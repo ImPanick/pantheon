@@ -221,6 +221,11 @@ function _rank(entries, q) {
 const _DOOR_FUNCTIONS = {
   'settings-modal': () => settingsModule.open(),
   'skills-modal': () => openSkillsWindow('browse'),
+  // `P20-05`. The workstation screen window — the function its tool-card and
+  // Settings doors call. Imported when chosen: `app.js` has already loaded it
+  // for those doors, so this is the same module, not a second copy.
+  'workstation-screen-modal': () => import('./workstationScreen.js')
+    .then((m) => m.openWorkstationScreen()),
 };
 
 function _toolEntries(terms) {

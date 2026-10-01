@@ -152,6 +152,9 @@ const _LABELS = {
   // Virtual id — the doc editor pane isn't a modal, but it minimizes to a
   // chip via the same dock infrastructure.
   'doc-panel':         { label: 'Document', icon: 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M16 13H8M16 17H8M10 9H8' },
+  // `P20-05`. The workstation's screen — the same monitor the Settings panel
+  // and the tool card's *workstation* label draw.
+  'workstation-screen-modal': { label: 'Workstation screen', icon: 'M4 3h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zM8 21h8M12 17v4' },
 };
 
 // ── `P9-11` — background work, on the dock, whether or not its window is open ──
@@ -1688,6 +1691,10 @@ const _AUTO_WIRE = {
   // wiring it here makes tab-down use the new .minimized-dock-chip instead of
   // the legacy .modal-dock-item.
   'custom-preset-modal':  { rail: null,             sidebar: null },
+  // `P20-05`. Opened from a workstation tool card, Settings → Workstation and
+  // the palette, all through `openWorkstationScreen` (`workstationScreen.js`);
+  // no rail or sidebar button of its own.
+  'workstation-screen-modal': { rail: null,         sidebar: null },
 };
 
 function _autoRegister(id) {

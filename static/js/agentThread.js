@@ -434,6 +434,23 @@ export function whereBadgeHtml(ranIn, ranAs) {
 }
 
 /**
+ * `P20-05`. The door from a workstation call to the workstation's screen.
+ *
+ * On the card of any call that ran in the workstation (`ran_in`, exactly as
+ * the label above earns it) and on every `computer` card, which only ever acts
+ * there — known from `tool_start`, so a running card has it while the agent
+ * works. A real button in the header, so it is reachable without unfolding the
+ * card; its press is answered by `workstationScreen.js`'s one delegated
+ * listener (`[data-open-workstation-screen]`), never by one of its own (`B56`).
+ */
+export function workstationDoorHtml(tool, ranIn) {
+  if (ranIn !== 'workstation' && tool !== 'computer') return '';
+  return '<button type="button" class="agent-thread-ws-door" data-open-workstation-screen '
+    + 'title="Watch the workstation screen, or take it over">'
+    + WORKSTATION_ICON + 'View screen</button>';
+}
+
+/**
  * `P4-09`. The command block, and the way back to the arguments behind it.
  *
  * `command` is what the card has always shown, and for two kinds of action it
@@ -588,6 +605,8 @@ export function nodeClassName(state, ok) {
  * @param {boolean} [o.approved] exactly `true` badges the card as authorised
  * @param {string} [o.ranIn]  exactly `'workstation'` labels where it ran (`P20-03`)
  * @param {string} [o.ranAs]  the workstation account, for that label's tooltip
+ *                            — and with `ranIn`, or a `computer` card, the
+ *                            *View screen* door (`P20-05`)
  *
  * A `diff` or a `todo` suppresses the command line. For a file edit the
  * "command" is the raw JSON arguments, which is redundant beside the diff; for
@@ -614,6 +633,7 @@ export function agentThreadNodeHtml(o) {
     + `<span class="agent-thread-tool">${esc(label)}</span>`
     + approvedBadgeHtml(o.approved)
     + whereBadgeHtml(o.ranIn, o.ranAs)
+    + workstationDoorHtml(o.tool, o.ranIn)
     + roundBadgeHtml(o.round)
     + tail
     + '</div>'

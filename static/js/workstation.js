@@ -168,6 +168,9 @@ function render(status) {
   // workstation that is down would fail, and a button that cannot work is a
   // control left dangling (`Law 15`).
   show($('ws-reset'), !!status.may_use && status.state === 'up');
+  // `P20-05`. The window onto the screen, on the same terms. It is a
+  // `[data-open-workstation-screen]` door, answered by `workstationScreen.js`.
+  show($('ws-open-screen'), !!status.may_use && status.state === 'up');
 
   show($('ws-admin'), !!status.settings);
 }
@@ -356,7 +359,13 @@ async function saveAddress() {
   return ok;
 }
 
-async function resetMine() {
+/**
+ * The confirmation and the reset, shared by this panel and the workstation
+ * screen window (`P20-05`) — one sentence for what is erased, one request.
+ * Resolves `null` when the person said no, else `{ ok, message }` with the
+ * server's sentence either way.
+ */
+export async function confirmAndResetMine() {
   const message = 'Everything in your workstation home is erased — files, settings, anything '
     + 'installed into it — and it starts clean. Nobody else\'s home is touched.';
   let ok = false;
@@ -367,14 +376,18 @@ async function resetMine() {
       })
       : window.confirm(`Reset your workstation?\n\n${message}`);
   } catch (_) { ok = false; }
-  if (!ok) return false;
+  if (!ok) return null;
   const res = await fetch('/api/workstation/reset', { method: 'POST', credentials: 'same-origin' });
-  if (!res.ok) {
-    say('ws-result', await readError(res), false);
-    return false;
-  }
+  if (!res.ok) return { ok: false, message: await readError(res) };
   const body = await res.json().catch(() => ({}));
-  say('ws-result', body.sentence || 'Your workstation home is back to a clean start.', true);
+  return { ok: true, message: body.sentence || 'Your workstation home is back to a clean start.' };
+}
+
+async function resetMine() {
+  const answer = await confirmAndResetMine();
+  if (!answer) return false;
+  say('ws-result', answer.message, answer.ok);
+  if (!answer.ok) return false;
   await load();
   return true;
 }
