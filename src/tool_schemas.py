@@ -461,14 +461,27 @@ FUNCTION_TOOL_SCHEMAS = [
         "type": "function",
         "function": {
             "name": "host_shell",
+            # `B1012`. It said `bash` "cannot reach" the host's services and
+            # network stack. Measured 2026-10-01 on Docker Desktop 29.7.2
+            # (`B975`, `D-2026-10-01-03`): a container reaches the host's
+            # LAN-facing services (its `:445`) and the router. What a container
+            # never reaches is the machine itself — its files beyond what is
+            # mounted, its processes, its own network configuration — and that
+            # is what this names. Whether a service bound only to the host's
+            # loopback answers `host.docker.internal` is not measured here, so it
+            # is not claimed either way.
             "description": (
                 "Run a shell command on the HOST machine — the real computer — "
                 "outside the Docker container, through the network agent installed "
-                "there. Use this when a task must touch the actual machine: its "
-                "filesystem, its services, its network stack. `bash` cannot reach "
-                "any of that, because it runs inside the container. The host agent "
-                "refuses a permanent list of destructive commands and that list "
-                "cannot be changed from here."
+                "there. Use this when a task must act on the machine itself: its "
+                "files beyond what is mounted into the container, its processes and "
+                "services (list, start, stop), its own network configuration "
+                "(addresses, routes, neighbour table). `bash` runs inside the "
+                "container and cannot do those. Connecting to a service over the "
+                "network is different: `bash` can often do that itself (on Docker "
+                "Desktop a container reaches the host and the LAN); a service it "
+                "cannot reach, the host may. The host agent refuses a permanent list "
+                "of destructive commands and that list cannot be changed from here."
             ),
             "parameters": {
                 "type": "object",
