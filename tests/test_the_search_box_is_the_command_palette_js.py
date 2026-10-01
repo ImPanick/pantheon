@@ -405,7 +405,9 @@ def test_a_tool_is_found_by_its_name_and_opened_through_its_own_door(box):
     before, after = out["before"], out["after"]
     assert before["labels"][0] == "Tools"
     assert before["groups"][0]["options"][0]["label"] == "Calendar"
-    assert before["active"] == "Calendar"
+    # `B947` (d): the row also names the key that opens Calendar (the default
+    # `open_calendar` binding), so the option reads with it.
+    assert before["active"] == "Calendar Ctrl+Alt+C"
     assert after["clicked"] == ["rail-calendar"]
     assert after["open"] is False
 
@@ -674,9 +676,10 @@ def test_the_arrows_move_one_active_option_and_the_box_names_it(box):
           groups: read().groups.map((g) => [g.role, g.headHidden]) }));
     """)
     trail = out["trail"]
-    assert trail[0]["active"] == "Calendar"
-    assert trail[1]["active"] != "Calendar"
-    assert trail[2]["active"] == "Calendar" and trail[3]["active"] == "Calendar"
+    calendar = "Calendar Ctrl+Alt+C"   # `B947` (d): the row names its key
+    assert trail[0]["active"] == calendar
+    assert trail[1]["active"] != calendar
+    assert trail[2]["active"] == calendar and trail[3]["active"] == calendar
     assert trail[4]["activeId"] == out["last"]
     assert all(t["count"] == 1 and t["focus"] == "search-input" for t in trail)
     assert out["expanded"] == "true"

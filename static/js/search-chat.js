@@ -43,13 +43,13 @@
 
 import sessionModule from './sessions.js';
 import settingsModule from './settings.js?v=20261001workstation';
-import { isMinimized, listWindows, showWindow } from './modalManager.js?v=20261001workstation';
+import { doorShown, isMinimized, listWindows, showWindow } from './modalManager.js?v=20261001workstation';
 import { openSkillsWindow } from './skills.js';
-import { slashCatalog, insertSlashToken } from './slashAutocomplete.js';
+import { slashCatalog, insertSlashToken, loadSkillEntries, mergeSkillEntries } from './slashAutocomplete.js';
 import { SETTINGS_GROUPS, searchSettingsPanels } from './settings/registry.js';
 import { controlTextFor } from './settings/search.js';
 import { topPortalZ } from './toolWindowZOrder.js';
-import { KEYBIND_DEFAULTS, ariaKeyshortcuts, formatKeybind } from './keyboard-shortcuts.js';
+import { KEYBIND_DEFAULTS, KEYBIND_TOOL_DOORS, ariaKeyshortcuts, formatKeybind } from './keyboard-shortcuts.js';
 
 let API_BASE = '';
 let debounceTimer = null;
@@ -124,6 +124,23 @@ export function openSearch() {
   }
   _reset();
   _draw();
+  _refreshSkillCommands();
+}
+
+/**
+ * `B947` (a). Published skills as commands, as the composer's `/` popup has
+ * them (`loadSkillEntries` / `mergeSkillEntries`, its own loader and merge).
+ * Read each time the palette opens, so a skill published a minute ago is
+ * offered; until the answer arrives the built-in catalogue stands alone.
+ */
+function _refreshSkillCommands() {
+  let base;
+  try { base = slashCatalog(); } catch (_) { base = []; }
+  Promise.resolve(loadSkillEntries()).then((skills) => {
+    if (!Array.isArray(skills) || !skills.length) return;
+    _catalog = mergeSkillEntries(base, skills);
+    if (isOpen()) _draw();
+  }).catch(() => {});
 }
 
 /** Dismiss — Escape, Ctrl+K again, or a click on the backdrop. Hands focus back. */
@@ -229,13 +246,45 @@ const _DOOR_FUNCTIONS = {
   // for those doors, so this is the same module, not a second copy.
   'workstation-screen-modal': () => import('./workstationScreen.js')
     .then((m) => m.openWorkstationScreen()),
+  // `B947` (b). Email has no `_AUTO_WIRE` door, on purpose (it keeps its own
+  // unread dot), so the palette reached it only as `/email`, one extra Enter.
+  // Its door is the one `/email` presses (`slashCommands.js`): the rail's
+  // button, else the sidebar section's title — which also marks the inbox
+  // seen, as opening it by hand does.
+  'email-lib-modal': () => {
+    const btn = el('rail-email') || el('email-section-title');
+    if (btn) btn.click();
+  },
 };
+
+/**
+ * `B947` (b). Whether a window with a door function may be offered. Settings,
+ * Skills and the workstation screen always may (`P9-01`); Email only while
+ * Customize UI shows it — it hides `#email-section` and `#rail-email`, and a
+ * tool the person switched off is not offered back to them here.
+ */
+const _DOOR_SHOWN = {
+  'email-lib-modal': () => doorShown(el('rail-email')) || doorShown(el('email-section')),
+};
+
+/** `B947` (d). The key that opens this window, from the keybind table, if bound. */
+function _toolKey(w) {
+  const live = window._pantheonKeybinds || KEYBIND_DEFAULTS;
+  for (const [action, btnId] of Object.entries(KEYBIND_TOOL_DOORS)) {
+    if ((w.doors || []).includes(btnId) && live[action]) return formatKeybind(live[action]);
+  }
+  return '';
+}
+
+/** `B947` (e). What a row says about where its window is. */
+const _STATE_WORDS = { open: 'Open', minimized: 'Minimized' };
 
 function _toolEntries(terms) {
   const out = [];
   for (const w of listWindows()) {
     const door = _DOOR_FUNCTIONS[w.id];
     if (!w.door && !door) continue;
+    if (!w.door && _DOOR_SHOWN[w.id] && !_DOOR_SHOWN[w.id]()) continue;
     // The id's first word as well as the label, so the names people learned
     // still find the tool: "cookbook" finds Forge, "memory" finds Brain.
     if (!_wordsMatch(terms, `${w.label} ${w.id.split('-')[0]}`)) continue;
@@ -243,12 +292,30 @@ function _toolEntries(terms) {
     // restored the way its dock chip and its buttons restore it. Opening a
     // minimized Settings through `settingsModule.open()` showed the window and
     // left it marked minimized, with its chip still in the dock.
+    const open = door ? (() => (isMinimized(w.id) ? showWindow(w.id) : door())) : (() => showWindow(w.id));
+    // `B947` (d)(e). The row says whether the window is already up and the
+    // key that opens it — which teaches the fast path without a tutorial.
+    const detail = [_STATE_WORDS[w.state], _toolKey(w)].filter(Boolean).join(' · ');
     out.push({
-      kind: 'tool', key: 'tool:' + w.id, label: w.label, detail: '',
-      run: door ? (() => (isMinimized(w.id) ? showWindow(w.id) : door())) : (() => showWindow(w.id)),
+      kind: 'tool', key: 'tool:' + w.id, label: w.label, detail, run: open,
+      blocked: w.id === 'compare-model-overlay' ? _compareIsOn : null,
     });
   }
   return out;
+}
+
+/**
+ * `B947` (c). Compare is a mode, not a window: its button turns an active
+ * comparison OFF (`app.js`), so pressing it from here — the palette's rule is
+ * "open, never toggle shut" — would end the comparison the person asked to
+ * see. While one is on and its picker is not up, choosing Compare keeps the
+ * palette open and says so; the button stays the way to turn it off.
+ */
+function _compareIsOn() {
+  const cmp = window.compareModule;
+  if (!cmp || typeof cmp.isActive !== 'function' || !cmp.isActive()) return '';
+  if (el('compare-model-overlay')) return '';   // the picker is up: raised as a window
+  return 'Compare is already on. Its button in the sidebar turns it off.';
 }
 
 function _settingsEntries(q) {
@@ -446,7 +513,7 @@ function _optionNode(entry, query) {
   // Keep the caret in the box while a row is pressed: the box owns the
   // keyboard, and a click that blurred it would strand focus on <body>.
   row.addEventListener('mousedown', (e) => { if (e && e.preventDefault) e.preventDefault(); });
-  row.addEventListener('click', () => { _setActive(index); _activate(entry); });
+  row.addEventListener('click', () => { _setActive(index); _activate(entry, 'pointer'); });
   return row;
 }
 
@@ -537,9 +604,22 @@ function _statusText(query) {
 
 // ── choosing ────────────────────────────────────────────────────────────────
 
-function _activate(entry) {
+function _activate(entry, how) {
   if (!entry) return;
   if (entry.kind === 'command') { _fillComposer(entry); return; }
+  // `B947` (c). A choice that would undo what the person asked for stays in
+  // the palette and says why — the shape the draft guard has below.
+  const why = typeof entry.blocked === 'function' ? entry.blocked() : '';
+  if (why) { _say(why); return; }
+  // `B947` (f). A tool window chosen from the keyboard takes the focus, the
+  // way one opened with Enter on its rail button does (`P10-06`, `a11y.js`):
+  // the palette tells `a11y.js` the press was a launch from where the focus
+  // is about to return, and that module hands the window its move handle — and
+  // gives the focus back there when the window closes. Chosen with the mouse,
+  // a window is left as one opened with the mouse always is.
+  if (how === 'keyboard' && entry.kind === 'tool' && _returnFocus) {
+    document.dispatchEvent(new CustomEvent('pantheon:window-launch', { detail: { from: _returnFocus } }));
+  }
   _hide();
   try {
     Promise.resolve(entry.run()).catch((err) => console.error('Search: could not open', entry.label, err));
@@ -590,7 +670,7 @@ function handleKeydown(e) {
   } else if (e.key === 'Enter') {
     if (e.isComposing) return;
     e.preventDefault();
-    if (_active >= 0 && _options[_active]) _activate(_options[_active].entry);
+    if (_active >= 0 && _options[_active]) _activate(_options[_active].entry, 'keyboard');
   } else if (e.key === 'Escape') {
     // Handled here and kept here. Bubbling on, it reached `cancel: 'escape'`
     // in `keyboard-shortcuts.js` — `abortCurrentRequest()` — so closing the

@@ -109,6 +109,25 @@ export function insertSlashToken(textarea, token) {
   if (typeof textarea.setSelectionRange === 'function') textarea.setSelectionRange(len, len);
 }
 
+/**
+ * `B947` (a). The published skills' commands, as this popup lists them —
+ * exported so the command palette offers the same ones. `/api/skills/slash-
+ * catalog` is the one source; `mergeSkillEntries` is the one merge.
+ */
+export function loadSkillEntries() { return _loadSkillEntries(); }
+
+/** The built-in catalogue with the skills after it, a token listed once. */
+export function mergeSkillEntries(base, skills) {
+  const seen = new Set(base.map(e => e.token));
+  const merged = base.slice();
+  for (const entry of skills || []) {
+    if (seen.has(entry.token)) continue;
+    seen.add(entry.token);
+    merged.push(entry);
+  }
+  return merged;
+}
+
 async function _loadSkillEntries() {
   try {
     const res = await fetch('/api/skills/slash-catalog', { credentials: 'same-origin' });
@@ -274,14 +293,7 @@ export function initSlashAutocomplete(textarea) {
 
   _loadSkillEntries().then(skillEntries => {
     if (!skillEntries.length) return;
-    const seen = new Set(all.map(e => e.token));
-    const merged = all.slice();
-    for (const entry of skillEntries) {
-      if (seen.has(entry.token)) continue;
-      seen.add(entry.token);
-      merged.push(entry);
-    }
-    all = merged;
+    all = mergeSkillEntries(all, skillEntries);
     if (visible) refresh();
   });
 

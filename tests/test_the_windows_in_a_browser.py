@@ -18,6 +18,8 @@ through their real doors:
     Research and the Brain's Browse tab, each filled past its cap, stay on
     screen with their close buttons reachable, and a docked Notes pane ends at
     the bottom edge.
+  * **`B947` (f)** — Tasks chosen in the command palette with Enter takes the
+    focus on its move handle, and Escape there hands it back to the message box.
   * **`B952`** — the edge of a docked Notes pane is a separator one Shift+Tab
     from the pane; the arrows move it 16px the way they point (a right dock
     widens on ArrowLeft, a left dock on ArrowRight), the value is announced and
@@ -79,6 +81,21 @@ const BASE = process.argv[2];
   await page.focus('#message'); await stops();
   await page.keyboard.press('Escape'); await settle(300);
   out.nothingOpen = await stops();
+
+  // ── B947 (f) ────────────────────────────────────────────────────────────
+  // A tool chosen in the palette from the keyboard takes the focus, and gives
+  // it back to the message box when it closes.
+  await page.focus('#message');
+  await page.keyboard.press('Control+k'); await settle(200);
+  await page.keyboard.type('tasks'); await settle(200);
+  await page.keyboard.press('Enter'); await settle(1500);
+  out.paletteLaunch = await page.evaluate(() => {
+    const a = document.activeElement;
+    return { cls: a ? a.className : null, inTasks: !!(a && a.closest && a.closest('#tasks-modal')) };
+  });
+  await page.keyboard.press('Escape'); await settle(800);
+  out.paletteLaunchBack = await page.evaluate(() => document.activeElement && document.activeElement.id);
+  await stops();
 
   const fresh = async () => {
     // Settings re-closes itself on the next open when its close animation
@@ -374,6 +391,14 @@ def test_at_the_larger_text_size_a_press_is_still_one_step(run):
     """16 CSS pixels, which the 1.25x scale draws as 20. Taken from the edge's
     on-screen position instead, a press jumped 195."""
     assert run["dockZoomStep"] == 20
+
+
+# ── B947 (f) ───────────────────────────────────────────────────────────────
+
+def test_a_tool_chosen_from_the_palette_by_keyboard_takes_the_focus(run):
+    assert run["paletteLaunch"]["inTasks"] is True, run["paletteLaunch"]
+    assert "window-move-handle" in run["paletteLaunch"]["cls"]
+    assert run["paletteLaunchBack"] == "message"
 
 
 def test_nothing_threw(run):

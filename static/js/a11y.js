@@ -246,6 +246,18 @@
     })();
   }
 
+  // `B947` (f). The command palette chooses a tool from the keyboard without a
+  // launcher button being pressed — Enter lands on its search box, which this
+  // module rightly does not count as one. It says so instead, naming the
+  // control the focus is returning to, and that control is treated as the
+  // launcher: the window takes the focus when it appears, and gives it back
+  // there when it closes. Same rules as a press: a person who has moved on, or
+  // a window that focused something of its own, is left alone.
+  document.addEventListener('pantheon:window-launch', function (e) {
+    var from = e && e.detail && e.detail.from;
+    if (from && typeof from.focus === 'function') noteLaunch(from);
+  });
+
   /** The window the focus just left has gone: hand the focus back. */
   function giveFocusBack(win) {
     var opener = win._a11yOpener;

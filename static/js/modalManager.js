@@ -1503,18 +1503,48 @@ export function openClosedWindow(id) {
  * being hidden is not: a collapsed sidebar or a hidden rail is exactly when the
  * palette is the way in.
  */
-function _doorShown(btn) {
+export function doorShown(btn) {
   return !!btn && !btn.hidden && !btn.classList.contains('hidden')
     && btn.style.display !== 'none';
 }
+// The name this module has always called it by.
+const _doorShown = doorShown;
 
 export function listWindows() {
   return Object.keys(_AUTO_WIRE).map((id) => {
     const wire = _AUTO_WIRE[id] || {};
     const door = [wire.rail, wire.sidebar]
       .some((btnId) => _doorShown(btnId ? document.getElementById(btnId) : null));
-    return { id, label: (_LABELS[id] && _LABELS[id].label) || id, door };
+    // `B947`. The button ids too, so the palette can name the key that presses
+    // one (`KEYBIND_TOOL_DOORS`) without keeping a second map of doors, and
+    // the window's state, so a row can say it is already up.
+    return { id, label: (_LABELS[id] && _LABELS[id].label) || id, door,
+             doors: [wire.rail, wire.sidebar].filter(Boolean), state: windowState(id) };
   });
+}
+
+/**
+ * `B947` — where a tool window is: `minimized` · `open` · `closed`. An enum
+ * (`Law 10`), and the one reading `showWindow` acts on, so a palette row that
+ * says "Open" and the door that raises it cannot disagree.
+ *
+ * "Open" is read off the element, not off `_state` alone: tools that are only
+ * auto-registered on minimize keep their entry after their own × closes them.
+ * The one exception is a window registered under a key that is not its
+ * element's id — Notes registers `notes-panel` and draws `#notes-pane` — which
+ * registers on open and unregisters on close, so there registered means open.
+ */
+export function windowState(id) {
+  const s = _state.get(id);
+  if (s && s.isMinimized) return 'minimized';
+  const modal = document.getElementById(id);
+  if (modal) {
+    const shown = !modal.classList.contains('hidden')
+      && !modal.classList.contains('modal-minimized')
+      && modal.style.display !== 'none';
+    return shown ? 'open' : 'closed';
+  }
+  return s ? 'open' : 'closed';
 }
 
 /**
@@ -1530,26 +1560,19 @@ export function listWindows() {
  *   open      → raise it, and press nothing;
  *   closed    → `openClosedWindow`, the door a person would press (`P9-11`).
  *
- * "Open" is read off the element, not off `_state` alone: tools that are only
- * auto-registered on minimize keep their entry after their own × closes them.
- * The one exception is a window registered under a key that is not its
- * element's id — Notes registers `notes-panel` and draws `#notes-pane` — which
- * registers on open and unregisters on close, so there registered means open.
+ * Which case it is, is `windowState`'s answer (`B947` moved the reading
+ * there, unchanged, so the palette's rows can say it too).
  *
  * Returns `restored` · `raised` · `opened` · `none`, an enum rather than a
  * boolean because "it was already there" and "it opened" are different news
  * (`Law 10`).
  */
 export function showWindow(id) {
-  const s = _state.get(id);
-  if (s && s.isMinimized) return restore(id) ? 'restored' : 'none';
-  const modal = document.getElementById(id);
-  if (modal) {
-    const shown = !modal.classList.contains('hidden')
-      && !modal.classList.contains('modal-minimized')
-      && modal.style.display !== 'none';
-    if (shown) { _bringToFront(modal); return 'raised'; }
-  } else if (s) {
+  const state = windowState(id);
+  if (state === 'minimized') return restore(id) ? 'restored' : 'none';
+  if (state === 'open') {
+    const modal = document.getElementById(id);
+    if (modal) _bringToFront(modal);
     return 'raised';
   }
   return openClosedWindow(id) ? 'opened' : 'none';
@@ -1838,4 +1861,4 @@ document.addEventListener('click', (e) => {
 
 export default { register, unregister, isRegistered, isMinimized, minimize, restore, toggle, close,
   injectMinimizeButton, setBackgroundWork, getBackgroundWork, listBackgroundWork, openClosedWindow,
-  listWindows, showWindow };
+  listWindows, showWindow, windowState, doorShown };

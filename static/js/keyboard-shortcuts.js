@@ -54,6 +54,25 @@ export const KEYBIND_DEFAULTS = {
 /** Actions the dispatcher does not bind; owned by the surface that uses them. */
 export const KEYBIND_LOCAL_ONLY = new Set(['doc_find']);
 
+/**
+ * The open-tool keys and the sidebar button each one presses, so each tool's
+ * own open/toggle logic runs. Exported by `B947` (d) so the command palette
+ * names a tool's key from this table rather than a second one (`Law 14`); the
+ * dispatcher below reads it too.
+ */
+export const KEYBIND_TOOL_DOORS = {
+  open_calendar: 'tool-calendar-btn',
+  open_compare:  'tool-compare-btn',
+  open_cookbook: 'tool-cookbook-btn',
+  open_research: 'tool-research-btn',
+  open_gallery:  'tool-gallery-btn',
+  open_library:  'tool-library-btn',
+  open_memory:   'tool-memory-btn',
+  open_notes:    'tool-notes-btn',
+  open_tasks:    'tool-tasks-btn',
+  open_theme:    'tool-theme-btn',
+};
+
 /** Human labels, so three files stop inventing their own wording. `H19`. */
 export const KEYBIND_LABELS = {
   // `P9-01`. Same id, same Ctrl+K: the search it opens is the command palette
@@ -447,22 +466,10 @@ export function initKeyboardShortcuts(modules) {
     }
     // Open-tool shortcuts — click the sidebar tool button so each tool's
     // own open/toggle logic runs. Unbound (empty) combos never match.
-    const _toolBtns = {
-      open_calendar: 'tool-calendar-btn',
-      open_compare:  'tool-compare-btn',
-      open_cookbook: 'tool-cookbook-btn',
-      open_research: 'tool-research-btn',
-      open_gallery:  'tool-gallery-btn',
-      open_library:  'tool-library-btn',
-      open_memory:   'tool-memory-btn',
-      open_notes:    'tool-notes-btn',
-      open_tasks:    'tool-tasks-btn',
-      open_theme:    'tool-theme-btn',
-    };
-    for (const action in _toolBtns) {
+    for (const action in KEYBIND_TOOL_DOORS) {
       if (_matchesCombo(e, kb[action])) {
         e.preventDefault();
-        const b = el(_toolBtns[action]);
+        const b = el(KEYBIND_TOOL_DOORS[action]);
         if (b) b.click();
         return;
       }
