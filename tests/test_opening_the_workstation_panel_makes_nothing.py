@@ -3,7 +3,7 @@
 
 Protocol v1 answered "does my home exist" only with `ensure`, which makes it:
 on the Ubuntu backend a Unix user, a home and a desktop, for a person who had
-only looked. It now has the `account` route (`GET /v1/users/{account}`,
+only looked. `P20-07` added the `account` route (`GET /v1/users/{account}`,
 nothing made, nothing started), and the status the panel draws asks it.
 
 Driven through the real routes on TestClient with a real `AuthManager`, the
@@ -14,7 +14,9 @@ real daemon on a port, and the real panel module under node:
   * once the person's agent has worked there, the same look says `kept`;
   * a daemon from before the route says "cannot tell" (`unknown`) and is still
     not asked to make anything;
-  * the panel puts `none` into words.
+  * the panel puts `none` into words, and says what the machine under a
+    workstation is when that changes what a person should expect (emulated,
+    or still making its image).
 """
 from __future__ import annotations
 
@@ -44,7 +46,7 @@ def run(coro):
 
 @pytest.mark.parametrize("who,route", [(ALLOWED, "GET status"), (ADMIN, "GET status"),
                                        (ADMIN, "POST check")])
-def test_looking_makes_no_account(app, ws, who, route):
+def test_looking_makes_no_account(app, ws, who, route):  # noqa: F811 — the fixtures imported above
     switch_on(app, ws)
     method, path = route.split()
     url = "/api/workstation/" + path
@@ -59,7 +61,7 @@ def test_looking_makes_no_account(app, ws, who, route):
     assert not (ws.root / account_for(who)).exists()
 
 
-def test_after_the_agent_has_worked_there_the_same_look_says_kept(app, ws):
+def test_after_the_agent_has_worked_there_the_same_look_says_kept(app, ws):  # noqa: F811 — the fixtures imported above
     switch_on(app, ws)
     allowed = as_user(app, ALLOWED)
     account = account_for(ALLOWED)
@@ -69,7 +71,7 @@ def test_after_the_agent_has_worked_there_the_same_look_says_kept(app, ws):
     assert ws.system.accounts() == [account]
 
 
-def test_a_daemon_from_before_the_route_cannot_tell_and_is_not_asked_to_make(app, ws,
+def test_a_daemon_from_before_the_route_cannot_tell_and_is_not_asked_to_make(app, ws,  # noqa: F811 — the fixtures imported above
                                                                            monkeypatch):
     """Exactly the old daemon's dispatch: no bare account route, so `404`."""
     monkeypatch.setattr(agentd, "_ACCOUNT_PATH_RE", re.compile(r"(?!)"))  # matches nothing
@@ -82,7 +84,7 @@ def test_a_daemon_from_before_the_route_cannot_tell_and_is_not_asked_to_make(app
     assert seen == {"account": account_for(ALLOWED), "exists": None, "home": None}
 
 
-def test_the_route_needs_the_token_and_refuses_what_is_not_an_account(ws):
+def test_the_route_needs_the_token_and_refuses_what_is_not_an_account(ws):  # noqa: F811 — the fixtures imported above
     with pytest.raises(Exception) as e:
         run(WorkstationClient(ws.url, "pws_wrong").account(account_for("ann")))
     assert getattr(e.value, "code", "") == "unauthorized"
@@ -130,3 +132,28 @@ def test_a_person_with_no_home_yet_is_told_when_one_appears(sandbox):
     kept = _read(sandbox, {**UP, "you": {"account": "pw-cy-1a2b3c4d",
                                          "home": "/home/pw-cy-1a2b3c4d", "home_state": "kept"}})
     assert kept["you"].endswith("home /home/pw-cy-1a2b3c4d (kept from before)")
+
+
+@pytestmark_node
+@pytest.mark.parametrize("machine,words,absent", [
+    ({"virtualization": "qemu", "accel": "tcg", "image": "ready"},
+     ["emulated without KVM — slow"], ["preparing", "hardware"]),
+    ({"virtualization": "kvm", "accel": "kvm", "image": "preparing"},
+     ["hardware-accelerated (KVM)", "preparing the machine image (first start)"], ["emulated"]),
+    ({"virtualization": "qemu", "accel": "tcg", "image": "failed"},
+     ["the machine image could not be prepared"], []),
+    ({"virtualization": "docker", "accel": None}, [], ["KVM", "emulated", "image"]),
+])
+def test_the_panel_says_what_the_machine_under_it_is(sandbox, machine, words, absent):
+    out = _read(sandbox, {**UP, "daemon": {**DAEMON, "backend": "vm", "machine": machine}})
+    assert out["facts"].startswith("Virtual machine · protocol 1")
+    for w in words:
+        assert w in out["facts"], w
+    for w in absent:
+        assert w not in out["facts"], w
+
+
+def test_the_status_passes_the_machine_through_to_the_panel(app, ws):  # noqa: F811 — the fixtures imported above
+    switch_on(app, ws)
+    daemon = as_user(app, ADMIN).get("/api/workstation/status").json()["daemon"]
+    assert set(daemon["machine"]) == {"virtualization", "accel"}

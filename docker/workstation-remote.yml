@@ -1,0 +1,25 @@
+# A workstation on another machine — `P20-07`, `D-2026-09-30-03`. Starts
+# nothing: it tells Pantheon where a workstation already runs — a Proxmox or
+# libvirt VM, a spare box — set up there with
+#
+#   sudo python3 workstation/install.py
+#
+# which prints exactly the lines to put in .env, this overlay's line first:
+#
+#   COMPOSE_FILE=docker-compose.yml:docker/workstation-remote.yml
+#   PANTHEON_WORKSTATION_URL=https://<that machine>:7040
+#   PANTHEON_WORKSTATION_TOKEN=pws_…
+#   PANTHEON_WORKSTATION_CERT_SHA256=AB:CD:…
+#
+# then `docker compose up -d` and Settings -> Workstation -> On. There is no
+# shared volume to pair through on another machine, so the token is set on both
+# sides; the certificate's fingerprint is how Pantheon knows it is talking to
+# that machine and not to whoever is in the way (`workstation/protocol.py`,
+# above `TLS_PIN_ENV`). Pantheon refuses to send the token over plain http to a
+# public address at all.
+services:
+  pantheon:
+    environment:
+      - PANTHEON_WORKSTATION_URL=${PANTHEON_WORKSTATION_URL:?set PANTHEON_WORKSTATION_URL to the address workstation/install.py printed}
+      - PANTHEON_WORKSTATION_TOKEN=${PANTHEON_WORKSTATION_TOKEN:?set PANTHEON_WORKSTATION_TOKEN to the token workstation/install.py printed}
+      - PANTHEON_WORKSTATION_CERT_SHA256=${PANTHEON_WORKSTATION_CERT_SHA256:-}

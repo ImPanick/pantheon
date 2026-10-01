@@ -88,9 +88,20 @@ const HOME_WORDS = {
   made_now: 'made just now',
 };
 
-// `B959`: the status looks without making, so a person who has never used the
-// workstation has no home yet — and is told when one appears.
+// `B959` (`P20-07`): the status looks without making, so a person who has never
+// used the workstation has no home yet — and is told when one appears.
 const HOME_NONE_WORDS = 'no home yet — it is made the first time you or your agent work there';
+
+// `P20-07`: what the machine under a workstation is, from the daemon's own
+// look (`health.machine`). Said only where it changes what a person expects.
+const ACCEL_WORDS = {
+  kvm: 'hardware-accelerated (KVM)',
+  tcg: 'emulated without KVM — slow',
+};
+const IMAGE_WORDS = {
+  preparing: 'preparing the machine image (first start)',
+  failed: 'the machine image could not be prepared',
+};
 
 let _status = null;
 let _wired = false;
@@ -127,6 +138,11 @@ function describeDaemon(daemon) {
   }
   if (typeof daemon.accounts === 'number') {
     parts.push(daemon.accounts === 1 ? '1 account' : `${daemon.accounts} accounts`);
+  }
+  const machine = daemon.machine;
+  if (machine && typeof machine === 'object') {
+    if (ACCEL_WORDS[machine.accel]) parts.push(ACCEL_WORDS[machine.accel]);
+    if (IMAGE_WORDS[machine.image]) parts.push(IMAGE_WORDS[machine.image]);
   }
   return parts.join(' · ');
 }

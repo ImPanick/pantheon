@@ -22,40 +22,22 @@ ARG DEBIAN_FRONTEND=noninteractive
 # world-readable inside that RUN because apt downloads as `_apt`, not root.
 ARG APT_MIRROR=
 
-# Mozilla's signing key, committed rather than fetched so the build trusts a key
-# somebody checked, not whatever the network answered. Fingerprint
-# 35BAA0B33E9EB396F59CA838C0BA5CE6DC6315A3 (Mozilla's published value, checked
-# 2026-09-30 with `gpg --show-keys`).
-COPY firefox/packages.mozilla.org.asc /etc/apt/keyrings/packages.mozilla.org.asc
+# What a workstation has is one list in `provision.sh`, which the VM backend and
+# `install.py` run too (`P20-07`, `Law 14`): Ubuntu's desktop, tools and
+# Mozilla's Firefox — from Mozilla's repository, pinned so apt never picks
+# Ubuntu's snap wrapper (snapd does not run in a container), signed by a key
+# committed rather than fetched (`firefox/packages.mozilla.org.asc`, fingerprint
+# 35BAA0B33E9EB396F59CA838C0BA5CE6DC6315A3, Mozilla's published value, checked
+# 2026-09-30 with `gpg --show-keys`). `--image` also drops apt's lists and the
+# base image's `ubuntu` user (uid 1000), which keeps 1000 free: it is Pantheon's
+# default PGID, the group the pairing token is readable by
+# (`docker/workstation.yml`). Only the script and the key are copied first, so
+# editing anything else does not re-run apt.
+COPY provision.sh /opt/pantheon-workstation/provision/provision.sh
+COPY firefox/packages.mozilla.org.asc /opt/pantheon-workstation/provision/firefox/packages.mozilla.org.asc
 
 RUN --mount=type=secret,id=build-ca,required=false,mode=0444 \
-    set -eu; \
-    if [ -n "$APT_MIRROR" ]; then \
-        sed -i -E "s#^URIs: .*#URIs: ${APT_MIRROR}#" /etc/apt/sources.list.d/ubuntu.sources; \
-    fi; \
-    if [ -s /run/secrets/build-ca ]; then \
-        echo 'Acquire::https::CAInfo "/run/secrets/build-ca";' > /etc/apt/apt.conf.d/99-build-ca; \
-    fi; \
-    apt-get update; \
-    apt-get install -y --no-install-recommends \
-        ca-certificates curl git sudo tini procps less nano unzip xz-utils \
-        python3 python3-venv python3-pip build-essential \
-        xvfb jwm xterm xdotool scrot fonts-dejavu-core dbus-daemon dbus-bin; \
-    # Firefox from Mozilla's own repository: Ubuntu's `firefox` is a snap
-    # wrapper, and snapd does not run in a container. The pin keeps apt from
-    # ever preferring the wrapper.
-    printf 'Types: deb\nURIs: https://packages.mozilla.org/apt\nSuites: mozilla\nComponents: main\nSigned-By: /etc/apt/keyrings/packages.mozilla.org.asc\n' \
-        > /etc/apt/sources.list.d/mozilla.sources; \
-    printf 'Package: *\nPin: origin packages.mozilla.org\nPin-Priority: 1000\n' \
-        > /etc/apt/preferences.d/mozilla; \
-    apt-get update; \
-    apt-get install -y --no-install-recommends firefox; \
-    rm -f /etc/apt/apt.conf.d/99-build-ca; \
-    rm -rf /var/lib/apt/lists/*; \
-    # The base image's `ubuntu` user (uid 1000) is nobody here. Removing it
-    # keeps 1000 free, which is Pantheon's default PGID — the group the pairing
-    # token is readable by (`docker/workstation.yml`).
-    userdel -r ubuntu 2>/dev/null || true
+    sh /opt/pantheon-workstation/provision/provision.sh packages --image
 
 # `Law 16` — nothing phones home. `firefox/policies.json` is the list: telemetry,
 # studies, updates (app, add-ons, system add-ons, OpenH264 and Widevine, both
@@ -67,9 +49,11 @@ RUN --mount=type=secret,id=build-ca,required=false,mode=0444 \
 # stops Firefox loading the dumps its search configuration comes from.
 # Measured 2026-09-30 on a fresh profile left idle for 120 s: without the file,
 # 135 lookups of 15 outside hosts; with it, none.
-COPY firefox/policies.json /etc/firefox/policies/policies.json
-# The skeleton every home starts from and "Reset to clean" returns to.
-COPY skel/ /etc/skel/
+# `provision.sh files` puts it at /etc/firefox/policies/policies.json, and the
+# skeleton every home starts from and "Reset to clean" returns to in /etc/skel.
+COPY firefox/policies.json /opt/pantheon-workstation/provision/firefox/policies.json
+COPY skel/ /opt/pantheon-workstation/provision/skel/
+RUN sh /opt/pantheon-workstation/provision/provision.sh files --skel /etc/skel
 COPY *.py /opt/pantheon-workstation/workstation/
 
 ENV LANG=C.UTF-8 \

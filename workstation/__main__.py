@@ -21,6 +21,14 @@ alone.
 **It listens on loopback unless told otherwise** (`Law 16`, and `netagent`'s
 rule): the image passes `--bind 0.0.0.0` because Pantheon reaches it over the
 compose network, where the port is not published to the host.
+
+**On another machine** (`P20-07`): `workstation/install.py` sets it up as a
+systemd service with `--backend remote`, the token in a root-only file handed
+over as `--token-file`, and — by default — `--tls-cert`/`--tls-key` from a
+certificate it makes, whose fingerprint Pantheon pins
+(`protocol.TLS_PIN_ENV`). Without TLS it refuses to bind a literal public
+address: the client would refuse to send the token there anyway, and a daemon
+that starts where nothing can use it is a puzzle rather than an answer.
 """
 from __future__ import annotations
 
@@ -34,7 +42,7 @@ from typing import List, Optional
 
 from workstation import protocol as P
 from workstation.agentd import (SingleUserSystem, System, WorkstationError,
-                                load_or_create_token, make_server)
+                                load_or_create_token, make_server, server_context)
 
 logger = logging.getLogger("pantheon.workstation")
 
@@ -42,6 +50,12 @@ BIND_ENV = "PANTHEON_WORKSTATION_BIND"
 PORT_ENV = "PANTHEON_WORKSTATION_PORT"
 PAIRING_GID_ENV = "PANTHEON_WORKSTATION_PAIRING_GID"
 DEFAULT_BIND = "127.0.0.1"
+# `P20-07`. A daemon on another machine: what it says it is, its TLS
+# certificate, and its token from a file only root reads (systemd's
+# credential, `workstation/service.py`) rather than from the environment.
+BACKEND_ENV = "PANTHEON_WORKSTATION_BACKEND"
+TLS_CERT_ENV = "PANTHEON_WORKSTATION_TLS_CERT"
+TLS_KEY_ENV = "PANTHEON_WORKSTATION_TLS_KEY"
 
 
 def _gid(value: str) -> Optional[int]:
@@ -87,6 +101,20 @@ def parser() -> argparse.ArgumentParser:
                          "lifts the home jail; default off.")
     ap.add_argument("--log-level", default="INFO",
                     choices=("DEBUG", "INFO", "WARNING", "ERROR"))
+    # ── `P20-07`, added ──────────────────────────────────────────────────────
+    ap.add_argument("--backend", choices=P.BACKENDS, default=os.environ.get(BACKEND_ENV) or None,
+                    help="what `health` says this workstation is. Default: looked at — "
+                         "`container` for --system ubuntu inside a container, `remote` otherwise. "
+                         "`vm` is said only by the VM backend's own machines.")
+    ap.add_argument("--tls-cert", default=os.environ.get(TLS_CERT_ENV) or None, metavar="PEM",
+                    help="serve HTTPS with this certificate (and --tls-key). Required for a "
+                         "daemon Pantheon reaches across a public network: the client refuses to "
+                         "send the token there in the clear.")
+    ap.add_argument("--tls-key", default=os.environ.get(TLS_KEY_ENV) or None, metavar="PEM")
+    ap.add_argument("--token-file", default=None, metavar="PATH",
+                    help="read the token from this file (one line) and write nothing: how the "
+                         "systemd unit hands it over. Beats the pairing directory; "
+                         f"{P.TOKEN_ENV} beats both.")
     return ap
 
 
@@ -99,7 +127,29 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     args.sudo = (args.system == "ubuntu") if args.sudo is None else args.sudo == "on"
     if not 0 <= args.port <= 65535:
         parser().error("--port is 0 to 65535")
+    # `P20-07`.
+    if bool(args.tls_cert) != bool(args.tls_key):
+        parser().error("--tls-cert and --tls-key go together")
+    if args.tls_cert is None and _public_literal(args.bind):
+        parser().error(f"--bind {args.bind} is a public address: the token would cross it in the "
+                       "clear, and Pantheon's client refuses to send it there. Give --tls-cert "
+                       "and --tls-key, or bind a private address.")
+    if args.backend is None:
+        from workstation import machine
+        args.backend = machine.default_backend(args.system, machine.virtualization())
     return args
+
+
+def _public_literal(bind: str) -> bool:
+    """A bind address that is a literal, globally routable IP (`P20-07`).
+    `0.0.0.0` is not: it is every interface, and which of them is reachable
+    from where is the network's to say, not this process's."""
+    import ipaddress
+    try:
+        ip = ipaddress.ip_address(bind.strip("[]"))
+    except ValueError:
+        return False
+    return not ip.is_unspecified and ip.is_global
 
 
 def make_system(args: argparse.Namespace) -> System:
@@ -110,8 +160,12 @@ def make_system(args: argparse.Namespace) -> System:
         reserved = [args.pairing_group] if args.pairing_group is not None else []
         system: System = UbuntuSystem(Path(args.homes), skeleton=Path(args.skeleton),
                                       sudo_default=args.sudo, reserved_ids=reserved)
+        # `P20-07`: the class says `container`; the command line says what
+        # this one is (a VM's machine, or a host it was installed on).
+        system.backend = getattr(args, "backend", None) or system.backend
         return system
-    system = SingleUserSystem(Path(args.homes), skeleton=Path(args.skeleton), backend="remote")
+    system = SingleUserSystem(Path(args.homes), skeleton=Path(args.skeleton),
+                              backend=getattr(args, "backend", None) or "remote")
     system.set_sudo(args.sudo)
     return system
 
@@ -153,12 +207,31 @@ def build(args: argparse.Namespace):
     system = make_system(args)
     check_pairing_group(system, args.pairing_group)
     from_env = bool((os.environ.get(P.TOKEN_ENV) or "").strip())
-    pairing = Path(args.pairing_dir) if args.pairing_dir else None
-    token = load_or_create_token(pairing)
-    if not from_env and pairing is not None:
-        secure_pairing(pairing, args.pairing_group)
-    server = make_server(system, token, bind=args.bind, port=args.port)
+    token_file = getattr(args, "token_file", None)
+    if token_file and not from_env:
+        token = read_token_file(Path(token_file))  # `P20-07`
+    else:
+        pairing = Path(args.pairing_dir) if args.pairing_dir else None
+        token = load_or_create_token(pairing)
+        if not from_env and pairing is not None:
+            secure_pairing(pairing, args.pairing_group)
+    tls = None
+    if getattr(args, "tls_cert", None):
+        tls = server_context(Path(args.tls_cert), Path(args.tls_key))
+    server = make_server(system, token, bind=args.bind, port=args.port, tls=tls)
     return server, system
+
+
+def read_token_file(path: Path) -> str:
+    """`--token-file` (`P20-07`): one line, read and never written."""
+    try:
+        token = path.read_text(encoding="utf-8").strip()
+    except OSError as e:
+        raise WorkstationError("unavailable", f"The token file {path} could not be read: "
+                                              f"{e.strerror or e}.")
+    if not token:
+        raise WorkstationError("unavailable", f"The token file {path} is empty.")
+    return token
 
 
 def main(argv: Optional[List[str]] = None) -> int:
@@ -171,9 +244,9 @@ def main(argv: Optional[List[str]] = None) -> int:
         logger.error("%s", e.message)
         return 2
     host, port = server.server_address[:2]
-    logger.info("workstation listening on %s:%s — system %s, backend %s, sudo %s, protocol v%s",
+    logger.info("workstation listening on %s:%s — system %s, backend %s, sudo %s, protocol v%s%s",
                 host, port, args.system, system.backend, "on" if system.sudo else "off",
-                P.PROTOCOL_VERSION)
+                P.PROTOCOL_VERSION, ", TLS" if getattr(args, "tls_cert", None) else "")
 
     def stop(signum, _frame):
         raise KeyboardInterrupt

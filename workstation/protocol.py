@@ -71,6 +71,28 @@ TOKEN_FILENAME = "token"
 TOKEN_PREFIX = "pws_"
 TOKEN_ENTROPY_BYTES = 32
 
+# ── a workstation on another machine (`P20-07`, added) ────────────────────────
+# The token is a bearer secret: whoever reads it off the wire drives every
+# person's account, and with `sudo` on (the default) is root there. The
+# adversary is anyone on the path between Pantheon and the daemon (`Law 17`).
+# So the rule, enforced by the CLIENT — the side that holds the token and
+# decides whether to send it:
+#
+#   * `http://` only to an address that is not globally routable — loopback,
+#     the private ranges, link-local, a tailnet's 100.64.0.0/10, IPv6 ULA —
+#     and for a name, only when every address it resolves to is one. That is
+#     the compose network, a LAN and a VPN: the reach between the operator's
+#     own boxes the owner ruled normal (`D-2026-09-01-03`), and the same
+#     posture as the network agent (`P17-01`).
+#   * Anything else is `https://` or nothing: the client refuses before a
+#     byte is sent, with a sentence.
+#   * `https://` is verified, never skipped. A certificate a system trust
+#     store already accepts (a real one) needs nothing more. A self-signed
+#     one — what `workstation/install.py` makes — is trusted by its SHA-256
+#     fingerprint in `TLS_PIN_ENV`, compared on the handshake, before the
+#     request (and so the token) is written.
+TLS_PIN_ENV = "PANTHEON_WORKSTATION_CERT_SHA256"
+
 # ── the routes ────────────────────────────────────────────────────────────────
 # name -> (method, path template). Declared, not derived: a client that
 # forwards an arbitrary path is a proxy, and the client refuses a name that is
@@ -127,11 +149,11 @@ ROUTES: Dict[str, Tuple[str, str]] = {
     # {"holder": "agent"|"person"} -> {"holder", "since"}. GET-less on
     # purpose: the current holder is also in `ensure`'s answer.
     "control": ("POST", "/v1/users/{account}/control"),
-    # `B959`: whether this account's home exists, asked WITHOUT making it —
-    # every other account route runs `ensure` first, so until this route a
-    # panel that only looked made an account (and, on the Ubuntu backend, a
-    # Unix user and a desktop). Never `ensure`s, never starts anything.
-    # -> {"account", "exists": bool, "home": str|None}
+    # `B959`, added by `P20-07`: whether this account's home exists, asked
+    # WITHOUT making it — every other account route runs `ensure` first, so
+    # until this route a panel that only looked made an account (and, on the
+    # Ubuntu backend, a Unix user and a desktop). Never `ensure`s, never
+    # starts anything. -> {"account", "exists": bool, "home": str|None}
     # A daemon older than this answers `404 not_found`; a caller reads that
     # as "cannot tell", never as "does not exist".
     "account": ("GET", "/v1/users/{account}"),
@@ -160,6 +182,20 @@ INPUT_ACTIONS = (
     "wait",           # ms
 )
 BACKENDS = ("container", "vm", "remote")
+# ── what the machine is (`P20-07`, added) ─────────────────────────────────────
+# `health`, for a caller with the token, also answers
+#   "machine": {"virtualization": str, "accel": "kvm"|"tcg"|None}
+# `virtualization` is systemd-detect-virt's word for what the daemon runs on
+# ("none" on bare metal, "kvm", "qemu", "docker", "vmware", …, or "unknown"
+# when it cannot be told). For a QEMU guest it is also the speed answer:
+# "kvm" is hardware-accelerated and "qemu" is QEMU emulating the CPU in
+# software (TCG) — slow, and said rather than left for a person to wonder.
+# `accel` restates exactly that in one of `ACCELS`, and is None for anything
+# that is not a QEMU guest. The VM backend's host answers "image" there too:
+# one of `MACHINE_IMAGE_STATES`, whether the Ubuntu image every person's
+# machine starts from is ready (`workstation/vm.py`).
+ACCELS = ("kvm", "tcg")
+MACHINE_IMAGE_STATES = ("ready", "preparing", "failed")
 # `P20-06`. What the admin chose; where it is enforced is that row's subject.
 NETWORK_MODES = ("full", "internet", "none")
 
@@ -182,6 +218,13 @@ MAX_TYPE_CHARS = 20_000
 # literal in the daemon, so the tool's schema could not state it).
 MAX_SCROLL_CLICKS = 50
 MAX_WAIT_MS = 30_000
+# `P20-07`, added. How much longer than its own bound a per-account route may
+# take when the backend has to start that person's machine before it can
+# answer — the VM backend boots one on first use and after a reset
+# (`workstation/vm.py`). A caller waits this long on top before calling the
+# workstation down. The VM host itself refuses to wait longer and answers
+# `unavailable` with a sentence instead.
+MACHINE_START_S = 600.0
 
 # ── errors ────────────────────────────────────────────────────────────────────
 # code -> HTTP status. The client maps each to its own exception text; the
@@ -245,6 +288,8 @@ def error_body(code: str, message: str) -> Dict[str, str]:
 
 
 __all__ = [
+    # `P20-07`, added.
+    "ACCELS", "MACHINE_IMAGE_STATES", "MACHINE_START_S", "TLS_PIN_ENV",
     "ACCOUNT_PREFIX", "ACCOUNT_RE", "AGENT_NAME", "BACKENDS", "DEFAULT_EXEC_TIMEOUT_S",
     "DEFAULT_HOST", "DEFAULT_PAIRING_DIR", "DEFAULT_PORT", "ENTRY_TYPES",
     "ERRORS", "HOLDERS", "INPUT_ACTIONS", "LOCAL_OWNER_SLUG", "MAX_BODY_BYTES",

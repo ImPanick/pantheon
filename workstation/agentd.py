@@ -49,6 +49,7 @@ import select
 import shutil
 import signal
 import socket
+import ssl
 import subprocess
 import threading
 import time
@@ -66,7 +67,7 @@ _ENV_KEY_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,127}$")
 # xdotool key syntax: names joined by `+`, several combos separated by spaces.
 _KEYS_RE = re.compile(r"^[A-Za-z0-9_+\-]{1,64}( [A-Za-z0-9_+\-]{1,64}){0,15}$")
 _ROUTE_RE = re.compile(r"^/v1/users/(?P<account>[^/]+)/(?P<rest>[a-z/]+)$")
-_ACCOUNT_PATH_RE = re.compile(r"^/v1/users/(?P<account>[^/]+)$")  # `B959`
+_ACCOUNT_PATH_RE = re.compile(r"^/v1/users/(?P<account>[^/]+)$")  # `B959`, `P20-07`
 
 
 class WorkstationError(Exception):
@@ -198,6 +199,8 @@ class System:
     def screen(self, account: str) -> Screen:
         return NoScreen("This workstation has no display.")
 
+    # -- `P20-07`, added ----------------------------------------------------------
+
     def has_home(self, account: str) -> bool:
         """Whether the account's home is there — looked at, never made
         (`B959`). Every system keeps homes at `home(account)`, so one answer
@@ -205,6 +208,15 @@ class System:
         `ensure` would not have made one (`reset` replaces it)."""
         home = self.home(account)
         return home.is_dir() and not home.is_symlink()
+
+    def machine(self) -> Dict:
+        """`health`'s `machine` object (`protocol.ACCELS`). Looked up once:
+        what a machine runs on does not change while the daemon runs."""
+        cached = getattr(self, "_machine_facts", None)
+        if cached is None:
+            from workstation import machine as _machine
+            cached = self._machine_facts = _machine.facts()
+        return dict(cached)
 
 
 class SingleUserSystem(System):
@@ -326,11 +338,12 @@ class Workstation:
         if authorised:
             out.update(self.settings())
             out["accounts"] = len(self.system.accounts())
+            out["machine"] = self.system.machine()  # `P20-07`
         return out
 
     def account(self, account: str) -> Dict:
-        """`B959`: whether the home exists, without making it. Deliberately
-        not `ensure`: nothing is made, started or woken."""
+        """`B959` (`P20-07`): whether the home exists, without making it.
+        Deliberately not `ensure`: nothing is made, started or woken."""
         exists = self.system.has_home(account)
         return {"account": account, "exists": exists,
                 "home": str(self.system.home(account)) if exists else None}
@@ -731,6 +744,20 @@ class Handler(BaseHTTPRequestHandler):
     sys_version = ""
     station: Workstation  # bound by `make_server`
 
+    def handle(self) -> None:
+        # `P20-07`. Over TLS the handshake happens here, on the request's own
+        # thread; one that fails (a plain-HTTP caller, a client that does not
+        # trust the certificate) is a line in the log, not a traceback.
+        if isinstance(self.connection, ssl.SSLSocket):
+            try:
+                self.connection.do_handshake()
+            except (ssl.SSLError, OSError) as e:
+                logger.info("TLS handshake with %s failed: %s", self.client_address[0],
+                            getattr(e, "reason", None) or e)
+                self.close_connection = True
+                return
+        super().handle()
+
     def log_message(self, fmt, *args):  # noqa: A003
         # Never the Authorization header; the default line does not include it
         # and a new log line here must not either.
@@ -783,7 +810,7 @@ class Handler(BaseHTTPRequestHandler):
             if method == "POST" and path == P.ROUTES["config"][1]:
                 self._send(200, self.station.config(self._body()))
                 return
-            # `B959`: the account itself, looked at and not made.
+            # `B959` (`P20-07`): the account itself, looked at and not made.
             bare = _ACCOUNT_PATH_RE.match(path)
             if bare and method == P.ROUTES["account"][0]:
                 self._send(200, self.station.account(self.station.check_account(
@@ -866,6 +893,12 @@ class Handler(BaseHTTPRequestHandler):
             ready, _, _ = select.select([self.connection], [], [], 0)
             if not ready:
                 return False
+            if isinstance(self.connection, ssl.SSLSocket):
+                # `P20-07`. Over TLS a hang-up arrives as a close_notify record
+                # and then the end of the stream, and neither can be peeked
+                # through the TLS layer. Nothing is ever sent after the
+                # request, so anything readable at all is the caller going.
+                return True
             return self.connection.recv(1, socket.MSG_PEEK) == b""
         except (OSError, ValueError):
             return True
@@ -878,15 +911,41 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def make_server(system: System, token: str, *, bind: str = "0.0.0.0",
-                port: int = P.DEFAULT_PORT) -> ThreadingHTTPServer:
-    station = Workstation(system, token)
+                port: int = P.DEFAULT_PORT, tls: Optional["ssl.SSLContext"] = None,
+                station: Optional[Workstation] = None) -> ThreadingHTTPServer:
+    """`P20-07` added two optional keywords. `tls` serves HTTPS from that
+    context (`server_context`); `station` answers with a `Workstation` other
+    than the plain one — the VM backend's host forwards every route to the
+    person's own machine through this same HTTP layer (`workstation/vm.py`),
+    so the token check, the bounds and the error shapes are this file's, once."""
+    station = station if station is not None else Workstation(system, token)
     handler = type("BoundHandler", (Handler,), {"station": station})
     httpd = ThreadingHTTPServer((bind, port), handler)
     httpd.daemon_threads = True
+    if tls is not None:
+        # The handshake waits for the request's own thread (`do_handshake_on_
+        # connect=False`), so one slow or plain-HTTP caller cannot hold up
+        # `accept` for everyone else.
+        httpd.socket = tls.wrap_socket(httpd.socket, server_side=True,
+                                       do_handshake_on_connect=False)
     httpd.station = station  # type: ignore[attr-defined]
     return httpd
 
 
+def server_context(cert: Path, key: Path) -> "ssl.SSLContext":
+    """A TLS server context from a certificate and its key (`P20-07`): TLS 1.2
+    at least, the standard library's defaults otherwise. A file that will not
+    load is a sentence, not a trace."""
+    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    ctx.minimum_version = ssl.TLSVersion.TLSv1_2
+    try:
+        ctx.load_cert_chain(str(cert), str(key))
+    except (OSError, ssl.SSLError) as e:
+        raise WorkstationError("unavailable", f"The TLS certificate or key could not be loaded "
+                                              f"({cert}, {key}): {e}.")
+    return ctx
+
+
 __all__ = ["Handler", "NoScreen", "Screen", "SingleUserSystem", "System", "VERSION",
            "Workstation", "WorkstationError", "bearer", "load_or_create_token",
-           "make_server", "mint_token"]
+           "make_server", "mint_token", "server_context"]

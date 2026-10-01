@@ -99,9 +99,9 @@ PROBE_NOT_CHECKED = "not_checked"
 HOME_KEPT = "kept"
 HOME_MADE_NOW = "made_now"
 HOME_UNKNOWN = "unknown"
-# `B959`. Protocol v1 now answers "does it exist" without making it (the
-# `account` route), so the status asks that and makes nothing: `kept` when the
-# home is there, `none` when it is not yet — it is made the first time the
+# `B959` (`P20-07`). Protocol v1 now answers "does it exist" without making it
+# (the `account` route), so the status asks that and makes nothing: `kept` when
+# the home is there, `none` when it is not yet — it is made the first time the
 # person or their agent works there — and `unknown` from a daemon older than
 # the route. `made_now` is no longer said by the status; it stays declared
 # because a stored answer or a caller may still carry it (`Law 1`).
@@ -378,7 +378,8 @@ async def reset_home(owner: Optional[str], *, auth_manager: Any = None) -> Dict[
 
 def _daemon_view(daemon: Dict[str, Any]) -> Dict[str, Any]:
     """The daemon's own answer, in the fields the panel shows."""
-    keep = ("agent", "protocol", "backend", "version", "sudo", "network", "screen", "accounts")
+    keep = ("agent", "protocol", "backend", "version", "sudo", "network", "screen", "accounts",
+            "machine")  # `P20-07`: what it runs on, and for a VM whether it is emulated
     return {k: daemon.get(k) for k in keep if k in daemon}
 
 

@@ -1,0 +1,75 @@
+# The workstation as virtual machines — `P20-07`, `D-2026-09-30-03`. The same
+# workstation as `docker/workstation.yml`, behind the same address and pairing,
+# but each person works in an Ubuntu VM of their own: the wall between two
+# people is a hypervisor rather than Unix permissions, and "Reset to clean" is
+# a fresh machine. Switch to it with one line in .env, instead of the
+# container's:
+#
+#   COMPOSE_FILE=docker-compose.yml:docker/workstation-vm.yml
+#
+# (on Windows the separator is `;`), then `docker compose up -d --build`, then
+# Settings -> Workstation -> On. Nothing else changes: Pantheon still finds it at
+# http://workstation:7040 and reads its token from the pairing volume.
+#
+# The first start makes the Ubuntu image every machine starts from (it installs
+# the desktop, the tools and Firefox inside a VM, from Ubuntu's and Mozilla's
+# repositories — the same two the container image's build uses). Until it is
+# made, the panel says so. Each person's machine then starts on their first use.
+#
+# Measured `P20-07` — see the row for the numbers, and for what was not
+# measured. Each machine takes up to PANTHEON_WORKSTATION_VM_MEMORY_MIB of RAM
+# while it runs (default 2048).
+#
+# What it is given, and what it deliberately is not:
+#   * KVM when the host has it: ONE device-cgroup rule, for the KVM device
+#     alone (char 10:232). The container makes the device node itself
+#     (`mknod`, which Docker allows by default) and opens it; on a host without
+#     KVM that open fails and the machines run under QEMU's emulator (TCG) —
+#     slow, said in the panel, and the overlay starts the same either way. A
+#     `devices:` entry would refuse to start on a host without /dev/kvm.
+#   * NOT privileged, NO Docker socket, no added capability, no published port,
+#     no Pantheon volume but the pairing one.
+#   * full network for the machines, through QEMU's user-mode network (outbound
+#     only; nothing reaches a machine but its one forwarded port, inside this
+#     container). `P20-06` lets an admin narrow it.
+services:
+  workstation:
+    build:
+      context: ./workstation
+      dockerfile: vm.Dockerfile
+    hostname: workstation
+    environment:
+      # The group that may read the pairing token: the one Pantheon runs as.
+      - PANTHEON_WORKSTATION_PAIRING_GID=${PGID:-1000}
+      # Each person's machine. `auto` uses KVM when it opens and TCG when not.
+      - PANTHEON_WORKSTATION_VM_MEMORY_MIB=${PANTHEON_WORKSTATION_VM_MEMORY_MIB:-2048}
+      - PANTHEON_WORKSTATION_VM_CPUS=${PANTHEON_WORKSTATION_VM_CPUS:-2}
+      - PANTHEON_WORKSTATION_VM_DISK_GIB=${PANTHEON_WORKSTATION_VM_DISK_GIB:-20}
+      - PANTHEON_WORKSTATION_VM_ACCEL=${PANTHEON_WORKSTATION_VM_ACCEL:-auto}
+    volumes:
+      # The image and every person's disk. Kept: removing it is everyone's
+      # machine gone.
+      - workstation-vm:/var/lib/pantheon-workstation-vm
+      - workstation-pairing:/workstation-pairing
+    device_cgroup_rules:
+      - "c 10:232 rwm"
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import json,sys,urllib.request as u; sys.exit(0 if json.load(u.urlopen('http://127.0.0.1:7040/v1/health', timeout=5)).get('agent') == 'pantheon-workstation' else 1)"]
+      interval: 15s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    # Each machine is powered off cleanly (its disk is people's work), which
+    # takes longer than Docker's default ten seconds.
+    stop_grace_period: 2m
+    restart: unless-stopped
+
+  pantheon:
+    environment:
+      - PANTHEON_WORKSTATION_URL=http://workstation:7040
+    volumes:
+      - workstation-pairing:/workstation-pairing:ro
+
+volumes:
+  workstation-vm:
+  workstation-pairing:
