@@ -135,6 +135,10 @@ class Doc extends Target {
 export const document = new Doc();
 globalThis.window = globalThis;
 globalThis.document = document;
+// `B945`: `initKeyboardShortcuts` listens on `window` too (the stream stop
+// decides last). A browser has the method; node's global does not.
+globalThis.addEventListener = () => {};
+globalThis.removeEventListener = () => {};
 
 // The composer, in document order, as index.html draws it.
 const bar = document.body.append(new El('div', '', 'chat-input-bar'));

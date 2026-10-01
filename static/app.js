@@ -689,6 +689,11 @@ function initializeEventListeners() {
 
 
   // Close popups one by one with Escape key (topmost first)
+  //
+  // `B945`. Every branch that closes something marks the key as used
+  // (`preventDefault`), so the stream stop bound to the same key
+  // (`keyboard-shortcuts.js`, `cancel`) knows this Escape closed a thing and
+  // does not also stop the reply.
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
       // If a confirm dialog is open, let it handle the Escape
@@ -698,6 +703,7 @@ function initializeEventListeners() {
       // If editing a memory inline, cancel the edit instead of closing the modal
       const editingMemory = document.querySelector('.memory-item-editing');
       if (editingMemory) {
+        e.preventDefault();
         if (window.memoryModule) window.memoryModule.renderMemoryList();
         return;
       }
@@ -709,11 +715,13 @@ function initializeEventListeners() {
       // Scoreboard sits on top of the compare window — close it first.
       const scoreboardOverlay = document.getElementById('scoreboard-overlay');
       if (scoreboardOverlay) {
+        e.preventDefault();
         scoreboardOverlay.remove();
         return;
       }
 
       if (searchChatModule && searchChatModule.isOpen()) {
+        e.preventDefault();
         searchChatModule.closeSearch();
         return;
       }
@@ -721,6 +729,7 @@ function initializeEventListeners() {
       // Compare model selector
       const cmpOverlay = document.getElementById('compare-model-overlay');
       if (cmpOverlay) {
+        e.preventDefault();
         cmpOverlay.remove();
         return;
       }
@@ -728,6 +737,7 @@ function initializeEventListeners() {
       // Theme popup
       const themeModal = document.getElementById('theme-modal');
       if (themeModal && !themeModal.classList.contains('hidden')) {
+        e.preventDefault();
         themeModule.closePopup();
         return;
       }
@@ -744,6 +754,7 @@ function initializeEventListeners() {
       // Model picker popup — close before opening any modals
       const modelPickerMenu = document.getElementById('model-picker-menu');
       if (modelPickerMenu && modelPickerMenu.classList.contains('open')) {
+        e.preventDefault();
         modelPickerMenu.classList.remove('open');
         return;
       }
@@ -777,12 +788,13 @@ function initializeEventListeners() {
             return;
           }
         }
-        if (m) { dismissModal(m); return; }
+        if (m) { e.preventDefault(); dismissModal(m); return; }
       }
 
       for (const modalId of Object.keys(modalItemMap)) {
         const modal = el(modalId);
         if (modal && !modal.classList.contains('hidden')) {
+          e.preventDefault();
           dismissModal(modal);
           return;
         }
@@ -798,6 +810,7 @@ function initializeEventListeners() {
         if (docTextarea && docTextarea.selectionStart !== docTextarea.selectionEnd) {
           return;
         }
+        e.preventDefault();
         documentModule.closePanel('down');
         return;
       }

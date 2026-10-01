@@ -128,6 +128,65 @@ export function ariaKeyshortcuts(combo) {
 }
 
 /**
+ * `B945` — the stream stop bound to Escape (`cancel`) stops the reply only when
+ * the key did nothing else.
+ *
+ * It ran on every keydown that reached `document`, so one Escape closed
+ * Settings, a calendar or any window *and* aborted the reply streaming behind
+ * it. Measured 2026-10-01 in Chromium against the running app, counting calls
+ * to `chatModule.abortCurrentRequest`: with the focus on a window's own button
+ * the `ui.js` arbiter already closed the window and stopped the key — but with
+ * the focus in the message box, which is where a person is while a reply
+ * streams, every one of eleven tool windows closed **and** the reply stopped,
+ * and so did Settings with its own finder focused.
+ *
+ * The decision (the row asked for one): Escape keeps meaning "stop" — it is a
+ * registered, rebindable key, labelled *Cancel / close* — but it peels one
+ * layer per press, like everything else Escape does here. It closes the thing
+ * that has the focus or the topmost thing open; it stops the reply when there
+ * is nothing left for it to close. So the check runs last, on `window`, once
+ * every other listener has had the key, and the key counts as claimed when:
+ *
+ *   * a listener said so — `preventDefault`, or stopped it before `window`;
+ *   * it was typed inside a window, a dialog, a menu or the palette
+ *     (`ESCAPE_LAYER_SEL`): it belongs to that, even when that ignores it;
+ *   * something on the page closed during the press — read by comparing
+ *     `escapeLayerPrint()` before the first listener and after the last, which
+ *     catches the many modules that close their own window on Escape without
+ *     saying so;
+ *   * an input method was composing (Escape cancels the composition).
+ */
+export const ESCAPE_LAYER_SEL = '.modal, [role="dialog"], [role="alertdialog"], [role="menu"], '
+  + '[role="listbox"], .notes-pane, #doc-editor-pane, #search-overlay';
+
+/** What is open on the page that an Escape could close, as one string. The
+ *  windows, the palette and every popup appended to `<body>` are its children;
+ *  a docked window or the document panel shows on `<body>`'s own classes; a
+ *  window animating shut carries `.modal-closing`. (A menu registered with
+ *  `escMenuStack.js` never gets this far: the `ui.js` arbiter dismisses it and
+ *  stops the key.) */
+export function escapeLayerPrint(doc = document) {
+  const body = doc && doc.body;
+  if (!body) return '';
+  let print = `${body.className}|${doc.querySelectorAll('.modal-closing').length}`;
+  for (const c of body.children) {
+    print += `|${c.tagName}#${c.id}.${c.className}:${c.hidden ? 'h' : ''}${(c.style && c.style.display) || ''}`;
+  }
+  return print;
+}
+
+/** Why this key is not a stop, or `''` when nothing claimed it. An enum, not a
+ *  boolean (`Law 10`): the reason is what a reader needs. */
+export function escapeClaim(e, before) {
+  if (e.defaultPrevented) return 'prevented';
+  if (e.isComposing) return 'composing';
+  const t = e.target;
+  if (t && typeof t.closest === 'function' && t.closest(ESCAPE_LAYER_SEL)) return 'focus';
+  if (before != null && escapeLayerPrint() !== before) return 'closed';
+  return '';
+}
+
+/**
  * Initialize keyboard shortcuts.
  * @param {Object} modules - References to app modules and helpers
  * @param {Function} modules.el - Element lookup helper (uiModule.el)
@@ -150,6 +209,22 @@ export function initKeyboardShortcuts(modules) {
   } = modules;
 
   window._pantheonKeybinds = { ..._defaultKeybinds };
+
+  // `B945`. The stop, last: see `escapeClaim`. The snapshot is taken on
+  // `window` in the capture phase, before any other listener can close
+  // anything; the decision on `window` in the bubble phase, after all of them.
+  let _cancelBefore = null;
+  window.addEventListener('keydown', (e) => {
+    _cancelBefore = _matchesCombo(e, window._pantheonKeybinds.cancel)
+      ? { e, print: escapeLayerPrint() } : null;
+  }, true);
+  window.addEventListener('keydown', (e) => {
+    if (!_matchesCombo(e, window._pantheonKeybinds.cancel)) return;
+    const before = _cancelBefore && _cancelBefore.e === e ? _cancelBefore.print : null;
+    _cancelBefore = null;
+    if (escapeClaim(e, before)) return;
+    if (chatModule) chatModule.abortCurrentRequest();
+  });
 
   // Load saved keybinds
   getSettings()
@@ -344,9 +419,9 @@ export function initKeyboardShortcuts(modules) {
         });
       return;
     }
-    if (_matchesCombo(e, kb.cancel)) {
-      if (chatModule) chatModule.abortCurrentRequest();
-    }
+    // `cancel` (Escape) is not handled here: it stops the reply only when
+    // nothing else used the key, which only a listener on `window` can know
+    // (`B945`, above).
     if (_matchesCombo(e, kb.incognito)) {
       e.preventDefault();
       // Drive the visible button so the real toggle logic runs (visual
