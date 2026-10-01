@@ -1184,6 +1184,35 @@ def _is_local_minimax_mlx_request(url: str, model: str) -> bool:
         return False
 
 
+#: The local MiniMax profile's temperature, for a request nobody chose one for.
+MINIMAX_PROFILE_TEMPERATURE = 0.2
+
+
+def _minimax_profile_temperature(asked) -> float:
+    """The temperature the local MiniMax profile sends when nobody chose one.
+
+    At most `MINIMAX_PROFILE_TEMPERATURE` (0.2) — the quantized MLX ports loop
+    above it — and **an asked-for 0 is sent as 0.2 too, on purpose**. `B936`:
+    this was `min(float(t or 0.2), 0.2)`, which reads like a `None` guard that
+    caught 0 by accident, and `P2-13` left it byte for byte because every path
+    nobody chose had to stay as it was. Decided now, and kept: the callers that
+    ask for 0 are internal — mail triage (`routes/email_pollers.py`), calendar
+    parsing, the research classifiers, the completion verifier and two
+    scheduled-task actions — unattended jobs on the owner's GPU, and greedy
+    decoding is the classic repetition-loop trigger this profile exists to
+    stop, where a loop runs to `max_tokens` with nobody watching. Nothing about it is silent any more: the run receipt records the
+    0.2 that was sent (`B933`). A person who chooses 0 in a preset is honoured,
+    as every chosen temperature is (`explicit_params`, `P2-13`); this is only
+    the no-choice default. Anything unreadable is 0.2, as before.
+    """
+    if asked is None or asked == 0:
+        return MINIMAX_PROFILE_TEMPERATURE
+    try:
+        return min(float(asked), MINIMAX_PROFILE_TEMPERATURE)
+    except (TypeError, ValueError):
+        return MINIMAX_PROFILE_TEMPERATURE
+
+
 def _apply_local_generation_stability(payload: Dict, url: str, model: str,
                                       explicit_params=frozenset()) -> None:
     """The local-MiniMax sampling profile, as defaults under a person's choice.
@@ -1214,14 +1243,11 @@ def _apply_local_generation_stability(payload: Dict, url: str, model: str,
     if not _is_local_minimax_mlx_request(url, model):
         return
     if "temperature" in payload and "temperature" not in (explicit_params or ()):
-        try:
-            # MiniMax MLX quantized ports are very sensitive to chat/agent
-            # harness size. Without a choice from the person, local MiniMax
-            # gets a compatibility clamp or trivial prompts can fall into
-            # visible reasoning/repetition loops.
-            payload["temperature"] = min(float(payload.get("temperature") or 0.2), 0.2)
-        except (TypeError, ValueError):
-            payload["temperature"] = 0.2
+        # MiniMax MLX quantized ports are very sensitive to chat/agent
+        # harness size. Without a choice from the person, local MiniMax
+        # gets a compatibility clamp or trivial prompts can fall into
+        # visible reasoning/repetition loops.
+        payload["temperature"] = _minimax_profile_temperature(payload.get("temperature"))
     payload.setdefault("top_p", 0.9)
     payload.setdefault("top_k", 20)
     payload.setdefault("repetition_penalty", 1.12)
