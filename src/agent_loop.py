@@ -4455,15 +4455,48 @@ def _resolve_local_lifts(max_rounds: int, max_tokens: int, *, unlimited: bool):
     The timeout is not lifted here: it is recomputed every round from settings,
     so only the *pin* is resolved, once, since whether an operator chose a value
     cannot change mid-request and `setting_is_explicit` opens a file.
+
+    `B1034`: the `max_tokens` returned here is the run's, for the primary's
+    URL; each candidate in a fallback chain is sent its own through the same
+    rule (`candidate_max_tokens`).
     """
     return (
         # ~unlimited rounds for long autonomous local runs
         _lift_round_cap(max_rounds, unlimited=unlimited),
         # The machine's local-inference ceiling; the preset is the floor.
-        _lift_cap(max_tokens, _local_max_tokens_ceiling(),
-                  unlimited=unlimited, pinned=False),
+        _lift_max_tokens(max_tokens, unlimited=unlimited),
         _setting_pinned("agent_stream_timeout_seconds"),
     )
+
+
+def _lift_max_tokens(max_tokens: int, *, unlimited: bool) -> int:
+    """The agent path's token lift: the preset a floor under this machine's
+    ceiling (`_local_max_tokens_ceiling()`), where the lift applies. `P3-21`.
+
+    `B1034`. One rule with two askers — `_resolve_local_lifts`, for the run, and
+    `candidate_max_tokens`, for each candidate in its fallback chain — so the
+    two cannot drift apart (`Law 7`).
+    """
+    return _lift_cap(max_tokens, _local_max_tokens_ceiling(),
+                     unlimited=unlimited, pinned=False)
+
+
+def candidate_max_tokens(max_tokens: int, candidate_url: str) -> int:
+    """The `max_tokens` Agent mode sends one candidate, given the preset's. `B1034`.
+
+    The run's lift was resolved once, from the primary's URL, and that one
+    number went to every candidate: measured through the real route, loop and
+    fallback wrapper, a local primary that answered 503 handed its cloud
+    fallback 1,000,000 (or the 32,768 a person typed), which a cloud provider
+    refuses, so the fallback failed exactly when it was needed; and a cloud
+    primary left a local fallback at the preset's number. Each candidate is now
+    asked the run's own question about its own URL (`run_is_unlimited`, the
+    product's one "is this local", `B929`): a cloud candidate gets the preset's
+    number, never the local lift, and a local one gets the lift — what it would
+    have been sent as the primary. `B934`'s `_chat_candidate_request_factory`
+    does the same on the chat doors, through their own rule.
+    """
+    return _lift_max_tokens(max_tokens, unlimited=run_is_unlimited(candidate_url))
 
 
 # `H08`'s lift for the step cap. `P7-10` takes it out of `_resolve_local_lifts`
@@ -6388,6 +6421,9 @@ async def stream_agent_loop(
     # operator pinned it cannot change mid-request, so reading it per round
     # would buy nothing but file handles.
     _configured_max_rounds = max_rounds   # `P4-23`: what the caller asked for
+    # `B1034`: the preset's own number, which each candidate in the fallback
+    # chain is lifted from for its own URL (`candidate_max_tokens`).
+    _preset_max_tokens = max_tokens
     max_rounds, max_tokens, _timeout_pinned = _resolve_local_lifts(
         max_rounds, max_tokens, unlimited=_cyber_unlimited())
     # --- end cybertooth custom ---
@@ -6574,6 +6610,9 @@ async def stream_agent_loop(
                     "tool_choice_none": state["pan_doc_finetune_mode"],
                     "temperature": pan_qwen_route_temperature(
                         _requested_temperature, candidate_model, explicit_params),
+                    # `B1034`. Its own length, as its own temperature (`B935`):
+                    # a cloud candidate is never handed the local lift.
+                    "max_tokens": candidate_max_tokens(_preset_max_tokens, candidate_url),
                 },
             }
 
