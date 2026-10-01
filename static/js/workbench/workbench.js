@@ -11,9 +11,11 @@
 // **This file is glue and stays thin.** It owns the window — wiring, the room
 // switcher, open and close — and nothing that is drawn inside a room. It is the
 // one module that imports the task form (`tasks/taskFields.js`, the `P22` panel
-// contract) and hands it to the canvas as `mountPanel`, which is what lets
-// `canvas.js` be driven in a test with a stub in its place and keeps one form
-// for both windows (`Law 7`).
+// contract) and hands it to the Automations room (`workflowRoom.js`), which
+// mounts it as the canvas's `mountPanel` and — in its step and start modes — in
+// a workflow's panels (`P22-05`). That is what lets `canvas.js` and the room be
+// driven in a test with a stub in its place, and keeps one form for both
+// windows and every panel (`Law 7`).
 //
 // **Rooms.** `ROOMS` is the switcher, in order. Automations is the only room
 // today; `P22-21` mounts the Skills and MCP modules here as rooms by adding
@@ -25,7 +27,7 @@
 // boot.
 
 import { mountTaskFields } from '../tasks/taskFields.js';
-import { mountCanvas } from './canvas.js';
+import { mountAutomations } from './workflowRoom.js';
 import { makeWindowDraggable } from '../windowDrag.js';
 import * as Modals from '../modalManager.js?v=20261001workbench2';
 // `P22-04`. The step renderer the Tasks card draws a plan with, for the
@@ -43,7 +45,10 @@ export const ROOMS = [
   {
     id: 'automations',
     label: 'Automations',
-    mount: (host, opts) => mountCanvas(host, { ...opts, mountPanel: mountTaskFields, renderSteps: renderRunSteps }),
+    // `P22-05` (wf-ui). The room is the chains canvas and, beside it, the
+    // workflows (`workflowRoom.js`); the form and the step renderer are handed
+    // in from here, as they were to the canvas.
+    mount: (host, opts) => mountAutomations(host, { ...opts, mountTaskFields, renderSteps: renderRunSteps }),
   },
 ];
 
@@ -117,10 +122,11 @@ function _wire() {
  * Open the Workbench, or bring it back.
  *
  * `focusId` opens the Automations room on the workflow that task is part of;
+ * `workflowId` (`P22-05`) opens it on that workflow document;
  * `describeTrigger(task)` is the schedule wording (`tasks.js:_scheduleLabel`),
  * handed in by the door so the words exist once.
  */
-export function openWorkbench({ focusId = null, describeTrigger = null } = {}) {
+export function openWorkbench({ focusId = null, workflowId = null, describeTrigger = null } = {}) {
   if (typeof describeTrigger === 'function') _describe = describeTrigger;
   const modal = _modal();
   if (!modal) return false;
@@ -135,7 +141,9 @@ export function openWorkbench({ focusId = null, describeTrigger = null } = {}) {
   if (!_open) {
     _open = true;
     _room = null;
-    _showRoom(ROOMS[0].id, { focusId });
+    _showRoom(ROOMS[0].id, { focusId, workflowId });
+  } else if (workflowId != null && _room && _room.handle && typeof _room.handle.openWorkflow === 'function') {
+    _room.handle.openWorkflow(workflowId);
   } else if (focusId != null && _room && _room.handle && typeof _room.handle.focusChain === 'function') {
     _room.handle.focusChain(focusId);
   }
@@ -144,6 +152,11 @@ export function openWorkbench({ focusId = null, describeTrigger = null } = {}) {
 
 export function closeWorkbench() {
   if (!_open) return;
+  // `P22-05` (wf-ui). A room holding unsaved work asks first (*Save / Discard
+  // / Keep editing*) and closes the window itself once answered — the close
+  // button, Escape's arbiter (which presses it) and the dock all come here.
+  if (_room && _room.handle && typeof _room.handle.canClose === 'function'
+      && !_room.handle.canClose(() => closeWorkbench())) return;
   _open = false;
   if (_room && _room.handle && typeof _room.handle.destroy === 'function') _room.handle.destroy();
   _room = null;

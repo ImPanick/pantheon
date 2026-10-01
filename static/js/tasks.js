@@ -242,9 +242,22 @@ async function _fetchRuns(taskId, limit = 10) {
  *  window's schedule words — the one way a card opens it, for both doors
  *  (⋮ → *Workflow* and the workflow chip). Loaded on first use. */
 function _openInWorkbench(task) {
+  // `P22-05` (wf-ui). A workflow's start opens its document, by the id
+  // `GET /api/tasks` puts on the row (`workflow_id`); the room finds it from
+  // the task's id when a row does not carry one.
+  const workflowId = task && task.task_type === 'workflow' && task.workflow_id != null ? task.workflow_id : null;
   return import('./workbench/workbench.js')
-    .then((wb) => wb.openWorkbench({ focusId: task.id, describeTrigger: _scheduleLabel }))
+    .then((wb) => wb.openWorkbench({ focusId: task.id, workflowId, describeTrigger: _scheduleLabel }))
     .catch(() => uiModule.showError('The Workbench did not load. Reload the page and try again.'));
+}
+
+/** `P22-05` (wf-ui). Edit, on a card. A workflow's start is not edited in the
+ *  task form — what it runs is a document of steps, and the form would offer
+ *  to make it a Prompt — so its Edit opens the workflow in the Workbench,
+ *  where its start, steps and name are. */
+function _editTask(task) {
+  if (task && task.task_type === 'workflow') return _openInWorkbench(task);
+  return _showForm(task);
 }
 
 function _scheduleLabel(task) {
@@ -728,7 +741,7 @@ function _renderList() {
       // `P22-04`. Beside Run now, because it is the question to ask before
       // pressing it. The plan is drawn on the card, so the card opens.
       if (task.status !== 'completed') items.push({ label: 'Show me what this would do', icon: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>', action: () => { setDetailOpen(true); _doDryRun(task.id, dryPlan, dryBtn); } });
-      items.push({ label: 'Edit', icon: '<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>', action: () => _showForm(task) });
+      items.push({ label: task.task_type === 'workflow' ? 'Edit in the Workbench' : 'Edit', icon: '<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>', action: () => _editTask(task) });
       if (task.status === 'active') items.push({ label: 'Pause', icon: '<rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>', action: () => _doPause(task.id) });
       else if (task.status === 'paused') items.push({ label: 'Resume', icon: PLAY_GLYPH, action: () => _doResume(task.id) });
       items.push({ label: 'History', icon: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>', action: () => _showRunHistory(task.id, task.name) });
@@ -846,9 +859,10 @@ function _renderList() {
     editBtn.className = 'memory-toolbar-btn task-detail-edit-btn';
     editBtn.title = 'Edit task';
     editBtn.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:4px;"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>Edit';
+    if (task.task_type === 'workflow') editBtn.title = 'Open this workflow in the Workbench';
     editBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      _showForm(task);
+      _editTask(task);
     });
     detailActions.appendChild(editBtn);
     const extra = [];
@@ -1251,6 +1265,10 @@ const _STEP_KIND_WORDS = {
   'dry-run': 'dry run',
   tool: 'tool',
   progress: 'progress',
+  // `P22-05` (wf-ui). A workflow run's own line per step it ran (design
+  // § 2.4): "step · Summarise my inbox — worked". "node" is a word a person
+  // never meets (§ 6.6).
+  node: 'step',
 };
 const _TOOL_STEP_STATUS_WORDS = {
   ok: 'done',
