@@ -147,8 +147,12 @@ def test_the_open_step_asked_for_again_keeps_its_form_and_an_unedited_form_just_
         fire(nodeOf(root, 'a'), 'click');
         type(root);
         const mountsBefore = panel.mounts.length;
+        // Asked for again — twice, so a question held for the second press
+        // would show: the open step is not "another" step.
         fire(nodeOf(root, 'a'), 'click');
-        const same = { open: open(root), mounts: panel.mounts.length - mountsBefore };
+        fire(nodeOf(root, 'a'), 'click');
+        const same = { open: open(root), mounts: panel.mounts.length - mountsBefore,
+                       asked: said(root).includes('not saved') };
         // Escape's own question (`B1052`) still works beside this one.
         dismissTopMenu();
         const escAsked = said(root);
@@ -157,7 +161,8 @@ def test_the_open_step_asked_for_again_keeps_its_form_and_an_unedited_form_just_
         fire(nodeOf(root, 'c'), 'click');
         out({ same, escAsked, plain: open(root) });
     """)
-    assert o["same"] == {"open": ["a"], "mounts": 0}, "the open step, asked for again, is left as it is"
+    assert o["same"] == {"open": ["a"], "mounts": 0, "asked": False}, \
+        "the open step, asked for again, is left as it is, and nothing is asked"
     assert o["escAsked"].startswith("Nightly backup has changes that are not saved. Press Escape again")
     assert o["plain"] == ["c"], "a form with no edits is replaced at once, as before"
 

@@ -505,6 +505,28 @@ def test_a_workflows_own_start_opens_its_document(box):
     assert o["back"] is True and o["current"] is True
 
 
+def test_a_workflows_start_on_the_tasks_canvas_opens_its_document(box):
+    # Design § 6.1: on the tasks canvas, a task that starts a workflow reads
+    # "Workflow · …" and opens its document, not the task form (which cannot
+    # edit a document of steps); a door naming that task does the same.
+    o = _case(box, """
+        server.tasks.push({ id: 'tw1', name: 'Morning brief', task_type: 'workflow', status: 'paused',
+          trigger_words: 'Daily at 08:00', workflow_id: 'w1', then_task_id: null, else_task_id: null });
+        const { root, h } = await room();
+        const sub = nodeOf(root, 'tw1').querySelector('.wb-node-sub').textContent;
+        fire(nodeOf(root, 'tw1'), 'click'); await settle(20);
+        const clicked = { name: by(root, 'wf-name').value, view: !by(root, 'wf-view').hidden,
+          forms: fields.mounts.length };
+        h.focusChain('a'); await settle(10);
+        const back = !!nodeOf(root, 'a');
+        h.focusChain('tw1'); await settle(20);
+        out({ sub, clicked, back, door: { name: by(root, 'wf-name').value, view: !by(root, 'wf-view').hidden } });
+    """)
+    assert o["sub"] == "Workflow · Daily at 08:00 · paused"
+    assert o["clicked"] == {"name": "Morning brief", "view": True, "forms": 0}
+    assert o["back"] is True
+    assert o["door"] == {"name": "Morning brief", "view": True}
+
 def test_when_the_workflow_layer_cannot_load_every_chain_still_works(box):
     o = _case(box, """
         const { root } = await room({ loadWorkflowModules: () => Promise.reject(new Error('Failed to fetch dynamically imported module')) });
