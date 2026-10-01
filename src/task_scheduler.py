@@ -1117,6 +1117,13 @@ def _normalize_chat_endpoint(url: str) -> str:
         return url
 
 
+# `P8-33`'s first line of every plan, named once. `P22-04`: the agent's
+# `manage_tasks` `dry_run` reads a run back and has to tell a plan from a run
+# the engine declined to plan (a paused task, an admin refusal), and it does so
+# by this line rather than by a second copy of it (`Law 7`).
+DRY_RUN_HEADLINE = "Dry run — nothing ran, nothing changed."
+
+
 class TaskScheduler:
     def __init__(self, session_manager):
         self._session_manager = session_manager
@@ -1547,7 +1554,7 @@ class TaskScheduler:
         # `Law 15`. The first line is the one a person reads on a card that
         # says `skipped`, and it has to answer "did my thing happen" before it
         # answers anything else.
-        headline = "Dry run — nothing ran, nothing changed."
+        headline = DRY_RUN_HEADLINE
         self._record_run_step(run_id, kind="dry-run", detail=headline)
         for line in lines:
             self._record_run_step(run_id, kind="dry-run", detail=line)
@@ -2073,7 +2080,10 @@ class TaskScheduler:
                     trigger=trigger,
                     dry=dry,
                 )
-                return
+                # `P22-04`. The run's id, so a caller that awaited this — a dry
+                # run, below in `run_task_now` — can read back what it wrote.
+                # Every spawned caller ignores it, as it ignored `None`.
+                return run_id
 
             async with self._run_semaphore:
                 await self._execute_task_locked(
@@ -2083,6 +2093,7 @@ class TaskScheduler:
                     gate_foreground=True,
                     trigger=trigger,
                 )
+            return run_id
         except asyncio.CancelledError:
             # If cancellation happens while queued behind the semaphore,
             # _execute_task_locked never runs and cannot update the Activity row.
@@ -3908,17 +3919,34 @@ class TaskScheduler:
         `_executing` claim, because a dry run and a real run of the same task
         overlapping is the same confusion `B674` is about and a dry run is not
         the place to decide that question.
+
+        `P22-04` (`B803`). A dry run is **awaited** rather than spawned, and
+        answers with the id of the run that holds the plan — a `str`, truthy,
+        so every caller's `if not started` reads it unchanged; `False` still
+        means "already running". The agent's `manage_tasks` asks "what would
+        this do" and has to read the answer back in the same turn: a spawned
+        dry run answered `True` before the plan existed. Awaiting it costs
+        nothing a person waits on — the dry path takes neither the model slot
+        nor the wait for Pantheon to go idle (`P8-33`), reaches no executor,
+        and has no `await` between its first statement and its plan. A real
+        run is spawned and answers `True`, exactly as before.
         """
         if force:
-            asyncio.create_task(self._execute_task(
+            coro = self._execute_task(
                 task_id, bypass_model_slot=True, release_executing=False,
-                trigger=trigger, dry=dry))
+                trigger=trigger, dry=dry)
+            if dry:
+                return await coro
+            asyncio.create_task(coro)
             return True
         async with self._executing_lock:
             if task_id in self._executing:
                 return False
             self._executing.add(task_id)
-        asyncio.create_task(self._execute_task(task_id, trigger=trigger, dry=dry))
+        coro = self._execute_task(task_id, trigger=trigger, dry=dry)
+        if dry:
+            return await coro
+        asyncio.create_task(coro)
         return True
 
     async def stop_task(self, task_id: str) -> bool:

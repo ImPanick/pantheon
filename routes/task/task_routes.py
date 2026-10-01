@@ -1194,8 +1194,21 @@ def setup_task_routes(task_scheduler) -> APIRouter:
         if not started:
             raise HTTPException(409, "Task is already running")
         if dry:
-            return {"ok": True, "dry": True,
-                    "message": "Dry run — planned, nothing executed"}
+            out = {"ok": True, "dry": True,
+                   "message": "Dry run — planned, nothing executed"}
+            # `P22-04`. The scheduler awaits a dry run and answers with the run
+            # that holds the plan, so the plan is on the reply instead of one
+            # history fetch away — in the shape `GET /{task_id}/runs` serves
+            # (`_run_to_dict`), so whatever draws a run draws this one (`Law 7`).
+            if isinstance(started, str):
+                db = SessionLocal()
+                try:
+                    run = db.query(TaskRun).filter(TaskRun.id == started).first()
+                    out["run_id"] = started
+                    out["run"] = _run_to_dict(run) if run is not None else None
+                finally:
+                    db.close()
+            return out
         return {"ok": True, "dry": False,
                 "message": "Task triggered" + (" in parallel" if force else "")}
 
