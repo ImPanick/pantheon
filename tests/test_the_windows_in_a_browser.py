@@ -18,6 +18,10 @@ through their real doors:
     Research and the Brain's Browse tab, each filled past its cap, stay on
     screen with their close buttons reachable, and a docked Notes pane ends at
     the bottom edge.
+  * **`B952`** — the edge of a docked Notes pane is a separator one Shift+Tab
+    from the pane; the arrows move it 16px the way they point (a right dock
+    widens on ArrowLeft, a left dock on ArrowRight), the value is announced and
+    the width saved like a drag's.
 
 Boots the app out of process exactly as
 `tests/test_the_command_palette_in_a_browser.py` does (its `app_url` fixture,
@@ -192,6 +196,62 @@ const BASE = process.argv[2];
   await settle(400);
   out.notesAtDefault = await measure('.notes-pane.modal-right-docked', null);
 
+  // ── B952 ────────────────────────────────────────────────────────────────
+  // Notes is docked on the right. Its edge, from the keyboard.
+  const RIGHT = '.edge-dock-resize-handle-right';
+  const handle = (sel) => page.evaluate((sel) => {
+    const h = document.querySelector(sel);
+    return h && { role: h.getAttribute('role'), tabindex: h.getAttribute('tabindex'),
+                  label: h.getAttribute('aria-label'), orientation: h.getAttribute('aria-orientation'),
+                  now: Number(h.getAttribute('aria-valuenow')), min: Number(h.getAttribute('aria-valuemin')),
+                  max: Number(h.getAttribute('aria-valuemax')), shown: h.style.display !== 'none',
+                  focused: document.activeElement === h,
+                  ring: getComputedStyle(h).outlineStyle !== 'none' };
+  }, sel);
+  const paneWidth = (sel) => page.evaluate((sel) => Math.round(document.querySelector(sel).getBoundingClientRect().width), sel);
+  await page.evaluate(() => {
+    const first = document.querySelector('.notes-pane button, .notes-pane input, .notes-pane [tabindex="0"]');
+    if (first) first.focus();
+  });
+  let presses = 0;
+  for (; presses < 10; presses++) {
+    if ((await handle(RIGHT)).focused) break;
+    await page.keyboard.press('Shift+Tab');
+  }
+  out.dockShiftTabs = presses;
+  await page.focus(RIGHT);
+  out.dockHandle = await handle(RIGHT);
+  out.dockStart = await paneWidth('.notes-pane');
+  for (let i = 0; i < 3; i++) await page.keyboard.press('ArrowLeft');
+  out.dockWider = await paneWidth('.notes-pane');
+  await page.keyboard.press('ArrowRight');
+  out.dockNarrower = await paneWidth('.notes-pane');
+  out.dockAria = (await handle(RIGHT)).now;
+  out.dockSaved = await page.evaluate(() => localStorage.getItem('pantheon-edge-dock-width:right:notes-pane'));
+  await page.evaluate(() => document.documentElement.classList.add('ui-scale-125')); await settle(400);
+  await page.focus(RIGHT);
+  const zoomBefore = await paneWidth('.notes-pane');
+  await page.keyboard.press('ArrowLeft');
+  out.dockZoomStep = (await paneWidth('.notes-pane')) - zoomBefore;
+  await page.evaluate(() => document.documentElement.classList.remove('ui-scale-125')); await settle(400);
+  // A left dock: the separator sits on the window's right edge, so there
+  // ArrowRight widens it. Notes is put away first, so the chat beside the
+  // dock has the room a wider window needs (the clamp keeps 380px for it).
+  await page.evaluate(() => document.getElementById('tool-notes-btn').click()); await settle(800);
+  await page.evaluate(() => document.getElementById('tool-tasks-btn').click()); await settle(1500);
+  await page.evaluate(async () => {
+    const snap = await import('/static/js/modalSnap.js');
+    snap.applyEdgeDock(document.getElementById('tasks-modal'), 'left');
+  });
+  await settle(600);
+  await page.focus('.edge-dock-resize-handle-left');
+  const leftStart = await paneWidth('#tasks-modal .modal-content');
+  await page.keyboard.press('ArrowRight'); await page.keyboard.press('ArrowRight');
+  out.leftWider = (await paneWidth('#tasks-modal .modal-content')) - leftStart;
+  await page.keyboard.press('ArrowLeft');
+  out.leftNarrower = (await paneWidth('#tasks-modal .modal-content')) - leftStart;
+  out.leftHandle = await handle('.edge-dock-resize-handle-left');
+
   console.log(JSON.stringify(out));
   await browser.close();
 })().catch((e) => { console.error(e); process.exit(1); });
@@ -275,6 +335,45 @@ def test_at_the_larger_text_size_a_docked_pane_ends_at_the_bottom(run):
         got = run[key]
         assert got is not None, f"{key}: Notes did not dock"
         assert got["top"] == 0 and got["bottom"] == got["screen"], (key, got)
+
+
+# ── B952 ───────────────────────────────────────────────────────────────────
+
+def test_a_docked_window_s_edge_is_a_separator_in_the_tab_order(run):
+    """`P10-03`'s treatment: role, orientation, a name, the three values, a
+    tab stop — and the global focus ring, not a rule of its own."""
+    h = run["dockHandle"]
+    assert h["role"] == "separator" and h["orientation"] == "vertical"
+    assert h["tabindex"] == "0" and h["label"] == "Resize docked window"
+    assert h["shown"] and h["focused"] and h["ring"], h
+    assert 0 < h["min"] <= h["now"] <= h["max"], h
+    assert h["now"] == run["dockStart"], (
+        "the announced width is not the pane's width before any key was pressed "
+        f"(a drag or the dock must keep it current): {h['now']} vs {run['dockStart']}")
+    assert run["dockShiftTabs"] <= 3, (
+        f"the edge is {run['dockShiftTabs']} Shift+Tab presses from the docked pane")
+
+
+def test_the_arrows_move_the_edge_where_they_point_and_the_width_is_kept(run):
+    """The row's `Verify`: Tab to the edge of a docked Notes pane and widen it
+    with the arrows. On a right dock the edge is the window's left side, so
+    ArrowLeft widens it; 16px a press, like the sidebar's separators."""
+    assert run["dockWider"] - run["dockStart"] == 48
+    assert run["dockNarrower"] - run["dockStart"] == 32
+    assert run["dockAria"] == run["dockNarrower"]
+    assert run["dockSaved"] == str(run["dockNarrower"])
+
+
+def test_on_a_left_dock_the_right_arrow_widens(run):
+    assert run["leftHandle"]["focused"], run["leftHandle"]
+    assert run["leftWider"] == 32
+    assert run["leftNarrower"] == 16
+
+
+def test_at_the_larger_text_size_a_press_is_still_one_step(run):
+    """16 CSS pixels, which the 1.25x scale draws as 20. Taken from the edge's
+    on-screen position instead, a press jumped 195."""
+    assert run["dockZoomStep"] == 20
 
 
 def test_nothing_threw(run):

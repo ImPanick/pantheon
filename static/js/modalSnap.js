@@ -821,8 +821,39 @@ export function makeEdgeDockController(modal, side = 'right', dockClass) {
     handle.style.touchAction = 'none';
     handle.style.display = 'none';
     handle.title = 'Drag to resize docked window';
+    // `B952`. `P10-03`'s treatment, copied from the three sidebar separators
+    // (`init.js`, `settings/sidebar.js`): a focusable separator with its value
+    // announced, and arrows that move it 16px in the direction pressed — the
+    // edge goes where you push it, so on a right dock ArrowLeft widens and on
+    // a left dock ArrowRight does. It was a `<div>` with no tabindex, role or
+    // key, and `B660`'s window handle un-docks a docked window on its first
+    // arrow, so a docked window's width could not be changed from a keyboard.
+    // It is hidden (`display: none`) whenever there is nothing docked, which
+    // also takes it out of the tab order.
+    handle.setAttribute('role', 'separator');
+    handle.setAttribute('aria-orientation', 'vertical');
+    handle.setAttribute('aria-label', 'Resize docked window');
+    handle.setAttribute('tabindex', '0');
     document.body.appendChild(handle);
   }
+
+  const KEY_STEP = 16;
+  const _setAttr = (el, name, value) => {
+    if (el.getAttribute(name) !== value) el.setAttribute(name, value);
+  };
+  /** The live width and its bounds, read from the same clamps a drag uses.
+   *  Written only when they change (`B923`/`B924`). */
+  const _syncHandleAria = (side, owner) => {
+    const handle = handles[side];
+    const content = owner && _resolveDockNodes(owner)?.content;
+    if (!content) return;
+    const width = Math.round(content.getBoundingClientRect().width);
+    const min = _minEdgeDockWidth();
+    const max = side === 'right' ? _clampRightDockWidth(Infinity) : _clampLeftDockWidth(Infinity);
+    _setAttr(handle, 'aria-valuemin', String(Math.min(min, max)));
+    _setAttr(handle, 'aria-valuemax', String(max));
+    _setAttr(handle, 'aria-valuenow', String(width));
+  };
 
   const _isUsableDockOwner = (owner) => {
     if (!owner || !owner.isConnected) return false;
@@ -867,13 +898,20 @@ export function makeEdgeDockController(modal, side = 'right', dockClass) {
     });
   };
 
-  const _setWidth = (owner, side, clientX) => {
+  const _setWidth = (owner, side, clientX) => _applyDockWidth(owner, side, side === 'right'
+    ? window.innerWidth - clientX
+    : clientX - _leftNavRight());
+
+  // The width a drag or a key asks for, clamped and applied. Split out of
+  // `_setWidth` by `B952` so the keyboard can step the width it set (in the
+  // page's own pixels) rather than re-derive it from a pointer position.
+  const _applyDockWidth = (owner, side, wanted) => {
     const nodes = _resolveDockNodes(owner);
     const content = nodes?.content;
     if (!content) return 0;
     let w = 0;
     if (side === 'right') {
-      w = _clampRightDockWidth(window.innerWidth - clientX);
+      w = _clampRightDockWidth(wanted);
       content._userDockWidth = w;
       content.style.left = 'auto';
       content.style.right = '0';
@@ -887,7 +925,7 @@ export function makeEdgeDockController(modal, side = 'right', dockClass) {
       }
     } else {
       const left = _leftNavRight();
-      w = _clampLeftDockWidth(clientX - left, left);
+      w = _clampLeftDockWidth(wanted, left);
       content._userDockWidth = w;
       content._emailDocSplitUserW = w;
       content.style.left = left + 'px';
@@ -933,6 +971,7 @@ export function makeEdgeDockController(modal, side = 'right', dockClass) {
       _setStyle(handle, 'display', 'block');
       _setStyle(handle, 'left', (x - 5) + 'px');
       _setStyle(handle, 'zIndex', String(_zIndexFor(owner) + 1));
+      _syncHandleAria(side, owner);
     }
   };
 
@@ -974,6 +1013,27 @@ export function makeEdgeDockController(modal, side = 'right', dockClass) {
       document.addEventListener('pointermove', onMove, true);
       document.addEventListener('pointerup', onUp, true);
       document.addEventListener('pointercancel', onUp, true);
+    });
+
+    // `B952`. The same clamp, the same apply and the same saved width as a
+    // drag, one step from the width the dock last set. The step is taken from
+    // that width rather than from the edge's on-screen position, because at
+    // the 1.25x text size the two are in different pixels (filed with this
+    // row: the pointer path has that mismatch) and a press there jumped 195px.
+    handle.addEventListener('keydown', (e) => {
+      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+      if (e.altKey || e.ctrlKey || e.metaKey) return;
+      if (handle.style.display === 'none') return;
+      const owner = _activeDockOwner(side);
+      const content = owner && _resolveDockNodes(owner)?.content;
+      if (!content) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const current = parseFloat(content.style.width) || content.getBoundingClientRect().width;
+      const wider = (e.key === 'ArrowLeft') === (side === 'right');
+      const w = _applyDockWidth(owner, side, current + (wider ? KEY_STEP : -KEY_STEP));
+      if (w) _saveDockWidth(owner, content, side, w);
+      _syncHandleAria(side, owner);
     });
   }
 
