@@ -52,6 +52,7 @@ from src.tool_policy import (
 from src.tool_capabilities import (
     DEFAULT_TRUST_RUNG,
     ResultIntegrity,
+    RUNS_IN_WORKSTATION,
     ToolRunSecurityContext,
     TrustRung,
     blocked_tool_result,
@@ -223,7 +224,28 @@ def _resolve_allow_rule_lookup(owner: Any, session_id: Any):
     return lookup if callable(lookup) else None
 
 
-def _effect_fields(tool_name: Any, content: Any) -> Dict[str, Any]:
+def _runs_in(tool_name: Any, owner: Any) -> Optional[str]:
+    """`B967`. Where this call will run, when it is not this machine.
+
+    `computer` only ever acts on the workstation (`P20-04`). The nine routed
+    tools run there exactly when `workstation_tools.routes(tool, owner)` says so
+    — the question the dispatcher asks before it runs them (`P20-03`), asked
+    here so the words on `tool_start` describe the place the dispatcher will
+    pick. Anything else, or a question that cannot be answered, is "here": the
+    phrase that was always shown.
+    """
+    if tool_name == "computer":
+        return RUNS_IN_WORKSTATION
+    try:
+        from src.agent_tools import workstation_tools
+
+        return RUNS_IN_WORKSTATION if workstation_tools.routes(tool_name, owner) else None
+    except Exception:
+        logger.debug("[agent] could not tell where %r runs", tool_name, exc_info=True)
+        return None
+
+
+def _effect_fields(tool_name: Any, content: Any, runs_in: Optional[str] = None) -> Dict[str, Any]:
     """Effect keys for one action's `tool_start`/`tool_output` pair (P7-06).
 
     Resolve from the *content* the block carries, not from the tool name alone:
@@ -238,7 +260,7 @@ def _effect_fields(tool_name: Any, content: Any) -> Dict[str, Any]:
     not. An empty dict spreads into an event as no keys at all.
     """
     try:
-        return describe_effects(capabilities_for_action(tool_name, content))
+        return describe_effects(capabilities_for_action(tool_name, content), runs_in=runs_in)
     except Exception:
         logger.warning(
             "[agent] effect resolution failed for tool=%r; card ships unranked",
@@ -4696,6 +4718,10 @@ async def stream_agent_loop(
     run — so a consumer must read a missing `effect` as "unranked", never as
     "harmless". The ordering and the phrasing live in `src/tool_capabilities.py`
     (`describe_effects`) and are deliberately not duplicated client-side.
+
+    `B967` — a call that will run in the person's workstation (`computer`, or a
+    routed `bash`/`python`/file tool) is phrased for there: "Runs code in your
+    workstation", not "on this machine". Same six keys, same values and rank.
     """
 
     # P7-03. Read once, here, and carried on the context for the rest of the
@@ -6025,7 +6051,8 @@ async def stream_agent_loop(
         # consequences of an action this run is not allowed to show is worse
         # than showing nothing.
         approved_effects = (
-            _effect_fields(approved.tool_name, approved.content)
+            _effect_fields(approved.tool_name, approved.content,
+                           _runs_in(approved.tool_name, owner))   # `B967`
             if approval_matches
             else {}
         )
@@ -7456,7 +7483,10 @@ async def stream_agent_loop(
             # and the persisted `tool_event`. Nothing in the loop rewrites
             # `block`, so re-resolving would give the same answer four times;
             # one variable means it cannot start giving four different ones.
-            block_effects = _effect_fields(block.tool_type, block.content)
+            # `B967`. Where it will run, asked once: the same answer words the
+            # effect here and on the approval card below, if the gate asks.
+            block_runs_in = _runs_in(block.tool_type, owner)
+            block_effects = _effect_fields(block.tool_type, block.content, block_runs_in)
             if is_doc_tool:
                 cmd_display = block.content.split("\n")[0].strip()[:80]
             elif block.tool_type == "computer":
@@ -7616,6 +7646,8 @@ async def stream_agent_loop(
                         # enters the seal; see `PendingToolApproval`.
                         gate_decision=security_decision,
                         taint_trail=run_security.taint_trail,
+                        # `B967`. Display-only, outside the seal.
+                        runs_in=block_runs_in,
                     )
                     desc = f"{block.tool_type}: APPROVAL REQUIRED"
                     result = {

@@ -873,6 +873,35 @@ _EFFECT_PHRASE: Mapping[ToolEffect, str] = MappingProxyType({
     ToolEffect.DESTRUCTIVE: "Can permanently delete or overwrite",
 })
 
+# `B967`. Where the action runs, when it is not this machine.
+#
+# Every phrase above is about the box Pantheon runs on, and that is what they
+# meant until `P20-03`: with the workstation on, `bash`, `python` and the file
+# tools run in the person's workstation, so a `bash` card read "Runs code on
+# this machine" beside a *workstation* label saying the opposite, and a
+# `read_file` there read "Reads workspace files" about a home this machine
+# never sees. `computer` (`P20-04`) only ever acts on the workstation.
+#
+# Only the words change. The effect itself — `execute_code` is `execute_code`
+# wherever it runs — and its rank are the same, so the gate decides exactly what
+# it decided before, and the approval seal, which binds effect *values*, does
+# not include where (`PendingToolApproval.runs_in`).
+#
+# `RUNS_IN_WORKSTATION` is the value `ran_in` already carries on a workstation
+# result (`src/agent_tools/workstation_tools.py`), so the card's label and the
+# effect phrase say one place in one word. Effects with no entry here keep their
+# phrase: "Sends data out to the internet" is as true from the workstation.
+RUNS_IN_WORKSTATION = "workstation"
+_WHERE_EFFECT_PHRASE: Mapping[str, Mapping[ToolEffect, str]] = MappingProxyType({
+    RUNS_IN_WORKSTATION: MappingProxyType({
+        ToolEffect.EXECUTE_CODE: "Runs code in your workstation",
+        # One phrase for the file tools and the computer's screenshot, which is
+        # narrowed to `read_workspace` (`P20-04`): both read from there.
+        ToolEffect.READ_WORKSPACE: "Reads from your workstation",
+        ToolEffect.WRITE_WORKSPACE: "Writes files in your workstation",
+    }),
+})
+
 # Three bands, because a card can afford three visual treatments and not
 # thirteen. The thresholds are the rank of the lowest member of each band, so
 # adding an effect between two existing ones lands in the right band without
@@ -905,7 +934,7 @@ def effect_band(severity: int) -> str:
     return EFFECT_BAND_ROUTINE
 
 
-def describe_effects(capabilities: Any) -> dict:
+def describe_effects(capabilities: Any, *, runs_in: Any = None) -> dict:
     """Resolve a capability set into what a surface needs to draw it.
 
     Returns the raw values *and* the presentation, because the two surfaces that
@@ -928,6 +957,10 @@ def describe_effects(capabilities: Any) -> dict:
     Takes either a `ToolCapabilities` or a bare iterable of effect values,
     because `PendingToolApproval` keeps its effects as a tuple of strings for
     digest stability and would otherwise need a second resolver of its own.
+
+    `runs_in` (`B967`): where the action runs when it is not this machine —
+    `RUNS_IN_WORKSTATION`, or nothing. It changes words only; the values, the
+    rank and the band are the same either way, and anything else is ignored.
     """
     effects = getattr(capabilities, "effects", None)
     if effects is None and isinstance(capabilities, (list, tuple, set, frozenset)):
@@ -936,6 +969,7 @@ def describe_effects(capabilities: Any) -> dict:
         return {}
     ranked = sorted(effects, key=lambda e: (-effect_severity(e), str(getattr(e, "value", e))))
     values = [e.value if isinstance(e, ToolEffect) else str(e) for e in ranked]
+    where = _WHERE_EFFECT_PHRASE.get(runs_in, {}) if isinstance(runs_in, str) else {}
 
     def _phrase(effect: Any) -> str:
         """The words, or the identifier when there are none.
@@ -945,7 +979,8 @@ def describe_effects(capabilities: Any) -> dict:
         otherwise show identifiers to the one person being asked to consent.
         """
         try:
-            return _EFFECT_PHRASE[ToolEffect(effect)]
+            member = ToolEffect(effect)
+            return where.get(member) or _EFFECT_PHRASE[member]
         except (KeyError, ValueError):
             return str(getattr(effect, "value", effect))
 

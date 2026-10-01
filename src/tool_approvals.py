@@ -334,6 +334,14 @@ class PendingToolApproval:
     tripped_effects: tuple[str, ...] = ()
     tool_classification: str = TOOL_CLASSIFICATION_RECOGNISED
     taint_trail: tuple[dict[str, Any], ...] = ()
+    # `B967`. Where the action would run when it is not this machine
+    # (`RUNS_IN_WORKSTATION`), so the card's phrases say "in your workstation"
+    # rather than "on this machine". Outside `_binding_payload` for the same
+    # reason as the three above: it is words about the action, not the action.
+    # Where a call runs is decided at dispatch by the admin's routing switch,
+    # and an approved `bash` command is the same command whichever box runs it;
+    # sealing the words would make a replay fail to match for a display reason.
+    runs_in: str = ""
 
     def default_reason(self) -> str:
         """`P4-04`. The card's own sentence when its producer wrote none.
@@ -434,7 +442,8 @@ class PendingToolApproval:
             # server-side dict, and this view is never read back as authority.
             # `self.effects` stays alphabetical inside `action` for that reason —
             # it is the sealed value — while `effects` here is severity-ranked.
-            **describe_effects(self.effects),
+            # `B967`: in the words for where it runs; the values are the same.
+            **describe_effects(self.effects, runs_in=self.runs_in or None),
             # `P4-21`. The ten-minute TTL was computed on every card and sent on
             # none, so the card stopped working with no warning and no
             # explanation — a button that silently becomes a 409. Absolute
@@ -459,7 +468,8 @@ class PendingToolApproval:
                 # was not about effects at all — see `tool_classification`.
                 "tripped_effects": list(self.tripped_effects),
                 "tripped_effect_labels": list(
-                    describe_effects(self.tripped_effects).get("effect_labels", ())
+                    describe_effects(self.tripped_effects, runs_in=self.runs_in or None)
+                    .get("effect_labels", ())
                 ),
                 # `recognised` | `unrecognised` | `not_available`. An enum, not
                 # a boolean (`Law 10`): `unrecognised` means the effects above
@@ -691,11 +701,14 @@ class ToolApprovalStore:
         capabilities: ToolCapabilities,
         gate_decision: ToolGateDecision | None = None,
         taint_trail: Any = None,
+        runs_in: Any = None,
     ) -> PendingToolApproval:
         """`gate_decision` and `taint_trail` are display-only (`P7-07`,
         `P7-08`). Both default to nothing so the producers that have no run
         security context to hand — the teacher escalation, the skill tester —
-        are untouched and keep minting exactly the card they minted before."""
+        are untouched and keep minting exactly the card they minted before.
+        `runs_in` (`B967`) is display-only in the same way and defaults the
+        same way: the card says "on this machine" unless told otherwise."""
         now = time.time()
         effects = tuple(sorted(effect.value for effect in capabilities.effects))
         result_integrity = capabilities.result_integrity.value
@@ -748,6 +761,7 @@ class ToolApprovalStore:
                 taint_trail,
                 tainted=payload["external_untrusted_context_seen"],
             ),
+            runs_in=runs_in if isinstance(runs_in, str) else "",
         )
         with self._lock:
             expired = self._purge_expired_locked(now)
