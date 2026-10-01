@@ -2020,7 +2020,11 @@ def setup_chat_routes(
             _privs = request.app.state.auth_manager.get_privileges(_user)
         if _privs:
             if not _privs.get("can_use_bash", True):
-                disabled_tools.update({"bash", "python", "read_file", "write_file"})
+                # `P20-03`. `can_use_bash` is about a shell on this machine;
+                # when this person's shell and files run in their workstation,
+                # `can_use_workstation` is the grant that governs them.
+                from src.agent_tools.workstation_tools import lifted_tools as _ws_lifted
+                disabled_tools.update({"bash", "python", "read_file", "write_file"} - _ws_lifted(_user))
             if not _privs.get("can_use_browser", True):
                 disabled_tools.update(_BROWSER_MCP_TOOLS)
             if not _privs.get("can_use_documents", True):

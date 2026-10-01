@@ -208,6 +208,7 @@ export function finishToolCard(currentToolBubble, json, opts = {}) {
   // so no per-node listener is added anywhere.
   applyAgentThreadNode(currentToolBubble, {
     tool: json.tool, state: 'done', ok, round: json.round, approved: json.approved,
+    ranIn: json.ran_in, ranAs: json.ran_as,   // `P20-03`: where it ran
     command: cmd, fullCommand: json.full_command,
     output: outHtml, diff: diffHtml, todo: todoHtml,
   });

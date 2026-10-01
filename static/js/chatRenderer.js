@@ -3979,6 +3979,8 @@ export function addMessage(role, content, modelName, metadata) {
                   }) }
               : {
                 tool: ev.tool, state: 'done', ok, round: ev.round, approved: ev.approved,
+                // `P20-03`: persisted with the event, so a reload says where it ran.
+                ranIn: ev.ran_in, ranAs: ev.ran_as,
                 command: ev.command, fullCommand: ev.full_command,
                 output: outHtml, diff: evDiffHtml, todo: evTodoHtml,
               });

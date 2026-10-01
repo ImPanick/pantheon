@@ -291,6 +291,48 @@ def _clean_tmux_command_output(text: str, wrapped_command: str) -> str:
         cleaned.append(raw)
     return "\n".join(cleaned).strip()
 
+def _tail_line(decoded: str, label: str) -> str:
+    """One line of a running command's live tail: stderr lines marked `! `."""
+    return f"! {decoded}" if label == "err" else decoded
+
+
+async def _progress_emitter(progress_cb: Callable[[Dict], Awaitable[None]], started: float,
+                         tail: "collections.deque") -> None:
+    """The `tool_progress` beat of a running command: after `PROGRESS_INTERVAL_S`
+    and every interval after, the elapsed time and the last lines of output.
+    Shared by the command running here and the one running in the workstation
+    (`P20-03`), so a card cannot tell the two apart while it waits."""
+    await asyncio.sleep(PROGRESS_INTERVAL_S)
+    while True:
+        try:
+            await progress_cb({
+                "elapsed_s": round(time.time() - started, 1),
+                "tail": "\n".join(list(tail)),
+            })
+        except Exception:
+            pass
+        await asyncio.sleep(PROGRESS_INTERVAL_S)
+
+
+def _shell_result(tool: str, stdout: str, stderr: str, rc: Optional[int], timed_out: bool,
+                  timeout: float) -> Dict:
+    """What `bash` (without tmux) and `python` answer once the command is over."""
+    if timed_out:
+        # `P4-19`: `output` too. This branch returned the two streams and no
+        # merged view, so a killed command drew a card with nothing in it —
+        # the one case where what it managed to print matters most.
+        return {"error": f"{tool}: timed out after {timeout}s — process killed",
+                "exit_code": 124, **split_streams(stdout, stderr)}
+    return {**split_streams(stdout, stderr), "exit_code": rc or 0}
+
+
+def _bash_command(content) -> str:
+    """The command text of a `bash` call, which may arrive as its argument object."""
+    if isinstance(content, dict):
+        content = str(content.get("command") or content.get("cmd") or content.get("code") or "")
+    return content
+
+
 async def _run_subprocess_streaming(
     proc: asyncio.subprocess.Process,
     *,
@@ -311,27 +353,11 @@ async def _run_subprocess_streaming(
                 break
             decoded = line.decode("utf-8", errors="replace").rstrip("\n")
             full_buf.append(decoded)
-            if label == "err":
-                tail.append(f"! {decoded}")
-            else:
-                tail.append(decoded)
-
-    async def _progress_emitter():
-        await asyncio.sleep(PROGRESS_INTERVAL_S)
-        while True:
-            if progress_cb:
-                try:
-                    await progress_cb({
-                        "elapsed_s": round(time.time() - started, 1),
-                        "tail": "\n".join(list(tail)),
-                    })
-                except Exception:
-                    pass
-            await asyncio.sleep(PROGRESS_INTERVAL_S)
+            tail.append(_tail_line(decoded, label))
 
     rd_out = asyncio.create_task(_reader(proc.stdout, stdout_full, "out"))
     rd_err = asyncio.create_task(_reader(proc.stderr, stderr_full, "err"))
-    prog_task = asyncio.create_task(_progress_emitter()) if progress_cb else None
+    prog_task = asyncio.create_task(_progress_emitter(progress_cb, started, tail)) if progress_cb else None
 
     timed_out = False
     try:
@@ -383,8 +409,7 @@ async def _run_subprocess_streaming(
 class BashTool:
     async def execute(self, content: str, ctx: dict) -> dict:
         from src.tool_execution import agent_cwd, _truncate
-        if isinstance(content, dict):
-            content = str(content.get("command") or content.get("cmd") or content.get("code") or "")
+        content = _bash_command(content)
         progress_cb = ctx.get("progress_cb")
         _subproc_env = ctx.get("subproc_env")
         session_id = ctx.get("session_id")
@@ -428,13 +453,7 @@ class BashTool:
             timeout=DEFAULT_BASH_TIMEOUT,
             progress_cb=progress_cb,
         )
-        if timed_out:
-            # `P4-19`: `output` too. This branch returned the two streams and no
-            # merged view, so a killed command drew a card with nothing in it —
-            # the one case where what it managed to print matters most.
-            return {"error": f"bash: timed out after {DEFAULT_BASH_TIMEOUT}s — process killed",
-                    "exit_code": 124, **split_streams(stdout, stderr)}
-        return {**split_streams(stdout, stderr), "exit_code": rc or 0}
+        return _shell_result("bash", stdout, stderr, rc, timed_out, DEFAULT_BASH_TIMEOUT)
 
 class PythonTool:
     async def execute(self, content: str, ctx: dict) -> dict:
@@ -453,7 +472,4 @@ class PythonTool:
             timeout=DEFAULT_PYTHON_TIMEOUT,
             progress_cb=progress_cb,
         )
-        if timed_out:
-            return {"error": f"python: timed out after {DEFAULT_PYTHON_TIMEOUT}s — process killed",
-                    "exit_code": 124, **split_streams(stdout, stderr)}
-        return {**split_streams(stdout, stderr), "exit_code": rc or 0}
+        return _shell_result("python", stdout, stderr, rc, timed_out, DEFAULT_PYTHON_TIMEOUT)

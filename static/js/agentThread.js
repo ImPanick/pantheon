@@ -385,6 +385,35 @@ export function approvedBadgeHtml(approved) {
     + APPROVED_ICON + 'approved</span>';
 }
 
+/** A small monitor, the workstation's own glyph on the card. */
+export const WORKSTATION_ICON =
+  '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+  + 'stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" '
+  + 'style="vertical-align:-1px;margin-right:3px" aria-hidden="true">'
+  + '<rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>';
+
+/**
+ * `P20-03`. Where the command ran, when it was not here.
+ *
+ * With the workstation on, `bash`, `python` and the file tools run in the
+ * person's workstation rather than in Pantheon's own container, and the card
+ * says so — the one place a person looks to learn what the agent just did, and
+ * where a `pwd` or a path in the output would otherwise be a puzzle. The
+ * backend sets `ran_in: "workstation"` and `ran_as` (the account) only on that
+ * path, so a card for a command that ran here is unchanged.
+ *
+ * Only the exact string earns the badge, as only `true` earns `approved`: the
+ * label makes a claim about where code ran, and a hand-built replay event
+ * cannot buy it with a truthy value. The account is in the tooltip, escaped.
+ */
+export function whereBadgeHtml(ranIn, ranAs) {
+  if (ranIn !== 'workstation') return '';
+  const who = typeof ranAs === 'string' && ranAs ? ranAs : '';
+  const title = who ? `Ran in the workstation, as ${who}` : 'Ran in the workstation';
+  return `<span class="agent-thread-where" title="${esc(title)}">`
+    + WORKSTATION_ICON + 'workstation</span>';
+}
+
 /**
  * `P4-09`. The command block, and the way back to the arguments behind it.
  *
@@ -538,6 +567,8 @@ export function nodeClassName(state, ok) {
  * @param {string} [o.todo]    pre-rendered HTML
  * @param {number} [o.round]   1-based agent round; anything else draws no badge
  * @param {boolean} [o.approved] exactly `true` badges the card as authorised
+ * @param {string} [o.ranIn]  exactly `'workstation'` labels where it ran (`P20-03`)
+ * @param {string} [o.ranAs]  the workstation account, for that label's tooltip
  *
  * A `diff` or a `todo` suppresses the command line. For a file edit the
  * "command" is the raw JSON arguments, which is redundant beside the diff; for
@@ -563,6 +594,7 @@ export function agentThreadNodeHtml(o) {
     + `<span class="agent-thread-icon">${toolIcon(o.tool, state, o.ok)}</span>`
     + `<span class="agent-thread-tool">${esc(label)}</span>`
     + approvedBadgeHtml(o.approved)
+    + whereBadgeHtml(o.ranIn, o.ranAs)
     + roundBadgeHtml(o.round)
     + tail
     + '</div>'
@@ -708,8 +740,8 @@ export default { agentThreadNodeHtml, applyAgentThreadNode, agentThreadContent,
                  ensureThreadToggleAll, toggleThreadAll, syncThreadToggleAll,
                  threadIsAllOpen, prettyJson,
                  toolLabel, toolIcon,
-                 nodeClassName, roundBadgeHtml, approvedBadgeHtml,
+                 nodeClassName, roundBadgeHtml, approvedBadgeHtml, whereBadgeHtml,
                  commandBlockHtml, highlightCommandBlocks, verifierCardOptions,
                  blockedCardOptions, toolOutputPanesHtml,
                  TOOL_LABELS, TOOL_ICONS, CMD_LANGUAGES, SEARCH_ICON,
-                 APPROVED_ICON, COPY_ICON };
+                 APPROVED_ICON, COPY_ICON, WORKSTATION_ICON };

@@ -4736,6 +4736,12 @@ async def stream_agent_loop(
             mcp_mgr = None
     guide_only = bool(tool_policy and tool_policy.mode == "guide_only")
     public_blocked_tools = blocked_tools_for_owner(owner)
+    if public_blocked_tools:
+        # `P20-03`. The shell and file tools a person may use because they run
+        # in their workstation are offered, as the dispatcher runs them; the
+        # token cap below still adds them back for a delegated credential.
+        from src.agent_tools.workstation_tools import lifted_tools as _workstation_lifted
+        public_blocked_tools = set(public_blocked_tools) - _workstation_lifted(owner)
     if delegated_credential:
         # B70. `owner` here is the admin who minted the token, so the call
         # above returns the empty set — a token would otherwise inherit the
@@ -6155,6 +6161,9 @@ async def stream_agent_loop(
             "action",
             "ui_event",
             "diff",
+            # `P20-03`: where it ran, for the card's label.
+            "ran_in",
+            "ran_as",
         ):
             if key in approved_result:
                 approved_event[key] = approved_result[key]
@@ -6237,6 +6246,8 @@ async def stream_agent_loop(
             "image_size",
             "image_quality",
             "diff",
+            "ran_in",
+            "ran_as",
         ):
             if approved_result.get(key):
                 approved_tool_event[key] = approved_result[key]
@@ -7855,6 +7866,12 @@ async def stream_agent_loop(
             # Forward a file-write diff for inline before/after rendering
             if "diff" in result:
                 tool_output_data["diff"] = result["diff"]
+            # `P20-03`. Where it ran — `ran_in: "workstation"` and the account —
+            # set only by the workstation path, so a card on this machine is
+            # byte-for-byte what it was.
+            for k in ("ran_in", "ran_as"):
+                if k in result:
+                    tool_output_data[k] = result[k]
             yield f'data: {json.dumps(tool_output_data)}\n\n'
             if result.get("image_url"):
                 generated_image_data = {"type": "generated_image", "url": result.get("image_url")}
@@ -8060,6 +8077,11 @@ async def stream_agent_loop(
             # this the diff shows live but vanishes from saved history.
             if result.get("diff"):
                 tool_event["diff"] = result["diff"]
+            # `P20-03`. Persisted with the diff, so a reloaded card still says
+            # where it ran.
+            for k in ("ran_in", "ran_as"):
+                if result.get(k):
+                    tool_event[k] = result[k]
             if _pending_ask_user_event:
                 # Persist the structured question with the tool event.  On a
                 # reload, chatRenderer can restore the card; a later user

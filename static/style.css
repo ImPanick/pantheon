@@ -11543,6 +11543,26 @@ body.fullwidth-chat .chat-history {
 .agent-thread-header:hover .agent-thread-round {
   color: color-mix(in srgb, var(--fg) 85%, transparent);
 }
+/* `P20-03`. Where a command ran, when it ran in the person's workstation rather
+   than in Pantheon's container. A fact to read, not an alarm: muted like the
+   round badge, with a word so it needs no legend. `--fg` mixes only — no
+   `--accent` reference, so all sixteen palettes carry it unchanged. */
+.agent-thread-where {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 6px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--fg) 22%, transparent);
+  background: color-mix(in srgb, var(--fg) 7%, transparent);
+  color: color-mix(in srgb, var(--fg) 72%, transparent);
+  font-size: 0.7em;
+  font-weight: 600;
+  line-height: 15px;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
 .agent-thread-status {
   font-size: 0.85em;
   opacity: 0.5;

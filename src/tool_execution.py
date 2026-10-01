@@ -354,6 +354,13 @@ def _owner_is_admin(owner: Optional[str]) -> bool:
     """Mirror route-level admin behavior for agent tool execution."""
     return owner_is_admin_or_single_user(owner)
 
+
+def _runs_in_workstation(tool: Any, owner: Optional[str]) -> bool:
+    """`P20-03`: `workstation_tools.routes`, imported when asked — that module
+    imports the tool classes, which import this one."""
+    from src.agent_tools.workstation_tools import routes
+    return routes(tool, owner)
+
 # ---------------------------------------------------------------------------
 # MCP-backed tool helpers
 # ---------------------------------------------------------------------------
@@ -1111,7 +1118,17 @@ async def _execute_tool_block_impl(
         logger.warning("Admin tool blocked for non-admin owner=%r tool=%s", owner, tool)
         return desc, result
 
-    if is_public_blocked_tool(tool) and not _owner_is_admin(owner):
+    # `P20-03`. Asked once, here, and nowhere else in this function: does this
+    # call run in the person's workstation? True only for the nine shell and
+    # file tools, with the workstation on, routing not switched off and the
+    # person allowed to use it (`workstation_tools.routes`).
+    in_workstation = _runs_in_workstation(tool, owner)
+
+    # A non-admin is refused `bash` and the file tools because here they reach
+    # the process that holds every secret. In the workstation they reach the
+    # person's own home, which is what `can_use_workstation` granted — so the
+    # refusal is lifted for exactly those calls and nothing wider.
+    if is_public_blocked_tool(tool) and not _owner_is_admin(owner) and not in_workstation:
         desc = f"{tool}: BLOCKED"
         # `P2-25`. The refusal used to say only *that* it was refused. The
         # register in `tool_security` exists so nobody has to re-litigate an
@@ -1132,6 +1149,16 @@ async def _execute_tool_block_impl(
         logger.warning("Public tool policy blocked owner=%r tool=%s", owner, tool)
         return desc, result
 
+    # `P20-03`. Above every path that could run on this machine — the `#!bg`
+    # launcher, the MCP map, `_direct_fallback` — so a call that belongs in the
+    # workstation is never run here instead: if the workstation is down or
+    # refuses, the answer says so (`WorkstationError.as_result()`).
+    if in_workstation:
+        from src.agent_tools.workstation_tools import run_in_workstation
+        desc, result = await run_in_workstation(
+            tool, content, owner=owner, session_id=session_id, progress_cb=progress_cb)
+        logger.info(f"Tool executed in the workstation: {desc} -> exit_code={result.get('exit_code', 'n/a')}")
+        return desc, result
 
     # Background execution: a `bash` block whose first line is the `#!bg`
     # marker runs DETACHED — returns a job id immediately so the chat stream
