@@ -257,6 +257,214 @@ export function installDom() {
   globalThis.setInterval = (fn, ms) => { const t = realInterval(fn, ms); if (t && t.unref) t.unref(); return t; };
   return document;
 }
+
+/**
+ * Added 2026-10-01 by `P22-03`. **Opt-in**: a sandbox that calls this gets
+ * markup assigned through `innerHTML` or `insertAdjacentHTML` parsed into real
+ * child nodes; one that does not is exactly the shim above, so no existing
+ * sandbox changes.
+ *
+ * Why it exists. The shim stores markup as a string, so a module that writes a
+ * form with `innerHTML` and then finds its fields could only be driven by
+ * seeding every id at the top of the document. The task form now finds its
+ * fields inside its own host — two forms with the same ids can be open at once
+ * (the Tasks window and the Workbench panel) — and a seeded id outside the host
+ * is, correctly, not found. Parsed, the form's own markup is what the form
+ * finds, which is also what a browser does.
+ *
+ * Scope, so a reader knows what it is not: tags, quoted and bare attributes,
+ * the five named entities and numeric ones, void elements, and raw-text
+ * elements (`textarea` content becomes its value). `select.value` follows the
+ * selected `option` and selects one on assignment; `option.selected` deselects
+ * its siblings; an `option` with no `value` takes its text. `closest` and
+ * `contains` walk the parent chain. Whitespace-only text between tags is not
+ * kept, so `childNodes` of a `select` is its options. Nothing else.
+ */
+export function installHtmlParsing() {
+  const VOID = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input',
+    'link', 'meta', 'source', 'track', 'wbr']);
+  const RAW = new Set(['textarea', 'script', 'style', 'title']);
+  const NAMED = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ' };
+  const decode = (s) => String(s).replace(/&(#x[0-9a-f]+|#[0-9]+|[a-z]+);/gi, (m, e) => {
+    if (e[0] === '#') {
+      const n = (e[1] === 'x' || e[1] === 'X') ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10);
+      return Number.isFinite(n) ? String.fromCodePoint(n) : m;
+    }
+    const v = NAMED[e.toLowerCase()];
+    return v === undefined ? m : v;
+  });
+
+  const optionsOf = (s) => s._walk([]).filter((n) => n.tagName === 'OPTION');
+  function makeOption(o) {
+    let on = false;
+    o._setSelected = (v) => { on = !!v; };
+    Object.defineProperty(o, 'selected', {
+      configurable: true, enumerable: true,
+      get() { return on; },
+      set(v) {
+        on = !!v;
+        if (!on) return;
+        let s = o.parentNode;
+        while (s && s.tagName !== 'SELECT') s = s.parentNode;
+        if (!s) return;
+        for (const other of optionsOf(s)) if (other !== o && other._setSelected) other._setSelected(false);
+        if (s._clearMiss) s._clearMiss();
+      },
+    });
+  }
+  function makeSelect(s) {
+    let miss = false;
+    let explicit = null;
+    s._clearMiss = () => { miss = false; };
+    Object.defineProperty(s, 'value', {
+      configurable: true, enumerable: true,
+      get() {
+        const all = optionsOf(s);
+        if (!all.length) return explicit == null ? '' : explicit;
+        const chosen = all.filter((o) => o.selected);
+        if (chosen.length) return chosen[chosen.length - 1].value;
+        return miss ? '' : all[0].value;
+      },
+      set(v) {
+        const want = String(v == null ? '' : v);
+        explicit = want;
+        let hit = false;
+        for (const o of optionsOf(s)) {
+          const yes = !hit && String(o.value) === want;
+          if (o._setSelected) o._setSelected(yes); else o.selected = yes;
+          if (yes) hit = true;
+        }
+        miss = !hit && optionsOf(s).length > 0;
+      },
+    });
+    Object.defineProperty(s, 'options', { configurable: true, get() { return optionsOf(s); } });
+  }
+
+  const plainCreate = document.createElement;
+  document.createElement = (tag) => {
+    const n = plainCreate(tag);
+    const t = String(tag).toLowerCase();
+    if (t === 'select') makeSelect(n);
+    else if (t === 'option') makeOption(n);
+    else if (t === 'input') n.checked = false;
+    return n;
+  };
+
+  const ATTR = /([^\s"'=<>\/]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/g;
+  function applyAttrs(el, text) {
+    ATTR.lastIndex = 0;
+    let a;
+    while ((a = ATTR.exec(text))) {
+      const name = a[1].toLowerCase();
+      const raw = a[2] !== undefined ? a[2] : a[3] !== undefined ? a[3] : a[4];
+      const value = raw === undefined ? '' : decode(raw);
+      el.setAttribute(name, value);
+      if (name === 'class') el.className = value;
+      else if (name === 'value') el.value = value;
+      else if (name === 'checked') el.checked = true;
+      else if (name === 'selected') el.selected = true;
+      else if (name === 'disabled') el.disabled = true;
+      else if (name === 'hidden') el.hidden = true;
+      else if (name === 'readonly') el.readOnly = true;
+      else if (name === 'type') el.type = value;
+      else if (name === 'placeholder') el.placeholder = value;
+      else if (name === 'title') el.title = value;
+      else if (name.startsWith('data-')) {
+        el.dataset[name.slice(5).replace(/-([a-z])/g, (m, c) => c.toUpperCase())] = value;
+      } else if (name === 'style') {
+        for (const decl of value.split(';')) {
+          const i = decl.indexOf(':');
+          if (i > 0) el.style[decl.slice(0, i).trim()] = decl.slice(i + 1).trim();
+        }
+      }
+    }
+  }
+
+  const TOKEN = /<!--[\s\S]*?-->|<\/([A-Za-z][A-Za-z0-9-]*)\s*>|<([A-Za-z][A-Za-z0-9-]*)((?:[^>"']|"[^"]*"|'[^']*')*)>|([^<]+|<)/g;
+  function parseInto(parent, html) {
+    const stack = [parent];
+    const top = () => stack[stack.length - 1];
+    const made = [];
+    TOKEN.lastIndex = 0;
+    let m;
+    while ((m = TOKEN.exec(html))) {
+      if (m[0].startsWith('<!--')) continue;
+      if (m[1]) {
+        const tag = m[1].toUpperCase();
+        for (let i = stack.length - 1; i > 0; i -= 1) {
+          if (stack[i].tagName === tag) { stack.length = i; break; }
+        }
+        continue;
+      }
+      if (m[2]) {
+        const tag = m[2].toLowerCase();
+        let attrs = m[3] || '';
+        const selfClosing = /\/\s*$/.test(attrs);
+        if (selfClosing) attrs = attrs.replace(/\/\s*$/, '');
+        const el = document.createElement(tag);
+        applyAttrs(el, attrs);
+        top().appendChild(el);
+        made.push(el);
+        if (RAW.has(tag)) {
+          const from = TOKEN.lastIndex;
+          const end = html.toLowerCase().indexOf('</' + tag, from);
+          const text = decode(end < 0 ? html.slice(from) : html.slice(from, end));
+          if (tag === 'textarea') el.value = text;
+          if (text) el.appendChild(document.createTextNode(text));
+          TOKEN.lastIndex = end < 0 ? html.length : html.indexOf('>', end) + 1;
+          continue;
+        }
+        if (!VOID.has(tag) && !selfClosing) stack.push(el);
+        continue;
+      }
+      const text = m[4];
+      if (text && text.trim()) top().appendChild(document.createTextNode(decode(text)));
+    }
+    for (const el of made) {
+      if (el.tagName === 'OPTION' && el.getAttribute('value') === null) el.value = el.textContent;
+    }
+  }
+
+  Object.defineProperty(Node.prototype, 'innerHTML', {
+    configurable: true,
+    get() { return this._html; },
+    set(v) {
+      for (const c of this.childNodes) c.parentNode = null;
+      this.childNodes = []; this._text = ''; this._html = '';
+      const html = String(v == null ? '' : v);
+      parseInto(this, html);
+      // Kept so a case can still read back the markup it was handed, as it can
+      // without this layer.
+      this._html = html;
+    },
+  });
+  Node.prototype.insertAdjacentHTML = function insertAdjacentHTML(where, html) {
+    const holder = plainCreate('div');
+    parseInto(holder, String(html == null ? '' : html));
+    const kids = holder.childNodes.slice();
+    holder.childNodes = [];
+    for (const k of kids) k.parentNode = null;
+    const pos = String(where).toLowerCase();
+    if (pos === 'beforeend') kids.forEach((k) => this.appendChild(k));
+    else if (pos === 'afterbegin') { const first = this.firstChild; kids.forEach((k) => this.insertBefore(k, first)); }
+    else if (pos === 'beforebegin' && this.parentNode) kids.forEach((k) => this.parentNode.insertBefore(k, this));
+    else if (pos === 'afterend' && this.parentNode) {
+      const sibs = this.parentNode.childNodes;
+      const next = sibs[sibs.indexOf(this) + 1] || null;
+      kids.forEach((k) => this.parentNode.insertBefore(k, next));
+    }
+  };
+  Node.prototype.closest = function closest(sel) {
+    for (let n = this; n && n.tagName !== '#DOCUMENT'; n = n.parentNode) {
+      if (n.tagName !== '#TEXT' && n.matches(sel)) return n;
+    }
+    return null;
+  };
+  Node.prototype.contains = function contains(other) {
+    for (let n = other; n; n = n.parentNode) if (n === this) return true;
+    return false;
+  };
+}
 """
 
 # ── Approval card sandbox ───────────────────────────────────────────────────
@@ -436,8 +644,19 @@ export default {
 # was invisible here until `B83` used one: `checklist.js` re-exports the play
 # triangle from the shared icon table, and a sandbox that copied the first file
 # and not the second failed at module resolution rather than at an assertion.
+#
+# `P22-03`: and `'../x.js'`, from a module one directory down. The capture is
+# the whole specifier now, resolved against the file that wrote it — it used to
+# be the text after `./`, resolved against `static/js/` whatever file it was
+# found in. `tasks/taskFields.js` imports `../modelSort.js`, which `tasks.js` no
+# longer does, so without this every sandbox built from `tasks.js` failed at
+# module resolution. Measured 2026-10-01 by running both copiers over every
+# top-level module in `static/js/`: the old copy set is contained in the new one
+# for all of them but `notes.js`, and there the old one was wrong — it resolved
+# `compare/vote.js`'s `./models.js` to the top-level `models.js`, a different
+# module, and put it where nothing imports it. No test sandboxes `notes.js`.
 _RELATIVE_IMPORT = re.compile(
-    r"""^\s*(?:import|export)\s[^'"]*['"]\.\/([^'"?]+)""", re.M)
+    r"""^\s*(?:import|export)\s[^'"]*['"](\.{1,2}\/[^'"?]+)""", re.M)
 
 
 def _copy_unstubbed_imports(directory: Path, source: Path, stubs: dict) -> None:
@@ -455,7 +674,7 @@ def _copy_unstubbed_imports(directory: Path, source: Path, stubs: dict) -> None:
     costs nothing, and a heavy new import fails loudly on its own missing
     globals rather than on a path, which is the right way round.
     """
-    js_root = source.parent
+    js_root = source.parent.resolve()
     seen, queue = set(), [source]
     while queue:
         current = queue.pop()
@@ -463,7 +682,15 @@ def _copy_unstubbed_imports(directory: Path, source: Path, stubs: dict) -> None:
             text = current.read_text(encoding="utf-8")
         except OSError:
             continue
-        for rel in _RELATIVE_IMPORT.findall(text):
+        for spec in _RELATIVE_IMPORT.findall(text):
+            # Where the specifier points, as the sandbox is laid out: the
+            # source sits at the sandbox root, so a path relative to the
+            # source's own directory is a path relative to the sandbox. One
+            # that climbs out of it has nowhere to go and is left to fail.
+            try:
+                rel = (current.resolve().parent / spec).resolve().relative_to(js_root).as_posix()
+            except ValueError:
+                continue
             if rel in stubs or rel in seen:
                 continue
             seen.add(rel)

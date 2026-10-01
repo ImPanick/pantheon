@@ -46387,3 +46387,34 @@ button.task-card-toggle {
   outline: var(--focus-ring-width) solid var(--focus-ring);
   outline-offset: var(--focus-ring-offset);
 }
+
+/* ── wb-fields — `P22-03` ──────────────────────────────────────────────────
+   The task form's three execution settings (`P8-32`'s time zone, retries and
+   time limit) and the sentence saying what an event hands a task (`B671`).
+   Theme tokens only — `--fg`, `--border` and
+   `color-mix` on them — so all sixteen palettes carry it; no `--accent`, and no
+   `:focus-visible` rule of its own: the new controls are ordinary inputs and
+   buttons and take the global ring. Nothing here moves. */
+.task-form-hint {
+  font-size: 11px;
+  line-height: 1.45;
+  opacity: 0.65;
+  margin: 3px 0 2px;
+}
+.task-form-number { max-width: 9ch; }
+/* The amount and its unit on one line. `.task-form-input` is `width: 100%`,
+   which in a row would stack them at every width. */
+.task-form-timeout-row { display: flex; gap: 6px; align-items: center; }
+.task-form-timeout-row .task-form-input { width: auto; flex: 0 1 auto; }
+.task-form-timeout-row input.task-form-input { flex: 0 1 9ch; }
+/* What the chosen trigger hands the task. It answers the question somebody has
+   before writing the prompt, so it is not dimmed like a hint: full `--fg`, set
+   apart by a left rule rather than by a colour. */
+.task-form-event-payload {
+  font-size: 11px;
+  line-height: 1.45;
+  margin: 2px 0 4px;
+  padding-left: 7px;
+  border-left: 2px solid color-mix(in srgb, var(--fg) 35%, transparent);
+}
+.task-form-event-payload:empty { display: none; }

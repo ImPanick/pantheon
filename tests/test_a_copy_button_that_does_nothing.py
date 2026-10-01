@@ -219,7 +219,8 @@ def test_the_token_button_does_not_claim_success_it_did_not_have():
 
 
 def test_the_webhook_button_no_longer_says_copied_regardless():
-    tasks = (ROOT / "static" / "js" / "tasks.js").read_text(encoding="utf-8")
+    # `P22-03`: the webhook control moved with the task form to its own module.
+    tasks = (ROOT / "static" / "js" / "tasks" / "taskFields.js").read_text(encoding="utf-8")
     # The listener, not the button markup 3 lines above it that shares the id.
     handler = tasks[tasks.index("task-form-webhook-copy')?.addEventListener"):]
     handler = handler[: handler.index("task-form-webhook-rotate")]

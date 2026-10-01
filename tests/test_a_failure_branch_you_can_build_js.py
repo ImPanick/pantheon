@@ -44,7 +44,6 @@ no fixture standing in for either (`Law 20`).
 from __future__ import annotations
 
 import json
-import re
 import shutil
 import sys
 from pathlib import Path
@@ -57,6 +56,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 TASKS_JS = ROOT / "static" / "js" / "tasks.js"
 DIAGRAM_JS = ROOT / "static" / "js" / "tasks" / "workflowDiagram.js"
+# `P22-03`. The form — markup, `CHAIN_FIELDS`, the populate loop and the save —
+# moved here and is mounted by `tasks.js:_showForm`, which is what these cases
+# still call.
+TASK_FIELDS_JS = ROOT / "static" / "js" / "tasks" / "taskFields.js"
 
 pytestmark = pytest.mark.skipif(not shutil.which("node"), reason="node binary not on PATH")
 
@@ -80,36 +83,39 @@ export default api;
 
 _EXPORT = (
     "\nexport const __b = { _showForm, _fetchTasks, _showWorkflowDiagram,"
-    " _edgeWhenLabel, CHAIN_FIELDS };\n"
+    " _edgeWhenLabel };\n"
 )
+# `P22-03`. `CHAIN_FIELDS` is the form's, so it is read off the form's module.
+_FIELDS_EXPORT = "\nexport const __fields = { CHAIN_FIELDS };\n"
 
-
-def _form_ids() -> list:
-    """Every `id="task-form-…"` the shipped form writes.
-
-    The DOM shim stores `innerHTML` without parsing it, so the ids the real
-    module reaches for have to exist as standalone nodes — the same reason
-    `seedForm` exists. Read out of the module rather than listed here, so a
-    field added to the form does not silently stop being seeded.
-    """
-    ids = sorted(set(re.findall(r'id="(task-form-[A-Za-z0-9_-]+)"',
-                                TASKS_JS.read_text(encoding="utf-8"))))
-    assert "task-form-chain" in ids and "task-form-save" in ids, ids
-    return ids
+# CORRECTED 2026-10-01 by `P22-03`. This sandbox used to seed every
+# `id="task-form-…"` it found in `tasks.js` as a standalone node at the top of
+# the document, because the shim stored the form's `innerHTML` unparsed, and
+# the form found those nodes with `document.getElementById`. The form finds its
+# fields inside its own host now — the Tasks window and the Workbench panel can
+# both have one open, with the same ids — so a seeded node outside the host is,
+# correctly, invisible to it. The shim's opt-in parser (`installHtmlParsing`)
+# builds the form's own markup instead, which is the stronger test: the
+# `<select>`s these cases read are the ones the markup declares, with the
+# `None` option it has always had.
+_PARSED_SHIM = _SHIM + "\nimport { installHtmlParsing } from './dom.js';\ninstallHtmlParsing();\n"
 
 
 @pytest.fixture(scope="module")
 def sandbox(tmp_path_factory):
-    box = _make_sandbox(tmp_path_factory.mktemp("branch"), TASKS_JS, _SHIM, _WF_STUBS)
+    box = _make_sandbox(tmp_path_factory.mktemp("branch"), TASKS_JS, _PARSED_SHIM, _WF_STUBS)
     copy = box / TASKS_JS.name
     copy.write_text(copy.read_text(encoding="utf-8") + _EXPORT, encoding="utf-8")
+    fields = box / "tasks" / TASK_FIELDS_JS.name
+    fields.write_text(fields.read_text(encoding="utf-8") + _FIELDS_EXPORT, encoding="utf-8")
     return box
 
 
 _PREAMBLE = (
     "import { document, calls, mockFetch, res, tick, seedForm, byId, fire, Node }"
     " from './shim.js';\n"
-    "const { __b } = await import('./tasks.js');\n"
+    "const { __b: __tasks } = await import('./tasks.js');\n"
+    "const __b = { ...__tasks, ...(await import('./tasks/taskFields.js')).__fields };\n"
 )
 
 _TASKS = [
@@ -138,11 +144,9 @@ def _open_form(existing: dict, body: str) -> str:
         modal.setAttribute('id', 'tasks-modal');
         const mbody = modal.appendChild(new Node('div'));
         mbody.className = 'modal-body';
-        seedForm(%s);
-        byId('task-form-prompt').value = 'summarise the inbox';
         __b._showForm(%s);
         await tick();
-    """ % (json.dumps(_served(_TASKS)), json.dumps(_form_ids()), json.dumps(existing)) + body
+    """ % (json.dumps(_served(_TASKS)), json.dumps(existing)) + body
 
 
 def test_the_form_offers_both_branches_and_fills_each_from_its_own_column(sandbox):
@@ -165,9 +169,10 @@ def test_the_form_offers_both_branches_and_fills_each_from_its_own_column(sandbo
         """))
     # Both dropdowns offer every other task, and neither offers the task itself
     # (the API refuses a self-chain 400; offering it would be a form that can
-    # only produce an error).
+    # only produce an error). `""` first: the markup's own `None`, which is how a
+    # branch is cleared — invisible to this case while the shim did not parse.
     for key in ("then", "otherwise"):
-        assert [o["value"] for o in out[key]] == ["b", "c"], (key, out[key])
+        assert [o["value"] for o in out[key]] == ["", "b", "c"], (key, out[key])
     assert [o["value"] for o in out["then"] if o["selected"]] == ["b"], out["then"]
     assert [o["value"] for o in out["otherwise"] if o["selected"]] == ["c"], out["otherwise"]
     # The pairing the form works from is the server's own table.

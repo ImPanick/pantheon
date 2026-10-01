@@ -30,6 +30,10 @@ REGISTRY = ROOT / "static" / "js" / "settings" / "registry.js"
 SEARCH_JS = ROOT / "static" / "js" / "settings" / "search.js"
 ADMIN_JS = ROOT / "static" / "js" / "admin.js"
 TASKS_JS = ROOT / "static" / "js" / "tasks.js"
+# `P22-03`. The task form — the webhook URL, its Copy and its Rotate among it —
+# moved to its own module, mounted by `tasks.js` and by the Workbench panel.
+# The cases about it read both files, so the rule holds wherever the form is.
+TASK_FIELDS_JS = ROOT / "static" / "js" / "tasks" / "taskFields.js"
 INDEX = ROOT / "static" / "index.html"
 
 pytestmark = pytest.mark.skipif(not shutil.which("node"),
@@ -40,6 +44,11 @@ def _code(path: Path) -> str:
     """Source with comments removed, so a sentence explaining a defect is not
     read as the defect being fixed — or as still present."""
     return blank(path)
+
+
+def _tasks_code() -> str:
+    """`tasks.js` and the task form it mounts (`P22-03`), comments removed."""
+    return _code(TASKS_JS) + "\n" + _code(TASK_FIELDS_JS)
 
 
 # ── H14: the tooltip named a gesture that does not open the killer ──────────
@@ -225,7 +234,7 @@ def test_the_webhook_token_can_be_rotated():
     anywhere. The URL carries its own bearer token in the path and the UI said
     "No auth needed" — accurate, and exactly why the missing control mattered:
     if it leaked there was no revocation path in the product at all."""
-    code = _code(TASKS_JS)
+    code = _tasks_code()
     assert "webhook-regenerate" in code, "there is still no way to rotate the token"
     assert "task-form-webhook-rotate" in code
     block = code[code.index("webhook-regenerate") - 900:code.index("webhook-regenerate") + 700]
@@ -247,7 +256,7 @@ def test_the_webhook_token_can_be_rotated():
 def test_the_copy_label_no_longer_undersells_the_secret():
     """"No auth needed" is true of the receiver and reads as *this is not a
     secret*. Anyone holding the URL can run the task."""
-    code = _code(TASKS_JS)
+    code = _tasks_code()
     assert "No auth needed" not in code
     assert "rotate if it leaks" in code.lower()
 
@@ -255,6 +264,6 @@ def test_the_copy_label_no_longer_undersells_the_secret():
 def test_a_failed_rotation_says_the_old_url_still_works():
     """The one sentence that matters after a failed rotation: whether the thing
     you were trying to revoke is still live."""
-    code = _code(TASKS_JS)
+    code = _tasks_code()
     assert code.count("old URL still works") >= 2, \
         "a failed rotation does not say whether the token was replaced"
