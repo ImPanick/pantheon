@@ -84,10 +84,17 @@ def test_a_save_would_have_dropped_them_before():
 
 def test_the_audit_numbers_are_clamped_at_the_door():
     """An hour of 25 makes `next_daily_run` wait for a time that never comes; a
-    batch of 0 audits nothing, every night, forever."""
-    ranges = AUTH.split("_INT_RANGES = {", 1)[1].split("}", 1)[0]
-    assert '"skill_audit_hour": (0, 23)' in ranges
-    assert '"skill_audit_batch": (1, 100)' in ranges
+    batch of 0 audits nothing, every night, forever.
+
+    `B931` moved the route's `_INT_RANGES` into `src.settings` so the agent's
+    `manage_settings` clamps through it too; this reads the table and the clamp
+    both doors use instead of the route's text (`Law 20`)."""
+    from src.settings import clamp_int_setting, int_setting_ranges
+    ranges = int_setting_ranges()
+    assert ranges["skill_audit_hour"] == (0, 23)
+    assert ranges["skill_audit_batch"] == (1, 100)
+    assert clamp_int_setting("skill_audit_hour", 25) == 23
+    assert clamp_int_setting("skill_audit_batch", 0) == 1
 
 
 def test_the_ui_clamps_to_the_same_range_the_server_does():

@@ -665,6 +665,8 @@ async def do_manage_settings(content: str, owner: Optional[str] = None) -> Dict:
         from src.settings import (
             DEFAULT_SETTINGS,
             RETIRED_SETTING_KEYS,
+            clamp_int_setting,
+            int_setting_ranges,
             load_settings,
             save_settings,
         )
@@ -1057,6 +1059,24 @@ async def do_manage_settings(content: str, owner: Optional[str] = None) -> Dict:
                 return {"error": f"'{value}' isn't a valid value for {key} (expected {type(DEFAULT_SETTINGS[key]).__name__}).", "exit_code": 1}
             if key in _ENUMS and str(value).lower() not in _ENUMS[key]:
                 return {"error": f"{key} must be one of: {', '.join(_ENUMS[key])}.", "exit_code": 1}
+            # `B931`. Held to the range the Settings page holds it to, through
+            # the same validator `POST /api/auth/settings` uses, and said: a
+            # number stored that is not the number asked for is a reply that
+            # has to say so. Measured before: `set agent_max_rounds -5` stored
+            # `-5` — read as 1 by the chat route, shown as -5 by the panel.
+            _int_ranges = int_setting_ranges()
+            clamp_note = ""
+            if key in _int_ranges:
+                try:
+                    asked = int(value)
+                    value = clamp_int_setting(key, asked, _int_ranges)
+                except (TypeError, ValueError):
+                    return {"error": f"'{value}' isn't a valid value for {key} (expected a whole number).", "exit_code": 1}
+                if value != asked:
+                    low, high = _int_ranges[key]
+                    clamp_note = (f" {asked:,} is outside the range Settings allows "
+                                  f"({low:,} to {high:,}), so it was clamped to "
+                                  f"{value:,}, as Settings does.")
             s = load_settings()
             # `P7-13`. Which way the ladder moved, said on the reply — read
             # before the write, so "stricter than" names what it was.
@@ -1077,7 +1097,7 @@ async def do_manage_settings(content: str, owner: Optional[str] = None) -> Dict:
                     "response": f"Set {key} = {value}. {rung_move_sentence(rung_before, value)}",
                     "exit_code": 0,
                 }
-            return {"response": f"Set {key} = {value}.", "exit_code": 0}
+            return {"response": f"Set {key} = {value}.{clamp_note}", "exit_code": 0}
 
         elif action == "delete" or action == "reset":
             key = _resolve(args.get("key", ""))

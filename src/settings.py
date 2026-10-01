@@ -899,6 +899,112 @@ def role_limit_ranges() -> dict[str, tuple[int, int]]:
     return ranges
 
 
+def int_setting_ranges() -> dict[str, tuple[int, int]]:
+    """The whole-number settings that must sit in a range, and the range.
+
+    `B931`. This was `_INT_RANGES`, a local inside `POST /api/auth/settings`,
+    which made the settings route the only door that held these numbers to
+    their bounds. The agent's `manage_settings` is the other door to the same
+    store and coerced with `int()` and stored whatever it got — measured:
+    `set agent_max_rounds -5` stored `-5`, which the chat route reads as 1 and
+    the settings panel shows as -5, and `set skill_audit_hour 25` stored the
+    hour `H16` clamps because `next_daily_run` waits for it forever. A table
+    only one door can read is a rule only one door keeps, so it lives here and
+    both doors validate through `clamp_int_setting` (`Law 7`). It is
+    `LIMIT_RANGES`' move (`P11-02`) for the same reason, and the route still
+    reads it under its old name.
+
+    Bounds owned by another module are imported from it rather than restated,
+    function-locally because those modules import this one.
+    """
+    from src.run_limits import AGENT_MAX_ROUNDS_RANGE, AGENT_MAX_TOOL_CALLS_RANGE
+    from src.tool_approvals import (
+        MAX_APPROVAL_TTL_SECONDS,
+        MIN_APPROVAL_TTL_SECONDS,
+    )
+    from src.upload_limits import (
+        MAX_UPLOAD_BURST_LIMIT,
+        MAX_UPLOAD_BURST_WINDOW_SECONDS,
+        MIN_UPLOAD_BURST_LIMIT,
+        MIN_UPLOAD_BURST_WINDOW_SECONDS,
+    )
+    # Per-key validation for numeric settings: coerce to int and clamp to a
+    # sane range so a bad value can't disable the agent or let it run away.
+    #
+    # `P12`'s three limits import their bounds rather than restating them,
+    # so the number the route stores and the number the resolver enforces
+    # cannot drift into a settings page that lies about itself.
+    return {
+        # `P12-06`. The per-client upload burst gate — N uploads per W
+        # seconds, not N uploads in flight, whatever it used to be called.
+        "upload_burst_limit": (
+            MIN_UPLOAD_BURST_LIMIT, MAX_UPLOAD_BURST_LIMIT,
+        ),
+        "upload_burst_window_seconds": (
+            MIN_UPLOAD_BURST_WINDOW_SECONDS, MAX_UPLOAD_BURST_WINDOW_SECONDS,
+        ),
+        # `P12-10`. How long an approval card stays answerable before it
+        # closes as denied. The floor is not decoration: `0` here would be
+        # an approval that never lapses, and `FORBIDDEN.md` Part 2 keeps
+        # this store's TTL.
+        "approval_timeout_seconds": (
+            MIN_APPROVAL_TTL_SECONDS, MAX_APPROVAL_TTL_SECONDS,
+        ),
+        # `P7-10`. The same two ranges `src/run_limits.py` states for the
+        # chat route's reading and the composer's pre-run limits.
+        "agent_max_rounds": AGENT_MAX_ROUNDS_RANGE,
+        "agent_max_tool_calls": AGENT_MAX_TOOL_CALLS_RANGE,  # 0 = unlimited
+        # `P3-21`. 0 means "no lift — run presets at their own numbers",
+        # which is a reachable, documented value rather than a disabled
+        # setting. The top is a machine ceiling, not a budget: ten million
+        # tokens is past any local context window and stops a typo from
+        # becoming an unbounded generation.
+        "local_inference_max_tokens": (0, 10_000_000),
+        # `P16-19`. The exporter floors this itself; clamping here too keeps
+        # the STORED value and the EFFECTIVE value the same number, so the
+        # settings page never shows a `1` that is really a `10`.
+        "otlp_interval_seconds": (10, 86400),
+        # `H16`. Both feed a `while True` loop at startup. An hour of 25
+        # makes `next_daily_run` compute a delay for a time that never
+        # comes; a batch of 0 runs an audit that audits nothing, every
+        # night, forever. Clamped here so the stored value and the
+        # effective value are the same number.
+        "skill_audit_hour": (0, 23),
+        "skill_audit_batch": (1, 100),
+        # `P14-07`. The two ceilings on document indexing, in MiB. `0` is a
+        # real answer on both — no ceiling — so the floor of the range is 0
+        # and not 1. The tops are sanity, not policy: a 4 GiB single file
+        # and a 16 GiB in-memory index are past the point where the number
+        # is a decision rather than a typo. Clamped here for the reason
+        # stated above: `index_walk` falls back to the default on a value it
+        # cannot use, and a stored number that is not the effective one is
+        # the settings page lying about itself.
+        "index_max_file_mb": (0, 4096),
+        "index_budget_mb": (0, 16384),
+        # `P15-08`. The floor under a schedulable task, in minutes. `0`
+        # turns it off, which an operator whose tasks only touch their own
+        # LAN is entitled to; a day is the top, because past that the floor
+        # is not a floor, it is the schedule.
+        "min_task_interval_minutes": (0, 1440),
+    }
+
+
+def clamp_int_setting(key: str, value: Any, ranges: dict | None = None) -> Any:
+    """`value` as a whole-number setting is stored: `int()` it, then hold it to
+    the key's range in `int_setting_ranges()`. `B931`.
+
+    A key with no range is returned unchanged. A value `int()` refuses raises
+    `TypeError` / `ValueError`, and each door says that in its own words — the
+    settings route as a 400, `manage_settings` as a reply. `ranges` lets a
+    caller that validates many keys at once read the table once.
+    """
+    table = int_setting_ranges() if ranges is None else ranges
+    if key not in table:
+        return value
+    low, high = table[key]
+    return max(low, min(int(value), high))
+
+
 def without_retired_settings(settings: dict) -> dict:
     """Return a shallow copy suitable for generic settings interfaces."""
     if not isinstance(settings, dict):

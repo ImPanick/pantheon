@@ -158,11 +158,14 @@ def test_the_key_ships_with_the_number_it_replaced():
 
 def test_the_admin_endpoint_clamps_it():
     """Unclamped, a hand-edit or a typo is an unbounded generation on someone
-    else's GPU. `agent_max_rounds` is clamped in three places for this reason."""
-    import pathlib, re
-    src = (pathlib.Path(__file__).resolve().parent.parent
-           / "routes" / "auth_routes.py").read_text()
-    assert re.search(r'"local_inference_max_tokens":\s*\(0,\s*10_?000_?000\)', src)
+    else's GPU. `agent_max_rounds` is clamped in three places for this reason.
+
+    `B931` moved the admin endpoint's table into `src.settings`, which the
+    endpoint and `manage_settings` both clamp through; this reads the table
+    rather than the route's text (`Law 20`)."""
+    from src.settings import clamp_int_setting, int_setting_ranges
+    assert int_setting_ranges()["local_inference_max_tokens"] == (0, 10_000_000)
+    assert clamp_int_setting("local_inference_max_tokens", 10**12) == 10_000_000
 
 
 def test_the_number_is_no_longer_a_literal_in_the_loop():

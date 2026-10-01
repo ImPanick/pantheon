@@ -37,10 +37,11 @@ from src.settings import (
     ENV_BACKED_FLAGS,
     LIMIT_RANGES,
     RETIRED_SETTING_KEYS,
+    clamp_int_setting,
     for_browser as _settings_for_browser,
+    int_setting_ranges,
 )
 from src.tool_capabilities import TrustRung
-from src.run_limits import AGENT_MAX_ROUNDS_RANGE, AGENT_MAX_TOOL_CALLS_RANGE
 from src.integrations import (
     load_integrations,
     add_integration,
@@ -1092,72 +1093,12 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
         # Per-key validation for numeric settings: coerce to int and clamp to a
         # sane range so a bad value can't disable the agent or let it run away.
         #
-        # `P12`'s three limits import their bounds rather than restating them,
-        # so the number this route stores and the number the resolver enforces
-        # cannot drift into a settings page that lies about itself.
-        from src.tool_approvals import (
-            MAX_APPROVAL_TTL_SECONDS,
-            MIN_APPROVAL_TTL_SECONDS,
-        )
-        from src.upload_limits import (
-            MAX_UPLOAD_BURST_LIMIT,
-            MAX_UPLOAD_BURST_WINDOW_SECONDS,
-            MIN_UPLOAD_BURST_LIMIT,
-            MIN_UPLOAD_BURST_WINDOW_SECONDS,
-        )
-        _INT_RANGES = {
-            # `P12-06`. The per-client upload burst gate — N uploads per W
-            # seconds, not N uploads in flight, whatever it used to be called.
-            "upload_burst_limit": (
-                MIN_UPLOAD_BURST_LIMIT, MAX_UPLOAD_BURST_LIMIT,
-            ),
-            "upload_burst_window_seconds": (
-                MIN_UPLOAD_BURST_WINDOW_SECONDS, MAX_UPLOAD_BURST_WINDOW_SECONDS,
-            ),
-            # `P12-10`. How long an approval card stays answerable before it
-            # closes as denied. The floor is not decoration: `0` here would be
-            # an approval that never lapses, and `FORBIDDEN.md` Part 2 keeps
-            # this store's TTL.
-            "approval_timeout_seconds": (
-                MIN_APPROVAL_TTL_SECONDS, MAX_APPROVAL_TTL_SECONDS,
-            ),
-            # `P7-10`. The same two ranges `src/run_limits.py` states for the
-            # chat route's reading and the composer's pre-run limits.
-            "agent_max_rounds": AGENT_MAX_ROUNDS_RANGE,
-            "agent_max_tool_calls": AGENT_MAX_TOOL_CALLS_RANGE,  # 0 = unlimited
-            # `P3-21`. 0 means "no lift — run presets at their own numbers",
-            # which is a reachable, documented value rather than a disabled
-            # setting. The top is a machine ceiling, not a budget: ten million
-            # tokens is past any local context window and stops a typo from
-            # becoming an unbounded generation.
-            "local_inference_max_tokens": (0, 10_000_000),
-            # `P16-19`. The exporter floors this itself; clamping here too keeps
-            # the STORED value and the EFFECTIVE value the same number, so the
-            # settings page never shows a `1` that is really a `10`.
-            "otlp_interval_seconds": (10, 86400),
-            # `H16`. Both feed a `while True` loop at startup. An hour of 25
-            # makes `next_daily_run` compute a delay for a time that never
-            # comes; a batch of 0 runs an audit that audits nothing, every
-            # night, forever. Clamped here so the stored value and the
-            # effective value are the same number.
-            "skill_audit_hour": (0, 23),
-            "skill_audit_batch": (1, 100),
-            # `P14-07`. The two ceilings on document indexing, in MiB. `0` is a
-            # real answer on both — no ceiling — so the floor of the range is 0
-            # and not 1. The tops are sanity, not policy: a 4 GiB single file
-            # and a 16 GiB in-memory index are past the point where the number
-            # is a decision rather than a typo. Clamped here for the reason
-            # stated above: `index_walk` falls back to the default on a value it
-            # cannot use, and a stored number that is not the effective one is
-            # the settings page lying about itself.
-            "index_max_file_mb": (0, 4096),
-            "index_budget_mb": (0, 16384),
-            # `P15-08`. The floor under a schedulable task, in minutes. `0`
-            # turns it off, which an operator whose tasks only touch their own
-            # LAN is entitled to; a day is the top, because past that the floor
-            # is not a floor, it is the schedule.
-            "min_task_interval_minutes": (0, 1440),
-        }
+        # `B931` moved the table to `src.settings.int_setting_ranges`, with the
+        # reason for every bound beside it: `manage_settings` writes the same
+        # store and has to hold these numbers to the same ranges, and a table
+        # only this route could read was a rule only this door kept. The name
+        # below is unchanged, so the validation under it reads as it did.
+        _INT_RANGES = int_setting_ranges()
         # Per-key validation for settings whose values are a closed set. A
         # security setting must not be *quietly* rejected: `coerce_trust_rung`
         # deliberately falls back to the default rather than the strictest rung,
@@ -1214,12 +1155,10 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
                     )
                 val = val.strip().casefold()
             if key in _INT_RANGES:
-                lo, hi = _INT_RANGES[key]
                 try:
-                    val = int(val)
+                    val = clamp_int_setting(key, val, _INT_RANGES)
                 except (TypeError, ValueError):
                     raise HTTPException(400, f"{key} must be an integer")
-                val = max(lo, min(val, hi))
             if key in _NULLABLE_INT_RANGES:
                 lo, hi = _NULLABLE_INT_RANGES[key]
                 if val is None or (isinstance(val, str) and not val.strip()):
