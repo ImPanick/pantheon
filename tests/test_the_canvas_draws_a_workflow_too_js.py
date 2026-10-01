@@ -247,19 +247,25 @@ def test_new_step_asks_the_source_and_opens_what_it_added(box):
 
 def test_a_document_is_planned_whole_from_no_head(box):
     o = _case(box, """
-        const plans = [['n1', { steps: [{ kind: 'dry-run', detail: 'Would send this task’s prompt to a model, with tools.' }],
-                                declined: null, when: null, depth: 0 }]];
+        const plans = [['__start__', { steps: [{ kind: 'dry-run', detail: 'Would start: Every day at 08:00.' }],
+                                       declined: null, when: null, depth: 0 }],
+                       ['n1', { steps: [{ kind: 'dry-run', detail: 'Would send this task’s prompt to a model, with tools.' }],
+                                declined: null, when: 'success', depth: 1 }]];
         const { root, c, S } = await mount({ plans });
         await c.dryRun(null, { title: 'Morning brief' });
         await settle(5);
         out({ asked: calls(S, 'dryRun'), said: said(root),
               n1: itemOf(root, 'n1').dataset.plan, n2: itemOf(root, 'n2').dataset.plan,
-              line: itemOf(root, 'n1').querySelector('.wb-node-plan-line').textContent });
+              line: itemOf(root, 'n1').querySelector('.wb-node-plan-line').textContent,
+              startSub: itemOf(root, '__start__').querySelector('.wb-node-sub').textContent });
     """)
     assert o["asked"] == [["dryRun"]], "a workflow's source is asked with no head"
-    assert o["said"].startswith("Dry run of Morning brief: nothing ran and nothing changed. 1 step says what it would do;")
+    assert o["said"].startswith("Dry run of Morning brief: nothing ran and nothing changed. 2 steps say what they would do;")
     assert o["n1"] == "planned" and o["n2"] == "aside"
     assert o["line"] == "Would send this task’s prompt to a model, with tools."
+    # The start is not a Prompt: a kind the diagram has no word for is not
+    # given the word for another (found in Chromium: "Starts here · Prompt").
+    assert o["startSub"] == "Starts here"
 
 
 def test_a_steps_done_on_a_source_that_saves_later_says_it_is_in_the_draft(box):

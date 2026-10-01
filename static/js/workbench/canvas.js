@@ -1489,7 +1489,9 @@ export function mountCanvas(root, opts = {}) {
   function planFor(id, it) {
     const P = S.plan;
     if (!P) return null;
-    const kindWord = KIND_WORDS[(it && it.kind) || 'llm'] || KIND_WORDS.llm;
+    // A kind the diagram has no word for (a workflow's start) is given none,
+    // rather than the word for another: seen in Chromium, "Starts here · Prompt".
+    const kindWord = KIND_WORDS[(it && it.kind) || 'llm'] || '';
     const entry = P.byId.get(id);
     if (!entry) {
       return P.partial ? null : { state: 'aside', sub: kindWord, line: 'Not reached by this run', entry: null };
