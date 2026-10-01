@@ -86,7 +86,8 @@ by role). A bearer API token does not inherit its owner's workstation (`require_
 
 **`sudo` (on by default).** With it on an agent can install software — and, because people are separated by
 Unix accounts inside one container, **can read other people's workstation homes**. The panel says so beside the
-switch. With it off each home is jailed by the daemon (`outside_home`). Turning it off applies from then on: it cannot take back what an agent already did as root inside the container. Recreating the container does, with every home and account kept (`B956`). The VM backend (`P20-07`) is the
+switch — and, on the VM backend, that each person's machine is separate (`B981`: the sentence follows the kind of
+machine the daemon says it is). With it off each home is jailed by the daemon (`outside_home`). Turning it off applies from then on: it cannot take back what an agent already did as root inside the container. Recreating the container does, with every home and account kept (`B956`). The VM backend (`P20-07`) is the
 stronger wall between people when that matters.
 
 **The network (full by default) and its adversary (`Law 17`).** The owner chose full network — the internet and

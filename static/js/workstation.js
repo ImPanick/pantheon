@@ -46,6 +46,20 @@ const BACKEND_WORDS = {
   },
 };
 
+// `B981`. What `sudo` reaches depends on the kind of machine. In the container
+// people are Unix accounts in one machine, so root in it reads every home — the
+// sentence the page ships with beside the switch (`index.html`, `#ws-sudo-why`),
+// said there once and kept for any kind without words of its own. On the VM
+// backend each person has a machine of their own, and root in one found no trace
+// of another's home (measured in `P20-07`). Another machine is wherever the
+// daemon runs, and root there is root there. Keyed by `machineKind`.
+const SUDO_WORDS = {
+  vm: 'With sudo on, an agent can install software in its own person’s machine. Other '
+    + 'people’s machines are separate: it cannot reach their homes.',
+  remote: 'With sudo on, an agent can install software on that machine — and can read other '
+    + 'people’s workstation homes and anything else on it.',
+};
+
 const NETWORK_WORDS = {
   full: {
     label: 'Internet and local network',
@@ -281,6 +295,7 @@ function renderEffects(settings, daemon, network) {
     backend.textContent = line;
   }
 
+  renderSudo(settings, daemon);
   renderRecreate(settings, daemon);
 
   const networkEffect = $('ws-network-effect');
@@ -305,10 +320,27 @@ function renderEffects(settings, daemon, network) {
  * cannot run it. The command is the server's (`RECREATE_COMMAND`); the kind of
  * machine is what the daemon says it is, or the setting while it has not said.
  */
+/** The kind of machine the workstation is: what the daemon that answered says
+ *  it is (`health.backend`), else what the admin set while none has. One
+ *  answer for every sentence that depends on it (`B956`, `B981`). */
+function machineKind(settings, daemon) {
+  return (daemon && daemon.backend) || (settings && settings.backend) || '';
+}
+
+/** `B981`. The sentence beside the `sudo` switch, for this kind of machine. The
+ *  container's — and any kind's without words of its own, the cautious answer —
+ *  is the one the page shipped with, kept the first time this runs. */
+function renderSudo(settings, daemon) {
+  const why = $('ws-sudo-why');
+  if (!why) return;
+  if (why.dataset.shipped === undefined) why.dataset.shipped = why.textContent;
+  why.textContent = SUDO_WORDS[machineKind(settings, daemon)] || why.dataset.shipped;
+}
+
 function renderRecreate(settings, daemon) {
   const box = $('ws-recreate');
   if (!box) return;
-  const kind = (daemon && daemon.backend) || settings.backend;
+  const kind = machineKind(settings, daemon);
   const command = typeof settings.recreate_command === 'string' ? settings.recreate_command : '';
   const container = kind === 'container' && !!command;
   const why = $('ws-recreate-why');
@@ -472,5 +504,5 @@ export async function open() {
 
 export const _test = {
   describeDaemon, describeYou, render, apply, fillSettings, renderEffects, networkStateSentence,
-  renderRecreate,
+  renderRecreate, renderSudo, machineKind,
 };
