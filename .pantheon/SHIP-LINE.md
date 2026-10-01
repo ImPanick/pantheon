@@ -488,6 +488,7 @@ weakest one in this document: it means nobody adjudicated them individually.
 | `B1020` | tracked | test-order | a suite-order leak into four test cases; the model allow-list holds in a fresh process and in the product |
 | `B1021` | tracked | defect | the refusal holds — the datagram is not sent; only the sentence explaining it is missing for one silent tool |
 | `B1038` | tracked | defect | the engine refuses and pauses the admin-only task, so nothing runs; the tool misreports a refusal as success |
+| `B1070` | tracked | defect | a loading state drawn as an empty one for seconds; the memories arrive and nothing is lost |
 
 ---
 
