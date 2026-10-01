@@ -46892,3 +46892,11 @@ button.task-card-toggle {
   cursor: move;
   box-shadow: 0 6px 18px color-mix(in srgb, var(--fg) 24%, transparent);
 }
+/* `B1056`. The first-run tour hint takes its z from the live stack
+   (`toolWindowZOrder.js:topPortalZ`, at least 10031), and the toast sat at
+   9999 under it: measured, the loop refusal's last line ("Remove one of those
+   links to save it.") was hidden behind the hint from x=1134. A toast is what
+   the person is being told right now, so it sits above every window, every
+   portaled overlay and the confirm dialog (99999); it takes no clicks but its
+   own button, so it covers nothing it could block. */
+#toast.toast { z-index: 100000; }
