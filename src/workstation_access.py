@@ -348,8 +348,17 @@ async def sync_config(client: WorkstationClient) -> Dict[str, Any]:
     rides back as `network_gate`. A gate that is there and does not take the
     mode is an error, like a refused `sudo`: every tool call comes through
     here, and a command must not run under a wider network than the admin set
-    because the gate was not listening."""
-    daemon = await client.health()
+    because the gate was not listening.
+
+    `B978`: when nothing answers at the workstation's address and the gate in
+    front of it does, the sentence says the one thing that brings it back
+    (`GATE_UP_SENTENCE`) instead of asking whether it is running."""
+    try:
+        daemon = await client.health()
+    except wc.WorkstationUnreachable as e:
+        if not await _gate_answers(client):
+            raise
+        raise WorkstationError("unavailable", GATE_UP_SENTENCE) from e
     want = sudo_wanted()
     if daemon.get("sudo") is not want:
         daemon.update(await client.config(sudo=want))
@@ -363,6 +372,33 @@ async def sync_config(client: WorkstationClient) -> Dict[str, Any]:
             held = await gate.set_mode(mode)
         daemon["network_gate"] = held
     return daemon
+
+
+# `B978`. The workstation runs in its network gate's namespace (`P20-06`), and
+# a gate that is *recreated* takes that namespace with it: the workstation exits
+# (its namespace watch) and cannot restart into a container that no longer
+# exists, so it stays down until compose recreates it — measured 2026-10-01,
+# `docker compose up -d --force-recreate workstation-net`, and `docker compose up
+# -d` brought it back. Fail-closed, as it should be. The gate still answers at
+# the same address (it owns the name), which is how this case is told apart
+# from a workstation that is simply not there. A plain gate *restart* heals
+# itself within its restart policy and may show this for those seconds; the
+# command is harmless then. Pantheon holds no Docker socket, so it is said, not done.
+GATE_UP_SENTENCE = ("The workstation's network gate is running and the workstation is not. "
+                    "Run docker compose up -d where you start Pantheon to bring it back.")
+
+
+async def _gate_answers(client: WorkstationClient) -> bool:
+    """Whether the network gate in front of `client`'s workstation answers its
+    open `health` — asked only once the workstation itself did not answer."""
+    gate = wc.gate_for(client)
+    if gate is None:
+        return False
+    try:
+        await gate.health()
+    except WorkstationError:
+        return False
+    return True
 
 
 # ── the network mode, as it is (`P20-06`) ─────────────────────────────────────
@@ -544,6 +580,6 @@ __all__ = [
     "NETWORK_ENFORCED", "NETWORK_ENFORCED_SUDO_OFF", "NETWORK_LIFTABLE", "NETWORK_NEEDS_RECREATE",
     "NETWORK_NOT_ENFORCED", "NETWORK_PENDING", "NETWORK_STATES", "NETWORK_UNKNOWN",
     "NETWORK_UNRESTRICTED", "network_view",
-    # `B977`
-    "network_held",
+    # `B977`, `B978`
+    "GATE_UP_SENTENCE", "network_held",
 ]

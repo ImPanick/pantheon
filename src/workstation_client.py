@@ -84,6 +84,14 @@ class WorkstationError(Exception):
         return {"error": self.message, "exit_code": 1, "workstation_error": self.code}
 
 
+class WorkstationUnreachable(WorkstationError):
+    """`B978`: nothing answered at the workstation's address at all — not a
+    refusal, not something else answering, not a certificate. Still the code
+    `unavailable` (a subclass, so every `except WorkstationError` is as it
+    was); the type lets `workstation_access.sync_config` ask whether the
+    network gate in front of it is up, which is the one case it can say more."""
+
+
 def _setting(key: str, default: Any = "") -> Any:
     try:
         from src.settings import get_setting
@@ -310,7 +318,7 @@ class WorkstationClient:
                 infos = await asyncio.get_running_loop().getaddrinfo(
                     host, parts.port or 80, type=0, proto=0)
             except OSError as e:
-                raise WorkstationError(
+                raise WorkstationUnreachable(
                     "unavailable", f"The workstation at {self.base} did not answer "
                                    f"({type(e).__name__}). Is it running?") from e
             addresses = {info[4][0] for info in infos}
@@ -332,7 +340,7 @@ class WorkstationClient:
     def _unreachable(self, e: BaseException) -> WorkstationError:
         """The sentence for a request that never got an answer — and for a
         certificate, which one it was and what to do."""
-        return self._certificate_refused(e) or WorkstationError(
+        return self._certificate_refused(e) or WorkstationUnreachable(
             "unavailable",
             f"The workstation at {self.base} did not answer ({type(e).__name__}). "
             "Is it running?")
@@ -668,6 +676,7 @@ class NetGateClient(WorkstationClient):
 
 __all__ = ["CertificatePinMismatch", "NetGateClient", "SOURCE_ENVIRONMENT", "SOURCE_NONE",
            "SOURCE_PAIRING", "SOURCE_SETTING", "URL_ENV", "WorkstationClient", "WorkstationError",
+           "WorkstationUnreachable",  # `B978`, added
            "account_for", "cert_fingerprint", "configured_base", "configured_pin", "configured_token",
            "enabled", "from_settings", "gate_for", "gate_token_path", "normalise_pin",
            "pairing_token_path", "parse_base", "resolve_base", "resolve_gate", "resolve_token"]
