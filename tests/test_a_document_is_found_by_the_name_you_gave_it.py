@@ -90,7 +90,15 @@ def test_a_delete_naming_nothing_deletes_nothing(agent_lib):
 
 
 def test_a_delete_with_the_right_id_still_deletes(agent_lib):
+    from src.document_folders import PLAN_APPROVE_LABEL
+    from tests.test_the_agent_files_documents import say
+
     gone = _doc(agent_lib, "Old draft")
-    done = call({"action": "delete", "document_id": gone})
+    # `B994`: a plan of one first; the delete happens on the person's yes.
+    planned = call({"action": "delete", "document_id": gone})
+    assert planned.get("outcome") == "planned", planned
+    assert _alive(agent_lib, gone)
+    say(agent_lib, PLAN_APPROVE_LABEL)
+    done = call({"action": "apply_plan", "plan_id": planned["plan_id"]})
     assert done.get("exit_code", 0) == 0, done
     assert not _alive(agent_lib, gone)

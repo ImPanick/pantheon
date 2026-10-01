@@ -184,3 +184,45 @@ def test_the_refusal_tells_the_person_what_the_tool_reaches(monkeypatch):
 ])
 def test_the_three_traps_name_the_thing_that_makes_them_traps(tool, must_name):
     assert must_name in blocked_tool_reason(tool), tool
+
+
+# ── `B995`: opened to people, still closed to a token ───────────────────────
+
+def test_a_name_opened_to_people_keeps_its_reason_in_the_token_register():
+    """`manage_documents` left the non-admin set (`D-2026-10-01-02`) and its
+    reason went with it to the register of what only a token is refused — held
+    equal to its set the way the non-admin register is, and disjoint from the
+    non-admin set, so one name is never refused for two different reasons."""
+    from src.tool_security import (
+        DELEGATED_CREDENTIAL_ONLY_BLOCKED_REASONS,
+        DELEGATED_CREDENTIAL_ONLY_BLOCKED_TOOLS,
+        delegated_credential_blocked_tools,
+    )
+
+    assert set(DELEGATED_CREDENTIAL_ONLY_BLOCKED_REASONS) == set(DELEGATED_CREDENTIAL_ONLY_BLOCKED_TOOLS)
+    assert not set(DELEGATED_CREDENTIAL_ONLY_BLOCKED_TOOLS) & set(NON_ADMIN_BLOCKED_TOOLS)
+    for name, reason in DELEGATED_CREDENTIAL_ONLY_BLOCKED_REASONS.items():
+        assert len(reason) > 25 and name in delegated_credential_blocked_tools(), name
+    # The reason is the approval: the yes a token's turn would be writing.
+    assert "Apply the plan" in DELEGATED_CREDENTIAL_ONLY_BLOCKED_REASONS["manage_documents"]
+    assert "manage_documents" not in NON_ADMIN_BLOCKED_TOOLS
+    assert blocked_tool_reason("manage_documents") == ""
+
+
+def test_a_non_admin_reaches_manage_documents_past_both_gates(monkeypatch):
+    """Neither gate refuses it now — not the blocklist, and not
+    `_ADMIN_ONLY_TOOLS`, which `P2-25` says must be checked too, because a
+    prune of a paired name is invisible at the call."""
+    monkeypatch.setattr(tool_execution, "_owner_is_admin", lambda owner: False)
+    assert "manage_documents" not in tool_execution._ADMIN_ONLY_TOOLS
+    _desc, result = _run(
+        execute_tool_block(
+            ToolBlock("manage_documents", '{"action": "list_folders"}'),
+            owner=None,
+            security_context=NO_TOOL_SECURITY_CONTEXT,
+        )
+    )
+    # Reached the tool, which answers an owner-less call itself.
+    assert "restricted to admin users" not in result.get("error", "")
+    assert "requires an admin user" not in result.get("error", "")
+    assert "signed-in person" in result.get("error", ""), result

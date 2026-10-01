@@ -46,6 +46,7 @@ from core.models import ChatMessage, Session  # noqa: E402
 from src import tool_approval_scopes as scopes  # noqa: E402
 from src.tool_capabilities import ToolRunSecurityContext  # noqa: E402
 from src.tool_security import (  # noqa: E402
+    DELEGATED_CREDENTIAL_ONLY_BLOCKED_TOOLS,
     NON_ADMIN_BLOCKED_TOOLS,
     blocked_tools_for_owner,
     delegated_credential_blocked_tools,
@@ -194,7 +195,11 @@ def test_a_token_is_capped_at_the_non_admin_policy():
     always going to answer yes.
     """
     assert blocked_tools_for_owner("admin-ish") is not None
-    assert delegated_credential_blocked_tools() == set(NON_ADMIN_BLOCKED_TOOLS)
+    # `B995`: the non-admin policy, plus what was opened to people because a
+    # person answers for it (`manage_documents`) — never less than the policy.
+    assert delegated_credential_blocked_tools() == (
+        set(NON_ADMIN_BLOCKED_TOOLS) | set(DELEGATED_CREDENTIAL_ONLY_BLOCKED_TOOLS))
+    assert set(NON_ADMIN_BLOCKED_TOOLS) <= delegated_credential_blocked_tools()
     assert delegated_credential_blocked_tools(), "an empty cap is not a cap"
 
 
@@ -406,4 +411,5 @@ def test_the_token_cap_is_its_own_function_not_an_alias():
         "the token cap consults an owner; that is the inference it exists to avoid"
     )
     assert tool_security.blocked_tools_for_owner("someone") == set(NON_ADMIN_BLOCKED_TOOLS)
-    assert delegated_credential_blocked_tools() == set(NON_ADMIN_BLOCKED_TOOLS)
+    assert delegated_credential_blocked_tools() == (
+        set(NON_ADMIN_BLOCKED_TOOLS) | set(DELEGATED_CREDENTIAL_ONLY_BLOCKED_TOOLS))

@@ -51,8 +51,18 @@ def _real_len(content: str) -> int:
     return len(stripped)
 
 
-async def run_document_tidy(owner: str) -> str:
-    """Remove clearly-junk documents and redundant duplicates for an owner.
+def tidy_verdicts(docs, now=None) -> dict:
+    """What the tidy rules would remove from `docs`, and why. Removes nothing.
+
+    `B994`. The rules were inside `run_document_tidy`, which deleted as it
+    judged, so the only way to learn what a tidy would do was to let it. The
+    agent's tidy now asks first (`manage_documents tidy` shows the list as a
+    plan the person approves), so the judging is its own function and both
+    callers read the same verdicts (`Law 7`).
+
+    Returns ``{"junk": [(doc, reason)], "duplicates": [(keeper, [copies])],
+    "kept": n}`` — junk in the order given, duplicate groups in first-seen
+    order, `kept` the number of documents (one per duplicate group) that stay.
 
     Conservative rules (no length-based deletion — short notes are valid):
     - Empty / whitespace-only / placeholder ("# Untitled")
@@ -60,7 +70,107 @@ async def run_document_tidy(owner: str) -> str:
     - Email reply-chain with no original content
     - Duplicates: docs sharing the same normalized title AND the same content
       fingerprint (ignoring volatile upload/annotation ids). The most complete
-      copy (longest real content, then most recent) is kept; the rest deleted.
+      copy (longest real content, then most recent) is kept; the rest go.
+    """
+    now = now or datetime.now(timezone.utc)
+    junk = []
+    survivors = []  # docs that pass the junk rules, considered for dedup
+
+    for doc in docs:
+        created = doc.created_at
+        if created and created.tzinfo is None:
+            created = created.replace(tzinfo=timezone.utc)
+
+        # Skip freshly created documents to avoid deleting them while the user is actively editing
+        if created and (now - created).total_seconds() < 900:  # 15 minutes
+            survivors.append(doc)
+            continue
+
+        content = (doc.current_content or "").strip()
+        title = (doc.title or "").strip().lower()
+        is_fresh_empty = (
+            not content
+            and created is not None
+            and (now - created).total_seconds() < 1800
+        )
+        if is_fresh_empty:
+            survivors.append(doc)
+            continue
+
+        # Strip markdown noise to get "real" character count
+        stripped = re.sub(r"^#{1,6}\s+", "", content, flags=re.MULTILINE)  # headers
+        stripped = re.sub(r"[*_`>\-=]+", "", stripped)  # markdown chars
+        stripped = re.sub(r"\s+", " ", stripped).strip()
+
+        # Detect emails-saved-as-documents (quote chains with no original content)
+        lines = [ln for ln in content.split("\n") if ln.strip()]
+        quoted_lines = [ln for ln in lines if ln.lstrip().startswith(">")]
+        header_lines = [ln for ln in lines if re.match(r"^On .+ wrote:?\s*$", ln.strip())]
+        non_quote_content = "\n".join(
+            ln for ln in lines
+            if not ln.lstrip().startswith(">")
+            and not re.match(r"^On .+ wrote:?\s*$", ln.strip())
+        ).strip()
+        quote_ratio = len(quoted_lines) / max(len(lines), 1)
+
+        reason = ""
+        if not content or content in ("", "# Untitled"):
+            reason = "empty"
+        elif title in _JUNK_TITLES:
+            # If you named it "test" or "asdf" etc, you don't care about it
+            reason = f"junk title '{title}'"
+        elif stripped.lower() in _JUNK_TITLES:
+            reason = "throwaway content"
+        # No length-based deletion: short notes are legitimate content.
+        elif (quoted_lines or header_lines) and len(non_quote_content) < 50 and quote_ratio > 0.4:
+            # Email reply chain with no original content
+            reason = "email quote-chain only"
+
+        if reason:
+            junk.append((doc, reason))
+        else:
+            survivors.append(doc)
+
+    # --- Duplicate pass: group survivors by (normalized title, content
+    # fingerprint) and keep only the most complete copy of each group. ---
+    groups: dict = {}
+    for doc in survivors:
+        key = (_norm_title(doc.title), _content_fingerprint(doc.current_content))
+        groups.setdefault(key, []).append(doc)
+
+    duplicates = []
+    for _key, members in groups.items():
+        if len(members) < 2:
+            continue
+        # Keep the most complete (longest real content), then most recent.
+        def _updated(d):
+            return d.updated_at or d.created_at
+        # Sort key must be total-order safe: a document with both
+        # updated_at and created_at NULL would otherwise make Python
+        # compare None against a datetime on a real-length tie, raising
+        # TypeError and aborting the whole tidy run. Rank "has a
+        # timestamp" before the timestamp itself so a None is never
+        # compared against a datetime.
+        members.sort(
+            key=lambda d: (
+                _real_len(d.current_content),
+                _updated(d) is not None,
+                _updated(d) or datetime.min,
+            ),
+            reverse=True,
+        )
+        duplicates.append((members[0], members[1:]))
+
+    return {"junk": junk, "duplicates": duplicates, "kept": len(groups)}
+
+
+async def run_document_tidy(owner: str) -> str:
+    """Remove clearly-junk documents and redundant duplicates for an owner.
+
+    The scheduled `tidy_documents` action. The rules are `tidy_verdicts`; this
+    deletes what they name (a hard delete, as it always was) and says what it
+    did. The agent's `manage_documents tidy` no longer comes here — it shows
+    the same verdicts as a plan and waits for the person (`B994`).
     """
     from core.database import SessionLocal, Document, Session as DbSession
 
@@ -74,115 +184,23 @@ async def run_document_tidy(owner: str) -> str:
         else:
             docs = db.query(Document).all()
 
+        verdicts = tidy_verdicts(docs)
         deleted_examples = []
         deleted = 0
-        kept = 0
-        survivors = []  # docs that pass the junk rules, considered for dedup
-        now = datetime.now(timezone.utc)
-
-        for doc in docs:
-            created = doc.created_at
-            if created and created.tzinfo is None:
-                created = created.replace(tzinfo=timezone.utc)
-
-            # Skip freshly created documents to avoid deleting them while the user is actively editing
-            if created and (now - created).total_seconds() < 900:  # 15 minutes
-                survivors.append(doc)
-                continue
-
-            content = (doc.current_content or "").strip()
-            title = (doc.title or "").strip().lower()
-            is_fresh_empty = (
-                not content
-                and created is not None
-                and (now - created).total_seconds() < 1800
-            )
-            if is_fresh_empty:
-                survivors.append(doc)
-                continue
-
-            # Strip markdown noise to get "real" character count
-            stripped = re.sub(r"^#{1,6}\s+", "", content, flags=re.MULTILINE)  # headers
-            stripped = re.sub(r"[*_`>\-=]+", "", stripped)  # markdown chars
-            stripped = re.sub(r"\s+", " ", stripped).strip()
-            real_len = len(stripped)
-
-            # Detect emails-saved-as-documents (quote chains with no original content)
-            lines = [ln for ln in content.split("\n") if ln.strip()]
-            quoted_lines = [ln for ln in lines if ln.lstrip().startswith(">")]
-            header_lines = [ln for ln in lines if re.match(r"^On .+ wrote:?\s*$", ln.strip())]
-            non_quote_content = "\n".join(
-                ln for ln in lines
-                if not ln.lstrip().startswith(">")
-                and not re.match(r"^On .+ wrote:?\s*$", ln.strip())
-            ).strip()
-            quote_ratio = len(quoted_lines) / max(len(lines), 1)
-
-            should_delete = False
-            reason = ""
-
-            if not content or content in ("", "# Untitled"):
-                should_delete = True
-                reason = "empty"
-            elif title in _JUNK_TITLES:
-                # If you named it "test" or "asdf" etc, you don't care about it
-                should_delete = True
-                reason = f"junk title '{title}'"
-            elif stripped.lower() in _JUNK_TITLES:
-                should_delete = True
-                reason = "throwaway content"
-            # No length-based deletion: short notes are legitimate content.
-            elif (quoted_lines or header_lines) and len(non_quote_content) < 50 and quote_ratio > 0.4:
-                # Email reply chain with no original content
-                should_delete = True
-                reason = "email quote-chain only"
-
-            if should_delete:
-                if len(deleted_examples) < 5:
-                    label = (doc.title or "(no title)")[:40]
-                    deleted_examples.append(f"{label} ({reason})")
-                db.delete(doc)
-                deleted += 1
-            else:
-                survivors.append(doc)
-
-        # --- Duplicate pass: group survivors by (normalized title, content
-        # fingerprint) and keep only the most complete copy of each group. ---
-        groups: dict = {}
-        for doc in survivors:
-            key = (_norm_title(doc.title), _content_fingerprint(doc.current_content))
-            groups.setdefault(key, []).append(doc)
-
-        for (title_key, _fp), members in groups.items():
-            if len(members) < 2:
-                kept += 1
-                continue
-            # Keep the most complete (longest real content), then most recent.
-            def _updated(d):
-                return d.updated_at or d.created_at
-            # Sort key must be total-order safe: a document with both
-            # updated_at and created_at NULL would otherwise make Python
-            # compare None against a datetime on a real-length tie, raising
-            # TypeError and aborting the whole tidy run. Rank "has a
-            # timestamp" before the timestamp itself so a None is never
-            # compared against a datetime.
-            members.sort(
-                key=lambda d: (
-                    _real_len(d.current_content),
-                    _updated(d) is not None,
-                    _updated(d) or datetime.min,
-                ),
-                reverse=True,
-            )
-            keeper = members[0]
-            kept += 1
-            dupes = members[1:]
+        for doc, reason in verdicts["junk"]:
+            if len(deleted_examples) < 5:
+                label = (doc.title or "(no title)")[:40]
+                deleted_examples.append(f"{label} ({reason})")
+            db.delete(doc)
+            deleted += 1
+        for keeper, dupes in verdicts["duplicates"]:
             if len(deleted_examples) < 5:
                 label = (keeper.title or "(no title)")[:40]
                 deleted_examples.append(f"{label} (+{len(dupes)} duplicate copies)")
             for d in dupes:
                 db.delete(d)
                 deleted += 1
+        kept = verdicts["kept"]
 
         if deleted:
             db.commit()

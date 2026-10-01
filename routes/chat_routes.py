@@ -2071,7 +2071,14 @@ def setup_chat_routes(
             if not _privs.get("can_use_browser", True):
                 disabled_tools.update(_BROWSER_MCP_TOOLS)
             if not _privs.get("can_use_documents", True):
-                disabled_tools.update({"create_document", "edit_document", "update_document", "suggest_document"})
+                # `B995`. `manage_documents` joined these when it opened to
+                # non-admins: before, the non-admin blocklist withheld it from
+                # everyone this switch is shown for, so a person with the
+                # document editor switched off would otherwise have had their
+                # agent filing and deleting what the library's own write routes
+                # refuse them (`require_privilege("can_use_documents")`).
+                disabled_tools.update({"create_document", "edit_document", "update_document",
+                                       "suggest_document", "manage_documents"})
             if not _privs.get("can_generate_images", True):
                 disabled_tools.add("generate_image")
             if not _privs.get("can_manage_memory", True):

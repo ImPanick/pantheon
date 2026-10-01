@@ -16,7 +16,10 @@ from types import MappingProxyType
 from typing import Any, Iterable, Mapping
 
 from src.tool_approval_scopes import CHAT_SESSION_APPROVAL_CONTEXT_MARKER
-from src.tool_security import BUILTIN_EMAIL_TOOLS, is_public_blocked_tool
+from src.tool_security import (
+    BUILTIN_EMAIL_TOOLS,
+    is_delegated_credential_blocked_tool,
+)
 from src.ui_switches import switch_request
 from src.run_limits import cap_label, configured_cap, describe_cap, owner_set_cap_raise
 
@@ -1644,7 +1647,9 @@ class ToolRunSecurityContext:
         # B70. Checked before the bypasses below, because neither may lift it,
         # and kept independent of `external_untrusted_context_seen` so it holds
         # on a run where that gate never arms and raises no prompt to bypass.
-        if self.delegated_credential and is_public_blocked_tool(tool_name):
+        # `B995`: the non-admin policy plus what only a token is refused, the
+        # same set `delegated_credential_blocked_tools()` withholds up front.
+        if self.delegated_credential and is_delegated_credential_blocked_tool(tool_name):
             return ToolGateDecision(
                 False,
                 (

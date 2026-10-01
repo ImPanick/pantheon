@@ -76,6 +76,11 @@ def _write(request: Request, op, *args, **kwargs) -> Dict[str, Any]:
     try:
         out = op(db, owner, *args, **kwargs)
         db.commit()
+        # `B994`: the open-document pointer is cleared once a delete is real,
+        # not inside the step — a plan runs its steps and rolls them back.
+        folders.forget_deleted(out.get("changes"))
+        if "changes" in out:
+            out = {**out, "changes": folders.shown_changes(out["changes"])}
         return out
     except folders.FolderError as e:
         db.rollback()

@@ -935,6 +935,7 @@ FUNCTION_TOOL_SCHEMAS = [
                 "list_folders shows them with counts; create_folder, rename_folder, "
                 "move_folder, move (documents into a folder) and remove_folder change them; "
                 "reorganise takes several of those as `steps` in one call. A call that would "
+                "delete any document (delete, tidy, remove_folder with contents=delete) or "
                 "move or remove more than 5 things is not applied: it returns a plan and asks "
                 "the person, and only if they choose 'Apply the plan' do you call apply_plan "
                 "with its plan_id. Every change made is listed in the result."
@@ -949,7 +950,7 @@ FUNCTION_TOOL_SCHEMAS = [
                     ]},
                     "document_id": {"type": "string", "description": "Document ID (for delete, or move of one document)"},
                     "document_ids": {"type": "array", "items": {"type": "string"},
-                                     "description": "Document IDs (for move)"},
+                                     "description": "Document IDs (for move, or delete of several)"},
                     "search": {"type": "string", "description": "Search query (for list) — matches titles and folder paths"},
                     "language": {"type": "string", "description": "Filter by language (for list)"},
                     "limit": {"type": "integer", "description": "Max results (for list, default 50)"},
@@ -960,7 +961,7 @@ FUNCTION_TOOL_SCHEMAS = [
                     "contents": {"type": "string", "enum": ["move_up", "delete"],
                                  "description": "What happens to what is in a folder being removed: move_up moves it up a level, delete deletes the documents with it (for remove_folder; required when the folder is not empty)"},
                     "steps": {"type": "array", "items": {"type": "object"},
-                              "description": "For reorganise: folder actions in order, each an object with its own action (create_folder, rename_folder, move_folder, move, remove_folder) and arguments"},
+                              "description": "For reorganise: folder actions in order, each an object with its own action (create_folder, rename_folder, move_folder, move, remove_folder, delete) and arguments"},
                     "plan_id": {"type": "string", "description": "The plan to apply (for apply_plan, only after the person chose 'Apply the plan')"}
                 },
                 "required": ["action"]

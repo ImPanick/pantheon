@@ -468,11 +468,8 @@ def remove_folder(db, owner, raw_path: Any, contents: Any = None, *,
     changes: List[Dict[str, Any]] = []
     if holds and contents == REMOVE_DELETE:
         for doc in docs:
+            changes.append(_deleted(doc))
             doc.is_active = False
-            changes.append({"change": "deleted", "kind": "document", "id": doc.id,
-                            "title": doc.title or "Untitled",
-                            "from": _stored_path(doc.folder), "to": None})
-            _forget_active(doc.id)
         for sub in below:
             changes.append({"change": "removed", "kind": "folder", "from": sub, "to": None})
         (_scoped(db.query(DocumentFolder), DocumentFolder, owner)
@@ -521,13 +518,73 @@ def remove_folder(db, owner, raw_path: Any, contents: Any = None, *,
     return {**summary, "changes": changes}
 
 
-def _forget_active(doc_id: str) -> None:
-    """The same housekeeping `DELETE /api/document/{id}` does (#1160)."""
-    try:
-        from src.agent_tools.document_tools import clear_active_document
-        clear_active_document(doc_id)
-    except Exception:
-        logger.debug("clear_active_document(%s) failed", doc_id, exc_info=True)
+def _deleted(doc: Document) -> Dict[str, Any]:
+    """The change a deleted document makes, sealed to the content it had.
+
+    `B994`. `digest` is what `apply_plan` compares, with the rest of the
+    fingerprint: a plan to delete an empty "Untitled" must not delete it after
+    the person has typed into it. It never reaches the card or the model
+    (`shown_changes`) — a hash says nothing to either.
+    """
+    from src.tool_approvals import document_content_digest
+    return {"change": "deleted", "kind": "document", "id": doc.id,
+            "title": doc.title or "Untitled", "from": _stored_path(doc.folder), "to": None,
+            "digest": document_content_digest(doc.current_content)}
+
+
+def delete_documents(db, owner, document_ids: Any) -> Dict[str, Any]:
+    """`B994`. Delete documents — the library's own delete (`is_active` false).
+
+    All or nothing, like `file_documents`: one id that is not the caller's
+    refuses the lot, in the routes' words, and nothing is deleted.
+    """
+    if isinstance(document_ids, str):
+        document_ids = [document_ids]
+    if not isinstance(document_ids, (list, tuple)):
+        raise FolderError("Say which documents to delete, as a list of ids.")
+    ids: List[str] = []
+    for value in document_ids:
+        text = str(value or "").strip()
+        if text and text not in ids:
+            ids.append(text)
+    if not ids:
+        raise FolderError("Say which documents to delete.")
+    if len(ids) > MAX_DOCUMENTS_PER_MOVE:
+        raise FolderError(f"Delete at most {MAX_DOCUMENTS_PER_MOVE} documents at a time.")
+    docs = (_active(_scoped(db.query(Document), Document, owner))
+            .filter(Document.id.in_(ids)).all())
+    found = {doc.id: doc for doc in docs}
+    for doc_id in ids:
+        if doc_id not in found:
+            raise FolderError(f"Document '{doc_id}' not found", 404)
+    changes = []
+    for doc_id in ids:
+        doc = found[doc_id]
+        changes.append(_deleted(doc))
+        doc.is_active = False
+    return {"changes": changes}
+
+
+def forget_deleted(changes: Iterable[Dict[str, Any]]) -> None:
+    """The housekeeping `DELETE /api/document/{id}` does (#1160), after commit.
+
+    Called by whoever commits — never inside a step, because a plan runs its
+    steps and rolls them back, and a plan to delete the open document used to
+    clear the open-document pointer although nothing was deleted (`B994`).
+    """
+    for c in changes or ():
+        if c.get("change") != "deleted" or c.get("kind") != "document":
+            continue
+        try:
+            from src.agent_tools.document_tools import clear_active_document
+            clear_active_document(c.get("id"))
+        except Exception:
+            logger.debug("clear_active_document(%s) failed", c.get("id"), exc_info=True)
+
+
+def shown_changes(changes: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """The change list as a person or a model reads it: without the seal."""
+    return [{k: v for k, v in c.items() if k != "digest"} for c in changes]
 
 
 # ── words ────────────────────────────────────────────────────────────────────
@@ -583,7 +640,8 @@ def describe_change(c: Dict[str, Any]) -> str:
         if change == "moved":
             return f'moved "{title}": {where(c.get("from"))} → {where(c.get("to"))}'
         if change == "deleted":
-            return f'deleted "{title}" (was in {where(c.get("from"))})'
+            why = f" — {c['reason']}" if c.get("reason") else ""
+            return f'deleted "{title}" (was in {where(c.get("from"))}){why}'
     if kind == "folder":
         if change == "created":
             return f"made folder {c.get('to')}"
@@ -601,7 +659,8 @@ def describe_change(c: Dict[str, Any]) -> str:
 # `P9-10`'s house rule is that a destructive AI operation is previewed before it
 # runs. For the agent's folder work the threshold is the row's "more than a
 # handful": a call whose changes a person would have to undo one by one — more
-# than five moved or removed things — is not applied. It is run inside the
+# than five moved or removed things — is not applied; nor, since `B994`, is any
+# call that deletes a document, however few (`needs_plan` says why). It is run inside the
 # transaction, its change list read, and rolled back; the list becomes a plan,
 # shown on the tool card, and the existing `ask_user` card (`P4` — the one any
 # tool result can raise) asks the person to apply it. Nothing new is drawn.
@@ -623,7 +682,8 @@ PLAN_THRESHOLD = 5
 PLAN_TTL_SECONDS = 30 * 60
 PLAN_APPROVE_LABEL = "Apply the plan"
 PLAN_DECLINE_LABEL = "Don't change anything"
-STEP_ACTIONS = ("create_folder", "rename_folder", "move_folder", "move", "remove_folder")
+STEP_ACTIONS = ("create_folder", "rename_folder", "move_folder", "move", "remove_folder",
+                "delete")
 
 
 def _destination(step: Dict[str, Any], *, fallback_key: Optional[str] = None) -> Any:
@@ -656,6 +716,11 @@ def run_step(db, owner, step: Dict[str, Any]) -> Dict[str, Any]:
         return file_documents(db, owner, ids, _destination(step, fallback_key="folder"))
     if action == "remove_folder":
         return remove_folder(db, owner, step.get("folder"), step.get("contents"))
+    if action == "delete":
+        ids = step.get("document_ids")
+        if ids is None:
+            ids = step.get("document_id") or step.get("id")
+        return delete_documents(db, owner, ids)
     raise FolderError(f"'{action or '(none)'}' is not a folder step — use one of: "
                       + ", ".join(STEP_ACTIONS) + ".")
 
@@ -680,13 +745,48 @@ def run_steps(db, owner, steps: Any) -> List[Dict[str, Any]]:
     return changes
 
 
+def deletes(changes: Iterable[Dict[str, Any]]) -> int:
+    """How many documents a change list deletes."""
+    return sum(1 for c in changes
+               if c.get("change") == "deleted" and c.get("kind") == "document")
+
+
 def needs_plan(changes: Iterable[Dict[str, Any]]) -> bool:
-    return len(counted_changes(changes)) > PLAN_THRESHOLD
+    """Whether a call waits for the person: more than five moves or removals,
+    or any deleted document at all.
+
+    `B994`, the owner's call (`D-2026-10-01-02`: *"a big move or a delete still
+    waits for their approval"*). The two thresholds differ because what undoes
+    them differs. A move is on the card as `moved "X": A → B`, and the person
+    can put it back from the library in one drag — five of those is a handful,
+    and a sixth is where undoing by hand becomes a chore (`P21-02`). A delete
+    has no way back: the library has no bin and no restore, so a deleted
+    document is gone from everything the person can reach. One is already too
+    many to take on the agent's word, so one asks — the named delete as well as
+    the tidy, in a plan of one. Removing an empty folder deletes nothing and is
+    undone by making it again, so it counts as a removal, not a delete.
+    """
+    changes = list(changes)
+    return len(counted_changes(changes)) > PLAN_THRESHOLD or deletes(changes) > 0
 
 
 def _fingerprint(changes: Iterable[Dict[str, Any]]) -> tuple:
-    return tuple((c.get("change"), c.get("kind"), c.get("id"), c.get("from"), c.get("to"))
+    # `digest` is None for everything but a deleted document (`_deleted`).
+    return tuple((c.get("change"), c.get("kind"), c.get("id"), c.get("from"), c.get("to"),
+                  c.get("digest"))
                  for c in changes)
+
+
+def plan_question(changes: Iterable[Dict[str, Any]]) -> str:
+    """The `ask_user` card's question for a plan — what it does, in one line."""
+    changes = list(changes)
+    gone = deletes(changes)
+    if gone and gone == len(counted_changes(changes)):
+        return (f"Delete {_n(gone, 'document')}? Listed above — a deleted document "
+                "can't be brought back from the library.")
+    tail = (" Deleted documents can't be brought back from the library."
+            if gone else "")
+    return f"Reorganise your documents? This {summarize_changes(changes)}, as listed above.{tail}"
 
 
 @dataclass
@@ -771,4 +871,10 @@ def apply_plan(db, owner: str, session_id: Optional[str], plan_id: Any) -> Dict[
         raise FolderError("Your documents changed after this plan was shown, so none of it "
                           "was applied. Propose it again to see what it would do now.", 409)
     discard_plan(plan.plan_id)
+    # The same changes in the same order (the fingerprint says so); what the
+    # plan's card gave as each one's reason — a tidy's "empty", "a duplicate"
+    # — is said again on the card that reports them done.
+    for done, shown in zip(changes, plan.changes):
+        if shown.get("reason"):
+            done["reason"] = shown["reason"]
     return {"plan_id": plan.plan_id, "changes": changes}

@@ -176,9 +176,16 @@ def test_remove_folder_asks_what_happens_and_does_exactly_that(lib):
     assert up["exit_code"] == 0 and where(lib, a) == "Acme"
     assert "- removed folder Clients" in up["response"]
 
+    # `B994` (`D-2026-10-01-02`): deleting with the folder asks first, even
+    # for one document — the delete is a plan until the person says yes.
     gone = call({"action": "remove_folder", "folder": "Acme", "contents": "delete"})
-    assert gone["exit_code"] == 0 and where(lib, a) == "DELETED"
+    assert gone["exit_code"] == 0 and gone["outcome"] == "planned", gone
+    assert where(lib, a) == "Acme"
     assert '- deleted "Board pack" (was in Acme)' in gone["response"]
+    say(lib, PLAN_APPROVE_LABEL)
+    done = call({"action": "apply_plan", "plan_id": gone["plan_id"]})
+    assert done["exit_code"] == 0 and where(lib, a) == "DELETED", done
+    assert '- deleted "Board pack" (was in Acme)' in done["response"]
 
 
 def test_a_move_without_a_destination_is_refused_rather_than_unfiled(lib):

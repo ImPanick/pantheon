@@ -91,7 +91,12 @@ NON_ADMIN_BLOCKED_TOOLS = BUILTIN_EMAIL_TOOLS | {
     "manage_mcp",
     "manage_webhooks",
     "manage_tokens",
-    "manage_documents",
+    # `B995`, the owner's call (`D-2026-10-01-02`): `manage_documents` is NOT
+    # here. Every one of its actions reads or writes the caller's own library
+    # and nothing else (`_owned_document_query`, `src/document_folders.py`'s
+    # `_scoped`), and every delete and every move of more than five things waits
+    # for the person's own "Apply the plan" (`B994`). A bearer token still may
+    # not have it: see `DELEGATED_CREDENTIAL_ONLY_BLOCKED_TOOLS` below.
     "manage_settings",
     "api_call",
     "app_api",
@@ -172,7 +177,8 @@ NON_ADMIN_BLOCKED_REASONS: dict = {
     "manage_memory": "writes the long-term memory every later turn is fed",
     "manage_skills": "writes skill files that are injected into later prompts",
     "manage_tasks": "creates and runs scheduled work under the operator's identity",
-    "manage_documents": "creates, edits and deletes stored documents",
+    # `manage_documents` left this register with `B995` — its reason, made
+    # true, is in `DELEGATED_CREDENTIAL_ONLY_BLOCKED_REASONS` below.
     "manage_settings": "writes instance settings, including every limit in `P12`",
     "manage_endpoints": "adds inference endpoints the whole instance then uses",
     "manage_mcp": (
@@ -212,6 +218,32 @@ NON_ADMIN_BLOCKED_REASONS: dict = {
 NON_ADMIN_BLOCKED_REASONS.update(
     {name: _EMAIL_TOOL_REASON for name in sorted(BUILTIN_EMAIL_TOOLS)}
 )
+
+
+# ── `B995`: open to a person, still closed to a token ───────────────────────
+#
+# Tools a non-admin's own agent may use and a bearer API token (`B70`) may not.
+# The token cap is the non-admin policy PLUS this set, so opening a tool to
+# people never opens it to the credentials people hand to third parties.
+#
+# `manage_documents` is the one entry, and the reason is the approval, not the
+# reach: its deletes and its big moves wait for the person's "Apply the plan",
+# which `apply_plan` reads from the chat's last user message
+# (`document_folders.plan_answer`). A token's turn writes that message itself —
+# its holder is the one typing — so for a token the yes would be the token's
+# own, which is the thing `B70` closed when it stopped a token answering the
+# approval it triggered.
+DELEGATED_CREDENTIAL_ONLY_BLOCKED_TOOLS = frozenset({"manage_documents"})
+
+#: Held equal to the set above by `tests/test_the_blocklist_says_why.py`, like
+#: the non-admin register.
+DELEGATED_CREDENTIAL_ONLY_BLOCKED_REASONS: dict = {
+    "manage_documents": (
+        "deletes and reorganises the owner's documents once the person answers "
+        "\"Apply the plan\" in the chat — and a token's turn would be answering "
+        "for them"
+    ),
+}
 
 #: Why the `mcp__` namespace is refused wholesale. This rule lives in
 #: `is_public_blocked_tool` and NOT in the set, so `blocked_tools_for_owner`
@@ -552,6 +584,19 @@ def delegated_credential_blocked_tools() -> Set[str]:
     answered yes — minting is an admin-only action, so the empty set comes back
     for every token in existence. A token is a long-lived credential the owner
     hands to a third party, so it is capped at the non-admin policy no matter
-    who minted it.
+    who minted it — and at the tools opened to people because a person answers
+    for them (`DELEGATED_CREDENTIAL_ONLY_BLOCKED_TOOLS`, `B995`).
     """
-    return set(NON_ADMIN_BLOCKED_TOOLS)
+    return set(NON_ADMIN_BLOCKED_TOOLS) | set(DELEGATED_CREDENTIAL_ONLY_BLOCKED_TOOLS)
+
+
+def is_delegated_credential_blocked_tool(tool_name: Optional[str]) -> bool:
+    """`is_public_blocked_tool`, plus the tools only a token is refused (`B995`).
+
+    The call-time half of `delegated_credential_blocked_tools()`: what
+    `ToolRunSecurityContext.decision_for` asks for a delegated run, so the cap
+    the prompt advertises and the cap the gate enforces are one set.
+    """
+    if is_public_blocked_tool(tool_name):
+        return True
+    return isinstance(tool_name, str) and tool_name in DELEGATED_CREDENTIAL_ONLY_BLOCKED_TOOLS

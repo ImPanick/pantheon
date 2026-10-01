@@ -817,12 +817,23 @@ def _list_folders_reply(db, owner) -> Dict:
 
 
 def _manage_folders(db, owner: Optional[str], session_id: Optional[str],
-                    action: str, args: dict) -> Dict:
+                    action: str, args: dict, *, reasons: Optional[Dict[str, str]] = None,
+                    note: str = "") -> Dict:
+    """Run one folder action, a reorganisation, a delete or `apply_plan`.
+
+    `B994`: `delete` and `tidy` come through here too, as `delete` steps, so a
+    delete is planned, sealed, shown and applied by the same code as a big
+    move. `reasons` (document id → why) is what the tidy rules said about each
+    document, put on the card's line for it; `note` is said after the list.
+    """
     from src import document_folders as F
 
     if not owner:
         # The same answer the tool's other actions give an owner-less call:
         # nothing is anybody's, so there is nothing to file.
+        if action == "delete":
+            return {"error": "Documents belong to a signed-in person, and this call has "
+                             "none. Nothing was deleted.", "exit_code": 1}
         return {"error": "Folders belong to a signed-in person, and this call has none.",
                 "exit_code": 1}
     if action == "list_folders":
@@ -836,12 +847,13 @@ def _manage_folders(db, owner: Optional[str], session_id: Optional[str],
             return {"error": e.message, "exit_code": 1}
         db.commit()
         changes = out["changes"]
+        F.forget_deleted(changes)
         return {
             "response": (f"Applied the plan — {F.summarize_changes(changes, past=True)}:\n"
                          f"{_change_lines(changes)}\n"
-                         "To undo any of it, move it back in the library."),
+                         + _undo_hint(changes)),
             "outcome": "applied",
-            "changes": changes,
+            "changes": F.shown_changes(changes),
             "exit_code": 0,
         }
 
@@ -862,33 +874,40 @@ def _manage_folders(db, owner: Optional[str], session_id: Optional[str],
                           f"{MAX_CHANGES_PER_CALL}, so every one can be listed for the "
                           "person. Split it into smaller reorganisations."),
                 "exit_code": 1}
+    for c in changes:
+        if reasons and c.get("id") in reasons and c.get("change") == "deleted":
+            c["reason"] = reasons[c["id"]]
 
     if F.needs_plan(changes):
         db.rollback()   # nothing happens until the person says so
         summary = F.summarize_changes(changes)
+        why = ("a delete can't be undone, so it waits for the person's OK"
+               if F.deletes(changes) else
+               f"more than {F.PLAN_THRESHOLD} changes at once, so it waits for the "
+               "person's OK")
         if not session_id:
-            return {"error": (f"This {summary} — more than {F.PLAN_THRESHOLD} changes at "
-                              "once need the person's OK, and there is no chat to ask them "
-                              "in. Do it in smaller steps."),
+            return {"error": (f"This {summary} — {why}, and there is no chat to ask them "
+                              "in. Nothing was changed."
+                              + ("" if F.deletes(changes) else " Do it in smaller steps.")),
                     "exit_code": 1}
         plan = F.propose_plan(owner, session_id, steps, changes)
         return {
             "response": (
-                f"Nothing has changed yet. This {summary} — more than "
-                f"{F.PLAN_THRESHOLD} changes at once, so it waits for the person's OK:\n"
+                f"Nothing has changed yet. This {summary} — {why}:\n"
                 f"{_change_lines(changes)}\n"
-                f"If they choose \"{F.PLAN_APPROVE_LABEL}\", call manage_documents with "
+                + (f"{note}\n" if note else "")
+                + f"If they choose \"{F.PLAN_APPROVE_LABEL}\", call manage_documents with "
                 f"{{\"action\": \"apply_plan\", \"plan_id\": \"{plan.plan_id}\"}}. "
                 "Any other answer means leave everything as it is."
             ),
             "outcome": "planned",
             "plan_id": plan.plan_id,
-            "changes": changes,
+            "changes": F.shown_changes(changes),
             # The card every tool result can raise (`agent_loop`, `ask_user`):
             # it ends the turn, and the person's choice is the next message —
             # which is where `apply_plan` reads it from.
             "ask_user": {
-                "question": f"Reorganise your documents? This {summary}, as listed above.",
+                "question": F.plan_question(changes),
                 "options": [
                     {"label": F.PLAN_APPROVE_LABEL,
                      "description": "Make every change listed on the card above"},
@@ -901,17 +920,78 @@ def _manage_folders(db, owner: Optional[str], session_id: Optional[str],
         }
 
     db.commit()
+    F.forget_deleted(changes)
     if not changes:
         return {"response": "Nothing changed — everything is already where you asked.",
                 "outcome": "unchanged", "changes": [], "exit_code": 0}
     return {
         "response": (f"Done — {F.summarize_changes(changes, past=True)}:\n"
                      f"{_change_lines(changes)}\n"
-                     "To undo any of it, move it back in the library."),
+                     + _undo_hint(changes)),
         "outcome": "applied",
-        "changes": changes,
+        "changes": F.shown_changes(changes),
         "exit_code": 0,
     }
+
+
+def _undo_hint(changes) -> str:
+    """What a person can do about the card's list. A delete has no way back,
+    and "move it back" under one would promise what the library can't do."""
+    gone = any(c.get("change") == "deleted" for c in changes)
+    rest = any(c.get("change") not in ("created", "deleted") for c in changes)
+    if not gone:
+        return "To undo any of it, move it back in the library."
+    return ("Deleted documents can't be brought back from the library"
+            + ("; the rest can be put back by hand there." if rest else "."))
+
+
+#: Why the tidy rules would remove a document, as its line on the card says it.
+_DUPLICATE_REASON = "a duplicate — the fullest copy stays"
+
+
+def _tidy(db, owner: Optional[str], session_id: Optional[str]) -> Dict:
+    """`B994`. The agent's tidy, shown first: the rules' list becomes a plan.
+
+    Before this, `manage_documents tidy` called `run_document_tidy`, which
+    hard-deleted everything its rules named in one call with nothing shown —
+    while the library's own Tidy button asks first (`P9-10`). Now the same rules
+    (`document_actions.tidy_verdicts`, the scheduled action's) are read, and
+    what they name is a plan of `delete` steps: each document on its own line
+    with the reason, the `ask_user` card, and nothing deleted until the person
+    chooses "Apply the plan". The delete is the library's own (`is_active`
+    false), the delete every other agent action makes.
+
+    Scope: the caller's own documents, and only the live ones — already-deleted
+    rows are nothing a person can see or approve. An owner-less call is refused;
+    it used to tidy every document in the database (`run_document_tidy("")`).
+    """
+    from core.database import Document
+    from src.document_actions import tidy_verdicts
+
+    if not owner:
+        return {"error": "Documents belong to a signed-in person, and this call has none. "
+                         "Nothing was deleted.", "exit_code": 1}
+    q = db.query(Document).filter(Document.is_active == True)  # noqa: E712 — SQL
+    docs = _owned_document_query(q, Document, owner).all()
+    verdicts = tidy_verdicts(docs)
+    reasons: Dict[str, str] = {}
+    for doc, reason in verdicts["junk"]:
+        reasons[doc.id] = reason
+    for _keeper, copies in verdicts["duplicates"]:
+        for doc in copies:
+            reasons[doc.id] = _DUPLICATE_REASON
+    if not reasons:
+        return {"response": (f"Nothing to tidy — none of your {len(docs)} document(s) is "
+                             "empty, a throwaway or a duplicate."),
+                "outcome": "unchanged", "changes": [], "exit_code": 0}
+    ids = list(reasons)
+    note = ""
+    if len(ids) > MAX_CHANGES_PER_CALL:
+        note = (f"That is the first {MAX_CHANGES_PER_CALL} of {len(ids)}; tidy again after "
+                "this to see the rest.")
+        ids = ids[:MAX_CHANGES_PER_CALL]
+    return _manage_folders(db, owner, session_id, "delete", {"document_ids": ids},
+                           reasons=reasons, note=note)
 
 
 # ---------------------------------------------------------------------------
@@ -1058,26 +1138,30 @@ class ManageDocumentTool:
                 # never "whichever was edited last". The fallback this replaced
                 # turned a typo'd or stale id into deleting a different
                 # document and reporting it as done.
-                named = args.get("document_id") or args.get("id") or args.get("uid")
-                doc_id = named or _active_document_id
-                doc = _get_owned_document(db, Document, doc_id, owner) if doc_id else None
-                if not doc and named:
-                    return {"error": f"Document '{named}' not found. Nothing was deleted; "
-                                     "list the documents to find its id.", "exit_code": 1}
-                if not doc:
-                    return {"error": "Say which document to delete (its id). Nothing was "
-                                     "deleted.", "exit_code": 1}
-                title = doc.title
-                doc.is_active = False
-                db.commit()
-                if _active_document_id == doc.id:
-                    set_active_document(None)
-                return {"response": f"Deleted document '{title}'", "exit_code": 0}
+                many = args.get("document_ids")
+                if isinstance(many, (list, tuple)) and many:
+                    ids = list(many)
+                else:
+                    named = args.get("document_id") or args.get("id") or args.get("uid")
+                    doc_id = named or _active_document_id
+                    doc = _get_owned_document(db, Document, doc_id, owner, active_only=True) if doc_id else None
+                    if not doc and named:
+                        return {"error": f"Document '{named}' not found. Nothing was deleted; "
+                                         "list the documents to find its id.", "exit_code": 1}
+                    if not doc:
+                        return {"error": "Say which document to delete (its id). Nothing was "
+                                         "deleted.", "exit_code": 1}
+                    # The plan holds this id, never "the open one": the open
+                    # document may be another by the time the person answers.
+                    ids = [doc.id]
+                # `B994` (`D-2026-10-01-02`). Asks first, even for one: a plan
+                # of the documents, the card, and nothing deleted until the
+                # person chooses "Apply the plan" (`document_folders.needs_plan`).
+                return _manage_folders(db, owner, ctx.get("session_id"), "delete",
+                                       {"document_ids": ids})
 
             elif action == "tidy":
-                from src.document_actions import run_document_tidy
-                result = await run_document_tidy(owner or "")
-                return {"response": result, "exit_code": 0}
+                return _tidy(db, owner, ctx.get("session_id"))
 
             elif _folder_action(action) in FOLDER_ACTIONS:
                 return _manage_folders(db, owner, ctx.get("session_id"),

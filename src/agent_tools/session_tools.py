@@ -195,6 +195,16 @@ async def send_to_session(content: str, session_id: Optional[str] = None, owner:
     if owner and getattr(sess, "owner", None) != owner:
         return {"error": f"Session '{target_sid}' not found"}
 
+    # `B994`. Never into the chat this call runs in. A message sent there is
+    # persisted as that chat's newest *user* message — the place a plan reads
+    # the person's answer from (`document_folders.plan_answer`) — so the agent
+    # could write "Apply the plan" for the person and then apply its own plan;
+    # measured, it deleted a document no one approved. Talking to the chat you
+    # are already in is never what this tool is for: answer in the reply.
+    if session_id and target_sid == session_id:
+        return {"error": "send_to_session talks to another chat, and this is the chat "
+                         "you are in. Answer here, in your reply.", "exit_code": 1}
+
     if not message:
         return {"error": "No message provided"}
 
