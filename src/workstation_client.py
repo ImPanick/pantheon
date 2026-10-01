@@ -35,6 +35,11 @@ and so before the request carrying the token is written. A redirect is not
 followed: a workstation never sends one, and following it is how a request
 with the token in it ends up somewhere nobody configured.
 
+**A PROXY IN THE ENVIRONMENT (`B982`).** httpx honours `HTTPS_PROXY` and
+reads `NO_PROXY`'s names, not its ranges; a workstation whose address — or,
+for a name, every address it resolves to — is in a range `NO_PROXY` names goes
+direct, through `src.paced_http.direct_mounts`, the one place that reads them.
+
 **A backend that starts machines.** The VM backend boots a person's machine
 on first use (`workstation/vm.py`); its `health` says `backend: "vm"`, and a
 client that has heard that waits `protocol.MACHINE_START_S` longer on that
@@ -293,6 +298,10 @@ class WorkstationClient:
         # `P20-07`: learnt from this workstation's own `health`.
         self._starts_machines = False
         self._verify: Any = None
+        # `B982`: httpx `mounts` that keep this workstation off an environment
+        # proxy when `NO_PROXY` names its address by range (`paced_http.
+        # direct_mounts`), worked out with `_verify`, once.
+        self._mounts: Dict[str, None] = {}
 
     # -- the wire (`P20-07`) ----------------------------------------------------
 
@@ -310,9 +319,11 @@ class WorkstationClient:
                     "bad_request",
                     f"{P.TLS_PIN_ENV} is not a SHA-256 fingerprint. It is the line "
                     "workstation/install.py printed, such as AB:CD:…:EF (64 hex digits).")
+            self._mounts = await self._direct(host, parts.port or 443)  # `B982`
             self._verify = _pinned_context(pin) if pin else True
             return self._verify
         verdict = _not_global(host)
+        addresses: Any = None
         if verdict is None:
             try:
                 infos = await asyncio.get_running_loop().getaddrinfo(
@@ -330,12 +341,30 @@ class WorkstationClient:
                 "a public address, and anyone on the way could read the token and drive the "
                 f"workstation. Use https:// (workstation/install.py sets it up and prints the "
                 f"{P.TLS_PIN_ENV} line), or reach it over a private network or VPN.")
+        self._mounts = await self._direct(host, parts.port or 80, addresses)  # `B982`
         self._verify = True
         return self._verify
 
+    async def _direct(self, host: str, port: int, addresses: Any = None) -> Dict[str, None]:
+        """`B982`. `paced_http.direct_mounts` for this workstation: a name is
+        looked up only when `NO_PROXY` has a range to look it up for (and the
+        plain-http rule above has usually looked already); a lookup that fails
+        leaves the environment to decide, as it always did."""
+        from src import paced_http
+        if not paced_http.no_proxy_ranges():
+            return {}
+        if addresses is None and _not_global(host) is None:
+            try:
+                infos = await asyncio.get_running_loop().getaddrinfo(host, port, type=0, proto=0)
+                addresses = {info[4][0] for info in infos}
+            except OSError:
+                addresses = ()
+        return paced_http.direct_mounts(self.base, addresses=addresses or ())
+
     def _http(self, timeout: float, verify: Any):
         import httpx
-        return httpx.AsyncClient(timeout=timeout, verify=verify, follow_redirects=False)
+        return httpx.AsyncClient(timeout=timeout, verify=verify, follow_redirects=False,
+                                 mounts=self._mounts or None)  # `B982`
 
     def _unreachable(self, e: BaseException) -> WorkstationError:
         """The sentence for a request that never got an answer — and for a
@@ -517,8 +546,8 @@ class WorkstationClient:
         await outbound.acquire_async(host, authenticated=True)
         result: Optional[Dict] = None
         try:
-            async with httpx.AsyncClient(timeout=wait, verify=verify,
-                                         follow_redirects=False) as client:
+            async with httpx.AsyncClient(timeout=wait, verify=verify, follow_redirects=False,
+                                         mounts=self._mounts or None) as client:  # `B982`
                 async with client.stream(method, url, json=body, headers=self._headers()) as r:
                     _observe(host, r)
                     if r.status_code != 200:
