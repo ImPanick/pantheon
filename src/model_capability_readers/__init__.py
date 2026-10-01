@@ -1,5 +1,19 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Vendor-specific model capability reader registry."""
+"""Vendor-specific model capability reader registry.
+
+**Which readers decide anything** (`B970`, measured 2026-10-01): `ollama`
+(`record_from_show_payload`, on `/api/show`) and `openrouter`
+(`records_from_payload`, on the catalogue) answer
+`src/chat_helpers.model_supports_vision`, with `detect_vendor` choosing which
+endpoint is asked. LM Studio's answer is read by
+`chat_helpers.lmstudio_supports_vision` directly: it predates these readers and
+reads an explicit `vision: false` as no, which `lmstudio` reads as unknown
+without a model `type`. `llamacpp`, `openai`, `google` and `generic_openai`
+have no production caller — OpenAI's and Google's lists and the generic shape
+say nothing about pictures, and llama.cpp's `/props` reader answers text-only
+for a server too old to report `modalities`, so it needs that field's presence
+checked before it can decide (not wired, not pretended).
+"""
 
 from __future__ import annotations
 

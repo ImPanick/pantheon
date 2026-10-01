@@ -3,6 +3,15 @@
 
 This module defines shape and normalization only. It does not probe providers,
 change routing, or infer authoritative capabilities from a bare model ID.
+
+**What decides anything live** (`B970`, measured 2026-10-01): `vision_verdict`
+— `src/chat_helpers.model_supports_vision`, the one "can this model see"
+question a person's attachment and a tool's picture both ask, reads Ollama's
+`/api/show` and OpenRouter's catalogue through `model_capability_readers` and
+then through `vision_verdict`. Nothing else in this module or the readers has a
+production caller: the families, tasks, controls, probes and display queries
+are shape without a consumer, kept for the work that will need them rather than
+wired to nothing (`Law 13` — said here instead of implied).
 """
 
 from __future__ import annotations
@@ -898,6 +907,22 @@ DISPLAY_QUERIES = (
         families=(FAMILY_MODERATION, FAMILY_CLASSIFICATION),
     ),
 )
+
+
+def vision_verdict(capability: ModelCapability) -> bool | None:
+    """`capability` as the answer to "can this model be sent a picture".
+
+    True when it names vision or takes image input; False when a provider
+    described the model and named neither; None when it said nothing this
+    can read (an unknown family or an unknown confidence) — the caller then
+    falls back, which for `chat_helpers.model_supports_vision` is the name list.
+    `B970`: the one place a capability record decides something live.
+    """
+    if CAP_VISION in capability.capabilities or MODALITY_IMAGE in capability.modalities.input:
+        return True
+    if capability.family == FAMILY_UNKNOWN or capability.confidence == CONFIDENCE_UNKNOWN:
+        return None
+    return False
 
 
 def display_surfaces_for(capability: ModelCapability) -> tuple[str, ...]:

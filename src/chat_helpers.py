@@ -195,15 +195,149 @@ def lmstudio_supports_vision(url: str, model: str) -> Optional[bool]:
     return None
 
 
-def model_supports_vision(model_name: str, endpoint_url: str = "") -> bool:
-    """Whether a model accepts images, using the endpoint's reported
-    capability when available (LM Studio) and falling back to name-based
-    detection otherwise."""
-    if endpoint_url:
+# ── `B970`: the provider's own answer, read through the capability readers ──
+#
+# `src/model_capability_readers/` parse what a provider says about a model and
+# had no production caller: `model_supports_vision` asked LM Studio, then the
+# name list, so an Ollama model reporting `vision` or an OpenRouter model whose
+# catalogue lists image input decided nothing. The readers do no network I/O by
+# design (`base.py`); the fetching is here, beside the LM Studio probe it
+# extends, and each answer is read by the vendor's reader and then by the one
+# reading of "can it see" (`model_capabilities.vision_verdict`).
+#
+# Who is asked, and why only them (`Law 16` — every call goes to the endpoint
+# the person configured, only when there is a picture to decide about, and
+# through `paced_http`, so `OutboundHostLimiter` paces it):
+#   * Ollama — `POST /api/show` on an endpoint the readers' own `detect_vendor`
+#     calls Ollama (port 11434 or ollama.com). An Ollama too old to list
+#     `capabilities` says nothing, and the name list decides as before.
+#   * OpenRouter — its public catalogue (`/api/v1/models`, no key sent), cached
+#     for an hour; a model it does not list says nothing.
+# An answer is cached `_PROVIDER_FINGERPRINT_TTL`; a transport failure is not
+# (the LM Studio probe's rule) except for the catalogue, whose failure is kept
+# for that minute so an offline machine does not wait on it per picture.
+
+_OPENROUTER_CATALOGUE_TTL = 3600.0
+# (host, port, model) -> (answer, expiry)
+_ollama_show_cache: dict = {}
+# catalogue url -> ({model id: answer} | None, expiry)
+_openrouter_catalogue_cache: dict = {}
+
+
+def _vendor_of(url: str) -> str:
+    from src.model_capability_readers import detect_vendor
+    return detect_vendor(url)
+
+
+def _authority(parsed) -> str:
+    host = parsed.hostname or ""
+    if ":" in host:          # an IPv6 literal
+        host = f"[{host}]"
+    return host if parsed.port is None else f"{host}:{parsed.port}"
+
+
+def ollama_supports_vision(url: str, model: str) -> Optional[bool]:
+    """What Ollama's `/api/show` says about `model`'s `vision` capability, read
+    by the Ollama capability reader — or None when the endpoint is not Ollama,
+    is unreachable, or does not list capabilities."""
+    from src.model_capability_readers import VENDOR_OLLAMA
+    if not model or _vendor_of(url) != VENDOR_OLLAMA:
+        return None
+    parsed = urlparse(url)
+    key = (parsed.hostname, parsed.port, model.strip())
+    now = time.time()
+    cached = _ollama_show_cache.get(key)
+    if cached is not None and cached[1] > now:
+        return cached[0]
+    from src import paced_http
+    show_url = f"{parsed.scheme or 'http'}://{_authority(parsed)}/api/show"
+    try:
+        r = paced_http.post_sync(show_url, json={"model": model.strip()}, timeout=2.0,
+                                 headers=_probe_auth_headers(url) or None)
+    except Exception:
+        return None
+    try:
+        payload = r.json() if r.is_success else {}
+    except Exception:
+        payload = {}
+    answer = None
+    if isinstance(payload, dict):
+        # The reader is the one parser (`Law 14`): a payload with no
+        # `capabilities` list is an unknown family to it, so None.
+        from src.model_capabilities import vision_verdict
+        from src.model_capability_readers import ollama as ollama_reader
+        record = ollama_reader.record_from_show_payload(model.strip(), payload)
+        answer = vision_verdict(record.capability) if record else None
+    _ollama_show_cache[key] = (answer, now + _PROVIDER_FINGERPRINT_TTL)
+    return answer
+
+
+def _openrouter_answers(url: str) -> Optional[dict]:
+    """`{model id (lower case): answer}` from OpenRouter's catalogue, or None."""
+    parsed = urlparse(url)
+    catalogue = f"{parsed.scheme or 'https'}://{_authority(parsed)}/api/v1/models"
+    now = time.time()
+    cached = _openrouter_catalogue_cache.get(catalogue)
+    if cached is not None and cached[1] > now:
+        return cached[0]
+    from src import paced_http
+    answers = None
+    try:
+        r = paced_http.get_sync(catalogue, timeout=5.0)
+        payload = r.json() if r.is_success else None
+    except Exception:
+        payload = None
+    if isinstance(payload, dict):
+        from src.model_capabilities import vision_verdict
+        from src.model_capability_readers import openrouter as openrouter_reader
+        answers = {
+            rec.model_id.lower(): vision_verdict(rec.capability)
+            for rec in openrouter_reader.records_from_payload(payload)
+        }
+    ttl = _OPENROUTER_CATALOGUE_TTL if answers is not None else _PROVIDER_FINGERPRINT_TTL
+    _openrouter_catalogue_cache[catalogue] = (answers, now + ttl)
+    return answers
+
+
+def openrouter_supports_vision(url: str, model: str) -> Optional[bool]:
+    """Whether OpenRouter's catalogue lists image input for `model` (read by
+    the OpenRouter capability reader), or None when the endpoint is not
+    OpenRouter or the catalogue does not name the model. A variant id
+    (`…:free`, `…:online`) is answered by its base model's entry when the
+    catalogue has no entry of its own."""
+    from src.model_capability_readers import VENDOR_OPENROUTER
+    if not model or _vendor_of(url) != VENDOR_OPENROUTER:
+        return None
+    answers = _openrouter_answers(url)
+    if not answers:
+        return None
+    want = model.strip().lower()
+    if want in answers:
+        return answers[want]
+    return answers.get(want.split(":", 1)[0])
+
+
+def endpoint_supports_vision(endpoint_url: str, model_name: str) -> Optional[bool]:
+    """The endpoint's own answer to "can this model see", or None when it gives
+    none: LM Studio's model list, Ollama's `/api/show`, OpenRouter's catalogue,
+    asked in that order (`B970`)."""
+    for ask in (lmstudio_supports_vision, ollama_supports_vision, openrouter_supports_vision):
         try:
-            advertised = lmstudio_supports_vision(endpoint_url, model_name or "")
+            answer = ask(endpoint_url, model_name or "")
         except Exception:
-            advertised = None
+            answer = None
+        if answer is not None:
+            return answer
+    return None
+
+
+def model_supports_vision(model_name: str, endpoint_url: str = "") -> bool:
+    """Whether a model accepts images: the endpoint's own answer where it gives
+    one (`endpoint_supports_vision` — LM Studio, Ollama, OpenRouter), the name
+    list otherwise. The one question a person's attachment and a tool's
+    picture both ask (`src/chat_handler.py`, `src/tool_result_images.py`)."""
+    if endpoint_url:
+        advertised = endpoint_supports_vision(endpoint_url, model_name or "")
         if advertised is not None:
             return advertised
     return is_vision_model(model_name)
