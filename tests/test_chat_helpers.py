@@ -27,9 +27,11 @@ from routes.chat_helpers import (
 class _AuthManager:
     def __init__(self, privileges):
         self._privileges = privileges
+        self.asked = []   # `B1020`: who the gate looked up, so a pass is not vacuous
 
     def get_privileges(self, username):
         assert username == "alice"
+        self.asked.append(username)
         return self._privileges
 
 
@@ -44,17 +46,32 @@ class _Session:
         self.model = model
 
 
-def test_allowed_models_legacy_empty_list_remains_unrestricted(monkeypatch):
-    monkeypatch.setattr("routes.chat_helpers.effective_user", lambda request: "alice")
+def _asking(monkeypatch, user):
+    """Make *user* the one `_enforce_chat_privileges` sees asking.
 
-    _enforce_chat_privileges(
-        _Request({"allowed_models": [], "max_messages_per_day": 0}),
-        _Session("provider/model-a"),
-    )
+    `B1020`. Set on the module the gate reads `effective_user` from — its own
+    globals — and not by the dotted name `"routes.chat_helpers.effective_user"`,
+    which pytest resolves through the `routes` package attribute at call time.
+    A file that drops `routes.chat_helpers` and another that imports it again
+    leave that attribute naming a second copy while this file still holds the
+    gate it imported at collection: the patch landed on the copy, the gate asked
+    the real `effective_user`, found nobody, and returned — so the four cases
+    expecting a refusal failed and the three expecting none passed for nothing.
+    """
+    monkeypatch.setitem(_enforce_chat_privileges.__globals__, "effective_user",
+                        lambda request: user)
+
+
+def test_allowed_models_legacy_empty_list_remains_unrestricted(monkeypatch):
+    _asking(monkeypatch, "alice")
+
+    request = _Request({"allowed_models": [], "max_messages_per_day": 0})
+    _enforce_chat_privileges(request, _Session("provider/model-a"))
+    assert request.app.state.auth_manager.asked == ["alice"]
 
 
 def test_allowed_models_explicit_empty_restricted_list_blocks_all_models(monkeypatch):
-    monkeypatch.setattr("routes.chat_helpers.effective_user", lambda request: "alice")
+    _asking(monkeypatch, "alice")
 
     with pytest.raises(HTTPException) as exc:
         _enforce_chat_privileges(
@@ -71,7 +88,7 @@ def test_allowed_models_explicit_empty_restricted_list_blocks_all_models(monkeyp
 
 
 def test_allowed_models_nonempty_list_still_restricts_without_new_flag(monkeypatch):
-    monkeypatch.setattr("routes.chat_helpers.effective_user", lambda request: "alice")
+    _asking(monkeypatch, "alice")
 
     _enforce_chat_privileges(
         _Request({"allowed_models": ["provider/model-a"], "max_messages_per_day": 0}),
@@ -85,15 +102,17 @@ def test_allowed_models_nonempty_list_still_restricts_without_new_flag(monkeypat
 
 
 def test_no_restriction_allows_any_model(monkeypatch):
-    monkeypatch.setattr("routes.chat_helpers.effective_user", lambda request: "alice")
+    _asking(monkeypatch, "alice")
 
     privs = {"allowed_models": [], "block_all_models": False, "max_messages_per_day": 0}
-    _enforce_chat_privileges(_Request(privs), _Session("provider/model-a"))
-    _enforce_chat_privileges(_Request(privs), _Session("provider/model-z"))
+    request = _Request(privs)
+    _enforce_chat_privileges(request, _Session("provider/model-a"))
+    _enforce_chat_privileges(request, _Session("provider/model-z"))
+    assert request.app.state.auth_manager.asked == ["alice", "alice"]
 
 
 def test_specific_allowlist_blocks_models_outside_it(monkeypatch):
-    monkeypatch.setattr("routes.chat_helpers.effective_user", lambda request: "alice")
+    _asking(monkeypatch, "alice")
 
     privs = {
         "allowed_models": ["gpt-4"],
@@ -107,7 +126,7 @@ def test_specific_allowlist_blocks_models_outside_it(monkeypatch):
 
 
 def test_block_all_models_blocks_regardless_of_allowed_models_contents(monkeypatch):
-    monkeypatch.setattr("routes.chat_helpers.effective_user", lambda request: "alice")
+    _asking(monkeypatch, "alice")
 
     # Even if allowed_models contains entries, block_all_models wins.
     privs = {
@@ -126,11 +145,14 @@ def test_block_all_models_blocks_regardless_of_allowed_models_contents(monkeypat
 def test_admin_user_is_never_blocked(monkeypatch):
     from core.auth import ADMIN_PRIVILEGES
 
-    monkeypatch.setattr("routes.chat_helpers.effective_user", lambda request: "admin")
+    _asking(monkeypatch, "admin")
+
+    asked = []
 
     class _AdminAuthManager:
         def get_privileges(self, username):
             assert username == "admin"
+            asked.append(username)
             return dict(ADMIN_PRIVILEGES)
 
     class _AdminRequest:
@@ -140,6 +162,7 @@ def test_admin_user_is_never_blocked(monkeypatch):
 
     _enforce_chat_privileges(_AdminRequest(), _Session("provider/model-a"))
     _enforce_chat_privileges(_AdminRequest(), _Session("anything-else"))
+    assert asked == ["admin", "admin"]
 
 
 class _FakeSession:
