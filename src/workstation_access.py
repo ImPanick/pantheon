@@ -111,6 +111,17 @@ NOT_PERMITTED_SENTENCE = ("Your account may not use the workstation. An admin ca
                           "in Settings → Users.")
 UP_SENTENCE = "The workstation is answering."
 
+# `B956`. What undoes root: a new container on the same volumes. Turning `sudo`
+# off rewrites the daemon's rule from then on and cannot take back a setuid
+# shell, a cron entry or a root process an agent already left outside the
+# homes — no daemon can, because the agent had root. Recreating the container
+# keeps every home and account, the uid registry and the sudo choice (measured
+# in `P20-01`'s end-to-end test). Pantheon holds no Docker socket and cannot
+# run it, so the panel shows it to copy. The service name is the protocol's
+# (`DEFAULT_HOST`, the compose service the overlay defines), and the overlay is
+# switched on through `COMPOSE_FILE`, so the bare command finds it.
+RECREATE_COMMAND = f"docker compose up -d --force-recreate {P.DEFAULT_HOST}"
+
 # The status probe is a person waiting on a panel, not a command: a daemon that
 # has not answered in this long is down as far as they are concerned. `ensure`
 # can make an account and start a display, which is why it is not two seconds.
@@ -251,6 +262,8 @@ def settings_view() -> Dict[str, Any]:
         "route_tools": route_tools_wanted(),
         "backends": list(P.BACKENDS),
         "network_modes": list(P.NETWORK_MODES),
+        # `B956`. Shown beside `sudo` when the workstation is the container.
+        "recreate_command": RECREATE_COMMAND,
     }
 
 
@@ -423,7 +436,8 @@ async def status_for(owner: Optional[str], *, is_admin: bool, auth_manager: Any 
 
 __all__ = [
     "ADMIN_OFF_SENTENCE", "HOME_KEPT", "HOME_MADE_NOW", "HOME_UNKNOWN", "NOT_PERMITTED_SENTENCE", "OFF_SENTENCE",
-    "PRIVILEGE", "PROBE_FAILED", "PROBE_NOT_CHECKED", "PROBE_OK", "Ready", "SETTING_KEYS",
+    "PRIVILEGE", "PROBE_FAILED", "PROBE_NOT_CHECKED", "PROBE_OK", "RECREATE_COMMAND", "Ready",
+    "SETTING_KEYS",
     "STATES", "STATE_DOWN", "STATE_NOT_PERMITTED", "STATE_OFF", "STATE_UNCONFIGURED",
     "STATE_UP", "UNCONFIGURED_SENTENCE", "UP_SENTENCE", "account_of", "backend_setting",
     "ensure_ready", "may_use", "network_setting", "reset_home", "route_tools_wanted",

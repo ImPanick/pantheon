@@ -237,12 +237,41 @@ function renderEffects(settings, daemon) {
     backend.textContent = line;
   }
 
+  renderRecreate(settings, daemon);
+
   const network = $('ws-network-effect');
   if (network) {
     const chosen = $('ws-network') ? $('ws-network').value || settings.network : settings.network;
     const words = NETWORK_WORDS[chosen];
     network.textContent = `${words ? words.says : chosen} ${NETWORK_NOT_ENFORCED}`;
   }
+}
+
+/**
+ * `B956`. Beside `sudo`: turning it off applies from now on, and what gives a
+ * clean system back. For the container, that is recreating it — every home
+ * kept — with the command to copy, because Pantheon holds no Docker socket and
+ * cannot run it. The command is the server's (`RECREATE_COMMAND`); the kind of
+ * machine is what the daemon says it is, or the setting while it has not said.
+ */
+function renderRecreate(settings, daemon) {
+  const box = $('ws-recreate');
+  if (!box) return;
+  const kind = (daemon && daemon.backend) || settings.backend;
+  const command = typeof settings.recreate_command === 'string' ? settings.recreate_command : '';
+  const container = kind === 'container' && !!command;
+  const why = $('ws-recreate-why');
+  if (why) {
+    why.textContent = container
+      ? 'Recreate the workstation for a clean system — every home and account is kept. '
+        + 'Pantheon cannot do this itself; run this where you start Pantheon:'
+      : 'For a clean system, rebuild that machine: Pantheon cannot reach past the workstation '
+        + 'daemon to do it.';
+  }
+  const cmd = $('ws-recreate-cmd');
+  if (cmd) cmd.textContent = container ? command : '';
+  show($('ws-recreate-row'), container);
+  show(box, true);
 }
 
 async function readError(res) {
@@ -368,6 +397,10 @@ function wire() {
   onChange('ws-backend', 'workstation_backend', (n) => n.value);
   onChange('ws-network', 'workstation_network', (n) => n.value);
   $('ws-save-address')?.addEventListener('click', () => { saveAddress(); });
+  $('ws-recreate-copy')?.addEventListener('click', () => {
+    const text = $('ws-recreate-cmd')?.textContent || '';
+    if (text && uiModule && uiModule.copyToClipboard) uiModule.copyToClipboard(text);
+  });
   $('ws-forget-token')?.addEventListener('click', () => { save({ workstation_token: '' }); });
 }
 
@@ -376,4 +409,5 @@ export async function open() {
   return load();
 }
 
-export const _test = { describeDaemon, describeYou, render, apply, fillSettings, renderEffects };
+export const _test = { describeDaemon, describeYou, render, apply, fillSettings, renderEffects,
+  renderRecreate };

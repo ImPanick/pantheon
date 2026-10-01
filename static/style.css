@@ -45600,6 +45600,21 @@ body.settings-sidebar-resize-active {
   .ws-field .settings-label { min-width: 0; flex: 1 0 100%; }
 }
 
+/* `B956`. The command that gives a clean system back, to copy. */
+.ws-recreate { display: flex; flex-direction: column; gap: 6px; margin-top: -4px; }
+.ws-recreate[hidden],
+.ws-recreate-row[hidden] { display: none; }
+.ws-recreate-cmd {
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  padding: 3px 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--fg) 6%, transparent);
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
 
 /* ===========================================================================
    `P10-01` — one focus ring, and the hundred declarations that were silencing

@@ -3265,8 +3265,21 @@
                 <div>
                   <label class="admin-toggle-label" for="ws-sudo">Agents may use sudo</label>
                   <div class="admin-toggle-sub ws-warn" id="ws-sudo-why">With sudo on, an agent can install software &mdash; and can read other people&rsquo;s workstation homes.</div>
+                  <!-- `B956`. What the switch cannot do, and what can. -->
+                  <div class="admin-toggle-sub" id="ws-sudo-after">Turning it off applies from now on. It cannot take back what an agent already did as root.</div>
                 </div>
-                <label class="admin-switch"><input type="checkbox" id="ws-sudo" aria-describedby="ws-sudo-why"><span class="admin-slider"></span></label>
+                <label class="admin-switch"><input type="checkbox" id="ws-sudo" aria-describedby="ws-sudo-why ws-sudo-after"><span class="admin-slider"></span></label>
+              </div>
+              <!-- `B956`. Filled by `workstation.js` from the status answer: for the
+                   container, recreating it (the command is the server's, to copy
+                   — Pantheon holds no Docker socket); for another machine, a
+                   sentence. -->
+              <div class="ws-recreate" id="ws-recreate" hidden>
+                <div class="admin-toggle-sub ws-effect" id="ws-recreate-why"></div>
+                <div class="settings-row ws-actions ws-recreate-row" id="ws-recreate-row" hidden>
+                  <code class="ws-recreate-cmd" id="ws-recreate-cmd"></code>
+                  <button type="button" id="ws-recreate-copy" class="memory-toolbar-btn">Copy</button>
+                </div>
               </div>
 
               <div class="settings-row ws-field">
