@@ -8,11 +8,15 @@
 endpoint is asked. LM Studio's answer is read by
 `chat_helpers.lmstudio_supports_vision` directly: it predates these readers and
 reads an explicit `vision: false` as no, which `lmstudio` reads as unknown
-without a model `type`. `llamacpp`, `openai`, `google` and `generic_openai`
-have no production caller — OpenAI's and Google's lists and the generic shape
-say nothing about pictures, and llama.cpp's `/props` reader answers text-only
-for a server too old to report `modalities`, so it needs that field's presence
-checked before it can decide (not wired, not pretended).
+without a model `type`. `openai`, `google` and `generic_openai` have no
+production caller — OpenAI's and Google's lists and the generic shape say
+nothing about pictures (not wired, not pretended).
+
+`llamacpp` (`B991`, 2026-10-01): `record_from_props_payload` answers
+`chat_helpers.llamacpp_supports_vision` on a local llama-server's `/props` —
+but only for an answer that carries `modalities.vision`, because this reader
+reads a payload without it as text-only, and a server too old to report it
+would otherwise take pictures away from a model the name list gets right.
 """
 
 from __future__ import annotations

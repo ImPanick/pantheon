@@ -317,11 +317,98 @@ def openrouter_supports_vision(url: str, model: str) -> Optional[bool]:
     return answers.get(want.split(":", 1)[0])
 
 
+# ── `B991`: llama.cpp's own answer, from `/props` ─────────────────────────────
+#
+# llama-server started with a projector (`--mmproj`) says so on `GET /props`:
+# `modalities: {"vision": true, "audio": …}`. A server older than that field
+# (before libmtmd, 2025) says nothing about pictures, and the `llamacpp` reader
+# reads a payload without it as text-only — so the probe answers ONLY when
+# `modalities.vision` is there and is a boolean, and leaves everything else to
+# the name list, which is what decided before (`B970`'s rule: *nothing said*
+# falls back). Three more conditions, each a way the answer would be about
+# something else:
+#   * a local host only (`_is_local_host`, the LM Studio probe's rule) — a
+#     llama-server is the operator's own machine, and `Law 16` says a cloud
+#     endpoint is asked nothing it was not asked before;
+#   * an endpoint the readers' `detect_vendor` calls llama.cpp or a generic
+#     OpenAI-compatible server — llama-server's default port (8080) is not one
+#     it knows, and Ollama, LM Studio, vLLM and SGLang have their own ports and
+#     no `/props`;
+#   * the model the answer describes is the one asked about (`model_alias`, or
+#     `model_path` whole, by file name or by file name without `.gguf`): a
+#     router or a proxy in front of several models answers `/props` for one of
+#     them, and that answer is not about this one.
+# Through `paced_http` (the limiter), with the endpoint's own key as the Ollama
+# probe sends it; an answer — a `404` from a server that is not llama.cpp
+# included — is cached `_PROVIDER_FINGERPRINT_TTL`, a transport failure is not.
+
+# (host, port, model) -> (answer, expiry)
+_llamacpp_props_cache: dict = {}
+
+
+def _llamacpp_names(payload: dict) -> set:
+    """The names a `/props` answer goes by, lower case."""
+    from pathlib import PurePosixPath
+    names = set()
+    alias = str(payload.get("model_alias") or "").strip()
+    if alias:
+        names.add(alias.lower())
+    path = str(payload.get("model_path") or "").strip()
+    if path:
+        name = PurePosixPath(path.replace("\\", "/")).name
+        names.update({path.lower(), name.lower()})
+        if name.lower().endswith(".gguf"):
+            names.add(name[:-5].lower())
+    return names
+
+
+def llamacpp_supports_vision(url: str, model: str) -> Optional[bool]:
+    """What llama-server's `/props` says about `model`'s pictures, read by the
+    llama.cpp capability reader — or None when the endpoint is not a local
+    llama-server, describes another model, or does not report `modalities`."""
+    from src.model_capability_readers import VENDOR_GENERIC_OPENAI, VENDOR_LLAMACPP
+    if not model:
+        return None
+    parsed = urlparse(url)
+    if not _is_local_host(parsed.hostname):
+        return None
+    if _vendor_of(url) not in (VENDOR_LLAMACPP, VENDOR_GENERIC_OPENAI):
+        return None
+    want = model.strip()
+    key = (parsed.hostname, parsed.port, want)
+    now = time.time()
+    cached = _llamacpp_props_cache.get(key)
+    if cached is not None and cached[1] > now:
+        return cached[0]
+    from src import paced_http
+    props_url = f"{parsed.scheme or 'http'}://{_authority(parsed)}/props"
+    try:
+        r = paced_http.get_sync(props_url, timeout=2.0,
+                                headers=_probe_auth_headers(url) or None)
+    except Exception:
+        return None
+    try:
+        payload = r.json() if r.is_success else None
+    except Exception:
+        payload = None
+    answer = None
+    if isinstance(payload, dict) and want.lower() in _llamacpp_names(payload):
+        modalities = payload.get("modalities")
+        if isinstance(modalities, dict) and isinstance(modalities.get("vision"), bool):
+            from src.model_capabilities import vision_verdict
+            from src.model_capability_readers import llamacpp as llamacpp_reader
+            record = llamacpp_reader.record_from_props_payload(payload)
+            answer = vision_verdict(record.capability) if record else None
+    _llamacpp_props_cache[key] = (answer, now + _PROVIDER_FINGERPRINT_TTL)
+    return answer
+
+
 def endpoint_supports_vision(endpoint_url: str, model_name: str) -> Optional[bool]:
     """The endpoint's own answer to "can this model see", or None when it gives
     none: LM Studio's model list, Ollama's `/api/show`, OpenRouter's catalogue,
-    asked in that order (`B970`)."""
-    for ask in (lmstudio_supports_vision, ollama_supports_vision, openrouter_supports_vision):
+    asked in that order (`B970`), then llama-server's `/props` (`B991`)."""
+    for ask in (lmstudio_supports_vision, ollama_supports_vision, openrouter_supports_vision,
+                llamacpp_supports_vision):
         try:
             answer = ask(endpoint_url, model_name or "")
         except Exception:
@@ -333,8 +420,8 @@ def endpoint_supports_vision(endpoint_url: str, model_name: str) -> Optional[boo
 
 def model_supports_vision(model_name: str, endpoint_url: str = "") -> bool:
     """Whether a model accepts images: the endpoint's own answer where it gives
-    one (`endpoint_supports_vision` — LM Studio, Ollama, OpenRouter), the name
-    list otherwise. The one question a person's attachment and a tool's
+    one (`endpoint_supports_vision` — LM Studio, Ollama, OpenRouter, llama.cpp),
+    the name list otherwise. The one question a person's attachment and a tool's
     picture both ask (`src/chat_handler.py`, `src/tool_result_images.py`)."""
     if endpoint_url:
         advertised = endpoint_supports_vision(endpoint_url, model_name or "")
