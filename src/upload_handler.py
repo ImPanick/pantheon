@@ -1027,6 +1027,49 @@ class UploadHandler:
                 return dict(info)
         return None
 
+    def display_names_for(self, upload_ids: Any, *, owner: Optional[str]) -> Dict[str, str]:
+        """``{upload id: the name it is known by now}`` for those of
+        *upload_ids* that are still indexed and that *owner* may read —
+        **read-only**, for showing names, never for reading bytes.
+
+        `B1001`. A chat message saved before `P21-03` carries its attachments'
+        names as they were then — the ASCII fold, `Q3_Board_Pack_final_v2.pdf`
+        — and the history route asks this for the name the upload row gives
+        today (`upload_display_name`: the person's own, recovered from
+        `original_name` for a row from before). An id missing here keeps what
+        was saved: the upload has gone, or is not this owner's.
+
+        Not :meth:`resolve_upload`, which *reserves*: it writes the index (the
+        `last_accessed` touch) and checks the file on disk, which is right
+        before bytes are read and wrong on every history load. The owner rule
+        is :meth:`reserve_upload`'s without the admin widening — a history is
+        only ever shown to the person who owns the chat — and ids whose rows
+        disagree about their owner answer nothing, as they do there.
+        """
+        wanted = {str(i) for i in (upload_ids or ()) if i and self.validate_upload_id(str(i))}
+        if not wanted:
+            return {}
+        rows: Dict[str, list] = {}
+        for info in self._load_upload_index().values():
+            if isinstance(info, dict) and info.get("id") in wanted:
+                rows.setdefault(info["id"], []).append(info)
+        names: Dict[str, str] = {}
+        for upload_id, matching in rows.items():
+            owners = {r.get("owner") for r in matching}
+            if len(owners) != 1:
+                continue
+            row_owner = next(iter(owners))
+            if owner and row_owner != owner:
+                continue
+            if not owner and row_owner is not None:
+                continue
+            # No path fallback: a row that names nothing would answer with its
+            # stored file's name — the id — over the name that was saved.
+            name = upload_display_name(matching[0])
+            if name:
+                names[upload_id] = name
+        return names
+
     def reserve_upload(
         self,
         upload_id: str,

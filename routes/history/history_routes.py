@@ -124,6 +124,61 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
                 f"Referenced upload is no longer available: {missing_id}",
             )
 
+    def _with_current_upload_names(request: Request, history: list) -> list:
+        """`B1001`. Each attachment named as its upload is named today.
+
+        A message saved before `P21-03` carries `attachments[].name` as it was
+        then — the ASCII fold, `Q3_Board_Pack_final_v2.pdf` — so its chip said
+        that after every reload, and *open as document* from the chip titled
+        the document `Q3_Board_Pack_final_v2`. The upload row behind it now
+        answers with the person's name (`upload_display_name`, recovered from
+        the `original_name` every row has carried), so the name is resolved
+        here, on the way out, from the row:
+
+        * the upload still indexed and the reader's own → the row's name;
+        * the upload gone, another person's, or no handler → what was saved.
+
+        Read-side only, on copies: neither the stored row nor the in-memory
+        message (`msg.metadata` is handed out by reference in the branch
+        below) is written, so a chat's history says on disk exactly what it
+        said when it was saved (`Law 1`). The lookup writes nothing either
+        (`UploadHandler.display_names_for`).
+        """
+        if upload_handler is None:
+            return history
+        ids = {
+            str(att["id"])
+            for entry in history
+            if isinstance(entry.get("metadata"), dict)
+            and isinstance(entry["metadata"].get("attachments"), list)
+            for att in entry["metadata"]["attachments"]
+            if isinstance(att, dict) and att.get("id")
+        }
+        if not ids:
+            return history
+        try:
+            names = upload_handler.display_names_for(ids, owner=effective_user(request))
+        except Exception as exc:  # the saved names are the honest fallback
+            logger.warning("Could not resolve attachment names for history: %s", exc)
+            return history
+        out = []
+        for entry in history:
+            meta = entry.get("metadata")
+            atts = meta.get("attachments") if isinstance(meta, dict) else None
+            if not isinstance(atts, list) or not any(
+                isinstance(a, dict) and names.get(str(a.get("id"))) not in (None, a.get("name"))
+                for a in atts
+            ):
+                out.append(entry)
+                continue
+            renamed = [
+                {**a, "name": names[str(a.get("id"))]}
+                if isinstance(a, dict) and str(a.get("id")) in names else a
+                for a in atts
+            ]
+            out.append({**entry, "metadata": {**meta, "attachments": renamed}})
+        return out
+
     def _db_history_entry(m: DbChatMessage) -> Dict[str, Any]:
         entry = {"role": m.role, "content": _history_display_content(m.content)}
         meta = {}
@@ -176,7 +231,7 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
                     if not (entry.get("metadata") or {}).get("hidden")
                 ]
                 return {
-                    "history": history_dict,
+                    "history": _with_current_upload_names(request, history_dict),
                     "model": db_session.model,
                     "endpoint_url": db_session.endpoint_url,
                     "name": db_session.name,
@@ -239,7 +294,7 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
                 db.close()
 
         return {
-            "history": history_dict,
+            "history": _with_current_upload_names(request, history_dict),
             "model": session.model,
             "endpoint_url": session.endpoint_url,
             "name": session.name,
