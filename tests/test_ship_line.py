@@ -39,6 +39,7 @@ def _load():
 
 sl = _load()
 TRACKER_TEXT = TRACKER.read_text(encoding="utf-8")
+SHIP_LINE_TEXT = PROPOSAL.read_text(encoding="utf-8")
 ROWS = sl.parse_rows(TRACKER_TEXT)
 REGISTER = sl.parse_register(PROPOSAL.read_text(encoding="utf-8"))
 
@@ -96,17 +97,32 @@ def test_the_row_parser_agrees_with_check_trackers_own_recount():
 def test_the_trend_is_the_series_the_proposal_states():
     """`§ 1`'s table, computed. If the tracker moves, this fails and the
     proposal's own numbers have to be recomputed rather than carried — which is
-    the failure mode `B44` is named after."""
+    the failure mode `B44` is named after.
+
+    Until 2026-10-01 this asserted that more rows were filed than closed. The
+    ten newest distinct waves then read 123 filed, 128 closed, and § 1 was
+    re-measured rather than patched: it now states the direction on one line,
+    and this reads that line. The arithmetic the direction rests on is checked
+    the same way either way round."""
     waves = sl.distinct_waves(sl.trend(TRACKER_TEXT), 10)
     assert len(waves) == 10
     first, last = waves[0], waves[-1]
     filed, closed = last[0] - first[0], last[1] - first[1]
-    assert filed > closed > 0, (filed, closed)
-    assert filed / closed > 1.0, (
-        "the file-to-close ratio dropped below 1.0 — the open count is now "
-        "falling, and § 1 of SHIP-LINE.md needs rewriting rather than patching")
+    opened = (last[0] - last[1]) - (first[0] - first[1])
+    assert filed > 0 and closed > 0, (filed, closed)
+    assert opened == filed - closed                              # the identity § 1 rests on
     assert (last[1] / last[0]) > (first[1] / first[0])          # done % converges
-    assert (last[0] - last[1]) > (first[0] - first[1])          # open count diverges
+    stated = re.findall(r"\*\*Direction as of [0-9-]+: the open count is (falling|rising)\.\*\*",
+                        SHIP_LINE_TEXT)
+    assert stated, "§ 1 no longer states a direction for this test to hold it to"
+    if stated[-1] == "falling":
+        assert closed > filed, (
+            f"§ 1 says the open count is falling and the tracker says {filed} filed, "
+            f"{closed} closed — re-measure § 1 rather than patching it")
+    else:
+        assert filed > closed, (
+            f"§ 1 says the open count is rising and the tracker says {filed} filed, "
+            f"{closed} closed — re-measure § 1 rather than patching it")
 
 
 def test_repeated_progress_headlines_are_not_counted_as_waves():

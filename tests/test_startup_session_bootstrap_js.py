@@ -64,6 +64,10 @@ _IMPORT_REWRITES = {
     "import { topPortalZ } from './toolWindowZOrder.js';": (
         "import { topPortalZ } from './toolWindowZOrder.mjs';"
     ),
+    # `B941` gave sessions.js the step-limit prompt and the offer withdrawal.
+    "import { STEP_LIMIT_CONTINUE_PROMPT, withdrawContinueOffers } from './agentStops.js';": (
+        "import { STEP_LIMIT_CONTINUE_PROMPT, withdrawContinueOffers } from './agentStops.mjs';"
+    ),
 }
 
 # Modules with no dependencies of their own, copied into the sandbox whole
@@ -75,6 +79,8 @@ _IMPORT_REWRITES = {
 _VERBATIM = {
     "toolWindowZOrder.mjs": _REPO / "static" / "js" / "toolWindowZOrder.js",
     "icons.mjs": _REPO / "static" / "js" / "icons.js",
+    # No imports of its own, on purpose (its header says so), so it runs real.
+    "agentStops.mjs": _REPO / "static" / "js" / "agentStops.js",
 }
 
 _STUBS = {

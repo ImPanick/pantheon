@@ -58,6 +58,26 @@ filed as a row, every row reads as blocking, and so the answer to *are we nearly
 there* is always "234 things away", whatever those 234 are. The rest of this
 document proposes the missing distinction.
 
+### Re-measured 2026-10-01 — the ratio crossed 1.000
+
+The paragraphs above are the 2026-09-17 measurement and they stay as written.
+Re-run on the tree that carries `P20`, `P21` and wave five, `§ Progress` holds
+130 headlines and the ten distinct ones run 886 → 1009 tracked, 606 → 734 done:
+**123 filed, 128 closed over nine intervals — a file-to-close ratio of 0.961**,
+so **the open count is falling**: 280 → 275, with the last two waves at −13 and
+−15. Done went 68.4 % → 72.7 %.
+
+The sentence above that says the ratio *"is not going to drop below 1.000 by
+working harder"* was a forecast, and this is the measurement that answers it.
+It did not drop because the sweeps stopped — `B955`–`B1033` were filed inside the
+same window — but because the last two waves closed 28 and 32 rows while filing
+15 and 17. It is a thermometer, as the paragraph says, and it reads lower today.
+`tests/test_ship_line.py` reads the direction stated on the line below and fails
+when the tracker disagrees with it, so the next reversal rewrites this line
+rather than carrying it (`B44`).
+
+**Direction as of 2026-10-01: the open count is falling.**
+
 ### A second number, which is the one that moves
 
 Of the last 40 `B` rows filed — `B360` through `B455`, four waves of sweeps plus
@@ -456,6 +476,8 @@ weakest one in this document: it means nobody adjudicated them individually.
 | `B453` | tracked | build-ref | *which commit* needs a build stamp, and that needs files this row cannot touch |
 | `B454` | tracked | registry | the image tag moves backwards; probably academic and nobody has looked |
 | `B455` | tracked | tracker | twelve open rows are not available work; the remedy is the ruling `B451` awaits |
+| `B1020` | tracked | test-order | a suite-order leak into four test cases; the model allow-list holds in a fresh process and in the product |
+| `B1021` | tracked | defect | the refusal holds — the datagram is not sent; only the sentence explaining it is missing for one silent tool |
 
 ---
 

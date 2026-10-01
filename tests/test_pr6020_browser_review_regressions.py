@@ -147,7 +147,12 @@ export function __pr6020StreamStateSmoke() {
           }};
           this.style = {{ setProperty() {{}} }};
           this.dataset = {{}};
+          this.attributes = {{}};
         }}
+        // `B952` made the docked-window separator focusable through attributes.
+        setAttribute(name, value) {{ this.attributes[name] = String(value); }}
+        getAttribute(name) {{ return name in this.attributes ? this.attributes[name] : null; }}
+        removeAttribute(name) {{ delete this.attributes[name]; }}
         querySelector() {{ return null; }}
         querySelectorAll() {{ return []; }}
         appendChild(child) {{ this.children.push(child); return child; }}
