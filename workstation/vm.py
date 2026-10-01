@@ -765,7 +765,7 @@ class Fleet(System):
 
     def _call(self, m: Machine, name: str, account: Optional[str] = None,
               body: Optional[Dict] = None, query: Optional[Dict] = None,
-              timeout: float = 60.0) -> Dict:
+              timeout: float = 60.0, allow_304: bool = False) -> Optional[Dict]:
         method, path = P.route_path(name, account)
         if query:
             path += "?" + urlencode({k: v for k, v in query.items() if v is not None})
@@ -783,14 +783,17 @@ class Fleet(System):
                                                   f"({type(e).__name__}).")
         finally:
             conn.close()
+        if allow_304 and resp.status == 304:  # `B974`: the frame the caller holds
+            return None
         return _answer(resp.status, data)
 
     def forward(self, account: str, name: str, body: Optional[Dict] = None, *,
-                query: Optional[Dict] = None, timeout: float = 120.0, start: bool = True) -> Dict:
+                query: Optional[Dict] = None, timeout: float = 120.0, start: bool = True,
+                allow_304: bool = False) -> Optional[Dict]:
         m = self.ready(account) if start else self.machine_for(account)
         if not m.running():
             raise WorkstationError("unavailable", "Your workstation machine is not running.")
-        return self._call(m, name, account, body, query, timeout)
+        return self._call(m, name, account, body, query, timeout, allow_304=allow_304)
 
     def stream_exec(self, account: str, body: Dict, on_chunk: Callable[[str, str], None],
                     caller_gone: Optional[Callable[[], bool]], timeout: float) -> Dict:
@@ -939,6 +942,12 @@ class VmStation(Workstation):
 
     def screenshot(self, account: str, fmt: str = "png") -> Dict:
         return self.system.forward(account, "screenshot", query={"format": fmt})
+
+    def screenshot_unless(self, account: str, fmt: str, if_none_match: str = "") -> Optional[Dict]:
+        """`B974`: the conditional travels to the machine, whose display can
+        tell whether it moved without a grab; its `304` comes back as None."""
+        return self.system.forward(account, "screenshot", allow_304=True,
+                                   query={"format": fmt, "if_none_match": if_none_match or None})
 
     def input(self, account: str, body: Dict) -> Dict:
         return self.system.forward(account, "input", body,

@@ -69,6 +69,15 @@ daemon made is not the account's to open (measured: *access to stdout failed*).
 The frame is written into the account's private runtime directory and read
 back by the same process that wrote it.
 
+**A still screen is not grabbed** (`B974`): each display has a damage watch
+(`workstation/xdamage.py`, the X server's DAMAGE extension over the display's
+own socket, with the cookie the daemon wrote), and a conditional screenshot
+asks it before running `scrot`. Measured 2026-10-01 in the image (Xvfb, JWM
+with its clock, the skeleton's terminal): 30 conditional screenshots of a still
+desktop ran `scrot` 0 times, at 0.17-0.43 ms each, against 60-120 ms for a
+grab at load 5; the mark it keeps adds about 10 ms to each grab (median 96 ms
+against 86 ms, taken in turn).
+
 `xdotool` sends input. Not with `--sync`: `mousemove --sync` to where the
 pointer already is waits forever in the packaged 3.20160805 (measured), and
 XTest events from one connection are processed in order anyway.
@@ -473,6 +482,11 @@ class XDisplay(Screen):
         self.number: Optional[int] = None
         self._procs: List[subprocess.Popen] = []
         self._lock = threading.Lock()
+        # `B974`: the display's cookie, kept to open the damage watch with,
+        # and the watch itself (None: this display cannot tell, so every
+        # conditional screenshot grabs).
+        self._cookie: Optional[bytes] = None
+        self._watch = None
 
     @property
     def name(self) -> Optional[str]:
@@ -502,8 +516,9 @@ class XDisplay(Screen):
                 with fs_identity(uid, uid):
                     fd = os.open(auth, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW,
                                  0o600)
+                    cookie = secrets.token_bytes(16)
                     with os.fdopen(fd, "wb") as f:
-                        f.write(xauthority_entry(secrets.token_bytes(16)))
+                        f.write(xauthority_entry(cookie))
             except OSError as e:
                 raise WorkstationError("unavailable", f"The display's key could not be written to "
                                                       f"{auth}: {e.strerror or e}.")
@@ -535,6 +550,7 @@ class XDisplay(Screen):
                                  daemon=True).start()
             self.number = int(text)
             self._procs = [xvfb]
+            self._cookie = cookie  # `B974`
             _, denv = self.system.run_as(self.account)
             # A session bus of the account's own, so a second Firefox launch
             # finds the first one (without it: "Firefox is already running").
@@ -549,8 +565,40 @@ class XDisplay(Screen):
             else:
                 waited = self._wait_for_wm(prefix, denv)
                 logger.debug("window manager for %s ready after %.2f s", self.account, waited)
+            self._open_watch()  # `B974`
             logger.info("display :%s started for %s", self.number, self.account)
             return f":{self.number}"
+
+    # -- `B974`: whether the screen moved, without a grab ---------------------
+
+    def _open_watch(self) -> None:
+        """The damage watch on this display (`workstation/xdamage.py`), through
+        its own socket with the cookie written above. A watch that cannot be
+        opened is a line in the log, and this display then grabs every time."""
+        from workstation import xdamage
+        if self._watch is not None:
+            self._watch.close()
+        self._watch = None
+        try:
+            self._watch = xdamage.DamageWatch(str(X_SOCKET_DIR / f"X{self.number}"),
+                                              self._cookie or b"")
+        except xdamage.XError as e:
+            logger.warning("display :%s for %s: %s; every screenshot is a grab",
+                           self.number, self.account, e)
+
+    def mark(self):
+        watch = self._watch
+        return watch.mark() if watch is not None and self.running() else None
+
+    def settle(self, mark):
+        watch = self._watch
+        return watch.settle(mark) if watch is not None and mark is not None else None
+
+    def unchanged(self, mark) -> bool:
+        watch = self._watch
+        # A mark from a display that has since stopped belongs to a watch
+        # that is closed, and is never unchanged (`DamageWatch.unchanged`).
+        return bool(watch is not None and self.running() and watch.unchanged(mark))
 
     def _wait_for_wm(self, prefix: List[str], env: Dict[str, str], limit: float = 3.0) -> float:
         """Until the window manager has taken the screen, so the first click
@@ -575,6 +623,9 @@ class XDisplay(Screen):
             self._stop_locked()
 
     def _stop_locked(self) -> None:
+        if self._watch is not None:  # `B974`
+            self._watch.close()
+            self._watch = None
         for proc in reversed(self._procs):
             _stop(proc)
         self._procs = []

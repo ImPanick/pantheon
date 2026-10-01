@@ -66,6 +66,11 @@ logger = logging.getLogger("pantheon.workstation")
 # A dotted string here was a third application version beside Pantheon's two
 # (`tests/test_one_version_string.py`), for a file that changes when the wire does.
 VERSION = P.PROTOCOL_VERSION
+# `B974`. How long a frame's mark is believed without a grab. The DAMAGE
+# answer is exact by the X protocol (`workstation/xdamage.py`); this bounds
+# what a miss nobody has thought of could cost a person watching — one grab
+# every ten seconds of a still screen, against one every ~300 ms before.
+FRAME_TRUST_S = 10.0
 _ENV_KEY_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,127}$")
 # xdotool key syntax: names joined by `+`, several combos separated by spaces.
 _KEYS_RE = re.compile(r"^[A-Za-z0-9_+\-]{1,64}( [A-Za-z0-9_+\-]{1,64}){0,15}$")
@@ -142,6 +147,26 @@ class Screen:
 
     def send(self, action: Dict) -> None:  # pragma: no cover - interface
         raise NotImplementedError
+
+    # -- `B974`, added: is the screen still the last frame? ----------------
+    # A screen that can tell cheaply (the Ubuntu display, through the X
+    # server's DAMAGE extension — `workstation/xdamage.py`) returns a mark
+    # before a grab and keeps it after; one that cannot says None and False
+    # here, and every conditional screenshot grabs, as before `B974`.
+
+    def mark(self) -> object:
+        """Just before a grab: something `unchanged` can be asked about, or
+        None when this screen cannot tell."""
+        return None
+
+    def settle(self, mark: object) -> object:
+        """Just after the grab: the mark, if the frame just taken is the
+        screen it describes; None if anything moved meanwhile."""
+        return None
+
+    def unchanged(self, mark: object) -> bool:
+        """Whether the screen is still the frame taken at `mark`."""
+        return False
 
 
 class NoScreen(Screen):
@@ -340,6 +365,9 @@ class Workstation:
         self.token = token
         self._holders: Dict[str, Dict] = {}
         self._lock = threading.Lock()
+        # `B974`: per account, the last frame taken — its mark, when, its
+        # format and its digest.
+        self._frames: Dict[str, Dict] = {}
 
     # -- auth and accounts ------------------------------------------------------
 
@@ -404,6 +432,7 @@ class Workstation:
         self.system.reset(account)
         with self._lock:
             self._holders.pop(account, None)
+            self._frames.pop(account, None)  # `B974`
         return {"account": account, "reset": True}
 
     def control(self, account: str, body: Dict) -> Dict:
@@ -646,10 +675,36 @@ class Workstation:
             raise WorkstationError("bad_request", f"format is one of {', '.join(P.SCREENSHOT_FORMATS)}.")
         self.system.ensure(account)
         screen = self.system.screen(account)
+        mark = screen.mark()  # `B974`
         data, mime = screen.grab(fmt)
+        mark = screen.settle(mark)
+        digest = hashlib.sha256(data).hexdigest()[:16]
+        with self._lock:
+            self._frames[account] = {"mark": mark, "at": time.monotonic(), "fmt": fmt,
+                                     "digest": digest}
         return {"mime": mime, "data_b64": base64.b64encode(data).decode(),
                 "width": screen.width, "height": screen.height,
-                "digest": hashlib.sha256(data).hexdigest()[:16]}
+                "digest": digest}
+
+    def screenshot_unless(self, account: str, fmt: str, if_none_match: str = "") -> Optional[Dict]:
+        """`B974`. The screenshot, or None — a `304` — when it is the frame
+        `if_none_match` names. Until `B974` that was found by grabbing; now
+        a screen that can tell (`Screen.unchanged`) is asked first, and the
+        grab happens only when it says the screen moved, cannot tell, or the
+        frame is older than `FRAME_TRUST_S`."""
+        if if_none_match and self._still(account, fmt, if_none_match):
+            return None
+        shot = self.screenshot(account, fmt)
+        return None if if_none_match and shot["digest"] == if_none_match else shot
+
+    def _still(self, account: str, fmt: str, digest: str) -> bool:
+        with self._lock:
+            frame = self._frames.get(account)
+            if (frame is None or frame["mark"] is None or frame["fmt"] != fmt
+                    or frame["digest"] != digest or time.monotonic() - frame["at"] > FRAME_TRUST_S):
+                return False
+            mark = frame["mark"]
+        return bool(self.system.screen(account).unchanged(mark))
 
     def input(self, account: str, body: Dict) -> Dict:
         action = _validated_action(body)
@@ -856,8 +911,10 @@ class Handler(BaseHTTPRequestHandler):
                 raise WorkstationError("not_found", "No such workstation route.")
             if name == "screenshot":
                 q = parse_qs(parts.query)
-                shot = self.station.screenshot(account, (q.get("format") or ["png"])[0])
-                if (q.get("if_none_match") or [""])[0] == shot["digest"]:
+                # `B974`: asked before a grab, not answered after one.
+                shot = self.station.screenshot_unless(account, (q.get("format") or ["png"])[0],
+                                                      (q.get("if_none_match") or [""])[0])
+                if shot is None:
                     self._send(304, None)
                     return
                 self._send(200, shot)
@@ -977,4 +1034,5 @@ def server_context(cert: Path, key: Path) -> "ssl.SSLContext":
 
 __all__ = ["Handler", "NoScreen", "Screen", "SingleUserSystem", "System", "VERSION",
            "Workstation", "WorkstationError", "bearer", "load_or_create_token",
-           "make_server", "mint_token", "server_context"]
+           "make_server", "mint_token", "server_context",
+           "FRAME_TRUST_S"]  # `B974`, added
