@@ -65,6 +65,13 @@ context-overflow that caused earlier HTTP 500s on local models).
 > `src/runtime_limits.py`. The `ODYSSEUS_` spellings are read by nothing. The three
 > follow-ups listed as *not lifted* stopped being follow-ups in change 3, below.
 
+> **2026-10-01.** The detection no longer reuses `_is_local_openai_compat_url()`, which is
+> gone (`B929`). It required a `/v1` path, so Ollama's native `/api/chat` — named above as
+> one of the things this change was for — was never lifted. The lift now asks
+> `src/model_context.is_local_endpoint`, the question every other local check in the
+> product asks: loopback, private and Tailscale addresses on any path, and the endpoint
+> kind a person set in Settings.
+
 ### 3. Phase 1 - finish local-unlimited surface
 web_tools.py / outbound_fetch.py / filesystem_tools.py: web_search+web_fetch char truncation,
 web-fetch byte caps (soft/hard + declared-length guard), and read_file char cap are lifted when

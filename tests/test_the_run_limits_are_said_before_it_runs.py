@@ -219,9 +219,10 @@ def endpoints(monkeypatch):
     TestSession = sessionmaker(bind=engine, autoflush=False)
     db = TestSession()
     db.add_all([
-        # OpenAI-compatible bases (`/v1`): the lift's classifier only lifts
-        # those, which is the loop's behaviour and so the route's (`B-NEW`
-        # in the handoff: Ollama's native `/api/chat` is not lifted).
+        # OpenAI-compatible bases (`/v1`). Since `B929` the lift classifies an
+        # endpoint as `model_context.is_local_endpoint` does, so Ollama's native
+        # `/api/chat` is lifted too — driven in
+        # `tests/test_the_local_lift_asks_what_everything_else_asks.py`.
         ModelEndpoint(id="ep-local", name="LM Studio", base_url="http://localhost:1234/v1",
                       owner="alice", is_enabled=True),
         ModelEndpoint(id="ep-cloud", name="Cloud", base_url="https://api.example.com/v1",

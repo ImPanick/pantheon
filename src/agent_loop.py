@@ -25,7 +25,7 @@ from src.llm_core import (
     _normalize_http_status,
     _normalize_usage_counts,
 )
-from src.model_context import estimate_tokens
+from src.model_context import estimate_tokens, is_local_endpoint
 from src.context_compactor import (
     apply_compaction_state,
     apply_compaction_state_for_session,
@@ -1504,26 +1504,24 @@ def _is_ollama_openai_compat_url(endpoint_url: str) -> bool:
     return parsed.port == 11434 and (path == "/v1" or path.startswith("/v1/"))
 
 
-def _is_local_openai_compat_url(endpoint_url: str) -> bool:
-    try:
-        parsed = urlparse(endpoint_url or "")
-    except Exception:
-        return False
-    host = (parsed.hostname or "").lower()
-    path = (parsed.path or "").rstrip("/")
-    if not (path == "/v1" or path.startswith("/v1/")):
-        return False
-    if host in {"localhost", "127.0.0.1", "0.0.0.0", "host.docker.internal"}:
-        return True
-    if host.startswith("192.168.") or host.startswith("10."):
-        return True
-    if host.startswith("172."):
-        try:
-            second = int(host.split(".")[1])
-            return 16 <= second <= 31
-        except Exception:
-            return False
-    return False
+# `B929`. The local-inference lift (`H08`'s step cap, `P3-21`'s token ceiling,
+# the stream timeout and every `runtime_limits.unlimited()` truncation site)
+# used to decide "is this my own hardware" with a classifier of its own,
+# `_is_local_openai_compat_url`, while everything else in the product that asks
+# the same question — the local concurrency gate, llama.cpp cache affinity, the
+# context-window probe, the local MiniMax profile — asks
+# `model_context.is_local_endpoint`. Two answers to one question (`Law 7`), and
+# measured on the tree before this row they disagreed on six of nine shapes:
+# the private one required a `/v1…` path, so Ollama's native endpoint
+# (`http://localhost:11434/api/chat`, what a registered Ollama base builds to)
+# and llama.cpp's bare `/chat/completions` were held to 20 steps while the same
+# model behind LM Studio's `/v1` was lifted; it did not know Tailscale or `::1`;
+# it matched `10.` and `192.168.` as text, so a public host named
+# `10.example.com` was lifted; and it ignored the endpoint kind a person set in
+# Settings. It is gone, and the lift reads `is_local_endpoint` — including the
+# kind: an endpoint registered as `api` or `proxy` is not lifted wherever it
+# runs, and one registered as `local` is, which is how a person tells Pantheon
+# a public hostname is their own box.
 
 
 def _endpoint_lookup_keys(endpoint_url: str) -> List[str]:
@@ -4495,12 +4493,15 @@ def run_is_unlimited(endpoint_url: str) -> bool:
     the same classification of the URL, the same rule
     (`runtime_limits.unlimited_for`). An unimportable `runtime_limits` answers
     `False`, which is what the loop's own fallback does.
+
+    `B929`: the classification is `model_context.is_local_endpoint`, the one
+    every other "is this local" question in the product asks.
     """
     try:
         from src.runtime_limits import unlimited_for
     except Exception:  # pragma: no cover — stdlib-only module
         return False
-    return unlimited_for(_is_local_openai_compat_url(endpoint_url))
+    return unlimited_for(is_local_endpoint(endpoint_url))
 
 
 # `P4-08` / `P4-23`. The two events the live meter is drawn from. The chat
@@ -4550,7 +4551,7 @@ def _round_limit_source(configured: int, enforced: int, endpoint_url: str) -> st
     """
     if enforced == configured:
         return "configured"
-    return "local_lift" if _is_local_openai_compat_url(endpoint_url) else "forced_lift"
+    return "local_lift" if is_local_endpoint(endpoint_url) else "forced_lift"
 
 
 def _agent_budget_frame(
@@ -6375,7 +6376,8 @@ async def stream_agent_loop(
     # --- cybertooth custom: lift guardrail caps for local/self-hosted inference ---
     try:
         from src.runtime_limits import set_local_mode, unlimited as _cyber_unlimited
-        set_local_mode(_is_local_openai_compat_url(endpoint_url))
+        # `B929`: the product's one answer to "is this local".
+        set_local_mode(is_local_endpoint(endpoint_url))
     except Exception:
         def _cyber_unlimited():
             return False
