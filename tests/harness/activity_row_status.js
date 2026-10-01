@@ -104,11 +104,13 @@ const history = slice('async function _showRunHistory(taskId, taskName) {',
 // this file's standing reason: a stub would report the harness's markup, and
 // `_showRunHistory` calls the first unconditionally — a harness that stubbed it
 // would go green on a history that had stopped drawing the log at all.
-const runSteps = slice('function _renderRunSteps(run) {',
+// `P22-04`. The anchor gained `opts`: the card's dry-run plan draws through
+// this same renderer, open and under its own heading, rather than a second one.
+const runSteps = slice('function _renderRunSteps(run, opts = {}) {',
                        'async function _showRunHistory(taskId, taskName) {',
                        '_renderRunSteps');
 const stepLog = slice('function _openStepLogFor(entry) {',
-                      'function _renderRunSteps(run) {', '_openStepLogFor');
+                      'function _renderRunSteps(run, opts = {}) {', '_openStepLogFor');
 // `B78`. The notification client. Lifted whole for the same reason: `msg` and
 // the branch that decides between `showToast` and `showError` are separate
 // statements, and the defect was that one status set could reach both.

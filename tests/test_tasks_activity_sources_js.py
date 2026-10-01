@@ -104,6 +104,12 @@ def sandbox(tmp_path_factory):
     (d / "tasks").mkdir(exist_ok=True)
     shutil.copy(ROOT / "static" / "js" / "tasks" / "workflowDiagram.js",
                 d / "tasks" / "workflowDiagram.js")
+    # `P22-03`: and the task form, which `tasks.js` imports since the form moved
+    # out of it. Its own imports are `../ui.js`, `../modelSort.js` and
+    # `../appConfig.js` — stubbed above — and `./workflowDiagram.js`, so the
+    # real one loads here exactly as the one the browser loads.
+    shutil.copy(ROOT / "static" / "js" / "tasks" / "taskFields.js",
+                d / "tasks" / "taskFields.js")
     return d
 
 

@@ -52,6 +52,12 @@ from test_tool_effect_surfaces_js import _make_sandbox, _run  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 TASKS_JS = ROOT / "static" / "js" / "tasks.js"
+# `P22-03`. The New/Edit form — `_showForm`'s body, `_saveTaskForm`, the event
+# picker, the action-parameter reader and the trigger-count default — moved
+# here, once, so the Tasks window and the Workbench panel mount one form. The
+# cases below that are about the form read it here; the ones about the list
+# still read `tasks.js`.
+TASK_FIELDS_JS = ROOT / "static" / "js" / "tasks" / "taskFields.js"
 
 pytestmark = pytest.mark.skipif(not shutil.which("node"), reason="node binary not on PATH")
 
@@ -169,11 +175,20 @@ export function fire(node, type) {
 # The one line the sandbox copy gains. Every name here is module-private in the
 # shipped file; if one is renamed, node fails to parse the copy and says which,
 # which is the right failure for a test that claims to drive these.
+#
+# `P22-03`. Four of them moved with the form to `tasks/taskFields.js`, so that
+# copy gains the same kind of line, `_FIELDS_EXPORT`, and the preamble merges
+# the two into the one `__t` every case below already reads. Same module
+# instance both ways — `tasks.js` imports the palette from the copy the case
+# imports — so `_fetchActions` filling the cache is what `_categoryFor` reads.
 _TEST_EXPORT = (
     "\nexport const __t = { _taskIcon, _taskAiMark, _categoryFor, _categoryOrder,"
-    " _defaultTriggerCount, _actionNode, _actionPromptValue, _fetchActions,"
-    " _populateEventPicker, _openStepLogFor, _renderRunSteps,"
-    " _renderActivityEntry, _runToActivityEntry, _eventLabel, _scheduleLabel };\n"
+    " _actionNode, _fetchActions, _openStepLogFor, _renderRunSteps,"
+    " _renderActivityEntry, _runToActivityEntry, _scheduleLabel };\n"
+)
+_FIELDS_EXPORT = (
+    "\nexport const __fields = { _defaultTriggerCount, _actionPromptValue,"
+    " _populateEventPicker, _eventLabel };\n"
 )
 
 
@@ -182,13 +197,16 @@ def tasks_sandbox(tmp_path_factory):
     sandbox = _make_sandbox(tmp_path_factory.mktemp("tasksnodes"), TASKS_JS, _SHIM, _STUBS)
     copy = sandbox / TASKS_JS.name
     copy.write_text(copy.read_text(encoding="utf-8") + _TEST_EXPORT, encoding="utf-8")
+    fields = sandbox / "tasks" / TASK_FIELDS_JS.name
+    fields.write_text(fields.read_text(encoding="utf-8") + _FIELDS_EXPORT, encoding="utf-8")
     return sandbox
 
 
 _PREAMBLE = (
     "import { document, calls, mockFetch, res, tick, seedForm, byId, fire }"
     " from './shim.js';\n"
-    "const { __t } = await import('./tasks.js');\n"
+    "const __t = { ...(await import('./tasks.js')).__t,"
+    " ...(await import('./tasks/taskFields.js')).__fields };\n"
 )
 
 
@@ -371,7 +389,7 @@ def test_the_action_form_draws_its_field_from_the_nodes_param(tasks_sandbox):
     UI produced a task with an empty `prompt`, and the only surface that said so
     was the run that failed later.
     """
-    body = js_function(TASKS_JS.read_text(encoding="utf-8"), "const syncActionExtra")
+    body = js_function(TASK_FIELDS_JS.read_text(encoding="utf-8"), "const syncActionExtra")
     assert "params?.[0]" in body or "params[0]" in body, (
         "the field must come from the node's own schema, not from a list of "
         "action names this file would have to keep in step with the registry"
@@ -408,8 +426,9 @@ def test_the_save_reads_the_box_it_drew(tasks_sandbox):
 def test_the_save_refuses_an_empty_required_param(tasks_sandbox):
     """`Law 20` option 2 for the refusal itself, which lives in a 145-line
     closure nothing can call. What it decides ON is driven above."""
-    body = js_function(TASKS_JS.read_text(encoding="utf-8"), "const _saveTaskForm")
-    assert "_actionPromptValue(action)" in body
+    body = js_function(TASK_FIELDS_JS.read_text(encoding="utf-8"), "const _saveTaskForm")
+    # `P22-03`: with the form's own host, so two forms cannot read each other's box.
+    assert "_actionPromptValue(action, host)" in body
     assert "chosen.param.required" in body
     assert "payload.prompt = chosen.value" in body
 
@@ -422,7 +441,7 @@ def test_neither_five_is_left_in_the_trigger_count_field(tasks_sandbox):
     that has always read a missing count as one. Three answers to one question.
     Asserted as the absence of the literal from the two scopes that held it —
     a whole-file check would trip on `max="1000"`'s neighbours and on prose."""
-    source = TASKS_JS.read_text(encoding="utf-8")
+    source = TASK_FIELDS_JS.read_text(encoding="utf-8")
     trigger = js_function(source, "function renderTriggerOpts")
     save = js_function(source, "const _saveTaskForm")
     assert "_defaultTriggerCount()" in trigger
@@ -496,8 +515,9 @@ def test_the_picker_renders_the_registrys_description(tasks_sandbox):
 def test_the_picker_is_what_the_trigger_form_calls(tasks_sandbox):
     """`Law 20` option 2 on the one line that cannot be driven: the builder
     lives inside `_openTaskForm`, which assembles its markup as a string."""
-    body = js_function(TASKS_JS.read_text(encoding="utf-8"), "function renderTriggerOpts")
-    assert "_populateEventPicker(existing?.trigger_event)" in body
+    body = js_function(TASK_FIELDS_JS.read_text(encoding="utf-8"), "function renderTriggerOpts")
+    # `P22-03`: with the form's own host, for the reason `_saveTaskForm` passes it.
+    assert "_populateEventPicker(existing?.trigger_event, host)" in body
     assert 'id="task-form-event-desc"' in body
 
 

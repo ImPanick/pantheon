@@ -8,17 +8,25 @@ import markdownModule from './markdown.js';
 import * as spinnerModule from './spinner.js';
 import { makeWindowDraggable } from './windowDrag.js';
 import { topPortalZ } from './toolWindowZOrder.js';
-import { sortModelIds } from './modelSort.js';
 import { ordinalSuffix } from './util/ordinal.js';
 // `P8-34`. The graph-to-Mermaid half, kept out of this file because it is pure
 // and this file is not: the test drives it with no DOM and no stubs, and then
 // hands what it produced to the real vendored Mermaid to parse.
 import {
   componentOf, longestChain, workflowMermaid, workflowSentence, SHAPE_WORDS,
-  EDGE_WORDS,
 } from './tasks/workflowDiagram.js';
+// `P22-03`. The New/Edit form lives in `tasks/taskFields.js` now, mounted here
+// and by the Workbench's side panel, so there is one form (`Law 7`). The other
+// names are what this file's list shares with that form: the one action
+// palette (`/meta/actions`) and its cache, the chain words, the time helpers.
+// `sortModelIds`, `getSettings` and `invalidateSettings` went with the form,
+// which was their only reader here.
+import {
+  mountTaskFields, resetTaskFieldCaches, _fetchActions, _actionNode, _categoryOrder,
+  _builtinActions, _edgeWhenLabel, _localTimeToUtc, _zonePlace, _zoneDrawable,
+  DAYS_OF_WEEK,
+} from './tasks/taskFields.js';
 import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
-import { getSettings, invalidateSettings } from './appConfig.js';
 import { PLAY_GLYPH, playIcon, stopIcon } from './icons.js';
 import {
   runStatusLabel, runStaleLabel, runStatusTone, runStatusDotClass, isRunFinished,
@@ -51,34 +59,9 @@ let _taskFailurePending = false;
 let _taskCompletionPending = false;
 let _taskBulkDeleting = false;
 
-const DAYS_OF_WEEK = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-
-// `B873`. The two branches a task can have, as the form's `<select>` id, the
-// payload field, and the condition the wire calls it.
-//
-// `src/task_scheduler.py:112` is the server's own table —
-// `{success: "then_task_id", error: "else_task_id"}` — and this is the browser
-// half of it. The served graph carries the condition words (`graph.conditions`)
-// but not the column they live in, so the pairing has to be written here; one
-// table, read by the markup, the populate loop and the save, so a third branch
-// added server-side is one line here rather than three edits that can disagree.
-const CHAIN_FIELDS = [
-  ['task-form-chain', 'then_task_id', 'success'],
-  ['task-form-chain-else', 'else_task_id', 'error'],
-];
-
-/**
- * What a branch is called in front of a person: the diagram's own words.
- *
- * `workflowDiagram.js:EDGE_WORDS` maps the wire's `success`/`error` onto
- * `if it works` / `if it fails`, and `P8-34` already draws those on the
- * arrows. The form says the same two things, capitalised, so the control that
- * makes an edge and the arrow it draws are not two vocabularies (`Law 14`).
- */
-function _edgeWhenLabel(when) {
-  const word = EDGE_WORDS[when] || String(when || '');
-  return word.charAt(0).toUpperCase() + word.slice(1);
-}
+// `P22-03`. `DAYS_OF_WEEK`, `CHAIN_FIELDS` and `_edgeWhenLabel` were declared
+// here; they are in `tasks/taskFields.js` with the form that is their main
+// reader, and imported above where this file still needs them.
 
 function _setTaskFailurePending(active) {
   _taskFailurePending = !!active;
@@ -126,27 +109,8 @@ async function _runFirstOpenOnboarding() {
   }
 }
 
-async function _createTask(data) {
-  const res = await fetch(`${API_BASE}/api/tasks`, {
-    method: 'POST',
-    credentials: 'same-origin',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  });
-  if (!res.ok) throw new Error('Failed to create task');
-  return await res.json();
-}
-
-async function _updateTask(id, data) {
-  const res = await fetch(`${API_BASE}/api/tasks/${id}`, {
-    method: 'PUT',
-    credentials: 'same-origin',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  });
-  if (!res.ok) throw new Error('Failed to update task');
-  return await res.json();
-}
+// `P22-03`. `_createTask` and `_updateTask` moved to `tasks/taskFields.js`:
+// the form is the only thing that creates or edits a task from here.
 
 async function _deleteTask(id) {
   const res = await fetch(`${API_BASE}/api/tasks/${id}`, {
@@ -203,8 +167,19 @@ async function _resumeTask(id) {
   if (!res.ok) throw new Error('Failed to resume task');
 }
 
-async function _runNow(id, force = false) {
-  const res = await fetch(`${API_BASE}/api/tasks/${id}/run${force ? '?force=true' : ''}`, {
+/**
+ * Start a run — or, with `dry`, ask for the plan of one.
+ *
+ * `P22-04` / `B802(a)`. `POST /api/tasks/{id}/run?dry=true` has existed since
+ * `P8-33` and nothing in the browser sent it: this built `/run` with `?force`
+ * and nothing else. A dry run is the same request with the same owner check,
+ * admin gate and 409, which is why `P8-33` made it a parameter on this route
+ * rather than a route of its own, and why it is a parameter here rather than a
+ * second function.
+ */
+async function _runNow(id, force = false, dry = false) {
+  const query = [force ? 'force=true' : '', dry ? 'dry=true' : ''].filter(Boolean).join('&');
+  const res = await fetch(`${API_BASE}/api/tasks/${id}/run${query ? `?${query}` : ''}`, {
     method: 'POST', credentials: 'same-origin',
   });
   if (!res.ok) {
@@ -245,279 +220,13 @@ async function _fetchRuns(taskId, limit = 10) {
   return data.runs || [];
 }
 
-let _outputTargets = null;
-async function _fetchOutputTargets() {
-  if (_outputTargets) return _outputTargets;
-  try {
-    const res = await fetch(`${API_BASE}/api/tasks/meta/output-targets`, { credentials: 'same-origin' });
-    const data = await res.json();
-    _outputTargets = data.targets || [];
-  } catch (e) {
-    _outputTargets = [{ value: 'session', label: 'Session' }];
-  }
-  return _outputTargets;
-}
-
-// `P8-22`. `/meta/actions` returns whole palette nodes now — `category`, `icon`,
-// `model_backed`, `admin_only` and `params` beside the `name` and `description`
-// it always carried — plus `categories` (the group order) and
-// `default_trigger_count`. This file used to keep its own copies of the first
-// three and its own eleven-name order, so adding an action needed an edit on
-// both sides of the wire and `model_backed` was a second list of a fact the
-// scheduler already held. There is one list now and it is the server's.
-let _builtinActions = null;
-let _actionByName = new Map();
-let _actionCategories = null;
-let _servedTriggerCount = null;
-
-async function _fetchActions() {
-  if (_builtinActions) return _builtinActions;
-  try {
-    const res = await fetch(`${API_BASE}/api/tasks/meta/actions`, { credentials: 'same-origin' });
-    const data = await res.json();
-    _builtinActions = data.actions || [];
-    if (Array.isArray(data.categories) && data.categories.length) {
-      _actionCategories = data.categories.slice();
-    }
-    if (Number.isFinite(data.default_trigger_count)) {
-      _servedTriggerCount = data.default_trigger_count;
-    }
-  } catch (e) {
-    _builtinActions = [];
-  }
-  _actionByName = new Map((_builtinActions || []).map(a => [a.name, a]));
-  return _builtinActions;
-}
-
-/** The palette node for an action name, or `null` before the fetch lands. */
-function _actionNode(name) {
-  return (name && _actionByName.get(name)) || null;
-}
-
-/** Group order, as served. `[]` before the fetch: `indexOf` then answers -1 for
- *  every name, which sorts them together instead of inventing an order this
- *  file would have to keep in step with the server's. The list re-renders when
- *  the palette arrives. */
-function _categoryOrder() {
-  return _actionCategories || [];
-}
-
-/**
- * `P8-22`. What an action's single parameter is, and what is currently typed
- * into it — `null` for an action that takes none.
- *
- * A function rather than four lines inside the save handler, because the save
- * handler is a 145-line closure nothing can call: a mutation that stops reading
- * the box survives every assertion made about that handler's source text and
- * dies here (`Law 20` — call the thing).
- */
-function _actionPromptValue(action) {
-  const param = _actionNode(action)?.params?.[0];
-  if (!param) return null;
-  const el = document.getElementById('task-form-action-param');
-  return { param, value: String((el && el.value) || '').trim() };
-}
-
-/**
- * `P8-31`. The count an event-triggered task fires on when nobody chooses.
- *
- * The form used to write `5` in two places in front of an API that had no
- * opinion and a bus that has always read a missing count as one. The served
- * number is the answer; the `1` here is only what the bus does with a NULL
- * (`task.trigger_count or 1`), used for the window before `/meta/actions`
- * answers, and the field is refreshed when it does.
- */
-function _defaultTriggerCount() {
-  return Number.isFinite(_servedTriggerCount) && _servedTriggerCount > 0
-    ? _servedTriggerCount
-    : 1;
-}
-
-async function _fetchUrgentEmailSettings() {
-  try {
-    return await getSettings();
-  } catch (e) {
-    return { urgent_email_prompt: '' };
-  }
-}
-
-async function _saveUrgentEmailSettings(prompt) {
-  try {
-    await fetch('/api/auth/settings', {
-      method: 'POST',
-      credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        urgent_email_prompt: prompt || '',
-      }),
-    });
-  } finally {
-    // The shared snapshot still carries the old prompt — drop it so the next
-    // read (here or in any other module) sees what was just written. In a
-    // `finally` because a request that throws on the way back may still have
-    // been applied.
-    invalidateSettings();
-  }
-}
-
-const _EMAIL_ACCOUNT_ACTIONS = new Set([
-  'summarize_emails',
-  'draft_email_replies',
-  'email_auto_translate',
-  'extract_email_events',
-  'check_email_urgency',
-]);
-
-let _emailAccounts = null;
-async function _fetchEmailAccountsForTasks() {
-  if (_emailAccounts) return _emailAccounts;
-  try {
-    const res = await fetch(`${API_BASE}/api/email/accounts`, { credentials: 'same-origin' });
-    const data = await res.json();
-    _emailAccounts = Array.isArray(data.accounts) ? data.accounts : [];
-  } catch (e) {
-    _emailAccounts = [];
-  }
-  return _emailAccounts;
-}
-
-function _taskPromptConfig(prompt) {
-  const raw = (prompt || '').trim();
-  if (!raw) return {};
-  try {
-    const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
-  } catch (_) {
-    const cfg = {};
-    for (const line of raw.split(/\r?\n/)) {
-      const idx = line.indexOf('=');
-      if (idx <= 0) continue;
-      const key = line.slice(0, idx).trim();
-      const val = line.slice(idx + 1).trim();
-      if (key) cfg[key] = val;
-    }
-    return cfg;
-  }
-}
-
-function _parseTaskEmailOutputTarget(output) {
-  const raw = String(output || '').trim();
-  if (!raw) return { enabled: false, to: '', accountId: '' };
-  if (raw === 'email') return { enabled: true, to: '', accountId: '' };
-  if (/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(raw)) return { enabled: true, to: raw, accountId: '' };
-  if (!raw.startsWith('email:')) return { enabled: false, to: '', accountId: '' };
-  let payload = raw.slice('email:'.length).trim();
-  let accountId = '';
-  const marker = '|account=';
-  const markerIdx = payload.indexOf(marker);
-  if (markerIdx >= 0) {
-    accountId = payload.slice(markerIdx + marker.length).trim();
-    payload = payload.slice(0, markerIdx).trim();
-  }
-  return {
-    enabled: true,
-    to: payload && payload !== 'self' ? payload : '',
-    accountId,
-  };
-}
-
-function _buildTaskEmailOutputTarget(to, accountId) {
-  const cleanTo = String(to || '').trim();
-  const cleanAccount = String(accountId || '').trim();
-  const base = `email:${cleanTo || 'self'}`;
-  return cleanAccount ? `${base}|account=${cleanAccount}` : (cleanTo ? base : 'email');
-}
-
-async function _renderEmailActionOptions(action, existing, extra) {
-  if (!_EMAIL_ACCOUNT_ACTIONS.has(action)) return;
-  const accounts = (await _fetchEmailAccountsForTasks()).filter(a => a && a.enabled !== false);
-  const cfg = _taskPromptConfig(existing?.prompt || '');
-  const current = String(cfg.account_id || cfg.email_account_id || '');
-  const options = [
-    `<option value="" ${current ? '' : 'selected'}>All accounts</option>`,
-    ...accounts.map(a => {
-      const id = String(a.id || '');
-      const label = a.name || a.from_address || a.imap_user || id.slice(0, 8);
-      const suffix = a.is_default ? ' (default)' : '';
-      return `<option value="${_escHtml(id)}" ${id === current ? 'selected' : ''}>${_escHtml(label + suffix)}</option>`;
-    }),
-  ].join('');
-  extra.insertAdjacentHTML('afterbegin', `
-    <label class="task-form-label">Email account</label>
-    <select id="task-form-email-account" class="task-form-input">${options}</select>
-  `);
-}
-
-let _triggerEvents = null;
-async function _fetchEvents() {
-  if (_triggerEvents) return _triggerEvents;
-  try {
-    const res = await fetch(`${API_BASE}/api/tasks/meta/events`, { credentials: 'same-origin' });
-    const data = await res.json();
-    _triggerEvents = data.events || [];
-  } catch (e) {
-    _triggerEvents = [];
-  }
-  return _triggerEvents;
-}
+// `P22-03`. The output targets, the action palette, the email-account and
+// urgency-rule helpers and the event catalogue (`_fetchOutputTargets`,
+// `_fetchActions`, `_fetchEvents`, `_populateEventPicker`, …) moved to
+// `tasks/taskFields.js` with the form that draws them. The palette's fetch and
+// cache are imported back above, because the list reads the same palette.
 
 // ---- Helpers ----
-
-/**
- * Fill the trigger picker from `/meta/events` and say what the chosen event is.
- *
- * `P8-30`. The registry carries a `description` per event and the picker put it
- * in the `<option>` label — where a `<select>` shows one option at a time and
- * truncates it, so somebody deciding between "document created" and "document
- * updated" read neither sentence. It goes under the select now, for whatever is
- * currently chosen, and it re-reads on change.
- *
- * Module-level rather than inline in `renderTriggerOpts` for the same reason
- * `_actionPromptValue` is: that builder is a closure inside a closure and
- * nothing can call it, so every claim about it would be a claim about its
- * source text.
- */
-async function _populateEventPicker(selectedName) {
-  const events = await _fetchEvents();
-  const sel = document.getElementById('task-form-event');
-  const desc = document.getElementById('task-form-event-desc');
-  if (!sel) return events;
-  sel.innerHTML = '';
-  for (const ev of events) {
-    const opt = document.createElement('option');
-    // The VALUE is the stored name and never a label: it goes into
-    // `ScheduledTask.trigger_event`, and `FORBIDDEN.md` Part 1 turns on those
-    // bytes — a rename disables every task using one.
-    opt.value = ev.name;
-    // The option leads with English and keeps the sentence the registry wrote;
-    // the stored name stays reachable through `title` and through the line
-    // below, because it is what a person matches against a log line (`Law 1`).
-    opt.textContent = `${_eventLabel(ev.name)} — ${ev.description || ''}`;
-    opt.title = ev.name;
-    if (selectedName === ev.name) { opt.selected = true; sel.value = ev.name; }
-    sel.appendChild(opt);
-  }
-  const syncEventDesc = () => {
-    if (!desc) return;
-    const chosen = events.find(ev => ev.name === sel.value);
-    desc.textContent = chosen
-      ? `${chosen.description || ''} Stored as ${chosen.name}.`
-      : '';
-  };
-  sel.addEventListener('change', syncEventDesc);
-  syncEventDesc();
-  return events;
-}
-
-
-/** A stored event name as a sentence opener: `document_updated` → `Document
- *  updated`. `P8-30`. The stored value never changes — `FORBIDDEN.md` Part 1
- *  and `ScheduledTask.trigger_event` both depend on it — so this is a reading
- *  of it and nothing else. */
-function _eventLabel(name) {
-  const words = String(name || '').replace(/_/g, ' ').trim();
-  return words ? words.charAt(0).toUpperCase() + words.slice(1) : '';
-}
 
 function _scheduleLabel(task) {
   const tt = task.trigger_type || 'schedule';
@@ -530,15 +239,25 @@ function _scheduleLabel(task) {
   }
   if (tt === 'webhook') return 'Webhook';
   const t = task.scheduled_time || '00:00';
-  if (task.schedule === 'cron') return `Cron: ${task.cron_expression || '?'}`;
+  // `P22-03`. A task with its own zone stores its time on that zone's clock
+  // (`compute_next_run`), so the card says it that way — "Daily at 09:00
+  // Sydney time" — instead of converting a UTC time that was never stored. A
+  // task with no zone is drawn exactly as before.
+  const zone = task.tz_name || '';
+  const zoneWords = zone ? ` ${_zonePlace(zone)} time` : '';
+  if (task.schedule === 'cron') {
+    return `Cron: ${task.cron_expression || '?'}${zone ? ` (${_zonePlace(zone)} time)` : ''}`;
+  }
   if (task.schedule === 'once') {
     if (task.scheduled_date) {
       const d = new Date(task.scheduled_date);
-      return `Once on ${d.toLocaleDateString()} at ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+      // A zone this browser cannot draw is named rather than thrown on.
+      const inZone = zone && _zoneDrawable(zone) ? { timeZone: zone } : {};
+      return `Once on ${d.toLocaleDateString([], inZone)} at ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', ...inZone })}${inZone.timeZone ? zoneWords : ''}`;
     }
     return 'Once';
   }
-  const localTime = _utcTimeToLocal(t);
+  const localTime = zone ? `${_wallClockLabel(t)}${zoneWords}` : _utcTimeToLocal(t);
   if (task.schedule === 'daily') return `Daily at ${localTime}`;
   if (task.schedule === 'weekly') {
     const day = DAYS_OF_WEEK[task.scheduled_day ?? 0];
@@ -559,14 +278,35 @@ function _utcTimeToLocal(hhmm) {
   return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
-function _localTimeToUtc(hhmm) {
-  const [h, m] = hhmm.split(':').map(Number);
+/** `P22-03`. A stored `HH:MM` drawn as it is — the same format
+ *  `_utcTimeToLocal` gives, without the conversion, for a task whose time is
+ *  already on its own zone's clock. */
+function _wallClockLabel(hhmm) {
+  const [h, m] = String(hhmm || '00:00').split(':').map(Number);
   const d = new Date();
-  d.setHours(h, m, 0, 0);
-  const uh = String(d.getUTCHours()).padStart(2, '0');
-  const um = String(d.getUTCMinutes()).padStart(2, '0');
-  return `${uh}:${um}`;
+  d.setHours(h || 0, m || 0, 0, 0);
+  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
+
+/** `P22-03`. What a scheduled task does when a run fails, for the card — or
+ *  `''`. Only a scheduled task retries (`failure_next_run`: an event or webhook
+ *  task waits for its next trigger), so only a scheduled task says so. */
+function _retryWords(task) {
+  if ((task?.trigger_type || 'schedule') !== 'schedule') return '';
+  const n = Number(task?.max_retries) || 0;
+  if (n <= 0) return '';
+  return `${n} ${n === 1 ? 'retry' : 'retries'} if it fails`;
+}
+
+/** `P22-03`. A run's time limit in the unit a person would say it in. */
+function _timeLimitWords(seconds) {
+  const s = Number(seconds) || 0;
+  if (s <= 0) return '';
+  if (s % 3600 === 0) return `${s / 3600} h`;
+  if (s % 60 === 0) return `${s / 60} min`;
+  return `${s} s`;
+}
+
 
 function _relativeTime(iso) {
   if (!iso) return '';
@@ -697,118 +437,6 @@ function _taskAiMark(task) {
   return '<svg class="task-ai-mark" width="10" height="10" viewBox="0 0 24 24" fill="currentColor" aria-label="Uses model" title="Uses model"><path d="M12 0L14.59 8.41L23 12L14.59 15.59L12 24L9.41 15.59L1 12L9.41 8.41Z"/></svg>';
 }
 
-// ---- Custom pickers ----
-
-function _buildTimePicker(containerId, hour, minute) {
-  const wrap = document.getElementById(containerId);
-  if (!wrap) return;
-  wrap.innerHTML = '';
-
-  const hourSel = document.createElement('select');
-  hourSel.className = 'task-form-input task-time-select';
-  hourSel.id = containerId + '-hour';
-  for (let h = 0; h < 24; h++) {
-    const opt = document.createElement('option');
-    opt.value = h;
-    opt.textContent = String(h).padStart(2, '0');
-    if (h === hour) opt.selected = true;
-    hourSel.appendChild(opt);
-  }
-
-  const sep = document.createElement('span');
-  sep.className = 'task-time-sep';
-  sep.textContent = ':';
-
-  const minSel = document.createElement('select');
-  minSel.className = 'task-form-input task-time-select';
-  minSel.id = containerId + '-min';
-  for (let m = 0; m < 60; m += 5) {
-    const opt = document.createElement('option');
-    opt.value = m;
-    opt.textContent = String(m).padStart(2, '0');
-    if (m === minute || (m <= minute && m + 5 > minute)) opt.selected = true;
-    minSel.appendChild(opt);
-  }
-
-  wrap.appendChild(hourSel);
-  wrap.appendChild(sep);
-  wrap.appendChild(minSel);
-}
-
-function _getTimePickerValue(containerId) {
-  const h = parseInt(document.getElementById(containerId + '-hour')?.value ?? '9', 10);
-  const m = parseInt(document.getElementById(containerId + '-min')?.value ?? '0', 10);
-  return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
-}
-
-function _buildDatePicker(containerId, initialDate) {
-  const wrap = document.getElementById(containerId);
-  if (!wrap) return;
-  wrap.innerHTML = '';
-
-  const now = initialDate || new Date();
-  const year = now.getFullYear();
-  const month = now.getMonth();
-  const day = now.getDate();
-
-  // Year select
-  const yearSel = document.createElement('select');
-  yearSel.className = 'task-form-input task-date-select';
-  yearSel.id = containerId + '-year';
-  for (let y = year; y <= year + 2; y++) {
-    const opt = document.createElement('option');
-    opt.value = y;
-    opt.textContent = y;
-    if (y === year) opt.selected = true;
-    yearSel.appendChild(opt);
-  }
-
-  // Month select
-  const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  const monthSel = document.createElement('select');
-  monthSel.className = 'task-form-input task-date-select';
-  monthSel.id = containerId + '-month';
-  MONTHS.forEach((name, i) => {
-    const opt = document.createElement('option');
-    opt.value = i;
-    opt.textContent = name;
-    if (i === month) opt.selected = true;
-    monthSel.appendChild(opt);
-  });
-
-  // Day select
-  const daySel = document.createElement('select');
-  daySel.className = 'task-form-input task-date-select';
-  daySel.id = containerId + '-day';
-  function populateDays() {
-    const y = parseInt(yearSel.value, 10);
-    const m = parseInt(monthSel.value, 10);
-    const daysInMonth = new Date(y, m + 1, 0).getDate();
-    const cur = parseInt(daySel.value, 10) || day;
-    daySel.innerHTML = '';
-    for (let d = 1; d <= daysInMonth; d++) {
-      const opt = document.createElement('option');
-      opt.value = d;
-      opt.textContent = String(d).padStart(2, '0');
-      if (d === Math.min(cur, daysInMonth)) opt.selected = true;
-      daySel.appendChild(opt);
-    }
-  }
-  populateDays();
-  yearSel.addEventListener('change', populateDays);
-  monthSel.addEventListener('change', populateDays);
-
-  wrap.appendChild(yearSel);
-  wrap.appendChild(monthSel);
-  wrap.appendChild(daySel);
-}
-
-function _getDatePickerValue(containerId) {
-  const y = parseInt(document.getElementById(containerId + '-year')?.value, 10);
-  const m = parseInt(document.getElementById(containerId + '-month')?.value, 10);
-  const d = parseInt(document.getElementById(containerId + '-day')?.value, 10);
-  return new Date(y, m, d);
-}
 
 // ---- Render ----
 
@@ -1078,6 +706,9 @@ function _renderList() {
       // Run now stays in the kebab too for users coming from muscle-memory /
       // mobile long-press. The expanded card also shows it next to Edit.
       if (task.status !== 'completed') items.push({ label: 'Run now', icon: '<polyline points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>', action: () => _doRunNow(task.id) });
+      // `P22-04`. Beside Run now, because it is the question to ask before
+      // pressing it. The plan is drawn on the card, so the card opens.
+      if (task.status !== 'completed') items.push({ label: 'Show me what this would do', icon: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>', action: () => { setDetailOpen(true); _doDryRun(task.id, dryPlan, dryBtn); } });
       items.push({ label: 'Edit', icon: '<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>', action: () => _showForm(task) });
       if (task.status === 'active') items.push({ label: 'Pause', icon: '<rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>', action: () => _doPause(task.id) });
       else if (task.status === 'paused') items.push({ label: 'Resume', icon: PLAY_GLYPH, action: () => _doResume(task.id) });
@@ -1105,6 +736,10 @@ function _renderList() {
 
     // Slim meta line (always visible): schedule · next · run count.
     const metaParts = [_scheduleLabel(task)];
+    // `P22-03`. Said beside the schedule it changes, so "09:00 Sydney, retry 3
+    // times" set in the form reads back the same on the card.
+    const retries = _retryWords(task);
+    if (retries) metaParts.push(retries);
     if (task.next_run && task.status === 'active') metaParts.push('Next: ' + _relativeTime(task.next_run));
     if (task.run_count > 0) metaParts.push(task.run_count + ' run' + (task.run_count !== 1 ? 's' : ''));
     const meta = document.createElement('div');
@@ -1149,7 +784,29 @@ function _renderList() {
     const detail = document.createElement('div');
     detail.style.cssText = 'display:none;margin-top:7px;padding:8px 0 2px;border-top:1px solid var(--border);position:relative;';
     const detailActions = document.createElement('div');
+    detailActions.className = 'task-detail-actions';
     detailActions.style.cssText = 'display:flex;justify-content:flex-end;gap:6px;margin-top:7px;';
+    // `P22-04` / `B802(a)`. The dry run `P8-33` built, on the card. Labelled
+    // with the question rather than "Test" or "Dry run", because the word a
+    // person reads decides whether they trust it to send nothing — and the
+    // answer is drawn here, under the buttons, where they pressed it.
+    const dryPlan = document.createElement('div');
+    dryPlan.className = 'task-dry-plan';
+    dryPlan.hidden = true;
+    dryPlan.setAttribute('role', 'status');
+    let dryBtn = null;
+    if (task.status !== 'completed') {
+      dryBtn = document.createElement('button');
+      dryBtn.type = 'button';
+      dryBtn.className = 'memory-toolbar-btn task-detail-dry-btn';
+      dryBtn.title = 'Plans a run and shows it here. Nothing runs and nothing changes.';
+      dryBtn.textContent = 'Show me what this would do';
+      dryBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        _doDryRun(task.id, dryPlan, dryBtn);
+      });
+      detailActions.appendChild(dryBtn);
+    }
     if (task.status !== 'completed') {
       const runBtn = document.createElement('button');
       runBtn.className = 'memory-toolbar-btn task-detail-run-btn';
@@ -1174,6 +831,9 @@ function _renderList() {
     if (task.last_run) extra.push('Last: ' + _relativeTime(task.last_run));
     if (task.output_target && task.output_target !== 'session') extra.push('→ ' + task.output_target.replace(/^mcp__/, '').replace(/__/g, ' › '));
     if (task.model) extra.push('model: ' + (task.model.split('/').pop() || task.model));
+    // `P22-03`. The ceiling a run is held to, when one is set.
+    const limitWords = _timeLimitWords(task.timeout_seconds);
+    if (limitWords) extra.push('time limit: ' + limitWords);
     if (extra.length) {
       const ex = document.createElement('div');
       ex.style.cssText = 'font-size:10px;opacity:0.4;margin-bottom:6px;';
@@ -1228,6 +888,7 @@ function _renderList() {
       detail.appendChild(desc);
     }
     detail.appendChild(detailActions);
+    detail.appendChild(dryPlan);
     content.appendChild(detail);
 
     // Select-mode checkbox (mirrors the library's .memory-select-cb).
@@ -1248,6 +909,16 @@ function _renderList() {
       titleRow.insertBefore(cb, titleRow.firstChild);
     }
 
+    // Open or close the card's detail. One function because two things do it:
+    // a click on the row, and the kebab's *Show me what this would do*, whose
+    // answer is drawn inside the detail (`P22-04`).
+    function setDetailOpen(open) {
+      detail.style.display = open ? '' : 'none';
+      card.classList.toggle('expanded', open);
+      const toggle = titleRow.querySelector('.task-card-toggle');
+      if (toggle) toggle.setAttribute('aria-expanded', String(open));
+    }
+
     // Title-row click: in select mode toggle the checkbox; otherwise expand.
     titleRow.addEventListener('click', (e) => {
       if (card._suppressNextClick) return;  // long-press just opened the menu
@@ -1258,11 +929,7 @@ function _renderList() {
         if (cb) { cb.checked = !cb.checked; cb.dispatchEvent(new Event('change')); }
         return;
       }
-      const open = detail.style.display === 'none';
-      detail.style.display = open ? '' : 'none';
-      card.classList.toggle('expanded', open);
-      const toggle = titleRow.querySelector('.task-card-toggle');
-      if (toggle) toggle.setAttribute('aria-expanded', String(open));
+      setDetailOpen(detail.style.display === 'none');
     });
 
     // Long-press (mobile) opens the ⋮ actions menu.
@@ -1442,525 +1109,36 @@ function _showPresetPicker() {
 
 // ---- Form ----
 
+/**
+ * The Tasks window's New/Edit view: the one task form, mounted into this
+ * window's body (`P22-03`).
+ *
+ * This was the form — 700 lines of markup, nested renderers and the save — and
+ * it is `tasks/taskFields.js:mountTaskFields` now, which the Workbench's side
+ * panel mounts too. What stays here is what only this window means: a preset
+ * from the Add tab and *Draft with AI* arrive as a draft with no id; Cancel and
+ * a save go back to the Tasks tab, after a save with the list refetched; and Esc
+ * steps back to the Add tab's presets rather than closing the window.
+ */
 function _showForm(existing, initTaskType, initTriggerType) {
   const modal = document.getElementById('tasks-modal');
   if (!modal) return;
   const body = modal.querySelector('.modal-body');
   if (!body) return;
 
-  const curTaskType = existing?.task_type || initTaskType || 'llm';
-  const curTriggerType = existing?.trigger_type || initTriggerType || 'schedule';
-
-  body.innerHTML = `
-    <div class="admin-card" style="flex:1;display:flex;flex-direction:column;overflow:hidden;">
-      <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:2px;">
-        <h2 style="margin:0;padding:0;line-height:1;">${existing?.id ? 'Edit Task' : 'New Task'}</h2>
-      </div>
-      <p class="memory-desc">${existing?.id ? 'Update this task’s schedule, prompt, and output.' : 'Configure a prompt, research, or action to run automatically.'}</p>
-    <div class="task-form" style="flex:1;overflow-y:auto;min-height:0;">
-      <label class="task-form-label">Name</label>
-      <input type="text" id="task-form-name" class="task-form-input" value="${_escHtml(existing?.name || '')}" placeholder="${existing ? '' : 'Auto-generated if blank'}" />
-
-      <label class="task-form-label">Type</label>
-      <div class="task-form-toggle" id="task-form-type-toggle">
-        <button class="task-toggle-btn ${curTaskType === 'llm' ? 'active' : ''}" data-val="llm" style="position:relative;top:-4px;"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:4px;"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>Prompt</button>
-        <button class="task-toggle-btn ${curTaskType === 'research' ? 'active' : ''}" data-val="research" style="position:relative;top:-4px;"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:4px;"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>Research</button>
-        <button class="task-toggle-btn ${curTaskType === 'action' ? 'active' : ''}" data-val="action" style="position:relative;top:-4px;"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:4px;"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>Action</button>
-      </div>
-
-      <div id="task-form-type-opts"></div>
-
-      <label class="task-form-label">Trigger</label>
-      <div class="task-form-toggle" id="task-form-trigger-toggle">
-        <button class="task-toggle-btn ${curTriggerType === 'schedule' ? 'active' : ''}" data-val="schedule" style="position:relative;top:-4px;"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:4px;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>Schedule</button>
-        <button class="task-toggle-btn ${curTriggerType === 'event' ? 'active' : ''}" data-val="event" style="position:relative;top:-4px;"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:4px;"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>Event</button>
-        <button class="task-toggle-btn ${curTriggerType === 'webhook' ? 'active' : ''}" data-val="webhook" style="position:relative;top:-4px;"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:4px;"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>Webhook</button>
-      </div>
-
-      <div id="task-form-trigger-opts"></div>
-
-      <label class="task-form-label">Output</label>
-      <select id="task-form-output" class="task-form-input">
-        <option value="session">Session</option>
-      </select>
-      <div id="task-form-output-extra"></div>
-
-      <label class="task-form-label">Model <span style="opacity:0.5;font-weight:normal;font-size:10px;">(optional — overrides session default)</span></label>
-      <select id="task-form-model" class="task-form-input">
-        <option value="">Use session default</option>
-      </select>
-
-      <label class="task-form-label">Chain <span style="opacity:0.5;font-weight:normal;font-size:10px;">(optional — what runs after this one)</span></label>
-      <div class="task-form-chain">
-        <label class="task-form-chain-row">
-          <span class="task-form-chain-when">${_escHtml(_edgeWhenLabel('success'))}</span>
-          <select id="task-form-chain" class="task-form-input">
-            <option value="">None</option>
-          </select>
-        </label>
-        <label class="task-form-chain-row">
-          <span class="task-form-chain-when">${_escHtml(_edgeWhenLabel('error'))}</span>
-          <select id="task-form-chain-else" class="task-form-input">
-            <option value="">None</option>
-          </select>
-        </label>
-      </div>
-
-      <label class="task-form-notif-toggle">
-        <input type="checkbox" id="task-form-notif" ${existing && existing.notifications_enabled === false ? '' : 'checked'}>
-        <span class="task-form-notif-switch" aria-hidden="true"></span>
-        <span class="task-form-notif-copy">
-          <span>Notifications</span>
-          <span>Silence completion alerts for chatty cron jobs.</span>
-        </span>
-      </label>
-
-      <div class="task-form-actions">
-        <button id="task-form-cancel" class="memory-toolbar-btn"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" style="vertical-align:-1px;margin-right:4px;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>Cancel</button>
-        <button id="task-form-save" class="memory-toolbar-btn active"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:4px;"><polyline points="20 6 9 17 4 12"/></svg>${existing?.id ? 'Save' : 'Create'}</button>
-      </div>
-    </div>
-    </div>
-  `;
-
-  // --- Task type toggle ---
-  let taskType = curTaskType;
-  const typeToggle = document.getElementById('task-form-type-toggle');
-  const typeOpts = document.getElementById('task-form-type-opts');
-
-  function renderTypeOpts() {
-    typeOpts.innerHTML = '';
-    if (taskType === 'llm' || taskType === 'research') {
-      const placeholder = taskType === 'research' ? 'What should be researched?' : 'What should the AI do?';
-      const _personaOpts = [
-        ['', 'Default (no persona)'],
-        ['socrates', 'Socrates'],
-        ['razor', 'Razor'],
-        ['nietzsche', 'Nietzsche'],
-        ['spark', 'Spark'],
-        ['pantheon', 'Pantheon'],
-      ];
-      const _curPersona = (existing?.character_id || '').toLowerCase();
-      const _personaOptsHtml = _personaOpts.map(([v, label]) =>
-        `<option value="${v}" ${v === _curPersona ? 'selected' : ''}>${label}</option>`).join('');
-      typeOpts.innerHTML = `
-        <label class="task-form-label">${taskType === 'research' ? 'Research question' : 'Prompt'}</label>
-        <textarea id="task-form-prompt" class="task-form-input task-form-textarea" rows="4" placeholder="${placeholder}">${existing?.prompt || ''}</textarea>
-
-        <label class="task-form-label">Persona <span style="opacity:0.5;font-weight:normal;font-size:10px;">(optional — biases the output voice)</span></label>
-        <select id="task-form-persona" class="task-form-input">${_personaOptsHtml}</select>
-      `;
-    } else {
-      typeOpts.innerHTML = `
-        <label class="task-form-label">Action</label>
-        <select id="task-form-action" class="task-form-input">
-          <option value="">Loading…</option>
-        </select>
-        <div id="task-form-action-extra"></div>
-      `;
-      const syncActionExtra = async () => {
-        const sel = document.getElementById('task-form-action');
-        const extra = document.getElementById('task-form-action-extra');
-        if (!sel || !extra) return;
-        const action = sel.value;
-        extra.innerHTML = '';
-        // `P8-22`. Four built-ins take an argument and the form had no box for
-        // any of them: `ssh_command` wanted a command, `run_script` and
-        // `run_local` a script body, `cookbook_serve` a serve config. Picking
-        // one in this form produced a task with an empty `prompt`. The schema
-        // is on the wire — `label`, `type`, `description` — so the field is
-        // drawn from the node instead of from a list of action names this file
-        // would have to keep in step with the registry.
-        const param = _actionNode(action)?.params?.[0];
-        if (param) {
-          const isLong = param.type === 'text' || param.type === 'json';
-          const box = isLong
-            ? `<textarea id="task-form-action-param" class="task-form-input task-form-textarea" rows="4" placeholder="${_escHtml(param.label || '')}"></textarea>`
-            : `<input type="text" id="task-form-action-param" class="task-form-input" placeholder="${_escHtml(param.label || '')}" />`;
-          extra.insertAdjacentHTML('beforeend', `
-            <label class="task-form-label" for="task-form-action-param">${_escHtml(param.label || param.name || 'Argument')}</label>
-            ${box}
-            <div class="memory-desc" style="font-size:11px;margin-top:4px;">${_escHtml(param.description || '')}</div>
-          `);
-          // `value` is assigned rather than interpolated: a stored command is
-          // arbitrary text and `</textarea>` in it would close the element.
-          const paramEl = document.getElementById('task-form-action-param');
-          if (paramEl && existing?.action === action) paramEl.value = existing.prompt || '';
-        }
-        if (!_EMAIL_ACCOUNT_ACTIONS.has(action)) return;
-        await _renderEmailActionOptions(action, existing, extra);
-        if (action === 'check_email_urgency') {
-          extra.insertAdjacentHTML('beforeend', `
-            <label class="task-form-label">Email triage rules</label>
-            <textarea id="task-form-urgent-email-prompt" class="task-form-input task-form-textarea" rows="4" placeholder="What should count as urgent? e.g. deadlines, blockers, people waiting outside."></textarea>
-            <div class="memory-desc" style="font-size:11px;margin-top:4px;">Pause/resume and schedule are controlled by this task. It tags work, personal, urgent, action-needed, finance, legal, travel, newsletter, marketing, spam, and related mail categories. Urgent/reply-soon emails use your reminder settings.</div>
-          `);
-          const settings = await _fetchUrgentEmailSettings();
-          const promptEl = document.getElementById('task-form-urgent-email-prompt');
-          if (promptEl && !promptEl.dataset.loaded) {
-            promptEl.value = settings.urgent_email_prompt || '';
-            promptEl.dataset.loaded = '1';
-          }
-          const notifEl = document.getElementById('task-form-notif');
-          if (notifEl && !existing?.id) notifEl.checked = false;
-        }
-      };
-      _fetchActions().then(actions => {
-        const sel = document.getElementById('task-form-action');
-        if (!sel) return;
-        sel.innerHTML = '';
-        for (const a of actions) {
-          const opt = document.createElement('option');
-          opt.value = a.name;
-          opt.textContent = `${a.name} — ${a.description}`;
-          if (existing?.action === a.name) opt.selected = true;
-          sel.appendChild(opt);
-        }
-        sel.addEventListener('change', syncActionExtra);
-        syncActionExtra();
-      });
-    }
-  }
-
-  typeToggle.addEventListener('click', (e) => {
-    const btn = e.target.closest('.task-toggle-btn');
-    if (!btn) return;
-    taskType = btn.dataset.val;
-    typeToggle.querySelectorAll('.task-toggle-btn').forEach(b => b.classList.toggle('active', b.dataset.val === taskType));
-    renderTypeOpts();
-  });
-  renderTypeOpts();
-
-  // --- Trigger type toggle ---
-  let triggerType = curTriggerType;
-  const triggerToggle = document.getElementById('task-form-trigger-toggle');
-  const triggerOpts = document.getElementById('task-form-trigger-opts');
-
-  function renderTriggerOpts() {
-    triggerOpts.innerHTML = '';
-    if (triggerType === 'schedule') {
-      triggerOpts.innerHTML = `
-        <label class="task-form-label">Frequency</label>
-        <select id="task-form-schedule" class="task-form-input">
-          <option value="daily" ${(!existing || existing.schedule === 'daily') ? 'selected' : ''}>Daily</option>
-          <option value="weekly" ${existing?.schedule === 'weekly' ? 'selected' : ''}>Weekly</option>
-          <option value="monthly" ${existing?.schedule === 'monthly' ? 'selected' : ''}>Monthly</option>
-          <option value="once" ${existing?.schedule === 'once' ? 'selected' : ''}>Once</option>
-          <option value="cron" ${existing?.schedule === 'cron' ? 'selected' : ''}>Cron</option>
-        </select>
-        <div id="task-form-schedule-opts"></div>
-        <div id="task-form-time-section">
-          <label class="task-form-label">Time</label>
-          <div class="task-time-picker" id="task-form-time-wrap"></div>
-        </div>
-      `;
-
-      // Build time picker
-      let initH = 9, initM = 0;
-      if (existing && existing.scheduled_time) {
-        const [uh, um] = existing.scheduled_time.split(':').map(Number);
-        const d = new Date();
-        d.setUTCHours(uh, um, 0, 0);
-        initH = d.getHours();
-        initM = d.getMinutes();
-      }
-      _buildTimePicker('task-form-time-wrap', initH, initM);
-
-      const schedSelect = document.getElementById('task-form-schedule');
-      const schedOpts = document.getElementById('task-form-schedule-opts');
-
-      function updateScheduleOpts() {
-        schedOpts.innerHTML = '';
-        const sched = schedSelect.value;
-        const timeSection = document.getElementById('task-form-time-section');
-        if (timeSection) timeSection.style.display = sched === 'cron' ? 'none' : '';
-        if (sched === 'weekly') {
-          const label = document.createElement('label');
-          label.className = 'task-form-label';
-          label.textContent = 'Day of week';
-          schedOpts.appendChild(label);
-          const sel = document.createElement('select');
-          sel.id = 'task-form-day';
-          sel.className = 'task-form-input';
-          DAYS_OF_WEEK.forEach((day, i) => {
-            const opt = document.createElement('option');
-            opt.value = i;
-            opt.textContent = day;
-            if (existing && existing.scheduled_day === i) opt.selected = true;
-            sel.appendChild(opt);
-          });
-          schedOpts.appendChild(sel);
-        } else if (sched === 'monthly') {
-          const label = document.createElement('label');
-          label.className = 'task-form-label';
-          label.textContent = 'Day of month';
-          schedOpts.appendChild(label);
-          const inp = document.createElement('input');
-          inp.type = 'number';
-          inp.id = 'task-form-day';
-          inp.className = 'task-form-input';
-          inp.min = 1; inp.max = 31;
-          inp.value = existing?.scheduled_day ?? 1;
-          schedOpts.appendChild(inp);
-        } else if (sched === 'once') {
-          const label = document.createElement('label');
-          label.className = 'task-form-label';
-          label.textContent = 'Date';
-          schedOpts.appendChild(label);
-          const dateWrap = document.createElement('div');
-          dateWrap.className = 'task-date-picker';
-          dateWrap.id = 'task-form-date';
-          schedOpts.appendChild(dateWrap);
-          _buildDatePicker('task-form-date', existing?.scheduled_date ? new Date(existing.scheduled_date) : new Date());
-        } else if (sched === 'cron') {
-          const label = document.createElement('label');
-          label.className = 'task-form-label';
-          label.textContent = 'Cron expression';
-          schedOpts.appendChild(label);
-          const inp = document.createElement('input');
-          inp.type = 'text';
-          inp.id = 'task-form-cron';
-          inp.className = 'task-form-input';
-          inp.placeholder = '*/30 * * * *';
-          inp.value = existing?.cron_expression || '';
-          schedOpts.appendChild(inp);
-          const hint = document.createElement('div');
-          hint.style.cssText = 'font-size:10px;opacity:0.4;margin-top:2px;';
-          hint.textContent = 'min hour day month weekday — e.g. "0 */2 * * *" = every 2 hours';
-          schedOpts.appendChild(hint);
-        }
-      }
-      schedSelect.addEventListener('change', updateScheduleOpts);
-      updateScheduleOpts();
-
-    } else if (triggerType === 'event') {
-      triggerOpts.innerHTML = `
-        <label class="task-form-label">Event</label>
-        <select id="task-form-event" class="task-form-input">
-          <option value="">Loading…</option>
-        </select>
-        <div id="task-form-event-desc" class="task-form-event-desc"></div>
-        <label class="task-form-label">Every N occurrences</label>
-        <input type="number" id="task-form-trigger-count" class="task-form-input" min="1" max="1000" value="${existing?.trigger_count || _defaultTriggerCount()}" />
-      `;
-      // `P8-31`. The field used to be pre-filled with a literal 5 — a number
-      // nobody chose, in front of an API that had no default and a bus that
-      // reads a missing count as one. It reads the served
-      // `default_trigger_count` now; this refresh covers the case where the
-      // palette has not landed yet, and stops the moment the person types.
-      const countEl = document.getElementById('task-form-trigger-count');
-      if (countEl) {
-        countEl.addEventListener('input', () => { countEl.dataset.touched = '1'; });
-        if (!existing?.trigger_count) {
-          _fetchActions().then(() => {
-            if (!countEl.dataset.touched) countEl.value = String(_defaultTriggerCount());
-          });
-        }
-      }
-      _populateEventPicker(existing?.trigger_event);
-    } else if (triggerType === 'webhook') {
-      if (existing?.webhook_token) {
-        const url = `${API_BASE}/api/tasks/${existing.id}/webhook/${existing.webhook_token}`;
-        // `H17(b)`. This URL carries its own bearer token in the path and the
-        // label says "No auth needed" — which is accurate and is exactly why
-        // the missing control mattered. `POST /api/tasks/{id}/webhook-regenerate`
-        // rotates the token and had **no caller anywhere**, so if the URL leaked
-        // — a pasted screenshot, a shared CI log, a copied support ticket —
-        // there was no revocation path in the product at all. A secret you can
-        // copy but cannot rotate is a secret with no lifecycle.
-        triggerOpts.innerHTML = `
-          <label class="task-form-label">Webhook URL</label>
-          <div style="display:flex;gap:4px;align-items:center;">
-            <input type="text" class="task-form-input" value="${url}" readonly style="flex:1;font-size:11px;opacity:0.8;" id="task-form-webhook-url" />
-            <button class="task-btn" id="task-form-webhook-copy" style="white-space:nowrap;">Copy</button>
-            <button class="task-btn" id="task-form-webhook-rotate" style="white-space:nowrap;" title="Issue a new token. The current URL stops working immediately.">Rotate</button>
-          </div>
-          <div style="font-size:10px;opacity:0.4;margin-top:4px;">POST this URL from any external service to trigger the task. Anyone holding it can run the task — rotate if it leaks.</div>
-        `;
-        document.getElementById('task-form-webhook-copy')?.addEventListener('click', async () => {
-          // `B59`. Was `navigator.clipboard.writeText(url)` followed
-          // unconditionally by `showToast('Copied')`. Over plain http on a LAN
-          // `navigator.clipboard` is `undefined`, so that threw, copied
-          // nothing — **and still said Copied**, about a URL that lets anyone
-          // holding it trigger this task. The line above it in this same
-          // template warns to rotate it if it leaks; the button below was
-          // telling people it was safely on their clipboard when it was not.
-          // `copied`, not `ok`: `test_the_webhook_token_can_be_rotated` scans a
-          // window around `webhook-regenerate` for `const ok = …` and requires
-          // it to be the rotation's `confirm(...)` and nothing else — a guard
-          // against `const ok = true || confirm(...)`, which is a mutation that
-          // survived its first version. A second `ok` in that window is caught
-          // by the same rule, correctly, and the test is not the thing to bend.
-          const copied = await uiModule.copyText(url);
-          if (uiModule) uiModule.showToast(copied ? 'Copied' : 'Copy failed');
-        });
-        document.getElementById('task-form-webhook-rotate')?.addEventListener('click', async () => {
-          // Confirmed, because it is irreversible for anything already using
-          // the old URL — which is the point of it, and still a surprise if
-          // nobody said so.
-          const ok = window.confirm(
-            'Issue a new webhook token?\n\nThe current URL stops working immediately. '
-            + 'Anything already using it will need the new one.');
-          if (!ok) return;
-          try {
-            const res = await fetch(`${API_BASE}/api/tasks/${existing.id}/webhook-regenerate`,
-                                    { method: 'POST', credentials: 'same-origin' });
-            const data = await res.json();
-            if (!res.ok || !data.webhook_token) {
-              if (uiModule) uiModule.showError('Could not rotate the token. The old URL still works.');
-              return;
-            }
-            existing.webhook_token = data.webhook_token;
-            renderTriggerOpts();
-            if (uiModule) uiModule.showToast('New webhook URL issued');
-          } catch (e) {
-            if (uiModule) uiModule.showError('Could not reach Pantheon. The old URL still works.');
-          }
-        });
-      } else {
-        triggerOpts.innerHTML = '<div style="font-size:11px;opacity:0.5;margin-top:4px;">Webhook URL will be generated when the task is saved.</div>';
-      }
-    }
-  }
-
-  triggerToggle.addEventListener('click', (e) => {
-    const btn = e.target.closest('.task-toggle-btn');
-    if (!btn) return;
-    triggerType = btn.dataset.val;
-    triggerToggle.querySelectorAll('.task-toggle-btn').forEach(b => b.classList.toggle('active', b.dataset.val === triggerType));
-    renderTriggerOpts();
-  });
-  renderTriggerOpts();
-
-  // Populate output targets
-  const renderOutputExtra = async () => {
-    const outputSel = document.getElementById('task-form-output');
-    const extra = document.getElementById('task-form-output-extra');
-    if (!outputSel || !extra) return;
-    const currentTo = document.getElementById('task-form-output-email-to')?.value;
-    const currentAccountId = document.getElementById('task-form-output-email-account')?.value;
-    extra.innerHTML = '';
-    if (outputSel.value !== 'email') return;
-    const parsed = _parseTaskEmailOutputTarget(existing?.output_target || '');
-    if (currentTo != null) parsed.to = currentTo;
-    if (currentAccountId != null) parsed.accountId = currentAccountId;
-    const accounts = (await _fetchEmailAccountsForTasks()).filter(a => a && a.enabled !== false);
-    const options = [
-      `<option value="" ${parsed.accountId ? '' : 'selected'}>Default sending account</option>`,
-      ...accounts.map(a => {
-        const id = String(a.id || '');
-        const label = a.name || a.from_address || a.imap_user || id.slice(0, 8);
-        const suffix = a.is_default ? ' (default)' : '';
-        return `<option value="${_escHtml(id)}" ${id === parsed.accountId ? 'selected' : ''}>${_escHtml(label + suffix)}</option>`;
-      }),
-    ].join('');
-    extra.innerHTML = `
-      <div class="task-form-output-email" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-top:6px;">
-        <label>
-          <span class="task-form-label" style="margin-top:0;">From</span>
-          <select id="task-form-output-email-account" class="task-form-input">${options}</select>
-        </label>
-        <label>
-          <span class="task-form-label" style="margin-top:0;">To</span>
-          <input id="task-form-output-email-to" class="task-form-input" type="email" value="${_escHtml(parsed.to)}" placeholder="Me / selected account" />
-        </label>
-      </div>
-      <div class="memory-desc" style="font-size:10px;margin-top:3px;">Leave To blank to send to the selected account’s own address.</div>
-    `;
-  };
-
-  _fetchOutputTargets().then(targets => {
-    const outputSel = document.getElementById('task-form-output');
-    if (!outputSel || targets.length <= 1) return;
-    outputSel.innerHTML = '';
-    const existingEmailOutput = _parseTaskEmailOutputTarget(existing?.output_target || '');
-    let matchedOutput = false;
-    for (const t of targets) {
-      const opt = document.createElement('option');
-      opt.value = t.value;
-      opt.textContent = t.label;
-      if (existingEmailOutput.enabled && t.value === 'email') {
-        opt.selected = true;
-        matchedOutput = true;
-      } else if (!existingEmailOutput.enabled && existing?.output_target === t.value) {
-        opt.selected = true;
-        matchedOutput = true;
-      }
-      outputSel.appendChild(opt);
-    }
-    if (existing?.output_target && !matchedOutput && !existingEmailOutput.enabled) {
-      const opt = document.createElement('option');
-      opt.value = existing.output_target;
-      opt.textContent = existing.output_target.includes('@') ? `Email: ${existing.output_target}` : existing.output_target;
-      opt.selected = true;
-      outputSel.appendChild(opt);
-    }
-    outputSel.addEventListener('change', renderOutputExtra);
-    renderOutputExtra();
-  });
-
-  // Populate model dropdown from /api/models. Value is "endpoint_url::model"
-  // so a single field encodes both the model name and which endpoint to call.
-  // Blank value (option 0) = inherit session default.
-  fetch(`${API_BASE}/api/models`, { credentials: 'same-origin' })
-    .then(r => r.json())
-    .then(data => {
-      const modelSel = document.getElementById('task-form-model');
-      if (!modelSel) return;
-      const items = (data.items || []).filter(it => (it.model_type || 'llm') === 'llm');
-      const curKey = existing?.endpoint_url && existing?.model
-        ? `${existing.endpoint_url}::${existing.model}`
-        : '';
-      for (const it of items) {
-        if (it.offline || !it.models || it.models.length === 0) continue;
-        const group = document.createElement('optgroup');
-        group.label = it.endpoint_name || it.host || 'endpoint';
-        const all = sortModelIds([...(it.models || []), ...(it.models_extra || [])]);
-        for (const m of all) {
-          const opt = document.createElement('option');
-          opt.value = `${it.url}::${m}`;
-          opt.textContent = m;
-          if (opt.value === curKey) opt.selected = true;
-          group.appendChild(opt);
-        }
-        modelSel.appendChild(group);
-      }
-      // Preserve a previously-set pairing even if /api/models doesn't list it
-      // anymore (e.g. endpoint disabled). Shows so the user knows it's set.
-      if (curKey && modelSel.value !== curKey) {
-        const opt = document.createElement('option');
-        opt.value = curKey;
-        opt.textContent = `${existing.model} (unlisted endpoint)`;
-        opt.selected = true;
-        modelSel.appendChild(opt);
-      }
-    })
-    .catch(() => {});
-
-  // Populate both chain dropdowns.
-  //
-  // `B873`. There was one, and it was `then_task_id`. `P8-28` gave the engine
-  // the failure edge, `task_edges` stores it, `_task_to_dict` puts it on every
-  // row and `P8-34`'s diagram draws it as the dotted arrow — and the only ways
-  // to create one were the API and the agent. One loop over the two, rather
-  // than a copy of the block with the other field name in it: two copies is
-  // how the first one ended up with no second (`Law 13`).
-  for (const [selectId, field] of CHAIN_FIELDS) {
-    const sel = document.getElementById(selectId);
-    if (!sel) continue;
-    const otherTasks = _tasks.filter(t => !existing || t.id !== existing.id);
-    for (const t of otherTasks) {
-      const opt = document.createElement('option');
-      opt.value = t.id;
-      opt.textContent = t.name;
-      if (existing?.[field] === t.id) opt.selected = true;
-      sel.appendChild(opt);
-    }
-  }
-
-  // Cancel — return to the Tasks tab (keeps the active-tab highlight in sync)
-  document.getElementById('task-form-cancel').addEventListener('click', () => {
-    _switchTab('tasks');
+  // A preset names a type and a trigger and nothing else; that is a draft.
+  const task = existing
+    || ((initTaskType || initTriggerType)
+      ? { task_type: initTaskType || 'llm', trigger_type: initTriggerType || 'schedule' }
+      : null);
+  mountTaskFields(body, {
+    task,
+    tasks: _tasks,
+    onSaved: async () => {
+      await _fetchTasks();
+      _switchTab('tasks');
+    },
+    onCancel: () => _switchTab('tasks'),
   });
 
   // Esc on the form goes back to the Add tab's preset picker (not the Tasks
@@ -1969,13 +1147,19 @@ function _showForm(existing, initTaskType, initTriggerType) {
   if (window._tasksFormEsc) document.removeEventListener('keydown', window._tasksFormEsc, true);
   window._tasksFormEsc = (e) => {
     if (e.key !== 'Escape') return;
-    if (!document.getElementById('task-form-save')) {
+    // `P22-03`. This window's form, not any form: the Workbench's panel mounts
+    // the same one with the same ids, and a document-wide lookup would keep
+    // this handler alive — and stepping this window back — for Esc pressed
+    // over there.
+    const tasksModal = document.getElementById('tasks-modal');
+    if (!tasksModal || !tasksModal.querySelector('#task-form-save')) {
       // Form is no longer in the DOM — detach to stop leaking.
       document.removeEventListener('keydown', window._tasksFormEsc, true);
       window._tasksFormEsc = null;
       return;
     }
     const t = e.target;
+    if (t && t !== document.body && typeof tasksModal.contains === 'function' && !tasksModal.contains(t)) return;
     if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) {
       t.blur();
       return;
@@ -1985,160 +1169,6 @@ function _showForm(existing, initTaskType, initTriggerType) {
     _showPresetPicker();
   };
   document.addEventListener('keydown', window._tasksFormEsc, true);
-
-  // Save
-  // Named rather than anonymous: 200 lines of payload assembly that no
-  // stack trace and no test could refer to by anything but a line number.
-  const _saveTaskForm = async () => {
-    const nameEl = document.getElementById('task-form-name');
-    const outputSelValue = document.getElementById('task-form-output')?.value || 'session';
-    let outputTarget = outputSelValue;
-    if (outputSelValue === 'email') {
-      const to = document.getElementById('task-form-output-email-to')?.value || '';
-      const accountId = document.getElementById('task-form-output-email-account')?.value || '';
-      outputTarget = _buildTaskEmailOutputTarget(to, accountId);
-    }
-
-    const payload = {
-      task_type: taskType,
-      trigger_type: triggerType,
-      output_target: outputTarget,
-    };
-    if (nameEl) payload.name = nameEl.value.trim() || undefined;
-
-    // Model / endpoint override. Blank = inherit session default. Otherwise
-    // value is `endpoint_url::model_id`.
-    const modelVal = document.getElementById('task-form-model')?.value || '';
-    if (modelVal) {
-      const idx = modelVal.indexOf('::');
-      if (idx > 0) {
-        payload.endpoint_url = modelVal.slice(0, idx);
-        payload.model = modelVal.slice(idx + 2);
-      }
-    } else {
-      // Explicitly clear so a previously-pinned task can return to default.
-      payload.endpoint_url = '';
-      payload.model = '';
-    }
-
-    // Chain — both branches. `B873`.
-    //
-    // Sent unconditionally, including empty: `''` is how the API clears an
-    // edge (`task_routes.py:927-929` — `is not None` is the guard, so an
-    // omitted key leaves the stored edge alone), and a person who sets a
-    // failure branch and then changes their mind has to be able to remove it.
-    for (const [selectId, field] of CHAIN_FIELDS) {
-      payload[field] = document.getElementById(selectId)?.value || '';
-    }
-
-    // Notifications toggle — defaults to true if absent.
-    const notifEl = document.getElementById('task-form-notif');
-    if (notifEl) payload.notifications_enabled = !!notifEl.checked;
-
-    // Task type specifics
-    if (taskType === 'llm' || taskType === 'research') {
-      const prompt = document.getElementById('task-form-prompt')?.value?.trim();
-      if (!prompt) {
-        if (uiModule) uiModule.showError('Prompt is required');
-        return;
-      }
-      payload.prompt = prompt;
-      const personaVal = document.getElementById('task-form-persona')?.value || '';
-      payload.character_id = personaVal;
-    } else {
-      // Non-llm/research tasks: explicitly clear any persona on switch.
-      payload.character_id = '';
-      const action = document.getElementById('task-form-action')?.value;
-      if (!action) {
-        if (uiModule) uiModule.showError('Select an action');
-        return;
-      }
-      payload.action = action;
-      // `P8-22`. An action that declares a parameter carries it in `prompt` —
-      // that is the column the scheduler already reads for `ssh_command` and
-      // its three siblings. Required means required: saving a `run_local` with
-      // an empty script produced a task that ran nothing and said so only when
-      // it fired.
-      const chosen = _actionPromptValue(action);
-      if (chosen) {
-        if (!chosen.value && chosen.param.required) {
-          if (uiModule) uiModule.showError(`${chosen.param.label || chosen.param.name} is required for ${action}`);
-          return;
-        }
-        payload.prompt = chosen.value;
-      } else if (_EMAIL_ACCOUNT_ACTIONS.has(action)) {
-        const accountId = document.getElementById('task-form-email-account')?.value || '';
-        payload.prompt = accountId ? JSON.stringify({ account_id: accountId }) : '';
-      }
-      if (action === 'check_email_urgency') {
-        const urgentPrompt = document.getElementById('task-form-urgent-email-prompt')?.value || '';
-        try {
-          await _saveUrgentEmailSettings(urgentPrompt);
-        } catch (e) {
-          if (uiModule) uiModule.showError('Failed to save urgency rules');
-          return;
-        }
-      }
-    }
-
-    // Trigger specifics
-    if (triggerType === 'schedule') {
-      const schedSelect = document.getElementById('task-form-schedule');
-      payload.schedule = schedSelect?.value || 'daily';
-
-      if (payload.schedule === 'cron') {
-        const cronVal = document.getElementById('task-form-cron')?.value?.trim();
-        if (!cronVal) {
-          if (uiModule) uiModule.showError('Cron expression is required');
-          return;
-        }
-        payload.cron_expression = cronVal;
-      } else {
-        const timeVal = _getTimePickerValue('task-form-time-wrap');
-        payload.scheduled_time = _localTimeToUtc(timeVal);
-
-        const dayInput = document.getElementById('task-form-day');
-        if (dayInput) payload.scheduled_day = parseInt(dayInput.value, 10);
-
-        if (payload.schedule === 'once' && document.getElementById('task-form-date')) {
-          const pickedDate = _getDatePickerValue('task-form-date');
-          const [h, m] = timeVal.split(':').map(Number);
-          pickedDate.setHours(h, m, 0, 0);
-          payload.scheduled_date = pickedDate.toISOString();
-        }
-      }
-    } else if (triggerType === 'event') {
-      const evSel = document.getElementById('task-form-event');
-      const countInput = document.getElementById('task-form-trigger-count');
-      if (!evSel?.value) {
-        if (uiModule) uiModule.showError('Select an event');
-        return;
-      }
-      payload.trigger_event = evSel.value;
-      // `P8-31`. The second of the two fives. The served default is the answer
-      // when the field is blank; `DEFAULT_TRIGGER_COUNT` lives beside the bus
-      // that reads it and ships on `/meta/actions`.
-      payload.trigger_count = parseInt(countInput?.value || String(_defaultTriggerCount()), 10);
-    }
-    // webhook: no extra fields needed, token is auto-generated server-side
-
-    try {
-      // Edit only when we have a real existing task (has an id). A draft
-      // object passed for AI pre-fill has no id → create via POST.
-      if (existing && existing.id) {
-        await _updateTask(existing.id, payload);
-        if (uiModule) uiModule.showToast('Task updated');
-      } else {
-        await _createTask(payload);
-        if (uiModule) uiModule.showToast('Task created');
-      }
-      await _fetchTasks();
-      _switchTab('tasks');
-    } catch (e) {
-      if (uiModule) uiModule.showError(e.message);
-    }
-  };
-  document.getElementById('task-form-save').addEventListener('click', _saveTaskForm);
 }
 
 // ---- Run History ----
@@ -2174,27 +1204,69 @@ function _openStepLogFor(entry) {
  * behind a `<details>` because the interesting run is one in a list of twenty,
  * and the summary carries the count so the interesting one is findable without
  * opening all of them.
+ *
+ * `B670` / `B802(b)` / `P22-04`. **Every step that was not a tool call was
+ * drawn under the word `progress`**, whatever it was: `kind` was read as
+ * `=== 'tool' ? 'tool' : 'progress'`. Measured against the writers in
+ * `src/task_scheduler.py`, three kinds reach this list and only one of them is
+ * progress — `trigger` (`P8-23`: step one of every fired run, *"Triggered by
+ * document_updated — …"*, and `P8-29`'s *"Continued from …"* for a chained
+ * one), `dry-run` (`P8-33`: every line of a plan), and `progress` itself. So a
+ * run's cause, and a plan in which nothing ran, both read as work being done.
+ * Each kind now has its word (`_STEP_KIND_WORDS`); a kind this file has never
+ * heard of is drawn as itself rather than given a word that is not true of it;
+ * and a tool step's stored status (`ok`, `error`, `blocked`, `running`) is
+ * said in words, with the stored value kept in the `title` (`B84`'s rule).
+ *
+ * `opts.open` draws it already open and `opts.summary` replaces the count —
+ * how the card's dry-run plan reuses this rather than drawing steps a second
+ * way (`Law 14`).
  */
-function _renderRunSteps(run) {
+const _STEP_KIND_WORDS = {
+  trigger: 'cause',
+  'dry-run': 'dry run',
+  tool: 'tool',
+  progress: 'progress',
+};
+const _TOOL_STEP_STATUS_WORDS = {
+  ok: 'done',
+  error: 'failed',
+  blocked: 'blocked',
+  running: 'running',
+};
+
+/** The word a step is drawn under. */
+function _stepKindWord(kind) {
+  const k = String(kind || '').trim();
+  if (!k) return 'step';
+  return _STEP_KIND_WORDS[k] || k.replace(/[-_]+/g, ' ');
+}
+
+function _renderRunSteps(run, opts = {}) {
   const steps = Array.isArray(run && run.steps) ? run.steps : [];
   if (!steps.length) return '';
   const rows = steps.map((s) => {
-    const kind = (s && s.kind) === 'tool' ? 'tool' : 'progress';
+    const rawKind = String((s && s.kind) || '');
+    // The class keeps to letters, digits and dashes whatever the wire says.
+    const kind = rawKind.replace(/[^A-Za-z0-9-]/g, '') || 'step';
+    const word = `<span class="task-run-step-kind">${_escHtml(_stepKindWord(rawKind))}</span>`;
     const status = String((s && s.status) || '');
     const statusClass = status ? ` task-run-step-${_escHtml(status)}` : '';
     const head = kind === 'tool'
-      ? `<span class="task-run-step-tool">${_escHtml(s.tool || 'tool')}</span>`
+      ? word
+        + `<span class="task-run-step-tool">${_escHtml(s.tool || 'tool')}</span>`
         + (s.round ? `<span class="task-run-step-round">round ${_escHtml(s.round)}</span>` : '')
-        + (status ? `<span class="task-run-step-status">${_escHtml(status)}</span>` : '')
-      : '<span class="task-run-step-kind">progress</span>';
+        + (status ? `<span class="task-run-step-status" title="${_escHtml(status)}">${_escHtml(_TOOL_STEP_STATUS_WORDS[status] || status)}</span>` : '')
+      : word;
     const detail = s && s.detail ? `<span class="task-run-step-detail">${_escHtml(s.detail)}</span>` : '';
     const output = s && s.output ? `<div class="task-run-step-output">${_escHtml(s.output)}</div>` : '';
     return `<li class="task-run-step task-run-step-${kind}${statusClass}">${head}${detail}${output}</li>`;
   }).join('');
   const failed = steps.filter(s => s && (s.status === 'error' || s.status === 'blocked')).length;
-  const summary = `${steps.length} step${steps.length === 1 ? '' : 's'}`
-    + (failed ? ` · ${failed} did not finish` : '');
-  return `<details class="task-run-steps">
+  const summary = opts.summary
+    || (`${steps.length} step${steps.length === 1 ? '' : 's'}`
+      + (failed ? ` · ${failed} did not finish` : ''));
+  return `<details class="task-run-steps"${opts.open ? ' open' : ''}>
       <summary>${_escHtml(summary)}</summary>
       <ol class="task-run-step-list">${rows}</ol>
     </details>`;
@@ -2459,6 +1531,91 @@ async function _doRunNow(id, force = false) {
       }
     } catch (_) {}
     if (!fired && uiModule) uiModule.showError(msg);
+  }
+}
+
+// ---- Dry run (`P22-04`, folding `B802`'s first two parts and `B670`) ----
+//
+// `P8-33` made a dry run a `return` above every executor: the eighteen actions,
+// the agent loop and the research pipeline are below it, and so are delivery,
+// notification and the chain. What it leaves is a run row with status
+// `skipped` whose steps are the plan (`_record_dry_run`). The route answers as
+// soon as that run is scheduled and carries neither the plan nor the run's id,
+// so the card asks for the task's newest runs until one appears that was not
+// there before it asked — which is also the run History shows.
+
+/** How long the card waits for the plan, in steps. A dry run waits for no
+ *  model slot and no idle gate (`_execute_task`'s `dry` branch), so it is
+ *  written in milliseconds and the first look finds it; the later steps are for
+ *  a machine under load. About five seconds in all, then the card says where
+ *  the plan will be instead. */
+const _DRY_RUN_WAITS_MS = [120, 250, 500, 1000, 1500, 2000];
+
+/** The run a dry run just wrote: finished, not in `before`, and holding a plan
+ *  — or finished with no plan, which is the scheduler declining (a paused task
+ *  is recorded `skipped` with its reason and planned nothing). `null` if
+ *  neither appeared in time. */
+async function _awaitDryRun(taskId, before, waits = _DRY_RUN_WAITS_MS) {
+  for (const ms of waits) {
+    await new Promise((resolve) => setTimeout(resolve, ms));
+    const runs = await _fetchRuns(taskId, 5);
+    const fresh = runs.filter((r) => r && r.id && !before.has(r.id) && isRunFinished(r.status));
+    const planned = fresh.find((r) => Array.isArray(r.steps) && r.steps.some((s) => s && s.kind === 'dry-run'));
+    if (planned) return planned;
+    const declined = fresh.find((r) => runStatusTone(r.status) === 'info');
+    if (declined) return declined;
+  }
+  return null;
+}
+
+/** Draw what came back into the card's plan box. The steps go through the one
+ *  step renderer, open, under a heading that says no run happened. */
+function _drawDryPlan(planEl, run) {
+  if (!planEl) return;
+  planEl.hidden = false;
+  if (!run) {
+    planEl.innerHTML = '<p class="task-dry-plan-note">The plan is not ready yet. It will be in this task’s History when it is.</p>';
+    return;
+  }
+  const steps = _renderRunSteps(run, { open: true, summary: 'What a real run would do' });
+  planEl.innerHTML = steps
+    || `<p class="task-dry-plan-note">Nothing was planned: ${_escHtml(run.error || run.result || 'the server gave no reason')}.</p>`;
+}
+
+/**
+ * *Show me what this would do*: ask for a dry run, wait for its plan, and draw
+ * it on the card. Nothing runs and nothing changes — the server guarantees
+ * that, not this function, which only ever sends `?dry=true`.
+ *
+ * Returns the run it drew (or `null`), so a caller can tell what was shown.
+ */
+async function _doDryRun(taskId, planEl, btn) {
+  if (!taskId) return null;
+  const label = btn ? btn.textContent : '';
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = 'Working it out…';
+  }
+  if (planEl) {
+    planEl.hidden = false;
+    planEl.innerHTML = '<p class="task-dry-plan-note">Working out what a run would do. Nothing is running.</p>';
+  }
+  try {
+    const before = new Set((await _fetchRuns(taskId, 5)).map((r) => r && r.id).filter(Boolean));
+    await _runNow(taskId, false, true);
+    const run = await _awaitDryRun(taskId, before);
+    _drawDryPlan(planEl, run);
+    return run;
+  } catch (e) {
+    if (planEl) {
+      planEl.innerHTML = `<p class="task-dry-plan-note">${_escHtml(e.message || 'Could not plan a run.')}</p>`;
+    }
+    return null;
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = label;
+    }
   }
 }
 
@@ -3903,9 +3060,9 @@ export function openTasks(focusId, opts) {
   _open = true;
   _tasksCascadeNext = true;
   _viewingRuns = null;
-  _outputTargets = null; // refresh available targets
-  _builtinActions = null;
-  _triggerEvents = null;
+  // Refresh the served lists — output targets, the action palette, the event
+  // catalogue — which live with the form in `tasks/taskFields.js` (`P22-03`).
+  resetTaskFieldCaches();
 
   const modal = document.createElement('div');
   modal.className = 'modal';
