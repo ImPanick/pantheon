@@ -930,7 +930,8 @@ FUNCTION_TOOL_SCHEMAS = [
             "name": "manage_documents",
             "description": (
                 "Manage documents: list all documents (with optional search/language/folder "
-                "filter), delete documents, run tidy cleanup, and organise them into folders. "
+                "filter), read one (paged with offset/limit), delete documents, run tidy "
+                "cleanup, and organise them into folders. "
                 "Folders are paths like 'Clients/Acme'; '' (or 'Unfiled') means no folder. "
                 "list_folders shows them with counts; create_folder, rename_folder, "
                 "move_folder, move (documents into a folder) and remove_folder change them; "
@@ -944,16 +945,17 @@ FUNCTION_TOOL_SCHEMAS = [
                 "type": "object",
                 "properties": {
                     "action": {"type": "string", "enum": [
-                        "list", "delete", "tidy",
+                        "list", "read", "delete", "tidy",
                         "list_folders", "create_folder", "rename_folder", "move_folder",
                         "move", "remove_folder", "reorganise", "apply_plan",
                     ]},
-                    "document_id": {"type": "string", "description": "Document ID (for delete, or move of one document)"},
+                    "document_id": {"type": "string", "description": "Document ID (for read, delete, or move of one document)"},
                     "document_ids": {"type": "array", "items": {"type": "string"},
                                      "description": "Document IDs (for move, or delete of several)"},
                     "search": {"type": "string", "description": "Search query (for list) — matches titles and folder paths"},
                     "language": {"type": "string", "description": "Filter by language (for list)"},
-                    "limit": {"type": "integer", "description": "Max results (for list, default 50)"},
+                    "limit": {"type": "integer", "description": "Max results (for list, default 50); for read, the most characters to return"},
+                    "offset": {"type": "integer", "description": "Character to start reading from (for read). A long document's result gives next_offset; call read again with offset=next_offset for the rest"},
                     "folder": {"type": "string", "description": "Folder path, e.g. 'Clients/Acme' (for list, create_folder, rename_folder, move_folder, remove_folder)"},
                     "unfiled": {"type": "boolean", "description": "List only documents in no folder (for list)"},
                     "to": {"type": "string", "description": "Destination folder path (for move and move_folder); '' for Unfiled / the top level. Required for both."},
