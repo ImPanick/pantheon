@@ -317,9 +317,9 @@ def setup_workflow_routes(task_scheduler) -> APIRouter:
         """The run, the graph of the version it ran, and its node records.
 
         `cleared` says the records were pruned after their window — the run's
-        own step log says steps ran and their records are not there — which a
-        person is told, rather than shown a run that seems to have done
-        nothing (`Law 10`).
+        own step log says steps ran, it ended longer ago than records are
+        kept, and they are not there — which a person is told, rather than
+        shown a run that seems to have done nothing (`Law 10`).
         """
         from core.database import TaskRun, TaskRunNode
         from routes.task.task_routes import _run_to_dict
@@ -342,7 +342,7 @@ def setup_workflow_routes(task_scheduler) -> APIRouter:
                 "version_kept": kept,
                 "graph": graph,
                 "nodes": [node_record_to_dict(r) for r in recs],
-                "cleared": not recs and store.ran_steps_without_records(run),
+                "cleared": not recs and store.records_were_cleared(run),
             }
         finally:
             db.close()

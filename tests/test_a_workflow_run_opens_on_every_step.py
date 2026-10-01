@@ -33,14 +33,16 @@ NODE_RECORD_KEYS = {"id", "node_id", "kind", "label", "seq", "status", "attempt"
 PLAN_KEYS = {"node_id", "kind", "name", "when", "depth", "steps", "declined"}
 
 
-def _run(factory, task_id, *, records=(), steps=None, status="error"):
+def _run(factory, task_id, *, records=(), steps=None, status="error", days_ago=0, result="last words"):
     """A finished run of a workflow, and the node records the walker wrote."""
+    from datetime import timedelta
     TaskRunNode = wc.models()[2]
     run_id = str(uuid.uuid4())
+    at = utcnow_naive() - timedelta(days=days_ago)
     db = factory()
     try:
-        db.add(TaskRun(id=run_id, task_id=task_id, status=status, started_at=utcnow_naive(),
-                       finished_at=utcnow_naive(), result="last words",
+        db.add(TaskRun(id=run_id, task_id=task_id, status=status, started_at=at,
+                       finished_at=at, result=result,
                        steps=json.dumps(steps or [])))
         db.flush()
         for seq, rec in enumerate(records, 1):
@@ -101,16 +103,37 @@ def test_a_run_whose_version_was_pruned_is_drawn_on_the_current_graph_and_says_s
     assert (out["version"], out["version_kept"]) == (2, False)
 
 
-def test_a_run_whose_records_were_cleared_says_so_and_one_that_had_none_does_not(client, wf_db):
+def test_a_run_whose_records_were_cleared_says_so_and_one_that_had_none_does_not(
+        client, wf_db, monkeypatch):
+    """"Its step details were cleared" is a claim (`Law 10`): made only for a
+    run whose log says steps ran AND that ended longer ago than records are
+    kept (`workflow_node_records_days`, the window the pruner reads)."""
+    from src.task_scheduler import DRY_RUN_HEADLINE
     wf = save(client, new(client), TWO).json()["workflow"]
-    cleared = _run(wf_db, wf["task_id"], steps=[{"kind": "trigger", "detail": "x"},
-                                                {"kind": "node", "node": "n1", "status": "success"}])
-    nothing = _run(wf_db, wf["task_id"], steps=[{"kind": "progress", "detail": "Refused"}],
-                   status="skipped")
-    a = call(client, "GET", f"/api/workflows/{wf['id']}/runs/{cleared}").json()
-    b = call(client, "GET", f"/api/workflows/{wf['id']}/runs/{nothing}").json()
-    assert (a["nodes"], a["cleared"]) == ([], True)
-    assert (b["nodes"], b["cleared"]) == ([], False)
+    ran = [{"kind": "trigger", "detail": "x"}, {"kind": "node", "node": "n1", "status": "success"}]
+    planned = [{"kind": "dry-run", "detail": DRY_RUN_HEADLINE},
+               {"kind": "dry-run", "detail": "Would run “Summarise my inbox”."}]
+    old = _run(wf_db, wf["task_id"], steps=ran, days_ago=31)
+    recent = _run(wf_db, wf["task_id"], steps=ran, days_ago=2)
+    old_plan = _run(wf_db, wf["task_id"], steps=planned, status="skipped", days_ago=40,
+                    result=DRY_RUN_HEADLINE)
+    new_plan = _run(wf_db, wf["task_id"], steps=planned, status="skipped", result=DRY_RUN_HEADLINE)
+    refused = _run(wf_db, wf["task_id"], steps=[{"kind": "progress", "detail": "Refused"}],
+                   status="skipped", days_ago=90)
+
+    def cleared(run_id):
+        out = call(client, "GET", f"/api/workflows/{wf['id']}/runs/{run_id}").json()
+        assert out["nodes"] == []
+        return out["cleared"]
+    assert [cleared(r) for r in (old, recent, old_plan, new_plan, refused)] == [
+        True, False, True, False, False]
+    # The window is the setting's, read when asked: kept for a year, the
+    # month-old run's records cannot have been cleared yet.
+    import src.settings as settings
+    real = settings.resolve_limit
+    monkeypatch.setattr(settings, "resolve_limit", lambda key, default, **kw: (
+        (365, "instance setting") if key == "workflow_node_records_days" else real(key, default, **kw)))
+    assert cleared(old) is False
 
 
 def test_a_run_of_something_else_is_not_this_workflows(client, wf_db):

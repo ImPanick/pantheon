@@ -981,17 +981,44 @@ def dry_plan_nodes(db, run_id: str) -> list:
     return out
 
 
-def ran_steps_without_records(run) -> bool:
-    """Did this run's own log say steps ran? Then node records that are not
-    there were pruned (`maybe_prune_node_records`), not never written — the
-    run's `steps` holds a `node` line per step the walker ran (design § 2.3)
-    and a dry run's holds a line per step it planned after its headline."""
+# `P22-07`. How long a run's step records are kept — the key, default and
+# bounds `maybe_prune_node_records` resolves (design § 3.2: settings-only, no
+# owner), so "they were cleared" is said on exactly the runs the pruner can
+# have reached. A merge point with wf-engine: the two must stay one rule.
+NODE_RECORDS_DAYS_KEY = "workflow_node_records_days"
+NODE_RECORDS_DAYS_DEFAULT = 30
+
+
+def node_records_days() -> int:
+    from src.settings import resolve_limit
+    return resolve_limit(NODE_RECORDS_DAYS_KEY, NODE_RECORDS_DAYS_DEFAULT,
+                         minimum=1, maximum=3650)[0]
+
+
+def records_were_cleared(run, *, now=None) -> bool:
+    """A run with no step records: were they cleared after their window, or
+    never written? (`Law 10` — "cleared" is a claim, made only when true.)
+
+    Both have to hold: the run's own log says steps ran — a `node` line per
+    step the walker ran (design § 2.3), or a dry run's headline and a line per
+    step it planned — and the run ended longer ago than records are kept. A
+    recent run with no records was never given any (a refusal before its
+    first step, a plan the engine wrote no records for), and is not told its
+    details were cleared.
+    """
+    from datetime import timedelta
     steps = _json_list(getattr(run, "steps", None))
-    if any(isinstance(s, dict) and s.get("kind") == "node" for s in steps):
-        return True
-    from src.task_scheduler import is_dry_run
-    return is_dry_run(run) and sum(
-        1 for s in steps if isinstance(s, dict) and s.get("kind") == "dry-run") > 1
+    ran = any(isinstance(s, dict) and s.get("kind") == "node" for s in steps)
+    if not ran:
+        from src.task_scheduler import is_dry_run
+        ran = is_dry_run(run) and sum(
+            1 for s in steps if isinstance(s, dict) and s.get("kind") == "dry-run") > 1
+    if not ran:
+        return False
+    ended = getattr(run, "finished_at", None) or getattr(run, "started_at", None)
+    if ended is None:
+        return False
+    return ended < (now or _utcnow()) - timedelta(days=node_records_days())
 
 
 # ── On / Off, and the chain ──────────────────────────────────────────────────
