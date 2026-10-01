@@ -2634,3 +2634,44 @@ promise in the answer is only true once both ask first.
    mode, the API) and replaces the 2048 loop guard; an install where nobody typed one sees no change.
 3. **`B1006`'s Keep is not remembered** (filed by `w5-docs`). *Remember Keep.* A document the person kept is
    marked kept and is not proposed again unless it changes.
+
+## D-2026-10-01-05 — the Workbench: one document per workflow, picked fields not code, code in the workstation, and a step that needs a yes waits for it
+
+**Asked.** The owner, 2026-10-01: *"Hows our big workbench coming along? Have we started that at all? The n8n
+replication (function and direction, not an exact copy) along with the skills and mcp development center?"*
+Measured first: `P8` is 52 of 53 and built engines and forms, not the room (`ROADMAP.md` § P22's preamble).
+Four direction calls shape `P22`; each was put with the alternatives and the cost of each.
+
+**Decided by the owner, 2026-10-01, in four answers — each the recommended one:**
+
+1. **A workflow is one document, started by one task.** A named, versioned graph in its own table; the trigger
+   stays a `ScheduledTask` (`task_type="workflow"`), so every scheduling, gating and dry-run rule applies
+   unchanged. Task chains are not migrated: they keep running, show on the same canvas, and convert only when a
+   person asks, with the old chain kept (`P22-06`). Not chosen: chains forever plus an edge table (nothing groups
+   one run; fan-out and merge fight the one-run lock), and replacing chains by migration (breaks `Law 1`, webhook
+   URLs bound to task ids, and run history). The cost accepted: two "what runs next" paths coexist until chains
+   are shown to run identically through the walker.
+2. **Data moves by picking a field from a list, with simple logic.** Path-only references
+   (`{{ steps.<node>.data.<path> }}`, dots and indexes, no calls, no arithmetic), If/Switch/Set over a closed
+   operator list, an explicit For-each, and a Code node as the escape hatch. Not chosen: n8n-style JavaScript
+   expressions (untrusted values inside code that runs, and a language to learn — `Law 15`), and leaving the model
+   to read the previous step (today's state). The cost accepted: no inline arithmetic outside a Code node.
+3. **Code nodes, and MCP servers being built, run in the person's own workstation** (`P20`). A node is greyed
+   with the reason when the workstation is off or the person may not use it. A server built there is registered
+   only through the existing admin route; no new network path. Not chosen: Pyodide in the browser (runs only
+   while the tab is open; a second Python), and Pantheon's own process (admin-only, the gap `P20` closed).
+4. **A step that needs a yes waits for it, and a step the author configured runs.** A run that reaches an
+   approval parks as `waiting` and the person answers from a notification; Allow resumes once and Deny takes the
+   error port. A deterministic node (HTTP through an Integration, an MCP tool, a built-in action) is the
+   author's decision and runs without a card when outside data fills only its `value` slots; destination,
+   command, recipient, URL and host slots can never be mapped. Every step a model drives is gated exactly as
+   today, and no standing approval survives taint (`D-2026-08-29-02`, `FORBIDDEN.md` Part 2, unchanged).
+   **The adversary this accepts, named (`Law 17`):** whoever writes an inbound mail or webhook body chooses the
+   words of a message the author already decided to send, to a destination the author chose — a hostile string
+   delivered verbatim into the owner's own channel. They cannot choose the tool, the destination or a command.
+
+**Taken as minor, the expert default:** the canvas is hand-built (SVG edges, DOM nodes, nothing vendored —
+`P22`'s preamble weighs Drawflow, LiteGraph and Rete); the person-facing noun moves from *Workshop* to
+*Workbench* while identifiers stay (`D-2026-09-18-04`); one workflow still runs once at a time (`B674`); the node
+palette offers a person only what their agent can already reach. **Still the owner's, asked when reached:** a
+short *Start from* list against `DEFERRED.md` D-07 (`P22-24`).

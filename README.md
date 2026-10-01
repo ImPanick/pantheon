@@ -187,7 +187,7 @@ proved it dead.
 
 ## Status
 
-**1011 tracked tasks, 737 done.** The tracker is [`.pantheon/ROADMAP.md`](.pantheon/ROADMAP.md) and
+**1036 tracked tasks, 737 done.** The tracker is [`.pantheon/ROADMAP.md`](.pantheon/ROADMAP.md) and
 it is the only place work is tracked — one list, one progress area, validated by a script that
 recounts every phase row against its own ticks. It exists because the summary line was once wrong
 by nineteen and carried forward unread from entry to entry, because each author copied the line
@@ -222,9 +222,11 @@ test nobody had looked at, and turned out to be upstream's logo wearing our file
   `if`/`else if` chain, and anything without a branch is dropped before it reaches the screen.
   Most of that phase has landed; the conspicuous gap left is that the metrics footer and the
   stats popup report a failed turn with the same shape and styling as a successful one.
-- **The Workshop** — build a skill from scratch, import a whole package of them from skills.sh or
-  GitHub and group them your way, wire automations on a canvas, create an MCP server end to end,
-  with the model assisting throughout.
+- **The Workbench** — the engines are in: skills are built, versioned and imported as whole
+  packages from skills.sh or GitHub; automations have triggers, branches, hand-offs and dry runs;
+  MCP servers are edited, tested and scaffolded. What is being built now is the room: a canvas to
+  wire automations, a workflow as one named document, a step you can test on sample data, and
+  skills and MCP servers authored in the same window, with the model drafting and fixing alongside.
 - **Persistent memory** — project knowledge that survives restarts, gains confidence as sources
   agree, and records contradictions instead of silently resolving them.
 - **Identity and limits** — SSO against your own provider, roles rather than a single admin
@@ -234,7 +236,7 @@ test nobody had looked at, and turned out to be upstream's logo wearing our file
 - **More themes** — new palettes, and subtle ASCII-art backgrounds as a ninth pattern, picked
   the same way the seven animated ones already are: independently of the palette.
 
-Twenty-two phases, every task written down: [`.pantheon/ROADMAP.md`](.pantheon/ROADMAP.md).
+Twenty-three phases, every task written down: [`.pantheon/ROADMAP.md`](.pantheon/ROADMAP.md).
 
 ---
 

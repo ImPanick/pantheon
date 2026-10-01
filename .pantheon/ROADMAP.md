@@ -82,8 +82,9 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P19 | The proof ledger | 8 | 0 | 0 | **8** |
 | P20 | The workstation | 7 | 0 | 0 | **7** |
 | P21 | Documents, kept in order | 4 | 0 | 0 | **4** |
+| P22 | The Workbench | 25 | 25 | 0 | **0** |
 | Backlog | Bugs and hardening found in flight | 614 | 219 | 0 | **395** |
-| **Total** | | **1011** | **267** | **7** | **737** |
+| **Total** | | **1036** | **292** | **7** | **737** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -245,6 +246,15 @@ they are for.*
 > `check-tracker.py` now validates the newest entry against the table and fails on drift.
 > Entries below the `P0-31` one keep the figure they were written with: a record of what
 > was claimed at the time is worth more than a quietly corrected one (`B44`).
+
+### The Workbench is a phase: the room P8's engines were built for
+`0e0781e..HEAD`. **1036 tracked, 737 done. 25 new phase rows, 0 regressions. No rows closed; `P22-00` … `P22-24` filed, and `B670`, `B671`, `B672`, `B673`, `B800`, `B802`, `B803` and `B806` folded into them.**
+The owner asked how the workbench was coming along. Measured: P8 is 52 of 53 and built engines and forms; the
+canvas, the workflow as one thing, the logic and effect nodes, per-step tests, executions, the model drafting,
+and one room for skills, automations and MCP do not exist. `P22` builds them in six slices, a canvas over the
+chains that run today first, on the four calls in `D-2026-10-01-05`: a workflow is one document started by one
+task, data moves by picked fields and simple logic, code runs in the person's workstation, and a step that needs
+a yes waits for it while a step the author configured runs.
 
 ### The owner's three calls: a step-limit reply that does not taint, one token ceiling on every door, and a Keep that is remembered
 `ed6f736..HEAD`. **1011 tracked, 737 done. 0 new phase rows, 0 regressions. `B930`, `B934` and `B1019` closed; `B1034` and `B1035` filed.**
@@ -9874,6 +9884,225 @@ and what each stores on disk, is the first thing `P21-03` measures.
   board pack"* finds `Q3 Board Pack – final (v2)` in *Clients/Acme*. `Verify:` both searches, driven.
   `Depends:` `P21-01`, `P21-03`. — owner 2026-10-01 — agent:`P21` — **done 2026-10-01 at the merge.** The folder half came with `P21-01`/`P21-02` (the library search and the agent's `list search` match the folder path). The name half: both now also match `source_name` (`P21-03`'s column), and the agent's search requires every word, in any order, like the library's — so *"board pack acme"* finds `Q3 Board Pack – final (v2)` filed in *Clients/Acme*, and *"v2).pdf"* finds it by its file's own name. `Verify:` `tests/test_a_document_is_found_by_the_name_you_gave_it.py` — the real library route and the real `manage_documents` dispatch on a real database: a word only in the file name, the extension, title-plus-folder in any order, the agent's lookup by name and folder, another person's file name not found. Dropping `source_name` from either search reddens 2. — agent:`integrator`
 
+# P22 · The Workbench
+
+*Area: `automations`, `skills`, `mcp` · Depends: P8, P20 · Opened 2026-10-01 from the owner: **"Hows our big
+workbench coming along? Have we started that at all? The n8n replication (function and direction, not an exact
+copy) along with the skills and mcp development center?"** Direction: `D-2026-10-01-05`.*
+
+**P8 built the engines; this phase builds the room.** Measured 2026-10-01 before a row was written (`Law 3`, to be
+re-measured by whoever takes each row): the only picture of a workflow is read-only Mermaid
+(`_showWorkflowDiagram`, `static/js/tasks.js:2352`); a workflow is `ScheduledTask` rows joined by two nullable
+columns (`then_task_id`, `else_task_id`, `core/database.py:919,927`) with no name, version or export, and each
+step is its own `TaskRun`; the only conditional is `EDGE_CONDITIONS = (success, error)` (`src/task_scheduler.py:111`);
+the model can draft one task (`POST /api/tasks/parse`, `routes/task/task_routes.py:1485`) and never a workflow; MCP
+edit, test-call and the scaffold (`routes/mcp/mcp_routes.py:457,748`, `src/mcp_scaffold.py`) are reachable only from
+a terminal; and Skills, Automations and MCP live in three separate places (a modal opened from the Brain, a rail
+modal, a Settings row). **`Law 14` governs every row**: each one extends a P8 engine, and the open backlog rows on
+those engines are folded into the row that finishes them. **`P8-00`'s gate governs every row**: a row is ticked on a
+person reaching it unaided, never on the capability existing.
+
+**The canvas is hand-built — SVG edges, DOM nodes — and nothing is vendored for it.** Weighed 2026-10-01: Drawflow
+(MIT, 46 KB) sets node markup with `innerHTML` including on import, which makes an imported workflow file a DOM-XSS
+path, and has no keyboard way to connect two nodes; LiteGraph draws on a 2-D canvas, invisible to a screen reader
+and deaf to the sixteen CSS-variable themes; Rete v2 needs a framework and a bundler. The parts already exist in
+the tree: `windowDrag.js`'s pointer-capture drag, `editor/snap.js`, and `tasks/workflowDiagram.js`'s pure graph
+functions. Mermaid stays as *Read as a diagram*.
+
+- [ ] **P22-00** **Acceptance: someone who has never seen Pantheon builds "when mail arrives from my bank,
+  summarise it and post it to my chat server" in the Workbench, unaided.** Not a build row — a gate on the
+  others, in `P8-00`'s terms. If they cannot, the phase is not finished however many rows are ticked.
+
+### Slice A — a canvas over what already runs
+
+- [ ] **P22-01** **One rule for what a workflow may be, checked at save and at run.** `_chain_refusal` follows
+  `then_task_id` only (`src/task_scheduler.py:3538-3540`) while `_advance_chain` takes both edges (`:1136-1200`),
+  so a failure edge bypasses the loop check and the depth cap: *"if A fails run B; when B works run A"* is
+  accepted, and nothing checks at save (`_validate_then_task_id`, `routes/task/task_routes.py:547-559`, checks
+  only self-chains and owner). Separately, `Continued to X` is logged (`:1177`) before `_run_chained` silently
+  drops X because it is already running (`:3505-3506`). `validate_graph(nodes, edges)` beside `build_task_graph`
+  walks every `EDGE_COLUMNS` edge; create and edit answer 400 with the `CHAIN_REFUSAL_REASONS` sentence naming
+  the tasks, and the engine asks the same function. `_has_chain_cycle` keeps its name and its boolean; nothing
+  that was refused is permitted. `Verify:` someone who wires "if the backup fails run cleanup; when cleanup
+  works run the backup" is told on Save that it loops, naming both; a chain into a task already running says so
+  in the run instead of claiming it continued.
+
+- [ ] **P22-02** **The Workbench opens, and its first room is a canvas over the chains that run today.** A new
+  window (`modalManager.js` registration, a rail button in the rail's order), whose *Automations* room draws every
+  task as a node and every edge as an arrow from the `GET /api/tasks` `{tasks, graph}` it already serves. Drag
+  from a node's *if it works* / *if it fails* port to another node and the existing `PUT /api/tasks/{id}` writes
+  the edge; the keyboard path is focus → *Connect…* → choose by name. Positions are kept per person through the
+  preferences door that exists (`PUT /api/prefs/...`), so no new route. ⋮ → *Workflow* on a task card opens the
+  canvas on that chain; Mermaid stays as *Read as a diagram*. The *Workshop* label moves to *Workbench* where a
+  person reads it; identifiers stay (`D-2026-09-18-04`). Folds `B672` (its picker shipped as `B873`; what is left
+  — seeing that a branch exists — is this canvas). `Depends:` P22-01 for the refusal sentence. `Verify:` someone
+  who has never opened Tasks drags *if it fails* from their backup to *Message me*, breaks the backup, and gets
+  the message — without opening Edit or meeting the word `else`.
+
+- [ ] **P22-03** **The side panel is the task form, moved once and used twice.** `_showForm` (`tasks.js:1445`)
+  and `_saveTaskForm` (`:1992`) move into `static/js/tasks/taskFields.js`, mounted by the Tasks form and by the
+  canvas's side panel, so the two cannot drift (`Law 7`). The form gains the time zone, retries and timeout
+  `P8-32` shipped without inputs, with the sentence that the retry gap doubles; picking an event says, before the
+  prompt is written, what the trigger will carry (the event's `payload_summary`). Folds `B671` and `B802`'s
+  third part. `Depends:` P22-02 for the panel. `Verify:` someone clicks a node, sets "09:00 Sydney, retry 3
+  times", and the Tasks card says the same; picking *Document updated* tells them it can refer to the title.
+
+- [ ] **P22-04** **Run, dry-run and watch from the canvas.** A *Show me what this would do* button calls the dry
+  run `P8-33` built (`?dry=true`; today the browser sends only `?force`); each node shows its last outcome by shape
+  and weight, never by hue alone; the run log names the trigger, dry-run and tool steps in words instead of
+  `progress`; and `manage_tasks` gains `dry_run`. Folds `B670`, `B802`'s first two parts and `B803`. `Depends:`
+  P22-02. `Verify:` someone presses it on a chain that sends mail — no mail goes, every node says what it would
+  have done, and the two actions a dry run cannot describe say so.
+
+### Slice B — the workflow document and its executions
+
+- [ ] **P22-05** **A workflow is one document, started by one task** (`D-2026-10-01-05` §1). A `workflows` table —
+  owner, name, `graph` JSON (nodes `{id, kind, label, config, position}`, edges `{from, port, to}`), `version`,
+  `status` — with `P8-10`'s versions, and a migration test against a hand-built table (`Law 20`). The trigger stays
+  a `ScheduledTask` with a new `task_type="workflow"` (a stored value added, none renamed), so schedule, events,
+  webhook URL, retries, timeout, time zone, the foreground gate, the admin gate and dry run all apply unchanged.
+  `_execute_task_locked` hands a workflow to a walker that runs nodes through the existing executors
+  (`_execute_action`, `_execute_llm_task`, `_execute_research_task`). First node kinds: Prompt, Research, Action,
+  Run task. A workflow's own writes carry where they came from, so a workflow fired by `document_updated` that
+  edits a document does not fire itself. Chains are not migrated and keep running (`Law 1`). `Depends:` P22-01–03.
+  `Verify:` someone builds "every morning: summarise my inbox → write me a note" as one named workflow and
+  tomorrow finds one run with two results under that name.
+
+- [ ] **P22-06** **A chain becomes a workflow, and the chain is still there.** *Make this a workflow* copies each
+  row's settings into a node and saves the workflow switched off; switching it on pauses the chain's head and
+  offers *Put the old chain back*. Nothing is deleted. `Depends:` P22-05. `Verify:` someone converts a three-step
+  chain, switches it on, and restores the chain with one click.
+
+- [ ] **P22-07** **Executions: one run, every node, what it was given and what it made.** `task_run_nodes`
+  (run, node, status, attempt, times, input, output, error), each record capped through `settings.role_limit` and
+  pruned on a finite window — the record `B806` says `TaskRun` cannot hold. The executions view draws the canvas
+  with outcomes; a node opens its input and output as collapsible data drawn as text. `Depends:` P22-05.
+  `Verify:` someone opens yesterday's failed run, points at the failing node and reads what it was handed —
+  without being told where to look.
+
+- [ ] **P22-08** **Test one step, with data you chose.** *Test this step* takes its input from the last
+  execution, from sample data pinned on the node (marked on the canvas, never used by a scheduled run), or from an
+  example the model writes (`P8-08`'s shape). A node whose `effects` notify, touch a remote, delete, rewrite or run
+  code shows its dry plan first and asks before a real test. `Depends:` P22-07. `Verify:` someone pins a sample
+  email on *classify*, presses Test, sees the output, and nothing else ran.
+
+### Slice C — data and logic (`D-2026-10-01-05` §2: pick fields, never write code)
+
+- [ ] **P22-09** **Data between steps: pick a field from a list.** A reference reads
+  `{{ steps.<node>.data.<path> }}` and is resolved by a pure resolver — dots and indexes only, no calls, no
+  arithmetic. The picker lists the fields P22-07's records or P22-08's sample hold. Every action parameter
+  declares `mapping: value | never`; commands, scripts, hosts, URLs and recipients are `never`. In a Prompt node a
+  reference becomes a named slot whose value travels in the untrusted-context block, as a trigger payload does.
+  Folds `B806`. `Depends:` P22-07. `Verify:` someone joins *fetch issue* → *summarise*, picks `title` from a list,
+  and the summary is about that title; mapping a field into a shell command is refused with the reason on the
+  field.
+
+- [ ] **P22-10** **Decide and reshape: If, Switch, Set.** A closed operator list (equals, contains, is empty,
+  greater than, less than, one of), evaluated by the walker with no model and no expression language; named ports
+  plus *otherwise*; Set builds an object from references and literals. `Depends:` P22-09. `Verify:` someone routes
+  urgent mail one way and the rest another, and renames a field for the next step, without writing a condition in
+  any language.
+
+- [ ] **P22-11** **Fan out, merge, wait.** Parallel edges run inside one execution (`P8-27`'s run-scoped state;
+  the concurrency cap still applies); Merge waits for all its inputs or the first; Wait parks the run and survives
+  a restart. A `waiting` run status is taught to `check-run-statuses.py`, `runStatus.js` and `TASK_RUN_NOTIFY` in
+  the same change. One workflow still runs once at a time (`B674`'s policy, written down once). `Depends:` P22-05.
+  `Verify:` "check three feeds at once, merge, wait until 08:00, brief me" is one execution and survives a restart
+  during the wait.
+
+- [ ] **P22-12** **For each item.** Loop over a referenced list with an admin-set cap; each item gets its own node
+  record. `Depends:` P22-09, P22-07. `Verify:` "summarise each of my five unread emails" gives five summaries in
+  one run, and a failure on the third names it.
+
+### Slice D — effect nodes
+
+- [ ] **P22-13** **HTTP request, through an Integration.** The node is an Integration chosen by name, a method, a
+  path and a body; it calls `execute_api_call` (`src/integrations.py:584`), SSRF-pinned and paced (`FORBIDDEN.md`
+  Part 2). The base URL and the key are never mappable; body fields are `value`. A raw URL is not offered: a
+  destination is something a person registered. The palette offers a person only what their agent can already
+  reach. `Depends:` P22-09. `Verify:` someone adds Miniflux once in Settings, then builds "fetch unread →
+  summarise" by picking Miniflux from a list, never seeing the key.
+
+- [ ] **P22-14** **An MCP tool is a node.** One `mcp__{server}__{tool}` call through `execute_tool_block` with a
+  `ToolRunSecurityContext`, so disabled lists, admin gates and the trust rung apply; the argument form is built
+  from the tool's `inputSchema`, and the node shows `readOnlyHint`/`destructiveHint` and `P8-48`'s overrides.
+  `Depends:` P22-09, P22-17. `Verify:` someone drops *send message* from their chat MCP, types the channel
+  themselves, maps the summary into the text, and it posts on the next run.
+
+- [ ] **P22-15** **A skill is a node.** Pick a skill by name — referenced, never copied (`D-2026-09-30-01`) — run
+  the way the skill test injects one (`routes/skills_routes.py:168-182`): it arms the gate, and the node says so
+  in `P8-18`'s sentence. `Depends:` P22-05. `Verify:` someone picks their print-queue skill as a step and the run
+  log shows it was followed.
+
+- [ ] **P22-16** **The AI step: which model, which tools, what shape of answer.** Model, persona and an explicit
+  tool list over built-in and MCP tools (instead of retrieval over the prompt, `task_scheduler.py:2888-2901`), a
+  step cap, and *answer as JSON with these fields*, validated after the run. `Depends:` P22-05, P22-09. `Verify:`
+  someone limits a step to search and read-page, asks for `{title, url, why}`, and the next step's picker lists
+  those three fields.
+
+- [ ] **P22-17** **A step that needs your yes waits for it, and a step you configured runs** (`D-2026-10-01-05`
+  §4). **Wait:** a scheduled run that reaches an approval today is denied on the spot (`task_scheduler.py:3290-3323`);
+  it parks as `waiting` instead, reusing the skill test's pause (`_run_skill_test_job`, `/test-approval`) and the
+  `approve_task` scope, and the card reaches notifications and the executions view. Allow resumes once; the seal,
+  owner binding and single use are unchanged; Deny or the TTL takes the error port. **Run:** a deterministic node
+  (HTTP, MCP tool, action) is the author's decision, not a model's, and runs without a card when outside data
+  fills only `value` slots. Destination, command, recipient, URL and host slots can never be mapped (P22-09). Any
+  step a model drives stays gated exactly as today, and no standing approval survives taint (`D-2026-08-29-02`).
+  Adversary (`Law 17`): whoever writes an inbound mail or webhook body chooses the words of a message the author
+  already decided to send, to a destination the author chose — never the tool, the destination or a command.
+  The six approval-path modules' cache-buster moves together. `Depends:` P22-09, P22-11. `Verify:` an overnight
+  workflow stops at a model-chosen *send reply*; the person approves from the notification in the morning, it
+  sends, and the run says who approved it and when — while the author's fixed *post summary to channel* step ran
+  overnight without asking.
+
+- [ ] **P22-18** **Code, run in your workstation** (`D-2026-10-01-05` §3). Python or bash through the workstation
+  protocol's `exec` in the owner's own account (`run_in_workstation`, `src/agent_tools/workstation_tools.py`);
+  input arrives as JSON on stdin and output is JSON on stdout — values are never spliced into the source. With the
+  workstation off, or without `can_use_workstation`, the node is greyed with that sentence. `Depends:` P22-09.
+  `Verify:` someone writes four lines that total a list of prices, tests it on sample input, and the next step
+  gets the total.
+
+### Slice E — the model helps
+
+- [ ] **P22-19** **Describe it, get a draft workflow.** The door that drafts one task (`/api/tasks/parse`) returns
+  a workflow document; the model is handed the palette as data (actions, events, Integration names, MCP tools, the
+  skill index), and its answer is validated by P22-01 and the registries, then opened switched off with each node
+  marked *drafted — check me*. `manage_tasks` gains a workflow action and the full action list. Folds `B673` and
+  `B800`. `Depends:` P22-05, P22-09. `Verify:` someone types "when a GitHub webhook says an issue opened,
+  summarise it and post it to my chat server" and gets a three-node draft that does nothing until switched on.
+
+- [ ] **P22-20** **"Why did this fail?" and "fix this step".** The model is handed the node's settings, input,
+  output, error and log as untrusted context; the answer comes back as a change to the node's settings; *Apply*
+  writes a new version and *Undo* restores it. `Depends:` P22-07, P22-19. `Verify:` someone whose HTTP step
+  answered 404 presses the button, reads that the path is wrong and what it should be, applies it, and can undo it.
+
+### Slice F — the development center
+
+- [ ] **P22-21** **Skills and MCP move into the Workbench as rooms, not copies.** The same modules mount there —
+  the Skills views and Settings' MCP list with its presets — and the panels move with their ids (`P9-06`'s
+  precedent). The old doors (Brain → Skills, Settings → MCP) open the Workbench at that room. `Verify:` someone who
+  has never opened Settings finds where to add an MCP server, a skill and a workflow from one window, and Brain →
+  Skills still lands them in the same place.
+
+- [ ] **P22-22** **Build an MCP server in the browser.** Edit through `PUT` (`mcp_routes.py:457`); *Try a tool*
+  through `/call` (`:748`) with a form built from the tool's schema; *New server* scaffolds into the author's
+  workstation (`D-2026-10-01-05` §3), checks it with `verify_server`, and hands `registration_for` to the admin
+  route, which stays the only way a server is registered. The MCP command, argument and env validation
+  (`FORBIDDEN.md` Part 2) is untouched. `Depends:` P22-21. `Verify:` someone scaffolds a one-tool server and tries
+  the tool from the panel without a terminal.
+
+- [ ] **P22-23** **The skill actions only a terminal could reach.** Draft from a description (`P8-14`, with
+  `POST /api/skills/draft` landing beside its button), *Fix these with the model* (`P8-13`), history and restore
+  (`P8-11`), and download (`P8-16`). `Depends:` P22-21. `Verify:` someone types a sentence and gets a draft,
+  fixes lint findings with one click, and puts yesterday's version back.
+
+- [ ] **P22-24** **A workflow is a file you can hand someone.** Export the document plus the names of the skills,
+  MCP tools and Integrations it uses — never a secret; import validates and lists, in words, what this install is
+  missing; tasks and workflows join the backup export (`routes/backup_routes.py:140-150`, which today carries
+  neither). A short *Start from* list inside the new-workflow form waits on the owner's ruling against
+  `DEFERRED.md` D-07 (*no template gallery*), asked when this row is reached. `Depends:` P22-05. `Verify:` someone
+  imports a workflow on a second install and is told which Integration to add before it can run.
+
 - [x] **B69** **There are two complete email-account forms and one of them is mounted nowhere.**
   Found by `P18-07` 2026-09-11, after `P18-01` and the first pass of `P18-07` were both written
   against the wrong one. `static/js/settings.js` carries an `eaf-` form (~line 3060) rendering into
@@ -18008,7 +18237,7 @@ the row that would touch the theme file. Nothing in this change defines
 or the `THEMES` table; the one new `:root` token is `--focus-ring`, which
 resolves through `var(--red)`.
 
-- [ ] **B670** **The trigger step in a run's log is drawn with the word `progress`.** Found
+- [ ] **B670** **FOLDED INTO `P22-04` (2026-10-01) — the Workbench row that finishes it; do not work this row alone.** **The trigger step in a run's log is drawn with the word `progress`.** Found
   2026-09-18 while closing `P8-23`. `_renderRunSteps` (`static/js/tasks.js:2079`) reads
   `const kind = (s && s.kind) === 'tool' ? 'tool' : 'progress';`, so every step that is not a
   tool call is labelled `progress` whatever it actually is. `P8-23` writes a `kind: "trigger"`
@@ -18018,7 +18247,7 @@ resolves through `var(--red)`.
   which another agent owned this wave. One branch in one function. `Verify:` a run fired by an
   event shows its cause labelled as a cause. — found during P8-23 — agent:`p8b`
 
-- [ ] **B671** **A trigger's payload is declared on the wire and shown nowhere.** Found
+- [ ] **B671** **FOLDED INTO `P22-03` (2026-10-01) — the Workbench row that finishes it; do not work this row alone.** **A trigger's payload is declared on the wire and shown nowhere.** Found
   2026-09-18 while closing `P8-23`. `GET /api/tasks/meta/events` now serves `payload_summary`
   per event — *"the document's id and title"* — because someone choosing a trigger needs to know
   what they will be able to refer to **before** they write the prompt, which is `Law 15` in the
@@ -18029,7 +18258,7 @@ resolves through `var(--red)`.
   can tell, from the form, that their prompt can refer to the document's title. — found during
   P8-23 — agent:`p8b`
 
-- [ ] **B672** **The failure branch has no picker, so `else_task_id` is reachable only through
+- [ ] **B672** **FOLDED INTO `P22-02` (2026-10-01) — the Workbench row that finishes it; do not work this row alone.** **The failure branch has no picker, so `else_task_id` is reachable only through
   the API.** Found 2026-09-18 while closing `P8-28`. The column, the migration, the validation,
   the projection and the engine all ship; `static/js/tasks.js` has exactly one chain control —
   `#task-form-chain`, populated at `:1852` and posted as `payload.then_task_id` at `:1929` —
@@ -18041,7 +18270,7 @@ resolves through `var(--red)`.
   `Verify:` someone who has never opened Tasks wires "if this fails, message me" from the form
   alone. — found during P8-28 — agent:`p8b`
 
-- [ ] **B673** **`manage_tasks` cannot build a workflow at all — the model has no way to chain
+- [ ] **B673** **FOLDED INTO `P22-19` (2026-10-01) — the Workbench row that finishes it; do not work this row alone.** **`manage_tasks` cannot build a workflow at all — the model has no way to chain
   two tasks.** Measured 2026-09-18 while wiring `P8-28`'s API: `grep -n "then_task_id"
   src/tool_schemas.py src/tool_implementations.py src/agent_tools/*.py` returns **nothing**. The
   HTTP API has accepted `then_task_id` since before the fork and the tool schema the model writes
@@ -18466,7 +18695,7 @@ this is the same thing happening to the row that corrected the store.
 
 - [ ] **B793** **`B731`'s arithmetic is wrong and there are three implementations, not two.** `B731` compares `static/js/skills.js`'s 0.38 with `services/memory/skills.py`'s 0.82 and concludes they "answer the same question and differ by more than a factor of two". They were computed on different token sets and were never on one scale: `skills._tokenize` splits on whitespace, keeps two-character words and keeps stopwords, while `skill_lint.skill_tokens` splits on non-alphanumerics, drops six stopwords and strips a trailing `-<n>`. Measured 2026-09-19 over the 36,654 bundled pairs scoring above zero on both, the first runs **1.65×** the second (median; mean 1.75) — the numbers in use were about **1.3** apart. And the client is a **third** implementation whose token set omits `procedure`, so it agrees with the server only for skills that have none; on the bundled library, where **0 of 286** skills has a populated `procedure` (measured 2026-09-19), the two produce identical scores on all 24 flagged pairs, which is why nobody noticed. `P8-15` put the two **server** implementations on one function, so the remaining divergence is the client's and is one line (`static/js/skills.js:257-268`, `:309`) — it should call the server's number rather than carry its own, which is what `GET /api/skills/lint` already returns per draft. This row exists so `B731` is closed against a measurement rather than re-derived by the next person to read it. `Verify:` the similarity a person sees on a card and the similarity the server refuses a creation at are the same function of the same fields, and one of them is not a copy. — found while doing `P8-15` — agent:`p8c`
 
-- [ ] **B800** **`manage_tasks` offers the model 12 of the 18 built-in actions, and two of
+- [ ] **B800** **FOLDED INTO `P22-19` (2026-10-01) — the Workbench row that finishes it; do not work this row alone.** **`manage_tasks` offers the model 12 of the 18 built-in actions, and two of
   the six missing are missing for no stated reason.** Measured 2026-09-19 while adding
   `P8-33`'s plan: the `action_name` enum in `src/tool_schemas.py` lists **12** names;
   `BUILTIN_ACTIONS` dispatches **18**; four of the gap are
@@ -18506,7 +18735,7 @@ this is the same thing happening to the row that corrected the store.
   leaves `data/settings.json` byte-identical, and killing one mid-run leaves it
   byte-identical too. — found during P8-33 — agent:`p8d`
 
-- [ ] **B802** **Three backend capabilities landed this wave with no surface, and all
+- [ ] **B802** **FOLDED INTO `P22-03` and `P22-04` (2026-10-01) — the Workbench row that finishes it; do not work this row alone.** **Three backend capabilities landed this wave with no surface, and all
   three are one small edit in `static/js/tasks.js`.** Named together because they merge
   together and separately from the rows that produced them (`P8-33`, `P8-32`), which are
   closed on the engine. (a) **Dry run** — `POST /api/tasks/{task_id}/run?dry=true` exists
@@ -18526,7 +18755,7 @@ this is the same thing happening to the row that corrected the store.
   card alone, see what a run would do before running it, and set the time zone their task
   means. `Depends:` nothing. — found during P8-33 / P8-32 — agent:`p8d`
 
-- [ ] **B803** **The agent can run a task and cannot dry-run one, because the tool
+- [ ] **B803** **FOLDED INTO `P22-04` (2026-10-01) — the Workbench row that finishes it; do not work this row alone.** **The agent can run a task and cannot dry-run one, because the tool
   handler is in a file this wave did not own.** Found 2026-09-19 closing `P8-33`.
   `manage_tasks action=run` is served by `src/tools/system.py:649`
   (`await scheduler.run_task_now(task_id)`), and `run_task_now` now takes `dry`. Adding
@@ -18572,7 +18801,7 @@ this is the same thing happening to the row that corrected the store.
   three retries or is told at the point of setting it that it does not apply.
   `Depends:` P8-29, P8-32. — found during P8-32 — agent:`p8d`
 
-- [ ] **B806** **`P8-29` shipped the pipe and not the picker, and "data mapping" is the
+- [ ] **B806** **FOLDED INTO `P22-09` (2026-10-01) — the Workbench row that finishes it; do not work this row alone.** **`P8-29` shipped the pipe and not the picker, and "data mapping" is the
   picker.** Recorded 2026-09-19 by the row's own author so the row's title does not
   outlive its scope. What exists is the predecessor's whole output arriving at the
   successor in one declared, capped, untrusted envelope — which is the thing that had to
