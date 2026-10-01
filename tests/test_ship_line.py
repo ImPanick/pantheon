@@ -112,7 +112,7 @@ def test_the_trend_is_the_series_the_proposal_states():
     assert filed > 0 and closed > 0, (filed, closed)
     assert opened == filed - closed                              # the identity § 1 rests on
     assert (last[1] / last[0]) > (first[1] / first[0])          # done % converges
-    stated = re.findall(r"\*\*Direction as of [0-9-]+: the open count is (falling|rising)\.\*\*",
+    stated = re.findall(r"\*\*Direction as of [^:*]+: the open count is (falling|rising)\.\*\*",
                         SHIP_LINE_TEXT)
     assert stated, "§ 1 no longer states a direction for this test to hold it to"
     if stated[-1] == "falling":
