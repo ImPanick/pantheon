@@ -158,6 +158,29 @@ export function compactionNoticeText(event) {
   return `Context compacted — older messages summarized${cDetail}`;
 }
 
+/**
+ * `B953`. The `compacted` event a saved reply's record says happened, or
+ * `null`. `P4-13` saves a chat turn's compaction on its record —
+ * `context_compacted` and, when it was measured, the messages and tokens
+ * before and after (`compaction_metric_figures`, `src/context_compactor.py`) —
+ * and nothing drew it: the live toast said it and a reload said nothing. An
+ * agent turn's is saved as a note (`B921`); a chat reply is one bubble and has
+ * no notes, so this is read off its record, in the event's own shape, and drawn
+ * through `renderAgentNote` in the words the toast used.
+ */
+export function compactionFromRecord(record) {
+  if (!record || record.context_compacted !== true) return null;
+  const data = {};
+  for (const [key, saved] of [['messages_before', 'context_messages_before_compact'],
+    ['messages_after', 'context_messages_after_compact'],
+    ['tokens_before', 'context_tokens_before_compact'],
+    ['tokens_after', 'context_tokens_after_compact']]) {
+    const value = Number(record[saved]);
+    if (record[saved] != null && Number.isFinite(value)) data[key] = value;
+  }
+  return { type: 'compacted', data };
+}
+
 /** What Continue ▸ asks for after the step limit. */
 export const STEP_LIMIT_CONTINUE_PROMPT = 'You hit the step limit before finishing — the task is not '
   + 'complete. Continue from exactly where you left off and keep going until it is done. Do NOT '
@@ -314,5 +337,5 @@ export default {
   isAgentStop, agentStopHeadline, agentStopNode, renderAgentStop,
   AGENT_NOTE_TYPES, STEP_LIMIT_CONTINUE_PROMPT,
   isAgentNote, agentNoteNode, renderAgentNote, withdrawContinueOffers,
-  compactionNoticeText,
+  compactionNoticeText, compactionFromRecord,
 };

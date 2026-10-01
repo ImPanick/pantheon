@@ -21,7 +21,7 @@ import { CHECKLIST_SURFACES, checklistProgress, stepChipClass } from './checklis
 // the rung is the one that reads them — see the header of that module.
 import { buildAllowRuleChooser } from './trustLadder.js';
 // `P4-10`. Why the agent stopped itself — the same line the live stream draws.
-import { renderAgentStop, renderAgentNote, withdrawContinueOffers } from './agentStops.js';
+import { renderAgentStop, renderAgentNote, withdrawContinueOffers, compactionFromRecord } from './agentStops.js';
 import { applyAgentThreadNode, verifierCardOptions,
          blockedCardOptions, toolOutputPanesHtml, screenshotSummary } from './agentThread.js';
 import { prepBreakdownRows } from './agentMeter.js';   // P4-08
@@ -4405,6 +4405,10 @@ export function addMessage(role, content, modelName, metadata) {
       if (metadata?.fallback_chain) wrap._fallbackChain = metadata.fallback_chain;
       wrap.appendChild(createMsgFooter(wrap));
       if (metadata) displayMetrics(wrap, metadata);
+      // `B953`. The turn's context was summarised to fit before this reply was
+      // asked for: the line above it, in the words the live toast used.
+      const compaction = compactionFromRecord(metadata);
+      if (compaction) renderAgentNote(box, compaction);
     } else {
       // Add timestamp to user header (like AI messages)
       r.appendChild(roleTimestamp(metadata?.timestamp));
