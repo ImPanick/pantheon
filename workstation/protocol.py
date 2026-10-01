@@ -164,6 +164,16 @@ ROUTES: Dict[str, Tuple[str, str]] = {
     # A daemon older than this answers `404 not_found`; a caller reads that
     # as "cannot tell", never as "does not exist".
     "account": ("GET", "/v1/users/{account}"),
+    # `B984`, added: the machine's clock, so the VM backend's host can keep each
+    # of its machines to its own time over the one channel it has to them (no
+    # NTP server, no pool — `Law 16`). Needs the token.
+    #   {} -> {"time": float}                 this daemon's clock, epoch seconds
+    #   {"step_s": float} -> {"time": float}  the clock stepped by that much first
+    # Only a daemon started with `--backend vm` — one of the VM host's own
+    # machines — steps its clock; any other answers `unavailable`, and a step
+    # that is not a finite number of seconds within MAX_CLOCK_STEP_S is
+    # `bad_request`.
+    "clock": ("POST", "/v1/clock"),
 }
 
 # ── what the fields may hold ──────────────────────────────────────────────────
@@ -310,6 +320,9 @@ MAX_WAIT_MS = 30_000
 # workstation down. The VM host itself refuses to wait longer and answers
 # `unavailable` with a sentence instead.
 MACHINE_START_S = 600.0
+# `B984`, added: the largest step a `clock` request may ask for, either way
+# (ten years — a machine whose clock is wrong by more was never set at all).
+MAX_CLOCK_STEP_S = 10 * 366 * 86400.0
 
 # ── errors ────────────────────────────────────────────────────────────────────
 # code -> HTTP status. The client maps each to its own exception text; the
@@ -377,6 +390,8 @@ __all__ = [
     "ACCELS", "MACHINE_IMAGE_STATES", "MACHINE_START_S", "TLS_PIN_ENV",
     # `B979`, added.
     "MACHINE_STATES",
+    # `B984`, added.
+    "MAX_CLOCK_STEP_S",
     "ACCOUNT_PREFIX", "ACCOUNT_RE", "AGENT_NAME", "BACKENDS", "DEFAULT_EXEC_TIMEOUT_S",
     "DEFAULT_HOST", "DEFAULT_PAIRING_DIR", "DEFAULT_PORT", "ENTRY_TYPES",
     "ERRORS", "HOLDERS", "INPUT_ACTIONS", "LOCAL_OWNER_SLUG", "MAX_BODY_BYTES",

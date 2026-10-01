@@ -158,6 +158,37 @@ MEMORY_RESERVE_MIB = 2048
 HOUSEKEEPING_S = 30.0
 
 
+# ── `B984`: each machine keeps its host's time ───────────────────────────────
+#
+# `vm-guest.sh` masks systemd-timesyncd: it calls ntp.ubuntu.com (measured
+# `P20-07`), which nobody chose (`Law 16`). The guest kernel takes the time
+# from QEMU's RTC at boot and then keeps its own, which under TCG can drift.
+# The reference that phones nowhere is this host's own clock, and there are
+# three ways to give it to a machine:
+#
+#   * the RTC — QEMU drives it from the host's clock, but sets it from
+#     `time()` in whole seconds when the machine starts (`rtc_set_date_from_
+#     host`, hw/rtc/mc146818rtc.c, read 2026-10-01), so it runs up to a second
+#     behind the host for the machine's life: "within a second" at best;
+#   * QEMU's guest agent (`guest-set-time`) — exact, but not in the machine
+#     image, and adding it is a new image that running machines get only when
+#     they are reset;
+#   * the daemon in the machine, over its forwarded port and its own token —
+#     the one channel the host already has to every machine, under every
+#     network mode (`restrict=on` keeps forwarded ports). Chosen.
+#
+# The host reads the machine's clock (`protocol.ROUTES["clock"]`) between two
+# readings of its own and takes the middle, as NTP does: the error is at most
+# half the round trip, and a round trip over `CLOCK_MAX_RTT_S` measures nothing
+# and changes nothing. A machine surely more than `CLOCK_STEP_S` out (beyond
+# that half round trip) is stepped — when
+# it starts, and every `CLOCK_SYNC_S` after by the housekeeping thread. That is
+# not a use: keeping a machine's time never keeps it from being powered off.
+CLOCK_SYNC_S = 60.0
+CLOCK_STEP_S = 0.25
+CLOCK_MAX_RTT_S = 1.0
+
+
 def idle_stop_from_env(raw: str) -> Optional[float]:
     """Seconds, from the minutes in `PANTHEON_WORKSTATION_VM_IDLE_MIN`; None
     for 0 (never). Empty is the default."""
@@ -607,6 +638,7 @@ class Fleet(System):
         self._use: Dict[str, List] = {}          # account -> [requests in flight, last use]
         self._use_lock = threading.Lock()
         self._start_lock = threading.Lock()
+        self._last_clock_sync = 0.0  # `B984`
 
     # -- the System interface ---------------------------------------------------
 
@@ -829,6 +861,12 @@ class Fleet(System):
                 m.stop(graceful=False)
                 raise WorkstationError("unavailable", f"Your workstation machine started but "
                                                       f"refused its settings: {e.message}")
+            # …and only the time its RTC gave it (`B984`). Not fatal: a daemon
+            # older than the route answers `not_found`, and runs as it did.
+            try:
+                self._sync_clock(account, m)
+            except WorkstationError as e:
+                logger.info("the clock of %s's machine was not set: %s", account, e.message)
             return m
 
     def _wait_answering(self, m: Machine, started: float) -> None:
@@ -907,12 +945,56 @@ class Fleet(System):
         return stopped
 
     def housekeeping(self, stop: threading.Event, *, interval: float = HOUSEKEEPING_S) -> None:
-        """What the host does on its own, every `interval` until `stop`."""
+        """What the host does on its own, every `interval` until `stop`: power
+        off what nobody uses (`B979`), and keep the rest on time (`B984`)."""
         while not stop.wait(interval):
             try:
                 self.reap_idle()
+                if time.monotonic() - self._last_clock_sync >= CLOCK_SYNC_S:
+                    self._last_clock_sync = time.monotonic()
+                    self.sync_clocks()
             except Exception:  # noqa: BLE001 — one bad round must not end the next ones
                 logger.exception("workstation housekeeping failed")
+
+    # -- `B984`: the time ---------------------------------------------------------
+
+    def step_clock(self, seconds: float) -> None:
+        raise WorkstationError("unavailable", "The VM host keeps the clock of the machine it "
+                                              "runs on. It sets its machines' clocks, never "
+                                              "its own.")
+
+    def _sync_clock(self, account: str, m: Machine) -> Optional[float]:
+        """The machine's offset from this host's clock in seconds, after
+        stepping it if it was more than `CLOCK_STEP_S` out; None when the
+        round trip was too slow to measure (module comment above)."""
+        before = time.time()
+        answer = self._call(m, "clock", body={}, timeout=10.0) or {}
+        after = time.time()
+        seen = answer.get("time")
+        if after - before > CLOCK_MAX_RTT_S or isinstance(seen, bool) \
+                or not isinstance(seen, (int, float)):
+            return None
+        offset = float(seen) - (before + after) / 2
+        # Stepped only when it is out by more than `CLOCK_STEP_S` beyond what
+        # the round trip leaves unknown: a machine on time is never stepped
+        # on noise.
+        if abs(offset) - (after - before) / 2 > CLOCK_STEP_S:
+            self._call(m, "clock", body={"step_s": -offset}, timeout=10.0)
+            logger.info("set the clock of %s's machine to this host's (it was %+.3f s out)",
+                        account, offset)
+        return offset
+
+    def sync_clocks(self) -> Dict[str, Optional[float]]:
+        """Every running machine to this host's time: `{account: offset}`."""
+        out: Dict[str, Optional[float]] = {}
+        for account in self.running_accounts():
+            m = self.machine_for(account)
+            try:
+                out[account] = self._sync_clock(account, m) if m.running() else None
+            except WorkstationError as e:
+                out[account] = None
+                logger.info("the clock of %s's machine was not read: %s", account, e.message)
+        return out
 
     def cap_sentence(self, running: int) -> str:
         machines = "1 machine" if running == 1 else f"{running} machines"
@@ -1237,7 +1319,8 @@ if __name__ == "__main__":
     raise SystemExit(main())
 
 
-__all__ = ["DEFAULT_IDLE_STOP_MIN", "MEMORY_RESERVE_MIB", "host_memory_mib",  # `B979`
+__all__ = ["CLOCK_MAX_RTT_S", "CLOCK_STEP_S", "CLOCK_SYNC_S",  # `B984`
+           "DEFAULT_IDLE_STOP_MIN", "MEMORY_RESERVE_MIB", "host_memory_mib",  # `B979`
            "idle_stop_from_env", "max_running_from_env",
            "Fleet", "Machine", "QemuMachine", "VmStation", "choose_accel", "guest_unit",
            "image_meta_data", "image_user_data", "make_iso", "payload_digest", "payload_files",

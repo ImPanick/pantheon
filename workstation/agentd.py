@@ -42,6 +42,7 @@ import hashlib
 import hmac
 import json
 import logging
+import math
 import os
 import re
 import secrets
@@ -255,6 +256,27 @@ class System:
         home = self.home(account)
         return home.is_dir() and not home.is_symlink()
 
+    # -- `B984`, added: the clock ----------------------------------------------
+
+    def clock_now(self) -> float:
+        return time.time()
+
+    def step_clock(self, seconds: float) -> None:
+        """Step this machine's clock — only on a VM backend's machine, whose
+        host keeps it to its own time (`workstation/vm.py`). A container
+        shares its host's clock and may not set it; a machine an admin pointed
+        Pantheon at keeps its own, and the token is not a licence to move it."""
+        if self.backend != "vm":
+            raise WorkstationError("unavailable", "This workstation keeps its own clock: only "
+                                                  "the VM backend's machines are set from "
+                                                  "their host.")
+        try:
+            time.clock_settime(time.CLOCK_REALTIME,
+                               time.clock_gettime(time.CLOCK_REALTIME) + seconds)
+        except OSError as e:
+            raise WorkstationError("unavailable", f"This machine's clock could not be set: "
+                                                  f"{e.strerror or e}.")
+
     def machine(self) -> Dict:
         """`health`'s `machine` object (`protocol.ACCELS`). Looked up once:
         what a machine runs on does not change while the daemon runs."""
@@ -415,6 +437,16 @@ class Workstation:
                                        f"“network” is one of {', '.join(P.NETWORK_MODES)}.")
             self.system.set_network(body["network"])
         return self.settings()
+
+    def clock(self, body: Dict) -> Dict:
+        """`B984`: this machine's clock, stepped first when `step_s` asks."""
+        if "step_s" in body:
+            step = body["step_s"]
+            if (isinstance(step, bool) or not isinstance(step, (int, float))
+                    or not math.isfinite(step) or abs(step) > P.MAX_CLOCK_STEP_S):
+                raise WorkstationError("bad_request", "“step_s” is a number of seconds.")
+            self.system.step_clock(float(step))
+        return {"time": self.system.clock_now()}
 
     def holder(self, account: str) -> Dict:
         with self._lock:
@@ -893,6 +925,9 @@ class Handler(BaseHTTPRequestHandler):
                 raise WorkstationError("unauthorized", "The workstation token is missing or wrong.")
             if method == "POST" and path == P.ROUTES["config"][1]:
                 self._send(200, self.station.config(self._body()))
+                return
+            if method == "POST" and path == P.ROUTES["clock"][1]:  # `B984`
+                self._send(200, self.station.clock(self._body()))
                 return
             # `B959` (`P20-07`): the account itself, looked at and not made.
             bare = _ACCOUNT_PATH_RE.match(path)
