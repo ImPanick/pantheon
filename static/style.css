@@ -46885,6 +46885,7 @@ button.task-card-toggle {
   white-space: nowrap;
 }
 .wb-tool-switch[hidden] { display: none; }
+.wb-toolbar-zoom { display: inline-flex; align-items: center; gap: 6px; flex-wrap: nowrap; }
 .wb-tool-switch-box { width: auto; height: auto; margin: 0; }
 .wb-empty-builtins[hidden] { display: none; }
 .wb-node-moving {

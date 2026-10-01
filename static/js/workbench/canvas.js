@@ -222,7 +222,11 @@ export function mountCanvas(root, opts = {}) {
   builtinsSwitch.appendChild(builtinsBox);
   builtinsSwitch.appendChild(builtinsWord);
   builtinsSwitch.hidden = true;
-  for (const n of [newBtn, tidyBtn, builtinsSwitch, spacer, outBtn, zoomWord, inBtn, fitBtn]) toolbar.appendChild(n);
+  // The zoom controls wrap as one group: at phone width they split across two
+  // rows, "−" on one and "52% + Fit" on the next (seen at 390px).
+  const zoomGroup = _el('span', 'wb-toolbar-zoom');
+  for (const n of [outBtn, zoomWord, inBtn, fitBtn]) zoomGroup.appendChild(n);
+  for (const n of [newBtn, tidyBtn, builtinsSwitch, spacer, zoomGroup]) toolbar.appendChild(n);
 
   const hint = _el('p', 'wb-hint',
     'Drag from a step’s “' + EDGE_WORDS.success + '” or “' + EDGE_WORDS.error
