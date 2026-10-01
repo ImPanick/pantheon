@@ -507,6 +507,31 @@ async function syncPrefToggle(elementId, prefKey, onMsg, offMsg, dimBelow = true
   }
 }
 
+/**
+ * `B1071`. The style observer's record — `kind: "style"`
+ * (`src/memory_style.py:KIND_STYLE`), which `P13-17` is emphatic is not a
+ * memory — is listed by `GET /api/memory` beside the memories so its id can be
+ * edited and deleted. Until a profile forms (`style.observed` < `needed`) its
+ * text is "", and this list drew it as an empty card reading only *style ·
+ * auto · 5m ago*, counted it ("8 memories" over seven) and gave it a *style*
+ * chip. A record with nothing on it to read is not drawn, counted or chipped.
+ * Once a profile forms its text is drawn as before: until `B820`'s panel, that
+ * card is the one place the profile can be read, corrected or deleted.
+ */
+const STYLE_KIND = 'style';
+
+function _isUnformedStyleRecord(m) {
+  return !!m && m.kind === STYLE_KIND && !String(m.text || '').trim();
+}
+
+/** The rows of a `GET /api/memory` answer this list draws. */
+function _memoriesFrom(data) {
+  let rows = [];
+  if (data && Array.isArray(data.memory)) rows = data.memory;
+  else if (Array.isArray(data)) rows = data;
+  return rows.filter((m) => !_isUnformedStyleRecord(m));
+}
+
 export async function loadMemories() {
   _ensureNewMemoryCategorySelect();
   memoriesLoading = true;
@@ -535,13 +560,7 @@ export async function loadMemories() {
   }
 
   if (data !== null) {
-    if (data && data.memory) {
-      memories = data.memory;
-    } else if (Array.isArray(data)) {
-      memories = data;
-    } else {
-      memories = [];
-    }
+    memories = _memoriesFrom(data);
     memoriesKnown = true;
     memoriesError = '';
   } else {
@@ -780,7 +799,7 @@ export async function tidyMemories() {
     // Fetch the new state
     const freshRes = await fetch(`${window.location.origin}/api/memory`);
     const freshData = await freshRes.json();
-    const afterList = freshData.memory || freshData || [];
+    const afterList = _memoriesFrom(freshData);   // `B1071`: the same rows the list draws
     const afterMap = new Map(afterList.map(m => [m.id, m]));
 
     // Compute diff
