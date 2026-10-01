@@ -973,6 +973,9 @@ from src.event_bus import set_task_scheduler
 set_task_scheduler(task_scheduler)
 from routes.task.task_routes import setup_task_routes
 app.include_router(setup_task_routes(task_scheduler))
+# `P22-05`…`P22-08`. A workflow's document, versions, switch, runs and step test.
+from routes.workflow.workflow_routes import setup_workflow_routes
+app.include_router(setup_workflow_routes(task_scheduler))
 
 from routes.assistant_routes import setup_assistant_routes
 app.include_router(setup_assistant_routes(task_scheduler))

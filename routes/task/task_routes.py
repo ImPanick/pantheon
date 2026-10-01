@@ -238,8 +238,22 @@ def _display_task_name(t: ScheduledTask) -> str:
 _ASK = object()
 
 
+def _workflow_id_of(t: ScheduledTask):
+    """`P22-05`. The workflow a trigger task starts, or None.
+
+    Asked only of a `workflow` task, so a row that cannot be one costs no query
+    (and a tree without the workflow tables never reaches them).
+    """
+    if (getattr(t, "task_type", None) or "") != "workflow":
+        return None
+    from sqlalchemy.orm import object_session
+    from src.workflow_store import workflow_ids_for
+    session = object_session(t)
+    return workflow_ids_for(session, [t.id]).get(t.id) if session else None
+
+
 def _task_to_dict(t: ScheduledTask, include_last_run_result: bool = False,
-                  last_run=_ASK) -> dict:
+                  last_run=_ASK, workflow_id=_ASK) -> dict:
     defs = HOUSEKEEPING_DEFAULTS.get(t.action) if t.action else None
     d = {
         "id": t.id,
@@ -285,6 +299,11 @@ def _task_to_dict(t: ScheduledTask, include_last_run_result: bool = False,
         "webhook_token": t.webhook_token if (t.trigger_type or "schedule") == "webhook" else None,
         "created_at": t.created_at.isoformat() + "Z" if t.created_at else None,
         "updated_at": t.updated_at.isoformat() + "Z" if t.updated_at else None,
+        # `P22-05`. The workflow this task starts (`task_type == "workflow"`),
+        # so the Tasks window and the canvas can open its document; None for
+        # every other task. An added key (`Law 1`), filled by one query for a
+        # whole list (`list_tasks`) or looked up for one row.
+        "workflow_id": _workflow_id_of(t) if workflow_id is _ASK else workflow_id,
     }
     # Built-in housekeeping tasks (identified by their action) are flagged so
     # the UI can mark them and offer "revert to default" once altered.
@@ -477,13 +496,19 @@ def setup_task_routes(task_scheduler) -> APIRouter:
             if include_last_run:
                 from src.task_scheduler import latest_real_runs
                 last_runs = latest_real_runs(db, [t.id for t in tasks])
+            # `P22-05`. Every listed workflow trigger's workflow, in one query
+            # (none at all when the list holds no workflow).
+            from src.workflow_store import workflow_ids_for
+            workflow_ids = workflow_ids_for(
+                db, [t.id for t in tasks if (t.task_type or "") == "workflow"])
             # `P8-26`. The graph document rides on the door that already lists
             # tasks, built from the SAME rows the list is built from — a second
             # endpoint would be a second query answering the same question, and
             # `check-unreachable.py` counts a route no page fetches.
             return {
                 "tasks": [_task_to_dict(t, include_last_run_result=include_last_run,
-                                        last_run=last_runs.get(t.id))
+                                        last_run=last_runs.get(t.id),
+                                        workflow_id=workflow_ids.get(t.id))
                           for t in tasks],
                 "graph": build_task_graph(tasks),
             }
@@ -558,10 +583,21 @@ def setup_task_routes(task_scheduler) -> APIRouter:
     def _is_admin(user: str | None) -> bool:
         return owner_has_admin_task_privileges(user)
 
-    def _require_admin_for_task_action(user: str | None, task_type: str | None, action: str | None) -> None:
+    def _require_admin_for_task_action(user: str | None, task_type: str | None, action: str | None,
+                                       *, db=None, task=None) -> None:
         # The CRUD gate deliberately records nothing: nothing ran and nothing
         # was scheduled, so there is no run to file. Only the message is shared
         # — it was the third hand-typed copy of the same sentence.
+        if (task_type or "") == "workflow" and task is not None and db is not None:
+            # `P22-05`. A workflow's start has no action of its own; the action
+            # that needs an admin is one of its steps. `admin_only_action_of`
+            # is the engine's one answer for a task's own action or any action
+            # step in its document, so this door and the run refuse alike.
+            from src.task_action_policy import admin_only_action_of
+            found = admin_only_action_of(db, task)
+            if found and not _is_admin(user):
+                raise HTTPException(403, admin_refusal_message(found))
+            return
         if is_admin_only_task_action(task_type, action) and not _is_admin(user):
             raise HTTPException(403, admin_refusal_message(action))
 
@@ -699,6 +735,13 @@ def setup_task_routes(task_scheduler) -> APIRouter:
     @router.post("")
     async def create_task(request: Request, req: TaskCreate):
         user = _owner(request)
+
+        # `P22-05`. `workflow` has a meaning now — the task that starts a
+        # workflow document — and a task posted here with it would be a start
+        # with no document. Refused before anything else is read.
+        if req.task_type == "workflow":
+            from src.workflow_store import WORKFLOW_MADE_IN_WORKBENCH
+            raise HTTPException(400, WORKFLOW_MADE_IN_WORKBENCH)
 
         # Validate
         if req.task_type in ("llm", "research") and not req.prompt:
@@ -967,9 +1010,26 @@ def setup_task_routes(task_scheduler) -> APIRouter:
             if user and task.owner != user:
                 raise HTTPException(403, "Access denied")
 
+            # `P22-05`. A workflow's start stays one, and is called what its
+            # workflow is called (the document's name is the one fact; a save
+            # in the Workbench sets both). Anything else a start has — when it
+            # runs, its retries, time limit, notifications, a chain after it —
+            # is edited here, as for any task.
+            from src import workflow_store
+            if (task.task_type or "") == "workflow":
+                wf = workflow_store.workflow_for_task(db, task.id)
+                wf_name = wf.name if wf is not None else task.name
+                if req.task_type is not None and req.task_type != "workflow":
+                    raise HTTPException(400, workflow_store.trigger_type_is_fixed(task.name, wf_name))
+                if req.name is not None and req.name != task.name:
+                    raise HTTPException(
+                        400, workflow_store.trigger_is_renamed_with_its_workflow(task.name, wf_name))
+            elif req.task_type == "workflow":
+                raise HTTPException(400, workflow_store.WORKFLOW_MADE_IN_WORKBENCH)
+
             next_task_type = req.task_type if req.task_type is not None else task.task_type
             next_action = req.action if req.action is not None else task.action
-            _require_admin_for_task_action(user, next_task_type, next_action)
+            _require_admin_for_task_action(user, next_task_type, next_action, db=db, task=task)
 
             if req.name is not None:
                 task.name = req.name
@@ -1087,6 +1147,14 @@ def setup_task_routes(task_scheduler) -> APIRouter:
                 raise HTTPException(404, "Task not found")
             if user and task.owner != user:
                 raise HTTPException(403, "Access denied")
+            if (task.task_type or "") == "workflow":
+                # `P22-05`. Deleting the start alone would leave its document
+                # with nothing to run it. The workflow's own DELETE takes both.
+                from src import workflow_store
+                wf = workflow_store.workflow_for_task(db, task.id)
+                if wf is not None:
+                    raise HTTPException(
+                        400, workflow_store.trigger_is_deleted_with_its_workflow(task.name, wf.name))
             # Cascade: cookbook_serve tasks may have a linked calendar
             # event (created via the "Create event in calendar" toggle
             # in the schedule modal). If so, delete the calendar event
@@ -1125,7 +1193,24 @@ def setup_task_routes(task_scheduler) -> APIRouter:
                 raise HTTPException(404, "Task not found")
             if user and task.owner != user:
                 raise HTTPException(403, "Access denied")
-            _require_admin_for_task_action(user, task.task_type, task.action)
+            _require_admin_for_task_action(user, task.task_type, task.action, db=db, task=task)
+            if (task.task_type or "") == "workflow":
+                # `P22-06`. Resuming a workflow's start is switching it on, by
+                # the one rule: its document is checked first, and the chain it
+                # was made from is paused so the two do not both run. Resumed
+                # here without that, a converted workflow and its chain would
+                # both run from the Tasks window's Resume.
+                from src import workflow_store
+                wf = workflow_store.workflow_for_task(db, task.id)
+                if wf is not None:
+                    try:
+                        chain_paused, notes = workflow_store.switch_workflow(
+                            db, wf, task, on=True, name_of=_display_task_name)
+                    except workflow_store.WorkflowRefused as refused:
+                        raise HTTPException(refused.status, refused.sentence) from None
+                    return {"ok": True, "status": task.status,
+                            "next_run": task.next_run.isoformat() + "Z" if task.next_run else None,
+                            "chain_paused": chain_paused, "notes": notes}
             task.status = "active"
             if (task.trigger_type or "schedule") == "schedule":
                 # `P8-32`. In the task's own zone.
@@ -1220,7 +1305,8 @@ def setup_task_routes(task_scheduler) -> APIRouter:
             # Unconditional, and a dry run is no exception: answering "you may
             # not run this" only on the real path would turn the dry path into
             # a way to read an admin-only task's configuration.
-            _require_admin_for_task_action(user, task.task_type, task.action)
+            _require_admin_for_task_action(user, task.task_type, task.action, db=db, task=task)
+            is_workflow = (task.task_type or "") == "workflow"
             if chain:
                 # `P22-04`. The rule the engine asks before it continues from
                 # this task (`P22-01`), asked here before the head's dry run is
@@ -1254,6 +1340,13 @@ def setup_task_routes(task_scheduler) -> APIRouter:
                     run = db.query(TaskRun).filter(TaskRun.id == started).first()
                     out["run_id"] = started
                     out["run"] = _run_to_dict(run) if run is not None else None
+                    if is_workflow:
+                        # `P22-05`. A workflow's plan is per step, in that run's
+                        # dry node records — read back here in the shape of
+                        # wave B's `chain` entries (design § 5), so the canvas
+                        # draws a document's plan as it draws a chain's.
+                        from src.workflow_store import dry_plan_nodes
+                        out["nodes"] = dry_plan_nodes(db, started)
                 finally:
                     db.close()
             if chain:
@@ -1574,7 +1667,16 @@ def setup_task_routes(task_scheduler) -> APIRouter:
             ).first()
             if not task:
                 raise HTTPException(404, "Not found")
-            if (
+            if (task.task_type or "") == "workflow":
+                # `P22-05`. A workflow's admin-only action is one of its steps;
+                # the engine's one answer names it, and the refusal is filed
+                # with that action's name (`record_admin_refusal(action=)`), so
+                # it reads as the run's own refusal would.
+                from src.task_action_policy import admin_only_action_of
+                found = admin_only_action_of(db, task)
+                if found and not owner_has_admin_task_privileges(task.owner):
+                    raise HTTPException(403, record_admin_refusal(db, task, action=found))
+            elif (
                 is_admin_only_task_action(task.task_type, task.action)
                 and not owner_has_admin_task_privileges(task.owner)
             ):

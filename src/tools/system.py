@@ -558,7 +558,7 @@ def _resolve_crew_member_id(db, crew_member_id, owner):
     return crew.id
 
 
-def _admin_refusal(owner, task_type, action) -> Optional[Dict]:
+def _admin_refusal(owner, task_type, action, *, db=None, task=None) -> Optional[Dict]:
     """The route's admin gate, asked of the same policy, as a tool reply.
 
     `B1038`. `routes/task/task_routes.py` refuses a non-admin an admin-only
@@ -580,8 +580,45 @@ def _admin_refusal(owner, task_type, action) -> Optional[Dict]:
         admin_refusal_message, is_admin_only_task_action,
         owner_has_admin_task_privileges,
     )
+    if (task_type or "") == "workflow" and task is not None and db is not None:
+        # `P22-05`. A workflow's start has no action of its own: the one that
+        # needs an admin is one of its steps, and `admin_only_action_of` is the
+        # engine's one answer for that — the route's door asks it too.
+        from src.task_action_policy import admin_only_action_of
+        found = admin_only_action_of(db, task)
+        if found and not owner_has_admin_task_privileges(owner):
+            return {"error": admin_refusal_message(found), "exit_code": 1}
+        return None
     if is_admin_only_task_action(task_type, action) and not owner_has_admin_task_privileges(owner):
         return {"error": admin_refusal_message(action), "exit_code": 1}
+    return None
+
+
+def _workflow_refusal(db, task, args) -> Optional[Dict]:
+    """`P22-05`. What this tool may not do to a workflow's start, in the
+    task route's own sentences (`src.workflow_store`, `Law 7`): make one (a
+    start with no document), turn one into another kind of task, rename it
+    apart from its workflow, or delete it without its workflow. `task` is
+    None for a create. Everything else a start has — when it runs, its
+    retries, a chain after it — is edited as for any task."""
+    from src import workflow_store
+    wanted = args.get("task_type")
+    if task is None or (task.task_type or "") != "workflow":
+        if wanted == "workflow":
+            return {"error": workflow_store.WORKFLOW_MADE_IN_WORKBENCH, "exit_code": 1}
+        return None
+    wf = workflow_store.workflow_for_task(db, task.id)
+    wf_name = wf.name if wf is not None else task.name
+    if args.get("action") == "delete":
+        if wf is None:
+            return None
+        return {"error": workflow_store.trigger_is_deleted_with_its_workflow(task.name, wf_name),
+                "exit_code": 1}
+    if wanted is not None and wanted != "workflow":
+        return {"error": workflow_store.trigger_type_is_fixed(task.name, wf_name), "exit_code": 1}
+    if args.get("name") is not None and args.get("name") != task.name:
+        return {"error": workflow_store.trigger_is_renamed_with_its_workflow(task.name, wf_name),
+                "exit_code": 1}
     return None
 
 
@@ -651,6 +688,9 @@ async def do_manage_tasks(content: str, owner: Optional[str] = None) -> Dict:
                 return {"error": "Prompt is required for llm/research tasks", "exit_code": 1}
             if task_type == "action" and not args.get("action_name"):
                 return {"error": "action_name is required for action tasks", "exit_code": 1}
+            refused = _workflow_refusal(db, None, args)
+            if refused:
+                return refused
             refused = _admin_refusal(owner, task_type, args.get("action_name"))
             if refused:
                 return refused
@@ -718,12 +758,16 @@ async def do_manage_tasks(content: str, owner: Optional[str] = None) -> Dict:
             # reach it. `list` already scopes to an exact owner match.
             if owner and task.owner != owner:
                 return {"error": "Access denied", "exit_code": 1}
+            refused = _workflow_refusal(db, task, args)
+            if refused:
+                return refused
             # `B1038`. With the type and action the edit would leave, as the
             # route's update asks.
             refused = _admin_refusal(
                 owner,
                 args["task_type"] if args.get("task_type") is not None else task.task_type,
-                args["action_name"] if args.get("action_name") is not None else task.action)
+                args["action_name"] if args.get("action_name") is not None else task.action,
+                db=db, task=task)
             if refused:
                 return refused
 
@@ -781,6 +825,9 @@ async def do_manage_tasks(content: str, owner: Optional[str] = None) -> Dict:
                 return {"error": f"Task {task_id} not found", "exit_code": 1}
             if owner and task.owner != owner:
                 return {"error": "Access denied", "exit_code": 1}
+            refused = _workflow_refusal(db, task, args)
+            if refused:
+                return refused
             name = task.name
             db.delete(task)
             db.commit()
@@ -798,9 +845,22 @@ async def do_manage_tasks(content: str, owner: Optional[str] = None) -> Dict:
             if action == "resume":
                 # `B1038`. Pausing is always allowed; putting a refused task
                 # back on its schedule is not, as at the route.
-                refused = _admin_refusal(owner, task.task_type, task.action)
+                refused = _admin_refusal(owner, task.task_type, task.action, db=db, task=task)
                 if refused:
                     return refused
+                if (task.task_type or "") == "workflow":
+                    # `P22-06`. Resuming a workflow's start is switching the
+                    # workflow on, by the route's one rule: the document is
+                    # checked and the chain it came from is paused.
+                    from src import workflow_store
+                    wf = workflow_store.workflow_for_task(db, task.id)
+                    if wf is not None:
+                        try:
+                            _, notes = workflow_store.switch_workflow(db, wf, task, on=True)
+                        except workflow_store.WorkflowRefused as refused:
+                            return {"error": refused.sentence, "exit_code": 1}
+                        return {"response": f"Task '{task.name}' resumed. " + " ".join(notes),
+                                "exit_code": 0}
 
             if action == "pause":
                 task.status = "paused"
@@ -822,14 +882,24 @@ async def do_manage_tasks(content: str, owner: Optional[str] = None) -> Dict:
                 return {"error": f"Task {task_id} not found", "exit_code": 1}
             if owner and task.owner != owner:
                 return {"error": "Access denied", "exit_code": 1}
-            refused = _admin_refusal(owner, task.task_type, task.action)  # `B1038`
+            refused = _admin_refusal(owner, task.task_type, task.action,
+                                     db=db, task=task)  # `B1038`
             if refused:
                 return refused
 
             from src.event_bus import get_task_scheduler
+            from src.interactive_gate import tool_call_started_by
             scheduler = get_task_scheduler()
             if scheduler:
-                started = await scheduler.run_task_now(task_id)
+                # `B1061`. Who is asking: a person, when this call was made in a
+                # person's turn (their chat, the teacher inside it, a skill test
+                # they pressed); background work when a scheduled run's agent
+                # made it — which the loop says, and this reads
+                # (`tool_call_started_by`). It was background for every caller,
+                # so "run my backup now" said in chat waited for Pantheon to be
+                # idle — while the person who asked was looking at it.
+                started = await scheduler.run_task_now(
+                    task_id, started_by=tool_call_started_by())
                 if started:
                     return {"response": f"Task '{task.name}' triggered", "exit_code": 0}
                 else:
@@ -858,7 +928,7 @@ async def do_manage_tasks(content: str, owner: Optional[str] = None) -> Dict:
             # task is PAUSED (`record_admin_refusal`) — a dry run that changed
             # the task would break the one promise it makes. (`B1038`: the same
             # question the other four doors now ask, in one place.)
-            refused = _admin_refusal(owner, task.task_type, task.action)
+            refused = _admin_refusal(owner, task.task_type, task.action, db=db, task=task)
             if refused:
                 return refused
 

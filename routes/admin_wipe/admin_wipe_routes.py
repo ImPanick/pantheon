@@ -132,12 +132,25 @@ def setup_admin_wipe_routes(session_manager):
                 return {"status": "deleted", "kind": kind, "count": count}
 
             if kind == "tasks":
+                # `P22-05`. A workflow is a document started by a task, so a
+                # wipe of the tasks is a wipe of the workflows too: left behind,
+                # each document would point at nothing (its `task_id` set to
+                # NULL by the foreign key) and still be listed. Children first —
+                # node records, then runs, then versions and documents, then
+                # the tasks — so nothing depends on the database's cascade
+                # being switched on.
+                from core.database import TaskRunNode, Workflow, WorkflowVersion
+                db.query(TaskRunNode).delete(synchronize_session=False)
                 # TaskRun rows reference tasks via FK — clear them first.
                 db.query(TaskRun).delete()
+                workflows = db.query(Workflow).count()
+                db.query(WorkflowVersion).delete(synchronize_session=False)
+                db.query(Workflow).delete(synchronize_session=False)
                 count = db.query(ScheduledTask).count()
                 db.query(ScheduledTask).delete()
                 db.commit()
-                return {"status": "deleted", "kind": kind, "count": count}
+                return {"status": "deleted", "kind": kind, "count": count,
+                        "workflows": workflows}
 
             if kind == "documents":
                 # DocumentVersion FKs Document — clear children first.

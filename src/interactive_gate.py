@@ -294,3 +294,34 @@ async def wait_for_chat_quiet(label: str = "") -> bool:
                 return waited
             waited = True
             await _wait_on(cond, 0.25)
+
+
+# `B1061`. Who an agent's tool call is acting for, so a tool that starts a task
+# run (`manage_tasks run`) can say who asked — the same two words as a run
+# (`STARTED_BY`). Measured 2026-10-01: `stream_agent_loop` is reached from a
+# person's chat turn (`routes/chat_routes.py`), the teacher run inside one
+# (`src/teacher_escalation.py`), a skill test a person pressed
+# (`routes/skills_routes.py`), the background-job follow-up
+# (`src/bg_monitor.py`) and the scheduler's own runs (`src/task_scheduler.py`),
+# and only the scheduler passes `workload="background"`. A bearer token's chat
+# never reaches `manage_tasks` (`NON_ADMIN_BLOCKED_TOOLS`, `B70`). So the loop's
+# `workload` is the answer, bound in each tool call's own task — a copy of the
+# loop's context, the way `bind_run_limits` binds the run's caps — so it ends
+# with the call. Unbound, it is background: today's answer for every caller.
+from contextvars import ContextVar  # noqa: E402
+
+_TOOL_CALL_STARTED_BY: ContextVar[str] = ContextVar(
+    "tool_call_started_by", default=STARTED_BY_BACKGROUND)
+
+
+def bind_tool_call_started_by(workload: str | None) -> None:
+    """`B1061`. Called inside a tool call's task with the loop's `workload`."""
+    _TOOL_CALL_STARTED_BY.set(
+        STARTED_BY_BACKGROUND if (workload or "foreground") == "background" else STARTED_BY_PERSON)
+
+
+def tool_call_started_by() -> str:
+    """`B1061`. `STARTED_BY_PERSON` for a call made in a person's turn,
+    `STARTED_BY_BACKGROUND` for a scheduled run's and for any call nothing
+    bound."""
+    return _TOOL_CALL_STARTED_BY.get()
