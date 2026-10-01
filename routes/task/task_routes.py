@@ -235,7 +235,11 @@ def _display_task_name(t: ScheduledTask) -> str:
     return t.name
 
 
-def _task_to_dict(t: ScheduledTask, include_last_run_result: bool = False) -> dict:
+_ASK = object()
+
+
+def _task_to_dict(t: ScheduledTask, include_last_run_result: bool = False,
+                  last_run=_ASK) -> dict:
     defs = HOUSEKEEPING_DEFAULTS.get(t.action) if t.action else None
     d = {
         "id": t.id,
@@ -295,10 +299,20 @@ def _task_to_dict(t: ScheduledTask, include_last_run_result: bool = False) -> di
         )
     else:
         d["is_modified"] = False
-    if include_last_run_result and t.runs:
-        last = t.runs[0]  # ordered desc by started_at
-        d["last_run_status"] = last.status
-        d["last_run_result"] = (last.result or last.error or "")[:500]
+    if include_last_run_result:
+        # `B1054` / `B1043`. The newest REAL run — a dry run is never a last
+        # run — handed in by the caller that listed many tasks in one query
+        # (`latest_real_runs`), or asked for this one task. It was `t.runs[0]`:
+        # every run of the task loaded through a lazy relationship, dry runs
+        # included.
+        if last_run is _ASK:
+            from sqlalchemy.orm import object_session
+            from src.task_scheduler import latest_real_runs
+            session = object_session(t)
+            last_run = latest_real_runs(session, [t.id]).get(t.id) if session else None
+        if last_run is not None:
+            d["last_run_status"] = last_run.status
+            d["last_run_result"] = (last_run.result or last_run.error or "")[:500]
     return d
 
 
@@ -457,12 +471,19 @@ def setup_task_routes(task_scheduler) -> APIRouter:
             if status:
                 q = q.filter(ScheduledTask.status == status)
             tasks = q.order_by(ScheduledTask.created_at.desc()).all()
+            # `B1043`. Every listed task's last real run in one query, rather
+            # than one lazy load of all of a task's runs per task.
+            last_runs = {}
+            if include_last_run:
+                from src.task_scheduler import latest_real_runs
+                last_runs = latest_real_runs(db, [t.id for t in tasks])
             # `P8-26`. The graph document rides on the door that already lists
             # tasks, built from the SAME rows the list is built from — a second
             # endpoint would be a second query answering the same question, and
             # `check-unreachable.py` counts a route no page fetches.
             return {
-                "tasks": [_task_to_dict(t, include_last_run_result=include_last_run)
+                "tasks": [_task_to_dict(t, include_last_run_result=include_last_run,
+                                        last_run=last_runs.get(t.id))
                           for t in tasks],
                 "graph": build_task_graph(tasks),
             }

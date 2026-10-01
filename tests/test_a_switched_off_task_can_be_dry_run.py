@@ -240,7 +240,9 @@ async def test_an_admin_only_task_is_declined_without_pausing_it(
 
     (run,) = _runs(task_db)
     assert run["status"] == "skipped"
-    assert run["error"] == run["result"] == "Action 'ssh_command' requires admin privileges"
+    assert run["error"] == "Action 'ssh_command' requires admin privileges"
+    # Led by the dry-run mark (`B1054`), so it is never this task's last run.
+    assert run["result"] == "Dry run — not planned: Action 'ssh_command' requires admin privileges"
     assert run["steps"] == [], "an admin-only task's command was shown to its non-admin owner"
     assert _task(task_db) == before, "the dry run paused the task"
     assert scheduler._pending_notifications == [] and calls == []

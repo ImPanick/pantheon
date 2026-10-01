@@ -1122,7 +1122,77 @@ def _normalize_chat_endpoint(url: str) -> str:
 # `manage_tasks` `dry_run` reads a run back and has to tell a plan from a run
 # the engine declined to plan (a paused task, an admin refusal), and it does so
 # by this line rather than by a second copy of it (`Law 7`).
-DRY_RUN_HEADLINE = "Dry run — nothing ran, nothing changed."
+#
+# `B1054`. `DRY_RUN_MARK` is what every dry run's `result` starts with — a plan
+# (the headline) and a dry run the engine declined (`_record_dry_run`) alike —
+# so "is this row a dry run" has one answer, in Python (`is_dry_run`) and in
+# SQL (`real_run_clause`), and a dry run is never a task's last run.
+DRY_RUN_MARK = "Dry run — "
+DRY_RUN_HEADLINE = f"{DRY_RUN_MARK}nothing ran, nothing changed."
+
+
+def is_dry_run(run) -> bool:
+    """`B1054`. Is this run row a dry run (a plan, or a declined plan)?"""
+    return (getattr(run, "status", None) == "skipped"
+            and (getattr(run, "result", None) or "").startswith(DRY_RUN_MARK))
+
+
+def real_run_clause(run_model):
+    """`B1054`. `is_dry_run` negated, as a SQL condition on `TaskRun`."""
+    from sqlalchemy import func, or_
+    return or_(
+        run_model.status.is_(None),
+        run_model.status != "skipped",
+        ~func.coalesce(run_model.result, "").startswith(DRY_RUN_MARK, autoescape=True),
+    )
+
+
+class LastRun(NamedTuple):
+    """A task's newest real run, as much of it as a list shows. `B1043`."""
+    status: str | None
+    result: str | None
+    error: str | None
+
+
+def latest_real_runs(db, task_ids, *, clip: int = 500) -> dict:
+    """The newest run of each task that is not a dry run, in one query.
+
+    `B1054`. `GET /api/tasks?include_last_run=true` took each task's newest
+    row, so after *Show me what this would do* a step whose last real run
+    failed read "Last run: Skipped" (measured by verify-a, and again here).
+    `B1043`. And it took it through `ScheduledTask.runs`, a lazy relationship
+    ordered by `started_at`: one query per task, loading EVERY run of every
+    task — steps JSON and all — to read one. Measured on the route: 20 tasks
+    with 50 runs each, 21 statements and 1,001 `TaskRun` rows loaded to serve
+    20; 40 × 200, 41 statements and 8,001 rows. This is one statement (per
+    500 tasks), and it loads three short columns per task, not rows.
+    Ties on `started_at` take the highest id, an arbitrary rule written down,
+    where the relationship's order was an arbitrary rule nobody wrote.
+    """
+    from sqlalchemy import and_, func
+    from core.database import TaskRun
+
+    ids = [i for i in dict.fromkeys(task_ids) if i]
+    found = {}
+    real = real_run_clause(TaskRun)
+    for start in range(0, len(ids), 500):
+        chunk = ids[start:start + 500]
+        newest = (db.query(TaskRun.task_id.label("task_id"),
+                           func.max(TaskRun.started_at).label("at"))
+                  .filter(TaskRun.task_id.in_(chunk), real)
+                  .group_by(TaskRun.task_id)
+                  .subquery())
+        rows = (db.query(TaskRun.task_id, TaskRun.status,
+                         func.substr(TaskRun.result, 1, clip),
+                         func.substr(TaskRun.error, 1, clip))
+                .join(newest, and_(TaskRun.task_id == newest.c.task_id,
+                                   TaskRun.started_at == newest.c.at))
+                .filter(real)
+                .order_by(TaskRun.task_id, TaskRun.id.desc())
+                .all())
+        for task_id, status, result, error in rows:
+            found.setdefault(task_id, LastRun(status, result, error))
+    return found
 
 # `B1036`. What a task that is not `active` would do if a real run reached it:
 # nothing — `_execute_task_locked` records it `skipped` before any executor.
@@ -1736,7 +1806,9 @@ class TaskScheduler:
             if run is not None:
                 run.status = "skipped"
                 run.error = declined
-                run.result = declined
+                # `B1054`. Led by `DRY_RUN_MARK`, so a declined dry run is a
+                # dry run to every reader, and never a task's last run.
+                run.result = f"{DRY_RUN_MARK}not planned: {declined}"
                 run.finished_at = _utcnow()
                 db.commit()
             logger.info("Dry run of task %s (run %s) not planned: %s",
