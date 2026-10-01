@@ -18,6 +18,11 @@ from mcp.types import Tool, TextContent
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.constants import GENERATED_IMAGES_DIR
+from src.paced_http import guard_environment_reader
+
+# `B1013`: this server is its own process, and its client reads the environment
+# Pantheon started it with — an IPv6 range in NO_PROXY would stop it being built.
+guard_environment_reader()
 
 server = Server("image_gen")
 

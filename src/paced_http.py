@@ -38,8 +38,11 @@ argument for leaving a call unwrapped — "it is local, the limiter would just
 slow it down". It will not.
 """
 import ipaddress
+import logging
 from typing import Any, Dict, Iterable, Optional, Tuple
 from urllib.parse import urlsplit
+
+logger = logging.getLogger(__name__)
 
 _DEFAULT_TIMEOUT = 15.0
 
@@ -123,6 +126,107 @@ def direct_mounts(url: str, *, addresses: Iterable[str] = ()) -> Dict[str, None]
         return {}
     pattern = f"[{host}]" if literal and ips[0].version == 6 else host
     return {f"all://{pattern}": None}
+
+
+# ── `B1013`: an entry in `NO_PROXY` httpx cannot read ─────────────────────────
+#
+# Measured with httpx 0.28.1: `NO_PROXY=localhost,fd00::/8` (`no_proxy` unset or
+# the same) makes `httpx.Client()` and `httpx.AsyncClient()` raise `InvalidURL:
+# Invalid port: ':'` at construction — `get_environment_proxies` turns `fd00::/8`
+# into the pattern `all://[fd00::/8]`, which its own URL parser refuses — whether
+# or not a proxy is set. So every client that reads the environment failed:
+# model calls, the workstation, `httpx.get`, the MCP SDK's own clients. A single
+# IPv6 address is read fine (`::1` becomes `all://[::1]`): the sandbox this was
+# measured in has `::1` and `::` in its `NO_PROXY`, and its clients build.
+#
+# So httpx's reader is wrapped once, at start (`guard_environment_reader`): what
+# it returns passes through `readable_environment_proxies`, which keeps every
+# proxy and every entry httpx can parse, and leaves out a no-proxy entry its own
+# `URLPattern` refuses — said by name in the log. Nothing the operator wrote is
+# dropped: the environment itself is untouched (a command in the agent's shell,
+# curl, still reads the range), and `no_proxy_ranges` reads `urllib`, not httpx,
+# so `direct_mounts` still sends an address in that range direct. What httpx
+# loses is a pattern it could never have matched: it reads no range as a range
+# (`B982`).
+
+_HTTPX_READER = None   # httpx's own `get_environment_proxies`, wrapped
+_SAID: set = set()
+
+
+def _httpx_reader():
+    from httpx import _utils
+    return _HTTPX_READER or _utils.get_environment_proxies
+
+
+def _unreadable(key: str) -> bool:
+    from httpx._utils import URLPattern
+    try:
+        URLPattern(key)
+    except Exception:  # noqa: BLE001 — whatever httpx refuses, it refuses at construction
+        return True
+    return False
+
+
+def _entry(key: str) -> str:
+    """The `NO_PROXY` entry a pattern came from, as written there."""
+    host = key.split("://", 1)[-1]
+    return host[1:-1] if host.startswith("[") and host.endswith("]") else host
+
+
+def readable_environment_proxies() -> Dict[str, Optional[str]]:
+    """httpx's reading of the environment's proxies, less any no-proxy entry
+    httpx's own URL parser refuses (`B1013`). Installed in httpx's place by
+    `guard_environment_reader`."""
+    out: Dict[str, Optional[str]] = {}
+    for key, proxy in _httpx_reader()().items():
+        if proxy is None and _unreadable(key):
+            if key not in _SAID:
+                _SAID.add(key)
+                logger.warning("NO_PROXY entry %r is one httpx cannot read; it is kept from "
+                               "httpx (B1013), not from the environment.", _entry(key))
+            continue
+        out[key] = proxy
+    return out
+
+
+def _unreadable_keys() -> list:
+    return [key for key, proxy in _httpx_reader()().items()
+            if proxy is None and _unreadable(key)]
+
+
+def unreadable_no_proxy() -> Tuple[str, ...]:
+    """The `NO_PROXY` entries httpx cannot read, as written there."""
+    return tuple(_entry(key) for key in _unreadable_keys())
+
+
+def guard_environment_reader() -> Tuple[str, ...]:
+    """Put `readable_environment_proxies` where httpx reads the environment from
+    (once; again is a no-op), and say at start which entries it keeps from httpx.
+    Called by `app.py` before anything builds a client. Returns those entries."""
+    global _HTTPX_READER
+    try:
+        from httpx import _client, _utils
+    except ImportError:
+        return ()
+    if not callable(getattr(_client, "get_environment_proxies", None)):
+        # A different httpx: say so, rather than pretend the guard is in place.
+        logger.warning("httpx has no get_environment_proxies to guard (B1013); an IPv6 range "
+                       "in NO_PROXY may stop every client from being built.")
+        return ()
+    if _HTTPX_READER is None:
+        _HTTPX_READER = _utils.get_environment_proxies
+    _client.get_environment_proxies = readable_environment_proxies
+    keys = _unreadable_keys()
+    left_out = tuple(_entry(key) for key in keys)
+    if any(key not in _SAID for key in keys):
+        _SAID.update(keys)
+        logger.warning(
+            "NO_PROXY holds %s, which httpx cannot read (an IPv6 range): kept from httpx so "
+            "its clients can be built (B1013). Where Pantheon reads NO_PROXY ranges itself "
+            "(paced_http.direct_mounts) an address in it still goes direct; a command in a "
+            "shell reads NO_PROXY as it is.",
+            ", ".join(left_out))
+    return left_out
 
 
 def _host(url: str) -> str:

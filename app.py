@@ -132,6 +132,13 @@ except Exception as e:
 
 logger = logging.getLogger(__name__)
 
+# `B1013`. Before anything builds an httpx client: an IPv6 range in NO_PROXY
+# made httpx raise on every client it built (its reader turns `fd00::/8` into a
+# pattern its own parser refuses). The entry is kept from httpx, not from the
+# environment, and the log says which, here.
+from src.paced_http import guard_environment_reader
+guard_environment_reader()
+
 # ========= APP =========
 # Lifespan is defined below (after all helpers it references are in scope)
 # and passed to FastAPI so we can use the modern context-manager lifecycle
