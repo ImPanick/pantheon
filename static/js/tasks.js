@@ -1546,10 +1546,10 @@ async function _doRunNow(id, force = false) {
 // `P8-33` made a dry run a `return` above every executor: the eighteen actions,
 // the agent loop and the research pipeline are below it, and so are delivery,
 // notification and the chain. What it leaves is a run row with status
-// `skipped` whose steps are the plan (`_record_dry_run`). The route answers as
-// soon as that run is scheduled and carries neither the plan nor the run's id,
-// so the card asks for the task's newest runs until one appears that was not
-// there before it asked — which is also the run History shows.
+// `skipped` whose steps are the plan (`_record_dry_run`). Since `P22-04`'s
+// server half the route answers only once that run is written, and carries it
+// as `run` in `GET /runs`' shape — so the card draws the plan off the reply and
+// asks the history for nothing. The same run is the one History shows.
 
 /** Draw what came back into the card's plan box. The steps go through the one
  *  step renderer, open, under a heading that says no run happened. */

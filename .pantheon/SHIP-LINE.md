@@ -78,6 +78,15 @@ rather than carrying it (`B44`).
 
 **Direction as of 2026-10-01: the open count is falling.**
 
+Re-measured the same day, after `P22` was filed and its first wave landed: the
+ten distinct headlines now run 893 → 1059 tracked, 613 → 750 done — **140 filed,
+112 closed, 1.250**, open 281 → 309. Twenty-five of those rows are one phase
+filed in one entry (`P22 · The Workbench`), and wave A's merged-tree check filed
+eight more from driving it. The thermometer moved because the owner asked for a
+room that did not exist, not because closing slowed.
+
+**Direction as of 2026-10-01, after `P22` was filed: the open count is rising.**
+
 ### A second number, which is the one that moves
 
 Of the last 40 `B` rows filed — `B360` through `B455`, four waves of sweeps plus
@@ -478,6 +487,7 @@ weakest one in this document: it means nobody adjudicated them individually.
 | `B455` | tracked | tracker | twelve open rows are not available work; the remedy is the ruling `B451` awaits |
 | `B1020` | tracked | test-order | a suite-order leak into four test cases; the model allow-list holds in a fresh process and in the product |
 | `B1021` | tracked | defect | the refusal holds — the datagram is not sent; only the sentence explaining it is missing for one silent tool |
+| `B1038` | tracked | defect | the engine refuses and pauses the admin-only task, so nothing runs; the tool misreports a refusal as success |
 
 ---
 

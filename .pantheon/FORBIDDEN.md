@@ -33,7 +33,7 @@ Style them freely. Do not rename them.
 | Task/run enum values | `task_type`, `trigger_type`, `schedule`, task `status`, run `status`, `output_target` prefixes — all stored in rows. |
 | All 18 built-in action keys | Stored in rows and joined against six separate maps. |
 | Every `legacy_names` / `old_cron_expressions` entry | The sole migration join key for pre-rename rows. Renaming one orphans a user's task into "user-created" and it stops being revertable. |
-| The 7 event names | Stored in `trigger_event`; changing one silently disables every task using it. |
+| The 8 event names (`src/event_bus.EVENT_CATALOGUE`: `session_created`, `message_sent`, `document_created`, `document_updated`, `memory_added`, `research_completed`, `email_received`, `skill_added`) | Stored in `trigger_event`; changing one silently disables every task using it. The count was 7 until `skill_added` joined and nobody moved it (`B1042`). |
 | `ADMIN_ONLY_TASK_ACTIONS` | Asserted by a test; gates enforced at five sites. |
 | The approval cache-buster string | **Must be bumped across all six approval-path modules together**, or a browser pairs new code with a cached interceptor and the approval click lands on the New-chat branch. |
 | `static/lib/**` | `.gitattributes` requires byte-identical bundles so upstream licence banners survive. Never reformat. |
