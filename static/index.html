@@ -1792,7 +1792,19 @@
       _scrollTimeout = setTimeout(() => { if (_scrollingToBottom) { container.scrollTop = target; _scrollingToBottom = false; } }, 1500);
     });
     new ResizeObserver(reposition).observe(chatBar);
-    new MutationObserver(update).observe(container, {childList:true, subtree:true});
+    // `B925`. Once a frame, not once a mutation. `update` reads the composer's
+    // rect and the history's scroll metrics, and every read forces a layout;
+    // run from the observer it forced one for each batch of chat mutations,
+    // which while a long reply streamed and its document landed was most of a
+    // second of layout inside one task (measured in Chromium: 1,002 ms of
+    // `getBoundingClientRect` in a 1,450 ms stall). The button only needs to
+    // be right when the frame is drawn.
+    let updateFrame = 0;
+    function scheduleUpdate() {
+      if (updateFrame) return;
+      updateFrame = requestAnimationFrame(() => { updateFrame = 0; update(); });
+    }
+    new MutationObserver(scheduleUpdate).observe(container, {childList:true, subtree:true});
     window.addEventListener('resize', reposition);
     update();
   })();

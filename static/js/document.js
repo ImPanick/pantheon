@@ -7619,22 +7619,46 @@ import { chevronIcon, playIcon } from './icons.js';
     return probe;
   }
 
+  // `B925`. The probe's style is copied from the textarea's computed style, and
+  // the copy used to interleave reads of that live object with writes to the
+  // probe — each read after a write is a forced style recalculation, fifteen a
+  // call, measured at 138 ms self time in the task that opens a 44,000-character
+  // document. Read everything first, and write only when something changed.
+  const _MEASURE_PROPS = ['fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'lineHeight',
+    'letterSpacing', 'tabSize', 'fontFeatureSettings', 'fontVariantLigatures', 'fontKerning',
+    'textRendering', 'whiteSpace', 'wordWrap', 'overflowWrap'];
+
   function _syncLineNumberMeasureStyle(probe, style, textWidth) {
+    const values = _MEASURE_PROPS.map(p => style[p]);
+    const key = textWidth + '|' + values.join('|');
+    if (probe._measureKey === key) return;
+    probe._measureKey = key;
     probe.style.width = textWidth + 'px';
-    probe.style.fontFamily = style.fontFamily;
-    probe.style.fontSize = style.fontSize;
-    probe.style.fontWeight = style.fontWeight;
-    probe.style.fontStyle = style.fontStyle;
-    probe.style.lineHeight = style.lineHeight;
-    probe.style.letterSpacing = style.letterSpacing;
-    probe.style.tabSize = style.tabSize;
-    probe.style.fontFeatureSettings = style.fontFeatureSettings;
-    probe.style.fontVariantLigatures = style.fontVariantLigatures;
-    probe.style.fontKerning = style.fontKerning;
-    probe.style.textRendering = style.textRendering;
-    probe.style.whiteSpace = style.whiteSpace;
-    probe.style.wordWrap = style.wordWrap;
-    probe.style.overflowWrap = style.overflowWrap;
+    _MEASURE_PROPS.forEach((p, i) => { probe.style[p] = values[i]; });
+  }
+
+  // `B925`. A line that is plainly narrower than the text column takes one row,
+  // and asking the probe says so at the price of a layout per line — 1,347 of
+  // them, 336 ms, when that document landed. The text's own width, from a
+  // canvas in the textarea's font (no layout), answers for those lines; a line
+  // within 15% of the column, or wider, still goes to the probe, which knows
+  // where the browser wraps. Tabs count as their tab stop; letter spacing is
+  // added per character.
+  let _lineNumberCanvas = null;
+  function _fitsOnOneRow(line, style, textWidth) {
+    if (!line) return true;
+    if (!_lineNumberCanvas && typeof document !== 'undefined') {
+      try { _lineNumberCanvas = document.createElement('canvas').getContext('2d'); } catch (_) { _lineNumberCanvas = null; }
+    }
+    const ctx = _lineNumberCanvas;
+    if (!ctx || typeof ctx.measureText !== 'function') return false;
+    const font = `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+    if (ctx.font !== font) ctx.font = font;
+    const tabSize = parseInt(style.tabSize, 10) || 8;
+    const text = line.indexOf('\t') >= 0 ? line.replace(/\t/g, ' '.repeat(tabSize)) : line;
+    const spacing = parseFloat(style.letterSpacing) || 0;
+    const width = ctx.measureText(text).width + spacing * text.length;
+    return width > 0 && width <= textWidth * 0.85;
   }
 
   function _measureLineNumberHeights(textarea, lines, textWidth, style) {
@@ -7642,6 +7666,7 @@ import { chevronIcon, playIcon } from './icons.js';
     _syncLineNumberMeasureStyle(probe, style, textWidth);
     const lineHeight = _lineHeightPx(style);
     return lines.map(line => {
+      if (_fitsOnOneRow(line, style, textWidth)) return lineHeight;
       probe.value = line || ' ';
       const visualRows = Math.max(1, Math.round(probe.scrollHeight / lineHeight));
       return visualRows * lineHeight;
