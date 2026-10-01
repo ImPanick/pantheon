@@ -353,3 +353,22 @@ export function chevronIcon(opts = {}) {
   return iconSvg(chevronGlyph(direction),
     { ...rest, size, strokeWidth, ariaHidden, outline: true });
 }
+
+// ── The workflow glyph (`P22-02`) ───────────────────────────────────────────
+//
+// Three boxes, the top one branching to the two below — a step and the two
+// outcomes it can go on to, which is exactly what `P8-28`'s branch is. It was
+// drawn once, as ⋮ → *Workflow* on a task card (`tasks.js`), and that item
+// opens the Workbench now; the Workbench's rail button, its title bar and its
+// dock chip are the same door, so they are the same picture (`Law 15`). It
+// joins the table on the rule the table was built on: a glyph more than one
+// module draws. Stroked, like the menu glyphs it has always sat beside; the
+// rail button and the window title in `static/index.html` spell it literally
+// because markup cannot import a table (`B292`), and a test holds them equal.
+
+/** The workflow glyph, as bare SVG children for a stroked 24-box. */
+export const WORKFLOW_GLYPH =
+  '<rect x="4" y="3" width="7" height="5" rx="1"/>'
+  + '<rect x="13" y="16" width="7" height="5" rx="1"/>'
+  + '<rect x="2" y="16" width="7" height="5" rx="1"/>'
+  + '<path d="M7.5 8v4h9v4"/><path d="M5.5 16v-4"/>';

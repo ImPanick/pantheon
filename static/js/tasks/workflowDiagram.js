@@ -46,6 +46,27 @@ export const EDGE_WORDS = Object.freeze({
   error: 'if it fails',
 });
 
+/** `P22-02`. Which task column carries which condition — the browser half of
+ *  `src/task_scheduler.py`'s `EDGE_COLUMNS`, keyed the same way. The served
+ *  graph carries the condition words but not the column they are written to,
+ *  so something on this side has to say it; the Workbench's canvas writes an
+ *  edge through `PUT /api/tasks/{id}` with exactly one of these keys, and an
+ *  omitted key leaves the other edge alone (`B873`). `tasks.js:CHAIN_FIELDS`
+ *  still spells the same pairing for the form's two selects. */
+export const EDGE_COLUMNS = Object.freeze({
+  success: 'then_task_id',
+  error: 'else_task_id',
+});
+
+/** `P22-02`. A step's kind in one word, per `task_type` — the words
+ *  `tasks.js:_workflowDetail` writes on a diagram node, so the canvas and the
+ *  diagram name a step the same way. */
+export const KIND_WORDS = Object.freeze({
+  llm: 'Prompt',
+  research: 'Research',
+  action: 'Action',
+});
+
 /** Node shape per `task_type`, as Mermaid spells it. */
 const SHAPES = Object.freeze({
   llm: ['["', '"]'],
@@ -259,5 +280,5 @@ export function workflowSentence(view) {
 
 export default {
   mermaidText, componentOf, longestChain, workflowMermaid,
-  workflowSentence, EDGE_WORDS, SHAPE_WORDS,
+  workflowSentence, EDGE_WORDS, EDGE_COLUMNS, KIND_WORDS, SHAPE_WORDS,
 };
