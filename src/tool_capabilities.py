@@ -21,7 +21,13 @@ from src.tool_security import (
     is_delegated_credential_blocked_tool,
 )
 from src.ui_switches import switch_request
-from src.run_limits import cap_label, configured_cap, describe_cap, owner_set_cap_raise
+from src.run_limits import (
+    cap_label,
+    configured_cap,
+    describe_cap,
+    loop_cap_request,
+    owner_set_cap_raise,
+)
 
 
 class ToolEffect(str, Enum):
@@ -763,11 +769,77 @@ _OBSERVE_ONLY_CAPABILITIES = _capabilities(
 )
 
 
+# ── `B930` · a step-limit reply is Pantheon's own words ─────────────────────
+#
+# `manage_settings` is registered `EXTERNAL_UNTRUSTED` above because the admin
+# managers echo configuration back: a `get` or a `list` returns stored values
+# that a person, an import or an earlier call may have written, and the model
+# then reads them as text. `P7-12`'s loop-cap replies were classified the same
+# way, and they are not that. Measured (`P7-12`, re-measured by `w5-local`):
+# after *"Raised this run's step limit to 60 steps…"* in a clean run at the
+# default rung, the next `bash ls` was refused with *"External untrusted context
+# has already influenced this run"*, the trail naming `manage_settings` — a
+# false sentence on the card (`Law 10`), and an agent that gave itself more
+# steps was then stopped at every consequential one, the opposite of the
+# automation `D-2026-09-08-04` asked for.
+#
+# The owner's call (`D-2026-10-01-04`): **trust only step-limit replies.** A
+# `manage_settings` call that `run_limits.loop_cap_request` recognises — the
+# executor's own reading of the call (`_parse_tool_args`, the same key aliases,
+# `int()` on the value), so the gate and the tool cannot disagree about which
+# call this is — has a `SYSTEM` result. Nothing else moves: the effects are the
+# action's as before (so the card, the approval seal's effects and every rung
+# decide exactly what they decided), the gate itself is untouched (`FORBIDDEN.md`
+# Part 2), and a run already tainted stays tainted — `SYSTEM` only declines to
+# arm the gate, and nothing disarms it.
+#
+# **Why that reply cannot carry outside content.** Every exit
+# `do_manage_settings` (`src/agent_tools/admin_tools.py`) has for such a call:
+#
+#   * a raise (`_loop_cap_raise`) — `RaiseOutcome.words`: fixed sentences
+#     around `cap_label` (one of two fixed names) and `describe_cap` (an
+#     integer, formatted), plus `run_limit` — `key` one of `LOOP_CAP_KEYS`,
+#     `outcome` one of four constants, `limit` an integer or `None`, `saved`
+#     False;
+#   * a lowering, saved — *"Set {key} = {value}."* and `B931`'s clamp sentence:
+#     `key` is the resolved key (one of the two, never the alias the model
+#     wrote) and `value` has been through `int()` and `clamp_int_setting`;
+#   * a reset or delete, saved — *"Reset {key} to default ({default})."*, a
+#     shipped integer;
+#   * an exception — `str(e)` from Pantheon's own settings store (an OS error
+#     about its own file, or `P3-16`'s refusal to replace an unreadable one).
+#     `int()` cannot be what raises: `loop_cap_request` already parsed the same
+#     value, and a value it cannot parse is not recognised.
+#
+# None of them reads back a stored string, a file, a page, a mailbox or a
+# person's text. What is *not* recognised keeps `EXTERNAL_UNTRUSTED`: `get`,
+# `list`, every other key, a loop-cap `set` whose value `int()` refuses (its
+# error repeats the value), and any MCP tool merely named `manage_settings`
+# (`mcp__…`, which never reaches this executor).
+#
+# Decided from the call, never from the result: a tool cannot mark its own
+# output trusted (the shape `B930` ruled out), and `loop_cap_request` reads only
+# the call and the shipped defaults, never the stored settings — so the answer,
+# which the approval seal binds (`ExactToolApproval`), is the same when a card
+# is minted and when it is claimed. Anything that goes wrong reading the call is
+# "not recognised", the classification it had before.
+def _replies_in_numbers(tool_name: str, content: Any) -> bool:
+    """`B930`. Whether this call's reply is built by Pantheon from integers."""
+    if tool_name != "manage_settings":
+        return False
+    try:
+        return loop_cap_request(content) is not None
+    except Exception:
+        return False
+
+
 def capabilities_for_action(tool_name: Any, content: Any) -> ToolCapabilities:
     """Classify a sealed multiplexed action; ambiguous actions fail high."""
     base = capabilities_for_tool(tool_name)
     if not isinstance(tool_name, str):
         return base
+    if _replies_in_numbers(tool_name, content):
+        base = ToolCapabilities(base.effects, ResultIntegrity.SYSTEM, known=base.known)
 
     # `P7-02`. A switch the assistant would turn on for itself carries what the
     # switch hands over, so the card ranks it by that and not as a theme change:
