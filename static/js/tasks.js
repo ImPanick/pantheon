@@ -230,6 +230,15 @@ async function _fetchRuns(taskId, limit = 10) {
 
 // ---- Helpers ----
 
+/** `P22-02` / `B1046`. The Workbench on this task's workflow, with this
+ *  window's schedule words — the one way a card opens it, for both doors
+ *  (⋮ → *Workflow* and the workflow chip). Loaded on first use. */
+function _openInWorkbench(task) {
+  return import('./workbench/workbench.js')
+    .then((wb) => wb.openWorkbench({ focusId: task.id, describeTrigger: _scheduleLabel }))
+    .catch(() => uiModule.showError('The Workbench did not load. Reload the page and try again.'));
+}
+
 function _scheduleLabel(task) {
   const tt = task.trigger_type || 'schedule';
   if (tt === 'event') {
@@ -719,9 +728,7 @@ function _renderList() {
       // ways — History is what this task did, Workflow is what it is part of.
       // `P22-02`: Workflow opens the Workbench on this task's workflow, and the
       // Mermaid drawing stays one item down as *Read as a diagram*.
-      items.push({ label: 'Workflow', icon: WORKFLOW_GLYPH, action: () => import('./workbench/workbench.js')
-        .then((wb) => wb.openWorkbench({ focusId: task.id, describeTrigger: _scheduleLabel }))
-        .catch(() => uiModule.showError('The Workbench did not load. Reload the page and try again.')) });
+      items.push({ label: 'Workflow', icon: WORKFLOW_GLYPH, action: () => _openInWorkbench(task) });
       items.push({ label: 'Read as a diagram', icon: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>', action: () => _showWorkflowDiagram(task.id, task.name) });
       if (task.is_builtin && task.is_modified) {
         items.push({ label: 'Revert to default', icon: '<polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>', action: () => _doRevert(task.id) });
@@ -759,19 +766,21 @@ function _renderList() {
     // has been on every task in this payload since `P8-26` and nothing drew it,
     // so the only way to find out that finishing this task starts another was
     // to open Edit and read the "Then run" dropdown. The chip says so on the
-    // card and opens the diagram; the kebab keeps the entry for anyone who
-    // goes looking there first.
+    // card; the kebab keeps the entry for anyone who goes looking there first.
+    // `B1046`: the chip — the most visible door on a chained card — opens the
+    // Workbench on that workflow, where it can be changed, as ⋮ → *Workflow*
+    // does; the read-only drawing stays one item under it, *Read as a diagram*.
     if (_graph.edges && _graph.edges.length) {
       const steps = componentOf(_graph, task.id).nodes.length;
       if (steps > 1) {
         const chip = document.createElement('button');
         chip.type = 'button';
         chip.className = 'task-workflow-chip';
-        chip.title = 'Draw this workflow';
+        chip.title = 'Open this workflow in the Workbench';
         chip.textContent = `Part of a ${steps}-step workflow`;
         chip.addEventListener('click', (e) => {
           e.stopPropagation();
-          _showWorkflowDiagram(task.id, task.name);
+          _openInWorkbench(task);
         });
         content.appendChild(chip);
       }
