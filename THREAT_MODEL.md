@@ -93,9 +93,21 @@ stronger wall between people when that matters.
 the LAN. The adversary this accepts, named: content the agent reads (a web page, a README, a mail) steers it into
 running code that reaches devices on the owner's network. What stands between that code and Pantheon is the
 container boundary and the absence of any Pantheon secret inside it; what stands between it and the LAN is the
-network mode, which an admin can narrow to *internet only* or *none* and which `P20-06` enforces inside the
-workstation. Until `P20-06` lands the mode is stored and shown but not enforced: the workstation has whatever
-network its container is given, and the panel says exactly that.
+network mode, which an admin can narrow to *internet only* (no private, shared, link-local or metadata address) or
+*none*. **With `sudo` on that code is root in the workstation, so the mode is held where root there cannot reach**
+(`P20-06`): the overlay's `workstation-net` container owns the network namespace the workstation runs in and is the
+only one holding `CAP_NET_ADMIN`; the workstation holds neither it nor `CAP_NET_RAW`, and Pantheon sets the mode
+with a token from a volume the workstation does not mount. Measured 2026-10-01 in the image: as an account and as
+root alike, *internet* reached a public host and was refused the LAN and `169.254.169.254`, *none* was refused
+both; root's `nft flush ruleset`, raw and packet sockets and `unshare -n` were all refused. Two conditions are
+load-bearing and the overlay states both: with `CAP_NET_RAW` kept, root wrote its own Ethernet frames past the
+rules and reached a refused LAN host; with `CAP_NET_ADMIN` given to the workstation, root could rewrite the gate's
+rules, and the daemon reports that and the panel then says *only while sudo is off*. Where there is no gate — a
+VM, another machine — the daemon holds the mode for workstation accounts when it can (`meta skuid` rules), which an
+agent with `sudo` lifts in one command; the panel says so. A workstation started without the gate holds nothing,
+and the panel says that and how to recreate it. *Not covered*: a public address that leads back into the LAN (a
+router's own WAN address, a relay the owner runs), and DNS — under *internet* names still resolve through the
+resolver the container was given.
 
 ## Prompt-Injection Hardening
 

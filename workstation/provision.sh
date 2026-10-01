@@ -40,7 +40,11 @@ STEP=${1:-}
 # The workstation's own packages. Changing this list changes every backend.
 PACKAGES="ca-certificates curl git sudo tini procps less nano unzip xz-utils \
 python3 python3-venv python3-pip build-essential \
-xvfb jwm xterm xdotool scrot fonts-dejavu-core dbus-daemon dbus-bin"
+xvfb jwm xterm xdotool scrot fonts-dejavu-core dbus-daemon dbus-bin \
+nftables"
+# `nftables` (`P20-06`): the network gate, which runs from the same image, writes the
+# admin's mode with `nft`. In the workstation itself it does nothing: the overlay gives
+# the workstation no `CAP_NET_ADMIN`.
 
 say() { printf 'provision: %s\n' "$*"; }
 

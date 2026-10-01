@@ -100,8 +100,15 @@ TLS_PIN_ENV = "PANTHEON_WORKSTATION_CERT_SHA256"
 ROUTES: Dict[str, Tuple[str, str]] = {
     # No token. {"ok", "agent", "protocol", "backend", "version", "sudo",
     #            "network", "screen": [w, h], "accounts": int}
+    # `P20-06`, added: "network_in_force" (a mode, or null when nothing here
+    # enforces one), "network_enforcement" (one of NETWORK_ENFORCEMENT, for what
+    # THIS daemon holds — a gate answers for itself) and
+    # "root_can_change_network" (CAP_NET_ADMIN is in this machine's bounding
+    # set, so root here could rewrite any rule in its network namespace,
+    # including a gate's that it shares).
     "health": ("GET", "/v1/health"),
-    # Admin settings the daemon enforces itself. Body: any of {"sudo": bool}.
+    # Admin settings the daemon enforces itself. Body: any of {"sudo": bool,
+    # "network": one of NETWORK_MODES (`P20-06`, added)}.
     # Answers the effective settings, the same shape `health` reports them in.
     "config": ("POST", "/v1/config"),
     # Makes the account, its home and its display on first use; a no-op after.
@@ -198,6 +205,75 @@ ACCELS = ("kvm", "tcg")
 MACHINE_IMAGE_STATES = ("ready", "preparing", "failed")
 # `P20-06`. What the admin chose; where it is enforced is that row's subject.
 NETWORK_MODES = ("full", "internet", "none")
+
+# ── the network mode in force (`P20-06`, additive) ────────────────────────────
+#
+# THE ADVERSARY (`Law 17`, named in `D-2026-09-30-03`): content the agent reads
+# steers it into running code that reaches devices on the owner's network. With
+# `sudo` on (the default) that code is root inside the workstation, so a rule
+# root can change is not enforcement. Who holds the mode is therefore reported,
+# never assumed — one word, not a pair of booleans (`Law 10`):
+#
+#   gate      rules in the network namespace's owner: a separate container
+#             (`workstation/gate.py`) that the workstation shares a network with
+#             and cannot reach into. They hold for every process in the
+#             workstation, root included — measured 2026-10-01: root there
+#             cannot change them (no CAP_NET_ADMIN) or write around them (no
+#             CAP_NET_RAW, which the overlay drops; with it, a raw frame got a
+#             SYN-ACK from a blocked LAN host past the rules).
+#   accounts  rules the daemon itself holds, for workstation accounts only
+#             (`meta skuid` over the account uid range). They hold while `sudo`
+#             is off; an account with `sudo` is root and can delete them. What a
+#             VM or another machine running `--system ubuntu` can do.
+#   none      nothing enforces a mode: the workstation has whatever network its
+#             machine gives it.
+NETWORK_ENFORCEMENT = ("gate", "accounts", "none")
+
+# What *internet* excludes: every address that is not on the public internet —
+# private and shared ranges (the LAN, Docker's own networks, CGNAT/Tailscale),
+# loopback, link-local (and the 169.254.169.254 metadata service in it),
+# documentation and benchmarking ranges, 6to4 (which tunnels to any IPv4 address,
+# a LAN one included), multicast and reserved. One list, both sides read it
+# (`Law 7`); `tests/test_the_workstation_network_is_the_one_chosen.py` checks it
+# covers every range the standard library calls not global, and adds only
+# multicast and the deprecated site-local range on top.
+# Loopback inside the workstation itself stays open in every mode — a dev server
+# on localhost is the workstation talking to itself.
+INTERNET_EXCLUDED_V4 = (
+    "0.0.0.0/8", "10.0.0.0/8", "100.64.0.0/10", "127.0.0.0/8", "169.254.0.0/16",
+    "172.16.0.0/12", "192.0.0.0/24", "192.0.2.0/24", "192.168.0.0/16", "198.18.0.0/15",
+    "198.51.100.0/24", "203.0.113.0/24", "224.0.0.0/3",
+)
+INTERNET_EXCLUDED_V6 = (
+    "::/127", "::ffff:0:0/96", "64:ff9b:1::/48", "100::/64", "2001::/23", "2001:db8::/32",
+    "2002::/16", "3fff::/20", "fc00::/7", "fe80::/10", "fec0::/10", "ff00::/8",
+)
+
+# The network gate (`workstation/gate.py`): its own port beside the daemon's, in
+# the network namespace the two share, and its own token in its own volume —
+# one the workstation does not mount, so root in the workstation cannot read it
+# and tell the gate to open up. The overlay sets `GATE_URL_ENV` on Pantheon;
+# without it there is no gate, and the daemon's own report is all there is.
+GATE_AGENT_NAME = "pantheon-workstation-net"
+GATE_PORT = 7041
+GATE_URL_ENV = "PANTHEON_WORKSTATION_NET_URL"
+GATE_PAIRING_DIR_ENV = "PANTHEON_WORKSTATION_NET_PAIRING"
+DEFAULT_GATE_PAIRING_DIR = "/workstation-net-pairing"
+GATE_ROUTES: Dict[str, Tuple[str, str]] = {
+    # No token. {"ok", "agent": GATE_AGENT_NAME, "protocol", "mode",
+    #            "enforcement": "gate", "self_test", "applied_at"}
+    # `mode` is read back from the kernel's own table after it was written,
+    # not remembered; `self_test` is one of GATE_SELF_TESTS.
+    "health": ("GET", "/v1/network"),
+    # {"mode": one of NETWORK_MODES} -> the health answer, after the rules are
+    # in force. Needs the gate's token.
+    "mode": ("POST", "/v1/network"),
+}
+# `refused`: a connection to a test address the mode excludes (192.0.2.1, a
+# documentation address that is never a real host) was refused by the rules
+# just written — measured, at the moment they were applied. `not_needed`: the
+# mode is `full`, and there is nothing to refuse.
+GATE_SELF_TESTS = ("refused", "not_needed")
 
 # ── the bounds, stated once ───────────────────────────────────────────────────
 SCREEN_WIDTH = 1280
@@ -298,4 +374,8 @@ __all__ = [
     "ROUTES", "SCREEN_HEIGHT", "SCREEN_WIDTH", "SCREENSHOT_FORMATS", "SHELLS", "TOKEN_ENTROPY_BYTES",
     "TOKEN_ENV", "TOKEN_FILENAME", "TOKEN_PREFIX", "URL_ENV", "account_name", "error_body",
     "route_path",
+    # `P20-06`, added
+    "DEFAULT_GATE_PAIRING_DIR", "GATE_AGENT_NAME", "GATE_PAIRING_DIR_ENV", "GATE_PORT",
+    "GATE_ROUTES", "GATE_SELF_TESTS", "GATE_URL_ENV", "INTERNET_EXCLUDED_V4",
+    "INTERNET_EXCLUDED_V6", "NETWORK_ENFORCEMENT",
 ]

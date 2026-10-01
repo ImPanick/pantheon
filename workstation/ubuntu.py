@@ -681,6 +681,10 @@ class UbuntuSystem(System):
         self._displays: Dict[str, XDisplay] = {}
         self._acting = threading.local()
         self.sudo = self._persisted_sudo(sudo_default)
+        # `P20-06`: the last mode Pantheon set, kept like `sudo`; what is in
+        # force is what the kernel says after `_hold_network` (None: not held).
+        self.network = self._persisted_network(self.network)
+        self._network_in_force: Optional[str] = None
         if prepare:
             self.prepare()
 
@@ -707,6 +711,7 @@ class UbuntuSystem(System):
         self.runtime_root.mkdir(parents=True, exist_ok=True)
         os.setgroups([])
         write_sudoers(self.sudo, self.sudoers_path)
+        self._hold_network(self.network)  # `P20-06`
 
     def _settings_path(self) -> Path:
         return self.state_dir / "settings.json"
@@ -850,6 +855,70 @@ class UbuntuSystem(System):
         os.replace(tmp, path)
         self.sudo = on
         logger.info("sudo is now %s for workstation accounts", "on" if on else "off")
+
+    # -- the network mode, for accounts (`P20-06`) ------------------------------
+    #
+    # Rules over the account uid range (`netrules.ruleset(uids=…)`) in this
+    # machine's own namespace — written only when the daemon holds
+    # CAP_NET_ADMIN, which the shipped container does not (the gate holds the
+    # mode there, from outside). Where it does — a VM, another machine running
+    # `--system ubuntu` — they hold while `sudo` is off: measured 2026-10-01,
+    # an account was refused the LAN, and root deleted the table in one command.
+
+    def _network_path(self) -> Path:
+        return self.state_dir / "network.json"
+
+    def _persisted_network(self, default: str) -> str:
+        try:
+            value = json.loads(self._network_path().read_text(encoding="utf-8")).get("network")
+        except (OSError, ValueError, AttributeError):
+            return default
+        return value if value in P.NETWORK_MODES else default
+
+    def can_hold_network(self) -> bool:
+        from workstation import netrules
+        return (netrules.capability(netrules.CAP_NET_ADMIN, "CapEff")
+                and netrules.nft_path() is not None)
+
+    def _hold_network(self, mode: str) -> None:
+        """Write the accounts' rules for `mode` if this machine lets the daemon,
+        and read back what the kernel then has. Nothing is written for `full`
+        when nothing was held before, so a daemon that never narrowed the
+        network never touches the machine's rules."""
+        from workstation import netrules
+        if not self.can_hold_network():
+            self._network_in_force = None
+            return
+        if mode == "full" and self._network_in_force in (None, "full"):
+            loaded = netrules.in_force(netrules.ACCOUNTS_TABLE)
+            if loaded in (None, "full"):
+                self._network_in_force = loaded
+                return
+        try:
+            netrules.apply(netrules.ruleset(mode, table=netrules.ACCOUNTS_TABLE,
+                                            uids=(UID_MIN, UID_MAX),
+                                            resolvers=netrules.lan_resolvers()))
+        except netrules.RulesError as e:
+            logger.error("network mode %s not held for accounts: %s", mode, e)
+        self._network_in_force = netrules.in_force(netrules.ACCOUNTS_TABLE)
+
+    def set_network(self, mode: str) -> None:
+        self.state_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+        path = self._network_path()
+        tmp = path.with_name(path.name + ".tmp")
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump({"network": mode}, f)
+        os.replace(tmp, path)
+        self.network = mode
+        self._hold_network(mode)
+
+    def network_report(self) -> Dict:
+        out = super().network_report()
+        if self._network_in_force is not None:
+            out.update(network_in_force=self._network_in_force,
+                       network_enforcement="accounts")
+        return out
 
     def screen(self, account: str) -> Screen:
         self.uid(account)

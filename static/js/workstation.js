@@ -62,12 +62,32 @@ const NETWORK_WORDS = {
   },
 };
 
-// Said beside the network mode until the workstation enforces one. What is in
-// force today is the container's own network, and saying less than that would
-// be a boundary the panel implies and nothing draws.
-const NETWORK_NOT_ENFORCED = 'Not enforced yet: until it is, the workstation has whatever '
-  + 'network its container is given — usually the internet, and your local network where '
-  + 'Docker allows it.';
+// `P20-06`. Said beside the network mode: whether the choice is in force, who
+// holds it, and whether an agent using sudo can lift it — one sentence per state
+// the server works out (`workstation_access.network_view`), never a claim the
+// system does not keep. `{held}` is the mode actually in force.
+const NETWORK_STATE_WORDS = {
+  unrestricted: '',
+  enforced: 'Enforced outside the workstation, so it holds even for an agent using sudo.',
+  enforced_sudo_off: 'Enforced for workstation accounts. It holds while sudo is off.',
+  liftable: 'Enforced only while sudo is off — and sudo is on, so an agent can lift it.',
+  needs_recreate: 'Not enforced: this workstation was started without its network gate. '
+    + 'Recreate it with the current workstation overlay (docker compose up -d) to enforce it.',
+  not_enforced: 'Not enforced: this workstation cannot hold a network mode, so it has '
+    + 'whatever network its machine gives it.',
+  pending: 'Not in force yet: the workstation is still held at “{held}”.',
+  unknown: 'Whether it is in force is checked when the workstation answers.',
+};
+
+/** The sentence for one `network_view` answer, or '' when there is nothing to
+ *  add to the mode's own words. */
+function networkStateSentence(view) {
+  if (!view || !view.state) return NETWORK_STATE_WORDS.unknown;
+  const words = NETWORK_STATE_WORDS[view.state];
+  if (words === undefined) return '';
+  const held = NETWORK_WORDS[view.in_force] ? NETWORK_WORDS[view.in_force].label : view.in_force;
+  return words.replace('{held}', held || '');
+}
 
 const URL_SOURCE_WORDS = {
   setting: 'set here',
@@ -202,7 +222,7 @@ function apply(status) {
   render(status);
   if (status.settings) {
     fillSettings(status.settings);
-    renderEffects(status.settings, status.daemon);
+    renderEffects(status.settings, status.daemon, status.network);
   }
   return status;
 }
@@ -232,7 +252,7 @@ function fillSettings(settings) {
 }
 
 /** The sentences under the admin's controls — what each choice means now. */
-function renderEffects(settings, daemon) {
+function renderEffects(settings, daemon, network) {
   const url = $('ws-url-effect');
   if (url) {
     const where = URL_SOURCE_WORDS[settings.url_source];
@@ -263,11 +283,18 @@ function renderEffects(settings, daemon) {
 
   renderRecreate(settings, daemon);
 
-  const network = $('ws-network-effect');
-  if (network) {
+  const networkEffect = $('ws-network-effect');
+  if (networkEffect) {
     const chosen = $('ws-network') ? $('ws-network').value || settings.network : settings.network;
     const words = NETWORK_WORDS[chosen];
-    network.textContent = `${words ? words.says : chosen} ${NETWORK_NOT_ENFORCED}`;
+    // The state is about the mode the server last pushed; a choice not yet
+    // saved has no state of its own to report.
+    const view = network && network.chosen === chosen ? network : null;
+    // Full restricts nothing, so there is nothing to be in force until a
+    // workstation says otherwise.
+    const quiet = chosen === 'full' && (!view || view.state === 'unknown');
+    const state = quiet ? '' : networkStateSentence(view);
+    networkEffect.textContent = `${words ? words.says : chosen}${state ? ` ${state}` : ''}`;
   }
 }
 
@@ -443,5 +470,7 @@ export async function open() {
   return load();
 }
 
-export const _test = { describeDaemon, describeYou, render, apply, fillSettings, renderEffects,
-  renderRecreate };
+export const _test = {
+  describeDaemon, describeYou, render, apply, fillSettings, renderEffects, networkStateSentence,
+  renderRecreate,
+};

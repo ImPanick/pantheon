@@ -738,7 +738,10 @@ def test_the_overlay_gives_the_workstation_its_volumes_and_nothing_of_the_hosts(
     assert _mounts(ws) == [("volume", "workstation-homes", "/home", False),
                            ("volume", "workstation-pairing", P.DEFAULT_PAIRING_DIR, False)]
     assert not ws.get("privileged") and not ws.get("cap_add") and not ws.get("ports")
-    assert not ws.get("devices") and ws.get("network_mode") in (None, "")
+    # `P20-06`: the network namespace is the gate's, another service of the
+    # overlay — never the host's (`network_mode: host`) and never shared with
+    # another container outside the overlay.
+    assert not ws.get("devices") and ws.get("network_mode") == "service:workstation-net"
     assert int(ws["shm_size"]) >= 1 << 30  # Firefox's tabs share memory through it
     assert ws.get("healthcheck", {}).get("test")
 

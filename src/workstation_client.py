@@ -590,8 +590,84 @@ class WorkstationClient:
         return await self._call("input", account, body, timeout=P.MAX_WAIT_MS / 1000 + _TIMEOUT)
 
 
-__all__ = ["CertificatePinMismatch", "cert_fingerprint", "configured_pin", "normalise_pin",
-           "SOURCE_ENVIRONMENT", "SOURCE_NONE", "SOURCE_PAIRING", "SOURCE_SETTING", "URL_ENV",
-           "WorkstationClient", "WorkstationError", "account_for", "configured_base",
-           "configured_token", "enabled", "from_settings", "pairing_token_path", "parse_base",
-           "resolve_base", "resolve_token"]
+# ── the network gate (`P20-06`) ───────────────────────────────────────────────
+#
+# The container the workstation shares its network with, holding the admin's
+# network mode where the workstation's root cannot reach (`workstation/gate.py`).
+# It exists only where the overlay says so: `GATE_URL_ENV` on Pantheon, and its
+# token in a volume the workstation never mounts. No setting names it — an admin
+# who points `workstation_url` somewhere else has pointed away from this gate,
+# and `gate_for` (below) is what notices.
+
+def gate_token_path() -> Path:
+    return (Path(os.environ.get(P.GATE_PAIRING_DIR_ENV) or P.DEFAULT_GATE_PAIRING_DIR)
+            / P.TOKEN_FILENAME)
+
+
+def resolve_gate() -> tuple[Optional[str], str]:
+    """`(origin, token)` of the network gate the overlay set, or `(None, "")`."""
+    base = parse_base(os.environ.get(P.GATE_URL_ENV, ""))
+    if not base:
+        return None, ""
+    try:
+        token = gate_token_path().read_text(encoding="utf-8").strip()
+    except OSError:
+        token = ""
+    return base, token
+
+
+def gate_for(client: "WorkstationClient") -> Optional["NetGateClient"]:
+    """The gate in front of THIS workstation, or None. Only when the gate's
+    host is the workstation's host: a gate in front of some other machine
+    says nothing about this one, and claiming its rules for it would be the
+    panel saying something the system does not keep."""
+    base, token = resolve_gate()
+    if not base:
+        return None
+    if urlsplit(base).hostname != urlsplit(client.base).hostname:
+        return None
+    return NetGateClient(base, token, timeout=client.timeout)
+
+
+class NetGateClient(WorkstationClient):
+    """The gate's two routes (`protocol.GATE_ROUTES`), with the workstation
+    client's plumbing — pacing, errors as sentences, the token never in one."""
+
+    def _url(self, name: str, account: Optional[str] = None, query: Optional[Dict] = None):
+        if name not in P.GATE_ROUTES:
+            raise KeyError(f"no network gate route named {name!r}")
+        method, path = P.GATE_ROUTES[name]
+        return method, f"{self.base}{path}"
+
+    def _headers(self) -> Dict[str, str]:
+        if not self.token:
+            raise WorkstationError(
+                "unauthorized",
+                "Pantheon has no token for the workstation's network gate. It is read from the "
+                "gate's pairing volume, which the workstation overlay mounts into Pantheon.")
+        return {"Authorization": f"Bearer {self.token}"}
+
+    @staticmethod
+    def _error_from(response) -> WorkstationError:
+        if getattr(response, "status_code", 0) == 401:
+            return WorkstationError("unauthorized", "The workstation's network gate refused "
+                                                    "Pantheon's token.", 401)
+        return WorkstationClient._error_from(response)
+
+    async def health(self) -> Dict:
+        payload = await self._call("health")
+        if payload.get("agent") != P.GATE_AGENT_NAME:
+            raise WorkstationError("unavailable", f"Something answered at {self.base}, but it is "
+                                                  "not the workstation's network gate.")
+        return payload
+
+    async def set_mode(self, mode: str) -> Dict:
+        payload = await self._call("mode", body={"mode": mode})
+        return payload
+
+
+__all__ = ["CertificatePinMismatch", "NetGateClient", "SOURCE_ENVIRONMENT", "SOURCE_NONE",
+           "SOURCE_PAIRING", "SOURCE_SETTING", "URL_ENV", "WorkstationClient", "WorkstationError",
+           "account_for", "cert_fingerprint", "configured_base", "configured_pin", "configured_token",
+           "enabled", "from_settings", "gate_for", "gate_token_path", "normalise_pin",
+           "pairing_token_path", "parse_base", "resolve_base", "resolve_gate", "resolve_token"]

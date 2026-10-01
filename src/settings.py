@@ -379,9 +379,10 @@ DEFAULT_SETTINGS = {
     # route whenever the daemon's answer differs (`ensure_ready`).
     "workstation_sudo": True,
     # `protocol.NETWORK_MODES`: `full` (internet and LAN, the owner's choice),
-    # `internet`, or `none`. `P20-06` enforces it inside the workstation; until
-    # then it is stored and shown, and the panel says plainly that it is not in
-    # force yet rather than implying a boundary that is not there.
+    # `internet`, or `none`. Pushed with `sudo` on every sync (`P20-06`): held by
+    # the overlay's network gate, outside the workstation, where its root cannot
+    # lift it; by the daemon for accounts only where its machine lets it; and
+    # the panel says which (`workstation_access.network_view`), never more.
     "workstation_network": "full",
     # When the workstation is on, do the agent's `bash`, `python` and file
     # tools run in it (`P20-03`)? ON: that is the point of the phase — a shell

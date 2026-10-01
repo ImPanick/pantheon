@@ -12,16 +12,58 @@
 #   * a volume of homes (one per person, kept) and a pairing volume that only
 #     these two services mount — Pantheon read-only, readable by Pantheon's
 #     PGID and by no workstation account;
-#   * full network, the owner's answer (`P20-06` lets an admin narrow it);
-#   * NO Docker socket, NOT privileged, no added capabilities, and no Pantheon
-#     volume but the pairing one. Its port is not published: only Pantheon, on
-#     the compose network, can reach it.
+#   * the network the admin chose in Settings -> Workstation (full by default,
+#     the owner's answer), held by `workstation-net` below (`P20-06`);
+#   * NO Docker socket, NOT privileged, no added capabilities — and CAP_NET_RAW
+#     taken away — and no Pantheon volume but the pairing one. Its port is not
+#     published: only Pantheon, on the compose network, can reach it.
 services:
+  # `P20-06`. The network the workstation has is the one the admin chose, held
+  # where the workstation's root cannot reach. This container OWNS the network
+  # namespace the workstation runs in (`network_mode` below) and is the only one
+  # with CAP_NET_ADMIN — the one capability that writes the rules, argued in
+  # `workstation/gate.py`: it changes this namespace's firewall and nothing on
+  # the host, and every other capability is dropped. Pantheon sets the mode
+  # through it with a token in a volume the workstation never mounts.
+  # Recreate the workstation after restarting this (`docker compose up -d`): a
+  # new namespace leaves the old one with loopback only, which fails closed.
+  workstation-net:
+    build:
+      context: ./workstation
+    entrypoint: ["/usr/bin/tini", "--", "python3", "-m", "workstation.gate"]
+    command: ["--bind", "0.0.0.0", "--port", "7041"]
+    # The workstation shares this namespace, so its name and address are these.
+    hostname: workstation
+    networks:
+      default:
+        aliases: [workstation]
+    environment:
+      - PANTHEON_WORKSTATION_PAIRING_GID=${PGID:-1000}
+    volumes:
+      - workstation-net-pairing:/workstation-net-pairing
+    cap_drop: [ALL]
+    # NET_ADMIN writes the rules; CHOWN gives the token to Pantheon's group.
+    cap_add: [NET_ADMIN, CHOWN]
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import json,sys,urllib.request as u; sys.exit(0 if json.load(u.urlopen('http://127.0.0.1:7041/v1/network', timeout=5)).get('mode') else 1)"]
+      interval: 15s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
   workstation:
     build:
       context: ./workstation
     command: ["--system", "ubuntu", "--bind", "0.0.0.0", "--port", "7040"]
-    hostname: workstation
+    # `P20-06`: in the gate's namespace (its hostname and address are this
+    # one's), and without CAP_NET_RAW — with it, root here wrote its own
+    # Ethernet frames past the gate's rules (measured; `workstation/gate.py`).
+    network_mode: "service:workstation-net"
+    depends_on:
+      workstation-net:
+        condition: service_healthy
+    cap_drop: [NET_RAW]
     environment:
       # The group that may read the pairing token: the one Pantheon runs as.
       - PANTHEON_WORKSTATION_PAIRING_GID=${PGID:-1000}
@@ -42,9 +84,12 @@ services:
   pantheon:
     environment:
       - PANTHEON_WORKSTATION_URL=http://workstation:7040
+      - PANTHEON_WORKSTATION_NET_URL=http://workstation:7041
     volumes:
       - workstation-pairing:/workstation-pairing:ro
+      - workstation-net-pairing:/workstation-net-pairing:ro
 
 volumes:
   workstation-homes:
   workstation-pairing:
+  workstation-net-pairing:

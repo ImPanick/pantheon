@@ -198,9 +198,12 @@ docker compose up -d --build
 ```
 
 Then **Settings → Workstation → On**. Nothing to paste: Pantheon finds it at
-`http://workstation:7040` and reads its key from a volume only the two
-containers share. It has full network access by default and no access to Docker
-or to Pantheon's data; with *sudo* on (the default) one person's agent can read
+`http://workstation:7040` and reads its keys from volumes only it and the
+workstation's containers share. It has full network access by default — an
+admin narrows it to *internet only* or *none* in the same panel, held by the
+small `workstation-net` container the overlay starts beside it, so an agent
+using *sudo* cannot lift it (`P20-06`) — and no access to Docker or to
+Pantheon's data; with *sudo* on (the default) one person's agent can read
 another's workstation home, and the panel says so beside the switch. With a GPU
 overlay, list all three:
 `COMPOSE_FILE=docker-compose.yml:docker/gpu.nvidia.yml:docker/workstation.yml`.

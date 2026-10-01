@@ -85,7 +85,7 @@ def mint_token() -> str:
     return P.TOKEN_PREFIX + secrets.token_urlsafe(P.TOKEN_ENTROPY_BYTES)
 
 
-def load_or_create_token(pairing_dir: Optional[Path]) -> str:
+def load_or_create_token(pairing_dir: Optional[Path], *, env: Optional[str] = P.TOKEN_ENV) -> str:
     """The token this daemon checks: the environment's if set, else the one in
     the pairing volume, else a new one written there for Pantheon to read.
 
@@ -93,10 +93,14 @@ def load_or_create_token(pairing_dir: Optional[Path]) -> str:
     than a lapse: zero-config pairing means Pantheon reads it from a volume
     that only the two services mount. A remote daemon has no such volume, so
     its operator sets `PANTHEON_WORKSTATION_TOKEN` on both sides.
+
+    `env=None` (`P20-06`, added): no variable is consulted. The network gate
+    passes it, because a token the workstation's own environment could name
+    is one the workstation's root could know.
     """
-    env = (os.environ.get(P.TOKEN_ENV) or "").strip()
-    if env:
-        return env
+    from_env = (os.environ.get(env) or "").strip() if env else ""
+    if from_env:
+        return from_env
     if pairing_dir is None:
         raise WorkstationError("unavailable", "No token: set PANTHEON_WORKSTATION_TOKEN "
                                               "or give the daemon a pairing directory.")
@@ -195,6 +199,20 @@ class System:
 
     def set_sudo(self, on: bool) -> None:
         self.sudo = bool(on)
+
+    # -- the network mode (`P20-06`) -----------------------------------------
+    # The base enforces nothing and says so; `UbuntuSystem` holds the mode for
+    # its accounts when it has CAP_NET_ADMIN. A gate answers for itself.
+
+    def set_network(self, mode: str) -> None:
+        """Record the admin's mode (validated by `Workstation.config`)."""
+        self.network = mode
+
+    def network_report(self) -> Dict:
+        """What this daemon holds, in `protocol.ROUTES["health"]`'s words."""
+        from workstation import netrules
+        return {"network_in_force": None, "network_enforcement": "none",
+                "root_can_change_network": netrules.capability(netrules.CAP_NET_ADMIN, "CapBnd")}
 
     def screen(self, account: str) -> Screen:
         return NoScreen("This workstation has no display.")
@@ -350,13 +368,21 @@ class Workstation:
 
     def settings(self) -> Dict:
         return {"sudo": self.system.sudo, "network": self.system.network,
-                "screen": [P.SCREEN_WIDTH, P.SCREEN_HEIGHT]}
+                "screen": [P.SCREEN_WIDTH, P.SCREEN_HEIGHT],
+                **self.system.network_report()}  # `P20-06`
 
     def config(self, body: Dict) -> Dict:
         if "sudo" in body:
             if not isinstance(body["sudo"], bool):
                 raise WorkstationError("bad_request", "“sudo” is true or false.")
             self.system.set_sudo(body["sudo"])
+        # `P20-06`: the admin's network mode, held here as far as this machine
+        # can hold it (`System.network_report` says how far that is).
+        if "network" in body:
+            if body["network"] not in P.NETWORK_MODES:
+                raise WorkstationError("bad_request",
+                                       f"“network” is one of {', '.join(P.NETWORK_MODES)}.")
+            self.system.set_network(body["network"])
         return self.settings()
 
     def holder(self, account: str) -> Dict:

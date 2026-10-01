@@ -16,7 +16,9 @@ row's split between who sees what):
   * a person who may not sees the sentence and no button;
   * an admin sees the settings as stored, where the address and the token came
     from, the consequence beside `sudo`, one plain sentence per network mode and
-    that it is not enforced yet — and the token field is never filled;
+    whether it is in force (`P20-06`; every state is driven in
+    `tests/test_the_workstation_network_sentence_js.py`) — and the token field
+    is never filled;
   * every control writes its own key, then asks the workstation again;
   * a refused save is shown in the server's words and the control goes back;
   * the reset asks first, and does nothing when the answer is no;
@@ -309,7 +311,9 @@ def test_the_admin_sees_the_settings_as_stored_and_where_each_came_from(sandbox)
         {"value": "remote", "label": "Another machine"}]
     assert out["backend"] == "container" and out["network"] == "internet"
     assert out["networkEffect"].startswith("The internet, but not your local network.")
-    assert "Not enforced yet" in out["networkEffect"]
+    # `P20-06`: this answer carries no `network` view, so nothing is claimed.
+    assert out["networkEffect"].endswith("Whether it is in force is checked when the "
+                                         "workstation answers.")
     assert out["sudoWhy"] == ("With sudo on, an agent can install software — and can read "
                               "other people’s workstation homes.")
 
@@ -320,13 +324,22 @@ def test_the_admin_sees_the_settings_as_stored_and_where_each_came_from(sandbox)
     ("none", "No network at all."),
 ])
 def test_every_network_mode_has_a_plain_sentence_and_the_honest_caveat(sandbox, mode, words):
-    status = {**ADMIN_UP, "settings": {**SETTINGS, "network": mode}}
+    """`P20-06`: the caveat is now the state the server reports. A container
+    started without the network gate (the overlay before that row) holds no
+    mode, and the panel says so for every mode that restricts anything."""
+    view = {"chosen": mode, "in_force": None, "enforcement": "none",
+            "state": "unrestricted" if mode == "full" else "needs_recreate"}
+    status = {**ADMIN_UP, "settings": {**SETTINGS, "network": mode}, "network": view}
     out = _panel(sandbox, _serving("st") + """
         await mod.open();
         console.log(JSON.stringify(read()));
     """, st=status)
     assert out["networkEffect"].startswith(words)
-    assert "Not enforced yet" in out["networkEffect"]
+    if mode == "full":
+        assert "enforced" not in out["networkEffect"].lower()
+    else:
+        assert "Not enforced: this workstation was started without its network gate." \
+            in out["networkEffect"]
 
 
 def test_a_value_the_protocol_adds_is_offered_as_itself(sandbox):

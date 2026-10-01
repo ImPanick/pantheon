@@ -340,12 +340,83 @@ async def sync_config(client: WorkstationClient) -> Dict[str, Any]:
     admin's `True` or `False`, and the push goes out — to `config`, which needs
     the token and refuses in the client's own sentence saying which of the two
     it was. (The first version asked `config` first as a separate step; the
-    mutation run showed the two paths were the same path.)"""
+    mutation run showed the two paths were the same path.)
+
+    `P20-06`: the admin's network mode goes the same way — to the daemon, which
+    holds it for accounts where its machine lets it, and to the network gate
+    in front of it when the overlay put one there (`wc.gate_for`), whose answer
+    rides back as `network_gate`. A gate that is there and does not take the
+    mode is an error, like a refused `sudo`: every tool call comes through
+    here, and a command must not run under a wider network than the admin set
+    because the gate was not listening."""
     daemon = await client.health()
     want = sudo_wanted()
     if daemon.get("sudo") is not want:
         daemon.update(await client.config(sudo=want))
+    mode = network_setting()
+    if daemon.get("network") != mode:
+        daemon.update(await client.config(network=mode))
+    gate = wc.gate_for(client)
+    if gate is not None:
+        held = await gate.health()
+        if held.get("mode") != mode:
+            held = await gate.set_mode(mode)
+        daemon["network_gate"] = held
     return daemon
+
+
+# ── the network mode, as it is (`P20-06`) ─────────────────────────────────────
+#
+# One word for the panel (`Law 10`), worked out here so the browser only says
+# it. The admin's choice, what is in force, who holds it and whether root in the
+# workstation can lift it — and the remedy is part of the word, because "not
+# enforced" on a container that only needs recreating and on a machine that can
+# never enforce one are different things to do.
+NETWORK_UNRESTRICTED = "unrestricted"      # full chosen; nothing narrower in force
+NETWORK_ENFORCED = "enforced"              # held by the gate: root included
+NETWORK_ENFORCED_SUDO_OFF = "enforced_sudo_off"  # held for accounts; sudo is off
+NETWORK_LIFTABLE = "liftable"              # held for accounts; sudo is on
+NETWORK_NEEDS_RECREATE = "needs_recreate"  # a container started without its gate
+NETWORK_NOT_ENFORCED = "not_enforced"      # a machine that holds no mode
+NETWORK_PENDING = "pending"                # a mode is held, and it is not the chosen one
+NETWORK_UNKNOWN = "unknown"                # not asked, or it did not answer
+NETWORK_STATES = (NETWORK_UNRESTRICTED, NETWORK_ENFORCED, NETWORK_ENFORCED_SUDO_OFF,
+                  NETWORK_LIFTABLE, NETWORK_NEEDS_RECREATE, NETWORK_NOT_ENFORCED,
+                  NETWORK_PENDING, NETWORK_UNKNOWN)
+
+
+def network_view(chosen: str, daemon: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """`{"chosen", "in_force", "enforcement", "state"}` from one synced daemon
+    answer (`sync_config`'s), or `unknown` without one."""
+    out: Dict[str, Any] = {"chosen": chosen, "in_force": None, "enforcement": None,
+                           "state": NETWORK_UNKNOWN}
+    if not daemon:
+        return out
+    gate = daemon.get("network_gate")
+    root_can = daemon.get("root_can_change_network") is True
+    if isinstance(gate, dict):
+        # The gate's rules sit in a namespace the workstation shares: they hold
+        # against its root only while that root cannot rewrite them.
+        in_force, by, holds_against_root = gate.get("mode"), "gate", not root_can
+    elif daemon.get("network_enforcement") == "accounts":
+        in_force, by, holds_against_root = daemon.get("network_in_force"), "accounts", False
+    else:
+        in_force, by, holds_against_root = None, "none", False
+    out.update(in_force=in_force if in_force in P.NETWORK_MODES else None, enforcement=by)
+    if chosen == "full" and out["in_force"] in (None, "full"):
+        state = NETWORK_UNRESTRICTED
+    elif by == "none":
+        state = (NETWORK_NEEDS_RECREATE if daemon.get("backend") == "container"
+                 else NETWORK_NOT_ENFORCED)
+    elif out["in_force"] != chosen:
+        state = NETWORK_PENDING
+    elif holds_against_root:
+        state = NETWORK_ENFORCED
+    else:
+        sudo = daemon.get("sudo")
+        state = NETWORK_ENFORCED_SUDO_OFF if sudo is False else NETWORK_LIFTABLE
+    out["state"] = state
+    return out
 
 
 class Ready(NamedTuple):
@@ -406,6 +477,9 @@ async def status_for(owner: Optional[str], *, is_admin: bool, auth_manager: Any 
         "error": None,
         "you": None,
         "checked_at": time.time(),
+        # `P20-06`: replaced by what the daemon said once it answers. Nothing
+        # for a person who may not use it — the admin's choice is not theirs.
+        "network": network_view(network_setting(), None) if (permitted or is_admin) else None,
     }
     if is_admin:
         out["settings"] = settings_view()
@@ -427,6 +501,7 @@ async def status_for(owner: Optional[str], *, is_admin: bool, auth_manager: Any 
     try:
         daemon = await sync_config(client)
         out["daemon"] = _daemon_view(daemon)
+        out["network"] = network_view(network_setting(), daemon)
         if enabled and permitted:
             # `B959`: looked at, not made — opening the panel makes no account.
             seen = await client.account(out["you"]["account"])
@@ -455,4 +530,8 @@ __all__ = [
     "ensure_ready", "may_use", "network_setting", "reset_home", "route_tools_wanted",
     "routes_tools", "settings_view", "status_for", "sudo_wanted", "sync_config",
     "validate_setting", "workstation_for", "workstation_owner",
+    # `P20-06`
+    "NETWORK_ENFORCED", "NETWORK_ENFORCED_SUDO_OFF", "NETWORK_LIFTABLE", "NETWORK_NEEDS_RECREATE",
+    "NETWORK_NOT_ENFORCED", "NETWORK_PENDING", "NETWORK_STATES", "NETWORK_UNKNOWN",
+    "NETWORK_UNRESTRICTED", "network_view",
 ]

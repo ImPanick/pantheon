@@ -36,9 +36,11 @@ import argparse
 import logging
 import os
 import signal
+import socket
 import sys
+import threading
 from pathlib import Path
-from typing import List, Optional
+from typing import Callable, List, Optional, Tuple
 
 from workstation import protocol as P
 from workstation.agentd import (SingleUserSystem, System, WorkstationError,
@@ -234,6 +236,50 @@ def read_token_file(path: Path) -> str:
     return token
 
 
+# ── the network namespace it was started in (`P20-06`) ────────────────────────
+
+#: Exit status when the namespace lost its way out (`watch_namespace`).
+NAMESPACE_LOST = 3
+
+
+def outside_interfaces(names: Callable[[], List[Tuple[int, str]]] = socket.if_nameindex) -> List[str]:
+    return [name for _index, name in names() if name != "lo"]
+
+
+def watch_namespace(on_lost: Callable[[], None], *, interval: float = 5.0,
+                    names: Callable[[], List[Tuple[int, str]]] = socket.if_nameindex,
+                    stopped: Optional[threading.Event] = None) -> Optional[threading.Thread]:
+    """Call `on_lost` once if the namespace this daemon started in loses every
+    interface but loopback — what happens to the workstation when the network
+    gate it shares one with is restarted: measured 2026-10-01, the gate came
+    back in a new namespace, the workstation stayed in the old one with `lo`
+    alone, its health check (on loopback) still passed, and `docker compose up
+    -d` left it so. Exiting is the fix: the restart policy starts it again, and
+    a restart joins the gate's new namespace (also measured). Not started when
+    there was no way out to begin with (`--network none`)."""
+    if not outside_interfaces(names):
+        return None
+    done = stopped or threading.Event()
+
+    def loop() -> None:
+        misses = 0
+        while not done.wait(interval):
+            try:
+                misses = 0 if outside_interfaces(names) else misses + 1
+            except OSError:
+                continue  # one unreadable look is not a lost namespace
+            if misses >= 2:
+                logger.error("this workstation's network namespace has nothing but loopback left "
+                             "(its network gate was restarted); exiting so it is started again "
+                             "inside the new one")
+                on_lost()
+                return
+
+    thread = threading.Thread(target=loop, name="namespace-watch", daemon=True)
+    thread.start()
+    return thread
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     args = parse_args(argv)
     logging.basicConfig(stream=sys.stdout, level=getattr(logging, args.log_level),
@@ -252,13 +298,20 @@ def main(argv: Optional[List[str]] = None) -> int:
         raise KeyboardInterrupt
 
     signal.signal(signal.SIGTERM, stop)
+    lost = threading.Event()
+
+    def namespace_lost() -> None:
+        lost.set()
+        server.shutdown()
+
+    watch_namespace(namespace_lost)  # `P20-06`
     try:
         server.serve_forever(poll_interval=0.5)
     except KeyboardInterrupt:
         logger.info("workstation stopping")
     finally:
         server.server_close()
-    return 0
+    return NAMESPACE_LOST if lost.is_set() else 0
 
 
 if __name__ == "__main__":
