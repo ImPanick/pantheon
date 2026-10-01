@@ -660,6 +660,19 @@ export function autoResize(textarea) {
   let clone = textarea._resizeClone;
   if (!clone) {
     clone = textarea.cloneNode(false);
+    // `B1073`. A measuring copy, not a second control. `cloneNode` copies every
+    // attribute, so after the first keystroke the composer had two
+    // `textarea#message` — the second hidden, `required`, `autofocus`, and
+    // labelled "Message input": `getElementById` still found the first, a
+    // strict locator, `querySelectorAll('#message')` and a validator did not.
+    // What only names, labels or submits it goes; what shapes the text it
+    // measures (rows, wrap, placeholder) stays.
+    for (const attr of clone.getAttributeNames()) {
+      if (attr === 'id' || attr === 'name' || attr === 'form' || attr === 'required'
+          || attr === 'autofocus' || attr.startsWith('aria-')) clone.removeAttribute(attr);
+    }
+    clone.setAttribute('aria-hidden', 'true');
+    clone.tabIndex = -1;
     clone.style.cssText = getComputedStyle(textarea).cssText;
     clone.style.position = 'absolute';
     clone.style.visibility = 'hidden';
