@@ -439,7 +439,11 @@ def test_an_old_database_gains_the_column_and_its_documents_start_unfiled(tmp_pa
     assert "ix_documents_folder" in indexes
     assert folder is None
 
-    # And the upgraded database works through the routes.
+    # And the upgraded database works through the routes — after every
+    # migration `init_db` runs, which since `P21-03` includes `source_name`
+    # (that one goes through the module's engine, not `DATABASE_URL`).
+    monkeypatch.setattr(cdb, "engine", engine)
+    cdb._migrate_add_document_source_name_column()
     ts = sessionmaker(bind=engine, autoflush=False, autocommit=False)
     monkeypatch.setattr(droutes, "SessionLocal", ts)
     monkeypatch.setattr(froutes, "SessionLocal", ts)

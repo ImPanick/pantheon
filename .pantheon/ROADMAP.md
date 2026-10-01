@@ -81,9 +81,9 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P18 | One button, and it links | 9 | 0 | 0 | **9** |
 | P19 | The proof ledger | 8 | 0 | 0 | **8** |
 | P20 | The workstation | 7 | 0 | 0 | **7** |
-| P21 | Documents, kept in order | 4 | 4 | 0 | **0** |
-| Backlog | Bugs and hardening found in flight | 571 | 241 | 0 | **330** |
-| **Total** | | **968** | **293** | **7** | **668** |
+| P21 | Documents, kept in order | 4 | 0 | 0 | **4** |
+| Backlog | Bugs and hardening found in flight | 580 | 248 | 0 | **332** |
+| **Total** | | **977** | **296** | **7** | **674** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -245,6 +245,19 @@ they are for.*
 > `check-tracker.py` now validates the newest entry against the table and fails on drift.
 > Entries below the `P0-31` one keep the figure they were written with: a record of what
 > was claimed at the time is worth more than a quietly corrected one (`B44`).
+
+### Documents kept in order: folders, an agent that files them, and every upload keeps its own name
+`5dd965a..HEAD`. **977 tracked, 674 done. 0 new phase rows, 0 regressions. `P21-01`, `P21-02`, `P21-03`, `P21-04`, `B993` and `B999` closed; `B993` … `B1001` filed.**
+The owner's ask, both halves. Documents live in folders a person makes, nests, renames and moves — empty
+ones stay — and removing one never deletes a document without saying so (`P21-01`); the agent files them
+too, and a move of more than five things waits for the person's own *Apply the plan* (`P21-02`). An
+uploaded file keeps its own name at every door: the owner's report reproduced first — a chat's Office
+attachment became a document titled with its 32-hex upload id — and fixed at every door with one naming
+module, downloads included (`P21-03`); both searches find a document by its file's name and its folder
+(`P21-04`). Two defects found on the way were serious and are fixed: opening a text attachment from the
+mailbox took every other document out of everyone's library (`B999`), and the agent's `delete` with a
+wrong id deleted whichever document was edited last (`B993`). The daemon's version is now its protocol's,
+not a third application version.
 
 ### The workstation is finished: a live window onto it, networks that hold against root, a real VM, and the owner's four calls
 `a633efc..HEAD`. **968 tracked, 668 done. 4 new phase rows, 0 regressions. `P20-05`, `P20-06`, `P20-07`, `B908`, `B956`, `B957`, `B958`, `B959`, `B961`, `B962`, `B964`, `B966`, `B967`, `B968`, `B970`, `B983`, `B989` and `B990` closed; `P4-15` withdrawn; `B974` … `B992` filed.**
@@ -9703,37 +9716,124 @@ attachments, the third *Import from device* path `B400` names, an email attachme
 that at least one of them names the result with a random string instead of the file's own name. Which ones,
 and what each stores on disk, is the first thing `P21-03` measures.
 
-- [ ] **P21-01** **Folders for documents.** A person makes folders, nests them, renames, moves and removes
+- [x] **P21-01** **Folders for documents.** A person makes folders, nests them, renames, moves and removes
   them, and files documents into them — from the library's sidebar (drag and drop, and a *Move to…* menu on
   each document for keyboard and touch), with counts, an *Unfiled* view, and empty folders that stay until
   removed. Removing a folder never deletes a document without saying so: it asks whether to move what is in it
   up a level or to delete it with it, and says how many. Owner-scoped like every document. Reuse the chats'
   folder model if it fits and say why if it does not. `Verify:` routes driven with TestClient (create, nest,
   rename, move, remove with each choice, another person's folder refused), the library in the node harness,
-  screenshots on one dark and one light palette. — owner 2026-10-01 — agent:`P21`
+  screenshots on one dark and one light palette. — owner 2026-10-01 — agent:`P21` — **done 2026-10-01
+  (`125d425`, `54015f6`). Two premises were measured false and the build follows the source: the Library has
+  no sidebar, and the chats' folder model cannot hold an empty folder.** **No sidebar.** The Library is a
+  600px modal of four tabs, each a toolbar, a chip row and a list, and the list has to stay a direct child of
+  its `.admin-card`: the expand-state rules in `static/style.css` (`.admin-card:has(.doclib-card-expanded) >
+  .doclib-grid` and its siblings) size an opened card through that child combinator, so a pane wrapping the
+  grid breaks every opened document. The Chats tab already files chats as a row of `.memory-cat-chip`s
+  (`_renderChatsChips`), so documents get that row (`Law 14`), extended the one way chats never needed — a
+  path above it, *All documents › Clients › Acme*, because document folders nest. **The chats' model, half
+  reused.** `sessions.folder` is one string per chat, so a chat folder exists exactly while a chat is in it —
+  `getFolderNames()` (`static/js/sessions.js`) rebuilds the list from the loaded chats and nothing stores an
+  empty one — and this row asks for empty folders that stay. So `documents.folder` is that string made a path
+  (`Clients/Acme`), and `document_folders` (`core.database.DocumentFolder`) holds one row per path per owner,
+  ancestors included; listing is the union, so a folder only a document names still shows.
+  `_migrate_add_document_folder_column` adds the column to an old database (`create_all` makes the table);
+  existing documents start Unfiled. **One implementation**, `src/document_folders.py`, which the routes and
+  `manage_documents` both call (`Law 7`): normalisation (*Unfiled* reserved; `.`, `..`, control characters,
+  names over 80 characters and nesting deeper than 8 refused visibly), counts in the view the library shows
+  (direct and with subfolders, active or archived), make, rename, move (never into itself, never onto an
+  existing folder), file (all or nothing — one foreign id refuses the lot) and remove. **Removing never
+  deletes silently.** A folder holding anything is refused until told `move_up` or `delete`; the dry run the
+  library asks for first returns how many documents (and how many of them archived) and folders; the dialog
+  reads *"“Acme” holds 4 documents and 1 folder. What should happen to them?"*, focuses **Move up**, and
+  draws **Delete all 4** as the destructive answer — `styledConfirm` gained `alternateDanger` rather than a
+  second dialog. A deleted document is the library's own soft delete. **Filing is not an edit**: measured, a
+  plain update stamped `updated_at`, so filing twenty documents made all twenty "edited just now" and the
+  newest in the default sort; filing writes `updated_at` back to itself. **Routes** under
+  `/api/document-folders` (JSON bodies — a path holds `/`, and `/api/documents/{session_id}` owns every
+  single-segment GET under `/api/documents/`), registered onto the document router so they share its
+  `document_editor` gate; writes take `can_use_documents`, as `POST /api/document` does; owner scope is
+  `_owner_session_filter`'s rule, and another person's folder or document is *not found*. The library takes
+  `folder=` / `unfiled=true` and returns each document's `folder`; its search matches the folder path
+  (`P21-04`'s folder half). The admin *documents* wipe clears folders too. **The Library**: drag a card onto a
+  chip or a crumb (a selected card carries the selection; an opened card does not drag, so its preview text
+  stays selectable), a folder chip onto another; **Move to…** on every card menu, desktop and phone, and on
+  the bulk bar; the open folder's own **Folder…** menu (new folder inside, rename, move, remove). Every crumb,
+  chip and menu row is a `<button>`, menus go through `bindMenuDismiss` (`P10-06`), every name reaches the DOM
+  as `textContent`, an empty folder says *"Nothing in this folder yet"* rather than *"No documents yet"*, and
+  a newer list answer wins over a slower older one. One scoped block in `style.css`, existing tokens only, no
+  `--accent`, the global focus ring, a reduced-motion guard. Screenshots: `dark` and `light` (plus `paper`,
+  `cute`, a 390px phone, the *Move to…* list and the removal dialog). `Verify:`
+  `tests/test_documents_keep_their_folders.py` — **27 cases** through `TestClient` on a real SQLite database:
+  make, nest, rename, move, remove with each answer and with none, empty folders persist, another person's
+  folder and document refused and untouched, the library's folder/Unfiled filter and folder search, filing
+  not stamping `updated_at`, an old database migrated and then used, the wipe. And
+  `tests/test_document_folders_js.py` — **21 cases** under node: the bar, drops, *Move to…*, the removal
+  question and flow, the shared dialog's destructive third answer, and `documentLibrary.js`'s fetch, empty
+  state, filing and card, cut out with `js_function` and called. On `5dd965a` the route file fails at import
+  and the JS file gives 20 errors and 1 failure. **Mutation (with `P21-02`): 58 mutations, 54 caught on the
+  first pass; the four survivors were closed — one redundant refusal removed so the one left is tested, three
+  tests tightened — and one more added for the agent's folder search: 59 of 59.** — agent:`docs-folders`
 
-- [ ] **P21-02** **The agent can organise documents too.** `manage_documents` (the existing tool) gains folder
+- [x] **P21-02** **The agent can organise documents too.** `manage_documents` (the existing tool) gains folder
   actions — list, create, rename, move documents and folders, remove — with the same owner scoping and the
   same refusals the routes have. A reorganisation that moves or removes more than a handful at once is shown
   as a plan the person approves first (`P9-10`'s rule for destructive AI operations), and every move the agent
   made is listed on its tool card, so it can be undone by hand. `Verify:` the real dispatcher against a real
   database: each action, the plan-before-bulk rule, another person's documents untouchable, the card's list.
-  `Depends:` `P21-01`. — owner 2026-10-01 — agent:`P21`
+  `Depends:` `P21-01`. — owner 2026-10-01 — agent:`P21` — **done 2026-10-01 (`033660d`, `54015f6`, `5f43aee`). The plan
+  reuses the card every tool result can already raise, and the yes is read from where only the person can
+  write it.** `manage_documents` gains `list_folders`, `create_folder`, `rename_folder`, `move_folder`, `move`
+  (documents into a folder) and `remove_folder`, plus `reorganise` (several of them as `steps`, one
+  transaction — a refused step undoes the steps before it) and `apply_plan`; `list` takes `folder` /
+  `unfiled` and says where each document is, and its `search` matches folder paths. Every action calls
+  `src/document_folders.py`, so the agent has the routes' owner scope and the routes' refusals in their words
+  (`Law 7`). A `move` with no `to` is refused rather than read as Unfiled, which would empty the folder it
+  meant to fill. **Plan before bulk.** A call whose changes a person would undo one by one — more than five
+  moved or removed things; making a folder does not count — is run inside the transaction, its change list
+  read, and rolled back: nothing moves. The list is held for that owner and that chat for 30 minutes, printed
+  on the tool card, and the result carries an `ask_user` payload — the card `agent_loop` raises for any tool
+  result that has one — *Apply the plan* / *Don't change anything*, which ends the turn. The exact-approval
+  store (`tool_approvals`) was the other candidate and is not used: it mints a card only when the trust gate
+  refuses (taint or rung), and a "bulk" rule in `decision_for` would be a change to the security gate for a
+  mistake, not an adversary (`Law 17`). **What makes the yes real**: `apply_plan` reads the answer from the
+  chat's own last user message, which the chat route persists before the agent runs; only *"Apply the
+  plan"*, after the plan was made, is a yes — any other answer, or none, is a no — so the agent cannot approve
+  its own plan. **Sealed to what was read**: `apply_plan` re-runs the steps and refuses if the change list
+  differs (a document filed into the folder after the plan was shown would otherwise be deleted unseen) — the
+  seal `_approved_document_version_error` puts on a document edit. **The card's list**: every change is a
+  line — `moved "Q3 Board Pack": Unfiled → Clients/Acme`, `deleted "Old" (was in Archive)`, `moved folder
+  Clients → Customers (with the 2 documents in it)` — and the same list is `changes` in the data the model
+  reads; at most 100 changes a call, so every one fits under the 10,000-character tool-output cap.
+  **Registers**: the function schema offers every action and argument, the prompt line and
+  `BUILTIN_TOOL_DESCRIPTIONS` say how to use them, `select_without_embeddings` offers the tool for *"sort my
+  documents into folders"* (phrases, never a bare "folder"), `TOOL_CAPABILITIES` classifies `list_folders` as
+  a read and the rest as writes with `remove_folder`, `reorganise` and `apply_plan` destructive, and
+  `reorganize` is an alias in both places that read the action. No tool name was added, so
+  `check-tool-surface.py` and `check-mcp-schemas.py` pass unchanged. `Verify:`
+  `tests/test_the_agent_files_documents.py` — **18 cases** through the real dispatcher, `execute_tool_block`,
+  on a real SQLite database: each action and the lines its card prints, the plan changing nothing, waiting for
+  the person, refusing a no, a typed answer and a yes from before the plan, refusing an outgrown plan, bound
+  to its owner and its chat, refused with no chat to ask in, the per-call cap, another person's documents and
+  folders untouchable, `list search` finding a document by its folder, the registers agreeing, the selector
+  offering the tool. On `5dd965a` it fails at
+  import. Mutation: counted with `P21-01`. **Reach, for the owner**: `manage_documents` is in
+  `NON_ADMIN_BLOCKED_TOOLS`, so on a multi-user install only admins' agents can use any of this — filed. —
+  agent:`docs-folders`
 
-- [ ] **P21-03** **An uploaded document keeps its name.** Every door by which a person's own file becomes a
-  document titles it with the file's own name (without the folder it came from), keeps that name as the
-  document's source file name, and stores any file on disk under a readable name — the original, made safe,
-  with a short suffix only when two would collide — never a random or base64 string. Measure first: list every
-  door and what it names the document and the stored file today, with the owner's report reproduced. A name
-  that cannot be stored as given (path separators, control characters, a reserved Windows name, too long) is
-  made safe visibly, and the original is still what the person sees. `Verify:` a file named
-  `Q3 Board Pack – final (v2).pdf` uploaded through each door is found in the library and by the agent under
-  that name. — owner 2026-10-01 — agent:`P21`
+- [x] **P21-03** **An uploaded document keeps its name.** Every door by which a person's own file becomes a document titles it with the file's own name (without the folder it came from), keeps that name as the document's source file name, and stores any file on disk under a readable name — the original, made safe, with a short suffix only when two would collide — never a random or base64 string. Measure first: list every door and what it names the document and the stored file today, with the owner's report reproduced. A name that cannot be stored as given (path separators, control characters, a reserved Windows name, too long) is made safe visibly, and the original is still what the person sees. `Verify:` a file named `Q3 Board Pack – final (v2).pdf` uploaded through each door is found in the library and by the agent under that name. — owner 2026-10-01 — agent:`docs-names` — **done 2026-10-01. The premise holds, and the owner's "base64 string" is the upload id: an Office file dropped into a chat became a document titled `a1d9182aca87476e8e1c9754dbf13105` (measured with `.odt`; `.docx`, `.pptx`, `.xlsx`, `.epub` and `.doc` take the same branch).**
+  **Measured, door by door, before a line was written** (the table is in `docs-names`' handoff note). `_process_office_document` titled the chat's Office auto-document `splitext(basename(path))[0]`, and the stored path was the id — that is the report. Every other door had its own spelling of a name: `secure_filename` (`Q3_Board_Pack_final_v2`) for the composer chip, the saved `attachments[].name`, the model's `[Attachment: …]` line, the PDF auto-document and the download header; `[^\w\s\-.]`→`_` (`Q3 Board Pack _ final _v2_`) for the mailbox; the raw multipart name for `import-pdf`/`import-office` (`../../evil.pdf` titled `../../evil`); a random ten-hex suffix on every personal upload (`Q3_Board_Pack_final_v2-85e79bb862.pdf`); and a 32-hex id for every stored chat upload — which is also the path the agent's manifest handed it. The mailbox's PDF was copied to `uploads/<date>/<uuid>.pdf` with no upload record at all.
+  **One answer (`Law 7`).** `src/file_names.py` (new): `display_name` — the person's name, the folder dropped (both separators: python-multipart strips only `\`), controls, bidi overrides and zero-width marks removed (`Cc`/`Cf`/`Cs`), NFC, capped at 255 characters with the extension kept; `document_title` — the display name without its extension; `stored_name` — the display name made storable (`<>:"|?*`→`_`, no leading `.`/space/`-`, no trailing `.`/space, `CON`/`PRN`/`AUX`/`NUL`/`COM0-9`/`LPT0-9` get `_`, 200 UTF-8 bytes with the extension kept); `create_unique` — `O_EXCL`, ` (2)` only when the name is taken; `attachment_disposition` — always `attachment`, RFC 6266 `filename="<ASCII>"; filename*=UTF-8''<the name>`. It is a new module rather than a wider `secure_filename` because that function also names every owner's personal-upload directory, and making it keep Unicode would move them. `upload_display_name` (`B77`'s one derivation) moved into it, re-exported from `document_processor`, and now recovers the person's name for a row written before this from the `original_name` every row has always carried — only when its ASCII fold is the row's `name`, so it provably names the same file.
+  **The title drops the extension, and the source keeps it.** Every door already dropped it; the defect was the stem. And a document is not the file — a `.docx` imported is markdown from then on, so `board pack.docx` as a title would claim a format it no longer has. `Document.source_name` (new, nullable, `_migrate_add_document_source_name_column`) keeps `Q3 Board Pack – final (v2).pdf` whole, for `P21-04`'s search to match. Existing documents read `NULL` and keep everything else.
+  **The upload id stays the key; the name sits beside it.** URLs (`/api/upload/<id>`, `pantheon://attachment/<id>`), references saved in chats, notes and documents, and retention's reference scan all speak in ids, so the name is not made the key. A chat upload is stored as `<date>/<id>/<its own name>`: the directory binds the file to its id on disk (`upload_path_matches_id`), so reservation, the download resolver, the fallback walk and retention read the id off the path exactly as they did when the file was *called* the id, and a walk can never bind an id to another person's `report.pdf`. One directory per upload means the readable name never collides. Index rows gain `display_name` and `stored_name`; `name` stays the ASCII form every MIME guess, image/SVG gate and extension coercion was written against. A row from before keeps resolving at `<date>/<id>` (`Law 1`). The download no longer walks the whole store when the row knows where the file is.
+  **Every door, closed:** the chat auto-documents (Office and PDF — the PDF marker now carries the upload *id*, which it used to read off the stored path and which would have broken with readable names); `import-pdf` and `import-office` (title and source from what *this* file was called, not the stored row); the browser-side imports (library text/`.docx`/sheets, *Import from device*, a text attachment opened as a document) send `source_name` and the server titles them; the mailbox (the sender's decoded name; the PDF now goes through `save_upload` — indexed, owned, readable, downloadable under its name); personal uploads (stored under their name, ` (2)` on collision); the chat → Gallery promotion (`prompt` is the person's name, the hex filename stays); the markdown editor's image drop (alt text). The agent is told the person's name everywhere (`[Attachment: …]`, `=== File: … ===`, the manifest, a readable manifest path) and `manage_documents list`/`read` show `source_name`.
+  **Security controls that never lift (`FORBIDDEN.md` Part 2), each held and tested:** `Content-Disposition: attachment` on uploads — built by a helper with no way to say `inline`; `UPLOAD_RESPONSE_HEADERS`/nosniff on every download; the SVG gate is asked of the ASCII name *and* the person's (`схема.svg` folds to `svg` — no extension — and is still caught); `_resolve_tool_path`'s sensitive list is not renamed around — `id_rsa` is stored as `id_rsa` and refused to the agent's file tools, where before it sat at a hex path they could read; no stored name is ever a dotfile or carries a separator; `IMAGE_EXTS` (no svg reaches the Gallery) and `GENERATED_IMAGE_RE` (the Gallery's hex key) untouched.
+  `Verify:` `tests/test_an_uploaded_document_keeps_its_name.py` — **56 cases**, none reading a source file (`Law 20`): the real routers through `TestClient` over a temp store and a real SQLite file, the chat send turn through `ChatHandler.preprocess_message`, the agent through `ManageDocumentTool`; `Q3 Board Pack – final (v2)` through every door (title, `source_name`, stored name, download header, library, agent), hostile names (`../../evil.txt`, `C:\Users\me\evil.txt`, `CON.txt`, `nul`, a 300-character name, an RTL override, controls, `.env`, `id_rsa`, Windows-forbidden characters), the controls above, the id binding (a row pointing into another upload's directory is refused), a row whose path is gone, a pre-row upload still resolving and downloading under its recovered name, retention over the new layout, and the migration over an old schema leaving the existing document as it was. **On `5dd965a` the file cannot be collected (`src.file_names` does not exist); with only that module copied in, 35 of 56 fail on the old doors** — the 21 that pass are 19 cases of the new module's own rules and two controls that already held (a readably named SVG went through the gate; an index row pointing at another upload's file was refused). Measured on the way: every download on the old tree walked the whole upload store — the route tried `<root>/<id>`, and the file being in a date directory, walked every directory under the root to find it. It now reads the row's path, bound to the id. **Mutation: 43 run, 43 caught**, each against the 56 cases, in a copy of the tree: the office auto-document titled from the stored path again (the report itself) reddens 1; files stored under the id again 18; the download disposition handed back to Starlette's ASCII name 8, the download named by the fold 8; `display_name` keeping the folder 5, keeping bidi/format characters 1, keeping controls 1, uncapped 1, not NFC-normalised 1; `stored_name` ignoring device names 5, allowing dotfiles 1, keeping Windows-forbidden characters 2, uncapped in bytes 1; the title keeping its extension 15, or cut at any dot 3; the header saying `inline` 10, losing `filename*` 14; a collision overwriting 1; personal uploads back to a random suffix 1; the upload response, the saved chat metadata, the `[Attachment: …]` line and the Gallery prompt each back to the fold 4/1/1/1; the PDF marker keyed by the stored name 1; the PDF auto-document titled by the fold 1; `import-pdf`/`import-office` titled from the stored row 1 each; `POST /api/document` dropping `source_name` 1, `_doc_to_dict` dropping it 8; the mailbox sweep restored 1, its document unowned 1, its title from the extracted name 3, its PDF unindexed 1; legacy rows not recovered 1; reservation not bound to the id directory 1; the walk not looking in id directories 3; the download resolver ignoring the index path (walking the store) 1 or believing any in-root path 1; retention reading the id off the file name only 1; the migration a no-op 1; the SVG gate asked of the ASCII name only 1; the agent's list without the source 2.** `tests/test_personal_upload_isolation.py` asserted the display name of `../../.env` was `env`; it is now `.env`, with `env` on disk.
 
-- [ ] **P21-04** **Find a document by the name you gave it, and by its folder.** The library's search and the
+- [x] **P21-04** **Find a document by the name you gave it, and by its folder.** The library's search and the
   agent's document lookup match the original file name and the folder path as well as the title, so *"open my
   board pack"* finds `Q3 Board Pack – final (v2)` in *Clients/Acme*. `Verify:` both searches, driven.
-  `Depends:` `P21-01`, `P21-03`. — owner 2026-10-01 — agent:`P21`
+  `Depends:` `P21-01`, `P21-03`. — owner 2026-10-01 — agent:`P21` — **done 2026-10-01 at the merge.** The folder half came with `P21-01`/`P21-02` (the library search and the agent's `list search` match the folder path). The name half: both now also match `source_name` (`P21-03`'s column), and the agent's search requires every word, in any order, like the library's — so *"board pack acme"* finds `Q3 Board Pack – final (v2)` filed in *Clients/Acme*, and *"v2).pdf"* finds it by its file's own name. `Verify:` `tests/test_a_document_is_found_by_the_name_you_gave_it.py` — the real library route and the real `manage_documents` dispatch on a real database: a word only in the file name, the extension, title-plus-folder in any order, the agent's lookup by name and folder, another person's file name not found. Dropping `source_name` from either search reddens 2. — agent:`integrator`
 
 - [x] **B69** **There are two complete email-account forms and one of them is mounted nowhere.**
   Found by `P18-07` 2026-09-11, after `P18-01` and the first pass of `P18-07` were both written
@@ -20218,3 +20318,21 @@ this is the same thing happening to the row that corrected the store.
 - [ ] **B991** **A llama.cpp vision model with a plain name still loses its picture.** `B970` wired Ollama and OpenRouter behind `model_supports_vision`; llama-server reports `modalities: {vision: true}` on `/props` when started with a projector, and `src/model_capability_readers/llamacpp.py` reads it — but for a server too old to report `modalities` the reader answers text-only rather than unknown, so wiring it as is would take pictures away from vision models the name list gets right today. Fix: a `/props` probe (local hosts, paced) that answers only when `modalities` is present, then the reader and `vision_verdict`. `Verify:` a `/props` with `modalities.vision: true` for a model the name list calls text-only is sent an attached picture, and a `/props` without `modalities` leaves it to the name list. — found by `B970` — agent:`ws-owner`
 
 - [ ] **B992** **On the VM backend the admin's network mode is not enforced.** Found at the `P20` merge 2026-10-01 from `P20-07`'s handoff. Each person's machine is on QEMU's user-mode network, built in one place (`vm.qemu_argv`), and `P20-06`'s gate sits in front of the *container* workstation only. *None* could be enforced from outside the machine with `restrict=on` on that netdev; *internet only* cannot be expressed in user mode (it does not filter by destination), so it needs a filter in the machine pushed by the host the way `sudo` is (`Fleet.set_sudo`) — which holds only while the agent is not root in it — or a gate in front of the VM host. The host's `health.network` reports `full` and the panel says what is in force, so nothing claims more than it keeps. `Verify:` on the VM backend, *none* refuses a public and a private probe from inside a machine, and *internet only* either holds against root or the panel says it holds only while sudo is off. — found by `P20-07` — agent:`integrator`
+
+- [x] **B993** **`manage_documents delete` deletes the most recently edited document when the id it was given is wrong.** `src/agent_tools/document_tools.py`, `ManageDocumentTool`, the `delete` branch: `doc = _get_owned_document(db, Document, doc_id, owner)` and then `if not doc: doc = _most_recent_owned_document(...)`, commented *"Fallback: most recently updated doc (likely what the user means)"*. So a typo'd or stale `document_id` deletes a different document — whichever was edited last — and reports *"Deleted document '<its title>'"*. Fix: fall back to the active document only when no id was given at all, and refuse an id that is not found, as `read` already does (*"Document '<id>' not found"*). — found by `P21-02` reading the tool — agent:`docs-folders` — **done 2026-10-01 at the merge.** A delete names its document or means the open one: an id that does not match is refused with *"Document '<id>' not found. Nothing was deleted"*, and a delete naming nothing with no open document asks which. `Verify:` `tests/test_a_document_is_found_by_the_name_you_gave_it.py` — a wrong id and no id each delete nothing, the right id still deletes; restoring the fallback reddens 2. — agent:`integrator`
+
+- [ ] **B994** **The agent's document `tidy` and `delete` run with no preview, while the Library's Tidy asks first.** `manage_documents tidy` calls `run_document_tidy` (`src/document_actions.py`), which `db.delete`s every document its rules call junk or a duplicate — a hard delete, not the Library's soft one — in one call with nothing shown before; `P9-10` put a preview in front of the Library's Tidy button and the agent's door to the same operation has none. `P21-02` built the mechanism to reuse: run inside the transaction, read the change list, roll back, raise the `ask_user` card, and apply only when `apply_plan` reads the person's own "Apply the plan" (`src/document_folders.py`, the plan section). — found by `P21-02` — agent:`docs-folders`
+
+- [ ] **B995** **Owner decision: a non-admin's agent cannot organise its own documents.** `manage_documents` is in `NON_ADMIN_BLOCKED_TOOLS` (`src/tool_security.py`, registered as "creates, edits and deletes stored documents"), so on a multi-user install `P21-02`'s folder actions — every one scoped to the caller's own library through `_owned_document_query` / `src/document_folders.py` — reach admins and single-user installs only; a non-admin asking "sort my documents into folders" is told the tool is admin-only. Options: unblock `manage_documents` for non-admins (every action is already owner-scoped), unblock only its read and folder actions, or keep it admin-only and say so in the Library. — found by `P21-02` — agent:`docs-folders`
+
+- [ ] **B996** **`manage_documents`' function schema does not offer `read`.** The tool handles `read` (aliases `view`/`open`/`get`, paged with `offset`/`limit`), and the system prompt and `BUILTIN_TOOL_DESCRIPTIONS` tell the model to use it, but the `FUNCTION_TOOL_SCHEMAS` enum is `list, delete, tidy` (plus `P21-02`'s folder actions) and declares no `offset`. A model on the function-calling channel that follows its schema cannot read a document. Left as found (not `P21-02`'s row). — found by `P21-02` — agent:`docs-folders`
+
+- [ ] **B997** **A file imported from inside a folder lands in Unfiled.** The Library's import doors (`POST /api/document`, `/api/documents/import-pdf`, `/import-office`, and `libraryImportFiles` in `static/js/documentLibrary.js`) take no folder. `P21-01` switches the view to Unfiled before an import started inside a folder, so the result is visible instead of seeming to vanish; the document should land in the folder that was open. `P21-03` is changing exactly these doors, so this belongs after it. `Depends:` `P21-03`. — found by `P21-01` — agent:`docs-folders`
+
+- [ ] **B998** **The Chats tab lowercases the folder names a person typed.** `.memory-cat-chip` (`static/style.css`) sets `text-transform: lowercase`, and it is the chip the Library's Chats tab draws chat folders with (`_renderChatsChips` in `documentLibrary.js`), so a folder named "Clients" reads "clients". `P21-01`'s document folder chips undo it for their own class (`.doclib-folder-chip`); the chat ones still change what the person typed. — found by `P21-01` — agent:`docs-folders`
+
+- [x] **B999** **Opening a text attachment from the mailbox took every other document out of everyone's library.** Found 2026-10-01 while working `P21-03`, in the helper that row rewrote. `routes/email_routes.py` `attachment_as_doc` → `_create_markdown_doc` began with `query(Document).filter(is_active == True).update({"is_active": False})` — every document in the database, every owner's — from when `is_active` meant "the open tab". It is the soft-delete flag now (`DELETE /api/document/{id}` sets it; the library and `manage_documents` filter on it). **Measured:** three of bob's documents went `is_active=False` when alice opened `notes.txt` from her mailbox. The same helper wrote the new document with **no owner**, so the library — which matches `owner == user` for an authenticated caller — could not show it to the person who had just opened it until a restart's backfill. Applies to every non-PDF branch (`.txt .md`, Office, `.eml`, the decode fallback). **Fixed on `docs-names` (`3cf34ed`)** because it is the function `P21-03` rewrote and `P21-03`'s own `Verify:` ("found in the library") fails without it: the sweep is gone (the panel opens the new document by id; nothing needed it) and the document is owned. Documents already soft-deleted by it are not restored — nothing records which ones it touched. `Verify:` `test_a_text_attachment_from_the_mailbox_is_owned_and_leaves_other_documents_alone` (mutation: restoring the sweep reddens it; dropping the owner reddens it). — found by `docs-names`
+
+- [ ] **B1000** **The mailbox still renames attachments on the way out: downloads, replies and sends carry `Q3 Board Pack _ final _v2_.pdf`.** Found 2026-10-01 while measuring `P21-03`. Three sites outside that row's doors share `re.sub(r"[^\w\s\-.]", "_", name)`: `routes/email_helpers._extract_attachment_to_disk` (so `GET /api/email/attachment/{uid}/{i}` serves the extraction cache's mangled name as `filename=`), `routes/email_routes.compose_upload` and `_safe_compose_filename` (the compose token `<hex>_<name>` — the hex prefix is an internal key and should stay — so a recipient receives the mangled name). `src/file_names.py` has the pieces: `display_name` for what the recipient/downloader is given, `stored_name` for the cache, `attachment_disposition` for the header. Mind the extraction cache's dotfile refusal in `attachment_as_doc` (`tests/test_attachment_as_doc_controls.py`) — `stored_name` never produces a dotfile, so that guard's meaning has to be kept deliberately. `Verify:` an attachment named `Q3 Board Pack – final (v2).pdf` downloads, and is sent onward, under that name. — found by `docs-names`
+
+- [ ] **B1001** **A chat message saved before `P21-03` still names its attachments by their ASCII fold.** `attachments[].name` is persisted with the message (`src/chat_handler.preprocess_message`), so a chip in an old chat still reads `Q3_Board_Pack_final_v2.pdf` and *open as document* from it still titles the document `Q3_Board_Pack_final_v2`. The upload row behind it now answers with the person's name (`upload_display_name` recovers it from `original_name`), so the fix is read-side: resolve `attachments[].name` through the row when a session is loaded, rather than rewriting history. `Verify:` a chat saved before the row shows the attachment's own name after a reload. — found by `docs-names`

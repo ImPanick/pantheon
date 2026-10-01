@@ -82,7 +82,7 @@ the `upstream` remote.
   serving on this machine or a remote host over SSH
 - **Deep research** — multi-step web research with source reading and report generation
 - **Compare** — blind side-by-side model testing
-- **Documents** — writing-first editor with AI edits, suggestions, Markdown, HTML, CSV
+- **Documents** — writing-first editor with AI edits, suggestions, Markdown, HTML, CSV, and folders the agent can file into
 - **Email** — IMAP/SMTP with triage, tags, summaries, reminders and reply drafts
 - **Notes, tasks, calendar** — reminders, todos, scheduled agent tasks, CalDAV sync
 - **Extras** — gallery and image editor, sixteen themes and eight background patterns
@@ -187,7 +187,7 @@ proved it dead.
 
 ## Status
 
-**968 tracked tasks, 668 done.** The tracker is [`.pantheon/ROADMAP.md`](.pantheon/ROADMAP.md) and
+**977 tracked tasks, 674 done.** The tracker is [`.pantheon/ROADMAP.md`](.pantheon/ROADMAP.md) and
 it is the only place work is tracked — one list, one progress area, validated by a script that
 recounts every phase row against its own ticks. It exists because the summary line was once wrong
 by nineteen and carried forward unread from entry to entry, because each author copied the line

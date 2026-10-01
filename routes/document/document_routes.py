@@ -559,9 +559,10 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
             # silently returned nothing. Per-term AND makes "machine learning"
             # match docs containing both words regardless of position/order.
             #
-            # `P21-04`, the folder half: a term also matches the folder path, so
-            # "acme" finds what is filed in Clients/Acme. The file-name half
-            # waits on `P21-03`'s column.
+            # `P21-04`: a term also matches the folder path, so "acme" finds
+            # what is filed in Clients/Acme, and the name of the file the
+            # document was made from (`P21-03`'s `source_name`), so "pdf" or a
+            # word only in the file's own name finds it too.
             if search:
                 for tok in search.split():
                     term = f"%{tok}%"
@@ -569,6 +570,7 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
                         Document.title.ilike(term)
                         | Document.current_content.ilike(term)
                         | Document.folder.ilike(term)
+                        | Document.source_name.ilike(term)
                     )
 
             # `P21-01` — one folder, or Unfiled. A path is normalised the way

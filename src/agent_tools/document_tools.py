@@ -957,9 +957,15 @@ class ManageDocumentTool:
                 q = db.query(Document).filter(Document.is_active == True)
                 q = _owned_document_query(q, Document, owner)
                 if args.get("search"):
-                    # `P21-04`, the folder half: the folder path matches too.
-                    term = f"%{args['search']}%"
-                    q = q.filter(Document.title.ilike(term) | Document.folder.ilike(term))
+                    # `P21-04`: every word must match the title, the folder path
+                    # or the name of the file it was made from — the library's
+                    # own rule, so "board pack acme" finds what the person sees
+                    # under that name in that folder, words in any order.
+                    for tok in str(args["search"]).split():
+                        term = f"%{tok}%"
+                        q = q.filter(Document.title.ilike(term)
+                                     | Document.folder.ilike(term)
+                                     | Document.source_name.ilike(term))
                 if args.get("language"):
                     q = q.filter(Document.language == args["language"])
                 # `P21-02`. One folder (`folder`), or the Unfiled ones (`unfiled`).
@@ -1048,15 +1054,19 @@ class ManageDocumentTool:
                 }
 
             elif action == "delete":
-                doc_id = args.get("document_id") or args.get("id") or args.get("uid") or _active_document_id
-                doc = None
-                if doc_id:
-                    doc = _get_owned_document(db, Document, doc_id, owner)
+                # `B993`. A delete names its document, or means the open one —
+                # never "whichever was edited last". The fallback this replaced
+                # turned a typo'd or stale id into deleting a different
+                # document and reporting it as done.
+                named = args.get("document_id") or args.get("id") or args.get("uid")
+                doc_id = named or _active_document_id
+                doc = _get_owned_document(db, Document, doc_id, owner) if doc_id else None
+                if not doc and named:
+                    return {"error": f"Document '{named}' not found. Nothing was deleted; "
+                                     "list the documents to find its id.", "exit_code": 1}
                 if not doc:
-                    # Fallback: most recently updated doc (likely what the user means)
-                    doc = _most_recent_owned_document(db, Document, owner, active_only=True)
-                if not doc:
-                    return {"error": "No document to delete", "exit_code": 1}
+                    return {"error": "Say which document to delete (its id). Nothing was "
+                                     "deleted.", "exit_code": 1}
                 title = doc.title
                 doc.is_active = False
                 db.commit()
