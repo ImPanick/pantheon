@@ -2687,7 +2687,11 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
       const folders = Object.keys(counts).sort();
       if (folders.length < 1) { el.innerHTML = ''; return; }
       el.innerHTML = '';
-      const mk = (label, val, count) => { const c = document.createElement('button'); c.className = 'memory-cat-chip' + (_chatsModelFilter === val ? ' active' : ''); c.textContent = label + ' (' + count + ')'; c.addEventListener('click', () => { _chatsModelFilter = _chatsModelFilter === val ? '' : val; _renderChatsGrid(); _renderChatsChips(); }); el.appendChild(c); };
+      // `B998`. A folder's chip carries `doclib-chat-folder-chip` as well, which
+      // keeps its name as the person typed it: `.memory-cat-chip` lowercases
+      // its labels for the Memory tab's categories, and "Clients" read "clients".
+      // The "all" chip is this module's own word and keeps the shared look.
+      const mk = (label, val, count) => { const c = document.createElement('button'); c.className = 'memory-cat-chip' + (val ? ' doclib-chat-folder-chip' : '') + (_chatsModelFilter === val ? ' active' : ''); c.textContent = label + ' (' + count + ')'; c.addEventListener('click', () => { _chatsModelFilter = _chatsModelFilter === val ? '' : val; _renderChatsGrid(); _renderChatsChips(); }); el.appendChild(c); };
       mk('all', '', _chatsSessions.length);
       folders.forEach(f => mk(f, f, counts[f]));
     }

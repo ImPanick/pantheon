@@ -18339,6 +18339,10 @@ span.doclib-folder-crumb { cursor: default; }
   gap: 4px;
   max-width: 100%;
 }
+/* `B998`. The Chats tab's folder chips, the same rule for the same reason:
+   "Clients" stays "Clients". Scoped to the chats' folder chips, so the Memory
+   tab's category chips keep the lowercase they share the class for. */
+.doclib-chat-folder-chip { text-transform: none; }
 .doclib-folder-chip-name {
   max-width: 22ch;
   overflow: hidden;
