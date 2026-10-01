@@ -789,6 +789,65 @@ async def do_manage_tasks(content: str, owner: Optional[str] = None) -> Dict:
                     return {"error": "Task is already running", "exit_code": 1}
             return {"error": "Task scheduler not available", "exit_code": 1}
 
+        elif action == "dry_run":
+            # `P22-04` (`B803`). "What would this do if it ran" is asked in
+            # words far more often than anybody looks for a button. This is the
+            # dry run `P8-33` built — `run_task_now(dry=True)`, the call
+            # `POST /api/tasks/{id}/run?dry=true` makes — and not a second one
+            # (`Law 14`): the plan is `_record_dry_run`'s, written on a
+            # `skipped` run in the task's history, and read back from there.
+            # Nothing executes; that is `_execute_task_locked`'s `return`, held
+            # by `tests/test_a_dry_run_is_dry.py`, not anything here.
+            task_id = args.get("task_id")
+            if not task_id:
+                return {"error": "task_id is required for dry_run", "exit_code": 1}
+            task = db.query(ScheduledTask).filter(ScheduledTask.id == task_id).first()
+            if not task:
+                return {"error": f"Task {task_id} not found", "exit_code": 1}
+            if owner and task.owner != owner:
+                return {"error": "Access denied", "exit_code": 1}
+            # The route's admin gate, asked of the same policy before the
+            # scheduler is reached. Left to the engine, a refused admin-only
+            # task is PAUSED (`record_admin_refusal`) — a dry run that changed
+            # the task would break the one promise it makes.
+            from src.task_action_policy import (
+                admin_refusal_message, is_admin_only_task_action,
+                owner_has_admin_task_privileges,
+            )
+            if (is_admin_only_task_action(task.task_type, task.action)
+                    and not owner_has_admin_task_privileges(owner)):
+                return {"error": admin_refusal_message(task.action), "exit_code": 1}
+
+            from src.event_bus import get_task_scheduler
+            scheduler = get_task_scheduler()
+            if not scheduler:
+                return {"error": "Task scheduler not available", "exit_code": 1}
+            name = task.name
+            run_id = await scheduler.run_task_now(task_id, dry=True)
+            if not run_id:
+                return {"error": "Task is already running", "exit_code": 1}
+            # A fresh session: the run was written through the scheduler's own.
+            from core.database import TaskRun
+            from src.task_scheduler import DRY_RUN_HEADLINE
+            read = SessionLocal()
+            try:
+                run = read.query(TaskRun).filter(TaskRun.id == str(run_id)).first()
+                plan = (run.result or "") if run is not None else ""
+                why = ((run.error or run.result) if run is not None else "") or ""
+            finally:
+                read.close()
+            if not plan.startswith(DRY_RUN_HEADLINE):
+                # The engine declined to plan it, and the run says why — in
+                # `error`; `result` is still the "Queued…" placeholder the run
+                # was created with, which read as an answer is a false one.
+                return {"error": f"'{name}' was not planned: "
+                                 f"{why or 'the dry run left no record'}",
+                        "run_id": str(run_id), "exit_code": 1}
+            # Led by "Task", as `run`'s reply is, so the chat does not put
+            # "Done —" in front of a sentence that says nothing ran.
+            return {"response": f"Task '{name}': {plan}", "run_id": str(run_id),
+                    "exit_code": 0}
+
         else:
             return {"error": f"Unknown action: {action}", "exit_code": 1}
 

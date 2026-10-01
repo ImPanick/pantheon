@@ -675,13 +675,17 @@ FUNCTION_TOOL_SCHEMAS = [
         "type": "function",
         "function": {
             "name": "manage_tasks",
-            "description": "Manage scheduled/automated tasks: list, create, edit, delete, pause, resume, or run tasks. Use this for ANY recurring/scheduled request ('every morning…', 'each day at 7:30', 'daily summarize…') — create a task rather than doing it once. Task types: llm (AI runs a prompt), research (runs the deep-research pipeline on a question), or action (built-in automation). Triggers can be time-based or event-based.",
+            "description": "Manage scheduled/automated tasks: list, create, edit, delete, pause, resume, or run tasks — or dry_run one to say what a run would do without running anything. Use this for ANY recurring/scheduled request ('every morning…', 'each day at 7:30', 'daily summarize…') — create a task rather than doing it once. When the user asks what a task would do, or wants to check one before it runs, use dry_run, not run. Task types: llm (AI runs a prompt), research (runs the deep-research pipeline on a question), or action (built-in automation). Triggers can be time-based or event-based.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "action": {"type": "string", "enum": ["list", "create", "edit", "delete", "pause", "resume", "run"],
-                               "description": "The action to perform"},
-                    "task_id": {"type": "string", "description": "Task ID (for edit/delete/pause/resume/run)"},
+                    # `P22-04` (`B803`). `dry_run` is served by `do_manage_tasks`
+                    # through `run_task_now(dry=True)`, the dry run `P8-33`
+                    # built; offered here and handled there in one change, so
+                    # neither half is a parameter with no consumer (`Law 13`).
+                    "action": {"type": "string", "enum": ["list", "create", "edit", "delete", "pause", "resume", "run", "dry_run"],
+                               "description": "The action to perform. dry_run plans the task — what it would run, touch and send — executes nothing, changes nothing, and returns the plan"},
+                    "task_id": {"type": "string", "description": "Task ID (for edit/delete/pause/resume/run/dry_run)"},
                     "name": {"type": "string", "description": "Task name"},
                     "prompt": {"type": "string", "description": "The instruction (for task_type=llm) or the research question (for task_type=research). Required for both."},
                     "task_type": {"type": "string", "enum": ["llm", "research", "action"],
