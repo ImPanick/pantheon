@@ -93,9 +93,10 @@ def test_a_clock_that_drifts_later_is_brought_back_and_that_is_not_a_use(tmp_pat
         assert offsets[ANN] == pytest.approx(-4.0, abs=0.25)
         assert guest.steps[-1] == pytest.approx(4.0, abs=0.25) and abs(guest.drift) < 0.25
         guest.drift += vm.CLOCK_STEP_S / 2              # inside the bound: left alone
-        fleet.sync_clocks()
+        clock[0] += 59
+        fleet.sync_clocks()                              # a minute after its last use…
         assert len(guest.steps) == 1
-        clock[0] += 61
+        clock[0] += 2
         assert fleet.reap_idle() == [ANN], "keeping a machine's time kept it awake"
 
 
@@ -159,4 +160,4 @@ def test_the_vm_host_never_steps_its_own_clock(tmp_path, monkeypatch):
         c = WorkstationClient(url, vm_fleet.HOST_TOKEN)
         with pytest.raises(WorkstationError) as e:
             run(c._call("clock", body={"step_s": 3.0}))
-        assert e.value.code == "unavailable"
+        assert e.value.code == "unavailable" and "never its own" in e.value.message

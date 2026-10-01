@@ -100,6 +100,8 @@ def test_the_grab_happens_whenever_the_mark_cannot_answer(ws, monkeypatch, why):
     elif why == "other-digest":
         digest = "0" * 16
     elif why == "moved-during-grab":
+        # Drawn while the frame was taken, then put back: the pixels now are
+        # the ones the mark kept, but the frame may hold the moment between.
         real = CountingScreen.grab
 
         def grab_while_drawing(self, f):
@@ -107,8 +109,10 @@ def test_the_grab_happens_whenever_the_mark_cannot_answer(ws, monkeypatch, why):
             self.draw()
             return out
         monkeypatch.setattr(CountingScreen, "grab", grab_while_drawing)
+        before = screen.content
         first = run(c.screenshot(ANN, fmt="jpeg"))
         monkeypatch.setattr(CountingScreen, "grab", real)
+        screen.draw(content=before)
         digest = first["digest"]
     elif why == "too-old":
         monkeypatch.setattr(agentd, "FRAME_TRUST_S", -1.0)

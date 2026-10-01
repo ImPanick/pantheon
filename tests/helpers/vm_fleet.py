@@ -40,7 +40,8 @@ class CountingScreen(PictureScreen):
         super().__init__(account)
         self.grabs = 0
         self.asked = 0
-        self._drawn = 0
+        self._drawn = 0     # drawing done (what DAMAGE reports)
+        self.content = 0    # what the pixels are: drawing can put them back
 
     def grab(self, fmt: str):
         self.grabs += 1
@@ -49,20 +50,26 @@ class CountingScreen(PictureScreen):
     def send(self, action: Dict) -> None:
         super().send(action)
         self._drawn += 1
+        self.content += 1
 
-    def draw(self) -> None:
+    def draw(self, content: Optional[int] = None) -> None:
+        """Something drawn; `content` puts the pixels back to an earlier
+        picture (a blink, a redraw of the same thing)."""
         self.actions.append({"action": "drawn"})  # the picture changes with it
         self._drawn += 1
+        self.content = self.content + 1 if content is None else content
 
+    # Like `xdamage.DamageWatch`: a frame is trusted only if nothing at all
+    # was drawn while it was taken, and later the drawn pixels are compared.
     def mark(self):
-        return ("mark", self._drawn) if self.can_tell else None
+        return ("mark", self._drawn, self.content) if self.can_tell else None
 
     def settle(self, mark):
         return mark if mark is not None and mark[1] == self._drawn else None
 
     def unchanged(self, mark) -> bool:
         self.asked += 1
-        return mark is not None and mark[1] == self._drawn
+        return mark is not None and mark[2] == self.content
 
 
 class GuestSystem(SingleUserSystem):
