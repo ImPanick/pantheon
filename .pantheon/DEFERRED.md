@@ -1,6 +1,6 @@
 # DEFERRED — decided, not scheduled
 
-**Seven** items are deliberately out of the roadmap's critical path, and they are not all the
+**Eight** items are deliberately out of the roadmap's critical path, and they are not all the
 same kind of thing — the file said "three" and "each has a condition for revisiting" until
 2026-08-28, which was true when it was written and stopped being true twice since:
 
@@ -8,10 +8,12 @@ same kind of thing — the file said "three" and "each has a condition for revis
 - **`D-06` (training) is parked indefinitely.** The owner's words: *"Let's abandon the training
   idea — but we can leave it in but parked. Mark it as a 'skip for now' kind of ordeal."* It has
   prerequisites rather than a trigger, and nobody is waiting on them.
+- **`D-08` (Orca) is a reference the owner pointed at for future agentic work** — kept here so the
+  next phase that schedules multi-agent tasking starts from it rather than rediscovering it.
 - **`D-07` (a marketplace) is closed, not deferred.** There is no condition, because the answer
   was *"No marketplace at all."* Do not read it as a deferral with the clause missing.
 
-None of the seven is "we forgot".
+None of the eight is "we forgot".
 
 ---
 
@@ -340,3 +342,30 @@ automations and MCP configs clean enough that sharing is a file, not a platform.
 **Revisit when.** Never. If this needs reopening, the product has become something else, and
 that is a bigger conversation than a feature.
 
+---
+
+## D-08 · Orca — a reference for agentic tasking
+
+**What it is.** The owner, 2026-10-01: *"For references in agentic taskings etc... future feature
+development... Please see this: https://github.com/stablyai/orca"*. Orca (Stably AI, **MIT licence**,
+TypeScript/Electron) calls itself *"The AI Orchestrator for 100x builders. Run Codex, ClaudeCode, OpenCode
+or Pi side-by-side — each in its own worktree, tracked in one place."* Read 2026-10-01 from its README.
+
+**What in it maps onto Pantheon, and onto what already exists** — the starting point for whichever phase
+schedules multi-agent tasking, not a list of rows:
+
+| Orca | Pantheon today | The idea worth taking |
+|---|---|---|
+| Parallel agents, each in its own git worktree, compared and merged | Compare mode (blind side-by-side *models*); sessions; `P20` workstation homes | One task fanned out to several agents, each in its own worktree **inside the person's workstation**, results compared on the Compare surface and one merged |
+| Diff annotation — comment on an agent's diff and send it back | The diff card (`B938`) draws a file edit live and on reload | A comment on a line of the diff card becomes the agent's next instruction |
+| Design mode — click an element in an embedded browser to put its HTML/CSS in the prompt | `P20-05`'s live view of the workstation's Firefox; `computer` | "Point at this": a region of the live view (and, in the workstation's browser, the element under it) attached to the next message |
+| SSH worktrees, headless remote runtime | `P20-07`'s remote backend (`python3 -m workstation` on any host) | Already the same shape; a worktree per task on a remote workstation |
+| GitHub / Linear task browsing, PR review in place | Tasks, the scheduler, MCP servers | A task source the agent picks work from, with the PR reviewed where it was made |
+| Persistent terminals with scrollback | The workstation shell; the live view | A terminal pane on the workstation, beside the screen |
+
+**Why it is here and not in the roadmap.** It is a direction, not a decision: the owner has not chosen
+which of these comes first, and each needs `P20` finished underneath it. **Licence:** MIT is compatible
+with AGPL-3.0-or-later; ideas are free to take, and any code copied carries its notice in `CREDITS.md`
+(`.pantheon/check-licences.py`).
+
+**What would reopen it:** `P20` closed, and the owner naming the first of these to build.
