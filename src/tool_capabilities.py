@@ -525,7 +525,8 @@ _PRIVATE_ACTION_READS: Mapping[str, frozenset[str]] = MappingProxyType(
     {
         "manage_calendar": frozenset({"list_calendars", "list_events"}),
         "manage_contact": frozenset({"list"}),
-        "manage_documents": frozenset({"list", "read", "view", "open", "get"}),
+        "manage_documents": frozenset({"list", "read", "view", "open", "get",
+                                       "list_folders"}),
         "manage_memory": frozenset({"list", "search"}),
         "manage_notes": frozenset({"list", "search", "find", "view"}),
         "manage_research": frozenset({"list", "read", "open", "view", "get"}),
@@ -542,7 +543,12 @@ _PRIVATE_ACTION_WRITES: Mapping[str, frozenset[str]] = MappingProxyType(
             {"create_event", "update_event", "delete_event"}
         ),
         "manage_contact": frozenset({"add", "update", "edit", "delete"}),
-        "manage_documents": frozenset({"delete", "tidy"}),
+        # `P21-02`. Filing is a write to the person's own library; `remove_folder`
+        # can delete what is in the folder, so it, and the two actions that can
+        # carry it (`reorganise`, `apply_plan`), are destructive below as well.
+        "manage_documents": frozenset({"delete", "tidy", "create_folder",
+                                       "rename_folder", "move_folder", "move",
+                                       "remove_folder", "reorganise", "apply_plan"}),
         "manage_memory": frozenset({"add", "edit", "delete"}),
         "manage_notes": frozenset({"add", "update", "delete", "toggle_item"}),
         "manage_research": frozenset({"delete"}),
@@ -567,7 +573,8 @@ _ACTION_DESTRUCTIVE: Mapping[str, frozenset[str]] = MappingProxyType(
     {
         "manage_calendar": frozenset({"delete_event"}),
         "manage_contact": frozenset({"delete"}),
-        "manage_documents": frozenset({"delete", "tidy"}),
+        "manage_documents": frozenset({"delete", "tidy", "remove_folder",
+                                       "reorganise", "apply_plan"}),
         "manage_endpoints": frozenset({"delete"}),
         "manage_bg_jobs": frozenset({"kill", "stop", "cancel", "terminate"}),
         # `bulk_email` is the one non-`manage_*` multiplexer in this table, and
@@ -602,6 +609,9 @@ _ACTION_DEFAULTS: Mapping[str, str] = MappingProxyType(
 
 _ACTION_ALIASES: Mapping[str, Mapping[str, str]] = MappingProxyType(
     {
+        # `P21-02`. The spelling models reach for first; `document_tools.
+        # _folder_action` maps it the same way so the classified action runs.
+        "manage_documents": MappingProxyType({"reorganize": "reorganise"}),
         "manage_calendar": MappingProxyType(
             {
                 "create": "create_event",

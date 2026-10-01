@@ -928,15 +928,40 @@ FUNCTION_TOOL_SCHEMAS = [
         "type": "function",
         "function": {
             "name": "manage_documents",
-            "description": "Manage documents: list all documents (with optional search/language filter), delete documents, or run tidy cleanup.",
+            "description": (
+                "Manage documents: list all documents (with optional search/language/folder "
+                "filter), delete documents, run tidy cleanup, and organise them into folders. "
+                "Folders are paths like 'Clients/Acme'; '' (or 'Unfiled') means no folder. "
+                "list_folders shows them with counts; create_folder, rename_folder, "
+                "move_folder, move (documents into a folder) and remove_folder change them; "
+                "reorganise takes several of those as `steps` in one call. A call that would "
+                "move or remove more than 5 things is not applied: it returns a plan and asks "
+                "the person, and only if they choose 'Apply the plan' do you call apply_plan "
+                "with its plan_id. Every change made is listed in the result."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "action": {"type": "string", "enum": ["list", "delete", "tidy"]},
-                    "document_id": {"type": "string", "description": "Document ID (for delete)"},
-                    "search": {"type": "string", "description": "Search query (for list)"},
+                    "action": {"type": "string", "enum": [
+                        "list", "delete", "tidy",
+                        "list_folders", "create_folder", "rename_folder", "move_folder",
+                        "move", "remove_folder", "reorganise", "apply_plan",
+                    ]},
+                    "document_id": {"type": "string", "description": "Document ID (for delete, or move of one document)"},
+                    "document_ids": {"type": "array", "items": {"type": "string"},
+                                     "description": "Document IDs (for move)"},
+                    "search": {"type": "string", "description": "Search query (for list) — matches titles and folder paths"},
                     "language": {"type": "string", "description": "Filter by language (for list)"},
-                    "limit": {"type": "integer", "description": "Max results (for list, default 50)"}
+                    "limit": {"type": "integer", "description": "Max results (for list, default 50)"},
+                    "folder": {"type": "string", "description": "Folder path, e.g. 'Clients/Acme' (for list, create_folder, rename_folder, move_folder, remove_folder)"},
+                    "unfiled": {"type": "boolean", "description": "List only documents in no folder (for list)"},
+                    "to": {"type": "string", "description": "Destination folder path (for move and move_folder); '' for Unfiled / the top level. Required for both."},
+                    "name": {"type": "string", "description": "The folder's new name, one level, no '/' (for rename_folder)"},
+                    "contents": {"type": "string", "enum": ["move_up", "delete"],
+                                 "description": "What happens to what is in a folder being removed: move_up moves it up a level, delete deletes the documents with it (for remove_folder; required when the folder is not empty)"},
+                    "steps": {"type": "array", "items": {"type": "object"},
+                              "description": "For reorganise: folder actions in order, each an object with its own action (create_folder, rename_folder, move_folder, move, remove_folder) and arguments"},
+                    "plan_id": {"type": "string", "description": "The plan to apply (for apply_plan, only after the person chose 'Apply the plan')"}
                 },
                 "required": ["action"]
             }

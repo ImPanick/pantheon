@@ -102,7 +102,7 @@ BUILTIN_TOOL_DESCRIPTIONS: Dict[str, str] = {
     "manage_webhooks": "Webhook management: list, add, delete, enable, or disable webhooks.",
     "api_call": "Call a configured API integration by name (Home Assistant, Miniflux, Gitea, Linkding, Jellyfin, RSS reader, git forge, bookmark manager, smart home, or any other registered service). Make a GET/POST/PUT/PATCH/DELETE request to the integration's endpoint path, with an optional JSON body. Use whenever the user asks to query or control one of their connected integrations/services.",
     "manage_tokens": "API token management: list, create, or delete API access tokens.",
-    "manage_documents": "List, read, delete, or tidy documents in the editor panel. action='list' returns clickable rows (most-recent first) so the user can open any doc by clicking. action='read' (aka view/open/get) with document_id returns the content; supports offset=<N> + limit=<N> to page through large docs (response includes next_offset when more remains, so you can keep calling with offset=next_offset). action='delete' with document_id removes a doc (only way to delete). Use this for ANY 'show/read/list/open my documents/docs/files/notes' request — never shell or curl.",
+    "manage_documents": "List, read, delete, or tidy documents in the editor panel. action='list' returns clickable rows (most-recent first) so the user can open any doc by clicking. action='read' (aka view/open/get) with document_id returns the content; supports offset=<N> + limit=<N> to page through large docs (response includes next_offset when more remains, so you can keep calling with offset=next_offset). action='delete' with document_id removes a doc (only way to delete). Use this for ANY 'show/read/list/open my documents/docs/files/notes' request — never shell or curl. Also organises documents into folders: list_folders, create_folder, rename_folder, move_folder, move (file documents into a folder), remove_folder, reorganise (several steps at once) — sort, tidy, file, group or organise my documents into folders. More than 5 moves at once become a plan the user approves before apply_plan.",
     "manage_research": "List, read/open, or delete saved DEEP RESEARCH results from the Library. action='list' returns clickable [query](#research-<id>) rows (most-recent first). action='read' (aka open/view/get) with id returns the report + sources. action='delete' with id removes it. Use this for ANY 'open/read/find/delete my research / that report / the research on X' request. NOTE: this is for EXISTING research; to START new research use trigger_research.",
     "manage_settings": "Change ANY real app setting (the ones the Settings panel writes) so the user never has to open it: TTS voice/provider/speed, STT, search engine + result count, default/teacher/task/utility/vision/image/research models, image quality, reminder channel (browser/email/ntfy), agent timeout/tool-call budget, and more. action=set with key (friendly aliases ok: voice, 'search engine', 'default model', 'teacher model', 'image quality', 'reminder channel'...) + value; get/list/reset too. Also toggles tools on/off (disable_tool/enable_tool/list_tools). Secrets/API keys are read-only. Use for any 'change my…/set my…/use X for…/turn on…' preference request.",
     "create_session": "Create a new chat with a name and model.",
@@ -497,6 +497,16 @@ class ToolIndex:
                    "show my", "the file", "my file", "the report", "the write-up",
                    "the writeup", "saved document", "in my library", "in the library"}):
             {"manage_documents", "edit_document"},
+        # `P21-02`. Folders — "sort my documents into folders", "file these
+        # under Clients". Phrases, not a bare "folder": an email or a workspace
+        # request says "folder" as often as a document one does.
+        frozenset({"into folders", "into a folder", "document folder", "documents folder",
+                   "my folders", "organise my documents", "organize my documents",
+                   "organise my docs", "organize my docs", "organise my files",
+                   "organize my files", "sort my documents", "sort my docs",
+                   "tidy my documents", "file my documents", "file these",
+                   "move my documents", "move my docs"}):
+            {"manage_documents"},
         # `P20-04`. Computer use on the workstation. Phrases, not bare "click",
         # "screen" or "ubuntu", which a document or a shell request says just as
         # often; the tool is hidden anyway unless the workstation would answer.

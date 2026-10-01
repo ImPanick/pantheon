@@ -42,12 +42,17 @@ from __future__ import annotations
 
 import logging
 import re
+import secrets
+import threading
+import time
 import uuid
+from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any, Dict, Iterable, List, Optional
 
 from sqlalchemy import false, func, or_
 
-from core.database import Document, DocumentFolder
+from core.database import ChatMessage, Document, DocumentFolder, utcnow_naive
 
 logger = logging.getLogger(__name__)
 
@@ -590,3 +595,181 @@ def describe_change(c: Dict[str, Any]) -> str:
         if change == "removed":
             return f"removed folder {c.get('from')}"
     return str(c)
+
+
+# ── steps and plans (`P21-02`) ───────────────────────────────────────────────
+#
+# `P9-10`'s house rule is that a destructive AI operation is previewed before it
+# runs. For the agent's folder work the threshold is the row's "more than a
+# handful": a call whose changes a person would have to undo one by one — more
+# than five moved or removed things — is not applied. It is run inside the
+# transaction, its change list read, and rolled back; the list becomes a plan,
+# shown on the tool card, and the existing `ask_user` card (`P4` — the one any
+# tool result can raise) asks the person to apply it. Nothing new is drawn.
+#
+# What makes the approval real rather than advisory is where `apply_plan` reads
+# the answer: from the chat's own last message, persisted by the chat route
+# before the agent runs. The card sends the option's label as that message, so
+# "Apply the plan", typed or clicked, after the plan was made, is the yes; any
+# other answer is a no, and so is no answer. The agent cannot approve its own
+# plan, because it does not write the person's messages.
+#
+# And the plan is the change list, not just the steps. `apply_plan` re-runs the
+# steps and refuses if they would now do something different from what the
+# person read — a document added to a folder after the plan was shown would
+# otherwise be deleted with it, unseen. The same seal `_approved_document_version_error`
+# puts on a document edit, for the same reason.
+
+PLAN_THRESHOLD = 5
+PLAN_TTL_SECONDS = 30 * 60
+PLAN_APPROVE_LABEL = "Apply the plan"
+PLAN_DECLINE_LABEL = "Don't change anything"
+STEP_ACTIONS = ("create_folder", "rename_folder", "move_folder", "move", "remove_folder")
+
+
+def _destination(step: Dict[str, Any], *, fallback_key: Optional[str] = None) -> Any:
+    """Where a move goes. A missing `to` is refused, never read as Unfiled.
+
+    `{"action": "move", "folder": "Clients"}` with no `to` is a model that put
+    the destination in the wrong key, and reading the absence as "Unfiled" would
+    empty a folder it meant to fill. An explicit `to: ""` (or null) is Unfiled.
+    """
+    if "to" in step:
+        return step.get("to")
+    if fallback_key and fallback_key in step:
+        return step.get(fallback_key)
+    raise FolderError("Say where to: 'to' is a folder path like 'Clients/Acme', "
+                      "or '' for Unfiled / the top level.")
+
+
+def run_step(db, owner, step: Dict[str, Any]) -> Dict[str, Any]:
+    action = str(step.get("action") or "").strip().casefold()
+    if action == "create_folder":
+        return create_folder(db, owner, step.get("folder"), exist_ok=True)
+    if action == "rename_folder":
+        return rename_folder(db, owner, step.get("folder"), step.get("name"))
+    if action == "move_folder":
+        return move_folder(db, owner, step.get("folder"), _destination(step))
+    if action == "move":
+        ids = step.get("document_ids")
+        if ids is None:
+            ids = step.get("document_id") or step.get("id")
+        return file_documents(db, owner, ids, _destination(step, fallback_key="folder"))
+    if action == "remove_folder":
+        return remove_folder(db, owner, step.get("folder"), step.get("contents"))
+    raise FolderError(f"'{action or '(none)'}' is not a folder step — use one of: "
+                      + ", ".join(STEP_ACTIONS) + ".")
+
+
+def run_steps(db, owner, steps: Any) -> List[Dict[str, Any]]:
+    """Run steps in order in the caller's transaction; return every change."""
+    if not isinstance(steps, list) or not steps:
+        raise FolderError("Give the reorganisation as a list of steps.")
+    if len(steps) > MAX_STEPS:
+        raise FolderError(f"At most {MAX_STEPS} steps at once.")
+    changes: List[Dict[str, Any]] = []
+    for i, step in enumerate(steps, 1):
+        if not isinstance(step, dict):
+            raise FolderError(f"Step {i} is not an object.")
+        try:
+            changes.extend(run_step(db, owner, step)["changes"])
+        except FolderError as e:
+            if len(steps) == 1:
+                raise
+            raise FolderError(f"Step {i} ({step.get('action')}): {e.message}", e.status)
+        db.flush()
+    return changes
+
+
+def needs_plan(changes: Iterable[Dict[str, Any]]) -> bool:
+    return len(counted_changes(changes)) > PLAN_THRESHOLD
+
+
+def _fingerprint(changes: Iterable[Dict[str, Any]]) -> tuple:
+    return tuple((c.get("change"), c.get("kind"), c.get("id"), c.get("from"), c.get("to"))
+                 for c in changes)
+
+
+@dataclass
+class FolderPlan:
+    plan_id: str
+    owner: str
+    session_id: str
+    steps: List[Dict[str, Any]]
+    changes: List[Dict[str, Any]]
+    created_at: datetime = field(default_factory=utcnow_naive)
+    expires_at: float = field(default_factory=lambda: time.monotonic() + PLAN_TTL_SECONDS)
+
+
+_plans: Dict[str, FolderPlan] = {}
+_plans_lock = threading.Lock()
+
+
+def _purge_plans_locked(now: float) -> None:
+    for plan_id in [k for k, p in _plans.items() if p.expires_at <= now]:
+        _plans.pop(plan_id, None)
+
+
+def propose_plan(owner: str, session_id: str, steps: List[Dict[str, Any]],
+                 changes: List[Dict[str, Any]]) -> FolderPlan:
+    """Hold a plan for this chat. A newer plan in the same chat replaces it."""
+    with _plans_lock:
+        _purge_plans_locked(time.monotonic())
+        for plan_id in [k for k, p in _plans.items()
+                        if p.owner == owner and p.session_id == session_id]:
+            _plans.pop(plan_id, None)
+        plan = FolderPlan(plan_id=secrets.token_urlsafe(9), owner=owner,
+                          session_id=session_id, steps=list(steps), changes=list(changes))
+        _plans[plan.plan_id] = plan
+        return plan
+
+
+def pending_plan(plan_id: Any, owner: str, session_id: Optional[str]) -> Optional[FolderPlan]:
+    with _plans_lock:
+        _purge_plans_locked(time.monotonic())
+        plan = _plans.get(str(plan_id or ""))
+        if plan is None or plan.owner != owner or plan.session_id != session_id:
+            return None
+        return plan
+
+
+def discard_plan(plan_id: str) -> None:
+    with _plans_lock:
+        _plans.pop(plan_id, None)
+
+
+def plan_answer(db, plan: FolderPlan) -> str:
+    """`approved` · `declined` · `unanswered` — read from the chat, not the agent."""
+    message = (db.query(ChatMessage)
+               .filter(ChatMessage.session_id == plan.session_id)
+               .filter(ChatMessage.role == "user")
+               .order_by(ChatMessage.timestamp.desc())
+               .first())
+    if message is None or message.timestamp is None or message.timestamp < plan.created_at:
+        return "unanswered"
+    if (message.content or "").strip() == PLAN_APPROVE_LABEL:
+        return "approved"
+    return "declined"
+
+
+def apply_plan(db, owner: str, session_id: Optional[str], plan_id: Any) -> Dict[str, Any]:
+    plan = pending_plan(plan_id, owner, session_id)
+    if plan is None:
+        raise FolderError(
+            "No plan with that id is waiting in this chat — plans last "
+            f"{PLAN_TTL_SECONDS // 60} minutes. Propose the reorganisation again.", 404)
+    answer = plan_answer(db, plan)
+    if answer == "unanswered":
+        raise FolderError("The person has not answered the plan yet, so nothing was "
+                          "changed. Wait for their answer.", 409)
+    if answer == "declined":
+        discard_plan(plan.plan_id)
+        raise FolderError(f"The person did not choose '{PLAN_APPROVE_LABEL}', so nothing "
+                          "was changed.", 409)
+    changes = run_steps(db, owner, plan.steps)
+    if _fingerprint(changes) != _fingerprint(plan.changes):
+        discard_plan(plan.plan_id)
+        raise FolderError("Your documents changed after this plan was shown, so none of it "
+                          "was applied. Propose it again to see what it would do now.", 409)
+    discard_plan(plan.plan_id)
+    return {"plan_id": plan.plan_id, "changes": changes}

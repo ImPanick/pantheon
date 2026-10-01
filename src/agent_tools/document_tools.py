@@ -760,6 +760,161 @@ class SuggestDocumentTool:
 
 
 # ---------------------------------------------------------------------------
+# `P21-02` — the agent organises documents with the library's own folders
+# ---------------------------------------------------------------------------
+#
+# Every action here calls `src/document_folders.py`, the module the library's
+# routes call, so the agent gets the routes' owner scope and the routes'
+# refusals in the routes' words (`Law 7`). What this layer adds is the two
+# things only an agent needs: the plan-before-bulk rule, and a tool card that
+# lists every change so a person can put any of it back by hand.
+
+FOLDER_ACTIONS = frozenset({
+    "list_folders", "create_folder", "rename_folder", "move_folder", "move",
+    "remove_folder", "reorganise", "apply_plan",
+})
+#: The most changes one call may make, so its card can list every one of them
+#: inside the 10,000-character tool-output cap (`MAX_OUTPUT_CHARS`). Measured:
+#: a listed change is 40–90 characters, so 100 of them is under 9,000.
+MAX_CHANGES_PER_CALL = 100
+
+
+def _folder_action(action) -> str:
+    """Normalised the way `src/tool_capabilities._action_from_content` reads it,
+    so the action the approval card classified is the action that runs. The
+    one alias is the spelling models reach for first; it is in that module's
+    `_ACTION_ALIASES` too."""
+    name = str(action or "").strip().replace("-", "_").casefold()
+    return "reorganise" if name == "reorganize" else name
+
+
+def _change_lines(changes) -> str:
+    from src.document_folders import describe_change
+    return "\n".join("- " + describe_change(c) for c in changes)
+
+
+def _list_folders_reply(db, owner) -> Dict:
+    from src.document_folders import list_folders
+    out = list_folders(db, owner)
+    folders = out["folders"]
+    if not folders:
+        return {"response": (f"No folders yet — all {out['all']} document(s) are Unfiled. "
+                             "Make one with action='create_folder'."),
+                "folders": [], "unfiled": out["unfiled"], "exit_code": 0}
+    lines = []
+    for f in folders:
+        if f["total"] == 0:
+            size = "empty"
+        elif f["count"] == f["total"]:
+            size = f"{f['total']} document(s)"
+        else:
+            size = f"{f['total']} document(s), {f['count']} directly inside"
+        lines.append(f"{'  ' * f['depth']}- {f['path']} — {size}")
+    header = (f"{len(folders)} folder(s); {out['unfiled']} document(s) are Unfiled. "
+              "Use the full path shown as `folder` or `to`:")
+    return {"response": header + "\n" + "\n".join(lines),
+            "folders": folders, "unfiled": out["unfiled"], "exit_code": 0}
+
+
+def _manage_folders(db, owner: Optional[str], session_id: Optional[str],
+                    action: str, args: dict) -> Dict:
+    from src import document_folders as F
+
+    if not owner:
+        # The same answer the tool's other actions give an owner-less call:
+        # nothing is anybody's, so there is nothing to file.
+        return {"error": "Folders belong to a signed-in person, and this call has none.",
+                "exit_code": 1}
+    if action == "list_folders":
+        return _list_folders_reply(db, owner)
+
+    if action == "apply_plan":
+        try:
+            out = F.apply_plan(db, owner, session_id, args.get("plan_id"))
+        except F.FolderError as e:
+            db.rollback()
+            return {"error": e.message, "exit_code": 1}
+        db.commit()
+        changes = out["changes"]
+        return {
+            "response": (f"Applied the plan — {F.summarize_changes(changes, past=True)}:\n"
+                         f"{_change_lines(changes)}\n"
+                         "To undo any of it, move it back in the library."),
+            "outcome": "applied",
+            "changes": changes,
+            "exit_code": 0,
+        }
+
+    if action == "reorganise":
+        steps = args.get("steps")
+    else:
+        steps = [dict(args, action=action)]
+    try:
+        changes = F.run_steps(db, owner, steps)
+    except F.FolderError as e:
+        db.rollback()
+        return {"error": e.message, "exit_code": 1}
+
+    counted = F.counted_changes(changes)
+    if len(counted) > MAX_CHANGES_PER_CALL:
+        db.rollback()
+        return {"error": (f"That is {len(counted)} changes in one call; at most "
+                          f"{MAX_CHANGES_PER_CALL}, so every one can be listed for the "
+                          "person. Split it into smaller reorganisations."),
+                "exit_code": 1}
+
+    if F.needs_plan(changes):
+        db.rollback()   # nothing happens until the person says so
+        summary = F.summarize_changes(changes)
+        if not session_id:
+            return {"error": (f"This {summary} — more than {F.PLAN_THRESHOLD} changes at "
+                              "once need the person's OK, and there is no chat to ask them "
+                              "in. Do it in smaller steps."),
+                    "exit_code": 1}
+        plan = F.propose_plan(owner, session_id, steps, changes)
+        return {
+            "response": (
+                f"Nothing has changed yet. This {summary} — more than "
+                f"{F.PLAN_THRESHOLD} changes at once, so it waits for the person's OK:\n"
+                f"{_change_lines(changes)}\n"
+                f"If they choose \"{F.PLAN_APPROVE_LABEL}\", call manage_documents with "
+                f"{{\"action\": \"apply_plan\", \"plan_id\": \"{plan.plan_id}\"}}. "
+                "Any other answer means leave everything as it is."
+            ),
+            "outcome": "planned",
+            "plan_id": plan.plan_id,
+            "changes": changes,
+            # The card every tool result can raise (`agent_loop`, `ask_user`):
+            # it ends the turn, and the person's choice is the next message —
+            # which is where `apply_plan` reads it from.
+            "ask_user": {
+                "question": f"Reorganise your documents? This {summary}, as listed above.",
+                "options": [
+                    {"label": F.PLAN_APPROVE_LABEL,
+                     "description": "Make every change listed on the card above"},
+                    {"label": F.PLAN_DECLINE_LABEL,
+                     "description": "Leave every document where it is"},
+                ],
+                "multi": False,
+            },
+            "exit_code": 0,
+        }
+
+    db.commit()
+    if not changes:
+        return {"response": "Nothing changed — everything is already where you asked.",
+                "outcome": "unchanged", "changes": [], "exit_code": 0}
+    return {
+        "response": (f"Done — {F.summarize_changes(changes, past=True)}:\n"
+                     f"{_change_lines(changes)}\n"
+                     "To undo any of it, move it back in the library."),
+        "outcome": "applied",
+        "changes": changes,
+        "exit_code": 0,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Document management tool (delete, list, organize)
 # ---------------------------------------------------------------------------
 class ManageDocumentTool:
@@ -802,12 +957,30 @@ class ManageDocumentTool:
                 q = db.query(Document).filter(Document.is_active == True)
                 q = _owned_document_query(q, Document, owner)
                 if args.get("search"):
-                    q = q.filter(Document.title.ilike(f"%{args['search']}%"))
+                    # `P21-04`, the folder half: the folder path matches too.
+                    term = f"%{args['search']}%"
+                    q = q.filter(Document.title.ilike(term) | Document.folder.ilike(term))
                 if args.get("language"):
                     q = q.filter(Document.language == args["language"])
+                # `P21-02`. One folder (`folder`), or the Unfiled ones (`unfiled`).
+                where_txt = ""
+                if args.get("unfiled"):
+                    from sqlalchemy import or_ as _or
+                    q = q.filter(_or(Document.folder.is_(None), Document.folder == ""))
+                    where_txt = " in Unfiled"
+                elif args.get("folder"):
+                    from src.document_folders import FolderError, normalize_folder_path
+                    try:
+                        wanted = normalize_folder_path(args["folder"])
+                    except FolderError as e:
+                        return {"error": e.message, "exit_code": 1}
+                    if wanted:
+                        q = q.filter(Document.folder == wanted)
+                        where_txt = f" in {wanted}"
                 docs = q.order_by(Document.updated_at.desc()).limit(args.get("limit", 50)).all()
                 if not docs:
-                    msg = "No documents found" + (f" matching '{args['search']}'" if args.get("search") else "") + "."
+                    msg = ("No documents found" + where_txt
+                           + (f" matching '{args['search']}'" if args.get("search") else "") + ".")
                     return {"response": msg, "documents": [], "exit_code": 0}
                 lines = []
                 items = []
@@ -816,10 +989,13 @@ class ManageDocumentTool:
                     lang = d.language or "text"
                     ts = getattr(d, 'updated_at', None) or getattr(d, 'created_at', None)
                     marker = " ← most recent" if i == 0 else ""
+                    folder = getattr(d, "folder", None) or None
+                    place = f", in {folder}" if folder else ""
                     lines.append(
-                        f"- [{d.title}](#document-{d.id}) — {lang}, {size} chars, updated {_rel(ts)}{marker}"
+                        f"- [{d.title}](#document-{d.id}) — {lang}, {size} chars, updated {_rel(ts)}{place}{marker}"
                     )
-                    items.append({"id": d.id, "title": d.title, "language": lang, "size": size})
+                    items.append({"id": d.id, "title": d.title, "language": lang, "size": size,
+                                  "folder": folder})
                 header = f"Found {len(docs)} document(s), sorted most-recent first. Click a title to open:"
                 return {
                     "response": header + "\n" + "\n".join(lines),
@@ -886,6 +1062,10 @@ class ManageDocumentTool:
                 from src.document_actions import run_document_tidy
                 result = await run_document_tidy(owner or "")
                 return {"response": result, "exit_code": 0}
+
+            elif _folder_action(action) in FOLDER_ACTIONS:
+                return _manage_folders(db, owner, ctx.get("session_id"),
+                                       _folder_action(action), args)
 
             else:
                 return {"error": f"Unknown action: {action}", "exit_code": 1}
