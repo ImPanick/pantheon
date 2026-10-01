@@ -59,14 +59,25 @@ TEST_RAN = "ran"
 
 def _answers(handler):
     """A `WorkflowRefused` raised anywhere in a handler is its answer:
-    the status, and `{detail: sentence}`."""
+    the status, and `{detail: sentence}`.
+
+    The wrapper is the handler's own kind: a `def` handler stays a `def`, so
+    FastAPI still runs it in its threadpool and its database work never holds
+    the event loop (an `async` wrapper around it would — every chat stream
+    would wait on a workflow list's queries)."""
+    if asyncio.iscoroutinefunction(handler):
+        @functools.wraps(handler)
+        async def async_wrapper(*args, **kwargs):
+            try:
+                return await handler(*args, **kwargs)
+            except WorkflowRefused as refused:
+                return JSONResponse(refused.body(), status_code=refused.status)
+        return async_wrapper
+
     @functools.wraps(handler)
-    async def wrapper(*args, **kwargs):
+    def wrapper(*args, **kwargs):
         try:
-            result = handler(*args, **kwargs)
-            if asyncio.iscoroutine(result):
-                result = await result
-            return result
+            return handler(*args, **kwargs)
         except WorkflowRefused as refused:
             return JSONResponse(refused.body(), status_code=refused.status)
     return wrapper

@@ -962,6 +962,12 @@ def dry_plan_nodes(db, run_id: str) -> list:
     out = []
     for rec in recs:
         when, depth = places.get(str(rec.node_id), (None, None))
+        if getattr(rec, "depth", None) is not None:
+            # The engine's dry record says how the plan reached the step
+            # (`reached_by`, `depth`), written by the same walk that planned
+            # it — so it is the one answer (`Law 7`), and the graph's walk
+            # above is only for records that do not carry it.
+            when, depth = getattr(rec, "reached_by", None), rec.depth
         entry = {
             "node_id": rec.node_id, "kind": rec.kind, "name": rec.label,
             "when": when, "depth": depth,

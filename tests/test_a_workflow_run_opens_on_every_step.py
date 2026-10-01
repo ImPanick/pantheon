@@ -151,6 +151,35 @@ def test_a_dry_run_of_a_workflow_answers_a_plan_per_step(client, wf_db, sched):
     assert plans[1]["steps"][0]["kind"] == "dry-run"
 
 
+def test_a_dry_plans_place_is_the_one_its_record_says(client, wf_db, sched, monkeypatch):
+    """The engine's dry record carries how its walk reached each step
+    (`reached_by`, `depth`); the reply reads that, and walks the graph only for
+    a record without it — one answer to "how is this step reached" (`Law 7`)."""
+    import pytest
+    TaskRunNode = wc.models()[2]
+    if not hasattr(TaskRunNode, "depth"):
+        pytest.skip("this TaskRunNode keeps no dry place; the graph walk is the answer")
+    wf = save(client, new(client), TWO).json()["workflow"]
+    real_run = sched.run_task_now
+
+    async def run_with_places(task_id, **kw):
+        run_id = await real_run(task_id, **kw)
+        db = wf_db()
+        try:
+            for rec in db.query(TaskRunNode).filter(TaskRunNode.run_id == run_id).all():
+                # Places the graph's own walk would not give, so the test can
+                # tell which was read.
+                rec.reached_by, rec.depth = {"n1": (None, 0), "n2": ("error", 7)}[rec.node_id]
+            db.commit()
+        finally:
+            db.close()
+        return run_id
+    monkeypatch.setattr(sched, "run_task_now", run_with_places)
+    out = call(client, "POST", f"/api/tasks/{wf['task_id']}/run?dry=true").json()
+    assert [(p["node_id"], p["when"], p["depth"]) for p in out["nodes"]] == [
+        ("n1", None, 0), ("n2", "error", 7)]
+
+
 def test_a_plain_tasks_dry_run_answers_exactly_as_before(client, wf_db):
     from core.database import ScheduledTask
     db = wf_db()

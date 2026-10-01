@@ -106,6 +106,11 @@ if not REAL_MODELS:
         attempt = Column(Integer, default=1)
         dry = Column(Boolean, default=False)
         port = Column(String, nullable=True)
+        # Not in § 1.1, but in wf-engine's model (measured in its worktree
+        # 2026-10-01): a dry record says how the plan reached the step, so the
+        # dry reply's `when`/`depth` are read from it, not walked again.
+        reached_by = Column(String, nullable=True)
+        depth = Column(Integer, nullable=True)
         workflow_version = Column(Integer)
         started_at = Column(DateTime)
         finished_at = Column(DateTime)

@@ -302,6 +302,25 @@ def test_another_owners_workflow_is_not_there_at_any_door(client, method, suffix
     assert res.json() == {"detail": "No such workflow."}
 
 
+def test_a_route_that_only_reads_the_database_never_holds_the_event_loop(client, monkeypatch):
+    """A `def` handler is run by FastAPI in its threadpool; the refusal wrapper
+    must not turn it into a coroutine, or its queries would run on the event
+    loop every chat stream shares. Probed where the work happens: the list's
+    summaries are built with no running loop in their thread."""
+    import asyncio
+    import routes.workflow.workflow_routes as workflow_routes
+    new(client)
+    seen = []
+    real = workflow_routes.store.summaries
+
+    def probe(*args, **kwargs):
+        seen.append(asyncio._get_running_loop() is None)
+        return real(*args, **kwargs)
+    monkeypatch.setattr(workflow_routes.store, "summaries", probe)
+    assert call(client, "GET", "/api/workflows").status_code == 200
+    assert seen == [True], "the list's database work ran on the event loop"
+
+
 # ── a save, and the version policy (`P8-10`'s) ──────────────────────────────
 
 def test_a_save_that_changes_the_content_makes_one_version_and_renames_the_start(client, wf_db):
