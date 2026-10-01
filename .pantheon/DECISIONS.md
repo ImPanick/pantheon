@@ -1139,6 +1139,8 @@ like being watched rather than being known — and that judgement is theirs alon
 
 ## D-2026-09-10-01 — the agent gets the LAN, and the container still does not
 
+**Corrected 2026-10-01 (`B975`).** The measurement below was the owner's Docker Desktop on 2026-09-11. On Docker Desktop 29.7.2 for Windows, measured 2026-10-01 by the integrator, a container on the default bridge and on a compose network reaches `192.168.1.1:80` and `:443` and the host's `:445`. So the title's second half and *"The container staying unable to reach the LAN is a feature"* describe a Docker answer that changed, not a property Pantheon holds; the ARP-is-topology argument and the SSRF section stand. **The reopen clause below has fired on the owner's own machine**: the owner's answer is pending (`B-NEW-1`). **Answered 2026-10-01 (`D-2026-10-01-03`): accept it and say it.**
+
 **What the owner asked for**, in their words: *"It appears the Agent cant touch outside of the
 dockers container network. So we need to give this thing the ability to have an agent that plays as
 the network administrator/engineer. It should have an MCP that allows this. This stemmed from me
@@ -2541,7 +2543,7 @@ has been pointing at) and D-03 (the VM station).
    *internet yes, home LAN no*; the owner chose full, and it is a setting an admin can narrow
    (`P20-06`). The adversary this accepts, named (`Law 17`): an agent steered by injected content
    runs code that reaches devices on the owner's network. `P17-01` measured that a container on the
-   owner's Docker Desktop cannot reach the LAN at all, so whether *full* reaches it there is measured
+   owner's Docker Desktop cannot reach the LAN at all (on 2026-09-11; on 2026-10-01 it could — `B975` — and `P20-06` measured the gate either way), so whether *full* reaches it there is measured
    in `P20-06`, not assumed.
 4. **When the workstation is on, the agent's `bash`, `python` and file tools run inside it**, not in
    Pantheon's own container — which closes the threat model's largest acknowledged gap. Where they run
@@ -2602,3 +2604,19 @@ caller's own documents.
 owner-scoped, and **a big move or a delete still waits for the person's approval** — which makes `B994` (the
 agent's `tidy` and `delete` run with no preview) part of the same change, not a separate nicety: the
 promise in the answer is only true once both ask first.
+
+## D-2026-10-01-03 — Pantheon's own container reaching the LAN is accepted and said; the seeded document tidy proposes and never deletes
+
+**Asked**, 2026-10-01, two calls the workstation and documents follow-ups raised.
+
+1. **`B975` / `D-2026-09-10-01`'s reopen clause.** Measured 2026-10-01 on the owner's Docker Desktop 29.7.2:
+   Pantheon's own container reaches his LAN (router `:80`/`:443`, the host's `:445`); the earlier design assumed
+   it could not. **Decided: accept it and say it.** Pantheon needs the LAN to reach model servers on other
+   machines; URLs that arrive in content are still refused by the SSRF validators (untouched), so what reaches
+   the LAN is an admin's own shell in Pantheon with the workstation off or not routing — `THREAT_MODEL.md`
+   Known Gap 1 says so. No gate in front of Pantheon's container. `D-2026-09-10-01` is answered rather than
+   reopened.
+2. **The seeded "Documents Tidy" task** (`HOUSEKEEPING_DEFAULTS["tidy_documents"]`) hard-deletes what it judges
+   junk after every fifth new document, unasked. **Decided: propose, don't delete.** It builds its list and
+   sends a notification the person opens; nothing is deleted until they apply it — the same promise
+   `D-2026-10-01-02` makes about the agent, kept by the automation too.

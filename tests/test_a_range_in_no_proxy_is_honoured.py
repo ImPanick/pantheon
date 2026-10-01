@@ -50,7 +50,8 @@ class Recorder:
         self.sock.bind(("127.0.0.1", 0))
         self.sock.listen(16)
         self.url = f"http://127.0.0.1:{self.sock.getsockname()[1]}"
-        threading.Thread(target=self._serve, daemon=True).start()
+        self.thread = threading.Thread(target=self._serve, daemon=True)
+        self.thread.start()
 
     def _serve(self):
         while True:
@@ -74,7 +75,18 @@ class Recorder:
                     pass  # the client hung up first: what it sent is already noted
 
     def close(self):
+        # `B1016`: wake the `accept()` before closing. A bare `close()` from
+        # another thread leaves that thread blocked in `accept()` on the fd
+        # NUMBER, which the next socket the process opens reuses — the next
+        # test's workstation daemon — so this proxy went on answering `502` to
+        # connections meant for it (measured: `config` answered "The
+        # workstation answered 502." in the test after this file).
+        try:
+            self.sock.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass  # not connected is fine for a listening socket on some kernels
         self.sock.close()
+        self.thread.join(timeout=5)
 
 
 @pytest.fixture
