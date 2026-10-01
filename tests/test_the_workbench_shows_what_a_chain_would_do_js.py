@@ -106,8 +106,12 @@ def _reply():
          "declined": None},
         {"task_id": "G", "name": "Ping the server", "when": "success", "depth": 2, "steps": [],
          "declined": "Action 'ssh_command' requires admin privileges"},
-        {"task_id": "H", "name": "Weekly report", "when": "error", "depth": 2, "steps": _plan("H"),
-         "declined": "Weekly report is paused"},
+        # A paused successor is planned, with `declined: null`, and its plan says
+        # a real run would not start it — wb-runs' reading of the contract
+        # (`ce6111e`), whose last line is quoted here as the reply's text.
+        {"task_id": "H", "name": "Weekly report", "when": "error", "depth": 2,
+         "steps": _plan("H") + [{"kind": "dry-run", "detail": "It is paused, so a real run would not start it."}],
+         "declined": None},
         {"task_id": "D", "name": "Audit skills", "when": "success", "depth": 2, "steps": _plan("D"), "declined": None},
     ]
     return {"ok": True, "dry": True, "message": "Dry run — planned, nothing executed", "run_id": "r1",
@@ -281,8 +285,23 @@ def test_a_step_the_engine_would_not_plan_shows_its_sentence(box):
     assert o["G"]["state"] == "declined" and o["G"]["mark"] == "⊘"
     assert o["G"]["line"] == "Would not run: Action 'ssh_command' requires admin privileges"
     assert o["G"]["sub"] == "After Mail me the digest, if it works · Action"
-    # A paused step is planned, and says it is paused (`B1036`'s ruling).
+    # A paused step is planned, and says it is paused (`B1036`'s ruling), from
+    # its own status: the reply says it only in the plan's last line.
     assert o["H"]["state"] == "planned"
+    assert o["H"]["sub"] == "After Mail me the digest, if it fails · Prompt · paused"
+    assert o["H"]["line"] == "Would send this task's prompt to a model, with tools."
+
+
+def test_a_declined_sentence_beside_a_plan_is_said_with_it(box):
+    """The contract allows `declined` with steps; the server half sends none
+    today. Said on the step all the same, ahead of what it would do."""
+    reply = _reply()
+    reply["chain"][4]["declined"] = "Weekly report is paused"
+    o = _case(box, """
+        const { root } = await mount();
+        await press(root, 'A');
+        out({ H: plan(root, 'H') });
+    """, reply=reply)
     assert o["H"]["line"] == "Weekly report is paused · Would send this task's prompt to a model, with tools."
 
 

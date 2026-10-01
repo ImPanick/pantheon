@@ -1153,7 +1153,10 @@ export function mountCanvas(root, opts = {}) {
     if (!entry) {
       return P.partial ? null : { state: 'aside', sub: kindWord, line: 'Not reached by this run', entry: null };
     }
-    const sub = `${entry.depth === 0 ? 'Starts here' : entry.after} · ${kindWord}`;
+    // A paused step is planned (`B1036`) and says it is paused, from its own
+    // status — the server's half plans it with `declined: null`.
+    const sub = [entry.depth === 0 ? 'Starts here' : entry.after, kindWord,
+      task && task.status === 'paused' ? 'paused' : ''].filter(Boolean).join(' · ');
     const lines = entry.steps.map((s) => String((s && s.detail) || '').trim()).filter(Boolean);
     if (!lines.length) {
       return { state: 'declined', sub, line: `Would not run: ${entry.declined || 'nothing was planned'}`, entry };
