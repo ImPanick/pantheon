@@ -7384,9 +7384,21 @@ async def stream_agent_loop(
                             "what you have and note what's missing in one short line."
                         ),
                     }]
+                    # `B1050`. Asked of the candidate that answered: once a
+                    # fallback answers, the pin rebinds `endpoint_url`, `model`
+                    # and `headers` to it, so the call already went there — but
+                    # with the run's `max_tokens`, the primary's lift. Measured
+                    # through the real route, loop and wrapper: a local primary
+                    # down, its hosted fallback's rounds sent 4096 and its
+                    # salvage 1,000,000, which a hosted provider refuses, so the
+                    # turn ended on the apology below. `B1034`'s one rule, about
+                    # this call's URL; for an unpinned run that is the primary's,
+                    # and the number is the run's own, as before.
                     _raw = await llm_call_async(
                         url=endpoint_url, model=model, messages=_synth_messages,
-                        headers=headers, temperature=0.3, max_tokens=max_tokens, timeout=60,
+                        headers=headers, temperature=0.3,
+                        max_tokens=candidate_max_tokens(_preset_max_tokens, endpoint_url),
+                        timeout=60,
                     )
                     _raw_text = _raw or ""
                     _synth = _strip_think_blocks(strip_tool_blocks(_raw_text)).strip()
