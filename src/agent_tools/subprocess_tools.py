@@ -3,11 +3,12 @@ import asyncio
 import os
 import re
 import shutil
+import signal
 import sys
 import time
 import collections
-from typing import Optional, Callable, Awaitable, Tuple, Dict
-from core.platform_compat import IS_WINDOWS, find_bash
+from typing import Any, Optional, Callable, Awaitable, Tuple, Dict
+from core.platform_compat import IS_WINDOWS, find_bash, kill_process_tree
 from src.constants import MAX_OUTPUT_CHARS
 
 DEFAULT_BASH_TIMEOUT = 60 * 60     # 1 hour
@@ -73,7 +74,51 @@ async def _create_bash_subprocess(command: str, **kwargs):
                 "install Git for Windows and restart Pantheon"
             )
         return await asyncio.create_subprocess_exec(bash, "-c", command, **kwargs)
+    # `B961`. This was `create_subprocess_shell` unconditionally: `/bin/sh -c`,
+    # which is dash on the Debian image (measured by `P20-03`: `[[ 1 == 1 ]]`
+    # exits 127, `echo {a,b}` prints `{a,b}`) under a tool named and described
+    # as bash. Now bash wherever there is one, as Windows already did; `sh` only
+    # where there is none, and `BashTool` says so in the result (`NO_BASH_NOTE`).
+    bash = find_bash()
+    if bash:
+        return await asyncio.create_subprocess_exec(bash, "-c", command, **kwargs)
     return await asyncio.create_subprocess_shell(command, **kwargs)
+
+
+NO_BASH_NOTE = ("bash is not installed where Pantheon runs, so this command ran in sh: "
+                "bash-only syntax such as [[ ]], {a,b} and arrays is not available there.")
+
+
+# ── `B964`: a command and everything it started stop together ───────────────
+
+def own_process_group() -> Dict[str, Any]:
+    """Keyword arguments that start a command as the leader of its own process
+    group (POSIX), so a timeout or a cancel can stop what it started as well —
+    the workstation daemon's rule (`agentd._kill_group`). On Windows the tree
+    is found by parent instead (`taskkill /T`), so nothing is needed here."""
+    return {} if IS_WINDOWS else {"start_new_session": True}
+
+
+def kill_tree(proc) -> None:
+    """Stop a command and its children: the process group on POSIX, the
+    process tree on Windows (`core.platform_compat.kill_process_tree`).
+
+    `B964`: this was `proc.kill()`, which stopped the shell and left the rest —
+    measured by `P20-03`, `echo before; sleep 30` under a 1 s timeout left
+    `sleep` alive holding the pipes. A process started without its own group
+    has no group of its own number, so `killpg` answers `ProcessLookupError`
+    rather than reaching Pantheon's group; the plain kill then still happens."""
+    if IS_WINDOWS:
+        kill_process_tree(getattr(proc, "pid", None))
+    else:
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except (ProcessLookupError, PermissionError, OSError):
+            pass
+    try:
+        proc.kill()
+    except (ProcessLookupError, OSError):
+        pass
 
 
 # The persistent shell each chat session gets is a tmux session named after it.
@@ -339,6 +384,11 @@ async def _run_subprocess_streaming(
     timeout: float,
     progress_cb: Optional[Callable[[Dict], Awaitable[None]]] = None,
 ) -> Tuple[str, str, Optional[int], bool]:
+    """Wait for a command, streaming its last lines to `progress_cb`.
+
+    `B964`: on a timeout and on a cancel, `kill_tree` stops the command and
+    everything it started (it was started by `own_process_group`), so nothing
+    of it outlives the call or holds the pipes the readers are waiting on."""
     started = time.time()
     stdout_full: list[str] = []
     stderr_full: list[str] = []
@@ -365,7 +415,7 @@ async def _run_subprocess_streaming(
     except asyncio.TimeoutError:
         timed_out = True
         try:
-            proc.kill()
+            kill_tree(proc)
         except Exception:
             pass
         try:
@@ -374,7 +424,7 @@ async def _run_subprocess_streaming(
             pass
     except asyncio.CancelledError:
         try:
-            proc.kill()
+            kill_tree(proc)
         except Exception:
             pass
         try:
@@ -445,6 +495,7 @@ class BashTool:
                 stderr=asyncio.subprocess.PIPE,
                 env=_subproc_env,
                 cwd=agent_cwd(),
+                **own_process_group(),
             )
         except RuntimeError as e:
             return {"error": f"bash: {e}", "exit_code": 1}
@@ -453,7 +504,10 @@ class BashTool:
             timeout=DEFAULT_BASH_TIMEOUT,
             progress_cb=progress_cb,
         )
-        return _shell_result("bash", stdout, stderr, rc, timed_out, DEFAULT_BASH_TIMEOUT)
+        result = _shell_result("bash", stdout, stderr, rc, timed_out, DEFAULT_BASH_TIMEOUT)
+        if not IS_WINDOWS and not find_bash():
+            result["note"] = NO_BASH_NOTE
+        return result
 
 class PythonTool:
     async def execute(self, content: str, ctx: dict) -> dict:
@@ -466,6 +520,7 @@ class PythonTool:
             stderr=asyncio.subprocess.PIPE,
             env=_subproc_env,
             cwd=agent_cwd(),
+            **own_process_group(),
         )
         stdout, stderr, rc, timed_out = await _run_subprocess_streaming(
             proc,

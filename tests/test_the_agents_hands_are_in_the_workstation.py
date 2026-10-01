@@ -254,18 +254,17 @@ def test_a_command_answers_in_the_envelope_the_host_answers_in(ws, settings, peo
 
 
 def test_bash_in_the_workstation_is_bash(ws, settings, people, host_dir):
-    """The one difference in what a command does, and it is on purpose. Here,
-    `bash` in an agent turn is `asyncio.create_subprocess_shell`, which is
-    `/bin/sh` — dash on the Debian image (filed as a B row: `[[` is "not
-    found", brace expansion is literal). The daemon runs `bash`, the shell the
-    tool is named for, so a bashism does what the model meant by it."""
+    """The daemon runs `bash`, the shell the tool is named for, so a bashism
+    does what the model meant by it. This was the one difference in what a
+    command did: here, `bash` was `/bin/sh` — dash on the Debian image (`B961`:
+    `[[` was "not found", brace expansion literal). `B961` runs `bash -c` here
+    too, so the two machines now agree."""
     command = "[[ 1 == 1 ]] && echo {a,b}"
     here = _call("bash", command, "boss", workspace=str(host_dir))[1]
     _on(settings, ws)
     there = _call("bash", command, "ann")[1]
     assert there["stdout"] == "a b" and there["exit_code"] == 0
-    if os.path.realpath("/bin/sh").endswith("dash"):
-        assert here["exit_code"] == 127 and "[[: not found" in here["stderr"]
+    assert here["stdout"] == "a b" and here["exit_code"] == 0
 
 
 def test_a_command_that_outlives_its_timeout_is_killed_and_said(ws, settings, people, host_dir,

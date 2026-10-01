@@ -112,10 +112,14 @@ async def test_windows_bash_does_not_use_a_stray_tmux_executable(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_posix_bash_keeps_existing_shell_path(monkeypatch):
+    """Where there is no bash. `B961` made `bash -c` the path wherever bash
+    exists (`tests/test_bash_is_bash_and_stops_with_what_it_started.py`); `sh` is
+    what is left without one, and this holds that it is still the shell it was."""
     captured = {}
     process = object()
 
     monkeypatch.setattr(subprocess_tools, "IS_WINDOWS", False)
+    monkeypatch.setattr(subprocess_tools, "find_bash", lambda: None)
 
     async def fake_shell(command, **kwargs):
         captured["command"] = command
