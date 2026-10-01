@@ -14,6 +14,10 @@ through their real doors:
     `role="dialog"` and no `aria-modal`; a blocking overlay built the way the
     PDF export builds it does; the styled confirm keeps its own; and at a phone
     width, where every window is a sheet over a backdrop, Tasks is modal.
+  * **`B950`** — at the 1.25x text size on a 1400x800 screen, Compare, Deep
+    Research and the Brain's Browse tab, each filled past its cap, stay on
+    screen with their close buttons reachable, and a docked Notes pane ends at
+    the bottom edge.
 
 Boots the app out of process exactly as
 `tests/test_the_command_palette_in_a_browser.py` does (its `app_url` fixture,
@@ -141,6 +145,53 @@ const BASE = process.argv[2];
   out.tasksBackOnADesktop = await modality('#tasks-modal .modal-content');
   await closeAll();
 
+  // ── B950 ────────────────────────────────────────────────────────────────
+  // The 1.25x text size, each window filled past its cap: the window and its
+  // close button must be on screen, and a docked pane must end at the bottom.
+  await page.evaluate(() => document.documentElement.classList.add('ui-scale-125'));
+  await settle(400);
+  const measure = (sel, closeSel) => page.evaluate(([sel, closeSel]) => {
+    const c = document.querySelector(sel);
+    if (!c) return null;
+    const r = c.getBoundingClientRect();
+    const b = closeSel ? c.querySelector(closeSel) : null;
+    let closeOnScreen = null;
+    if (b) {
+      const br = b.getBoundingClientRect();
+      const hit = document.elementFromPoint(br.left + br.width / 2, br.top + br.height / 2);
+      closeOnScreen = !!hit && (hit === b || b.contains(hit));
+    }
+    return { top: Math.round(r.top), bottom: Math.round(r.bottom), screen: innerHeight, closeOnScreen };
+  }, [sel, closeSel]);
+  const fill = (sel) => page.evaluate((sel) => {
+    const c = document.querySelector(sel);
+    if (!c) return;
+    const f = document.createElement('div');
+    f.style.cssText = 'height:3000px;flex:0 0 auto';
+    (c.querySelector('.modal-body, .research-pane-body, #memory-list') || c).appendChild(f);
+  }, sel);
+  const CLOSE = '.close-btn, .modal-close, [data-close], #research-close-btn';
+  await page.evaluate(() => document.getElementById('tool-compare-btn').click()); await settle(1200);
+  await fill('#compare-model-overlay .modal-content'); await settle(300);
+  out.zoomCompare = await measure('#compare-model-overlay .modal-content', CLOSE);
+  await page.evaluate(() => { const o = document.getElementById('compare-model-overlay'); if (o) o.remove(); });
+  await settle(400);
+  await page.evaluate(() => document.getElementById('tool-research-btn').click()); await settle(1200);
+  await fill('#research-pane'); await settle(300);
+  out.zoomResearch = await measure('#research-pane', CLOSE);
+  await page.evaluate(() => document.getElementById('tool-research-btn').click()); await settle(800);
+  await page.evaluate(() => document.getElementById('tool-memory-btn').click()); await settle(1200);
+  await page.evaluate(() => { const t = document.querySelector('[data-memory-tab="browse"]'); if (t) t.click(); });
+  await settle(400);
+  await fill('#memory-modal .memory-modal-content'); await settle(300);
+  out.zoomBrain = await measure('#memory-modal .memory-modal-content', CLOSE);
+  await page.evaluate(() => document.querySelector('#memory-modal .close-btn').click()); await settle(600);
+  await page.evaluate(() => document.getElementById('tool-notes-btn').click()); await settle(1500);
+  out.zoomNotes = await measure('.notes-pane.modal-right-docked', null);
+  await page.evaluate(() => document.documentElement.classList.remove('ui-scale-125'));
+  await settle(400);
+  out.notesAtDefault = await measure('.notes-pane.modal-right-docked', null);
+
   console.log(JSON.stringify(out));
   await browser.close();
 })().catch((e) => { console.error(e); process.exit(1); });
@@ -194,6 +245,36 @@ def test_a_blocking_overlay_is_modal_and_the_confirm_keeps_its_own(run):
 def test_on_a_phone_a_window_is_a_sheet_and_is_modal(run):
     assert run["tasksOnAPhone"]["modal"] == "true"
     assert run["tasksBackOnADesktop"]["modal"] is None
+
+
+# ── B950 ───────────────────────────────────────────────────────────────────
+
+@pytest.mark.parametrize("window, cap", [
+    ("zoomCompare", lambda screen: 720),            # its own cap, min(720px, 100dvh - 48px)
+    ("zoomResearch", lambda screen: 0.85 * screen),  # its classes' 85vh
+    ("zoomBrain", lambda screen: 0.78 * screen),     # the Browse tab's 78vh
+], ids=["compare", "research", "brain"])
+def test_at_the_larger_text_size_a_full_window_keeps_its_footprint(run, window, cap):
+    """The row's `Verify` at 1400x800: measured before the fix, Compare stood
+    900px tall with its header 50px above the top, Deep Research 25px above,
+    and the Brain's Browse tab 780px (97.5% — on screen, and still
+    uncompensated). Compensated, each renders the footprint its own cap gives
+    it at the default size, with the close button on screen."""
+    got = run[window]
+    assert got is not None, f"{window}: the window did not open"
+    assert got["top"] >= 0 and got["bottom"] <= got["screen"], got
+    assert got["closeOnScreen"] is True, got
+    assert got["bottom"] - got["top"] <= cap(got["screen"]) + 1, (
+        f"{window} is taller than its own cap at the default size: {got}")
+
+
+def test_at_the_larger_text_size_a_docked_pane_ends_at_the_bottom(run):
+    """Measured before the fix: a docked Notes pane 1000px tall on an 800px
+    screen. And at the default size it still fills the height."""
+    for key in ("zoomNotes", "notesAtDefault"):
+        got = run[key]
+        assert got is not None, f"{key}: Notes did not dock"
+        assert got["top"] == 0 and got["bottom"] == got["screen"], (key, got)
 
 
 def test_nothing_threw(run):

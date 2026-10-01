@@ -241,7 +241,7 @@ function _applyEmailDocSplitGeometry(left, emailWidth) {
   docPane.style.setProperty('bottom', '0px', 'important');
   docPane.style.setProperty('width', 'auto', 'important');
   docPane.style.setProperty('max-width', 'none', 'important');
-  docPane.style.setProperty('height', '100vh', 'important');
+  docPane.style.setProperty('height', 'var(--edge-dock-height, 100vh)', 'important');   // `B950`
   docPane.style.setProperty('z-index', '260', 'important');
   docPane.style.setProperty('transform', 'none', 'important');
 }
@@ -397,8 +397,11 @@ function _applyDockInternal(modal, side, dockClass) {
   content.style.position = 'fixed';
   content.style.top = '0';
   content.style.bottom = '0';
-  content.style.height = '100vh';
-  content.style.maxHeight = '100vh';
+  // `B950`. The screen's height as the 1.25x text size sees it: `100vh`
+  // rendered 125% tall under `zoom`, so a docked window ran off the bottom.
+  // `style.css` defines the property beside the other zoom compensation.
+  content.style.height = 'var(--edge-dock-height, 100vh)';
+  content.style.maxHeight = 'var(--edge-dock-height, 100vh)';
   content.style.borderRadius = '0';
   content.style.transform = 'none';
   content.style.margin = '0';

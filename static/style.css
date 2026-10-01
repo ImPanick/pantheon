@@ -392,11 +392,8 @@ html {
    85vh on one class, and it measured 612px with the line and without it.
    `tests/test_one_zoom_rule_covers_the_modals_css.py` recomputes both kinds
    of reason from this sheet and fails on a line that has neither.
-   What the first rule does NOT reach, measured the same day at 1400x800 and
-   filed rather than given lines here: Compare (an id-scoped cap, header 50px
-   above the top), Deep Research (an inline 85vh, 25px above), Brain's Browse
-   tab (a `:has()` rule at 78vh, 97.5% of the screen) and every edge-docked
-   window (inline `100vh` from `modalSnap.js`, 125% tall). */
+   What the first rule did NOT reach, measured the same day at 1400x800, was
+   filed as `B950` and is answered below the PDF line. */
 :root.ui-scale-125 .modal-content          { max-height: calc(85dvh / 1.25); }
 :root.ui-scale-125 .cal-modal-content      { max-height: calc(88dvh / 1.25); }
 :root.ui-scale-125 #theme-popup            { max-height: min(calc(85dvh / 1.25), 480px); }
@@ -412,6 +409,26 @@ html {
    1.25x compensation applies. */
 .pdf-export-overlay .modal-content { max-height: 86vh; }
 :root.ui-scale-125 .pdf-export-overlay .modal-content { max-height: calc(86dvh / 1.25); }
+/* `B950`, the four the first rule did not reach (measured 2026-09-27 at
+   1400x800, each filled past its cap):
+     compare  — capped on an id, (1,1,0), which the first rule cannot outrank
+                (Theme's reason): 900px tall at 1.25x, its header 50px above
+                the top. Both arms of its `min()` divided;
+     brain    — the Browse tab's `:has()` cap, (1,4,0), is 78vh: 97.5% of the
+                screen at 1.25x. Divided (its `height` is clamped by it);
+     research — wrote an inline 85vh no rule could reach; the inline cap is
+                gone (`research/panel.js`), so its classes' 85vh is divided by
+                the first rule like any other window;
+     docked   — `modalSnap.js` pins an edge-docked window to the screen's
+                height inline; it writes `--edge-dock-height`, defined here,
+                so the scale reaches it (a docked Notes pane was 1000px tall on
+                an 800px screen). */
+:root.ui-scale-125 #compare-model-overlay .modal-content { max-height: min(calc(720px / 1.25), calc((100dvh - 48px) / 1.25)); }
+:root.ui-scale-125 #memory-modal .memory-modal-content:has(
+  .memory-tab-panel[data-memory-panel="browse"]:not(.hidden)
+) { max-height: calc(78dvh / 1.25); }
+:root { --edge-dock-height: 100vh; }
+:root.ui-scale-125 { --edge-dock-height: calc(100dvh / 1.25); }
 
 /* ── Background Patterns ── */
 

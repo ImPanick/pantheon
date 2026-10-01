@@ -50,11 +50,21 @@ _VH, _VW = 900.0, 1400.0
 
 # The four the measurement found a reason for. Pinned so a fifth arrives as a
 # decision with its reason written beside it, not as a copy of its neighbour.
+#
+# `B950` added the next two that way, each measured at 1400x800 before it was
+# written: Compare caps itself on an id, (1,1,0), which the generic rule cannot
+# outrank (900px tall at 1.25x, header 50px above the top); the Brain's Browse
+# tab caps at 78vh on a `:has()` rule at (1,4,0) (97.5% of the screen). The
+# other two `B950` found need no line — Deep Research lost its inline cap and
+# docked windows read `--edge-dock-height` — which is the habit this file
+# exists to keep.
 _EXPECTED = {
     ".cal-modal-content",
     "#theme-popup",
     "#cookbook-modal .modal-content",
     ".pdf-export-overlay .modal-content",
+    "#compare-model-overlay .modal-content",
+    '#memory-modal .memory-modal-content:has( .memory-tab-panel[data-memory-panel="browse"]:not(.hidden) )',
 }
 
 
@@ -225,7 +235,7 @@ def test_every_exception_divides_its_own_cap_by_the_zoom():
 def test_the_exceptions_are_the_four_with_a_reason():
     found = set(_exceptions())
     assert found == _EXPECTED, (
-        f"expected the four measured exceptions {sorted(_EXPECTED)}, found "
+        f"expected the six measured exceptions {sorted(_EXPECTED)}, found "
         f"{sorted(found)}. A new line needs its reason written beside it and "
         "its name added here; a missing one needs its modal re-measured."
     )

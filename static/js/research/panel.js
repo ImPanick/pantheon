@@ -268,10 +268,14 @@ export function openPanel(focusJobId) {
   pane.id = 'research-pane';
   pane.className = 'modal-content doclib-modal-content research-pane';
   // Mobile: full-screen so the content has room and the jobs list can scroll
-  // inside it. Desktop: centered ~640px / 85vh modal like the rest.
+  // inside it. Desktop: centered ~640px / 85vh modal like the rest — the 85vh
+  // is its classes' own (`.modal-content`, `.doclib-modal-content`). `B950`:
+  // it was written here inline too, which no stylesheet rule can reach, so at
+  // the 1.25x text size the pane stood 106% of the screen with its header
+  // (and close button) 25px above the top.
   pane.style.cssText = (window.innerWidth <= 768)
     ? 'width:100vw;max-width:100vw;height:90dvh;max-height:90dvh;border-radius:14px 14px 0 0;background:var(--bg);'
-    : 'width:min(640px, 92vw);max-height:85vh;background:var(--bg);';
+    : 'width:min(640px, 92vw);background:var(--bg);';
   pane.innerHTML = _buildPanelHTML();
 
   overlay.appendChild(pane);
