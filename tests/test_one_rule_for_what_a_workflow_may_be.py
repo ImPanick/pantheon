@@ -312,7 +312,7 @@ def _scheduler(chained=None):
     s._log_to_assistant = MagicMock()
     s._deliver_task_result = AsyncMock(return_value=None)
     if chained is not None:
-        async def _run_chained(task_id, *, handoff=None):
+        async def _run_chained(task_id, *, handoff=None, started_by=None):  # `B1047` passes who started the chain
             chained.append(task_id)
         s._run_chained = _run_chained
     return s

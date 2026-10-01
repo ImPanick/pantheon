@@ -22,6 +22,7 @@ from src.event_bus import (
     trigger_context_message as _trigger_context_message,
     trigger_summary as _trigger_summary,
 )
+from src.interactive_gate import STARTED_BY, STARTED_BY_BACKGROUND, STARTED_BY_PERSON
 from src.owner_identity import REQUEST_SENTINEL_OWNERS
 from src import paced_http  # `B1014`: NO_PROXY ranges, read for every client
 from src.task_action_policy import (
@@ -1121,7 +1122,226 @@ def _normalize_chat_endpoint(url: str) -> str:
 # `manage_tasks` `dry_run` reads a run back and has to tell a plan from a run
 # the engine declined to plan (a paused task, an admin refusal), and it does so
 # by this line rather than by a second copy of it (`Law 7`).
-DRY_RUN_HEADLINE = "Dry run — nothing ran, nothing changed."
+#
+# `B1054`. `DRY_RUN_MARK` is what every dry run's `result` starts with — a plan
+# (the headline) and a dry run the engine declined (`_record_dry_run`) alike —
+# so "is this row a dry run" has one answer, in Python (`is_dry_run`) and in
+# SQL (`real_run_clause`), and a dry run is never a task's last run.
+DRY_RUN_MARK = "Dry run — "
+DRY_RUN_HEADLINE = f"{DRY_RUN_MARK}nothing ran, nothing changed."
+
+
+def is_dry_run(run) -> bool:
+    """`B1054`. Is this run row a dry run (a plan, or a declined plan)?"""
+    return (getattr(run, "status", None) == "skipped"
+            and (getattr(run, "result", None) or "").startswith(DRY_RUN_MARK))
+
+
+def real_run_clause(run_model):
+    """`B1054`. `is_dry_run` negated, as a SQL condition on `TaskRun`."""
+    from sqlalchemy import func, or_
+    return or_(
+        run_model.status.is_(None),
+        run_model.status != "skipped",
+        ~func.coalesce(run_model.result, "").startswith(DRY_RUN_MARK, autoescape=True),
+    )
+
+
+class LastRun(NamedTuple):
+    """A task's newest real run, as much of it as a list shows. `B1043`."""
+    status: str | None
+    result: str | None
+    error: str | None
+
+
+def latest_real_runs(db, task_ids, *, clip: int = 500) -> dict:
+    """The newest run of each task that is not a dry run, in one query.
+
+    `B1054`. `GET /api/tasks?include_last_run=true` took each task's newest
+    row, so after *Show me what this would do* a step whose last real run
+    failed read "Last run: Skipped" (measured by verify-a, and again here).
+    `B1043`. And it took it through `ScheduledTask.runs`, a lazy relationship
+    ordered by `started_at`: one query per task, loading EVERY run of every
+    task — steps JSON and all — to read one. Measured on the route: 20 tasks
+    with 50 runs each, 21 statements and 1,001 `TaskRun` rows loaded to serve
+    20; 40 × 200, 41 statements and 8,001 rows. This is one statement (per
+    500 tasks), and it loads three short columns per task, not rows.
+    Ties on `started_at` take the highest id, an arbitrary rule written down,
+    where the relationship's order was an arbitrary rule nobody wrote.
+    """
+    from sqlalchemy import and_, func
+    from core.database import TaskRun
+
+    ids = [i for i in dict.fromkeys(task_ids) if i]
+    found = {}
+    real = real_run_clause(TaskRun)
+    for start in range(0, len(ids), 500):
+        chunk = ids[start:start + 500]
+        newest = (db.query(TaskRun.task_id.label("task_id"),
+                           func.max(TaskRun.started_at).label("at"))
+                  .filter(TaskRun.task_id.in_(chunk), real)
+                  .group_by(TaskRun.task_id)
+                  .subquery())
+        rows = (db.query(TaskRun.task_id, TaskRun.status,
+                         func.substr(TaskRun.result, 1, clip),
+                         func.substr(TaskRun.error, 1, clip))
+                .join(newest, and_(TaskRun.task_id == newest.c.task_id,
+                                   TaskRun.started_at == newest.c.at))
+                .filter(real)
+                .order_by(TaskRun.task_id, TaskRun.id.desc())
+                .all())
+        for task_id, status, result, error in rows:
+            found.setdefault(task_id, LastRun(status, result, error))
+    return found
+
+# `B1036`. What a task that is not `active` would do if a real run reached it:
+# nothing — `_execute_task_locked` records it `skipped` before any executor.
+# Keyed by the stored status (`FORBIDDEN.md`: task status values), so the plan
+# says it in words. `B1037` reads the same words for a chain that stops there.
+NOT_ACTIVE_WORDS = {
+    "paused": "it is paused",
+    "completed": "it was a one-off and has already run",
+}
+
+
+def not_active_words(task) -> str | None:
+    """Why a real run would not start `task`, or `None` if it would."""
+    status = getattr(task, "status", None) or "active"
+    if status == "active":
+        return None
+    return NOT_ACTIVE_WORDS.get(status, f"its status is {status}")
+
+
+def dry_run_declined(task) -> str | None:
+    """Why a dry run would not plan `task`, or `None` if it plans it.
+
+    `B1036`. Two reasons and no third: the task is gone, or its action is one
+    the engine would refuse to run for this owner (`ADMIN_ONLY_TASK_ACTIONS`) —
+    the same sentence the real run's refusal writes, so a dry run is not a way
+    to read an admin-only task's configuration. A paused task is planned.
+    """
+    if task is None:
+        return "Task no longer active (status=deleted)"
+    if (is_admin_only_task_action(task.task_type, task.action)
+            and not owner_has_admin_task_privileges(task.owner)):
+        from src.task_action_policy import admin_refusal_message
+        return admin_refusal_message(task.action)
+    return None
+
+
+def shape_run_step(fields: dict, *, max_detail: int = 400) -> dict:
+    """One step as a run's step log holds it: long text clipped, `at` stamped.
+
+    `P22-04`. Pulled out of `TaskScheduler._record_run_step` so a chain dry
+    run's successors — planned, never recorded — carry steps in exactly the
+    shape the head's recorded run does (`Law 7`).
+    """
+    for key in ("detail", "output"):
+        value = fields.get(key)
+        if isinstance(value, str) and len(value) > max_detail:
+            fields[key] = value[:max_detail].rstrip() + "\u2026"
+    fields.setdefault("at", _utcnow().isoformat() + "Z")
+    return fields
+
+
+def chain_dry_run_rows(db, head) -> tuple:
+    """The rows a chain dry run from `head` reads, and `validate_graph`'s
+    answer about them: `(rows, refusal or None)`.
+
+    `P22-04`. Walked from `head`'s successors with `head.owner`, which is what
+    `_advance_chain` asks before it continues from `head` (`_chain_refusal`) —
+    so a chain the engine would refuse to continue is refused here, for the
+    same reason, and a chain it runs is planned. Every later step's own walk is
+    a part of these, so nothing deeper can be refused that these allow.
+    """
+    starts = list(dict.fromkeys(edge["to"] for edge in task_edges(head)))
+    rows = load_chain_rows(db, starts, known={head.id: head})
+    refusal = validate_graph(rows, starts=starts, owner=head.owner) if starts else None
+    return rows, refusal
+
+
+def plan_dry_chain(head, rows, *, head_steps, head_declined=None,
+                   name_of=None) -> list:
+    """Every task reachable from `head`, each once, breadth first, planned.
+
+    `P22-04`, the chain dry run's contract: `{task_id, name, when, depth, steps,
+    declined}` per task, the head first (`when` None, depth 0, the steps its
+    recorded run holds). `when` is the edge condition from the task's first
+    parent in that order — `EDGE_CONDITIONS` order out of each task, so "if it
+    works" before "if it fails". A successor's `steps` are `dry_run_lines`,
+    the planner the head's run was written by, shaped as a recorded step and
+    recorded nowhere: no run row, no history, no notification. `declined` is
+    `dry_run_declined`'s sentence (and then no steps), or None — a paused step
+    is planned, and its plan says a real run would not start it (`B1036`).
+    A successor with no row (deleted) ends that branch, as it does in a run.
+    """
+    by_id = {row.id: row for row in rows}
+    name_of = name_of or (lambda task: task.name)
+    out = [{"task_id": head.id, "name": name_of(head), "when": None, "depth": 0,
+            "steps": list(head_steps or []), "declined": head_declined}]
+    seen = {head.id}
+    frontier = [head]
+    depth = 0
+    while frontier:
+        depth += 1
+        following = []
+        for node in frontier:
+            for edge in task_edges(node):
+                row = by_id.get(edge["to"])
+                if row is None or row.id in seen:
+                    continue
+                seen.add(row.id)
+                following.append(row)
+                declined = dry_run_declined(row)
+                steps = [] if declined else [
+                    shape_run_step({"kind": "dry-run", "detail": line})
+                    for line in dry_run_lines(row)]
+                out.append({"task_id": row.id, "name": name_of(row),
+                            "when": edge["when"], "depth": depth,
+                            "steps": steps, "declined": declined})
+        frontier = following
+    return out
+
+
+def dry_run_lines(task) -> list:
+    """The plan for `task`, headline first. Runs nothing, reads no session.
+
+    `P8-33`'s lines (`dry_run_plan`, which reads a registry and the task's
+    columns), then where the result would go, then — `B1036` — whether a real
+    run would start it at all. One planner (`Law 7`): `_record_dry_run`
+    writes these on the head's run, and `plan_dry_chain` hands the same lines,
+    unrecorded, for every step after it (`P22-04`).
+    """
+    from src.builtin_actions import dry_run_plan
+
+    lines = dry_run_plan(
+        task_type=task.task_type,
+        action=task.action,
+        prompt=task.prompt,
+        owner=task.owner,
+        model=task.model,
+        endpoint_url=task.endpoint_url,
+        extra=[f"Where the result would go: {task.output_target or 'session'}"],
+    )
+    why_not = not_active_words(task)
+    if why_not:
+        lines.append(f"{why_not[:1].upper()}{why_not[1:]}, so a real run would not start it.")
+    return [DRY_RUN_HEADLINE, *lines]
+
+# `B1047`. Why an `aborted` run ended, in the words its row carries. Named once
+# because three places write them — the stop button (`stop_task`), the
+# foreground gate (`stop_background_tasks_for_foreground` and the running-run
+# monitor) and the cancel branch that has to keep whichever of the first two
+# got there first — and `core/database.py`'s `aborted` entry promises the
+# message says which event it was. The gate wrote "Stopped by user" for its own
+# pre-emption (`_mark_run_aborted`'s default), so a run nobody stopped told the
+# person they had stopped it.
+STOPPED_BY_USER = "Stopped by user"
+FOREGROUND_TAKEOVER = "Paused because Pantheon became active"
+# `B1047`. The row of a run a person started while a chat reply is being
+# written, beside `_execute_task`'s "Queued — waiting for a free slot…" and the
+# background gate's "Queued — waiting for Pantheon to be idle…".
+WAITING_FOR_CHAT = "Queued — waiting for the chat reply in progress to finish…"
 
 
 class TaskScheduler:
@@ -1152,6 +1372,11 @@ class TaskScheduler:
         self._slot_permits = self._concurrency_cap
         self._slot_drain = None
         self._task_handles = {}
+        # `B1047`. Who started the run each handle belongs to (`STARTED_BY`),
+        # set and dropped beside `_task_handles`, so the foreground gate can
+        # tell a run a person asked for from background work before it stops
+        # anything.
+        self._task_started_by = {}
         # `P8-27` / `B603`. Per-run state, keyed by run.
         #
         # `_last_run_model` and `_last_run_steps` were single instance
@@ -1285,6 +1510,14 @@ class TaskScheduler:
             self._run_state = state
         return state
 
+    def _started_by_map(self) -> dict:
+        """`B1047`. `_task_started_by`, created on demand — for the same
+        `__new__`-built test schedulers `_runs()` allows for."""
+        started = getattr(self, "_task_started_by", None)
+        if started is None:
+            started = self._task_started_by = {}
+        return started
+
     def _state_for(self, run_id):
         """This run's slot, created on first write."""
         runs = self._runs()
@@ -1325,6 +1558,22 @@ class TaskScheduler:
         state = self._runs().get(run_id)
         return state["trigger"] if state else None
 
+    def _run_started_by(self, run_id) -> str:
+        """`B1047`. Who started this run (`STARTED_BY`). A run with no slot —
+        an executor driven directly — is background work, which is what every
+        run was before the word existed."""
+        state = self._runs().get(run_id)
+        return (state or {}).get("started_by") or STARTED_BY_BACKGROUND
+
+    def _run_waits_for(self, run_id) -> str | None:
+        """`B1047`. What this run's model work waits for: `"idle"`, `"chat"`, or
+        `None` for a run a person forced to start now. Read by
+        `_run_agent_loop`'s wait, which is the second of the two."""
+        state = self._runs().get(run_id)
+        if not state or "waits_for" not in state:
+            return "idle"
+        return state["waits_for"]
+
     def set_run_model(self, run_id, model) -> None:
         self._state_for(run_id)["model"] = model
 
@@ -1340,11 +1589,7 @@ class TaskScheduler:
         steps = self._state_for(run_id)["steps"]
         if len(steps) >= self._MAX_RUN_STEPS:
             return None
-        for key in ("detail", "output"):
-            value = fields.get(key)
-            if isinstance(value, str) and len(value) > self._MAX_STEP_DETAIL:
-                fields[key] = value[: self._MAX_STEP_DETAIL].rstrip() + "\u2026"
-        fields.setdefault("at", _utcnow().isoformat() + "Z")
+        fields = shape_run_step(fields, max_detail=self._MAX_STEP_DETAIL)
         steps.append(fields)
         return fields
 
@@ -1419,16 +1664,37 @@ class TaskScheduler:
                 self._record_chain_outcome(
                     db, run_id, f"Did not continue to {label}: {CHAIN_ALREADY_RUNNING}")
                 return
-            logger.info("Chaining on %s: %r → task %s", when, task.name, chain_id)
-            self._record_chain_outcome(db, run_id, f"{lead} {label}")
+            # `B1037`. A paused (or spent one-off) successor does not run:
+            # `_execute_task_locked` records it `skipped` before any executor.
+            # This wrote "Continued to X" over that, the same claim `P22-01`
+            # made honest for a busy successor. The line says so now. What X
+            # itself records — a `skipped` run, and the notification `B112`
+            # sends for a skip that leaves a task stopped — is that row's
+            # notification-policy call and is left exactly as it was, so X is
+            # still handed on.
+            why_not = not_active_words(chain_task)
+            if why_not:
+                logger.info("Not continuing on %s: %r → task %s, %s",
+                            when, task.name, chain_id, why_not)
+                self._record_chain_outcome(db, run_id, f"Did not continue to {label}: {why_not}")
+            else:
+                logger.info("Chaining on %s: %r → task %s", when, task.name, chain_id)
+                self._record_chain_outcome(db, run_id, f"{lead} {label}")
             # `P8-29`. What this run produced, handed to the step that follows
             # it. A chain was a sequence: `_run_chained` took an id and nothing
             # else, so "summarise this, then email the summary" could not be
             # built — step two had no way to name what step one made. Built
             # here, where the predecessor's row is already loaded, rather than
             # re-read at the far end.
+            #
+            # `B1047`. And who started the chain: the step a person's Run now
+            # leads to is part of what they asked for, so it waits the way that
+            # run waited, not the way background work does — otherwise the
+            # failure branch of a run somebody is watching waits for them to
+            # leave the page.
             asyncio.create_task(self._run_chained(
-                chain_id, handoff=self._handoff_from(db, task, run_id, run_status)))
+                chain_id, handoff=self._handoff_from(db, task, run_id, run_status),
+                started_by=self._run_started_by(run_id)))
             return
         # `P8-26`. This said "cycle detected" for all three reasons, including
         # a chain that is simply longer than `CHAIN_MAX_DEPTH` and has no cycle
@@ -1525,6 +1791,13 @@ class TaskScheduler:
     def _record_dry_run(self, db, task, run_id: str) -> None:
         """Write the plan onto the run row. Runs nothing, changes nothing else.
 
+        `B1036`. `task` may be `None` (deleted between the button and here) or
+        one the engine would refuse to run for this owner; either is recorded
+        as a `skipped` run whose `error` and `result` say why it was not
+        planned (`dry_run_declined`) — no pause, no schedule moved, nobody
+        told. Anything else is planned, a paused task included: its plan's
+        last line says a real run would not start it (`dry_run_lines`).
+
         `P8-33`. The status is `skipped` because `core/database.py` already
         defines that as *"deliberately did not run … Not a failure"*, and a
         dry run is the purest case of it. A seventh status would have to be
@@ -1540,34 +1813,36 @@ class TaskScheduler:
         describes a run that left no trace.
         """
         from core.database import TaskRun
-        from src.builtin_actions import dry_run_plan
 
-        lines = dry_run_plan(
-            task_type=task.task_type,
-            action=task.action,
-            prompt=task.prompt,
-            owner=task.owner,
-            model=task.model,
-            endpoint_url=task.endpoint_url,
-            extra=[f"Where the result would go: {task.output_target or 'session'}"],
-        )
+        run = db.query(TaskRun).filter(TaskRun.id == run_id).first()
+        declined = dry_run_declined(task)
+        if declined is not None:
+            if run is not None:
+                run.status = "skipped"
+                run.error = declined
+                # `B1054`. Led by `DRY_RUN_MARK`, so a declined dry run is a
+                # dry run to every reader, and never a task's last run.
+                run.result = f"{DRY_RUN_MARK}not planned: {declined}"
+                run.finished_at = _utcnow()
+                db.commit()
+            logger.info("Dry run of task %s (run %s) not planned: %s",
+                        getattr(task, "name", None) or run_id, run_id, declined)
+            return
         # `Law 15`. The first line is the one a person reads on a card that
         # says `skipped`, and it has to answer "did my thing happen" before it
-        # answers anything else.
-        headline = DRY_RUN_HEADLINE
-        self._record_run_step(run_id, kind="dry-run", detail=headline)
+        # answers anything else — `dry_run_lines` puts the headline first.
+        lines = dry_run_lines(task)
         for line in lines:
             self._record_run_step(run_id, kind="dry-run", detail=line)
-        run = db.query(TaskRun).filter(TaskRun.id == run_id).first()
         if run is None:
             return
         run.status = "skipped"
-        run.result = "\n".join([headline, *lines])
+        run.result = "\n".join(lines)
         run.finished_at = _utcnow()
         self._attach_run_steps(run_id, run)
         db.commit()
         logger.info("Dry run of task '%s' (run %s): planned %d line(s), executed nothing",
-                    task.name, run_id, len(lines))
+                    task.name, run_id, len(lines) - 1)
 
     def _attach_run_steps(self, run_id, run) -> None:
         """Persist this run's step log onto its row, if anything recorded one."""
@@ -1586,8 +1861,16 @@ class TaskScheduler:
             logger.warning("Could not serialise the step log for run %s",
                            getattr(run, "id", "?"))
 
-    def _mark_run_aborted(self, task_id: str, run_id: str | None = None, message: str = "Stopped by user") -> bool:
-        """Mark an active run as aborted. Used by stop/cancel paths."""
+    def _mark_run_aborted(self, task_id: str, run_id: str | None = None,
+                          message: str = STOPPED_BY_USER) -> bool:
+        """Mark an active run as aborted. Used by stop/cancel paths.
+
+        `B1047`. `message` is why, and it replaces `result` too: an active
+        run's `result` is only ever a placeholder ("Queued — waiting for
+        Pantheon to be idle…", "Starting…") or a progress line — a run's output
+        is written when it finishes — so keeping it left an aborted run saying
+        it was still waiting.
+        """
         try:
             from core.database import SessionLocal, TaskRun, TASK_RUN_ACTIVE_STATUSES
             db = SessionLocal()
@@ -1605,7 +1888,7 @@ class TaskScheduler:
                     return False
                 run.status = "aborted"
                 run.error = message
-                run.result = run.result or message
+                run.result = message
                 run.finished_at = _utcnow()
                 db.commit()
                 return True
@@ -1614,6 +1897,29 @@ class TaskScheduler:
         except Exception:
             logger.debug("Task abort marker failed for %s", task_id, exc_info=True)
             return False
+
+    def _stopped_as(self, run_id: str) -> str | None:
+        """Why this run was stopped, if whoever stopped it already said.
+
+        `B1047`. `stop_task` and the foreground gate write the row (with
+        `_mark_run_aborted`) and then cancel the run; the cancel lands in
+        `_execute_task_locked`, which used to overwrite their words with its
+        own guess — "Stopped by user" unless its own monitor had fired. Read in
+        a fresh session, because the run's own session may hold the row as it
+        loaded it, before the stop was committed.
+        """
+        try:
+            from core.database import SessionLocal, TaskRun
+            db = SessionLocal()
+            try:
+                run = db.query(TaskRun).filter(TaskRun.id == run_id).first()
+                if run is not None and run.status == "aborted" and run.error:
+                    return run.error
+            finally:
+                db.close()
+        except Exception:
+            logger.debug("Could not read how run %s was stopped", run_id, exc_info=True)
+        return None
 
     def add_notification(self, task_name: str, status: str, task_id: str = None, owner: str = None, body: str = None,
                          review: dict = None):
@@ -2040,7 +2346,8 @@ class TaskScheduler:
 
     async def _execute_task(self, task_id: str, *, bypass_model_slot: bool = False,
                             release_executing: bool = True, trigger: dict | None = None,
-                            dry: bool = False):
+                            dry: bool = False,
+                            started_by: str = STARTED_BY_BACKGROUND):
         # Create the run record with status="queued" BEFORE waiting on the
         # semaphore so the UI can show that a manually-triggered task is in
         # line behind another. Once we acquire the slot, flip to "running"
@@ -2049,6 +2356,7 @@ class TaskScheduler:
         current = asyncio.current_task()
         if current:
             self._task_handles[task_id] = current
+            self._started_by_map()[task_id] = started_by
         run_id = str(uuid.uuid4())
         _q_db = SessionLocal()
         try:
@@ -2079,6 +2387,7 @@ class TaskScheduler:
                     gate_foreground=not (bypass_model_slot or dry),
                     trigger=trigger,
                     dry=dry,
+                    started_by=started_by,
                 )
                 # `P22-04`. The run's id, so a caller that awaited this — a dry
                 # run, below in `run_task_now` — can read back what it wrote.
@@ -2092,11 +2401,14 @@ class TaskScheduler:
                     release_executing=release_executing,
                     gate_foreground=True,
                     trigger=trigger,
+                    started_by=started_by,
                 )
             return run_id
         except asyncio.CancelledError:
             # If cancellation happens while queued behind the semaphore,
             # _execute_task_locked never runs and cannot update the Activity row.
+            # (`B1047`: a stop that already wrote why is kept — this only
+            # writes a row nobody has ended.)
             self._mark_run_aborted(task_id, run_id)
             self._defer_immediately_due_task(task_id, delay=timedelta(minutes=15))
             raise
@@ -2104,6 +2416,7 @@ class TaskScheduler:
             handle = self._task_handles.get(task_id)
             if handle is current:
                 self._task_handles.pop(task_id, None)
+                self._started_by_map().pop(task_id, None)
             if release_executing:
                 async with self._executing_lock:
                     self._executing.discard(task_id)
@@ -2139,12 +2452,35 @@ class TaskScheduler:
         gate_foreground: bool = True,
         trigger: dict | None = None,
         dry: bool = False,
+        started_by: str = STARTED_BY_BACKGROUND,
     ):
         from core.database import SessionLocal, ScheduledTask, TaskRun
 
         db = SessionLocal()
         try:
             task = db.query(ScheduledTask).filter(ScheduledTask.id == task_id).first()
+            if dry:
+                # `P8-33`. The dry run ends here, and this `return` is the whole
+                # guarantee. Every executor — the eighteen actions, the agent
+                # loop, the research pipeline — is below this line, and so is
+                # every delivery, notification and chain advance. There is no
+                # `dry_run=True` travelling down into anything, because the
+                # eighteen actions all take `**kwargs` and would swallow it
+                # (measured: 18 of 18), which would make the button labelled
+                # "test" the button that sends the email.
+                #
+                # `B1036`. Above the two early returns now, not below them. A
+                # paused task returned at the first ("no longer active") with a
+                # `skipped` run and a NOTIFICATION, and planned nothing — so a
+                # switched-off draft could not be dry-run at all; an admin-only
+                # task of a non-admin owner was refused at the second through
+                # `record_admin_refusal`, which PAUSES the task and moves its
+                # `last_run`. Both broke the one promise a dry run makes. The
+                # admin rule still applies — `_record_dry_run` declines such a
+                # task with the same sentence, the only answer that is not a
+                # privilege oracle — it just changes nothing and tells nobody.
+                self._record_dry_run(db, task, run_id)
+                return
             if not task or task.status != "active":
                 # Task was paused/deleted while queued — record that outcome
                 # so the run row doesn't sit as "queued" forever.
@@ -2153,6 +2489,10 @@ class TaskScheduler:
                     stale.status = "skipped"
                     stale.finished_at = _utcnow()
                     stale.error = f"Task no longer active (status={task.status if task else 'deleted'})"
+                    # `B1036`. The reason in `result` too: it was left at the
+                    # "Queued — waiting for a free slot…" it was created with,
+                    # which History shows ahead of `error`.
+                    stale.result = stale.error
                     db.commit()
                     # `B112`. The task is paused or gone, so this run is the last
                     # thing that will happen on it and nothing else will say so.
@@ -2185,24 +2525,28 @@ class TaskScheduler:
                                          task_id=task_id)
                 return
 
-            if dry:
-                # `P8-33`. The dry run ends here, and this `return` is the whole
-                # guarantee. Every executor — the eighteen actions, the agent
-                # loop, the research pipeline — is below this line, and so is
-                # every delivery, notification and chain advance. There is no
-                # `dry_run=True` travelling down into anything, because the
-                # eighteen actions all take `**kwargs` and would swallow it
-                # (measured: 18 of 18), which would make the button labelled
-                # "test" the button that sends the email.
-                #
-                # The admin gate above still applies: an admin-only action is
-                # refused before this, not planned. A person without the
-                # privilege gets the same answer for a dry run as for a real
-                # one, which is the only answer that is not a privilege oracle.
-                self._record_dry_run(db, task, run_id)
-                return
-
-            if gate_foreground:
+            # `B1047`. Who started this run decides what it waits for, here and
+            # in `_run_agent_loop` (the second wait, for a model call), so both
+            # read it off the run's slot. Background work waits for Pantheon to
+            # be idle and is stopped when somebody arrives — unchanged. A run a
+            # person started waits only while a chat reply is being written,
+            # and only if it needs the model; forced ("Start now") waits for
+            # nothing. Measured before this: Run now waited for the page it was
+            # pressed on to close (the tab's heartbeat alone keeps the idle gate
+            # shut), and the page's own polls stopped it within seconds.
+            person = started_by == STARTED_BY_PERSON
+            slot = self._state_for(run_id)
+            slot["started_by"] = started_by
+            slot["waits_for"] = ("chat" if gate_foreground else None) if person else "idle"
+            if gate_foreground and person:
+                from src.interactive_gate import chat_in_progress, wait_for_chat_quiet
+                if chat_in_progress() and self._task_needs_model_slot(task_id):
+                    waiting = db.query(TaskRun).filter(TaskRun.id == run_id).first()
+                    if waiting and waiting.status == "queued":
+                        waiting.result = WAITING_FOR_CHAT
+                        db.commit()
+                    await wait_for_chat_quiet(f"task {task.name}")
+            elif gate_foreground:
                 waiting = db.query(TaskRun).filter(TaskRun.id == run_id).first()
                 if waiting and waiting.status == "queued":
                     waiting.result = "Queued — waiting for Pantheon to be idle…"
@@ -2254,7 +2598,9 @@ class TaskScheduler:
             # the runs in flight and no others.
             foreground_cancel = {"hit": False}
             foreground_monitor = None
-            if gate_foreground:
+            # `B1047`. Background work only: a run a person started is not
+            # stopped because they went on using Pantheon.
+            if gate_foreground and not person:
                 current_task = asyncio.current_task()
 
                 async def _cancel_if_foreground_active():
@@ -2371,23 +2717,34 @@ class TaskScheduler:
                 db.commit()
                 return
             except asyncio.CancelledError:
-                msg = (
-                    "Paused because Pantheon became active"
+                # `B1047`. Whoever stopped the run wrote why before cancelling
+                # it (`stop_task`, the foreground gate); keep their words. This
+                # branch's own guess is for the monitor above, which writes
+                # nothing first, and for a cancel nobody explained.
+                said = self._stopped_as(run_id)
+                msg = said or (
+                    FOREGROUND_TAKEOVER
                     if foreground_cancel.get("hit")
-                    else "Stopped by user"
+                    else STOPPED_BY_USER
                 )
+                takeover = msg == FOREGROUND_TAKEOVER
                 logger.info("Task '%s' %s", task.name, msg)
                 run_obj = db.query(TaskRun).filter(TaskRun.id == run_id).first()
                 if run_obj:
+                    if run_obj.status in ("queued", "running"):
+                        # Nothing was produced yet: `result` holds "Starting…"
+                        # or a progress line, which would read as still going.
+                        run_obj.result = msg
+                    else:
+                        run_obj.result = run_obj.result or msg
                     run_obj.status = "aborted"
                     run_obj.error = msg
-                    run_obj.result = run_obj.result or msg
                     run_obj.finished_at = _utcnow()
                     # An interrupted run is one of the two people most want the
                     # steps for; the other is the one that errored, below.
                     self._attach_run_steps(run_id, run_obj)
                 task.last_run = _utcnow()
-                if foreground_cancel.get("hit"):
+                if takeover:
                     task.next_run = _utcnow() + timedelta(minutes=15)
                 elif (task.trigger_type or "schedule") == "schedule":
                     task.next_run = compute_next_run(
@@ -2561,6 +2918,16 @@ class TaskScheduler:
                 err_text = f"{type(exec_exc).__name__}: {exec_exc}"
                 run_obj = db.query(TaskRun).filter(TaskRun.id == run_id).first()
                 if run_obj and run_obj.status in ("running", "success"):
+                    if run_obj.status == "running":
+                        # `B1055`. A run that raised before it produced anything
+                        # still held "Starting…" (or its last progress line) in
+                        # `result` — which History shows ahead of `error`, and
+                        # which `_handoff_from` hands to the failure branch, so
+                        # "tell me the backup failed" was told `result=Starting…`.
+                        # The reason is the result. A run that RETURNED its
+                        # output and then failed delivering it (`success` here)
+                        # keeps that output.
+                        run_obj.result = err_text[:2000]
                     run_obj.status = "error"
                     run_obj.error = err_text[:2000]
                     run_obj.finished_at = _utcnow()
@@ -2659,6 +3026,7 @@ class TaskScheduler:
             handle = self._task_handles.get(task_id)
             if handle is asyncio.current_task():
                 self._task_handles.pop(task_id, None)
+                self._started_by_map().pop(task_id, None)
             if release_executing:
                 async with self._executing_lock:
                     self._executing.discard(task_id)
@@ -3457,8 +3825,17 @@ class TaskScheduler:
         # behind the primary endpoint so a downed primary won't silently yield
         # `(no output)`.
         try:
-            from src.interactive_gate import wait_for_interactive_quiet
-            await wait_for_interactive_quiet(f"agent task {task.name}")
+            # `B1047`. The second wait, before the model call, follows the
+            # run's own: background work waits for Pantheon to be idle, a run a
+            # person started waits only for a chat reply, a forced one for
+            # nothing. It was the idle wait for every run, so a person's Run
+            # now — even a forced one — sat here while their tab was open.
+            from src.interactive_gate import wait_for_chat_quiet, wait_for_interactive_quiet
+            _waits = self._run_waits_for(run_id)
+            if _waits == "idle":
+                await wait_for_interactive_quiet(f"agent task {task.name}")
+            elif _waits == "chat":
+                await wait_for_chat_quiet(f"agent task {task.name}")
             from src.task_endpoint import resolve_task_candidates
             _task_fallbacks = resolve_task_candidates(
                 fallback_url=endpoint_url,
@@ -3762,7 +4139,8 @@ class TaskScheduler:
 
         return report
 
-    async def _run_chained(self, task_id: str, *, handoff: dict | None = None):
+    async def _run_chained(self, task_id: str, *, handoff: dict | None = None,
+                           started_by: str = STARTED_BY_BACKGROUND):
         """Run a chained task whose `_executing` claim is already held.
 
         `P22-01`. This used to take the claim itself, so an overlapping
@@ -3778,8 +4156,11 @@ class TaskScheduler:
         trigger payload already travels on, and `trigger_context_message` wraps
         it untrusted the way it wraps a webhook body. `None` is a chain with
         nothing to hand on, which is what every chain did before this row.
+
+        `B1047`. `started_by` is the chain's: a step a person's Run now leads
+        to waits as that run did.
         """
-        await self._execute_task(task_id, trigger=handoff)
+        await self._execute_task(task_id, trigger=handoff, started_by=started_by)
 
     def _chain_refusal(self, db, start_id: str, max_depth: int = CHAIN_MAX_DEPTH,
                        owner: str | None = None) -> str | None:
@@ -3907,7 +4288,8 @@ class TaskScheduler:
             logger.error(f"Task {task.id} MCP delivery failed: {e}")
 
     async def run_task_now(self, task_id: str, *, force: bool = False,
-                           trigger: dict | None = None, dry: bool = False):
+                           trigger: dict | None = None, dry: bool = False,
+                           started_by: str = STARTED_BY_BACKGROUND):
         """Manually trigger a task execution.
 
         `P8-23`. `trigger` is what fired it — the event bus's envelope or the
@@ -3930,11 +4312,17 @@ class TaskScheduler:
         nor the wait for Pantheon to go idle (`P8-33`), reaches no executor,
         and has no `await` between its first statement and its plan. A real
         run is spawned and answers `True`, exactly as before.
+
+        `B1047`. `started_by` says who asked (`src.interactive_gate.STARTED_BY`).
+        The default is background work — the event bus and the webhook call
+        this — and the task route passes `STARTED_BY_PERSON` for its buttons.
         """
+        if started_by not in STARTED_BY:
+            raise ValueError(f"started_by must be one of {STARTED_BY}, not {started_by!r}")
         if force:
             coro = self._execute_task(
                 task_id, bypass_model_slot=True, release_executing=False,
-                trigger=trigger, dry=dry)
+                trigger=trigger, dry=dry, started_by=started_by)
             if dry:
                 return await coro
             asyncio.create_task(coro)
@@ -3943,7 +4331,8 @@ class TaskScheduler:
             if task_id in self._executing:
                 return False
             self._executing.add(task_id)
-        coro = self._execute_task(task_id, trigger=trigger, dry=dry)
+        coro = self._execute_task(task_id, trigger=trigger, dry=dry,
+                                  started_by=started_by)
         if dry:
             return await coro
         asyncio.create_task(coro)
@@ -3961,7 +4350,7 @@ class TaskScheduler:
                 self._executing.discard(task_id)
                 stopped = True
 
-        stopped = self._mark_run_aborted(task_id) or stopped
+        stopped = self._mark_run_aborted(task_id, message=STOPPED_BY_USER) or stopped
         return stopped
 
     async def stop_background_tasks_for_foreground(self, *, reason: str = "Pantheon became active") -> int:
@@ -3971,16 +4360,28 @@ class TaskScheduler:
         user opens or uses Pantheon, foreground interaction wins immediately.
         Manual force-runs can be restarted by the user; automatic jobs will be
         deferred by their cancellation path instead of stealing the app.
+
+        `B1047`. Background work only. A run a person started (Run now, Start
+        now, and the steps they chain into) is what that person is waiting
+        for; the page they are waiting on — its own polls, its heartbeat — was
+        stopping it within seconds, and recording it as "Stopped by user"
+        (`_mark_run_aborted`'s default), so a run nobody stopped said its owner
+        had. What this stops now says what happened: `FOREGROUND_TAKEOVER`.
+        The row is written before the cancel lands, and the cancel branch keeps
+        it (`_stopped_as`).
         """
         async with self._executing_lock:
             task_ids = list(self._executing)
+        started_by = self._started_by_map()
         stopped = 0
         for task_id in task_ids:
+            if started_by.get(task_id) == STARTED_BY_PERSON:
+                continue
             handle = self._task_handles.get(task_id)
             if handle and not handle.done():
                 handle.cancel()
                 stopped += 1
-            if self._mark_run_aborted(task_id):
+            if self._mark_run_aborted(task_id, message=FOREGROUND_TAKEOVER):
                 stopped += 1
         if stopped:
             logger.info("Stopped %d background scheduler task(s): %s", stopped, reason)

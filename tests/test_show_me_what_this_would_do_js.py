@@ -264,9 +264,13 @@ async def test_the_kebab_offers_it_beside_run_now_and_opens_the_card(sandbox, ta
 
 @pytest.mark.asyncio
 async def test_a_task_the_scheduler_will_not_plan_says_why(sandbox, task_db, monkeypatch):
-    """A paused task's run is recorded `skipped` with its reason and no plan —
-    the card says so rather than waiting for a plan that will not come."""
-    task, run = await _planned(task_db, monkeypatch, "tidy_sessions", status="paused")
+    """A run the scheduler declined to plan is recorded `skipped` with its
+    reason and no plan — the card says so rather than waiting for a plan that
+    will not come. A paused task was this case until `B1036` (it plans now);
+    what is left is a task the engine will not run for this owner."""
+    monkeypatch.setattr("src.task_scheduler.owner_has_admin_task_privileges",
+                        lambda owner: False)
+    task, run = await _planned(task_db, monkeypatch, "ssh_command", prompt="reboot")
     assert run["steps"] == [] and run["error"], run
     out = _case(sandbox, {"tasks": [task], "after": [run]}, """
         const body = await openTasksList();

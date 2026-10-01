@@ -235,7 +235,11 @@ def _display_task_name(t: ScheduledTask) -> str:
     return t.name
 
 
-def _task_to_dict(t: ScheduledTask, include_last_run_result: bool = False) -> dict:
+_ASK = object()
+
+
+def _task_to_dict(t: ScheduledTask, include_last_run_result: bool = False,
+                  last_run=_ASK) -> dict:
     defs = HOUSEKEEPING_DEFAULTS.get(t.action) if t.action else None
     d = {
         "id": t.id,
@@ -295,10 +299,20 @@ def _task_to_dict(t: ScheduledTask, include_last_run_result: bool = False) -> di
         )
     else:
         d["is_modified"] = False
-    if include_last_run_result and t.runs:
-        last = t.runs[0]  # ordered desc by started_at
-        d["last_run_status"] = last.status
-        d["last_run_result"] = (last.result or last.error or "")[:500]
+    if include_last_run_result:
+        # `B1054` / `B1043`. The newest REAL run — a dry run is never a last
+        # run — handed in by the caller that listed many tasks in one query
+        # (`latest_real_runs`), or asked for this one task. It was `t.runs[0]`:
+        # every run of the task loaded through a lazy relationship, dry runs
+        # included.
+        if last_run is _ASK:
+            from sqlalchemy.orm import object_session
+            from src.task_scheduler import latest_real_runs
+            session = object_session(t)
+            last_run = latest_real_runs(session, [t.id]).get(t.id) if session else None
+        if last_run is not None:
+            d["last_run_status"] = last_run.status
+            d["last_run_result"] = (last_run.result or last_run.error or "")[:500]
     return d
 
 
@@ -457,12 +471,19 @@ def setup_task_routes(task_scheduler) -> APIRouter:
             if status:
                 q = q.filter(ScheduledTask.status == status)
             tasks = q.order_by(ScheduledTask.created_at.desc()).all()
+            # `B1043`. Every listed task's last real run in one query, rather
+            # than one lazy load of all of a task's runs per task.
+            last_runs = {}
+            if include_last_run:
+                from src.task_scheduler import latest_real_runs
+                last_runs = latest_real_runs(db, [t.id for t in tasks])
             # `P8-26`. The graph document rides on the door that already lists
             # tasks, built from the SAME rows the list is built from — a second
             # endpoint would be a second query answering the same question, and
             # `check-unreachable.py` counts a route no page fetches.
             return {
-                "tasks": [_task_to_dict(t, include_last_run_result=include_last_run)
+                "tasks": [_task_to_dict(t, include_last_run_result=include_last_run,
+                                        last_run=last_runs.get(t.id))
                           for t in tasks],
                 "graph": build_task_graph(tasks),
             }
@@ -1165,7 +1186,7 @@ def setup_task_routes(task_scheduler) -> APIRouter:
 
     @router.post("/{task_id}/run")
     async def run_task_now(request: Request, task_id: str, force: bool = False,
-                           dry: bool = False):
+                           dry: bool = False, chain: bool = False):
         """Run this task now. `dry=true` plans it instead of running it.
 
         `P8-33`. A query parameter on the route that already exists, not a new
@@ -1175,8 +1196,20 @@ def setup_task_routes(task_scheduler) -> APIRouter:
         admin gate in step (`Law 14`); and `check-unreachable` is at **90 of
         90** (measured 2026-09-19), so a new route with no `static/` caller
         fails the gate — and `static/` belongs to another agent this wave.
+
+        `P22-04`. `chain=true` (with `dry=true`) also plans every task this one
+        leads to, along either edge, each once, breadth first, as `chain` on
+        the reply — the head through its recorded dry run, the rest planned
+        and recorded nowhere (`src.task_scheduler.plan_dry_chain`). A chain
+        `validate_graph` refuses is answered 400 with its sentence, as a save
+        is, before anything is written. Without it the reply is what it was.
         """
+        if chain and not dry:
+            raise HTTPException(
+                400, "chain=true goes with dry=true: a real run already "
+                     "continues along its chain.")
         user = _owner(request)
+        chain_rows = None
         db = SessionLocal()
         try:
             task = db.query(ScheduledTask).filter(ScheduledTask.id == task_id).first()
@@ -1188,9 +1221,24 @@ def setup_task_routes(task_scheduler) -> APIRouter:
             # not run this" only on the real path would turn the dry path into
             # a way to read an admin-only task's configuration.
             _require_admin_for_task_action(user, task.task_type, task.action)
+            if chain:
+                # `P22-04`. The rule the engine asks before it continues from
+                # this task (`P22-01`), asked here before the head's dry run is
+                # recorded, so a refusal writes nothing.
+                from src.task_scheduler import chain_dry_run_rows, describe_graph_refusal
+                chain_rows, refusal = chain_dry_run_rows(db, task)
+                if refusal is not None:
+                    names = {row.id: _display_task_name(row) for row in chain_rows}
+                    raise HTTPException(
+                        400, describe_graph_refusal(refusal, names, first=task.id))
         finally:
             db.close()
-        started = await task_scheduler.run_task_now(task_id, force=force, dry=dry)
+        # `B1047`. A person pressed this, so the run waits only for a chat
+        # reply in progress and is not stopped by the page they pressed it on;
+        # background work keeps the idle gate (`src.interactive_gate.STARTED_BY`).
+        from src.interactive_gate import STARTED_BY_PERSON
+        started = await task_scheduler.run_task_now(
+            task_id, force=force, dry=dry, started_by=STARTED_BY_PERSON)
         if not started:
             raise HTTPException(409, "Task is already running")
         if dry:
@@ -1208,6 +1256,18 @@ def setup_task_routes(task_scheduler) -> APIRouter:
                     out["run"] = _run_to_dict(run) if run is not None else None
                 finally:
                     db.close()
+            if chain:
+                from src.task_scheduler import DRY_RUN_HEADLINE, plan_dry_chain
+                head_run = out.get("run") or {}
+                planned = (head_run.get("result") or "").startswith(DRY_RUN_HEADLINE)
+                out["chain"] = plan_dry_chain(
+                    task, chain_rows,
+                    head_steps=head_run.get("steps") or [],
+                    head_declined=None if planned else (
+                        head_run.get("error") or head_run.get("result")
+                        or "The dry run left no record."),
+                    name_of=_display_task_name,
+                )
             return out
         return {"ok": True, "dry": False,
                 "message": "Task triggered" + (" in parallel" if force else "")}
