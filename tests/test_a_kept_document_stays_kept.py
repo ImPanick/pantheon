@@ -153,7 +153,7 @@ def test_what_is_kept_is_what_was_shown(world, mess, routed):
 def test_a_rename_or_a_move_is_not_a_change(world, mess, routed):
     """The person kept the document; renaming it or filing it does not make it
     clutter again. `updated_at` would have said both were changes — a rename
-    moves it, and so does the AI tidy's own verdict write."""
+    moves it, and so did the AI tidy's own verdict write until `B1035`."""
     keep(world)
     _edit(world, mess["junk"], title="asdf")
     db = world.db()

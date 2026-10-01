@@ -193,13 +193,13 @@ TIDY_DUPLICATE_REASON = "a duplicate — the fullest copy stays"
 # **"Changes" means its content, by digest** — the digest `B994` already seals
 # a plan to (`tool_approvals.document_content_digest`, recorded on each
 # `deleted` change), taken of what the person was shown. Not `updated_at`:
-# filing never moves it (`document_folders._refile`) while a rename and the AI
-# tidy's own verdict write both do, so it would re-propose a document because a
-# model looked at it and keep one the person had since emptied. A digest moves
-# exactly when what the rules judge moves; a rename alone keeps a kept document
-# kept, because the person kept that document. Writing the mark leaves
-# `updated_at` alone too (the `_refile` UPDATE), so keeping a document is not
-# reported as editing it.
+# filing never moves it (`document_folders._refile`) while a rename does (and
+# the AI tidy's own verdict write did, until `B1035`), so it would re-propose a
+# document because someone renamed it and keep one the person had since
+# emptied. A digest moves exactly when what the rules judge moves; a rename
+# alone keeps a kept document kept, because the person kept that document.
+# Writing the mark leaves `updated_at` alone too (`write_tidy_verdict`, the
+# `_refile` UPDATE), so keeping a document is not reported as editing it.
 #
 # **Only the person writes it.** `remember_kept` runs from `answer_review` —
 # behind the route only a person can call (`request_is_a_person`) — and marks
@@ -274,15 +274,30 @@ def remember_kept(db, plan) -> int:
             .filter(Document.id.in_(list(shown)))
             .all())
     for doc in docs:
-        # Written back with its own `updated_at`, which is how SQLAlchemy skips
-        # the column's `onupdate` (`document_folders._refile`): keeping a
-        # document is not editing it.
-        db.query(Document).filter(Document.id == doc.id).update(
-            {Document.tidy_verdict: KEPT_VERDICT_PREFIX + shown[doc.id],
-             Document.updated_at: doc.updated_at},
-            synchronize_session=False)
+        write_tidy_verdict(db, doc, KEPT_VERDICT_PREFIX + shown[doc.id])
     db.commit()
     return len(docs)
+
+
+def write_tidy_verdict(db, doc, verdict: str) -> None:
+    """Record a tidy's verdict on *doc* without reporting it as an edit.
+
+    Written back with the document's own `updated_at`, which is how SQLAlchemy
+    skips the column's `onupdate` (`document_folders._refile` files a document
+    the same way): a tidy looking at a document is not someone editing it.
+
+    `B1035`. The one writer of `tidy_verdict` for both tidies — the person's
+    `kept:` mark here (`B1019`) and the library's AI tidy's `keep`
+    (`POST /api/documents/ai-tidy`). The AI tidy wrote its verdict through the
+    ORM, so measured on the tree before this row, two documents last edited
+    2025-01-02 that a model judged "keep" came back edited at the moment of the
+    tidy: at the top of the library's default sort, reading "edited just now".
+    """
+    from core.database import Document
+
+    db.query(Document).filter(Document.id == doc.id).update(
+        {Document.tidy_verdict: verdict, Document.updated_at: doc.updated_at},
+        synchronize_session=False)
 
 
 # ── `B1006` · the scheduled tidy proposes; the person applies ───────────────
