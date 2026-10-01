@@ -1295,8 +1295,10 @@ async function _cmdWorkspace(args, ctx) {
     // Validate server-side before persisting so the pill never claims a
     // workspace the backend will refuse to bind (typo, file path, deleted
     // folder, sensitive dir, filesystem root).
-    workspaceModule.vetAndSetWorkspace(rest).then(({ ok, path }) => {
-      if (ok) slashReply(`Workspace set: <code>${uiModule.esc(path)}</code>`);
+    workspaceModule.vetAndSetWorkspace(rest).then(({ ok, path, where }) => {
+      if (ok) slashReply(`Workspace set: <code>${uiModule.esc(path)}</code>${where === 'workstation' ? ' (in your workstation)' : ''}`);
+      // `B968`: with the workstation on, the folder is one in its home.
+      else if (where === 'workstation') slashReply(`Not a folder in your workstation home: <code>${uiModule.esc(rest)}</code>. Use a path inside it, or <code>/workspace pick</code>.`);
       else slashReply(`Not a usable workspace folder on the Pantheon backend: <code>${uiModule.esc(rest)}</code>. If Pantheon is running in Docker, use the container path, usually <code>/app</code>, or use <code>/workspace pick</code>.`);
     });
     return true;

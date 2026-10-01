@@ -78,7 +78,6 @@ _REQUEST_SCOPED = ("Request-scoped: starts when a person does something, ends "
 
 # (file, enclosing function) -> why this one is exempt.
 ALLOWED = {
-    ("src/agent_tools/subprocess_tools.py", "_run_tmux_bash"): _REQUEST_SCOPED,
     ("src/agent_tools/subprocess_tools.py", "_progress_emitter"): _REQUEST_SCOPED,
     ("src/ai_interaction.py", "_poll_progress"): _REQUEST_SCOPED,
     ("routes/chat_routes.py", "stream_with_save"): _REQUEST_SCOPED,

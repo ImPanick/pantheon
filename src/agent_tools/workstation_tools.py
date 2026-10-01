@@ -32,13 +32,24 @@ the same `stdout`/`stderr`/`exit_code` (`FORBIDDEN.md`) and the same
 model reads them in the result's data block, which is how it learns where its
 command ran.
 
-**WHAT DOES NOT PERSIST, MEASURED.** Today's `bash` in an agent turn keeps
-nothing between calls: the tmux-backed persistent shell is reached only with a
-`session_id`, and `_call_mcp_tool` calls `_direct_fallback` without one, so every
-call is a fresh `bash -c` in the workspace (driven: `cd /` then `pwd` prints the
-workspace). The workstation keeps that contract — each call starts in the home —
-and reports `cwd`. `#!bg` jobs are refused here with a sentence (see
-`_BACKGROUND_REFUSAL`) rather than half-run.
+**WHAT PERSISTS: THE FOLDER, AND NOTHING ELSE (`B962`, `D-2026-10-01-01`).**
+Each call is a fresh shell, here as on Pantheon's machine, so variables,
+functions and background jobs end with it; the chat's shell keeps its folder.
+A `bash` call reports where it ended (`subprocess_tools._CwdReport`, a file under
+`~/.cache/pantheon-run/`, one per chat) and the chat's next `bash` or `python`
+starts there (`subprocess_tools.CHAT_FOLDERS`). The daemon is the authority on
+which folders a command may start in — the home jail, unless `sudo` is on, the
+same jail the file tools meet — and a folder it refuses, or one that is gone,
+falls back to the start folder with a sentence. `cwd` in a result is the folder
+the chat's shell is in afterwards: where its next command starts.
+
+**WHERE THEY START: THE WORKSPACE (`B968`, `D-2026-10-01-01`).** With the
+workstation on, the workspace picked in the composer is a folder in the
+person's workstation home (`vet_workspace`, the picker's routes). The shells
+start there and the file tools read a relative path as relative to it, as
+here; it is where they start, not a boundary — the home jail is the boundary.
+`#!bg` jobs are refused here with a sentence (see `_BACKGROUND_REFUSAL`) rather
+than half-run.
 
 **THE SENSITIVE-PATH RULE IS NOT LIFTED BY MOVING THE TOOL.** `_resolve_tool_path`
 and its deny-list are `FORBIDDEN.md` Part 2. The home jail is the daemon's; the
@@ -52,6 +63,7 @@ from __future__ import annotations
 import asyncio
 import collections
 import errno
+import hashlib
 import io
 import json
 import logging
@@ -143,23 +155,43 @@ class _Station:
     and reaches back here)."""
 
     def __init__(self, client, account: str, loop: asyncio.AbstractEventLoop,
-                 progress_cb: Optional[Callable[[Dict], Awaitable[None]]] = None):
+                 progress_cb: Optional[Callable[[Dict], Awaitable[None]]] = None,
+                 *, workspace: Optional[str] = None, chat: Optional[Tuple] = None):
         self.client = client
         self.account = account
         self.loop = loop
         self.progress_cb = progress_cb
         self.failure: Optional[WorkstationError] = None
         self._home: Optional[str] = None
+        # `B968`: the folder the tools start in, when one was picked.
+        self.workspace = workspace or None
+        # `B962`: the chat this call belongs to, for its shell's folder, and
+        # whether the daemon holds commands to the home (`sudo` off).
+        self.chat = chat
+        self.jailed = True
 
     async def home(self) -> str:
         if self._home is None:
             self._home = str((await self.client.ensure(self.account))["home"])
         return self._home
 
+
+    def at(self, raw_path: Any) -> Any:
+        """`B968`: a relative path as the daemon should be handed it — under
+        the workspace when one is picked, as a relative path is the
+        workspace's on Pantheon's machine. `~` and absolute paths are left as
+        they are; the daemon resolves and jails every path either way."""
+        if not self.workspace or raw_path is None:
+            return raw_path
+        text = str(raw_path).strip()
+        if not text or text.startswith("/") or text == "~" or text.startswith("~/"):
+            return raw_path
+        return posixpath.join(self.workspace, text)
+
     async def shown(self, raw_path: str) -> str:
         """A path as the host's messages show one — absolute — for a path the
         daemon could not resolve because nothing is there."""
-        return _absolute(await self.home(), raw_path)
+        return _absolute(await self.home(), raw_path, self.workspace)
 
     def call(self, coro_fn: Callable[[], Awaitable[Dict]]) -> Dict:
         """Run one client call from a worker thread. A `WorkstationError` comes
@@ -217,15 +249,16 @@ class _Station:
 
 # ── paths ─────────────────────────────────────────────────────────────────────
 
-def _absolute(home: str, raw: str) -> str:
-    """`raw` as an absolute path in the workstation: `~` and relative paths are
-    the home's, as the daemon reads them. Normalised, not resolved — the daemon
-    resolves (and jails) every path it is handed."""
+def _absolute(home: str, raw: str, base: Optional[str] = None) -> str:
+    """`raw` as an absolute path in the workstation: `~` is the home, and a
+    relative path is `base`'s — the workspace (`B968`) — or else the home's, as
+    the daemon reads them. Normalised, not resolved — the daemon resolves (and
+    jails) every path it is handed."""
     text = str(raw).strip()
     if text == "~" or text.startswith("~/"):
         text = home + text[1:]
     elif not text.startswith("/"):
-        text = posixpath.join(home, text)
+        text = posixpath.join(base or home, text)
     return posixpath.normpath(text)
 
 
@@ -275,6 +308,54 @@ def _file_answer(tool: str, e: WorkstationError) -> Dict[str, Any]:
 
 # ── the shells ────────────────────────────────────────────────────────────────
 
+# The daemon's answers that mean "not this folder" for an exec's `cwd`: it is
+# not a directory there, or outside the home jail, or the account cannot enter it.
+_FOLDER_REFUSALS = frozenset({"not_found", "outside_home", "forbidden"})
+
+# `B962`. A home path, per workstation and account, so the start folder of a
+# chat with no workspace is known without asking the daemon on every call.
+# `list` with no path answers the home without starting a desktop (`ensure`
+# would). The home of an account does not move while its daemon runs.
+_HOMES: Dict[Tuple[str, str], str] = {}
+
+
+async def _home_path(client, account: str) -> str:
+    key = (str(getattr(client, "base", "")), account)
+    if key not in _HOMES:
+        if len(_HOMES) >= 512:
+            _HOMES.pop(next(iter(_HOMES)), None)
+        _HOMES[key] = str((await client.list(account, None, max_entries=0))["path"])
+    return _HOMES[key]
+
+
+class _StationReport(sp._CwdReport):
+    """`subprocess_tools._CwdReport`, written in the person's workstation home —
+    one file per chat, overwritten by each of its `bash` calls — and read back
+    through the protocol's `read`, as the person."""
+
+    def __init__(self, chat: Tuple):
+        name = "shell-cwd-" + hashlib.sha256(repr(chat).encode("utf-8")).hexdigest()[:16]
+        self.path = f"~/.cache/pantheon-run/{name}"
+        super().__init__(f'"$HOME"/.cache/pantheon-run/{name}')
+
+    async def read(self, st: "_Station") -> Optional[str]:
+        try:
+            got = await st.client.read(st.account, self.path, max_bytes=65536)
+        except WorkstationError:
+            return None
+        return self.parse(got.get("data") or b"")
+
+
+def _refused_sentence(folder: str, code: str, workspace: Optional[str], ran_in: str) -> str:
+    if folder == workspace:
+        return (f"The workspace {folder} is not a folder in your workstation any more, so "
+                f"this command started in {ran_in}.")
+    if code == "not_found":
+        return sp.gone_sentence(folder, ran_in)
+    return (f"This chat's shell was in {folder}, which the workstation does not let it use "
+            f"now, so this command started in {ran_in}.")
+
+
 async def _shell(st: _Station, tool: str, shell: str, command: str, timeout: float) -> Dict:
     if not str(command or "").strip():
         # An empty script does nothing and exits 0 — what `bash -c ""` and
@@ -285,19 +366,45 @@ async def _shell(st: _Station, tool: str, shell: str, command: str, timeout: flo
     tail: "collections.deque" = collections.deque(maxlen=sp.PROGRESS_TAIL_LINES)
     partial = {"stdout": "", "stderr": ""}
 
+    # `B962`/`B968`. The folder this chat's shell is in, else the workspace,
+    # else the home; each tried in turn if the daemon refuses the one before.
+    notes: list = []
+    start = held = home = None
+    if st.chat is not None:
+        home = await _home_path(st.client, st.account)
+        start = st.workspace or home
+        held, said = sp.CHAT_FOLDERS.recall(st.chat, start)
+        notes += [said] if said else []
+    report = _StationReport(st.chat) if (st.chat is not None and shell == "bash") else None
+    scrub = report.scrub if report else (lambda text: text)
+
     def on_output(kind: str, text: str) -> None:
         # Whole lines only, as the host's `readline` reader sees them.
         kind = "stderr" if kind == "stderr" else "stdout"
         *complete, partial[kind] = (partial[kind] + text).split("\n")
         for line in complete:
-            tail.append(sp._tail_line(line, "err" if kind == "stderr" else "out"))
+            tail.append(sp._tail_line(scrub(line), "err" if kind == "stderr" else "out"))
 
     emitter = (asyncio.create_task(sp._progress_emitter(st.progress_cb, started, tail))
                if st.progress_cb else None)
+    refused = []
     try:
-        r = await st.client.exec(st.account, command, shell=shell, timeout_s=timeout,
-                                 env=dict(_SHELL_ENV),
-                                 on_output=on_output if st.progress_cb else None)
+        tries = list(dict.fromkeys(c for c in (held, st.workspace) if c)) + [None]
+        for cwd in tries:
+            try:
+                r = await st.client.exec(st.account, report.wrap(command) if report else command,
+                                         shell=shell, cwd=cwd, timeout_s=timeout,
+                                         env=dict(_SHELL_ENV),
+                                         on_output=on_output if st.progress_cb else None)
+                break
+            except WorkstationError as e:
+                # Refused before anything ran (`agentd._exec_prepare` checks the
+                # folder first), so the next folder is a first try, not a rerun.
+                if cwd is None or e.code not in _FOLDER_REFUSALS:
+                    raise
+                if cwd == held:
+                    sp.CHAT_FOLDERS.forget(st.chat)
+                refused.append((cwd, e.code))
     finally:
         if emitter is not None:
             emitter.cancel()
@@ -305,12 +412,17 @@ async def _shell(st: _Station, tool: str, shell: str, command: str, timeout: flo
                 await emitter
             except (asyncio.CancelledError, Exception):
                 pass
-    stdout = str(r.get("stdout") or "")
-    stderr = str(r.get("stderr") or "")
+    stdout = scrub(str(r.get("stdout") or ""))
+    stderr = scrub(str(r.get("stderr") or ""))
     result = sp._shell_result(tool, stdout, stderr, r.get("exit_code"),
                               bool(r.get("timed_out")), timeout)
-    if r.get("cwd"):
-        result["cwd"] = r["cwd"]
+    ran_in = str(r.get("cwd") or "")
+    notes += [_refused_sentence(folder, code, st.workspace, ran_in) for folder, code in refused]
+    if ran_in:
+        result["cwd"] = ran_in
+    if report is not None and ran_in:
+        result["cwd"] = _end_folder(st.chat, start, ran_in, await report.read(st), notes,
+                                    home=home if st.jailed else None)
     if r.get("truncated"):
         # The daemon keeps the END of each stream past `MAX_OUTPUT_BYTES`
         # (the end is where the error is); the host keeps it all and cuts the
@@ -318,7 +430,35 @@ async def _shell(st: _Station, tool: str, shell: str, command: str, timeout: flo
         from workstation.protocol import MAX_OUTPUT_BYTES
         result["note"] = (f"The workstation keeps the last {MAX_OUTPUT_BYTES:,} bytes of each "
                           "stream; the start of this output was dropped there.")
-    return result
+    return sp.add_note(result, *notes)
+
+
+def _end_folder(chat: Tuple, start: str, ran_in: str, ended_in: Optional[str],
+                notes: list, *, home: Optional[str]) -> str:
+    """`subprocess_tools.host_end_folder` for the workstation: record where the
+    chat's shell ended, answer where its next call starts.
+
+    Held to the rules the file tools meet there: the home jail when the daemon
+    applies one (`home`, given while `sudo` is off), and the sensitive-folder
+    rule this side applies on top. The daemon checks the jail again when the
+    folder is next used, so a `sudo` switched off in between is still caught."""
+    if ended_in is None:
+        return ran_in
+    if ended_in == start:
+        sp.CHAT_FOLDERS.forget(chat)
+        return start
+    why = None
+    if home is not None and not within(ended_in, home):
+        why = "outside your workstation home"
+    elif _sensitive(ended_in):
+        why = "a sensitive folder (such as .ssh) the file tools refuse"
+    if why:
+        sp.CHAT_FOLDERS.forget(chat)
+        notes.append(f"The shell ended in {ended_in}, {why}, so the next command starts in "
+                     f"{start}.")
+        return start
+    sp.CHAT_FOLDERS.keep(chat, start, ended_in)
+    return ended_in
 
 
 async def _bash(content: Any, st: _Station) -> Dict:
@@ -340,11 +480,11 @@ async def _read_file(content: str, st: _Station) -> Dict:
     if refused:
         return refused
     try:
-        path = (await _stat_file(st, raw_path))["path"]
+        path = (await _stat_file(st, st.at(raw_path)))["path"]
     except WorkstationError as e:
         if e.code == "not_found":
             shown = await st.shown(raw_path)
-            if await _is_dir(st, raw_path):
+            if await _is_dir(st, st.at(raw_path)):
                 return {"error": f"read_file: {shown}: is a directory (use ls)", "exit_code": 1}
             return {"error": f"read_file: {shown}: not found", "exit_code": 1}
         return _file_answer("read_file", e)
@@ -365,7 +505,7 @@ async def _write_file(content: str, st: _Station) -> Dict:
         return refused
     old = ""
     try:
-        existing = (await _stat_file(st, raw_path))["path"]
+        existing = (await _stat_file(st, st.at(raw_path)))["path"]
     except WorkstationError as e:
         if e.code in _STATION_FAILURES or e.code == "outside_home":
             return _file_answer("write_file", e)
@@ -378,9 +518,9 @@ async def _write_file(content: str, st: _Station) -> Dict:
         if st.failure is not None:
             return st.failure.as_result()
     try:
-        written = await st.client.write(st.account, existing or raw_path, body)
+        written = await st.client.write(st.account, existing or st.at(raw_path), body)
     except WorkstationError as e:
-        if e.code == "bad_request" and await _is_dir(st, raw_path):
+        if e.code == "bad_request" and await _is_dir(st, st.at(raw_path)):
             # The answer `open(path, "w")` gives here, word for word.
             shown = await st.shown(raw_path)
             why = IsADirectoryError(errno.EISDIR, os.strerror(errno.EISDIR), shown)
@@ -399,11 +539,11 @@ async def _edit_file(content: str, st: _Station) -> Dict:
     if refused:
         return refused
     try:
-        path = (await _stat_file(st, raw_path))["path"]
+        path = (await _stat_file(st, st.at(raw_path)))["path"]
     except WorkstationError as e:
         if e.code == "not_found":
             shown = await st.shown(raw_path)
-            if await _is_dir(st, raw_path):
+            if await _is_dir(st, st.at(raw_path)):
                 return {"error": f"edit_file: {shown}: not an editable text file", "exit_code": 1}
             return {"error": f"edit_file: {shown}: not found (use write_file to create it)",
                     "exit_code": 1}
@@ -446,7 +586,7 @@ class _WorkstationFiles:
             raise ValueError("path is required")
         if _sensitive(str(raw).strip()):
             raise ValueError(_sensitive_message(raw))
-        path = _absolute(self.home, raw)
+        path = _absolute(self.home, raw, self.st.workspace)
         if _sensitive(path):
             raise ValueError(_sensitive_message(raw))
         return path
@@ -501,14 +641,16 @@ async def _search_root(st: _Station, tool: str, raw: str, *, file_ok: bool) -> T
     if raw and _sensitive(raw):
         return None, {"error": f"{tool}: {_sensitive_message(raw)}", "exit_code": 1}
     try:
-        root = (await st.client.list(st.account, raw or None, max_entries=0))["path"]
+        # Empty is the workspace when one is picked (`B968`), else the home.
+        root = (await st.client.list(st.account, st.at(raw) if raw else st.workspace,
+                                     max_entries=0))["path"]
     except WorkstationError as e:
         if e.code != "not_found":
             return None, _file_answer(tool, e)
         if not file_ok:
             return None, {"error": f"{tool}: {await st.shown(raw)}: not a directory", "exit_code": 1}
         try:
-            root = (await _stat_file(st, raw))["path"]
+            root = (await _stat_file(st, st.at(raw)))["path"]
         except WorkstationError as e2:
             if e2.code != "not_found":
                 return None, _file_answer(tool, e2)
@@ -620,8 +762,13 @@ def _where(result: Dict, account: str) -> Dict:
 async def run_in_workstation(tool: str, content: Any, *, owner: Optional[str],
                              session_id: Optional[str] = None,
                              progress_cb: Optional[Callable[[Dict], Awaitable[None]]] = None,
+                             workspace: Optional[str] = None,
                              ) -> Tuple[str, Dict]:
-    """Run one of `WORKSTATION_TOOLS` in the person's workstation: `(desc, result)`."""
+    """Run one of `WORKSTATION_TOOLS` in the person's workstation: `(desc, result)`.
+
+    `workspace` is the folder picked in the composer — a folder in the
+    person's workstation home (`B968`); `session_id` is the chat, whose shell
+    keeps its folder between calls (`B962`)."""
     from src.tool_execution import _split_bg_marker
     from src.workstation_access import account_of as account_for, sync_config, workstation_for
 
@@ -639,10 +786,16 @@ async def run_in_workstation(tool: str, content: Any, *, owner: Optional[str],
         # `ensure_ready`: `ensure` also starts a desktop (~18 MiB a person,
         # measured in `P20-01`), and `exec` and the file routes make the account
         # without one, so a person who only uses the shell does not pay for it.
-        await sync_config(client)
+        daemon = await sync_config(client)
     except WorkstationError as e:
         return desc, _where(e.as_result(), account_for(owner))
-    st = _Station(client, account, asyncio.get_running_loop(), progress_cb)
+    if workspace and _sensitive(workspace):
+        # Vetted when it was picked (`vet_workspace`); held to the rule again
+        # here, as `_resolve_tool_path` holds a host workspace to it.
+        workspace = None
+    st = _Station(client, account, asyncio.get_running_loop(), progress_cb,
+                  workspace=workspace, chat=sp.chat_key("workstation", account, session_id))
+    st.jailed = (daemon or {}).get("sudo") is not True
     try:
         result = await _HANDLERS[tool](content, st)
     except WorkstationError as e:
@@ -655,4 +808,55 @@ async def run_in_workstation(tool: str, content: Any, *, owner: Optional[str],
     return desc, _where(result, account)
 
 
-__all__ = ["WORKSTATION_TOOLS", "lifted_tools", "routes", "run_in_workstation"]
+# ── the workspace, with the workstation on (`B968`) ──────────────────────────
+
+def within(path: str, home: str) -> bool:
+    return path == home or path.startswith(home.rstrip("/") + "/")
+
+
+async def vet_workspace(owner: Optional[str], raw: Optional[str]) -> Optional[str]:
+    """`tool_execution.vet_workspace` for the workstation: the canonical path
+    of a folder in the person's workstation home, or None — not a folder there,
+    outside the home, or a sensitive folder. Asked when the picker sets one,
+    when a chat sends one, and when an approved action replays one (the three
+    places the host's is asked). Raises `WorkstationError` when the workstation
+    itself cannot answer, so a caller can tell "no" from "down".
+
+    The home, not the jail: with `sudo` on the daemon resolves `/etc` too, and
+    the owner's call is *a folder in my workstation home*."""
+    text = (raw or "").strip()
+    if not text:
+        return None
+    from src.workstation_access import workstation_for
+    client, account = workstation_for(owner)
+    try:
+        path = str((await client.list(account, text, max_entries=0))["path"])
+    except WorkstationError as e:
+        if e.code in _STATION_FAILURES:
+            raise
+        return None
+    home = await _home_path(client, account)
+    if not within(path, home) or _sensitive(path):
+        return None
+    return path
+
+
+async def describe_workspace(owner: Optional[str], workspace: Optional[str]) -> Dict:
+    """`get_workspace`'s answer when the person's tools run in the workstation:
+    the same question, answered about the machine the tools work on."""
+    if workspace:
+        return {"output": f"{workspace}\n(In your workstation. The shell and file tools start in "
+                          "this folder and read relative paths from it; it is where they start, "
+                          "not a boundary.)", "exit_code": 0}
+    try:
+        from src.workstation_access import workstation_for
+        client, account = workstation_for(owner)
+        where = f"your workstation home ({await _home_path(client, account)})"
+    except WorkstationError:
+        where = "your workstation home"
+    return {"output": f"No workspace is set. The shell and file tools run in your workstation and "
+                      f"start in {where}; relative paths are relative to it.", "exit_code": 0}
+
+
+__all__ = ["WORKSTATION_TOOLS", "describe_workspace", "lifted_tools", "routes",
+           "run_in_workstation", "vet_workspace"]

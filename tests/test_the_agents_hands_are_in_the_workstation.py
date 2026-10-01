@@ -250,7 +250,8 @@ def test_a_command_answers_in_the_envelope_the_host_answers_in(ws, settings, peo
     assert there["ran_in"] == "workstation"
     # `stdout`, `stderr` and `exit_code` are the envelope `FORBIDDEN.md`
     # protects; `output` is the model-facing merge, cut at MAX_OUTPUT_CHARS.
-    assert _without_where(there) == here
+    # `cwd`: a chat's shell reports its folder on both machines since `B962`.
+    assert _without_where(there) == _without_where(here)
 
 
 def test_bash_in_the_workstation_is_bash(ws, settings, people, host_dir):
@@ -277,7 +278,7 @@ def test_a_command_that_outlives_its_timeout_is_killed_and_said(ws, settings, pe
     there = _call("bash", "echo before; exec sleep 30", "ann")[1]
     assert there["exit_code"] == 124 and there["output"] == "before"
     assert there["error"] == "bash: timed out after 1s — process killed" == here["error"]
-    assert _without_where(there) == here
+    assert _without_where(there) == _without_where(here)
 
 
 def _progress(tool, command, owner, **kw):
@@ -748,11 +749,12 @@ def test_with_the_workstation_off_every_tool_runs_here_as_before(ws, settings, p
         for tool, args in _OFF_CASES:
             content = args if isinstance(args, str) else json.dumps(args)
             _, got = _call(tool, content, owner, workspace=str(root))
-            # What the dispatcher called before this row, for these tools:
-            # `_direct_fallback(tool, content)` — no session, so no tmux.
+            # What the dispatcher calls for these tools: `_direct_fallback` —
+            # with the chat since `B962`, so a shell keeps its folder.
             token = te._active_workspace.set(str(root))
             try:
-                direct = asyncio.run(te._direct_fallback(tool, content))
+                direct = asyncio.run(te._direct_fallback(tool, content, session_id="s1",
+                                                         owner=owner))
             finally:
                 te._active_workspace.reset(token)
             if tool in ("write_file", "edit_file", "apply_patch"):

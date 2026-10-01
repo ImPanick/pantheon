@@ -4377,8 +4377,11 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
                   const ws = m.default || m;
                   if (ws && ws.setWorkspace) ws.setWorkspace('');
                 });
+                // `B968`: the server's sentence when it has one (a folder in the
+                // workstation), the one for this machine when not.
                 uiModule.showToast(
-                  `Workspace ${_wsPath || '(unknown)'} is no longer usable; running without confinement`,
+                  (json.data && json.data.message) ||
+                    `Workspace ${_wsPath || '(unknown)'} is no longer usable; running without confinement`,
                   6000
                 );
                 continue;

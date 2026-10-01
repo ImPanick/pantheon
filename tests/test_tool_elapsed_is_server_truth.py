@@ -184,6 +184,7 @@ def test_the_image_progress_reads_the_server_figure_too():
 
 
 def test_every_progress_payload_carries_the_figure():
-    # Both emitters — the tmux path and the plain-subprocess path.
+    # The one emitter, `_progress_emitter`, which the workstation's shells
+    # share (`P20-03`). There were two until `B962` retired the tmux path.
     server = _SUBPROCESS_TOOLS.read_text(encoding="utf-8")
-    assert server.count('"elapsed_s": round(time.time() - started, 1)') == 2
+    assert server.count('"elapsed_s": round(time.time() - started, 1)') == 1

@@ -750,6 +750,41 @@ def _resolve_request_workspace(request, raw_value) -> tuple:
     return workspace, (requested if not workspace else "")
 
 
+def _works_in_workstation(request) -> bool:
+    """`B968`: does this person's shell and file work run in their workstation?
+    Then a workspace is a folder in their workstation home (`D-2026-10-01-01`).
+    A bearer token is the `api` pseudo-user here and may not (`B70`)."""
+    from src.workstation_access import routes_tools
+    state = getattr(getattr(request, "app", None), "state", None)
+    return routes_tools(get_current_user(request),
+                        auth_manager=getattr(state, "auth_manager", None))
+
+
+WORKSTATION_WORKSPACE_GONE = ("Workspace {path} is not a folder in your workstation; the "
+                              "agent's tools start in your workstation home.")
+
+
+async def _resolve_posted_workspace(request, raw_value) -> tuple:
+    """The posted workspace, resolved where this person's tools run: `(workspace,
+    rejected)`, as `_resolve_request_workspace` answers for this machine.
+
+    `B968`. With the workstation on, it is vetted by the workstation
+    (`workstation_tools.vet_workspace`): a folder in the person's home, which
+    is anyone who may use the workstation and not only an admin — it maps
+    their own home, not this machine. A workstation that does not answer binds
+    nothing and rejects nothing: every routed tool will say it is down."""
+    requested = (raw_value or "").strip()
+    if requested and _works_in_workstation(request):
+        from src.agent_tools.workstation_tools import vet_workspace as vet_in_workstation
+        from src.workstation_client import WorkstationError
+        try:
+            vetted = await vet_in_workstation(get_current_user(request), requested)
+        except WorkstationError:
+            return "", ""
+        return (vetted, "") if vetted else ("", requested)
+    return _resolve_request_workspace(request, raw_value)
+
+
 _ABS_PATH_RE = re.compile(r"(?<!\S)(~?/[^\"'\s`<>]+)")
 _LOCAL_FILE_TASK_RE = re.compile(
     r"\b(?:file|folder|directory|path|workspace|repo|project|movie|video|"
@@ -769,6 +804,10 @@ def _resolve_workspace_from_message_path(request, message: str) -> tuple[str, st
     """
     text = str(message or "")
     if not text or not _LOCAL_FILE_TASK_RE.search(text):
+        return "", ""
+    if _works_in_workstation(request):
+        # `B968`: a path on this machine is a folder the person's tools never
+        # reach. Not bound, and not a reason to promote the turn.
         return "", ""
 
     from src.tool_security import owner_is_admin_or_single_user
@@ -1458,7 +1497,7 @@ def setup_chat_routes(
         external_untrusted_context_seen = False
         tool_approval_continuation = False
         # Workspace: confine the agent's file/shell tools to this folder.
-        workspace, workspace_rejected = _resolve_request_workspace(
+        workspace, workspace_rejected = await _resolve_posted_workspace(
             request, form_data.get("workspace")
         )
         # Plan mode is a modifier on agent mode — it only makes sense with tools.
@@ -2162,7 +2201,11 @@ def setup_chat_routes(
             # front so the UI can clear the pill instead of displaying a
             # confinement that is not actually in effect.
             if workspace_rejected:
-                yield f"data: {json.dumps({'type': 'workspace_rejected', 'data': {'path': workspace_rejected}})}\n\n"
+                _rejected = {'path': workspace_rejected}
+                if _works_in_workstation(request):
+                    # `B968`: what the composer says when it clears the pill.
+                    _rejected['message'] = WORKSTATION_WORKSPACE_GONE.format(path=workspace_rejected)
+                yield f"data: {json.dumps({'type': 'workspace_rejected', 'data': _rejected})}\n\n"
 
             if ctx.preprocessed.attachment_meta:
                 yield f"data: {json.dumps({'type': 'attachments', 'data': ctx.preprocessed.attachment_meta})}\n\n"

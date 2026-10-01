@@ -361,6 +361,29 @@ def _runs_in_workstation(tool: Any, owner: Optional[str]) -> bool:
     from src.agent_tools.workstation_tools import routes
     return routes(tool, owner)
 
+
+def _works_in_workstation(owner: Optional[str]) -> bool:
+    """`B968`: does this person's shell and file work happen in their
+    workstation? Then the workspace they picked is a folder there
+    (`D-2026-10-01-01`), and is never bound as a folder on this machine."""
+    from src.workstation_access import routes_tools
+    return routes_tools(owner)
+
+
+async def _sealed_workspace_holds(sealed: str, owner: Optional[str]) -> bool:
+    """Is an approved action's workspace still the safe folder it was sealed
+    with? On this machine `vet_workspace` answers; with the workstation on, the
+    workstation does (`B968`) — and a workstation that cannot answer is not a
+    "no": the tool will say it is down, and nothing runs anywhere else."""
+    if _works_in_workstation(owner):
+        from src.agent_tools.workstation_tools import vet_workspace as vet_in_workstation
+        from src.workstation_client import WorkstationError
+        try:
+            return await vet_in_workstation(owner, sealed) == sealed
+        except WorkstationError:
+            return True
+    return vet_workspace(sealed) == sealed
+
 # ---------------------------------------------------------------------------
 # MCP-backed tool helpers
 # ---------------------------------------------------------------------------
@@ -518,11 +541,20 @@ async def _call_mcp_tool(
     tool: str,
     content: str,
     progress_cb: Optional[Callable[[Dict], Awaitable[None]]] = None,
+    session_id: Optional[str] = None,
+    owner: Optional[str] = None,
 ) -> Dict:
-    """Route a legacy tool call through the MCP manager, with direct fallbacks."""
+    """Route a legacy tool call through the MCP manager, with direct fallbacks.
+
+    `B962`: the fallback is told the chat (`session_id`) and the person
+    (`owner`), so `bash` and `python` can keep that chat's shell folder. It was
+    called with neither, which is why the tmux shell this replaced was never
+    reached; none of the other tools here reads either."""
     mcp = get_mcp_manager()
     if not mcp:
-        return await _direct_fallback(tool, content, progress_cb=progress_cb) or {"error": f"MCP manager not available for tool '{tool}'", "exit_code": 1}
+        return await _direct_fallback(tool, content, progress_cb=progress_cb,
+                                      session_id=session_id, owner=owner) \
+            or {"error": f"MCP manager not available for tool '{tool}'", "exit_code": 1}
 
     server_id, tool_name = _MCP_TOOL_MAP[tool]
     qualified = f"mcp__{server_id}__{tool_name}"
@@ -531,7 +563,8 @@ async def _call_mcp_tool(
 
     # If MCP server not connected, try direct fallback
     if isinstance(result, dict) and result.get("exit_code") == 1 and "not connected" in result.get("error", ""):
-        fallback = await _direct_fallback(tool, content, progress_cb=progress_cb)
+        fallback = await _direct_fallback(tool, content, progress_cb=progress_cb,
+                                          session_id=session_id, owner=owner)
         if fallback:
             return fallback
 
@@ -887,7 +920,7 @@ async def execute_tool_block(
                 owner=owner,
             )
         sealed_workspace = exact_approval.pending.workspace
-        if sealed_workspace and vet_workspace(sealed_workspace) != sealed_workspace:
+        if sealed_workspace and not await _sealed_workspace_holds(sealed_workspace, owner):
             return _refused(
                 block,
     {
@@ -942,7 +975,12 @@ async def execute_tool_block(
                 owner=owner,
             )
 
-    token = _active_workspace.set(workspace or None)
+    # `B968`. With the workstation on for this person, the workspace is a folder
+    # in their workstation home: handed to the tools that run there, and never
+    # bound here, where it would confine this machine's resolvers to a path
+    # this machine does not have.
+    station_workspace = workspace if (workspace and _works_in_workstation(owner)) else None
+    token = _active_workspace.set(None if station_workspace else (workspace or None))
     _t0 = time.monotonic()
     _tool_name = getattr(block, "tool_type", None)
     _tool_outcome = "ok"
@@ -970,6 +1008,7 @@ async def execute_tool_block(
                 if approval_claimed
                 else None
             ),
+            station_workspace=station_workspace,
         )
         if isinstance(security_context, ToolRunSecurityContext):
             security_context.observe_tool_result(
@@ -1023,8 +1062,12 @@ async def _execute_tool_block_impl(
     approved_document_id: Optional[str] = None,
     approved_document_version: Optional[int] = None,
     approved_document_digest: Optional[str] = None,
+    station_workspace: Optional[str] = None,
 ) -> Tuple[str, Dict]:
     """Execute a single tool block. Returns (description, result_dict).
+
+    `station_workspace` is the workspace when it is a folder in the person's
+    workstation (`B968`); a workspace on this machine is bound by the caller.
 
     `progress_cb` is forwarded to long-running subprocess tools
     (bash, python) so the agent loop can emit `tool_progress` SSE
@@ -1156,7 +1199,8 @@ async def _execute_tool_block_impl(
     if in_workstation:
         from src.agent_tools.workstation_tools import run_in_workstation
         desc, result = await run_in_workstation(
-            tool, content, owner=owner, session_id=session_id, progress_cb=progress_cb)
+            tool, content, owner=owner, session_id=session_id, progress_cb=progress_cb,
+            workspace=station_workspace)
         logger.info(f"Tool executed in the workstation: {desc} -> exit_code={result.get('exit_code', 'n/a')}")
         return desc, result
 
@@ -1168,7 +1212,12 @@ async def _execute_tool_block_impl(
         _is_bg, _bg_cmd = _split_bg_marker(content)
         if _is_bg and _bg_cmd:
             from src import bg_jobs
-            rec = bg_jobs.launch(_bg_cmd, session_id=session_id, cwd=agent_cwd())
+            from src.agent_tools.subprocess_tools import add_note, chat_key, host_start_folder
+            # `B962`: where the chat's shell is, as its foreground calls start.
+            # The job is detached, so where it ends moves nothing.
+            _bg_cwd, _bg_notes = host_start_folder(chat_key("host", owner, session_id),
+                                                   agent_cwd())
+            rec = bg_jobs.launch(_bg_cmd, session_id=session_id, cwd=_bg_cwd)
             short = _bg_cmd.strip().split(chr(10))[0][:80]
             desc = f"bash (background): {short}"
             result = {
@@ -1183,7 +1232,9 @@ async def _execute_tool_block_impl(
                 ),
                 "exit_code": 0,
                 "bg_job_id": rec["id"],
+                "cwd": _bg_cwd,
             }
+            add_note(result, *_bg_notes)
             logger.info(f"Tool executed: {desc} -> bg job {rec['id']}")
             return desc, result
 
@@ -1193,7 +1244,13 @@ async def _execute_tool_block_impl(
     if tool in _MCP_TOOL_MAP:
         first_line = content.split(chr(10))[0][:80]
         desc = f"{tool}: {first_line}"
-        result = await _call_mcp_tool(tool, content, progress_cb=progress_cb)
+        result = await _call_mcp_tool(tool, content, progress_cb=progress_cb,
+                                      session_id=session_id, owner=owner)
+    elif tool == "get_workspace" and (station_workspace or _works_in_workstation(owner)):
+        # `B968`. Asked where the tools work, answered about where they work.
+        from src.agent_tools.workstation_tools import describe_workspace
+        desc = "get_workspace: "
+        result = await describe_workspace(owner, station_workspace)
     elif tool in ("grep", "glob", "ls", "get_workspace"):
         # Code-navigation tools — no MCP server; run the direct implementation.
         first_line = content.split(chr(10))[0][:80]

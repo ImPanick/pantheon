@@ -1,13 +1,14 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 import asyncio
 import os
-import re
-import shutil
+import secrets
+import shlex
 import signal
 import sys
+import tempfile
 import time
 import collections
-from typing import Any, Optional, Callable, Awaitable, Tuple, Dict
+from typing import Any, Optional, Callable, Awaitable, List, Tuple, Dict
 from core.platform_compat import IS_WINDOWS, find_bash, kill_process_tree
 from src.constants import MAX_OUTPUT_CHARS
 
@@ -16,7 +17,6 @@ DEFAULT_PYTHON_TIMEOUT = 60 * 60
 
 PROGRESS_INTERVAL_S = 2.0
 PROGRESS_TAIL_LINES = 12
-TMUX_CAPTURE_LINES = 2000
 
 
 def split_streams(stdout: str, stderr: str, *, limit: int = MAX_OUTPUT_CHARS) -> Dict[str, str]:
@@ -121,220 +121,217 @@ def kill_tree(proc) -> None:
         pass
 
 
-# The persistent shell each chat session gets is a tmux session named after it.
-# `P0-31` renamed the prefix off the fork's old name, and a bare rename would
-# have been the wrong shape here for the same reason it was wrong for API
-# tokens: a tmux session already running under the old name would not be found,
-# so its cwd, its exported variables and anything it had backgrounded would be
-# silently abandoned — and the session itself would linger as a live process
-# until the machine restarted. So the new name is what gets created, and a
-# session still alive under an older one is adopted rather than orphaned.
-TMUX_SESSION_PREFIX = "pan-agent-"
-LEGACY_TMUX_SESSION_PREFIXES = ("ody-agent-",)
+# ── `B962`: each chat's shell keeps its folder, and nothing else ─────────────
+#
+# The owner's call (`D-2026-10-01-01`): *keep the working folder per chat, on
+# both machines; environment resets.* So every call is still a fresh shell —
+# variables, functions, options and background jobs end with it, as they always
+# have — started in the folder the chat's last shell ended in.
+#
+# That replaces the tmux shell this module carried (`P0-31`'s adoption logic
+# with it). It was never reached from an agent turn: `_call_mcp_tool` called
+# `_direct_fallback` without a session, in the fork's first commit as in
+# `a633efc` (`B962`, measured by `P20-03`: `cd /` then `pwd` printed the
+# workspace), so no chat ever had one and none can be orphaned by its removal.
+# It also kept what the owner chose to reset — the environment — and there is
+# no tmux in the workstation, so keeping it would have been a second way to do
+# one thing (`Law 14`) held dead by a switch (`Law 13`).
 
-# slug -> the name actually in use. One `tmux has-session` pair on the first
-# command of a session, nothing after that; without it the adoption probe would
-# ride every bash call. Capped because a long-lived process should not grow a
-# dictionary keyed by every chat that ever ran in it.
-_RESOLVED_TMUX_NAMES: Dict[str, str] = {}
-_MAX_RESOLVED_TMUX_NAMES = 512
+class _ChatFolders:
+    """Where each chat's shell is between calls: `key -> (start, folder)`.
+
+    `start` is the folder the chat's calls start in when nothing is held — the
+    workspace, or the default folder — so picking another workspace moves the
+    shell there rather than leaving it somewhere the person no longer meant.
+    A shell that ends in its start folder holds nothing. Capped, because a
+    long-lived process should not grow a map keyed by every chat it served,
+    and in memory: a restart of Pantheon starts each chat's shell in its start
+    folder again."""
+
+    def __init__(self, cap: int = 512):
+        self._cap = cap
+        self._held: "collections.OrderedDict[Tuple, Tuple[str, str]]" = collections.OrderedDict()
+
+    def recall(self, key: Optional[Tuple], start: str) -> Tuple[Optional[str], Optional[str]]:
+        """`(folder, sentence)`: the folder held for this chat, or None — with
+        a sentence when one was held under a different start folder."""
+        if key is None or key not in self._held:
+            return None, None
+        held_start, folder = self._held[key]
+        if held_start != start:
+            del self._held[key]
+            return None, (f"The workspace changed, so this chat's shell starts in {start} "
+                          f"(it was in {folder}).")
+        self._held.move_to_end(key)
+        return folder, None
+
+    def keep(self, key: Optional[Tuple], start: str, folder: Optional[str]) -> None:
+        if key is None:
+            return
+        if not folder or folder == start:
+            self._held.pop(key, None)
+            return
+        self._held[key] = (start, folder)
+        self._held.move_to_end(key)
+        while len(self._held) > self._cap:
+            self._held.popitem(last=False)
+
+    def forget(self, key: Optional[Tuple]) -> None:
+        if key is not None:
+            self._held.pop(key, None)
+
+    def clear(self) -> None:
+        self._held.clear()
 
 
-def _tmux_session_slug(session_id: Optional[str]) -> str:
-    raw = re.sub(r"[^A-Za-z0-9_.-]+", "-", str(session_id or "default")).strip("-")
-    return raw[:80] or "default"
+CHAT_FOLDERS = _ChatFolders()
 
 
-def _tmux_session_name(session_id: Optional[str]) -> str:
-    """The name in use for this session — adopted if one was, current if not.
-
-    Reads the resolution rather than recomputing it, so the name reported back
-    to the caller is the session their command actually ran in."""
-    slug = _tmux_session_slug(session_id)
-    return _RESOLVED_TMUX_NAMES.get(slug) or (TMUX_SESSION_PREFIX + slug)
-
-
-async def _resolve_tmux_session_name(session_id: Optional[str]) -> str:
-    """Current name if it exists or nothing older does; otherwise the live
-    older one."""
-    slug = _tmux_session_slug(session_id)
-    cached = _RESOLVED_TMUX_NAMES.get(slug)
-    if cached:
-        return cached
-    name = TMUX_SESSION_PREFIX + slug
-    if not await _tmux_has_session(name):
-        for prefix in LEGACY_TMUX_SESSION_PREFIXES:
-            legacy = prefix + slug
-            if await _tmux_has_session(legacy):
-                name = legacy
-                break
-    if len(_RESOLVED_TMUX_NAMES) >= _MAX_RESOLVED_TMUX_NAMES:
-        _RESOLVED_TMUX_NAMES.pop(next(iter(_RESOLVED_TMUX_NAMES)), None)
-    _RESOLVED_TMUX_NAMES[slug] = name
-    return name
+def chat_key(machine: str, who: Optional[str], session_id: Optional[str]) -> Optional[Tuple]:
+    """The chat a call belongs to, on one machine; None for a call outside a
+    chat, whose shell then always starts in the start folder, as before."""
+    if not session_id:
+        return None
+    return (machine, str(who or ""), str(session_id))
 
 
-async def _run_exec(*args: str, timeout: float = 10) -> Tuple[str, str, int]:
-    proc = await asyncio.create_subprocess_exec(
-        *args,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    try:
-        out_b, err_b = await asyncio.wait_for(proc.communicate(), timeout=timeout)
-    except asyncio.TimeoutError:
+def gone_sentence(folder: str, start: str) -> str:
+    return (f"This chat's shell was in {folder}, which is no longer there, "
+            f"so this command started in {start}.")
+
+
+def add_note(result: Dict, *sentences: Optional[str]) -> Dict:
+    """Append sentences to a result's `note`, the one field the model reads
+    about where and how a command ran (`P20-03` uses it for truncation)."""
+    said = [s for s in ([result.get("note")] + list(sentences)) if s]
+    if said:
+        result["note"] = " ".join(said)
+    return result
+
+
+class _CwdReport:
+    """How a fresh shell tells Pantheon the folder it ended in.
+
+    An `EXIT` trap, set on the same line as the command so the line numbers in
+    the person's own error messages do not move, writes a per-call nonce and
+    `pwd -P` to a file Pantheon reads afterwards. It runs on `exit N`, on a
+    `set -e` failure and at the end, and keeps the command's exit status
+    (measured in bash and dash). It writes nothing when the command replaces
+    the shell (`exec`) or sets its own `EXIT` trap; the folder is then unknown
+    and the chat keeps the one it had. `{ set +x; }` keeps an `xtrace` the
+    command switched on from printing the trap. Where bash quotes a line back
+    in a syntax error, the prefix is removed from the output (`scrub`) — it is
+    one line and carries the nonce, so nothing else can match it."""
+
+    VAR = "__pantheon_cwd_report"
+
+    def __init__(self, target_expr: str, *, windows: bool = False):
+        self.nonce = secrets.token_hex(8)
+        # Git Bash's `pwd -W` is the folder as Windows names it (`C:/…`); not
+        # measured here (no Windows in this sandbox) — a shell that cannot run
+        # it writes nothing, and the chat keeps its folder as before.
+        pwd = "command pwd -W" if windows else "command pwd -P"
+        body = ('{ set +x; } 2>/dev/null; { command printf "%s\\n" ' + self.nonce + "; "
+                + pwd + '; } 2>/dev/null >| "$' + self.VAR + '" || :')
+        self.prefix = f"{self.VAR}={target_expr}; trap {shlex.quote(body)} EXIT; "
+
+    def wrap(self, command: str) -> str:
+        return self.prefix + command
+
+    def scrub(self, text: str) -> str:
+        return text.replace(self.prefix, "") if text else text
+
+    def parse(self, data: bytes) -> Optional[str]:
+        head, sep, rest = bytes(data or b"").partition(b"\n")
+        if not sep or head != self.nonce.encode("ascii"):
+            return None
+        if rest.endswith(b"\n"):
+            rest = rest[:-1]
+        return os.fsdecode(rest) or None
+
+
+class _HostReport(_CwdReport):
+    """The report file on Pantheon's own machine: a private temporary file,
+    removed after the call."""
+
+    def __init__(self):
+        fd, self.path = tempfile.mkstemp(prefix="pantheon-shell-cwd-")
+        os.close(fd)
+        shown = self.path.replace("\\", "/") if IS_WINDOWS else self.path
+        super().__init__(shlex.quote(shown), windows=IS_WINDOWS)
+
+    def read(self) -> Optional[str]:
         try:
-            proc.kill()
-        except Exception:
+            with open(self.path, "rb") as f:
+                return self.parse(f.read(65536))
+        except OSError:
+            return None
+
+    def discard(self) -> None:
+        try:
+            os.unlink(self.path)
+        except OSError:
             pass
-        return "", "timeout", 124
-    return (
-        out_b.decode("utf-8", errors="replace"),
-        err_b.decode("utf-8", errors="replace"),
-        proc.returncode or 0,
-    )
 
 
-async def _tmux_has_session(name: str) -> bool:
-    _, _, rc = await _run_exec("tmux", "has-session", "-t", name, timeout=3)
-    return rc == 0
+def _host_refusal(folder: str) -> Optional[str]:
+    """Why the shell may not start in `folder` on this machine, or None.
+
+    `B962`: the shell itself is not sandboxed (`THREAT_MODEL.md` Known Gap 1),
+    but the folder a chat's next command starts in is held to the rule the file
+    tools follow here — `_resolve_tool_path`: inside the workspace when one is
+    bound, inside the allowed roots when not, never a sensitive folder — so a
+    `cd ~/.ssh` (or a prompt injection's `cd /`) does not become where every
+    later command starts."""
+    from src.tool_execution import _is_sensitive_path, _resolve_tool_path, get_active_workspace
+    if not os.path.isdir(folder):
+        return "gone"
+    if _is_sensitive_path(folder):
+        return "a sensitive folder (such as .ssh) the file tools refuse"
+    try:
+        _resolve_tool_path(folder)
+    except ValueError:
+        ws = get_active_workspace()
+        return (f"outside the workspace ({ws})" if ws
+                else "outside the folders Pantheon's file tools may use")
+    return None
 
 
-async def _tmux_capture(name: str) -> str:
-    out, _, _ = await _run_exec(
-        "tmux", "capture-pane", "-p", "-J", "-S", f"-{TMUX_CAPTURE_LINES}", "-t", name,
-        timeout=5,
-    )
-    return out
+def host_start_folder(key: Optional[Tuple], start: str) -> Tuple[str, List[str]]:
+    """The folder this chat's next host command starts in, and what to say."""
+    folder, said = CHAT_FOLDERS.recall(key, start)
+    notes = [said] if said else []
+    if folder:
+        why = _host_refusal(folder)
+        if why:
+            CHAT_FOLDERS.forget(key)
+            notes.append(gone_sentence(folder, start) if why == "gone" else
+                         f"This chat's shell was in {folder}, {why}, so this command started "
+                         f"in {start}.")
+            folder = None
+    return folder or start, notes
 
 
-async def _tmux_send_line(name: str, line: str) -> None:
-    if line:
-        await _run_exec("tmux", "send-keys", "-t", name, "-l", line, timeout=5)
-    await _run_exec("tmux", "send-keys", "-t", name, "C-m", timeout=5)
+def host_end_folder(key: Optional[Tuple], start: str, ran_in: str,
+                    ended_in: Optional[str], notes: List[str]) -> str:
+    """Record where the chat's shell ended; answer where its next call starts."""
+    if ended_in is None:
+        # Unknown (the command replaced the shell, or set its own EXIT trap):
+        # the chat keeps the folder this call started in.
+        return ran_in
+    real = os.path.realpath(ended_in)
+    if real == os.path.realpath(start):
+        CHAT_FOLDERS.forget(key)
+        return start
+    why = _host_refusal(real)
+    if why is None:
+        CHAT_FOLDERS.keep(key, start, real)
+        return real
+    CHAT_FOLDERS.forget(key)
+    if why != "gone":
+        notes.append(f"The shell ended in {real}, {why}, so the next command starts in {start}.")
+    return start
 
-
-async def _ensure_tmux_session(name: str, cwd: str, env: Optional[dict]) -> None:
-    if await _tmux_has_session(name):
-        await _run_exec("tmux", "send-keys", "-t", name, "stty -echo", "C-m", timeout=5)
-        return
-    await _run_exec(
-        "tmux", "new-session", "-d", "-s", name, "-c", cwd,
-        "env",
-        f"TERM={env.get('TERM', 'xterm-256color') if env else 'xterm-256color'}",
-        f"COLUMNS={env.get('COLUMNS', '120') if env else '120'}",
-        f"LINES={env.get('LINES', '40') if env else '40'}",
-        "/bin/bash",
-        "--noprofile",
-        "--norc",
-        timeout=10,
-    )
-    if not await _tmux_has_session(name):
-        raise RuntimeError(f"failed to create tmux session {name}")
-    await _run_exec("tmux", "send-keys", "-t", name, "stty -echo", "C-m", timeout=5)
-
-
-def _output_after_marker(capture: str, start_marker: str, end_marker: str) -> Tuple[str, bool]:
-    lines = capture.splitlines()
-    start_idx = -1
-    for idx, line in enumerate(lines):
-        if line.strip() == start_marker:
-            start_idx = idx
-    if start_idx < 0:
-        return capture, False
-    end_idx = -1
-    for idx in range(start_idx + 1, len(lines)):
-        if lines[idx].strip().startswith(end_marker):
-            end_idx = idx
-    if end_idx < 0:
-        return "\n".join(lines[start_idx + 1:]), False
-    return "\n".join(lines[start_idx + 1:end_idx]), True
-
-
-def _extract_marker_rc(capture: str, end_marker: str) -> int:
-    for line in reversed(capture.splitlines()):
-        stripped = line.strip()
-        if stripped.startswith(end_marker):
-            suffix = stripped[len(end_marker):].strip()
-            if suffix.isdigit():
-                return int(suffix)
-    return 0
-
-
-async def _run_tmux_bash(
-    content: str,
-    *,
-    session_id: str,
-    cwd: str,
-    env: Optional[dict],
-    timeout: float,
-    progress_cb: Optional[Callable[[Dict], Awaitable[None]]] = None,
-) -> Tuple[str, str, Optional[int], bool]:
-    name = await _resolve_tmux_session_name(session_id)
-    await _ensure_tmux_session(name, cwd, env)
-
-    stamp = f"{int(time.time() * 1000)}-{abs(hash(content)) % 1000000}"
-    start_marker = f"__PANTHEON_CMD_START_{stamp}__"
-    end_prefix = f"__PANTHEON_CMD_END_{stamp}__:"
-    wrapped = (
-        f"printf '\\n{start_marker}\\n'\n"
-        f"{content}\n"
-        f"__pan_rc=$?\n"
-        f"printf '\\n{end_prefix}%s\\n' \"$__pan_rc\"\n"
-    )
-    for line in wrapped.splitlines():
-        await _tmux_send_line(name, line)
-
-    started = time.time()
-    last_tail = ""
-    while True:
-        capture = await _tmux_capture(name)
-        body, done = _output_after_marker(capture, start_marker, end_prefix)
-        tail = "\n".join(body.splitlines()[-PROGRESS_TAIL_LINES:])
-        if progress_cb and tail != last_tail:
-            last_tail = tail
-            try:
-                await progress_cb({
-                    "elapsed_s": round(time.time() - started, 1),
-                    "tail": tail,
-                    "tmux_session": name,
-                })
-            except Exception:
-                pass
-        if done:
-            rc = _extract_marker_rc(capture, end_prefix)
-            cleaned = _clean_tmux_command_output(body, wrapped)
-            return cleaned, "", rc, False
-        if time.time() - started > timeout:
-            try:
-                await _run_exec("tmux", "send-keys", "-t", name, "C-c", timeout=3)
-            except Exception:
-                pass
-            cleaned = _clean_tmux_command_output(body, wrapped)
-            return cleaned, "", 124, True
-        await asyncio.sleep(0.5)
-
-
-def _clean_tmux_command_output(text: str, wrapped_command: str) -> str:
-    lines = text.splitlines()
-    wrapped_lines = {ln.rstrip() for ln in wrapped_command.splitlines() if ln.strip()}
-    cleaned = []
-    for line in lines:
-        raw = line.rstrip()
-        stripped = raw.strip()
-        if not stripped:
-            cleaned.append(raw)
-            continue
-        if stripped in wrapped_lines:
-            continue
-        if stripped.startswith("__pan_rc=") or stripped.startswith("printf "):
-            continue
-        if re.fullmatch(r"(?:bash|sh)-[\d.]+\$ ?", stripped):
-            continue
-        if re.fullmatch(r"[\w.@:/~+-]+[#$] ?", stripped):
-            continue
-        cleaned.append(raw)
-    return "\n".join(cleaned).strip()
 
 def _tail_line(decoded: str, label: str) -> str:
     """One line of a running command's live tail: stderr lines marked `! `."""
@@ -361,7 +358,7 @@ async def _progress_emitter(progress_cb: Callable[[Dict], Awaitable[None]], star
 
 def _shell_result(tool: str, stdout: str, stderr: str, rc: Optional[int], timed_out: bool,
                   timeout: float) -> Dict:
-    """What `bash` (without tmux) and `python` answer once the command is over."""
+    """What `bash` and `python` answer once the command is over."""
     if timed_out:
         # `P4-19`: `output` too. This branch returned the two streams and no
         # merged view, so a killed command drew a card with nothing in it —
@@ -383,12 +380,14 @@ async def _run_subprocess_streaming(
     *,
     timeout: float,
     progress_cb: Optional[Callable[[Dict], Awaitable[None]]] = None,
+    scrub: Optional[Callable[[str], str]] = None,
 ) -> Tuple[str, str, Optional[int], bool]:
     """Wait for a command, streaming its last lines to `progress_cb`.
 
     `B964`: on a timeout and on a cancel, `kill_tree` stops the command and
     everything it started (it was started by `own_process_group`), so nothing
-    of it outlives the call or holds the pipes the readers are waiting on."""
+    of it outlives the call or holds the pipes the readers are waiting on.
+    `scrub` is applied to each line before it is kept (`_CwdReport.scrub`)."""
     started = time.time()
     stdout_full: list[str] = []
     stderr_full: list[str] = []
@@ -402,6 +401,8 @@ async def _run_subprocess_streaming(
             if not line:
                 break
             decoded = line.decode("utf-8", errors="replace").rstrip("\n")
+            if scrub is not None:
+                decoded = scrub(decoded)
             full_buf.append(decoded)
             tail.append(_tail_line(decoded, label))
 
@@ -458,68 +459,59 @@ async def _run_subprocess_streaming(
 
 class BashTool:
     async def execute(self, content: str, ctx: dict) -> dict:
-        from src.tool_execution import agent_cwd, _truncate
+        from src.tool_execution import agent_cwd
         content = _bash_command(content)
         progress_cb = ctx.get("progress_cb")
         _subproc_env = ctx.get("subproc_env")
-        session_id = ctx.get("session_id")
-        # tmux is a POSIX persistence path. A stray MSYS/Cygwin tmux.exe on
-        # native Windows must not bypass the Git Bash launcher below: the tmux
-        # setup hard-codes /bin/bash and cannot safely consume a native cwd.
-        if session_id and not IS_WINDOWS and shutil.which("tmux"):
-            stdout, stderr, rc, timed_out = await _run_tmux_bash(
-                content,
-                session_id=str(session_id),
-                cwd=agent_cwd(),
-                env=_subproc_env,
+        # `B962`. The chat this call belongs to keeps its shell's folder; a call
+        # outside a chat starts where every call started before.
+        key = chat_key("host", ctx.get("owner"), ctx.get("session_id"))
+        start = agent_cwd()
+        cwd, notes = host_start_folder(key, start)
+        report = _HostReport() if key else None
+        try:
+            try:
+                proc = await _create_bash_subprocess(
+                    report.wrap(content) if report else content,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                    env=_subproc_env,
+                    cwd=cwd,
+                    **own_process_group(),
+                )
+            except RuntimeError as e:
+                return {"error": f"bash: {e}", "exit_code": 1}
+            stdout, stderr, rc, timed_out = await _run_subprocess_streaming(
+                proc,
                 timeout=DEFAULT_BASH_TIMEOUT,
                 progress_cb=progress_cb,
+                scrub=report.scrub if report else None,
             )
-            if timed_out:
-                return {
-                    "error": f"bash: timed out after {DEFAULT_BASH_TIMEOUT}s — sent Ctrl-C to tmux session",
-                    "exit_code": 124,
-                    **split_streams(stdout, stderr),
-                    "tmux_session": _tmux_session_name(str(session_id)),
-                }
-            return {
-                **split_streams(stdout, stderr),
-                "exit_code": rc or 0,
-                "tmux_session": _tmux_session_name(str(session_id)),
-            }
-
-        try:
-            proc = await _create_bash_subprocess(
-                content,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-                env=_subproc_env,
-                cwd=agent_cwd(),
-                **own_process_group(),
-            )
-        except RuntimeError as e:
-            return {"error": f"bash: {e}", "exit_code": 1}
-        stdout, stderr, rc, timed_out = await _run_subprocess_streaming(
-            proc,
-            timeout=DEFAULT_BASH_TIMEOUT,
-            progress_cb=progress_cb,
-        )
-        result = _shell_result("bash", stdout, stderr, rc, timed_out, DEFAULT_BASH_TIMEOUT)
-        if not IS_WINDOWS and not find_bash():
-            result["note"] = NO_BASH_NOTE
-        return result
+            result = _shell_result("bash", stdout, stderr, rc, timed_out, DEFAULT_BASH_TIMEOUT)
+            if not IS_WINDOWS and not find_bash():
+                notes.append(NO_BASH_NOTE)
+            if key:
+                result["cwd"] = host_end_folder(key, start, cwd, report.read(), notes)
+            return add_note(result, *notes)
+        finally:
+            if report is not None:
+                report.discard()
 
 class PythonTool:
     async def execute(self, content: str, ctx: dict) -> dict:
-        from src.tool_execution import agent_cwd, _truncate
+        from src.tool_execution import agent_cwd
         progress_cb = ctx.get("progress_cb")
         _subproc_env = ctx.get("subproc_env")
+        # `B962`. Python starts in the folder the chat's shell is in, and does
+        # not move it: an `os.chdir` inside a script is the script's business.
+        key = chat_key("host", ctx.get("owner"), ctx.get("session_id"))
+        cwd, notes = host_start_folder(key, agent_cwd())
         proc = await asyncio.create_subprocess_exec(
             (sys.executable or "python"), "-I", "-c", content,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             env=_subproc_env,
-            cwd=agent_cwd(),
+            cwd=cwd,
             **own_process_group(),
         )
         stdout, stderr, rc, timed_out = await _run_subprocess_streaming(
@@ -527,4 +519,7 @@ class PythonTool:
             timeout=DEFAULT_PYTHON_TIMEOUT,
             progress_cb=progress_cb,
         )
-        return _shell_result("python", stdout, stderr, rc, timed_out, DEFAULT_PYTHON_TIMEOUT)
+        result = _shell_result("python", stdout, stderr, rc, timed_out, DEFAULT_PYTHON_TIMEOUT)
+        if key:
+            result["cwd"] = cwd
+        return add_note(result, *notes)

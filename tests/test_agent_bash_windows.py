@@ -68,20 +68,18 @@ async def test_bash_tool_returns_install_hint_when_git_bash_is_missing(monkeypat
 
 
 @pytest.mark.asyncio
-async def test_windows_bash_does_not_use_a_stray_tmux_executable(monkeypatch):
+async def test_windows_bash_in_a_chat_uses_git_bash_with_structural_cwd(monkeypatch):
+    """Was `test_windows_bash_does_not_use_a_stray_tmux_executable`: a chat's
+    call must not leave the Git Bash launcher for the POSIX tmux shell. `B962`
+    retired that shell, so what is left to hold is the half that still
+    matters: a call in a chat goes through the launcher with the workspace as
+    the structural `cwd`, and its folder report asks Git Bash for the Windows
+    form of the folder (`pwd -W`)."""
     captured = {}
     workspace = r"D:\Workspaces\Project with spaces"
 
     monkeypatch.setattr(subprocess_tools, "IS_WINDOWS", True)
-    monkeypatch.setattr(
-        subprocess_tools.shutil,
-        "which",
-        lambda name: r"C:\msys64\usr\bin\tmux.exe",
-    )
     monkeypatch.setattr("src.tool_execution.agent_cwd", lambda: workspace)
-
-    async def fail_tmux(*_args, **_kwargs):
-        pytest.fail("native Windows must not enter the POSIX tmux path")
 
     async def fake_create(command, **kwargs):
         captured["command"] = command
@@ -91,7 +89,6 @@ async def test_windows_bash_does_not_use_a_stray_tmux_executable(monkeypatch):
     async def fake_stream(_process, **_kwargs):
         return "ok", "", 0, False
 
-    monkeypatch.setattr(subprocess_tools, "_run_tmux_bash", fail_tmux)
     monkeypatch.setattr(subprocess_tools, "_create_bash_subprocess", fake_create)
     monkeypatch.setattr(subprocess_tools, "_run_subprocess_streaming", fake_stream)
 
@@ -106,8 +103,12 @@ async def test_windows_bash_does_not_use_a_stray_tmux_executable(monkeypatch):
     assert result["output"] == "ok"
     assert result["exit_code"] == 0
     assert result["stderr"] == ""
-    assert captured["command"] == "pwd"
+    assert captured["command"].endswith("; pwd")
+    assert "command pwd -W" in captured["command"]
     assert captured["kwargs"]["cwd"] == workspace
+    # No POSIX process-group flag on Windows; the tree is killed by parent.
+    assert "start_new_session" not in captured["kwargs"]
+    assert result["cwd"] == workspace
 
 
 @pytest.mark.asyncio

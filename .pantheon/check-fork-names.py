@@ -67,15 +67,8 @@ ALLOWED = {
         "`ACCEPTED_TOKEN_PREFIXES` still honours `ody_`. Every token minted "
         "before 2026-09-07 carries it — in an .env, in a paired phone, in a "
         "scrape config — and dropping it revokes all of them at once.",
-    "src/agent_tools/subprocess_tools.py":
-        "`LEGACY_TMUX_SESSION_PREFIXES`. A tmux session still alive under the "
-        "old name is adopted rather than orphaned; without it the shell keeps "
-        "running and the user simply loses it.",
     "tests/test_token_prefix_migration.py":
         "The migration's own tests. `LEGACY_PREFIX` is the subject.",
-    "tests/test_tmux_session_name_adoption.py":
-        "Same, for the shell: the adoption tests name the old prefix because "
-        "that is what they are about.",
     "tests/test_api_token_routes.py":
         "Stored `token_prefix` values kept at the old spelling on purpose — "
         "they are what a pre-migration row looks like, and sweeping them would "
