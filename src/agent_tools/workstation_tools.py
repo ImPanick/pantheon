@@ -445,7 +445,8 @@ async def _shell(st: _Station, tool: str, shell: str, command: str, timeout: flo
         from workstation.protocol import MAX_OUTPUT_BYTES
         result["note"] = (f"The workstation keeps the last {MAX_OUTPUT_BYTES:,} bytes of each "
                           "stream; the start of this output was dropped there.")
-    notes.append(network_refusal_note(st.network, stdout, stderr))
+    notes.append(network_refusal_note(st.network, stdout, stderr,
+                                      command=command))   # `B1011`: the command too
     return sp.add_note(result, *notes)
 
 
@@ -460,9 +461,10 @@ async def _shell(st: _Station, tool: str, shell: str, command: str, timeout: flo
 # git), *Temporary failure in name resolution* (Python, getent). An agent reading
 # those debugs a network that is working as an admin set it. So a result whose
 # output shows one of them, from a workstation whose mode is held, says the mode.
-# Not read as one: a UDP send's *Operation not permitted* — a file permission
-# error says the same words — and *Network is unreachable*, which the rules never
-# cause (no route at all).
+# Not read as one: *Network is unreachable*, which the rules never cause (no
+# route at all). A UDP send's *Operation not permitted* — which a file permission
+# error also says — is read only where the output tells the two apart (`B1011`,
+# below).
 _REFUSED_RE = re.compile(r"No route to host|Couldn't connect to server|EHOSTUNREACH")
 _UNRESOLVED_RE = re.compile(r"Could not resolve host|Temporary failure in name resolution|"
                             r"Temporary failure resolving|unable to resolve host address")
@@ -485,30 +487,114 @@ NETWORK_INTERNET_NOTE = (
     "host\" or \"Couldn't connect to server\". If this connection was to one, that is the "
     "setting, not a fault to debug.")
 
+# ── a send the network mode refused (`B1011`) ────────────────────────────────
+#
+# Measured 2026-10-01 under the gate's real *internet* rules (`netrules.ruleset`
+# loaded with nft into a fresh network namespace with a default route; kernel
+# 6.18, Python 3.11, bash 5.2, OpenBSD netcat 1.226 — Ubuntu's): a UDP send to a
+# refused address fails at once with EPERM, and
+#
+# * **Python** quotes the send — `s.sendto(b'x', ('192.168.1.1', 161))` — above
+#   `PermissionError: [Errno 1] Operation not permitted`, and nothing after it.
+#   A file operation's EPERM ends with the file's name (`…not permitted:
+#   '/path'`); a send's never does, and the line above it is a send. Both read,
+#   so `os.chown` and `os.kill` (no name, not a send) are not taken for one.
+#   mDNS's `224.0.0.251` is refused the same way (`224.0.0.0/3`).
+# * **bash** `echo hi > /dev/udp/192.168.1.1/161` prints `bash: line 1: echo:
+#   write error: Operation not permitted` — word for word what a write a file
+#   refuses prints. Read as a send only when the command itself writes to
+#   `/dev/udp/`, and the address is the command's.
+# * **`nc -u`** prints nothing and exits 0, with or without `-v`: nothing in the
+#   result shows a refusal, so nothing is said (filed — only the gate's own
+#   counters could tell it).
+#
+# A send to a public address is never the gate's (it refuses only `excluded`
+# ones), so one that failed this way was somebody else's and is left alone.
+_PY_EPERM_RE = re.compile(r"^(?:PermissionError|OSError): \[Errno 1\] Operation not permitted\s*$")
+_PY_SEND_RE = re.compile(r"\.(?:sendto|sendall|sendmsg|send)\(")
+_WRITE_EPERM_RE = re.compile(r"write error: Operation not permitted")
+_DEV_UDP_RE = re.compile(r"/dev/udp/([^/\s'\"]+)/\d+")
 
-def network_refusal_note(mode: Optional[str], *outputs: str) -> Optional[str]:
-    """The sentence for a command whose output shows a connection refused the
-    way the network mode `mode` refuses one, or None — when no narrowing mode
-    is held, when nothing in the output is such a refusal, or when every
-    address the refusal names is one the mode lets through (the refusal was
-    somebody else's)."""
+NETWORK_SEND_NOTE = (
+    "{address} is {kind}, and this workstation's network mode is internet only (an admin's "
+    "setting): it refuses every send to your local network, multicast and every other private "
+    "address at once. Here that shows as \"Operation not permitted\" — the setting, not a file "
+    "permission or a fault to debug. Ask an admin if the work needs it.")
+NETWORK_SEND_INTERNET_NOTE = (
+    "This workstation's network mode is internet only (an admin's setting): it refuses every "
+    "send to your local network, multicast and every other private address at once, which "
+    "shows as \"Operation not permitted\". If this send was to one, that is the setting, not a "
+    "file permission or a fault to debug.")
+
+
+def _refused_sends(text: str, command: str):
+    """`B1011`: `(found, addresses)` — whether the output shows a send refused
+    with EPERM in a shape a file error never has, and the addresses it went to
+    where the output (Python) or the command (bash's `/dev/udp`) names them."""
+    import ipaddress
+    found, named = False, []
+    lines = text.splitlines()
+    for i, line in enumerate(lines):
+        if not _PY_EPERM_RE.match(line.strip()):
+            continue
+        # The source line the traceback quotes for the frame that raised: the
+        # nearest indented line above, past Python 3.11's `^^^^` markers.
+        quoted = next((ln for ln in reversed(lines[:i])
+                       if ln.startswith("    ") and ln.strip().strip("^~ ")), "")
+        if _PY_SEND_RE.search(quoted):
+            found = True
+            named += _addresses([quoted])
+    if _WRITE_EPERM_RE.search(text):
+        for host in _DEV_UDP_RE.findall(command or ""):
+            found = True
+            try:
+                named.append(str(ipaddress.ip_address(host.strip("[]"))))
+            except ValueError:
+                continue   # a name: where it went is not known here
+    return found, named
+
+
+def _send_kind(address: str) -> str:
+    import ipaddress
+    return ("a multicast address" if ipaddress.ip_address(address).is_multicast
+            else "a private address")
+
+
+def network_refusal_note(mode: Optional[str], *outputs: str,
+                         command: str = "") -> Optional[str]:
+    """The sentence for a command whose output shows a connection — or, `B1011`,
+    a send — refused the way the network mode `mode` refuses one, or None —
+    when no narrowing mode is held, when nothing in the output is such a
+    refusal, or when every address the refusal names is one the mode lets
+    through (the refusal was somebody else's). `command`, what ran: read only
+    for where a bash `/dev/udp/` write was sent."""
     if mode not in ("internet", "none"):
         return None
     text = "\n".join(o for o in outputs if o)
     lines = [ln for ln in text.splitlines() if _REFUSED_RE.search(ln)]
+    sent, sent_to = _refused_sends(text, command)
     if mode == "none":
-        return NETWORK_NONE_NOTE if lines or _UNRESOLVED_RE.search(text) else None
-    if not lines:
-        return None
+        return NETWORK_NONE_NOTE if lines or sent or _UNRESOLVED_RE.search(text) else None
     from workstation import netrules
     # The address the refusal names, where it names one (curl, git, bash);
     # else the output's (a Python traceback quotes the line with the address
     # above the error that has none).
-    named = _addresses(lines) or _addresses(text.splitlines())
+    named = (_addresses(lines) or _addresses(text.splitlines())) if lines else []
     private = [a for a in named if netrules.excluded(a)]
     if private:
         return NETWORK_PRIVATE_NOTE.format(address=private[0])
-    return None if named else NETWORK_INTERNET_NOTE
+    # `B1011`: a refused send. A refused address named beats a sentence that
+    # can only say "if" — whichever of the two kinds of refusal names it — and a
+    # connection refused at a public address (somebody else's) leaves a send in
+    # the same output still to read.
+    private = [a for a in sent_to if netrules.excluded(a)] if sent else []
+    if private:
+        return NETWORK_SEND_NOTE.format(address=private[0], kind=_send_kind(private[0]))
+    if lines and not named:
+        return NETWORK_INTERNET_NOTE
+    if sent and not sent_to:
+        return NETWORK_SEND_INTERNET_NOTE
+    return None
 
 
 def _addresses(lines) -> list:
@@ -978,4 +1064,5 @@ async def describe_workspace(owner: Optional[str], workspace: Optional[str]) -> 
 __all__ = ["WORKSTATION_TOOLS", "describe_workspace", "lifted_tools", "routes",
            "run_in_workstation", "vet_workspace",
            "LIFTED_TOOLS", "WORKSPACE_TOOL", "network_refusal_note",  # `B985`, `B977`
+           "NETWORK_SEND_NOTE", "NETWORK_SEND_INTERNET_NOTE",  # `B1011`, added
            "workspace_named"]  # `B986`
