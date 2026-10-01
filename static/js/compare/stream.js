@@ -4,8 +4,9 @@ import state from './state.js';
 import { addFinishBadge } from './vote.js';
 import { getModelCost, renderAskUserCard, safeDisplayImageSrc } from '../chatRenderer.js?v=20261001workstation';
 import { applyAgentThreadNode, blockedCardOptions, verifierCardOptions } from '../agentThread.js';
-// `B910`. The line that says why the agent stopped itself (`P4-10`).
-import { renderAgentStop } from '../agentStops.js';
+// `B910`. The line that says why the agent stopped itself (`P4-10`). `B954`:
+// and the line that says the context was summarised.
+import { renderAgentStop, agentNoteNode } from '../agentStops.js';
 // `B918`. A tool card's life on screen — the functions the main chat and a
 // resumed stream draw theirs with. `B916`: and the spinner a new step opens with.
 import { startToolCard, drawToolProgress, finishToolCard, stopCardTickers, openRoundSpinner } from '../agentTurn.js';
@@ -735,6 +736,27 @@ async function streamToPane(paneIdx, sessionId, message, aiMsgEl, opts) {
             }
             renderAgentStop(aiBody, json);
             if (hist) hist.scrollTop = hist.scrollHeight;
+
+          // ── The context summarised to fit (`B954`) ──
+          } else if (json.type === 'compacted') {
+            // The main chat says it with a toast while it streams and with a
+            // line after a reload (`B921`, `B953`); a pane, whose model's
+            // history was just summarised away, said nothing. It says it as
+            // that line, in the toast's words (`agentNoteNode`). Before any of
+            // the reply is drawn the line goes above the reply, in the pane's
+            // message — where the first words clear the body would take it
+            // with them; later, the loop compacting for a step, it goes where
+            // the run is, above the spinner that step waits on.
+            const line = agentNoteNode(document, json);
+            if (line) {
+              if (!accumulated && aiMsgEl._spinner && aiMsgEl._spinner.element) {
+                aiMsgEl.insertBefore(line, aiBody);
+              } else {
+                const waiting = stepSpinner && stepSpinner.element;
+                aiBody.insertBefore(line, waiting && waiting.parentNode === aiBody ? waiting : null);
+              }
+              if (hist) hist.scrollTop = hist.scrollHeight;
+            }
           } else if (json.delta) {
             // `B916`: text ends a step's wait — even text the image path skips.
             dropStepSpinner();
