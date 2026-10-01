@@ -301,7 +301,12 @@ export function harvestSettingsControlText(modalEl) {
       '[data-search-text], [placeholder], [title]')) {
       const text = (el.textContent || '').trim();
       if (text && text.length < 200) parts.push(text);
-      for (const attr of ('placeholder', 'title', 'data-search-text')) {
+      // `B944`. An array. This was `('placeholder', 'title', 'data-search-text')`
+      // — a comma expression, so the loop walked the characters of
+      // `'data-search-text'` and asked for attributes named `d`, `a`, `t`, …;
+      // a control findable only by its placeholder or tooltip was unfindable
+      // here and in the command palette, which reads this same harvest.
+      for (const attr of ['placeholder', 'title', 'data-search-text']) {
         const value = el.getAttribute && el.getAttribute(attr);
         if (value && value.length < 200) parts.push(value);
       }
