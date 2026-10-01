@@ -1684,7 +1684,12 @@ const _AUTO_WIRE = {
   'email-lib-modal':      { rail: null,             sidebar: null },
   'research-overlay':     { rail: 'rail-research',  sidebar: 'tool-research-btn' },
   'theme-modal':          { rail: null,             sidebar: 'tool-theme-btn' },
-  'settings-modal':       { rail: null,             sidebar: 'tool-settings-btn' },
+  // `B943`. Settings' doors are the rail gear and the sidebar cog, both of
+  // which call `settingsModule.open()`. This named `tool-settings-btn`, which
+  // no template renders, so a minimized Settings badged nothing, and the
+  // capture-phase restore below never matched the cog: pressing it opened
+  // Settings through `settings.js` and left the minimized state and its chip.
+  'settings-modal':       { rail: 'rail-settings',  sidebar: 'user-bar-settings' },
   'compare-model-overlay':{ rail: 'rail-compare',   sidebar: 'tool-compare-btn' },
   'ge-shortcuts-modal':   { rail: null,             sidebar: null },
   // Prompt window opens from the overflow menu (no rail/sidebar button), but

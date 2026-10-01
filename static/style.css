@@ -1079,8 +1079,10 @@ body.bg-pattern-sparkles {
       pointer-events: none;
       animation: rail-min-pulse 2s ease-in-out infinite;
     }
-    /* Compact icon-rail buttons: top-right corner of the icon */
-    .icon-rail-btn.rail-minimized::after { top: 4px; right: 4px; transform: none; }
+    /* Compact icon-rail buttons: top-right corner of the icon. `B943`: the
+       sidebar cog is the same compact icon button, and Settings badges it now. */
+    .icon-rail-btn.rail-minimized::after,
+    .user-bar-btn.rail-minimized::after { top: 4px; right: 4px; transform: none; }
     /* Sidebar list-items are wider — anchor right-aligned vertically centered */
     .list-item.rail-minimized::after { top: 50%; right: 8px; transform: translateY(-50%); }
     #tool-memory-btn.rail-minimized::after { right: 12px; }

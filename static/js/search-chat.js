@@ -43,7 +43,7 @@
 
 import sessionModule from './sessions.js';
 import settingsModule from './settings.js?v=20261001workstation';
-import { listWindows, showWindow } from './modalManager.js?v=20261001workstation';
+import { isMinimized, listWindows, showWindow } from './modalManager.js?v=20261001workstation';
 import { openSkillsWindow } from './skills.js';
 import { slashCatalog, insertSlashToken } from './slashAutocomplete.js';
 import { SETTINGS_GROUPS, searchSettingsPanels } from './settings/registry.js';
@@ -211,8 +211,10 @@ function _rank(entries, q) {
  * The two windows `_AUTO_WIRE` names with no button to press, and the one
  * function every other way in already calls. The palette calls the same one.
  *
- *   * Settings — its entry names `tool-settings-btn`, which no template
- *     renders; the rail gear and the cog both call `settingsModule.open()`.
+ *   * Settings — the rail gear and the cog both call `settingsModule.open()`.
+ *     (Its entry named `tool-settings-btn`, which no template renders, until
+ *     `B943` corrected it to those two; the function stays the one way in when
+ *     Customize UI has hidden both.)
  *   * Skills (`P9-06`) — `{ rail: null, sidebar: null }` by design; the Brain's
  *     launcher card, `[data-open-skills]` and a chat's skills pill all go
  *     through `openSkillsWindow`, which restores a minimized window and raises
@@ -236,9 +238,13 @@ function _toolEntries(terms) {
     // The id's first word as well as the label, so the names people learned
     // still find the tool: "cookbook" finds Forge, "memory" finds Brain.
     if (!_wordsMatch(terms, `${w.label} ${w.id.split('-')[0]}`)) continue;
+    // `B943`. A door function opens a closed window; a minimized one is
+    // restored the way its dock chip and its buttons restore it. Opening a
+    // minimized Settings through `settingsModule.open()` showed the window and
+    // left it marked minimized, with its chip still in the dock.
     out.push({
       kind: 'tool', key: 'tool:' + w.id, label: w.label, detail: '',
-      run: door || (() => showWindow(w.id)),
+      run: door ? (() => (isMinimized(w.id) ? showWindow(w.id) : door())) : (() => showWindow(w.id)),
     });
   }
   return out;

@@ -530,6 +530,27 @@ def test_settings_itself_is_offered_and_opens_through_settings_open(box):
     assert out["after"]["clicked"] == []
 
 
+def test_a_minimized_settings_is_restored_not_opened_a_second_way(box):
+    """`B943`. Settings opens through its door function — but a minimized one
+    is restored, the way its chip and (now) its cog restore it. Opened through
+    `settingsModule.open()` it showed the window and stayed marked minimized,
+    its chip still in the dock."""
+    out = _palette(box, """
+        const modal = $('settings-modal');
+        modal.classList.remove('hidden');
+        Modals.minimize('settings-modal');
+        const before = Modals.isMinimized('settings-modal');
+        open(); type('settings'); enter();
+        console.log(JSON.stringify({ before, after: read(), minimized: Modals.isMinimized('settings-modal'),
+                                     hidden: modal.classList.contains('hidden') }));
+    """)
+    assert out["before"] is True
+    assert out["minimized"] is False
+    assert out["hidden"] is False
+    assert out["after"]["settings"] == [], "settings.js was asked to open a minimized window"
+    assert out["after"]["clicked"] == []
+
+
 def test_the_skills_window_opens_through_its_own_door_and_not_the_brains(box):
     """`P9-06` gave Skills a window of its own with no rail or sidebar button
     (`_AUTO_WIRE` says `{ rail: null, sidebar: null }`). Every way in — the
