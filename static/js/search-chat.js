@@ -49,6 +49,7 @@ import { slashCatalog, insertSlashToken } from './slashAutocomplete.js';
 import { SETTINGS_GROUPS, searchSettingsPanels } from './settings/registry.js';
 import { controlTextFor } from './settings/search.js';
 import { topPortalZ } from './toolWindowZOrder.js';
+import { KEYBIND_DEFAULTS, ariaKeyshortcuts, formatKeybind } from './keyboard-shortcuts.js';
 
 let API_BASE = '';
 let debounceTimer = null;
@@ -616,8 +617,37 @@ function handleInput(e) {
   if (query) _searchChats(query);
 }
 
+/**
+ * `B946`. The two Search buttons name the key that opens this box, read from
+ * the live keybind table — the one the Shortcuts panel edits — rather than a
+ * "Ctrl+K" written into the markup, which was wrong for anyone who rebinds it.
+ * Re-read on hover and focus, the way the Plan button does (`B948`), because
+ * the saved binds arrive after first paint and Settings can change them.
+ */
+const _SEARCH_DOORS = ['rail-search-btn', 'sidebar-search-btn'];
+
+export function syncSearchDoorTitles() {
+  const live = window._pantheonKeybinds;
+  const combo = (live && typeof live.search === 'string' ? live.search : KEYBIND_DEFAULTS.search) || '';
+  for (const id of _SEARCH_DOORS) {
+    const btn = el(id);
+    if (!btn) continue;
+    btn.title = 'Search chats and commands' + (combo ? ` (${formatKeybind(combo)})` : '');
+    if (combo) btn.setAttribute('aria-keyshortcuts', ariaKeyshortcuts(combo));
+    else btn.removeAttribute('aria-keyshortcuts');
+  }
+}
+
 export function init(apiBase) {
   API_BASE = apiBase || '';
+
+  syncSearchDoorTitles();
+  for (const id of _SEARCH_DOORS) {
+    const btn = el(id);
+    if (!btn) continue;
+    btn.addEventListener('pointerenter', syncSearchDoorTitles);
+    btn.addEventListener('focus', syncSearchDoorTitles);
+  }
 
   const input = el('search-input');
   if (input) {
