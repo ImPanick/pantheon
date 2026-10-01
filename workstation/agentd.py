@@ -62,7 +62,10 @@ from workstation import protocol as P
 
 logger = logging.getLogger("pantheon.workstation")
 
-VERSION = "1.0.0"
+# The daemon's version is its protocol's (`netagent`'s precedent: one integer).
+# A dotted string here was a third application version beside Pantheon's two
+# (`tests/test_one_version_string.py`), for a file that changes when the wire does.
+VERSION = P.PROTOCOL_VERSION
 _ENV_KEY_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,127}$")
 # xdotool key syntax: names joined by `+`, several combos separated by spaces.
 _KEYS_RE = re.compile(r"^[A-Za-z0-9_+\-]{1,64}( [A-Za-z0-9_+\-]{1,64}){0,15}$")
