@@ -765,7 +765,6 @@ class UbuntuSystem(System):
     def reset(self, account: str) -> None:
         self.ensure(account)
         display = self._displays.get(account)
-        had_display = bool(display and display.running())
         if display:
             display.stop()
         uid = self.uid(account)
@@ -784,8 +783,10 @@ class UbuntuSystem(System):
             runtime = self.runtime_root / str(uid)
             shutil.rmtree(runtime, ignore_errors=True)
             self.runtime_dir(account)
-        if had_display:
-            self.wake(account)
+        # The protocol says a reset restarts the display (`ROUTES["reset"]`),
+        # so it does, whether or not one was running: "Reset to clean" ends on
+        # the desktop a new person starts with.
+        self.wake(account)
 
     def run_as(self, account: str, *, with_display: bool = True) -> Tuple[List[str], Dict[str, str]]:
         uid = self.uid(account)

@@ -382,8 +382,18 @@ def test_reset_puts_the_home_and_the_display_back(station):
     names = set(listing.split())
     assert "junk" not in names and {".bashrc", ".jwmrc", ".Xdefaults", ".profile"} <= names
     assert rest.strip() == "700"  # and no sleep survived
+    # The desktop is back without being asked for: the display restarted.
+    assert sh(client, carol, "pgrep -u $(id -u) -xc Xvfb")["stdout"].strip() == "1"
     shot = run(client.screenshot(carol))
     assert _png_size(base64.b64decode(shot["data_b64"])) == (P.SCREEN_WIDTH, P.SCREEN_HEIGHT)
+
+
+def test_a_reset_brings_the_desktop_back_even_for_a_shell_only_person(station):
+    client, frank = station.client(), account_for("e2e-frank")
+    sh(client, frank, "true")  # exec makes the account and no display
+    assert sh(client, frank, "pgrep -u $(id -u) -xc Xvfb")["stdout"].strip() == "0"
+    run(client.reset(frank))
+    assert sh(client, frank, "pgrep -u $(id -u) -xc Xvfb")["stdout"].strip() == "1"
 
 
 def test_accounts_their_files_and_the_sudo_choice_survive_the_container_being_replaced(station):
