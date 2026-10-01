@@ -368,8 +368,10 @@ def setup_gallery_routes() -> APIRouter:
 
         user = get_current_user(request)
         album_id = form.get("album_id") or None
+        # `B932`. Every cap in this file is resolved for the caller, so a role
+        # profile can limit it (`P12-01`'s order: role → setting → env → default).
         content = await read_upload_limited(
-            file, resolve_byte_limit("gallery_upload_max_bytes"), "Gallery upload")
+            file, resolve_byte_limit("gallery_upload_max_bytes", user), "Gallery upload")
 
         # Duplicate detection via SHA-256
         file_hash = hashlib.sha256(content).hexdigest()
@@ -456,7 +458,7 @@ def setup_gallery_routes() -> APIRouter:
                 raise HTTPException(400, "No image provided")
 
             content = await read_upload_limited(
-                file, resolve_byte_limit("gallery_upload_max_bytes"),
+                file, resolve_byte_limit("gallery_upload_max_bytes", user),
                 "Gallery replacement")
             GALLERY_IMAGE_DIR.mkdir(parents=True, exist_ok=True)
             img_path = _gallery_image_path(img.filename)
@@ -578,7 +580,7 @@ def setup_gallery_routes() -> APIRouter:
         scale = int(form.get("scale", "2"))
 
         image_bytes = await read_upload_limited(
-            file, resolve_byte_limit("gallery_transform_upload_max_bytes"),
+            file, resolve_byte_limit("gallery_transform_upload_max_bytes", user),
             "Image upload")
         b64 = base64.b64encode(image_bytes).decode()
 
@@ -626,7 +628,7 @@ def setup_gallery_routes() -> APIRouter:
         if not file: raise HTTPException(400, "No image")
 
         image_bytes = await read_upload_limited(
-            file, resolve_byte_limit("gallery_transform_upload_max_bytes"),
+            file, resolve_byte_limit("gallery_transform_upload_max_bytes", user),
             "Image upload")
         b64 = base64.b64encode(image_bytes).decode()
 

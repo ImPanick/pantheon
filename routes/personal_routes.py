@@ -441,7 +441,7 @@ def setup_personal_routes(personal_docs_manager, rag_manager, rag_available):
         # cannot retain len(files) * the cap in memory. `P12-03`: the cap is
         # resolved once for the whole request, not per file, so a save that
         # lands mid-batch cannot apply two different limits to one upload.
-        _personal_cap = resolve_byte_limit("personal_upload_max_bytes")
+        _personal_cap = resolve_byte_limit("personal_upload_max_bytes", user)   # `B932`: the caller's
         async with _index_job_lock:
             for upload in files:
                 try:

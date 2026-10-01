@@ -443,7 +443,7 @@ routes: 2
 | route | handler | gate | intended |
 |---|---|---|---|
 | `GET /api/stt/stats` | `get_stt_stats` | `middleware` | yes — counters for a local service; no per-user data in them. |
-| `POST /api/stt/transcribe` | `transcribe_audio` | `middleware` | yes — a signed-in user transcribing their own audio, capped by `STT_MAX_AUDIO_BYTES`. |
+| `POST /api/stt/transcribe` | `transcribe_audio` | `middleware + get_current_user` | yes — a signed-in user transcribing their own audio, capped by `stt_max_audio_bytes`; `B932`: `get_current_user` resolves that cap for the person uploading (`P12-01`'s role layer), not for nobody. |
 
 #### `routes/tts_routes.py`
 

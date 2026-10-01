@@ -4409,8 +4409,9 @@ def setup_email_routes():
             # person's own (`_new_compose_token`).
             token, shown = _new_compose_token(file.filename, "file")
             filepath = COMPOSE_UPLOADS_DIR / token
+            # `B932`: the cap is the caller's (`P12-01`), as at every stage below.
             content = await read_upload_limited(
-                file, resolve_byte_limit("email_compose_upload_max_bytes"),
+                file, resolve_byte_limit("email_compose_upload_max_bytes", owner),
                 "Attachment")
             with open(filepath, "wb") as f:
                 f.write(content)
@@ -4434,8 +4435,8 @@ def setup_email_routes():
         _v2_.md`)."""
         return _file_display_name(str(name or ""), fallback) or fallback
 
-    def _stage_compose_bytes(filename: str, content: bytes) -> dict:
-        if len(content) > resolve_byte_limit("email_compose_upload_max_bytes"):
+    def _stage_compose_bytes(filename: str, content: bytes, owner: str | None) -> dict:
+        if len(content) > resolve_byte_limit("email_compose_upload_max_bytes", owner):
             raise HTTPException(status_code=413, detail="Attachment too large")
         token, shown = _new_compose_token(_safe_compose_filename(filename))
         filepath = COMPOSE_UPLOADS_DIR / token
@@ -4444,11 +4445,11 @@ def setup_email_routes():
         _remember_compose_name(token, shown)
         return {"success": True, "token": token, "filename": shown, "size": len(content)}
 
-    def _stage_compose_file(filename: str, src: Path) -> dict:
+    def _stage_compose_file(filename: str, src: Path, owner: str | None) -> dict:
         if not src.exists() or not src.is_file():
             raise HTTPException(status_code=404, detail="File not found")
         size = src.stat().st_size
-        if size > resolve_byte_limit("email_compose_upload_max_bytes"):
+        if size > resolve_byte_limit("email_compose_upload_max_bytes", owner):
             raise HTTPException(status_code=413, detail="Attachment too large")
         token, shown = _new_compose_token(_safe_compose_filename(filename))
         dest = COMPOSE_UPLOADS_DIR / token
@@ -4520,8 +4521,8 @@ def setup_email_routes():
             try:
                 src = _load_pantheon_attachment_source(db, kind, item_id, owner)
                 if "path" in src:
-                    return _stage_compose_file(src["filename"], src["path"])
-                return _stage_compose_bytes(src["filename"], src["content"])
+                    return _stage_compose_file(src["filename"], src["path"], owner)
+                return _stage_compose_bytes(src["filename"], src["content"], owner)
             finally:
                 db.close()
         except HTTPException:
@@ -4573,7 +4574,7 @@ def setup_email_routes():
                 content = buf.getvalue()
                 if not content:
                     raise HTTPException(status_code=400, detail="No valid attachments")
-                return _stage_compose_bytes("pantheon-attachments.zip", content)
+                return _stage_compose_bytes("pantheon-attachments.zip", content, owner)
             finally:
                 db.close()
         except HTTPException:

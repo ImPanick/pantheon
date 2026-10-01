@@ -1485,7 +1485,7 @@ def setup_calendar_routes(upload_handler=None) -> APIRouter:
         db = SessionLocal()
         try:
             content = await read_upload_limited(
-                file, resolve_byte_limit("ics_max_bytes"), "ICS file")
+                file, resolve_byte_limit("ics_max_bytes", owner), "ICS file")   # `B932`
             try:
                 cal_data = iCal.from_ical(content)
             except Exception as e:
