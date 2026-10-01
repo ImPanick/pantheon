@@ -46871,3 +46871,24 @@ button.task-card-toggle {
 .wb-plan-steps .task-run-step-dry-run .task-run-step-kind { display: none; }
 .wb-plan-lines { margin: 0; padding-left: 18px; }
 .wb-plan-close { align-self: flex-end; }
+/* `B1048`. The switch that shows the built-in tasks, in the toolbar's own
+   size; and a step picked up from the keyboard (M), lifted the way a step
+   dragged with the mouse is (`.wb-node-dragging`) — not outlined, because the
+   focus ring is the outline and stays on it. */
+.wb-tool-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--fg);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.wb-tool-switch[hidden] { display: none; }
+.wb-tool-switch-box { width: auto; height: auto; margin: 0; }
+.wb-empty-builtins[hidden] { display: none; }
+.wb-node-moving {
+  z-index: 2;
+  cursor: move;
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--fg) 24%, transparent);
+}

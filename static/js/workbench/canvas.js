@@ -18,11 +18,12 @@
 // says no, the sentence it answered with is what the canvas shows. Nothing
 // here second-guesses that rule — one rule, checked in one place (`Law 7`).
 //
-// **The keyboard path is a peer, not an afterthought.** A step is focusable;
-// its *Connect…* button picks the outcome and the next step by name from two
-// `<select>`s; arrow keys move a focused step by the window system's own step
-// (`windowDrag.js:KEY_STEP`); an arrow is focusable too, and Delete removes it
-// only after saying which arrow it is. Escape goes through `escMenuStack.js`,
+// **The keyboard path is a peer, not an afterthought.** The canvas is one tab
+// stop and the arrow keys go from step to step and along the arrows
+// (`B1048`); a step's *Connect…* button picks the outcome and the next step by
+// name from two `<select>`s; M picks a step up and the arrow keys then move it
+// by the window system's own step (`windowDrag.js:KEY_STEP`); an arrow is
+// focusable too, and Delete removes it only after saying which arrow it is. Escape goes through `escMenuStack.js`,
 // so it closes the innermost thing — the picker, the pending removal, the side
 // panel — before `ui.js`'s arbiter closes the window; while one is open the
 // room carries `data-esc-layer`, which is what makes the arbiter ask the stack
@@ -181,6 +182,8 @@ export function mountCanvas(root, opts = {}) {
     drag: null, link: null, pan: null, swallow: null,
     pending: null, sayRun: null, saveTimer: null,
     plan: null, planBox: null, dryBusy: false,
+    // `B1048`.
+    showBuiltins: false, reveal: new Set(), hidden: new Set(), current: null, moving: null,
   };
 
   // ── the skeleton ─────────────────────────────────────────────────────────
@@ -206,11 +209,25 @@ export function mountCanvas(root, opts = {}) {
   const fitBtn = _el('button', 'wb-tool', 'Fit');
   fitBtn.type = 'button';
   fitBtn.title = 'Show every step (0)';
-  for (const n of [newBtn, tidyBtn, spacer, outBtn, zoomWord, inBtn, fitBtn]) toolbar.appendChild(n);
+  // `B1048`. The housekeeping tasks every install comes with are not the
+  // person's, and on a fresh install they were the whole first view. Set
+  // aside until asked for, by a switch that says what they are — the word the
+  // Tasks card puts on them, "built-in".
+  const builtinsSwitch = _el('label', 'wb-tool-switch');
+  builtinsSwitch.title = 'The housekeeping tasks Pantheon comes with, such as Memory Tidy and Email Tags. '
+    + 'Hidden here so your own steps come first; a built-in task joined to one of yours is always shown.';
+  const builtinsBox = _el('input', 'wb-tool-switch-box');
+  builtinsBox.type = 'checkbox';
+  const builtinsWord = _el('span', 'wb-tool-switch-word', 'Show built-in tasks');
+  builtinsSwitch.appendChild(builtinsBox);
+  builtinsSwitch.appendChild(builtinsWord);
+  builtinsSwitch.hidden = true;
+  for (const n of [newBtn, tidyBtn, builtinsSwitch, spacer, outBtn, zoomWord, inBtn, fitBtn]) toolbar.appendChild(n);
 
   const hint = _el('p', 'wb-hint',
     'Drag from a step’s “' + EDGE_WORDS.success + '” or “' + EDGE_WORDS.error
-    + '” onto the step that should run next, or use its Connect… button. Click a step to edit it.');
+    + '” onto the step that should run next, or use its Connect… button. Click a step to edit it. '
+    + 'Keys: the arrows go from step to step and along the arrows, Enter opens a step, M moves it.');
 
   const sayBox = _el('div', 'wb-say');
   const sayText = _el('span', 'wb-say-text');
@@ -242,9 +259,14 @@ export function mountCanvas(root, opts = {}) {
   viewport.appendChild(world);
 
   const empty = _el('div', 'wb-empty');
-  empty.appendChild(_el('p', 'wb-empty-title', 'No automations yet.'));
+  const emptyTitle = _el('p', 'wb-empty-title', 'No automations yet.');
+  empty.appendChild(emptyTitle);
   empty.appendChild(_el('p', 'wb-empty-text',
     'A step is a task: a prompt, a research run or an action, started by a schedule, an event or a webhook. Make one, make another, then join them.'));
+  const emptyBuiltins = _el('p', 'wb-empty-text wb-empty-builtins',
+    'Pantheon’s built-in tasks are hidden here. “Show built-in tasks” above shows them.');
+  emptyBuiltins.hidden = true;
+  empty.appendChild(emptyBuiltins);
   const emptyNew = _el('button', 'wb-tool wb-tool-new', 'New step');
   emptyNew.type = 'button';
   empty.appendChild(emptyNew);
@@ -509,7 +531,10 @@ export function mountCanvas(root, opts = {}) {
 
   function focusNode(id) {
     const node = S.nodeEls.get(String(id));
-    if (node && typeof node.focus === 'function') node.focus();
+    if (node) {
+      setCurrent({ kind: 'node', id: String(id) });
+      if (typeof node.focus === 'function') node.focus();
+    }
     return node || null;
   }
 
@@ -549,7 +574,9 @@ export function mountCanvas(root, opts = {}) {
     const subText = plan ? plan.sub : [KIND_WORDS[kind] || KIND_WORDS.llm, trigger, paused ? 'paused' : '']
       .filter(Boolean).join(' · ');
 
-    node.setAttribute('tabindex', '0');
+    // `B1048`. One tab stop for the whole canvas (`applyRoving`): a step is
+    // reached with the arrow keys, and the one that is the stop says so.
+    node.setAttribute('tabindex', '-1');
     node.setAttribute('role', 'group');
     node.setAttribute('aria-label', `${name}. ${subText}. ${(plan ? plan.line : out.word).replace(/\.$/, '')}.`);
     node.dataset.kind = kind;
@@ -616,14 +643,16 @@ export function mountCanvas(root, opts = {}) {
       select(id);
     });
     node.addEventListener('keydown', (e) => onNodeKey(e, id));
+    node.addEventListener('focus', () => setCurrent({ kind: 'node', id }));
+    node.addEventListener('blur', () => { if (S.moving && S.moving.id === id) putDown(); });
     if (S.selected === id) node.classList.add('wb-node-selected');
     return node;
   }
 
-  function drawEdges() {
+  function drawEdges(graph) {
     const kids = [];
     S.edgeEls = [];
-    for (const edge of S.graph.edges || []) {
+    for (const edge of (graph || S.graph).edges || []) {
       const from = String(edge.from);
       const to = String(edge.to);
       const when = String(edge.when || '');
@@ -637,7 +666,7 @@ export function mountCanvas(root, opts = {}) {
       if (S.plan && !S.plan.partial && !(S.plan.byId.has(from) && S.plan.byId.has(to))) {
         g.setAttribute('data-plan', 'aside');
       }
-      g.setAttribute('tabindex', '0');
+      g.setAttribute('tabindex', '-1');
       g.setAttribute('role', 'button');
       g.setAttribute('aria-label', edgeSentence(from, when, to) + ' Press Delete to remove this arrow.');
       const hit = _svg('path', 'wb-edge-hit');
@@ -650,7 +679,7 @@ export function mountCanvas(root, opts = {}) {
       const rec = { edge, from, to, when, key: `${from}\u0000${when}\u0000${to}`, g, hit, line, head, label };
       g.addEventListener('pointerdown', (e) => { if (e && e.stopPropagation) e.stopPropagation(); });
       g.addEventListener('click', () => { if (typeof g.focus === 'function') g.focus(); showEdge(rec); });
-      g.addEventListener('focus', () => showEdge(rec));
+      g.addEventListener('focus', () => { setCurrent({ kind: 'edge', id: from, key: rec.key }); showEdge(rec); });
       g.addEventListener('blur', () => { if (S.pending && S.pending.key === rec.key) clearPending(); });
       g.addEventListener('keydown', (e) => onEdgeKey(e, rec));
       S.edgeEls.push(rec);
@@ -691,23 +720,59 @@ export function mountCanvas(root, opts = {}) {
     guides.replaceChildren(...kids);
   }
 
+  // ── what is shown: the built-ins set aside (`B1048`) ─────────────────────
+  /** The built-in tasks set aside: every workflow made only of built-ins,
+   *  unless the switch shows them or the Workbench was opened on one. A
+   *  built-in joined to a step of the person's own is part of their workflow
+   *  and is never hidden. */
+  function hiddenIds() {
+    const out = new Set();
+    if (S.showBuiltins) return out;
+    const seen = new Set();
+    for (const t of S.tasks) {
+      const id = String(t.id);
+      if (!t.is_builtin || seen.has(id)) continue;
+      const ids = componentOf(S.graph, id).ids;
+      ids.forEach((x) => seen.add(x));
+      const builtinsOnly = [...ids].every((x) => { const o = S.byId.get(x); return !!(o && o.is_builtin); });
+      if (builtinsOnly && ![...ids].some((x) => S.reveal.has(x))) ids.forEach((x) => out.add(x));
+    }
+    return out;
+  }
+
   function render() {
+    S.hidden = hiddenIds();
+    const shown = (id) => !S.hidden.has(String(id));
+    const graph = {
+      ...S.graph,
+      nodes: (S.graph.nodes || []).filter((n) => shown(n.id)),
+      edges: (S.graph.edges || []).filter((e) => shown(e.from) && shown(e.to)),
+    };
     // Everything already on the canvas stays where it is — a person who drew
     // one arrow must not have to find both steps again — and what the person
     // placed in an earlier visit is where it was left. Only steps nobody has
     // placed are laid out (`graphLayout.js`).
     const fixed = new Map(S.pinned);
     for (const [id, p] of S.pos) fixed.set(id, p);
-    const lay = layoutGraph(S.graph, fixed);
+    const lay = layoutGraph(graph, fixed);
     S.pos = new Map(lay.nodes.map((n) => [n.id, { x: n.x, y: n.y }]));
     S.missing = new Set(lay.nodes.filter((n) => n.missing).map((n) => n.id));
     S.order = lay.nodes.map((n) => n.id);
-    const targeted = new Set((S.graph.edges || []).map((e) => String(e.to)));
+    const targeted = new Set((graph.edges || []).map((e) => String(e.to)));
     S.nodeEls = new Map();
     nodesLayer.replaceChildren(...lay.nodes.map((n) => buildNode(n, targeted)));
-    drawEdges();
-    empty.hidden = S.tasks.length > 0;
-    root.classList.toggle('wb-room-empty', S.tasks.length === 0);
+    drawEdges(graph);
+    const builtins = S.tasks.filter((t) => t.is_builtin).length;
+    const own = S.tasks.length - S.tasks.filter((t) => S.hidden.has(String(t.id))).length;
+    builtinsSwitch.hidden = builtins === 0;
+    builtinsBox.checked = S.showBuiltins;
+    builtinsWord.textContent = `Show built-in tasks (${builtins})`;
+    empty.hidden = own > 0;
+    emptyTitle.textContent = S.tasks.length ? 'No automations of your own yet.' : 'No automations yet.';
+    emptyBuiltins.hidden = !S.hidden.size;
+    root.classList.toggle('wb-room-empty', own === 0);
+    if (S.moving && S.nodeEls.has(S.moving.id)) S.nodeEls.get(S.moving.id).classList.add('wb-node-moving');
+    applyRoving();
     if (!S.viewed) { S.viewed = true; fitAll(); } else applyView();
   }
 
@@ -781,17 +846,144 @@ export function mountCanvas(root, opts = {}) {
     }
   }
 
+  // ── the keyboard: one tab stop, the arrows within it (`B1048`) ───────────
+  // Every step was a tab stop and so was its Connect…, with the arrows after
+  // them: measured on the merged tree, 24 to 28 presses of Tab to reach one
+  // step. The canvas is one stop now — the step (or arrow) last visited, the
+  // first step to begin with — and the arrow keys go through the steps in
+  // reading order (top to bottom, left to right), each followed by the arrows
+  // that leave it, "if it works" first; Home and End go to the ends. The
+  // stop's own buttons (Connect…, Plan) follow it in the Tab order, so Tab
+  // from a step still reaches its Connect…. Moving a step was the arrow keys
+  // themselves; they go between steps now, so a step is picked up with M,
+  // moved with the arrows exactly as before (Shift for four times the step),
+  // and put down with Enter or M — or put back with Escape.
+  const BAND = NODE_H / 2;
+  const sameItem = (a, b) => !!(a && b && a.kind === b.kind && (a.kind === 'node' ? a.id === b.id : a.key === b.key));
+
+  function rovingItems() {
+    const steps = S.order.filter((id) => !S.missing.has(id) && S.nodeEls.has(id))
+      .map((id) => ({ id, p: S.pos.get(id) }))
+      .sort((a, b) => (Math.round(a.p.y / BAND) - Math.round(b.p.y / BAND)) || (a.p.x - b.p.x));
+    const items = [];
+    for (const s of steps) {
+      items.push({ kind: 'node', id: s.id, el: S.nodeEls.get(s.id) });
+      S.edgeEls.filter((r) => r.from === s.id)
+        .sort((a, b) => PORTS.indexOf(a.when) - PORTS.indexOf(b.when))
+        .forEach((r) => items.push({ kind: 'edge', id: r.from, key: r.key, el: r.g }));
+    }
+    return items;
+  }
+
+  function applyRoving() {
+    const items = rovingItems();
+    const cur = items.find((it) => sameItem(it, S.current)) || items[0] || null;
+    S.current = cur ? { kind: cur.kind, id: cur.id, key: cur.key } : null;
+    for (const it of items) {
+      const on = it === cur;
+      it.el.setAttribute('tabindex', on ? '0' : '-1');
+      if (it.kind === 'node') {
+        for (const b of it.el.querySelectorAll('button')) b.setAttribute('tabindex', on ? '0' : '-1');
+      }
+    }
+    return cur;
+  }
+
+  function setCurrent(item) {
+    if (sameItem(item, S.current)) return;
+    S.current = item;
+    applyRoving();
+  }
+
+  /** Move the stop by `delta` items, or to the first or last, and focus it. */
+  function rove(e, delta, end) {
+    const items = rovingItems();
+    if (!items.length) return;
+    const i = items.findIndex((it) => sameItem(it, S.current));
+    const j = end === 'first' ? 0 : end === 'last' ? items.length - 1
+      : Math.min(items.length - 1, Math.max(0, (i < 0 ? 0 : i) + delta));
+    if (e && e.preventDefault) e.preventDefault();
+    const next = items[j];
+    S.current = { kind: next.kind, id: next.id, key: next.key };
+    applyRoving();
+    if (typeof next.el.focus === 'function') next.el.focus();
+  }
+
+  /** The arrow keys and Home/End, on a step or an arrow. True when used. */
+  function roveKeys(e) {
+    if (e.altKey || e.ctrlKey || e.metaKey) return false;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowRight') { rove(e, 1); return true; }
+    if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') { rove(e, -1); return true; }
+    if (e.key === 'Home') { rove(e, 0, 'first'); return true; }
+    if (e.key === 'End') { rove(e, 0, 'last'); return true; }
+    return false;
+  }
+
   // ── moving a step: keyboard ──────────────────────────────────────────────
+  function pickUp(id) {
+    const p = S.pos.get(id);
+    if (!p) return;
+    putDown(true);
+    S.moving = {
+      id, x: p.x, y: p.y, pinned: S.pinned.has(id) ? { ...S.pinned.get(id) } : null,
+      unregister: holdEscape(() => putBack()),
+    };
+    const node = S.nodeEls.get(id);
+    if (node) node.classList.add('wb-node-moving');
+    say(`Moving ${nameOf(id)}: the arrow keys move it, with Shift in bigger steps. Enter puts it down; Escape puts it back.`);
+  }
+
+  function endMove() {
+    const m = S.moving;
+    if (!m) return null;
+    S.moving = null;
+    m.unregister();
+    const node = S.nodeEls.get(m.id);
+    if (node) node.classList.remove('wb-node-moving');
+    return m;
+  }
+
+  function putDown(quiet) {
+    const m = endMove();
+    if (!m) return;
+    if (S.saveTimer) savePositions();
+    if (!quiet) say(`Put ${nameOf(m.id)} down.`);
+  }
+
+  function putBack() {
+    const m = endMove();
+    if (!m) return;
+    moveNode(m.id, m.x, m.y);
+    if (m.pinned) S.pinned.set(m.id, m.pinned); else S.pinned.delete(m.id);
+    savePositions();
+    focusNode(m.id);
+    say(`${nameOf(m.id)} is back where it was.`);
+  }
+
   function onNodeKey(e, id) {
     if (e.target && e.target !== S.nodeEls.get(id)) return;   // keys inside Connect…
-    const dir = KEY_DIRS[e.key];
-    if (dir && !e.altKey && !e.ctrlKey && !e.metaKey) {
+    const plain = !e.altKey && !e.ctrlKey && !e.metaKey;
+    if (S.moving && S.moving.id === id) {
+      const dir = KEY_DIRS[e.key];
+      if (dir && plain) {
+        e.preventDefault();
+        const step = KEY_STEP * (e.shiftKey ? 4 : 1);
+        const p = S.pos.get(id);
+        moveNode(id, p.x + dir[0] * step, p.y + dir[1] * step);
+        pin(id);
+        scheduleSave();
+        return;
+      }
+      if (plain && (e.key === 'Enter' || e.key === 'm' || e.key === 'M')) {
+        e.preventDefault();
+        putDown();
+      }
+      return;
+    }
+    if (roveKeys(e)) return;
+    if (plain && (e.key === 'm' || e.key === 'M')) {
       e.preventDefault();
-      const step = KEY_STEP * (e.shiftKey ? 4 : 1);
-      const p = S.pos.get(id);
-      moveNode(id, p.x + dir[0] * step, p.y + dir[1] * step);
-      pin(id);
-      scheduleSave();
+      pickUp(id);
       return;
     }
     if (e.key === 'Enter' || e.key === ' ') {
@@ -920,6 +1112,7 @@ export function mountCanvas(root, opts = {}) {
         { action: { label: 'Remove this arrow', run: () => removeEdge(rec) } });
       return;
     }
+    if (roveKeys(e)) return;
     zoomKeys(e);
   }
 
@@ -1320,6 +1513,12 @@ export function mountCanvas(root, opts = {}) {
     const id = S.focusId;
     if (!id || !S.loaded) return;
     S.focusId = null;
+    // `B1048`. Opened on a built-in task (⋮ → Workflow on its card): its
+    // workflow is shown, the other built-ins stay aside.
+    if (S.hidden.has(id)) {
+      componentOf(S.graph, id).ids.forEach((x) => S.reveal.add(x));
+      render();
+    }
     if (!S.pos.has(id) || S.missing.has(id)) {
       say('That task is not on the canvas any more.');
       return;
@@ -1376,6 +1575,15 @@ export function mountCanvas(root, opts = {}) {
   outBtn.addEventListener('click', () => zoomBy(1 / ZOOM_STEP));
   inBtn.addEventListener('click', () => zoomBy(ZOOM_STEP));
   fitBtn.addEventListener('click', () => fitAll());
+  builtinsBox.addEventListener('change', () => {
+    S.showBuiltins = !!builtinsBox.checked;
+    if (!S.showBuiltins) S.reveal = new Set();
+    render();
+    fitAll();
+    const n = S.tasks.filter((t) => t.is_builtin).length;
+    say(S.showBuiltins ? `Showing the ${n} built-in tasks Pantheon comes with.`
+      : 'The built-in tasks are hidden. A built-in task joined to one of yours stays.');
+  });
   tidyBtn.addEventListener('click', () => {
     S.pinned = new Map();
     S.pos = new Map();
@@ -1405,6 +1613,7 @@ export function mountCanvas(root, opts = {}) {
     if (S.destroyed) return;
     if (S.saveTimer) savePositions();
     S.destroyed = true;
+    endMove();
     endLink(null);
     clearPending();
     closeConnect(false);
