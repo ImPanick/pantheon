@@ -2155,7 +2155,8 @@ def llm_call(url: str, model: str, messages: List[Dict], temperature: float = LL
     # not a chat turn. It still has a configuration worth recording, and
     # the receipt is keyed on `run_id` anyway; the session, when there is
     # one, arrives from the other rows of the same run.
-    _capture_run_config(temperature, max_tokens, None)
+    _capture_run_config(temperature, max_tokens, None, url=url, model=model,
+                        explicit_params=explicit_params)
 
     cache_key = _get_cache_key(
         url, model, messages_copy, temperature, max_tokens, headers=headers,
@@ -2449,7 +2450,8 @@ async def llm_call_async(
     #
     # No `tools=`: this path sends none, and the key is omitted rather than
     # written empty so a diff can tell 'none sent' from 'not looked at'.
-    _capture_run_config(temperature, max_tokens, session_id)
+    _capture_run_config(temperature, max_tokens, session_id, url=url, model=model,
+                        explicit_params=explicit_params)
 
     provider = _detect_provider(url)
     messages_copy = _sanitize_llm_messages(messages)
@@ -2784,7 +2786,46 @@ _run_config_had_tools: "contextvars.ContextVar[bool]" = contextvars.ContextVar(
     "pantheon_run_config_had_tools", default=False)
 
 
-def _capture_run_config(temperature, max_tokens, session_id, *, tools=None) -> None:
+# `B933`. The providers whose request is built by a builder of its own and never
+# passes through `_apply_local_generation_stability` — every other provider is
+# sent the OpenAI-compatible payload, which does. A receipt test drives all three
+# entry points against the wire, so this set and the builders cannot drift
+# apart unnoticed.
+_PROVIDERS_WITHOUT_THE_LOCAL_PROFILE = frozenset({"anthropic", "ollama", "chatgpt-subscription"})
+
+
+def _sent_sampling(url, model, temperature, max_tokens, explicit_params=frozenset()) -> Dict:
+    """The sampling a request to `url` carries, as its receipt records it. `B933`.
+
+    `temperature` and `max_tokens` are what the caller asked for. On an
+    OpenAI-compatible endpoint the local MiniMax profile then rewrites the
+    payload: the temperature held at 0.2 unless the person chose it, a
+    `max_tokens` of 2048 where none was set, and its penalties and stop strings
+    added. The receipt recorded the request, not the payload — a chat with no
+    preset on local MiniMax was receipted at 1.0 and sent 0.2, against
+    `_capture_run_config`'s own claim to record *"the resolved configuration …
+    caps applied"* (`Law 10`).
+
+    So the profile itself is run here, on the two values, against the URL the
+    payload goes to — one rule for the payload and its receipt (`Law 7`) — and
+    the receipt gains the profile's other knobs, which `record_run_config` has
+    always had room for. Where the profile does not apply, this is exactly the
+    two values asked for, as before.
+    """
+    sampling = {"temperature": temperature, "max_tokens": max_tokens}
+    if not url or _detect_provider(url) in _PROVIDERS_WITHOUT_THE_LOCAL_PROFILE:
+        return sampling
+    sent = {"temperature": temperature}
+    if max_tokens and max_tokens > 0:
+        sent["max_tokens"] = max_tokens
+    _apply_local_generation_stability(sent, _normalize_openai_chat_url(url), model,
+                                      explicit_params)
+    sent.setdefault("max_tokens", max_tokens)
+    return sent
+
+
+def _capture_run_config(temperature, max_tokens, session_id, *, tools=None,
+                        url=None, model=None, explicit_params=frozenset()) -> None:
     """Record the resolved configuration for this turn (`P4-25`).
 
     Called from **every** entry point a chat turn can take, and that plurality
@@ -2802,6 +2843,10 @@ def _capture_run_config(temperature, max_tokens, session_id, *, tools=None) -> N
     than written as `[]` — "none were sent" and "we did not look" are different
     facts, and a diff (`P4-28`) that cannot tell them apart is a diff that
     reports a change nobody made.
+
+    `url`, `model` and `explicit_params` are the request's, so the sampling
+    recorded is what the payload carries rather than what was asked for
+    (`B933`, `_sent_sampling`). Without a `url` it is the two values given.
     """
     try:
         from src.events import record_run_config, current_run_id
@@ -2816,7 +2861,7 @@ def _capture_run_config(temperature, max_tokens, session_id, *, tools=None) -> N
         if tools:
             _run_config_had_tools.set(True)
         record_run_config(
-            sampling={"temperature": temperature, "max_tokens": max_tokens},
+            sampling=_sent_sampling(url, model, temperature, max_tokens, explicit_params),
             tools=tools,
             session_id=session_id,
         )
@@ -2842,7 +2887,8 @@ async def stream_llm(url: str, model: str, messages: List[Dict], temperature: fl
                      tool_choice_none: bool = False, workload: str = "foreground",
                      explicit_params=frozenset()):
     target_url = _stream_target_url(url)
-    _capture_run_config(temperature, max_tokens, session_id, tools=tools)
+    _capture_run_config(temperature, max_tokens, session_id, tools=tools, url=url,
+                        model=model, explicit_params=explicit_params)
 
     async with _local_model_slot(target_url, model, workload):
         async for chunk in _stream_llm_inner(
