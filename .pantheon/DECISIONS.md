@@ -2591,3 +2591,14 @@ has been pointing at) and D-03 (the VM station).
 4. **`B968` — the workspace picker names a folder the workstation never sees.** *A folder in my
    workstation.* With the workstation on, the picker lists folders in the person's workstation home and
    the routed tools start there.
+
+## D-2026-10-01-02 — a non-admin's agent may organise their own documents
+
+**Asked**, 2026-10-01, after `P21` landed (`B995`): `manage_documents` is in `NON_ADMIN_BLOCKED_TOOLS`, so on a
+multi-user install `P21-02`'s folder actions reach only admins, though every action is already scoped to the
+caller's own documents.
+
+**Decided by the owner:** *Yes, their own docs.* `manage_documents` opens to non-admins; every action stays
+owner-scoped, and **a big move or a delete still waits for the person's approval** — which makes `B994` (the
+agent's `tidy` and `delete` run with no preview) part of the same change, not a separate nicety: the
+promise in the answer is only true once both ask first.
