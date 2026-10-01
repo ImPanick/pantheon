@@ -38,6 +38,15 @@ def drop_for_fresh_import(monkeypatch, *names):
     that the stubs it wants are the ones in place when the module body runs.
     """
     for name in names:
+        # `B1003`: the package attribute too. Importing `a.b` again sets `b` on
+        # the package `a`, and `import a.b as c` / `from a import b` read that
+        # attribute — so with only `sys.modules` restored, every file after
+        # this test reached the re-imported copy by attribute and the original
+        # by name (five modules seen split this way in one full run).
+        parent_name, _, child = name.rpartition(".")
+        parent = sys.modules.get(parent_name) if parent_name else None
+        if parent is not None:
+            monkeypatch.setattr(parent, child, getattr(parent, child, None), raising=False)
         monkeypatch.setitem(sys.modules, name, _PLACEHOLDER)
         sys.modules.pop(name, None)
 

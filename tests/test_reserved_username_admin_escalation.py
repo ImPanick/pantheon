@@ -18,6 +18,7 @@ import pytest
 from fastapi import HTTPException
 
 from src.owner_identity import DEFAULT_LOCAL_OWNER
+from tests.helpers.fresh_import import drop_for_fresh_import
 from tests.helpers.import_state import clear_module
 
 _RESERVED_NAMES = ["internal-tool", "api", "demo", "system", DEFAULT_LOCAL_OWNER]
@@ -112,7 +113,11 @@ def test_legacy_reserved_username_session_cannot_pass_admin_gate(tmp_path, monke
         encoding="utf-8",
     )
     mgr = _fresh_auth_manager(tmp_path)
-    clear_module("core.middleware")
+    # `B1003`: dropped for a fresh import AND put back afterwards. Left
+    # re-imported, it minted a second `INTERNAL_TOOL_TOKEN`, and every later
+    # test that sent the token from `core.middleware` to a route that had bound
+    # `require_admin` from the first copy was told "Admin only".
+    drop_for_fresh_import(monkeypatch, "core.middleware")
     from core.middleware import require_admin
 
     monkeypatch.setenv("AUTH_ENABLED", "true")
