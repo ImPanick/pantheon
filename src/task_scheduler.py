@@ -1159,13 +1159,88 @@ def dry_run_declined(task) -> str | None:
     return None
 
 
+def shape_run_step(fields: dict, *, max_detail: int = 400) -> dict:
+    """One step as a run's step log holds it: long text clipped, `at` stamped.
+
+    `P22-04`. Pulled out of `TaskScheduler._record_run_step` so a chain dry
+    run's successors — planned, never recorded — carry steps in exactly the
+    shape the head's recorded run does (`Law 7`).
+    """
+    for key in ("detail", "output"):
+        value = fields.get(key)
+        if isinstance(value, str) and len(value) > max_detail:
+            fields[key] = value[:max_detail].rstrip() + "\u2026"
+    fields.setdefault("at", _utcnow().isoformat() + "Z")
+    return fields
+
+
+def chain_dry_run_rows(db, head) -> tuple:
+    """The rows a chain dry run from `head` reads, and `validate_graph`'s
+    answer about them: `(rows, refusal or None)`.
+
+    `P22-04`. Walked from `head`'s successors with `head.owner`, which is what
+    `_advance_chain` asks before it continues from `head` (`_chain_refusal`) —
+    so a chain the engine would refuse to continue is refused here, for the
+    same reason, and a chain it runs is planned. Every later step's own walk is
+    a part of these, so nothing deeper can be refused that these allow.
+    """
+    starts = list(dict.fromkeys(edge["to"] for edge in task_edges(head)))
+    rows = load_chain_rows(db, starts, known={head.id: head})
+    refusal = validate_graph(rows, starts=starts, owner=head.owner) if starts else None
+    return rows, refusal
+
+
+def plan_dry_chain(head, rows, *, head_steps, head_declined=None,
+                   name_of=None) -> list:
+    """Every task reachable from `head`, each once, breadth first, planned.
+
+    `P22-04`, the chain dry run's contract: `{task_id, name, when, depth, steps,
+    declined}` per task, the head first (`when` None, depth 0, the steps its
+    recorded run holds). `when` is the edge condition from the task's first
+    parent in that order — `EDGE_CONDITIONS` order out of each task, so "if it
+    works" before "if it fails". A successor's `steps` are `dry_run_lines`,
+    the planner the head's run was written by, shaped as a recorded step and
+    recorded nowhere: no run row, no history, no notification. `declined` is
+    `dry_run_declined`'s sentence (and then no steps), or None — a paused step
+    is planned, and its plan says a real run would not start it (`B1036`).
+    A successor with no row (deleted) ends that branch, as it does in a run.
+    """
+    by_id = {row.id: row for row in rows}
+    name_of = name_of or (lambda task: task.name)
+    out = [{"task_id": head.id, "name": name_of(head), "when": None, "depth": 0,
+            "steps": list(head_steps or []), "declined": head_declined}]
+    seen = {head.id}
+    frontier = [head]
+    depth = 0
+    while frontier:
+        depth += 1
+        following = []
+        for node in frontier:
+            for edge in task_edges(node):
+                row = by_id.get(edge["to"])
+                if row is None or row.id in seen:
+                    continue
+                seen.add(row.id)
+                following.append(row)
+                declined = dry_run_declined(row)
+                steps = [] if declined else [
+                    shape_run_step({"kind": "dry-run", "detail": line})
+                    for line in dry_run_lines(row)]
+                out.append({"task_id": row.id, "name": name_of(row),
+                            "when": edge["when"], "depth": depth,
+                            "steps": steps, "declined": declined})
+        frontier = following
+    return out
+
+
 def dry_run_lines(task) -> list:
     """The plan for `task`, headline first. Runs nothing, reads no session.
 
     `P8-33`'s lines (`dry_run_plan`, which reads a registry and the task's
     columns), then where the result would go, then — `B1036` — whether a real
     run would start it at all. One planner (`Law 7`): `_record_dry_run`
-    writes these on the run.
+    writes these on the head's run, and `plan_dry_chain` hands the same lines,
+    unrecorded, for every step after it (`P22-04`).
     """
     from src.builtin_actions import dry_run_plan
 
@@ -1444,11 +1519,7 @@ class TaskScheduler:
         steps = self._state_for(run_id)["steps"]
         if len(steps) >= self._MAX_RUN_STEPS:
             return None
-        for key in ("detail", "output"):
-            value = fields.get(key)
-            if isinstance(value, str) and len(value) > self._MAX_STEP_DETAIL:
-                fields[key] = value[: self._MAX_STEP_DETAIL].rstrip() + "\u2026"
-        fields.setdefault("at", _utcnow().isoformat() + "Z")
+        fields = shape_run_step(fields, max_detail=self._MAX_STEP_DETAIL)
         steps.append(fields)
         return fields
 
