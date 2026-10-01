@@ -13,6 +13,7 @@ from core.models import ChatMessage
 from core.database import SessionLocal, ChatMessage as DbChatMessage, Session as DbSession
 from src.auth_helpers import effective_user
 from src.tool_approval_scopes import sanitize_client_message_metadata
+from src.agent_stops import RUN_KEYS, is_continue_prompt, merge_runs   # `B941`
 from src.topic_analyzer import analyze_topics
 from src.upload_handler import reserve_message_upload_references
 from routes.session_routes import (
@@ -97,9 +98,41 @@ def _merge_continue_rows_to_delete(db_messages, db1, db2):
     i2 = next((i for i, m in enumerate(db_messages) if m is db2), None)
     if i1 is not None and i2 is not None and i2 - 1 > i1:
         between = db_messages[i2 - 1]
-        if getattr(between, "role", "") == "user" and            "previous response was interrupted" in (getattr(between, "content", "") or ""):
+        # `B941`: the step limit's Continue prompt too (`is_continue_prompt`).
+        if getattr(between, "role", "") == "user" and is_continue_prompt(getattr(between, "content", "") or ""):
             to_delete.append(between)
     return to_delete
+
+
+def _is_agent_record(meta) -> bool:
+    """A reply saved from an agent run's record: it has rounds to draw."""
+    return isinstance(meta, dict) and bool(meta.get("round_texts") or meta.get("tool_events"))
+
+
+def _merged_reply_metadata(meta1: dict, meta2: dict) -> dict:
+    """`B941`. The metadata of a reply Continue joined to the one before it.
+
+    Every key as it was — the second reply's where both have one — and, when
+    both are agent runs, their rounds as one reply's (`merge_runs`): the
+    continuation's numbered after the first run's, and the first run's own
+    figures kept for its footer. The merge was `{**meta1, **meta2}`, which kept
+    the continuation's rounds and none of the first run's, and kept the first
+    run's stops and notes only when the continuation had none, placed by its
+    round numbers against the continuation's rounds. The first run's step-limit
+    note is not kept: Continue ▸ was that offer, and taking it removed the note.
+    """
+    merged = {**meta1, **meta2}
+    if _is_agent_record(meta1) and _is_agent_record(meta2):
+        first = dict(meta1)
+        first["agent_notes"] = [note for note in meta1.get("agent_notes") or []
+                                if not (isinstance(note, dict) and note.get("type") == "rounds_exhausted")]
+        runs = merge_runs(first, meta2)
+        for key in RUN_KEYS:
+            merged.pop(key, None)
+            if key in runs:
+                merged[key] = runs[key]
+    merged.pop('stopped', None)  # no longer stopped after continue
+    return merged
 
 
 def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
@@ -586,11 +619,10 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
             content2 = msg2.content if isinstance(msg2, ChatMessage) else msg2.get('content', '')
             merged_content = content1 + separator + content2
 
-            # Merge metadata
+            # Merge metadata (`B941`: an agent run's rounds as one reply's)
             meta1 = (msg1.metadata if isinstance(msg1, ChatMessage) else msg1.get('metadata')) or {}
             meta2 = (msg2.metadata if isinstance(msg2, ChatMessage) else msg2.get('metadata')) or {}
-            merged_meta = {**meta1, **meta2}
-            merged_meta.pop('stopped', None)  # no longer stopped after continue
+            merged_meta = _merged_reply_metadata(meta1, meta2)
 
             # Update first message, remove second
             if isinstance(msg1, ChatMessage):
@@ -607,7 +639,10 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
                 between = session.history[idx2 - 1]
                 between_role = between.role if isinstance(between, ChatMessage) else between.get('role', '')
                 between_content = between.content if isinstance(between, ChatMessage) else between.get('content', '')
-                if between_role == 'user' and 'previous response was interrupted' in between_content:
+                # `B941`: and the step limit's Continue prompt, which this
+                # left in place, drawn as a user bubble below the reply on
+                # every reload. One test for both paths (`is_continue_prompt`).
+                if between_role == 'user' and is_continue_prompt(between_content):
                     remove_indices.insert(0, idx2 - 1)
 
             for ri in sorted(remove_indices, reverse=True):

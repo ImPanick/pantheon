@@ -181,10 +181,12 @@ function words(d, text) {
 
 /**
  * Continue ▸ after the step limit: the note goes, the next send is a
- * continuation of `reply` (the turn's first bubble — merged with what comes
- * back, as a stopped reply's Continue merges), its prompt is hidden, and it is
- * sent. Through `window.chatModule`, which owns the send, as the history
- * renderer's own Continue already goes (`chatRenderer.js`).
+ * continuation of `reply` (the turn's first bubble), its prompt is hidden, and
+ * it is sent. Through `window.chatModule`, which owns the send, as the history
+ * renderer's own Continue already goes (`chatRenderer.js`). `B941`: it carries
+ * the run's steps on (`{ steps: true }`) — the continuation stays where it is
+ * drawn and the server joins the two replies — where a stopped reply's
+ * Continue merges its text into the bubble it stopped in.
  */
 function continueAfterStepLimit(d, note, reply) {
   note.remove();
@@ -192,7 +194,7 @@ function continueAfterStepLimit(d, note, reply) {
   const target = typeof reply === 'function' ? reply() : reply;
   if (chat) {
     if (typeof chat.setHideUserBubble === 'function') chat.setHideUserBubble();
-    if (typeof chat.setPendingContinue === 'function') chat.setPendingContinue(target || null);
+    if (typeof chat.setPendingContinue === 'function') chat.setPendingContinue(target || null, { steps: true });
   }
   const input = d.getElementById('message');
   if (input) {

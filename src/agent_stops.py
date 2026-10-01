@@ -492,6 +492,26 @@ def merge_runs(first: Any, second: Any) -> Dict[str, Any]:
     return merged
 
 
+#: `B941`. What Continue ▸ sends after the step limit (`continueAfterStepLimit`,
+#: `static/js/agentStops.js`, where it is `STEP_LIMIT_CONTINUE_PROMPT`; a test
+#: holds the two equal). A hidden prompt, like the interrupted reply's: Continue's
+#: merge takes it out from between the two replies it joins.
+STEP_LIMIT_CONTINUE_PROMPT = (
+    "You hit the step limit before finishing — the task is not complete. Continue "
+    "from exactly where you left off and keep going until it is done. Do NOT "
+    "repeat work already done.")
+
+#: The hidden prompts a Continue sends, which its merge removes. The interrupted
+#: reply's has always been recognised by this phrase (`merge_last_assistant`).
+CONTINUE_PROMPT_MARKERS = ("previous response was interrupted", STEP_LIMIT_CONTINUE_PROMPT)
+
+
+def is_continue_prompt(content: Any) -> bool:
+    """Whether a user message is a prompt a Continue sent, not something typed."""
+    text = content if isinstance(content, str) else ""
+    return any(marker in text for marker in CONTINUE_PROMPT_MARKERS)
+
+
 class AgentNotes:
     """The notes one turn drew, in order, for the reply they are saved with.
 
@@ -574,5 +594,5 @@ __all__: List[str] = [
     "safe_arguments", "unkept_promise_stop",
     "AGENT_NOTE_TYPES", "AgentNotes",
     "ROUND_LISTS", "ROUND_EVENTS", "RUN_KEYS", "rounds_in", "merge_notes", "run_figures",
-    "merge_runs",
+    "merge_runs", "STEP_LIMIT_CONTINUE_PROMPT", "CONTINUE_PROMPT_MARKERS", "is_continue_prompt",
 ]

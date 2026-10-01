@@ -572,6 +572,9 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
     } catch (_) {}
   }
   let _pendingContinue = null; // Stores the stopped AI element to merge with new response
+  // `B941`: the pending continue carries on an agent run's steps (Continue ▸
+  // after the step limit) rather than a stopped reply's text.
+  let _pendingContinueSteps = false;
   function _createChatSendPerf() {
     const started = (performance && performance.now) ? performance.now() : Date.now();
     let last = started;
@@ -2279,6 +2282,7 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
           stoppedIndicator.remove();
           _hideUserBubble = true;
           _pendingContinue = _stoppedHolder;
+          _pendingContinueSteps = false;   // `B941`: a stopped reply's text
           const cutoff = stoppedContent;
           const msgInput = uiModule.el('message');
           if (msgInput) {
@@ -5341,7 +5345,22 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
         _attachVariantNav(footerTarget);
 
         // Merge with previous stopped message if this was a continue
-        if (_pendingContinue) {
+        if (_pendingContinue && _pendingContinueSteps) {
+          // `B941`. Continue ▸ after the step limit: the run's steps go on
+          // where they are drawn, as one reply with the steps above them.
+          const prevEl = _pendingContinue;
+          _pendingContinue = null;
+          _pendingContinueSteps = false;
+          _joinContinuedSteps(prevEl, holder);
+          const sid = sessionModule.getCurrentSessionId();
+          if (sid) {
+            fetch(`${API_BASE}/api/session/${sid}/merge-last-assistant`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ separator: '\n\n' })
+            }).catch(e => console.warn('merge-last-assistant failed:', e));
+          }
+        } else if (_pendingContinue) {
           const prevEl = _pendingContinue;
           _pendingContinue = null;
           const prevBody = prevEl.querySelector('.body');
@@ -5545,6 +5564,7 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
               stoppedIndicator.remove();
               _hideUserBubble = true;
               _pendingContinue = _catchViewHolder;
+              _pendingContinueSteps = false;   // `B941`: a stopped reply's text
               const cutoff = accumulated;
               const msgInput = uiModule.el('message');
               if (msgInput) {
@@ -6267,6 +6287,32 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
       _applyModelColor(role, model);
     }
     return bubble;
+  }
+
+  /**
+   * `B941`. Continue ▸ after the step limit carries the same reply on: the
+   * server joins the two replies into one (`merge-last-assistant`), the
+   * continuation's steps numbered after the first run's, and a reload draws
+   * them as one — the continuation's first step a step of that reply. Live, the
+   * continuation was merged into the turn's first bubble, as a stopped reply's
+   * text is: in an agent turn that bubble is usually hidden (it wrote nothing
+   * before its first tool), so the old and new text were rendered into a hidden
+   * bubble, the continuation's own last bubble was removed, and the continued
+   * answer left the screen until a reload. Now the continuation stays where it
+   * was drawn, below the steps it carries on, and its first bubble becomes a
+   * step of the reply: a continuation (no time of its own, as in the reload)
+   * that edits and deletes the reply it was joined to. `firstBubble` is the
+   * reply's first bubble, the one Continue ▸ handed over.
+   */
+  function _joinContinuedSteps(firstBubble, continuation) {
+    if (!continuation || !continuation.classList) return continuation;
+    continuation.classList.add('msg-continuation');
+    const stamp = continuation.querySelector('.role-timestamp');
+    if (stamp) stamp.remove();
+    const id = firstBubble && firstBubble.dataset ? firstBubble.dataset.dbId : '';
+    if (id) continuation.dataset.dbId = id;
+    else delete continuation.dataset.dbId;
+    return continuation;
   }
 
   /**
@@ -7859,9 +7905,12 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
     _hideUserBubble = true;
   }
 
-  /** Set the AI element to merge with the next streamed response (continue after stop) */
-  export function setPendingContinue(el) {
+  /** Set the AI element to merge with the next streamed response (continue after stop).
+   *  `B941`: `{ steps: true }` when the next response carries on an agent run's
+   *  steps (Continue ▸ after the step limit) — see `_joinContinuedSteps`. */
+  export function setPendingContinue(el, opts = {}) {
     _pendingContinue = el;
+    _pendingContinueSteps = !!(opts && opts.steps);
   }
 
   /**

@@ -5,6 +5,7 @@
 import Storage from './storage.js';
 import uiModule, { autoResize, styledPrompt } from './ui.js';
 import chatRenderer from './chatRenderer.js?v=20261001workstation';
+import { STEP_LIMIT_CONTINUE_PROMPT, withdrawContinueOffers } from './agentStops.js';   // `B941`
 import { providerLogo } from './providers.js';
 import { initModelPicker, updateModelPicker } from './modelPicker.js?v=20260722ctxheader1';
 import themeModule from './theme.js';
@@ -173,6 +174,15 @@ function _renderHistoryMessage(msg, modelName) {
       displayContent.includes('[Instruction: Rewrite') ||
       displayContent.includes('[Instruction: Explain')
     ) {
+      return null;
+    }
+    // `B941`. The step limit's Continue ▸ sends this prompt hidden, and its
+    // merge takes it out once the continuation finishes. One that was stopped
+    // or failed was never merged, and the prompt was drawn as a user bubble.
+    // It is hidden like the interrupted reply's; and as a later message it
+    // still withdraws the offer above it, which it answered.
+    if (trimmed === STEP_LIMIT_CONTINUE_PROMPT) {
+      withdrawContinueOffers(document.getElementById('chat-history'));
       return null;
     }
     const docEditMatch = displayContent.match(/^In the document, edit this specific text \((lines? [\d-]+)\):\n```\n([\s\S]*?)\n```\n\nInstruction: ([\s\S]*)$/);
