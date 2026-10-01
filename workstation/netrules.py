@@ -224,17 +224,28 @@ def self_test(*, address: Tuple[str, int] = SELF_TEST_ADDRESS, timeout: float = 
 
 def capability(bit: int, field: str = "CapEff", status: Path = Path("/proc/self/status")) -> bool:
     """Whether this process has capability `bit` in `field` (CapEff, CapBnd)."""
+    # No /proc (not Linux) or a line we cannot read: say "no", which is what
+    # makes the daemon hold nothing and report `none`.
+    return bool((capabilities(field, status) or 0) >> bit & 1)
+
+
+def capabilities(field: str = "CapEff",
+                 status: Path = Path("/proc/self/status")) -> Optional[int]:
+    """This process's whole capability set `field` as a bit mask, or None when
+    it cannot be read — not 0, which is a set with nothing in it (`Law 10`).
+    `B976`: `workstation/netraw.py` needs the bounding set, not one bit of it."""
     try:
         for line in Path(status).read_text(encoding="utf-8").splitlines():
             if line.startswith(field + ":"):
-                return bool(int(line.split()[1], 16) >> bit & 1)
+                return int(line.split()[1], 16)
     except (OSError, ValueError, IndexError):
-        # No /proc (not Linux) or a line we cannot read: say "no", which is
-        # what makes the daemon hold nothing and report `none`.
+        # No /proc (not Linux) or a line we cannot read: None, "unknown" —
+        # `capability` reads it as "no", `netraw` as "change nothing".
         pass
-    return False
+    return None
 
 
 __all__ = ["ACCOUNTS_TABLE", "CAP_NET_ADMIN", "COMMENT_PREFIX", "DOCKER_DNS", "GATE_TABLE",
            "RulesError", "SELF_TEST_ADDRESS", "apply", "capability", "in_force", "lan_resolvers",
-           "nft_path", "ruleset", "self_test"]
+           "nft_path", "ruleset", "self_test",
+           "capabilities"]  # `B976`, added

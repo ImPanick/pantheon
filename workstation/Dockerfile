@@ -55,6 +55,15 @@ COPY firefox/policies.json /opt/pantheon-workstation/provision/firefox/policies.
 COPY skel/ /opt/pantheon-workstation/provision/skel/
 RUN sh /opt/pantheon-workstation/provision/provision.sh files --skel /etc/skel
 COPY *.py /opt/pantheon-workstation/workstation/
+# `B976`. The overlay runs this container without CAP_NET_RAW (`P20-06`), and the
+# kernel refuses to start a program whose file capability names one the machine
+# never grants — Ubuntu's `ping` among them (measured 2026-10-01: `sudo apt-get
+# install iputils-ping`, then `ping` → *Operation not permitted* at exec). After
+# every dpkg run apt takes out of each program on PATH what this machine cannot
+# grant, so `ping` starts and uses an unprivileged ICMP socket
+# (`workstation/netraw.py`). Here and not in `provision.sh`: the container is the
+# only backend that drops a capability.
+COPY apt-net-raw.conf /etc/apt/apt.conf.d/80pantheon-net-raw
 
 ENV LANG=C.UTF-8 \
     PYTHONDONTWRITEBYTECODE=1 \
