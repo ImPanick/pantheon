@@ -18,6 +18,14 @@ let sortOrder = 'newest';
 let selectMode = false;
 let selectedIds = new Set();
 let memoriesLoading = false;
+// `B1070`. Whether `memories` is the store's answer yet, and what went wrong if
+// asking failed. Before the first answer the list is unknown, not empty: the
+// Brain said "No memories yet" for seconds while eight existed, because its
+// door drew the list it had (none) and the store was only asked by a warmup
+// 12 s after boot. An empty state that is really a loading state, or a failed
+// one, is a false statement (`Law 10`).
+let memoriesKnown = false;
+let memoriesError = '';
 
 
 const MEMORY_CATEGORIES = ['fact', 'identity', 'preference', 'contact', 'project', 'goal', 'task'];
@@ -504,22 +512,29 @@ export async function loadMemories() {
   memoriesLoading = true;
   renderMemoryList();
   updateMemoryCount();
+  // `B1070`. Only asking and reading are inside the `try`: a fault while
+  // drawing the list is the page's, and catching it here reported it as "the
+  // server did not answer" — a false sentence about someone else.
+  let data = null;
   try {
     const response = await fetch(`${window.location.origin}/api/memory`);
-
     if (!response.ok) {
       console.error('Memory fetch failed with status:', response.status);
-      memories = [];
-      memoriesLoading = false;
-      buildCategoryChips();
-      renderMemoryList();
-      updateMemoryCount();
-      syncToggles();
-      return;
+      memoriesError = `the server answered ${response.status}`;
+    } else {
+      try {
+        data = await response.json();
+      } catch (error) {
+        console.error('Memory list was not JSON:', error);
+        memoriesError = 'its answer could not be read';
+      }
     }
+  } catch (error) {
+    console.error('Failed to load memories:', error);
+    memoriesError = 'the server did not answer';
+  }
 
-    const data = await response.json();
-
+  if (data !== null) {
     if (data && data.memory) {
       memories = data.memory;
     } else if (Array.isArray(data)) {
@@ -527,21 +542,34 @@ export async function loadMemories() {
     } else {
       memories = [];
     }
-
-    memoriesLoading = false;
-    buildCategoryChips();
-    renderMemoryList();
-    updateMemoryCount();
-  } catch (error) {
-    console.error('Failed to load memories:', error);
+    memoriesKnown = true;
+    memoriesError = '';
+  } else {
     memories = [];
-    memoriesLoading = false;
-    buildCategoryChips();
-    renderMemoryList();
-    updateMemoryCount();
+    memoriesKnown = false;
   }
+  memoriesLoading = false;
+  buildCategoryChips();
+  renderMemoryList();
+  updateMemoryCount();
   // Always wire toggles, even if memory API failed
   syncToggles();
+}
+
+/**
+ * `B1070`. The Brain asks for its own list when it opens and does not know it
+ * yet — the first open, or one after a failed load. Before this the window only
+ * redrew what it had; the list came from `app.js`'s startup warmup (12 s after
+ * boot, then an idle callback) or from `sessions.js` 2.5 s after a chat loaded,
+ * so opening the Brain early showed nothing for as long as those took —
+ * measured on the seeded demo, `GET /api/memory` 7.4 s after the click. The
+ * requests seen before it were other warmups and polls, not a chain it waited
+ * on. A list already known is left as it is: the existing refreshes keep it,
+ * and redrawing it here would throw away an edit in progress.
+ */
+export function loadMemoriesIfUnknown() {
+  if (memoriesKnown || memoriesLoading) return null;
+  return loadMemories();
 }
 
 // ---- Bulk select mode ----
@@ -1009,9 +1037,17 @@ export function renderMemoryList() {
     const selectBtn = document.getElementById('memory-select-btn');
     if (selectBtn) selectBtn.disabled = true;
     if (selectMode) exitSelectMode();
-    if (memoriesLoading) {
+    if (memoriesLoading || (!memoriesKnown && !memoriesError)) {
       const row = spinnerModule.createLoadingRow('Loading memories...', 14);
       row.classList.add('memory-empty');
+      memoryList.replaceChildren(row);
+      return;
+    }
+    if (memoriesError) {
+      // `B1070`. A failed load is not an empty store either.
+      const row = document.createElement('div');
+      row.className = 'memory-empty';
+      row.textContent = `Could not load memories — ${memoriesError}. Reopen the Brain to try again.`;
       memoryList.replaceChildren(row);
       return;
     }
@@ -1408,9 +1444,10 @@ export function updateMemoryCount() {
   const h2Count = document.getElementById('memory-count-h2');
   const tabCount = document.getElementById('memory-count'); // optional (may be absent)
   if (!h2Count && !tabCount) return;
-  if (memoriesLoading) {
-    if (h2Count) h2Count.textContent = 'loading...';
-    if (tabCount) tabCount.textContent = '...';
+  if (memoriesLoading || !memoriesKnown) {
+    // `B1070`: "0 memories" before the store has answered is a guess.
+    if (h2Count) h2Count.textContent = memoriesError ? '' : 'loading...';
+    if (tabCount) tabCount.textContent = memoriesError ? '' : '...';
     return;
   }
 
@@ -1797,6 +1834,16 @@ var showError = uiModule.showError;
 document.addEventListener('DOMContentLoaded', () => {
   _wireMemoryDrag();
 
+  // `B1070`. Every door into the Brain — the sidebar row, the rail, `/memory`,
+  // the shortcut, a chat's "memories used" row — un-hides this window, so the
+  // window itself is what asks for its list.
+  const memModal = document.getElementById('memory-modal');
+  if (memModal && typeof MutationObserver === 'function') {
+    new MutationObserver(() => {
+      if (!memModal.classList.contains('hidden')) loadMemoriesIfUnknown();
+    }).observe(memModal, { attributes: true, attributeFilter: ['class'] });
+  }
+
   // Memory modal tabs
   document.querySelectorAll('.memory-tab[data-memory-tab]').forEach(tab => {
     tab.addEventListener('click', () => {
@@ -1877,6 +1924,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 const memoryModule = {
   loadMemories,
+  loadMemoriesIfUnknown,
   renderMemoryList,
   updateMemoryCount,
   addNewMemory,
