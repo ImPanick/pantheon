@@ -268,21 +268,71 @@
   // Each modal "kind" is a container selector plus where to find its title
   // heading. Standard modals use .modal-content/.modal-header; the docked
   // Notes pane uses its own markup.
+  // `overlay` is the full-screen layer the kind sits in — what would block the
+  // page behind it, if anything does (`B949`, below).
   var MODAL_KINDS = [
     {
       sel: '.modal-content',
       heading: '.modal-header h1, .modal-header h2, .modal-header h3, ' +
-               '.modal-header h4, .modal-header h5, .modal-header h6'
+               '.modal-header h4, .modal-header h5, .modal-header h6',
+      overlay: '.modal'
     },
-    { sel: '.notes-pane', heading: '.notes-pane-title' }
+    { sel: '.notes-pane', heading: '.notes-pane-title', overlay: '.notes-pane-backdrop' }
   ];
   var MODAL_SEL = MODAL_KINDS.map(function (k) { return k.sel; }).join(',');
+
+  // ---- Which dialogs block ---------------------------------------------------
+  // `B949`. This module used to add `aria-modal="true"` to every dialog that
+  // lacked it, and the tool windows lack it on purpose: they are dockable,
+  // tiling windows over a page that stays usable — `.modal` is
+  // `pointer-events: none` with no backdrop. Measured 2026-09-27: Brain,
+  // Theme, Prompt, Rename session, Forge, Settings and Tasks all carried it at
+  // runtime, so a screen reader that honours `aria-modal` kept its reading
+  // cursor inside a window while the chat behind it went on working.
+  //
+  // So the attribute now says what the overlay does, read from the overlay
+  // itself rather than from a list of which windows block: a dialog whose
+  // overlay takes the pointer (`pointer-events` other than `none`) is modal,
+  // and one whose overlay lets the page through is not. That covers the PDF
+  // export (an inline `pointer-events: auto` and a backdrop, `document.js`)
+  // and the phone layout, where every window becomes a bottom sheet over a
+  // backdrop — which is why it is re-read when the viewport changes. A
+  // dialog that came with its own `aria-modal` (the styled confirm and
+  // prompt) is the author's word and is left alone; only an attribute this
+  // module manages is ever written, and only when it changes.
+  function kindFor(mc) {
+    for (var i = 0; i < MODAL_KINDS.length; i++) {
+      if (mc.matches && mc.matches(MODAL_KINDS[i].sel)) return MODAL_KINDS[i];
+    }
+    return null;
+  }
+
+  function blocksThePage(mc) {
+    var kind = kindFor(mc);
+    var overlay = kind && up(mc, kind.overlay);
+    if (!overlay || typeof getComputedStyle !== 'function') return false;
+    try { return getComputedStyle(overlay).pointerEvents !== 'none'; } catch (_) { return false; }
+  }
+
+  function syncModality(mc) {
+    if (!mc || !mc.dataset || mc.dataset.a11yModal !== 'auto') return;
+    var want = blocksThePage(mc);
+    if (want && mc.getAttribute('aria-modal') !== 'true') mc.setAttribute('aria-modal', 'true');
+    else if (!want && mc.hasAttribute('aria-modal')) mc.removeAttribute('aria-modal');
+  }
+
+  function syncAllModality() {
+    document.querySelectorAll('[data-a11y-modal="auto"]').forEach(syncModality);
+  }
 
   function enhanceModal(mc, headingSel) {
     if (!mc || mc.nodeType !== 1 || mc.dataset.a11yDialog === '1') return;
     mc.dataset.a11yDialog = '1';
     if (!mc.hasAttribute('role')) mc.setAttribute('role', 'dialog');
-    if (!mc.hasAttribute('aria-modal')) mc.setAttribute('aria-modal', 'true');
+    if (!mc.hasAttribute('aria-modal')) {
+      mc.dataset.a11yModal = 'auto';
+      syncModality(mc);
+    }
 
     var heading = headingSel && mc.querySelector(headingSel);
     if (heading) {
@@ -368,6 +418,19 @@
     enhanceAll(document);
     enhanceModals(document);
     enhanceRail(document.getElementById(RAIL_ID));
+
+    // `B949`. The phone layout turns every window into a sheet over a
+    // backdrop, and the stylesheet may still be arriving when this first runs;
+    // re-read after it has loaded and whenever the viewport changes.
+    if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+      var modalityFrame = 0;
+      var raf = window.requestAnimationFrame || function (fn) { return setTimeout(fn, 16); };
+      window.addEventListener('resize', function () {
+        if (modalityFrame) return;
+        modalityFrame = raf(function () { modalityFrame = 0; syncAllModality(); });
+      });
+      window.addEventListener('load', syncAllModality);
+    }
 
     // Sidebar content is re-rendered as the user navigates (session lists,
     // tool sub-rows, etc.). Watch for new rows and enhance them too.
