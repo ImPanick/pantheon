@@ -1664,8 +1664,22 @@ class TaskScheduler:
                 self._record_chain_outcome(
                     db, run_id, f"Did not continue to {label}: {CHAIN_ALREADY_RUNNING}")
                 return
-            logger.info("Chaining on %s: %r → task %s", when, task.name, chain_id)
-            self._record_chain_outcome(db, run_id, f"{lead} {label}")
+            # `B1037`. A paused (or spent one-off) successor does not run:
+            # `_execute_task_locked` records it `skipped` before any executor.
+            # This wrote "Continued to X" over that, the same claim `P22-01`
+            # made honest for a busy successor. The line says so now. What X
+            # itself records — a `skipped` run, and the notification `B112`
+            # sends for a skip that leaves a task stopped — is that row's
+            # notification-policy call and is left exactly as it was, so X is
+            # still handed on.
+            why_not = not_active_words(chain_task)
+            if why_not:
+                logger.info("Not continuing on %s: %r → task %s, %s",
+                            when, task.name, chain_id, why_not)
+                self._record_chain_outcome(db, run_id, f"Did not continue to {label}: {why_not}")
+            else:
+                logger.info("Chaining on %s: %r → task %s", when, task.name, chain_id)
+                self._record_chain_outcome(db, run_id, f"{lead} {label}")
             # `P8-29`. What this run produced, handed to the step that follows
             # it. A chain was a sequence: `_run_chained` took an id and nothing
             # else, so "summarise this, then email the summary" could not be
