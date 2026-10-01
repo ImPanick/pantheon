@@ -24,12 +24,15 @@ from core.database import (
 )
 from src.auth_helpers import effective_user
 from src.attachment_refs import attachment_refs_from_metadata
+# `P21-03`: the person's name for a file, and the download header that keeps it.
+from src.file_names import attachment_disposition, upload_display_name
 from src.constants import GENERATED_IMAGES_DIR
 from src.upload_handler import (
     MAX_FILES_PER_REQUEST,
     UploadCleanupSafetyError,
     count_recent_uploads,
     extract_upload_ids,
+    upload_path_matches_id,
 )
 # `P12-06`. The burst gate's two numbers, resolved through `P12`'s four layers
 # rather than read off the handler as constants.
@@ -209,9 +212,21 @@ def setup_upload_routes(upload_handler):
         except Exception:
             return False
 
-    def _resolve_upload_path(file_id: str) -> str:
+    def _resolve_upload_path(file_id: str, info: dict | None = None) -> str:
         from src.constants import UPLOAD_DIR
         upload_root = getattr(upload_handler, "upload_dir", UPLOAD_DIR)
+        # `P21-03`. Since the row, a file is stored as `<date>/<id>/<its own
+        # name>`, so a walk for a file NAMED `<id>` no longer finds it. The
+        # index row says where, and is believed only when the path is inside
+        # the upload root and bound to this id by where it sits on disk
+        # (`upload_path_matches_id`) — the same two conditions
+        # `UploadHandler.reserve_upload` holds it to.
+        stored = (info or {}).get("path") if isinstance(info, dict) else None
+        if isinstance(stored, str) and stored and os.path.lexists(stored):
+            if not _path_inside_upload_dir(stored):
+                raise HTTPException(403, "Access denied")
+            if upload_path_matches_id(stored, file_id) and os.path.isfile(stored):
+                return stored
         direct = os.path.join(upload_root, file_id)
         if os.path.lexists(direct):
             if not _path_inside_upload_dir(direct):
@@ -229,6 +244,17 @@ def setup_upload_routes(upload_handler):
             if os.path.isfile(path):
                 return path
             raise HTTPException(404, "File not found")
+
+        # `P21-03`: the index row's path went stale (a moved data directory
+        # keeps the old absolute paths), so look for the directory named for
+        # the id — the handler's own walk, which never binds an id to a file
+        # outside its directory.
+        finder = getattr(upload_handler, "_find_upload_path", None)
+        if callable(finder):
+            found = finder(file_id, stored_name=(info or {}).get("stored_name")
+                           if isinstance(info, dict) else None)
+            if found and _path_inside_upload_dir(found):
+                return found
 
         raise HTTPException(404, "File not found")
 
@@ -287,8 +313,11 @@ def setup_upload_routes(upload_handler):
             image_id = str(uuid.uuid4())
             db.add(GalleryImage(
                 id=image_id,
+                # The key stays `GENERATED_IMAGE_RE`'s hex name (`FORBIDDEN.md`
+                # Part 2); `P21-03` puts the person's name beside it, where the
+                # gallery already shows one, instead of its ASCII fold.
                 filename=filename,
-                prompt=meta.get("name") or "Chat upload",
+                prompt=upload_display_name(meta) or "Chat upload",
                 model="chat-upload",
                 owner=owner,
                 session_id=_valid_session_id_for_owner(db, session_id, owner),
@@ -403,7 +432,10 @@ def setup_upload_routes(upload_handler):
                 gallery_id = _promote_chat_image_to_gallery(meta, owner, session_id)
                 item = {
                     "id": meta["id"],
-                    "name": meta["name"],
+                    # `P21-03`. What the chip, the markdown image's alt text and
+                    # every later "open as document" read. Was `meta["name"]`,
+                    # the ASCII fold (`Q3_Board_Pack_final_v2.pdf`).
+                    "name": upload_display_name(meta),
                     "mime": meta["mime"],
                     "size": meta["size"],
                     "hash": meta["hash"],
@@ -646,13 +678,19 @@ def setup_upload_routes(upload_handler):
         import mimetypes as _mt
         # Look up original filename and owner from uploads.json
         original_name = file_id
+        display = file_id
         # _load_upload_index() tolerates a missing/corrupt uploads.json (it falls
         # back to the .bak sibling, then to {}), so a truncated DB degrades to
         # "no metadata" instead of a 500 from an unhandled JSONDecodeError.
         db = upload_handler._load_upload_index()
         info = next((fi for fi in db.values() if fi.get("id") == file_id), None)
         if info:
+            # `original_name` here is the row's ASCII `name`, and it keeps the
+            # job it had: the SVG gate and the kind probe below read it, so a
+            # readable name changes no security decision. `display` (`P21-03`)
+            # is only what the download is called.
             original_name = info.get("name", file_id)
+            display = upload_display_name(info) or original_name
         auth_mgr = getattr(request.app.state, "auth_manager", None)
         auth_configured = bool(auth_mgr and auth_mgr.is_configured)
         current_user = effective_user(request)
@@ -662,7 +700,7 @@ def setup_upload_routes(upload_handler):
                 raise HTTPException(403, "Access denied")
             if file_owner != current_user and not auth_mgr.is_admin(current_user):
                 raise HTTPException(404, "File not found")
-        path = _resolve_upload_path(file_id)
+        path = _resolve_upload_path(file_id, info)
         mime = (info or {}).get("mime") or _mt.guess_type(path)[0] or "application/octet-stream"
         from fastapi.responses import FileResponse
         # `B103`. SVG before PIL, because PIL cannot parse SVG: `image/svg+xml`
@@ -674,7 +712,9 @@ def setup_upload_routes(upload_handler):
         # other SVG it serves (`routes/emoji_routes.py`). Same bytes either way
         # for a file that passes the check — the difference is that refusing is
         # now possible.
-        if is_svg(original_name, mime):
+        # `P21-03`: asked of both names, so a readable name can only widen the
+        # SVG gate — `x.svg` is SVG however its ASCII fold came out.
+        if is_svg(original_name, mime) or is_svg(display, mime):
             return _svg_response(path, bool(thumb))
         # Downscaled thumbnail for image previews — generated once and cached.
         if thumb and mime.startswith("image/"):
@@ -707,11 +747,19 @@ def setup_upload_routes(upload_handler):
         # never re-derives a decision this module has already made. Only on the
         # full download: a thumbnail is an image by construction and the probe
         # would be a read for nothing.
+        #
+        # `P21-03`. The file comes back under the name it was given —
+        # `Q3 Board Pack – final (v2).pdf`, not `Q3_Board_Pack_final_v2.pdf` —
+        # and still as `attachment` (`FORBIDDEN.md` Part 2): the header is built
+        # by `attachment_disposition`, which has no way to say `inline`.
+        # `filename=` is still passed so the response says what it is serving;
+        # Starlette only `setdefault`s its own header, so this one is the one sent.
         return FileResponse(
             path,
             media_type=mime,
-            filename=original_name,
+            filename=display,
             headers={**UPLOAD_RESPONSE_HEADERS,
+                     "Content-Disposition": attachment_disposition(display),
                      UPLOAD_KIND_HEADER: _upload_kind(path, original_name)},
         )
 
@@ -833,7 +881,7 @@ def setup_upload_routes(upload_handler):
                 raise HTTPException(403, "Access denied")
             if file_owner != current_user and not auth_mgr.is_admin(current_user):
                 raise HTTPException(404, "File not found")
-        path = _resolve_upload_path(file_id)
+        path = _resolve_upload_path(file_id, info)
         import mimetypes as _mt
         display_name = (info or {}).get("name") or os.path.basename(path)
         mime = (info or {}).get("mime") or _mt.guess_type(path)[0] or ""
@@ -885,7 +933,7 @@ def setup_upload_routes(upload_handler):
                 raise HTTPException(403, "Access denied")
             if file_owner != current_user and not auth_mgr.is_admin(current_user):
                 raise HTTPException(404, "File not found")
-        _resolve_upload_path(file_id)
+        _resolve_upload_path(file_id, info)
         try:
             body = await request.json()
         except json.JSONDecodeError:

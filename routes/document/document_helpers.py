@@ -26,6 +26,10 @@ class DocumentCreate(BaseModel):
     title: str = "Untitled"
     language: Optional[str] = None
     content: str = ""
+    # `P21-03`. The file a browser-side import read this content from, as the
+    # person named it. Optional — a document typed from scratch has none — and
+    # passed through `file_names.display_name` before it is stored.
+    source_name: Optional[str] = None
 
 class DocumentUpdate(BaseModel):
     content: str
@@ -60,6 +64,8 @@ def _doc_to_dict(doc: Document) -> Dict[str, Any]:
         "source_email_folder":     getattr(doc, "source_email_folder", None),
         "source_email_account_id": getattr(doc, "source_email_account_id", None),
         "source_email_message_id": getattr(doc, "source_email_message_id", None),
+        # `P21-03`. The file this document was made from, as its owner named it.
+        "source_name":             getattr(doc, "source_name", None),
     }
 
 def _version_to_dict(v: DocumentVersion) -> Dict[str, Any]:

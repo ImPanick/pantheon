@@ -12,6 +12,8 @@ import json
 import re
 from typing import Any, Iterable
 
+from src.file_names import upload_display_name
+
 
 DATA_URL_RE = re.compile(
     r"data:[^;,\s\"']+;base64,[A-Za-z0-9+/=]+",
@@ -45,7 +47,10 @@ def attachment_ref(info: dict[str, Any]) -> dict[str, Any]:
     ref = {
         "type": "attachment_ref",
         "attachment_id": upload_id,
-        "name": info.get("name") or info.get("original_name") or upload_id,
+        # `P21-03`: the person's name for the file (`display_name`, or recovered
+        # from `original_name` for an upload from before it), which is what the
+        # agent's manifest and the `[Attachment: …]` line now carry.
+        "name": upload_display_name(info) or upload_id,
         "mime": info.get("mime") or "application/octet-stream",
         "size": size,
     }

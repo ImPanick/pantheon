@@ -9518,7 +9518,9 @@ import { chevronIcon, playIcon } from './icons.js';
           });
           const lang = documentLanguage(name);
           const sid = (sessionModule && sessionModule.getCurrentSessionId && sessionModule.getCurrentSessionId()) || _lastSessionId || '';
-          const body = { title: baseTitle, language: lang, content };
+          // `P21-03`: the server titles it from the file's name and keeps the
+          // name as the document's source (one rule for every door).
+          const body = { source_name: name, language: lang, content };
           if (sid) body.session_id = sid;
           const r = await fetch(`${API_BASE}/api/document`, {
             method: 'POST',

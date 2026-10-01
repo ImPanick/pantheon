@@ -14,6 +14,8 @@ from core.database import Session as DbSession
 from src.auth_helpers import get_current_user, _auth_disabled
 from src.constants import MAIL_ATTACHMENTS_DIR
 from src.upload_handler import reserve_upload_references
+# `P21-03`: one answer to "what is this file called" for every door.
+from src.file_names import display_name, document_title, upload_display_name
 
 logger = logging.getLogger(__name__)
 
@@ -184,10 +186,19 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
             doc_id = str(uuid.uuid4())
             ver_id = str(uuid.uuid4())
 
+            # `P21-03`. A browser-side import sends the file's name and leaves
+            # the title to the server, so the title has one derivation
+            # (`file_names.document_title`) whichever door the file came in by.
+            # A title the caller did send is kept as sent.
+            source_name = display_name(req.source_name) or None
+            title = req.title
+            if source_name and "title" not in req.model_fields_set:
+                title = document_title(source_name)
+
             doc = Document(
                 id=doc_id,
                 session_id=req.session_id,
-                title=req.title,
+                title=title,
                 language=language,
                 current_content=req.content,
                 version_count=1,
@@ -196,6 +207,9 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
                 # being deleted. Fall back to the session's owner when the
                 # request is unauthenticated (single-user / localhost bypass).
                 owner=user or (session.owner if session else None),
+                # `P21-03`: the browser-side imports (the library, *Import from
+                # device*, an attachment opened as text) send the file's name.
+                source_name=source_name,
             )
             ver = DocumentVersion(
                 id=ver_id,
@@ -280,7 +294,13 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
         if not pdf_path:
             raise HTTPException(500, "Saved PDF could not be located")
 
-        title = os.path.splitext(meta.get("original_name") or meta.get("name") or upload_id)[0]
+        # `P21-03`. Was `splitext(original_name)[0]` — the raw multipart name,
+        # so `../../evil.pdf` was titled `../../evil`, and a duplicate upload
+        # was titled after whatever the first copy had been called. The title
+        # and the source name are what THIS file was called by the person
+        # importing it; the stored row is only the fallback.
+        source_name = display_name(file.filename) or upload_display_name(meta)
+        title = document_title(source_name, fallback=upload_id)
         try:
             body_text = strip_pdf_content_marker(_process_pdf(pdf_path, owner=user))
         except Exception:
@@ -301,6 +321,7 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
                 upload_id=upload_id,
                 title=title,
                 intro_text=body_text,
+                source_name=source_name,
             )
         else:
             doc_id = create_plain_pdf_document(
@@ -308,6 +329,7 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
                 upload_id=upload_id,
                 title=title,
                 body_text=body_text,
+                source_name=source_name,
             )
 
         if not doc_id:
@@ -404,8 +426,9 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
         if not doc_path:
             raise HTTPException(500, "Saved document could not be located")
 
-        title = _os.path.splitext(
-            meta.get("original_name") or meta.get("name") or upload_id)[0]
+        # `P21-03`: the same naming as `import-pdf` above, for the same reason.
+        source_name = display_name(file.filename) or upload_display_name(meta)
+        title = document_title(source_name, fallback=upload_id)
         try:
             body_text = markitdown_runtime.convert_to_markdown(doc_path)
         except Exception as e:
@@ -436,6 +459,7 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
                 version_count=1,
                 is_active=True,
                 owner=user,
+                source_name=source_name,
             )
             db.add(doc)
             db.add(DocumentVersion(
@@ -443,7 +467,7 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
                 document_id=doc_id,
                 version_number=1,
                 content=body_text,
-                summary=f"Imported from {meta.get('original_name') or incoming}",
+                summary=f"Imported from {source_name}",
                 source="user",
             ))
             db.commit()
@@ -596,6 +620,8 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
                     "session_id": doc.session_id,
                     "session_name": session_name,
                     "title": doc.title,
+                    # `P21-03`: the file it came from, as its owner named it.
+                    "source_name": getattr(doc, "source_name", None),
                     "language": _library_language_for_document(doc),
                     "folder": doc.folder or None,   # `P21-01`
                     "preview": (doc.current_content or "")[:500],

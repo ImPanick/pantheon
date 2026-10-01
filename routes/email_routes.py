@@ -3723,7 +3723,21 @@ def setup_email_routes():
             ext = _Path(base).suffix.lower()
 
             import os as _os
-            title = _os.path.splitext(filepath.name)[0]
+            # `P21-03`. The title was `splitext(filepath.name)[0]`, and the
+            # extracted file's name has been through `[^\w\s\-.]` → `_`, so
+            # `Q3 Board Pack – final (v2).pdf` became a document titled
+            # `Q3 Board Pack _ final _v2_`. The sender's name for the file is in
+            # the message, decoded by the same walk that numbered the
+            # attachments (`_list_attachments_from_msg`), so ask it; the
+            # extracted name is the fallback when the walk has none.
+            from src.file_names import display_name as _display_name, document_title
+            _listed = next(
+                (a.get("filename") for a in _list_attachments_from_msg(msg)
+                 if a.get("index") == index),
+                None,
+            )
+            source_name = _display_name(_listed) or _display_name(filepath.name) or base
+            title = document_title(source_name)
 
             # The registers and the readers this door shares with chat ingest.
             # Imported in one place so the branches below cannot each reach for
@@ -3798,11 +3812,27 @@ def setup_email_routes():
                 ver_id = str(uuid.uuid4())
                 _db = _SL()
                 try:
-                    _db.query(_Doc).filter(_Doc.is_active == True).update({"is_active": False})
+                    # `P21-03` (filed as its own row in the handoff). This used
+                    # to begin `query(Document).filter(is_active == True)
+                    # .update({"is_active": False})` — every document in the
+                    # database, every owner's, because `is_active` was once "the
+                    # open tab". It is the soft-delete flag now
+                    # (`DELETE /api/document/{id}` sets it, the library filters
+                    # on it), so opening a `.txt` from the mailbox took every
+                    # other document out of everyone's library. Measured: three
+                    # of bob's documents went `is_active=False` when alice
+                    # opened `notes.txt`. The panel already opens the new
+                    # document by id; nothing needed the sweep.
+                    #
+                    # And the document had no owner, so the library — which
+                    # matches `owner == user` — could not show it to the person
+                    # who had just opened it until a restart backfilled one.
                     _db.add(_Doc(
                         id=doc_id, session_id=doc_session_id, title=title,
                         language="markdown", current_content=content,
                         version_count=1, is_active=True,
+                        owner=_doc_user or owner or None,
+                        source_name=source_name,
                     ))
                     _db.add(_DV(
                         id=ver_id, document_id=doc_id, version_number=1,
@@ -3853,7 +3883,6 @@ def setup_email_routes():
 
             # ── PDF path (existing) ────────────────────────────────────
             if ext == ".pdf":
-                import shutil as _shutil
                 from src.constants import UPLOAD_DIR
                 from src.pdf_forms import has_form_fields, extract_fields
                 from src.pdf_form_doc import (
@@ -3862,12 +3891,26 @@ def setup_email_routes():
                     create_plain_pdf_document,
                 )
 
-                upload_id = f"{uuid.uuid4().hex}.pdf"
-                today = datetime.utcnow().strftime("%Y/%m/%d")
-                dated_dir = _os.path.join(UPLOAD_DIR, today)
-                _os.makedirs(dated_dir, exist_ok=True)
-                dest_path = _os.path.join(dated_dir, upload_id)
-                _shutil.copyfile(str(filepath), dest_path)
+                # `P21-03`. This copied the PDF to `<date>/<uuid>.pdf` and wrote
+                # no upload record, so the stored file had no name but the
+                # random one and no owner — `GET /api/upload/{id}` handed it back
+                # as `<uuid>.pdf`. It goes through the one store every upload
+                # uses now: indexed under the reader's ownership, stored as
+                # `<date>/<id>/Q3 Board Pack – final (v2).pdf`, downloaded under
+                # that name. Same rate limit as any upload, because it is one.
+                from types import SimpleNamespace as _NS
+                from src.tool_utils import get_upload_handler
+                from src.upload_handler import UploadHandler as _UH
+                _handler = get_upload_handler() or _UH(
+                    _os.path.dirname(_os.path.abspath(UPLOAD_DIR)), UPLOAD_DIR)
+                _client = getattr(getattr(request, "client", None), "host", None) or "mailbox"
+                with open(str(filepath), "rb") as _fh:
+                    _meta = _handler.save_upload(
+                        _NS(filename=source_name, file=_fh), _client,
+                        owner=_doc_user or owner or None,
+                    )
+                upload_id = _meta["id"]
+                dest_path = _meta["path"]
 
                 is_form = False
                 try:
@@ -3884,12 +3927,14 @@ def setup_email_routes():
                         upload_id=upload_id,
                         title=title,
                         intro_text=None,
+                        source_name=source_name,
                     )
                 else:
                     doc_id = create_plain_pdf_document(
                         session_id=doc_session_id,
                         upload_id=upload_id,
                         title=title,
+                        source_name=source_name,
                     )
 
                 if not doc_id:

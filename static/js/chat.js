@@ -8378,7 +8378,9 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
         const text = await (await fetch(url)).text();
         const res = await fetch(`${API_BASE}/api/document`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ session_id: sid || null, title: name.replace(/\.[^.]+$/, '') || 'Document', content: text, language: documentLanguage(name) }),
+          // `P21-03`: the attachment's own name; the server titles the
+          // document from it and keeps it as the source.
+          body: JSON.stringify({ session_id: sid || null, ...(name ? { source_name: name } : { title: 'Document' }), content: text, language: documentLanguage(name) }),
         });
         if (!res.ok) throw new Error('document ' + res.status);
         doc = await res.json();

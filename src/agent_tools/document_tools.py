@@ -991,11 +991,16 @@ class ManageDocumentTool:
                     marker = " ← most recent" if i == 0 else ""
                     folder = getattr(d, "folder", None) or None
                     place = f", in {folder}" if folder else ""
+                    # `P21-03`: the file it was made from, as its owner named
+                    # it, so "the board pack I sent you" can be matched to the
+                    # file and not only to the title.
+                    source = getattr(d, "source_name", None)
+                    from_file = f", from `{source}`" if source else ""
                     lines.append(
-                        f"- [{d.title}](#document-{d.id}) — {lang}, {size} chars, updated {_rel(ts)}{place}{marker}"
+                        f"- [{d.title}](#document-{d.id}) — {lang}, {size} chars{from_file}, updated {_rel(ts)}{place}{marker}"
                     )
                     items.append({"id": d.id, "title": d.title, "language": lang, "size": size,
-                                  "folder": folder})
+                                  "folder": folder, "source_name": source})
                 header = f"Found {len(docs)} document(s), sorted most-recent first. Click a title to open:"
                 return {
                     "response": header + "\n" + "\n".join(lines),
@@ -1031,6 +1036,7 @@ class ManageDocumentTool:
                     "document": {
                         "id": doc.id,
                         "title": doc.title,
+                        "source_name": getattr(doc, "source_name", None),  # `P21-03`
                         "language": doc.language,
                         "size": len(body),
                         "content": preview,

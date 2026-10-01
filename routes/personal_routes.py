@@ -5,7 +5,6 @@ import asyncio
 import os
 import logging
 import shutil
-import uuid
 from typing import Any, Dict, List, Tuple
 from fastapi import APIRouter, HTTPException, Query, Request, UploadFile, File, Depends
 from fastapi.concurrency import run_in_threadpool
@@ -15,6 +14,7 @@ from src.rag_singleton import get_rag_manager
 from src.auth_helpers import require_privilege, require_user
 from core.middleware import require_admin
 from src.upload_handler import secure_filename
+from src.file_names import create_unique, display_name, split_extension, stored_name
 from src.upload_limits import resolve_byte_limit
 
 UPLOADS_DIR = PERSONAL_UPLOADS_DIR
@@ -81,30 +81,52 @@ def _personal_upload_dir_for_owner(owner: str | None, *, create: bool = True) ->
 
 
 def _unique_personal_upload_path(upload_dir: str, original_name: str | None) -> Tuple[str, str, str]:
-    """Build a collision-resistant upload path while preserving a display name."""
-    safe_name = secure_filename(os.path.basename(original_name or "upload"))
-    if not safe_name or safe_name.startswith("."):
-        safe_name = "upload"
+    """Reserve the path a personal upload is stored at, and say what it is called.
 
-    stem, ext = os.path.splitext(safe_name)
-    stem = (stem or "upload")[:80]
-    filename = f"{stem}-{uuid.uuid4().hex[:10]}{ext.lower()}"
-    file_path = os.path.abspath(os.path.join(upload_dir, filename))
+    Returns ``(path, stored_name, display_name)``.
+
+    `P21-03`. This used to store every file as
+    ``<secure_filename stem>-<ten random hex><ext>`` — so `Q3 Board Pack –
+    final (v2).pdf` sat in the person's folder as
+    `Q3_Board_Pack_final_v2-85e79bb862.pdf`, renamed even when nothing was
+    there to collide with, and the name the index and the RAG sources showed
+    was the ASCII fold. The file is now stored under its own name made
+    storable (`file_names.stored_name`), with `` (2)`` only when the name is
+    taken; the display name is the person's own.
+
+    The path is *created* here (empty, ``O_EXCL``) rather than only chosen, so
+    two uploads of one name — in one request, or racing — can never be handed
+    the same path: the second sees the first and takes `` (2)``. The caller
+    removes the empty file if it then refuses the upload.
+    """
+    shown = display_name(original_name, "upload")
+    file_path = create_unique(upload_dir, stored_name(shown))
     upload_abs = os.path.abspath(upload_dir)
-    if os.path.commonpath([file_path, upload_abs]) != upload_abs:
+    if os.path.commonpath([os.path.abspath(file_path), upload_abs]) != upload_abs:
+        try:
+            os.remove(file_path)
+        except OSError:
+            pass  # an empty placeholder left behind is harmless; the refusal below is what matters
         raise ValueError("Unsafe upload filename")
-    return file_path, filename, safe_name
+    return os.path.abspath(file_path), os.path.basename(file_path), shown
 
 
 def _unique_existing_target(path: str) -> str:
-    """Return a non-existing sibling path for rename collision handling."""
+    """Return a non-existing sibling path for rename collision handling.
+
+    `P21-03`: `` (2)``, `` (3)``… — the suffix every other readable store uses
+    — where it was ten random hex characters.
+    """
     if not os.path.exists(path):
         return path
-    stem, ext = os.path.splitext(path)
+    directory, name = os.path.split(path)
+    stem, ext = split_extension(name)
+    n = 2
     while True:
-        candidate = f"{stem}-{uuid.uuid4().hex[:10]}{ext}"
+        candidate = os.path.join(directory, f"{stem} ({n}){ext}")
         if not os.path.exists(candidate):
             return candidate
+        n += 1
 
 
 def _remove_empty_tree(path: str) -> None:
@@ -430,6 +452,11 @@ def setup_personal_routes(personal_docs_manager, rag_manager, rag_available):
                     if len(content_bytes) > _personal_cap:
                         logger.warning(f"Rejected oversized personal upload: {upload.filename!r}")
                         total_failed += 1
+                        # `P21-03`: the path was reserved as an empty file.
+                        try:
+                            os.remove(file_path)
+                        except OSError:
+                            pass  # already gone, or an empty file — the upload is refused either way
                         continue
 
                     def _index_upload():

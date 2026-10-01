@@ -43,7 +43,11 @@ def test_personal_upload_paths_stay_under_upload_root(tmp_path, monkeypatch):
 
     assert os.path.commonpath([file_path, upload_dir]) == upload_dir
     assert Path(file_path).name == stored_name
-    assert display_name == "env"
+    # `P21-03`. This asserted `display_name == "env"` — the ASCII fold the
+    # person was shown. They are now shown their own name, without the folder
+    # it came from; what is on disk is still never a dotfile.
+    assert display_name == ".env"
+    assert stored_name == "env"
 
 
 def test_rename_personal_upload_owner_moves_files_and_rewrites_rag(tmp_path, monkeypatch):

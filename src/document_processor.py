@@ -874,25 +874,13 @@ def text_refusal_reason(path: str, probe_bytes: int = TEXT_SNIFF_BYTES) -> str:
     return describe_text_encoding(head)[1]
 
 
-def upload_display_name(info: Dict[str, Any], fallback_path: str | None = None) -> str:
-    """The one name a stored upload is known by.
-
-    `B77`: the name the model is told it received, the name the dedup key must
-    distinguish on, and the name `Content-Disposition` serves are the same
-    question, and were answered in three places. This is that answer, derived
-    once — ``upload_handler.save_upload`` keys on it and ``build_user_content``
-    renders it, so a row the dedup considers identical is by construction one
-    the model would be told the same thing about.
-
-    Falls back to ``basename``, not the full path: the previous
-    ``... or path`` in ``build_user_content`` put the server's upload directory
-    layout into the prompt whenever a row carried no name.
-    """
-    for key in ("name", "original_name"):
-        value = info.get(key)
-        if isinstance(value, str) and value.strip():
-            return value
-    return os.path.basename(fallback_path or "") or ""
+# `B77`'s one derivation of what a stored upload is called. `P21-03` moved it to
+# `src/file_names.py` beside the rest of the naming (the person's own name, the
+# title, the stored name, the download header) and taught it to read the
+# person's name back out of rows written before `display_name` existed. It is
+# re-exported here because this is where `upload_handler`, the tests and
+# `build_user_content` below have always imported it from.
+from src.file_names import document_title, upload_display_name  # noqa: E402,F401
 
 
 def _is_text_file(path: str) -> bool:
@@ -1129,6 +1117,7 @@ def _process_office_document(
     auto_opened_docs: list[Dict[str, Any]] | None = None,
     owner: str | None = None,
     ceiling=None,
+    upload_id: str | None = None,
 ) -> str:
     """Extract an Office/EPUB document to Markdown via the optional markitdown dep.
 
@@ -1158,7 +1147,12 @@ def _process_office_document(
 
     markdown = convert_to_markdown(path)
     if markdown and markdown.strip():
-        title = os.path.splitext(os.path.basename(path))[0]
+        # `P21-03` — the owner's report, reproduced here: this was
+        # `splitext(basename(path))[0]`, and the stored path is the upload id,
+        # so a `.docx` dropped into a chat became a document titled
+        # `a1d9182aca87476e8e1c9754dbf13105`. The title is the person's name
+        # for the file, read from what they attached it as.
+        title = document_title(display_name or os.path.basename(path))
         body, marker = _truncate_inline(markdown, owner, ceiling)
 
         # Persist the full extracted text as a Document. The agent's existing
@@ -1169,9 +1163,12 @@ def _process_office_document(
                 from src.office_doc import create_office_document
                 doc_id = create_office_document(
                     session_id=session_id,
-                    upload_id=os.path.basename(path),
+                    # The id, not the stored file's name: since `P21-03` the
+                    # file inside `<id>/` carries the person's name.
+                    upload_id=upload_id or os.path.basename(path),
                     title=title,
                     body_text=markdown,
+                    source_name=display_name or None,
                 )
                 if doc_id and auto_opened_docs is not None:
                     from src.database import SessionLocal, Document
@@ -1465,7 +1462,10 @@ def build_user_content(
                             create_form_markdown_document,
                             create_plain_pdf_document,
                         )
-                        title = os.path.splitext(os.path.basename(display_name))[0]
+                        # `P21-03`: the person's name, no extension
+                        # (`document_title` says why), not its ASCII fold.
+                        title = document_title(display_name)
+                        _upload_key = upload_info.get("id") or os.path.basename(path)
                         # Pull the PDF prose once — used as either intro_text
                         # (form path) or the doc body (plain path).
                         try:
@@ -1508,9 +1508,10 @@ def build_user_content(
                             doc_id = create_form_markdown_document(
                                 session_id=session_id,
                                 fields=fields,
-                                upload_id=os.path.basename(path),
+                                upload_id=_upload_key,
                                 title=title,
                                 intro_text=pdf_body_text,
+                                source_name=display_name or None,
                             )
                             if doc_id:
                                 extracted_text = (
@@ -1525,9 +1526,10 @@ def build_user_content(
                         else:
                             doc_id = create_plain_pdf_document(
                                 session_id=session_id,
-                                upload_id=os.path.basename(path),
+                                upload_id=_upload_key,
                                 title=title,
                                 body_text=pdf_body_text,
+                                source_name=display_name or None,
                             )
                             if doc_id:
                                 extracted_text = (
@@ -1578,6 +1580,7 @@ def build_user_content(
                     auto_opened_docs=auto_opened_docs,
                     owner=owner,
                     ceiling=inline_attachment_total,
+                    upload_id=upload_info.get("id") or None,
                 )
 
             _before = inline_attachment_remaining

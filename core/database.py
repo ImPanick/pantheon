@@ -320,6 +320,13 @@ class Document(TimestampMixin, Base):
     source_email_folder      = Column(String, nullable=True)
     source_email_account_id  = Column(String, nullable=True)
     source_email_message_id  = Column(String, nullable=True, index=True)
+    # `P21-03`. The name of the file this document was made from, as the person
+    # named it — `Q3 Board Pack – final (v2).pdf`, extension and all, without
+    # the folder it came from. The title drops the extension
+    # (`src/file_names.document_title` argues why); this keeps it. NULL for a
+    # document nobody uploaded, and for every document from before the column
+    # existed (`_migrate_add_document_source_name_column`).
+    source_name              = Column(String, nullable=True)
 
     session  = relationship("Session", backref=backref("documents", cascade="save-update, merge"))
     versions = relationship("DocumentVersion", back_populates="document",
@@ -2268,6 +2275,25 @@ def _migrate_add_document_folder_column():
             pass
 
 
+def _migrate_add_document_source_name_column():
+    """Add `source_name` to documents (`P21-03`). Guarded + idempotent.
+
+    Additive and nullable: an existing document keeps its title, its content
+    and every other column, and reads NULL here — nobody can say now what file
+    it came from, and guessing from the title would invent a name the person
+    never gave it.
+    """
+    try:
+        with engine.connect() as conn:
+            cols = {r[1] for r in conn.execute(text("PRAGMA table_info(documents)"))}
+            if "source_name" not in cols:
+                conn.execute(text("ALTER TABLE documents ADD COLUMN source_name VARCHAR"))
+                conn.commit()
+                logging.getLogger(__name__).info("Added source_name column to documents")
+    except Exception as e:
+        logging.getLogger(__name__).warning(f"documents.source_name migration: {e}")
+
+
 def _migrate_add_task_automation_columns():
     """Add automation columns to scheduled_tasks table if missing."""
     new_cols = {
@@ -2849,6 +2875,9 @@ def init_db():
     _migrate_add_tidy_verdict()
     _migrate_add_doc_source_email_cols()
     _migrate_add_document_folder_column()
+
+
+    _migrate_add_document_source_name_column()
     _migrate_add_oauth_config()
     _migrate_add_email_oauth_columns()
     _migrate_add_task_automation_columns()

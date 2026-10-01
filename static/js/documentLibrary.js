@@ -1978,17 +1978,21 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
             const res = await fetch(`${API_BASE}/api/document`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ title: sheetTitle, language: 'csv', content: csv }),
+              // `P21-03`: the workbook's own name rides along as the source.
+              body: JSON.stringify({ title: sheetTitle, language: 'csv', content: csv, source_name: name }),
             });
             if (!res.ok) throw new Error('Server error');
           }
           imported++;
         } else {
           const content = await readFileContent(file);
+          // `P21-03`. The file's name, not a title cut from it here: the
+          // server titles it (`file_names.document_title`, one rule for every
+          // door) and keeps the name whole as the document's source.
           const res = await fetch(`${API_BASE}/api/document`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ title: baseTitle, language, content }),
+            body: JSON.stringify({ source_name: name, language, content }),
           });
           if (!res.ok) throw new Error('Server error');
           imported++;

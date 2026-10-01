@@ -17,6 +17,7 @@ from src.constants import (
 from core.models import ChatMessage
 from src.chat_helpers import extract_urls, model_supports_vision
 from src.document_processor import build_user_content, analyze_image_with_vl_result
+from src.file_names import upload_display_name  # `P21-03`
 from src.youtube_handler import (
     is_youtube_url,
     extract_youtube_id,
@@ -189,7 +190,10 @@ class ChatHandler:
                 if fi:
                     attachment_meta.append({
                         "id": fi["id"],
-                        "name": fi.get("name") or fi.get("original_name") or fi["id"],
+                        # `P21-03`. Saved with the message, so it is what the
+                        # chip says after a reload and what "open as document"
+                        # titles the document with. Was `name`, the ASCII fold.
+                        "name": upload_display_name(fi) or fi["id"],
                         "mime": fi.get("mime", ""),
                         "size": fi.get("size", 0),
                         "checksum_sha256": fi.get("checksum_sha256") or fi.get("hash"),
@@ -222,7 +226,7 @@ class ChatHandler:
                 ):
                     if main_is_vision:
                         # Main model can see images — just note it, image is passed via build_user_content.
-                        enhanced_message = f"{enhanced_message}\n\n[Image attached: {file_info['name']}]"
+                        enhanced_message = f"{enhanced_message}\n\n[Image attached: {upload_display_name(file_info) or file_info['name']}]"
                         _m = meta_by_id.get(att_id)
                         if _m is not None:
                             _m["vision_model"] = sess.model or ""

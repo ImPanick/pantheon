@@ -134,9 +134,10 @@ function _isMobileViewport() {
 
 // The name a pending file is sent under, and the only name the server echoes
 // back verbatim: `rejected[].name` is the raw form filename, while `files[].name`
-// is `secure_filename()`'d (spaces → `_`, non-ASCII stripped), so matching an
-// upload result against a pending file by the ACCEPTED name is wrong for any
-// filename a human typed. Derived once here because the FormData append and
+// is the server's display name for it (`P21-03`: the person's own name, minus
+// any folder and invisible characters — it was `secure_filename()`'d until
+// then), so matching an upload result against a pending file by the ACCEPTED
+// name is still wrong for a name the server had to clean. Derived once here because the FormData append and
 // every name-keyed pairing have to agree on it — they did not: the append used
 // `'paste.png'` for a nameless blob and getPendingInfo() used `'pasted-image'`.
 function _wireName(f) {

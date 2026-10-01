@@ -19,6 +19,7 @@ def create_office_document(
     upload_id: str,
     title: str,
     body_text: Optional[str] = None,
+    source_name: Optional[str] = None,
 ) -> Optional[str]:
     """Create a markdown Document for an Office attachment and set it active.
 
@@ -52,6 +53,9 @@ def create_office_document(
             version_count=1,
             is_active=True,
             owner=sess.owner if sess else None,
+            # `P21-03`: the file this document was made from, as its owner
+            # named it.
+            source_name=source_name,
         )
         ver = DocumentVersion(
             id=ver_id,

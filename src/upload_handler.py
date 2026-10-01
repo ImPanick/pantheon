@@ -28,6 +28,9 @@ from src.upload_limits import (
 # takes the handler as a parameter and never imports this module — so a cycle
 # here would fail loudly at import rather than existing quietly.
 from src.document_processor import INGESTIBLE_EXTS, upload_display_name
+# `P21-03`: the person's name for a file, and the readable name it is stored
+# under. One module answers both for every door (`src/file_names.py`).
+from src.file_names import create_unique, display_name, stored_name
 
 
 def secure_filename(filename: str) -> str:
@@ -92,6 +95,30 @@ ATTACHMENT_REFERENCE_LINE_RE = re.compile(
 def is_valid_upload_id(upload_id: str) -> bool:
     """Return True when *upload_id* matches the canonical uploads.json id format."""
     return UPLOAD_ID_RE.fullmatch(upload_id or "") is not None
+
+
+def upload_path_matches_id(path: Any, upload_id: str) -> bool:
+    """Does the stored *path* belong to *upload_id* by where it is on disk?
+
+    `P21-03`. Two layouts, both bound to the id by the path itself rather than
+    by the index alone:
+
+    * ``YYYY/MM/DD/<id>`` — every upload before `P21-03`, named by its id;
+    * ``YYYY/MM/DD/<id>/<the person's own name>`` — every upload since: the id
+      is still the key (URLs, saved references, the cleanup scan), and the
+      file inside it carries the name it was given.
+
+    The second layout is why the name is not the key: a directory named for
+    the id keeps "this file is that upload" a fact of the filesystem, so the
+    walk in ``_find_upload_path`` can never bind an id to a different person's
+    ``report.pdf`` that happens to share a name.
+    """
+    if not isinstance(path, str) or not path or not is_valid_upload_id(upload_id):
+        return False
+    return (
+        os.path.basename(path) == upload_id
+        or os.path.basename(os.path.dirname(path)) == upload_id
+    )
 
 
 def extract_upload_ids(value: Any) -> set[str]:
@@ -653,10 +680,22 @@ class UploadHandler:
                         continue
 
                     path_parts = root.split(os.sep)
+                    # `P21-03`. An upload since this row is
+                    # `YYYY/MM/DD/<id>/<its own name>`: the id is the directory
+                    # and the date is one level up. One before it is
+                    # `YYYY/MM/DD/<id>`. Either way the id comes from the path,
+                    # never from the readable name, so reference discovery is
+                    # still asked about ids only.
+                    layout_id = (
+                        path_parts[-1]
+                        if len(path_parts) >= 5 and self.validate_upload_id(path_parts[-1])
+                        else None
+                    )
+                    date_parts = path_parts[-4:-1] if layout_id else path_parts[-3:]
                     if len(path_parts) < 4:
                         continue
                     try:
-                        dir_date = datetime(int(path_parts[-3]), int(path_parts[-2]), int(path_parts[-1]))
+                        dir_date = datetime(int(date_parts[0]), int(date_parts[1]), int(date_parts[2]))
                     except (ValueError, IndexError):
                         continue
                     if dir_date >= cutoff_date:
@@ -665,7 +704,8 @@ class UploadHandler:
                     for file in files:
                         # Reference discovery only understands canonical upload
                         # IDs; unknown files fail closed instead of being swept.
-                        if not self.validate_upload_id(file):
+                        upload_id = layout_id or file
+                        if not self.validate_upload_id(upload_id):
                             continue
 
                         file_path = os.path.join(root, file)
@@ -677,7 +717,7 @@ class UploadHandler:
                             continue
                         matching_keys = self._upload_index_keys_for_file(
                             current_index,
-                            file,
+                            upload_id,
                             file_path,
                         )
                         matching_rows = [
@@ -692,7 +732,7 @@ class UploadHandler:
                         if not matching_rows:
                             continue
 
-                        is_referenced = file in referenced_ids or any(
+                        is_referenced = upload_id in referenced_ids or any(
                             str(info.get("id") or "") in referenced_ids
                             or str(info.get("hash") or "") in referenced_hashes
                             or str(info.get("checksum_sha256") or "") in referenced_hashes
@@ -789,6 +829,22 @@ class UploadHandler:
     def validate_upload_id(self, upload_id: str) -> bool:
         """Validate that the upload ID matches the expected pattern."""
         return is_valid_upload_id(upload_id)
+
+    @staticmethod
+    def _same_upload_name(info: Dict[str, Any], display: str, safe_filename: str) -> bool:
+        """Is this row the same *name* as the upload being saved? (`B77`, `P21-03`)
+
+        A row written since `P21-03` carries the person's own ``display_name``
+        and is compared on it exactly, so `a b.txt` and `a_b.txt` — one ASCII
+        form, two names — stay two files and the model is never told the other
+        one's name. A row written before it is compared the way it always was,
+        through ``secure_filename`` on both sides, so an index from before this
+        row still dedups (`Law 1`).
+        """
+        row_display = info.get("display_name")
+        if isinstance(row_display, str) and row_display:
+            return row_display == display
+        return secure_filename(upload_display_name(info)) == safe_filename
 
     def _inside_upload_dir(self, path: str) -> bool:
         """Check if path is inside the upload directory."""
@@ -1050,13 +1106,17 @@ class UploadHandler:
                     )
                     return None
                 if os.path.isfile(stored_path):
-                    if os.path.basename(stored_path) != upload_id:
+                    # `P21-03`: bound by its own name (`<id>`) or by its
+                    # directory (`<id>/<the person's name>`), never by the index
+                    # row alone.
+                    if not upload_path_matches_id(stored_path, upload_id):
                         return None
                     existing_paths.add(os.path.normcase(os.path.realpath(stored_path)))
             if len(existing_paths) > 1:
                 logger.warning("Cannot reserve upload %s with multiple indexed paths", upload_id)
                 return None
-            path = next(iter(existing_paths), None) or self._find_upload_path(upload_id)
+            path = next(iter(existing_paths), None) or self._find_upload_path(
+                upload_id, stored_name=current_info.get("stored_name"))
             if not path or not os.path.isfile(path) or not self._inside_upload_dir(path):
                 return None
 
@@ -1204,12 +1264,56 @@ class UploadHandler:
                 self._atomic_write_json(uploads_db_path, updated)
             return renamed
 
-    def _find_upload_path(self, upload_id: str) -> Optional[str]:
-        """Find an upload file by ID while staying inside upload_dir."""
+    @staticmethod
+    def _file_in_id_dir(id_dir: str, stored_name: Optional[str]) -> Optional[str]:
+        """The upload inside a `P21-03` id directory.
+
+        The row's ``stored_name`` when it is there; otherwise the directory's one
+        regular file that is not a sidecar something wrote beside it (the PDF
+        form reader writes ``<pdf>.fields.json``). Anything else is ambiguous
+        and answers ``None`` rather than guessing.
+        """
+        if stored_name and os.path.basename(stored_name) == stored_name:
+            named = os.path.join(id_dir, stored_name)
+            if os.path.isfile(named) and not os.path.islink(named):
+                return named
+        try:
+            entries = [
+                os.path.join(id_dir, entry)
+                for entry in os.listdir(id_dir)
+                if not entry.endswith(".fields.json")
+            ]
+        except OSError:
+            return None
+        files = [p for p in entries if os.path.isfile(p) and not os.path.islink(p)]
+        return files[0] if len(files) == 1 else None
+
+    def _find_upload_path(self, upload_id: str, stored_name: Optional[str] = None) -> Optional[str]:
+        """Find an upload file by ID while staying inside upload_dir.
+
+        `P21-03`: a file named for its id (every upload before the row), or the
+        file inside a directory named for its id (every upload since). The id is
+        what is looked for either way; *stored_name* only picks the file inside.
+        """
         if not self.validate_upload_id(upload_id):
             return None
 
         candidates: list[str] = []
+
+        def _take(path: Optional[str]) -> bool:
+            if not path or not os.path.isfile(path) or not self._inside_upload_dir(path):
+                return True
+            real_path = os.path.realpath(path)
+            if real_path not in candidates:
+                candidates.append(real_path)
+                if len(candidates) > 1:
+                    logger.warning(
+                        "Upload ID %s resolves to multiple physical files",
+                        upload_id,
+                    )
+                    return False
+            return True
+
         direct = os.path.join(self.upload_dir, upload_id)
         if os.path.isfile(direct) and self._inside_upload_dir(direct):
             candidates.append(os.path.realpath(direct))
@@ -1223,17 +1327,12 @@ class UploadHandler:
                 and not is_junction(os.path.join(root, directory))
             ]
             if upload_id in files:
-                path = os.path.join(root, upload_id)
-                if os.path.isfile(path) and self._inside_upload_dir(path):
-                    real_path = os.path.realpath(path)
-                    if real_path not in candidates:
-                        candidates.append(real_path)
-                        if len(candidates) > 1:
-                            logger.warning(
-                                "Upload ID %s resolves to multiple physical files",
-                                upload_id,
-                            )
-                            return None
+                if not _take(os.path.join(root, upload_id)):
+                    return None
+            if upload_id in dirs:
+                id_dir = os.path.join(root, upload_id)
+                if not _take(self._file_in_id_dir(id_dir, stored_name)):
+                    return None
         return candidates[0] if candidates else None
 
     def resolve_upload(
@@ -1367,7 +1466,15 @@ class UploadHandler:
         
         # Get original filename and sanitize it
         original_filename = u.filename or f"upload_{int(time.time())}"
-        safe_filename = secure_filename(original_filename)
+        # `P21-03`. Three names, each for one job. `display` is the person's
+        # own (no folder, no invisible characters) and is what they and the
+        # model are shown; `safe_filename` stays the ASCII form every type
+        # decision below was written against (`name` in the row, so the MIME
+        # guess, the image/SVG gates and the gallery's extension coercion read
+        # exactly what they read before); the file on disk gets
+        # `stored_name(display)` further down.
+        display = display_name(original_filename) or f"upload_{int(time.time())}"
+        safe_filename = secure_filename(display)
         
         # Detect content type
         content_type = self.detect_content_type(file_obj, safe_filename)
@@ -1435,7 +1542,10 @@ class UploadHandler:
                 # "the model would be told the same thing" cannot come apart
                 # (`Law 13`). Re-sanitised on both sides because a row may carry
                 # only the raw `original_name`, and `secure_filename` is
-                # idempotent on an already-safe name.
+                # idempotent on an already-safe name. `P21-03`: that is now the
+                # rule for rows written before it; a row carrying the person's
+                # own `display_name` is compared on it exactly
+                # (`_same_upload_name`).
                 #
                 # The row suggested keying on hash + *extension*. That does not
                 # fix the row's own headline case: two projects' `LICENSE` (and
@@ -1458,9 +1568,9 @@ class UploadHandler:
                     # names' dead rows behind.
                     stale_keys.append(key)
                     continue
-                if existing_file is None and secure_filename(
-                    upload_display_name(info)
-                ) == safe_filename:
+                if existing_file is None and self._same_upload_name(
+                    info, display, safe_filename
+                ):
                     existing_key = key
                     existing_file = info
             if stale_keys:
@@ -1501,7 +1611,7 @@ class UploadHandler:
                             # race the strict re-read exists to survive.
                             if (v.get("hash") == file_hash
                                     and v.get("owner") == owner
-                                    and secure_filename(upload_display_name(v)) == safe_filename):
+                                    and self._same_upload_name(v, display, safe_filename)):
                                 live_key = k
                                 existing_file = v
                                 break
@@ -1537,6 +1647,11 @@ class UploadHandler:
                     "name": existing_file.get("name") or existing_file["original_name"],
                     "original_name": existing_file.get("original_name")
                     or existing_file.get("name"),
+                    # `P21-03`: what the person and the model are shown, and
+                    # the name the bytes are stored under.
+                    "display_name": upload_display_name(existing_file),
+                    "stored_name": existing_file.get("stored_name")
+                    or os.path.basename(existing_file["path"]),
                     "hash": file_hash,
                     "checksum_sha256": existing_file.get("checksum_sha256") or file_hash,
                     "uploaded_at": existing_file["uploaded_at"],
@@ -1552,7 +1667,20 @@ class UploadHandler:
         
         # Create date-based directory structure
         upload_dir = self.get_upload_dir()
-        file_path = os.path.join(upload_dir, file_id)
+        # `P21-03`. Was `<date>/<id>` — a 32-hex name, which is what the agent
+        # was handed as the path of a file the person called something else.
+        # Now `<date>/<id>/<the person's name, made storable>`: the id is still
+        # the key, and still where the file is on disk (`upload_path_matches_id`),
+        # and the file itself is readable. The directory is new for every
+        # upload, so the readable name never collides and never needs a suffix.
+        try:
+            id_dir = os.path.join(upload_dir, file_id)
+            os.makedirs(id_dir, exist_ok=False)
+            file_path = create_unique(id_dir, stored_name(display))
+            if not self._inside_upload_dir(file_path):
+                raise ValueError("stored path left the upload directory")
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to save file: {str(e)}")
         
         # Save the file
         try:
@@ -1573,6 +1701,10 @@ class UploadHandler:
             "hash": file_hash,
             "checksum_sha256": file_hash,
             "original_name": original_filename,
+            # `P21-03`. The name the person gave the file, and the name it is
+            # stored under. `upload_display_name` reads the first.
+            "display_name": display,
+            "stored_name": os.path.basename(file_path),
             "uploaded_at": created_at,
             "created_at": created_at,
             "last_accessed": created_at,
