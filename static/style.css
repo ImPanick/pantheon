@@ -46388,10 +46388,10 @@ button.task-card-toggle {
   outline-offset: var(--focus-ring-offset);
 }
 
-/* ── wb-fields — `P22-03` ──────────────────────────────────────────────────
+/* ── wb-fields — `P22-03` and `P22-04`'s Tasks half ─────────────────────────
    The task form's three execution settings (`P8-32`'s time zone, retries and
-   time limit) and the sentence saying what an event hands a task (`B671`).
-   Theme tokens only — `--fg`, `--border` and
+   time limit), the sentence saying what an event hands a task (`B671`), and
+   the card's dry-run plan (`B802`). Theme tokens only — `--fg`, `--border` and
    `color-mix` on them — so all sixteen palettes carry it; no `--accent`, and no
    `:focus-visible` rule of its own: the new controls are ordinary inputs and
    buttons and take the global ring. Nothing here moves. */
@@ -46418,3 +46418,29 @@ button.task-card-toggle {
   border-left: 2px solid color-mix(in srgb, var(--fg) 35%, transparent);
 }
 .task-form-event-payload:empty { display: none; }
+/* The card's buttons wrap rather than overflow a narrow window now that one of
+   them is a sentence. */
+.task-detail-actions { flex-wrap: wrap; }
+/* An open card holds its plan. `.memory-item` caps every card at 200px and
+   nothing lifted it for an open task card, although the rule beside
+   `.task-card.expanded` says the card "grows to fit the detail panel"; the plan
+   is the first detail tall enough to meet the cap, and it was drawn over the
+   card below (seen in Chromium, both palettes). A closed card keeps the cap. */
+.task-card.expanded { max-height: none; }
+.task-detail-dry-btn { white-space: nowrap; }
+.task-dry-plan { margin-top: 7px; }
+.task-dry-plan[hidden] { display: none; }
+.task-dry-plan-note { margin: 0; font-size: 11px; line-height: 1.45; opacity: 0.75; }
+.task-dry-plan .task-run-steps > summary { opacity: 0.85; font-weight: 600; }
+/* Every line of a plan is a dry-run step, so in the plan box the per-line word
+   would repeat the heading above it. It stays in History, where plan lines sit
+   among a run's real ones. */
+.task-dry-plan .task-run-step-dry-run .task-run-step-kind { display: none; }
+/* In the step log: the run's cause leads it, by weight; a plan line, in which
+   nothing ran, carries a dashed rule. Shape and weight, not hue. */
+.task-run-step-trigger .task-run-step-kind { font-weight: 700; opacity: 0.9; }
+.task-run-step-dry-run {
+  border-left: 1px dashed color-mix(in srgb, var(--fg) 40%, transparent);
+  padding-left: 5px;
+  margin-left: -6px;
+}

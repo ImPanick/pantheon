@@ -167,8 +167,19 @@ async function _resumeTask(id) {
   if (!res.ok) throw new Error('Failed to resume task');
 }
 
-async function _runNow(id, force = false) {
-  const res = await fetch(`${API_BASE}/api/tasks/${id}/run${force ? '?force=true' : ''}`, {
+/**
+ * Start a run — or, with `dry`, ask for the plan of one.
+ *
+ * `P22-04` / `B802(a)`. `POST /api/tasks/{id}/run?dry=true` has existed since
+ * `P8-33` and nothing in the browser sent it: this built `/run` with `?force`
+ * and nothing else. A dry run is the same request with the same owner check,
+ * admin gate and 409, which is why `P8-33` made it a parameter on this route
+ * rather than a route of its own, and why it is a parameter here rather than a
+ * second function.
+ */
+async function _runNow(id, force = false, dry = false) {
+  const query = [force ? 'force=true' : '', dry ? 'dry=true' : ''].filter(Boolean).join('&');
+  const res = await fetch(`${API_BASE}/api/tasks/${id}/run${query ? `?${query}` : ''}`, {
     method: 'POST', credentials: 'same-origin',
   });
   if (!res.ok) {
@@ -695,6 +706,9 @@ function _renderList() {
       // Run now stays in the kebab too for users coming from muscle-memory /
       // mobile long-press. The expanded card also shows it next to Edit.
       if (task.status !== 'completed') items.push({ label: 'Run now', icon: '<polyline points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>', action: () => _doRunNow(task.id) });
+      // `P22-04`. Beside Run now, because it is the question to ask before
+      // pressing it. The plan is drawn on the card, so the card opens.
+      if (task.status !== 'completed') items.push({ label: 'Show me what this would do', icon: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>', action: () => { setDetailOpen(true); _doDryRun(task.id, dryPlan, dryBtn); } });
       items.push({ label: 'Edit', icon: '<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>', action: () => _showForm(task) });
       if (task.status === 'active') items.push({ label: 'Pause', icon: '<rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>', action: () => _doPause(task.id) });
       else if (task.status === 'paused') items.push({ label: 'Resume', icon: PLAY_GLYPH, action: () => _doResume(task.id) });
@@ -770,7 +784,29 @@ function _renderList() {
     const detail = document.createElement('div');
     detail.style.cssText = 'display:none;margin-top:7px;padding:8px 0 2px;border-top:1px solid var(--border);position:relative;';
     const detailActions = document.createElement('div');
+    detailActions.className = 'task-detail-actions';
     detailActions.style.cssText = 'display:flex;justify-content:flex-end;gap:6px;margin-top:7px;';
+    // `P22-04` / `B802(a)`. The dry run `P8-33` built, on the card. Labelled
+    // with the question rather than "Test" or "Dry run", because the word a
+    // person reads decides whether they trust it to send nothing — and the
+    // answer is drawn here, under the buttons, where they pressed it.
+    const dryPlan = document.createElement('div');
+    dryPlan.className = 'task-dry-plan';
+    dryPlan.hidden = true;
+    dryPlan.setAttribute('role', 'status');
+    let dryBtn = null;
+    if (task.status !== 'completed') {
+      dryBtn = document.createElement('button');
+      dryBtn.type = 'button';
+      dryBtn.className = 'memory-toolbar-btn task-detail-dry-btn';
+      dryBtn.title = 'Plans a run and shows it here. Nothing runs and nothing changes.';
+      dryBtn.textContent = 'Show me what this would do';
+      dryBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        _doDryRun(task.id, dryPlan, dryBtn);
+      });
+      detailActions.appendChild(dryBtn);
+    }
     if (task.status !== 'completed') {
       const runBtn = document.createElement('button');
       runBtn.className = 'memory-toolbar-btn task-detail-run-btn';
@@ -852,6 +888,7 @@ function _renderList() {
       detail.appendChild(desc);
     }
     detail.appendChild(detailActions);
+    detail.appendChild(dryPlan);
     content.appendChild(detail);
 
     // Select-mode checkbox (mirrors the library's .memory-select-cb).
@@ -872,6 +909,16 @@ function _renderList() {
       titleRow.insertBefore(cb, titleRow.firstChild);
     }
 
+    // Open or close the card's detail. One function because two things do it:
+    // a click on the row, and the kebab's *Show me what this would do*, whose
+    // answer is drawn inside the detail (`P22-04`).
+    function setDetailOpen(open) {
+      detail.style.display = open ? '' : 'none';
+      card.classList.toggle('expanded', open);
+      const toggle = titleRow.querySelector('.task-card-toggle');
+      if (toggle) toggle.setAttribute('aria-expanded', String(open));
+    }
+
     // Title-row click: in select mode toggle the checkbox; otherwise expand.
     titleRow.addEventListener('click', (e) => {
       if (card._suppressNextClick) return;  // long-press just opened the menu
@@ -882,11 +929,7 @@ function _renderList() {
         if (cb) { cb.checked = !cb.checked; cb.dispatchEvent(new Event('change')); }
         return;
       }
-      const open = detail.style.display === 'none';
-      detail.style.display = open ? '' : 'none';
-      card.classList.toggle('expanded', open);
-      const toggle = titleRow.querySelector('.task-card-toggle');
-      if (toggle) toggle.setAttribute('aria-expanded', String(open));
+      setDetailOpen(detail.style.display === 'none');
     });
 
     // Long-press (mobile) opens the ⋮ actions menu.
@@ -1161,27 +1204,69 @@ function _openStepLogFor(entry) {
  * behind a `<details>` because the interesting run is one in a list of twenty,
  * and the summary carries the count so the interesting one is findable without
  * opening all of them.
+ *
+ * `B670` / `B802(b)` / `P22-04`. **Every step that was not a tool call was
+ * drawn under the word `progress`**, whatever it was: `kind` was read as
+ * `=== 'tool' ? 'tool' : 'progress'`. Measured against the writers in
+ * `src/task_scheduler.py`, three kinds reach this list and only one of them is
+ * progress — `trigger` (`P8-23`: step one of every fired run, *"Triggered by
+ * document_updated — …"*, and `P8-29`'s *"Continued from …"* for a chained
+ * one), `dry-run` (`P8-33`: every line of a plan), and `progress` itself. So a
+ * run's cause, and a plan in which nothing ran, both read as work being done.
+ * Each kind now has its word (`_STEP_KIND_WORDS`); a kind this file has never
+ * heard of is drawn as itself rather than given a word that is not true of it;
+ * and a tool step's stored status (`ok`, `error`, `blocked`, `running`) is
+ * said in words, with the stored value kept in the `title` (`B84`'s rule).
+ *
+ * `opts.open` draws it already open and `opts.summary` replaces the count —
+ * how the card's dry-run plan reuses this rather than drawing steps a second
+ * way (`Law 14`).
  */
-function _renderRunSteps(run) {
+const _STEP_KIND_WORDS = {
+  trigger: 'cause',
+  'dry-run': 'dry run',
+  tool: 'tool',
+  progress: 'progress',
+};
+const _TOOL_STEP_STATUS_WORDS = {
+  ok: 'done',
+  error: 'failed',
+  blocked: 'blocked',
+  running: 'running',
+};
+
+/** The word a step is drawn under. */
+function _stepKindWord(kind) {
+  const k = String(kind || '').trim();
+  if (!k) return 'step';
+  return _STEP_KIND_WORDS[k] || k.replace(/[-_]+/g, ' ');
+}
+
+function _renderRunSteps(run, opts = {}) {
   const steps = Array.isArray(run && run.steps) ? run.steps : [];
   if (!steps.length) return '';
   const rows = steps.map((s) => {
-    const kind = (s && s.kind) === 'tool' ? 'tool' : 'progress';
+    const rawKind = String((s && s.kind) || '');
+    // The class keeps to letters, digits and dashes whatever the wire says.
+    const kind = rawKind.replace(/[^A-Za-z0-9-]/g, '') || 'step';
+    const word = `<span class="task-run-step-kind">${_escHtml(_stepKindWord(rawKind))}</span>`;
     const status = String((s && s.status) || '');
     const statusClass = status ? ` task-run-step-${_escHtml(status)}` : '';
     const head = kind === 'tool'
-      ? `<span class="task-run-step-tool">${_escHtml(s.tool || 'tool')}</span>`
+      ? word
+        + `<span class="task-run-step-tool">${_escHtml(s.tool || 'tool')}</span>`
         + (s.round ? `<span class="task-run-step-round">round ${_escHtml(s.round)}</span>` : '')
-        + (status ? `<span class="task-run-step-status">${_escHtml(status)}</span>` : '')
-      : '<span class="task-run-step-kind">progress</span>';
+        + (status ? `<span class="task-run-step-status" title="${_escHtml(status)}">${_escHtml(_TOOL_STEP_STATUS_WORDS[status] || status)}</span>` : '')
+      : word;
     const detail = s && s.detail ? `<span class="task-run-step-detail">${_escHtml(s.detail)}</span>` : '';
     const output = s && s.output ? `<div class="task-run-step-output">${_escHtml(s.output)}</div>` : '';
     return `<li class="task-run-step task-run-step-${kind}${statusClass}">${head}${detail}${output}</li>`;
   }).join('');
   const failed = steps.filter(s => s && (s.status === 'error' || s.status === 'blocked')).length;
-  const summary = `${steps.length} step${steps.length === 1 ? '' : 's'}`
-    + (failed ? ` · ${failed} did not finish` : '');
-  return `<details class="task-run-steps">
+  const summary = opts.summary
+    || (`${steps.length} step${steps.length === 1 ? '' : 's'}`
+      + (failed ? ` · ${failed} did not finish` : ''));
+  return `<details class="task-run-steps"${opts.open ? ' open' : ''}>
       <summary>${_escHtml(summary)}</summary>
       <ol class="task-run-step-list">${rows}</ol>
     </details>`;
@@ -1446,6 +1531,91 @@ async function _doRunNow(id, force = false) {
       }
     } catch (_) {}
     if (!fired && uiModule) uiModule.showError(msg);
+  }
+}
+
+// ---- Dry run (`P22-04`, folding `B802`'s first two parts and `B670`) ----
+//
+// `P8-33` made a dry run a `return` above every executor: the eighteen actions,
+// the agent loop and the research pipeline are below it, and so are delivery,
+// notification and the chain. What it leaves is a run row with status
+// `skipped` whose steps are the plan (`_record_dry_run`). The route answers as
+// soon as that run is scheduled and carries neither the plan nor the run's id,
+// so the card asks for the task's newest runs until one appears that was not
+// there before it asked — which is also the run History shows.
+
+/** How long the card waits for the plan, in steps. A dry run waits for no
+ *  model slot and no idle gate (`_execute_task`'s `dry` branch), so it is
+ *  written in milliseconds and the first look finds it; the later steps are for
+ *  a machine under load. About five seconds in all, then the card says where
+ *  the plan will be instead. */
+const _DRY_RUN_WAITS_MS = [120, 250, 500, 1000, 1500, 2000];
+
+/** The run a dry run just wrote: finished, not in `before`, and holding a plan
+ *  — or finished with no plan, which is the scheduler declining (a paused task
+ *  is recorded `skipped` with its reason and planned nothing). `null` if
+ *  neither appeared in time. */
+async function _awaitDryRun(taskId, before, waits = _DRY_RUN_WAITS_MS) {
+  for (const ms of waits) {
+    await new Promise((resolve) => setTimeout(resolve, ms));
+    const runs = await _fetchRuns(taskId, 5);
+    const fresh = runs.filter((r) => r && r.id && !before.has(r.id) && isRunFinished(r.status));
+    const planned = fresh.find((r) => Array.isArray(r.steps) && r.steps.some((s) => s && s.kind === 'dry-run'));
+    if (planned) return planned;
+    const declined = fresh.find((r) => runStatusTone(r.status) === 'info');
+    if (declined) return declined;
+  }
+  return null;
+}
+
+/** Draw what came back into the card's plan box. The steps go through the one
+ *  step renderer, open, under a heading that says no run happened. */
+function _drawDryPlan(planEl, run) {
+  if (!planEl) return;
+  planEl.hidden = false;
+  if (!run) {
+    planEl.innerHTML = '<p class="task-dry-plan-note">The plan is not ready yet. It will be in this task’s History when it is.</p>';
+    return;
+  }
+  const steps = _renderRunSteps(run, { open: true, summary: 'What a real run would do' });
+  planEl.innerHTML = steps
+    || `<p class="task-dry-plan-note">Nothing was planned: ${_escHtml(run.error || run.result || 'the server gave no reason')}.</p>`;
+}
+
+/**
+ * *Show me what this would do*: ask for a dry run, wait for its plan, and draw
+ * it on the card. Nothing runs and nothing changes — the server guarantees
+ * that, not this function, which only ever sends `?dry=true`.
+ *
+ * Returns the run it drew (or `null`), so a caller can tell what was shown.
+ */
+async function _doDryRun(taskId, planEl, btn) {
+  if (!taskId) return null;
+  const label = btn ? btn.textContent : '';
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = 'Working it out…';
+  }
+  if (planEl) {
+    planEl.hidden = false;
+    planEl.innerHTML = '<p class="task-dry-plan-note">Working out what a run would do. Nothing is running.</p>';
+  }
+  try {
+    const before = new Set((await _fetchRuns(taskId, 5)).map((r) => r && r.id).filter(Boolean));
+    await _runNow(taskId, false, true);
+    const run = await _awaitDryRun(taskId, before);
+    _drawDryPlan(planEl, run);
+    return run;
+  } catch (e) {
+    if (planEl) {
+      planEl.innerHTML = `<p class="task-dry-plan-note">${_escHtml(e.message || 'Could not plan a run.')}</p>`;
+    }
+    return null;
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = label;
+    }
   }
 }
 
