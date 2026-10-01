@@ -941,6 +941,15 @@ _APP_API_BLOCKLIST_METHOD_PATH = (
     ("PUT",    "/api/mcp/servers"),
     ("PATCH",  "/api/mcp/servers"),
     ("DELETE", "/api/mcp/servers"),
+    # `P20-02`. The workstation's own routes: *Reset my workstation*, which the
+    # panel puts behind a confirmation because it erases a person's home, and
+    # the admin's *Check now*, which pushes the admin's `sudo` to the daemon.
+    # Both are a person's, from Settings → Workstation. One prefix, so a route
+    # the phase adds under it later — `P20-05`'s take-over, which writes who
+    # holds the mouse — is refused to the bridge from its first commit rather
+    # than after somebody notices. `GET /api/workstation/status` stays open:
+    # reading whether the workstation answers is not a door.
+    ("POST",   "/api/workstation"),
     ("POST",   "/api/cookbook/state"),   # whole-file overwrite — agent must use serve_preset/serve_model instead
     ("DELETE", "/api/cookbook/state"),
     # Host-control routes: package install, engine rebuild, and process
@@ -1083,6 +1092,8 @@ async def do_app_api(content: str, owner: Optional[str] = None) -> Dict:
             return {"error": "A standing allow rule stops me asking before an action next time — it lowers the confirmation you set. Only the person can add one, from the trust settings in the UI. I can't create one for my own owner from here.", "exit_code": 1}
         if _match_path.startswith("/api/tools"):
             return {"error": "Turning a tool on or off is the person's switch, not mine — enabling one here would hand me more reach in my own name. Only you can change it, from Settings → Tools. Tell me which tool and I'll explain what it does, but I can't flip it.", "exit_code": 1}
+        if _match_path.startswith("/api/workstation"):
+            return {"error": "Resetting a workstation erases a person's home in it, and checking it pushes an admin's settings to it — both are the person's to do, from Settings → Workstation. I can't do either from here, even if asked, because the request looks the same whether it came from you or from something I was reading.", "exit_code": 1}
         if _match_path.startswith("/api/mcp/servers"):
             return {"error": "Registering, editing, toggling, deleting or calling an MCP server this way skips the command check that keeps a stdio server from running arbitrary code — it is the person's action, from Settings → MCP. Use the `manage_mcp` tool for a server the agent may add (it enforces that check), or ask the person to add it in the UI.", "exit_code": 1}
         if "/api/email/accounts" in _match_path:

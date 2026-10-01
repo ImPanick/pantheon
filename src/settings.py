@@ -22,6 +22,15 @@ logger = logging.getLogger(__name__)
 # tombstone boundary.
 RETIRED_SETTING_KEYS = frozenset({"default_model_fallbacks"})
 
+# Keys that are written from a browser and never read back into one — not even
+# an admin's. `P20-02`: `workstation_token` drives the workstation, and the
+# panel needs to know only whether one is present and where it came from
+# (`src/workstation_access.settings_view`). `scrub_settings` masks secrets for
+# a non-admin; this goes further and leaves the key out of every settings
+# answer, so no page can round-trip a masked value back over the real one.
+# Write-only, not unwritable: `POST /api/auth/settings` still accepts it.
+WITHHELD_SETTING_KEYS = frozenset({"workstation_token"})
+
 # Tiny TTL cache for settings/features. get_setting() is called on hot paths
 # (every chat, every preprocess); without this it re-parses the JSON each call.
 # Picks up edits within _CACHE_TTL seconds, which is fine for human-edited config.
@@ -270,6 +279,61 @@ DEFAULT_SETTINGS = {
     # declared, which is the point of the suffix rule.
     "netagent_url": "",
     "netagent_token": "",
+    # ── `P20-02` · the workstation (`D-2026-09-30-03`) ───────────────────────
+    #
+    # A separate Ubuntu machine the agent's shell, Python, files and screen
+    # work run in — a container beside Pantheon, a VM, or any host running
+    # `workstation/agentd.py`. **Off, and that is the whole default**: with
+    # `workstation_enabled` false nothing is called and every tool runs exactly
+    # where it runs today (`Law 1`). An admin turns it on in Settings →
+    # Workstation; `can_use_workstation` (`core/auth.py`) decides who else may
+    # use it. Every key here is admin-only to write — `POST /api/auth/settings`
+    # validates each one through `src/workstation_access.validate_setting`, and
+    # the agent's own `manage_settings` may read them and may not write them
+    # (`_SELF_RESTRAINT_KEYS`): switching the workstation off, or routing off,
+    # moves the agent's shell back into the process that holds every key, and a
+    # new address hands a stranger the token and every command.
+    "workstation_enabled": False,
+    # Where the daemon listens. Ships EMPTY: `check-destinations.py` requires a
+    # destination-shaped key to, and the emptiness is what keeps the overlay's
+    # `PANTHEON_WORKSTATION_URL` reachable beneath it (`H06`, `B20`) — the
+    # overlay that starts the workstation sets that variable, so an admin who
+    # switched it on types nothing. `src/workstation_client.resolve_base` holds
+    # the order. **Not put through the SSRF validators, on purpose**: they guard
+    # addresses that arrive from content, and this one is an admin's setting
+    # whose request paths come from `workstation/protocol.ROUTES` — no parameter
+    # through which a model can name where a request goes (the argument
+    # `src/netagent_client.py` makes for `netagent_url`). Refused at the door if
+    # it is not a plain http(s) origin, `P17-09`'s lesson.
+    "workstation_url": "",
+    # Ships EMPTY: the daemon writes its token into the pairing volume the two
+    # services share and Pantheon reads it from there; `PANTHEON_WORKSTATION_TOKEN`
+    # overrides that on both sides for a remote daemon. Set here only to pair
+    # by hand. Ends in "token", so `_is_secret` and `scrub_settings` already
+    # classify it — and it goes further than `netagent_token`: this value never
+    # reaches a browser, not even an admin's (`WITHHELD_SETTING_KEYS`). The panel
+    # is told whether there is one and where it came from.
+    "workstation_token": "",
+    # Which backend the admin says this is (`protocol.BACKENDS`): the container
+    # image (`P20-01`), a VM (`P20-07`), or a remote machine. Stored and shown;
+    # the daemon reports its own, and the panel shows both when they differ.
+    "workstation_backend": "container",
+    # May the agent use `sudo` inside the workstation? ON, the owner's call
+    # (`D-2026-09-30-03`): *super basic setup* means an agent can install what a
+    # task needs. With it on one person's agent can read another's workstation
+    # home, and the panel says so beside the switch. The daemon enforces it —
+    # Pantheon holds the setting and pushes it through the protocol's `config`
+    # route whenever the daemon's answer differs (`ensure_ready`).
+    "workstation_sudo": True,
+    # `protocol.NETWORK_MODES`: `full` (internet and LAN, the owner's choice),
+    # `internet`, or `none`. `P20-06` enforces it inside the workstation; until
+    # then it is stored and shown, and the panel says plainly that it is not in
+    # force yet rather than implying a boundary that is not there.
+    "workstation_network": "full",
+    # When the workstation is on, do the agent's `bash`, `python` and file
+    # tools run in it (`P20-03`)? ON: that is the point of the phase — a shell
+    # stops being a key to the house. Off puts them back where they run today.
+    "workstation_route_tools": True,
     # `P17-11`. **Your** list, beside the agent's. The agent's nuclear denylist
     # is compiled into it, on the host, and nothing here can widen it — that is
     # the boundary. These two narrow what Pantheon will even ASK for, and are
@@ -778,6 +842,17 @@ def without_retired_settings(settings: dict) -> dict:
         key: value
         for key, value in settings.items()
         if key not in RETIRED_SETTING_KEYS
+    }
+
+
+def for_browser(settings: dict) -> dict:
+    """What a settings answer may carry to a page: the generic view, less the
+    keys that are written from a browser and never read back into one
+    (`WITHHELD_SETTING_KEYS`, `P20-02`)."""
+    return {
+        key: value
+        for key, value in without_retired_settings(settings).items()
+        if key not in WITHHELD_SETTING_KEYS
     }
 
 # `P2-18`. Every switch ships ON, and `deep_research` was the one that did not.

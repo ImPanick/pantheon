@@ -191,6 +191,27 @@ export const SETTINGS_PANELS = Object.freeze([
                'blocked', 'internet', 'offline'],
   }),
   definePanel({
+    id: 'workstation',
+    icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/><path d="m7 8 3 2-3 2"/><path d="M12 12h4"/></svg>',
+    label: 'Workstation',
+    group: 'administration',
+    // `P20-02`. In the Admin group and NOT admin-only, and both halves are the
+    // row. An admin turns the workstation on and decides who may use it, so it
+    // sits with the other instance controls; a person an admin has let use it
+    // sees their own status and *Reset my workstation* here, so it cannot be
+    // hidden from them. For a non-admin the group's rule and heading are hidden
+    // (`admin-only`), which draws this button straight under Account — where
+    // "my workstation" reads as theirs. The panel draws only what the caller
+    // may see: `static/js/workstation.js` asks `/api/workstation/status`, and
+    // the admin card is filled only from an answer that carries `settings`.
+    //
+    // `controller` stays 'settings' for the reason `networks` gives above:
+    // `settings.js` activates it and lazy-imports its module.
+    keywords: ['workstation', 'ubuntu', 'linux', 'computer use', 'computer',
+               'desktop', 'sandbox', 'vm', 'virtual machine', 'container',
+               'sudo', 'shell', 'terminal', 'screen', 'reset'],
+  }),
+  definePanel({
     id: 'system',
     icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v-.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09A1.65 1.65 0 0 0 19.4 15z"/></svg>',
     label: 'System',

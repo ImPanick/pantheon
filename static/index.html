@@ -3192,6 +3192,101 @@
           </div>
         </div>
 
+        <!-- ═══ WORKSTATION TAB (`P20-02`) ═══
+             The Ubuntu machine the agents work in (`D-2026-09-30-03`). Two
+             cards and two audiences: the first is for anyone signed in — is it
+             on, may I use it, does it answer and what it said, my account, and
+             *Reset my workstation* for a person who may use it; the second is
+             the admin's settings and stays hidden unless the status answer
+             carries them. Everything here is drawn by `static/js/workstation.js`
+             from `GET /api/workstation/status`; the choices in the two selects
+             come from the protocol through that answer rather than being
+             written out here a second time (`Law 7`). The token has a field to
+             paste one into and nothing ever reads it back into that field. -->
+        <div data-settings-panel="workstation" class="hidden">
+          <div class="admin-card">
+            <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/><path d="m7 8 3 2-3 2"/><path d="M12 12h4"/></svg>Workstation</h2>
+            <div class="admin-toggle-sub" style="margin-bottom:10px;line-height:1.5;">
+              A separate Ubuntu machine the agents work in &mdash; their shell, Python and
+              files, and a screen they can see and use. Each person has their own account and
+              home in it, kept between chats.
+            </div>
+            <div id="ws-status" class="ws-status" data-state="checking" role="status" aria-live="polite">
+              <span class="ws-status-dot" aria-hidden="true"></span>
+              <span id="ws-status-text" class="ws-status-text">Checking&hellip;</span>
+            </div>
+            <div id="ws-facts" class="ws-facts" hidden></div>
+            <div id="ws-you" class="ws-you" hidden></div>
+            <div class="settings-row ws-actions">
+              <button type="button" id="ws-check" class="memory-toolbar-btn" hidden>Check now</button>
+              <button type="button" id="ws-reset" class="memory-toolbar-btn" hidden>Reset my workstation&hellip;</button>
+            </div>
+            <div id="ws-result" class="networks-probe-result" role="status" aria-live="polite" hidden></div>
+          </div>
+
+          <div class="admin-card" id="ws-admin" style="margin-top:12px;" hidden>
+            <h2>Settings</h2>
+            <div class="admin-toggle-sub" style="margin-bottom:10px;line-height:1.5;">
+              Only admins see this card. Who else may use the workstation is a switch on
+              each person in Settings &rarr; Users.
+            </div>
+            <div class="settings-col ws-settings">
+              <div class="admin-toggle-row ws-toggle">
+                <div>
+                  <label class="admin-toggle-label" for="ws-enabled">Workstation on</label>
+                  <div class="admin-toggle-sub" id="ws-enabled-why">Off: nothing calls it, and the agent&rsquo;s shell, Python and file tools run inside Pantheon as they always have.</div>
+                </div>
+                <label class="admin-switch"><input type="checkbox" id="ws-enabled" aria-describedby="ws-enabled-why"><span class="admin-slider"></span></label>
+              </div>
+
+              <div class="settings-row ws-field">
+                <label class="settings-label" for="ws-url">Address</label>
+                <input type="text" id="ws-url" class="settings-select" placeholder="Empty &mdash; the workstation overlay fills this in" autocomplete="off" spellcheck="false" aria-describedby="ws-url-effect">
+              </div>
+              <div id="ws-url-effect" class="admin-toggle-sub ws-effect"></div>
+
+              <div class="settings-row ws-field">
+                <label class="settings-label" for="ws-token">Token</label>
+                <input type="password" id="ws-token" class="settings-select" placeholder="Paste one only to pair by hand" autocomplete="off" aria-describedby="ws-token-effect">
+              </div>
+              <div id="ws-token-effect" class="admin-toggle-sub ws-effect"></div>
+              <div class="settings-row ws-actions">
+                <button type="button" id="ws-save-address" class="memory-toolbar-btn">Save address and token</button>
+                <button type="button" id="ws-forget-token" class="memory-toolbar-btn" hidden>Forget the token set here</button>
+              </div>
+
+              <div class="settings-row ws-field">
+                <label class="settings-label" for="ws-backend">Kind of machine</label>
+                <select id="ws-backend" class="settings-select" aria-describedby="ws-backend-effect"></select>
+              </div>
+              <div id="ws-backend-effect" class="admin-toggle-sub ws-effect"></div>
+
+              <div class="admin-toggle-row ws-toggle">
+                <div>
+                  <label class="admin-toggle-label" for="ws-sudo">Agents may use sudo</label>
+                  <div class="admin-toggle-sub ws-warn" id="ws-sudo-why">With sudo on, an agent can install software &mdash; and can read other people&rsquo;s workstation homes.</div>
+                </div>
+                <label class="admin-switch"><input type="checkbox" id="ws-sudo" aria-describedby="ws-sudo-why"><span class="admin-slider"></span></label>
+              </div>
+
+              <div class="settings-row ws-field">
+                <label class="settings-label" for="ws-network">Network</label>
+                <select id="ws-network" class="settings-select" aria-describedby="ws-network-effect"></select>
+              </div>
+              <div id="ws-network-effect" class="admin-toggle-sub ws-effect"></div>
+
+              <div class="admin-toggle-row ws-toggle">
+                <div>
+                  <label class="admin-toggle-label" for="ws-route-tools">Agent shell, Python and file tools run in the workstation</label>
+                  <div class="admin-toggle-sub" id="ws-route-tools-why">Off: they run inside Pantheon, where they ran before there was a workstation.</div>
+                </div>
+                <label class="admin-switch"><input type="checkbox" id="ws-route-tools" aria-describedby="ws-route-tools-why"><span class="admin-slider"></span></label>
+              </div>
+            </div>
+            <div id="ws-admin-result" class="networks-probe-result" role="status" aria-live="polite" hidden></div>
+          </div>
+        </div>
+
         <div data-settings-panel="system" class="hidden">
 
           <!-- B95. Three settings an operator could only change by hand-writing

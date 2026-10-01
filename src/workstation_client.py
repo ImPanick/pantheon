@@ -91,23 +91,61 @@ def parse_base(raw: str) -> Optional[str]:
     return urlunsplit((parts.scheme, parts.netloc, "", "", ""))
 
 
+# Where a value came from, as the Settings panel says it (`P20-02`). One word
+# per layer, in the order the layers are consulted; `none` means no layer
+# answered. An enum rather than a pair of booleans (`Law 10`).
+SOURCE_SETTING = "setting"
+SOURCE_ENVIRONMENT = "environment"
+SOURCE_PAIRING = "pairing"
+SOURCE_NONE = "none"
+
+
+def resolve_base() -> tuple[Optional[str], str]:
+    """`(origin, source)`: the address in effect and the layer it came from.
+
+    `P20-02`. The order lives here and only here — `configured_base` is this
+    function's first half — so the panel's "where it came from" and the address
+    the client actually calls cannot disagree (`Law 7`). A stored value that
+    does not parse falls through to the environment rather than winning; the
+    settings route refuses one at the moment it is typed, so that only happens
+    to a hand-edited file."""
+    stored = parse_base(str(_setting("workstation_url", "") or ""))
+    if stored:
+        return stored, SOURCE_SETTING
+    env = parse_base(os.environ.get(URL_ENV, ""))
+    if env:
+        return env, SOURCE_ENVIRONMENT
+    return None, SOURCE_NONE
+
+
 def configured_base() -> Optional[str]:
-    return parse_base(str(_setting("workstation_url", "") or "")) or parse_base(
-        os.environ.get(URL_ENV, ""))
+    return resolve_base()[0]
+
+
+def pairing_token_path() -> Path:
+    return Path(os.environ.get(P.PAIRING_DIR_ENV) or P.DEFAULT_PAIRING_DIR) / P.TOKEN_FILENAME
+
+
+def resolve_token() -> tuple[str, str]:
+    """`(token, source)`. The value never leaves the server: the panel is told
+    the source and whether there is one, and nothing else (`P20-02`)."""
+    token = str(_setting("workstation_token", "") or "").strip()
+    if token:
+        return token, SOURCE_SETTING
+    token = (os.environ.get(P.TOKEN_ENV) or "").strip()
+    if token:
+        return token, SOURCE_ENVIRONMENT
+    try:
+        token = pairing_token_path().read_text(encoding="utf-8").strip()
+    except OSError:
+        token = ""
+    if token:
+        return token, SOURCE_PAIRING
+    return "", SOURCE_NONE
 
 
 def configured_token() -> str:
-    token = str(_setting("workstation_token", "") or "").strip()
-    if token:
-        return token
-    token = (os.environ.get(P.TOKEN_ENV) or "").strip()
-    if token:
-        return token
-    pairing = Path(os.environ.get(P.PAIRING_DIR_ENV) or P.DEFAULT_PAIRING_DIR) / P.TOKEN_FILENAME
-    try:
-        return pairing.read_text(encoding="utf-8").strip()
-    except OSError:
-        return ""
+    return resolve_token()[0]
 
 
 def enabled() -> bool:
@@ -348,5 +386,7 @@ class WorkstationClient:
         return await self._call("input", account, body, timeout=P.MAX_WAIT_MS / 1000 + _TIMEOUT)
 
 
-__all__ = ["URL_ENV", "WorkstationClient", "WorkstationError", "account_for", "configured_base",
-           "configured_token", "enabled", "from_settings", "parse_base"]
+__all__ = ["SOURCE_ENVIRONMENT", "SOURCE_NONE", "SOURCE_PAIRING", "SOURCE_SETTING", "URL_ENV",
+           "WorkstationClient", "WorkstationError", "account_for", "configured_base",
+           "configured_token", "enabled", "from_settings", "pairing_token_path", "parse_base",
+           "resolve_base", "resolve_token"]

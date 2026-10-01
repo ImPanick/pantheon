@@ -748,6 +748,20 @@ async def do_manage_settings(content: str, owner: Optional[str] = None) -> Dict:
             "auth_signup_rate_window_seconds",
             "auth_setup_rate_limit",
             "auth_setup_rate_window_seconds",
+            # `P20-02`. The workstation is the wall between the agent's shell
+            # and the process that holds every key (`D-2026-09-30-03`), so each
+            # of its switches is a wall the agent would be moving from inside.
+            # Off, or routing off, puts `bash` back in Pantheon's container; a
+            # new address sends the token and every command to whoever answers
+            # there; `sudo` and the network mode widen what a run can reach.
+            # Declaring them for the admin declared them to the agent — the
+            # `H16` lesson again — and the token is already a secret by suffix.
+            "workstation_enabled",
+            "workstation_url",
+            "workstation_backend",
+            "workstation_sudo",
+            "workstation_network",
+            "workstation_route_tools",
         }
         #
         # `trust_rung` is NOT here, and the first version of this set had it.
@@ -811,6 +825,18 @@ async def do_manage_settings(content: str, owner: Optional[str] = None) -> Dict:
                 "is the window that setup throttle counts attempts over",
             "approval_timeout_seconds":
                 "is how long you have to answer an approval before it is denied",
+            "workstation_enabled":
+                "decides whether my shell runs in the workstation or beside your keys",
+            "workstation_route_tools":
+                "decides whether my shell and file tools run in the workstation",
+            "workstation_url":
+                "is where the workstation is, and whoever answers there gets my commands",
+            "workstation_backend":
+                "is which kind of machine the workstation is, which an admin decides",
+            "workstation_sudo":
+                "decides whether I can act as root inside the workstation",
+            "workstation_network":
+                "is how much of the network the workstation may reach",
         }
 
         def _is_self_restraint(k):

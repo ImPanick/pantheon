@@ -29,6 +29,10 @@ const PRIV_LABELS = {
   can_use_agent: 'Agent mode',
   can_use_browser: 'Browser automation',
   can_use_bash: 'Shell / Python / Files',
+  // `P20-02`. The workstation (`D-2026-09-30-03`). Off for everyone but admins
+  // until granted here; the label names what it hands out, because "workstation"
+  // alone does not say that a shell comes with it.
+  can_use_workstation: 'Workstation (Ubuntu shell, files, screen)',
   can_use_documents: 'Document editor',
   can_use_research: 'Deep research',
   can_generate_images: 'Image generation',

@@ -45532,6 +45532,54 @@ body.settings-sidebar-resize-active {
 }
 .host-guard-why { flex: 1 1 auto; opacity: 0.9; line-height: 1.45; }
 
+/* ── `P20-02`: the workstation panel ───────────────────────────────────────
+   One new shape: a status line, a dot and a sentence. The dot's colour carries
+   the state and the sentence carries it again in words, so the state never
+   rests on colour alone. Every colour is an existing token (`--green` and
+   `--warn` are `B22`'s light-dark pairs, legible on all sixteen palettes); no
+   `--accent`, and no focus rule of its own — the buttons and switches are the
+   shared ones, and the global ring reaches them. The rows wrap on a phone the
+   way `.networks-row` does, without a second layout to maintain. */
+.ws-status {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.ws-status-dot {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--fg) 35%, transparent);
+}
+.ws-status[data-state="up"] .ws-status-dot { background: var(--green); }
+.ws-status[data-state="down"] .ws-status-dot { background: var(--red); }
+.ws-status[data-state="unconfigured"] .ws-status-dot,
+.ws-status[data-state="unknown"] .ws-status-dot { background: var(--warn); }
+.ws-status-text { min-width: 0; overflow-wrap: anywhere; }
+.ws-facts,
+.ws-you {
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: color-mix(in srgb, var(--fg) 75%, transparent);
+  overflow-wrap: anywhere;
+}
+.ws-actions { margin-top: 10px; flex-wrap: wrap; }
+.ws-settings .ws-actions { margin-top: 0; }
+.ws-settings { gap: 10px; }
+.ws-toggle { gap: 12px; align-items: flex-start; }
+.ws-toggle .admin-toggle-label { display: block; }
+.ws-field .settings-label { min-width: 110px; }
+.ws-effect { margin-top: -4px; line-height: 1.45; }
+.ws-warn { color: var(--warn); }
+@media (max-width: 520px) {
+  .ws-field { flex-wrap: wrap; }
+  .ws-field .settings-label { min-width: 0; flex: 1 0 100%; }
+}
+
 
 /* ===========================================================================
    `P10-01` — one focus ring, and the hundred declarations that were silencing

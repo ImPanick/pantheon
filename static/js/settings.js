@@ -105,6 +105,15 @@ function onSettingsPanelActivated(tab) {
       .then((mod) => mod.open())
       .catch((e) => console.error('Networks panel failed to load', e));
   }
+
+  // `P20-02`. Same shape again: it asks the workstation whether it answers,
+  // which is a request to another machine, and nobody should pay for that by
+  // opening Settings to change a theme.
+  if (tab === 'workstation') {
+    import('./workstation.js')
+      .then((mod) => mod.open())
+      .catch((e) => console.error('Workstation panel failed to load', e));
+  }
 }
 
 function openAdminSettingsTab(tab) {

@@ -36,7 +36,7 @@ from src.settings import (
     ENV_BACKED_FLAGS,
     LIMIT_RANGES,
     RETIRED_SETTING_KEYS,
-    without_retired_settings,
+    for_browser as _settings_for_browser,
 )
 from src.tool_capabilities import TrustRung
 from src.run_limits import AGENT_MAX_ROUNDS_RANGE, AGENT_MAX_TOOL_CALLS_RANGE
@@ -913,7 +913,11 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
         a scrubbed copy with secret keys blanked. The frontend uses this
         for keybinds + TTS prefs, so it stays callable without admin."""
         user = _get_current_user(request)
-        settings = without_retired_settings(_load_settings())
+        # `P20-02`. `for_browser`, not the generic view: `workstation_token` is
+        # written from a browser and never read back into one, an admin's
+        # included (`WITHHELD_SETTING_KEYS`). Left out rather than masked, so a
+        # page that posts back what it was given cannot blank the real value.
+        settings = _settings_for_browser(_load_settings())
         if user and auth_manager.is_admin(user):
             return settings
         return scrub_settings(settings)
@@ -1062,7 +1066,15 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
         if not user or not auth_manager.is_admin(user):
             raise HTTPException(403, "Admin only")
         body = await request.json()
-        current = _load_settings()
+        # A COPY. `load_settings()` hands back its two-second cache itself, and
+        # this loop assigns into it key by key before a later key can be
+        # refused — so until `P20-02` a 400 left the keys before the refused
+        # one applied in-process, and the next save inside the cache window
+        # wrote them to disk. Measured: `{"workstation_enabled": true,
+        # "workstation_url": "http://ws/v1/x"}` answered 400 and
+        # `get_setting("workstation_enabled")` then said True. A refusal
+        # refuses the whole request.
+        current = dict(_load_settings())
         # Per-key validation for numeric settings: coerce to int and clamp to a
         # sane range so a bad value can't disable the agent or let it run away.
         #
@@ -1170,6 +1182,10 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
         # operator's value echoed back, and a collector that never gets an auth
         # header. (`P16-19`)
         _STRING_MAPS = ("otlp_headers", "otlp_resource_attributes")
+        from src.workstation_access import (
+            SETTING_KEYS as _WORKSTATION_KEYS,
+            validate_setting as _validate_workstation_setting,
+        )
         for key in DEFAULT_SETTINGS:
             if key in RETIRED_SETTING_KEYS:
                 continue
@@ -1228,6 +1244,19 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
                         "netagent_url must be a plain http(s) origin such as "
                         "http://127.0.0.1:7010 — no path, no query string, and "
                         "no credentials in the URL.")
+            if key in _WORKSTATION_KEYS:
+                # `P20-02`. Every workstation key, refused at the door rather
+                # than stored and ignored — `netagent_url`'s reasoning above,
+                # applied to seven keys at once. The rules live beside the
+                # client that reads the values (`src/workstation_access.py`),
+                # so the check and the reader cannot drift (`Law 13`); a bad
+                # address, a non-boolean switch, a backend or network mode the
+                # protocol does not name, and a token that could not travel in
+                # a header are each a sentence here instead of a 200.
+                try:
+                    val = _validate_workstation_setting(key, val)
+                except ValueError as exc:
+                    raise HTTPException(400, str(exc))
             if key in ("host_exec_denylist", "host_exec_allowlist"):
                 # `P17-09`'s lesson a third time: a list stored and then silently
                 # ignored is worse than a refusal, because the operator believes
@@ -1307,7 +1336,7 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
                             "(empty means no source link is shown)")
             current[key] = val
         _save_settings(current)
-        return without_retired_settings(current)
+        return _settings_for_browser(current)
 
     # ---- Integrations CRUD ----
 

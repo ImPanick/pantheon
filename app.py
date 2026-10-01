@@ -986,6 +986,11 @@ app.include_router(setup_cookbook_routes())
 from routes.workspace_routes import setup_workspace_routes
 app.include_router(setup_workspace_routes())
 
+# The workstation (`P20-02`): status for anyone signed in, Check now for an
+# admin, and Reset my workstation for whoever may use it.
+from routes.workstation_routes import setup_workstation_routes
+app.include_router(setup_workstation_routes())
+
 # Hardware model fitting (cookbook "What Fits?" tab)
 from routes.hwfit_routes import setup_hwfit_routes
 app.include_router(setup_hwfit_routes())

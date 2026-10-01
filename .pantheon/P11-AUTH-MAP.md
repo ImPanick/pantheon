@@ -74,14 +74,14 @@ The four tiers are `P11-02b`'s own question. A site is exactly one of them:
   ownership check or a privilege key that does not exist. The fix is a data model, not
   an auth change.
 
-derived: direct 99 · Depends 20 · total 119
+derived: direct 101 · Depends 20 · total 121
 
 ### tier summary
 
 | tier | sites |
 |---|---|
 | `superuser` | 45 |
-| `operator` | 49 |
+| `operator` | 51 |
 | `power-user` | 4 |
 | `only-because-nothing-finer-existed` | 21 |
 
@@ -135,7 +135,7 @@ derived: direct 99 · Depends 20 · total 119
 | `routes/auth_routes.py` | `remove_role` | `DELETE /api/auth/roles/{name}` | removes a role and revokes it from every user holding it. `P11-02` |
 | `routes/auth_routes.py` | `set_user_role` | `PUT /api/auth/users/{username}/role` | grants somebody else a role. `P11-02` |
 
-### `operator` — **49 operator sites.** Running the box: endpoints, models, probes, logs, webhooks, storage. A person who keeps the instance up needs all of it and needs none of the tier above. This is the tier that makes a role model worth building, because today the only way to hand someone the operator's job is to hand them the owner's.
+### `operator` — **51 operator sites.** Running the box: endpoints, models, probes, logs, webhooks, storage. A person who keeps the instance up needs all of it and needs none of the tier above. This is the tier that makes a role model worth building, because today the only way to hand someone the operator's job is to hand them the owner's.
 
 | file | function | route | protects |
 |---|---|---|---|
@@ -188,6 +188,8 @@ derived: direct 99 · Depends 20 · total 119
 | `routes/webhook/webhook_routes.py` | `toggle_webhook` | `PATCH /api/webhooks/{webhook_id}` | enables or disables one |
 | `routes/webhook/webhook_routes.py` | `create_webhook` | `POST /api/webhooks` | adds an outbound destination the instance will POST to |
 | `routes/webhook/webhook_routes.py` | `test_webhook` | `POST /api/webhooks/{webhook_id}/test` | fires a test delivery |
+| `routes/workstation_routes.py` | `workstation_check` | `POST /api/workstation/check` | *Check now*: asks the workstation whether it answers, even while it is switched off, and pushes the admin's `sudo` setting to the daemon when it differs. Running the box. `P20-02` |
+| `routes/workstation_routes.py` | `_caller_is_admin` | `—` | not a route: `GET /api/workstation/status` asks it whether to add the admin's view — the address in effect and where it and the token came from, never the token. A 403 here means "no admin view", not a refusal; the status route itself is open to anyone signed in. Asked of `require_admin` rather than `is_admin` so rule C does not rise. `P20-02` |
 
 ### `power-user` — **4 power-user sites.** Reads a capable user needs in order to work, gated as if they were instance control. All four are the model picker's inventory: a non-admin can be given `allowed_models` in `DEFAULT_PRIVILEGES` today and still cannot see which endpoints exist.
 
@@ -477,7 +479,7 @@ the number of admin decisions added — which is the behaviour the map was built
 The paragraph above is about the 107 that predate roles; the counts below are live.
 
 - **45 superuser sites do not move.** They are already right.
-- **49 operator sites are the phase's return.** Today the only way to let someone keep
+- **51 operator sites are the phase's return.** Today the only way to let someone keep
   the instance up is to make them the owner. An `operator` overlay on
   `DEFAULT_PRIVILEGES` retires 48 gates without touching a single one of the 37.
 - **4 power-user sites are one privilege key.** `allowed_models` already exists in
