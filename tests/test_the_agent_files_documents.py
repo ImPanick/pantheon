@@ -160,6 +160,9 @@ def test_create_rename_move_and_list_one_folder(lib):
     assert [d["id"] for d in listed["documents"]] == [pack]
     assert "in Archive/Customers" in listed["response"]
     assert call({"action": "list", "unfiled": True})["documents"] == []
+    # `P21-04`'s folder half: the agent's lookup matches the folder path too.
+    found = call({"action": "list", "search": "customers"})
+    assert [d["id"] for d in found["documents"]] == [pack]
 
 
 def test_remove_folder_asks_what_happens_and_does_exactly_that(lib):
