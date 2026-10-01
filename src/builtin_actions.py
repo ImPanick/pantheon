@@ -598,10 +598,10 @@ async def action_tidy_sessions(owner: str, **kwargs) -> Tuple[str, bool]:
 
 
 async def action_tidy_documents(owner: str, **kwargs) -> Tuple[str, bool]:
-    """Run tidy on documents for the owner."""
+    """Propose a tidy of the owner's documents — never delete (`B1006`)."""
     try:
         from src.document_actions import run_document_tidy
-        result = await run_document_tidy(owner)
+        result = await run_document_tidy(owner, kwargs.get("task_name") or "Documents Tidy")
         return result, True
     except Exception as e:
         logger.error(f"tidy_documents action failed: {e}")
@@ -3715,7 +3715,7 @@ BUILTIN_ACTION_META = {
         "params": [],
     },
     "tidy_documents": {
-        "description": "Remove junk/empty documents",
+        "description": "Propose removing junk, empty and duplicate documents — nothing is deleted until you apply it",
         "category": "Documents", "icon": "document", "model_backed": False,
         "effects": (EFFECT_DELETES,),
         "dry": DRY_DESCRIBES,

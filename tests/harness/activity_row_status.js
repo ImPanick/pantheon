@@ -174,6 +174,9 @@ const deps = {
   _renderActivityView: () => {},
   API_BASE: '',
   uiModule: { showToast() {}, showError() {}, copyToClipboard() {} },
+  // `B1006`. A notification that asks the person something is handed to
+  // `documentPlanNotice.js`; the harness records what was handed over.
+  _offerDocumentPlan: () => {},
   spinnerModule: { createWhirlpool: () => ({ element: { style: {} } }) },
   markdownModule: {
     squashOutsideCode: (s) => s,
@@ -320,8 +323,10 @@ if (mode === 'tone') {
   // Tasks button that tells a person something is wrong.
   const notes = JSON.parse(process.argv[3] || '[]');
   const said = [];
+  const offered = [];
   let failure = false;
   const api = makeExtra({
+    _offerDocumentPlan: (review) => offered.push(review),
     document: { querySelector: () => null },
     fetch: async () => ({ ok: true, json: async () => ({ notifications: notes }) }),
     _setTaskFailurePending: (v) => { if (v) failure = true; },
@@ -335,7 +340,7 @@ if (mode === 'tone') {
     },
   });
   api._pollTaskNotifications().then(() => {
-    console.log(JSON.stringify({ said, failure }));
+    console.log(JSON.stringify({ said, failure, offered }));
   });
 } else if (mode === 'completed') {
   // Which runs reach the Completed tab. `_isFinishedRun` is the name `B78`

@@ -815,6 +815,10 @@ class FolderPlan:
     changes: List[Dict[str, Any]]
     created_at: datetime = field(default_factory=utcnow_naive)
     expires_at: float = field(default_factory=lambda: time.monotonic() + PLAN_TTL_SECONDS)
+    #: `B1006`. What a person is shown to answer a plan nobody asked for in a
+    #: chat — the scheduled tidy's — from a notification. ``None`` for the
+    #: agent's plans, which are answered on the card in the chat that asked.
+    review: Optional[Dict[str, Any]] = None
 
 
 _plans: Dict[str, FolderPlan] = {}
@@ -827,15 +831,23 @@ def _purge_plans_locked(now: float) -> None:
 
 
 def propose_plan(owner: str, session_id: str, steps: List[Dict[str, Any]],
-                 changes: List[Dict[str, Any]]) -> FolderPlan:
-    """Hold a plan for this chat. A newer plan in the same chat replaces it."""
+                 changes: List[Dict[str, Any]], *, ttl_seconds: Optional[float] = None,
+                 review: Optional[Dict[str, Any]] = None) -> FolderPlan:
+    """Hold a plan for this chat. A newer plan in the same chat replaces it.
+
+    `ttl_seconds` and `review` are `B1006`'s: the scheduled tidy's plan waits
+    longer than the agent's 30 minutes, and carries what its notification shows.
+    """
     with _plans_lock:
         _purge_plans_locked(time.monotonic())
         for plan_id in [k for k, p in _plans.items()
                         if p.owner == owner and p.session_id == session_id]:
             _plans.pop(plan_id, None)
         plan = FolderPlan(plan_id=secrets.token_urlsafe(9), owner=owner,
-                          session_id=session_id, steps=list(steps), changes=list(changes))
+                          session_id=session_id, steps=list(steps), changes=list(changes),
+                          review=review)
+        if ttl_seconds is not None:
+            plan.expires_at = time.monotonic() + ttl_seconds
         _plans[plan.plan_id] = plan
         return plan
 
@@ -854,6 +866,28 @@ def discard_plan(plan_id: str) -> None:
         _plans.pop(plan_id, None)
 
 
+def _answerable_by(plan: FolderPlan, owner: Any) -> bool:
+    return plan.review is not None and (owner is EVERY_OWNER or plan.owner == owner)
+
+
+def waiting_review(plan_id: Any, owner: Any) -> Optional[FolderPlan]:
+    """`B1006`. A plan waiting for its person on a notification — the
+    scheduled tidy's — if it is *owner*'s. An agent's plan is not answered
+    here: it is answered on the card in the chat that asked."""
+    with _plans_lock:
+        _purge_plans_locked(time.monotonic())
+        plan = _plans.get(str(plan_id or ""))
+        return plan if plan is not None and _answerable_by(plan, owner) else None
+
+
+def waiting_reviews(owner: Any) -> List[FolderPlan]:
+    """Every such plan still waiting for *owner*, oldest first."""
+    with _plans_lock:
+        _purge_plans_locked(time.monotonic())
+        return sorted((p for p in _plans.values() if _answerable_by(p, owner)),
+                      key=lambda p: p.created_at)
+
+
 def _row_metadata(message: ChatMessage) -> Dict[str, Any]:
     try:
         meta = json.loads(message.meta_data or "{}")
@@ -870,8 +904,8 @@ def plan_answer(db, plan: FolderPlan) -> str:
     from another chat, a scheduled task's delivery, `edit-message` and the chat
     route on the agent's own loopback all write one. Now only a message sealed
     as the person's counts (`tool_approval_scopes.person_said_at`) — sealed by
-    the chat route for a person's own request — and only when the seal says
-    it was said after the plan was made; every
+    the chat route for a person's own request, or by a plan's answer route —
+    and only when the seal says it was said after the plan was made; every
     other row is passed over as if it were not there. The newest such message
     is the answer: the yes, exactly, or a no; none is no answer yet.
 

@@ -47,11 +47,16 @@ def test_tidy_survives_duplicate_with_null_timestamps(db_factory):
     # Old code raised TypeError (None vs datetime) and aborted.
     result = asyncio.run(run_tidy())
     assert isinstance(result, str)
+    # `B1006` (the owner's call, `D-2026-10-01-03`): the scheduled tidy proposes
+    # and no longer deletes, so this asserts the proposal — one copy of the two
+    # named — where it used to count the copy the tidy had already removed.
+    assert result.startswith("Asked you about deleting 1 of 2: My Report"), result
 
     db = db_factory()
     try:
-        remaining = db.query(Document).filter(Document.owner == "alice").count()
-        assert remaining == 1  # one duplicate kept, the other removed
+        remaining = (db.query(Document).filter(Document.owner == "alice")
+                     .filter(Document.is_active == True).count())  # noqa: E712 — SQL
+        assert remaining == 2  # nothing deleted until the person applies it
     finally:
         db.close()
 

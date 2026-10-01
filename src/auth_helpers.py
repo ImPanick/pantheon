@@ -68,7 +68,8 @@ def request_is_a_person(request: Request) -> bool:
     own loopback, which `app_api` and the other tool bridges reach with the
     internal-tool token and `X-Pantheon-Owner`, and which the auth middleware
     then names as that owner. Asked where the server records that *a person
-    said this* (`tool_approval_scopes.seal_person_message`).
+    said this* (`tool_approval_scopes.seal_person_message`) and where only a
+    person may answer (a document plan's answer route).
 
     Any internal-tool header counts against the request, valid or not: a
     browser never sends one, so a request carrying it is not a person's

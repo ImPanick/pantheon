@@ -22,7 +22,9 @@ from pydantic import BaseModel
 
 from core.database import SessionLocal
 from src import document_folders as folders
-from src.auth_helpers import _auth_disabled, get_current_user, require_privilege
+from src.auth_helpers import (
+    _auth_disabled, get_current_user, request_is_a_person, require_privilege,
+)
 
 
 class FolderCreate(BaseModel):
@@ -53,6 +55,10 @@ class DocumentsFile(BaseModel):
     to: Optional[str]
 
 
+class PlanAnswer(BaseModel):
+    answer: str
+
+
 def _scope(user: Optional[str]):
     """The owner every query is scoped to — `_owner_session_filter`'s rule."""
     if user:
@@ -68,6 +74,16 @@ def _reader(request: Request):
 
 def _writer(request: Request):
     return _scope(require_privilege(request, "can_use_documents"))
+
+
+def _person(request: Request):
+    """`B1006`. A plan's answer is the person's, so a request acting in their
+    name — a bearer token (`B70`), the assistant's own loopback through
+    `app_api` — is refused here before anything is read (`B1005`)."""
+    if not request_is_a_person(request):
+        raise HTTPException(403, "Only you can answer this, from Pantheon itself — "
+                                 "not an API token and not your assistant.")
+    return _writer(request)
 
 
 def _write(request: Request, op, *args, **kwargs) -> Dict[str, Any]:
@@ -126,3 +142,34 @@ def register_document_folder_routes(router: APIRouter) -> None:
     @router.post("/api/document-folders/file")
     async def file_documents_into_folder(request: Request, req: DocumentsFile) -> Dict[str, Any]:
         return _write(request, folders.file_documents, req.document_ids, req.to)
+
+    # ── `B1006` · the scheduled tidy's proposal, answered by the person ─────
+    #
+    # `GET` lists the proposals still waiting for the caller, so the browser
+    # can offer one again after a reload (a notification is said once). `POST`
+    # is the answer: "Apply the plan" or "Don't change anything", recorded in
+    # the plan's chat as the person's (`document_actions.answer_review`) and
+    # applied by `document_folders.apply_plan` against the documents as they
+    # are now. Only a person may answer; an agent's plan is not answered here.
+
+    @router.get("/api/document-folders/plans")
+    async def waiting_document_plans(request: Request) -> Dict[str, Any]:
+        owner = _reader(request)
+        return {"plans": [dict(p.review, plan_id=p.plan_id)
+                          for p in folders.waiting_reviews(owner)]}
+
+    @router.post("/api/document-folders/plans/{plan_id}/answer")
+    async def answer_document_plan(request: Request, plan_id: str,
+                                   req: PlanAnswer) -> Dict[str, Any]:
+        from src.document_actions import answer_review
+
+        owner = _person(request)
+        plan = folders.waiting_review(plan_id, owner)
+        if plan is None:
+            raise HTTPException(404, "That tidy is no longer waiting — it was answered, a "
+                                     "newer one replaced it, or it lapsed.")
+        answer = (req.answer or "").strip()
+        if answer not in (folders.PLAN_APPROVE_LABEL, folders.PLAN_DECLINE_LABEL):
+            raise HTTPException(400, f"Answer \"{folders.PLAN_APPROVE_LABEL}\" or "
+                                     f"\"{folders.PLAN_DECLINE_LABEL}\".")
+        return answer_review(plan, answer)

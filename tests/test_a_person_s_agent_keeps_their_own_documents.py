@@ -556,21 +556,20 @@ def test_the_threshold_one_delete_asks_and_five_moves_do_not(people):
     assert alive(people, five[2]) and state(people, "bob")["folders"].count("Keep") == 0
 
 
-# ── the scheduled action is not this door (`Law 1`) ─────────────────────────
+# ── the scheduled action asks too (`B1006`) ─────────────────────────────────
 
-def test_the_scheduled_tidy_still_runs_unattended_as_it_did(people, mess):
-    """`tidy_documents` (`builtin_actions`) is a task the person scheduled; it
-    keeps its rules, its hard delete and its sentence."""
+def test_the_scheduled_tidy_proposes_and_deletes_nothing(people, mess):
+    """`tidy_documents` (`builtin_actions`) used to keep its rules, its hard
+    delete and its sentence here — pinned as unattended on purpose (`Law 1`).
+    The owner's call changed it (`D-2026-10-01-03`: propose, don't delete), so
+    this now pins the proposal: the same four, nothing deleted, every row still
+    in the table. The whole flow is `tests/test_the_documents_tidy_asks_first.py`."""
     from src.document_actions import run_document_tidy
     said = asyncio.run(run_document_tidy("bob"))
-    assert said.startswith("Removed 4 of 7: ") and said.endswith(" · 3 kept"), said
-    assert "Notes (+1 duplicate copies)" in said
-    db = people()
-    try:
-        left = {d.id for d in db.query(cdb.Document).filter(cdb.Document.owner == "bob").all()}
-    finally:
-        db.close()
-    assert left == {mess["copy_long"], mess["keep"], mess["fresh"]}
+    assert said.startswith("Asked you about deleting 4 of 7: "), said
+    assert said.endswith("This run deleted nothing."), said
+    assert "Notes (a duplicate — the fullest copy stays)" in said
+    assert all(alive(people, i) for i in mess.values())
 
 
 # ── the yes is the person's: the agent cannot write it ──────────────────────

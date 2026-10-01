@@ -233,11 +233,12 @@ def chat_session_grant_is_live(ask_user: object, session_id: object) -> bool:
 # compaction. `B1004` closed one of those doors by name; a list of doors is
 # the wrong shape, because the next writer is not on it.
 #
-# So the answer is read only from a message carrying this seal, and one place
-# makes it: the chat route persisting a person's own request
-# (`routes/chat_helpers.add_user_message`). It does not stamp a bearer token's
-# request (`B70`: a token is not the person who minted it) or the agent's
-# loopback (`auth_helpers.request_is_a_person`).
+# So the answer is read only from a message carrying this seal, and only two
+# places make one: the chat route persisting a person's own request
+# (`routes/chat_helpers.add_user_message`), and the plan's own answer route
+# (`P21-02`'s plan answered from a notification, `B1006`). Neither stamps a
+# bearer token's request (`B70`: a token is not the person who minted it) or
+# the agent's loopback (`auth_helpers.request_is_a_person`).
 #
 # The seal binds the chat, the moment it was said and the text, under the same
 # key as the grant above, with a payload tag the grant's payload cannot take:

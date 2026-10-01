@@ -1346,20 +1346,28 @@ class TaskScheduler:
             logger.debug("Task abort marker failed for %s", task_id, exc_info=True)
             return False
 
-    def add_notification(self, task_name: str, status: str, task_id: str = None, owner: str = None, body: str = None):
+    def add_notification(self, task_name: str, status: str, task_id: str = None, owner: str = None, body: str = None,
+                         review: dict = None):
         """Store a notification about a completed task run. Tagged with the
         task's owner so `pop_notifications` can return only that user's
         notifications and prevent cross-tenant drain. `body` is the result
         text — populated when output_target='notification' so the client can
-        show a rich browser Notification, not just a toast."""
-        self._pending_notifications.append({
+        show a rich browser Notification, not just a toast.
+
+        `review` (`B1006`) is something the person is asked to answer — the
+        scheduled Documents Tidy's list — which the client offers to open
+        (`static/js/documentPlanNotice.js`) instead of only toasting."""
+        note = {
             "task_name": task_name,
             "status": status,
             "task_id": task_id,
             "owner": owner,
             "body": (body[:500] + "…") if body and len(body) > 500 else body,
             "timestamp": _utcnow().isoformat() + "Z",
-        })
+        }
+        if review:
+            note["review"] = review
+        self._pending_notifications.append(note)
         # Cap at 50 to avoid unbounded growth
         if len(self._pending_notifications) > 50:
             self._pending_notifications = self._pending_notifications[-50:]

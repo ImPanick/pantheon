@@ -945,10 +945,6 @@ def _undo_hint(changes) -> str:
             + ("; the rest can be put back by hand there." if rest else "."))
 
 
-#: Why the tidy rules would remove a document, as its line on the card says it.
-_DUPLICATE_REASON = "a duplicate — the fullest copy stays"
-
-
 def _tidy(db, owner: Optional[str], session_id: Optional[str]) -> Dict:
     """`B994`. The agent's tidy, shown first: the rules' list becomes a plan.
 
@@ -966,20 +962,15 @@ def _tidy(db, owner: Optional[str], session_id: Optional[str]) -> Dict:
     it used to tidy every document in the database (`run_document_tidy("")`).
     """
     from core.database import Document
-    from src.document_actions import tidy_verdicts
+    from src.document_actions import tidy_reasons
 
     if not owner:
         return {"error": "Documents belong to a signed-in person, and this call has none. "
                          "Nothing was deleted.", "exit_code": 1}
     q = db.query(Document).filter(Document.is_active == True)  # noqa: E712 — SQL
     docs = _owned_document_query(q, Document, owner).all()
-    verdicts = tidy_verdicts(docs)
-    reasons: Dict[str, str] = {}
-    for doc, reason in verdicts["junk"]:
-        reasons[doc.id] = reason
-    for _keeper, copies in verdicts["duplicates"]:
-        for doc in copies:
-            reasons[doc.id] = _DUPLICATE_REASON
+    # `B1006`: the scheduled tidy reads the verdicts the same way (`Law 7`).
+    reasons: Dict[str, str] = tidy_reasons(docs)
     if not reasons:
         return {"response": (f"Nothing to tidy — none of your {len(docs)} document(s) is "
                              "empty, a throwaway or a duplicate."),

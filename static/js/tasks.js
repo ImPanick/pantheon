@@ -4072,6 +4072,24 @@ export function isTasksOpen() { return _open; }
 
 let _notifInterval = null;
 
+// `B1006`. The scheduled Documents Tidy's proposal, offered to the person
+// (`documentPlanNotice.js`). Loaded the first time one arrives rather than
+// with this module: almost every page never sees one, and the node sandboxes
+// that copy this file stub its static imports one by one — a static import
+// here turned 13 of `tests/test_tasks_activity_sources_js.py`'s 14 cases red
+// (measured) for a module none of them is about.
+function _offerDocumentPlan(review) {
+  import('./documentPlanNotice.js')
+    .then((m) => m.offerDocumentPlan(review))
+    .catch(() => {});
+}
+
+function _offerWaitingDocumentPlans() {
+  import('./documentPlanNotice.js')
+    .then((m) => m.offerWaitingDocumentPlans())
+    .catch(() => {});
+}
+
 async function _pollTaskNotifications() {
   try {
     const res = await fetch(`${API_BASE}/api/tasks/notifications`, { credentials: 'same-origin' });
@@ -4079,6 +4097,12 @@ async function _pollTaskNotifications() {
     const data = await res.json();
     const notes = data.notifications || [];
     for (const n of notes) {
+      // `B1006`. Something the person is asked to answer — the scheduled
+      // Documents Tidy's list — is offered to open, not just announced.
+      if (n.review && n.review.kind === 'document_plan') {
+        _offerDocumentPlan(n.review);
+        continue;
+      }
       const ok = n.status === 'success';
       if (ok) {
         const completedOpen = _open && document.querySelector('.tasks-tab.active[data-tab="completed"]');
@@ -4152,6 +4176,8 @@ async function _pollTaskNotifications() {
 function startNotificationPolling() {
   if (_notifInterval) return;
   setTimeout(_pollTaskNotifications, 1500);
+  // `B1006`: a proposal still waiting from before this page loaded.
+  setTimeout(_offerWaitingDocumentPlans, 2500);
   _notifInterval = setInterval(_pollTaskNotifications, 30000);
 }
 
