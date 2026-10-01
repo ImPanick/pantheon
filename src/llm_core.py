@@ -1213,6 +1213,111 @@ def _minimax_profile_temperature(asked) -> float:
         return MINIMAX_PROFILE_TEMPERATURE
 
 
+# ── `B934` · the operator's local token ceiling, on every door ─────────────
+#
+# `local_inference_max_tokens` (`P3-21`, `D-2026-09-08-02`) is how many tokens
+# THIS MACHINE will generate for one local reply. Until this row only the agent
+# path read it (`agent_loop._resolve_local_lifts`), and the local MiniMax
+# profile below filled an unset `max_tokens` with a literal 2048 on every door —
+# so a ceiling an operator typed never reached chat mode or `/api/chat`, and
+# never reached a local MiniMax with no preset anywhere, the agent's door
+# included. Measured by `w5-local` (pinned 32,768): a preset's 4096 was sent
+# 4096 in chat mode and `/api/chat` and 32,768 in Agent mode, and a local MiniMax
+# with no preset was sent 2048 on all three.
+#
+# The owner's call (`D-2026-10-01-04`): **the operator's ceiling wins
+# everywhere.** A ceiling a person typed (`setting_is_explicit`, `H08`'s pin)
+# applies on chat mode, Agent mode and `/api/chat` by the agent path's own rule —
+# `runtime_limits.lift_cap`, the preset a floor under the ceiling, only where
+# the local lift applies — and it replaces the 2048. **Where nobody typed one,
+# nothing changes on any door**: the 2048 stays, the chat doors send the preset's
+# number, and the agent path keeps lifting to the shipped 1,000,000 as it did.
+#
+# Two readings, stated rather than discovered. A typed **0** means "no lift"
+# (the setting's own documentation), so it changes nothing anywhere and the 2048
+# stays — 0 is not a length. And the 2048 is one guard, read by every caller of
+# the profile, so a call on a local MiniMax that names no length is held to the
+# typed ceiling too, not only a chat turn. Measured 2026-10-01: of the 55 call
+# sites of the seven entry points (`llm_call`, `llm_call_async`, `stream_llm`
+# and their four fallback wrappers) in `src/`, `routes/` and `core/`, 47 name a
+# length or forward the caller's; the 8 that do not are the document
+# processor, `ai_interaction`, the teacher's two, `session_tools`, the two
+# model-interaction tools and the webhook route. The run receipt says which
+# number was sent (`B933`).
+LOCAL_MAX_TOKENS_KEY = "local_inference_max_tokens"
+LOCAL_MAX_TOKENS_DEFAULT = 1_000_000
+#: The local MiniMax profile's `max_tokens` for a request that names none,
+#: where nobody typed a ceiling. A loop guard for one model family — the quantized
+#: MLX ports repeat themselves — and not a statement about the hardware.
+MINIMAX_PROFILE_MAX_TOKENS = 2048
+
+
+def typed_local_max_tokens_ceiling() -> Optional[int]:
+    """The local-inference ceiling a person typed, or ``None`` when nobody did.
+
+    `setting_is_explicit` and then the stored value — `H08`'s shape, not a bare
+    `get_setting`, which cannot tell a typed number from one the first settings
+    save materialised (`B20`/`H06`). Unreadable, unparseable or negative is
+    ``None``: a broken settings file is treated as one nobody typed into, which
+    is the shipped behaviour on every door.
+    """
+    try:
+        from src.settings import get_setting, setting_is_explicit
+        if not setting_is_explicit(LOCAL_MAX_TOKENS_KEY):
+            return None
+        ceiling = int(get_setting(LOCAL_MAX_TOKENS_KEY, LOCAL_MAX_TOKENS_DEFAULT))
+    except Exception:
+        logger.debug("B934: could not read %s", LOCAL_MAX_TOKENS_KEY, exc_info=True)
+        return None
+    return ceiling if ceiling >= 0 else None
+
+
+def _local_lift_applies(url: str) -> bool:
+    """Whether a request to *url* gets the local-inference lift — the question
+    the agent loop asks through `set_local_mode` (`B929`), asked of a URL."""
+    try:
+        from src.runtime_limits import unlimited_for
+        return unlimited_for(is_local_endpoint(url))
+    except Exception:
+        return False
+
+
+def local_door_max_tokens(asked, url: str):
+    """`B934`. The `max_tokens` a chat door sends *url*, given the preset's.
+
+    With a ceiling a person typed and the local lift on for *url*, the agent
+    path's rule: `lift_cap`, so the preset is a floor under the ceiling and an
+    unset value stays unset (the MiniMax profile then fills it with the ceiling,
+    `_minimax_profile_max_tokens`). Otherwise exactly *asked* — so an install
+    where nobody typed one sends what it always sent, and a cloud candidate in a
+    fallback chain is never handed a local machine's number.
+    """
+    ceiling = typed_local_max_tokens_ceiling()
+    if ceiling is None or not _local_lift_applies(url):
+        return asked
+    from src.runtime_limits import lift_cap
+    return lift_cap(asked, ceiling, unlimited=True, pinned=False)
+
+
+def _minimax_profile_max_tokens() -> int:
+    """The length the local MiniMax profile fills an unset `max_tokens` with.
+
+    A ceiling a person typed, where the local lift is on — the profile only
+    runs for a local endpoint, so "on" is `unlimited_for(True)`, which
+    `PANTHEON_UNLIMITED_LOCAL=0` turns off. Otherwise, and for a typed 0 (no
+    lift), `MINIMAX_PROFILE_MAX_TOKENS`.
+    """
+    ceiling = typed_local_max_tokens_ceiling()
+    if not ceiling:
+        return MINIMAX_PROFILE_MAX_TOKENS
+    try:
+        from src.runtime_limits import unlimited_for
+        lifted = unlimited_for(True)
+    except Exception:
+        lifted = False
+    return ceiling if lifted else MINIMAX_PROFILE_MAX_TOKENS
+
+
 def _apply_local_generation_stability(payload: Dict, url: str, model: str,
                                       explicit_params=frozenset()) -> None:
     """The local-MiniMax sampling profile, as defaults under a person's choice.
@@ -1258,9 +1363,10 @@ def _apply_local_generation_stability(payload: Dict, url: str, model: str,
     payload.setdefault("presence_context_size", 256)
     payload.setdefault("stop", ["<|im_end|>", "<|endoftext|>", "</s>"])
     # A max_tokens of 0 means "server default/unbounded" for many local
-    # endpoints. Keep simple chats from running forever when the model loops.
+    # endpoints. Keep simple chats from running forever when the model loops —
+    # at 2048, or at the ceiling a person typed (`B934`).
     if not payload.get("max_tokens") and not payload.get("max_completion_tokens"):
-        payload["max_tokens"] = 2048
+        payload["max_tokens"] = _minimax_profile_max_tokens()
 
 
 def _provider_headers(provider: str, headers: Optional[Dict] = None) -> Dict[str, str]:
@@ -2826,7 +2932,8 @@ def _sent_sampling(url, model, temperature, max_tokens, explicit_params=frozense
     `temperature` and `max_tokens` are what the caller asked for. On an
     OpenAI-compatible endpoint the local MiniMax profile then rewrites the
     payload: the temperature held at 0.2 unless the person chose it, a
-    `max_tokens` of 2048 where none was set, and its penalties and stop strings
+    `max_tokens` where none was set (2048, or the ceiling a person typed —
+    `B934`), and its penalties and stop strings
     added. The receipt recorded the request, not the payload — a chat with no
     preset on local MiniMax was receipted at 1.0 and sent 0.2, against
     `_capture_run_config`'s own claim to record *"the resolved configuration …
