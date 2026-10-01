@@ -254,21 +254,28 @@ async def test_an_admin_only_task_is_refused_before_the_engine_could_pause_it(
 
 @pytest.mark.asyncio
 async def test_a_run_the_engine_declined_to_plan_is_not_passed_off_as_a_plan(
-        task_db, scheduler, calls):
-    """A paused task: the engine records a `skipped` run whose reason is in
-    `error`, while `result` still holds the "Queued…" placeholder the run was
-    created with. Driven while writing this file, the first version of the tool
-    replied *"Task 'Inbox digest': Queued — waiting for a free slot…"* with
-    exit 0 — an answer, and a false one. (That a dry run cannot plan a paused
-    task at all is the engine's, filed rather than changed here.)"""
-    _seed(task_db, status="paused")
+        task_db, scheduler, calls, monkeypatch):
+    """A declined run is recorded `skipped` with its reason, and it is not a
+    plan. Driven while writing this file, the first version of the tool replied
+    *"Task 'Inbox digest': Queued — waiting for a free slot…"* with exit 0 — an
+    answer, and a false one.
+
+    The decline here was a paused task until `B1036`, which made a paused task
+    plan. What is left is a task the engine will not run for this owner, met
+    by the privilege going between the tool's own check and the engine's — and
+    the engine's answer to it no longer pauses the task (`B1036`)."""
+    monkeypatch.setattr(policy, "owner_has_admin_task_privileges", lambda owner: True)
+    monkeypatch.setattr(ts, "owner_has_admin_task_privileges", lambda owner: False)
+    _seed(task_db, action="ssh_command", prompt="reboot")
+    before = _task(task_db)
 
     out = await _ask({"action": "dry_run", "task_id": "t1"})
 
     assert out["exit_code"] == 1, out
     assert out["error"] == (
-        "'Inbox digest' was not planned: Task no longer active (status=paused)")
+        "'Inbox digest' was not planned: Action 'ssh_command' requires admin privileges")
     assert "Queued" not in json.dumps(out)
+    assert _task(task_db) == before, "the dry run changed the task"
     assert not [c for c in calls if c[0] in ("action", "llm", "research", "deliver", "chain")]
 
 

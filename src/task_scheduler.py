@@ -1124,6 +1124,65 @@ def _normalize_chat_endpoint(url: str) -> str:
 # by this line rather than by a second copy of it (`Law 7`).
 DRY_RUN_HEADLINE = "Dry run — nothing ran, nothing changed."
 
+# `B1036`. What a task that is not `active` would do if a real run reached it:
+# nothing — `_execute_task_locked` records it `skipped` before any executor.
+# Keyed by the stored status (`FORBIDDEN.md`: task status values), so the plan
+# says it in words. `B1037` reads the same words for a chain that stops there.
+NOT_ACTIVE_WORDS = {
+    "paused": "it is paused",
+    "completed": "it was a one-off and has already run",
+}
+
+
+def not_active_words(task) -> str | None:
+    """Why a real run would not start `task`, or `None` if it would."""
+    status = getattr(task, "status", None) or "active"
+    if status == "active":
+        return None
+    return NOT_ACTIVE_WORDS.get(status, f"its status is {status}")
+
+
+def dry_run_declined(task) -> str | None:
+    """Why a dry run would not plan `task`, or `None` if it plans it.
+
+    `B1036`. Two reasons and no third: the task is gone, or its action is one
+    the engine would refuse to run for this owner (`ADMIN_ONLY_TASK_ACTIONS`) —
+    the same sentence the real run's refusal writes, so a dry run is not a way
+    to read an admin-only task's configuration. A paused task is planned.
+    """
+    if task is None:
+        return "Task no longer active (status=deleted)"
+    if (is_admin_only_task_action(task.task_type, task.action)
+            and not owner_has_admin_task_privileges(task.owner)):
+        from src.task_action_policy import admin_refusal_message
+        return admin_refusal_message(task.action)
+    return None
+
+
+def dry_run_lines(task) -> list:
+    """The plan for `task`, headline first. Runs nothing, reads no session.
+
+    `P8-33`'s lines (`dry_run_plan`, which reads a registry and the task's
+    columns), then where the result would go, then — `B1036` — whether a real
+    run would start it at all. One planner (`Law 7`): `_record_dry_run`
+    writes these on the run.
+    """
+    from src.builtin_actions import dry_run_plan
+
+    lines = dry_run_plan(
+        task_type=task.task_type,
+        action=task.action,
+        prompt=task.prompt,
+        owner=task.owner,
+        model=task.model,
+        endpoint_url=task.endpoint_url,
+        extra=[f"Where the result would go: {task.output_target or 'session'}"],
+    )
+    why_not = not_active_words(task)
+    if why_not:
+        lines.append(f"{why_not[:1].upper()}{why_not[1:]}, so a real run would not start it.")
+    return [DRY_RUN_HEADLINE, *lines]
+
 # `B1047`. Why an `aborted` run ended, in the words its row carries. Named once
 # because three places write them — the stop button (`stop_task`), the
 # foreground gate (`stop_background_tasks_for_foreground` and the running-run
@@ -1577,6 +1636,13 @@ class TaskScheduler:
     def _record_dry_run(self, db, task, run_id: str) -> None:
         """Write the plan onto the run row. Runs nothing, changes nothing else.
 
+        `B1036`. `task` may be `None` (deleted between the button and here) or
+        one the engine would refuse to run for this owner; either is recorded
+        as a `skipped` run whose `error` and `result` say why it was not
+        planned (`dry_run_declined`) — no pause, no schedule moved, nobody
+        told. Anything else is planned, a paused task included: its plan's
+        last line says a real run would not start it (`dry_run_lines`).
+
         `P8-33`. The status is `skipped` because `core/database.py` already
         defines that as *"deliberately did not run … Not a failure"*, and a
         dry run is the purest case of it. A seventh status would have to be
@@ -1592,34 +1658,34 @@ class TaskScheduler:
         describes a run that left no trace.
         """
         from core.database import TaskRun
-        from src.builtin_actions import dry_run_plan
 
-        lines = dry_run_plan(
-            task_type=task.task_type,
-            action=task.action,
-            prompt=task.prompt,
-            owner=task.owner,
-            model=task.model,
-            endpoint_url=task.endpoint_url,
-            extra=[f"Where the result would go: {task.output_target or 'session'}"],
-        )
+        run = db.query(TaskRun).filter(TaskRun.id == run_id).first()
+        declined = dry_run_declined(task)
+        if declined is not None:
+            if run is not None:
+                run.status = "skipped"
+                run.error = declined
+                run.result = declined
+                run.finished_at = _utcnow()
+                db.commit()
+            logger.info("Dry run of task %s (run %s) not planned: %s",
+                        getattr(task, "name", None) or run_id, run_id, declined)
+            return
         # `Law 15`. The first line is the one a person reads on a card that
         # says `skipped`, and it has to answer "did my thing happen" before it
-        # answers anything else.
-        headline = DRY_RUN_HEADLINE
-        self._record_run_step(run_id, kind="dry-run", detail=headline)
+        # answers anything else — `dry_run_lines` puts the headline first.
+        lines = dry_run_lines(task)
         for line in lines:
             self._record_run_step(run_id, kind="dry-run", detail=line)
-        run = db.query(TaskRun).filter(TaskRun.id == run_id).first()
         if run is None:
             return
         run.status = "skipped"
-        run.result = "\n".join([headline, *lines])
+        run.result = "\n".join(lines)
         run.finished_at = _utcnow()
         self._attach_run_steps(run_id, run)
         db.commit()
         logger.info("Dry run of task '%s' (run %s): planned %d line(s), executed nothing",
-                    task.name, run_id, len(lines))
+                    task.name, run_id, len(lines) - 1)
 
     def _attach_run_steps(self, run_id, run) -> None:
         """Persist this run's step log onto its row, if anything recorded one."""
@@ -2236,6 +2302,28 @@ class TaskScheduler:
         db = SessionLocal()
         try:
             task = db.query(ScheduledTask).filter(ScheduledTask.id == task_id).first()
+            if dry:
+                # `P8-33`. The dry run ends here, and this `return` is the whole
+                # guarantee. Every executor — the eighteen actions, the agent
+                # loop, the research pipeline — is below this line, and so is
+                # every delivery, notification and chain advance. There is no
+                # `dry_run=True` travelling down into anything, because the
+                # eighteen actions all take `**kwargs` and would swallow it
+                # (measured: 18 of 18), which would make the button labelled
+                # "test" the button that sends the email.
+                #
+                # `B1036`. Above the two early returns now, not below them. A
+                # paused task returned at the first ("no longer active") with a
+                # `skipped` run and a NOTIFICATION, and planned nothing — so a
+                # switched-off draft could not be dry-run at all; an admin-only
+                # task of a non-admin owner was refused at the second through
+                # `record_admin_refusal`, which PAUSES the task and moves its
+                # `last_run`. Both broke the one promise a dry run makes. The
+                # admin rule still applies — `_record_dry_run` declines such a
+                # task with the same sentence, the only answer that is not a
+                # privilege oracle — it just changes nothing and tells nobody.
+                self._record_dry_run(db, task, run_id)
+                return
             if not task or task.status != "active":
                 # Task was paused/deleted while queued — record that outcome
                 # so the run row doesn't sit as "queued" forever.
@@ -2244,6 +2332,10 @@ class TaskScheduler:
                     stale.status = "skipped"
                     stale.finished_at = _utcnow()
                     stale.error = f"Task no longer active (status={task.status if task else 'deleted'})"
+                    # `B1036`. The reason in `result` too: it was left at the
+                    # "Queued — waiting for a free slot…" it was created with,
+                    # which History shows ahead of `error`.
+                    stale.result = stale.error
                     db.commit()
                     # `B112`. The task is paused or gone, so this run is the last
                     # thing that will happen on it and nothing else will say so.
@@ -2274,23 +2366,6 @@ class TaskScheduler:
                 # actually happened instead of finding a stopped task later.
                 self._notify_run_outcome(task, "skipped", body=_refusal,
                                          task_id=task_id)
-                return
-
-            if dry:
-                # `P8-33`. The dry run ends here, and this `return` is the whole
-                # guarantee. Every executor — the eighteen actions, the agent
-                # loop, the research pipeline — is below this line, and so is
-                # every delivery, notification and chain advance. There is no
-                # `dry_run=True` travelling down into anything, because the
-                # eighteen actions all take `**kwargs` and would swallow it
-                # (measured: 18 of 18), which would make the button labelled
-                # "test" the button that sends the email.
-                #
-                # The admin gate above still applies: an admin-only action is
-                # refused before this, not planned. A person without the
-                # privilege gets the same answer for a dry run as for a real
-                # one, which is the only answer that is not a privilege oracle.
-                self._record_dry_run(db, task, run_id)
                 return
 
             # `B1047`. Who started this run decides what it waits for, here and
