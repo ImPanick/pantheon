@@ -30,7 +30,20 @@ RETIRED_SETTING_KEYS = frozenset({"default_model_fallbacks"})
 # a non-admin; this goes further and leaves the key out of every settings
 # answer, so no page can round-trip a masked value back over the real one.
 # Write-only, not unwritable: `POST /api/auth/settings` still accepts it.
-WITHHELD_SETTING_KEYS = frozenset({"workstation_token"})
+#
+# `B958` (owner's call, `D-2026-10-01-01`). **The backup is a browser download
+# too**, so `GET /api/export` leaves these out and `POST /api/import` never
+# writes them — a file from before this change carries `"workstation_token":
+# ""`, and restoring it would have blanked a token set by hand. That makes the
+# rule for joining this set *"re-pairs on its own"*: a key here does not survive
+# a restore, so only one that comes back without the backup may be here. The
+# workstation's does — the daemon writes it into the pairing volume, and
+# `workstation_client.resolve_token` reads it from there when no setting is
+# saved. `netagent_token` does not (the installer keeps only its hash), and the
+# provider API keys do not, so they stay in the backup and the export says so.
+# The value is what an import's answer calls the key it left alone.
+WITHHELD_SETTING_LABELS = {"workstation_token": "the workstation's pairing key"}
+WITHHELD_SETTING_KEYS = frozenset(WITHHELD_SETTING_LABELS)
 
 # Tiny TTL cache for settings/features. get_setting() is called on hot paths
 # (every chat, every preprocess); without this it re-parses the JSON each call.
@@ -885,15 +898,24 @@ def without_retired_settings(settings: dict) -> dict:
     }
 
 
+def without_withheld_settings(settings: dict) -> dict:
+    """`settings` less `WITHHELD_SETTING_KEYS` — the keys that never leave the
+    server. The backup's view (`B958`): retired keys stay in a backup, which
+    exists to restore what was there."""
+    if not isinstance(settings, dict):
+        return {}
+    return {
+        key: value
+        for key, value in settings.items()
+        if key not in WITHHELD_SETTING_KEYS
+    }
+
+
 def for_browser(settings: dict) -> dict:
     """What a settings answer may carry to a page: the generic view, less the
     keys that are written from a browser and never read back into one
     (`WITHHELD_SETTING_KEYS`, `P20-02`)."""
-    return {
-        key: value
-        for key, value in without_retired_settings(settings).items()
-        if key not in WITHHELD_SETTING_KEYS
-    }
+    return without_withheld_settings(without_retired_settings(settings))
 
 # `P2-18`. Every switch ships ON, and `deep_research` was the one that did not.
 #

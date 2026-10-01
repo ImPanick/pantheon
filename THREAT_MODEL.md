@@ -73,7 +73,10 @@ file it can reach learns nothing that drives Pantheon.
 workstation — run commands as any per-person account, read and write their homes, see and drive their displays,
 reset a home, and change the daemon's `sudo` — and **nothing in Pantheon**. Pantheon never sends it to a
 browser, an admin's included (`WITHHELD_SETTING_KEYS`); the panel is told only whether there is one and where it
-came from. The agent may read but never write any workstation setting (`_SELF_RESTRAINT_KEYS`), because a new
+came from. The backup download (Settings → Data Backup) leaves it out too, and a restore never writes it, because
+it pairs again on its own from the volume (`B958`, `D-2026-10-01-01`). **The backup does carry every other key saved
+in settings — search-provider API keys, the GitHub and network-agent tokens — unencrypted**, because a restore
+needs them; the panel says so beside the button. Treat the file as you would the settings file itself. The agent may read but never write any workstation setting (`_SELF_RESTRAINT_KEYS`), because a new
 `workstation_url` would send the token, and every command, to whoever answers there. The address is an admin
 setting, not content, so it is not put through the SSRF validators: every request path comes from
 `workstation/protocol.ROUTES` and no parameter lets a model name where a request goes.

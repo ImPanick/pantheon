@@ -9,7 +9,15 @@ from fastapi import APIRouter, HTTPException, Request, Response
 from core.middleware import require_admin
 from services.memory import MemoryStoreUnreadable
 from src.auth_helpers import get_current_user
-from src.settings import load_settings, save_settings, load_features, save_features
+from src.settings import (
+    WITHHELD_SETTING_KEYS,
+    WITHHELD_SETTING_LABELS,
+    load_features,
+    load_settings,
+    save_features,
+    save_settings,
+    without_withheld_settings,
+)
 from src.upload_limits import (
     format_byte_limit,
     read_byte_limit_env,
@@ -117,8 +125,10 @@ def setup_backup_routes(memory_manager, preset_manager, skills_manager) -> APIRo
         # Skills (filtered by owner when auth is enabled)
         skills = skills_manager.load(owner=user)
 
-        # Settings
-        settings = load_settings()
+        # Settings. `B958`: less the keys that never leave the server — they
+        # re-pair on their own (`WITHHELD_SETTING_KEYS`). Every provider API key
+        # stays: a restore needs them, and the panel says the file holds them.
+        settings = without_withheld_settings(load_settings())
 
         # Feature flags
         features = load_features()
@@ -281,9 +291,16 @@ def setup_backup_routes(memory_manager, preset_manager, skills_manager) -> APIRo
             imported.append("presets")
 
         # ── Settings ──
+        # `B958`. A key that re-pairs on its own is never restored: a file from
+        # before the export left it out still carries it (as `""`, or as a
+        # token from an older pairing), and the setting outranks the pairing
+        # volume, so writing it would blank or replace the token in use.
+        left_alone = []
         if "settings" in body and isinstance(body["settings"], dict):
+            incoming = body["settings"]
+            left_alone = sorted(k for k in incoming if k in WITHHELD_SETTING_KEYS)
             current = load_settings()
-            current.update(body["settings"])
+            current.update(without_withheld_settings(incoming))
             save_settings(current)
             imported.append("settings")
 
@@ -305,6 +322,11 @@ def setup_backup_routes(memory_manager, preset_manager, skills_manager) -> APIRo
         if not imported:
             return {"ok": False, "message": "No recognized data found in the file"}
 
-        return {"ok": True, "imported": imported, "message": f"Imported: {', '.join(imported)}"}
+        message = f"Imported: {', '.join(imported)}"
+        if left_alone:
+            names = ", ".join(WITHHELD_SETTING_LABELS[k] for k in left_alone)
+            message += f". Left as it was: {names} — it pairs again on its own."
+        return {"ok": True, "imported": imported, "left_alone": left_alone,
+                "message": message}
 
     return router
