@@ -738,20 +738,42 @@ async def run_teacher_inline(
         )
         return
 
+    # `B940`. The teacher's route, named as the chat route names the student's
+    # (`build_foreground_route_descriptors`): the configured endpoint it
+    # resolved to, and whether its usage is billed. Its run was started without
+    # one, so its record said `endpoint_id: null`, *Selected route*, and its
+    # usage carried no `endpoint_cost_tracked` — the browser then costed it as
+    # the chat's selected endpoint, the student's: a paid teacher behind a
+    # local student was free, and a local teacher behind a paid one was billed.
+    # No credential is in it (`resolve_route_descriptor` returns none).
+    try:
+        from src.endpoint_resolver import resolve_route_descriptor
+        teacher_route = await asyncio.to_thread(
+            resolve_route_descriptor, teacher_url, teacher_model, teacher_headers, owner=owner)
+    except Exception as e:
+        logger.debug("teacher route not identified (%s): %s", teacher_spec, e)
+        teacher_route = {}
+    teacher_route = dict(teacher_route or {})
+
     # Announce takeover so the frontend can render a banner
-    yield (
-        'data: ' + json.dumps({
-            "type": "teacher_takeover",
-            "teacher_model": teacher_spec,
-            # `B922`. The model the teacher's run requests — what its own
-            # events and saved record name — so the bubbles below the banner
-            # are headed with it rather than the student's. `teacher_model` is
-            # the setting it was resolved from (`model@endpoint` is allowed,
-            # and a partial name matches), and is what the banner prints.
-            "model": teacher_model,
-            "student_failure": reason,
-        }) + '\n\n'
-    )
+    takeover = {
+        "type": "teacher_takeover",
+        "teacher_model": teacher_spec,
+        # `B922`. The model the teacher's run requests — what its own
+        # events and saved record name — so the bubbles below the banner
+        # are headed with it rather than the student's. `teacher_model` is
+        # the setting it was resolved from (`model@endpoint` is allowed,
+        # and a partial name matches), and is what the banner prints.
+        "model": teacher_model,
+        "student_failure": reason,
+    }
+    # `B940`. And the configured endpoint its run is recorded on, so the
+    # bubbles carry the route the teacher's record names. A route no endpoint
+    # matches has no id and a placeholder label, and the bubble claims none.
+    if teacher_route.get("endpoint_id"):
+        takeover["endpoint_id"] = teacher_route.get("endpoint_id")
+        takeover["endpoint_label"] = teacher_route.get("endpoint_label")
+    yield 'data: ' + json.dumps(takeover) + '\n\n'
 
     # Build teacher messages. Strip the student's leading system
     # prompts (the teacher's run will build its own fresh) but keep the
@@ -788,6 +810,7 @@ async def run_teacher_inline(
         tool_policy=tool_policy,
         active_document=active_document,
         active_email=active_email,
+        route_descriptors=[teacher_route] if teacher_route else None,   # `B940`
         _is_teacher_run=True,
     ):
         # Swallow teacher's own [DONE] — outer loop emits the real one

@@ -6240,11 +6240,13 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
    * resolves a different model from the one requested, and the teacher's
    * `metrics` relabel only its last bubble, at the end. The takeover now names
    * the model the teacher's run requests (`model`; the setting it was resolved
-   * from is `teacher_model`, which the banner prints). It names no endpoint, and
-   * neither does the teacher's own record — its run is started without a route
-   * descriptor — so the bubble claims none rather than keeping the student's,
-   * which the teacher's `metrics` would later set against "Selected route" as
-   * a change of route. Later steps inherit all of it from here.
+   * from is `teacher_model`, which the banner prints). The bubble never keeps
+   * the student's endpoint, which the teacher's `metrics` would later set
+   * against the teacher's own as a change of route. `B940`: the teacher's run
+   * is started on its own route now, and the event names that route's endpoint
+   * when it is a configured one (`endpoint_id`, `endpoint_label`) — the one its
+   * record names — so the bubble is on it; otherwise it claims none. Later
+   * steps inherit all of it from here.
    */
   function _headWithTeacher(bubble, event) {
     const model = String((event && (event.model || event.teacher_model)) || '').trim();
@@ -6254,6 +6256,10 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
     for (const key of ['_requestedEndpointId', '_requestedEndpointLabel',
                        '_actualEndpointId', '_actualEndpointLabel']) {
       delete bubble[key];
+    }
+    if (event.endpoint_id && event.endpoint_label) {
+      bubble._requestedEndpointId = bubble._actualEndpointId = String(event.endpoint_id);
+      bubble._requestedEndpointLabel = bubble._actualEndpointLabel = String(event.endpoint_label);
     }
     const role = bubble.querySelector('.role');
     if (role) {
