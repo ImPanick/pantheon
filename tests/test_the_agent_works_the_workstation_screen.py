@@ -68,7 +68,12 @@ class _Auth:
     """`core.auth.AuthManager` for two people, so the real `may_use` and the
     real `resolve_privilege` decide."""
 
-    PRIVILEGES = {PERMITTED: {"can_use_workstation": True}, REFUSED: {}}
+    PRIVILEGES = {PERMITTED: {"can_use_workstation": True}, REFUSED: {},
+                  # `P20-02`'s `may_use` asks `get_privileges` for admins too
+                  # (they hold every declared privilege), not a separate check.
+                  ADMIN: {"can_use_workstation": True}}
+    # Auth set up, so the pre-setup refusal does not answer for everyone.
+    is_configured = True
 
     def get_privileges(self, owner):
         return dict(self.PRIVILEGES.get(owner, {}))

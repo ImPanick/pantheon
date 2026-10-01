@@ -170,6 +170,9 @@ MAX_LIST_ENTRIES = 5_000
 # room for the JSON around it.
 MAX_BODY_BYTES = (MAX_FILE_BYTES * 4) // 3 + 64_000
 MAX_TYPE_CHARS = 20_000
+# Wheel clicks per scroll, each way (`B973`, found by `P20-04`: the bound was a
+# literal in the daemon, so the tool's schema could not state it).
+MAX_SCROLL_CLICKS = 50
 MAX_WAIT_MS = 30_000
 
 # ── errors ────────────────────────────────────────────────────────────────────
@@ -238,7 +241,7 @@ __all__ = [
     "DEFAULT_HOST", "DEFAULT_PAIRING_DIR", "DEFAULT_PORT", "ENTRY_TYPES",
     "ERRORS", "HOLDERS", "INPUT_ACTIONS", "LOCAL_OWNER_SLUG", "MAX_BODY_BYTES",
     "MAX_EXEC_TIMEOUT_S", "MAX_FILE_BYTES", "MAX_LIST_ENTRIES", "MAX_OUTPUT_BYTES",
-    "MAX_TYPE_CHARS", "MAX_WAIT_MS", "NETWORK_MODES", "PAIRING_DIR_ENV", "PROTOCOL_VERSION",
+    "MAX_SCROLL_CLICKS", "MAX_TYPE_CHARS", "MAX_WAIT_MS", "NETWORK_MODES", "PAIRING_DIR_ENV", "PROTOCOL_VERSION",
     "ROUTES", "SCREEN_HEIGHT", "SCREEN_WIDTH", "SCREENSHOT_FORMATS", "SHELLS", "TOKEN_ENTROPY_BYTES",
     "TOKEN_ENV", "TOKEN_FILENAME", "TOKEN_PREFIX", "URL_ENV", "account_name", "error_body",
     "route_path",

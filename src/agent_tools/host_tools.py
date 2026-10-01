@@ -34,7 +34,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +63,13 @@ def _parse(content: str) -> Dict[str, Any]:
 class HostShellTool:
     """Run a command on the host, through the agent."""
 
-    async def execute(self, content: str, **kwargs) -> Dict[str, Any]:
+    async def execute(self, content: str, ctx: Optional[dict] = None,
+                      **kwargs) -> Dict[str, Any]:
+        # `B969`. Every registry tool is called `TOOL_HANDLERS[tool](content,
+        # ctx)` (`_direct_fallback`); with no positional `ctx` here, each call
+        # raised `TypeError` and `host_shell` had never run through the
+        # dispatcher. The context is not needed: the agent's own guard and the
+        # operator's lists decide, not who asked.
         from src import host_exec_policy, netagent_client
 
         args = _parse(content)

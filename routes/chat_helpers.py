@@ -781,8 +781,11 @@ def escalation_withholds(*, promoted: bool, workspace_intent: bool,
     if not promoted:
         return []
     if workspace_intent:
-        return [] if shell_granted else ["bash", "host_shell"]
-    withheld = {"bash", "python", "read_file", "write_file"}
+        return [] if shell_granted else ["bash", "computer", "host_shell"]
+    # `computer` (`P20-04`): the workstation's desktop is "doing things on the
+    # computer" with a terminal one click away, so a light promotion withholds
+    # it with the shells, and a shell switched off takes it too.
+    withheld = {"bash", "python", "read_file", "write_file", "computer"}
     if not allow_browser:
         withheld |= set(browser_tools or ())
     return sorted(withheld)

@@ -403,6 +403,8 @@ weakest one in this document: it means nobody adjudicated them individually.
 | `B921` | tracked | claim | an agent turn's own compaction is announced with no figures and not saved — a notice that says less than happened, not one that says something false |
 | `B930` | tracked | claim | the untrusted-content card names Pantheon's own two-integer run-limit reply as outside content — it over-asks, which is safe; the sentence is what is false |
 | `B937` | tracked | security | a font uploaded by mistake has no remove button and needs a server-side delete — nothing is exposed; the upload itself is admin-only, magic-checked and served nosniff |
+| `P20-05` | tracked | security | the live view is a new window onto a workstation display; until it ships there is no view at all, and the stream it adds is behind the same privilege and account derivation the tools use — the row's own `Verify:` refuses another person's display |
+| `B966` | tracked | security | `can_use_bash` grants a non-admin nothing because the non-admin blocklist refuses the shell regardless — it fails closed; the claim it makes in Settings → Users is what is false, and which way to resolve it is the owner's call |
 | `P8-48` | tracked | security | the read-only verdict shipped and is read by the panel and the plan-mode gate alike; the schema editor did not, on a recommendation the owner has to rule on |
 | `P11-02d` | landed | security | six route files whose gating is unreconciled — an unknown on an auth surface |
 | `B71` | blocking | claim | upstream's artwork under this fork's filenames, and it is the macOS app icon |

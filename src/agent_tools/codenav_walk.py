@@ -158,7 +158,12 @@ def grep_walk(root, pattern, ignore_case, glob_pat, max_hits, skip_dirs,
             cmd += ["--glob", f"!**/{_d}/**"]
         cmd += ["--regexp", pattern, root]
         try:
-            p = subprocess.run(cmd, capture_output=True, text=True, timeout=20)
+            # `errors="replace"`: ripgrep prints a matching line as its raw
+            # bytes, and one Latin-1 file used to fail the whole search on the
+            # decode (`B963`). The Python walk below already skips such a file;
+            # here its line is kept, with the undecodable bytes marked.
+            p = subprocess.run(cmd, capture_output=True, text=True, errors="replace",
+                               timeout=20)
             lines = [ln for ln in (p.stdout or "").splitlines() if ln][:max_hits]
             return lines, None
         except subprocess.TimeoutExpired:

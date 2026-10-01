@@ -186,6 +186,25 @@ COMPOSE_FILE=docker-compose.yml:docker/gpu.nvidia.yml:docker/host-docker.yml
 COMPOSE_FILE=docker-compose.yml:docker/gpu.amd.yml:docker/host-docker.yml
 ```
 
+**A workstation for the agents (opt-in, `P20`).** An Ubuntu desktop beside
+Pantheon: a private account, home and desktop per person, kept between chats,
+with *Reset to clean*. When it is on, the agent's shell, Python and file tools
+run there instead of inside Pantheon, and a `computer` tool can see and work
+its screen. Turn it on with one line in `.env`, then rebuild:
+
+```bash
+COMPOSE_FILE=docker-compose.yml:docker/workstation.yml     # Windows: separate with ; instead of :
+docker compose up -d --build
+```
+
+Then **Settings → Workstation → On**. Nothing to paste: Pantheon finds it at
+`http://workstation:7040` and reads its key from a volume only the two
+containers share. It has full network access by default and no access to Docker
+or to Pantheon's data; with *sudo* on (the default) one person's agent can read
+another's workstation home, and the panel says so beside the switch. With a GPU
+overlay, list all three:
+`COMPOSE_FILE=docker-compose.yml:docker/gpu.nvidia.yml:docker/workstation.yml`.
+
 **Docker GPU overlays.** CPU-only users can skip this section. Forge can
 only detect GPUs that Docker exposes to the container — if the host runtime or
 device passthrough is not configured, Forge sees the iGPU, another card, or

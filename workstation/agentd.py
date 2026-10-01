@@ -45,8 +45,10 @@ import logging
 import os
 import re
 import secrets
+import select
 import shutil
 import signal
+import socket
 import subprocess
 import threading
 import time
@@ -428,7 +430,8 @@ class Workstation:
 
     def exec(self, account: str, body: Dict,
              on_chunk: Optional[Callable[[str, str], None]] = None,
-             prepared: Optional[Tuple] = None) -> Dict:
+             prepared: Optional[Tuple] = None,
+             caller_gone: Optional[Callable[[], bool]] = None) -> Dict:
         argv, env, cwd, timeout, stdin, script = prepared or self._exec_prepare(account, body)
         started = time.monotonic()
         out, err = _Tail(P.MAX_OUTPUT_BYTES), _Tail(P.MAX_OUTPUT_BYTES)
@@ -442,11 +445,21 @@ class Workstation:
             self._discard(account, script)
             raise WorkstationError("unavailable", f"The command could not be started: {e}.")
 
+        # `B965` (found by `P20-03`): a caller that went away (a stopped turn) left
+        # its command running — a chatty one blocked on a full pipe until its
+        # own timeout, an hour for `bash`. Now a failed write, or the caller's
+        # socket closing while the command is quiet, kills the process group.
+        gone = threading.Event()
+
         def pump(stream, tail: _Tail, label: str) -> None:
             for chunk in iter(lambda: stream.read1(65536), b""):
                 tail.add(chunk)
-                if on_chunk is not None:
-                    on_chunk(label, chunk.decode("utf-8", errors="replace"))
+                if on_chunk is not None and not gone.is_set():
+                    try:
+                        on_chunk(label, chunk.decode("utf-8", errors="replace"))
+                    except OSError:
+                        gone.set()
+                        _kill_group(proc)
 
         readers = [threading.Thread(target=pump, args=(proc.stdout, out, "stdout"), daemon=True),
                    threading.Thread(target=pump, args=(proc.stderr, err, "stderr"), daemon=True)]
@@ -460,11 +473,20 @@ class Workstation:
                 # The command exited without reading its input (a broken
                 # pipe). Its exit code and output are the answer, not this.
                 pass
-        try:
-            proc.wait(timeout=timeout)
-        except subprocess.TimeoutExpired:
-            timed_out = True
-            _kill_group(proc)
+        deadline = started + timeout
+        while True:
+            try:
+                proc.wait(timeout=max(0.0, min(0.5, deadline - time.monotonic())))
+                break
+            except subprocess.TimeoutExpired:
+                if time.monotonic() >= deadline:
+                    timed_out = True
+                    _kill_group(proc)
+                    break
+                if gone.is_set() or (caller_gone is not None and caller_gone()):
+                    gone.set()
+                    _kill_group(proc)
+                    break
         for t in readers:
             t.join(timeout=5)
         self._discard(account, script)
@@ -632,8 +654,9 @@ def _validated_action(body: Dict) -> Dict:
     if name == "scroll":
         for k in ("dx", "dy"):
             v = body.get(k, 0)
-            if isinstance(v, bool) or not isinstance(v, int) or abs(v) > 50:
-                raise WorkstationError("bad_request", f"“{k}” is wheel clicks, -50 to 50.")
+            if isinstance(v, bool) or not isinstance(v, int) or abs(v) > P.MAX_SCROLL_CLICKS:
+                raise WorkstationError("bad_request", f"“{k}” is wheel clicks, -{P.MAX_SCROLL_CLICKS} to "
+                                                      f"{P.MAX_SCROLL_CLICKS}.")
             out[k] = v
         if out["dx"] == 0 and out["dy"] == 0:
             raise WorkstationError("bad_request", "A scroll needs “dx” or “dy”.")
@@ -805,12 +828,25 @@ class Handler(BaseHTTPRequestHandler):
 
         try:
             result = self.station.exec(account, body, prepared=prepared,
-                                       on_chunk=lambda kind, data: line({"type": kind, "data": data}))
+                                       on_chunk=lambda kind, data: line({"type": kind, "data": data}),
+                                       caller_gone=self._caller_gone)
             line({"type": "exit", **result})
         except WorkstationError as e:
             line({"type": "exit", **P.error_body(e.code, e.message), "exit_code": 1})
         except (BrokenPipeError, ConnectionResetError):
             logger.info("exec stream closed by the caller")
+
+    def _caller_gone(self) -> bool:
+        """Whether the caller closed its end. Nothing more is ever sent on an
+        exec stream's request side, so a readable socket that reads as empty
+        is the caller hanging up — seen without writing anything to it."""
+        try:
+            ready, _, _ = select.select([self.connection], [], [], 0)
+            if not ready:
+                return False
+            return self.connection.recv(1, socket.MSG_PEEK) == b""
+        except (OSError, ValueError):
+            return True
 
     def do_GET(self) -> None:  # noqa: N802
         self._dispatch("GET")

@@ -623,8 +623,7 @@ async def run_in_workstation(tool: str, content: Any, *, owner: Optional[str],
                              ) -> Tuple[str, Dict]:
     """Run one of `WORKSTATION_TOOLS` in the person's workstation: `(desc, result)`."""
     from src.tool_execution import _split_bg_marker
-    from src.workstation_access import workstation_for
-    from src.workstation_client import account_for
+    from src.workstation_access import account_of as account_for, sync_config, workstation_for
 
     desc = _describe(tool, content)
     if tool == "bash" and session_id and isinstance(content, str):
@@ -635,6 +634,12 @@ async def run_in_workstation(tool: str, content: Any, *, owner: Optional[str],
                                 account_for(owner))
     try:
         client, account = workstation_for(owner)
+        # The admin's `sudo` pushed to a daemon that restarted and forgot it
+        # (`P20-02`'s handoff), before the command it governs. Not the whole
+        # `ensure_ready`: `ensure` also starts a desktop (~18 MiB a person,
+        # measured in `P20-01`), and `exec` and the file routes make the account
+        # without one, so a person who only uses the shell does not pay for it.
+        await sync_config(client)
     except WorkstationError as e:
         return desc, _where(e.as_result(), account_for(owner))
     st = _Station(client, account, asyncio.get_running_loop(), progress_cb)

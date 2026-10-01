@@ -169,13 +169,19 @@ def test_the_surface_is_three_shapes_and_the_rows_numbers_were_stale():
     import ast
 
     modules = sorted((ROOT / "src" / "agent_tools").glob("*.py"))
+    # Tool classes: public ones. `P20-03` added private helpers beside them
+    # (`_HostFiles`, `_Station`, `_WorkstationFiles`, `_WorkstationIOError`),
+    # which are parts of tools, not tools.
     classes = sum(len([n for n in ast.parse(p.read_text(encoding="utf-8")).body
-                       if isinstance(n, ast.ClassDef)]) for p in modules)
+                       if isinstance(n, ast.ClassDef) and not n.name.startswith("_")])
+                  for p in modules)
     from src.builtin_mcp import _BUILTIN_SERVERS
 
     assert len(TOOL_TAGS) >= 80, "the surface is the tag set, not one directory"
-    # 30 and 13 since `P20-04` added `computer_tools.ComputerTool`.
-    assert classes == 30 and len(modules) == 13, (classes, len(modules))
+    # 30 since `P20-04` added `computer_tools.ComputerTool`; 15 modules since
+    # `P20-03` added `workstation_tools.py` and `codenav_walk.py` (no tools of
+    # their own) and `P20-04` added `computer_tools.py`.
+    assert classes == 30 and len(modules) == 15, (classes, len(modules))
     assert len(_BUILTIN_SERVERS) == 3, "memory stopped being connected in B67"
     assert len(list((ROOT / "mcp_servers").glob("*_server.py"))) == 4, (
         "four server files, three of them connected — the row counted files")

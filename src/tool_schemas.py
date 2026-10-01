@@ -521,9 +521,9 @@ FUNCTION_TOOL_SCHEMAS = [
                     "to_x": {"type": "integer", "description": "drag: the column to release at."},
                     "to_y": {"type": "integer", "description": "drag: the row to release at."},
                     "dx": {"type": "integer",
-                           "description": "scroll: wheel clicks sideways, positive is right."},
+                           "description": "scroll: wheel clicks sideways, positive is right, at most {max_scroll} each way."},
                     "dy": {"type": "integer",
-                           "description": "scroll: wheel clicks, positive is down."},
+                           "description": "scroll: wheel clicks, positive is down, at most {max_scroll} each way."},
                     "text": {"type": "string",
                              "description": "type: the text to type, at most "
                                             "{max_type_chars} characters."},
@@ -1501,6 +1501,7 @@ def _install_computer_bounds() -> None:
         "width": _WS.SCREEN_WIDTH, "height": _WS.SCREEN_HEIGHT,
         "max_x": _WS.SCREEN_WIDTH - 1, "max_y": _WS.SCREEN_HEIGHT - 1,
         "max_type_chars": f"{_WS.MAX_TYPE_CHARS:,}", "max_wait_ms": f"{_WS.MAX_WAIT_MS:,}",
+        "max_scroll": _WS.MAX_SCROLL_CLICKS,
     }
     for schema in FUNCTION_TOOL_SCHEMAS:
         function = schema.get("function", {})

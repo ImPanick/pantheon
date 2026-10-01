@@ -55,10 +55,10 @@ def test_the_recorder_returns_the_flag_it_records():
 
 @pytest.mark.parametrize("kwargs, expected, why", [
     (dict(promoted=True, workspace_intent=False, allow_browser=False),
-     ["bash", "browser_click", "python", "read_file", "write_file"],
-     "the light promotion, named in full"),
+     ["bash", "browser_click", "computer", "python", "read_file", "write_file"],
+     "the light promotion, named in full (`computer` since `P20-04`)"),
     (dict(promoted=True, workspace_intent=False, allow_browser=True),
-     ["bash", "python", "read_file", "write_file"],
+     ["bash", "computer", "python", "read_file", "write_file"],
      "a web turn keeps the browser it was promoted for"),
     (dict(promoted=True, workspace_intent=True, allow_browser=False), [],
      "a promotion that grants the shell takes nothing away"),

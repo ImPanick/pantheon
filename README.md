@@ -76,6 +76,8 @@ the `upstream` remote.
 ## What's inside
 
 - **Agents** — local or API models, tool execution, MCP servers, shell, filesystem, skills, memory
+- **Workstation** — an opt-in Ubuntu desktop beside Pantheon, a private account and desktop per
+  person, kept between chats; with it on, the agent's shell, files and computer use run there
 - **Model serving** — hardware-aware recommendations, downloads, and vLLM / llama.cpp / Ollama
   serving on this machine or a remote host over SSH
 - **Deep research** — multi-step web research with source reading and report generation
@@ -185,7 +187,7 @@ proved it dead.
 
 ## Status
 
-**926 tracked tasks, 638 done.** The tracker is [`.pantheon/ROADMAP.md`](.pantheon/ROADMAP.md) and
+**945 tracked tasks, 649 done.** The tracker is [`.pantheon/ROADMAP.md`](.pantheon/ROADMAP.md) and
 it is the only place work is tracked — one list, one progress area, validated by a script that
 recounts every phase row against its own ticks. It exists because the summary line was once wrong
 by nineteen and carried forward unread from entry to entry, because each author copied the line
@@ -232,7 +234,7 @@ test nobody had looked at, and turned out to be upstream's logo wearing our file
 - **More themes** — new palettes, and subtle ASCII-art backgrounds as a ninth pattern, picked
   the same way the seven animated ones already are: independently of the palette.
 
-Twenty phases, every task written down: [`.pantheon/ROADMAP.md`](.pantheon/ROADMAP.md).
+Twenty-one phases, every task written down: [`.pantheon/ROADMAP.md`](.pantheon/ROADMAP.md).
 
 ---
 

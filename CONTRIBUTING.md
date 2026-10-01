@@ -215,7 +215,7 @@ If you need a value that has no constant or helper yet, add it to `src/constants
 ## Adding a tool
 
 The agent's tool surface is **81 dispatchable names** (`TOOL_TAGS`), of which 74
-have a function schema, 30 are classes under `src/agent_tools/` across 13
+have a function schema, 30 are classes under `src/agent_tools/` across 15
 modules, 16 are email tools served by a built-in MCP server, and the rest
 dispatch from a branch in `src/tool_execution.py`. Three shapes, not two — and
 until `P17-06` there was no rule saying which a new capability should be, so the

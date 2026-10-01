@@ -11,6 +11,7 @@ from __future__ import annotations
 import ast
 import asyncio
 import base64
+import time
 from pathlib import Path
 
 import pytest
@@ -228,3 +229,65 @@ def test_no_display_is_said_not_faked(tmp_path):
         with pytest.raises(WorkstationError) as e:
             run(c.screenshot(ACCT))
     assert e.value.code == "unavailable" and "no display" in e.value.message
+
+
+# ── a caller that hangs up takes its command with it ─────────────────────────
+# `B965`, found by `P20-03`: a stopped turn closes the exec
+# stream, and the command went on — a quiet one to its end, a chatty one blocked
+# on a full pipe until its own timeout, an hour for `bash`.
+
+def _hang_up_after_start(ws, command: str) -> None:
+    import http.client
+    import json as _json
+    from urllib.parse import urlsplit
+
+    u = urlsplit(ws.url)
+    conn = http.client.HTTPConnection(u.hostname, u.port, timeout=10)
+    conn.request("POST", f"/v1/users/{ACCT}/exec",
+                 _json.dumps({"command": command, "stream": True, "timeout_s": 60}),
+                 {"Authorization": f"Bearer {ws.token}", "Content-Type": "application/json"})
+    resp = conn.getresponse()
+    assert resp.status == 200
+    time.sleep(0.5)
+    conn.close()
+
+
+def _alive(pid: int) -> bool:
+    try:
+        stat = Path(f"/proc/{pid}/stat").read_text()
+    except OSError:
+        return False
+    return stat.split(") ", 1)[1].split()[0] != "Z"
+
+
+def _pid_from(home: Path) -> int:
+    for _ in range(50):
+        try:
+            return int((home / "pid.txt").read_text().strip())
+        except (OSError, ValueError):
+            time.sleep(0.1)
+    raise AssertionError("the command never started")
+
+
+def test_a_quiet_command_stops_when_its_caller_hangs_up(client, ws):
+    run(client.ensure(ACCT))
+    home = ws.root / ACCT
+    _hang_up_after_start(ws, "echo $$ > pid.txt; sleep 4; echo late > late.txt")
+    pid = _pid_from(home)
+    deadline = time.monotonic() + 3
+    while _alive(pid) and time.monotonic() < deadline:
+        time.sleep(0.1)
+    assert not _alive(pid)
+    time.sleep(4.5)
+    assert not (home / "late.txt").exists()
+
+
+def test_a_chatty_command_stops_when_its_caller_hangs_up(client, ws):
+    run(client.ensure(ACCT))
+    home = ws.root / ACCT
+    _hang_up_after_start(ws, "echo $$ > pid.txt; yes | head -c 50000000; echo done > done.txt")
+    pid = _pid_from(home)
+    deadline = time.monotonic() + 5
+    while _alive(pid) and time.monotonic() < deadline:
+        time.sleep(0.1)
+    assert not _alive(pid) and not (home / "done.txt").exists()

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { setBackgroundWork } from '../modalManager.js?v=20260930wavethree2';
+import { setBackgroundWork } from '../modalManager.js?v=20261001workstation';
 /**
  * Research job queue — add, start, monitor, cancel research jobs.
  */

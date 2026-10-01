@@ -19,7 +19,7 @@
  * }}
  */
 import { state } from './state.js';
-import modalManager from '../modalManager.js?v=20260930wavethree2';
+import modalManager from '../modalManager.js?v=20261001workstation';
 import { HISTORY_ICON, relTime } from './layer-helpers.js';
 import { historyPanelHTML } from './build/popups.js';
 

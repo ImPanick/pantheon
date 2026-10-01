@@ -221,7 +221,7 @@ class ComputerTool:
     """One action on the person's workstation display."""
 
     async def execute(self, content: str, ctx: Optional[dict] = None) -> Dict[str, Any]:
-        from src.workstation_access import workstation_for
+        from src.workstation_access import ensure_ready
         from src.workstation_client import WorkstationError
 
         owner = (ctx or {}).get("owner")
@@ -230,9 +230,12 @@ class ComputerTool:
             return {"error": problem, "exit_code": 1}
         action = args["action"]
         try:
-            client, account = workstation_for(owner)
+            # The admin's `sudo` in force and the person's display started
+            # before the first action needs it (`P20-02`'s `ensure_ready`).
+            ready = await ensure_ready(owner)
         except WorkstationError as e:
             return e.as_result()
+        client, account = ready.client, ready.account
 
         what = describe_action(args)
         try:

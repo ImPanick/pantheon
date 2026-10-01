@@ -1960,7 +1960,9 @@ def setup_chat_routes(
             # second control for "may the agent run commands" is a second thing
             # to forget to turn off (`Law 14`). The host one is the more
             # consequential of the two, so it must never be the one still on.
-            disabled_tools.update({"bash", "host_shell"})
+            # `P20-04`: the workstation's desktop has a terminal one click away,
+            # so `computer` is a way to run commands too and goes with them.
+            disabled_tools.update({"bash", "host_shell", "computer"})
         _explicit_web_intent = _explicit_web_intent or bool(_tool_intent and _tool_intent.category == "web")
         if is_web_search_explicitly_denied(allow_web_search) or not _search_enabled:
             disabled_tools.update(WEB_TOOL_NAMES)
@@ -1968,8 +1970,10 @@ def setup_chat_routes(
             # A direct lookup/search request should not drift into personal
             # tools or shell fallbacks. It can only use web_search/web_fetch
             # when the request's explicit web setting enabled them.
+            # `computer` (`P20-04`): a desktop with a browser on it is the
+            # drift this list exists to stop, one tool wider.
             disabled_tools.update({
-                "bash", "host_shell", "python",
+                "bash", "host_shell", "python", "computer",
                 "search_chats", "manage_skills", "manage_memory",
                 "read_file", "write_file", "edit_file",
                 "create_document", "edit_document", "update_document",

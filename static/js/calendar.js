@@ -5,7 +5,7 @@
 
 import uiModule from './ui.js';
 import spinnerModule from './spinner.js';
-import * as Modals from './modalManager.js?v=20260930wavethree2';
+import * as Modals from './modalManager.js?v=20261001workstation';
 import { topPortalZ, nextToolWindowZ } from './toolWindowZOrder.js';
 import { makeWindowDraggable } from './windowDrag.js';
 import { attachColorPicker } from './colorPicker.js';

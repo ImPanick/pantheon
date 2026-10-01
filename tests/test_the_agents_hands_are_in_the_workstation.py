@@ -75,6 +75,11 @@ class _Auth:
         return bool(_USERS.get(username, {}).get("admin"))
 
     def get_privileges(self, username):
+        # As the real manager does: an admin's map is `ADMIN_PRIVILEGES`, every
+        # declared privilege — which is how `P20-02`'s `may_use` knows an admin.
+        if self.is_admin(username):
+            from core.auth import ADMIN_PRIVILEGES
+            return dict(ADMIN_PRIVILEGES)
         return dict(_USERS.get(username, {}).get("privs", {}))
 
 
@@ -107,8 +112,12 @@ def ws(tmp_path):
 
 
 def _on(settings, ws, **more):
+    # `workstation_sudo` defaults True in the product, and the tools now push
+    # it to the daemon before their first call (`ensure_ready`), which lifts
+    # the home jail. These cases are about the jail, so they hold sudo off;
+    # `test_with_sudo_on_the_jail_is_lifted_as_the_panel_says` is the default.
     settings.update({"workstation_enabled": True, "workstation_url": ws.url,
-                     "workstation_token": ws.token, **more})
+                     "workstation_token": ws.token, "workstation_sudo": False, **more})
 
 
 def _home(ws, owner) -> Path:
@@ -203,6 +212,19 @@ def test_two_people_have_two_homes_and_one_cannot_reach_the_other(ws, settings, 
     assert r["ran_as"] == account_for("cat")
     _, r = _call("bash", "ls", "cat")
     assert r["stdout"] == "" and _home(ws, "cat").is_dir()
+
+
+def test_with_sudo_on_the_jail_is_lifted_as_the_panel_says(ws, settings, people):
+    """The shipped default. The tools push the admin's `sudo` before they run
+    (`ensure_ready`), so a daemon that booted with it off is brought into line —
+    and with it on, one person's agent can read another's home, which is the
+    sentence the Settings panel puts beside the switch."""
+    _on(settings, ws, workstation_sudo=True)
+    ws.system.set_sudo(False)
+    _call("write_file", {"path": "secret.txt", "content": "ann's"}, "ann")
+    _, r = _call("read_file", {"path": str(_home(ws, "ann") / "secret.txt")}, "cat")
+    assert r["exit_code"] == 0 and "ann's" in r["output"]
+    assert ws.system.sudo is True
 
 
 # ── it answers as it answers here ────────────────────────────────────────────
