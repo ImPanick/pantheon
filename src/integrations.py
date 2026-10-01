@@ -17,7 +17,7 @@ from core.atomic_io import atomic_write_json
 from core.platform_compat import safe_chmod
 from src.secret_storage import decrypt, encrypt, is_encrypted
 from src.env_flags import env_flag
-from src.constants import DATA_DIR, INTEGRATIONS_FILE, SETTINGS_FILE
+from src.constants import DATA_DIR, INTEGRATIONS_FILE
 from src import providers as _providers
 
 log = logging.getLogger(__name__)
@@ -849,18 +849,24 @@ def get_integrations_prompt() -> str:
 # ---------------------------------------------------------------------------
 
 def migrate_from_settings() -> None:
-    """If data/settings.json has miniflux_url and miniflux_api_key, create a
-    Miniflux integration and clear those keys from settings."""
-    settings_path = SETTINGS_FILE
-    if not os.path.exists(settings_path):
-        return
+    """If settings.json has miniflux_url and miniflux_api_key, create a
+    Miniflux integration and clear those keys from settings.
 
-    try:
-        with open(settings_path, "r", encoding="utf-8") as f:
-            settings = json.load(f)
-    except (json.JSONDecodeError, IOError):
-        return
+    `B1008`. Read and written through `src.settings`, the one door onto
+    settings.json (`B988`). This opened the file itself and wrote it back with
+    `open(…, "w")` + `json.dump`: not atomic — a crash between the truncate and
+    the last byte leaves the file that holds every credential half-written —
+    without `P3-16`'s refusal to replace a file that cannot be read, and
+    without invalidating `src.settings`' cache, so the next save anywhere could
+    put the two keys back from the cached copy (`B988`'s lost update). Run on
+    every boot by `setup_auth_routes`; it acts only when both keys are there.
 
+    An unreadable settings.json reads as the defaults (`load_settings`), which
+    carry neither key, so it is left exactly as it is.
+    """
+    from src import settings as app_settings
+
+    settings = app_settings.load_settings()
     miniflux_url = settings.get("miniflux_url", "")
     miniflux_key = settings.get("miniflux_api_key", "")
 
@@ -883,7 +889,6 @@ def migrate_from_settings() -> None:
     # Clear migrated keys
     settings.pop("miniflux_url", None)
     settings.pop("miniflux_api_key", None)
-    with open(settings_path, "w", encoding="utf-8") as f:
-        json.dump(settings, f, indent=2)
+    app_settings.save_settings(settings)
 
     log.info("Migrated Miniflux integration from settings.json")
