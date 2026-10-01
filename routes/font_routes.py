@@ -197,7 +197,13 @@ def _font_entries():
                 continue
             # An upload with the same name as a hand-dropped file replaces it
             # in the menu; it is the one the person just chose.
-            entries[f] = {"file": f, "url": f"{url_prefix}{f}", "format": ext.lstrip(".")}
+            #
+            # `B937`. `source` says which of the two it is, so the theme panel
+            # can offer Remove on an upload and say where a hand-dropped font
+            # lives — an enum rather than a flag, because "server" is not "not
+            # uploaded" in any sense a reader should have to work out (`Law 10`).
+            entries[f] = {"file": f, "url": f"{url_prefix}{f}", "format": ext.lstrip("."),
+                          "source": "upload" if url_prefix == "/api/fonts/custom/" else "server"}
     return entries
 
 
@@ -263,6 +269,35 @@ def setup_font_routes():
             "format": ext.lstrip("."),
             "replaced": replaced,
         }
+
+    @router.delete("/custom/{filename}")
+    async def delete_custom_font(filename: str, request: Request):
+        """Remove an uploaded font, for everyone on this instance. `B937`.
+
+        A font added by mistake could only be taken out on the server. The same
+        adversary and the same controls as the upload (`Law 17`): an admin only,
+        because the font is every browser's; the stored-name pattern, so only a
+        file the upload route could have written is named; and the containment
+        check, so the name cannot leave `DATA_DIR/fonts`. A hand-dropped font in
+        `static/fonts/custom/` is the operator's file and is not removable from
+        here — the panel says where it lives instead.
+
+        Not an adversary here: the agent. Unlike the upload (a multipart body
+        `app_api` cannot send), this route takes none, so the agent's loopback
+        can reach it, as it reaches every delete the UI has that is not one of
+        the owner's trust controls (`B896`). A font it removed is one an admin
+        adds back; nothing it gains reach through.
+        """
+        from core.middleware import require_admin
+
+        require_admin(request)
+        if not _UPLOADED_NAME_RE.match(filename or ""):
+            raise HTTPException(404, "Font not found")
+        path = os.path.join(UPLOADED_FONTS_DIR, filename)
+        if not _inside(UPLOADED_FONTS_DIR, path) or not os.path.isfile(path):
+            raise HTTPException(404, "Font not found")
+        os.remove(path)
+        return {"ok": True, "file": filename, "family": _derive_family(filename)}
 
     @router.get("/custom/{filename}")
     async def get_custom_font(filename: str):

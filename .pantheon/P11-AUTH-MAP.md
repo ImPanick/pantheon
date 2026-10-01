@@ -74,14 +74,14 @@ The four tiers are `P11-02b`'s own question. A site is exactly one of them:
   ownership check or a privilege key that does not exist. The fix is a data model, not
   an auth change.
 
-derived: direct 101 · Depends 20 · total 121
+derived: direct 102 · Depends 20 · total 122
 
 ### tier summary
 
 | tier | sites |
 |---|---|
 | `superuser` | 45 |
-| `operator` | 51 |
+| `operator` | 52 |
 | `power-user` | 4 |
 | `only-because-nothing-finer-existed` | 21 |
 
@@ -135,12 +135,13 @@ derived: direct 101 · Depends 20 · total 121
 | `routes/auth_routes.py` | `remove_role` | `DELETE /api/auth/roles/{name}` | removes a role and revokes it from every user holding it. `P11-02` |
 | `routes/auth_routes.py` | `set_user_role` | `PUT /api/auth/users/{username}/role` | grants somebody else a role. `P11-02` |
 
-### `operator` — **51 operator sites.** Running the box: endpoints, models, probes, logs, webhooks, storage. A person who keeps the instance up needs all of it and needs none of the tier above. This is the tier that makes a role model worth building, because today the only way to hand someone the operator's job is to hand them the owner's.
+### `operator` — **52 operator sites.** Running the box: endpoints, models, probes, logs, webhooks, storage. A person who keeps the instance up needs all of it and needs none of the tier above. This is the tier that makes a role model worth building, because today the only way to hand someone the operator's job is to hand them the owner's.
 
 | file | function | route | protects |
 |---|---|---|---|
 | `routes/codex_routes.py` | `_require_cookbook_scope` | `—` | not a route: the helper nine Codex cookbook routes call. It demands the scope from a bearer token and admin from a cookie session, and its docstring is the clearest statement in the tree of why cookbook is gated — host topology, task logs, tmux commands, model-serving controls |
 | `routes/font_routes.py` | `upload_custom_font` | `POST /api/fonts/custom` | adds a font every browser on the instance loads. Fonts are instance-wide theme assets, so adding one is running the box, not using it. `P2-24`; the route keeps its own allowlist and content check on top of this gate |
+| `routes/font_routes.py` | `delete_custom_font` | `DELETE /api/fonts/custom/{filename}` | removes an uploaded font from every browser on the instance — the same act as adding one, undone. `B937`; the route keeps the upload's stored-name pattern and containment check on top of this gate |
 | `routes/cookbook_routes.py` | `list_gpus` | `GET /api/cookbook/gpus` | host GPU inventory. Compare `GET /api/hwfit/system`, which answers the same question with no gate at all — see `B541` |
 | `routes/cookbook_routes.py` | `get_cookbook_state` | `GET /api/cookbook/state` | the serve-state file: which models are up, on which hosts |
 | `routes/cookbook_routes.py` | `cookbook_tasks_status` | `GET /api/cookbook/tasks/status` | progress of in-flight downloads and serves |
@@ -228,8 +229,9 @@ derived: direct 101 · Depends 20 · total 121
 
 ## B · what gates the fifteen quiet route files (`P11-02d`)
 
-One row per route, **96 routes across the fifteen files** (re-derived 2026-09-30 with
-`P2-24`'s two; it said 88 before that and was already behind). Five of the fifteen make no
+One row per route, **98 routes across the fifteen files** (re-derived 2026-10-01 with
+`B937`'s delete: the checker counted 97 before it, so the 96 written here on 2026-09-30
+with `P2-24`'s two was already one behind; it said 88 before that). Five of the fifteen make no
 auth call of their own — `routes/font_routes.py` was the sixth until `P2-24` — and the other ten do.
 
 The `gate` column is derived, never asserted, and reads as a chain:
@@ -382,13 +384,14 @@ routes: 1
 
 #### `routes/font_routes.py`
 
-routes: 3
+routes: 4
 
 | route | handler | gate | intended |
 |---|---|---|---|
 | `GET /api/fonts/custom` | `list_custom_fonts` | `middleware` | yes — the font names under `static/fonts/custom` (which `AUTH_EXEMPT_PREFIXES` already serves to the same audience) and under `DATA_DIR/fonts`, plus the upload's allowlist. Login is the right bar. |
 | `POST /api/fonts/custom` | `upload_custom_font` | `middleware + get_current_user + require_admin` | yes — `P2-24`. Admin, because a font is loaded by every browser on the instance; `get_current_user` resolves the `P12-01` byte cap for the person uploading. |
 | `GET /api/fonts/custom/{filename}` | `get_custom_font` | `middleware` | yes — `P2-24`. An uploaded font, served to anyone signed in because every signed-in theme may use it; a fixed name pattern, a fixed `font/*` type, `nosniff` and `attachment`. |
+| `DELETE /api/fonts/custom/{filename}` | `delete_custom_font` | `middleware + require_admin` | yes — `B937`. Admin, as for adding one: a font is every browser's. Only a name the upload could have stored, only inside `DATA_DIR/fonts`; a hand-dropped font is the operator's file and is not removable here. |
 
 #### `routes/hwfit_routes.py`
 
@@ -479,7 +482,7 @@ the number of admin decisions added — which is the behaviour the map was built
 The paragraph above is about the 107 that predate roles; the counts below are live.
 
 - **45 superuser sites do not move.** They are already right.
-- **51 operator sites are the phase's return.** Today the only way to let someone keep
+- **52 operator sites are the phase's return.** Today the only way to let someone keep
   the instance up is to make them the owner. An `operator` overlay on
   `DEFAULT_PRIVILEGES` retires 48 gates without touching a single one of the 37.
 - **4 power-user sites are one privilege key.** `allowed_models` already exists in

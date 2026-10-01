@@ -120,8 +120,10 @@ def test_a_real_font_is_added_listed_and_served_as_a_font(env, name, data, mime)
     assert (env.uploads / name).read_bytes() == data
 
     family = body["family"]
+    # `B937` added `source`, so the panel can offer Remove on an upload.
     assert _listing(env)["fonts"][family] == [
-        {"file": name, "url": f"/api/fonts/custom/{name}", "format": name.rsplit(".", 1)[1]}]
+        {"file": name, "url": f"/api/fonts/custom/{name}", "format": name.rsplit(".", 1)[1],
+         "source": "upload"}]
 
     served = env.get(body["url"], headers={"x-test-user": "someone"})
     assert served.status_code == 200

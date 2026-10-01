@@ -8762,6 +8762,13 @@ pre { background: var(--code-bg, var(--hl-bg, #282c34)) !important; }
       font-size: 12px; opacity: 0.7; transition: all 0.15s; font-family: inherit;
     }
     .theme-io-btn:hover { opacity: 1; border-color: var(--fg); background: color-mix(in srgb, var(--fg) 5%, transparent); }
+    /* `B937`. The custom fonts under "Add a font": a name, and Remove for an
+       upload or where a hand-dropped font lives. Existing tokens only. */
+    .theme-font-list { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+    .theme-font-list[hidden] { display: none; }
+    .theme-font-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--fg); }
+    .theme-font-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .theme-font-row .theme-io-btn { flex: 0 0 auto; padding: 2px 10px; }
     .theme-import-area {
       width: 100%; margin-top: 6px; padding: 6px 8px;
       border: 1px solid var(--border); border-radius: 6px;

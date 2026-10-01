@@ -455,6 +455,7 @@ export function loadCustomFonts(select, keepValue) {
       select.value = keepValue;
       const input = document.getElementById('theme-font-upload-input');
       if (input && Array.isArray(data.accepted)) input.accept = data.accepted.join(',');
+      _renderFontList(_customFonts);
       return data;
     })
     .catch(e => { console.warn('Custom fonts fetch failed:', e); return null; });
@@ -491,6 +492,88 @@ export async function addCustomFont(file) {
   }
   say(`Added ${data.family}.`);
   return data;
+}
+
+// `B937`. The custom fonts, listed under "Add a font" with where each came
+// from. A font added by mistake could only be removed by deleting its file on
+// the server; an uploaded family now has a Remove button, and one dropped into
+// `static/fonts/custom/` says that is where it lives, because that file is the
+// operator's and no route touches it. Built from text nodes: the names come
+// from file names.
+function _renderFontList(fonts) {
+  const list = document.getElementById('theme-font-list');
+  if (!list) return;
+  list.replaceChildren();
+  for (const [family, variants] of Object.entries(fonts || {})) {
+    const uploaded = (variants || []).filter((v) => v.source === 'upload');
+    const row = document.createElement('li');
+    row.className = 'theme-font-row';
+    const name = document.createElement('span');
+    name.className = 'theme-font-name';
+    name.textContent = family;
+    row.appendChild(name);
+    if (uploaded.length) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'theme-io-btn theme-font-remove';
+      btn.textContent = 'Remove';
+      btn.setAttribute('aria-label', `Remove ${family}`);
+      btn.addEventListener('click', () => { removeCustomFont(family, uploaded); });
+      row.appendChild(btn);
+    } else {
+      const where = document.createElement('span');
+      where.className = 'theme-fd-label';
+      where.textContent = 'On the server';
+      where.title = 'In static/fonts/custom/ on the server. Delete the file there to remove it.';
+      row.appendChild(where);
+    }
+    list.appendChild(row);
+  }
+  list.hidden = !list.children.length;
+}
+
+// `B937`. Remove an uploaded family, after asking: it goes for everyone on the
+// server. If it was the font in use, the menu falls back to the default
+// through its own change handler, which applies and saves it like a pick.
+export async function removeCustomFont(family, files) {
+  const status = document.getElementById('theme-font-upload-status');
+  const say = (msg) => { if (status) status.textContent = msg; };
+  const confirmed = uiModule && uiModule.styledConfirm
+    ? await uiModule.styledConfirm(
+      `Remove the font "${family}"? It goes from the Font menu for everyone on this server.`,
+      { title: 'Remove font', confirmText: 'Remove', danger: true })
+    : false;
+  if (!confirmed) return null;
+  for (const f of files || []) {
+    let res;
+    try {
+      res = await fetch('/api/fonts/custom/' + encodeURIComponent(f.file),
+        { method: 'DELETE', credentials: 'same-origin' });
+    } catch (e) {
+      say("Couldn't reach the server.");
+      return null;
+    }
+    if (!res.ok) {
+      say(res.status === 403 ? 'Only an admin can remove fonts.' : "Couldn't remove that font.");
+      return null;
+    }
+  }
+  document.querySelectorAll('style[data-custom-font]').forEach((st) => {
+    if (st.dataset.customFont === family) st.remove();
+  });
+  _injectedFonts.delete(family);
+  const select = document.getElementById('theme-font-select');
+  if (select) {
+    const wasChosen = select.value === family;
+    await loadCustomFonts(select, select.value);
+    // A hand-dropped file of the same family keeps it in the menu.
+    if (wasChosen && !_customFonts[family]) {
+      select.value = DEFAULT_FONT;
+      select.dispatchEvent(new Event('change'));
+    }
+  }
+  say(`Removed ${family}.`);
+  return family;
 }
 
 function wireFontUpload() {

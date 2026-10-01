@@ -843,6 +843,10 @@
             <span id="theme-font-upload-status" class="theme-fd-label" role="status" aria-live="polite"></span>
           </div>
           <div class="theme-fd-label" style="opacity:0.6;margin-top:6px;">WOFF2, WOFF, TTF or OTF. It joins the Font menu above for everyone on this server.</div>
+          <!-- `B937`. The custom fonts, each with where it came from: an upload
+               can be removed here; one dropped into static/fonts/custom/ is
+               the server's file. Filled by theme.js's loadCustomFonts. -->
+          <ul id="theme-font-list" class="theme-font-list" aria-label="Custom fonts" hidden></ul>
         </div>
         <button class="theme-adv-clear-btn" id="theme-adv-clear">Clear Advanced Overrides</button>
       </div>
