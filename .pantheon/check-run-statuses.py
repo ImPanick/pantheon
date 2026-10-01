@@ -75,6 +75,13 @@ JS = ROOT / "static" / "js" / "runStatus.js"
 SELF = str(Path(__file__).resolve().relative_to(ROOT))
 
 MODEL = "TaskRun"
+# `P22-07`. Every model whose `status` column holds this vocabulary. A
+# workflow step's record (`core.database.TaskRunNode`) is one: its status is
+# `TASK_RUN_STATUSES`' words and no others, so a literal outside the six
+# written to one fails here exactly as it does for a run (`Law 8`). Its raw-SQL
+# scan (question 4) is unchanged: `task_run_nodes` does not match
+# `\btask_runs\b`, and the records are pruned through the ORM.
+MODELS = frozenset({MODEL, "TaskRunNode"})
 # Calls on a query that still hand back rows, so the name they are assigned to
 # holds one (or a list of them).
 QUERY_TERMINALS = {
@@ -191,12 +198,12 @@ def _binds_taskrun(value: ast.AST, bound: set[str]) -> bool:
     statuses and the checker becomes noise nobody reads.
     """
     if isinstance(value, ast.Call) and isinstance(value.func, ast.Name) \
-            and value.func.id == MODEL:
+            and value.func.id in MODELS:
         return True
 
     model = _queried_model(value)
     if model is not None:
-        return model == MODEL and _outer_attr(value) not in SCALAR_TERMINALS
+        return model in MODELS and _outer_attr(value) not in SCALAR_TERMINALS
 
     if isinstance(value, ast.Call) and isinstance(value.func, ast.Attribute):
         if value.func.attr in QUERY_TERMINALS and _root_name(value.func.value) in bound:
@@ -288,7 +295,7 @@ def _literals(node: ast.AST) -> list[str]:
 def _is_status_attr(node: ast.AST, bound: set[str]) -> bool:
     return (isinstance(node, ast.Attribute) and node.attr == "status"
             and isinstance(node.value, ast.Name)
-            and (node.value.id in bound or node.value.id == MODEL))
+            and (node.value.id in bound or node.value.id in MODELS))
 
 
 def status_sites(path: Path) -> list[tuple[int, str, str]]:
@@ -329,7 +336,7 @@ def _scope_sites(tree: ast.AST) -> list[tuple[int, str, str]]:
                     if isinstance(arg, (ast.Constant, ast.Tuple, ast.List, ast.Set)):
                         for lit in _literals(arg):
                             found.append((node.lineno, lit, "compared"))
-            if isinstance(func, ast.Name) and func.id == MODEL:
+            if isinstance(func, ast.Name) and func.id in MODELS:
                 for kw in node.keywords:
                     if kw.arg == "status":
                         for lit in _literals(kw.value):

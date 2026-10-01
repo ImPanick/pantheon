@@ -26,6 +26,7 @@ from src.interactive_gate import STARTED_BY, STARTED_BY_BACKGROUND, STARTED_BY_P
 from src.owner_identity import REQUEST_SENTINEL_OWNERS
 from src import paced_http  # `B1014`: NO_PROXY ranges, read for every client
 from src.task_action_policy import (
+    admin_only_action_of,
     is_admin_only_task_action,
     owner_has_admin_task_privileges,
     record_admin_refusal,
@@ -1223,13 +1224,18 @@ def not_active_words(task) -> str | None:
     return NOT_ACTIVE_WORDS.get(status, f"its status is {status}")
 
 
-def dry_run_declined(task) -> str | None:
+def dry_run_declined(task, db=None) -> str | None:
     """Why a dry run would not plan `task`, or `None` if it plans it.
 
     `B1036`. Two reasons and no third: the task is gone, or its action is one
     the engine would refuse to run for this owner (`ADMIN_ONLY_TASK_ACTIONS`) —
     the same sentence the real run's refusal writes, so a dry run is not a way
     to read an admin-only task's configuration. A paused task is planned.
+
+    `P22-05`. With `db`, a workflow's trigger is asked the same question about
+    every step in its document (`admin_only_action_of`), so a workflow is not a
+    way to read an admin-only step's command either — declined in the same
+    words, nothing paused, nobody told (`B1036`'s ruling, kept for workflows).
     """
     if task is None:
         return "Task no longer active (status=deleted)"
@@ -1237,6 +1243,11 @@ def dry_run_declined(task) -> str | None:
             and not owner_has_admin_task_privileges(task.owner)):
         from src.task_action_policy import admin_refusal_message
         return admin_refusal_message(task.action)
+    if db is not None and (task.task_type or "llm") == "workflow":
+        from src.task_action_policy import admin_only_action_of, admin_refusal_message
+        found = admin_only_action_of(db, task)
+        if found and not owner_has_admin_task_privileges(task.owner):
+            return admin_refusal_message(found)
     return None
 
 
@@ -1379,6 +1390,47 @@ class _Requeued:
 REQUEUED = _Requeued()
 
 
+def _human_ms(seconds: float) -> int:
+    return int(round(max(0.0, seconds) * 1000))
+
+
+# `P22-05`. Which task types say so when a run WORKED — a run that produced
+# something a person reads. Housekeeping actions stay quiet on success. It was
+# the literal `{"llm", "research"}`, twice (`_notify_run_outcome` and the error
+# path's notification); a workflow — the person's own steps, producing their
+# result — notifies as a Prompt task does. One tuple, both places (`Law 7`).
+NOTIFY_ON_SUCCESS_TASK_TYPES = ("llm", "research", "workflow")
+
+# `P22-05` / `P8-27`. A workflow step runs under its own slot in `_run_state`,
+# `"<run id>:<step id>"`, created when the step starts and dropped when it ends
+# — so each step's model, step log and trigger are its own, and a run's slot
+# keeps the run's. Run ids are uuids and step ids `[A-Za-z0-9_-]`, so the
+# separator cannot occur in either. *Test this step* uses `"test:<uuid>"`,
+# which names no run row.
+NODE_SLOT_SEPARATOR = ":"
+TEST_SLOT_PREFIX = "test"
+
+# `P22-05`. What the walker says when a trigger has no document to run.
+WORKFLOW_DOCUMENT_MISSING = ("This workflow’s steps are missing, so there was "
+                             "nothing to run.")
+# `P22-05`. A step that the stop button, the foreground gate or the time limit
+# ended part-way.
+NODE_STOPPED = "Stopped before it finished"
+
+
+def node_slot(run_id: str, node_id: str) -> str:
+    """The `_run_state` key a workflow step runs under."""
+    return f"{run_id}{NODE_SLOT_SEPARATOR}{node_id}"
+
+
+def run_of_slot(slot):
+    """The run a slot belongs to: itself for a run, the run for a step's slot,
+    `"test"` for a step test (which no row has)."""
+    if isinstance(slot, str) and NODE_SLOT_SEPARATOR in slot:
+        return slot.split(NODE_SLOT_SEPARATOR, 1)[0]
+    return slot
+
+
 def _waited_words(seconds: float) -> str:
     """`B1060`. How long a run waited for Pantheon to be idle, for its step log."""
     seconds = max(0, int(round(seconds)))
@@ -1517,7 +1569,13 @@ class TaskScheduler:
                 self._slot_permits += 1
 
     def _set_run_progress(self, run_id: str, message: str):
-        """Persist short live progress text for Activity while a run is active."""
+        """Persist short live progress text for Activity while a run is active.
+
+        `P22-05`. A workflow step's slot (`node_slot`) writes its run's row, so
+        a step's progress is the run's live text; a step test's slot names no
+        row and writes nothing.
+        """
+        run_id = run_of_slot(run_id)
         if not run_id:
             return
         try:
@@ -1876,7 +1934,13 @@ class TaskScheduler:
         from core.database import TaskRun
 
         run = db.query(TaskRun).filter(TaskRun.id == run_id).first()
-        declined = dry_run_declined(task)
+        declined = dry_run_declined(task, db=db)
+        if declined is None and (task.task_type or "llm") == "workflow":
+            # `P22-05`. A workflow's plan is per step, on step records (`dry`),
+            # each step planned by the same `dry_run_plan` a task's is.
+            declined = self._record_workflow_dry_run(db, task, run_id, run)
+            if declined is None:
+                return
         if declined is not None:
             if run is not None:
                 run.status = "skipped"
@@ -2040,7 +2104,7 @@ class TaskScheduler:
         if not getattr(task, "notifications_enabled", True):
             return False
         if quiet_for_actions and \
-                (getattr(task, "task_type", None) or "llm") not in {"llm", "research"}:
+                (getattr(task, "task_type", None) or "llm") not in NOTIFY_ON_SUCCESS_TASK_TYPES:
             return False
         self.add_notification(
             task.name, status, task_id or getattr(task, "id", None),
@@ -2711,8 +2775,12 @@ class TaskScheduler:
                                              task_id=task_id)
                 return
 
+            # `P22-05`. One question for a task and for a workflow: the task's
+            # own action, or any step of its document (`admin_only_action_of`)
+            # — asked before any step runs, so no earlier step runs first.
+            _admin_action = admin_only_action_of(db, task)
             if (
-                is_admin_only_task_action(task.task_type, task.action)
+                _admin_action
                 and not owner_has_admin_task_privileges(task.owner)
             ):
                 # `skipped`, not `error` — the action never ran, so by the
@@ -2720,7 +2788,8 @@ class TaskScheduler:
                 # through the shared helper because the webhook path in
                 # routes/task/task_routes.py enforces the same rule and used to
                 # record nothing at all.
-                _refusal = record_admin_refusal(db, task, run_id=run_id)
+                _refusal = record_admin_refusal(db, task, run_id=run_id,
+                                                action=_admin_action)
                 logger.warning(
                     "Paused admin-only task %s for non-admin owner %r",
                     task_id,
@@ -2878,6 +2947,23 @@ class TaskScheduler:
                         self._execute_research_task(task, db, run_id=run_id))
                     run.status = "success"
                     run.result = result
+                elif task_type == "workflow":
+                    # `P22-05`. The walker, inside every gate above — paused,
+                    # admin, both foreground waits, this task's time limit, the
+                    # cancel monitor — and answering in the action branch's
+                    # vocabulary, so a run that ends `skipped` goes through the
+                    # one `TaskNoop` branch below, and a failure backs off and
+                    # takes this task's own failure edge like any task's.
+                    node = await _bounded(self._run_workflow(task, db, run_id))
+                    signal = node.as_signal()
+                    if signal is not None:
+                        raise signal
+                    result = node.text
+                    run.status = "success" if node.ok else "error"
+                    run.result = result
+                    if node.failed:
+                        run.error = (result or "")[:2000]
+                    self._state_for(run_id)["payload"] = node.payload
                 else:
                     # LLM task — use agent loop for tool access
                     result = await _bounded(
@@ -2888,7 +2974,10 @@ class TaskScheduler:
                 if self.run_model(run_id):
                     run.model = self.run_model(run_id)
                 self._attach_run_steps(run_id, run)
-                if run.status == "success":
+                # `P22-05`. A workflow delivers per step, each through its own
+                # output setting; delivering the run's result again here would
+                # send the last step's twice.
+                if run.status == "success" and task_type != "workflow":
                     await self._deliver_task_result(task, result, db, model=self.run_model(run_id))
             except asyncio.TimeoutError:
                 # `P8-32`. `error`, not `aborted`. `core/database.py`'s own
@@ -3156,7 +3245,7 @@ class TaskScheduler:
                 _t_for_notify = db.query(ScheduledTask).filter(ScheduledTask.id == task_id).first()
                 _should_notify_error = (
                     bool(_t_for_notify)
-                    and (_t_for_notify.task_type or "llm") in {"llm", "research"}
+                    and (_t_for_notify.task_type or "llm") in NOTIFY_ON_SUCCESS_TASK_TYPES
                     and getattr(_t_for_notify, "notifications_enabled", True)
                 )
             except Exception:
@@ -3332,11 +3421,38 @@ class TaskScheduler:
             if not task:
                 return True
             task_type = getattr(task, "task_type", "") or "llm"
+            if task_type == "workflow":
+                return self._workflow_needs_model_slot(db, task)
             if task_type != "action":
                 return True
             return self._action_needs_model(getattr(task, "action", ""))
         finally:
             db.close()
+
+    def _workflow_needs_model_slot(self, db, task) -> bool:
+        """`P22-05`. A workflow waits in the model queue if any step may call a
+        model: a Prompt or Research step, a model-backed action, or a Run task
+        step (its task may, and it runs inside this workflow's slot). A
+        workflow of housekeeping actions does not queue behind a model run, as
+        the same chain would not. A document that cannot be read queues, as an
+        unknown task does — it fails at once either way."""
+        from core.database import Workflow
+        from src import workflow_document as wd
+
+        wf = db.query(Workflow).filter(Workflow.task_id == task.id).first()
+        try:
+            graph = wd.parse_graph(wf.graph) if wf is not None else None
+        except wd.DocumentError:
+            graph = None
+        if graph is None:
+            return True
+        for node in graph["nodes"]:
+            kind = node.get("kind")
+            if kind != wd.NODE_KIND_ACTION:
+                return True
+            if self._action_needs_model((node.get("config") or {}).get("action")):
+                return True
+        return False
 
     def _log_to_assistant(self, db, task, result_text: str):
         """Log a task result to the assistant's chat session."""
@@ -4391,6 +4507,416 @@ class TaskScheduler:
             logger.warning("Failed to persist task research report %s: %s", session_id, e)
 
         return report
+
+    # ── `P22-05` · the walker: a workflow is one document, run as one run ────
+    #
+    # `D-2026-10-01-05` §1. `_execute_task_locked` hands a `task_type="workflow"`
+    # trigger here, inside every gate a task has. The walker runs the document's
+    # steps through the executors that already exist — `_execute_action`,
+    # `_execute_llm_task`, `_execute_research_task`, and `_execute_task` for a
+    # Run task step — each as a stand-in (`workflow_document.node_stand_in`) and
+    # each under its own slot (`node_slot`), so a step's model, step log and
+    # input are its own. Every step is recorded (`task_run_nodes`, `P22-07`);
+    # the run's own step log holds what fired it and one line per step. One
+    # step at a time, one path: each step leaves by exactly one port, so a step
+    # never runs twice in a run (fan-out is `P22-11`'s).
+
+    def _document_context(self, db, task, graph: dict) -> dict:
+        """What `validate_document` checks a document against, read fresh:
+        the owner's tasks the Run task steps name, the owner's crew members the
+        Prompt steps name, whether the owner may run admin-only actions."""
+        from core.database import CrewMember, ScheduledTask
+
+        task_ids = {(n.get("config") or {}).get("task_id") for n in graph.get("nodes") or ()}
+        task_ids = [i for i in task_ids if isinstance(i, str) and i]
+        crew = {(n.get("config") or {}).get("crew_member_id") for n in graph.get("nodes") or ()}
+        crew = [i for i in crew if isinstance(i, str) and i]
+        owner = task.owner
+        tasks_by_id = {}
+        if task_ids:
+            q = db.query(ScheduledTask).filter(ScheduledTask.id.in_(task_ids))
+            tasks_by_id = {row.id: row for row in q.all()}
+        crew_ids = set()
+        if crew:
+            q = db.query(CrewMember.id).filter(CrewMember.id.in_(crew))
+            q = q.filter(CrewMember.owner == owner) if owner else q.filter(CrewMember.owner.is_(None))
+            crew_ids = {row[0] for row in q.all()}
+        return {"owner": owner, "tasks_by_id": tasks_by_id, "crew_ids": crew_ids,
+                "owner_is_admin": owner_has_admin_task_privileges(owner),
+                "own_task_id": task.id}
+
+    def _load_workflow(self, db, task):
+        """`(workflow row, document, refusal sentence)` — the refusal is the
+        same sentence the save was told, or why there is nothing to run."""
+        from core.database import Workflow
+        from src import workflow_document as wd
+
+        wf = db.query(Workflow).filter(Workflow.task_id == task.id).first()
+        if wf is None:
+            return None, None, WORKFLOW_DOCUMENT_MISSING
+        try:
+            graph = wd.parse_graph(wf.graph)
+            refusal = wd.validate_document(graph, **self._document_context(db, task, graph))
+        except wd.DocumentError as exc:
+            return wf, None, exc.refusal.sentence
+        return wf, graph, (refusal.sentence if refusal else None)
+
+    def _record_workflow_dry_run(self, db, task, run_id: str, run) -> str | None:
+        """`P22-05` / `P22-04`. Plan every step of a workflow; run nothing.
+
+        Breadth first from the first step, each step once, `when` from its
+        first parent — wave B's chain dry run's shape, on a document. Each
+        step's plan is `dry_run_plan`'s lines (one planner, `Law 7`) on a `dry`
+        step record, so a plan of many steps is not cut by the run's 200-line
+        step log and is never read as a step's last run. The run's own log is
+        the headline and one line per step. Answers why it was not planned —
+        the same sentence a save or a real run gets — or `None`.
+        """
+        from src import workflow_document as wd
+        from src import workflow_runs as wr
+
+        wf, graph, refused = self._load_workflow(db, task)
+        if refused:
+            return refused
+        lines = [DRY_RUN_HEADLINE]
+        for seq, entry in enumerate(wd.reachable_bfs(graph), start=1):
+            node = entry["node"]
+            steps, declined = self._plan_workflow_node(db, task, node)
+            wr.record_dry_node(db, run_id=run_id, node=node, seq=seq, steps=steps,
+                               declined=declined, reached_by=entry["when"],
+                               depth=entry["depth"], workflow_version=wf.version)
+            how = ("" if entry["when"] is None else
+                   " (if the step before works)" if entry["when"] == EDGE_WHEN_SUCCESS
+                   else " (if the step before fails)")
+            said = declined or next(
+                (s["detail"] for s in steps if s.get("detail") != DRY_RUN_HEADLINE), "")
+            lines.append(f"Step {seq}, “{node['label']}”{how}: {said}")
+        why_not = not_active_words(task)
+        if why_not:
+            lines.append(f"{why_not[:1].upper()}{why_not[1:]}, so a real run would not start it.")
+        for line in lines:
+            self._record_run_step(run_id, kind="dry-run", detail=line)
+        if run is not None:
+            run.status = "skipped"
+            run.result = "\n".join(lines)
+            run.finished_at = _utcnow()
+            self._attach_run_steps(run_id, run)
+        db.commit()
+        logger.info("Dry run of workflow '%s' (run %s): planned %d step(s), executed nothing",
+                    task.name, run_id, len(lines) - 1)
+        return None
+
+    def _plan_workflow_node(self, db, task, node: dict) -> tuple:
+        """`(steps, declined)` for one step of a workflow dry run."""
+        from core.database import ScheduledTask
+        from src.builtin_actions import dry_run_plan
+        from src import workflow_document as wd
+
+        config = node.get("config") or {}
+        kind = node.get("kind")
+        if kind == wd.NODE_KIND_RUN_TASK:
+            target = db.query(ScheduledTask).filter(
+                ScheduledTask.id == config.get("task_id")).first()
+            if target is not None and target.owner != task.owner:
+                target = None
+            declined = dry_run_declined(target, db=db)
+            if declined:
+                return [], declined
+            lines = [f"Would run the task “{target.name}”, as its own run with its "
+                     f"own history.", *dry_run_lines(target)[1:]]
+        else:
+            lines = dry_run_plan(
+                task_type=kind, action=config.get("action"), prompt=config.get("prompt"),
+                owner=task.owner, model=config.get("model"),
+                endpoint_url=config.get("endpoint_url"),
+                extra=[f"Where the result would go: "
+                       f"{config.get('output_target') or 'only to the next step'}"])
+        return [shape_run_step({"kind": "dry-run", "detail": line}) for line in lines], None
+
+    async def _run_workflow(self, task, db, run_id: str):
+        """Walk the document from its first step. Answers a `NodeResult`.
+
+        How the run ends — one rule, written once (`Law 10`):
+          * the last step that ran ended `error` → the run is `error`;
+          * every step that ran was `skipped` → the run is `skipped`;
+          * anything else → `success`. A failure routed through an *if it
+            fails* arrow to a step that then works is a successful run; the
+            failed step's own record still says it failed.
+        A step that asked to wait (`deferred`) ends its branch as `skipped`,
+        with why — never the run row deleted under its step records.
+        """
+        from src import workflow_document as wd
+        from src import workflow_runs as wr
+        from src.builtin_actions import (
+            NODE_STATUS_DEFERRED, NODE_STATUS_ERROR, NODE_STATUS_SKIPPED,
+            NODE_STATUS_SUCCESS, NodeResult,
+        )
+        from src.event_bus import run_origin
+
+        wf, graph, refused = self._load_workflow(db, task)
+        if refused:
+            self._record_run_step(run_id, kind="progress", detail=refused)
+            return NodeResult(NODE_STATUS_ERROR, payload=refused)
+        name = wf.name or task.name
+        run_slot = self._state_for(run_id)
+        started_by = run_slot.get("started_by") or STARTED_BY_BACKGROUND
+        waits_for = self._run_waits_for(run_id)
+        outcomes = []
+        last = None
+        last_model = None
+        handed = self.run_trigger(run_id)
+        node = wd.entry_node(graph)
+        with run_origin(task.id, name, run_id):
+            # A path through a document with no loop visits each step at most
+            # once, so it is at most as long as the document.
+            for seq in range(1, len(graph["nodes"]) + 1):
+                label = node["label"]
+                rec = wr.record_node_start(db, run_id=run_id, node=node, seq=seq,
+                                           input_envelope=handed,
+                                           workflow_version=wf.version, owner=task.owner)
+                slot = node_slot(run_id, node["id"])
+                self._state_for(slot).update(trigger=handed, started_by=started_by,
+                                             waits_for=waits_for)
+                self._set_run_progress(run_id, f"Step {seq}: {label}…")
+                try:
+                    res = await self._run_workflow_node(task, name, node, db, slot,
+                                                        deliver=True)
+                except asyncio.CancelledError:
+                    wr.record_node_end(db, rec, status="aborted", error=NODE_STOPPED,
+                                       steps=self.run_steps(slot), model=self.run_model(slot),
+                                       owner=task.owner)
+                    self._clear_run_state(slot)
+                    self._record_run_step(run_id, kind="node", node=node["id"], label=label,
+                                          status="aborted", detail=NODE_STOPPED)
+                    raise
+                except Exception as exc:
+                    logger.warning("Workflow '%s' step %r raised", name, label, exc_info=True)
+                    res = NodeResult(NODE_STATUS_ERROR, payload=f"{type(exc).__name__}: {exc}")
+                steps, model = self.run_steps(slot), self.run_model(slot)
+                self._clear_run_state(slot)
+                last_model = model or last_model
+                status, text = res.status, res.text or ""
+                if status == NODE_STATUS_DEFERRED:
+                    status = NODE_STATUS_SKIPPED
+                    text = f"It asked to wait, so this run ends here: {text}".rstrip(": ")
+                port = (EDGE_WHEN_SUCCESS if status == NODE_STATUS_SUCCESS
+                        else EDGE_WHEN_ERROR if status == NODE_STATUS_ERROR else None)
+                nxt = wd.next_node(graph, node["id"], port) if port else None
+                data = None if isinstance(res.payload, str) else res.payload
+                wr.record_node_end(
+                    db, rec, status=status, text=text, data=data,
+                    error=text if status == NODE_STATUS_ERROR else None,
+                    steps=steps, model=model, port=port if nxt else None, owner=task.owner)
+                self._record_run_step(run_id, kind="node", node=node["id"], label=label,
+                                      status=status, detail=(text.splitlines() or [""])[0])
+                outcomes.append(status)
+                last = NodeResult(status, payload=res.payload if status != NODE_STATUS_SKIPPED
+                                  else text, text=text)
+                if nxt is None:
+                    break
+                self._record_run_step(
+                    run_id, kind="progress",
+                    detail=(f"{'Continued to' if port == EDGE_WHEN_SUCCESS else 'Failed, so continued to'} "
+                            f"{nxt['label']}"))
+                # `P8-29`. What this step made, handed to the next in the same
+                # envelope a chain hands on — wrapped untrusted at the far end,
+                # the post-external gate armed (`FORBIDDEN.md` Part 2). A step
+                # that made nothing hands nothing.
+                handed = (_build_task_handoff(task_name=label, task_id=task.id, run_id=run_id,
+                                              status=status, result=text, payload=res.payload)
+                          if (text or res.payload) else None)
+                node = nxt
+        if last_model:
+            self.set_run_model(run_id, last_model)
+        wr.maybe_prune_node_records(db)
+        if last is None:
+            return NodeResult(NODE_STATUS_ERROR, payload=WORKFLOW_DOCUMENT_MISSING)
+        if last.status == NODE_STATUS_ERROR:
+            return last
+        if all(s == NODE_STATUS_SKIPPED for s in outcomes):
+            return NodeResult(NODE_STATUS_SKIPPED, payload=last.text)
+        return NodeResult(NODE_STATUS_SUCCESS, payload=last.payload, text=last.text)
+
+    async def _run_workflow_node(self, task, workflow_name: str, node: dict, db,
+                                 slot: str, *, deliver: bool):
+        """Run one step under `slot`. Answers a `NodeResult`.
+
+        A Prompt step reads its input only through `trigger_context_message`
+        (wrapped untrusted, the gate armed); a Research step does not read it
+        (`B671`); an Action step never receives it — its parameters come from
+        its own settings only (`P8-29`'s rule, `B806`'s constraint). With
+        `deliver`, a step that worked and has an output setting is delivered
+        through `_deliver_task_result`, as a task is; a delivery that raises
+        makes the step `error`.
+        """
+        from src import workflow_document as wd
+        from src.builtin_actions import NODE_STATUS_ERROR, NODE_STATUS_SUCCESS, NodeResult
+
+        kind = node.get("kind")
+        if kind == wd.NODE_KIND_RUN_TASK:
+            return await self._run_task_node(task, node, slot)
+        stand_in = wd.node_stand_in(task, workflow_name, node)
+        if kind == wd.NODE_KIND_ACTION:
+            res = await self._execute_action(stand_in, run_id=slot)
+        elif kind == wd.NODE_KIND_RESEARCH:
+            text = await self._execute_research_task(stand_in, db, run_id=slot)
+            res = NodeResult(NODE_STATUS_SUCCESS, payload=text)
+        else:
+            text = await self._execute_llm_task(stand_in, db, run_id=slot)
+            res = NodeResult(NODE_STATUS_SUCCESS, payload=text)
+        self._keep_workflow_chat(db, task, stand_in, kind)
+        if deliver and res.ok and stand_in.output_target:
+            try:
+                await self._deliver_node_result(task, stand_in, res.text, db,
+                                                model=self.run_model(slot))
+            except Exception as exc:
+                return NodeResult(
+                    NODE_STATUS_ERROR,
+                    payload=(f"It worked, but the result could not be delivered: "
+                             f"{type(exc).__name__}: {exc}"))
+            self._keep_workflow_chat(db, task, stand_in, kind)
+        return res
+
+    def _keep_workflow_chat(self, db, task, stand_in, kind: str) -> None:
+        """A Prompt or Action step that made the workflow's chat leaves it on
+        the trigger, so the next step writes into the same "[Task] …" chat.
+        A Research step's report keeps its own session (`node_stand_in`)."""
+        from core.database import ScheduledTask
+        from src import workflow_document as wd
+
+        made = getattr(stand_in, "session_id", None)
+        if kind == wd.NODE_KIND_RESEARCH or not made or getattr(task, "session_id", None):
+            return
+        try:
+            db.query(ScheduledTask).filter(
+                ScheduledTask.id == task.id, ScheduledTask.session_id.is_(None),
+            ).update({ScheduledTask.session_id: made}, synchronize_session=False)
+            db.commit()
+            task.session_id = made
+        except Exception:
+            logger.debug("Could not keep workflow %s's chat", task.id, exc_info=True)
+
+    async def _deliver_node_result(self, task, stand_in, text: str, db, model=None) -> None:
+        """One step's delivery: `_deliver_task_result`, as a task's — and for
+        `notification`, which that function leaves to the run's notification,
+        the step's own notification with its result, under the trigger's own
+        notification switch (a task with notifications off sends none)."""
+        if (stand_in.output_target or "") == "notification":
+            if getattr(task, "notifications_enabled", True):
+                self.add_notification(stand_in.name, "success", task.id,
+                                      owner=task.owner, body=text)
+            return
+        await self._deliver_task_result(stand_in, text, db, model=model)
+
+    async def _run_task_node(self, task, node: dict, slot: str):
+        """A Run task step: run the named task, as itself, and read its run.
+
+        The target keeps its own run, its own history, its own delivery and its
+        own chain. It is claimed as a chained step is (`_claim_chained`, so a
+        busy target is said, not dropped), runs without taking the model slot
+        (the workflow already holds one) and without registering its handle (so
+        stopping the target cannot cancel the workflow, `register_handle`), and
+        is handed this step's input as its own trigger, wrapped untrusted.
+        """
+        from core.database import SessionLocal, ScheduledTask, TaskRun
+        from src.builtin_actions import (
+            NODE_STATUS_ERROR, NODE_STATUS_SKIPPED, NODE_STATUS_SUCCESS, NodeResult,
+        )
+        from src import workflow_document as wd
+
+        target_id = (node.get("config") or {}).get("task_id")
+        lookup = SessionLocal()
+        try:
+            target = lookup.query(ScheduledTask).filter(ScheduledTask.id == target_id).first()
+            label = target.name if target is not None else target_id
+            usable = (target is not None and target.owner == task.owner
+                      and (target.task_type or "llm") != wd.WORKFLOW_TASK_TYPE)
+        finally:
+            lookup.close()
+        if not usable:
+            return NodeResult(NODE_STATUS_ERROR,
+                              payload="Did not run it: that task is gone, or is not one of yours.")
+        if not self._claim_chained(target_id):
+            return NodeResult(NODE_STATUS_ERROR,
+                              payload=f"Did not run “{label}”: {CHAIN_ALREADY_RUNNING}")
+        self._record_run_step(slot, kind="progress", detail=f"Running the task “{label}”")
+        target_run = await self._execute_task(
+            target_id, bypass_model_slot=True, trigger=self.run_trigger(slot),
+            register_handle=False, started_by=self._run_started_by(slot))
+        current = asyncio.current_task()
+        if current is not None and current.cancelling():
+            # The target's run answers a cancel by recording it and returning
+            # (its `CancelledError` branch does not re-raise), so a stop or a
+            # time limit that landed while it ran arrives here as a return.
+            # The workflow was stopped; it does not go on to its next step.
+            raise asyncio.CancelledError()
+        lookup = SessionLocal()
+        try:
+            row = lookup.query(TaskRun).filter(TaskRun.id == target_run).first()
+            status = row.status if row is not None else None
+            said = ((row.result or row.error) if row is not None else None) or ""
+        finally:
+            lookup.close()
+        self._record_run_step(slot, kind="progress",
+                              detail=f"“{label}” ended: {status or 'it asked to wait'}")
+        if status == "success":
+            return NodeResult(NODE_STATUS_SUCCESS, payload=said)
+        if status == "skipped" or status is None:
+            return NodeResult(NODE_STATUS_SKIPPED,
+                              payload=said or f"“{label}” asked to wait, so it did not run now")
+        if status == "aborted":
+            return NodeResult(NODE_STATUS_ERROR,
+                              payload=f"“{label}” was stopped before it finished: {said}".rstrip(": "))
+        return NodeResult(NODE_STATUS_ERROR, payload=said or f"“{label}” failed")
+
+    async def test_workflow_node(self, task, workflow_name: str, node: dict, *,
+                                 input_envelope=None, timeout=None) -> dict:
+        """`P22-08` — run ONE step, now, with the input the person chose.
+
+        Under a slot of its own (`test:<uuid>`) that no row has, so it writes
+        no run and no step record; it delivers nothing, notifies nobody,
+        continues to nothing and — inside `run_origin(test=True)` — wakes no
+        task with anything it writes. It takes no model slot and waits for
+        nothing (`waits_for` None): it is foreground work, like a chat reply,
+        and the person is watching it. A Run task step really runs its task —
+        which is why testing one asks first (`needs_test_confirmation`).
+
+        Answers `{status, text, data, steps, model, took_ms}`; `status` is a
+        node status (`success` / `error` / `skipped` / `deferred`).
+        """
+        from core.database import SessionLocal
+        from src.builtin_actions import NODE_STATUS_ERROR, NodeResult
+        from src.event_bus import run_origin
+
+        slot = f"{TEST_SLOT_PREFIX}{NODE_SLOT_SEPARATOR}{uuid.uuid4()}"
+        self._state_for(slot).update(trigger=input_envelope, started_by=STARTED_BY_PERSON,
+                                     waits_for=None)
+        budget = timeout or task_timeout_seconds(task) or 300
+        started = time.monotonic()
+        db = SessionLocal()
+        try:
+            with run_origin(task.id, workflow_name, slot, test=True):
+                try:
+                    res = await asyncio.wait_for(
+                        self._run_workflow_node(task, workflow_name, node, db, slot,
+                                                deliver=False),
+                        timeout=budget)
+                except asyncio.TimeoutError:
+                    res = NodeResult(NODE_STATUS_ERROR,
+                                     payload=f"Timed out after {_human_gap(budget)}.")
+                except Exception as exc:
+                    res = NodeResult(NODE_STATUS_ERROR, payload=f"{type(exc).__name__}: {exc}")
+            return {
+                "status": res.status,
+                "text": res.text,
+                "data": None if isinstance(res.payload, str) else res.payload,
+                "steps": self.run_steps(slot),
+                "model": self.run_model(slot),
+                "took_ms": _human_ms(time.monotonic() - started),
+            }
+        finally:
+            self._clear_run_state(slot)
+            db.close()
 
     async def _run_chained(self, task_id: str, *, handoff: dict | None = None,
                            started_by: str = STARTED_BY_BACKGROUND):

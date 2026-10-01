@@ -67,7 +67,54 @@ def admin_refusal_message(action: str | None) -> str:
     return f"Action '{action or ''}' {ADMIN_REFUSAL_SUFFIX}"
 
 
-def record_admin_refusal(db, task, *, run_id: str | None = None) -> str:
+def admin_only_action_of(db, task) -> str | None:
+    """The admin-only action this task would run, or `None`. `P22-05`.
+
+    One question for every door that asks it — the scheduler before a run (and
+    before a dry run), the task route before a save, the webhook before a
+    trigger: the task's own action, or, for a workflow's trigger
+    (`task_type="workflow"`), any Action step in its document and the action
+    of any task a Run task step runs. A workflow is not a way round
+    `ADMIN_ONLY_TASK_ACTIONS` (`FORBIDDEN.md` Part 1; the privilege check
+    itself is `owner_has_admin_task_privileges`, unchanged).
+
+    A document that cannot be read answers `None` here: the walker refuses it
+    at run with its own sentence, and nothing in it runs.
+    """
+    if task is None:
+        return None
+    if is_admin_only_task_action(getattr(task, "task_type", None), getattr(task, "action", None)):
+        return task.action
+    if (getattr(task, "task_type", None) or "llm") != "workflow":
+        return None
+    from core.database import ScheduledTask, Workflow
+    from src.workflow_document import (
+        NODE_KIND_ACTION, NODE_KIND_RUN_TASK, DocumentError, parse_graph,
+    )
+
+    wf = db.query(Workflow).filter(Workflow.task_id == task.id).first()
+    if wf is None:
+        return None
+    try:
+        graph = parse_graph(wf.graph)
+    except DocumentError:
+        return None
+    targets = []
+    for node in graph["nodes"]:
+        config = node.get("config") or {}
+        if node.get("kind") == NODE_KIND_ACTION and (config.get("action") or "") in ADMIN_ONLY_TASK_ACTIONS:
+            return config["action"]
+        if node.get("kind") == NODE_KIND_RUN_TASK and isinstance(config.get("task_id"), str):
+            targets.append(config["task_id"])
+    if targets:
+        for row in db.query(ScheduledTask).filter(ScheduledTask.id.in_(targets)).all():
+            if is_admin_only_task_action(row.task_type, row.action):
+                return row.action
+    return None
+
+
+def record_admin_refusal(db, task, *, run_id: str | None = None,
+                         action: str | None = None) -> str:
     """Pause an admin-only task whose owner is not an admin, and file the
     refusal as a **`skipped`** run.
 
@@ -90,10 +137,14 @@ def record_admin_refusal(db, task, *, run_id: str | None = None) -> str:
     which created one before it got here); without it a fresh terminal run row
     is created (the webhook path, which has none). Commits — both callers want
     the refusal durable before they return or raise.
+
+    `P22-05`. `action` names the refused action when it is not the task's own
+    — a workflow's Action step (`admin_only_action_of`). The message still
+    ends in `ADMIN_REFUSAL_SUFFIX`, the migration's join key.
     """
     from core.database import TaskRun
 
-    msg = admin_refusal_message(getattr(task, "action", None))
+    msg = admin_refusal_message(action or getattr(task, "action", None))
     now = _utcnow()
 
     run = None

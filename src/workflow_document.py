@@ -483,8 +483,8 @@ def validate_document(graph: dict, *, owner: str | None, tasks_by_id: dict,
             if action not in BUILTIN_ACTIONS:
                 return _refusal(REFUSE_UNKNOWN_ACTION, (node_id,), f"{_called(node)} runs {action!r}")
             if action in ADMIN_ONLY_TASK_ACTIONS and not owner_is_admin:
-                return DocumentRefusal(REFUSE_ADMIN_ONLY, (node_id,),
-                                       f"{_called(node)}: {admin_refusal_message(action)}.")
+                return _refusal(REFUSE_ADMIN_ONLY, (node_id,),
+                                f"{_called(node)}. {admin_refusal_message(action)}")
             for param in (BUILTIN_ACTION_META.get(action) or {}).get("params") or ():
                 if param.get("required") and not _text(config, "prompt"):
                     return _refusal(REFUSE_MISSING_SETTING, (node_id,),
@@ -508,8 +508,8 @@ def validate_document(graph: dict, *, owner: str | None, tasks_by_id: dict,
             target_action = getattr(target, "action", None)
             if ((getattr(target, "task_type", None) or "llm") == NODE_KIND_ACTION
                     and target_action in ADMIN_ONLY_TASK_ACTIONS and not owner_is_admin):
-                return DocumentRefusal(REFUSE_ADMIN_ONLY, (node_id,),
-                                       f"{_called(node)}: {admin_refusal_message(target_action)}.")
+                return _refusal(REFUSE_ADMIN_ONLY, (node_id,),
+                                f"{_called(node)}. {admin_refusal_message(target_action)}")
         crew = _text(config, "crew_member_id")
         if crew and crew not in crew_ids:
             return _refusal(REFUSE_UNKNOWN_CREW, (node_id,), f"{_called(node)}")

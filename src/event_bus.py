@@ -7,11 +7,13 @@ like session creation, message sends, etc.
 """
 
 import asyncio
+import contextvars
 import json
 import logging
 import os
+from contextlib import contextmanager
 from datetime import datetime
-from typing import Optional
+from typing import NamedTuple, Optional
 
 from src.constants import AUTH_FILE
 
@@ -179,8 +181,53 @@ def _clip(value, limit: int = TRIGGER_FIELD_MAX_CHARS):
     return text[:limit].rstrip() + "\u2026"
 
 
+class RunOrigin(NamedTuple):
+    """`P22-05`. Which run an app event came from, when it came from one.
+
+    A workflow's steps write things — a document, a memory, a research
+    report — and each write fires its event. A workflow triggered by that same
+    event would then run again because of its own run, and again after that.
+    The walker marks everything its steps do with this (`run_origin`), and
+    `_handle_event` leaves the workflow that caused an event out of the tasks
+    that event wakes. `test` marks *Test this step* (`P22-08`): a test fires
+    no task at all.
+    """
+    task_id: str
+    task_name: str
+    run_id: str
+    test: bool = False
+
+
+_RUN_ORIGIN: "contextvars.ContextVar[Optional[RunOrigin]]" = contextvars.ContextVar(
+    "pantheon_run_origin", default=None)
+
+
+@contextmanager
+def run_origin(task_id: str, task_name: str, run_id: str, test: bool = False):
+    """Mark every event fired inside this block as caused by that run.
+
+    A context variable, so it follows the run through `await`, into tasks it
+    creates (`asyncio.create_task` copies the context) and into
+    `asyncio.to_thread`. **Not** into a bare `loop.run_in_executor`, which runs
+    without the caller's context — an event fired from there is unmarked, and a
+    workflow it triggers runs as if a person had caused it (the residual risk
+    `SLICE-B-DESIGN` § 2.5 names).
+    """
+    token = _RUN_ORIGIN.set(RunOrigin(task_id, task_name, run_id, bool(test)))
+    try:
+        yield
+    finally:
+        _RUN_ORIGIN.reset(token)
+
+
+def current_run_origin() -> Optional[RunOrigin]:
+    """The run the code executing now belongs to, if a walker marked it."""
+    return _RUN_ORIGIN.get()
+
+
 def build_trigger(source: str, name: str, data: Optional[dict] = None,
-                  *, fields: Optional[tuple] = None) -> dict:
+                  *, fields: Optional[tuple] = None,
+                  origin: Optional[RunOrigin] = None) -> dict:
     """The envelope a trigger hands the run it starts.
 
     `P8-23`. One shape for both trigger kinds, because a task does not care
@@ -191,6 +238,10 @@ def build_trigger(source: str, name: str, data: Optional[dict] = None,
     `name`, and anything outside it is dropped: the catalogue is the schema.
     The webhook passes its own `fields`, because a request body has no
     catalogue and its keys are fixed here instead.
+
+    `P22-05`. `origin` — the run whose step fired the event — is carried as a
+    top-level `origin` key (added; nothing renamed), so a task it wakes can
+    say what caused it. Absent when nothing caused it but a person.
     """
     allowed = EVENT_PAYLOAD_FIELDS.get(name, ()) if fields is None else tuple(fields)
     kept = {}
@@ -205,12 +256,16 @@ def build_trigger(source: str, name: str, data: Optional[dict] = None,
         extra = sorted(set(data) - set(allowed))
         if extra:
             logger.debug("Trigger %r dropped undeclared field(s): %s", name, extra)
-    return {
+    envelope = {
         "source": source,
         "event": name,
         "at": datetime.utcnow().isoformat() + "Z",
         "data": kept,
     }
+    if origin is not None:
+        envelope["origin"] = {"task_id": origin.task_id, "task": origin.task_name,
+                              "run_id": origin.run_id}
+    return envelope
 
 
 def build_task_handoff(*, task_name: str, task_id: str, run_id: str,
@@ -257,6 +312,10 @@ def trigger_summary(trigger: Optional[dict]) -> str:
         lead = f"Triggered by {name}"
     else:
         lead = f"Triggered by {source}"
+    origin = trigger.get("origin") if isinstance(trigger.get("origin"), dict) else None
+    if origin and origin.get("task"):
+        # `P22-05`. An event a workflow's step caused says so.
+        lead = f"{lead} (caused by the workflow “{origin['task']}”)"
     if not data:
         # Said out loud rather than left blank: "no payload" and "the payload
         # did not survive" look identical in an empty string, and the first is
@@ -361,13 +420,19 @@ def fire_event(event_name: str, owner: Optional[str] = None,
     caller that has not been given one keeps working exactly as before
     (`Law 1`); a caller that passes one gets it filtered to the catalogue's
     declared fields for this event and handed to whatever task fires.
+
+    `P22-05`. The run this was fired from, if a workflow's walker marked it
+    (`run_origin`), is read HERE, synchronously, in the caller's own context,
+    and handed on — so the answer does not depend on how the handling task
+    inherits context.
     """
+    origin = _RUN_ORIGIN.get()
     try:
         loop = asyncio.get_running_loop()
-        loop.create_task(_handle_event(event_name, owner, payload))
+        loop.create_task(_handle_event(event_name, owner, payload, origin=origin))
     except RuntimeError:
         # No running loop — run in a new one (shouldn't happen in FastAPI)
-        asyncio.run(_handle_event(event_name, owner, payload))
+        asyncio.run(_handle_event(event_name, owner, payload, origin=origin))
 
 
 def _resolve_event_owner(owner: Optional[str]) -> Optional[str]:
@@ -396,13 +461,46 @@ def _resolve_event_owner(owner: Optional[str]) -> Optional[str]:
     return None
 
 
+def _workflow_run_in_flight(db, task) -> bool:
+    """`P22-05`. Is this workflow's trigger running or queued right now, asked
+    through the database? For the process with no scheduler — the email MCP
+    server is a SUBPROCESS (`src/builtin_mcp.py`) and fires `document_updated`
+    from there — which cannot see the scheduler's `_executing` set and so cannot
+    tell a workflow's own write from anyone else's (its context var is a
+    different process's). `B674`'s rule (one workflow runs once at a time),
+    asked of the run rows instead of the in-memory set.
+    """
+    if (getattr(task, "task_type", None) or "llm") != "workflow":
+        return False
+    from core.database import TaskRun, TASK_RUN_ACTIVE_STATUSES
+
+    return db.query(TaskRun.id).filter(
+        TaskRun.task_id == task.id,
+        TaskRun.status.in_(TASK_RUN_ACTIVE_STATUSES),
+    ).first() is not None
+
+
 async def _handle_event(event_name: str, owner: Optional[str] = None,
-                        payload: Optional[dict] = None):
-    """Process an event: increment counters, fire tasks that hit their threshold."""
+                        payload: Optional[dict] = None, *,
+                        origin: Optional[RunOrigin] = None):
+    """Process an event: increment counters, fire tasks that hit their threshold.
+
+    `P22-05`. `origin` is the run whose step fired this (`fire_event` reads it
+    from `run_origin`; a direct call falls back to the current context). That
+    run's own task is left out — its counter does not move and its `next_run`
+    is not written — so a workflow that edits a document does not fire itself
+    on `document_updated`. Other tasks it wakes are told what caused them. An
+    event fired by *Test this step* (`origin.test`) wakes nothing at all.
+    """
     from core.database import SessionLocal, ScheduledTask
 
+    if origin is None:
+        origin = _RUN_ORIGIN.get()
+    if origin is not None and origin.test:
+        logger.debug("Event %r from a step test: no task is woken", event_name)
+        return
     resolved_owner = _resolve_event_owner(owner)
-    trigger = build_trigger(TRIGGER_SOURCE_EVENT, event_name, payload)
+    trigger = build_trigger(TRIGGER_SOURCE_EVENT, event_name, payload, origin=origin)
     db = SessionLocal()
     try:
         filters = [
@@ -414,12 +512,24 @@ async def _handle_event(event_name: str, owner: Optional[str] = None,
             filters.append(ScheduledTask.owner == resolved_owner)
         else:
             filters.append(ScheduledTask.owner == None)  # noqa: E711
+        if origin is not None and origin.task_id:
+            filters.append(ScheduledTask.id != origin.task_id)
 
         tasks = db.query(ScheduledTask).filter(*filters).all()
         if not tasks:
             return
 
         for task in tasks:
+            if _task_scheduler is None and _workflow_run_in_flight(db, task):
+                # The subprocess branch below writes `next_run = now` and lets
+                # the main process's loop run the task. For a workflow already
+                # running that is the workflow running again because of its own
+                # write — skipped, counter untouched. Residual (said, not
+                # hidden): an event landing in the moment after its run row
+                # turns terminal still runs it once more.
+                logger.info("Event '%s': workflow task '%s' is running; not queued again",
+                            event_name, task.name)
+                continue
             threshold = task.trigger_count or DEFAULT_TRIGGER_COUNT
             task.trigger_counter = (task.trigger_counter or 0) + 1
 

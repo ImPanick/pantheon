@@ -3952,6 +3952,12 @@ def dry_run_plan(*, task_type: str | None, action: str | None,
     elif kind == "research":
         lines.append("Would run the deep-research pipeline on this task's question.")
         lines.append("It would: call a model, repeatedly, and write a research report.")
+    elif kind == "workflow":
+        # `P22-05`. A workflow's trigger reached as a chain's successor (wave
+        # B's chain dry run plans successors with this function). Its own dry
+        # run plans every step; here it is one line, not a guess at a prompt.
+        lines.append("Would run this workflow, every step in one run. Its own "
+                     "dry run shows what each step would do.")
     else:
         lines.append("Would send this task's prompt to a model, with tools.")
         lines.append("It would: call a model, and whatever the tools it is "
