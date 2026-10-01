@@ -2681,6 +2681,20 @@ function _categoryLabel(taskName) {
   return 'other';
 }
 
+/** `B1062`. What a stopped run's Activity row says beside its name: that it
+ *  stopped, and the first line of why ("stopped — Paused because Pantheon
+ *  became active"), or the reason alone when it already says it stopped
+ *  ("Stopped by user"). A run that left no reason says so rather than
+ *  nothing. */
+function _stoppedWords(result) {
+  const word = runStatusLabel('aborted', 'job');
+  const line = String(result || '').split('\n').map((l) => l.trim()).find(Boolean) || '';
+  const why = line.length > 160 ? line.slice(0, 159) + '…' : line;
+  if (!why) return `${word.toLowerCase()} — no reason was recorded`;
+  if (why.toLowerCase().startsWith(word.toLowerCase())) return why;
+  return `${word.toLowerCase()} — ${why}`;
+}
+
 function _renderActivityEntry(entry, opts = {}) {
   // Canonical index into _activityEntries (map() passes the FILTERED
   // index, which would be wrong) — used by the Open-in-chat handler.
@@ -2708,6 +2722,15 @@ function _renderActivityEntry(entry, opts = {}) {
   const statusDot = `<span class="task-log-status task-log-status-${status}" title="${status}"></span>`;
   const failedTag = status === 'error'
     ? '<span class="task-log-failed-tag">(failed)</span>'
+    : '';
+  // `B1062` (wf-ui). A stopped run's row said its name and "just now" and
+  // nothing else — measured on the pre-empted *Webhook digest* — while a
+  // skipped row says "skipped — <why>" and a failed one "(failed)". Why it
+  // stopped was in the row's body, which a compact row does not show, and
+  // one click away in History. The head says it now, from the text History
+  // shows (`result`, else `error`), in `runStatus.js`'s word for the status.
+  const stoppedTag = entry.status === 'aborted'
+    ? `<span class="task-log-stopped-reason">${_escHtml(_stoppedWords(entry.result))}</span>`
     : '';
   // Render the result through markdown so code blocks, lists, links look right.
   let resultHtml;
@@ -2900,6 +2923,7 @@ function _renderActivityEntry(entry, opts = {}) {
         ${statusDot}
         <span class="task-log-task-icon">${_taskIcon({ action: entry.action, task_type: entry.kind })}</span>
         <span class="task-log-name">${_escHtml(entry.taskName)}</span>${failedTag}${_taskAiMark(entry)}
+        ${stoppedTag}
         ${repeatBadge}
         ${stepChip}
         <span style="flex:1"></span>
