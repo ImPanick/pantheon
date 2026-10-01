@@ -31,6 +31,10 @@
 // **Every word a person wrote is set as text.** Task names reach the page
 // through `textContent` and attribute values only — never `innerHTML` — which
 // is the property `P22`'s preamble weighed Drawflow on and found it lacked.
+// One markup assignment exists, and its markup is not data's: a step's full
+// dry-run plan is drawn by the Tasks card's own step renderer
+// (`tasks.js:renderRunSteps`), which escapes every value with `ui.js:esc`
+// (`P22-04`, so a plan is worded one way, `Law 7`).
 //
 // **A step's last outcome is a shape and a weight before it is a colour**
 // (`P8-34`'s rule for sixteen palettes): a mark (✓ ✗ … · ○), the shared word
@@ -80,6 +84,20 @@ const SWALLOW_MS = 400;
 const ZOOM_STEP = 1.2;
 /** `.wb-connect`'s width in the sheet, so the picker can be kept on the stage. */
 const CONNECT_W = 260;
+/** `P22-04`. The Tasks card's words for the dry run (`tasks.js`), on purpose. */
+const DRY_LABEL = 'Show me what this would do';
+/** `.wb-plan-box`'s width in the sheet. */
+const PLAN_W = 320;
+/** The mark beside a step's line in a plan, by what the plan says of it. */
+const PLAN_MARKS = { planned: '→', cannot: '?', declined: '⊘', aside: '–' };
+/**
+ * The sentence `dry_run_plan` (`src/builtin_actions.py`) writes for the two
+ * actions a dry run cannot describe (`DRY_UNCOVERABLE_ACTIONS`). The plan is
+ * lines of text and says which actions those are in no other way, so the
+ * canvas finds the sentence to put it on the step; filed for a structured
+ * field on the wire so this stops being read off words.
+ */
+const CANNOT_SAY = 'A dry run cannot tell you what this would change';
 const KEY_DIRS = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
 /** The mark beside a step's last-run word, by `runStatusTone`. `none` is a
  *  step that has not run. */
@@ -144,6 +162,9 @@ export function outcomeOf(task) {
  */
 export function mountCanvas(root, opts = {}) {
   const mountPanel = typeof opts.mountPanel === 'function' ? opts.mountPanel : null;
+  // `P22-04`. `tasks.js:renderRunSteps`, the Tasks card's step renderer,
+  // handed in by the glue so a step's full plan is drawn the one way.
+  const renderSteps = typeof opts.renderSteps === 'function' ? opts.renderSteps : null;
   const net = typeof opts.fetch === 'function' ? opts.fetch : (url, init) => globalThis.fetch(url, init);
   const describe = (task) => {
     if (typeof opts.describeTrigger !== 'function') return '';
@@ -159,6 +180,7 @@ export function mountCanvas(root, opts = {}) {
     selected: null, panel: null, connect: null,
     drag: null, link: null, pan: null, swallow: null,
     pending: null, sayRun: null, saveTimer: null,
+    plan: null, planBox: null, dryBusy: false,
   };
 
   // ── the skeleton ─────────────────────────────────────────────────────────
@@ -234,9 +256,16 @@ export function mountCanvas(root, opts = {}) {
   panel.hidden = true;
   const panelHead = _el('div', 'wb-panel-head');
   const panelTitle = _el('h3', 'wb-panel-title');
+  // `P22-04`. The question the Tasks card asks, on the step that is open — the
+  // same words, so a person who met it on the card knows it here.
+  const panelDry = _el('button', 'wb-panel-dry', DRY_LABEL);
+  panelDry.type = 'button';
+  panelDry.title = 'Plans a run of this step and every step after it, and shows the plan on the canvas. Nothing runs and nothing changes.';
+  panelDry.hidden = true;
   const panelClose = _el('button', 'wb-panel-close', 'Close');
   panelClose.type = 'button';
   panelHead.appendChild(panelTitle);
+  panelHead.appendChild(panelDry);
   panelHead.appendChild(panelClose);
   const panelBody = _el('div', 'wb-panel-body');
   panel.appendChild(panelHead);
@@ -393,6 +422,8 @@ export function mountCanvas(root, opts = {}) {
       return false;
     }
     if (S.destroyed) return false;
+    // A plan was of the tasks as they were; after a change it may not be.
+    dropPlan();
     take(data);
     render();
     applyFocusChain();
@@ -500,6 +531,7 @@ export function mountCanvas(root, opts = {}) {
       node.setAttribute('aria-hidden', 'true');
       node.appendChild(_el('div', 'wb-node-title', 'A task you cannot see'));
       node.appendChild(_el('div', 'wb-node-sub', 'Not in your list of tasks'));
+      if (S.plan && !S.plan.partial && !S.plan.byId.has(id)) node.dataset.plan = 'aside';
       return node;
     }
 
@@ -511,24 +543,31 @@ export function mountCanvas(root, opts = {}) {
     const trigger = targeted.has(id) ? '' : describe(task);
     const paused = task.status === 'paused';
     const out = outcomeOf(task);
-    const subText = [KIND_WORDS[kind] || KIND_WORDS.llm, trigger, paused ? 'paused' : '']
+    // `P22-04`. While a dry run's plan is on the canvas, a step says what the
+    // run would do there instead of how its last run went.
+    const plan = planFor(id, task);
+    const subText = plan ? plan.sub : [KIND_WORDS[kind] || KIND_WORDS.llm, trigger, paused ? 'paused' : '']
       .filter(Boolean).join(' · ');
 
     node.setAttribute('tabindex', '0');
     node.setAttribute('role', 'group');
-    node.setAttribute('aria-label', `${name}. ${subText}. ${out.word}.`);
+    node.setAttribute('aria-label', `${name}. ${subText}. ${(plan ? plan.line : out.word).replace(/\.$/, '')}.`);
     node.dataset.kind = kind;
-    node.dataset.outcome = out.tone;
+    if (plan) node.dataset.plan = plan.state;
+    else node.dataset.outcome = out.tone;
     if (paused) node.dataset.paused = 'true';
 
     const title = _el('div', 'wb-node-title', name);
     title.title = name;
     const sub = _el('div', 'wb-node-sub', subText);
-    const last = _el('div', 'wb-node-last');
-    const mark = _el('span', 'wb-node-mark', OUTCOME_MARKS[out.tone] || OUTCOME_MARKS.info);
+    const last = _el('div', plan ? 'wb-node-plan' : 'wb-node-last');
+    const mark = _el('span', 'wb-node-mark', plan ? PLAN_MARKS[plan.state]
+      : (OUTCOME_MARKS[out.tone] || OUTCOME_MARKS.info));
     mark.setAttribute('aria-hidden', 'true');
     last.appendChild(mark);
-    last.appendChild(_el('span', 'wb-node-word', out.word));
+    const word = _el('span', plan ? 'wb-node-plan-line' : 'wb-node-word', plan ? plan.line : out.word);
+    if (plan) word.title = plan.line;
+    last.appendChild(word);
     const connectBtn = _el('button', 'wb-node-connect', 'Connect…');
     connectBtn.type = 'button';
     connectBtn.title = `Choose what runs after ${name}`;
@@ -536,7 +575,21 @@ export function mountCanvas(root, opts = {}) {
       if (e && e.stopPropagation) e.stopPropagation();
       openConnect(id, connectBtn);
     });
-    for (const n of [title, sub, last, connectBtn]) node.appendChild(n);
+    const actions = _el('div', 'wb-node-actions');
+    actions.appendChild(connectBtn);
+    if (plan && plan.entry) {
+      // The whole plan, on demand: the short line is one of several.
+      const planBtn = _el('button', 'wb-node-plan-btn', 'Plan');
+      planBtn.type = 'button';
+      planBtn.title = `What ${name} would do, line by line`;
+      planBtn.setAttribute('aria-label', `What ${name} would do`);
+      planBtn.addEventListener('click', (e) => {
+        if (e && e.stopPropagation) e.stopPropagation();
+        openPlanBox(id);
+      });
+      actions.appendChild(planBtn);
+    }
+    for (const n of [title, sub, last, actions]) node.appendChild(n);
 
     for (const when of PORTS) {
       const port = _el('span', 'wb-port');
@@ -579,6 +632,11 @@ export function mountCanvas(root, opts = {}) {
       g.setAttribute('data-from', from);
       g.setAttribute('data-to', to);
       g.setAttribute('data-when', when);
+      // `P22-04`. An arrow the planned run would not follow is set aside with
+      // the steps it joins.
+      if (S.plan && !S.plan.partial && !(S.plan.byId.has(from) && S.plan.byId.has(to))) {
+        g.setAttribute('data-plan', 'aside');
+      }
       g.setAttribute('tabindex', '0');
       g.setAttribute('role', 'button');
       g.setAttribute('aria-label', edgeSentence(from, when, to) + ' Press Delete to remove this arrow.');
@@ -865,6 +923,19 @@ export function mountCanvas(root, opts = {}) {
     zoomKeys(e);
   }
 
+  // ── a box beside a step ──────────────────────────────────────────────────
+  /** Put `box` (`width` wide in the sheet) beside step `id`, on the stage. */
+  function besideStep(box, id, width) {
+    const p = S.pos.get(id) || { x: 0, y: 0 };
+    let left = Math.round(S.view.x + (p.x + NODE_W) * S.view.zoom + 12);
+    // `B1051`. Beside the step, unless that is past the stage's right edge — at
+    // phone width it always is, and the picker opened off-screen.
+    const stageW = (() => { try { return stage.getBoundingClientRect().width || 0; } catch (_) { return 0; } })();
+    if (stageW) left = Math.min(left, Math.round(stageW - width - 8));
+    box.style.left = Math.max(8, left) + 'px';
+    box.style.top = Math.max(8, Math.round(S.view.y + p.y * S.view.zoom)) + 'px';
+  }
+
   // ── Connect… — the keyboard's way to the same write ──────────────────────
   function closeConnect(restoreFocus) {
     const c = S.connect;
@@ -961,15 +1032,7 @@ export function mountCanvas(root, opts = {}) {
       if (e.key === 'Enter' && e.target !== go && e.target !== cancel) { e.preventDefault(); submit(); }
     });
 
-    const p = S.pos.get(from) || { x: 0, y: 0 };
-    let left = Math.round(S.view.x + (p.x + NODE_W) * S.view.zoom + 12);
-    // `B1051`. Beside the step, unless that is past the stage's right edge — at
-    // phone width it always is, and the picker opened off-screen. `CONNECT_W`
-    // is the sheet's `.wb-connect` width.
-    const stageW = (() => { try { return stage.getBoundingClientRect().width || 0; } catch (_) { return 0; } })();
-    if (stageW) left = Math.min(left, Math.round(stageW - CONNECT_W - 8));
-    box.style.left = Math.max(8, left) + 'px';
-    box.style.top = Math.max(8, Math.round(S.view.y + p.y * S.view.zoom)) + 'px';
+    besideStep(box, from, CONNECT_W);
     stage.appendChild(box);
     S.connect = { box, from, opener, submit, whenSel, toSel, unregister: holdEscape(() => closeConnect(true)) };
     whenSel.focus();
@@ -1031,6 +1094,8 @@ export function mountCanvas(root, opts = {}) {
     panel.hidden = false;
     root.classList.add('wb-panel-open');
     panelTitle.textContent = task ? taskName(task) : 'New step';
+    // A new step has nothing saved to plan yet.
+    panelDry.hidden = !id;
     const host = _el('div', 'wb-panel-host');
     panelBody.replaceChildren(host);
     S.panel = { id, host, handle: null, dirty: false, asked: false, unregister: holdEscape(() => panelEscape()) };
@@ -1055,6 +1120,196 @@ export function mountCanvas(root, opts = {}) {
   function select(id) {
     const task = S.byId.get(String(id));
     if (task) openPanel(task);
+  }
+
+  // ── a dry run of a chain: every step says what it would do ───────────────
+  // `P22-04`. *Show me what this would do* on an open step asks the route the
+  // Tasks card asks — `POST /api/tasks/{id}/run?dry=true` — with `chain=true`,
+  // whose reply carries `chain`: every task the run could reach along either
+  // arrow, once each, breadth first, the head first, each with its plan
+  // (`steps`, in a run's shape), the arrow that leads to it (`when`) and, when
+  // the engine would not plan it, why (`declined`) — the contract in
+  // `/work/notes/P22-WAVE-B.md`. The server half plans and records nothing for
+  // the steps after the head; this half only draws. A dry run sends no mail
+  // and runs nothing, and that promise is the server's, not this function's,
+  // which only ever sends `dry=true`.
+  //
+  // On the canvas: each step the run would reach says, in one short line, what
+  // it would do — the plan's own "Would …" line, or for the two actions a dry
+  // run cannot describe its sentence saying so — with how it is reached
+  // ("After Nightly backup, if it fails"), and *Plan* opens the whole plan
+  // drawn by the Tasks card's renderer. A step it would not reach is set aside
+  // (dimmed, dotted, "Not reached by this run"); a step the engine would not
+  // plan shows the engine's sentence. Escape, *Clear the plan* or any change
+  // puts the steps back.
+
+  /** What a step says while a plan is on the canvas, or `null` (no plan, or
+   *  the server planned the head only and says nothing of this step). */
+  function planFor(id, task) {
+    const P = S.plan;
+    if (!P) return null;
+    const kindWord = KIND_WORDS[(task && task.task_type) || 'llm'] || KIND_WORDS.llm;
+    const entry = P.byId.get(id);
+    if (!entry) {
+      return P.partial ? null : { state: 'aside', sub: kindWord, line: 'Not reached by this run', entry: null };
+    }
+    const sub = `${entry.depth === 0 ? 'Starts here' : entry.after} · ${kindWord}`;
+    const lines = entry.steps.map((s) => String((s && s.detail) || '').trim()).filter(Boolean);
+    if (!lines.length) {
+      return { state: 'declined', sub, line: `Would not run: ${entry.declined || 'nothing was planned'}`, entry };
+    }
+    const cannot = lines.find((l) => l.startsWith(CANNOT_SAY));
+    const what = cannot
+      ? cannot.slice(0, cannot.indexOf('.') + 1 || cannot.length)
+      : (lines.find((l) => /^Would\b/.test(l)) || lines[0]);
+    return { state: cannot ? 'cannot' : 'planned', sub, line: entry.declined ? `${entry.declined} · ${what}` : what, entry };
+  }
+
+  function dropPlan() {
+    closePlanBox(false);
+    const P = S.plan;
+    if (!P) return;
+    S.plan = null;
+    P.unregister();
+  }
+
+  function clearPlan() {
+    if (!S.plan) return;
+    const head = S.plan.head;
+    dropPlan();
+    render();
+    focusNode(head);
+    say('');
+  }
+
+  function showPlan(headId, reply) {
+    dropPlan();
+    const chain = Array.isArray(reply && reply.chain) ? reply.chain : null;
+    // A reply with no `chain` is the head's plan alone (`run`): drawn, and
+    // nothing said of the rest — not "would not reach", which is not known.
+    const run = (reply && reply.run) || {};
+    const entries = chain || [{
+      task_id: headId, when: null, depth: 0, steps: run.steps,
+      declined: Array.isArray(run.steps) && run.steps.length ? null : (run.error || run.result || null),
+    }];
+    const byId = new Map();
+    for (const e of entries) {
+      const id = e && e.task_id != null ? String(e.task_id) : '';
+      if (!id || byId.has(id)) continue;
+      byId.set(id, {
+        id, when: e.when ? String(e.when) : null, depth: Number(e.depth) || 0,
+        steps: Array.isArray(e.steps) ? e.steps : [], declined: e.declined ? String(e.declined) : null, after: '',
+      });
+    }
+    // How each step is reached: from its first parent in the reply's order,
+    // which is where the contract takes `when` from.
+    const order = [...byId.keys()];
+    order.forEach((id, i) => {
+      const e = byId.get(id);
+      if (!e.depth || !e.when) return;
+      const parent = order.slice(0, i).find((p) => (S.graph.edges || [])
+        .some((g) => String(g.from) === p && String(g.to) === id && String(g.when) === e.when));
+      const words = EDGE_WORDS[e.when] || e.when;
+      e.after = parent ? `After ${nameOf(parent)}, ${words}` : _cap(words);
+    });
+    const head = String(headId);
+    const dirty = !!(S.panel && S.panel.dirty);
+    if (S.panel && !dirty) closePanel(false);
+    S.plan = { head, byId, partial: !chain, unregister: holdEscape(() => clearPlan()) };
+    render();
+    focusNode(head);
+    const name = nameOf(head);
+    let sentence = `Dry run of ${name}: nothing ran and nothing changed.`;
+    if (chain) {
+      const reached = byId.size;
+      const aside = S.order.filter((id) => !byId.has(id) && S.nodeEls.has(id)).length;
+      sentence += ` ${reached} ${reached === 1 ? 'step says what it' : 'steps say what they'} would do`
+        + (aside ? `; ${aside} it would not reach ${aside === 1 ? 'is' : 'are'} dimmed.` : '.');
+    } else {
+      sentence += ` Only ${name} was planned: this Pantheon did not plan the steps after it.`;
+    }
+    if (dirty) sentence += ` Your unsaved changes to ${name} are not in this plan.`;
+    say(sentence, { action: { label: 'Clear the plan', run: () => clearPlan() } });
+  }
+
+  async function dryRun(id) {
+    if (S.dryBusy || !id) return null;
+    S.dryBusy = true;
+    panelDry.disabled = true;
+    panelDry.textContent = 'Working it out…';
+    const name = nameOf(id);
+    say(`Working out what a run of ${name} would do. Nothing is running.`);
+    let res = null;
+    let reply = null;
+    let sentence = '';
+    try {
+      res = await net(`/api/tasks/${encodeURIComponent(id)}/run?dry=true&chain=true`,
+        { method: 'POST', credentials: 'same-origin' });
+      if (res.ok) reply = await res.json();
+      else {
+        try { sentence = refusalText((await res.json()).detail); } catch (_) { sentence = ''; }
+      }
+    } catch (_) {
+      sentence = 'Pantheon could not be reached';
+    }
+    S.dryBusy = false;
+    panelDry.disabled = false;
+    panelDry.textContent = DRY_LABEL;
+    if (S.destroyed) return null;
+    if (!reply) {
+      // The route's own sentence: a loop (`P22-01`'s rule, as a save is
+      // answered), "Task is already running", an admin-only action.
+      if (!sentence && res && res.status === 409) sentence = 'Task is already running';
+      say(`Nothing was planned: ${(sentence || `the server answered ${res ? res.status : 'nothing'}`).replace(/\.$/, '')}.`,
+        { refusal: true });
+      return null;
+    }
+    showPlan(id, reply);
+    return reply;
+  }
+
+  // ── the whole plan, on demand ────────────────────────────────────────────
+  function closePlanBox(restoreFocus) {
+    const b = S.planBox;
+    if (!b) return;
+    S.planBox = null;
+    b.unregister();
+    b.box.remove();
+    if (restoreFocus) focusNode(b.id);
+  }
+
+  function openPlanBox(id) {
+    closePlanBox(false);
+    closeConnect(false);
+    const entry = S.plan && S.plan.byId.get(id);
+    if (!entry) return;
+    const name = nameOf(id);
+    const box = _el('div', 'wb-plan-box');
+    box.setAttribute('role', 'dialog');
+    box.setAttribute('aria-label', `What ${name} would do`);
+    box.appendChild(_el('p', 'wb-plan-head', `What ${name} would do`));
+    if (entry.after) box.appendChild(_el('p', 'wb-plan-when', `${entry.after}.`));
+    if (entry.declined) box.appendChild(_el('p', 'wb-plan-declined', entry.declined));
+    const body = _el('div', 'wb-plan-steps');
+    if (entry.steps.length && renderSteps) {
+      // The Tasks card's step renderer (`tasks.js:renderRunSteps`), which
+      // escapes every value it is given with `ui.js:esc`: the one place this
+      // room assigns markup, and the markup is that renderer's, not data's.
+      body.innerHTML = renderSteps({ steps: entry.steps }, { open: true, summary: 'What a real run would do' });
+    } else if (entry.steps.length) {
+      const list = _el('ol', 'wb-plan-lines');
+      for (const s of entry.steps) list.appendChild(_el('li', null, String((s && s.detail) || '')));
+      body.appendChild(list);
+    }
+    box.appendChild(body);
+    const close = _el('button', 'wb-plan-close', 'Close');
+    close.type = 'button';
+    close.addEventListener('click', () => closePlanBox(true));
+    box.appendChild(close);
+    besideStep(box, id, PLAN_W);
+    stage.appendChild(box);
+    S.planBox = { box, id, unregister: holdEscape(() => closePlanBox(true)) };
+    close.focus();
   }
 
   // ── opening on one workflow ──────────────────────────────────────────────
@@ -1114,6 +1369,7 @@ export function mountCanvas(root, opts = {}) {
   newBtn.addEventListener('click', () => openPanel(null));
   emptyNew.addEventListener('click', () => openPanel(null));
   panelClose.addEventListener('click', () => closePanel(true));
+  panelDry.addEventListener('click', () => { if (S.panel && S.panel.id) dryRun(S.panel.id); });
   outBtn.addEventListener('click', () => zoomBy(1 / ZOOM_STEP));
   inBtn.addEventListener('click', () => zoomBy(ZOOM_STEP));
   fitBtn.addEventListener('click', () => fitAll());
@@ -1149,6 +1405,7 @@ export function mountCanvas(root, opts = {}) {
     endLink(null);
     clearPending();
     closeConnect(false);
+    dropPlan();
     closePanel(false);
     root.replaceChildren();
     root.classList.remove('wb-room', 'wb-panel-open', 'wb-room-empty', 'wb-linking', 'wb-panning');

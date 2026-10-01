@@ -3330,6 +3330,14 @@ function stopNotificationPolling() {
   }
 }
 
+// `P22-04`, the canvas half. The Workbench draws a step's full plan with the
+// renderer above (`_renderRunSteps`), handed in by its glue
+// (`workbench/workbench.js`) — one renderer for a run's steps, so the card and
+// the canvas cannot word a plan two ways (`Law 7`). Exported here, beside the
+// module's other surface, rather than under the function: a test harness
+// lifts the text between `_renderRunSteps` and `_showRunHistory` as it is.
+export { _renderRunSteps as renderRunSteps };
+
 const tasksModule = {
   openTasks, closeTasks, isTasksOpen, startNotificationPolling, stopNotificationPolling,
   // P6-07 — how another module puts its live rows in the Activity view instead

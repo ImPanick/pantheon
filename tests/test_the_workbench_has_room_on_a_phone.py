@@ -161,7 +161,7 @@ const TYPES = { '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg
     // which is recorded rather than waited out.
     rec.clicked = await page.click('.wb-node[data-task-id="b"] .wb-node-title', { timeout: 3000 })
       .then(() => true, () => false);
-    await page.waitForTimeout(150);
+    await page.waitForSelector('#harness-name', { timeout: 3000 }).catch(() => null);
     rec.panel = await box('.wb-panel');
     rec.nameBox = await page.evaluate(() => {
       const i = document.getElementById('harness-name');
@@ -173,7 +173,8 @@ const TYPES = { '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg
     if (rec.nameBox && rec.nameBox.seen) {
       await page.fill('#harness-name', 'Post the summary');
       await page.click('#harness-save');
-      await page.waitForTimeout(250);
+      await page.waitForFunction(() => document.querySelector('.wb-say-text').textContent.startsWith('Saved'),
+        null, { timeout: 3000 }).catch(() => null);
     }
     rec.after = await page.evaluate(() => ({
       said: document.querySelector('.wb-say-text').textContent,
