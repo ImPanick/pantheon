@@ -76,6 +76,8 @@ const SAVE_DELAY_MS = 400;
 /** How long after a drag ends the click a browser fires for it is ignored. */
 const SWALLOW_MS = 400;
 const ZOOM_STEP = 1.2;
+/** `.wb-connect`'s width in the sheet, so the picker can be kept on the stage. */
+const CONNECT_W = 260;
 const KEY_DIRS = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
 /** The mark beside a step's last-run word, by `runStatusTone`. `none` is a
  *  step that has not run. */
@@ -930,7 +932,13 @@ export function mountCanvas(root, opts = {}) {
     });
 
     const p = S.pos.get(from) || { x: 0, y: 0 };
-    box.style.left = Math.max(8, Math.round(S.view.x + (p.x + NODE_W) * S.view.zoom + 12)) + 'px';
+    let left = Math.round(S.view.x + (p.x + NODE_W) * S.view.zoom + 12);
+    // `B1051`. Beside the step, unless that is past the stage's right edge — at
+    // phone width it always is, and the picker opened off-screen. `CONNECT_W`
+    // is the sheet's `.wb-connect` width.
+    const stageW = (() => { try { return stage.getBoundingClientRect().width || 0; } catch (_) { return 0; } })();
+    if (stageW) left = Math.min(left, Math.round(stageW - CONNECT_W - 8));
+    box.style.left = Math.max(8, left) + 'px';
     box.style.top = Math.max(8, Math.round(S.view.y + p.y * S.view.zoom)) + 'px';
     stage.appendChild(box);
     S.connect = { box, from, opener, submit, whenSel, toSel, unregister: registerMenuDismiss(() => closeConnect(true)) };

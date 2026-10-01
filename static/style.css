@@ -46756,6 +46756,24 @@ button.task-card-toggle {
 @media (max-width: 768px) {
   .wb-panel { position: absolute; inset: 0; z-index: 4; }
   .wb-hint { display: none; }
+  /* `B1051` (branch wb-polish). At phone width every window is a bottom sheet,
+     and the sheet rule `.modal-content { height: auto !important }` beat
+     `.workbench-modal-content`'s height — measured in Chromium at 390 and 768px:
+     a 183px sheet holding the toolbar and a 0px canvas, every step off-screen and
+     the step form mounted in a 0px panel. A canvas has no content height of its
+     own (`flex: 1; min-height: 0` all the way down), so `auto` is 0. The tool
+     windows that hold a pane — Tasks, Calendar, Library — are full height at this
+     width for the same reason; this is their full-height rule, scoped by the
+     window's id so it wins on specificity over the sheet's class rule. (Tasks
+     also anchors its sheet to the top; measured, a full-height sheet needs no
+     anchor, so this one rule is the whole fix.) */
+  #workbench-modal .workbench-modal-content {
+    max-height: 100vh !important;
+    max-height: 100dvh !important;
+    height: 100vh !important;
+    height: 100dvh !important;
+    padding-bottom: env(safe-area-inset-bottom, 0px) !important;
+  }
 }
 @media (prefers-reduced-motion: no-preference) {
   .wb-node { transition: box-shadow 0.12s ease, opacity 0.12s ease; }
