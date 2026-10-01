@@ -276,12 +276,12 @@ def test_a_claim_naming_a_row_that_does_not_exist_is_reported(tmp_path):
     text = ROADMAP.read_text(encoding="utf-8")
     entry = "### The tally was answering a narrower question"
     at = text.index(entry)
-    text = text[:at] + text[at:].replace("`B79` closed;", "`B79` and `B999` closed;", 1)
+    text = text[:at] + text[at:].replace("`B79` closed;", "`B79` and `B99999` closed;", 1)
     broken = tmp_path / "ROADMAP.md"
     broken.write_text(text, encoding="utf-8")
     code, out = _run(broken)
     assert code == 1, out
-    assert "says B999 closed, and there is no row with that id" in out, out
+    assert "says B99999 closed, and there is no row with that id" in out, out
 
 
 def test_a_blocked_or_claimed_row_is_not_a_closed_one(tmp_path):

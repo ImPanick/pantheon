@@ -483,7 +483,7 @@ def test_fg_muted_resolves_on_all_sixteen_palettes():
 
 
 def test_the_three_populations_hold_at_their_counts():
-    """93 bare, 8 with a fallback, 101 in all.
+    """96 bare, 8 with a fallback, 104 in all (101 before `P21-01`).
 
     The bare count is the row's deliverable and the fallback count is where a
     third class would hide, so both are pinned by spelling as well as by total.
@@ -493,10 +493,14 @@ def test_the_three_populations_hold_at_their_counts():
     which population a site belongs to without changing the total.
     """
     uses = _var_uses("fg-muted")
-    assert len(uses) == 101, f"expected 101 uses of --fg-muted, found {len(uses)}"
+    # 101 -> 104 and 93 -> 96 bare: `P21-01` (157ef0d) added three muted
+    # `color:` sites to the document library's folder row — its path separator
+    # and two of its counts. All three are text, so all three inherit when the
+    # token is missing, which is the population this row already accepts.
+    assert len(uses) == 104, f"expected 104 uses of --fg-muted, found {len(uses)}"
 
     bare = [expr for _, expr in uses if not _fallback(expr)]
-    assert len(bare) == 93, (
+    assert len(bare) == 96, (
         f"expected 93 bare `var(--fg-muted)` uses, found {len(bare)}. If a site "
         "was legitimately added or removed, move this number and say which in "
         "the commit — do not widen the assertion."
@@ -515,7 +519,7 @@ def test_the_three_populations_hold_at_their_counts():
 
 
 def test_the_bare_uses_split_across_properties_as_measured():
-    """87 `color`, 4 `border-color`, 2 `background`.
+    """90 `color`, 4 `border-color`, 2 `background` (87 before `P21-01`).
 
     Worth pinning separately from the total because the three do different
     things when the token is undefined and the row's framing only covers one
@@ -536,7 +540,8 @@ def test_the_bare_uses_split_across_properties_as_measured():
         match = re.match(r"\s*([a-z-]+)\s*:", css[boundary + 1:offset])
         assert match, f"line {line}: could not read the property for {expr!r}"
         tally[match.group(1)] = tally.get(match.group(1), 0) + 1
-    assert tally == {"color": 87, "border-color": 4, "background": 2}, tally
+    # `color` 87 -> 90: `P21-01`'s three folder-row sites (see above).
+    assert tally == {"color": 90, "border-color": 4, "background": 2}, tally
 
 
 def test_the_javascript_uses_are_recorded_but_not_this_rows_work():
