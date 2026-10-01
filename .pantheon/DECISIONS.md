@@ -2620,3 +2620,17 @@ promise in the answer is only true once both ask first.
    junk after every fifth new document, unasked. **Decided: propose, don't delete.** It builds its list and
    sends a notification the person opens; nothing is deleted until they apply it — the same promise
    `D-2026-10-01-02` makes about the agent, kept by the automation too.
+
+## D-2026-10-01-04 — three calls from wave five: the agent's own step-limit reply is trusted, the operator's token ceiling wins everywhere, and a kept document stays kept
+
+**Asked**, 2026-10-01, from rows the fifth wave stopped on.
+
+1. **`B930` — a successful `manage_settings` call arms the untrusted-content gate with the tool's own words.**
+   *Trust only step-limit replies.* A `manage_settings` call recognised as a loop-cap request
+   (`loop_cap_request`), whose reply Pantheon builds entirely from integers, does not arm the post-external
+   gate; every other result is classified as before, and the gate itself (`FORBIDDEN.md` Part 2) is unchanged.
+2. **`B934` — `local_inference_max_tokens` reaches only the agent path, and local MiniMax gets a literal 2048.**
+   *The operator's ceiling wins everywhere.* A ceiling an operator typed applies on every door (chat, Agent
+   mode, the API) and replaces the 2048 loop guard; an install where nobody typed one sees no change.
+3. **`B1006`'s Keep is not remembered** (filed by `w5-docs`). *Remember Keep.* A document the person kept is
+   marked kept and is not proposed again unless it changes.

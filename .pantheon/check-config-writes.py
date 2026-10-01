@@ -161,7 +161,7 @@ GUARDED_BASENAMES: dict[str, tuple[str, str]] = {
 # write is gone fails as a STORES entry does.
 KNOWN_PLAIN_WRITES: dict[tuple[str, str], str] = {
     ("core/database.py", "USER_PREFS_FILE"): (
-        "found by `B1008`'s widening and filed, not fixed (`w5-docs` B-NEW-1): the boot "
+        "found by `B1008`'s widening and filed, not fixed (`B1017`): the boot "
         "migration of a flat user_prefs.json to the per-user form writes it with "
         "`open(prefs_path, 'w')`; its read raises on a bad file, so it is not the "
         "`P3-16` shape, but it is not atomic"),

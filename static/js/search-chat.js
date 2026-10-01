@@ -42,8 +42,8 @@
 // start a new chat.
 
 import sessionModule from './sessions.js';
-import settingsModule from './settings.js?v=20261001workstation';
-import { doorShown, isMinimized, listWindows, showWindow } from './modalManager.js?v=20261001workstation';
+import settingsModule from './settings.js?v=20261001wavefive';
+import { doorShown, isMinimized, listWindows, showWindow } from './modalManager.js?v=20261001wavefive';
 import { openSkillsWindow } from './skills.js';
 import { slashCatalog, insertSlashToken, loadSkillEntries, mergeSkillEntries } from './slashAutocomplete.js';
 import { SETTINGS_GROUPS, searchSettingsPanels } from './settings/registry.js';

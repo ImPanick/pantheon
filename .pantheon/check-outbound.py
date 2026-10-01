@@ -63,7 +63,7 @@ A module-level `httpx.get(…)` builds a client nothing can say that to. Those
 are counted against `--max-env`, which only goes down; the way off the list is
 `src.paced_http`, which routes and paces.
 
-    python3 .pantheon/check-outbound.py --max 116 --max-env 51
+    python3 .pantheon/check-outbound.py --max 110 --max-env 51
 """
 import ast
 import pathlib

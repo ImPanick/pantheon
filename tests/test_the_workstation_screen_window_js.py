@@ -161,11 +161,18 @@ _STUBS.update({
     "appConfig.js": "export function invalidateSettings() {}\n",
 })
 
+# The specifier the window itself imports `modalManager.js` by, read from the
+# module — so the harness shares that one module instance, and a cache-buster
+# bump does not break this file (a test that names a buster tests the buster).
+_MODALS_SPEC = re.search(r"""['"](\./modalManager\.js[^'"]*)['"]""",
+                         (ROOT / "static" / "js" / "workstationScreen.js").read_text(
+                             encoding="utf-8")).group(1)
+
 _PREAMBLE = (
     "import { document, fire, ev, server, sent, frames, controls, settle, read, fireWindow }"
     " from './shim.js';\n"
     "const mod = await import('./workstationScreen.js');\n"
-    "const Modals = await import('./modalManager.js?v=20261001workstation');\n"
+    f"const Modals = await import('{_MODALS_SPEC}');\n"
     "Object.assign(mod._test.TIMING, { FRAME_MS: 15, HOLDER_MS: 60, RETRY_MS: 40,\n"
     "  AFTER_INPUT_MS: 5, CLICK_SETTLE_MS: 25, TYPE_FLUSH_MS: 10, WHEEL_FLUSH_MS: 10 });\n"
     "const ID = 'workstation-screen-modal';\n"
