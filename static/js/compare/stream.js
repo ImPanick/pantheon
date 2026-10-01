@@ -2,7 +2,7 @@
 // compare/stream.js — SSE streaming to panes
 import state from './state.js';
 import { addFinishBadge } from './vote.js';
-import { getModelCost, renderAskUserCard, safeDisplayImageSrc } from '../chatRenderer.js?v=20261001wavefive';
+import { getModelCost, renderAskUserCard, safeDisplayImageSrc } from '../chatRenderer.js?v=20261001workbench';
 import { applyAgentThreadNode, blockedCardOptions, verifierCardOptions } from '../agentThread.js';
 // `B910`. The line that says why the agent stopped itself (`P4-10`). `B954`:
 // and the line that says the context was summarised.

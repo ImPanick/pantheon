@@ -194,6 +194,8 @@ async function _runNow(id, force = false, dry = false) {
     if (res.status === 409) msg = 'Task is already running';
     throw new Error(msg);
   }
+  // `P22-04`: a dry run's reply carries the run that holds its plan.
+  return res.json().catch(() => ({}));
 }
 
 async function _stopTask(id) {
@@ -1549,30 +1551,6 @@ async function _doRunNow(id, force = false) {
 // so the card asks for the task's newest runs until one appears that was not
 // there before it asked — which is also the run History shows.
 
-/** How long the card waits for the plan, in steps. A dry run waits for no
- *  model slot and no idle gate (`_execute_task`'s `dry` branch), so it is
- *  written in milliseconds and the first look finds it; the later steps are for
- *  a machine under load. About five seconds in all, then the card says where
- *  the plan will be instead. */
-const _DRY_RUN_WAITS_MS = [120, 250, 500, 1000, 1500, 2000];
-
-/** The run a dry run just wrote: finished, not in `before`, and holding a plan
- *  — or finished with no plan, which is the scheduler declining (a paused task
- *  is recorded `skipped` with its reason and planned nothing). `null` if
- *  neither appeared in time. */
-async function _awaitDryRun(taskId, before, waits = _DRY_RUN_WAITS_MS) {
-  for (const ms of waits) {
-    await new Promise((resolve) => setTimeout(resolve, ms));
-    const runs = await _fetchRuns(taskId, 5);
-    const fresh = runs.filter((r) => r && r.id && !before.has(r.id) && isRunFinished(r.status));
-    const planned = fresh.find((r) => Array.isArray(r.steps) && r.steps.some((s) => s && s.kind === 'dry-run'));
-    if (planned) return planned;
-    const declined = fresh.find((r) => runStatusTone(r.status) === 'info');
-    if (declined) return declined;
-  }
-  return null;
-}
-
 /** Draw what came back into the card's plan box. The steps go through the one
  *  step renderer, open, under a heading that says no run happened. */
 function _drawDryPlan(planEl, run) {
@@ -1606,9 +1584,11 @@ async function _doDryRun(taskId, planEl, btn) {
     planEl.innerHTML = '<p class="task-dry-plan-note">Working out what a run would do. Nothing is running.</p>';
   }
   try {
-    const before = new Set((await _fetchRuns(taskId, 5)).map((r) => r && r.id).filter(Boolean));
-    await _runNow(taskId, false, true);
-    const run = await _awaitDryRun(taskId, before);
+    // The route answers after the plan is written, with that run in
+    // `GET /runs`' shape (`wb-graph`, `P22-04`'s server half) — so there is
+    // nothing to look for: the plan drawn is the one this press asked for.
+    const reply = await _runNow(taskId, false, true);
+    const run = reply && reply.run ? reply.run : null;
     _drawDryPlan(planEl, run);
     return run;
   } catch (e) {

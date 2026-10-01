@@ -50,7 +50,7 @@ from test_a_dry_run_is_dry import _scheduler, _seed, task_db  # noqa: E402,F401
 
 
 _EXPORT = (
-    "\nexport const __t = { _runNow, _doDryRun, _awaitDryRun, _drawDryPlan,"
+    "\nexport const __t = { _runNow, _doDryRun, _drawDryPlan,"
     " _renderRunSteps, _fetchTasks, _renderMainView };\n"
 )
 
@@ -82,7 +82,13 @@ mockFetch(async (url, opts) => {
     if (ROUTES.runStatus && ROUTES.runStatus !== 200) {
       return res(ROUTES.runStatus, { detail: ROUTES.runDetail || 'refused' });
     }
-    return res(200, { ok: true, dry: url.includes('dry=true') });
+    const dry = url.includes('dry=true');
+    // The real route's dry reply: the run holding the plan, in `GET /runs`'
+    // shape (`P22-04`'s server half). `reply` overrides it for the odd cases.
+    const planned = (ROUTES.after || []).slice(-1)[0];
+    if (ROUTES.reply) return res(200, ROUTES.reply);
+    return res(200, dry && planned ? { ok: true, dry, message: 'Dry run — planned, nothing executed',
+      run_id: planned.id, run: planned } : { ok: true, dry });
   }
   if (url.includes('/runs')) return res(200, { runs: asked ? (ROUTES.after || []) : (ROUTES.before || []) });
   if (method === 'GET' && /\/api\/tasks$/.test(url)) {
@@ -281,28 +287,33 @@ def test_a_task_already_running_is_told_so(sandbox):
     assert out["text"] == "Task is already running"
 
 
-def test_no_plan_in_time_says_where_it_will_be(sandbox):
-    out = _case(sandbox, {"after": []}, """
-        const got = await __t._awaitDryRun('t1', new Set(), [1, 1]);
+def test_a_reply_without_its_run_says_where_the_plan_will_be(sandbox):
+    """The route always names the run since `P22-04`'s server half; if a reply
+    ever comes back without it, the card says where the plan will be rather
+    than inventing one."""
+    out = _case(sandbox, {"reply": {"ok": True, "dry": True}}, """
         const plan = document.body.appendChild(new Node('div'));
-        __t._drawDryPlan(plan, got);
-        console.log(JSON.stringify({ got, text: plan.textContent }));
+        const ran = await __t._doDryRun('t1', plan, null);
+        console.log(JSON.stringify({ ran, text: plan.textContent }));
     """)
-    assert out["got"] is None
+    assert out["ran"] is None
     assert "History" in out["text"] and "not ready" in out["text"], out["text"]
 
 
-def test_a_run_that_was_already_there_is_not_taken_for_the_plan(sandbox):
-    """The route answers without the run's id, so the card waits for a run it
-    has not seen before — not for whichever finished run is newest."""
+def test_the_plan_drawn_is_the_one_the_reply_names(sandbox):
+    """The route answers with the run it wrote, so the card draws that run and
+    asks the history for nothing — not whichever finished run is newest."""
     old = {"id": "old", "status": "skipped", "steps": [{"kind": "dry-run", "detail": "an old plan"}]}
     new = {"id": "new", "status": "skipped", "steps": [{"kind": "dry-run", "detail": "this plan"}]}
-    out = _case(sandbox, {"before": [old], "after": [old, new]}, """
+    out = _case(sandbox, {"before": [old], "after": [old, new],
+                          "reply": {"ok": True, "dry": True, "run_id": "new", "run": new}}, """
         const plan = document.body.appendChild(new Node('div'));
         const ran = await __t._doDryRun('t1', plan, null);
-        console.log(JSON.stringify({ id: ran && ran.id, text: plan.textContent }));
+        const gets = calls.fetch.filter((c) => c.method !== 'POST').map((c) => c.url);
+        console.log(JSON.stringify({ id: ran && ran.id, text: plan.textContent, gets }));
     """)
     assert out["id"] == "new" and "this plan" in out["text"] and "an old plan" not in out["text"], out
+    assert not [g for g in out["gets"] if "/runs" in g], "one request: the plan is on the reply"
 
 
 # ── `B670` / `B802(b)`: each step in words ──────────────────────────────────

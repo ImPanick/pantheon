@@ -27,7 +27,7 @@
 import { mountTaskFields } from '../tasks/taskFields.js';
 import { mountCanvas } from './canvas.js';
 import { makeWindowDraggable } from '../windowDrag.js';
-import * as Modals from '../modalManager.js?v=20261001wavefive';
+import * as Modals from '../modalManager.js?v=20261001workbench';
 
 export const WORKBENCH_ID = 'workbench-modal';
 

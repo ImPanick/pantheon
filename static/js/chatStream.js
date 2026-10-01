@@ -809,7 +809,7 @@ export function handleUIControl(uiData) {
           // the rail gear, the user bar, `/settings` and four other modules use
           // (`P1-05`). Going through the module rather than clicking a sidebar
           // button keeps this working when Customize UI hides that button.
-          import('./settings.js?v=20261001wavefive').then(function (mod) {
+          import('./settings.js?v=20261001workbench').then(function (mod) {
             var open = (mod && mod.open) || (mod && mod.default && mod.default.open);
             if (open) open();
           }).catch(function () {});

@@ -3222,7 +3222,7 @@ function _renderRecipes() {
 
 // ── Public API ──
 
-import * as Modals from './modalManager.js?v=20261001wavefive';
+import * as Modals from './modalManager.js?v=20261001workbench';
 import { chevronIcon, playIcon } from './icons.js';
 
 let _rendered = false;
