@@ -1059,10 +1059,14 @@ Apply a source-code patch to real workspace files. Use this for multi-file imple
 ```
 Maintain a structured task list for multi-step coding work. Use it when the task has several phases (inspect, edit, test, fix). Keep statuses current; only one todo should be `in_progress`.""",
 
+    # `B1010`: the body is `{}`. The example was an empty fence, and
+    # `parse_tool_blocks` reads an empty fence as a call for the email tools
+    # only — so a model copying the prompt's own example called nothing.
     "get_workspace": """\
 ```get_workspace
+{}
 ```
-Return the absolute path of the active workspace folder. On Pantheon's own machine file tools are CONFINED to it (paths can be RELATIVE to it) and the shell starts there (cwd) but is NOT sandboxed. When the tools run in the user's workstation (the answer says so), the shell and file tools start there and read RELATIVE paths from it, but it is NOT a boundary. Call this first when the user says "the project"/"the code"/"this folder" without a path, instead of asking them. No arguments.""",
+Return the absolute path of the active workspace folder. On Pantheon's own machine file tools are CONFINED to it (paths can be RELATIVE to it) and the shell starts there (cwd) but is NOT sandboxed. When the tools run in the user's workstation (the answer says so), the shell and file tools start there and read RELATIVE paths from it, but it is NOT a boundary. Call this first when the user says "the project"/"the code"/"this folder" without a path, instead of asking them. No arguments: the body is `{}`.""",
 
     "create_document": """\
 ```create_document
