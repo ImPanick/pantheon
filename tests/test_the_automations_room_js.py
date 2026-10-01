@@ -216,6 +216,7 @@ def test_a_workflow_opens_on_the_same_canvas_with_its_toolbar(box):
               checked: by(root, 'wf-switch').getAttribute('aria-checked'), word: by(root, 'wf-switch-word').textContent,
               dirty: by(root, 'wf-dirty').textContent,
               items: ['__start__', 'n1', 'n2'].map((id) => itemOf(root, id) && itemOf(root, id).querySelector('.wb-node-title').textContent),
+              start: itemOf(root, '__start__').querySelector('.wb-node-sub').textContent,
               tasksGone: !nodeOf(root, 'a'), shelf: shelf(root).map((s) => s.current),
               tabs: root.querySelectorAll('.wf-tab').map((t) => [t.textContent, t.getAttribute('aria-selected')]),
               buttons: ['Save', 'Versions…', 'Run now', 'Show me what this would do'].map((n) => !!named(root, n)) });
@@ -224,7 +225,8 @@ def test_a_workflow_opens_on_the_same_canvas_with_its_toolbar(box):
     assert (o["sw"], o["checked"]) == ("Off", "false")
     assert o["word"] == "Switched off — it will not run until you switch it on."
     assert o["dirty"] == ""
-    assert o["items"] == ["Starts · Daily at 08:00", "Summarise my inbox", "Send me the summary"]
+    assert o["items"] == ["Starts", "Summarise my inbox", "Send me the summary"]
+    assert o["start"] == "Daily at 08:00", "what starts it, in the Tasks window's words"
     assert o["tasksGone"] is True and o["shelf"] == [False, True]
     assert o["tabs"] == [["Edit", "true"], ["Runs", "false"]]
     assert o["buttons"] == [True, True, True, True]

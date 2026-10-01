@@ -239,6 +239,7 @@ WORKFLOW_SOURCE_JS = r"""
 // `state().failed` names the step a failed run ended on — the shapes the
 // room must read whichever way C3's open points are settled.
 import { KIND_WORDS } from '../tasks/workflowDiagram.js';
+import { runStatusTone, runStatusLabel } from '../runStatus.js';
 const copy = (o) => JSON.parse(JSON.stringify(o));
 const no = (err) => ({ ok: false, status: err.status || 0, sentence: err.sentence || err.message,
   reason: err.reason || null, nodeIds: err.nodeIds || [] });
@@ -266,20 +267,27 @@ export function createWorkflowSource({ api, workflowId, mode = 'edit', runId = n
   const src = {
     ready,
     get readOnly() { return mode === 'run' || viewing != null; },
-    words: { region: 'Steps of this workflow', emptyTitle: 'No steps yet.', emptyText: 'Add a step.',
-      hint: 'Click a step to change it.', newLabel: 'Add a step' },
+    get words() {
+      return mode === 'run'
+        ? { region: 'This run, step by step', emptyTitle: 'This run left no steps.', emptyText: '',
+            hint: 'Each step says how it went in this run. Click one to read what it was handed and what it made.', newLabel: 'Add a step' }
+        : { region: 'Steps of this workflow', emptyTitle: 'No steps yet.', emptyText: 'Add a step.',
+            hint: 'Click a step to change it. Your changes stay here until you press Save.', newLabel: 'Add a step' };
+    },
     async load() {
       if (loadError) throw new Error(loadError);
       const g = mode === 'run' ? exec.graph : viewing ? viewing.graph : draft;
       const trig = doc.trigger_task || {};
-      const items = [{ id: '__start__', name: 'Starts · ' + (describeTrigger ? describeTrigger(trig) : ''), kind: 'start',
-        sub: '', ports: [], accepts: false, fixed: true, marks: [], outcome: { tone: 'none', word: '' } }];
+      const on = doc.trigger_status === 'active';
+      const items = [{ id: '__start__', name: 'Starts', kind: 'start', sub: describeTrigger ? describeTrigger(trig) : '',
+        paused: mode !== 'run' && !on, ports: [], accepts: false, fixed: true, marks: [],
+        outcome: { tone: mode === 'run' ? 'info' : 'none', word: mode === 'run' ? 'Started' : (on ? 'Switched on' : 'Switched off') } }];
       for (const n of g.nodes) {
         const r = mode === 'run' ? recOf(n.id) : null;
-        const tone = r ? ({ success: 'ok', error: 'error' }[r.status] || 'info') : 'none';
         items.push({ id: n.id, name: n.label, kind: n.kind, sub: KIND_WORDS[n.kind] || n.kind,
-          ports: ['success', 'error'], marks: n.pinned ? ['Sample pinned'] : [],
-          outcome: { tone, word: r ? r.status : (mode === 'run' ? 'Not reached in this run' : 'Not run yet') } });
+          ports: ['success', 'error'], marks: n.pinned && mode !== 'run' ? ['Sample pinned'] : [],
+          outcome: r ? { tone: runStatusTone(r.status) || 'info', word: runStatusLabel(r.status, 'job') }
+            : { tone: 'none', word: mode === 'run' ? 'Not reached in this run' : '' } });
       }
       const targeted = new Set(g.edges.map((e) => e.to));
       const entry = g.nodes.find((n) => !targeted.has(n.id));

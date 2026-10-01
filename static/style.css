@@ -46976,7 +46976,9 @@ button.task-card-toggle {
   box-sizing: border-box;
   max-width: 100%;
 }
-.wf-name { width: 16em; font-weight: 600; }
+/* Scoped by the bar: the sheet's `input[type="text"] { width: 100% }` outranks a bare class, and
+   measured in Chromium the name then took its group's width and pushed Save onto a row of its own. */
+.wf-bar .wf-name { width: 16em; font-weight: 600; }
 .wf-test-input { width: 100%; resize: vertical; font-family: var(--font-mono, monospace); }
 .wf-main,
 .wf-view,
@@ -47296,7 +47298,7 @@ button.task-card-toggle {
   .wf-shelf-note,
   .wf-new { flex: 1 0 100%; }
   .wf-bar { gap: 6px; padding: 6px 10px; }
-  .wf-name { width: 12em; }
+  .wf-bar .wf-name { width: 12em; }
   .wf-tabs { margin-left: 0; }
   .wf-runs { flex-direction: column; }
   .wf-run-list { flex: 0 0 auto; max-height: 26vh; border-right: 0; border-bottom: 1px solid var(--border); }

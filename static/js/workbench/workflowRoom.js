@@ -114,7 +114,7 @@ export function mountAutomations(host, opts = {}) {
     mods: null, api: null, modsError: '',
     workflows: [], listed: false,
     tasksCanvas: null,
-    wf: null,            // { id, source, canvas, tab, runs, runSource, runCanvas, runId, failFocus }
+    wf: null,            // { id, source, canvas, tab, runs, runSource, runCanvas, runId, failFocus, failSentence }
     asking: null, versions: null, newForm: null,
   };
 
@@ -1083,9 +1083,15 @@ export function mountAutomations(host, opts = {}) {
     if (failed) {
       // `P22-07`: a failed run opens on its failed step, with what it was
       // handed open — "without being told where to look".
+      // The panel opens first and the step is fitted after, into what is
+      // left beside it: fitted first, measured in Chromium, the panel then
+      // covered the very step it was opened for. The fit says its own
+      // sentence, so the failure's is said again after it.
       w.failFocus = failed;
-      rc.focusChain(failed);
+      w.failSentence = '';
       rc.select(failed);
+      rc.focusChain(failed);
+      if (w.failSentence) rc.say(w.failSentence);
       return;
     }
     rc.say(isDryRun(run)
@@ -1101,7 +1107,8 @@ export function mountAutomations(host, opts = {}) {
     w.failFocus = null;
     const label = String((record && record.label) || (node && node.label) || 'A step');
     const line = _firstLine(record && record.error) || 'it left no message';
-    w.runCanvas.say(`“${label}” failed: ${line.replace(/\.$/, '')}. Its panel is open at What it was handed.`);
+    w.failSentence = `“${label}” failed: ${line.replace(/\.$/, '')}. Its panel is open at What it was handed.`;
+    w.runCanvas.say(w.failSentence);
   }
 
   // ── New workflow, and a chain made one ───────────────────────────────────
