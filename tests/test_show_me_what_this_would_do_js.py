@@ -91,7 +91,7 @@ mockFetch(async (url, opts) => {
       run_id: planned.id, run: planned } : { ok: true, dry });
   }
   if (url.includes('/runs')) return res(200, { runs: asked ? (ROUTES.after || []) : (ROUTES.before || []) });
-  if (method === 'GET' && /\/api\/tasks$/.test(url)) {
+  if (method === 'GET' && /\/api\/tasks(\?|$)/.test(url)) {
     return res(200, { tasks: ROUTES.tasks || [],
       graph: { nodes: [], edges: [], conditions: ['success', 'error'], max_depth: 10 } });
   }

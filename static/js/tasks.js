@@ -77,9 +77,17 @@ function _setTaskCompletionPending(active) {
 
 // ---- API ----
 
+// `B1043`. The card's last-run badge (`.task-lastrun`, drawn from
+// `last_run_status`) never rendered: `GET /api/tasks` puts the last run on a
+// row only when asked (`include_last_run`), and this — the list's only fetch —
+// never asked. The Workbench asks the same door the same way (`canvas.js:
+// TASKS_URL`). The server reads the last runs in one statement and leaves dry
+// runs out of them (`wb-runs`, `B1043`'s server half and `B1054`).
+const TASKS_LIST_URL = '/api/tasks?include_last_run=true';
+
 async function _fetchTasks() {
   try {
-    const res = await fetch(`${API_BASE}/api/tasks`, { credentials: 'same-origin' });
+    const res = await fetch(`${API_BASE}${TASKS_LIST_URL}`, { credentials: 'same-origin' });
     const data = await res.json();
     _tasks = data.tasks || [];
     _graph = data.graph || { nodes: [], edges: [], conditions: [], max_depth: 0 };
