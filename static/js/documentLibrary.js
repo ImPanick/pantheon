@@ -15,6 +15,11 @@ import { makeWindowDraggable } from './windowDrag.js';
 import { langIcon } from './langIcons.js';
 import { registerMenuDismiss, dismissOrRemove } from './escMenuStack.js';
 import { chevronIcon } from './icons.js';
+import {
+  folderApi, renderFolderBar, showFolderPicker, showFolderMenu, removeFolderFlow,
+  describeRemovalOutcome, describeFiled, applyViewParams, startDocumentDrag,
+  viewAfterRelocate, joinPath, folderName, parentOf, VIEW_ALL, VIEW_UNFILED,
+} from './documentFolders.js';
 
 // ── Injected references from documentModule ──
 let API_BASE = '';
@@ -97,6 +102,11 @@ let _librarySelectedIds = new Set();
 let _libraryImportMode = false;
 let _libScrollBound = false;   // infinite-scroll listener attached once
 let _libraryArchivedView = false;   // Documents tab showing archived docs?
+// `P21-01`. Which folder the Documents tab shows (`documentFolders.js` names
+// the three kinds), and the server's folder list with its counts.
+let _libraryFolderView = VIEW_ALL;
+let _libraryFolders = [];
+let _libraryFolderCounts = { unfiled: 0, all: 0 };
 
 // ---- Library animation helpers ----
 
@@ -105,6 +115,7 @@ let _libraryArchivedView = false;   // Documents tab showing archived docs?
     const grid = card.closest('.doclib-grid');
     const instant = card?.dataset?.spaceToggle === '1';
     card.classList.remove('doclib-card-expanded');
+    if (card.dataset && card.dataset.docDraggable === '1') card.draggable = true;   // `P21-01`
     // Release the height lock so grid returns to natural size
     if (grid) {
       grid.style.minHeight = '';
@@ -190,6 +201,7 @@ let _libraryArchivedView = false;   // Documents tab showing archived docs?
   // ones used by the documents-tab card menu so the visual language stays
   // consistent across tabs.
   const _LIB_DD_ICONS = {
+    folder: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>',
     open: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>',
     archive: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>',
     restore: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9"/><polyline points="3 4 3 9 8 9"/></svg>',
@@ -316,8 +328,13 @@ let _libraryArchivedView = false;   // Documents tab showing archived docs?
     return new Date(isoString).toLocaleDateString();
   }
 
+  let _libraryFetchSeq = 0;
   async function libraryFetch(append) {
     if (!append) _libraryOffset = 0;
+    // `P21-01`. Opening a folder while the last list is still in flight would
+    // otherwise let the slower answer draw over the faster one — the folder you
+    // left, under the path of the folder you opened.
+    const seq = ++_libraryFetchSeq;
     // Bump page size to the backend max (50) so fullscreen doesn't leave
     // empty space below the loaded rows — same idea as emailLibrary's
     // limit=100, but documents_library validates `le=50` so we have to
@@ -330,11 +347,17 @@ let _libraryArchivedView = false;   // Documents tab showing archived docs?
     if (_librarySearch) params.set('search', _librarySearch);
     if (_libraryActiveLanguage) params.set('language', _libraryActiveLanguage);
     if (_libraryArchivedView) params.set('archived', 'true');
+    applyViewParams(_libraryFolderView, params);   // `P21-01`
+    // The folder counts are refreshed with every fresh load, not with a
+    // "Load more" page, so a delete, an archive or the agent filing something
+    // is reflected in the bar the next time the list is.
+    if (!append) libraryRefreshFolders();
 
     try {
       const res = await fetch(`${API_BASE}/api/documents/library?${params}`);
       if (!res.ok) throw new Error(await _readError(res));
       const data = await res.json();
+      if (seq !== _libraryFetchSeq) return;
 
       if (append) {
         _libraryDocs = _libraryDocs.concat(data.documents);
@@ -378,7 +401,7 @@ let _libraryArchivedView = false;   // Documents tab showing archived docs?
     const el = document.getElementById('doclib-stats');
     if (!el) return;
     const totalAll = Object.values(_libraryLanguages).reduce((a, b) => a + b, 0);
-    if (_librarySearch || _libraryActiveLanguage) {
+    if (_librarySearch || _libraryActiveLanguage || _libraryFolderView.kind !== 'all') {
       el.textContent = `${_libraryTotal} of ${totalAll} document${totalAll !== 1 ? 's' : ''}`;
     } else {
       el.textContent = `${totalAll} document${totalAll !== 1 ? 's' : ''}`;
@@ -444,6 +467,7 @@ let _libraryArchivedView = false;   // Documents tab showing archived docs?
     libraryRenderStats();
     libraryRenderLangChips();
     libraryUpdateBulkCount();
+    libraryRefreshFolders();   // `P21-01`: the folder it was in counts one fewer
   }
 
   /**
@@ -572,6 +596,161 @@ let _libraryArchivedView = false;   // Documents tab showing archived docs?
     libraryFetch(false);
   }
 
+  // ── `P21-01` · folders ────────────────────────────────────────────────────
+  //
+  // The drawing and the questions are `documentFolders.js`; what is here is
+  // the wiring into this tab's state — which folder is open, and refetching
+  // after anything moves. Every change goes to the server and the screen is
+  // redrawn from its answer, so the counts on the chips are never this
+  // module's arithmetic.
+
+  function _folderApi() { return folderApi(API_BASE); }
+
+  async function libraryRefreshFolders() {
+    try {
+      const data = await _folderApi().list(_libraryArchivedView);
+      _libraryFolders = Array.isArray(data.folders) ? data.folders : [];
+      _libraryFolderCounts = { unfiled: Number(data.unfiled || 0), all: Number(data.all || 0) };
+      // A folder removed elsewhere — another tab, or the agent — cannot stay
+      // open: the bar would show a path that no longer exists.
+      if (_libraryFolderView.kind === 'folder'
+          && !_libraryFolders.some(f => f.path === _libraryFolderView.path)) {
+        _libraryFolderView = VIEW_ALL;
+        libraryRenderFolderBar();
+        libraryFetch(false);
+        return;
+      }
+    } catch (e) {
+      // The list keeps working without the bar's counts; say so rather than
+      // drawing yesterday's numbers as if they were today's (`P9-08`).
+      if (uiModule) uiModule.showError(`Could not load your folders \u2014 ${(e && e.message) || 'the server did not answer'}`);
+    }
+    libraryRenderFolderBar();
+  }
+
+  function libraryRenderFolderBar() {
+    const host = document.getElementById('doclib-folder-bar');
+    if (!host) return;
+    renderFolderBar(host, {
+      folders: _libraryFolders,
+      unfiled: _libraryFolderCounts.unfiled,
+      all: _libraryFolderCounts.all,
+      view: _libraryFolderView,
+    }, {
+      open: libraryOpenFolder,
+      newFolder: (parent) => libraryNewFolder(parent),
+      folderMenu: libraryShowFolderMenu,
+      dropDocuments: libraryFileDocuments,
+      dropFolder: libraryMoveFolderTo,
+    });
+  }
+
+  function libraryOpenFolder(view) {
+    _libraryFolderView = view || VIEW_ALL;
+    if (_librarySelectMode) libraryExitSelectMode();
+    libraryRenderFolderBar();
+    libraryFetch(false);
+  }
+
+  async function libraryNewFolder(parent, then) {
+    const name = await uiModule.styledPrompt(
+      parent ? `New folder inside \u201c${folderName(parent)}\u201d:` : 'Name the new folder:',
+      { title: 'New folder', placeholder: 'e.g. Clients', confirmText: 'Create', maxLength: 80 },
+    );
+    if (!name) return null;
+    try {
+      const out = await _folderApi().create(joinPath(parent, name));
+      if (typeof then === 'function') {
+        await then(out.path);
+      } else {
+        uiModule.showToast(`Made the folder ${out.path}`);
+        await libraryRefreshFolders();
+      }
+      return out.path;
+    } catch (e) {
+      uiModule.showError(`Could not make the folder \u2014 ${e.message}`);
+      return null;
+    }
+  }
+
+  async function libraryFileDocuments(ids, to) {
+    const list = [...new Set((ids || []).map(String))];
+    if (!list.length) return;
+    try {
+      const out = await _folderApi().file(list, to);
+      uiModule.showToast(describeFiled(out));
+      if (_librarySelectMode) libraryExitSelectMode();
+      libraryFetch(false);
+    } catch (e) {
+      uiModule.showError(`Could not move ${list.length === 1 ? 'the document' : 'those documents'} \u2014 ${e.message}`);
+    }
+  }
+
+  /** *Move to…* for one document (`current` is its folder) or a selection (`current` undefined). */
+  function libraryPickFolderFor(anchor, ids, current) {
+    const inside = _libraryFolderView.kind === 'folder' ? _libraryFolderView.path : null;
+    showFolderPicker(anchor, {
+      folders: _libraryFolders,
+      current,
+      moving: 'documents',
+      onPick: (to) => libraryFileDocuments(ids, to),
+      onNew: () => libraryNewFolder(inside, (path) => libraryFileDocuments(ids, path)),
+    });
+  }
+
+  function libraryShowFolderMenu(anchor, path) {
+    showFolderMenu(anchor, path, {
+      newFolder: (p) => libraryNewFolder(p),
+      rename: libraryRenameFolder,
+      move: (p) => showFolderPicker(anchor, {
+        folders: _libraryFolders,
+        current: parentOf(p),
+        moving: 'folder',
+        exclude: p,
+        onPick: (to) => libraryMoveFolderTo(p, to),
+      }),
+      remove: libraryRemoveFolder,
+    });
+  }
+
+  async function libraryRenameFolder(path) {
+    const name = await uiModule.styledPrompt('Rename folder:', {
+      title: 'Rename folder', defaultValue: folderName(path), confirmText: 'Rename', maxLength: 80,
+    });
+    if (!name || name === folderName(path)) return;
+    try {
+      const out = await _folderApi().rename(path, name);
+      _libraryFolderView = viewAfterRelocate(_libraryFolderView, path, out.path);
+      uiModule.showToast(`Renamed to ${folderName(out.path)}`);
+      libraryFetch(false);
+    } catch (e) {
+      uiModule.showError(`Could not rename the folder \u2014 ${e.message}`);
+    }
+  }
+
+  async function libraryMoveFolderTo(path, to) {
+    try {
+      const out = await _folderApi().move(path, to);
+      _libraryFolderView = viewAfterRelocate(_libraryFolderView, path, out.path);
+      uiModule.showToast(`Moved ${folderName(path)} to ${to || 'the top level'}`);
+      libraryFetch(false);
+    } catch (e) {
+      uiModule.showError(`Could not move the folder \u2014 ${e.message}`);
+    }
+  }
+
+  async function libraryRemoveFolder(path) {
+    try {
+      const { outcome, result } = await removeFolderFlow(_folderApi(), path, uiModule.styledConfirm);
+      if (outcome === 'cancelled') return;
+      _libraryFolderView = viewAfterRelocate(_libraryFolderView, path, null);
+      uiModule.showToast(describeRemovalOutcome(outcome, result));
+      libraryFetch(false);
+    } catch (e) {
+      uiModule.showError(`Could not remove the folder \u2014 ${e.message}`);
+    }
+  }
+
   function libraryRenderGrid() {
     const grid = document.getElementById('doclib-grid');
     if (!grid) return;
@@ -594,6 +773,24 @@ let _libraryArchivedView = false;   // Documents tab showing archived docs?
           title: 'No documents match',
           message: 'You have documents — this search or language filter is hiding them.',
           action: { label: 'Clear filters', onClick: _libraryClearFilters },
+        });
+      } else if (_libraryFolderView.kind === 'folder') {
+        // `P21-01`. An empty folder is not an empty library, and saying "No
+        // documents yet" inside one would tell a person their documents are gone.
+        uiModule.renderEmptyState(grid, {
+          kind: 'empty',
+          className: 'doclib-empty',
+          title: 'Nothing in this folder yet',
+          message: 'Drag a document onto the folder, or choose Move to\u2026 on one.',
+          action: { label: 'Show all documents', onClick: () => libraryOpenFolder(VIEW_ALL) },
+        });
+      } else if (_libraryFolderView.kind === 'unfiled') {
+        uiModule.renderEmptyState(grid, {
+          kind: 'empty',
+          className: 'doclib-empty',
+          title: 'Nothing is unfiled',
+          message: 'Every document is in a folder.',
+          action: { label: 'Show all documents', onClick: () => libraryOpenFolder(VIEW_ALL) },
         });
       } else {
         uiModule.renderEmptyState(grid, {
@@ -674,6 +871,19 @@ let _libraryArchivedView = false;   // Documents tab showing archived docs?
     const card = document.createElement('div');
     card.className = 'doclib-card memory-item';
     card.dataset.docId = doc.id;
+    // `P21-01`. A card drags onto a folder chip or a crumb. In select mode a
+    // selected card carries the whole selection. Off while the card is open,
+    // so its preview text can still be selected with the mouse.
+    card.draggable = true;
+    card.dataset.docDraggable = '1';
+    card.addEventListener('dragstart', (e) => {
+      if (card.classList.contains('doclib-card-expanded')) { e.preventDefault(); return; }
+      const ids = (_librarySelectMode && _librarySelectedIds.has(doc.id))
+        ? [..._librarySelectedIds] : [doc.id];
+      startDocumentDrag(e, ids);
+      card.classList.add('doclib-card-dragging');
+    });
+    card.addEventListener('dragend', () => card.classList.remove('doclib-card-dragging'));
     if (_librarySelectMode && _librarySelectedIds.has(doc.id)) {
       card.classList.add('selected');
     }
@@ -734,6 +944,11 @@ let _libraryArchivedView = false;   // Documents tab showing archived docs?
     const _esc = (s) => uiModule.esc(String(s || ''));
     const pieces = [];
     if (doc.session_name) pieces.push(`<span>${_esc(doc.session_name)}</span>`);
+    // `P21-01`. Where it is filed, unless the open folder already says so.
+    // Through `_hlSearch` because the search matches folder paths too.
+    if (doc.folder && _libraryFolderView.kind !== 'folder') {
+      pieces.push(`<span class="doclib-card-folder">${_LIB_DD_ICONS.folder}${_hlSearch(doc.folder)}</span>`);
+    }
     if (doc.language && doc.language !== 'text') {
       // Per-language icon lives in the title row above; just the language
       // name here keeps the meta line scannable without duplicating the icon.
@@ -768,6 +983,8 @@ let _libraryArchivedView = false;   // Documents tab showing archived docs?
         const items = [];
         if (doc.session_id) items.push({ label: 'Open', action: () => libraryOpenInSession(doc) });
         items.push({ label: 'Clone', action: () => libraryImportDocument(doc) });
+        // `P21-01`. A drag is not a phone gesture; this is how a phone files one.
+        items.push({ label: 'Move to\u2026', icon: 'folder', action: () => libraryPickFolderFor(menuBtn, [doc.id], doc.folder || null) });
         _showLibDropdown(menuBtn, items, { onSelect: () => {
           libraryEnterSelectMode();
           _librarySelectedIds.add(doc.id);
@@ -854,6 +1071,15 @@ let _libraryArchivedView = false;   // Documents tab showing archived docs?
     cloneItem.title = 'Clone to active session';
     cloneItem.addEventListener('click', (e) => { e.stopPropagation(); hideCardDropdown(); libraryImportDocument(doc); });
     dropdown.appendChild(cloneItem);
+
+    // Move to… — `P21-01`, the keyboard's and the touch screen's way to file.
+    const moveItem = document.createElement('button');
+    moveItem.className = 'dropdown-item-compact';
+    moveItem.style.cssText = 'background:none;border:none;width:100%;';
+    moveItem.innerHTML = _di(_LIB_DD_ICONS.folder) + '<span>Move to\u2026</span>';
+    moveItem.title = 'File in a folder';
+    moveItem.addEventListener('click', (e) => { e.stopPropagation(); hideCardDropdown(); libraryPickFolderFor(menuBtn, [doc.id], doc.folder || null); });
+    dropdown.appendChild(moveItem);
 
     // Export
     const _exportIco = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>';
@@ -1065,6 +1291,7 @@ let _libraryArchivedView = false;   // Documents tab showing archived docs?
     if (!instant) await new Promise(r => setTimeout(r, 120));
 
     card.classList.add('doclib-card-expanded');
+    card.draggable = false;   // `P21-01`: the preview's text is selectable again
     if (grid) grid.scrollTop = 0;
 
     // Clean up sibling inline styles (CSS display:none takes over now)
@@ -1802,6 +2029,7 @@ let _libraryArchivedView = false;   // Documents tab showing archived docs?
     _librarySort = 'recent';
     _libraryOffset = 0;
     _libraryDocs = [];
+    _libraryFolderView = VIEW_ALL;   // `P21-01`: every open starts at All documents
 
     // Create modal
     const modal = document.createElement('div');
@@ -1926,9 +2154,10 @@ let _libraryArchivedView = false;   // Documents tab showing archived docs?
                 <button class="memory-toolbar-btn" id="doclib-tidy-btn" title="Tidy: remove empty / junk / duplicate documents">Tidy</button>
                 <button class="memory-toolbar-btn" id="doclib-archived-btn" title="Show archived documents"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px;"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>Archived</button>
               </div>
-              <input type="text" id="doclib-search" placeholder="Search titles &amp; content\u2026" class="memory-search-input" />
+              <input type="text" id="doclib-search" placeholder="Search titles, folders &amp; content\u2026" class="memory-search-input" />
               <div id="doclib-chips" class="doclib-lang-chips"></div>
             </div>
+            <div id="doclib-folder-bar" class="doclib-folder-bar"></div>
             <input type="file" id="doclib-file-input" multiple style="display:none" />
             <div id="doclib-bulk-bar" class="memory-bulk-bar hidden" style="margin-bottom:5px;">
               <label class="memory-bulk-check-all" style="position:relative;top:0px;left:1px;"><input type="checkbox" id="doclib-select-all" /> All</label>
@@ -3622,6 +3851,11 @@ let _libraryArchivedView = false;   // Documents tab showing archived docs?
           importFileBtn.appendChild(_sp.element);
           importFileBtn.appendChild(document.createTextNode('Import'));
         } catch {}
+        // `P21-01`. The import doors file nothing yet (`P21-03` is changing
+        // them), so a file imported from inside a folder lands in Unfiled.
+        // Show it there rather than leave the folder looking as if the
+        // import did nothing.
+        if (_libraryFolderView.kind === 'folder') _libraryFolderView = VIEW_UNFILED;
         try {
           await libraryImportFiles(files);
         } finally {
@@ -3804,9 +4038,12 @@ let _libraryArchivedView = false;   // Documents tab showing archived docs?
         if (uiModule) uiModule.showToast('Select documents first');
         return;
       }
-      _showLibDropdown(e.currentTarget, [
+      const _anchor = e.currentTarget;
+      _showLibDropdown(_anchor, [
         { label: _libraryArchivedView ? 'Restore' : 'Archive', icon: _libraryArchivedView ? 'restore' : 'archive', action: libraryBulkArchive },
         { label: 'Clone', icon: 'clone', action: libraryBulkClone },
+        // `P21-01`. The selection's way into a folder, for when a drag is not.
+        { label: 'Move to\u2026', icon: 'folder', action: () => libraryPickFolderFor(_anchor, [..._librarySelectedIds], undefined) },
         { label: 'Export', icon: 'open', action: libraryBulkExport },
         { label: 'Delete', icon: 'delete', danger: true, action: libraryBulkDelete },
       ], { onCancel: libraryExitSelectMode });

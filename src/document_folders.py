@@ -1,0 +1,592 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+"""document_folders.py — `P21-01` / `P21-02`: one implementation of document folders.
+
+The owner, 2026-10-01: *"I'd like to be able to make folders to sort through
+documents, and keep things tidy and organized.. as well as giving the LLM the
+ability to organize and make folders etc.."*
+
+Two doors reach this module and they are the only two: the library's routes
+(`routes/document/document_folder_routes.py`) and the agent's
+`manage_documents` (`src/agent_tools/document_tools.py`). Both call the
+functions below, so a person filing a document by hand and the agent filing one
+for them run the same code, get the same refusals in the same words, and cannot
+drift into two definitions of what a folder is (`Law 7`).
+
+**The model, and why it is this one (`Law 14`).** Chats already have folders:
+`sessions.folder`, one string per chat, added by `_migrate_add_folder_column`.
+A chat folder is therefore *derived* — it exists while a chat is in it, and
+`getFolderNames()` in `static/js/sessions.js` rebuilds the list from the loaded
+chats. Documents get the same string, `documents.folder`, extended in the one
+direction the owner asked for: it is a path, `"Clients/Acme"`, so folders nest.
+What the derived model cannot do is keep a folder nobody has filed anything in
+yet — make it, and it is gone — so `DocumentFolder` holds one row per path a
+person (or the agent) made, ancestors included. Listing is the union of the two,
+so a document whose folder has no row (written before the row existed, or by a
+hand-edited database) still shows its folder rather than vanishing into Unfiled.
+
+**Moving a document never counts as editing it.** Filing goes through an UPDATE
+that writes `updated_at` back to itself, which is how SQLAlchemy skips the
+column's `onupdate`. Without that, filing twenty documents made all twenty the
+most recently edited in the library's default sort and printed "edited just
+now" under each — a reorganisation reported as twenty edits.
+
+**Owner scope.** Every query here is scoped to one owner, the same strict
+equality `_owner_session_filter` applies to the library. `EVERY_OWNER` is the
+routes' single-user / auth-off mode and nothing else passes it; the agent tool
+refuses before calling in when it has no owner, as its other actions already do.
+Another person's document is "not found" — the routes' wording, so a refusal
+says nothing about whether the thing exists.
+"""
+
+from __future__ import annotations
+
+import logging
+import re
+import uuid
+from typing import Any, Dict, Iterable, List, Optional
+
+from sqlalchemy import false, func, or_
+
+from core.database import Document, DocumentFolder
+
+logger = logging.getLogger(__name__)
+
+SEPARATOR = "/"
+MAX_NAME_LENGTH = 80
+MAX_DEPTH = 8
+MAX_DOCUMENTS_PER_MOVE = 500
+MAX_STEPS = 200
+#: The view of documents with no folder. A top-level folder of this name would
+#: be a second "Unfiled" the library could not tell from the first, so the name
+#: means *no folder* wherever a path is accepted.
+UNFILED = "Unfiled"
+REMOVE_MOVE_UP = "move_up"
+REMOVE_DELETE = "delete"
+REMOVE_CHOICES = (REMOVE_MOVE_UP, REMOVE_DELETE)
+
+_CONTROL = re.compile(r"[\x00-\x1f\x7f]")
+
+
+class _EveryOwner:
+    """Single-user / auth-off mode: every row, like `_owner_session_filter`."""
+
+    def __repr__(self) -> str:  # pragma: no cover - debugging aid
+        return "EVERY_OWNER"
+
+
+EVERY_OWNER = _EveryOwner()
+
+
+class FolderError(Exception):
+    """A refusal with the sentence a person reads and the HTTP status a route returns."""
+
+    def __init__(self, message: str, status: int = 400):
+        super().__init__(message)
+        self.message = message
+        self.status = status
+
+
+# ── paths ────────────────────────────────────────────────────────────────────
+
+def normalize_folder_path(raw: Any) -> Optional[str]:
+    """The one spelling of a folder path, or None for Unfiled.
+
+    Segments are trimmed and inner whitespace collapsed; empty segments drop out,
+    so `"/Clients//Acme/"` is `"Clients/Acme"`. `None`, `""`, `"/"` and
+    `"Unfiled"` all mean *no folder*. Refused, visibly, rather than silently
+    repaired: control characters, `.`/`..`, a name over 80 characters, nesting
+    deeper than 8, and anything inside a top-level "Unfiled".
+    """
+    if raw is None:
+        return None
+    if not isinstance(raw, str):
+        raise FolderError("A folder path is text, like 'Clients/Acme'.")
+    if _CONTROL.search(raw):
+        raise FolderError("A folder name can't contain control characters.")
+    segments = [re.sub(r"\s+", " ", part).strip() for part in raw.split(SEPARATOR)]
+    segments = [part for part in segments if part]
+    if not segments:
+        return None
+    if segments[0].casefold() == UNFILED.casefold():
+        if len(segments) == 1:
+            return None
+        raise FolderError(
+            f"'{UNFILED}' is where documents with no folder live, so it can't hold folders."
+        )
+    for part in segments:
+        if part in (".", ".."):
+            raise FolderError(f"'{part}' is not a folder name.")
+        if len(part) > MAX_NAME_LENGTH:
+            raise FolderError(f"A folder name can be at most {MAX_NAME_LENGTH} characters.")
+    if len(segments) > MAX_DEPTH:
+        raise FolderError(f"Folders nest at most {MAX_DEPTH} deep.")
+    return SEPARATOR.join(segments)
+
+
+def normalize_folder_name(raw: Any) -> str:
+    """One segment, for a rename. A '/' here would be a move wearing a rename's name."""
+    if isinstance(raw, str) and SEPARATOR in raw.strip().strip(SEPARATOR):
+        raise FolderError("A folder name can't contain '/'. To put it somewhere else, move it.")
+    name = normalize_folder_path(raw.strip(SEPARATOR) if isinstance(raw, str) else raw)
+    if name is None:
+        raise FolderError("A folder needs a name.")
+    return name
+
+
+def folder_name(path: str) -> str:
+    return path.rsplit(SEPARATOR, 1)[-1]
+
+
+def parent_of(path: str) -> Optional[str]:
+    return path.rsplit(SEPARATOR, 1)[0] if SEPARATOR in path else None
+
+
+def lineage(path: str) -> List[str]:
+    """`"a/b/c"` → `["a", "a/b", "a/b/c"]`."""
+    parts = path.split(SEPARATOR)
+    return [SEPARATOR.join(parts[:i]) for i in range(1, len(parts) + 1)]
+
+
+def join_path(parent: Optional[str], name: str) -> str:
+    return f"{parent}{SEPARATOR}{name}" if parent else name
+
+
+def within(path: Optional[str], root: str) -> bool:
+    return bool(path) and (path == root or path.startswith(root + SEPARATOR))
+
+
+def rebase(path: str, old_root: str, new_root: Optional[str]) -> Optional[str]:
+    """Re-root `path` from `old_root` to `new_root` (None = the top / Unfiled)."""
+    suffix = path[len(old_root):]
+    if new_root:
+        return new_root + suffix
+    return suffix.lstrip(SEPARATOR) or None
+
+
+def where(path: Optional[str]) -> str:
+    """How a location reads in a sentence: a folder path, or Unfiled."""
+    return path or UNFILED
+
+
+def _sort_key(path: str):
+    return tuple(part.casefold() for part in path.split(SEPARATOR))
+
+
+# ── queries ──────────────────────────────────────────────────────────────────
+
+def _scoped(query, model, owner):
+    if owner is EVERY_OWNER:
+        return query
+    if not owner:
+        return query.filter(false())
+    return query.filter(model.owner == owner)
+
+
+def _row_owner(owner) -> Optional[str]:
+    return None if owner is EVERY_OWNER else owner
+
+
+def _in_subtree(column, root: str):
+    # `substr`, not `LIKE`: a folder may be called "50%_off", and LIKE would read
+    # both of those characters as wildcards and match folders it should not.
+    return or_(column == root,
+               func.substr(column, 1, len(root) + 1) == root + SEPARATOR)
+
+
+def _active(query):
+    return query.filter(Document.is_active == True)  # noqa: E712 — SQL, not Python
+
+
+def _stored_path(value: Any) -> Optional[str]:
+    """Read a stored folder value, tolerating a spelling this module did not write."""
+    try:
+        return normalize_folder_path(value)
+    except FolderError:
+        return value or None
+
+
+def _paths_within(db, owner, root: str) -> set:
+    """Every folder at or under `root`: made ones and ones only a document names."""
+    paths = {
+        row.path for row in
+        _scoped(db.query(DocumentFolder), DocumentFolder, owner)
+        .filter(_in_subtree(DocumentFolder.path, root)).all()
+    }
+    for (value,) in (_active(_scoped(db.query(Document.folder), Document, owner))
+                     .filter(_in_subtree(Document.folder, root)).distinct().all()):
+        path = _stored_path(value)
+        if path:
+            paths.add(path)
+    every = set()
+    for path in paths:
+        every.update(p for p in lineage(path) if within(p, root))
+    return every
+
+
+def folder_exists(db, owner, path: str) -> bool:
+    return bool(_paths_within(db, owner, path))
+
+
+def _existing(db, owner, raw_path: Any) -> str:
+    path = normalize_folder_path(raw_path)
+    if path is None:
+        raise FolderError("Say which folder — Unfiled is not a folder.")
+    if not folder_exists(db, owner, path):
+        raise FolderError(f"Folder '{path}' not found", 404)
+    return path
+
+
+def _ensure_rows(db, owner, path: str) -> List[str]:
+    """Make `path` and every folder above it exist. Returns the paths it made."""
+    made = []
+    for step in lineage(path):
+        found = (_scoped(db.query(DocumentFolder.id), DocumentFolder, owner)
+                 .filter(DocumentFolder.path == step).first())
+        if found is None:
+            db.add(DocumentFolder(id=str(uuid.uuid4()), owner=_row_owner(owner), path=step))
+            db.flush()
+            made.append(step)
+    return made
+
+
+def _refile(db, doc: Document, folder: Optional[str]) -> None:
+    """Set a document's folder without touching `updated_at` (see module header)."""
+    db.query(Document).filter(Document.id == doc.id).update(
+        {Document.folder: folder, Document.updated_at: doc.updated_at},
+        synchronize_session="evaluate",
+    )
+
+
+def _make(db, owner, path: Optional[str]) -> List[str]:
+    """`_ensure_rows`, reporting only folders that did not exist before.
+
+    A folder only a document named already existed as far as a person can see —
+    the library listed it — so giving it a row is not "making" it.
+    """
+    if not path:
+        return []
+    fresh = [p for p in lineage(path) if not folder_exists(db, owner, p)]
+    _ensure_rows(db, owner, path)
+    return fresh
+
+
+def _created(paths: Iterable[str]) -> List[Dict[str, Any]]:
+    return [{"change": "created", "kind": "folder", "from": None, "to": p} for p in paths]
+
+
+# ── reading ──────────────────────────────────────────────────────────────────
+
+def list_folders(db, owner, *, archived: bool = False) -> Dict[str, Any]:
+    """Every folder with its counts, plus the Unfiled count and the total.
+
+    `count` is documents directly in the folder, `total` includes its subfolders.
+    Counted in the same view the library is showing — active, and archived or
+    not to match — so a folder's number is the number of cards it opens onto.
+    """
+    paths = {row.path for row in _scoped(db.query(DocumentFolder), DocumentFolder, owner).all()}
+    q = _active(_scoped(db.query(Document.folder, func.count(Document.id)), Document, owner))
+    if archived:
+        q = q.filter(Document.archived == True)  # noqa: E712
+    else:
+        q = q.filter(or_(Document.archived == False, Document.archived.is_(None)))  # noqa: E712
+    direct: Dict[str, int] = {}
+    unfiled = 0
+    for value, n in q.group_by(Document.folder).all():
+        path = _stored_path(value)
+        if path is None:
+            unfiled += n
+            continue
+        direct[path] = direct.get(path, 0) + n
+        paths.add(path)
+    every = set()
+    for path in paths:
+        every.update(lineage(path))
+    folders = []
+    for path in sorted(every, key=_sort_key):
+        folders.append({
+            "path": path,
+            "name": folder_name(path),
+            "parent": parent_of(path),
+            "depth": path.count(SEPARATOR),
+            "count": direct.get(path, 0),
+            "total": sum(n for p, n in direct.items() if within(p, path)),
+        })
+    return {"folders": folders, "unfiled": unfiled, "all": unfiled + sum(direct.values())}
+
+
+# ── changing ─────────────────────────────────────────────────────────────────
+#
+# None of these commit. A caller runs one or several and commits once, so a
+# reorganisation is one transaction and a refused step leaves nothing behind.
+# Each returns `changes`: one entry per thing that moved, appeared or went,
+# shaped `{change, kind, from, to, ...}` with `change` one of created · moved ·
+# removed · deleted — an enum, because "did this delete anything" must not be
+# read off a boolean whose polarity a card could get backwards (`Law 10`).
+
+def create_folder(db, owner, raw_path: Any, *, exist_ok: bool = False) -> Dict[str, Any]:
+    path = normalize_folder_path(raw_path)
+    if path is None:
+        raise FolderError("A folder needs a name.")
+    if folder_exists(db, owner, path) and not exist_ok:
+        raise FolderError(
+            f"There is already a folder called '{folder_name(path)}' "
+            f"{_location_phrase(parent_of(path))}.", 409)
+    return {"path": path, "changes": _created(_make(db, owner, path))}
+
+
+def _location_phrase(parent: Optional[str]) -> str:
+    return f"in '{parent}'" if parent else "at the top level"
+
+
+def _relocate(db, owner, old: str, new: str) -> Dict[str, Any]:
+    """Move folder `old` (and everything in it) to `new`, as one unit."""
+    if within(new, old):
+        raise FolderError("A folder can't be moved into itself or one of its own folders.")
+    if folder_exists(db, owner, new):
+        raise FolderError(
+            f"There is already a folder called '{folder_name(new)}' "
+            f"{_location_phrase(parent_of(new))}.", 409)
+    above = parent_of(new)
+    fresh = [p for p in lineage(above) if not folder_exists(db, owner, p)] if above else []
+    # Every document, deleted ones included: a document restored later should
+    # come back into the folder as it is now called, not as it was.
+    docs = (_scoped(db.query(Document), Document, owner)
+            .filter(_in_subtree(Document.folder, old)).all())
+    inside = 0
+    for doc in docs:
+        _refile(db, doc, rebase(_stored_path(doc.folder) or old, old, new))
+        if doc.is_active:
+            inside += 1
+    rows = (_scoped(db.query(DocumentFolder), DocumentFolder, owner)
+            .filter(_in_subtree(DocumentFolder.path, old)).all())
+    for row in rows:
+        row.path = rebase(row.path, old, new)
+    db.flush()
+    _ensure_rows(db, owner, new)
+    return {
+        "path": new,
+        "changes": _created(fresh) + [{"change": "moved", "kind": "folder", "from": old,
+                                       "to": new, "documents": inside}],
+    }
+
+
+def rename_folder(db, owner, raw_path: Any, raw_name: Any) -> Dict[str, Any]:
+    path = _existing(db, owner, raw_path)
+    new = join_path(parent_of(path), normalize_folder_name(raw_name))
+    if new == path:
+        return {"path": path, "changes": []}
+    return _relocate(db, owner, path, new)
+
+
+def move_folder(db, owner, raw_path: Any, raw_to: Any) -> Dict[str, Any]:
+    path = _existing(db, owner, raw_path)
+    to = normalize_folder_path(raw_to)
+    if to is not None and within(to, path):
+        raise FolderError("A folder can't be moved into itself or one of its own folders.")
+    new = join_path(to, folder_name(path))
+    if new == path:
+        return {"path": path, "changes": []}
+    return _relocate(db, owner, path, new)
+
+
+def file_documents(db, owner, document_ids: Any, raw_to: Any) -> Dict[str, Any]:
+    """File documents into a folder (made if missing), or into Unfiled.
+
+    All or nothing: if any id is not one of the caller's documents, nothing
+    moves and the refusal names it. A partial filing a person did not ask for
+    is a second mess to sort out.
+    """
+    to = normalize_folder_path(raw_to)
+    if isinstance(document_ids, str):
+        document_ids = [document_ids]
+    if not isinstance(document_ids, (list, tuple)):
+        raise FolderError("Say which documents to move, as a list of ids.")
+    ids: List[str] = []
+    for value in document_ids:
+        text = str(value or "").strip()
+        if text and text not in ids:
+            ids.append(text)
+    if not ids:
+        raise FolderError("Say which documents to move.")
+    if len(ids) > MAX_DOCUMENTS_PER_MOVE:
+        raise FolderError(f"Move at most {MAX_DOCUMENTS_PER_MOVE} documents at a time.")
+    docs = (_active(_scoped(db.query(Document), Document, owner))
+            .filter(Document.id.in_(ids)).all())
+    found = {doc.id: doc for doc in docs}
+    for doc_id in ids:
+        if doc_id not in found:
+            raise FolderError(f"Document '{doc_id}' not found", 404)
+    changes = _created(_make(db, owner, to))
+    for doc_id in ids:
+        doc = found[doc_id]
+        before = _stored_path(doc.folder)
+        if before == to:
+            continue
+        _refile(db, doc, to)
+        changes.append({"change": "moved", "kind": "document", "id": doc.id,
+                        "title": doc.title or "Untitled", "from": before, "to": to})
+    return {"to": to, "changes": changes}
+
+
+def remove_folder(db, owner, raw_path: Any, contents: Any = None, *,
+                  dry_run: bool = False) -> Dict[str, Any]:
+    """Remove a folder. What is in it moves up a level or is deleted with it.
+
+    The choice is never assumed. A folder holding anything is refused until the
+    caller says `move_up` or `delete`, and the refusal — like the dry run the
+    library asks for first — says how many documents and folders that is. A
+    deleted document is the library's own delete (`is_active` false), not a row
+    removal.
+    """
+    path = _existing(db, owner, raw_path)
+    docs = (_active(_scoped(db.query(Document), Document, owner))
+            .filter(_in_subtree(Document.folder, path)).all())
+    below = sorted((p for p in _paths_within(db, owner, path) if p != path), key=_sort_key)
+    parent = parent_of(path)
+    summary = {
+        "path": path,
+        "parent": parent,
+        "documents": len(docs),
+        "archived": sum(1 for d in docs if d.archived),
+        "folders": len(below),
+        "contents": contents if contents in REMOVE_CHOICES else None,
+    }
+    if dry_run:
+        return {**summary, "changes": []}
+    holds = bool(docs or below)
+    if holds and contents not in REMOVE_CHOICES:
+        up = (f"moves them up into '{parent}'" if parent else
+              "moves its documents to Unfiled and its folders to the top level")
+        raise FolderError(
+            f"'{folder_name(path)}' holds {count_phrase(len(docs), len(below))}. "
+            f"Say what happens to them: '{REMOVE_MOVE_UP}' {up}, "
+            f"'{REMOVE_DELETE}' deletes them with it.")
+    changes: List[Dict[str, Any]] = []
+    if holds and contents == REMOVE_DELETE:
+        for doc in docs:
+            doc.is_active = False
+            changes.append({"change": "deleted", "kind": "document", "id": doc.id,
+                            "title": doc.title or "Untitled",
+                            "from": _stored_path(doc.folder), "to": None})
+            _forget_active(doc.id)
+        for sub in below:
+            changes.append({"change": "removed", "kind": "folder", "from": sub, "to": None})
+        (_scoped(db.query(DocumentFolder), DocumentFolder, owner)
+         .filter(_in_subtree(DocumentFolder.path, path))
+         .delete(synchronize_session="fetch"))
+    elif holds:
+        children = [p for p in below if parent_of(p) == path]
+        for child in children:
+            inside = sum(1 for d in docs if within(_stored_path(d.folder), child))
+            changes.append({"change": "moved", "kind": "folder", "from": child,
+                            "to": rebase(child, path, parent), "documents": inside})
+        every = (_scoped(db.query(Document), Document, owner)
+                 .filter(_in_subtree(Document.folder, path)).all())
+        for doc in every:
+            before = _stored_path(doc.folder) or path
+            after = rebase(before, path, parent)
+            _refile(db, doc, after)
+            if doc.is_active and before == path:
+                changes.append({"change": "moved", "kind": "document", "id": doc.id,
+                                "title": doc.title or "Untitled", "from": path, "to": after})
+        # The folder's own row goes first and is flushed, because a child can
+        # land on its exact path: removing "a/a" moves "a/a/a" up to "a/a".
+        (_scoped(db.query(DocumentFolder), DocumentFolder, owner)
+         .filter(DocumentFolder.path == path).delete(synchronize_session="fetch"))
+        db.flush()
+        rows = sorted((_scoped(db.query(DocumentFolder), DocumentFolder, owner)
+                       .filter(_in_subtree(DocumentFolder.path, path)).all()),
+                      key=lambda r: _sort_key(r.path))
+        for row in rows:
+            target = rebase(row.path, path, parent)
+            taken = (_scoped(db.query(DocumentFolder.id), DocumentFolder, owner)
+                     .filter(DocumentFolder.path == target).first())
+            if taken is not None:
+                db.delete(row)       # merges into the folder already there
+            else:
+                row.path = target
+            db.flush()
+    else:
+        (_scoped(db.query(DocumentFolder), DocumentFolder, owner)
+         .filter(DocumentFolder.path == path).delete(synchronize_session="fetch"))
+    db.flush()
+    if parent:
+        # Removing the last thing in a folder must not remove the folder above it.
+        _ensure_rows(db, owner, parent)
+    changes.append({"change": "removed", "kind": "folder", "from": path, "to": None})
+    return {**summary, "changes": changes}
+
+
+def _forget_active(doc_id: str) -> None:
+    """The same housekeeping `DELETE /api/document/{id}` does (#1160)."""
+    try:
+        from src.agent_tools.document_tools import clear_active_document
+        clear_active_document(doc_id)
+    except Exception:
+        logger.debug("clear_active_document(%s) failed", doc_id, exc_info=True)
+
+
+# ── words ────────────────────────────────────────────────────────────────────
+
+def _n(count: int, word: str) -> str:
+    return f"{count} {word}{'' if count == 1 else 's'}"
+
+
+def count_phrase(documents: int, folders: int) -> str:
+    """`'3 documents and 1 folder'` — the sentence a removal says before it acts."""
+    parts = []
+    if documents:
+        parts.append(_n(documents, "document"))
+    if folders:
+        parts.append(_n(folders, "folder"))
+    return " and ".join(parts) if parts else "nothing"
+
+
+def counted_changes(changes: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """What a person would have to put back by hand. Making a folder is not one."""
+    return [c for c in changes if c.get("change") != "created"]
+
+
+def summarize_changes(changes: Iterable[Dict[str, Any]], *, past: bool = False) -> str:
+    """`'moves 12 documents, removes 1 folder and deletes 3 documents'`.
+
+    `past=True` for what was done (`'moved 12 documents …'`), the default for
+    what a plan would do.
+    """
+    tally: Dict[tuple, int] = {}
+    for c in changes:
+        key = (c.get("change"), c.get("kind"))
+        tally[key] = tally.get(key, 0) + 1
+    order = [
+        (("moved", "document"), ("moves", "moved"), "document"),
+        (("moved", "folder"), ("moves", "moved"), "folder"),
+        (("created", "folder"), ("makes", "made"), "folder"),
+        (("removed", "folder"), ("removes", "removed"), "folder"),
+        (("deleted", "document"), ("deletes", "deleted"), "document"),
+    ]
+    parts = [f"{verbs[1 if past else 0]} {_n(tally[key], noun)}"
+             for key, verbs, noun in order if tally.get(key)]
+    if not parts:
+        return "changed nothing" if past else "changes nothing"
+    return parts[0] if len(parts) == 1 else ", ".join(parts[:-1]) + " and " + parts[-1]
+
+
+def describe_change(c: Dict[str, Any]) -> str:
+    """One line per change, the line a tool card lists so a person can undo by hand."""
+    change, kind = c.get("change"), c.get("kind")
+    if kind == "document":
+        title = c.get("title") or "Untitled"
+        if change == "moved":
+            return f'moved "{title}": {where(c.get("from"))} → {where(c.get("to"))}'
+        if change == "deleted":
+            return f'deleted "{title}" (was in {where(c.get("from"))})'
+    if kind == "folder":
+        if change == "created":
+            return f"made folder {c.get('to')}"
+        if change == "moved":
+            inside = c.get("documents") or 0
+            tail = f" (with the {_n(inside, 'document')} in it)" if inside else ""
+            return f"moved folder {c.get('from')} → {where(c.get('to'))}{tail}"
+        if change == "removed":
+            return f"removed folder {c.get('from')}"
+    return str(c)

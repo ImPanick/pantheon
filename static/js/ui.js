@@ -767,6 +767,9 @@ function _renderConfirmDetails(overlay, msgEl, details) {
  * @param {Array}   details.items    `[{ label, note }]`. `label` is the thing,
  *                                   `note` is why it is in the list.
  * @param {string}  details.footnote one line below, for what is NOT included.
+ * @param {boolean} alternateDanger  `P21-01`: draw the third (alternate) button
+ *                                   as the destructive one, so the focused
+ *                                   confirm can stay the safe answer.
  *
  * Every string goes through `textContent`. The labels here are chat titles,
  * document names and research questions — user-supplied text on its way into a
@@ -778,7 +781,7 @@ function _renderConfirmDetails(overlay, msgEl, details) {
  * name, which is the shape `Law 10` is about — so the list is what a person
  * reads, and the answer is still yes or no.
  */
-export function styledConfirm(message, { confirmText = 'Confirm', cancelText = 'Cancel', alternateText = '', title = 'Confirm', danger = false, details = null } = {}) {
+export function styledConfirm(message, { confirmText = 'Confirm', cancelText = 'Cancel', alternateText = '', alternateDanger = false, title = 'Confirm', danger = false, details = null } = {}) {
   return new Promise(resolve => {
     // Reuse or create the modal
     let overlay = document.getElementById('styled-confirm-overlay');
@@ -818,7 +821,10 @@ export function styledConfirm(message, { confirmText = 'Confirm', cancelText = '
     altBtn.textContent = alternateText || '';
     okBtn.className = danger ? 'confirm-btn confirm-btn-danger' : 'confirm-btn confirm-btn-primary';
     cancelBtn.className = 'confirm-btn confirm-btn-secondary';
-    altBtn.className = 'confirm-btn confirm-btn-secondary';
+    // `P21-01`. A third answer can be the destructive one while the focused
+    // answer is the safe one — removing a folder offers "move them up" (focused)
+    // and "delete them too", and the second must look like what it does.
+    altBtn.className = alternateDanger ? 'confirm-btn confirm-btn-danger' : 'confirm-btn confirm-btn-secondary';
     altBtn.style.display = alternateText ? '' : 'none';
 
     // Remember what had focus so we can restore it when the dialog closes.

@@ -18288,6 +18288,126 @@ span[id$="-logo"] svg:not([width]) {
   position: relative;
   top: -3px;
 }
+/* `P21-01` — the Documents tab's folders: a path, then the folders at that
+   level as the same chips the Chats tab files chats with. Existing tokens only
+   (`--fg`, `--fg-muted`, `--border`, `--red`, `--panel`) so all sixteen palettes
+   carry it; no `--accent`; the focus ring is the global `:focus-visible` one. */
+.doclib-folder-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 2px 0 4px;
+}
+.doclib-folder-bar:empty { display: none; }
+.doclib-folder-path {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px;
+  font-size: 11px;
+  min-height: 22px;
+}
+.doclib-folder-crumb {
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--fg-muted);
+  font: inherit;
+  padding: 1px 6px;
+  cursor: pointer;
+  max-width: 18ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+span.doclib-folder-crumb { cursor: default; }
+.doclib-folder-crumb:hover { color: var(--fg); border-color: var(--border); }
+.doclib-folder-crumb[aria-current="page"] { color: var(--fg); font-weight: 600; }
+.doclib-folder-sep { color: var(--fg-muted); padding: 0 1px; }
+.doclib-folder-actions { margin-left: auto; }
+.doclib-folder-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  max-height: 52px;
+  overflow-y: auto;
+}
+.doclib-folder-chip,
+.doclib-folder-new {
+  /* Names are what a person typed: `.memory-cat-chip` lowercases its labels. */
+  text-transform: none;
+  gap: 4px;
+  max-width: 100%;
+}
+.doclib-folder-chip-name {
+  max-width: 22ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.doclib-folder-chip-icon { display: inline-flex; opacity: 0.7; }
+.doclib-folder-count { opacity: 0.7; }
+.doclib-folder-new { border-style: dashed; }
+/* Where a dragged document or folder will land. A solid outline in the
+   readable text colour, not a hue, so it shows on every palette. */
+.doclib-folder-drop {
+  outline: 2px dashed var(--fg);
+  outline-offset: 1px;
+  color: var(--fg);
+}
+.doclib-card-dragging { opacity: 0.5; }
+.doclib-card-folder {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  max-width: 24ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.doclib-card-folder svg { width: 10px; height: 10px; flex-shrink: 0; }
+.doclib-folder-picker {
+  max-height: min(320px, 60vh);
+  overflow-y: auto;
+  min-width: 180px;
+  max-width: min(320px, 90vw);
+}
+.doclib-folder-picker-head {
+  font-size: 10px;
+  color: var(--fg-muted);
+  padding: 4px 10px 2px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.doclib-folder-picker .dropdown-item-compact,
+.doclib-folder-menu .dropdown-item-compact {
+  background: none;
+  border: none;
+  width: 100%;
+  text-align: left;
+  /* A <button> does not inherit the family; the size stays the compact item's. */
+  font-family: inherit;
+  color: inherit;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.doclib-folder-picker .dropdown-item-compact:disabled { opacity: 0.5; cursor: default; }
+@media (max-width: 768px) {
+  .doclib-folder-chips {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    max-height: none;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .doclib-folder-chips::-webkit-scrollbar { display: none; }
+  .doclib-folder-chips > * { flex-shrink: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .doclib-folder-chip, .doclib-folder-new { transition: none; }
+}
 /* Document library — list layout */
 .doclib-grid {
   display: flex;

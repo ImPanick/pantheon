@@ -300,6 +300,13 @@ class Document(TimestampMixin, Base):
     # Soft-archive: hidden from the Library's Documents list/search/Tidy until
     # restored. Distinct from is_active (which tracks "open in a session").
     archived        = Column(Boolean, default=False)
+    # `P21-01`. The folder this document is filed in, as a path —
+    # "Clients/Acme" — or NULL for Unfiled. The same idea as `sessions.folder`
+    # (`Law 14`), extended to nest: a chat folder is one name, a document folder
+    # is names joined by "/". `DocumentFolder` below is what lets an empty one
+    # exist; this column is still where a document says where it lives, so a
+    # library query and a search can read it without a join.
+    folder          = Column(String, nullable=True, index=True)
     # Owner of this document. Documents used to derive ownership from their
     # linked chat session, but a session can be deleted (session_id → NULL via
     # SET NULL), orphaning the doc and making it vanish from the owner's
@@ -332,6 +339,34 @@ class DocumentVersion(Base):
     created_at     = Column(DateTime, default=utcnow_naive)
 
     document = relationship("Document", back_populates="versions")
+
+
+class DocumentFolder(TimestampMixin, Base):
+    """`P21-01` — a document folder that exists whether or not anything is in it.
+
+    Chats keep their folder as a bare string on each row (`sessions.folder`),
+    so a chat folder exists exactly while a chat is in it — measured on this
+    tree: `getFolderNames()` in `static/js/sessions.js` derives the list from
+    the loaded sessions and nothing stores an empty one. Documents keep the
+    same string (`documents.folder`) and add this table, because the owner
+    asked for folders a person makes first and fills later, and an empty folder
+    in the string-only model is a folder that vanishes the moment it is made.
+
+    One row per path per owner, ancestors included: "Clients/Acme" has a row
+    for "Clients" too, so removing "Acme" leaves "Clients" standing. A path,
+    not a parent id, because the documents carry paths — a rename rewrites the
+    rows whose path starts with the old one, in both tables, in one transaction
+    (`src/document_folders.py`), and every reader agrees on one spelling.
+    """
+    __tablename__ = "document_folders"
+
+    id    = Column(String, primary_key=True, index=True)
+    owner = Column(String, nullable=True, index=True)
+    path  = Column(String, nullable=False)
+
+    __table_args__ = (
+        Index("ix_document_folders_owner_path", "owner", "path", unique=True),
+    )
 
 
 class GalleryAlbum(TimestampMixin, Base):
@@ -2196,6 +2231,43 @@ def _migrate_add_doc_source_email_cols():
     except Exception as e:
         logging.getLogger(__name__).warning(f"doc source-email migration: {e}")
 
+
+def _migrate_add_document_folder_column():
+    """`P21-01` — add `documents.folder` to a database that predates it.
+
+    Modelled on `_migrate_add_document_archived_column`: guarded, idempotent,
+    sqlite3 against `DATABASE_URL`. `create_all` builds the new
+    `document_folders` table on its own (it creates missing tables) but never
+    alters an existing one, so an upgraded install has the table and not the
+    column until this runs. Nothing is backfilled: every existing document
+    starts Unfiled, which is NULL, which is what an added column holds.
+    """
+    import sqlite3
+    db_path = DATABASE_URL.replace("sqlite:///", "")
+    if not os.path.exists(db_path):
+        return
+    conn = None
+    try:
+        conn = sqlite3.connect(db_path)
+        columns = [row[1] for row in conn.execute("PRAGMA table_info(documents)").fetchall()]
+        if not columns:
+            return
+        if "folder" not in columns:
+            conn.execute("ALTER TABLE documents ADD COLUMN folder TEXT")
+            logging.getLogger(__name__).info("Migrated: added 'folder' to documents")
+        conn.execute("CREATE INDEX IF NOT EXISTS ix_documents_folder ON documents(folder)")
+        conn.commit()
+    except Exception as e:
+        logging.getLogger(__name__).warning(f"documents.folder migration failed: {e}")
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            # Teardown: `conn` is None when the connect itself failed, and that
+            # failure was already logged above.
+            pass
+
+
 def _migrate_add_task_automation_columns():
     """Add automation columns to scheduled_tasks table if missing."""
     new_cols = {
@@ -2776,6 +2848,7 @@ def init_db():
     _migrate_assign_legacy_owner()
     _migrate_add_tidy_verdict()
     _migrate_add_doc_source_email_cols()
+    _migrate_add_document_folder_column()
     _migrate_add_oauth_config()
     _migrate_add_email_oauth_columns()
     _migrate_add_task_automation_columns()

@@ -476,6 +476,12 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
         offset: int = Query(0, ge=0),
         limit: int = Query(20, ge=1, le=50),
         archived: bool = Query(False),
+        # `P21-01`. Absent: every folder, as before. `folder`: the documents
+        # directly in that folder. `unfiled=true`: the ones in none. Two
+        # parameters rather than `folder=""` meaning Unfiled, because an empty
+        # query value and an absent one are easy to send by accident.
+        folder: Optional[str] = Query(None),
+        unfiled: bool = Query(False),
     ) -> Dict[str, Any]:
         user = get_current_user(request)
         db = SessionLocal()
@@ -528,12 +534,33 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
             # the exact adjacent phrase, so any multi-word query with a space
             # silently returned nothing. Per-term AND makes "machine learning"
             # match docs containing both words regardless of position/order.
+            #
+            # `P21-04`, the folder half: a term also matches the folder path, so
+            # "acme" finds what is filed in Clients/Acme. The file-name half
+            # waits on `P21-03`'s column.
             if search:
                 for tok in search.split():
                     term = f"%{tok}%"
                     q = q.filter(
-                        Document.title.ilike(term) | Document.current_content.ilike(term)
+                        Document.title.ilike(term)
+                        | Document.current_content.ilike(term)
+                        | Document.folder.ilike(term)
                     )
+
+            # `P21-01` — one folder, or Unfiled. A path is normalised the way
+            # it was stored, so "Clients/ Acme/" finds "Clients/Acme".
+            if unfiled:
+                q = q.filter(or_(Document.folder.is_(None), Document.folder == ""))
+            elif folder is not None:
+                from src.document_folders import FolderError, normalize_folder_path
+                try:
+                    wanted = normalize_folder_path(folder)
+                except FolderError as e:
+                    raise HTTPException(400, e.message)
+                if wanted is None:
+                    q = q.filter(or_(Document.folder.is_(None), Document.folder == ""))
+                else:
+                    q = q.filter(Document.folder == wanted)
 
             # Language filter. "pdf" is a display language derived from the
             # source marker; "markdown" excludes those wrappers.
@@ -570,6 +597,7 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
                     "session_name": session_name,
                     "title": doc.title,
                     "language": _library_language_for_document(doc),
+                    "folder": doc.folder or None,   # `P21-01`
                     "preview": (doc.current_content or "")[:500],
                     "version_count": doc.version_count,
                     "created_at": (doc.created_at.isoformat() + "Z") if doc.created_at else None,
@@ -582,6 +610,8 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
                 "languages": languages,
                 "session_count": session_count,
             }
+        except HTTPException:
+            raise
         except Exception as e:
             logger.error(f"Failed to fetch document library: {e}")
             raise HTTPException(500, f"Failed to fetch document library: {e}")
@@ -1953,5 +1983,9 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
             }
         finally:
             db.close()
+
+    # `P21-01`. Folders, on this router so they share its feature gate.
+    from routes.document.document_folder_routes import register_document_folder_routes
+    register_document_folder_routes(router)
 
     return router

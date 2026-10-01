@@ -26,6 +26,7 @@ from core.database import (
     ScheduledTask,
     TaskRun,
     Document,
+    DocumentFolder,
     DocumentVersion,
     GalleryImage,
     GalleryAlbum,
@@ -143,6 +144,9 @@ def setup_admin_wipe_routes(session_manager):
                 db.query(DocumentVersion).delete()
                 count = db.query(Document).count()
                 db.query(Document).delete()
+                # `P21-01`. The folders go with the documents: a wipe that left
+                # every folder standing empty would not be a wiped library.
+                db.query(DocumentFolder).delete()
                 db.commit()
                 return {"status": "deleted", "kind": kind, "count": count}
 
