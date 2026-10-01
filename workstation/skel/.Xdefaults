@@ -1,0 +1,13 @@
+! SPDX-License-Identifier: AGPL-3.0-or-later
+! The workstation's terminal (P20-01). Xt reads this file when the display
+! has no resource database, which is always true here: nothing runs xrdb.
+XTerm*faceName: DejaVu Sans Mono
+XTerm*faceSize: 11
+XTerm*geometry: 100x30+40+40
+XTerm*background: #11161c
+XTerm*foreground: #e6e6e6
+XTerm*cursorColor: #e6e6e6
+XTerm*scrollBar: false
+XTerm*saveLines: 5000
+XTerm*utf8: 1
+XTerm*selectToClipboard: true

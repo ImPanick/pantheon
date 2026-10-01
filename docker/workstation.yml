@@ -1,0 +1,50 @@
+# The workstation — `P20-01`, `D-2026-09-30-03`. An Ubuntu machine beside
+# Pantheon that the agents work in: a Unix account and a desktop per person,
+# kept between chats, with "Reset to clean". Switch it on with one line in .env:
+#
+#   COMPOSE_FILE=docker-compose.yml:docker/workstation.yml
+#
+# (on Windows the separator is `;` — or add COMPOSE_PATH_SEPARATOR=: as well),
+# then `docker compose up -d --build`, then Settings -> Workstation -> On.
+#
+# What it is given, and what it deliberately is not:
+#   * its own image, built from workstation/ and nothing else;
+#   * a volume of homes (one per person, kept) and a pairing volume that only
+#     these two services mount — Pantheon read-only, readable by Pantheon's
+#     PGID and by no workstation account;
+#   * full network, the owner's answer (`P20-06` lets an admin narrow it);
+#   * NO Docker socket, NOT privileged, no added capabilities, and no Pantheon
+#     volume but the pairing one. Its port is not published: only Pantheon, on
+#     the compose network, can reach it.
+services:
+  workstation:
+    build:
+      context: ./workstation
+    command: ["--system", "ubuntu", "--bind", "0.0.0.0", "--port", "7040"]
+    hostname: workstation
+    environment:
+      # The group that may read the pairing token: the one Pantheon runs as.
+      - PANTHEON_WORKSTATION_PAIRING_GID=${PGID:-1000}
+    volumes:
+      - workstation-homes:/home
+      - workstation-pairing:/workstation-pairing
+    # Firefox's content processes share memory through /dev/shm, and Docker's
+    # 64 MB default crashes tabs. A tmpfs limit, not memory set aside.
+    shm_size: "2gb"
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import json,sys,urllib.request as u; sys.exit(0 if json.load(u.urlopen('http://127.0.0.1:7040/v1/health', timeout=5)).get('agent') == 'pantheon-workstation' else 1)"]
+      interval: 15s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+
+  pantheon:
+    environment:
+      - PANTHEON_WORKSTATION_URL=http://workstation:7040
+    volumes:
+      - workstation-pairing:/workstation-pairing:ro
+
+volumes:
+  workstation-homes:
+  workstation-pairing:

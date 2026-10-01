@@ -1,0 +1,4 @@
+# The image copies *.py, the skeleton and the Firefox files; nothing else here
+# belongs in it (`P20-01`).
+__pycache__/
+*.pyc

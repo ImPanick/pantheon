@@ -1,0 +1,37 @@
+<?xml version="1.0"?>
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<!--
+  The workstation's desktop (P20-01): one tray along the bottom with a
+  Terminal and a Firefox button, a task list and a clock, and one terminal
+  open at start so the first screenshot already shows somewhere to type.
+  Right-click the desktop for the same two programs. This file is in the
+  account's home; "Reset to clean" puts it back.
+-->
+<JWM>
+    <RootMenu onroot="3">
+        <Program label="Terminal">xterm</Program>
+        <Program label="Firefox">firefox</Program>
+    </RootMenu>
+    <Tray x="0" y="-1" height="32" autohide="off">
+        <TrayButton label="Terminal">exec:xterm</TrayButton>
+        <Spacer width="6"/>
+        <TrayButton label="Firefox">exec:firefox</TrayButton>
+        <Spacer width="12"/>
+        <TaskList maxwidth="260"/>
+        <Clock format="%H:%M"></Clock>
+    </Tray>
+    <WindowStyle>
+        <Font>DejaVu Sans-10</Font>
+    </WindowStyle>
+    <TrayStyle>
+        <Font>DejaVu Sans-10</Font>
+    </TrayStyle>
+    <MenuStyle>
+        <Font>DejaVu Sans-10</Font>
+    </MenuStyle>
+    <Desktops width="1" height="1">
+        <Background type="solid">#2b3440</Background>
+    </Desktops>
+    <FocusModel>click</FocusModel>
+    <StartupCommand>xterm</StartupCommand>
+</JWM>

@@ -21,8 +21,14 @@ is made, how a command runs *as* it, where its screen is — is a `System`:
     every command runs as the daemon's own user. What a remote machine runs
     when its operator does not want accounts made on it, and what the tests
     drive, so the tests exercise this file and not a copy of it.
-  * The Ubuntu image's system (`P20-01`, added beside this one): a Unix account
-    per person, an X display per person, `sudo` as a switch.
+  * `UbuntuSystem` (`workstation/ubuntu.py`, `P20-01`): a Unix account per
+    person, an X display per person, `sudo` as a switch.
+
+**EVERY FILE OPERATION HAPPENS INSIDE `System.acting_as`** (`P20-01`). On a
+backend whose daemon is root, that is the account's own filesystem identity:
+`resolve` checks a path once, and a root daemon that then opens it can be led
+out of the home by a directory swapped for a symlink in between. Acting as the
+account, the kernel checks every open as the account, so a race wins nothing.
 
 A screen is its own small interface (`grab`, `send`) so a system without one
 answers `unavailable` with a sentence rather than a stack trace.
@@ -31,6 +37,7 @@ from __future__ import annotations
 
 import base64
 import collections
+import contextlib
 import hashlib
 import hmac
 import json
@@ -168,6 +175,19 @@ class System:
 
     def own(self, account: str, paths: Iterable[Path]) -> None:
         """Give paths the daemon created to the account (a no-op for one user)."""
+
+    def acting_as(self, account: str):
+        """A context in which the daemon's file operations are the account's
+        (module docstring). One user: the daemon already is it."""
+        return contextlib.nullcontext()
+
+    def wake(self, account: str) -> Optional[str]:
+        """Bring up what the account's session has beyond its home — its
+        display — and name it. Called by `ensure`, not by every command, so a
+        person who only uses the shell does not pay for a desktop. A failure
+        here is reported by the screen when it is used, never by `ensure`: a
+        broken display must not take the shell down with it."""
+        return None
 
     def set_sudo(self, on: bool) -> None:
         self.sudo = bool(on)
@@ -314,7 +334,8 @@ class Workstation:
 
     def ensure(self, account: str) -> Dict:
         made = self.system.ensure(account)
-        return {"account": account, "home": made["home"], "display": made.get("display"),
+        display = self.system.wake(account) or made.get("display")
+        return {"account": account, "home": made["home"], "display": display,
                 "created": bool(made.get("created")), "sudo": self.system.sudo,
                 "screen": [P.SCREEN_WIDTH, P.SCREEN_HEIGHT],
                 "holder": self.holder(account)["holder"]}
@@ -385,20 +406,22 @@ class Workstation:
         if stdin is not None and not isinstance(stdin, str):
             raise WorkstationError("bad_request", "“stdin” is text.")
         self.system.ensure(account)
-        cwd = self.resolve(account, body.get("cwd"))
-        if not cwd.is_dir():
-            raise WorkstationError("not_found", f"{body.get('cwd')} is not a directory in the workstation.")
         prefix, env = self.system.run_as(account)
         env = {**env, **env_in}
-        # The script goes through a file, not `-c`: one argument is capped at
-        # 128 KiB by the kernel, and a heredoc that writes a file is longer.
-        scratch = self.system.home(account) / ".cache" / "pantheon-run"
-        scratch.mkdir(parents=True, exist_ok=True)
-        self.system.own(account, [scratch.parent, scratch])
-        suffix = ".py" if shell == "python" else ".sh"
-        script = scratch / f"{secrets.token_hex(8)}{suffix}"
-        script.write_text(command, encoding="utf-8")
-        self.system.own(account, [script])
+        with self.system.acting_as(account):
+            cwd = self.resolve(account, body.get("cwd"))
+            if not cwd.is_dir():
+                raise WorkstationError("not_found",
+                                       f"{body.get('cwd')} is not a directory in the workstation.")
+            # The script goes through a file, not `-c`: one argument is capped
+            # at 128 KiB by the kernel, and a heredoc that writes a file is longer.
+            scratch = self.system.home(account) / ".cache" / "pantheon-run"
+            scratch.mkdir(parents=True, exist_ok=True)
+            self.system.own(account, [scratch.parent, scratch])
+            suffix = ".py" if shell == "python" else ".sh"
+            script = scratch / f"{secrets.token_hex(8)}{suffix}"
+            script.write_text(command, encoding="utf-8")
+            self.system.own(account, [script])
         interpreter = ["python3", "-u"] if shell == "python" else ["bash"]
         argv = [*prefix, *interpreter, str(script)]
         return argv, env, cwd, timeout, stdin, script
@@ -416,7 +439,7 @@ class Workstation:
                 stdin=subprocess.PIPE if stdin is not None else subprocess.DEVNULL,
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         except OSError as e:
-            script.unlink(missing_ok=True)
+            self._discard(account, script)
             raise WorkstationError("unavailable", f"The command could not be started: {e}.")
 
         def pump(stream, tail: _Tail, label: str) -> None:
@@ -444,38 +467,47 @@ class Workstation:
             _kill_group(proc)
         for t in readers:
             t.join(timeout=5)
-        script.unlink(missing_ok=True)
+        self._discard(account, script)
         code = proc.returncode if proc.returncode is not None else -9
         return {"stdout": out.text(), "stderr": err.text(),
                 "exit_code": 124 if timed_out else code, "timed_out": timed_out,
                 "truncated": out.truncated or err.truncated,
                 "duration_ms": int((time.monotonic() - started) * 1000), "cwd": str(cwd)}
 
+    def _discard(self, account: str, script: Path) -> None:
+        with self.system.acting_as(account):
+            script.unlink(missing_ok=True)
+
     # -- files ------------------------------------------------------------------
 
     def read(self, account: str, body: Dict) -> Dict:
         self.system.ensure(account)
-        path = self.resolve(account, body.get("path"), default_home=False)
-        if not path.is_file():
-            raise WorkstationError("not_found", f"There is no file at {body.get('path')}.")
         offset = _int(body.get("offset"), 0, "offset")
         max_bytes = min(_int(body.get("max_bytes"), P.MAX_FILE_BYTES, "max_bytes"), P.MAX_FILE_BYTES)
-        size = path.stat().st_size
-        with open(path, "rb") as f:
-            f.seek(max(0, offset))
-            data = f.read(max(0, max_bytes))
+        with self.system.acting_as(account):
+            path = self.resolve(account, body.get("path"), default_home=False)
+            if not path.is_file():
+                raise WorkstationError("not_found", f"There is no file at {body.get('path')}.")
+            size = path.stat().st_size
+            with open(path, "rb") as f:
+                f.seek(max(0, offset))
+                data = f.read(max(0, max_bytes))
         return {"path": str(path), "size": size, "data_b64": base64.b64encode(data).decode(),
                 "truncated": max(0, offset) + len(data) < size}
 
     def write(self, account: str, body: Dict) -> Dict:
         self.system.ensure(account)
-        path = self.resolve(account, body.get("path"), default_home=False)
         try:
             data = base64.b64decode(str(body.get("data_b64") or ""), validate=True)
         except (ValueError, TypeError):
             raise WorkstationError("bad_request", "“data_b64” is not base64.")
         if len(data) > P.MAX_FILE_BYTES:
             raise WorkstationError("too_large", f"A file is at most {P.MAX_FILE_BYTES:,} bytes.")
+        with self.system.acting_as(account):
+            return self._write(account, body, data)
+
+    def _write(self, account: str, body: Dict, data: bytes) -> Dict:
+        path = self.resolve(account, body.get("path"), default_home=False)
         if path.is_dir():
             raise WorkstationError("bad_request", f"{body.get('path')} is a directory.")
         made: List[Path] = []
@@ -496,6 +528,10 @@ class Workstation:
 
     def list(self, account: str, body: Dict) -> Dict:
         self.system.ensure(account)
+        with self.system.acting_as(account):
+            return self._list(account, body)
+
+    def _list(self, account: str, body: Dict) -> Dict:
         root = self.resolve(account, body.get("path"))
         if not root.is_dir():
             raise WorkstationError("not_found", f"{body.get('path') or '~'} is not a directory.")
@@ -622,6 +658,20 @@ def _validated_action(body: Dict) -> Dict:
     return out
 
 
+def _os_error(e: OSError) -> WorkstationError:
+    where = f" ({e.filename})" if getattr(e, "filename", None) else ""
+    if isinstance(e, PermissionError):
+        return WorkstationError("forbidden", f"The workstation account may not do that{where}: "
+                                             f"{e.strerror or 'permission denied'}.")
+    if isinstance(e, FileNotFoundError):
+        return WorkstationError("not_found", f"Nothing is there{where}.")
+    if isinstance(e, (IsADirectoryError, NotADirectoryError, FileExistsError)):
+        return WorkstationError("bad_request", f"{e.strerror or 'That path is the wrong kind'}{where}.")
+    logger.warning("filesystem error: %s", e)
+    return WorkstationError("internal", f"The workstation's filesystem said: "
+                                        f"{e.strerror or type(e).__name__}{where}.")
+
+
 def _kill_group(proc: subprocess.Popen) -> None:
     try:
         os.killpg(proc.pid, signal.SIGKILL)
@@ -726,6 +776,13 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, handler())
         except WorkstationError as e:
             self._fail(e)
+        except ConnectionError:
+            # The caller hung up before the answer; there is nobody to tell.
+            logger.info("workstation route %s: the caller went away", path)
+        except OSError as e:
+            # What the filesystem said, as the protocol says it: a file the
+            # account may not touch is not a daemon failure.
+            self._fail(_os_error(e))
         except Exception as e:  # noqa: BLE001 — the caller gets a sentence, the log gets the trace
             logger.exception("workstation route %s failed", path)
             self._fail(WorkstationError("internal", f"The workstation failed: {type(e).__name__}."))

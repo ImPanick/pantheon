@@ -1,0 +1,82 @@
+{
+  "policies": {
+    "DisableTelemetry": true,
+    "SkipTermsOfUse": true,
+    "DisableFirefoxStudies": true,
+    "DisableAppUpdate": true,
+    "AppAutoUpdate": false,
+    "DisableSystemAddonUpdate": true,
+    "ExtensionUpdate": false,
+    "DisablePocket": true,
+    "DontCheckDefaultBrowser": true,
+    "DisableFeedbackCommands": true,
+    "DisableFirefoxAccounts": true,
+    "DisableSetDesktopBackground": true,
+    "CaptivePortal": false,
+    "NetworkPrediction": false,
+    "DNSOverHTTPS": {"Enabled": false, "Locked": true},
+    "EncryptedMediaExtensions": {"Enabled": false, "Locked": true},
+    "SearchSuggestEnabled": false,
+    "OverrideFirstRunPage": "",
+    "OverridePostUpdatePage": "",
+    "NoDefaultBookmarks": true,
+    "Homepage": {"URL": "about:blank", "StartPage": "homepage"},
+    "NewTabPage": false,
+    "FirefoxHome": {
+      "Search": false, "TopSites": false, "SponsoredTopSites": false, "Highlights": false,
+      "Pocket": false, "SponsoredPocket": false, "Snippets": false, "Stories": false,
+      "SponsoredStories": false, "Locked": true
+    },
+    "FirefoxSuggest": {
+      "WebSuggestions": false, "SponsoredSuggestions": false, "ImproveSuggest": false,
+      "Locked": true
+    },
+    "UserMessaging": {
+      "ExtensionRecommendations": false, "FeatureRecommendations": false,
+      "UrlbarInterventions": false, "SkipOnboarding": true, "MoreFromMozilla": false,
+      "FirefoxLabs": false, "Locked": true
+    },
+    "Preferences": {
+      "browser.safebrowsing.malware.enabled": {"Value": false, "Status": "locked"},
+      "browser.safebrowsing.phishing.enabled": {"Value": false, "Status": "locked"},
+      "browser.safebrowsing.downloads.enabled": {"Value": false, "Status": "locked"},
+      "browser.safebrowsing.downloads.remote.enabled": {"Value": false, "Status": "locked"},
+      "browser.safebrowsing.blockedURIs.enabled": {"Value": false, "Status": "locked"},
+      "browser.safebrowsing.update.enabled": {"Value": false, "Status": "locked"},
+      "browser.region.network.url": {"Value": "", "Status": "locked"},
+      "browser.region.update.enabled": {"Value": false, "Status": "locked"},
+      "browser.search.geoSpecificDefaults": {"Value": false, "Status": "locked"},
+      "browser.topsites.contile.enabled": {"Value": false, "Status": "locked"},
+      "browser.discovery.enabled": {"Value": false, "Status": "locked"},
+      "browser.aboutwelcome.enabled": {"Value": false, "Status": "locked"},
+      "browser.shopping.experience2023.enabled": {"Value": false, "Status": "locked"},
+      "browser.newtabpage.activity-stream.feeds.telemetry": {"Value": false, "Status": "locked"},
+      "browser.newtabpage.activity-stream.telemetry": {"Value": false, "Status": "locked"},
+      "browser.ping-centre.telemetry": {"Value": false, "Status": "locked"},
+      "browser.urlbar.speculativeConnect.enabled": {"Value": false, "Status": "locked"},
+      "browser.places.speculativeConnect.enabled": {"Value": false, "Status": "locked"},
+      "browser.startup.homepage_override.mstone": {"Value": "ignore", "Status": "locked"},
+      "datareporting.policy.dataSubmissionEnabled": {"Value": false, "Status": "locked"},
+      "dom.push.connection.enabled": {"Value": false, "Status": "locked"},
+      "extensions.getAddons.cache.enabled": {"Value": false, "Status": "locked"},
+      "media.gmp-gmpopenh264.enabled": {"Value": false, "Status": "locked"},
+      "media.gmp-gmpopenh264.autoupdate": {"Value": false, "Status": "locked"},
+      "media.gmp-manager.url": {"Value": "", "Status": "locked"},
+      "media.gmp-manager.chromium-update-url": {"Value": "", "Status": "locked"},
+      "media.gmp-provider.enabled": {"Value": false, "Status": "locked"},
+      "media.gmp-widevinecdm.enabled": {"Value": false, "Status": "locked"},
+      "media.gmp-widevinecdm.visible": {"Value": false, "Status": "locked"},
+      "media.gmp-widevinecdm.allow-chromium-update": {"Value": false, "Status": "locked"},
+      "network.connectivity-service.enabled": {"Value": false, "Status": "locked"},
+      "network.captive-portal-service.enabled": {"Value": false, "Status": "locked"},
+      "network.prefetch-next": {"Value": false, "Status": "locked"},
+      "network.dns.disablePrefetch": {"Value": true, "Status": "locked"},
+      "network.http.speculative-parallel-limit": {"Value": 0, "Status": "locked"},
+      "network.trr.mode": {"Value": 5, "Status": "locked"},
+      "network.dns.localDomains": {
+        "Value": "firefox.settings.services.mozilla.com,firefox-settings-attachments.cdn.mozilla.net,normandy.cdn.mozilla.net",
+        "Status": "locked"
+      }
+    }
+  }
+}

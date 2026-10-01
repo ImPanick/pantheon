@@ -179,6 +179,11 @@ ERRORS: Dict[str, int] = {
     "bad_request": 400,
     "unauthorized": 401,
     "outside_home": 403,
+    # `P20-01`, added: the path is inside the home (or the jail is lifted) and
+    # the account itself may not touch it — a file it made read-only, a
+    # directory it cannot search. Not `outside_home`: that answer would send a
+    # person looking for the wrong fix (`Law 10`).
+    "forbidden": 403,
     "not_found": 404,
     "busy": 409,          # a person holds the display (`control`)
     "too_large": 413,
