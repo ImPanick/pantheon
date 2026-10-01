@@ -632,11 +632,17 @@ def consecutive_failures(db, task_id: str, *, before_run_id: str = None,
     worked. `skipped` and `aborted` are not failures and are not successes
     either — they end the streak only in the sense that they are not part of it,
     so they stop the count rather than resetting it to zero.
+
+    `B1059`. A DRY run is not part of the history this reads: it is recorded
+    `skipped` (`P8-33`), so one *Show me what this would do* between two
+    failures stopped the count at zero and handed out a fresh retry budget and
+    the first rung of `P15-08`'s ladder — a side effect of the one button that
+    promises none. `real_run_clause` is `is_dry_run`, negated, in SQL (`B1054`).
     """
     from core.database import TaskRun
 
     q = (db.query(TaskRun.id, TaskRun.status)
-           .filter(TaskRun.task_id == task_id)
+           .filter(TaskRun.task_id == task_id, real_run_clause(TaskRun))
            .order_by(TaskRun.started_at.desc(), TaskRun.id.desc())
            .limit(limit))
     n = 0
