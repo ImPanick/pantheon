@@ -1,6 +1,28 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 export const TOOL_WINDOW_SELECTOR = 'body > .modal, body > .research-overlay, body > .notes-pane-backdrop';
 
+// `B1068` — the z a window was given, not the one it is passing through.
+// Under `prefers-reduced-motion`, `P1-12`'s guard (style.css) gives every
+// element a 0.01ms transition, and on a window whose `transition-property` is
+// the initial `all` — the Workbench and the Forge — that includes `z-index`:
+// until a frame is painted, `getComputedStyle().zIndex` answers the value it
+// is moving FROM. `ui.js`'s auto-promote read it inside its own
+// MutationObserver, never saw the window on top, and raised it again, forever,
+// in microtasks: measured 501 writes before a probe's breaker, no frame ever
+// painted, the tab frozen. Every z this product gives a window is written
+// inline with `!important`, which nothing but a transition outranks, so that
+// is the settled value; a window without one is read as before. `NaN` when
+// neither says (callers already treat that as 0).
+export function toolWindowZ(el, getStyle = globalThis.getComputedStyle) {
+  const own = el?.style;
+  if (own && typeof own.getPropertyPriority === 'function'
+      && own.getPropertyPriority('z-index') === 'important') {
+    const z = parseInt(own.getPropertyValue('z-index'), 10);
+    if (Number.isFinite(z)) return z;
+  }
+  return typeof getStyle === 'function' ? parseInt(getStyle(el).zIndex, 10) : NaN;
+}
+
 export function topToolWindowZ(options = {}) {
   const {
     exclude = null,
@@ -15,7 +37,7 @@ export function topToolWindowZ(options = {}) {
     if (el.classList?.contains('hidden') || el.classList?.contains('modal-minimized')) return;
     const cs = getStyle(el);
     if (cs.display === 'none' || cs.visibility === 'hidden') return;
-    const z = parseInt(cs.zIndex, 10);
+    const z = toolWindowZ(el, () => cs);
     if (Number.isFinite(z)) top = Math.max(top, z);
   });
   return top;

@@ -86,7 +86,11 @@ _STUBS = {
         "export function clearRightDock(){}\nexport function applyEdgeDock(){}\n"
     ),
     "escMenuStack.js": "export function dismissOrRemove(){}\n",
-    "toolWindowZOrder.js": "export function nextToolWindowZ(){ return 1; }\n",
+    # `B1068`: `modalManager.js` reads a window's own z through `toolWindowZ`.
+    "toolWindowZOrder.js": (
+        "export function nextToolWindowZ(){ return 1; }\n"
+        "export function toolWindowZ(){ return NaN; }\n"
+    ),
 }
 
 _SHIM = r"""

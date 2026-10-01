@@ -9,7 +9,7 @@ import themeModule from './theme.js';
 import * as Modals from './modalManager.js?v=20261001workbench2';
 import spinnerModule from './spinner.js';
 import { registerMenuDismiss, dismissTopMenu, dismissOrRemove } from './escMenuStack.js';
-import { nextToolWindowZ, topToolWindowZ } from './toolWindowZOrder.js';
+import { nextToolWindowZ, topToolWindowZ, toolWindowZ } from './toolWindowZOrder.js';
 import { prefersReducedMotion } from './motion.js';
 import { esc } from './util/escapeHtml.js';
 
@@ -1493,7 +1493,7 @@ if ('ontouchstart' in window) {
   const raiseModalToFront = (modal, floor = 250) => {
     const z = nextToolWindowZ({
       exclude: modal,
-      current: getComputedStyle(modal).zIndex,
+      current: toolWindowZ(modal),   // B1068: the z it was given, not one mid-transition
       floor,
     });
     modal.style.setProperty('z-index', String(z), 'important');
@@ -1600,7 +1600,10 @@ if (!window._odyEscExpandGuard) {
     // Re-entry guard: setting style.zIndex itself fires the observer that
     // calls us back. Skip if this element is already pinned to the top
     // (matches the current counter) so we don't spin into an infinite loop.
-    const cur = parseInt(getComputedStyle(m).zIndex, 10) || 0;
+    // `B1068`: read the z this element was given. The computed one lags a
+    // frame under reduced motion (see `toolWindowZ`), and this guard, reading
+    // it, spun forever on the Workbench and the Forge.
+    const cur = toolWindowZ(m) || 0;
     if (cur === _zCounter && cur > topToolWindowZ({ exclude: m })) return;
     const z = nextToolWindowZ({
       exclude: m,

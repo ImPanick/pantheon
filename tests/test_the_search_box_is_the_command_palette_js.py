@@ -145,6 +145,7 @@ _STUBS.update({
         "export const TOOL_WINDOW_SELECTOR = '';\n"
         "export function nextToolWindowZ(){ return 1; }\n"
         "export function topPortalZ(){ return globalThis.__topPortalZ || 10031; }\n"
+        "export function toolWindowZ(){ return NaN; }\n"  # `B1068`: `modalManager.js` imports it
     ),
     "sessions.js": (
         "globalThis.__selected = globalThis.__selected || [];\n"
