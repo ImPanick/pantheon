@@ -7399,9 +7399,22 @@ async def stream_agent_loop(
                     # turn ended on the apology below. `B1034`'s one rule, about
                     # this call's URL; for an unpinned run that is the primary's,
                     # and the number is the run's own, as before.
+                    #
+                    # w8-agent's B-NEW-4. Its temperature by the rounds' rule
+                    # too (`B935`): the salvage's own 0.3 is a default, so a
+                    # `pantheon-qwen3` candidate is held at its 0.2 and a
+                    # temperature the person chose is theirs here as on every
+                    # round (`D-2026-08-26-06`: a default never overrides a
+                    # choice). Measured before it, through the real app: a
+                    # qwen candidate's rounds were sent 0.2 and its salvage
+                    # 0.3; with Brainstorm's 0.9 chosen, rounds 0.9, salvage 0.3.
+                    _synth_temperature = pan_qwen_route_temperature(
+                        _requested_temperature if "temperature" in (explicit_params or ())
+                        else 0.3,
+                        model, explicit_params)
                     _raw = await llm_call_async(
                         url=endpoint_url, model=model, messages=_synth_messages,
-                        headers=headers, temperature=0.3,
+                        headers=headers, temperature=_synth_temperature,
                         max_tokens=candidate_max_tokens(_preset_max_tokens, endpoint_url),
                         max_tokens_floor=_preset_max_tokens,   # `B1029`
                         timeout=60,

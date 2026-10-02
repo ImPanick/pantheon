@@ -328,6 +328,7 @@ class _Handler(BaseHTTPRequestHandler):
     progress = None   # a `_Progress`, one per DemoModel
     conversations = None  # the script; `CONVERSATIONS` unless DemoModel is given one
     max_model_len = None  # served the way vLLM serves a model (`_vllm_refusal`), when set
+    model_id = MODEL_ID   # the name it lists and answers under
 
     def log_message(self, *args):  # quiet
         pass
@@ -342,7 +343,7 @@ class _Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path.rstrip("/").endswith("/models"):
-            entry = {"id": MODEL_ID, "object": "model", "owned_by": "pantheon-showcase"}
+            entry = {"id": self.model_id, "object": "model", "owned_by": "pantheon-showcase"}
             if self.max_model_len:
                 entry["max_model_len"] = self.max_model_len   # vLLM's `/v1/models` says it
             return self._json(200, {"object": "list", "data": [entry]})
@@ -364,7 +365,8 @@ class _Handler(BaseHTTPRequestHandler):
                              "roles": [m.get("role") for m in messages],
                              "conv": (conv or {}).get("key"), "first": first,
                              "messages": messages,
-                             "max_tokens": body.get("max_completion_tokens") or body.get("max_tokens")})
+                             "max_tokens": body.get("max_completion_tokens") or body.get("max_tokens"),
+                             "temperature": body.get("temperature")})
         refused = self._vllm_refusal(body)
         if refused:
             if self.log is not None:
@@ -384,7 +386,7 @@ class _Handler(BaseHTTPRequestHandler):
             if body.get("stream"):
                 return self._stream([{"content": text}], finish="stop")
             return self._json(200, {"id": "demo-" + uuid.uuid4().hex[:8], "object": "chat.completion",
-                                    "model": MODEL_ID,
+                                    "model": self.model_id,
                                     "choices": [{"index": 0, "finish_reason": "stop",
                                                  "message": {"role": "assistant", "content": text}}],
                                     "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2}})
@@ -453,7 +455,7 @@ class _Handler(BaseHTTPRequestHandler):
         cid = "demo-" + uuid.uuid4().hex[:8]
 
         def send(delta, reason=None):
-            chunk = {"id": cid, "object": "chat.completion.chunk", "model": MODEL_ID,
+            chunk = {"id": cid, "object": "chat.completion.chunk", "model": self.model_id,
                      "choices": [{"index": 0, "delta": delta, "finish_reason": reason}]}
             self.wfile.write(b"data: " + json.dumps(chunk).encode() + b"\n\n")
             self.wfile.flush()
@@ -485,14 +487,18 @@ class DemoModel:
 
     def __init__(self, port: int = 0, pace: float = 0.0, log: Optional[list] = None,
                  conversations: Optional[List[Dict[str, Any]]] = None,
-                 max_model_len: Optional[int] = None):
+                 max_model_len: Optional[int] = None, model_id: str = MODEL_ID):
         """`conversations` replaces the showcase's script (a test plays its own
         through the same model); `log` receives every request it is sent;
         `max_model_len` serves it the way vLLM serves a model with that window
-        (`_Handler._vllm_refusal`, `B1029`)."""
+        (`_Handler._vllm_refusal`, `B1029`); `model_id` is the name it lists and
+        answers under — a test that needs Pantheon to treat it as one model
+        family or another (a `pantheon-qwen3` finetune, w8-agent's B-NEW-4)
+        gives it that family's name. The showcase keeps `MODEL_ID`."""
         handler = type("Handler", (_Handler,), {"pace": pace, "log": log, "progress": _Progress(),
                                                 "conversations": conversations,
-                                                "max_model_len": max_model_len})
+                                                "max_model_len": max_model_len,
+                                                "model_id": model_id})
         self.httpd = ThreadingHTTPServer(("127.0.0.1", port), handler)
         self.httpd.daemon_threads = True
         self.port = self.httpd.server_address[1]
