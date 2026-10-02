@@ -1769,6 +1769,63 @@ async function initEmailConfirm() {
   msg.textContent = describe(input.checked);
 }
 
+/* ── How often the inbox is checked (`B-NEW`, f-mail) ──
+   `email_inbox_check_minutes` (`B1137`: the background check that runs "when
+   mail arrives" with nobody looking) had no field; an operator who wanted it
+   off or faster had to know the key. The server clamps it (0 – 1440,
+   `int_setting_ranges`) and the field reads back what was kept rather than
+   holding a second copy of the range. */
+async function initInboxCheckInterval() {
+  var input = el('set-emailInboxCheck');
+  var msg = el('set-emailInboxCheckMsg');
+  if (!input || !msg) return;
+  var kept = null;
+
+  function describe(n) {
+    if (n > 0) return 'Every ' + (n === 1 ? 'minute' : n + ' minutes') + '.';
+    return 'Off. A workflow that starts when mail arrives runs only when the Email window lists the inbox.';
+  }
+  function show(n) {
+    kept = n;
+    input.value = String(n);
+    msg.textContent = describe(n);
+    msg.style.color = '';
+  }
+  async function read() {
+    var res = await fetch('/api/auth/settings', { credentials: 'same-origin' });
+    var settings = await res.json();
+    var n = Number(settings.email_inbox_check_minutes);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  try {
+    var n = await read();
+    if (n !== null) show(n);
+  } catch (e) { /* saving reports its own errors */ }
+
+  input.addEventListener('change', async function() {
+    var asked = Number(input.value);
+    if (input.value.trim() === '' || !Number.isInteger(asked)) {
+      if (kept !== null) input.value = String(kept);
+      msg.textContent = 'A whole number of minutes; 0 turns it off.';
+      msg.style.color = 'var(--red)';
+      return;
+    }
+    try {
+      var res = await _postSettings({ email_inbox_check_minutes: asked });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      var stored = await read();
+      if (stored === null) throw new Error('not read back');
+      show(stored);
+      if (stored !== asked) msg.textContent += ' (' + asked + ' is outside the range, so it was kept at ' + stored + '.)';
+    } catch (e) {
+      if (kept !== null) input.value = String(kept);
+      msg.textContent = 'Failed to save — left unchanged.';
+      msg.style.color = 'var(--red)';
+    }
+  });
+}
+
 /* ── Switches a deploy can also set (B95) ──
    `metrics_enabled`, `searxng_widen_engines` and `allow_model_download` had no
    field, no toggle and no label anywhere in `static/` — measured 2026-09-15 by
@@ -2758,6 +2815,7 @@ function initAll() {
   initAgentSettings();
   initSkillAudit();   // H16
   initEmailConfirm();   // H18 / B42
+  initInboxCheckInterval();   // `B-NEW` (f-mail)
   initEnvBackedFlags();   // B95
   initAgentBudget();   // H18
   initTaskModel();     // H18

@@ -2655,6 +2655,26 @@
             </div>
           </div>
 
+          <!-- `B-NEW` (f-mail: the inbox-check interval had no field).
+               `email_inbox_check_minutes` (`B1137`) was settable only through
+               `POST /api/auth/settings`, `manage_settings` or settings.json.
+               Admin-only, as the setting is; the upper bound is the server's
+               (`int_setting_ranges`), and the field shows what it kept. -->
+          <div class="admin-card admin-only">
+            <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>Checking for new mail</h2>
+            <div class="admin-toggle-sub" style="margin-bottom:8px">
+              Pantheon looks in every inbox on this schedule, so a workflow that
+              starts when mail arrives runs without the Email window open.
+            </div>
+            <div class="settings-col">
+              <div class="settings-row">
+                <label class="settings-label" for="set-emailInboxCheck">Minutes between checks (0 is off)</label>
+                <input type="number" id="set-emailInboxCheck" class="settings-input" min="0" step="1" inputmode="numeric" style="max-width:96px;">
+              </div>
+              <div id="set-emailInboxCheckMsg" style="font-size:11px;color:color-mix(in srgb, var(--fg) 45%, transparent);"></div>
+            </div>
+          </div>
+
           <div class="admin-card">
             <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>Email Accounts</h2>
             <div class="settings-row" style="align-items:center;">
