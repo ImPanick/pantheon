@@ -150,12 +150,14 @@ def test_code_changed_between_a_list_and_a_call_is_not_run(client, station, monk
     assert not (_home(station, "ann") / "it-ran").exists()
 
 
-@pytest.mark.parametrize("plant", ["a sibling module", "bytecode in __pycache__", "a symlink"])
+@pytest.mark.parametrize("plant", ["a sibling module", "bytecode in __pycache__", "a symlink",
+                                   "a symlinked package"])
 def test_code_beside_the_server_is_pinned_too(client, station, monkeypatch, plant):
     """`server.py` imports from its own folder first: a `json.py` planted
     beside it would replace the standard library's, a cached `.pyc` would be
-    loaded in place of a module's source, a symlink can point anywhere. Each
-    moves the fingerprint, so each takes it off the air."""
+    loaded in place of a module's source, a symlink can point anywhere — a
+    symlinked folder is a package whose code lives outside, which the walk
+    does not enter. Each moves the fingerprint, so each takes it off the air."""
     reg = _make(client).json()["registration"]
     _register(client, reg)
     _relay_world(station, monkeypatch)
@@ -165,8 +167,13 @@ def test_code_beside_the_server_is_pinned_too(client, station, monkeypatch, plan
     elif plant == "bytecode in __pycache__":
         (folder / "__pycache__").mkdir()
         (folder / "__pycache__" / "helper.cpython-311.pyc").write_bytes(b"\x00planted")
-    else:
+    elif plant == "a symlink":
         (folder / "elsewhere.py").symlink_to(station.tmp / "outside.py")
+    else:
+        outside = station.tmp / "outside-package"
+        outside.mkdir()
+        (outside / "__init__.py").write_text("")
+        (folder / "helper").symlink_to(outside, target_is_directory=True)
     started, status, tools, _ = _relay(reg, calls=())
     assert started is False and wm.changed_since_registered("weather") in str(status.get("error"))
 
