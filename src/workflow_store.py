@@ -77,6 +77,22 @@ SAVED_NEW_VERSION = "new_version"
 SAVED_UNCHANGED = "unchanged"
 SAVED_POSITIONS = "positions"
 SAVED_PINS = "pins"
+# `P22-19`. A person said these steps look right: marks cleared, never a version.
+SAVED_CHECKED = "checked"
+
+# `P22-19` / `P22-20` (`SLICE-EF-DESIGN` § 1.1, § 2). Said where a door is a
+# person's only (`auth_helpers.request_is_a_person`, `B1005`): an API token is
+# held by something else and the assistant's loopback is the assistant. The
+# `app_api` blocklist cannot see a request body, so these are enforced by the
+# routes asking that helper, with these sentences.
+ONLY_A_PERSON_CHECKS = ("Only you can say a step looks right, from the Workbench — not an API "
+                        "token and not your assistant.")
+ONLY_A_PERSON_FIXES = ("Only you can apply a fix, from the Workbench — not an API token and not "
+                       "your assistant.")
+
+# `P22-19` (§ 1.2). What a drafted or imported start falls back to, said: the
+# trigger is off, so a wrong guess runs nothing.
+START_LEFT_AT_DEFAULT = "When it starts was left at daily 09:00 — set it on the start."
 
 # The columns of a chain's first step that say when it runs — what a converted
 # workflow's trigger takes from it — are the engine's `TRIGGER_FIELDS`,
@@ -375,13 +391,18 @@ def first_admin_only_action(graph) -> str | None:
 
 
 def check_document(db, graph, *, owner: str | None, own_task_id: str | None,
-                   rows=None) -> dict:
+                   rows=None, resources=None) -> dict:
     """Parse and validate a document exactly as a save does. Returns it parsed.
 
     The order is the task routes': an action only an admin may schedule is a
     403 with the routes' own sentence (`admin_refusal_message`), then the
     engine's one rule (`validate_document` — the sentence a run would write,
     `Law 10`). Writes nothing.
+
+    `resources` (`P22-24`): what the steps are checked against, when it is not
+    what the owner can reach right now — only a file's import passes it, with
+    stand-ins for what this install is missing (`workflow_share`), so every
+    OTHER rule is asked while a missing Integration does not block it.
     """
     from src.task_action_policy import admin_refusal_message, owner_has_admin_task_privileges
     from src.workflow_document import DocumentError, parse_graph, validate_document
@@ -400,11 +421,12 @@ def check_document(db, graph, *, owner: str | None, own_task_id: str | None,
     # integrations, MCP tools, skills, the workstation (`WorkflowResources`,
     # `wf-effects`' `workflow_resources`) — exactly as the walker checks it at
     # run, so a refusal is the same sentence on the same field at both.
-    from src.workflow_effects import workflow_resources
+    if resources is None:
+        from src.workflow_effects import workflow_resources
+        resources = workflow_resources(owner)
     refusal = validate_document(parsed, owner=owner, tasks_by_id=tasks_by_id,
                                 crew_ids=crew_ids, owner_is_admin=is_admin,
-                                own_task_id=own_task_id,
-                                resources=workflow_resources(owner))
+                                own_task_id=own_task_id, resources=resources)
     if refusal is not None:
         raise refusal_from(refusal)
     return parsed
@@ -427,12 +449,16 @@ def clean_name(name, *, required: bool = True) -> str | None:
 # ── versions ─────────────────────────────────────────────────────────────────
 
 def _write_version(db, wf, graph: dict, *, source: str) -> None:
-    """The row for `wf.version`, then the oldest beyond the twenty pruned."""
-    from src.workflow_document import content_fingerprint, without_pins
+    """The row for `wf.version`, then the oldest beyond the twenty pruned.
+
+    `P22-19`: the engine's `version_graph` — no pins and no `unchecked` marks —
+    so a kept version never carries a mark and a restore never brings one back.
+    """
+    from src.workflow_document import content_fingerprint, version_graph
     _, _, _, WorkflowVersion = _models()
     db.add(WorkflowVersion(
         id=str(uuid.uuid4()), workflow_id=wf.id, version=wf.version, name=wf.name,
-        graph=json.dumps(without_pins(graph)),
+        graph=json.dumps(version_graph(graph)),
         fingerprint=content_fingerprint(wf.name, graph),
         source=source, created_at=_utcnow()))
     db.flush()
@@ -562,6 +588,46 @@ def _pins_kept(graph: dict, before: dict) -> dict:
     return out
 
 
+def _step_content(node: dict) -> str:
+    """What a person changes when they change a step: its kind, its name and
+    its settings — `content_fingerprint`'s reading of one step, as text."""
+    return json.dumps([node.get("kind"), node.get("label"), node.get("config") or {}],
+                      sort_keys=True, default=str, ensure_ascii=False)
+
+
+def _marks_kept(graph: dict, before: dict) -> dict:
+    """`P22-19` (`SLICE-EF-DESIGN` § 1.1). A content save or a restore keeps
+    the `unchecked` marks on the stored steps — beside `_pins_kept`, and by the
+    same rule that a save's body cannot set or clear one:
+
+      * whatever mark the client sent is dropped — a save cannot set a mark,
+        and cannot clear one by sending none;
+      * a stored mark stays on a step whose kind, name and settings are
+        unchanged (moving it, or pinning a sample, is not a change);
+      * a step that was changed loses its mark: changing a step makes it the
+        editor's own. An edit is attributed to whoever made it, as every edit
+        is; the agent's edits are its own actions, gated as each of its
+        actions is, and saying "a person looked at this" without changing it
+        is `check_steps`', which is a person's only.
+    """
+    from src.workflow_document import UNCHECKED_KEY
+    stored = {}
+    for node in nodes_of(before):
+        mark = node.get(UNCHECKED_KEY)
+        if isinstance(mark, dict):
+            stored[str(node.get("id"))] = (_step_content(node), mark)
+    out = dict(graph)
+    nodes = []
+    for node in nodes_of(graph):
+        node = {k: v for k, v in node.items() if k != UNCHECKED_KEY}
+        kept = stored.get(str(node.get("id")))
+        if kept is not None and kept[0] == _step_content(node):
+            node[UNCHECKED_KEY] = kept[1]
+        nodes.append(node)
+    out["nodes"] = nodes
+    return out
+
+
 def save_document(db, wf, trigger, *, name, graph, base_version, check: bool = False) -> str:
     """Save a content edit. A new version only if the content moved.
 
@@ -576,7 +642,7 @@ def save_document(db, wf, trigger, *, name, graph, base_version, check: bool = F
     if check:
         return "check"
     before = stored_graph(wf)
-    parsed = _pins_kept(parsed, before)
+    parsed = _marks_kept(_pins_kept(parsed, before), before)
     moved = content_fingerprint(new_name, parsed) != content_fingerprint(wf.name, before)
     # Where steps sit is saved either way: the draft knows where they are.
     wf.graph = json.dumps(parsed)
@@ -609,7 +675,7 @@ def restore_version(db, wf, trigger, version, *, base_version) -> str:
     graph = json.loads(row.graph)
     parsed = check_document(db, graph, owner=wf.owner, own_task_id=trigger.id if trigger else None)
     before = stored_graph(wf)
-    parsed = _pins_kept(parsed, before)
+    parsed = _marks_kept(_pins_kept(parsed, before), before)
     if content_fingerprint(row.name, parsed) == content_fingerprint(wf.name, before):
         return SAVED_UNCHANGED
     wf.graph = json.dumps(parsed)
@@ -706,6 +772,32 @@ def save_pins(db, wf, trigger, pins) -> dict:
     return dropped
 
 
+def check_steps(db, wf, node_ids) -> str:
+    """`P22-19`. A person looked at these steps and says they look right: their
+    `unchecked` marks are cleared. Never a version — a mark is not content, so
+    the document a run would walk is the same before and after.
+
+    Who may say it is the route's question (`request_is_a_person`,
+    `ONLY_A_PERSON_CHECKS`); this is what it does. A step that has no mark is
+    already checked, and naming it again changes nothing. Returns
+    `SAVED_CHECKED`."""
+    from src.workflow_document import UNCHECKED_KEY
+    if (not isinstance(node_ids, list) or not node_ids
+            or not all(isinstance(i, str) and i for i in node_ids)):
+        raise WorkflowRefused(400, "checked must list the steps you looked at, by their ids.")
+    graph = stored_graph(wf)
+    by_id = {str(n.get("id")): n for n in nodes_of(graph)}
+    for node_id in node_ids:
+        if node_id not in by_id:
+            raise WorkflowRefused(
+                400, f"There is no step “{node_id}” in this workflow as saved. Nothing was checked.")
+    for node_id in node_ids:
+        by_id[node_id].pop(UNCHECKED_KEY, None)
+    wf.graph = json.dumps(graph)
+    db.commit()
+    return SAVED_CHECKED
+
+
 # ── create, convert, delete ──────────────────────────────────────────────────
 
 def _new_trigger(*, owner, name, fields: dict):
@@ -743,6 +835,179 @@ def create_workflow(db, *, owner, name=None):
     db.commit()
     return wf, trigger, [
         f"Made {quoted(name)}. It is switched off: it will not run until you switch it on."]
+
+
+# `P22-19` / `P22-24`. The words a start may store, closed (`TRIGGER_FIELDS`'
+# enums, as the task form offers them).
+START_TRIGGER_TYPES = ("schedule", "event", "webhook")
+START_SCHEDULES = ("once", "daily", "weekly", "monthly", "cron")
+START_TRIGGER_COUNT_MAX = 1000
+
+
+def _whole(value):
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
+def clean_trigger_fields(fields) -> tuple:
+    """`(fields, notes)` — a start the model drafted or a file carried, made
+    into one this Pantheon can store (`SLICE-EF-DESIGN` § 1.2, step 1).
+
+    Only `TRIGGER_FIELDS` (the engine's list, `Law 7`), and each one checked:
+    the closed words for the kind of start and the schedule, an event this
+    Pantheon fires (`EVENT_NAMES`), `HH:MM`, a day in range, a date, a cron
+    expression `croniter` reads and the floor allows (`cron_floor_problem`), a
+    time zone this machine knows (`valid_timezone`), and the task form's own
+    bounds for retries and the time limit. When WHEN IT STARTS cannot be used,
+    the whole start drops to the default (daily, 09:00) and that is said once;
+    anything else that cannot be used is dropped and said. Nothing here is a
+    control — the trigger is created switched off, so a wrong guess runs
+    nothing — and nothing restates the task routes' refusals.
+    """
+    from datetime import datetime as _dt
+    from src.event_bus import DEFAULT_TRIGGER_COUNT, EVENT_NAMES
+    from src.task_scheduler import (
+        MAX_TASK_TIMEOUT_SECONDS, MIN_TASK_TIMEOUT_SECONDS, cron_floor_problem, valid_timezone,
+    )
+    from src.workflow_document import TRIGGER_FIELDS, _TIME_RE
+
+    raw = {k: v for k, v in fields.items() if k in TRIGGER_FIELDS} if isinstance(fields, dict) else {}
+    out, notes = {}, []
+    usable = True
+    kind = raw.get("trigger_type") or "schedule"
+    if kind not in START_TRIGGER_TYPES:
+        usable = False
+    elif kind == "schedule":
+        schedule = raw.get("schedule") or "daily"
+        at = raw.get("scheduled_time") or "09:00"
+        start = {"trigger_type": "schedule", "schedule": schedule, "scheduled_time": at}
+        if schedule not in START_SCHEDULES or not isinstance(at, str) or not _TIME_RE.fullmatch(at):
+            usable = False
+        elif schedule in ("weekly", "monthly"):
+            day = _whole(raw.get("scheduled_day"))
+            lo, hi = (0, 6) if schedule == "weekly" else (1, 31)
+            if day is None or not lo <= day <= hi:
+                usable = False
+            start["scheduled_day"] = day
+        elif schedule == "once":
+            try:
+                when = _dt.fromisoformat(str(raw.get("scheduled_date") or "").replace("Z", ""))
+            except ValueError:
+                when = None
+            if when is None:
+                usable = False
+            else:
+                start["scheduled_date"] = when.replace(tzinfo=None)
+        elif schedule == "cron":
+            cron = raw.get("cron_expression")
+            try:
+                from croniter import croniter
+                croniter(cron)
+                usable = isinstance(cron, str) and cron_floor_problem(cron) is None
+            except Exception:  # noqa: BLE001 - any failure is "not a schedule this runs"
+                usable = False
+            start["cron_expression"] = cron
+        if usable:
+            out.update(start)
+    elif kind == "event":
+        event = raw.get("trigger_event")
+        if event not in EVENT_NAMES:
+            usable = False
+        else:
+            count = _whole(raw.get("trigger_count"))
+            if count is None or not 1 <= count <= START_TRIGGER_COUNT_MAX:
+                count = DEFAULT_TRIGGER_COUNT
+            out.update({"trigger_type": "event", "trigger_event": event, "trigger_count": count,
+                        "schedule": None, "scheduled_time": None})
+    else:
+        out.update({"trigger_type": "webhook", "schedule": None, "scheduled_time": None})
+    if not usable:
+        out = {}
+        notes.append(START_LEFT_AT_DEFAULT)
+    zone = raw.get("tz_name")
+    if isinstance(zone, str) and zone.strip():
+        if valid_timezone(zone.strip()):
+            out["tz_name"] = zone.strip()
+        else:
+            notes.append(f"The time zone {quoted(zone.strip()[:60])} is not one this machine "
+                         f"knows, so the start uses the server's. Set it on the start.")
+    retries = raw.get("max_retries")
+    if retries is not None:
+        if _whole(retries) is not None and 0 <= retries <= 10:
+            out["max_retries"] = retries or None
+        else:
+            notes.append("How many times it tries again was left unset — set it on the start.")
+    limit = raw.get("timeout_seconds")
+    if limit is not None:
+        if _whole(limit) is not None and (limit == 0 or MIN_TASK_TIMEOUT_SECONDS <= limit
+                                          <= MAX_TASK_TIMEOUT_SECONDS):
+            out["timeout_seconds"] = limit or None
+        else:
+            notes.append("Its time limit was left unset — set it on the start.")
+    if isinstance(raw.get("notifications_enabled"), bool):
+        out["notifications_enabled"] = raw["notifications_enabled"]
+    return out, notes
+
+
+def create_from_document(db, *, owner, name, graph, trigger_fields, origin, needs=None,
+                         resources=None, rows=None) -> tuple:
+    """`P22-19` / `P22-24` (`SLICE-EF-DESIGN` § 1.2). The one door for a
+    document that arrives from outside — the model's draft, a file. Returns
+    `(wf, trigger, notes)`. In order:
+
+      1. `clean_trigger_fields` — the start, made storable, with what it left out said;
+      2. `_new_trigger` — created switched OFF, and a webhook's token MINTED
+         there: a token, a status or an id the model or the file carried is
+         never read (only `TRIGGER_FIELDS` reach the row);
+      3. `check_document` — the real one: the admin gate, `validate_document`
+         and what the owner can reach (`resources` only for a file's import,
+         with stand-ins for what is missing);
+      4. every step marked `unchecked` with its `origin`, and the `needs` the
+         import found for it — whatever pin or mark the document carried is
+         dropped first, so neither door depends on its caller to strip them;
+      5. version 1, source `drafted` or `imported` (`version_graph`: no marks).
+
+    Nothing else sets a mark. Raises `WorkflowRefused`, writing nothing, when
+    the document is refused.
+    """
+    from src.workflow_document import (
+        ORIGIN_DRAFTED, UNCHECKED_KEY, UNCHECKED_ORIGINS, VERSION_SOURCE_DRAFTED,
+        VERSION_SOURCE_IMPORTED,
+    )
+    if origin not in UNCHECKED_ORIGINS:
+        raise ValueError(f"not an origin a mark can have: {origin!r}")
+    _, _, Workflow, _ = _models()
+    name = clean_name(name, required=False) or NEW_WORKFLOW_NAME
+    fields, notes = clean_trigger_fields(trigger_fields)
+    trigger = _new_trigger(owner=owner, name=name, fields=fields)
+    if isinstance(graph, dict):
+        graph = dict(graph)
+        graph["nodes"] = [{k: v for k, v in n.items() if k not in (UNCHECKED_KEY, "pinned")}
+                          if isinstance(n, dict) else n for n in (graph.get("nodes") or [])]
+    parsed = check_document(db, graph, owner=owner, own_task_id=trigger.id, rows=rows,
+                            resources=resources)
+    at = _utcnow().isoformat() + "Z"
+    needs = needs if isinstance(needs, dict) else {}
+    marked = dict(parsed)
+    marked["nodes"] = [dict(n, pinned=None, **{UNCHECKED_KEY: {
+        "origin": origin, "at": at, "needs": [dict(x) for x in needs.get(n["id"]) or ()]}})
+        for n in nodes_of(parsed)]
+    db.add(trigger)
+    db.flush()
+    wf = Workflow(id=str(uuid.uuid4()), owner=owner, name=name, task_id=trigger.id,
+                  graph=json.dumps(marked), version=1)
+    db.add(wf)
+    db.flush()
+    _write_version(db, wf, marked, source=(VERSION_SOURCE_DRAFTED if origin == ORIGIN_DRAFTED
+                                           else VERSION_SOURCE_IMPORTED))
+    db.commit()
+    count = len(marked["nodes"])
+    said = [f"Made {quoted(name)}, {count} step{'s' if count != 1 else ''}. It is switched off, "
+            f"and each step waits for you to check it before it can run."]
+    address = webhook_path(trigger)
+    if address:
+        said.append(f"Its webhook address is {address}. It answers once you switch the "
+                    f"workflow on.")
+    return wf, trigger, said + notes
 
 
 def webhook_path(task) -> str | None:
@@ -1049,6 +1314,14 @@ def switch_workflow(db, wf, trigger, *, on: bool, name_of=None) -> tuple:
         trigger.status = "paused"
         db.commit()
         return None, ["Switched off — it will not run until you switch it on."]
+    # `P22-19` (`SLICE-EF-DESIGN` § 1.1). Not while a step the model drafted,
+    # or one a file carried, waits for a person to check it — a 409 naming the
+    # steps (`reason: "unchecked"`, `node_ids`), so the Workbench can open them.
+    # The task route's resume and `manage_tasks resume` come through here.
+    from src.workflow_document import unchecked_refusal
+    marks = unchecked_refusal(stored_graph(wf))
+    if marks is not None:
+        raise refusal_from(marks, status=409)
     check_document(db, stored_graph(wf), owner=wf.owner, own_task_id=trigger.id)
     trigger.status = "active"
     trigger.next_run = _next_run_of(db, trigger)

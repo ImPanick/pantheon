@@ -53,7 +53,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
 from core.database import SessionLocal
-from src.auth_helpers import get_current_user
+from src.auth_helpers import get_current_user, request_is_a_person
 from src import workflow_store as store
 from src.workflow_store import WorkflowRefused
 
@@ -93,11 +93,36 @@ def _answers(handler):
     return wrapper
 
 
+# `P22-24` (`SLICE-EF-DESIGN` § 0.12). The most any body here may be: a
+# workflow file is the biggest thing posted (a document is at most
+# `WORKFLOW_GRAPH_MAX_BYTES`, 256 KiB, plus what it requires), and `_body` read
+# with no ceiling at all until this row — the whole stream, into memory.
+WORKFLOW_BODY_MAX_BYTES = 1024 * 1024
+BODY_TOO_BIG = "The request is larger than 1 MiB, so it was not read. Nothing was saved."
+
+
 async def _body(request: Request) -> dict:
+    """The JSON object a request carries, read under `WORKFLOW_BODY_MAX_BYTES`.
+    A declared length over it is refused before a byte is read; the stream is
+    then counted as it arrives (a chunked body declares nothing), and refused
+    one byte past the cap — `backup_routes._load_import_body`'s move."""
     try:
-        raw = await request.body()
+        declared = int(request.headers.get("content-length") or 0)
+    except (TypeError, ValueError):
+        declared = 0
+    if declared > WORKFLOW_BODY_MAX_BYTES:
+        raise WorkflowRefused(413, BODY_TOO_BIG)
+    raw = bytearray()
+    try:
+        async for chunk in request.stream():
+            raw.extend(chunk)
+            if len(raw) > WORKFLOW_BODY_MAX_BYTES:
+                raise WorkflowRefused(413, BODY_TOO_BIG)
+    except WorkflowRefused:
+        raise
     except Exception:
-        raw = b""
+        raw = bytearray()
+    raw = bytes(raw)
     if not raw.strip():
         return {}
     try:
@@ -227,24 +252,35 @@ def setup_workflow_routes(task_scheduler) -> APIRouter:
     @router.put("/{workflow_id}")
     @_answers
     async def save_workflow(request: Request, workflow_id: str, check: bool = False):
-        """Four bodies, each its own door to one fact (design § 5):
+        """Five bodies, each its own door to one fact (design § 5):
 
           {name?, graph, base_version}   a content save; a new version only if
                                          the content moved; 409 if stale
           the same with ?check=true      the same answers, writing nothing
           {positions}                    where steps sit; never a version
           {pins}                         samples pinned on steps; never a version
+          {checked: [node ids]}          `P22-19`: a person says these steps look
+                                         right; their marks go; never a version;
+                                         403 unless a person (`request_is_a_person`)
         """
         body = await _body(request)
-        sent = [key for key in ("graph", "positions", "pins") if key in body]
+        sent = [key for key in ("graph", "positions", "pins", "checked") if key in body]
         if len(sent) != 1:
             raise WorkflowRefused(
-                400, "Send one of: the document (graph, with base_version), positions, or pins.")
+                400, "Send one of: the document (graph, with base_version), positions, pins, "
+                     "or the steps you checked.")
         if check and sent[0] != "graph":
             raise WorkflowRefused(400, "?check=true checks a document; send its graph.")
+        if sent[0] == "checked" and not request_is_a_person(request):
+            # `SLICE-EF-DESIGN` § 1.1. Asked before the workflow is even read:
+            # the `app_api` blocklist cannot see a body, so this is the control.
+            raise WorkflowRefused(403, store.ONLY_A_PERSON_CHECKS)
         db = SessionLocal()
         try:
             wf = store.owned_workflow(db, workflow_id, _owner(request))
+            if sent[0] == "checked":
+                saved = store.check_steps(db, wf, body["checked"])
+                return {"workflow": doc(db, wf), "saved": saved}
             if sent[0] == "positions":
                 saved = store.save_positions(db, wf, body["positions"])
                 return {"saved": saved, "version": wf.version}

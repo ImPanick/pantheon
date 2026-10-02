@@ -5246,6 +5246,16 @@ class TaskScheduler:
                          if r.workflow_version is not None), None)
                    if resuming else None)
         wf, graph, refused = self._load_workflow(db, task, version=version)
+        if not refused and not resuming:
+            # `P22-19` (`SLICE-EF-DESIGN` § 1.1). A step the model drafted, or
+            # one a file carried, runs only after a person has checked it. The
+            # switch refuses first; this holds for a marked document whose
+            # trigger is on anyway — written straight to the database, or run
+            # with *Run now* — and ends the run before any step starts. The
+            # dry run and *Test this step* do not come through here.
+            from src import workflow_document as wd
+            marks = wd.unchecked_refusal(graph)
+            refused = marks.sentence if marks is not None else None
         if refused:
             self._record_run_step(run_id, kind="progress", detail=refused)
             if resuming:
