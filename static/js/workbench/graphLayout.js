@@ -515,10 +515,18 @@ export function fitView(bounds, width, height, pad = MARGIN) {
     return { zoom: 1, x: _r(pad - ((bounds && bounds.x) || 0)), y: _r(pad - ((bounds && bounds.y) || 0)) };
   }
   const zoom = clampZoom(Math.min(1, (w - pad * 2) / bounds.w, (h - pad * 2) / bounds.h));
+  // `B1113`. Centred when it fits. When it does not — the zoom is at its floor
+  // and the graph is still wider (or taller) than the viewport — its first
+  // column (row) sits at the padding: centring put the start off the left
+  // edge (measured at 390 px: a six-step run's "Starts" at x −75…6), and the
+  // start is where a person begins reading. Panning reaches the rest.
+  const lay = (room, size, from) => (size * zoom > room - pad * 2
+    ? pad - from * zoom
+    : (room - size * zoom) / 2 - from * zoom);
   return {
     zoom: Math.round(zoom * 1000) / 1000,
-    x: _r((w - bounds.w * zoom) / 2 - bounds.x * zoom),
-    y: _r((h - bounds.h * zoom) / 2 - bounds.y * zoom),
+    x: _r(lay(w, bounds.w, bounds.x)),
+    y: _r(lay(h, bounds.h, bounds.y)),
   };
 }
 
