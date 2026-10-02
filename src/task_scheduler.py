@@ -5741,6 +5741,8 @@ class TaskScheduler:
             try:
                 await step
             except BaseException:
+                # Each step was just cancelled; how it ended is written below,
+                # as its record (`waiting {kind: idle}` or `aborted`).
                 pass
         for step, (node, rec, slot) in list(w.running.items()):
             steps, model = self.run_steps(slot), self.run_model(slot)
