@@ -194,10 +194,18 @@ function _syncTabs() {
  * room on show is marked so the arbiter asks the stack (`B1052`). Coming back
  * to the room takes the guard away, and its own layers are on top again.
  */
+/** Whether a room's panel holds an open layer — marked on the panel or on
+ *  anything in it, which is how the arbiter in `ui.js` asks the window. */
+function _holdsLayer(panel) {
+  if (!panel) return false;
+  if (panel.dataset && panel.dataset.escLayer && panel.dataset.escLayer !== 'guard') return true;
+  return !!(panel.querySelector && panel.querySelector('[data-esc-layer]'));
+}
+
 function _guardHiddenLayers() {
   if (_hiddenGuard) { _hiddenGuard(); _hiddenGuard = null; }
   if (!_open) return;
-  const held = ROOMS.some((r) => r.id !== _current && _panel(r)?.dataset?.escLayer);
+  const held = ROOMS.some((r) => r.id !== _current && _holdsLayer(_panel(r)));
   if (!held) return;
   const shown = _room(_current) && _panel(_room(_current));
   const unregister = registerMenuDismiss(() => {
