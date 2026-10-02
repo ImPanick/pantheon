@@ -241,7 +241,8 @@ def test_enabling_it_is_on_the_one_time_settings_checklist():
     headings = [line for line in body.splitlines() if line.startswith("### ")]
     assert len(headings) >= 3, headings
     assert any("private vulnerability reporting" in h.lower() for h in headings), headings
-    # Before the repository is public, which is the only part with a deadline.
+    # The repository being public is the part that had a deadline; since
+    # 2026-10-02 the section says the deadline is past and the setting is on.
     assert "public" in lowered, body[-1500:]
     assert "these two settings" not in lowered, body[:400]
 
@@ -374,3 +375,65 @@ def test_the_policy_does_not_call_the_commit_the_only_identifier(security_md):
     changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
     assert re.search(r"^## \[\d+\.\d+\.\d+\] — \d{4}-\d{2}-\d{2}\s*$", changelog, re.M)
     assert not [p for p in _supported_versions(security_md) if "and nothing else" in p]
+
+
+# ── `D-2026-10-02-03` — the repository is public ─────────────────────────────
+
+# Present tense only. A dated note recording what a page said while the
+# repository was private ("…before the repository was public…") is the record
+# and stays (`Law 1`); a sentence saying it IS private, or is about to stop
+# being, is false since the owner's measurement of 2026-10-02.
+_STILL_PRIVATE = re.compile(
+    r"(?:this|the) (?:repository|repo) is (?:still )?private"
+    r"|(?:is|are) not (?:yet )?public(?: yet)?|\bnot yet public"
+    r"|before\W*(?:the|this) repository (?:goes|is) public"
+    r"|private repo \(today\)"
+    r"|making this repository public"
+    r"|(?:has not been|not) (?:turned on|enabled) (?:for|on) this repository yet", re.I)
+
+
+def _front_door_documents() -> dict:
+    out = subprocess.run(["git", "ls-files", "README.md", "SECURITY.md", "docs/"],
+                         cwd=str(ROOT), capture_output=True, text=True, check=True).stdout
+    return {name: (ROOT / name).read_text(encoding="utf-8")
+            for name in out.split() if name.endswith((".md", ".html"))}
+
+
+def _still_private(text: str) -> list:
+    flat = " ".join(text.split())
+    return [flat[max(0, m.start() - 60):m.end() + 20] for m in _STILL_PRIVATE.finditer(flat)]
+
+
+def test_the_front_door_does_not_say_the_repository_is_private():
+    """`D-2026-10-02-03`: the repository is public and stays public. Nine
+    sentences in `README.md`, `SECURITY.md` and `docs/security-ci.md` said or
+    assumed otherwise — the CI-badge note, the ship-line sentence, the badge
+    table and the reasons under it, the checklist twice, private reporting
+    *"not turned on … yet"*. This refuses seven of them as they stood (base
+    `595d1bd`); the other two — *"Making the repository public … is the fix and
+    is the owner's call"* and *"the repository was not public yet, so nobody
+    has confirmed the switch is on"* — assume it through tense rather than say
+    it, and were corrected by hand."""
+    documents = _front_door_documents()
+    assert {"README.md", "SECURITY.md", "docs/security-ci.md"} <= set(documents)
+    found = {name: hits for name, text in documents.items() if (hits := _still_private(text))}
+    assert not found, found
+
+
+@pytest.mark.parametrize("sentence", [
+    "while this repository is private the images render blank",
+    "Do the third one **before** the repository is public, not after",
+    "| Private repo (today) | A blank or broken image |",
+    "If that page 404s, private reporting has not been turned on for this repository yet.",
+])
+def test_the_old_sentences_are_what_the_rule_refuses(sentence):
+    """The rule, driven with sentences exactly as the documents had them."""
+    assert _still_private(sentence), sentence
+
+
+def test_a_dated_note_about_the_private_days_is_left_alone():
+    """`Law 1`: the record of what a page used to say is not the claim."""
+    note = ("*(Until 2026-10-02 this said to do the third one before the "
+            "repository was public, not after.)* That was written when the "
+            "repository was private and it does not survive going public.")
+    assert _still_private(note) == []

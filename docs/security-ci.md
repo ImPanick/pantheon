@@ -71,7 +71,11 @@ the signature of exhausted Actions minutes or a spending limit on a private
 repository owned by a user account, and no change to a workflow file makes a
 runner appear. Actions itself is enabled
 (`{"enabled":true,"allowed_actions":"all"}`). Making the repository public makes
-Actions free and unlimited for it, which is the fix and is the owner's call.
+Actions free and unlimited for it, which was the fix and was the owner's call.
+**It has been made**: the repository is public (measured 2026-10-02,
+`D-2026-10-02-03`), and the first CI run that ever completed did so on
+2026-09-19 (`B860`). Whether `main` is green today is what the badges below
+are for, not this paragraph.
 
 The part that was ours is that **five waves of work shipped that day, each
 reporting "gate green on 22 checkers", and every one of those was a local
@@ -94,16 +98,17 @@ What the badges do and do not tell you:
 
 | State | What a logged-out reader sees | What it means |
 |---|---|---|
-| Private repo (today) | A blank or broken image | **Nothing.** `badge.svg` needs read access; a stranger learns nothing, and neither does a stranger's scraper |
+| Public repo (today) | The real status | The latest run on `main` for that workflow, to everybody |
+| Private repo | A blank or broken image | **Nothing.** `badge.svg` needs read access; a stranger learns nothing, and neither does a stranger's scraper. This was the state until the repository was made public |
 | Private repo, signed in with access | The real status | The latest run on `main` for that workflow |
-| Public repo | The real status | The same, to everybody |
-| Any state, workflow never ran | `no status` | **Not "passing".** No run has happened — which is exactly today's situation and the one most easily misread |
+| Any state, workflow never ran | `no status` | **Not "passing".** No run has happened — the state this page called today's on 2026-09-17, and the one most easily misread |
 
-So the badge is necessary and **not sufficient**, for three reasons: it is
-invisible while the repo is private, "no status" reads as absence rather than
-failure, and a badge is green whenever the *workflow* concluded green — which a
-job that fails open does. The first two are facts to know; the third is what the
-checker below is for.
+So the badge is necessary and **not sufficient**, for two reasons now that the
+repository is public: "no status" reads as absence rather than failure, and a
+badge is green whenever the *workflow* concluded green — which a job that fails
+open does. The first is a fact to know; the second is what the checker below is
+for. *(While the repository was private there was a third: the badge was
+invisible to anyone without access.)*
 
 ### The checker
 
