@@ -6820,8 +6820,8 @@ async def stream_agent_loop(
                     # `B1034`. Its own length, as its own temperature (`B935`):
                     # a cloud candidate is never handed the local lift.
                     "max_tokens": candidate_max_tokens(_preset_max_tokens, candidate_url),
-                    # `B1029`. The preset's own number is the least a server's
-                    # length refusal may talk this request down to.
+                    # `B1029`. The preset's own number: passing it lets a server
+                    # that states its window talk this request down to what fits.
                     "max_tokens_floor": _preset_max_tokens,
                 },
             }

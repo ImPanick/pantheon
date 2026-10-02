@@ -13,8 +13,9 @@ preset, and Chat mode with Brainstorm, answered.
 
 The refusal says the window and the prompt's size, so the request is sent once
 more asking for exactly what the server can serve (`llm_core.
-servable_max_tokens`) — never above what was asked, never below the preset's own
-number, and never at all to a server that took the number.
+servable_max_tokens`) — never above what was asked, and never at all to a server
+that took the number. Below the preset's own number too, since the owner's call
+(`D-2026-10-02-01` §2: *"the preset stops being a floor in that one case"*).
 
 `Law 20`: nothing above the model's socket is faked. `capture.Server` boots this
 checkout's `app.py` on a throwaway data directory; every turn goes through
@@ -210,17 +211,19 @@ def test_a_server_that_takes_the_number_is_asked_once(world):
     assert turn["said"] == ANSWER
 
 
-def test_a_window_with_less_room_than_the_preset_is_not_talked_below_it(world):
-    """The preset is the floor (`D-2026-09-08-02`): when what the server can
-    serve is less than the preset's own number, the request is not sent again
-    asking for less — the turn fails as it did, on the server's own words.
-    Going below the preset is a call neither ruling makes."""
+def test_a_window_with_less_room_than_the_preset_is_asked_for_what_it_has(world):
+    """`D-2026-10-02-01` §2, the owner's call: when what the server can serve is
+    less than the preset's own number, the request is sent once more asking for
+    exactly that — the preset stops being a floor in that one case. Measured
+    before it (window 9,000, Brainstorm): refused at 1,000,000, not sent again,
+    and the turn ended on the server's 400 with no reply."""
     turn = _turn(world, "small", endpoint="small")
-    streamed = [e for e in turn["sent"] if e["stream"]]
-    assert [e["max_tokens"] for e in streamed] == [LIFT]
-    window, prompt = _stated(streamed[0]["refused"])
-    assert 0 < window - prompt < 4096
-    assert any("is too large" in json.dumps(e) for e in _errors(turn))
+    refused, resent = [e for e in turn["sent"] if e["stream"]][:2]
+    assert refused["max_tokens"] == LIFT and refused.get("refused")
+    window, prompt = _stated(refused["refused"])
+    assert resent["max_tokens"] == window - prompt and 0 < resent["max_tokens"] < 4096
+    assert not resent.get("refused") and resent["messages"] == refused["messages"]
+    assert turn["said"] == ANSWER and not _errors(turn)
 
 
 def test_a_typed_ceiling_is_still_the_most_it_asks(world):
@@ -259,17 +262,112 @@ OLD = ("This model's maximum context length is 32768 tokens. However, you reques
        "the length of the messages or completion.")
 
 
-@pytest.mark.parametrize("raw, sent, floor, want", [
-    (json.dumps({"error": {"message": NEW, "code": 400}}), LIFT, 4096, 24_930),   # v0.10.1, v0.11.0
-    (json.dumps({"object": "error", "message": OLD, "code": 400}), LIFT, 4096, 24_930),  # v0.6.6, v0.8.5
-    (NEW, LIFT, 30_000, None),          # less room than the preset: not talked below it
-    (NEW, 4096, 4096, None),            # unlifted: never sent again
-    (NEW, LIFT, None, None),            # a caller that gave no floor: as before
+@pytest.mark.parametrize("raw, sent, want", [
+    (json.dumps({"error": {"message": NEW, "code": 400}}), LIFT, 24_930),   # v0.10.1, v0.11.0
+    (json.dumps({"object": "error", "message": OLD, "code": 400}), LIFT, 24_930),  # v0.6.6, v0.8.5
+    (NEW.replace("7838", "31598"), LIFT, 1_170),   # less room than any preset (§2)
+    (NEW, 30_000, 24_930),              # an unlifted request is talked down too (§2)
+    (NEW, 24_930, None),                # never asked for more than was sent
     ("max_tokens is too large: 1000000. This model supports at most 16384 completion "
-     "tokens, whereas you provided 1000000.", LIFT, 4096, None),   # says no window
+     "tokens, whereas you provided 1000000.", LIFT, None),   # says no window
     ("This model's maximum context length is 32768 tokens. However, your request has "
-     "40000 input tokens. Please reduce the length of the input messages.", LIFT, 4096, None),
+     "40000 input tokens. Please reduce the length of the input messages.", LIFT, None),
 ])
-def test_what_the_server_said_it_can_serve(raw, sent, floor, want):
-    assert llm_core.servable_max_tokens(400, raw, sent, floor) == want
-    assert llm_core.servable_max_tokens(500, raw, sent, floor) is None
+def test_what_the_server_said_it_can_serve(raw, sent, want):
+    assert llm_core.servable_max_tokens(400, raw, sent) == want
+    assert llm_core.servable_max_tokens(500, raw, sent) is None
+
+
+# ── who is sent again: a caller that passes `max_tokens_floor` ──────────────
+
+class _Refusing:
+    """The model's socket, for the two doors called directly: vLLM's refusal for
+    anything above `room`, and an answer otherwise."""
+
+    def __init__(self, room):
+        self.room, self.asked = room, []
+
+    def refusal(self, payload):
+        asked = payload.get("max_tokens")
+        self.asked.append(asked)
+        if asked and asked > self.room:
+            return (f"'max_tokens' or 'max_completion_tokens' is too large: {asked}. This "
+                    f"model's maximum context length is {WINDOW} tokens and your request has "
+                    f"{WINDOW - self.room} input tokens ({asked} > {WINDOW} - "
+                    f"{WINDOW - self.room}).")
+        return None
+
+
+@pytest.fixture
+def refusing(monkeypatch):
+    from types import SimpleNamespace
+
+    model = _Refusing(room=1_170)
+
+    async def post(client, url, headers, json=None, **kwargs):
+        said = model.refusal(json)
+        if said:
+            return SimpleNamespace(is_success=False, status_code=400, text=said, headers={})
+        return SimpleNamespace(is_success=True, status_code=200, text="", headers={},
+                               json=lambda: {"choices": [{"message": {"content": ANSWER}}]})
+
+    class _Stream:
+        def __init__(self, payload):
+            self.payload, self.said = payload, None
+
+        async def __aenter__(self):
+            self.said = model.refusal(self.payload)
+            return SimpleNamespace(status_code=400 if self.said else 200,
+                                   aread=self._aread, aiter_lines=self._lines)
+
+        async def __aexit__(self, *exc):
+            return False
+
+        async def _aread(self):
+            return (self.said or "").encode()
+
+        async def _lines(self):
+            yield "data: " + json.dumps({"choices": [{"delta": {"content": ANSWER}}]})
+            yield "data: [DONE]"
+
+    monkeypatch.setattr(llm_core, "httpx_post_kimi_aware_async", post)
+    monkeypatch.setattr(llm_core, "_get_http_client", lambda: SimpleNamespace(
+        stream=lambda method, url, json=None, headers=None, **kw: _Stream(json)))
+    monkeypatch.setattr(llm_core, "_is_host_dead", lambda url: False)
+    monkeypatch.setattr(llm_core, "note_model_activity", lambda *a, **k: None)
+    llm_core._response_cache.clear()
+    yield model
+    llm_core._response_cache.clear()
+
+
+async def _call(door, **kwargs):
+    url, msgs = "http://127.0.0.1:8000/v1", [{"role": "user", "content": "hi"}]
+    if door == "llm_call_async":
+        try:
+            return await llm_core.llm_call_async(url, "vllm-model", msgs, max_retries=1, **kwargs)
+        except Exception as error:   # the refusal, raised as an HTTPException
+            return f"refused: {getattr(error, 'status_code', error)}"
+    out = ""
+    async for chunk in llm_core.stream_llm(url, "vllm-model", msgs, **kwargs):
+        out += chunk
+    return out
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("door", ["stream_llm", "llm_call_async"])
+async def test_a_caller_that_passes_the_preset_is_sent_below_it(refusing, door):
+    """The preset 4096 sent unlifted, a server with 1,170 left: sent again at
+    1,170 (`D-2026-10-02-01` §2), and answered."""
+    said = await _call(door, max_tokens=4096, max_tokens_floor=4096)
+    assert refusing.asked == [4096, 1_170]
+    assert ANSWER in said
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("door", ["stream_llm", "llm_call_async"])
+async def test_a_caller_that_passes_nothing_is_sent_once(refusing, door):
+    """Every caller that does not pass `max_tokens_floor` — a title, a memory
+    pass, a background job — is refused exactly as before."""
+    said = await _call(door, max_tokens=4096)
+    assert refusing.asked == [4096]
+    assert ANSWER not in said and "400" in said
