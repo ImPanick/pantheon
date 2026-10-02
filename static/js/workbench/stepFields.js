@@ -33,6 +33,7 @@
 import { KIND_WORDS } from '../tasks/workflowDiagram.js';
 import { mountArgsForm } from './argsForm.js';
 import { SKILL_GATE_NOTE } from '../skillGateNote.js';
+import { ROOM_NAMES } from './rooms.js';
 
 /** The kinds this file draws. */
 export const STEP_FIELD_KINDS = Object.freeze(['if', 'switch', 'set', 'merge', 'wait', 'foreach', 'http', 'mcp', 'skill', 'code']);
@@ -79,8 +80,8 @@ const ANSWER_MAX = 20;
 
 /** The rooms a need's door opens, with the words on the button. */
 export const NEED_DOORS = Object.freeze({
-  integrations: 'Open MCP & Integrations',
-  skills: 'Open Skills',
+  integrations: `Open ${ROOM_NAMES.integrations}`,
+  skills: `Open ${ROOM_NAMES.skills}`,
 });
 
 /** The field a need is about, as the step's form names it: the server writes
@@ -125,15 +126,15 @@ export function needWords(need, { here = false } = {}) {
     case 'integration':
       return `It uses an Integration called “${name || 'one this Pantheon does not have'}”`
         + `${n.preset ? ` (${String(n.preset)})` : ''}, which this Pantheon does not have. `
-        + `Add it in MCP & Integrations, then pick it ${where}.`;
+        + `Add it in ${ROOM_NAMES.integrations}, then pick it ${where}.`;
     case 'mcp': {
       const tool = String(n.tool || name || 'a tool');
       return `It uses the tool “${tool}”${n.server ? ` of an MCP server called “${String(n.server)}”` : ''}, `
-        + `which this Pantheon does not have. Add the server in MCP & Integrations, then pick the tool ${where}.`;
+        + `which this Pantheon does not have. Add the server in ${ROOM_NAMES.integrations}, then pick the tool ${where}.`;
     }
     case 'skill':
       return `It follows a skill called “${name || 'one you do not have'}”, which you do not have. `
-        + `Add it in Skills, then pick it ${where}.`;
+        + `Add it in ${ROOM_NAMES.skills}, then pick it ${where}.`;
     case 'task':
       return `It ran a task${name ? ` called “${name}”` : ''} on the Pantheon it came from. Pick the task it runs ${where}.`;
     case 'header':
@@ -549,10 +550,20 @@ function buildForeach(ctx) {
 function buildHttp(ctx) {
   const { body, cfg, palette } = ctx;
   const integrations = palette && Array.isArray(palette.integrations) ? palette.integrations : [];
-  body.appendChild(_el('p', 'wf-sf-lede', 'Calls a service you set up in Settings → Integrations. Its address and key are never '
+  // `integrate-e`: these two said "Settings → Integrations" — the card is the
+  // Workbench's MCP & Integrations room since `P22-21` (wb-rooms' `B-NEW-8`).
+  body.appendChild(_el('p', 'wf-sf-lede', `Calls a service you set up in ${ROOM_NAMES.integrations}. Its address and key are never `
     + 'shown here: Pantheon adds them when the step runs.'));
   if (!integrations.length) {
-    body.appendChild(_el('p', 'wf-sf-hint wf-sf-warn', 'No integration is set up yet. Add one in Settings → Integrations, then pick it here.'));
+    // The same door the MCP step's hint has (`Law 15`: the hint names a room,
+    // so it opens it).
+    const warn = body.appendChild(_el('p', 'wf-sf-hint wf-sf-warn'));
+    warn.appendChild(_el('span', null, `No integration is set up yet. Add one in ${ROOM_NAMES.integrations}, then pick it here.`));
+    if (typeof ctx.openRoom === 'function') {
+      const door = warn.appendChild(_button('wf-sf-door', NEED_DOORS.integrations));
+      door.dataset.room = 'integrations';
+      door.addEventListener('click', () => ctx.openRoom('integrations'));
+    }
   }
   const integ = _selectField(body, 'Integration', [['', 'Choose one…'],
     ...integrations.map((i) => [i.id, `${i.name}${i.preset ? ` (${i.preset})` : ''}`])],
@@ -636,7 +647,7 @@ function buildMcp(ctx) {
   // opens it.
   if (!tools.length) {
     const warn = body.appendChild(_el('p', 'wf-sf-hint wf-sf-warn'));
-    warn.appendChild(_el('span', null, 'No MCP tool is available. Add a server in MCP & Integrations, then pick its tool here.'));
+    warn.appendChild(_el('span', null, `No MCP tool is available. Add a server in ${ROOM_NAMES.integrations}, then pick its tool here.`));
     if (typeof ctx.openRoom === 'function') {
       const door = warn.appendChild(_button('wf-sf-door', NEED_DOORS.integrations));
       door.dataset.room = 'integrations';

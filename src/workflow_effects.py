@@ -34,6 +34,9 @@ import re
 from datetime import datetime
 from typing import Any, Dict, List, NamedTuple, Optional, Tuple
 
+# `integrate-e`: the room's name has one place (`Law 7`).
+from src.workbench_rooms import INTEGRATIONS_PLACE
+
 logger = logging.getLogger(__name__)
 
 
@@ -682,10 +685,8 @@ _ADMIN_ONLY_WHY = {
 # MCP & Integrations tab, beside the palette that says this. The MCP one named
 # "Settings → MCP", which has never existed: MCP servers were cards in
 # Settings → Integrations (design § 0.6).
-NO_INTEGRATIONS_SENTENCE = ("No Integrations are switched on. An admin adds one in "
-                            "the Workbench's MCP & Integrations tab.")
-NO_MCP_TOOLS_SENTENCE = ("No MCP tools are switched on. An admin connects a server in "
-                         "the Workbench's MCP & Integrations tab.")
+NO_INTEGRATIONS_SENTENCE = f"No Integrations are switched on. An admin adds one in {INTEGRATIONS_PLACE}."
+NO_MCP_TOOLS_SENTENCE = f"No MCP tools are switched on. An admin connects a server in {INTEGRATIONS_PLACE}."
 NO_SKILLS_SENTENCE = "You have no skills switched on yet. Make one in Skills."
 
 

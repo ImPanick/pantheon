@@ -44,6 +44,7 @@ import time
 from typing import Optional
 
 from src import providers
+from src.workbench_rooms import INTEGRATIONS_PLACE
 
 logger = logging.getLogger(__name__)
 
@@ -91,10 +92,9 @@ TOKEN_SKEW_SECONDS = 60
 # there is one place the endpoint is written down (`Law 13`).
 GOOGLE_TOKEN_ENDPOINT = providers.token_url(providers.get("google"))
 
-RECONNECT_HINT = (
-    "Google OAuth token unavailable — reconnect the account in "
-    "Settings → Integrations"
-)
+# `integrate-e`: the account's card is in the Workbench's MCP & Integrations
+# room since `P22-21` (Settings → Integrations is a door to it).
+RECONNECT_HINT = f"Google OAuth token unavailable — reconnect the account in {INTEGRATIONS_PLACE}"
 
 
 class MailAuthUnavailable(RuntimeError):

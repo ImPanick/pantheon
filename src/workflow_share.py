@@ -45,6 +45,10 @@ from types import SimpleNamespace
 # The fields that belong to the install a step was made on — the same four the
 # drafter never sets (`workflow_assist.INSTALL_FIELDS`, one list, `Law 7`).
 from src.workflow_assist import INSTALL_FIELDS
+# Where a missing thing is added, in the tab strip's words (`integrate-e`: these
+# said "Integrations" and "Connect that server" beside the browser's door
+# "Open MCP & Integrations" — wb-canvas-e's `B-NEW-4`).
+from src.workbench_rooms import INTEGRATIONS_ROOM, SKILLS_ROOM
 
 # Stored in every file (`FORBIDDEN.md` Part 1 at the merge): the key, and the
 # version this Pantheon reads.
@@ -284,7 +288,7 @@ def import_file(db, owner, data) -> Imported:
                     need(node, {"field": f"{inner}integration", "name": name, "preset": preset},
                          f"{called} uses an Integration called “{name}”"
                          + (f" ({preset})" if preset else "")
-                         + ". Add it in Integrations, then pick it on the step.")
+                         + f". Add it in {INTEGRATIONS_ROOM}, then pick it on the step.")
                 for index, header in enumerate(config.get("headers") or ()):
                     if isinstance(header, dict) and header.get("name") and not header.get("value"):
                         need(node, {"field": f"{inner}headers[{index}].value",
@@ -308,14 +312,14 @@ def import_file(db, owner, data) -> Imported:
                     need(node, {"field": f"{inner}tool", "name": f"{server} · {tool}",
                                 "server": server, "tool": tool},
                          f"{called} calls the tool “{tool}” on an MCP server called "
-                         f"“{server or 'unknown'}”. Connect that server, then pick the tool on "
-                         f"the step.")
+                         f"“{server or 'unknown'}”. Add that server in {INTEGRATIONS_ROOM}, then "
+                         f"pick the tool on the step.")
             elif kind == "skill" and isinstance(config.get("skill"), str):
                 if config["skill"] not in skills:
                     skills.add(config["skill"])
                     need(node, {"field": f"{inner}skill", "name": config["skill"]},
                          f"{called} follows a skill called “{_text(config['skill'])}”. Add a "
-                         f"skill with that name in Skills, then pick it on the step.")
+                         f"skill with that name in {SKILLS_ROOM}, then pick it on the step.")
             elif kind == "run_task" and "task_id" in config:
                 ref = config.get("task_id")
                 said = requires["tasks"].get(ref) if isinstance(ref, str) else None

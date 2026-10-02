@@ -10,6 +10,7 @@ import { topPortalZ, nextToolWindowZ } from './toolWindowZOrder.js';
 import { makeWindowDraggable } from './windowDrag.js';
 import { attachColorPicker } from './colorPicker.js';
 import { bindMenuDismiss } from './escMenuStack.js';
+import { ROOM_NAMES } from './workbench/rooms.js';
 import {
   WEEKDAYS, WEEKDAYS_SUN, MONTHS, MON_SHORT,
   CAL_PALETTE, CAL_COLORS, _CAL_CUSTOM_GRADIENT, _TYPE_PALETTE,
@@ -2664,7 +2665,7 @@ async function _showCalSettings() {
             </button>
             <span id="cal-settings-sync-status" style="font-size:11px;opacity:0.6;"></span>
           </div>
-          <div style="font-size:10px;opacity:0.4;margin-top:4px;">Pulls events from your CalDAV server. To connect or change CalDAV credentials, open <a href="#" id="cal-settings-open-caldav" style="color:var(--accent, var(--red));text-decoration:none;font-weight:600;">Settings → Integrations</a>.</div>
+          <div style="font-size:10px;opacity:0.4;margin-top:4px;">Pulls events from your CalDAV server. To connect or change CalDAV credentials, open <a href="#" id="cal-settings-open-caldav" style="color:var(--accent, var(--red));text-decoration:none;font-weight:600;">${ROOM_NAMES.integrations}</a>.</div>
         </div>
       </div>
     </div>
@@ -2837,7 +2838,9 @@ async function _showCalSettings() {
     btn.disabled = false;
   });
 
-  // Integrations link — close this overlay and open Settings → Integrations.
+  // Integrations link — close this overlay and open the Workbench's MCP &
+  // Integrations room (`P22-21`: `settings.open('integrations')` opens it; the
+  // link names it — `integrate-e`, wb-rooms' `B-NEW-8`).
   overlay.querySelector('#cal-settings-open-caldav')?.addEventListener('click', (e) => {
     e.preventDefault();
     cleanup();

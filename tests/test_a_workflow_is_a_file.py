@@ -151,10 +151,10 @@ async def test_imported_where_the_integration_is_missing_it_is_off_marked_and_sa
     assert marks["post"]["needs"] == []
     assert body["missing"] == [
         "“Fetch unread” uses an Integration called “Miniflux” (miniflux). Add it in "
-        "Integrations, then pick it on the step.",
+        "MCP & Integrations, then pick it on the step.",
         "“Fetch unread” sends the header “X-Token”, and a file never carries its value. Type it "
         "on the step."]
-    assert body["destinations"][0].startswith("“Fetch unread”: Would call Miniflux — GET /v1/entries")
+    assert body["destinations"][0].startswith("“Fetch unread” sends GET /v1/entries to Miniflux")
     on = await _call(w, "POST", f"/api/workflows/{doc['id']}/switch", json={"on": True})
     assert on.status_code == 409 and on.json()["reason"] == "unchecked"
 
@@ -230,7 +230,7 @@ async def test_a_hostile_file_is_refused_whole_then_imported_off_and_marked(monk
     assert all(n["pinned"] is None and "extra" not in n for n in graph["nodes"])
     assert "endpoint_url" not in graph["nodes"][1]["config"]
     assert "attacker.example" not in wf.graph
-    assert any("Where the result goes: email:x@evil.example" in d for d in body["destinations"])
+    assert any("delivers its result to email:x@evil.example" in d for d in body["destinations"])
     assert any("channel: #leak" in d for d in body["destinations"])
     assert any("endpoint_url was left out" in n for n in body["notes"])
 

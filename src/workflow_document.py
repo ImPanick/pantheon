@@ -2007,25 +2007,78 @@ def plan_lines(node: dict, resources: WorkflowResources | None = None) -> list:
     return lines
 
 
+def _sends(node: dict, resources: WorkflowResources) -> list:
+    """Where one step sends something, as phrases — empty for a step that
+    sends nothing anywhere. See `destination_lines`."""
+    from src.builtin_actions import (
+        BUILTIN_ACTION_META, EFFECT_SENTENCES, EFFECT_TOUCHES_REMOTE,
+    )
+
+    kind = node.get("kind")
+    config = node.get("config") if isinstance(node.get("config"), dict) else {}
+    out = []
+    if kind == NODE_KIND_HTTP:
+        integration = config.get("integration")
+        info = (resources.integrations or {}).get(integration) if isinstance(integration, str) \
+            else None
+        name = (info or {}).get("name") or integration
+        out.append(f"sends {config.get('method') or 'GET'} {config.get('path') or '/'} to {name}")
+    elif kind == NODE_KIND_MCP:
+        tool = config.get("tool")
+        info = _mcp_info(resources, tool) or {}
+        said = (f"{info['server_name']}: {info['name']}" if info.get("server_name") and info.get("name")
+                else str(tool))
+        schema = info.get("input_schema") if isinstance(info.get("input_schema"), dict) else None
+        # The arguments that decide where it goes — the ones only a person
+        # types (`never`); what it says (`value`) is left to the plan.
+        fixed = [f"{name}: {_shown(value)}" for name, value in (config.get("args") or {}).items()
+                 if slot_for(node, ("args", name), mcp_schema=schema).mapping == MAPPING_NEVER]
+        out.append(f"sends to {said}" + (f" — {', '.join(fixed)}" if fixed else ""))
+    elif kind == NODE_KIND_CODE:
+        out.append(f"{CODE_EFFECT_SENTENCE}, and the code reaches whatever that account can")
+    elif kind == NODE_KIND_ACTION:
+        effects = (BUILTIN_ACTION_META.get(config.get("action") or "") or {}).get("effects") or ()
+        if EFFECT_TOUCHES_REMOTE in effects:
+            out.append(f"runs the action {config.get('action')}, which "
+                       f"{EFFECT_SENTENCES[EFFECT_TOUCHES_REMOTE]}")
+    target = config.get("output_target")
+    if isinstance(target, str) and target.strip():
+        out.append(f"delivers its result to {target}")
+    return out
+
+
 def destination_lines(graph: dict, resources: WorkflowResources | None = None) -> list:
-    """`P22-19` / `P22-24` (`SLICE-EF-DESIGN` § 1.6). Everything a document
-    would do and send somewhere, one line per step, in one place: the step's
-    `plan_lines` (the dry run's planner, `Law 7`) and, where it delivers its
-    result, the address — which `plan_lines` leaves to the dry run's own
-    extra line. What a drafted or imported workflow answers as `destinations`,
-    so a destination the model or a file chose is read before anything runs."""
+    """`P22-19` / `P22-24` (`SLICE-EF-DESIGN` § 1.6). Where a document would
+    send something, one line per step that sends — and only those (`integrate-e`,
+    wb-canvas-e's `B-NEW-3`: this was every step's whole `plan_lines`, so a
+    three-step draft answered three paragraphs about conditions and prompts,
+    and the one line that mattered was hard to find). What a drafted or
+    imported workflow answers as `destinations`, so a destination the model or
+    a file chose is read before anything runs.
+
+    A step sends when it runs without asking again once a person has checked
+    it (`D-2026-10-01-05` §4) and what it does leaves the run: an HTTP request
+    (any method — a GET carries its path and query to the Integration), an MCP
+    call (its server and tool, and every argument only a person types — the
+    channel, the address), Code (it runs in the workstation and reaches what
+    the account reaches), an action that changes something elsewhere, and any
+    step that delivers its result (`output_target`). A For-each says its inner
+    step's. An AI step's own tool calls are not here: the run asks before any
+    of them writes (`P22-16`/`P22-17`). The whole plan is still the dry run's,
+    and each step's banner shows it."""
+    resources = resources if isinstance(resources, WorkflowResources) else EMPTY_RESOURCES
     out = []
     for node in graph.get("nodes") or ():
         if not isinstance(node, dict):
             continue
-        lines = list(plan_lines(node, resources))
+        sends = _sends(node, resources)
         config = node.get("config") if isinstance(node.get("config"), dict) else {}
-        inner = config.get("step") if isinstance(config.get("step"), dict) else {}
-        inner_config = inner.get("config") if isinstance(inner.get("config"), dict) else {}
-        for target in (config.get("output_target"), inner_config.get("output_target")):
-            if isinstance(target, str) and target.strip():
-                lines.append(f"Where the result goes: {target}")
-        out.append(f"{_called(node)}: " + " · ".join(str(line).strip() for line in lines))
+        inner = config.get("step") if isinstance(config.get("step"), dict) else None
+        if node.get("kind") == NODE_KIND_FOREACH and inner is not None:
+            sends += [f"repeats “{inner.get('label') or inner.get('kind') or 'its step'}”, which {s}"
+                      for s in _sends(inner, resources)]
+        if sends:
+            out.append(f"{_called(node)} " + "; ".join(sends) + ".")
     return out
 
 
