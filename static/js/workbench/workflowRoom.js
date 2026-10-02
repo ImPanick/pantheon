@@ -51,7 +51,7 @@
 import { mountCanvas } from './canvas.js';
 import { createWorkflowPanels } from './workflowPanels.js';
 import { needLine, needDoor, NEED_DOORS } from './stepFields.js';
-import { runStatusTone, runStatusLabel } from '../runStatus.js';
+import { runStatusTone, runStatusLabel, RUN_ACTIVE_STATUSES } from '../runStatus.js';
 import { registerMenuDismiss } from '../escMenuStack.js';
 
 const OUTCOME_MARKS = { ok: '✓', error: '✗', pending: '…', info: '·', none: '○' };
@@ -59,6 +59,10 @@ const OUTCOME_MARKS = { ok: '✓', error: '✗', pending: '…', info: '·', non
 const TASKS_KEY = 'tasks';
 /** How many runs the Runs tab lists. */
 const RUNS_SHOWN = 30;
+/** `B1108`. How often the shelf is read again while a run it lists is in
+ *  flight (queued or running), so a run that ends is read without opening
+ *  the room again. Nothing is asked while no run is in flight. */
+export const SHELF_WATCH_MS = 4000;
 /** Said when a workflow is off — the design's words (§ 6.2). */
 export const OFF_WORDS = 'Switched off — it will not run until you switch it on.';
 export const ON_WORDS = 'On — it runs whenever what starts it happens.';
@@ -175,6 +179,7 @@ export function mountAutomations(host, opts = {}) {
     // `P22-19`, `P22-24`. The open check layer, the arrival box, and the
     // example sentences (read once, from the palette).
     checking: null, arrived: null, examples: null, making: false,
+    shelfTimer: null,    // `B1108`: the next read of the shelf while a run is in flight
   };
 
   // ── the skeleton ─────────────────────────────────────────────────────────
@@ -569,7 +574,57 @@ export function mountAutomations(host, opts = {}) {
     newWfBtn.disabled = false;
     shelfNote.textContent = R.workflows.length ? '' : 'No workflows yet. A workflow is a named set of steps with one start.';
     drawShelf();
+    watchShelf();
     return true;
+  }
+
+  // ── `B1108`: the shelf reads a run's state as it changes ───────────────────
+  // Measured by `integrate-d`: with a workflow open, its Runs list read
+  // "Waiting" and the shelf beside it "Not run yet" — the shelf was drawn when
+  // the room opened and not when a run started or ended. Now: *Run now* and an
+  // answer to a step's question read the shelf again; the Runs list, whenever
+  // it is read, sets the open workflow's row from its newest real run (the
+  // server's `last_real_runs` rule: a dry run is never a last run); and while
+  // the server's shelf lists a run in flight it is read again every
+  // `SHELF_WATCH_MS`, the open workflow's Runs list with it when its run
+  // moved. Only a read of the server's shelf arms the next one, so the Runs
+  // list and the shelf cannot set each other off.
+  const lastOpenRun = () => {
+    const w = R.wf && R.workflows.find((x) => String(x.id) === String(R.wf.id));
+    return w && w.last_run ? `${w.last_run.id}:${w.last_run.status}` : '';
+  };
+
+  function stopWatchingShelf() {
+    if (R.shelfTimer) { clearTimeout(R.shelfTimer); R.shelfTimer = null; }
+  }
+
+  function watchShelf() {
+    stopWatchingShelf();
+    if (R.destroyed) return;
+    const inFlight = R.workflows.some((w) => w.last_run && !w.last_run.dry
+      && RUN_ACTIVE_STATUSES.includes(w.last_run.status));
+    if (!inFlight) return;
+    R.shelfTimer = setTimeout(async () => {
+      R.shelfTimer = null;
+      const before = lastOpenRun();
+      await refreshShelf();
+      if (R.destroyed || !R.wf || R.wf.tab !== 'runs' || lastOpenRun() === before) return;
+      loadRuns();
+    }, SHELF_WATCH_MS);
+  }
+
+  /** The open workflow's shelf row, from a Runs list just read (newest first). */
+  function shelfFromRuns(w) {
+    if (!w || !Array.isArray(w.runs)) return;
+    const row = R.workflows.find((x) => String(x.id) === String(w.id));
+    if (!row) return;
+    const newest = w.runs.find((r) => r && !isDryRun(r));
+    const last = newest ? { id: newest.id, status: newest.status, started_at: newest.started_at || null,
+      finished_at: newest.finished_at || null, dry: false } : null;
+    const was = row.last_run ? `${row.last_run.id}:${row.last_run.status}` : '';
+    if ((last ? `${last.id}:${last.status}` : '') === was) return;
+    row.last_run = last;
+    drawShelf();
   }
 
   // ── leaving with unsaved changes ─────────────────────────────────────────
@@ -989,6 +1044,7 @@ export function mountAutomations(host, opts = {}) {
       + (stateOf(w.source).dirty ? ' It runs the saved version; your unsaved changes are not in it.' : ''),
     { action: (lead && lead.action) || { label: 'Show the runs', run: () => setTab('runs') } });
     if (w.tab === 'runs') loadRuns();
+    refreshShelf();      // `B1108`: the run just started, as the server has it
   }
 
   function dryRun() {
@@ -1183,6 +1239,7 @@ export function mountAutomations(host, opts = {}) {
     }
     w.runs = Array.isArray(reply && reply.runs) ? reply.runs : [];
     drawRuns();
+    shelfFromRuns(w);
     if (!w.runs.length) {
       teardownRun();
       say('No runs yet. Run now runs it once; otherwise it runs when what starts it happens, while it is on.');
@@ -1319,9 +1376,10 @@ export function mountAutomations(host, opts = {}) {
         const taskId = doc.task_id || (doc.trigger_task && doc.trigger_task.id);
         const out = taskId ? await R.api.listExecutions(taskId, { limit: RUNS_SHOWN }) : null;
         if (R.destroyed || R.wf !== w) return;
-        if (out && Array.isArray(out.runs)) { w.runs = out.runs; drawRuns(); }
+        if (out && Array.isArray(out.runs)) { w.runs = out.runs; drawRuns(); shelfFromRuns(w); }
       } catch (_) { /* the list stays as it was */ }
     }
+    refreshShelf();      // `B1108`: the run goes on (or ends) — as the server has it
   }
 
   function recordShown({ node, record }) {
@@ -1883,6 +1941,7 @@ export function mountAutomations(host, opts = {}) {
   function destroy() {
     if (R.destroyed) return;
     R.destroyed = true;
+    stopWatchingShelf();
     closeNewForm();
     closeCheck();
     teardownWorkflow();
@@ -1940,5 +1999,5 @@ export function mountAutomations(host, opts = {}) {
 }
 
 export default {
-  mountAutomations, runWords, isDryRun, isOn, OFF_WORDS, ON_WORDS, EXAMPLES_MAX, ARRIVED_WORDS, ARRIVED_LEDE, EXPORT_WORDS,
+  SHELF_WATCH_MS, mountAutomations, runWords, isDryRun, isOn, OFF_WORDS, ON_WORDS, EXAMPLES_MAX, ARRIVED_WORDS, ARRIVED_LEDE, EXPORT_WORDS,
 };
