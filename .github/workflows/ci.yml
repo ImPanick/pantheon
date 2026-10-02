@@ -248,8 +248,11 @@ jobs:
       # `--max` stays 116 here although the tree measures 110 after `B1014`:
       # the ledger's `fan-out` claim repeats it (`.pantheon/ledger/claims.py`,
       # `LEDGER.md`) and the three move together, by the integrator.
+      # 110 -> 109 on 2026-10-02: `P22-13` sends `execute_api_call` through
+      # `paced_http.request(..., client=<the pinned client>)`, because a
+      # workflow fires it on a schedule with nobody watching.
       - name: check-outbound
-        run: python3 .pantheon/check-outbound.py --max 110 --max-env 51
+        run: python3 .pantheon/check-outbound.py --max 109 --max-env 51
       # P3-15. The other half of the same disease check-wiring measures: an
       # element id with no markup and a route with no caller are both something
       # that was built and never wired, and nothing in CI noticed because

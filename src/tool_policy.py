@@ -258,16 +258,49 @@ class ToolPolicy:
     #: `stream_agent_loop`, which raises the run's trust rung to
     #: `ask_every_time` — it only ever makes the run stricter, never looser.
     require_tool_confirmation: bool = False
+    #: `P22-16`. The ONLY tools this turn may use — a workflow's AI step, whose
+    #: author picked them from a list. `None` is every existing caller: no
+    #: allowlist, the denylists above decide. A set — even an empty one — is a
+    #: closed list: `blocks` refuses every name outside it, known or not, so a
+    #: tool added to Pantheon tomorrow is outside it too. `stream_agent_loop`
+    #: advertises only what is inside it, after retrieval and every widening.
+    allowed_tools: Optional[frozenset] = None
+
+    def __post_init__(self) -> None:
+        # A list or set handed in becomes a frozenset of names, so the policy a
+        # turn starts with is the policy it ends with.
+        if self.allowed_tools is not None:
+            object.__setattr__(self, "allowed_tools", frozenset(
+                str(name) for name in self.allowed_tools if isinstance(name, str) and name))
 
     def all_disabled_names(self) -> Set[str]:
         return set(self.disabled_tools) | set(self.hidden_tools)
 
+    def outside_allowed(self, tool_name: Optional[str]) -> bool:
+        """Whether an allowlist is set and this name is not on it.
+
+        Asked of every policy-equivalent spelling at once
+        (`tool_security.email_tool_policy_names`): an author who picked
+        `list_emails` picked `mcp__email__list_emails` too, and the dispatcher
+        asks `blocks` of both spellings — one of them being outside the list
+        must not refuse a call the other is on it for. A name that is not a
+        string is outside any list."""
+        if self.allowed_tools is None:
+            return False
+        if not isinstance(tool_name, str) or not tool_name:
+            return True
+        from src.tool_security import email_tool_policy_names
+        return email_tool_policy_names(tool_name).isdisjoint(self.allowed_tools)
+
     def blocks(self, tool_name: Optional[str]) -> bool:
         if not tool_name:
             return False
-        return self.block_all_tool_calls or tool_name in self.disabled_tools or tool_name in self.hidden_tools
+        return (self.block_all_tool_calls or tool_name in self.disabled_tools
+                or tool_name in self.hidden_tools or self.outside_allowed(tool_name))
 
     def reason_for(self, tool_name: Optional[str]) -> str:
+        if tool_name and self.outside_allowed(tool_name):
+            return f"“{tool_name}” is not one of this step's tools."
         if tool_name and tool_name in self.reasons:
             return self.reasons[tool_name]
         if self.block_all_tool_calls and self.mode == "guide_only":
