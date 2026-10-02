@@ -47307,3 +47307,242 @@ button.task-card-toggle {
   .wf-shelf-item,
   .wf-run-item { transition: background-color 0.12s ease; }
 }
+/* ===== wf-canvas — `P22-09`…`P22-18` (P22 wave D, Slices C and D) =====
+   A step's own ways out (one per row, each with its words), the palette's
+   groups and its greyed kinds with their reasons, the field picker and what a
+   field may take, the panels of the new kinds, a waiting step and its card,
+   and a workflow's question beside the page. Tokens only, no `--accent`, no
+   focus ring of its own (the global one serves); a state is a shape, a word
+   and a weight before a hue: a greyed kind is dashed and says why, a field
+   that refuses says so in words, a waiting step is dashed with "Waiting…". */
+.wb-port[data-when="then"] { background: var(--fg); }
+.wb-port[data-when="otherwise"] { border-style: dotted; }
+.wb-port-label { max-width: 112px; overflow: hidden; text-overflow: ellipsis; }
+.wb-node[data-kind="if"],
+.wb-node[data-kind="switch"] { border-radius: 2px 14px 14px 2px; }
+.wb-node[data-kind="merge"],
+.wb-node[data-kind="wait"] { border-style: dashed; }
+.wb-node[data-kind="foreach"] { box-shadow: 3px 3px 0 var(--panel), 4px 4px 0 var(--border); }
+/* The palette: every kind, grouped; one the person may not use is greyed and says why. */
+.wf-palette { max-height: min(72vh, 560px); overflow-y: auto; }
+.wf-palette-group { display: flex; flex-direction: column; gap: 4px; }
+.wf-palette-group + .wf-palette-group { margin-top: 4px; padding-top: 6px; border-top: 1px solid var(--border); }
+.wf-palette-group-head { margin: 0; font-size: 11px; font-weight: 700; color: var(--color-muted-alt); }
+.wf-palette-kind:disabled {
+  cursor: default;
+  border-style: dashed;
+  background: transparent;
+}
+.wf-palette-kind:disabled .wf-palette-word { color: var(--color-muted-alt); }
+.wf-palette-kind:disabled:hover { background: transparent; }
+.wf-palette-why { font-size: 11px; font-style: italic; color: var(--fg); overflow-wrap: anywhere; }
+/* What a field may take: Insert a field…, what it uses, or why not. */
+.wf-slot { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; margin: 3px 0 2px; font-size: 11px; }
+.wf-slot-pick,
+.wf-sf-add,
+.wf-sf-remove,
+.wf-sf-inner-edit,
+.wf-step-done,
+.wf-step-cancel,
+.wf-picker-cancel,
+.wf-approval-open,
+.wf-approval-later {
+  height: auto;
+  font: inherit;
+  font-size: 11.5px;
+  color: var(--fg);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 2px 9px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.wf-slot-pick:hover, .wf-sf-add:hover, .wf-sf-remove:hover, .wf-sf-inner-edit:hover, .wf-step-done:hover,
+.wf-step-cancel:hover, .wf-picker-cancel:hover, .wf-approval-open:hover,
+.wf-approval-later:hover { background: color-mix(in srgb, var(--fg) 8%, var(--panel)); }
+.wf-step-done { font-weight: 600; }
+.wf-slot-uses,
+.wf-slot-never { flex: 1 1 100%; margin: 0; color: var(--color-muted-alt); overflow-wrap: anywhere; }
+.wf-slot-uses:empty { display: none; }
+.wf-slot-refused .wf-slot-never { color: var(--fg); font-weight: 700; }
+.wf-slot-problem,
+.wf-sf-problem,
+.task-form-problem {
+  flex: 1 1 100%;
+  margin: 2px 0;
+  padding-left: 6px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--fg);
+  border-left: 3px solid var(--red);
+  overflow-wrap: anywhere;
+}
+/* The list of fields an earlier step made. */
+.wf-picker {
+  position: absolute;
+  z-index: 7;
+  top: 48px;
+  right: 12px;
+  box-sizing: border-box;
+  width: 330px;
+  max-width: calc(100% - 16px);
+  max-height: min(70vh, 520px);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  font-size: 12px;
+  color: var(--fg);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--fg) 18%, transparent);
+}
+.wf-picker-head { margin: 0; font-weight: 700; }
+.wf-picker-lede,
+.wf-picker-note { margin: 0; font-size: 11px; color: var(--color-muted-alt); overflow-wrap: anywhere; }
+.wf-picker-note:empty { display: none; }
+.wf-picker-list { display: flex; flex-direction: column; gap: 8px; }
+.wf-picker-source { display: flex; flex-direction: column; gap: 3px; }
+.wf-picker-step { margin: 0; display: flex; flex-wrap: wrap; gap: 2px 8px; align-items: baseline; }
+.wf-picker-step-name { font-weight: 600; overflow-wrap: anywhere; }
+.wf-picker-origin { font-size: 11px; color: var(--color-muted-alt); }
+.wf-picker-field {
+  height: auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+  padding: 4px 8px;
+  font: inherit;
+  text-align: left;
+  color: var(--fg);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.wf-picker-field:hover { background: color-mix(in srgb, var(--fg) 8%, var(--bg)); }
+.wf-picker-path { font-weight: 600; font-family: var(--font-mono, monospace); font-size: 11.5px; overflow-wrap: anywhere; }
+.wf-picker-type { font-size: 10.5px; color: var(--color-muted-alt); }
+.wf-picker-example { flex: 1 1 100%; font-size: 11px; color: var(--color-muted-alt); overflow-wrap: anywhere; }
+.wf-picker-cancel { align-self: flex-end; }
+/* The panels of the new kinds (stepFields.js), MCP arguments, AI options. */
+.wf-sf,
+.wf-ai,
+.wf-args { display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
+.wf-sf-head { margin: 0; font-size: 15px; }
+.wf-sf-lede,
+.wf-sf-hint,
+.wf-arg-desc,
+.wf-args-writes-sentence { margin: 0; font-size: 11px; color: var(--color-muted-alt); overflow-wrap: anywhere; }
+.wf-sf-warn { color: var(--fg); padding-left: 6px; border-left: 3px dashed var(--warn); }
+.wf-sf-gate { margin: 4px 0 0; padding: 6px 8px; font-size: 11.5px; border: 1px dashed var(--border); border-radius: 6px; }
+.wf-sf-label,
+.wf-arg-label { margin-top: 6px; font-size: 11px; font-weight: 600; color: var(--color-muted-alt); }
+.wf-sf-input,
+.wf-arg-input {
+  font: inherit;
+  font-size: 12px;
+  color: var(--fg);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 8px;
+  height: auto;
+  width: 100%;
+  box-sizing: border-box;
+  max-width: 100%;
+}
+.wf-sf-area { resize: vertical; }
+.wf-sf-mono,
+.wf-arg-json { font-family: var(--font-mono, monospace); font-size: 11.5px; }
+.wf-sf-sub { margin: 8px 0 0; font-size: 12px; font-weight: 700; }
+.wf-sf-group { display: flex; flex-direction: column; gap: 4px; }
+.wf-sf-rows { display: flex; flex-direction: column; gap: 6px; }
+.wf-sf-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--fg) 3%, transparent);
+}
+.wf-sf-row .wf-sf-row { background: transparent; }
+.wf-sf-remove { align-self: flex-end; }
+.wf-sf-add,
+.wf-sf-inner-edit { align-self: flex-start; }
+.wf-sf-empty { font-style: italic; }
+.wf-sf-inner { margin: 2px 0; font-weight: 600; overflow-wrap: anywhere; }
+.wf-sf-buttons { display: flex; justify-content: flex-end; gap: 6px; margin-top: 8px; }
+.wf-step-inner { display: flex; flex-direction: column; gap: 4px; padding-top: 4px; border-top: 2px dashed var(--border); }
+.wf-step-inner-head { margin: 0; font-weight: 700; }
+.wf-step-inner-note { margin: 0; font-size: 11px; color: var(--color-muted-alt); }
+.wf-args { margin-top: 4px; }
+.wf-args-writes { margin: 0; font-weight: 600; }
+.wf-args-writes[data-writes="destroys"] .wf-args-writes-label { color: var(--red); }
+.wf-args-writes-note { font-weight: normal; color: var(--color-muted-alt); }
+.wf-arg { display: flex; flex-direction: column; gap: 2px; }
+.wf-arg-name { font-family: var(--font-mono, monospace); color: var(--fg); }
+.wf-arg-need,
+.wf-arg-type { font-weight: normal; }
+.wf-ai-tools { display: flex; flex-direction: column; gap: 2px; max-height: 180px; overflow-y: auto; padding: 4px 0; }
+.wf-ai-tool,
+.wf-ai-shaped { display: flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer; }
+.wf-ai-tool-kind { font-size: 11px; color: var(--color-muted-alt); }
+.task-form-step-extra:empty { display: none; }
+.task-form-step-extra { margin-top: 8px; padding-top: 6px; border-top: 1px solid var(--border); }
+/* A waiting step, in a run, and a For-each step's items. */
+.wb-node[data-outcome="pending"] .wb-node-word { font-style: italic; }
+.wf-record-waiting {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  border: 2px dashed var(--border);
+  border-radius: 6px;
+}
+.wf-record-waiting-head { margin: 0; font-weight: 700; }
+.wf-record-waiting-said { margin: 0; font-size: 11.5px; font-weight: 600; }
+.wf-record-waiting-said:empty { display: none; }
+.wf-record-item-list { margin: 4px 0 0; padding-left: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; }
+.wf-record-item { display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: baseline; overflow-wrap: anywhere; }
+.wf-record-item[data-tone="error"] { font-weight: 700; }
+.wf-record-item[data-tone="error"] .wf-record-mark { color: var(--red); }
+.wf-record-item[data-tone="ok"] .wf-record-mark { color: var(--green); }
+.wf-record-item .wf-record-waiting { flex: 1 1 100%; }
+/* A workflow's question, beside the page (workflowApprovalNotice.js). */
+.wf-approval-dialog {
+  position: fixed;
+  z-index: 10000;
+  right: 16px;
+  bottom: 16px;
+  box-sizing: border-box;
+  width: min(440px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  font-size: 12.5px;
+  color: var(--fg);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 12px 32px color-mix(in srgb, var(--fg) 22%, transparent);
+}
+.wf-approval-title { margin: 0; font-size: 14px; overflow-wrap: anywhere; }
+.wf-approval-sub,
+.wf-approval-note { margin: 0; font-size: 11.5px; color: var(--color-muted-alt); overflow-wrap: anywhere; }
+.wf-approval-said { margin: 0; font-weight: 600; }
+.wf-approval-said:empty { display: none; }
+.wf-approval-buttons { display: flex; justify-content: flex-end; gap: 6px; }
+.approval-box .skill-test-out { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 30vh; overflow: auto; }
+@media (max-width: 768px) {
+  .wf-picker { left: 8px; right: 8px; width: auto; }
+  .wf-approval-dialog { right: 8px; left: 8px; bottom: 8px; width: auto; }
+}
