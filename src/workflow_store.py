@@ -966,7 +966,10 @@ def graph_of_version(db, wf, version) -> tuple:
             try:
                 return json.loads(row.graph), True
             except (TypeError, ValueError):
-                pass
+                # A kept version a hand edit broke is drawn as not kept — the
+                # current graph, `kept` False, which the Runs view says — and
+                # logged, rather than taking the run's detail down with it.
+                logger.warning("Workflow %s version %s has an unreadable graph", wf.id, version)
     return stored_graph(wf), False
 
 
