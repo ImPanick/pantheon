@@ -54,7 +54,10 @@ def box(tmp_path_factory):
 
 
 def _case(box, script):
-    return _run(box, _PREAMBLE % palette_json(), script)
+    # The server's palette for a person who is not an admin (`integrate-d`:
+    # it was a hand-written one in which HTTP was greyed and MCP was not —
+    # the server greys both for a non-admin, each with its own sentence).
+    return _run(box, _PREAMBLE % palette_json(admin=False), script)
 
 
 def test_every_kind_is_offered_grouped_and_a_kind_you_may_not_use_says_why(box):
@@ -76,21 +79,25 @@ def test_every_kind_is_offered_grouped_and_a_kind_you_may_not_use_says_why(box):
         fire(kindBtn('if'), 'click');
         out({ groups, http, code, iff, stillOpen, focused, picked: await picked, gone: !pal(), markup: markup(root) });
     """)
+    # The server's groups, words, hints and reasons (`workflow_effects`).
+    from src import workflow_effects as fx
+    from src.workstation_access import OFF_SENTENCE
     assert o["groups"] == [
         ["Ask a model", ["llm", "research", "skill"]],
-        ["Decide and reshape", ["if", "switch", "set", "merge", "wait", "foreach"]],
-        ["Do something", ["action", "run_task"]],
+        ["Run in Pantheon", ["action", "run_task"]],
+        ["Decide and reshape", ["if", "switch", "set"]],
+        ["Flow", ["merge", "wait", "foreach"]],
         ["Reach out", ["http", "mcp", "code"]],
     ]
     assert o["http"]["disabled"] is True and o["http"]["aria"] == "true" and o["http"]["available"] == "false"
     assert o["http"]["words"] == [
-        ["wf-palette-word", "HTTP request"], ["wf-palette-hint", "Call a service you set up."],
-        ["wf-palette-why", "Only an admin can add this step: it calls a service outside Pantheon, which your agent cannot do either."]]
-    assert o["http"]["label"].startswith("HTTP request: not available. Only an admin can add this step")
-    assert o["code"]["words"][-1] == ["wf-palette-why", "Your workstation is switched off. Switch it on in Settings → Workstation to run code."]
+        ["wf-palette-word", "HTTP request"], ["wf-palette-hint", fx.KIND_HINTS["http"]],
+        ["wf-palette-why", fx._ADMIN_ONLY_WHY["http"]]]
+    assert o["http"]["label"] == f"HTTP request: not available. {fx._ADMIN_ONLY_WHY['http']}"
+    assert o["code"]["words"][-1] == ["wf-palette-why", OFF_SENTENCE]
     assert o["iff"] == {"disabled": False, "aria": None, "available": None,
-                        "words": [["wf-palette-word", "If"], ["wf-palette-hint", "Go one of two ways."]],
-                        "label": "If: Go one of two ways."}
+                        "words": [["wf-palette-word", "If"], ["wf-palette-hint", fx.KIND_HINTS["if"]]],
+                        "label": f"If: {fx.KIND_HINTS['if']}"}
     assert o["stillOpen"] is True, "a greyed kind cannot be picked"
     assert o["focused"] is True, "the first kind that can be picked has the focus"
     assert o["picked"] == "if" and o["gone"] is True

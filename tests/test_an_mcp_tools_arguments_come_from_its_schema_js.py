@@ -68,15 +68,17 @@ def test_each_argument_is_a_row_from_the_schema_with_what_it_may_take(box):
         out({ rows, desc: rowOf(h, 'channel').querySelector('.wf-arg-desc').textContent, markup: markup(h),
               words: ['string', 'number', 'integer', 'boolean', 'object', 'array'].map((t) => typeWord({ type: t })) });
     """)
-    where = "Typed here only: it says where the result goes, so a field from another step can never fill it."
-    what = "Typed here only: it says what runs, so a field from another step can never fill it."
+    # The server's reason (`integrate-d`: the palette is `build_palette`'s now) —
+    # `classify_argument` says one sentence for every argument that is not a
+    # word for text a person reads: a destination, a number, an object.
+    from src.workflow_slots import WHY_NOT_TEXT
     assert o["rows"] == [
-        ["channel", "channel needed · text", "INPUT", "#general", where],
+        ["channel", "channel needed · text", "INPUT", "#general", WHY_NOT_TEXT],
         ["text", "text needed · text", "INPUT", "", "pick"],
         ["silent", "silent optional · yes or no", "SELECT", "", None],
-        ["priority", "priority optional · a whole number", "INPUT", "", what],
+        ["priority", "priority optional · a whole number", "INPUT", "", WHY_NOT_TEXT],
         ["mood", "mood optional · one of a list", "SELECT", "", None],
-        ["meta", "meta optional · JSON (an object)", "TEXTAREA", "", what],
+        ["meta", "meta optional · JSON (an object)", "TEXTAREA", "", WHY_NOT_TEXT],
     ], "a destination is typed and says why; content may come from another step; a choice cannot hold a reference"
     assert o["desc"] == "Where it goes <b>like #general</b>." and o["markup"] == [], "the server's words are text"
     assert o["words"] == ["text", "a number", "a whole number", "yes or no", "JSON (an object)", "JSON (a list)"]

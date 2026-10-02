@@ -178,7 +178,8 @@ def test_a_skill_step_says_p8_18s_sentence_and_code_starts_from_a_three_line_tem
     assert o["pyLines"] == 3 and "json.load(sys.stdin)" in o["py"] and "print(json.dumps(" in o["py"]
     assert o["sh"].startswith("input=$(cat)")
     assert o["kept"] == "echo mine", "written code is never replaced by a template"
-    assert o["warn"] == "Your workstation is switched off. Switch it on in Settings → Workstation to run code."
+    from src.workstation_access import OFF_SENTENCE
+    assert o["warn"] == OFF_SENTENCE, "the server's sentence (`workflow_effects.workstation_why`)"
 
 
 def test_a_new_case_is_a_new_way_out_with_its_own_words(box):
@@ -287,7 +288,10 @@ def test_a_fields_name_finds_the_field_and_nothing_else(box):
               slots: m.h.querySelectorAll('.wf-slot').map((b) => [b.dataset.slotFor, b.dataset.mapping]) });
     """)
     assert o["dup"] == [], "one element per field name"
-    # A key the palette gives no slot is offered nothing (fails closed); its box is
-    # where a refusal about it would be said.
-    assert o["slots"] == [["path", "never"], ["query[0].name", None], ["query[0].value", "value"],
-                          ["body[0].name", None], ["body[0].value", "value"]]
+    # The server's palette (`integrate-d`): an entry's name says where the value
+    # goes, and whether its value may come from another step depends on that
+    # name (`classify_argument`), which a palette cannot answer once per kind —
+    # so both are `never` here, fail-closed, and the box says why (filed: an
+    # HTTP body value named `text` does not offer the picker).
+    assert o["slots"] == [["path", "never"], ["query[0].name", "never"], ["query[0].value", "never"],
+                          ["body[0].name", "never"], ["body[0].value", "never"]]

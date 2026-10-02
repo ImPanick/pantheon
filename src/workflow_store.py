@@ -364,14 +364,14 @@ def first_admin_only_action(graph) -> str | None:
 
     `ADMIN_ONLY_TASK_ACTIONS`, asked through the same policy function the task
     routes ask (`is_admin_only_task_action`), so a step is refused exactly
-    where a task with that action is.
+    where a task with that action is. The policy's own walk
+    (`task_action_policy.admin_only_action_in`), so the step a For-each repeats
+    is asked too — the run's door asks the same (`integrate-d`: this read
+    top-level steps only). An HTTP or MCP step is the rule's to refuse at save
+    (`admin_only`, said on the step).
     """
-    from src.task_action_policy import is_admin_only_task_action
-    for node in nodes_of(graph):
-        config = node.get("config") if isinstance(node.get("config"), dict) else {}
-        if node.get("kind") == "action" and is_admin_only_task_action("action", config.get("action")):
-            return config.get("action")
-    return None
+    from src.task_action_policy import admin_only_action_in
+    return admin_only_action_in(graph)
 
 
 def check_document(db, graph, *, owner: str | None, own_task_id: str | None,

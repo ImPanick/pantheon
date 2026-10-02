@@ -212,8 +212,31 @@ def _form_case(form, script):
                 + (_FORM_EXTRA % json.dumps(PALETTE)) + script)
 
 
+def _real_command_refusal() -> dict:
+    """What the server says, and on which field, when a reference is put in
+    `ssh_command`'s Command: the real rule's `DocumentRefusal` for that
+    document — its `sentence`, and its `field` as the save route sends it
+    (`WorkflowRefused.body`) — so the panel is tested against the server's
+    words (`integrate-d`; this case handed the panel a hand-made refusal)."""
+    from src import workflow_document as wd
+    from src.workflow_store import refusal_from
+    graph = wd.parse_graph({"v": 1, "nodes": [
+        {"id": "fetch-issue", "kind": "llm", "label": "Fetch issue", "config": {"prompt": "Read it."}},
+        {"id": "run-it", "kind": "action", "label": "Run it",
+         "config": {"action": "ssh_command", "prompt": "ls {{ steps.fetch-issue.data.title }}"}}],
+        "edges": [{"from": "fetch-issue", "port": "success", "to": "run-it"}]})
+    refusal = wd.validate_document(graph, owner="root", tasks_by_id={}, crew_ids=set(),
+                                   owner_is_admin=True, own_task_id=None,
+                                   resources=wd.EMPTY_RESOURCES)
+    assert refusal is not None and refusal.reason == wd.REFUSE_MAPPED_NEVER, refusal
+    body = refusal_from(refusal).body()
+    return {"sentence": body["detail"], "field": body["field"]}
+
+
 def test_a_prompt_steps_prompt_takes_a_field_and_an_action_steps_command_says_why_not(form):
-    o = _form_case(form, """
+    problem = _real_command_refusal()
+    assert problem["field"] == "prompt", "the Command field of an action is its `prompt`"
+    o = _form_case(form, "const PROBLEM = %s;\n" % json.dumps(problem) + """
         const got = [];
         const a = hostIn();
         mountTaskFields(a, { mode: 'node', task: { name: 'Summarise', task_type: 'llm', prompt: 'Summarise ' },
@@ -226,7 +249,7 @@ def test_a_prompt_steps_prompt_takes_a_field_and_an_action_steps_command_says_wh
         const b = hostIn();
         mountTaskFields(b, { mode: 'node', task: { name: 'Run it', task_type: 'action', action: 'ssh_command',
           prompt: 'ls {{ steps.fetch-issue.data.title }}' }, tasks: [], slots: slotsOf('action'), pickField,
-          problem: { sentence: 'A field from another step cannot go into “Command”: it says what runs.', field: 'config.prompt' } });
+          problem: PROBLEM });
         await tick();
         const cmd = q(b, 'task-form-action-param');
         const cbox = slotOf(cmd);
@@ -239,10 +262,11 @@ def test_a_prompt_steps_prompt_takes_a_field_and_an_action_steps_command_says_wh
     assert o["decorated"] == [["prompt", "value"], ["prompt", "never"]], "each step's stored text box, with the palette's slot"
     assert o["value"] == "Summarise {{ steps.fetch-issue.data.title }}"
     assert o["uses"] == "Uses: title, from “fetch-issue”."
+    from src.workflow_slots import WHY_WHAT
     assert o["cmd"] == {"pick": False,
-                        "never": "Not here: Typed here only: it says what runs, so a field from another step can never fill it.",
+                        "never": f"Not here: {WHY_WHAT}",
                         "refused": True,
-                        "problem": "A field from another step cannot go into “Command”: it says what runs."}, \
+                        "problem": problem["sentence"]}, \
         "the server's refusal is said on the Command field"
     assert o["topProblem"] is False, "said on its field, not above the form"
 

@@ -67,6 +67,39 @@ def admin_refusal_message(action: str | None) -> str:
     return f"Action '{action or ''}' {ADMIN_REFUSAL_SUFFIX}"
 
 
+def document_steps(graph) -> list:
+    """Every step of a parsed workflow document, each For-each followed by the
+    step it repeats (`P22-12`) — the steps whose privileges a workflow needs.
+    One walk for every door that asks (`Law 7`, `integrate-d`)."""
+    from src.workflow_document import NODE_KIND_FOREACH
+
+    out = []
+    for node in (graph or {}).get("nodes") or ():
+        if not isinstance(node, dict):
+            continue
+        out.append(node)
+        inner = (node.get("config") or {}).get("step") if node.get("kind") == NODE_KIND_FOREACH else None
+        if isinstance(inner, dict):
+            out.append(inner)
+    return out
+
+
+def admin_only_action_in(graph) -> str | None:
+    """The first Action step — or step a For-each repeats — whose action only
+    an admin may schedule (`ADMIN_ONLY_TASK_ACTIONS`, asked through
+    `is_admin_only_task_action`, so a step is refused exactly where a task with
+    that action is). The save door's question (`workflow_store.check_document`)
+    and the first half of `admin_only_action_of`'s."""
+    from src.workflow_document import NODE_KIND_ACTION
+
+    for node in document_steps(graph):
+        config = node.get("config") if isinstance(node.get("config"), dict) else {}
+        if node.get("kind") == NODE_KIND_ACTION and is_admin_only_task_action(
+                NODE_KIND_ACTION, config.get("action")):
+            return config.get("action")
+    return None
+
+
 def admin_only_action_of(db, task) -> str | None:
     """The admin-only action this task would run, or `None`. `P22-05`.
 
@@ -97,8 +130,7 @@ def admin_only_action_of(db, task) -> str | None:
         return None
     from core.database import ScheduledTask, Workflow
     from src.workflow_document import (
-        ADMIN_ONLY_KINDS, NODE_KIND_ACTION, NODE_KIND_FOREACH, NODE_KIND_HTTP,
-        NODE_KIND_RUN_TASK, DocumentError, parse_graph,
+        ADMIN_ONLY_KINDS, NODE_KIND_HTTP, NODE_KIND_RUN_TASK, DocumentError, parse_graph,
     )
     from src.workflow_slots import API_CALL_TOOL
 
@@ -109,18 +141,13 @@ def admin_only_action_of(db, task) -> str | None:
         graph = parse_graph(wf.graph)
     except DocumentError:
         return None
-    steps = []
-    for node in graph["nodes"]:
-        steps.append(node)
-        inner = (node.get("config") or {}).get("step") if node.get("kind") == NODE_KIND_FOREACH else None
-        if isinstance(inner, dict):
-            steps.append(inner)
+    found = admin_only_action_in(graph)
+    if found:
+        return found
     targets = []
-    for node in steps:
+    for node in document_steps(graph):
         kind = node.get("kind")
         config = node.get("config") if isinstance(node.get("config"), dict) else {}
-        if kind == NODE_KIND_ACTION and (config.get("action") or "") in ADMIN_ONLY_TASK_ACTIONS:
-            return config["action"]
         if kind in ADMIN_ONLY_KINDS:
             tool = API_CALL_TOOL if kind == NODE_KIND_HTTP else config.get("tool")
             return str(tool or kind)
