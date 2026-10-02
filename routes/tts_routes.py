@@ -4,10 +4,12 @@
 TTS API routes — multi-provider (local Kokoro, API endpoint, browser).
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response
 from pydantic import BaseModel
 import logging
+
+from core.middleware import require_admin
 
 logger = logging.getLogger(__name__)
 
@@ -76,8 +78,23 @@ def setup_tts_routes(tts_service):
             )
 
     @router.post("/clear-cache")
-    async def clear_tts_cache():
+    async def clear_tts_cache(request: Request):
         """Clear TTS cache"""
+        # `B540`. The cache is one directory for the whole instance — a clip
+        # is keyed by text, provider, model, voice and speed
+        # (`TTSService._cache_key`), never by person — so clearing it discards
+        # every user's audio at once. Measured 2026-10-02 against the real app
+        # with `AUTH_ENABLED=true`: a signed-in non-admin got 200 and the
+        # cache was emptied, while the same act on uploads
+        # (`POST /api/upload/cleanup`) is `require_admin`. An owner scope is
+        # not available instead: nothing records whose clip is whose. The one
+        # caller in the product clears it after a change of model, voice or
+        # speed has made the old clips unreachable — `saveAndClearCache` in
+        # `static/js/settings.js`, which first writes `POST /api/auth/settings`,
+        # an admin write. So whoever may change the voice may throw away the
+        # clips made with the old one, and nobody else. A no-login install
+        # keeps it: `require_admin` returns when auth is off.
+        require_admin(request)
         try:
             tts_service.clear_cache()
             return {"success": True, "message": "Cache cleared"}

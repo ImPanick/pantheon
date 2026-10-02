@@ -74,14 +74,14 @@ The four tiers are `P11-02b`'s own question. A site is exactly one of them:
   ownership check or a privilege key that does not exist. The fix is a data model, not
   an auth change.
 
-derived: direct 102 · Depends 20 · total 122
+derived: direct 103 · Depends 20 · total 123
 
 ### tier summary
 
 | tier | sites |
 |---|---|
 | `superuser` | 45 |
-| `operator` | 52 |
+| `operator` | 53 |
 | `power-user` | 4 |
 | `only-because-nothing-finer-existed` | 21 |
 
@@ -135,7 +135,7 @@ derived: direct 102 · Depends 20 · total 122
 | `routes/auth_routes.py` | `remove_role` | `DELETE /api/auth/roles/{name}` | removes a role and revokes it from every user holding it. `P11-02` |
 | `routes/auth_routes.py` | `set_user_role` | `PUT /api/auth/users/{username}/role` | grants somebody else a role. `P11-02` |
 
-### `operator` — **52 operator sites.** Running the box: endpoints, models, probes, logs, webhooks, storage. A person who keeps the instance up needs all of it and needs none of the tier above. This is the tier that makes a role model worth building, because today the only way to hand someone the operator's job is to hand them the owner's.
+### `operator` — **53 operator sites.** Running the box: endpoints, models, probes, logs, webhooks, storage. A person who keeps the instance up needs all of it and needs none of the tier above. This is the tier that makes a role model worth building, because today the only way to hand someone the operator's job is to hand them the owner's.
 
 | file | function | route | protects |
 |---|---|---|---|
@@ -184,6 +184,7 @@ derived: direct 102 · Depends 20 · total 122
 | `routes/skills_routes.py` | `set_builtin_override` | `PUT /api/skills/builtin/{name}` | rewrites a built-in skill's text for every user's agent |
 | `routes/upload_routes.py` | `upload_stats` | `GET /api/upload/stats` | aggregate upload storage |
 | `routes/upload_routes.py` | `manual_cleanup` | `POST /api/upload/cleanup` | deletes expired uploads across all owners |
+| `routes/tts_routes.py` | `clear_tts_cache` | `POST /api/tts/clear-cache` | discards every cached speech clip on the instance — one directory, keyed by text, provider, model, voice and speed and never by person, so there is no owner scope to give it. The same act as the upload cleanup above, at the same height. `B540`: it made no privilege check until 2026-10-02, when a signed-in non-admin was measured emptying it |
 | `routes/webhook/webhook_routes.py` | `delete_webhook` | `DELETE /api/webhooks/{webhook_id}` | removes one |
 | `routes/webhook/webhook_routes.py` | `list_webhooks` | `GET /api/webhooks` | the outbound webhook inventory. All five reach `require_admin` under the alias `_require_admin`, which is why a grep for `require_admin(` finds none of them |
 | `routes/webhook/webhook_routes.py` | `toggle_webhook` | `PATCH /api/webhooks/{webhook_id}` | enables or disables one |
@@ -250,7 +251,7 @@ The `gate` column is derived, never asserted, and reads as a chain:
 
 The `intended` column is a verdict and must begin `yes` or `no`. A `no` must name a
 `Bxxx`; the checker fails on one that does not, so a hole cannot sit in this table
-unfiled. **There are seven `no`s and they are `B540`, `B541` and `B542`.**
+unfiled. **There are six `no`s and they are `B541` and `B542`.** `B540` was the seventh until 2026-10-02.
 
 #### `routes/assistant_routes.py`
 
@@ -456,7 +457,7 @@ routes: 3
 |---|---|---|---|
 | `GET /api/tts/stats` | `get_tts_stats` | `middleware` | yes — counters for a local service. |
 | `POST /api/tts/synthesize` | `synthesize_speech` | `middleware` | yes — a signed-in user synthesising their own text. |
-| `POST /api/tts/clear-cache` | `clear_tts_cache` | `middleware` | no — `B540`. An instance-wide mutation with no privilege check, while the same act on uploads (`POST /api/upload/cleanup`) is `require_admin`. |
+| `POST /api/tts/clear-cache` | `clear_tts_cache` | `middleware + require_admin` | yes — `B540`. An instance-wide mutation, so admin, at the height of the same act on uploads (`POST /api/upload/cleanup`). There is no owner to scope it to — nothing records whose clip is whose — and the product's one caller runs it after an admin-only voice change. A no-login install keeps it: `require_admin` returns when auth is off. |
 
 #### `routes/workspace_routes.py`
 
@@ -482,7 +483,7 @@ the number of admin decisions added — which is the behaviour the map was built
 The paragraph above is about the 107 that predate roles; the counts below are live.
 
 - **45 superuser sites do not move.** They are already right.
-- **52 operator sites are the phase's return.** Today the only way to let someone keep
+- **53 operator sites are the phase's return.** Today the only way to let someone keep
   the instance up is to make them the owner. An `operator` overlay on
   `DEFAULT_PRIVILEGES` retires 48 gates without touching a single one of the 37.
 - **4 power-user sites are one privilege key.** `allowed_models` already exists in

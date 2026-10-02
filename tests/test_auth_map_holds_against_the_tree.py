@@ -267,24 +267,51 @@ def test_the_map_may_not_name_a_site_that_is_gone(checker, map_text):
                for p in found), found
 
 
+def _route_rows(checker, map_text):
+    """Every § B row, in file order, with the exact line it was parsed from.
+
+    The two tests below used to mutate one named row — `POST /api/tts/clear-cache`,
+    the `B540` hole — and `B540` closing would have left them asserting on a line
+    that no longer exists (`mutated == map_text`). `B520`'s rule, which this file
+    already follows four tests down: *assert the invariant, never the instance.*
+    """
+    parsed = checker.parse_map(map_text)
+    rows = []
+    for rows_in_file in parsed.routes.values():
+        for row in rows_in_file.values():
+            line = (f"| `{row['route']}` | `{row['handler']}` | `{row['gate']}` "
+                    f"| {row['intended']} |")
+            assert line in map_text, line
+            rows.append((row, line))
+    assert rows, "the map parsed to no § B rows — the tests below would be about nothing"
+    return rows
+
+
 def test_a_route_gate_claim_is_checked_against_the_source(checker, map_text):
-    """Claiming a gate the route does not have is the failure this file exists for."""
+    """Claiming a gate the route does not have is the failure this file exists for.
+
+    The anchor is the first login-only route in the map, given an admin gate it
+    does not have — computed, so it survives any one row being fixed."""
+    row, line = next((r, l) for r, l in _route_rows(checker, map_text)
+                     if r["gate"] == "middleware")
     mutated = map_text.replace(
-        "| `POST /api/tts/clear-cache` | `clear_tts_cache` | `middleware` |",
-        "| `POST /api/tts/clear-cache` | `clear_tts_cache` | `middleware + require_admin` |",
-    )
+        line, line.replace("| `middleware` |", "| `middleware + require_admin` |", 1))
     assert mutated != map_text
     found, _ = checker.problems(ROOT, mutated, max_other=_ci_ceiling())
-    assert any("POST /api/tts/clear-cache" in p and "the source says" in p
-               for p in found), found
+    assert any(row["route"] in p and "the source says" in p for p in found), found
 
 
 def test_an_unintended_route_must_name_a_bug_row(checker, map_text):
-    """`no` with no `Bxxx` is an unfiled hole sitting quietly in a table."""
-    mutated = map_text.replace("no — `B540`. An instance-wide", "no. An instance-wide")
+    """`no` with no `Bxxx` is an unfiled hole sitting quietly in a table.
+
+    Any row will do, so the first one is turned into an unfiled `no` — which
+    keeps this test meaningful on the day the map has no holes left in it."""
+    row, line = _route_rows(checker, map_text)[0]
+    mutated = map_text.replace(
+        line, line.replace(f"| {row['intended']} |", "| no. Nothing filed. |", 1))
     assert mutated != map_text
     found, _ = checker.problems(ROOT, mutated, max_other=_ci_ceiling())
-    assert any("names no `Bxxx`" in p for p in found), found
+    assert any(row["route"] in p and "names no `Bxxx`" in p for p in found), found
 
 
 def test_a_tier_total_that_does_not_add_up_fails(checker, map_text, sites):
