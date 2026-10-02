@@ -350,6 +350,8 @@ def references_in_text(text: str) -> tuple:
             ref, _end = _parse_ref_at(text, i)
             found.append(ref)
         except RefError:
+            # Not a reference here — the person's own `{{` (a Go template, say).
+            # The question is only whether one IS; the scan moves to the next.
             pass
         i = text.find("{{", i + 1)
     return tuple(found)
