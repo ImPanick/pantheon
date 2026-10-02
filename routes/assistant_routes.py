@@ -287,7 +287,12 @@ def setup_assistant_routes(task_scheduler) -> APIRouter:
                 raise HTTPException(status_code=400, detail="Not an assistant task")
         finally:
             db.close()
-        started = await task_scheduler.run_task_now(task_id)
+        # `B1061`. A person pressed *Run now* on their assistant's check-in:
+        # person work, as the task route's buttons are (`B1047`) — it waits
+        # only for a chat reply in progress, and the page it was pressed on
+        # does not hold it back or stop it.
+        from src.interactive_gate import STARTED_BY_PERSON
+        started = await task_scheduler.run_task_now(task_id, started_by=STARTED_BY_PERSON)
         return {"started": bool(started)}
 
     @router.get("/run-status/{task_id}")

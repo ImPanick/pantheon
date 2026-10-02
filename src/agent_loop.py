@@ -86,6 +86,7 @@ from src.agent_stops import (
     unkept_promise_stop,
 )
 from src.run_limits import CAPS_FROM_CALLER, RunLimits, bind_run_limits
+from src.interactive_gate import bind_tool_call_started_by  # `B1061`
 from src.agent_tools import (
     parse_tool_blocks,
     strip_tool_blocks,
@@ -6126,6 +6127,7 @@ async def stream_agent_loop(
             # `P7-12`. This task's context is a copy of the loop's, so the
             # binding is the approved call's and ends with it.
             bind_run_limits(_run_limits)
+            bind_tool_call_started_by(workload)  # `B1061`
             try:
                 return await execute_tool_block(
                     approved_block,
@@ -7730,6 +7732,7 @@ async def stream_agent_loop(
                     # `P7-12`. The run a `manage_settings` raise belongs to;
                     # this task's context is a copy, so it ends with the call.
                     bind_run_limits(_run_limits)
+                    bind_tool_call_started_by(workload)  # `B1061`
                     try:
                         return await execute_tool_block(
                             block,
