@@ -36,7 +36,8 @@ requirements, pass the one that does: `--server-python .venv/bin/python`.
 3. Plays the chats on a **scripted stand-in model** (`scripts/showcase/demo_model.py`,
    shown as `scripted-demo`): its words are written down, and Pantheon runs every tool
    call for real against the demo data — the approval cards are real, and so are the
-   folders the agent files into and the event it books.
+   folders the agent files into and the event it books. The Workbench's own requests to a
+   model (*Describe it*'s draft) are answered from the same script, as plain JSON.
 4. Drives Chromium through each scene, in the `dark` and `light` palettes at 1440×900
    and three at phone width, and records the GIFs. Chromium is given a proxy address
    that answers nothing, with loopback the only exception, and any page request to
@@ -70,6 +71,7 @@ matches the reader's GitHub theme.
 | `themes-*` | the sixteen palettes |
 | `brain-*` | the Brain's memories |
 | `phone-chat`, `phone-documents`, `phone-tasks` | the same at 390×844 |
+| `describe.gif` | *Describe it*: the bank-mail example drafted into three steps marked *check me*, *Check them now*, *All look right*, switched on. The scene registers `scripts/showcase/demo_chat.py` — a chat server that writes posts to a file — through the admin route, and removes it and the workflow after |
 | `agent.gif` | a turn live: thinking, the approval card, the tool calls, the answer |
 | `workflow.gif` | wiring *if it fails* by dragging, then a dry run of the chain |
 | `filing.gif` | dragging documents into folders |
