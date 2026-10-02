@@ -349,46 +349,40 @@ export function applyColors(colors) {
   // the comment said accent and the argument said red, and until P1-01 made
   // the accent separately settable those were the same value for every theme.
   // A theme carrying its own `accent` would otherwise get an accent-coloured
-  // UI and a red boat.
+  // UI and a red mark (it was upstream's red boat then; P0-13 replaced it).
   _updateFavicon(_accent || '#e06c75');
 }
 
+// Pantheon's mark (P0-13): the portico and dome of docs/brand/pantheon-mark.svg,
+// drawn by scripts/branding/make_marks.py. It replaced upstream's sailing boat,
+// which the licence allowed and P0-13 ruled out as upstream's identity. The
+// same path is inline in index.html (the <link rel="icon"> and the first-paint
+// script) and login.html, which run before this module; the test
+// tests/test_pantheon_has_its_own_mark.py holds all of them to the SVG.
+const _PANTHEON_MARK_D = 'M5.18 12A11 11 0 0 1 26.82 12L25.74 12L16 7.82L6.26 12ZM16 10L30 16L2 16ZM4 18L28 18L28 20L4 20ZM5 20L8 20L8 26L5 26ZM11.33 20L14.33 20L14.33 26L11.33 26ZM17.67 20L20.67 20L20.67 26L17.67 26ZM24 20L27 20L27 26L24 26ZM2 26L30 26L30 28L2 28Z';
+
 // Per-route SVG shape registry — kept in sync with the inline favicon
 // script in index.html so a theme change keeps the route icon, not the
-// default boat. Returns the inner SVG markup colored with `fg`.
+// mark. Returns the inner SVG markup colored with `fg`. P0-13: these are
+// docs/brand/routes/*.svg (solid, the detail cut out, even-odd), not
+// upstream's outline shapes.
 const _ROUTE_FAVICON_SHAPES = {
   '/calendar':
-    "<rect x='4' y='6' width='24' height='22' rx='2' fill='none' stroke='__C__' stroke-width='2.5'/>" +
-    "<line x1='4' y1='12' x2='28' y2='12' stroke='__C__' stroke-width='2.5'/>" +
-    "<line x1='10' y1='3' x2='10' y2='9' stroke='__C__' stroke-width='2.5' stroke-linecap='round'/>" +
-    "<line x1='22' y1='3' x2='22' y2='9' stroke='__C__' stroke-width='2.5' stroke-linecap='round'/>",
+    "<path fill='__C__' fill-rule='evenodd' d='M9 3L12 3L12 7L9 7ZM20 3L23 3L23 7L20 7ZM4 7L28 7L28 12L4 12ZM4 14L28 14L28 28L4 28ZM17 18L23 18L23 24L17 24Z'/>",
   '/notes':
-    "<rect x='6' y='4' width='20' height='24' rx='2' fill='none' stroke='__C__' stroke-width='2.5'/>" +
-    "<line x1='10' y1='10' x2='22' y2='10' stroke='__C__' stroke-width='2'/>" +
-    "<line x1='10' y1='15' x2='22' y2='15' stroke='__C__' stroke-width='2'/>" +
-    "<line x1='10' y1='20' x2='18' y2='20' stroke='__C__' stroke-width='2'/>",
+    "<path fill='__C__' fill-rule='evenodd' d='M7 4L19 4L25 10L25 28L7 28ZM11 13L21 13L21 15L11 15ZM11 18L21 18L21 20L11 20ZM11 23L17 23L17 25L11 25Z'/>",
   '/cookbook':
-    "<path d='M5 8 L5 26 A2 2 0 0 0 7 28 L25 28 A2 2 0 0 0 27 26 L27 8' fill='none' stroke='__C__' stroke-width='2.5' stroke-linejoin='round'/>" +
-    "<path d='M9 4 L23 4 L23 8 L9 8 Z' fill='none' stroke='__C__' stroke-width='2.5' stroke-linejoin='round'/>" +
-    "<line x1='11' y1='14' x2='21' y2='14' stroke='__C__' stroke-width='2'/>" +
-    "<line x1='11' y1='19' x2='17' y2='19' stroke='__C__' stroke-width='2'/>",
+    "<path fill='__C__' fill-rule='evenodd' d='M2 9L9 8L29 8L29 13L24 13L21 17L21 21L26 22L27 27L9 27L10 22L15 21L15 17L12 13L9 13Z'/>",
   '/email':
-    "<rect x='4' y='7' width='24' height='18' rx='2' fill='none' stroke='__C__' stroke-width='2.5'/>" +
-    "<path d='M5 9 L16 17 L27 9' fill='none' stroke='__C__' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'/>",
+    "<path fill='__C__' fill-rule='evenodd' d='M4 8L28 8L28 25L4 25ZM6 10L16 17L26 10L26 12.5L16 19.5L6 12.5Z'/>",
   '/memory':
-    "<path d='M16 5 C10 5 6 9 6 14 C6 19 10 21 11 22 L11 26 L21 26 L21 22 C22 21 26 19 26 14 C26 9 22 5 16 5 Z' fill='none' stroke='__C__' stroke-width='2.5' stroke-linejoin='round'/>" +
-    "<line x1='12' y1='28' x2='20' y2='28' stroke='__C__' stroke-width='2'/>",
+    "<path fill='__C__' fill-rule='evenodd' d='M14 4.5A5.46 5.46 0 0 0 5.87 7.87A5.46 5.46 0 0 0 2.5 16A5.46 5.46 0 0 0 5.87 24.13A5.46 5.46 0 0 0 14 27.5ZM16 4.5A5.46 5.46 0 0 1 24.13 7.87A5.46 5.46 0 0 1 27.5 16A5.46 5.46 0 0 1 24.13 24.13A5.46 5.46 0 0 1 16 27.5Z'/>",
   '/gallery':
-    "<rect x='4' y='4' width='24' height='24' rx='2' fill='none' stroke='__C__' stroke-width='2.5'/>" +
-    "<circle cx='12' cy='12' r='2.5' fill='__C__'/>" +
-    "<path d='M4 22 L11 16 L18 21 L23 17 L28 22' fill='none' stroke='__C__' stroke-width='2.5' stroke-linejoin='round'/>",
+    "<path fill='__C__' fill-rule='evenodd' d='M4 6L28 6L28 26L4 26ZM7 23L13 15L17 20L20 17L25 23ZM14 11A2.5 2.5 0 0 1 9 11A2.5 2.5 0 0 1 14 11Z'/>",
   '/tasks':
-    "<rect x='4' y='4' width='24' height='24' rx='3' fill='none' stroke='__C__' stroke-width='2.5'/>" +
-    "<path d='M9 16 L14 21 L23 11' fill='none' stroke='__C__' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'/>",
+    "<path fill='__C__' fill-rule='evenodd' d='M8 4L24 4A4 4 0 0 1 28 8L28 24A4 4 0 0 1 24 28L8 28A4 4 0 0 1 4 24L4 8A4 4 0 0 1 8 4ZM8.5 16.5L11 14L14 17L21.5 9.5L24 12L14 22Z'/>",
   '/library':
-    "<rect x='5' y='5' width='5' height='22' rx='1' fill='none' stroke='__C__' stroke-width='2.5'/>" +
-    "<rect x='13' y='5' width='5' height='22' rx='1' fill='none' stroke='__C__' stroke-width='2.5'/>" +
-    "<rect x='21' y='8' width='6' height='19' rx='1' fill='none' stroke='__C__' stroke-width='2.5' transform='rotate(8 24 17)'/>",
+    "<path fill='__C__' fill-rule='evenodd' d='M4 22L28 22L28 28L4 28ZM23 24L25 24L25 26L23 26ZM7 15L25 15L25 20L7 20ZM20 17L22 17L22 18L20 18ZM5 8L23 8L23 13L5 13ZM18 10L20 10L20 11L18 11Z'/>",
 };
 
 function _updateFavicon(fg) {
@@ -398,7 +392,7 @@ function _updateFavicon(fg) {
   if (routeShape) {
     svg = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'>${routeShape.split('__C__').join(fg)}</svg>`;
   } else {
-    svg = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><path d='M16 4L16 22L6 22Z' fill='${fg}'/><path d='M16 8L16 22L24 22Z' fill='${fg}' opacity='0.6'/><path d='M4 24Q10 20 16 24Q22 28 28 24' stroke='${fg}' stroke-width='2.5' fill='none' stroke-linecap='round'/></svg>`;
+    svg = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><path fill='${fg}' fill-rule='evenodd' d='${_PANTHEON_MARK_D}'/></svg>`;
   }
   const href = 'data:image/svg+xml,' + encodeURIComponent(svg);
   let link = document.querySelector("link[rel='icon']");

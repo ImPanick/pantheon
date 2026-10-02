@@ -1571,7 +1571,8 @@ async function _doRunNow(id, force = false) {
     let fired = false;
     try {
       if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-        new Notification('Task', { body: msg, tag: 'task-runnow-' + id, icon: '/static/favicon.ico' });
+        // P0-13: was `/static/favicon.ico`, a file this app never had (a 404, so no icon).
+        new Notification('Task', { body: msg, tag: 'task-runnow-' + id, icon: '/static/icons/icon-192.png' });
         fired = true;
       }
     } catch (_) {}
@@ -3346,7 +3347,8 @@ async function _pollTaskNotifications() {
         let fired = false;
         try {
           if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-            new Notification(title, { body: n.body, tag: 'task-' + (n.task_id || title), icon: '/static/favicon.ico' });
+            // P0-13: was `/static/favicon.ico`, a file this app never had (a 404, so no icon).
+            new Notification(title, { body: n.body, tag: 'task-' + (n.task_id || title), icon: '/static/icons/icon-192.png' });
             fired = true;
           }
         } catch (_) {}

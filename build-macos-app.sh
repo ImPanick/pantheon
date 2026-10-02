@@ -28,22 +28,17 @@ echo "  port:        $PORT"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 
-# ── Icon (best effort) — center-crop docs/pantheon.jpg to a square .icns ──
-if [ -f "$REPO_DIR/docs/pantheon.jpg" ] && command -v sips >/dev/null 2>&1; then
-  TMPIMG="$(mktemp -d)"
-  # Center-crop to a square, scale to 512 (sips' icns encoder caps at 512), and
-  # let sips emit the .icns directly — more robust across macOS versions than
-  # building an .iconset by hand.
-  sips -c 720 720 "$REPO_DIR/docs/pantheon.jpg" --out "$TMPIMG/sq.png" >/dev/null 2>&1 || cp "$REPO_DIR/docs/pantheon.jpg" "$TMPIMG/sq.png"
-  sips -z 512 512 "$TMPIMG/sq.png" --out "$TMPIMG/icon.png" >/dev/null 2>&1
-  if sips -s format icns "$TMPIMG/icon.png" --out "$APP/Contents/Resources/pantheon.icns" >/dev/null 2>&1; then
-    echo "  icon:        pantheon.icns"
-  else
-    echo "  icon:        (skipped — conversion failed)"
-  fi
-  rm -rf "$TMPIMG"
+# ── Icon — Pantheon's mark (P0-13, B71) ──
+# `docs/brand/pantheon.icns` is drawn by scripts/branding/make_marks.py, every
+# size at its own size. This used to centre-crop docs/pantheon.jpg with sips —
+# and that file was a screenshot of upstream's UI, so the desktop app's icon was
+# a picture of the other product. Copying a ready .icns also drops the sips
+# dependency and the 512 px cap of its icns encoder.
+if [ -f "$REPO_DIR/docs/brand/pantheon.icns" ]; then
+  cp "$REPO_DIR/docs/brand/pantheon.icns" "$APP/Contents/Resources/pantheon.icns"
+  echo "  icon:        pantheon.icns"
 else
-  echo "  icon:        (skipped — no docs/pantheon.jpg)"
+  echo "  icon:        (skipped — no docs/brand/pantheon.icns)"
 fi
 
 # ── Info.plist ──

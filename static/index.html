@@ -5,7 +5,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content, viewport-fit=cover" />
   <title>Pantheon Chat</title>
-  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 4L16 22L6 22Z' fill='%23e06c75'/%3E%3Cpath d='M16 8L16 22L24 22Z' fill='%23e06c75' opacity='0.6'/%3E%3Cpath d='M4 24Q10 20 16 24Q22 28 28 24' stroke='%23e06c75' stroke-width='2.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath fill='%23e06c75' fill-rule='evenodd' d='M5.18 12A11 11 0 0 1 26.82 12L25.74 12L16 7.82L6.26 12ZM16 10L30 16L2 16ZM4 18L28 18L28 20L4 20ZM5 20L8 20L8 26L5 26ZM11.33 20L14.33 20L14.33 26L11.33 26ZM17.67 20L20.67 20L20.67 26L17.67 26ZM24 20L27 20L27 26L24 26ZM2 26L30 26L30 28L2 28Z'/%3E%3C/svg%3E">
   <link rel="manifest" href="/static/manifest.json">
   <meta name="theme-color" content="#282c34">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -66,10 +66,12 @@
         // Update favicon to match accent color. `_ac` above, not `c.red`:
         // until P1-01 the two were the same value by construction, so "accent"
         // and "red" read as synonyms here. They are separable now, and the
-        // boat is the mark for the colour that carries the chrome.
+        // mark is drawn in the colour that carries the chrome. P0-13: the mark
+        // is Pantheon's portico and dome (docs/brand/pantheon-mark.svg, drawn
+        // by scripts/branding/make_marks.py), not upstream's sailing boat.
         var ac = _ac || '#e06c75';
         var fav = document.querySelector("link[rel='icon']");
-        if (fav) fav.href = 'data:image/svg+xml,' + encodeURIComponent("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><path d='M16 4L16 22L6 22Z' fill='" + ac + "'/><path d='M16 8L16 22L24 22Z' fill='" + ac + "' opacity='0.6'/><path d='M4 24Q10 20 16 24Q22 28 28 24' stroke='" + ac + "' stroke-width='2.5' fill='none' stroke-linecap='round'/></svg>");
+        if (fav) fav.href = 'data:image/svg+xml,' + encodeURIComponent("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><path fill='" + ac + "' fill-rule='evenodd' d='M5.18 12A11 11 0 0 1 26.82 12L25.74 12L16 7.82L6.26 12ZM16 10L30 16L2 16ZM4 18L28 18L28 20L4 20ZM5 20L8 20L8 26L5 26ZM11.33 20L14.33 20L14.33 26L11.33 26ZM17.67 20L20.67 20L20.67 26L17.67 26ZM24 20L27 20L27 26L24 26ZM2 26L30 26L30 28L2 28Z'/></svg>");
         // Derive syntax highlighting colors from theme
         function h2hsl(hex) {
           hex = hex.replace('#','');
@@ -170,7 +172,12 @@
   </script>
   <!-- Per-route favicon. Bookmarking /calendar shows a calendar icon,
        /notes a notes icon, etc. Each shape is rendered in the current
-       theme accent color. Falls back to the boat logo on the root path. -->
+       theme accent color. Falls back to Pantheon's mark on the root path.
+       P0-13: the eight glyphs are docs/brand/routes/*.svg, drawn by
+       scripts/branding/make_marks.py in the mark's own language (solid, the
+       detail cut out); upstream's outline shapes are not reused. The same
+       eight live in static/js/theme.js `_ROUTE_FAVICON_SHAPES`, and
+       tests/test_pantheon_has_its_own_mark.py drives both against the SVGs. -->
   <script>
   (function(){
     try {
@@ -184,44 +191,29 @@
       var _tc = theme || {};
       var ac = _tc.accent || _tc.red
              || (_tc.colors && (_tc.colors.accent || _tc.colors.red)) || '#e06c75';
-      // Shapes are line-stroke SVGs (no emoji glyphs). Each entry returns
-      // the inner SVG markup rendered against currentColor=`ac`.
+      // Shapes are filled SVG paths (no emoji glyphs), even-odd so the
+      // detail is cut out of the solid. Each entry returns the inner SVG
+      // markup drawn in `ac`.
       var SHAPES = {
         '/calendar':
-          "<rect x='4' y='6' width='24' height='22' rx='2' fill='none' stroke='" + ac + "' stroke-width='2.5'/>" +
-          "<line x1='4' y1='12' x2='28' y2='12' stroke='" + ac + "' stroke-width='2.5'/>" +
-          "<line x1='10' y1='3' x2='10' y2='9' stroke='" + ac + "' stroke-width='2.5' stroke-linecap='round'/>" +
-          "<line x1='22' y1='3' x2='22' y2='9' stroke='" + ac + "' stroke-width='2.5' stroke-linecap='round'/>",
+          "<path fill='" + ac + "' fill-rule='evenodd' d='M9 3L12 3L12 7L9 7ZM20 3L23 3L23 7L20 7ZM4 7L28 7L28 12L4 12ZM4 14L28 14L28 28L4 28ZM17 18L23 18L23 24L17 24Z'/>",
         '/notes':
-          "<rect x='6' y='4' width='20' height='24' rx='2' fill='none' stroke='" + ac + "' stroke-width='2.5'/>" +
-          "<line x1='10' y1='10' x2='22' y2='10' stroke='" + ac + "' stroke-width='2'/>" +
-          "<line x1='10' y1='15' x2='22' y2='15' stroke='" + ac + "' stroke-width='2'/>" +
-          "<line x1='10' y1='20' x2='18' y2='20' stroke='" + ac + "' stroke-width='2'/>",
+          "<path fill='" + ac + "' fill-rule='evenodd' d='M7 4L19 4L25 10L25 28L7 28ZM11 13L21 13L21 15L11 15ZM11 18L21 18L21 20L11 20ZM11 23L17 23L17 25L11 25Z'/>",
         '/cookbook':
-          "<path d='M5 8 L5 26 A2 2 0 0 0 7 28 L25 28 A2 2 0 0 0 27 26 L27 8' fill='none' stroke='" + ac + "' stroke-width='2.5' stroke-linejoin='round'/>" +
-          "<path d='M9 4 L23 4 L23 8 L9 8 Z' fill='none' stroke='" + ac + "' stroke-width='2.5' stroke-linejoin='round'/>" +
-          "<line x1='11' y1='14' x2='21' y2='14' stroke='" + ac + "' stroke-width='2'/>" +
-          "<line x1='11' y1='19' x2='17' y2='19' stroke='" + ac + "' stroke-width='2'/>",
+          "<path fill='" + ac + "' fill-rule='evenodd' d='M2 9L9 8L29 8L29 13L24 13L21 17L21 21L26 22L27 27L9 27L10 22L15 21L15 17L12 13L9 13Z'/>",
         '/email':
-          "<rect x='4' y='7' width='24' height='18' rx='2' fill='none' stroke='" + ac + "' stroke-width='2.5'/>" +
-          "<path d='M5 9 L16 17 L27 9' fill='none' stroke='" + ac + "' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'/>",
+          "<path fill='" + ac + "' fill-rule='evenodd' d='M4 8L28 8L28 25L4 25ZM6 10L16 17L26 10L26 12.5L16 19.5L6 12.5Z'/>",
         '/memory':
-          "<path d='M16 5 C10 5 6 9 6 14 C6 19 10 21 11 22 L11 26 L21 26 L21 22 C22 21 26 19 26 14 C26 9 22 5 16 5 Z' fill='none' stroke='" + ac + "' stroke-width='2.5' stroke-linejoin='round'/>" +
-          "<line x1='12' y1='28' x2='20' y2='28' stroke='" + ac + "' stroke-width='2'/>",
+          "<path fill='" + ac + "' fill-rule='evenodd' d='M14 4.5A5.46 5.46 0 0 0 5.87 7.87A5.46 5.46 0 0 0 2.5 16A5.46 5.46 0 0 0 5.87 24.13A5.46 5.46 0 0 0 14 27.5ZM16 4.5A5.46 5.46 0 0 1 24.13 7.87A5.46 5.46 0 0 1 27.5 16A5.46 5.46 0 0 1 24.13 24.13A5.46 5.46 0 0 1 16 27.5Z'/>",
         '/gallery':
-          "<rect x='4' y='4' width='24' height='24' rx='2' fill='none' stroke='" + ac + "' stroke-width='2.5'/>" +
-          "<circle cx='12' cy='12' r='2.5' fill='" + ac + "'/>" +
-          "<path d='M4 22 L11 16 L18 21 L23 17 L28 22' fill='none' stroke='" + ac + "' stroke-width='2.5' stroke-linejoin='round'/>",
+          "<path fill='" + ac + "' fill-rule='evenodd' d='M4 6L28 6L28 26L4 26ZM7 23L13 15L17 20L20 17L25 23ZM14 11A2.5 2.5 0 0 1 9 11A2.5 2.5 0 0 1 14 11Z'/>",
         '/tasks':
-          "<rect x='4' y='4' width='24' height='24' rx='3' fill='none' stroke='" + ac + "' stroke-width='2.5'/>" +
-          "<path d='M9 16 L14 21 L23 11' fill='none' stroke='" + ac + "' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'/>",
+          "<path fill='" + ac + "' fill-rule='evenodd' d='M8 4L24 4A4 4 0 0 1 28 8L28 24A4 4 0 0 1 24 28L8 28A4 4 0 0 1 4 24L4 8A4 4 0 0 1 8 4ZM8.5 16.5L11 14L14 17L21.5 9.5L24 12L14 22Z'/>",
         '/library':
-          "<rect x='5' y='5' width='5' height='22' rx='1' fill='none' stroke='" + ac + "' stroke-width='2.5'/>" +
-          "<rect x='13' y='5' width='5' height='22' rx='1' fill='none' stroke='" + ac + "' stroke-width='2.5'/>" +
-          "<rect x='21' y='8' width='6' height='19' rx='1' fill='none' stroke='" + ac + "' stroke-width='2.5' transform='rotate(8 24 17)'/>",
+          "<path fill='" + ac + "' fill-rule='evenodd' d='M4 22L28 22L28 28L4 28ZM23 24L25 24L25 26L23 26ZM7 15L25 15L25 20L7 20ZM20 17L22 17L22 18L20 18ZM5 8L23 8L23 13L5 13ZM18 10L20 10L20 11L18 11Z'/>",
       };
       var inner = SHAPES[path];
-      if (!inner) return; // Root path keeps the default boat icon.
+      if (!inner) return; // Root path keeps the mark.
       var svg = "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'>" + inner + "</svg>";
       var href = 'data:image/svg+xml,' + encodeURIComponent(svg);
       var fav = document.querySelector("link[rel='icon']");
@@ -245,7 +237,7 @@
       // Per-route Android home-screen icon. We swap the <link rel="manifest">
       // to a per-page Blob URL with this route's SVG icon — that way "Add to
       // Home Screen" picks up the route-specific glyph instead of the shared
-      // boat logo. Falls back silently on browsers without Blob URL support.
+      // mark. Falls back silently on browsers without Blob URL support.
       try {
         if (inner && typeof Blob !== 'undefined') {
           var pwa = {
@@ -1359,7 +1351,7 @@
       <button type="button" class="incognito-indicator" id="incognito-indicator" title="Nobody mode active — click to deactivate" style="display:none;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><line x1="8" y1="16" x2="16" y2="8"/><line x1="8" y1="8" x2="16" y2="16"/></svg></button>
       <div class="chat-meta-overlay"><span id="current-meta">Pantheon Chat</span><span id="current-meta-count" class="chat-meta-count" aria-hidden="true"></span><span id="session-cost-display" class="session-cost-display" style="display:none;"></span><span class="export-dropdown-wrap" id="export-dropdown-wrap"><button type="button" class="export-dl-btn" id="export-dl-btn" title="More"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg></button><div class="export-dropdown-menu" id="export-dropdown-menu"><div class="export-dropdown-item" id="export-rename-btn"><span class="dropdown-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg></span><span>Rename</span></div><div class="export-dropdown-item" id="export-compact-btn"><span class="dropdown-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16"/><path d="M7 12h10"/><path d="M10 17h4"/></svg></span><span class="export-compact-pill">Compact</span></div><div class="export-dropdown-item" id="export-copy-btn"><span class="dropdown-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></span><span>Copy Chat</span></div><div class="export-dropdown-item" id="export-pdf-btn"><span class="dropdown-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M9 15v-2h2a1.5 1.5 0 0 1 0 3H9z"/></svg></span><span>PDF</span></div><div class="export-dropdown-item" id="export-doc-btn"><span class="dropdown-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg></span><span>Save to Documents</span></div><div class="export-dropdown-item dropdown-item-danger" id="export-delete-btn"><span class="dropdown-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg></span><span>Delete Chat</span></div></div></span></div>    </div>
     <div id="welcome-screen">
-      <div class="welcome-name"><svg class="welcome-boat" viewBox="0 0 32 32"><path d="M16 4L16 22L6 22Z" fill="currentColor"/><path d="M16 8L16 22L24 22Z" fill="currentColor" opacity="0.6"/><path d="M4 24Q10 20 16 24Q22 28 28 24" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round"/></svg>Pantheon</div>
+      <div class="welcome-name"><svg class="welcome-boat" viewBox="0 0 32 32" aria-hidden="true" focusable="false"><path fill="currentColor" fill-rule="evenodd" d="M5.18 12A11 11 0 0 1 26.82 12L25.74 12L16 7.82L6.26 12ZM16 10L30 16L2 16ZM4 18L28 18L28 20L4 20ZM5 20L8 20L8 26L5 26ZM11.33 20L14.33 20L14.33 26L11.33 26ZM17.67 20L20.67 20L20.67 26L17.67 26ZM24 20L27 20L27 26L24 26ZM2 26L30 26L30 28L2 28Z"/></svg>Pantheon</div>
       <div class="welcome-sub" id="welcome-sub">New chat ready.</div>
       <div class="welcome-tip" id="welcome-tip"></div>
       <button type="button" class="incognito-btn" id="incognito-btn" title="Enable Nobody mode — no memory, no history saved">
