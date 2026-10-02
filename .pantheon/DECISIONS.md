@@ -2692,3 +2692,25 @@ short *Start from* list against `DEFERRED.md` D-07 (`P22-24`).
    never asks for more than was sent, so a typed ceiling still bounds it. Not chosen: keeping the preset as a floor
    and trimming the conversation harder so it always fits.
 
+## D-2026-10-02-02 — the Workbench's last slices: example sentences to start from, the Skills window kept beside a Skills room, and a workstation-built MCP server runs in its author's workstation
+
+**Asked**, 2026-10-02, from the Slice E/F design (`/work/notes/SLICE-EF-DESIGN.md` § 6) for `P22-19` … `P22-24`.
+
+1. **`P22-24`'s *Start from* list, against `DEFERRED.md` D-07 (no template gallery).** *Example sentences.* At most six
+   example sentences under *Describe it*; picking one fills the box and the drafter (`P22-19`) builds it from the
+   person's own palette. Nothing is installed from a catalogue and nothing is fetched — the shape
+   `D-2026-09-27-01`'s MCP presets set inside a creation form. D-07 stands for bundled workflow documents. Not chosen:
+   bundled workflow files (most arrive "missing X"; closer to a gallery), or no list.
+2. **The Skills window and the Workbench's Skills room.** *Keep both* — the owner's answer, against the recommended
+   retirement. `#skills-modal` stays a window of its own, opened from the Brain's Skills tab as `D-2026-09-30-01` §4
+   recorded, and the Workbench gains a Skills room that mounts the same Skills module — not a copy of its code. That
+   makes `skills.js` mountable into a host (its document-wide id wiring scoped to the host it is given), so one module
+   serves two places and they cannot drift (`Law 7`); a change made in either is the other's at once, because both read
+   the same store. The cost accepted: the host-scoped refactor of a 3,680-line module.
+3. **Where an MCP server built in a workstation runs once an admin registers it.** *In its author's workstation*,
+   through a relay — no workstation code runs as Pantheon and there is no new network path (`D-2026-10-01-05` §3).
+   Accepted: a short process start per call, no state between calls, tools down while the workstation is off, and the
+   server running in its author's account when another person's agent calls it. Registration stays the existing admin
+   route's, and the MCP command/argument/env validation (`FORBIDDEN.md` Part 2) is unchanged. Not chosen: copying it into
+   Pantheon's data volume to run as the app user.
+
