@@ -171,7 +171,9 @@ def test_the_structure_the_library_keeps_is_kept(env, monkeypatch, library):  # 
                  "3. Move the offsite to [the lake house](https://example.com/offsite).",
                  "### Risks", "- Supplier delay", "#### Figures",
                  "| Item | Amount | Note |", "| --- | --- | --- |",
-                 '| Rent, office | 1200 | He said "fine" |', "Signed, ***the secretary***."):
+                 '| Rent, office | 1200 | He said "fine" |', "Signed, ***the secretary***.",
+                 # Two runs each (a colour changes mid-word), one word each.
+                 "Totals are **provisional** until *audited*."):
         assert line in doc.current_content.splitlines(), line
 
 
