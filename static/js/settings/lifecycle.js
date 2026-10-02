@@ -125,20 +125,10 @@ export function bindSettingsClose(modalEl, options = {}) {
       return;
     }
 
-    // Integration/account editors are nested flows. Close the editor first so
-    // an accidental Esc does not discard the entire Settings context.
-    const innerForm = modalEl.querySelector('#unified-intg-form');
-    if (
-      innerForm
-      && innerForm.style.display !== 'none'
-      && innerForm.children.length > 0
-    ) {
-      event.preventDefault();
-      event.stopPropagation();
-      innerForm.style.display = 'none';
-      innerForm.innerHTML = '';
-      return;
-    }
+    // `B1125`. An integration/account editor used to open inside Settings, and
+    // this closed it before Settings. `P22-21` moved it into the Workbench's
+    // MCP & Integrations room, which closes it on Escape itself (its layer on
+    // the Escape stack), so the lookup here could only ever find nothing.
 
     event.preventDefault();
     event.stopPropagation();

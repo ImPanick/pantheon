@@ -62,10 +62,13 @@ def test_nothing_looks_up_the_unmounted_ids_any_more():
 
 def test_the_legacy_fallbacks_are_gone():
     """A querySelector listing a dead id second is how the corpse stayed warm."""
+    # The second assertion here was `"#unified-intg-form" in text` — the
+    # selector the fallback sat beside, live while Settings held the form.
+    # `P22-21` moved the form into the Workbench's room, and `B1125` removed
+    # both lookups as dead (`tests/test_the_integration_form_has_one_escape_rule.py`).
     for path in ("static/js/ui.js", "static/js/settings/lifecycle.js"):
         text = (ROOT / path).read_text(encoding="utf-8")
         assert "set-email-accounts-form" not in text, path
-        assert "#unified-intg-form" in text, f"{path} lost its live selector"
 
 
 def test_exactly_one_email_account_form_remains():
