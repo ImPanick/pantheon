@@ -101,6 +101,8 @@ def glue(tmp_path_factory):
 
 
 _PREAMBLE = (
+    "globalThis.__keydown = [];\n"
+    "globalThis.addEventListener = (type, fn, capture) => { if (type === 'keydown' && capture) globalThis.__keydown.push(fn); };\n"
     "globalThis.__observers = [];\n"
     "globalThis.MutationObserver = class { constructor(fn) { this.fn = fn; globalThis.__observers.push(this); }\n"
     "  observe(t) { this.t = t; } disconnect() {} };\n"
@@ -108,7 +110,7 @@ _PREAMBLE = (
     "// The browser's `HTMLElement.click()`; the shim has none.\n"
     "Node.prototype.click = function click() { this.dispatchEvent({ type: 'click', target: this,\n"
     "  currentTarget: this, preventDefault() {}, stopPropagation() {} }); };\n"
-    "import { dismissTopMenu } from '../escMenuStack.js';\n"
+    "import { dismissTopMenu, registerMenuDismiss } from '../escMenuStack.js';\n"
     "const wb = await import('./workbench.js');\n"
     "const mutate = () => globalThis.__observers.forEach((o) => o.fn([]));\n"
     "const shown = () => ['workbench-room', 'workbench-room-skills', 'workbench-room-integrations']\n"
@@ -247,6 +249,30 @@ def test_escape_never_closes_a_layer_in_a_room_nobody_can_see(glue):
         "back in Automations, Escape closed the window instead of its own step panel"
     assert o["closed"] == {"open": False, "hidden": True}, \
         "on Skills, Escape spent itself on the hidden step panel and the window stayed"
+
+
+def test_escape_over_a_rooms_menu_closes_the_menu_not_the_window(glue):
+    """A skill's ⋯ and *Add Integration*'s list are drawn on `<body>` and sit on
+    the Escape stack; the arbiter only asks the stack first for a window marked
+    `data-esc-layer`. Measured in the drive before this: one Escape over an open
+    *Add Integration* menu closed the whole Workbench."""
+    o = _run(glue, _PREAMBLE, """
+        wb.openWorkbench({ room: 'integrations' });
+        await settle(5);
+        const press = () => globalThis.__keydown.forEach((fn) => fn({ key: 'Escape' }));
+        press();
+        const idle = $('workbench-room-integrations').dataset.escLayer || null;
+        let menus = 0;
+        registerMenuDismiss(() => { menus += 1; });     // what bindMenuDismiss does for a menu
+        press();
+        const marked = $('workbench-room-integrations').dataset.escLayer || null;
+        // What `ui.js`'s arbiter asks next, for the window under the pointer:
+        const asked = !!modal.querySelector('[data-esc-layer]') && dismissTopMenu();
+        await settle(5);
+        out({ idle, marked, asked, menus, open: wb.isWorkbenchOpen(),
+              after: $('workbench-room-integrations').dataset.escLayer || null });
+    """)
+    assert o == {"idle": None, "marked": "menu", "asked": True, "menus": 1, "open": True, "after": None}
 
 
 # ── Settings' half: open('integrations') is the room ─────────────────────────

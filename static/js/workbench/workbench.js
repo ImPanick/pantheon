@@ -43,6 +43,7 @@ import { mountTaskFields } from '../tasks/taskFields.js';
 import { mountAutomations } from './workflowRoom.js';
 import { makeWindowDraggable } from '../windowDrag.js';
 import { registerMenuDismiss } from '../escMenuStack.js';
+import * as EscStack from '../escMenuStack.js';
 import * as Modals from '../modalManager.js?v=20261002slicesce';
 // `P22-04`. The step renderer the Tasks card draws a plan with, for the
 // canvas's full plan. Spelled exactly as `app.js` imports `tasks.js` — a
@@ -268,11 +269,34 @@ function _onTabKey(e) {
   document.getElementById('workbench-room-tab-' + ROOMS[next].id)?.focus();
 }
 
+/**
+ * `P22-21`. The menus the Skills and Integrations rooms open — a skill's ⋯,
+ * *Add Integration*'s list — are drawn on `<body>` and sit on the Escape stack,
+ * but `ui.js`'s arbiter closes a registered window under the pointer before it
+ * asks the stack, unless the window marks an open layer (`B1052`). Settings was
+ * never a registered window, so the Integrations card's menus never met this;
+ * moved here, one Escape over an open *Add Integration* menu closed the whole
+ * Workbench (measured in the P22-21 drive). So while anything is on the stack,
+ * the room on show is marked for the length of that key press — this listener
+ * is on `window` in the capture phase, which runs before the arbiter's on
+ * `document` — and the stack answers first: the menu, then the window.
+ */
+function _markForEscape(e) {
+  if (!e || e.key !== 'Escape' || !_open) return;
+  const count = typeof EscStack._openMenuCount === 'function' ? EscStack._openMenuCount() : 0;
+  const room = _room(_current);
+  const panel = room && _panel(room);
+  if (!panel || !count || panel.dataset.escLayer) return;
+  panel.dataset.escLayer = 'menu';
+  setTimeout(() => { if (panel.dataset.escLayer === 'menu') delete panel.dataset.escLayer; }, 0);
+}
+
 function _wire() {
   if (_wired) return;
   const modal = _modal();
   if (!modal) return;
   _wired = true;
+  window.addEventListener('keydown', _markForEscape, true);
   document.getElementById('workbench-close')?.addEventListener('click', closeWorkbench);
   const bar = document.getElementById('workbench-rooms');
   if (bar) {
