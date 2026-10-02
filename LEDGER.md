@@ -363,7 +363,7 @@ Argued in: `P18-05`, `D-2026-09-12-01`.
 **How we got there.** Unauthenticated GitHub allows **60 requests an hour**. One click of a discovery refresh spent more than four hours of that budget, and the user's own network wore the rate limit. An audit across 50 outbound modules found a second shape worth naming: a failing batch of 8 embeddings was retried as 8 single requests — **a fan-out amplifier that turns one request into nine at exactly the moment the far end is struggling.**
 
 ```
-python3 .pantheon/check-outbound.py --max 110
+python3 .pantheon/check-outbound.py --max 109
 ```
 
 Argued in: `P15-05`, `P15-06`.

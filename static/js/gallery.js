@@ -10,7 +10,7 @@ import { makeWindowDraggable } from './windowDrag.js';
 import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
 import { topPortalZ } from './toolWindowZOrder.js';
 import sessionModule from './sessions.js';
-import fileHandlerModule from './fileHandler.js?v=20261002slicebee';
+import fileHandlerModule from './fileHandler.js?v=20261002slicesce';
 
 const API_BASE = window.location.origin;
 let _open = false;
@@ -1989,7 +1989,7 @@ function _makeGalleryDraggable(content) {
 // ---- Open / Close ----
 
 // Re-export the manager for the rail click handler
-import * as Modals from './modalManager.js?v=20261002slicebee';
+import * as Modals from './modalManager.js?v=20261002slicesce';
 import { chevronIcon } from './icons.js';
 
 export function openGallery() {
@@ -2336,7 +2336,7 @@ export function openGallery() {
   if (visionLink) {
     visionLink.addEventListener('click', (e) => {
       e.preventDefault();
-      import('./settings.js?v=20261002slicebee').then(m => {
+      import('./settings.js?v=20261002slicesce').then(m => {
         m.open('ai');
         // The gallery modal gets a bumped z-index from modalManager; settings
         // opens with its lower static z-index and lands BEHIND it. Raise it above.

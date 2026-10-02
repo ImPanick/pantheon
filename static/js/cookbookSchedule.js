@@ -56,7 +56,7 @@ try { (function () {
   let _tasksMod = null;
   async function _getTasksMod() {
     if (_tasksMod) return _tasksMod;
-    try { _tasksMod = await import("/static/js/tasks.js?v=20261002slicebee"); } catch (_) {}
+    try { _tasksMod = await import("/static/js/tasks.js?v=20261002slicesce"); } catch (_) {}
     return _tasksMod;
   }
   async function openTaskInTasksTab(taskId) {
