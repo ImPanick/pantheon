@@ -70,7 +70,7 @@ from routes.email_helpers import (
     ATTACHMENTS_DIR, COMPOSE_UPLOADS_DIR, SCHEDULED_DB,
     attachment_extract_dir, _email_cache_owner_clause, email_translation_body_hash,
 )
-from routes.email_pollers import _start_poller
+from routes.email_pollers import _start_poller, _INBOX_HOOKS
 from src.env_flags import request_flag
 
 logger = logging.getLogger(__name__)
@@ -582,12 +582,16 @@ def _record_email_received_events(owner: str, account_id: str | None, folder: st
         # `from_address` and `subject`, added to the catalogue's payload after
         # the three it always carried. `build_trigger` clips both.
         about = {}
+        uid_of = {}
         for e in emails:
             key = str(e.get("message_id") or e.get("uid") or "").strip()
             if key and key not in keys:
                 keys.append(key)
                 about[key] = {"from_address": e.get("from_address") or "",
                               "subject": e.get("subject") or ""}
+                uid = str(e.get("uid") or "").strip()
+                if uid.isdigit():
+                    uid_of[key] = int(uid)
         if not keys:
             return
 
@@ -633,7 +637,17 @@ def _record_email_received_events(owner: str, account_id: str | None, folder: st
         finally:
             conn.close()
 
-        new_keys = [k for k in claimed if k not in seen]
+        # `B1137`. A message the window had not shown before is not always a
+        # message that ARRIVED: delete or archive the newest mail in your own
+        # client and older mail scrolls up into the newest fifty, unseen. Mail
+        # that arrives takes a UID above every one the mailbox has given
+        # (RFC 3501 §2.3.1.1), so one below a UID already seen in this same
+        # window was there all along — recorded, not fired. The background
+        # check meets this whenever someone deletes spam; the listing met it
+        # whenever a filter showed older mail.
+        seen_top = max((uid_of[k] for k in seen if k in uid_of), default=None)
+        new_keys = [k for k in claimed if k not in seen
+                    and not (seen_top is not None and k in uid_of and uid_of[k] < seen_top)]
 
         if count and new_keys:
             for _key in new_keys[:50]:
@@ -2497,6 +2511,11 @@ def setup_email_routes():
         finally:
             if conn:
                 _pooled_release(account_id, conn, ok=conn_ok, owner=owner)
+
+    # `B1137`. The background inbox check reads an inbox with exactly this
+    # function — its pool, its message index — and decides what is new with
+    # the same producer the route below calls (`_record_email_received_events`).
+    _INBOX_HOOKS["list"] = _list_emails_sync
 
     def _related_thread_attachments_sync(
         folder: str,
