@@ -89,7 +89,9 @@ import { EDGE_WORDS, KIND_WORDS, componentOf } from '../tasks/workflowDiagram.js
 import { computeSnap } from '../editor/snap.js';
 import { registerMenuDismiss } from '../escMenuStack.js';
 import { KEY_STEP, MOVE_THRESHOLD } from '../windowDrag.js';
-import { createTaskSource, refusalText, outcomeOf, POSITIONS_PREF, TASKS_URL } from './taskSource.js';
+import { createTaskSource, outcomeOf, POSITIONS_PREF, TASKS_URL } from './taskSource.js';
+// `P22-05`, design § 6.3: the one reading of a refusal lives in `refusal.js`.
+import { refusalText } from './refusal.js';
 
 // Re-exported: `P22-02`'s callers and tests read them from here.
 export { refusalText, outcomeOf, POSITIONS_PREF, TASKS_URL };

@@ -35,6 +35,7 @@
 import { EDGE_WORDS, EDGE_COLUMNS, KIND_WORDS, componentOf } from '../tasks/workflowDiagram.js';
 import { runStatusTone, runStatusLabel } from '../runStatus.js';
 import { PORTS } from './graphLayout.js';
+import { refusalText } from './refusal.js';
 
 /**
  * The preference key positions are kept under.
@@ -53,26 +54,14 @@ export const POSITIONS_PREF = 'workbench_positions';
 export const TASKS_URL = '/api/tasks?include_last_run=true';
 
 /**
- * What the server said when it refused, as one sentence. FastAPI answers
- * `{ detail: "…" }` for an `HTTPException` and `{ detail: [{ msg }] }` for a
- * body it could not parse; an object detail is read for its words.
- *
- * MERGE POINT (wf-ui → wf-api): § 6.3 moves this to `workbench/refusal.js`,
- * a file `wf-api` creates. It is not on this branch, so the one copy lives here
- * (moved out of `canvas.js`, which re-exports it); when `refusal.js` lands this
- * body becomes `export { refusalText } from './refusal.js';` — one line, so
- * there is never a second copy (`Law 7`).
+ * What the server said when it refused, as one sentence — `refusal.js`'s, the
+ * one reading of a refusal in the Workbench (design § 6.3, `Law 7`). This
+ * module reads two refusals with it and re-exports it, so a caller that read
+ * it from here (or from `canvas.js`) reads the same function. Closed at the
+ * wave C merge (`integrate-c`): wf-ui held the only copy here until wf-api's
+ * `refusal.js` was on the same tree; the two bodies were identical.
  */
-export function refusalText(detail) {
-  if (typeof detail === 'string') return detail.trim();
-  if (Array.isArray(detail)) {
-    return detail.map((d) => (d && (d.msg || d.message)) || '').filter(Boolean).join(' ').trim();
-  }
-  if (detail && typeof detail === 'object') {
-    return String(detail.message || detail.sentence || detail.reason || detail.detail || '').trim();
-  }
-  return '';
-}
+export { refusalText };
 
 /** A step's last outcome: the tone that styles it and the words it says. */
 export function outcomeOf(task) {

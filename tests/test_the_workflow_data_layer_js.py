@@ -255,18 +255,23 @@ def test_a_refusal_is_the_servers_sentence_with_its_reason_and_steps(box):
 
 
 def test_refusal_reads_a_refusal_exactly_as_the_canvas_did(box):
-    """`refusalText` moves out of `canvas.js` (design § 6.3); until `wf-ui`'s
-    canvas imports it from here, the two must read every shape alike."""
+    """`refusalText` moves out of `canvas.js` (design § 6.3). Since the wave C
+    merge the canvas and the tasks source import it from here, so the canvas's
+    (and `taskSource.js`'s) export IS this function — one copy (`Law 7`) —
+    and it reads every shape as the canvas did."""
     o = _case(box, """
         const canvas = await import('./workbench/canvas.js').catch((e) => ({ err: String(e) }));
+        const tasks = await import('./workbench/taskSource.js').catch((e) => ({ err: String(e) }));
         const inputs = [' A sentence. ', [{ msg: 'a' }, { message: 'b' }, {}], { message: 'm' },
                         { sentence: 's' }, { reason: 'r' }, { detail: 'd' }, null, 42, ''];
         out({ mine: inputs.map(refusalText),
-              theirs: canvas.refusalText ? inputs.map(canvas.refusalText) : canvas.err });
+              theirs: canvas.refusalText ? inputs.map(canvas.refusalText) : canvas.err,
+              one: [canvas.refusalText === refusalText, tasks.refusalText === refusalText] });
     """)
     assert o["mine"] == ["A sentence.", "a b", "m", "s", "r", "d", "", "", ""]
     assert isinstance(o["theirs"], list), f"the canvas did not load: {o['theirs']}"
     assert o["theirs"] == o["mine"]
+    assert o["one"] == [True, True], "a second copy of refusalText"
 
 
 # ── workflowSource.js: what is drawn ─────────────────────────────────────────
@@ -287,7 +292,11 @@ def test_the_start_is_drawn_as_a_fixed_step_with_a_fixed_arrow_into_the_first(bo
         ["__start__", "Starts", "start", "Every day at 08:00", [], [], False, True, True],
         ["n1", "Summarise my inbox", "llm", "Prompt", ["success", "error"], [], True, False, False],
         ["n2", "Send me the summary", "llm", "Prompt", ["success", "error"], ["Sample pinned"], True, False, False],
-        ["n3", "Run the backup", "run_task", "run_task · Runs “Backup”", ["success", "error"], [], True, False, False],
+        # The person-facing word (`KIND_WORDS.run_task`, wf-ui, design § 6.6).
+        # wf-api's branch had no word for the kind yet and pinned the raw
+        # fallback `run_task · …`; a person never reads `run_task` (§ 6.6),
+        # so at the wave C merge the data layer's test agrees with the word.
+        ["n3", "Run the backup", "run_task", "Run task · Runs “Backup”", ["success", "error"], [], True, False, False],
     ]
     assert o["edges"] == [
         {"from": "__start__", "to": "n1", "when": "success", "label": "starts", "fixed": True},
