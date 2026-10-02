@@ -238,22 +238,23 @@ proved it dead.
 
 ## Status
 
-**1141 tracked tasks, 827 done.** The tracker is [`.pantheon/ROADMAP.md`](.pantheon/ROADMAP.md) and
+**1169 tracked tasks, 853 done.** The tracker is [`.pantheon/ROADMAP.md`](.pantheon/ROADMAP.md) and
 it is the only place work is tracked — one list, one progress area, validated by a script that
 recounts every phase row against its own ticks. It exists because the summary line was once wrong
 by nineteen and carried forward unread from entry to entry, because each author copied the line
 above.
 
 **Read that number with the trend beside it, because one line of it is misleading on its own.**
-Over the last ten waves, *done* went **70.8% → 72.5%** and *open* went **290 → 314**: 149 rows
-filed against 125 closed, a file-to-close ratio of **1.192**. Both movements are real and neither
+Over the last ten waves, *done* went **72.7% → 73.0%** and *open* went **275 → 316**: 160 rows
+filed against 119 closed, a file-to-close ratio of **1.345**. Both movements are real and neither
 is a counting error — the fraction converges because closure outruns filing as a share of the
 total, and the open count grows because it does not outrun filing in absolute terms. **The open
 count falls only when we stop looking**, since most of those rows are defects found by sweeps
 over code that was already here, not new work invented. What makes that survivable rather than
-hopeless is a different number: of the last 40 backlog rows filed (`B1101`–`B1140`), **none** is
+hopeless is a different number: of the last 40 backlog rows filed (`B1129`–`B1168`), **none** is
 on the ship line — the short list of rows that stop a stranger relying on this repository now
-that it is public (measured 2026-10-02). The series, the classification and what counts as
+that it is public (measured 2026-10-02) — and since that day's merge the short list itself has
+no open row: every gate it named is met. The series, the classification and what counts as
 blocking are in
 [`.pantheon/SHIP-LINE.md`](.pantheon/SHIP-LINE.md). Every figure in this paragraph is
 `.pantheon/ship-line.py`'s, and `.pantheon/check-ledger.py` fails the build when one here stops
@@ -287,7 +288,7 @@ sixth and seventh were upstream's pictures under our filenames too, gone the day
   undo; a workflow is a file you can hand someone, without its keys. *Skills* is the Skills
   window's own module, with drafting from a sentence and fixing with the model; *MCP &
   Integrations* builds an MCP server in your workstation and tries it before an admin registers it.
-  Next: a mail-triggered workflow that runs without anyone opening the inbox first.
+  A workflow that starts when mail arrives runs without anyone opening the inbox.
 - **Persistent memory** — project knowledge that survives restarts, gains confidence as sources
   agree, and records contradictions instead of silently resolving them.
 - **Identity and limits** — SSO against your own provider, roles rather than a single admin
