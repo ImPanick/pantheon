@@ -361,9 +361,22 @@ export function createWorkflowSource({
     return out;
   }
 
-  /** The step a failed run ended on: the last record, when it failed. */
+  /** The step a failed run failed on: the one the server names (`failed`,
+   *  the walker's own rule — the last step that failed with no arrow out of
+   *  its failure port), else the last record when it failed (a reply with no
+   *  `failed`: a run drawn on a version no longer kept). `integrate-d`: the
+   *  last record is not the failed one once branches run side by side or a
+   *  For-each's items are recorded after it. */
   function failedStep() {
     if (!isRun || !S.run || !S.run.run || S.run.run.status !== 'error') return null;
+    const named = S.run.failed;
+    if (named && named.node_id != null) {
+      return {
+        nodeId: String(named.node_id),
+        label: String(named.label || named.node_id),
+        firstLine: String(named.error || '').split('\n')[0].trim(),
+      };
+    }
     const recs = (Array.isArray(S.run.nodes) ? S.run.nodes : []).filter((r) => !r.dry);
     const last = recs[recs.length - 1];
     if (!last || last.status !== 'error') return null;

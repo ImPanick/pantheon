@@ -536,3 +536,47 @@ def test_the_picker_lists_a_nested_field_as_its_reference_spells_it(js_box):
     assert start["items[0].title"] == ("first", "{{ steps.start.data.items[0].title }}")
     assert not [p for p in start if "," in p], "no field is listed by a comma-joined list"
     assert o["groups"][1] == ["Rename", [["headline", None, "{{ steps.rename.data.headline }}"]]]
+
+
+@pytest.mark.asyncio
+async def test_a_failed_run_names_the_step_it_failed_on_and_the_room_opens_there(factory, monkeypatch, js_box):
+    """Found by the merged drive (P22-12): a run whose For-each failed on an
+    item did not open on its failed step — the room took "the last record, when
+    it failed" (Slice B's single path), and here the last record is the next
+    item, which worked. The run's detail now names the step by the walker's own
+    rule (`RunState.unhandled_error`), and the source opens on it."""
+    from core.database import WorkflowVersion
+    from src.builtin_actions import NodeResult
+    nodes = [node("make", "Make the list", "set", fields=[{"name": "hosts", "value": ["a", "b", "c"]}]),
+             node("each", "Each host", "foreach", list="{{ steps.make.data.hosts }}", on_error="continue",
+                  step={"kind": "action", "label": "Tidy", "config": {"action": "tidy_sessions"}})]
+    seed_workflow(factory, nodes, [arrow("make", "each")])
+    db = factory()     # the version the run ran is kept, as a save keeps it
+    db.add(WorkflowVersion(id="v3", workflow_id="w-wf", version=3, name="Morning digest",
+                           graph=json.dumps({"v": 1, "nodes": nodes, "edges": [arrow("make", "each")]}),
+                           fingerprint="f3", source="user"))
+    db.commit()
+    db.close()
+    s = recording_scheduler({"Morning digest · Tidy · item 2 of 3": NodeResult("error", payload="It broke on b.")})
+    await s._execute_task("wf")
+    [run] = runs_of(factory, "wf")
+    assert run["status"] == "error", run
+    records = records_of(factory, run["id"])
+    assert records[-1]["status"] == "success" and records[-1]["item"] == 2, "the last record is item 3, which worked"
+    app = app_for(factory, s, monkeypatch)
+    async with client_for(app) as client:
+        detail = (await client.get(f"/api/workflows/w-wf/runs/{run['id']}",
+                                   headers={"x-test-user": "alice"})).json()
+    assert detail["failed"] == {"node_id": "each", "label": "Each host",
+                                "error": "Item 2 of 3 failed: It broke on b."}
+    o = _js(js_box, "const DETAIL = %s;\n" % json.dumps(detail, default=str) + r"""
+        const { server: cw, net: cwnet, seed, cwApi } = await import('./cwfake.js');
+        const { createWorkflowSource } = await import('./workflowSource.js');
+        seed({ id: 'w-wf', name: 'Morning digest', task_id: 'wf', trigger_status: 'active', version: 3,
+               trigger_task: { id: 'wf', status: 'active' }, graph: DETAIL.graph });
+        cw.executions[DETAIL.run.id] = DETAIL;
+        const src = createWorkflowSource({ api: cwApi(cwnet), workflowId: 'w-wf', mode: 'run', runId: DETAIL.run.id });
+        await src.ready;
+        out({ failed: src.state().failed });
+    """)
+    assert o["failed"]["nodeId"] == "each" and o["failed"]["firstLine"] == "Item 2 of 3 failed: It broke on b."

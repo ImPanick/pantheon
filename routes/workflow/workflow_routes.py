@@ -389,6 +389,7 @@ def setup_workflow_routes(task_scheduler) -> APIRouter:
                 "nodes": [node_record_to_dict(r) for r in recs],
                 "cleared": cleared,
                 "cleared_sentence": records_cleared_sentence() if cleared else None,
+                "failed": _failed_step(run, graph, kept, recs),
             }
         finally:
             db.close()
@@ -749,6 +750,29 @@ async def _write_example(owner, label, fields) -> dict:
     if not isinstance(data, dict):
         raise WorkflowRefused(502, "The model's example could not be read as JSON. Try again, or paste one.")
     return data
+
+
+def _failed_step(run, graph, kept, recs) -> dict | None:
+    """`P22-07` / `P22-11`. The step a failed run failed on — the walker's own
+    rule (`workflow_runs.RunState.unhandled_error`: the last step that failed
+    with no arrow out of its failure port), so the Runs view opens on the step
+    the run's `error` names. `integrate-d`: the room took "the last record,
+    when it failed", Slice B's single path — with branches side by side or a
+    For-each's item records after its own, the last record is often another
+    one, and the failed run opened on nothing ("This run ended: failed.").
+    `None` for any other run, or when the graph is not the version it ran."""
+    if run.status != "error" or not kept or not recs:
+        return None
+    from src.workflow_document import DocumentError, parse_graph
+    from src.workflow_runs import RunState
+    try:
+        state = RunState(parse_graph(graph), [r for r in recs if not r.dry])
+    except DocumentError:
+        return None
+    rec = state.unhandled_error()
+    if rec is None:
+        return None
+    return {"node_id": rec.node_id, "label": rec.label or rec.node_id, "error": rec.error or ""}
 
 
 def _node_plan(node, owner, tasks_by_id, resources=None) -> list:
