@@ -68,6 +68,7 @@ __all__ = [
     "run_parsed",
     "render_server_py",
     "render_workstation_readme",
+    "validated_request",
     "CHECK_HINT_CLI",
     "CHECK_HINT_WORKSTATION",
 ]
@@ -666,18 +667,16 @@ interpreter nor a command containing a path.
 # Creating
 # ---------------------------------------------------------------------------
 
-def create_server(
-    name: str,
-    *,
-    tools: Optional[Sequence[str]] = None,
-    description: str = "",
-    data_dir: Optional[str] = None,
-    python: Optional[str] = None,
-) -> Dict[str, Any]:
-    """Write a new server. Returns what was written and how to register it.
+def validated_request(
+    name: Any, tools: Optional[Sequence[Any]], description: Any,
+) -> "tuple[str, List[str], str]":
+    """`(slug, tools, description)` for a new server, or a `ScaffoldError`.
 
-    Refuses if the directory already exists, and there is no `--force`: the
-    only thing an overwrite could do here is destroy code somebody wrote.
+    The rules for what may be asked for, in one place for both doors that
+    make a server — `create_server` here (the data volume) and
+    `workstation_mcp.ws_create` (a person's workstation, `P22-22`) — so the
+    browser cannot accept a name, a tool or a description the CLI refuses, or
+    the other way round (`Law 7`). Lifted out of `create_server` unchanged.
     """
     slug = normalise_server_name(name)
     wanted = list(tools) if tools else [DEFAULT_TOOL_NAME]
@@ -701,6 +700,23 @@ def create_server(
             f"{MAX_DESCRIPTION_CHARS}. It is a sentence, not the manual — the "
             "manual is the README next to the server."
         )
+    return slug, seen, text
+
+
+def create_server(
+    name: str,
+    *,
+    tools: Optional[Sequence[str]] = None,
+    description: str = "",
+    data_dir: Optional[str] = None,
+    python: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Write a new server. Returns what was written and how to register it.
+
+    Refuses if the directory already exists, and there is no `--force`: the
+    only thing an overwrite could do here is destroy code somebody wrote.
+    """
+    slug, seen, text = validated_request(name, tools, description)
 
     target = server_dir(slug, data_dir=data_dir)
     if os.path.exists(target):
