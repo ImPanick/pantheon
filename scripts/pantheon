@@ -25,9 +25,17 @@ import subprocess
 import sys
 from pathlib import Path
 
-VERSION = "0.1.0"
-
 SCRIPTS_DIR = Path(__file__).resolve().parent
+
+# `B1160`. The version is `cli.VERSION`, the one every `pantheon-*` command
+# prints through `common_parser` — read here, not restated. Until 2026-10-02
+# this line was `VERSION = "0.1.0"`, a third declaration that
+# `tests/test_one_version_string.py` could not see (this file has no `.py`
+# suffix), so moving `APP_VERSION` and `cli.VERSION` together left
+# `pantheon --version` behind with every test green. The test now reads every
+# tracked file with a python shebang, and drives this command.
+sys.path.insert(0, str(SCRIPTS_DIR / "_lib"))
+from cli import VERSION  # noqa: E402
 
 
 def _list_subcommands() -> list[Path]:

@@ -140,6 +140,31 @@ def _tracked(*globs: str) -> list[str]:
             if f and not any(f.startswith(d) for d in _SKIP_DIRS)]
 
 
+def _python_programs() -> list[str]:
+    """Every tracked Python program: each `*.py`, and each file with another
+    name whose first line is a `python` shebang.
+
+    `B1160`. The census read `git ls-files "*.py"` alone, and `scripts/pantheon`
+    — the dispatcher, like the twenty `pantheon-*` executables — has no suffix.
+    It declared `VERSION = "0.1.0"` of its own, printed by `pantheon --version`,
+    and moving the two pinned declarations together would have left it behind
+    with every test here green.
+    """
+    found = []
+    for rel in _tracked():
+        if rel.endswith(".py"):
+            found.append(rel)
+            continue
+        path = ROOT / rel
+        if not path.is_file() or path.is_symlink():
+            continue
+        with open(path, "rb") as fh:
+            first = fh.readline(200)
+        if first.startswith(b"#!") and b"python" in first:
+            found.append(rel)
+    return found
+
+
 def _declared_in(rel: str) -> str:
     src = _PY_COMMENT.sub("", (ROOT / rel).read_text(encoding="utf-8"))
     m = _VALUE.search(src)
@@ -162,8 +187,33 @@ def test_the_cli_and_the_http_surface_report_the_same_version():
     )
 
 
+def test_the_census_reads_the_programs_that_have_no_suffix():
+    """A census that cannot see the dispatcher proves nothing about it — so
+    the population it reads is asserted to hold it, and the executables beside
+    it (`Law 20`: the scan's reach is checked, not assumed)."""
+    programs = set(_python_programs())
+    assert "scripts/pantheon" in programs
+    assert "scripts/pantheon-memory" in programs
+
+
+def test_the_dispatcher_reports_the_same_version():
+    """`pantheon --version` and the listing's header, run as a person runs them.
+
+    Fails on the tree as it stood on 2026-10-02 once `APP_VERSION` moves: the
+    dispatcher printed its own literal."""
+    for argv in (["--version"], []):
+        proc = subprocess.run([sys.executable, str(ROOT / "scripts" / "pantheon"), *argv],
+                              cwd=str(ROOT), capture_output=True, text=True, timeout=60)
+        assert proc.returncode == 0, proc.stderr
+        first = proc.stdout.splitlines()[0]
+        assert first.split()[:2] == ["pantheon", _app_version()], (
+            f"`pantheon {' '.join(argv)}` says {first!r}; the app reports "
+            f"{_app_version()!r}"
+        )
+
+
 def test_no_third_module_declares_a_version():
-    hits = [rel for rel in _tracked("*.py")
+    hits = [rel for rel in _python_programs()
             if _DECL.search(_PY_COMMENT.sub(
                 "", (ROOT / rel).read_text(encoding="utf-8", errors="replace")))]
     expected = sorted({APP_DECL, CLI_DECL} | VENDOR_DECLS)

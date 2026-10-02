@@ -9,7 +9,7 @@ the only section that can change what your host does without you editing anythin
 switches — `AUTH_ENABLED`, `PANTHEON_SINGLE_USER` and the `use_rag` field on
 `POST /api/chat_stream` — used to ignore values meaning *no*, and now honour them.
 
-**Coming from Odysseus?** The [0.1.0 release notes](docs/release-notes/0.1.0.md)
+**Coming from Odysseus?** The [0.2.0 release notes](docs/release-notes/0.2.0.md)
 name every rename you have to follow — each environment variable, command, path,
 service, stored value, header and browser key, derived from the fork point and
 checked by a test — and the upgrade steps in order.
@@ -69,12 +69,15 @@ scheme that stops it drifting again.
 **Cutting a release** (the tag is the one step no test can do for you):
 
     # on the commit being released, with APP_VERSION and the heading already equal
-    git tag -a v0.1.0 -m "Pantheon 0.1.0"
-    git push origin v0.1.0
+    git tag -a v0.2.0 -m "Pantheon 0.2.0"
+    git push origin v0.2.0
 
-`0.1.0` is not tagged in this tree yet, deliberately: a release tag has to point
-at the commit that is actually released, and the commit this section was written
-on is a worktree tip awaiting a merge. The tag is cut on the merge.
+**`0.1.0` was never tagged.** This section said, on 2026-09-17, that its tag would
+be cut on the merge; it was not, and `P20`–`P22` landed under its heading's date.
+So the release that carries them is `0.2.0` (`D-2026-10-02-04` §1), and `[0.1.0]`
+stays below as the record of the day the version line was set. **`0.2.0` is not
+tagged yet either**: cutting the tag is the owner's act, on the commit that is
+released, and it waits for the owner's word.
 
 ---
 
@@ -82,18 +85,65 @@ on is a worktree tip awaiting a merge. The tag is cut on the merge.
 
 One file per version, for the person deciding whether to upgrade.
 
-- **[0.1.0](docs/release-notes/0.1.0.md)** — the first release line (`P10-12`).
-  It leads with the Odysseus credit, then names every rename an Odysseus install
+- **[0.2.0](docs/release-notes/0.2.0.md)** — the first release (`P10-12`). It
+  leads with the Odysseus credit, then names every rename an Odysseus install
   has to follow, what each phase since the fork added, the gates still open, and
-  the upgrade steps. The `[0.1.0]` section below is the record of 2026-09-17,
-  when the version line was set (`B450`), and stays as written; the notes
-  describe the tree of 2026-10-02, which reports the same version.
+  the upgrade steps. Written as `0.1.0.md` on 2026-10-02 and renamed when the
+  owner called this release `0.2.0` (`D-2026-10-02-04` §1). `0.1.0` has no notes
+  of its own: it was the version line `B450` set, and never tagged.
 
 ---
 
 ## [Unreleased]
 
 _Nothing yet. Entries land here and move down when a version is cut._
+
+---
+
+## [0.2.0] — 2026-10-02
+
+**The first release.** `0.1.0` below set the version line on 2026-09-17 and was
+never tagged; the workstation (`P20`), documents in folders (`P21`) and the
+Workbench (`P22`) landed after it, so this is the next minor (`D-2026-10-02-04`
+§1). Dated the day `APP_VERSION` moved to `0.2.0`; the tag `v0.2.0` waits for
+the owner's word. **The account to read is the
+[release notes](docs/release-notes/0.2.0.md)** — the Odysseus credit, every rename,
+each phase, the gates still open and the upgrade steps, checked against the tree
+by `tests/test_the_release_notes_name_every_rename.py`. This section lists what an
+operator should know at a glance.
+
+### Diverged from Odysseus
+
+#### Renamed
+- Every rename an Odysseus install has to follow — environment variables,
+  commands, paths, services and volumes, stored values, headers, user agents and
+  browser keys — is in the release notes' *Breaking renames*, each derived from
+  the list that owns the name and checked against the fork point `b4d1293`.
+
+#### Added
+- **Pantheon's own mark** (`P0-13`, `B71`) — the favicon, the PWA and Windows
+  icons, the tray, the macOS app icon and the login and welcome screens no longer
+  carry upstream's boat. Sources and usage: `docs/brand/`.
+- **The workstation** (`P20`), **documents in folders** (`P21`) and **the
+  Workbench** (`P22`) — see the release notes, *What is new, phase by phase*.
+- **"When mail arrives" runs with nobody looking at the inbox** (`B1137`): a
+  background check every `email_inbox_check_minutes` (default 5; 0 turns it off).
+
+#### Changed — read this before upgrading
+- **Three routes that any signed-in account could use are now admin-only**:
+  `POST /api/tts/clear-cache` (`B540`) and the four `/api/hwfit/*` probes
+  (`B541`). On a single-user install nothing changes — the first account is the
+  admin. The three developer sandbox pages under `/static/` need a session and
+  live at `/sandbox/<name>` (`B370`).
+
+#### Fixed
+- *Import from device* in the Documents panel opens a file picker again, and a
+  `.docx`, `.xlsx` or `.pdf` picked there opens readable, the same as through the
+  Library (`B400`).
+- One mail fires `email_received` once, however it is listed (`B1139`); a
+  workflow run the foreground pauses reads *waiting*, never *aborted* first
+  (`B1138`); an Integration added through a step's door is offered on that step
+  at once (`B1136`).
 
 ---
 

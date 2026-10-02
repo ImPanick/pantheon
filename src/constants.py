@@ -21,11 +21,17 @@ from src.runtime_paths import get_app_root, get_default_data_dir
 # it has nothing to do with.
 #
 # `0.x` is a claim and not modesty: `SECURITY.md` supports `main` and nothing
-# else, and the public flip is gated (`.pantheon/SHIP-LINE.md`). `1.0.0` is the
-# first release that is public, tagged and supported. The scheme, and how this
-# string, the git tag and `CHANGELOG.md`'s newest heading are kept equal, are in
-# `CHANGELOG.md` § Versions.
-APP_VERSION = "0.1.0"
+# else, and the rows that stand between this public repository and a stranger
+# relying on it are `.pantheon/SHIP-LINE.md`'s (the sentence said "the public
+# flip is gated" until 2026-10-02 — the repository is public, `D-2026-10-02-03`;
+# `B1146`). `1.0.0` is the first release that is public, tagged and supported.
+# The scheme, and how this string, the git tag and `CHANGELOG.md`'s newest
+# heading are kept equal, are in `CHANGELOG.md` § Versions.
+#
+# `0.2.0` since 2026-10-02 (`D-2026-10-02-04` §1): `0.1.0` was never tagged and
+# `P20`–`P22` landed after its heading, so this release is the next minor. The
+# tag waits for the owner's word. `scripts/_lib/cli.py` carries the same string.
+APP_VERSION = "0.2.0"
 
 # Base paths
 BASE_DIR = os.path.join(get_app_root(), "")
