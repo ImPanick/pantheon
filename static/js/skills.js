@@ -157,9 +157,13 @@ function _playSkillsCascade(container = document.getElementById('skills-list')) 
   return true;
 }
 
-// Cache of SKILL.md text by skill name, so expanding is instant (no async
-// fetch + content-settle jump). Populated lazily on expand AND eagerly in
-// the background for all visible cards right after render.
+// Cache of SKILL.md text by skill name, so a card opened a second time is
+// instant (no async fetch + content-settle jump). Populated on expand.
+// `B1127`: it also said "eagerly in the background for all visible cards right
+// after render" — the function that did that (`_preloadVisibleMarkdown`) had no
+// caller, read only the window's `#skills-list` (not a room's, `P22-21`), and
+// would cost one request per card per draw for previews most cards never open.
+// It was removed rather than wired.
 const _mdCache = new Map();
 async function _fetchSkillMarkdown(name) {
   if (_mdCache.has(name)) return _mdCache.get(name);
@@ -169,18 +173,6 @@ async function _fetchSkillMarkdown(name) {
   const md = data.markdown || '';
   _mdCache.set(name, md);
   return md;
-}
-// Background-load the markdown for every currently-rendered skill card so it
-// is ready (in the card's <pre> + _mdLoaded) before the user expands it.
-function _preloadVisibleMarkdown() {
-  document.querySelectorAll('#skills-list .skill-card[data-skill-name]').forEach(card => {
-    const name = card.dataset.skillName;
-    if (!name || card._mdLoaded) return;
-    const pre = card.querySelector('.skill-md-pre');
-    const apply = (md) => { if (pre) pre.textContent = md || '(empty)'; card._mdLoaded = true; card._md = md || ''; };
-    if (_mdCache.has(name)) { apply(_mdCache.get(name)); return; }
-    _fetchSkillMarkdown(name).then(apply).catch(() => {});
-  });
 }
 
 // Collapsed skills sections ("user" / "builtin"), persisted so the
@@ -396,10 +388,6 @@ function _sourcePill(sk) {
   return `<span class="memory-cat-badge" title="Created by teacher escalation: ${esc(teacher)}" style="background:color-mix(in srgb, var(--color-warning, #f0ad4e) 22%, transparent);">teacher-created</span>`;
 }
 
-function _modelShortName(model) {
-  return String(model || '').split('/').filter(Boolean).pop() || String(model || '');
-}
-
 function _skillTokens(sk) {
   return new Set(String([
     sk.name || '',
@@ -550,8 +538,6 @@ function _auditMarks(sk) {
 // confidence % still indicates a pass. Stub returns empty so the surrounding
 // header HTML still composes without changing other layout.
 function _auditDot(sk) { return ''; }
-
-function _isDraftsFilter(m) { return !!m.draftsOnly; }
 
 // Confidence → colour. 90%+ is solidly green, scaling down through
 // yellow/orange to red at 50% and below (hue 120→0 over 90→50).
@@ -2896,63 +2882,6 @@ async function _renderPromptPreview(m) {
   facts.appendChild(_el('div', 'skill-prompt-note', _PROMPT_PREVIEW_GATE));
 
   panel.replaceChildren(head, exact, body, facts);
-}
-
-async function _showSkillSource(name) {
-  let md = '';
-  try {
-    const res = await fetch(`${API}/api/skills/${encodeURIComponent(name)}/markdown`);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    md = data.markdown || '';
-  } catch (e) {
-    uiModule.showError('Failed to load SKILL.md');
-    return;
-  }
-
-  // Lightweight modal — reuses the .modal CSS the rest of the app uses.
-  const wrap = document.createElement('div');
-  wrap.className = 'modal';
-  wrap.style.display = 'block';
-  wrap.innerHTML = `
-    <div class="modal-content" style="max-width:760px;display:flex;flex-direction:column">
-      <div class="modal-header">
-        <h4>SKILL.md — <code>${esc(name)}</code></h4>
-        <span style="flex:1"></span>
-        <button class="memory-toolbar-btn" id="skill-save-btn">Save</button>
-        <button class="close-btn" id="skill-md-close">✖</button>
-      </div>
-      <div class="modal-body" style="display:flex;flex-direction:column;gap:8px">
-        <textarea id="skill-md-textarea" spellcheck="false" style="flex:1;min-height:50vh;width:100%;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;padding:10px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--fg);box-sizing:border-box"></textarea>
-        <p class="memory-desc" style="margin:0">Edit the frontmatter and body directly. Save replaces the file via PUT /api/skills/{name}.</p>
-      </div>
-    </div>
-  `;
-  document.body.appendChild(wrap);
-  const ta = wrap.querySelector('#skill-md-textarea');
-  ta.value = md;
-  wrap.querySelector('#skill-md-close').addEventListener('click', () => wrap.remove());
-  wrap.addEventListener('click', (e) => { if (e.target === wrap) wrap.remove(); });
-  wrap.querySelector('#skill-save-btn').addEventListener('click', async () => {
-    try {
-      // We use the manage_skills-style edit by going through PUT with a
-      // single 'content' field. The route doesn't accept that yet — use the
-      // tool call instead. We have a /api/skills/{name} PUT for fields, but
-      // a full SKILL.md replace is simpler via the parsed-then-PUT approach
-      // below: parse client-side by uploading via the tool route.
-      const res = await fetch(`${API}/api/skills/${encodeURIComponent(name)}/markdown`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ markdown: ta.value }),
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      uiModule.showToast('Saved');
-      wrap.remove();
-      await loadSkills();
-    } catch (e) {
-      uiModule.showError('Save failed: ' + e.message);
-    }
-  });
 }
 
 // `B926`. The import's own status line (`#skill-import-status`), under the box
