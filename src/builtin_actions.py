@@ -433,6 +433,37 @@ class TaskDeferred(BaseException):
         self.delay_seconds = delay_seconds
 
 
+# `P22-11` / `P22-17`. What a parked step is waiting for — stored in a step
+# record's `waiting` JSON (`FORBIDDEN.md` Part 1 at the merge): a time (a Wait
+# step), a person's yes (a step whose tool needs one), or Pantheon being idle (a
+# step a foreground takeover interrupted, `SLICE-CD-DESIGN` § 1.4).
+WAIT_KIND_TIME = "time"
+WAIT_KIND_APPROVAL = "approval"
+WAIT_KIND_IDLE = "idle"
+WAIT_KINDS = (WAIT_KIND_TIME, WAIT_KIND_APPROVAL, WAIT_KIND_IDLE)
+
+
+class TaskWaiting(BaseException):
+    """Raised when a workflow run parks: a step is waiting for a time, a yes or
+    an idle Pantheon, and the run's coroutine exits so its model slot, its time
+    limit and its place in `_executing` are released (`P22-11`).
+
+    A `BaseException`, beside `TaskNoop` and `TaskDeferred`, for their reason:
+    `_execute_llm_task`'s `except Exception` fallback must not swallow it and
+    turn a parked step into a failed one. `summary` is the run's result
+    sentence ("Waiting for your yes on “Send reply”"); `kind` a `WAIT_KINDS`
+    word; `details` what resuming needs (the approval id and session, the card,
+    the time), carried as given."""
+
+    def __init__(self, summary: str = "", *, kind: str | None = None, **details):
+        if kind is not None and kind not in WAIT_KINDS:
+            raise ValueError(f"not a wait kind: {kind!r}")
+        super().__init__(summary)
+        self.summary = summary
+        self.kind = kind
+        self.details = details
+
+
 # ── `P8-24` · what a node hands back ────────────────────────────────────────
 #
 # Every built-in action returns `(text, success)`. A boolean is enough for a
@@ -467,8 +498,12 @@ NODE_STATUS_SUCCESS = "success"
 NODE_STATUS_ERROR = "error"
 NODE_STATUS_SKIPPED = "skipped"
 NODE_STATUS_DEFERRED = "deferred"
+# `P22-11`. A step that parked: it has not ended, and the run waits with it
+# (`TaskWaiting`). Not a failure and not an outcome — the fifth word, added
+# where the four are (`Law 14`), with the signal it means.
+NODE_STATUS_WAITING = "waiting"
 NODE_STATUSES = (NODE_STATUS_SUCCESS, NODE_STATUS_ERROR,
-                 NODE_STATUS_SKIPPED, NODE_STATUS_DEFERRED)
+                 NODE_STATUS_SKIPPED, NODE_STATUS_DEFERRED, NODE_STATUS_WAITING)
 # The two that mean the step produced nothing and the engine should not treat
 # that as failure. Named, because "is this a failure" is asked in four places.
 NODE_STATUSES_NOT_FAILURE = (NODE_STATUS_SUCCESS, NODE_STATUS_SKIPPED,
@@ -531,11 +566,16 @@ class NodeResult:
         if self.status == NODE_STATUS_DEFERRED:
             return TaskDeferred(self.text or "Deferred",
                                 self.retry_after or 20 * 60)
+        if self.status == NODE_STATUS_WAITING:
+            return TaskWaiting(self.text or "Waiting")
         return None
 
     @classmethod
     def from_signal(cls, exc: BaseException) -> "NodeResult":
-        """`TaskNoop` / `TaskDeferred` as a status. The other direction."""
+        """`TaskNoop` / `TaskDeferred` / `TaskWaiting` as a status. The other
+        direction."""
+        if isinstance(exc, TaskWaiting):
+            return cls(NODE_STATUS_WAITING, payload=exc.summary)
         if isinstance(exc, TaskDeferred):
             return cls(NODE_STATUS_DEFERRED, payload=str(exc),
                        retry_after=getattr(exc, "delay_seconds", None))
@@ -3601,7 +3641,18 @@ BUILTIN_ACTIONS = {
 # `params` describes what `prompt` carries for this action, exactly as
 # `TaskScheduler._execute_action` unpacks it. `admin_only` is NOT here: it is
 # `src.task_action_policy.ADMIN_ONLY_TASK_ACTIONS` and stays there.
-def _prompt_param(name, label, kind, description):
+#
+# `P22-09`. `mapping` says whether a workflow may fill this parameter from
+# another step (`value`) or only from what the author typed (`never`). It is
+# declared HERE, on the parameter, and read by `workflow_slots.
+# action_param_slots` — the one registry (`Law 7`). The default is `never` and
+# every one of the four parameters today keeps it: each is a command, a script
+# or a serve config naming a host (`SLICE-CD-DESIGN` § 0.7), exactly
+# `ADMIN_ONLY_TASK_ACTIONS`.
+from src.workflow_slots import MAPPING_NEVER  # noqa: E402 - beside its one use
+
+
+def _prompt_param(name, label, kind, description, mapping=MAPPING_NEVER):
     """One parameter, carried in the task's `prompt` field."""
     return {
         "name": name,
@@ -3610,6 +3661,7 @@ def _prompt_param(name, label, kind, description):
         "required": True,
         "source": "prompt",
         "description": description,
+        "mapping": mapping,
     }
 
 
