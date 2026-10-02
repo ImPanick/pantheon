@@ -233,3 +233,28 @@ async def test_a_parked_runs_records_are_never_pruned(factory):
     left = [r.id for r in db.query(TaskRunNode).all()]
     db.close()
     assert left == ["parked-a"]
+
+
+async def test_after_a_restart_a_step_still_reads_what_started_the_run(factory):
+    """The trigger lives on the run's slot in memory; after a restart it comes
+    back from the records (the input of the step the start led to), so a step
+    after the Wait still reads `steps.start.data` — the webhook body."""
+    from src.event_bus import TRIGGER_SOURCE_WEBHOOK, WEBHOOK_PAYLOAD_FIELDS, build_trigger
+    seed_workflow(factory, [
+        node("w", "Wait", "wait", mode="for", minutes=0.01),
+        node("say", "Say it", "set", fields=[{"name": "said",
+                                             "value": "{{ steps.start.data.body }}"}]),
+    ], [arrow("w", "say")], trigger_type="webhook")
+    first = recording_scheduler()
+    await first._execute_task("wf", trigger=build_trigger(
+        TRIGGER_SOURCE_WEBHOOK, "webhook", {"body": "deploy done"},
+        fields=WEBHOOK_PAYLOAD_FIELDS))
+    assert runs_of(factory, "wf")[0]["status"] == "waiting"
+    second = recording_scheduler(scheduler=TaskScheduler(None))
+    second._sweep_runs_left_by_a_restart()
+    await asyncio.sleep(0.7)
+    assert await second._resume_due_waits() == 1
+    await settle(second)
+    [run] = runs_of(factory, "wf")
+    said = {r["node_id"]: r for r in records_of(factory, run["id"])}["say"]
+    assert said["output"]["data"] == {"said": "deploy done"}

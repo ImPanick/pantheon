@@ -161,9 +161,14 @@ def test_a_throttle_is_not_a_seventh_run_status():
     """`RUN_STATUSES` are values stored in `task_runs.status` and pinned by
     `FORBIDDEN.md`. A cooldown is a property of a destination, has no row, and
     can be true while a run is queued, running or finished."""
-    out = _eval("{six: R.RUN_STATUSES, active: R.RUN_ACTIVE_STATUSES}")
-    assert out["six"] == ["queued", "running", "success", "error", "skipped",
-                          "aborted"]
+    from core.database import TASK_RUN_STATUSES
+    out = _eval("{six: R.RUN_STATUSES, active: R.RUN_ACTIVE_STATUSES,"
+                " throttled: R.THROTTLED_SOURCES}")
+    # `P22-11` appended `waiting` (a parked workflow run, which has a row);
+    # the vocabulary is the stored one, and still holds no throttle word.
+    assert out["six"] == list(TASK_RUN_STATUSES) == [
+        "queued", "running", "success", "error", "skipped", "aborted", "waiting"]
+    assert not set(out["throttled"]) & set(out["six"])
     assert out["active"] == ["queued", "running"]
 
 

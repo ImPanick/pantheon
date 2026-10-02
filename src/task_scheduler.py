@@ -1436,6 +1436,10 @@ ANSWER_ALLOW = "allow"
 ANSWER_DENY = "deny"
 ANSWER_LAPSED = "lapsed"
 ANSWER_RESTARTED = "restarted"
+# The card left the store before its deadline in the process that minted it:
+# an ordinary message typed into its chat retires a waiting card
+# (`tool_approvals.retire_for_session`), the residual risk § 5 names.
+ANSWER_WITHDRAWN = "withdrawn"
 
 
 class StepDone(NamedTuple):
@@ -1570,6 +1574,9 @@ class TaskScheduler:
         # driven directly by a test, a future node runner with no row yet), so
         # that case records somewhere real instead of into the previous run.
         self._run_state = {}
+        # `P22-17`. When this process started: a card minted before it was
+        # lost to a restart; one minted since and gone early was withdrawn.
+        self._started_at = _utcnow()
 
     def _refresh_concurrency_cap(self) -> int:
         """Re-resolve the cap and make the new number the one that governs.
@@ -4397,8 +4404,10 @@ class TaskScheduler:
                 relevant_tools=relevant_tools,
                 datetime_context_msg=_dt_msg,
                 trigger_context_msg=_trigger_msg,
-                context_msgs=_context_msgs,
                 run_id=run_id,
+                # Only when there is something to add: a plain task's call is
+                # the call it always was (an existing stub pins its shape).
+                **({"context_msgs": _context_msgs} if _context_msgs else {}),
             )
         except Exception as e:
             logger.warning(f"Agent loop failed for task '{task.name}', falling back to simple call: {e}")
@@ -5707,6 +5716,14 @@ class TaskScheduler:
             sentence = (f"Nobody answered by {self._clock_words(w, until)} — {tool} was "
                         f"not done.")
             return StepAnswer(rec.node_id, item, ANSWER_LAPSED, sentence)
+        since = wr._parse_iso(waiting.get("since"))
+        started = getattr(self, "_started_at", None)
+        if since is not None and started is not None and since >= started:
+            # Gone early, in this process: not a restart, and not a lapse
+            # (`Law 10` — the sentence says which).
+            return StepAnswer(rec.node_id, item, ANSWER_WITHDRAWN, (
+                f"The question was withdrawn before anyone answered — a new message in "
+                f"its chat replaces a waiting question — so {tool} was not done."))
         return StepAnswer(rec.node_id, item, ANSWER_RESTARTED,
                           f"Pantheon restarted before you answered — {tool} was not done.")
 
