@@ -520,3 +520,397 @@ def _mcp_tools() -> list:
     if mgr is None:
         return []
     return list(mgr.get_all_tools(load_disabled_map()))
+
+
+# ── What a person can reach: `WorkflowResources` (C-R) ───────────────────────
+
+def _is_admin(owner) -> bool:
+    from src.tool_security import owner_is_admin_or_single_user
+    return bool(owner_is_admin_or_single_user(owner))
+
+
+def _integrations(owner) -> list:
+    """The registered Integrations, as a person may see them: id, name,
+    preset, description and whether it is on — never the key, never the base
+    URL (`P22-13`: "never seeing the key"). Admins only, because only an
+    admin's agent can call one (`api_call` is in `NON_ADMIN_BLOCKED_TOOLS`)."""
+    if not _is_admin(owner):
+        return []
+    from src.integrations import load_integrations
+    out = []
+    for item in load_integrations():
+        if not isinstance(item, dict) or not item.get("id"):
+            continue
+        out.append({"id": str(item["id"]), "name": str(item.get("name") or item["id"]),
+                    "preset": str(item.get("preset") or ""),
+                    "description": str(item.get("description") or ""),
+                    "enabled": item.get("enabled", True) is not False})
+    return out
+
+
+def _own_skills(owner) -> list:
+    """The skills a step can follow: the person's own, switched on — exactly
+    the ones `skill_context` can read (`read_skill_md` reads the person's own
+    store, not the bundled library or the legacy list)."""
+    from services.memory.skills import SkillsManager
+    from src.constants import DATA_DIR
+    want = owner or ""
+    out = []
+    for skill in SkillsManager(DATA_DIR).load_active(owner=owner):
+        if skill.get("bundled") or skill.get("_legacy") or (skill.get("owner") or "") != want:
+            continue
+        if isinstance(skill.get("name"), str) and skill["name"]:
+            out.append({"name": skill["name"], "description": str(skill.get("description") or "")})
+    return sorted(out, key=lambda s: s["name"])
+
+
+def workstation_why(owner) -> Optional[str]:
+    """`None` when a Code step can run for this person, else the sentence the
+    palette greys Code with (`OFF_SENTENCE`, `UNCONFIGURED_SENTENCE`,
+    `NOT_PERMITTED_SENTENCE`) — the same three conditions `workstation_for`
+    checks before every call; whether the daemon is up is the run's to say."""
+    from src.workstation_client import WorkstationError
+    from src.workstation_access import workstation_for
+    try:
+        workstation_for(owner)
+    except WorkstationError as exc:
+        return exc.message
+    return None
+
+
+def _usable_mcp_tools(owner, disabled: set) -> list:
+    """The MCP tools a step may call: an admin's, switched on by the server
+    and not switched off for everyone."""
+    if not _is_admin(owner):
+        return []
+    return [t for t in _mcp_tools()
+            if not t.get("is_disabled") and t.get("qualified_name") not in disabled]
+
+
+def _limits(owner) -> dict:
+    """The For-each cap and the longest Wait, resolved by the walker's own
+    readers (`workflow_runs`, wf-walker), and the steps a run takes side by side."""
+    from src import workflow_runs
+    return {"foreach_max_items": int(workflow_runs.foreach_max_items(owner)),
+            "wait_max_hours": int(workflow_runs.wait_max_hours()),
+            "parallel_steps": int(workflow_runs.WORKFLOW_PARALLEL_STEPS)}
+
+
+def workflow_resources(owner):
+    """`workflow_document.WorkflowResources` for this person — what
+    `validate_document` checks a step against at save and again at run."""
+    from src.workflow_document import WorkflowResources
+    disabled = global_disabled_tools()
+    limits = _limits(owner)
+    return WorkflowResources(
+        integrations={i["id"]: i for i in _integrations(owner)},
+        mcp_tools={t["qualified_name"]: {"input_schema": t.get("input_schema") or {},
+                                         "disabled": False,
+                                         "is_readonly": t.get("is_readonly"),
+                                         "server_name": t.get("server_name"),
+                                         "name": t.get("name")}
+                   for t in _usable_mcp_tools(owner, disabled)},
+        skills=frozenset(s["name"] for s in _own_skills(owner)),
+        ai_tools=frozenset(c["name"] for c in ai_tool_choices(owner)),
+        workstation_why=workstation_why(owner),
+        foreach_max_items=limits["foreach_max_items"],
+        wait_max_hours=limits["wait_max_hours"],
+    )
+
+
+# ── The palette (`GET /api/workflows/palette`, contract C-W) ─────────────────
+
+# The words a person meets for each kind. The first four are Slice B's, as the
+# Workbench says them today (`static/js/tasks/workflowDiagram.js:KIND_WORDS`,
+# `workflowPanels.js:PALETTE_KINDS`); the browser reads these from the palette
+# now and derives none (a merge point with wf-canvas: one copy, not two).
+KIND_WORDS = {
+    "llm": "Prompt", "research": "Research", "action": "Action", "run_task": "Run task",
+    "if": "If", "switch": "Switch", "set": "Set",
+    "merge": "Merge", "wait": "Wait", "foreach": "For each",
+    "http": "HTTP request", "mcp": "MCP tool", "skill": "Skill", "code": "Code",
+}
+KIND_HINTS = {
+    "llm": "Ask a model to read, write or decide something.",
+    "research": "Look something up and write a report.",
+    "action": "Run one of Pantheon’s built-in actions.",
+    "run_task": "Run one of your tasks, with its own settings.",
+    "if": "Go one way when the conditions hold, and another when they do not.",
+    "switch": "Go the way of the first case that holds.",
+    "set": "Hand the next step fields with the names you choose.",
+    "merge": "Wait for branches that run at the same time to come back together.",
+    "wait": "Hold the run for a while, or until a time of day.",
+    "foreach": "Run one step once for each item in a list.",
+    "http": "Send a request to one of your Integrations.",
+    "mcp": "Call a tool on one of your MCP servers.",
+    "skill": "Have a model follow one of your skills.",
+    "code": "Run your own Python or bash in your workstation.",
+}
+KIND_GROUPS = {
+    "llm": "Ask a model", "research": "Ask a model", "skill": "Ask a model",
+    "action": "Run in Pantheon", "run_task": "Run in Pantheon",
+    "if": "Decide and reshape", "switch": "Decide and reshape", "set": "Decide and reshape",
+    "merge": "Flow", "wait": "Flow", "foreach": "Flow",
+    "http": "Reach out", "mcp": "Reach out", "code": "Reach out",
+}
+_ADMIN_ONLY_WHY = {
+    "http": "Only an admin's agent can send HTTP requests from the server.",
+    "mcp": "Only an admin's agent can call MCP tools: each reaches whatever its server was connected to.",
+}
+NO_INTEGRATIONS_SENTENCE = ("No Integrations are switched on. An admin adds one in "
+                            "Settings → Integrations.")
+NO_MCP_TOOLS_SENTENCE = "No MCP tools are switched on. An admin connects a server in Settings → MCP."
+NO_SKILLS_SENTENCE = "You have no skills switched on yet. Make one in Skills."
+
+
+def _slot_json(slot) -> dict:
+    return {"mapping": slot.mapping, "why": slot.why}
+
+
+def _kind_slots(kind: str) -> dict:
+    """`{field pattern: {mapping, why}}` from `workflow_slots.NODE_SLOTS`. A
+    field decided per entry is said fail-closed with the classifier's or the
+    table's sentence (the browser offers no picker there and says why); one
+    the palette answers elsewhere is left out — an MCP tool's arguments
+    (`mcp_tools[].args`) and a For-each's inner step (its own kind's entry)."""
+    from src import workflow_slots as ws
+    out = {}
+    for pattern, rule in (ws.NODE_SLOTS.get(kind) or {}).items():
+        if isinstance(rule, ws.Slot):
+            out[pattern] = _slot_json(rule)
+        elif rule is ws.BY_ENTRY_NAME:
+            out[pattern] = {"mapping": ws.MAPPING_NEVER, "why": ws.WHY_NOT_TEXT}
+        elif rule is ws.BY_PARAM:
+            out[pattern] = {"mapping": ws.MAPPING_NEVER, "why": ws.WHY_WHAT}
+    return out
+
+
+def _mcp_tool_entry(tool: dict) -> dict:
+    from src.workflow_slots import classify_argument
+    props = (tool.get("input_schema") or {}).get("properties")
+    props = props if isinstance(props, dict) else {}
+    return {
+        "qualified_name": tool["qualified_name"],
+        "server_name": tool.get("server_name"),
+        "name": tool.get("name"),
+        "description": tool.get("description") or "",
+        "input_schema": tool.get("input_schema") or {},
+        "annotations": tool.get("annotations"),
+        "is_readonly": tool.get("is_readonly"),
+        "readonly_source": tool.get("readonly_source"),
+        "override": tool.get("override"),
+        "args": {name: _slot_json(classify_argument(name, schema)) for name, schema in props.items()},
+    }
+
+
+def build_palette(owner) -> dict:
+    """What a person may put on their canvas, and what each setting may be
+    filled with — the browser is handed these answers and derives nothing
+    (`workflow_slots` is the one place that decides, `Law 7`).
+
+    `D-2026-10-01-05`'s minor call: the palette offers only what the person's
+    agent can already reach. A kind they may not use is listed greyed, with
+    the sentence that says why; the Integrations' keys and base URLs are never
+    in it.
+    """
+    from src.workflow_document import NODE_KINDS, ports_of
+    from src.workflow_logic import OPERATOR_WORDS, OPERATORS
+
+    admin = _is_admin(owner)
+    disabled = global_disabled_tools()
+    integrations = [i for i in _integrations(owner) if i["enabled"]]
+    mcp_tools = [_mcp_tool_entry(t) for t in _usable_mcp_tools(owner, disabled)]
+    skills = _own_skills(owner)
+    station_why = workstation_why(owner)
+
+    def availability(kind: str) -> Tuple[bool, str]:
+        if kind in _ADMIN_ONLY_WHY and not admin:
+            return False, _ADMIN_ONLY_WHY[kind]
+        if kind == "http" and not integrations:
+            return False, NO_INTEGRATIONS_SENTENCE
+        if kind == "mcp" and not mcp_tools:
+            return False, NO_MCP_TOOLS_SENTENCE
+        if kind == "skill" and not skills:
+            return False, NO_SKILLS_SENTENCE
+        if kind == "code" and station_why:
+            return False, station_why
+        return True, ""
+
+    kinds = []
+    for kind in NODE_KINDS:
+        available, why = availability(kind)
+        kinds.append({
+            "kind": kind,
+            "word": KIND_WORDS.get(kind, kind),
+            "group": KIND_GROUPS.get(kind, ""),
+            "hint": KIND_HINTS.get(kind, ""),
+            "ports": list(ports_of({"kind": kind, "config": {}})),
+            "available": available,
+            "why": why,
+            "slots": _kind_slots(kind),
+        })
+    return {
+        "kinds": kinds,
+        "integrations": [{k: i[k] for k in ("id", "name", "preset", "description")}
+                         for i in integrations],
+        "mcp_tools": mcp_tools,
+        "skills": skills,
+        "ai_tools": ai_tool_choices(owner),
+        "workstation": {"available": station_why is None, "why": station_why or ""},
+        "limits": _limits(owner),
+        "operators": [{"op": op, "word": OPERATOR_WORDS.get(op, op)} for op in OPERATORS],
+    }
+
+
+# ── The fields a step can pick from (`GET …/nodes/{node_id}/fields`, C-W) ────
+
+ORIGIN_LAST_RUN = "last_run"
+ORIGIN_PIN = "pin"
+ORIGIN_DECLARED = "declared"
+FIELD_ORIGINS = (ORIGIN_LAST_RUN, ORIGIN_PIN, ORIGIN_DECLARED)
+
+
+def _loads(text):
+    if text is None:
+        return None
+    try:
+        return json.loads(text)
+    except (TypeError, ValueError):
+        return None
+
+
+def _iso(value) -> Optional[str]:
+    return value.isoformat() + "Z" if value is not None else None
+
+
+def _fields_of(node_id: str, text, data) -> list:
+    """`[{ref, path, type, example}]` for what a step made: its text, then
+    every field of its data that a reference can name (`flatten_fields`)."""
+    from src.workflow_refs import flatten_fields, format_ref
+    out = []
+    if text is not None:
+        about = flatten_fields(text)[0]
+        out.append({"ref": format_ref(node_id, "text"), "path": [], "type": about["type"],
+                    "example": about["example"]})
+    if data is not None:
+        for f in flatten_fields(data):
+            out.append({"ref": format_ref(node_id, "data", f["path"]), "path": f["path"],
+                        "type": f["type"], "example": f["example"]})
+    return out
+
+
+def _declared_fields(node_id: str, names_types) -> list:
+    from src.workflow_refs import format_ref
+    out = []
+    for name, kind in names_types:
+        try:
+            ref = format_ref(node_id, "data", [name])
+        except ValueError:
+            continue                       # a name no reference can name is not offered
+        out.append({"ref": ref, "path": [name], "type": kind, "example": None})
+    return out
+
+
+def _start_targets(graph: dict) -> list:
+    """The steps the start leads to: its own arrows, or — in a document with
+    none (Slice B's) — the steps nothing leads to."""
+    from src.workflow_document import START_KEY
+    edges = graph.get("edges") or ()
+    explicit = [e["to"] for e in edges if e.get("from") == START_KEY]
+    if explicit:
+        return explicit
+    led_to = {e["to"] for e in edges}
+    return [n["id"] for n in graph.get("nodes") or () if n["id"] not in led_to]
+
+
+def _successors(graph: dict, node_id: str) -> list:
+    return [e["to"] for e in graph.get("edges") or () if e.get("from") == node_id]
+
+
+def _source(node_id, label, kind, origin, at, fields) -> dict:
+    return {"node_id": node_id, "label": label, "kind": kind, "origin": origin,
+            "at": at, "fields": fields}
+
+
+def available_fields(db, wf, trigger, graph, node_id) -> dict:
+    """`{sources: [...]}` — the fields `node_id` can pick from: the start's and
+    every step upstream of it (`workflow_document.upstream_of`), each from up
+    to three places, saying which:
+
+      * `last_run` — the newest real record of that step (`last_node_record`;
+        a dry run is never "the last run"), its text and data;
+      * `pin` — the sample pinned on a step it leads to, which is exactly what
+        that step would be handed: the step's result and data, or for the
+        start the trigger's data;
+      * `declared` — what the step promises before any run: an AI step's
+        answer fields, a Set step's names, the start's event or webhook fields.
+
+    A record cut to fit its cap is not read for fields: its fields are not
+    all there, and offering half of them would offer a path that resolves to
+    nothing.
+    """
+    from src.event_bus import EVENT_PAYLOAD_FIELDS, WEBHOOK_PAYLOAD_FIELDS
+    from src.workflow_document import START_KEY, upstream_of
+    from src.workflow_runs import is_truncated, last_node_record
+
+    nodes = {n["id"]: n for n in graph.get("nodes") or ()}
+    upstream = upstream_of(graph, node_id)
+    task_id = getattr(trigger, "id", None)
+    sources = []
+
+    # The start: what fired the run.
+    starters = _start_targets(graph)
+    for first in starters:
+        rec = last_node_record(db, task_id, first) if task_id else None
+        envelope = _loads(rec.input) if rec is not None else None
+        if isinstance(envelope, dict) and not is_truncated(envelope) \
+                and isinstance(envelope.get("data"), dict):
+            sources.append(_source(START_KEY, "What started it", "start", ORIGIN_LAST_RUN,
+                                   _iso(rec.started_at),
+                                   _fields_of(START_KEY, None, envelope["data"])))
+            break
+    for first in starters:
+        pinned = (nodes.get(first) or {}).get("pinned")
+        if isinstance(pinned, dict) and isinstance(pinned.get("data"), dict):
+            sources.append(_source(START_KEY, "What started it", "start", ORIGIN_PIN, None,
+                                   _fields_of(START_KEY, None, pinned["data"])))
+            break
+    trigger_type = getattr(trigger, "trigger_type", None)
+    if trigger_type == "event":
+        declared = EVENT_PAYLOAD_FIELDS.get(getattr(trigger, "trigger_event", None), ())
+    elif trigger_type == "webhook":
+        declared = WEBHOOK_PAYLOAD_FIELDS
+    else:
+        declared = ()
+    if declared:
+        sources.append(_source(START_KEY, "What started it", "start", ORIGIN_DECLARED, None,
+                               _declared_fields(START_KEY, [(f, None) for f in declared])))
+
+    for up_id in [n for n in nodes if n in upstream]:
+        node = nodes[up_id]
+        label, kind = node.get("label") or up_id, node.get("kind")
+        rec = last_node_record(db, task_id, up_id) if task_id else None
+        output = _loads(rec.output) if rec is not None else None
+        if isinstance(output, dict) and not is_truncated(output):
+            sources.append(_source(up_id, label, kind, ORIGIN_LAST_RUN,
+                                   _iso(rec.finished_at or rec.started_at),
+                                   _fields_of(up_id, output.get("text"), output.get("data"))))
+        for nxt in _successors(graph, up_id):
+            pinned = (nodes.get(nxt) or {}).get("pinned")
+            handed = pinned.get("data") if isinstance(pinned, dict) else None
+            if isinstance(handed, dict) and ("result" in handed or "data" in handed):
+                sources.append(_source(up_id, label, kind, ORIGIN_PIN, None,
+                                       _fields_of(up_id, handed.get("result"), handed.get("data"))))
+                break
+        config = node.get("config") or {}
+        promised = []
+        if kind == "llm" and isinstance(config.get("answer_fields"), list):
+            promised = [(f.get("name"), f.get("type")) for f in config["answer_fields"]
+                        if isinstance(f, dict) and isinstance(f.get("name"), str)]
+        elif kind == "set" and isinstance(config.get("fields"), list):
+            promised = [(f.get("name"), None) for f in config["fields"]
+                        if isinstance(f, dict) and isinstance(f.get("name"), str)]
+        if promised:
+            sources.append(_source(up_id, label, kind, ORIGIN_DECLARED, None,
+                                   _declared_fields(up_id, promised)))
+    return {"sources": sources}
