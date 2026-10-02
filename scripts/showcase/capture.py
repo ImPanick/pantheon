@@ -319,7 +319,8 @@ def main(argv: Optional[List[str]] = None) -> int:
             with sync_playwright() as pw:
                 studio = scenes.Studio(pw, server.base, seed.PERSON["username"], password,
                                        theme_colours(), out, force=args.force, model=model,
-                                       client=client, report=report, workstation=bool(ws))
+                                       client=client, report=report, workstation=bool(ws),
+                                       python=python)
                 try:
                     results = studio.run(only=only, gifs=not args.no_gifs)
                 finally:
