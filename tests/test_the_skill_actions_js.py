@@ -168,13 +168,15 @@ def test_fix_these_with_the_model_appears_once_saved_and_says_the_counts(box):
         await tick(30);
         const btn = $('skill-lint-panel').querySelectorAll('.skill-lint-fix-btn')[0];
         const label = btn && btn.textContent;
+        const head = $('skill-lint-panel').querySelectorAll('.skill-lint-head')[0].textContent;
         fire(btn, 'click');
         await tick(30);
-        out({ beforeSave, label, improve: posts(/\\/improve$/).map((c) => c.url),
+        out({ beforeSave, label, head, improve: posts(/\\/improve$/).map((c) => c.url),
               said: $('skill-lint-panel').textContent });
     """)
     assert o["beforeSave"] == 0, "the button was offered before there was a skill to rewrite"
     assert o["label"] == "Fix these with the model"
+    assert "fix them with the model below" in o["head"], "the line sent the person to the card instead"
     assert o["improve"] == ["/api/skills/gamma-spooler/improve"]
     assert ("Fixed gamma-spooler with the model. Before: 2 problems, 1 suggestion. "
             "After: 0 problems, 1 suggestion.") in o["said"]

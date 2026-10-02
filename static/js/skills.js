@@ -3129,7 +3129,11 @@ function _renderLint(m, result, opts) {
   if (problems) parts.push(`${problems} ${problems === 1 ? 'problem' : 'problems'}`);
   if (advisories) parts.push(`${advisories} ${advisories === 1 ? 'suggestion' : 'suggestions'}`);
   const head = _el('div', 'skill-lint-head',
-    (o.saved ? `Saved as a draft. ${parts.length ? parts.join(', ') + ' — open its card to fix them. ' : ''}`
+    // `P22-23`. With *Fix these with the model* below it, the line says so
+    // rather than sending the person to the card for what this panel offers.
+    (o.saved ? `Saved as a draft. ${parts.length ? parts.join(', ') + (o.name
+      ? ' — fix them with the model below, or open its card to fix them by hand. '
+      : ' — open its card to fix them. ') : ''}`
              : (parts.length ? parts.join(', ') + '. ' : ''))
     + (o.saved ? '' : _LINT_NEVER_BLOCKS));
   kids.push(head);

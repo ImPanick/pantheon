@@ -47634,8 +47634,10 @@ button.task-card-toggle {
 .workbench-room-integrations { overflow-y: auto; overscroll-behavior: contain; }
 .wb-intg { max-width: 860px; width: 100%; margin: 0 auto; }
 .wb-intg-head { margin: 2px 0 10px; font-size: 12px; color: var(--fg); opacity: 0.8; }
-/* `P22-23`. Draft from a description sits in the Add view's row shape. */
-.skill-draft-row { align-items: flex-start; }
+/* `P22-23`. Draft from a description sits in the Add view's row shape, which
+   is a 32px row built for one-line inputs; its box is two lines, so the row
+   grows with it (measured: the fixed height let the box cover the line below). */
+.memory-add-row.skill-draft-row { align-items: flex-start; height: auto; }
 .skill-lint-fix-btn { margin-top: 6px; }
 .skill-lint-fixed { font-weight: 600; opacity: 1; }
 .skill-history-list { display: flex; flex-direction: column; gap: 4px; margin: 4px 0; }
