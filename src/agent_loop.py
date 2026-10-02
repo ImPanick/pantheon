@@ -5661,12 +5661,6 @@ async def stream_agent_loop(
         except Exception as _e:
             logger.debug(f"[tool-rag] skill-aware tool include skipped: {_e}")
 
-    if _allowed_tools is not None and _relevant_tools is not None:
-        # `P22-16`. After every widening above — the intent's domains, the open
-        # document, uploads, forced tools, the browser expansion, a skill's
-        # declared tools — and before anything reads the selection.
-        _relevant_tools = _within_allowed(_relevant_tools)
-
     _intent_domains = set(_intent.get("domains") or set())
     _base_relevant_tools = None if _relevant_tools is None else set(_relevant_tools)
     _runtime_skill_tools: Set[str] = set()
@@ -5739,7 +5733,11 @@ async def stream_agent_loop(
         elif general_no_tool_mode:
             route_tools = set()
         if route_tools is not None:
-            route_tools = _within_allowed(route_tools)    # `P22-16`
+            # `P22-16`. After every widening — the intent's domains, the open
+            # document, uploads, forced tools, the browser expansion, a skill's
+            # declared tools, this route's own clamp — for every route a turn
+            # can take (the first, a fallback, the one that answers).
+            route_tools = _within_allowed(route_tools)
         return route_tools
 
     (
@@ -5753,9 +5751,9 @@ async def stream_agent_loop(
     if _pan_doc_finetune_mode and _relevant_tools is not None:
         logger.info("[agent-intent] pantheon doc finetune tool clamp=%s", sorted(_relevant_tools))
     elif _pan_notes_finetune_mode and _relevant_tools is not None:
-        disabled_tools.difference_update(_within_allowed({
+        disabled_tools.difference_update({
             "manage_notes", "manage_calendar", "manage_tasks",
-        }))
+        })
         logger.info("[agent-intent] pantheon notes finetune tool clamp=%s", sorted(_relevant_tools))
     elif _pan_general_no_tool_mode:
         try:
@@ -7220,9 +7218,9 @@ async def stream_agent_loop(
                                 # candidate's notes mode must re-enable the
                                 # personal managers in the shared execution
                                 # blocklist, or its tool calls are rejected.
-                                disabled_tools.difference_update(_within_allowed({
+                                disabled_tools.difference_update({
                                     "manage_notes", "manage_calendar", "manage_tasks",
-                                }))
+                                })
                             data["pinned_for_run"] = True
                         _compaction_frame = _committed_compaction_frame(candidate_index)   # `B921`
                         if _compaction_frame:
@@ -8093,10 +8091,10 @@ async def stream_agent_loop(
                         _known = _ktn()
                         for _sk in _SkM(_DD).load(owner=owner):
                             if _sk.get("name") == _ms_name:
-                                _new = _within_allowed({
+                                _new = {
                                     t for t in (_sk.get("requires_toolsets") or [])
                                     if t in _known and t not in _relevant_tools
-                                })    # `P22-16`: a skill never widens a step's list
+                                }
                                 if _new:
                                     _relevant_tools.update(_new)
                                     _runtime_skill_tools.update(_new)

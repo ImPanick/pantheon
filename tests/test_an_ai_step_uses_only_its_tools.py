@@ -35,7 +35,7 @@ def _base(monkeypatch, *, native=True):
 
 
 def _drive(monkeypatch, rounds, *, policy, message="Find three pages about tide tables and email me",
-           relevant_tools=None, executed=None, max_rounds=None):
+           relevant_tools=None, executed=None, max_rounds=None, model="scripted"):
     """Run the real loop. `rounds` is what the model does each round: a list of
     native tool calls `[(name, args)]`, or text. Answers (events, per-round
     request) where a request is `{tools, system}`."""
@@ -47,6 +47,8 @@ def _drive(monkeypatch, rounds, *, policy, message="Find three pages about tide 
             "tools": sorted((t.get("function") or {}).get("name") for t in (kwargs.get("tools") or [])),
             "system": "\n".join(m.get("content") or "" for m in messages
                                 if m.get("role") == "system" and isinstance(m.get("content"), str)),
+            "prompt": "\n".join(m.get("content") for m in messages
+                                if isinstance(m.get("content"), str)),
         })
         step = next(script, "All done.")
         if isinstance(step, list):
@@ -66,7 +68,7 @@ def _drive(monkeypatch, rounds, *, policy, message="Find three pages about tide 
 
     async def collect():
         return [c async for c in al.stream_agent_loop(
-            "http://local.test/v1", "scripted", [{"role": "user", "content": message}],
+            "http://local.test/v1", model, [{"role": "user", "content": message}],
             max_rounds=max_rounds or len(rounds) + 1, owner="local",
             relevant_tools=relevant_tools, tool_policy=policy)]
 
@@ -140,6 +142,82 @@ def test_an_empty_list_offers_nothing_on_either_channel(monkeypatch):
     assert "```bash\n" in control[0]["system"]                 # the probe can see a section
 
 
+def test_an_empty_list_keeps_even_the_loop_primitives_out(monkeypatch):
+    """The fenced prompt force-includes `ask_user` and `update_plan` for any
+    selection; a step whose list is empty is given neither."""
+    _base(monkeypatch, native=False)
+    _events, control = _drive(monkeypatch, ["Nothing to do."], relevant_tools={"web_search"},
+                              policy=ToolPolicy())
+    assert "```ask_user```" in control[0]["system"]           # the probe can see one
+    _events, sent = _drive(monkeypatch, ["Nothing to do."], policy=ToolPolicy(allowed_tools=[]))
+    assert "```ask_user" not in sent[0]["system"]
+    assert "```update_plan" not in sent[0]["system"]
+
+
+def test_no_retrieval_runs_over_a_steps_prompt(monkeypatch):
+    """The author's list is the selection: neither the tool index nor the
+    keyword fallback is asked, even when the list is empty (where an empty
+    selection would otherwise read as "nothing chosen yet")."""
+    import src.tool_index as tool_index
+    asked = []
+    monkeypatch.setattr(tool_index, "get_tool_index", lambda: asked.append("index"))
+    real_select = tool_index.ToolIndex.select_without_embeddings
+    monkeypatch.setattr(tool_index.ToolIndex, "select_without_embeddings",
+                        staticmethod(lambda *a, **k: asked.append("keywords") or real_select(*a, **k)))
+    _base(monkeypatch)
+    for allowed in ([], ["web_search"]):
+        _drive(monkeypatch, ["Nothing to do."], policy=ToolPolicy(allowed_tools=allowed))
+    assert asked == []
+    _drive(monkeypatch, ["Nothing to do."], policy=ToolPolicy())
+    assert asked                                               # the probe sees a turn that asks
+
+
+def test_the_list_holds_when_the_known_names_come_back_short(monkeypatch):
+    """`B830`: in a process that imports `tool_policy` before the loop,
+    `known_tool_names` once answered two names short. The schemas a model is
+    sent are still only the step's own, and a name the short list does not
+    know (so it never joined the denylist) is still refused by the policy."""
+    _base(monkeypatch)
+    monkeypatch.setattr("src.tool_policy.known_tool_names", lambda: {"web_search"})
+    _events, sent = _drive(monkeypatch, ["Nothing to do."], policy=ToolPolicy(allowed_tools=[]))
+    assert sent[0]["tools"] == []
+    executed = []
+    events, _sent = _drive(monkeypatch, [[("bash", {"command": "id"})]], executed=executed,
+                           policy=ToolPolicy(allowed_tools=STEP_TOOLS))
+    blocked = [e for e in events if e.get("type") == "tool_blocked"]
+    assert blocked and blocked[0]["reason"] == "“bash” is not one of this step's tools."
+    assert executed == []
+
+    # The fenced prompt too: the turn's email and web words would widen the
+    # selection with tools the short list does not know to deny.
+    _base(monkeypatch, native=False)
+    monkeypatch.setattr("src.tool_policy.known_tool_names", lambda: {"web_search"})
+    widening = "search the web for my latest emails and read the newest email"
+    _events, control = _drive(monkeypatch, ["Nothing to do."], message=widening,
+                              relevant_tools={"web_search"}, policy=ToolPolicy())
+    assert "```list_emails" in control[0]["system"]           # the turn does widen
+    _events, sent = _drive(monkeypatch, ["Nothing to do."], message=widening,
+                           policy=ToolPolicy(allowed_tools={"web_search"}))
+    assert "```web_search\n" in sent[0]["system"]
+    for name in ("list_emails", "read_email", "web_fetch"):
+        assert f"```{name}" not in sent[0]["system"], name
+
+
+def test_a_finetunes_own_tools_never_lift_the_list(monkeypatch):
+    """A `pantheon-qwen3` notes turn lifts the notes managers out of the
+    denylist and past the per-call policy (its clamp). A step's list is not
+    lifted with them: the call is refused with the step's reason."""
+    _base(monkeypatch, native=False)
+    executed = []
+    events, _sent = _drive(monkeypatch, ['```manage_notes\n{"action": "add", "content": "milk"}\n```'],
+                           message="add a note: buy milk", model="pantheon-qwen3-notes",
+                           policy=ToolPolicy(allowed_tools=STEP_TOOLS), executed=executed)
+    blocked = [e for e in events if e.get("type") == "tool_blocked"]
+    assert [b["tool"] for b in blocked] == ["manage_notes"]
+    assert blocked[0]["reason"] == "“manage_notes” is not one of this step's tools."
+    assert executed == []
+
+
 def test_the_fenced_prompt_names_only_the_steps_tools(monkeypatch):
     _base(monkeypatch, native=False)
     _events, sent = _drive(monkeypatch, ["Nothing to do."], relevant_tools={"bash"},
@@ -199,6 +277,15 @@ def test_an_mcp_tool_on_the_list_is_offered_and_its_neighbour_is_not(monkeypatch
     _events, sent = _drive(monkeypatch, ["Nothing to do."],
                            policy=ToolPolicy(allowed_tools={"mcp__chat__send_message", "web_search"}))
     assert sent[0]["tools"] == ["mcp__chat__send_message", "web_search"]
+
+    # The fenced channel's MCP block, too: it lists what the server offers,
+    # less what is switched off — and less what is not on the step's list.
+    _base(monkeypatch, native=False)
+    monkeypatch.setattr(al, "get_mcp_manager", lambda: mgr, raising=False)
+    _events, sent = _drive(monkeypatch, ["Nothing to do."],
+                           policy=ToolPolicy(allowed_tools={"mcp__chat__send_message"}))
+    assert "mcp__chat__send_message" in sent[0]["prompt"]
+    assert "mcp__chat__delete_channel" not in sent[0]["prompt"]
 
 
 # ── which tools a person may pick from (`ai_tool_choices`) ────────────────────
