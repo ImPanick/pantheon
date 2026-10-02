@@ -8,6 +8,9 @@ contact_links:
     url: https://github.com/ImPanick/pantheon/discussions/categories/ideas
     about: Discuss ideas and gauge interest before opening a formal feature request. If there is already a discussion, link it in your feature request.
 
+  # `B1145`: until 2026-10-02 this said reporting was "not enabled on this
+  # repository yet"; it was measured on that day (`B357`), and the fallback stays
+  # because anyone with admin on the repository can switch it off.
   # `B357`: the fallback is spelled out here and not left to SECURITY.md. This
   # `about` text is plain text in GitHub's chooser — no link is rendered from
   # it — so a reporter who clicks through to a 404 has nothing on screen to act
@@ -15,10 +18,10 @@ contact_links:
   - name: Security Vulnerability
     about: >-
       Report vulnerabilities privately via GitHub Security Advisories — never as a public issue.
-      Read SECURITY.md before reporting. If that page 404s, private vulnerability reporting is not
-      enabled on this repository yet: open a public issue containing ONLY "I have a security report
-      — please enable private vulnerability reporting", with no component, version or reproduction,
-      and you will be contacted there.
+      Read SECURITY.md before reporting. Private reporting is on (checked 2026-10-02); if that page
+      404s, it has been switched off since: open a public issue containing ONLY "I have a security
+      report — please enable private vulnerability reporting", with no component, version or
+      reproduction, and you will be contacted there.
     url: https://github.com/ImPanick/pantheon/security/advisories/new
 
   # Same reasoning as the security link above: the harm is done by the time a public issue exists,

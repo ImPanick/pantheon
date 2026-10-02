@@ -478,8 +478,9 @@ Three machines, and the tools do not reach the same one.
   and `git gc` all fail there.
 - Do everything git, gh or docker through **`Windows-MCP`** on cybertooth.
 - Read the source at **`/work/base`** in the cloud container — upstream at exactly
-  `b4d1293`, the fork point. The fork itself is private, so you cannot clone it; hand
-  back patches.
+  `b4d1293`, the fork point. The fork itself was private when this was written, so it
+  could not be cloned and patches were handed back; it is public since
+  `D-2026-10-02-03`, and `https://github.com/ImPanick/pantheon` clones like any other.
 
 Full table in `ROADMAP.md` § Where things run.
 

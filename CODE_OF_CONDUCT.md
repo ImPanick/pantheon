@@ -50,7 +50,7 @@ Report abusive, harassing, or otherwise unacceptable behavior through **[GitHub 
 
 That is a security form being used for a conduct report, and the reason is worth saying out loud: it is the **only** channel this repository has that is private, goes to the maintainer, and notifies nobody else. This project publishes no contact email, and a code of conduct that names an address nobody reads is worse than having none at all — so it names the inbox that is actually read. Open the report, say in the first line that it is a conduct report rather than a vulnerability, and ignore the version and severity fields.
 
-**If that page 404s**, private reporting is not enabled on this repository yet. Do not file the report as a public issue. Use the fallback below.
+Private reporting is on for this repository (checked 2026-10-02). **If that page 404s**, it has been switched off since. Do not file the report as a public issue. Use the fallback below.
 
 **If the report is about the maintainer**, or you would rather it did not go to them at all, take it to GitHub instead: [github.com/contact/report-abuse](https://github.com/contact/report-abuse). GitHub's Community Guidelines apply to this repository regardless of what this file says, and GitHub can act on accounts in ways a maintainer cannot. This is a real route, not a formality.
 

@@ -32,8 +32,10 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 # because "add it to the allowlist" is how a real hole gets closed on paper.
 UNWRITTEN_BY_DESIGN = {
     "light": (
-        "Pre-existing at the fork point `fff72ec`, where the same seven "
-        "`:root.light` rules sat with no writer either. It is upstream's, it "
+        "Pre-existing at `fff72ec` — this container's baseline import of the "
+        "tree as it stood on 2026-08-27, not the fork point `b4d1293` (`B1149`) — "
+        "where the same seven `:root.light` rules sat with no writer either. "
+        "It is upstream's, it "
         "predates Pantheon, and Law 1 says we do not subtract. Named here so "
         "the next person finds the answer instead of the question."
     ),
