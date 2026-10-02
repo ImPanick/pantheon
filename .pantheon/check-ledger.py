@@ -589,7 +589,42 @@ def _table(rows) -> str:
     return "\n".join(out)
 
 
+_WORDS = ("Zero", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight",
+          "Nine", "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen",
+          "Sixteen", "Seventeen", "Eighteen", "Nineteen", "Twenty")
+
+
+def _limitation_figures() -> dict:
+    """The figures *What this ledger does not prove* restates, read from the claims.
+
+    `B1147`. That section was the one part of the rendered file that was not a
+    claim, so `B348`'s rule never looked at it, and it carried three literals the
+    claims above it had already overtaken: *"8,819 passing"* while `tests` said
+    14,154, *"all 15 checkers"* while `checkers` said 24 (and `ci.yml` 24), and
+    *"Seven upstream commits are unmerged"* while `behind-upstream` said 8. Each is
+    now read from the claim that owns it (`Law 7`), so moving a claim moves the
+    sentence, and a claim that loses its shape fails here rather than rendering a
+    stale number.
+    """
+    by_id = {c.id: c for c in C.CLAIMS}
+    passing = by_id["tests"].after.split("·")[-1].strip().split()[0]
+    checkers = re.match(r"(\d+)", by_id["checkers"].after.strip())
+    behind = re.match(r"(\d+)\s+with no patch-equivalent here\s*(\(.*\))?\s*$",
+                      by_id["behind-upstream"].after.strip())
+    if not re.fullmatch(r"\d[\d,]*", passing) or checkers is None or behind is None:
+        raise ValueError("a claim the limitations section reads has changed shape: "
+                         "`tests`, `checkers` or `behind-upstream`")
+    n = int(behind.group(1))
+    return {
+        "passing": passing,
+        "checkers": checkers.group(1),
+        "behind": _WORDS[n] if n < len(_WORDS) else str(n),
+        "behind_detail": f" {behind.group(2)}" if behind.group(2) else "",
+    }
+
+
 def render() -> str:
+    f = _limitation_figures()
     p = []
     a = p.append
     a(BANNER)
@@ -668,10 +703,11 @@ def render() -> str:
     a("   a measurement of how well Pantheon remembers in daily use, and no number in")
     a("   this repository is. Building one takes an operator's own memories and probes")
     a("   they wrote themselves: `.pantheon/retrieval_eval.py --generate`.")
-    a("2. **Seven upstream commits are unmerged** — documentation restructuring and")
-    a("   dependency bumps, deliberately declined. The five real fixes were")
-    a("   cherry-picked on 2026-09-12 (`P19-06`) and the two that were a security")
-    a("   advisory were backported ahead of them (`B70`). Measuring this gap is what")
+    a(f"2. **{f['behind']} upstream commits have no patch-equivalent here**{f['behind_detail']}.")
+    a("   The documentation restructuring and dependency bumps were deliberately")
+    a("   declined. The real fixes were cherry-picked (`P19-06`), the two that were a")
+    a("   security advisory were backported ahead of them (`B70`), and one was taken")
+    a("   by hand (`P19-08`). Measuring this gap is what")
     a("   found them: a bearer API token had inherited its minting admin's tool")
     a("   authority, and an approval grant was readable out of caller-writable message")
     a("   metadata. **A fork that stops taking upstream's fixes does not merely go")
@@ -680,15 +716,15 @@ def render() -> str:
     a("   *every silent failure explained* are real and checkable; neither is a")
     a("   measurement of a person getting their work done faster.")
     a("4. **Most rows here are about this fork's own tree.** The suite is green —")
-    a("   8,819 passing, nothing red, after 14 standing failures were cleared on")
-    a("   2026-09-12 — but a green suite is evidence about the code under it, not")
+    a(f"   {f['passing']} passing, nothing red, after the standing failures it inherited")
+    a("   were cleared on 2026-09-12 — but a green suite is evidence about the code under it, not")
     a("   about a deployment. `P10-10`'s manual pass over every surface is still")
     a("   not done, and no automated check substitutes for it.")
     a("")
     a("## Reproducing all of it")
     a("")
     a("```")
-    a("python3 .pantheon/release-gate.py        # all 15 checkers plus the suite")
+    a(f"python3 .pantheon/release-gate.py        # all {f['checkers']} checkers plus the suite")
     a("python3 .pantheon/retrieval_eval.py      # the memory numbers, with their caveat")
     a("python3 .pantheon/check-ledger.py          # this file, verified")
     a("```")
