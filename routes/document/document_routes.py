@@ -320,6 +320,25 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
         if upload_handler is None:
             raise HTTPException(500, "Upload handler not configured")
 
+        # `B-NEW` (f-import: `import-pdf` accepted any file). Measured before
+        # this check, through this route: a `.docx`, a PNG, a `.txt` and a PNG
+        # named `scan.pdf` each answered 200 and became a "PDF" document whose
+        # body was "[PDF processing failed: Stream has ended unexpectedly]"
+        # and whose `pdf_source` pointed the page view at a file that is not a
+        # PDF. Refused BEFORE a byte is written, as `import-office` below
+        # refuses (`B233`): `save_upload` charges the rate limiter and commits
+        # the file. The bytes decide (a PDF with no extension is still one);
+        # the sentence says what the file is.
+        from src.pdf_runtime import PDF_MAGIC_WINDOW, looks_like_pdf, not_a_pdf_reason
+        try:
+            head = file.file.read(PDF_MAGIC_WINDOW)
+            file.file.seek(0)
+        except Exception as e:
+            logger.error(f"PDF import could not read the upload: {e}")
+            raise HTTPException(400, "The uploaded file could not be read")
+        if not looks_like_pdf(head):
+            raise HTTPException(415, not_a_pdf_reason(display_name(file.filename) or "", head))
+
         client_ip = request.client.host if request.client else "unknown"
         try:
             meta = upload_handler.save_upload(file, client_ip, owner=user)
