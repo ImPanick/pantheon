@@ -7374,8 +7374,9 @@ async def stream_agent_loop(
                 # The model burned its budget gathering data but never wrote a
                 # final answer (common with weaker models on multi-source
                 # briefings). Salvage it: one blunt non-streaming synthesis call
-                # over the full conversation (which already holds every tool
-                # result) before falling back to the canned apology.
+                # over the conversation (which already holds every tool result),
+                # shaped and trimmed as a round is, before falling back to the
+                # canned apology.
                 _synth = ""
                 try:
                     from src.llm_core import llm_call_async
@@ -7389,6 +7390,17 @@ async def stream_agent_loop(
                             "what you have and note what's missing in one short line."
                         ),
                     }]
+                    # w8-agent's B-NEW-5. Shaped and trimmed as every round is,
+                    # for the candidate it goes to (`_candidate_request`): the
+                    # tool pictures as this model can take them (`P20-04`),
+                    # then this route's window. It was the whole transcript —
+                    # measured before it, a 20,000 window after a long chat: the
+                    # rounds were trimmed to it and the salvage sent 80,975
+                    # characters the server refused outright (20,244 tokens of
+                    # prompt), so the turn ended on the apology below.
+                    _synth_messages = _trim_route_request_messages(
+                        endpoint_url, model,
+                        await tool_result_images.for_model(_synth_messages, model, endpoint_url))
                     # `B1050`. Asked of the candidate that answered: once a
                     # fallback answers, the pin rebinds `endpoint_url`, `model`
                     # and `headers` to it, so the call already went there — but
