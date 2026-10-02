@@ -461,18 +461,25 @@ CLAIMS: Tuple[Claim, ...] = (
             "ticks and the newest progress entry against the totals."
         ),
         before="untracked",
-        after="370 rows, every one recounted against its section",
+        # `B411`. This said *370 rows, every one recounted against its section*
+        # while its own repro printed 376 phase tasks, and 416 on 2026-10-02. The
+        # count moves every wave, so a number here is stale by the next merge;
+        # the claim is the rule the checker fails on.
+        after="every phase row recounted against its own ticks",
         provenance="measured",
         repro="python3 .pantheon/check-tracker.py",
         evidence=(".pantheon/ROADMAP.md", ".pantheon/check-tracker.py"),
-        rows=("B44",),
+        rows=("B44", "B411"),
         how=(
             "The checker exists because the summary line — the one line in the file "
             "whose whole job is to summarise the rest — read `135 done` against a table "
             "saying `116`, **wrong by nineteen and carried forward unread from entry to "
             "entry** because each author copied the line above. Older entries keep the "
             "figure they were written with: a record of what was claimed at the time is "
-            "worth more than a quietly corrected one."
+            "worth more than a quietly corrected one. **The row count is not written "
+            "here**, because it is the checker's own first line and it moves every "
+            "wave: this claim said *370 rows* while the checker printed 376, and the "
+            "checker printed 416 phase tasks on 2026-10-02 (`B411`)."
         ),
     ),
 
@@ -688,16 +695,31 @@ CLAIMS: Tuple[Claim, ...] = (
         before="260 requests per click",
         after="40, budgeted and shared",
         provenance="counted",
-        repro="python3 .pantheon/check-outbound.py --max 109",
-        evidence=(".pantheon/check-outbound.py",),
-        rows=("P15-05", "P15-06"),
+        # `B411`. The repro was `check-outbound.py --max 109`, which counts
+        # unpaced call sites across the tree — a different metric that never
+        # prints 40. The 40 is `HF_MAX_REQUESTS_PER_REFRESH`, so the repro now
+        # prints it from the module that spends it, and runs the tests that hold
+        # a refresh to it. `check-ledger.py` runs the one-liner and compares its
+        # `BUDGET` with this `after` exactly.
+        repro=(
+            "python3 -c \"from services.hwfit import hf_discovery as d; "
+            "print(len(d.HF_COLLECTION_SOURCES), 'sources share one refresh · BUDGET', "
+            "d.HF_MAX_REQUESTS_PER_REFRESH)\" "
+            "&& python3 -m pytest -q tests/test_hf_discovery_politeness.py"
+        ),
+        evidence=("services/hwfit/hf_discovery.py", "tests/test_hf_discovery_politeness.py",
+                  ".pantheon/check-outbound.py"),
+        rows=("P15-05", "P15-06", "B411"),
         how=(
             "Unauthenticated GitHub allows **60 requests an hour**. One click of a "
             "discovery refresh spent more than four hours of that budget, and the "
             "user's own network wore the rate limit. An audit across 50 outbound "
             "modules found a second shape worth naming: a failing batch of 8 embeddings "
             "was retried as 8 single requests — **a fan-out amplifier that turns one "
-            "request into nine at exactly the moment the far end is struggling.**"
+            "request into nine at exactly the moment the far end is struggling.** "
+            "The rest of the outbound surface is held by `check-outbound.py`, whose "
+            "number is a different one — call sites that bypass the limiter, which "
+            "may go down and never up — and is the gate `ci.yml` runs, not this claim's."
         ),
     ),
 
@@ -774,38 +796,53 @@ CLAIMS: Tuple[Claim, ...] = (
     Claim(
         id="spdx",
         area="Licence and provenance",
-        headline="1,541 files of program text now declare their licence. None did.",
+        headline="Every file of program text now declares its licence, and no vendored file does. None did.",
         stock="No SPDX identifiers.",
         pantheon="Every shipped file of program text carries `AGPL-3.0-or-later`, and no vendored file does.",
         before="0 files",
-        after="1,541 files",
+        # `B411`. This said *1,541 files* — the count the day it was written —
+        # while its own repro printed 1,653, and 2,187 on 2026-10-02. It grows
+        # with every file added; the claim is the rule, the count is the
+        # checker's.
+        after="every file of program text",
         provenance="measured",
         repro="python3 .pantheon/check-spdx.py",
         evidence=(".pantheon/check-spdx.py",),
-        rows=("P0-18",),
+        rows=("P0-18", "B411"),
         how=(
             "The checker enforces **both directions**, and the second is the one that "
             "matters: a vendored third-party file must *not* claim this project's "
             "licence. A sweep that only adds headers relicenses other people's code by "
-            "accident."
+            "accident. **The file count is not written here**, because it is the "
+            "checker's own first line and grows with every file added: this claim said "
+            "*1,541* when it was written, and `check-spdx.py` counted 2,187 files of "
+            "program text on 2026-10-02 (`B411`). What is claimed is what the checker "
+            "fails on — a file of program text without the header, or a vendored file "
+            "with it."
         ),
     ),
 
     Claim(
         id="credits",
         area="Licence and provenance",
-        headline="CREDITS.md 105 -> 483 lines, and thirteen licence texts that were never shipped.",
+        headline="Every shipped third-party file attributed, checked against the bytes on disk — 55 licence texts.",
         stock=(
             "Bundled third-party code without its licence text; the desktop builds "
             "redistributed a dozen libraries with attribution stripped."
         ),
         pantheon="Every shipped third-party file attributed, with the licence body at the version actually vendored.",
-        before="105 lines",
-        after="483 lines · 13 licence texts",
+        # `B411`. This said `105 lines` -> `483 lines · 13 licence texts`:
+        # `CREDITS.md`'s length before and after `P0-19` merged
+        # `ACKNOWLEDGMENTS.md` into it (2026-08-27), and the thirteen texts
+        # `P0-21b` added. Both were real and both were history — `CREDITS.md`
+        # was 1,023 lines on 2026-10-02 — and neither is a number the repro
+        # prints. The pair is now the defect and the checker's own count.
+        before="12 bundled packages with no notice",
+        after="55 licence texts, every shipped file attributed",
         provenance="counted",
         repro="python3 .pantheon/check-licences.py",
         evidence=("CREDITS.md", "licenses", ".pantheon/check-licences.py"),
-        rows=("P0-19", "P0-20", "P0-21", "P0-21b", "P0-30", "D-2026-09-07-01"),
+        rows=("P0-19", "P0-20", "P0-21", "P0-21b", "P0-30", "D-2026-09-07-01", "B411"),
         how=(
             "Each licence was **fetched from upstream at the version actually vendored "
             "here**, not reconstructed from memory; nine had their text fetched at two "
@@ -813,7 +850,16 @@ CLAIMS: Tuple[Claim, ...] = (
             "count itself was wrong twice — a `/*!`-only scan said five where a sweep "
             "across all comment forms found 23 copyright-bearing blocks in 955, and "
             "webpack had left **1,736 `node_modules/<package>/` paths inside a shipped "
-            "blob**. AGPL compliance is not a paragraph; it is a file list."
+            "blob**. AGPL compliance is not a paragraph; it is a file list. *Before* is "
+            "`P0-21b`'s measurement of 2026-08-27 — twelve packages inside "
+            "`html2pdf.bundle.min.js` with no notice anywhere in the repository — and it "
+            "is a lower bound: `B420` later found React, `immutable` and nine more "
+            "inside Swagger UI. "
+            "*After* is `check-licences.py`'s own count of licence texts, and the "
+            "checker fails on any shipped file nothing attributes. This claim used to "
+            "read `105 -> 483 lines` and *thirteen licence texts*: `CREDITS.md`'s length "
+            "before and after it absorbed `ACKNOWLEDGMENTS.md` (`P0-19`), and the "
+            "texts `P0-21b` added — history, not a number its repro prints (`B411`)."
         ),
     ),
 

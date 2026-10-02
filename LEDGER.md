@@ -40,7 +40,7 @@ are the numbers most likely to be quoted and least able to carry the weight.
 | Ten thousand memories, under a millisecond a query, no service running. | `a service, or nothing` | **`0.82ms at 10,000 memories (15MB of index)`** | `measured` |
 | Twenty-four checkers in CI, each one built from a defect that actually shipped. | `0` | **`24`** | `counted` |
 | Test files 792 -> 1182, and a suite of 14,154 passing with nothing red. | `792 test files` | **`1182 test files · 14,154`** | `diffed` |
-| One tracker, checked by a script, after it was silently wrong by nineteen. | `untracked` | **`370 rows, every one recounted against its section`** | `measured` |
+| One tracker, checked by a script, after it was silently wrong by nineteen. | `untracked` | **`every phase row recounted against its own ticks`** | `measured` |
 | Agents can run commands on the host. 52 rules they cannot reach say what never runs. | `no host reach` | **`52 compiled-in rules · 0 bypasses`** | `counted` |
 | Five of the 52 rules aren't about danger. They keep the other 47 enforceable. | `—` | **`5 opaque · 47 nuclear`** | `counted` |
 | Four of the 52 rules were dead on arrival. A test now proves all 52 fire. | `4 rules matched nothing` | **`52 of 52 proven to fire`** | `measured` |
@@ -51,8 +51,8 @@ are the numbers most likely to be quoted and least able to carry the weight.
 | A failed follow-up retried every 5 seconds forever — 720 attempts an hour. | `720 attempts/hour, forever` | **`exponential with jitter, cap 12`** | `cited` |
 | Three trust rungs, a 13-value capability taxonomy, and 21,360 cases pinning it. | `taxonomy unused` | **`21,360 cases, 0 diverged`** | `measured` |
 | Four event types carried an approval flag no line of the frontend ever read. | `4 events lying` | **`0`** | `cited` |
-| 1,541 files of program text now declare their licence. None did. | `0 files` | **`1,541 files`** | `measured` |
-| CREDITS.md 105 -> 483 lines, and thirteen licence texts that were never shipped. | `105 lines` | **`483 lines · 13 licence texts`** | `counted` |
+| Every file of program text now declares its licence, and no vendored file does. None did. | `0 files` | **`every file of program text`** | `measured` |
+| Every shipped third-party file attributed, checked against the bytes on disk — 55 licence texts. | `12 bundled packages with no notice` | **`55 licence texts, every shipped file attributed`** | `counted` |
 | Unreachable UI 78 -> 120 -> 25 and ratcheted, with 1,524 lines deleted against 340 added. | `78` | **`25`** | `measured` |
 | A 3,126-line module was parsed three times per page load. | `11 forked` | **`0`** | `measured` |
 | 440 silent exception handlers, 12 of them explained. The mutating ones are now zero. | `26 mutating-and-silent` | **`0`** | `measured` |
@@ -218,19 +218,19 @@ git ls-tree -r --name-only b4d1293 | grep -c '^tests/test_.*\.py$' && python3 -m
 
 ### One tracker, checked by a script, after it was silently wrong by nineteen.
 
-**`untracked` → `370 rows, every one recounted against its section`**  ·  provenance **`measured`**
+**`untracked` → `every phase row recounted against its own ticks`**  ·  provenance **`measured`**
 
 **Odysseus:** No task tracker in-repo.
 
 **Pantheon:** `.pantheon/ROADMAP.md` is the single tracker, and `.pantheon/check-tracker.py` validates every phase row against its own ticks and the newest progress entry against the totals.
 
-**How we got there.** The checker exists because the summary line — the one line in the file whose whole job is to summarise the rest — read `135 done` against a table saying `116`, **wrong by nineteen and carried forward unread from entry to entry** because each author copied the line above. Older entries keep the figure they were written with: a record of what was claimed at the time is worth more than a quietly corrected one.
+**How we got there.** The checker exists because the summary line — the one line in the file whose whole job is to summarise the rest — read `135 done` against a table saying `116`, **wrong by nineteen and carried forward unread from entry to entry** because each author copied the line above. Older entries keep the figure they were written with: a record of what was claimed at the time is worth more than a quietly corrected one. **The row count is not written here**, because it is the checker's own first line and it moves every wave: this claim said *370 rows* while the checker printed 376, and the checker printed 416 phase tasks on 2026-10-02 (`B411`).
 
 ```
 python3 .pantheon/check-tracker.py
 ```
 
-Argued in: `B44`.
+Argued in: `B44`, `B411`.
 
 ---
 
@@ -360,13 +360,13 @@ Argued in: `P18-05`, `D-2026-09-12-01`.
 
 **Pantheon:** A shared request budget across the whole refresh: 40, against a worst case of 260.
 
-**How we got there.** Unauthenticated GitHub allows **60 requests an hour**. One click of a discovery refresh spent more than four hours of that budget, and the user's own network wore the rate limit. An audit across 50 outbound modules found a second shape worth naming: a failing batch of 8 embeddings was retried as 8 single requests — **a fan-out amplifier that turns one request into nine at exactly the moment the far end is struggling.**
+**How we got there.** Unauthenticated GitHub allows **60 requests an hour**. One click of a discovery refresh spent more than four hours of that budget, and the user's own network wore the rate limit. An audit across 50 outbound modules found a second shape worth naming: a failing batch of 8 embeddings was retried as 8 single requests — **a fan-out amplifier that turns one request into nine at exactly the moment the far end is struggling.** The rest of the outbound surface is held by `check-outbound.py`, whose number is a different one — call sites that bypass the limiter, which may go down and never up — and is the gate `ci.yml` runs, not this claim's.
 
 ```
-python3 .pantheon/check-outbound.py --max 109
+python3 -c "from services.hwfit import hf_discovery as d; print(len(d.HF_COLLECTION_SOURCES), 'sources share one refresh · BUDGET', d.HF_MAX_REQUESTS_PER_REFRESH)" && python3 -m pytest -q tests/test_hf_discovery_politeness.py
 ```
 
-Argued in: `P15-05`, `P15-06`.
+Argued in: `P15-05`, `P15-06`, `B411`.
 
 ### A failed follow-up retried every 5 seconds forever — 720 attempts an hour.
 
@@ -428,37 +428,37 @@ Argued in: `P4-12`, `P4-21`.
 
 *AGPL-3.0 compliance, which upstream ships and does not fully honour.*
 
-### 1,541 files of program text now declare their licence. None did.
+### Every file of program text now declares its licence, and no vendored file does. None did.
 
-**`0 files` → `1,541 files`**  ·  provenance **`measured`**
+**`0 files` → `every file of program text`**  ·  provenance **`measured`**
 
 **Odysseus:** No SPDX identifiers.
 
 **Pantheon:** Every shipped file of program text carries `AGPL-3.0-or-later`, and no vendored file does.
 
-**How we got there.** The checker enforces **both directions**, and the second is the one that matters: a vendored third-party file must *not* claim this project's licence. A sweep that only adds headers relicenses other people's code by accident.
+**How we got there.** The checker enforces **both directions**, and the second is the one that matters: a vendored third-party file must *not* claim this project's licence. A sweep that only adds headers relicenses other people's code by accident. **The file count is not written here**, because it is the checker's own first line and grows with every file added: this claim said *1,541* when it was written, and `check-spdx.py` counted 2,187 files of program text on 2026-10-02 (`B411`). What is claimed is what the checker fails on — a file of program text without the header, or a vendored file with it.
 
 ```
 python3 .pantheon/check-spdx.py
 ```
 
-Argued in: `P0-18`.
+Argued in: `P0-18`, `B411`.
 
-### CREDITS.md 105 -> 483 lines, and thirteen licence texts that were never shipped.
+### Every shipped third-party file attributed, checked against the bytes on disk — 55 licence texts.
 
-**`105 lines` → `483 lines · 13 licence texts`**  ·  provenance **`counted`**
+**`12 bundled packages with no notice` → `55 licence texts, every shipped file attributed`**  ·  provenance **`counted`**
 
 **Odysseus:** Bundled third-party code without its licence text; the desktop builds redistributed a dozen libraries with attribution stripped.
 
 **Pantheon:** Every shipped third-party file attributed, with the licence body at the version actually vendored.
 
-**How we got there.** Each licence was **fetched from upstream at the version actually vendored here**, not reconstructed from memory; nine had their text fetched at two versions spanning the plausible range and compared byte for byte. The count itself was wrong twice — a `/*!`-only scan said five where a sweep across all comment forms found 23 copyright-bearing blocks in 955, and webpack had left **1,736 `node_modules/<package>/` paths inside a shipped blob**. AGPL compliance is not a paragraph; it is a file list.
+**How we got there.** Each licence was **fetched from upstream at the version actually vendored here**, not reconstructed from memory; nine had their text fetched at two versions spanning the plausible range and compared byte for byte. The count itself was wrong twice — a `/*!`-only scan said five where a sweep across all comment forms found 23 copyright-bearing blocks in 955, and webpack had left **1,736 `node_modules/<package>/` paths inside a shipped blob**. AGPL compliance is not a paragraph; it is a file list. *Before* is `P0-21b`'s measurement of 2026-08-27 — twelve packages inside `html2pdf.bundle.min.js` with no notice anywhere in the repository — and it is a lower bound: `B420` later found React, `immutable` and nine more inside Swagger UI. *After* is `check-licences.py`'s own count of licence texts, and the checker fails on any shipped file nothing attributes. This claim used to read `105 -> 483 lines` and *thirteen licence texts*: `CREDITS.md`'s length before and after it absorbed `ACKNOWLEDGMENTS.md` (`P0-19`), and the texts `P0-21b` added — history, not a number its repro prints (`B411`).
 
 ```
 python3 .pantheon/check-licences.py
 ```
 
-Argued in: `P0-19`, `P0-20`, `P0-21`, `P0-21b`, `P0-30`, `D-2026-09-07-01`.
+Argued in: `P0-19`, `P0-20`, `P0-21`, `P0-21b`, `P0-30`, `D-2026-09-07-01`, `B411`.
 
 ---
 

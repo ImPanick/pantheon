@@ -22,6 +22,7 @@ from __future__ import annotations
 import importlib.util
 import os
 import re
+import shlex
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -569,15 +570,95 @@ def test_a_checker_that_measured_nothing_does_not_disprove_anything(checker):
     assert not checker._measured_anything("lookups 0  ·  UNRESOLVED 0")
 
 
-def test_the_repro_rule_reports_rather_than_fails_a_different_metric(checker):
-    """Four claims state a number their checker never prints — `fan-out`'s
-    *40 destinations* against an unpaced-call-site count, for instance. Those
-    are named as NOTEs and left to `B411`, because deciding what each number
-    means needs the person who measured it and a checker that guesses is the
-    defect this one exists to find."""
-    _, notes = checker._repro_problems()
-    assert notes, "the four B411 mismatches are gone — update this test and the row"
-    assert all("B411" in note for note in notes)
+def test_the_repro_rule_reports_rather_than_fails_a_different_metric(checker, claims,
+                                                                     monkeypatch):
+    """A claim stating a number its checker never prints is a NOTE, not a
+    failure, because deciding what a number means needs the person who measured
+    it. `B411` was four of them; this is the rule, kept armed with the
+    `tracker` claim exactly as it read until 2026-10-02."""
+    tracker = next(c for c in claims.CLAIMS if c.id == "tracker")
+    probe = tracker._replace(id="probe",
+                             after="370 rows, every one recounted against its section")
+    monkeypatch.setattr(claims, "CLAIMS", claims.CLAIMS + (probe,))
+    problems, notes = checker._repro_problems()
+    assert not any(p.startswith("probe:") for p in problems), problems
+    assert any(n.startswith("probe:") and "prints no such number" in n
+               for n in notes), notes
+
+
+def test_no_claim_states_a_number_its_own_repro_never_prints(checker):
+    """`B411`'s `Verify:` — *"`check-ledger.py` prints no NOTEs"*. Fails on the
+    tree as it stood: `tracker` 370 against 416, `spdx` 1,541 against 2,187,
+    `credits` 483 lines and 13 texts against 55, and `fan-out`'s 40 against a
+    checker that counts call sites."""
+    problems, notes = checker._repro_problems()
+    assert problems == [], problems
+    assert notes == [], notes
+
+
+def test_the_restated_claims_claim_what_their_checker_fails_on(checker, claims):
+    """`tracker` and `spdx` no longer restate a count that moves every wave; they
+    state the rule their checker enforces. So the checker has to be enforcing
+    it, here and now — driven, not read."""
+    by_id = {c.id: c for c in claims.CLAIMS}
+    for cid, script, verdict in (("tracker", ".pantheon/check-tracker.py", "tracker OK"),
+                                 ("spdx", ".pantheon/check-spdx.py", "spdx OK")):
+        assert not re.match(r"\d", by_id[cid].after.strip()), by_id[cid].after
+        assert script in by_id[cid].repro
+        output = checker._checker_output(script)
+        assert output.startswith(verdict), output[:300]
+
+
+def test_the_fan_out_claim_is_the_budget_its_repro_prints(checker, claims):
+    """The 40 is `HF_MAX_REQUESTS_PER_REFRESH`, and the repro prints it from the
+    module that spends it. Run, not read: the one-liner the ledger prints is
+    the one executed here."""
+    fan_out = next(c for c in claims.CLAIMS if c.id == "fan-out")
+    code = checker._repro_inline(fan_out.repro)
+    assert code, fan_out.repro
+    name, value = checker._repro_headline(checker._inline_output(code))
+    from services.hwfit import hf_discovery
+    assert (name, value) == ("BUDGET", hf_discovery.HF_MAX_REQUESTS_PER_REFRESH)
+    assert fan_out.after.split(",")[0] == str(value)
+    # And the repro still runs the tests that hold a refresh to that budget.
+    assert "tests/test_hf_discovery_politeness.py" in fan_out.repro
+
+
+def test_a_one_liner_repro_that_disproves_its_claim_is_caught(checker, claims,
+                                                              monkeypatch):
+    fan_out = next(c for c in claims.CLAIMS if c.id == "fan-out")
+    probe = fan_out._replace(id="probe", after="50, budgeted and shared")
+    monkeypatch.setattr(claims, "CLAIMS", claims.CLAIMS + (probe,))
+    problems = checker.verify()
+    assert any(p.startswith("probe:") and "disproves the claim" in p
+               for p in problems), problems
+
+
+def test_the_first_command_of_a_repro_is_the_one_judged(checker, claims, monkeypatch):
+    """A repro that prints the claim's number first and names a checker after
+    it is judged by the number it prints — the checker is a further step for
+    the reader, not the claim's evidence. Exactly `fan-out`'s old trap the
+    other way round: the 40 would be looked for in a call-site count again."""
+    fan_out = next(c for c in claims.CLAIMS if c.id == "fan-out")
+    code = checker._repro_inline(fan_out.repro)
+    probe = fan_out._replace(
+        id="probe",
+        repro=f"python3 -c {shlex.quote(code)} && python3 .pantheon/check-outbound.py --max 109")
+    monkeypatch.setattr(claims, "CLAIMS", claims.CLAIMS + (probe,))
+    problems, notes = checker._repro_problems()
+    assert not [x for x in problems + notes if x.startswith("probe:")], (problems, notes)
+
+
+def test_a_one_liner_repro_that_does_not_run_is_caught(checker, claims, monkeypatch):
+    """A one-liner that exits non-zero measured nothing, so it is a problem —
+    not a NOTE about a number it never got the chance to print."""
+    fan_out = next(c for c in claims.CLAIMS if c.id == "fan-out")
+    probe = fan_out._replace(
+        id="probe", repro='python3 -c "import a_module_this_repo_does_not_have"')
+    monkeypatch.setattr(claims, "CLAIMS", claims.CLAIMS + (probe,))
+    problems = checker.verify()
+    assert any(p.startswith("probe:") and "could not be run" in p
+               for p in problems), problems
 
 
 # --------------------------------------------------------------------------

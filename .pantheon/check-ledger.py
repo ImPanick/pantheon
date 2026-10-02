@@ -52,6 +52,7 @@ from __future__ import annotations
 import argparse
 import functools
 import re
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -193,15 +194,51 @@ def _checker_count_problems() -> list:
 #     measures something CI does not guard.
 #
 # What is deliberately NOT a failure: a claim whose `after` is simply a
-# different metric from the checker's headline — `fan-out`'s *40 destinations*
-# against an unpaced-call-site count, for instance. Those are printed as NOTEs
-# by `main()` and named in `B411`, because deciding what each of those numbers
-# means needs the person who measured it, and a checker that guesses is the
-# defect this one exists to find.
+# different metric from the checker's headline. Those are printed as NOTEs by
+# `main()`, because deciding what a number means needs the person who measured
+# it, and a checker that guesses is the defect this one exists to find.
+#
+# `B411` was four of them, and each turned out to be one of two things. Three
+# restated a count that moves with every wave — `tracker`'s *370 rows* against
+# a checker printing 416, `spdx`'s *1,541 files* against 2,187, `credits`'
+# *483 lines · 13 licence texts* (`CREDITS.md`'s length on 2026-08-27 and the
+# thirteen texts `P0-21b` added) against 55 — and now state the invariant their
+# checker fails on, with the dated count in `how`. The fourth, `fan-out`'s
+# *40*, was a different metric under the wrong command: the number is
+# `HF_MAX_REQUESTS_PER_REFRESH`, and `check-outbound.py` counts unpaced call
+# sites. Its repro now prints the 40, which is why this rule also runs a
+# **`python3 -c` one-liner** when that is the repro's first command: the claim's
+# number then comes from the code that enforces it, compared exactly as a
+# checker's headline is.
 _REPRO_CHECKER = re.compile(r"python3?\s+(\.pantheon/check-[\w-]+\.py)")
 _REPRO_CEILING = re.compile(r"--(max[\w-]*)\s+(\d+)")
 _HEADLINE = re.compile(r"^([A-Z][A-Z -]*?)\s+(\d[\d,]*)$")
 _LEADING_NUMBER = re.compile(r"(\d[\d,]*)")
+
+
+def _repro_inline(repro: str):
+    """The code of a repro whose first command is `python3 -c "<code>"`, or None."""
+    try:
+        words = shlex.split(repro)
+    except ValueError:
+        return None
+    first = words[:words.index("&&")] if "&&" in words else words
+    if len(first) == 3 and first[0] in ("python", "python3") and first[1] == "-c":
+        return first[2]
+    return None
+
+
+@functools.lru_cache(maxsize=None)
+def _inline_output(code: str) -> str:
+    """A one-liner repro's stdout, run from the repository root — cached for the
+    same reason `_checker_output` is. Unlike a checker, a one-liner that exits
+    non-zero has not measured anything, so that raises and is a problem."""
+    proc = subprocess.run([sys.executable, "-c", code], cwd=str(ROOT),
+                          capture_output=True, text=True, timeout=120)
+    if proc.returncode != 0:
+        raise subprocess.SubprocessError(
+            f"exit {proc.returncode}: {proc.stderr.strip().splitlines()[-1:]}")
+    return proc.stdout
 
 
 @functools.lru_cache(maxsize=None)
@@ -243,15 +280,16 @@ def _repro_problems() -> tuple:
     except OSError:
         ci = ""
     for claim in C.CLAIMS:
-        match = _REPRO_CHECKER.search(claim.repro)
-        if not match:
+        inline = _repro_inline(claim.repro)
+        match = None if inline else _REPRO_CHECKER.search(claim.repro)
+        if not inline and not match:
             continue
-        script = match.group(1)
-        if not (ROOT / script).exists():
+        script = "its `python3 -c` one-liner" if inline else match.group(1)
+        if match and not (ROOT / script).exists():
             problems.append(f"{claim.id}: repro names {script}, which does not exist")
             continue
         try:
-            output = _checker_output(script)
+            output = _inline_output(inline) if inline else _checker_output(script)
         except (OSError, subprocess.SubprocessError) as exc:
             problems.append(
                 f"{claim.id}: repro names {script} and it could not be run ({exc}). "
@@ -284,7 +322,7 @@ def _repro_problems() -> tuple:
                     f"such number (B411)")
 
         ceiling = _REPRO_CEILING.search(claim.repro)
-        if ceiling and ci:
+        if ceiling and ci and match:
             in_ci = re.search(
                 rf"{re.escape(script)}\s+--{ceiling.group(1)}\s+(\d+)", ci)
             if in_ci and in_ci.group(1) != ceiling.group(2):
