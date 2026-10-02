@@ -120,10 +120,12 @@ async def test_a_model_chosen_send_parks_and_an_allow_from_the_notification_send
     # began to wait — what the question's notice says ("“Morning digest” is
     # waiting for your yes: “Send reply” wants to use bash"), the same three
     # the waiting list carries; without them the notice said "A step".
+    # `B1111`: and the tool as the step's panel names it (`bash` is its own).
     assert note["review"] == {"kind": "workflow_approval", "workflow_id": "w-wf",
                               "workflow": "Morning digest", "run_id": run["id"],
                               "node_id": "reply", "item": None, "label": "Send reply",
-                              "since": rec["waiting"]["since"], "approval": card}
+                              "since": rec["waiting"]["since"], "tool_label": "bash",
+                              "approval": card}
     assert w.seen[0]["workload"] == "background", "a scheduled step is background work"
 
     async with client_for(w.app) as client:

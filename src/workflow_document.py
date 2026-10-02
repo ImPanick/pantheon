@@ -457,6 +457,18 @@ def _mcp_info(resources: WorkflowResources, tool) -> dict | None:
     return info if isinstance(info, dict) else None
 
 
+def mcp_tool_words(info, tool) -> str:
+    """`B1111`. An MCP tool as a person reads it: "Chat: send_message" — its
+    server's name and the tool's own, as the step's panel names it
+    (`stepFields.js`) — or the qualified name when the server is not known
+    here. The qualified name stays what is stored, sealed and called; these
+    are the words beside it."""
+    info = info if isinstance(info, dict) else {}
+    if info.get("server_name") and info.get("name"):
+        return f"{info['server_name']}: {info['name']}"
+    return str(tool)
+
+
 def _mcp_schema(node: dict, resources: WorkflowResources):
     """The input schema of the MCP tool `node` calls — or, for a For-each, the
     tool its inner step calls."""
@@ -2001,7 +2013,9 @@ def plan_lines(node: dict, resources: WorkflowResources | None = None) -> list:
         if (config.get("method") or "GET") != "GET":
             lines.append(f"It would: {EFFECT_SENTENCES[EFFECT_TOUCHES_REMOTE]}")
     elif kind == NODE_KIND_MCP:
-        lines.append(f"Would call the tool {config.get('tool')}")
+        # `B1111`: named as the panel names it, where its server is known.
+        lines.append(f"Would call the tool "
+                     f"{mcp_tool_words(_mcp_info(resources, config.get('tool')), config.get('tool'))}")
         for name, value in (config.get("args") or {}).items():
             lines.append(f"{name}: {_shown(value)}")
         if node_effects(node, None, resources):
@@ -2045,8 +2059,7 @@ def _sends(node: dict, resources: WorkflowResources) -> list:
     elif kind == NODE_KIND_MCP:
         tool = config.get("tool")
         info = _mcp_info(resources, tool) or {}
-        said = (f"{info['server_name']}: {info['name']}" if info.get("server_name") and info.get("name")
-                else str(tool))
+        said = mcp_tool_words(info, tool)
         schema = info.get("input_schema") if isinstance(info.get("input_schema"), dict) else None
         # The arguments that decide where it goes — the ones only a person
         # types (`never`); what it says (`value`) is left to the plan.

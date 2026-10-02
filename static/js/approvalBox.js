@@ -42,14 +42,19 @@ export function approvalBox(approval, {
   question.textContent = a.question || 'Allow this exact action once?';
   box.appendChild(question);
   if (a.action) {
+    // `B1111`. What the action can do, in words: the card's `effect_labels`
+    // (`tool_capabilities.describe_effects`, ranked, on every card the server
+    // makes — "Can permanently delete or overwrite", "Reads your private
+    // data"); the stored values (`action.effects`: `destructive`, …) only
+    // for a card that carries no words. The values stay on the wire, sealed.
+    const words = Array.isArray(a.effect_labels) ? a.effect_labels.map(String).filter(Boolean) : [];
+    const effects = words.length ? words : (Array.isArray(a.action.effects) ? a.action.effects : null);
     const action = document.createElement('pre');
     action.className = 'skill-test-out';
     action.textContent = [
       a.action.tool || 'tool',
       a.action.content || '',
-      Array.isArray(a.action.effects)
-        ? `Effects: ${a.action.effects.join(', ')}`
-        : '',
+      effects ? `Effects: ${effects.join(', ')}` : '',
       a.action.workspace ? `Workspace: ${a.action.workspace}` : '',
       a.action.digest ? `Approval fingerprint: ${a.action.digest}` : '',
     ].filter(Boolean).join('\n');

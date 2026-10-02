@@ -640,7 +640,8 @@ def setup_workflow_routes(task_scheduler) -> APIRouter:
             trigger = store.trigger_of(db, wf)
             owner = wf.owner
             session = waiting.get("session_id") or ""
-            tool = waiting.get("tool") or "the action"
+            # `B1111`: the tool as the step's panel names it.
+            tool = waiting.get("tool_label") or waiting.get("tool") or "the action"
             label = rec.label or rec.node_id
             tz_name = _resolve_task_timezone(db, trigger) if trigger is not None else None
             task_id = run.task_id

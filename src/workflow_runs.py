@@ -484,17 +484,20 @@ def _waiting_of(rec) -> dict | None:
 
 def waiting_public(rec) -> dict | None:
     """What a person may see of a waiting record (`C-W`): `{kind, since,
-    until, approval}` — `approval` the card's public payload (the sealed
-    content shown verbatim, as every card shows it), never the session the
-    card is bound to."""
+    until, approval, tool_label}` — `approval` the card's public payload (the
+    sealed content shown verbatim, as every card shows it), never the session
+    the card is bound to; `tool_label` (`B1111`) the card's tool as the step's
+    panel names it."""
     waiting = _waiting_of(rec)
     if waiting is None or getattr(rec, "status", None) != "waiting":
         return None
+    question = waiting.get("kind") == WAITING_APPROVAL
     return {
         "kind": waiting.get("kind"),
         "since": waiting.get("since"),
         "until": waiting.get("until"),
-        "approval": waiting.get("card") if waiting.get("kind") == WAITING_APPROVAL else None,
+        "approval": waiting.get("card") if question else None,
+        "tool_label": (waiting.get("tool_label") or None) if question else None,
     }
 
 

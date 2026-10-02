@@ -1473,6 +1473,28 @@ class StepAnswer(NamedTuple):
     exact_approval: Any = None
 
 
+def named_question(parked):
+    """`B1111`. A step that parks on a card, its tool named as the step's panel
+    names it (`workflow_effects.tool_words`: "Chat: send_message", not
+    `mcp__0e311a43__send_message`). The words go in the waiting record as
+    `tool_label` — read by the run's log line, the question's notification,
+    the waiting list and the answer's sentence — and `tool` keeps the name
+    the card seals. Asked once per card, where the walker first catches it
+    (`_park_record`, a For-each's item); a question already named passes."""
+    from src import workflow_runs as wr
+    from src.builtin_actions import TaskWaiting
+
+    if parked.kind != wr.WAITING_APPROVAL or parked.detail.get("tool_label"):
+        return parked
+    tool = parked.detail.get("tool")
+    if not tool:
+        return parked
+    from src.workflow_effects import tool_words
+    label = tool_words(tool) or str(tool)
+    return TaskWaiting(f"Waiting for your yes on {label}", kind=parked.kind,
+                       **dict(parked.detail, tool_label=label))
+
+
 class _Walk:
     """One segment of one run's walk: what `_run_workflow`'s parts share."""
 
@@ -5523,6 +5545,7 @@ class TaskScheduler:
         question is not a report on an outcome (`SLICE-CD-DESIGN` § 1.5)."""
         from src import workflow_runs as wr
 
+        parked = named_question(parked)
         detail = dict(parked.detail)
         waiting = {"kind": parked.kind, **detail}
         until = detail.get("until")
@@ -5546,7 +5569,8 @@ class TaskScheduler:
         """`P22-17`. The card, in a notification with `review` (`B1006`'s
         key): which workflow, run, step and item, and the card itself."""
         card = waiting.get("card") if isinstance(waiting.get("card"), dict) else {}
-        tool = waiting.get("tool") or (card.get("action") or {}).get("tool") or "an action"
+        tool = (waiting.get("tool_label") or waiting.get("tool")
+                or (card.get("action") or {}).get("tool") or "an action")
         label = node.get("label") or node["id"]
         item = waiting.get("item")
         where = f"“{label}”" + (f", item {int(item) + 1}," if isinstance(item, int) else "")
@@ -5564,6 +5588,7 @@ class TaskScheduler:
             review={"kind": "workflow_approval", "workflow_id": w.wf.id,
                     "workflow": w.name, "run_id": w.run_id, "node_id": node["id"],
                     "item": item, "label": label, "since": since,
+                    "tool_label": waiting.get("tool_label") or None,
                     "approval": card or None})
 
     def _start_wait(self, w, node: dict) -> None:
@@ -5763,7 +5788,7 @@ class TaskScheduler:
             return None
         from src import workflow_runs as wr
         until = wr._parse_iso(waiting.get("until"))
-        tool = waiting.get("tool") or "the action"
+        tool = waiting.get("tool_label") or waiting.get("tool") or "the action"
         if until is not None and (now or _utcnow()) >= until:
             sentence = (f"Nobody answered by {self._clock_words(w, until)} — {tool} was "
                         f"not done.")
@@ -6121,6 +6146,7 @@ class TaskScheduler:
                     ctx=item_ctx, answer=item_answer, walk=None, may_wait=may_wait)
                 res = done.result
             except TaskWaiting as parked:
+                parked = named_question(parked)
                 steps, model = self.run_steps(item_slot), self.run_model(item_slot)
                 self._clear_run_state(item_slot)
                 if rec is not None and walk is not None:

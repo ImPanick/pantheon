@@ -531,6 +531,29 @@ def _mcp_tools() -> list:
     return list(mgr.get_all_tools(load_disabled_map()))
 
 
+def tool_words(tool) -> str:
+    """`B1111`. The tool a step's question is about, as the step's panel names
+    it: an MCP tool "Chat: send_message" (`workflow_document.mcp_tool_words`,
+    read off the servers connected now), any other tool its own name. The
+    question's notice, its dialog and the run's log said the qualified name
+    (`mcp__0e311a43__send_message`) where the panel said "Chat:
+    send_message". Only words: the card's sealed action keeps the name it
+    calls."""
+    from src.workflow_document import mcp_tool_words
+    name = str(tool or "")
+    if not name.startswith("mcp__"):
+        return name
+    try:
+        tools = _mcp_tools()
+    except Exception:
+        logger.debug("Could not read the MCP tools to name %s", name, exc_info=True)
+        tools = []
+    for t in tools:
+        if t.get("qualified_name") == name:
+            return mcp_tool_words(t, name)
+    return name
+
+
 # ── What a person can reach: `WorkflowResources` (C-R) ───────────────────────
 
 # Any name under the `mcp__` prefix: the policy refuses the namespace, not one
