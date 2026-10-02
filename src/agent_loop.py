@@ -4872,6 +4872,7 @@ async def stream_agent_loop(
     loop_caps_source: str = CAPS_FROM_CALLER,
     explicit_params=frozenset(),
     approval_ttl_seconds: Optional[int] = None,
+    approval_held_by_run: bool = False,
 ) -> AsyncGenerator[str, None]:
     """Streaming agent loop generator.
 
@@ -4879,6 +4880,11 @@ async def stream_agent_loop(
     run mints waits — a workflow step's question waits
     ``workflow_approval_timeout_seconds``. ``None`` is the store's own deadline,
     which every chat run keeps; the store clamps any number to its bounds.
+
+    ``approval_held_by_run`` (`B1103`): a card this run mints is a workflow
+    run's question (`PendingToolApproval.held_by_run`) — a message typed into
+    the chat it is bound to neither withdraws nor supersedes it. ``False`` for
+    every chat run, exactly as before.
 
     ``explicit_params`` names the sampling parameters the person chose
     (`P2-13`); the chat route passes its preset's. With ``"temperature"`` in it
@@ -8024,6 +8030,8 @@ async def stream_agent_loop(
                         # card (a workflow step's), clamped by the store; None
                         # is the store's own, as for every chat card.
                         ttl_seconds=approval_ttl_seconds,
+                        # `B1103`. A workflow step's question is its run's.
+                        held_by_run=approval_held_by_run,
                     )
                     desc = f"{block.tool_type}: APPROVAL REQUIRED"
                     result = {

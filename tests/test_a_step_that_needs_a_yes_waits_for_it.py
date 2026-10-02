@@ -399,10 +399,14 @@ async def test_one_question_at_a_time_a_second_model_step_waits_for_the_answer(w
     assert w.executed == [("bash", "printf reply-sent")]
 
 
-async def test_a_card_withdrawn_by_a_new_chat_message_says_so(world):
-    """§ 5's residual, said aloud: typing into the workflow's own chat retires
-    its waiting card (`retire_for_session`). The step takes its failure port
-    and says it was withdrawn — not that Pantheon restarted (`Law 10`)."""
+async def test_a_card_that_left_the_store_early_says_it_was_withdrawn(world):
+    """A card that left the store before its deadline, in this process, takes
+    the failure port and says it was withdrawn — not that Pantheon restarted
+    (`Law 10`). Until `B1103` the way there was typing into the workflow's own
+    chat (`retire_for_session`, § 5's residual); a run's question is
+    `held_by_run` now and outlives that (`test_a_workflow_question_outlives_a_
+    chat_message.py`), so the store's size cap — which drops its oldest card
+    when full — is what is left, and the card is dropped as the cap drops it."""
     w = world
     _reply_workflow(w)
     run, rec = await _park(w)
@@ -411,7 +415,7 @@ async def test_a_card_withdrawn_by_a_new_chat_message_says_so(world):
     chat = db.query(ScheduledTask).filter(ScheduledTask.id == "wf").first().session_id
     db.close()
     assert chat, "the step kept its chat on the trigger"
-    tool_approval_store.retire_for_session(owner="alice", session_id=chat)
+    tool_approval_store._pending.pop(rec["waiting"]["approval"]["approval_id"])
     assert await w.s._resume_due_waits() == 1
     await settle(w.s)
     [run] = runs_of(w.factory, "wf")

@@ -1446,9 +1446,11 @@ ANSWER_ALLOW = "allow"
 ANSWER_DENY = "deny"
 ANSWER_LAPSED = "lapsed"
 ANSWER_RESTARTED = "restarted"
-# The card left the store before its deadline in the process that minted it:
-# an ordinary message typed into its chat retires a waiting card
-# (`tool_approvals.retire_for_session`), the residual risk § 5 names.
+# The card left the store before its deadline in the process that minted it.
+# Until `B1103` an ordinary message typed into its chat retired a waiting card
+# (`tool_approvals.retire_for_session`, the residual risk § 5 named); a run's
+# question is now `held_by_run`, so what is left is the store's size cap
+# (`DEFAULT_MAX_PENDING_APPROVALS`), which drops the oldest card when full.
 ANSWER_WITHDRAWN = "withdrawn"
 
 
@@ -4742,6 +4744,9 @@ class TaskScheduler:
         if _may_wait:
             from src.workflow_runs import workflow_approval_ttl_seconds
             _loop_extra["approval_ttl_seconds"] = workflow_approval_ttl_seconds(task.owner)
+            # `B1103`. The card is the run's question: typing into the chat
+            # this step writes into does not withdraw it.
+            _loop_extra["approval_held_by_run"] = True
         if _slot.get("allowed_tools") is not None:
             # `P22-16`. An AI step limited to its own tools (`wf-effects`' policy).
             from src.tool_policy import ToolPolicy
@@ -5280,8 +5285,10 @@ class TaskScheduler:
             at most `WORKFLOW_PARALLEL_STEPS` at once. The run holds one
             model-slot permit, so the concurrency cap still applies.
           * One question at a time per run: while a step waits for a yes, the
-            run's other model steps do not start (a session's newer card would
-            supersede it, `tool_approvals.create`), though other branches go on.
+            run's other model steps do not start, though other branches go on
+            (`SLICE-CD-DESIGN` § 6's default; it was also because a session's
+            newer card superseded it, `tool_approvals.create`, which a run's
+            question — `held_by_run`, `B1103` — no longer is).
           * When nothing can go on and something waits, the run parks: records
             written, `TaskWaiting` raised, and `_execute_task_locked` lets go of
             the model slot, the time limit and the claim.
@@ -5797,10 +5804,14 @@ class TaskScheduler:
         started = getattr(self, "_started_at", None)
         if since is not None and started is not None and since >= started:
             # Gone early, in this process: not a restart, and not a lapse
-            # (`Law 10` — the sentence says which).
+            # (`Law 10` — the sentence says which). `B1103`: a message typed
+            # into the step's chat no longer does this (the card is
+            # `held_by_run`); what still can is the store's size cap, which
+            # drops its oldest card when it is full. The sentence says what
+            # is known — it left early — and no reason it cannot be sure of.
             return StepAnswer(rec.node_id, item, ANSWER_WITHDRAWN, (
-                f"The question was withdrawn before anyone answered — a new message in "
-                f"its chat replaces a waiting question — so {tool} was not done."))
+                f"The question was withdrawn before anyone answered, so {tool} was "
+                f"not done."))
         return StepAnswer(rec.node_id, item, ANSWER_RESTARTED,
                           f"Pantheon restarted before you answered — {tool} was not done.")
 
@@ -6323,7 +6334,7 @@ class TaskScheduler:
             external_untrusted_context_seen=False,
             capabilities=capabilities_for_action(call.tool, call.content),
             gate_decision=decision, taint_trail=context.taint_trail,
-            ttl_seconds=wr.workflow_approval_ttl_seconds(task.owner))
+            ttl_seconds=wr.workflow_approval_ttl_seconds(task.owner), held_by_run=True)
         card = pending.public_payload(reason=decision.reason)
         return TaskWaiting(
             f"Waiting for your yes on {call.tool}", kind=wr.WAITING_APPROVAL,
