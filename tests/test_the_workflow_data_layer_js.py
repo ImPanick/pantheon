@@ -47,7 +47,9 @@ from test_tool_effect_surfaces_js import _make_sandbox, _run  # noqa: E402
 
 SOURCE_JS = JS / "workbench" / "workflowSource.js"
 _UP = ("tasks/workflowDiagram.js", "runStatus.js")
-_CANVAS_UP = ("editor/snap.js", "escMenuStack.js")
+_CANVAS_UP = ("editor/snap.js", "escMenuStack.js",
+              # `P22-09`…`P22-18` (wf-canvas): the panels' step forms reach these with `../`.
+              "approvalBox.js", "skillGateNote.js", "settings/mcpFields.js")
 
 _SHIM = r"""
 // A server answering the workflow routes in `C2`'s shapes, recording every
@@ -286,10 +288,15 @@ def test_the_start_is_drawn_as_a_fixed_step_with_a_fixed_arrow_into_the_first(bo
         const d = await s.load();
         out({ items: d.items.map((i) => [i.id, i.name, i.kind, i.sub, i.ports, i.marks, i.accepts, !!i.fixed, i.paused]),
               edges: d.edges, readOnly: s.readOnly, words: s.words.region,
+              start: { words: d.items[0].portWords, entry: d.items[0].entry },
               optional: [typeof s.newItem, typeof s.removeItem, typeof s.dryRun] });
     """)
+    # `P22-11` (wf-canvas, design § 2): the start has one port of its own,
+    # *starts*, and an arrow drawn from it is a real arrow of the document. A
+    # document with none still draws its implied entry as the fixed arrow.
+    assert o["start"] == {"words": {"success": "starts"}, "entry": True}
     assert o["items"] == [
-        ["__start__", "Starts", "start", "Every day at 08:00", [], [], False, True, True],
+        ["__start__", "Starts", "start", "Every day at 08:00", ["success"], [], False, True, True],
         ["n1", "Summarise my inbox", "llm", "Prompt", ["success", "error"], [], True, False, False],
         ["n2", "Send me the summary", "llm", "Prompt", ["success", "error"], ["Sample pinned"], True, False, False],
         # The person-facing word (`KIND_WORDS.run_task`, wf-ui, design § 6.6).
@@ -325,9 +332,10 @@ def test_an_arrow_is_a_draft_edit_checked_by_the_server_and_written_by_nothing(b
     assert [c[0:2] for c in o["calls"]] == [["PUT", "/api/workflows/wf1?check=true"]] * 2
     assert o["calls"][0][2]["base_version"] == 2
     assert {"from": "n1", "port": "error", "to": "n3"} in o["calls"][0][2]["graph"]["edges"]
-    # One arrow per outcome: drawing from a used port moves the arrow.
+    # `P22-11` (wf-canvas): fan-out. Drawing from a port that already has an
+    # arrow ADDS one there (it was one per outcome, moved, in Slice B).
     assert sorted((e["from"], e["when"], e["to"]) for e in o["edges"]) == [
-        ("n1", "error", "n3"), ("n1", "success", "n3")]
+        ("n1", "error", "n3"), ("n1", "success", "n2"), ("n1", "success", "n3")]
     assert o["dirty"] is True and o["lastState"] is True
     assert o["saved"] == [{"from": "n1", "port": "success", "to": "n2"}], "nothing written"
 
@@ -365,7 +373,8 @@ def test_an_unfinished_draft_does_not_block_an_arrow_and_says_what_it_lacks(box)
         out({ r, problem, r2, after: s.state().problem });
     """)
     assert o["r"] == {"ok": True, "sentence": "A workflow starts in one place."}
-    assert o["problem"] == {"sentence": "A workflow starts in one place.", "reason": "starts", "nodeIds": ["n1", "n4"]}
+    assert o["problem"] == {"sentence": "A workflow starts in one place.", "reason": "starts", "nodeIds": ["n1", "n4"],
+                            "field": None}
     assert o["r2"] == {"ok": True} and o["after"] is None
 
 
@@ -395,16 +404,19 @@ def test_save_writes_the_draft_from_its_base_and_a_409_keeps_the_draft(box):
 def test_a_refused_save_names_the_steps_and_the_draft_stays(box):
     o = _case(box, """
         server.check = (body) => body.graph.nodes.some((n) => !n.config.prompt)
-          ? { status: 400, body: { detail: '“N3” needs a prompt.', reason: 'needs', node_ids: ['n3'] } } : null;
+          ? { status: 400, body: { detail: '“Prompt” needs a prompt.', reason: 'needs', node_ids: ['prompt'],
+              field: 'config.prompt' } } : null;
         const s = source({ panels: { palette: async () => 'llm' } });
         await s.ready;
         const id = await s.newItem(null);
         const res = await s.save();
         out({ id, res, problem: s.state().problem, dirty: s.state().dirty });
     """)
-    assert o["id"] == "n3"
-    assert o["res"]["ok"] is False and o["res"]["nodeIds"] == ["n3"]
-    assert o["problem"]["nodeIds"] == ["n3"] and o["dirty"] is True
+    # `P22-09` (wf-canvas): a new step's id is its label's slug, and a refusal
+    # names the field it is about (C-W).
+    assert o["id"] == "prompt"
+    assert o["res"]["ok"] is False and o["res"]["nodeIds"] == ["prompt"] and o["res"]["field"] == "config.prompt"
+    assert o["problem"]["nodeIds"] == ["prompt"] and o["problem"]["field"] == "config.prompt" and o["dirty"] is True
 
 
 def test_positions_save_themselves_never_mark_the_draft_and_tidy_up_forgets_them(box):
@@ -425,7 +437,7 @@ def test_positions_save_themselves_never_mark_the_draft_and_tidy_up_forgets_them
         ["PUT", "/api/workflows/wf1", {"positions": {"n1": [10, 20], "start": [0, 0]}}],
         ["PUT", "/api/workflows/wf1", {"positions": {"n1": None, "start": None}}],
     ], "only what moved, only saved steps; nothing when nothing moved"
-    assert o["back"] == [["n1", {"x": 10, "y": 20}], ["n3", {"x": 300, "y": 5}], ["__start__", {"x": 0, "y": 0}]]
+    assert o["back"] == [["n1", {"x": 10, "y": 20}], ["research", {"x": 300, "y": 5}], ["__start__", {"x": 0, "y": 0}]]
     assert o["stored"] == [None, None] and o["start"] is None
     assert o["dirty"] is True, "dirty from the new step, not from where steps sit"
 
@@ -475,16 +487,22 @@ def test_new_change_and_remove_are_draft_edits_and_discard_takes_them_back(box):
               after: (await s.load()).items.map((i) => i.id), clean: s.state().dirty,
               writes: sent().filter((c) => c[0] !== 'GET' && !c[1].includes('check')) });
     """)
-    assert (o["a"], o["b"]) == ("n3", "n4")
-    assert o["items"][3:] == [["n3", "Tidy chats", "Action · tidy_sessions"], ["n4", "Action 2", "Action"]]
+    # `P22-09` (wf-canvas): a new step's id is the slug of its label, and the
+    # label it is first given re-keys it once ("Tidy chats" → `tidy-chats`).
+    assert (o["a"], o["b"]) == ("action", "action-2")
+    assert o["items"][3:] == [["tidy-chats", "Tidy chats", "Action · tidy_sessions"], ["action-2", "Action 2", "Action"]]
     assert o["start"] == {"ok": False, "sentence": "The start cannot be removed: it is what runs the workflow."}
     assert o["gone"] == {"ok": True, "sentence": "Save the workflow to keep the change."}
     assert all(e["from"] != "n1" and e["to"] != "n1" for e in o["edgesAfter"] if not e.get("fixed"))
     assert o["edgesAfter"][0]["to"] == "n2", "the start now leads to the step that goes first"
     assert o["dirty"] is True and o["clean"] is False
-    assert o["saidOnSaved"] == [{"id": "n3", "name": "Tidy chats",
+    assert o["saidOnSaved"] == [{"id": "tidy-chats", "was": "action", "name": "Tidy chats",
                                  "sentence": "Changed “Tidy chats”. Save the workflow to keep it."}]
-    assert o["panelArgs"] == ["node", "onApply", "onCancel", "source", "tasks", "workflow"]
+    # `P22-09`…`P22-18` (wf-canvas, C-W): the panel is also handed the
+    # palette, the steps before it, whether it is saved, a field lister and
+    # the draft's problem when it names this step.
+    assert o["panelArgs"] == ["fields", "node", "onApply", "onCancel", "palette", "problem", "saved", "source",
+                              "tasks", "upstream", "workflow"]
     assert o["after"] == ["__start__", "n1", "n2"]
     assert o["writes"] == [], "a draft edit writes nothing; Discard writes nothing"
 

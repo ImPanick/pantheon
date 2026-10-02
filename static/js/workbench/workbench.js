@@ -123,10 +123,12 @@ function _wire() {
  *
  * `focusId` opens the Automations room on the workflow that task is part of;
  * `workflowId` (`P22-05`) opens it on that workflow document;
+ * `runId` (`P22-17`, wf-canvas) opens that workflow's run — a waiting run on
+ * the step it waits on (a workflow question's *Open the run*);
  * `describeTrigger(task)` is the schedule wording (`tasks.js:_scheduleLabel`),
  * handed in by the door so the words exist once.
  */
-export function openWorkbench({ focusId = null, workflowId = null, describeTrigger = null } = {}) {
+export function openWorkbench({ focusId = null, workflowId = null, runId = null, describeTrigger = null } = {}) {
   if (typeof describeTrigger === 'function') _describe = describeTrigger;
   const modal = _modal();
   if (!modal) return false;
@@ -141,7 +143,9 @@ export function openWorkbench({ focusId = null, workflowId = null, describeTrigg
   if (!_open) {
     _open = true;
     _room = null;
-    _showRoom(ROOMS[0].id, { focusId, workflowId });
+    _showRoom(ROOMS[0].id, { focusId, workflowId, runId });
+  } else if (workflowId != null && runId != null && _room && _room.handle && typeof _room.handle.openRun === 'function') {
+    _room.handle.openRun(workflowId, runId);
   } else if (workflowId != null && _room && _room.handle && typeof _room.handle.openWorkflow === 'function') {
     _room.handle.openWorkflow(workflowId);
   } else if (focusId != null && _room && _room.handle && typeof _room.handle.focusChain === 'function') {

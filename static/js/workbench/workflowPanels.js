@@ -25,12 +25,20 @@
 // (`tasks.js:renderRunSteps`, handed in by the glue), which escapes every value
 // with `ui.js:esc` — the canvas's one exception, for the same reason (`P22-04`).
 
-import { KIND_WORDS } from '../tasks/workflowDiagram.js';
+import { KIND_WORDS, waitingWords } from '../tasks/workflowDiagram.js';
 import { runStatusTone, runStatusLabel } from '../runStatus.js';
+// `P22-09`…`P22-18` (wf-canvas): the step forms Slices C and D add, the field
+// picker, and the gate card a waiting step is answered with.
+import { mountStepFields, mountAiOptions, STEP_FIELD_KINDS } from './stepFields.js';
+import { decorateField, openFieldPicker } from './fieldPicker.js';
+import { approvalBox } from '../approvalBox.js';
 
 /** The kinds a step can be, in the palette's order, with what each does in
  *  the words a person meets (`D-2026-10-01-05`: the palette offers only what
- *  the agent can already reach). */
+ *  the agent can already reach). Since `P22-10` (wf-canvas) the server's
+ *  palette (C-W's palette route, `workflowApi.getPalette`) is what is offered — every
+ *  kind, grouped, a kind the person may not use greyed with the server's
+ *  reason as text; these four are what a Pantheon without that route offers. */
 export const PALETTE_KINDS = Object.freeze([
   { kind: 'llm', hint: 'Ask a model to read, write or decide something.' },
   { kind: 'research', hint: 'Look something up and write a report.' },
@@ -54,6 +62,11 @@ export const PIN_SENTENCE = 'A pinned sample is only used when you press Test. S
 export const NOTHING_ELSE = 'Nothing else ran: no other step, no delivery, no notification.';
 /** `P22-07`. Action and Research steps run with their own settings. */
 export const DOES_NOT_READ = 'This kind of step does not read what it is handed; it runs with its own settings.';
+/** `P22-17`. Under a waiting step's card: what each answer does. */
+export const ANSWER_WORDS = 'Allow once lets this one action run, and the next one asks again. '
+  + 'Deny takes the step’s “if it fails” way.';
+/** The kinds the task form draws (`taskFields.js`, `'node'` mode). */
+const TASK_KINDS = new Set(['llm', 'research', 'action', 'run_task']);
 
 const OUTCOME_MARKS = { ok: '✓', error: '✗', pending: '…', info: '·', none: '○' };
 
@@ -116,6 +129,14 @@ function _when(iso) {
   return Number.isNaN(d.getTime()) ? String(iso) : d.toLocaleString();
 }
 
+/** `P22-11`, `P22-17`. A waiting step's times, short: "Oct 2, 04:40 AM". */
+function _short(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? String(iso)
+    : d.toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+}
+
 function _took(a, b) {
   const s = Date.parse(a);
   const e = Date.parse(b);
@@ -149,11 +170,23 @@ function _section(title, text, { open = false, note = '', cls = '' } = {}) {
  */
 export function createWorkflowPanels({
   mountTaskFields, renderSteps = null, holdEscape = null, onRecordShown = null, onChanged = null, layer = null,
+  onAnswered = null,
 } = {}) {
   const hold = typeof holdEscape === 'function' ? holdEscape : () => () => {};
 
   // ── the palette: which kind of step to add ────────────────────────────────
-  function palette(anchorEl) {
+  /** The kinds to offer: the server's palette (`kinds: [{ kind, word, group,
+   *  hint, available, why }]`) when there is one, else Slice B's four. */
+  function offered(pal) {
+    const listed = pal && Array.isArray(pal.kinds) ? pal.kinds.filter((k) => k && k.kind) : [];
+    if (!listed.length) return PALETTE_KINDS.map((k) => ({ ...k, word: KIND_WORDS[k.kind] || k.kind, group: '', available: true, why: '' }));
+    return listed.map((k) => ({
+      kind: String(k.kind), word: String(k.word || KIND_WORDS[k.kind] || k.kind), group: String(k.group || ''),
+      hint: String(k.hint || ''), available: k.available !== false, why: String(k.why || ''),
+    }));
+  }
+
+  function palette(anchorEl, { palette: pal = null } = {}) {
     return new Promise((resolve) => {
       const room = (typeof layer === 'function' && layer())
         || (anchorEl && typeof anchorEl.closest === 'function' && anchorEl.closest('.wf-room'))
@@ -173,15 +206,36 @@ export function createWorkflowPanels({
         if (!kind && anchorEl && typeof anchorEl.focus === 'function') anchorEl.focus();
         resolve(kind || null);
       };
-      for (const k of PALETTE_KINDS) {
+      let group = null;
+      let groupName = null;
+      for (const k of offered(pal)) {
+        // `P22-10`. Grouped as the server groups them ("Decide and reshape",
+        // "Reach out" …), each group a list under its own words.
+        if (k.group !== groupName) {
+          groupName = k.group;
+          group = _el('div', 'wf-palette-group');
+          if (k.group) group.appendChild(_el('p', 'wf-palette-group-head', k.group));
+          box.appendChild(group);
+        }
         const b = _button('wf-palette-kind', null);
         b.dataset.kind = k.kind;
-        b.appendChild(_el('span', 'wf-palette-word', KIND_WORDS[k.kind] || k.kind));
-        b.appendChild(_el('span', 'wf-palette-hint', k.hint));
-        b.setAttribute('aria-label', `${KIND_WORDS[k.kind] || k.kind}: ${k.hint}`);
-        b.addEventListener('click', () => finish(k.kind));
-        kinds.push(b);
-        box.appendChild(b);
+        b.appendChild(_el('span', 'wf-palette-word', k.word));
+        if (k.hint) b.appendChild(_el('span', 'wf-palette-hint', k.hint));
+        if (!k.available) {
+          // `D-2026-10-01-05`: the palette offers only what the person's agent
+          // can reach. A kind they may not use is shown, greyed, with the
+          // server's reason in words — never a colour or a lock alone.
+          b.disabled = true;
+          b.setAttribute('aria-disabled', 'true');
+          b.dataset.available = 'false';
+          b.appendChild(_el('span', 'wf-palette-why', k.why || 'Not available here.'));
+          b.setAttribute('aria-label', `${k.word}: not available. ${k.why || ''}`.trim());
+        } else {
+          b.setAttribute('aria-label', `${k.word}: ${k.hint}`);
+          b.addEventListener('click', () => finish(k.kind));
+          kinds.push(b);
+        }
+        (group || box).appendChild(b);
       }
       const cancel = _button('wf-palette-cancel', 'Cancel');
       cancel.addEventListener('click', () => finish(null));
@@ -200,36 +254,148 @@ export function createWorkflowPanels({
       try {
         const a = anchorEl.getBoundingClientRect();
         const r = room.getBoundingClientRect();
-        box.style.top = Math.max(8, Math.round(a.bottom - r.top + 4)) + 'px';
+        const top = Math.max(8, Math.round(a.bottom - r.top + 4));
+        box.style.top = top + 'px';
         box.style.left = Math.max(8, Math.min(Math.round(a.left - r.left), Math.round((r.width || 0) - 300))) + 'px';
+        // Every kind fits the room it opens in, scrolling inside it: measured in
+        // Chromium at 1400×860, fourteen kinds ran past the window's edge and
+        // the last group (where Code is greyed) could not be reached.
+        if (r.height) box.style.maxHeight = Math.max(160, Math.round(r.height - top - 12)) + 'px';
       } catch (_) { /* no layout (a test): the sheet places it */ }
       room.appendChild(box);
       release = hold(() => finish(null));
-      kinds[0].focus();
+      (kinds[0] || cancel).focus();
     });
   }
 
   // ── a step: the task form in its step mode, and Test this step ────────────
-  function node(host, { node: step, tasks = [], workflow = null, source = null, onApply, onCancel } = {}) {
+  /**
+   * `P22-09`. A decorator for one step's text boxes: *Insert a field…* opens
+   * the list of what earlier steps made (`fields()`, C-W), plus `extra`
+   * sources (a For-each step's item); a `never` box says why.
+   */
+  function slotDecorator({ upstream = [], fields = null, extra = () => [] } = {}) {
+    const labelOf = (id) => {
+      if (id === 'start') return 'The start';
+      const u = (Array.isArray(upstream) ? upstream : []).find((x) => x && String(x.id) === String(id));
+      return u ? u.label : id;
+    };
+    return (input, { field, slot }) => decorateField(input, {
+      slot, field, labelOf,
+      pick: async (anchor) => {
+        const load = typeof fields === 'function' ? fields : async () => ({ ok: true, sources: [] });
+        const res = await load();
+        return openFieldPicker(anchor, { load: () => res, extra: extra(res), holdEscape: hold, layer });
+      },
+    });
+  }
+
+  /** The palette's entry for `kind`. */
+  const entryOf = (pal, kind) => (pal && Array.isArray(pal.kinds) ? pal.kinds.find((k) => k && k.kind === kind) || {} : {});
+
+  /** `P22-12`. What `{{ item }}` holds inside a For-each step whose list is
+   *  `listRef`: the whole item, and — when the fields listed show an example
+   *  of that list — each key of its first item. */
+  function itemSources(listRef, res) {
+    const fieldsOut = [{ ref: '{{ item }}', path: 'the whole item', type: '' }];
+    const ref = String(listRef || '').trim();
+    const sources = res && Array.isArray(res.sources) ? res.sources : [];
+    for (const src of sources) {
+      for (const f of (src && Array.isArray(src.fields) ? src.fields : [])) {
+        if (!f || String(f.ref) !== ref || !Array.isArray(f.example) || !f.example.length) continue;
+        const first = f.example[0];
+        if (first && typeof first === 'object' && !Array.isArray(first)) {
+          for (const k of Object.keys(first)) {
+            if (/^[A-Za-z_][A-Za-z0-9_]{0,63}$/.test(k)) fieldsOut.push({ ref: `{{ item.${k} }}`, path: `item.${k}`, type: '', example: first[k] });
+          }
+        }
+      }
+    }
+    return [{ node_id: 'item', label: 'Each item', origin: '', fields: fieldsOut }];
+  }
+
+  /** One step's editor in `formHost`: the task form for a task kind (with
+   *  the hooks), the step forms for the rest. */
+  function mountEditor(formHost, { step, tasks, pal, upstream, fields, problem, inForeach = null, onApply, onCancel, editInner }) {
+    const n = step || {};
+    const kind = String(n.kind || 'llm');
+    const entry = entryOf(pal, kind);
+    const pickField = slotDecorator({
+      upstream, fields,
+      extra: (res) => (inForeach ? itemSources(inForeach(), res) : []),
+    });
+    if (TASK_KINDS.has(kind)) {
+      if (typeof mountTaskFields !== 'function') return null;
+      // The step in the form's own field names (`taskFields.js`'s `'node'`
+      // mode): a step's `config` keys ARE `ScheduledTask`'s (design § 1.2).
+      const asTask = { ...(n.config && typeof n.config === 'object' ? n.config : {}), name: n.label || '', task_type: kind };
+      return mountTaskFields(formHost, {
+        mode: 'node',
+        task: asTask,
+        // A step may not run a workflow (§ 8), nor this workflow's own start.
+        tasks: (Array.isArray(tasks) ? tasks : []).filter((t) => t && t.task_type !== 'workflow'),
+        slots: entry.slots && typeof entry.slots === 'object' ? entry.slots : null,
+        pickField,
+        // `P22-16`. A Prompt step's tools and answer shape, under its fields.
+        extra: kind === 'llm' ? (el) => mountAiOptions(el, { node: n, palette: pal }) : null,
+        problem,
+        onSaved: (change) => { if (typeof onApply === 'function') onApply(change); },
+        onCancel: () => { if (typeof onCancel === 'function') onCancel(); },
+      });
+    }
+    if (!STEP_FIELD_KINDS.includes(kind)) return null;
+    return mountStepFields(formHost, {
+      node: n, palette: pal, upstream, pickField, problem, editInner,
+      onApply: (change) => { if (typeof onApply === 'function') onApply(change); },
+      onCancel: () => { if (typeof onCancel === 'function') onCancel(); },
+    });
+  }
+
+  function node(host, {
+    node: step, tasks = [], workflow = null, source = null, palette: pal = null, upstream = [], fields = null,
+    problem = null, onApply, onCancel,
+  } = {}) {
     const n = step || {};
     const wrap = _el('div', 'wf-step');
     const formHost = _el('div', 'wf-step-form');
     wrap.appendChild(formHost);
     host.appendChild(wrap);
-    // The step in the form's own field names (`taskFields.js`'s `'node'` mode):
-    // a step's `config` keys ARE `ScheduledTask`'s (design § 1.2).
-    const asTask = { ...(n.config && typeof n.config === 'object' ? n.config : {}),
-      name: n.label || '', task_type: n.kind || 'llm' };
-    const form = typeof mountTaskFields === 'function'
-      ? mountTaskFields(formHost, {
-        mode: 'node',
-        task: asTask,
-        // A step may not run a workflow (§ 8), nor this workflow's own start.
-        tasks: (Array.isArray(tasks) ? tasks : []).filter((t) => t && t.task_type !== 'workflow'),
-        onSaved: (change) => { if (typeof onApply === 'function') onApply(change); },
-        onCancel: () => { if (typeof onCancel === 'function') onCancel(); },
-      })
-      : null;
+    // `P22-12`. A For-each step's inner step is edited in this panel, in
+    // place of the For-each's form, and handed back to it on Done.
+    let inner = null;
+    const editInner = (innerStep, done) => {
+      if (inner) return;
+      const box = _el('div', 'wf-step-inner');
+      box.appendChild(_el('p', 'wf-step-inner-head', `For each item: ${KIND_WORDS[innerStep.kind] || innerStep.kind}`));
+      box.appendChild(_el('p', 'wf-step-inner-note',
+        'This runs once for each item. Insert a field… lists the item as “Each item”.'));
+      const innerHost = _el('div', 'wf-step-form');
+      box.appendChild(innerHost);
+      formHost.hidden = true;
+      if (test) test.hide(true);
+      wrap.appendChild(box);
+      const listNow = () => {
+        const el = Array.from(formHost.querySelectorAll('[data-field]')).find((x) => x.dataset.field === 'list');
+        return el ? el.value : ((n.config && n.config.list) || '');
+      };
+      const close = (made) => {
+        if (!inner) return;
+        const view = inner;
+        inner = null;
+        try { if (view && view.destroy) view.destroy(); } catch (_) { /* gone */ }
+        box.remove();
+        formHost.hidden = false;
+        if (test) test.hide(false);
+        done(made || null);
+      };
+      inner = mountEditor(innerHost, {
+        step: innerStep, tasks, pal, upstream, fields, problem: null, inForeach: listNow,
+        onApply: (made) => close({ ...made, kind: innerStep.kind }), onCancel: () => close(null), editInner: null,
+      }) || { destroy() {} };
+    };
+    const form = mountEditor(formHost, {
+      step: n, tasks, pal, upstream, fields, problem, onApply, onCancel, editInner,
+    });
     if (!form) formHost.textContent = 'The step form did not load. Close the Workbench and open it again to retry.';
     let edited = false;
     const markEdited = () => { edited = true; syncHint(); };
@@ -242,6 +408,7 @@ export function createWorkflowPanels({
     return {
       destroy() {
         if (test) test.destroy();
+        try { if (inner && typeof inner.destroy === 'function') inner.destroy(); } catch (_) { /* gone */ }
         try { if (form && typeof form.destroy === 'function') form.destroy(); } catch (_) { /* gone */ }
         wrap.remove();
       },
@@ -478,6 +645,7 @@ export function createWorkflowPanels({
 
     return {
       formEdited(on) { edits.hidden = !on; },
+      hide(on) { box.hidden = !!on; },
       destroy() { alive = false; box.remove(); },
     };
   }
@@ -531,13 +699,85 @@ export function createWorkflowPanels({
   }
 
   // ── a step of a run: what it was handed and what it made (`P22-07`) ───────
-  function record(host, { node: step = null, record: rec = null, run = null } = {}) {
+  /** `P22-11`, `P22-17`. A waiting step: what it waits for, and — when it
+   *  waits for a yes — the gate card, answered with `approve_task` (Allow
+   *  once) or `deny` through the run's own source (C-W's answer route). */
+  function waitingPart(rec, { answer = null, nodeId = '', item = null } = {}) {
+    const wt = rec && rec.waiting && typeof rec.waiting === 'object' ? rec.waiting : {};
+    const part = _el('section', 'wf-record-waiting');
+    part.setAttribute('aria-label', 'What this step is waiting for');
+    part.appendChild(_el('p', 'wf-record-waiting-head', waitingWords(wt)
+      + (wt.since ? ` · since ${_short(wt.since)}` : '')));
+    const said = _el('p', 'wf-record-waiting-said');
+    said.setAttribute('role', 'status');
+    said.setAttribute('aria-live', 'polite');
+    if (wt.kind === 'time') {
+      part.appendChild(_el('p', 'wf-record-note', wt.until
+        ? `It goes on at ${_short(wt.until)}, or as soon after as Pantheon is idle.`
+        : 'It goes on when its wait is over, as soon as Pantheon is idle.'));
+    } else if (wt.kind === 'idle') {
+      part.appendChild(_el('p', 'wf-record-note', 'Pantheon was busy with something you were doing. This step runs '
+        + 'again as soon as Pantheon is idle; the steps before it are not run again.'));
+    } else if (wt.kind === 'approval') {
+      if (wt.until) part.appendChild(_el('p', 'wf-record-note', `If nobody answers by ${_short(wt.until)}, it is not done and the step takes its “if it fails” way.`));
+      if (wt.approval && typeof answer === 'function') {
+        part.appendChild(approvalBox(wt.approval, {
+          allowValue: 'approve_task',
+          allowLabel: 'Allow once',
+          onDecide: async (decision) => {
+            said.textContent = decision === 'deny' ? 'Denying…' : 'Allowing it once…';
+            const r = await answer({ nodeId, item, approvalId: wt.approval.approval_id, decision });
+            if (!r || r.ok === false) throw new Error((r && r.sentence) || 'The answer was not taken.');
+            said.textContent = r.sentence || (decision === 'deny' ? 'Denied. The step takes its “if it fails” way.'
+              : 'Allowed once. The run goes on.');
+            if (typeof onAnswered === 'function') { try { onAnswered({ nodeId, item, decision, reply: r }); } catch (_) { /* the room's */ } }
+          },
+          onError: (message) => { said.textContent = `Not answered: ${String(message).replace(/\.$/, '')}.`; },
+        }));
+        part.appendChild(_el('p', 'wf-record-note', ANSWER_WORDS));
+      } else {
+        part.appendChild(_el('p', 'wf-record-note', 'Its question is in your notifications.'));
+      }
+    }
+    part.appendChild(said);
+    return part;
+  }
+
+  /** `P22-12`. A For-each step's items: each a line, the failed one first
+   *  to be read. */
+  function itemsPart(items, nodeId, answer) {
+    const d = _el('details', 'wf-record-part wf-record-items');
+    const failed = items.filter((r) => runStatusTone(r.status) === 'error');
+    if (failed.length || items.some((r) => r.status === 'waiting')) d.open = true;
+    d.appendChild(_el('summary', null, `Items (${items.length})`));
+    const ol = _el('ol', 'wf-record-item-list');
+    const total = items.length;
+    for (const r of items) {
+      const li = _el('li', 'wf-record-item');
+      const w = r.status === 'waiting' ? { tone: 'pending', mark: OUTCOME_MARKS.pending, word: waitingWords(r.waiting) } : statusWords(r.status);
+      li.dataset.tone = w.tone;
+      const mark = _el('span', 'wf-record-mark', w.mark);
+      mark.setAttribute('aria-hidden', 'true');
+      li.appendChild(mark);
+      const first = String((r.error || (r.output && (r.output.text || '')) || '')).split('\n')[0].trim();
+      li.appendChild(_el('span', 'wf-record-item-word',
+        `Item ${Number(r.item) + 1} of ${total}: ${w.word}${first ? ` — ${first.length > 160 ? first.slice(0, 159) + '…' : first}` : ''}`));
+      if (r.status === 'waiting') li.appendChild(waitingPart(r, { answer, nodeId, item: Number(r.item) }));
+      ol.appendChild(li);
+    }
+    d.appendChild(ol);
+    return d;
+  }
+
+  function record(host, { node: step = null, record: rec = null, run = null, items = [], answer = null } = {}) {
     const n = step || {};
     const wrap = _el('div', 'wf-record');
     host.appendChild(wrap);
     const kind = String((rec && rec.kind) || n.kind || '');
     const status = rec ? rec.status : null;
-    const w = statusWords(status);
+    const w = rec && status === 'waiting'
+      ? { tone: 'pending', mark: OUTCOME_MARKS.pending, word: waitingWords(rec.waiting) }
+      : statusWords(status);
     const head = _el('p', 'wf-record-head');
     head.dataset.tone = w.tone;
     const mark = _el('span', 'wf-record-mark', w.mark);
@@ -548,7 +788,14 @@ export function createWorkflowPanels({
     wrap.appendChild(_el('p', 'wf-record-kind', [KIND_WORDS[kind] || kind, label].filter(Boolean).join(' · ')));
     wrap.appendChild(head);
 
-    if (!rec) {
+    const itemRecs = Array.isArray(items) ? items : [];
+    const nodeId = String(n.id || (rec && rec.node_id) || '');
+    if (rec && status === 'waiting') wrap.appendChild(waitingPart(rec, { answer, nodeId, item: null }));
+    if (itemRecs.length) wrap.appendChild(itemsPart(itemRecs, nodeId, answer));
+    if (!rec && itemRecs.length) {
+      // A For-each step whose own record is not written yet: its items are
+      // what there is to read.
+    } else if (!rec) {
       const cleared = !!(run && (run.cleared === true));
       // The server's sentence names the window as it is set; a fixed number
       // here was false once `workflow_node_records_days` was changed.
@@ -610,4 +857,6 @@ export function createWorkflowPanels({
   return { palette, node, start, record };
 }
 
-export default { createWorkflowPanels, PALETTE_KINDS, TEST_SOURCES, PIN_SENTENCE, NOTHING_ELSE, DOES_NOT_READ };
+export default {
+  createWorkflowPanels, PALETTE_KINDS, TEST_SOURCES, PIN_SENTENCE, NOTHING_ELSE, DOES_NOT_READ, ANSWER_WORDS,
+};

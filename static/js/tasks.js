@@ -3294,6 +3294,22 @@ function _offerWaitingDocumentPlans() {
     .catch(() => {});
 }
 
+// `P22-17` (wf-canvas). A workflow step waiting for the person's yes, offered
+// the same way (`workflowApprovalNotice.js`): the queue's notification carries
+// the card as `review` (`kind: "workflow_approval"`), and on page load the
+// questions still waiting are offered again. Loaded on first use, as above.
+function _offerWorkflowApproval(review) {
+  import('./workflowApprovalNotice.js')
+    .then((m) => m.offerWorkflowApproval(review))
+    .catch(() => {});
+}
+
+function _offerWaitingWorkflowApprovals() {
+  import('./workflowApprovalNotice.js')
+    .then((m) => m.offerWaitingWorkflowApprovals())
+    .catch(() => {});
+}
+
 async function _pollTaskNotifications() {
   try {
     const res = await fetch(`${API_BASE}/api/tasks/notifications`, { credentials: 'same-origin' });
@@ -3305,6 +3321,11 @@ async function _pollTaskNotifications() {
       // Documents Tidy's list — is offered to open, not just announced.
       if (n.review && n.review.kind === 'document_plan') {
         _offerDocumentPlan(n.review);
+        continue;
+      }
+      // `P22-17`. A workflow step's question: answered, not announced.
+      if (n.review && n.review.kind === 'workflow_approval') {
+        _offerWorkflowApproval({ ...n.review, workflow: n.review.workflow || n.task_name });
         continue;
       }
       const ok = n.status === 'success';
@@ -3382,6 +3403,8 @@ function startNotificationPolling() {
   setTimeout(_pollTaskNotifications, 1500);
   // `B1006`: a proposal still waiting from before this page loaded.
   setTimeout(_offerWaitingDocumentPlans, 2500);
+  // `P22-17`: and a workflow step still waiting for a yes.
+  setTimeout(_offerWaitingWorkflowApprovals, 3000);
   _notifInterval = setInterval(_pollTaskNotifications, 30000);
 }
 

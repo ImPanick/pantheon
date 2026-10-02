@@ -32,6 +32,17 @@ from test_tool_effect_surfaces_js import _DOM, _run  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 SKILLS_JS = ROOT / "static" / "js" / "skills.js"
+# `P22-17` (wf-canvas): the card `_skillApprovalBox` draws is `approvalBox.js`'s,
+# shared with a workflow step's question. The cases below that rebuild the
+# skill test's panel from its source carry the shipped card with it.
+APPROVAL_BOX_JS = ROOT / "static" / "js" / "approvalBox.js"
+
+
+def _approval_box_source() -> str:
+    """The shipped `approvalBox` declaration, without its `export`."""
+    from tests.helpers.js_source import js_definition
+    src = APPROVAL_BOX_JS.read_text(encoding="utf-8")
+    return js_definition(src, src.index("function approvalBox("))
 
 pytestmark = pytest.mark.skipif(not shutil.which("node"), reason="node binary not on PATH")
 
@@ -196,6 +207,7 @@ def _panel(sandbox, status):
     for _name, sig, params in _SIGS:
         assert f"{sig}({params})" in src, f"{sig} signature moved"
         parts.append(f"function {sig.split()[-1]}({params}) {{{js_function(src, sig)}}}")
+    parts.insert(0, _approval_box_source())
     (sandbox / "dom.mjs").write_text(_DOM)
     preamble = "import { installDom } from './dom.mjs';\ninstallDom();\n"
     return _run(sandbox, preamble, """
@@ -286,7 +298,8 @@ def test_the_plain_test_panel_still_draws_the_gate_card_from_the_same_builder(tm
     sig = "function _renderTestLog(logEl, verdictEl, job, card, name)"
     assert sig in src, "the test-log renderer signature moved"
     approval_box = (
-        "function _skillApprovalBox(approval, name, { onAnswered, onError } = {}) {"
+        _approval_box_source() + "\n"
+        + "function _skillApprovalBox(approval, name, { onAnswered, onError } = {}) {"
         + js_function(src, "function _skillApprovalBox") + "}"
     )
     render = sig + "{" + js_function(src, "function _renderTestLog") + "}"

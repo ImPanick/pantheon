@@ -23,8 +23,9 @@ export function refusalText(detail) {
 
 /**
  * A refused response, read once: its sentence, and — for a workflow document
- * the engine refused — the engine's `reason` and the steps it names
- * (`node_ids`), which the workflow routes add beside `detail`.
+ * the engine refused — the engine's `reason`, the steps it names
+ * (`node_ids`) and the field it is about (`field`), which the workflow routes
+ * add beside `detail`.
  * `fallback` is said when the body has no words (a proxy's 502, say).
  */
 export async function readRefusal(res, fallback) {
@@ -37,8 +38,10 @@ export async function readRefusal(res, fallback) {
     sentence,
     reason: body && typeof body.reason === 'string' ? body.reason : null,
     nodeIds: body && Array.isArray(body.node_ids) ? body.node_ids.map(String) : [],
-    // `P22-09` (`C-W`). The setting a document refusal is about, or ''.
-    field: body && typeof body.field === 'string' ? body.field : '',
+    // `P22-09` (C-W: "refusal bodies gain field"). The field of the step the
+    // refusal is about — `config.prompt`, `args.channel` — so the step's panel
+    // says it on that field; `null` when the body names none.
+    field: body && typeof body.field === 'string' && body.field ? body.field : null,
   };
 }
 

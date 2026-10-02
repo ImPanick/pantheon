@@ -17,6 +17,10 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
 import { topPortalZ } from './toolWindowZOrder.js';
 import { setBackgroundWork } from './modalManager.js?v=20261002slicebee';
 import { PLAY_GLYPH, chevronIcon } from './icons.js';
+// `P22-17` / `P22-15` (wf-canvas). The gate card and `P8-18`'s sentence, shared
+// with the Workbench's workflow steps (one card, one sentence — `Law 14`).
+import { approvalBox } from './approvalBox.js';
+import { SKILL_GATE_NOTE } from './skillGateNote.js';
 
 const API = window.location.origin;
 let skills = [];
@@ -1327,31 +1331,14 @@ async function _fetchTestStatus(name) {
  * wording, and the server still re-checks owner and match before consuming.
  */
 function _skillApprovalBox(approval, name, { onAnswered, onError } = {}) {
-  const box = document.createElement('div');
-  box.className = 'skill-test-approval';
-  const question = document.createElement('div');
-  question.className = 'skill-test-meta';
-  question.textContent = approval.question || 'Allow this exact action once?';
-  box.appendChild(question);
-  if (approval.action) {
-    const action = document.createElement('pre');
-    action.className = 'skill-test-out';
-    action.textContent = [
-      approval.action.tool || 'tool',
-      approval.action.content || '',
-      Array.isArray(approval.action.effects)
-        ? `Effects: ${approval.action.effects.join(', ')}`
-        : '',
-      approval.action.workspace ? `Workspace: ${approval.action.workspace}` : '',
-      approval.action.digest ? `Approval fingerprint: ${approval.action.digest}` : '',
-    ].filter(Boolean).join('\n');
-    box.appendChild(action);
-  }
-  const actions = document.createElement('div');
-  actions.className = 'modal-footer';
-  const decide = async (decision) => {
-    actions.querySelectorAll('button').forEach(btn => { btn.disabled = true; });
-    try {
+  // `P22-17` (wf-canvas). The card itself is `approvalBox.js`'s, shared with
+  // a workflow step's question; what the skill test sends is unchanged: its
+  // own route, the sealed id, and `approve` — the chat-scoped yes this run has
+  // always taken (`Law 1`). A workflow step sends `approve_task` instead.
+  return approvalBox(approval, {
+    allowValue: 'approve',
+    allowLabel: 'Allow once',
+    onDecide: async (decision) => {
       const response = await fetch(
         `${API}/api/skills/${encodeURIComponent(name)}/test-approval`,
         {
@@ -1362,24 +1349,9 @@ function _skillApprovalBox(approval, name, { onAnswered, onError } = {}) {
       );
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       if (onAnswered) await onAnswered(decision);
-    } catch (error) {
-      if (onError) onError(`Approval failed: ${error.message || error}`);
-      actions.querySelectorAll('button').forEach(btn => { btn.disabled = false; });
-    }
-  };
-  for (const [decision, label, cls] of [
-    ['deny', 'Deny', 'confirm-btn confirm-btn-secondary'],
-    ['approve', 'Allow once', 'confirm-btn confirm-btn-primary'],
-  ]) {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = cls;
-    button.textContent = label;
-    button.addEventListener('click', () => decide(decision));
-    actions.appendChild(button);
-  }
-  box.appendChild(actions);
-  return box;
+    },
+    onError: (message) => { if (onError) onError(`Approval failed: ${message}`); },
+  });
 }
 
 function _renderTestLog(logEl, verdictEl, job, card, name) {
@@ -1425,7 +1397,7 @@ async function _testSkill(card, name, force = false) {
         '<label class="skill-test-ask-label">What should it try?' +
           '<textarea class="skill-test-task-input" rows="2" spellcheck="false" placeholder="Leave blank and the AI invents a realistic example to apply the skill to."></textarea>' +
         '</label>' +
-        '<div class="skill-test-gate-note">A skill is untrusted text, so this run asks you before anything that writes, runs, sends or deletes — it can stop halfway and wait.</div>' +
+        '<div class="skill-test-gate-note">' + SKILL_GATE_NOTE + '</div>' +
         '<div class="skill-test-ask-actions">' +
           '<button type="button" class="doclib-card-text-btn doclib-card-action-btn skill-test-compare">Compare with previous</button>' +
           '<button type="button" class="doclib-card-text-btn doclib-card-action-btn skill-test-run">Run test</button>' +

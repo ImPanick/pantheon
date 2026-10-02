@@ -26,7 +26,7 @@ import { readRefusal } from './refusal.js';
 
 /** Thrown for any answer that is not a 2xx, and when nothing answered. */
 export class WorkflowRefusal extends Error {
-  constructor(status, sentence, { reason = null, nodeIds = [], field = '' } = {}) {
+  constructor(status, sentence, { reason = null, nodeIds = [], field = null } = {}) {
     super(sentence);
     this.name = 'WorkflowRefusal';
     /** The HTTP status; 0 when Pantheon could not be reached. */
@@ -37,9 +37,8 @@ export class WorkflowRefusal extends Error {
     this.reason = reason;
     /** The steps that refusal names. */
     this.nodeIds = nodeIds;
-    /** `P22-09`. The setting the refusal is about ("path", "args.channel"),
-     *  so the panel can put the sentence on that field; '' when it is about
-     *  the step or the whole. */
+    /** `P22-09` (wf-canvas; C-W "refusal bodies gain field"): the field of the
+     *  step it is about, or null. */
     this.field = field;
   }
 }
@@ -72,8 +71,7 @@ export function createWorkflowApi({ fetch } = {}) {
     }
     if (!res || !res.ok) {
       const r = await readRefusal(res);
-      throw new WorkflowRefusal(r.status, r.sentence,
-        { reason: r.reason, nodeIds: r.nodeIds, field: r.field || '' });
+      throw new WorkflowRefusal(r.status, r.sentence, { reason: r.reason, nodeIds: r.nodeIds, field: r.field });
     }
     try {
       return await res.json();
