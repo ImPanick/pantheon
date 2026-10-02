@@ -74,8 +74,13 @@ PORTS = EDGE_CONDITIONS
 # The start item's key in `graph["start"]` and in a positions map. Reserved: no
 # step may be called this.
 START_KEY = "start"
-# Where a kept version came from (`workflow_versions.source`).
-WORKFLOW_VERSION_SOURCES = ("user", "converted", "restored")
+# Where a kept version came from (`workflow_versions.source`). Named one by
+# one so the store writes each by its name rather than restating the word
+# (`src/workflow_store.py`, `Law 7`; added at the wave C merge).
+VERSION_SOURCE_USER = "user"
+VERSION_SOURCE_CONVERTED = "converted"
+VERSION_SOURCE_RESTORED = "restored"
+WORKFLOW_VERSION_SOURCES = (VERSION_SOURCE_USER, VERSION_SOURCE_CONVERTED, VERSION_SOURCE_RESTORED)
 
 # What each kind of step may be configured with — `ScheduledTask` field names,
 # read by the executors under those names (`node_stand_in`). `output_target`

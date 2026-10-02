@@ -21,9 +21,11 @@ from src.event_bus import (
     EVENT_CATALOGUE,
     TRIGGER_FIELD_MAX_CHARS,
     TRIGGER_SOURCE_WEBHOOK,
+    WEBHOOK_PAYLOAD_FIELDS,
     build_trigger,
 )
 from src.task_action_policy import (
+    admin_only_action_of,
     admin_refusal_message,
     is_admin_only_task_action,
     owner_has_admin_task_privileges,
@@ -593,7 +595,6 @@ def setup_task_routes(task_scheduler) -> APIRouter:
             # that needs an admin is one of its steps. `admin_only_action_of`
             # is the engine's one answer for a task's own action or any action
             # step in its document, so this door and the run refuse alike.
-            from src.task_action_policy import admin_only_action_of
             found = admin_only_action_of(db, task)
             if found and not _is_admin(user):
                 raise HTTPException(403, admin_refusal_message(found))
@@ -1667,30 +1668,29 @@ def setup_task_routes(task_scheduler) -> APIRouter:
             ).first()
             if not task:
                 raise HTTPException(404, "Not found")
-            if (task.task_type or "") == "workflow":
-                # `P22-05`. A workflow's admin-only action is one of its steps;
-                # the engine's one answer names it, and the refusal is filed
-                # with that action's name (`record_admin_refusal(action=)`), so
-                # it reads as the run's own refusal would.
-                from src.task_action_policy import admin_only_action_of
-                found = admin_only_action_of(db, task)
-                if found and not owner_has_admin_task_privileges(task.owner):
-                    raise HTTPException(403, record_admin_refusal(db, task, action=found))
-            elif (
-                is_admin_only_task_action(task.task_type, task.action)
-                and not owner_has_admin_task_privileges(task.owner)
-            ):
+            # The admin-only action this trigger would run: the task's own,
+            # or — `P22-05` — a workflow's Action step or a Run task step's
+            # target. `admin_only_action_of` is the engine's one answer, asked
+            # here as the scheduler asks it before a run, and the refusal is
+            # filed under that action's name (`record_admin_refusal(action=)`),
+            # so it reads as the run's own refusal would (one question for
+            # every task since the wave C merge; the route asked a plain
+            # task's action itself until then).
+            found = admin_only_action_of(db, task)
+            if found and not owner_has_admin_task_privileges(task.owner):
                 # This used to pause the task and write no run row, so the only
                 # trace was a 403 handed to whoever POSTed the webhook — not the
                 # owner, who just found a paused task. Same rule as the
                 # scheduler's, now the same recording (Law 13).
-                raise HTTPException(403, record_admin_refusal(db, task))
+                raise HTTPException(403, record_admin_refusal(db, task, action=found))
         finally:
             db.close()
         trigger = build_trigger(
             TRIGGER_SOURCE_WEBHOOK, TRIGGER_SOURCE_WEBHOOK,
             await _webhook_payload(request),
-            fields=("body", "json", "query", "headers"),
+            # The four a webhook hands its task — the event bus's one list,
+            # which `node_input_shape` reads for a workflow's first step too.
+            fields=WEBHOOK_PAYLOAD_FIELDS,
         )
         started = await task_scheduler.run_task_now(task_id, trigger=trigger)
         if not started:

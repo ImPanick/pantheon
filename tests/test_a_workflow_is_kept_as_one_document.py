@@ -110,7 +110,7 @@ class Scheduler:
         if not dry:
             return True
         from src.task_scheduler import DRY_RUN_HEADLINE
-        Workflow, _, TaskRunNode = wc.models()
+        Workflow, _, _ = wc.models()
         doc = wc.document()
         db = self.factory()
         try:
@@ -123,15 +123,21 @@ class Scheduler:
                            result=DRY_RUN_HEADLINE, started_at=cdb.utcnow_naive(),
                            finished_at=cdb.utcnow_naive()))
             db.flush()
+            from src.workflow_runs import record_dry_node
             for seq, entry in enumerate(doc.reachable_bfs(graph), 1):
-                # The engine's entry is `{node, when, depth, parent}`.
+                # The engine's entry is `{node, when, depth, parent}`, and its
+                # dry record is written by the engine's own writer — with the
+                # place the walk reached it by (`reached_by`, `depth`), as
+                # `TaskScheduler`'s workflow dry run writes it. (Until the wave
+                # C merge this recorder wrote a record by hand, without a place,
+                # because wf-engine's columns were not on wf-api's branch.)
                 node = by_id[entry["node"]["id"]]
                 line = f"Would run “{node['label']}”."
                 steps.append({"kind": "dry-run", "detail": line})
-                db.add(TaskRunNode(id=str(uuid.uuid4()), run_id=run_id, node_id=node["id"],
-                                   kind=node["kind"], label=node["label"], seq=seq,
-                                   status="skipped", dry=True, workflow_version=wf.version,
-                                   steps=json.dumps([{"kind": "dry-run", "detail": line}])))
+                record_dry_node(db, run_id=run_id, node=node, seq=seq,
+                                steps=[{"kind": "dry-run", "detail": line}], declined=None,
+                                reached_by=entry["when"], depth=entry["depth"],
+                                workflow_version=wf.version)
             db.query(TaskRun).filter(TaskRun.id == run_id).first().steps = json.dumps(steps)
             db.commit()
             return run_id
