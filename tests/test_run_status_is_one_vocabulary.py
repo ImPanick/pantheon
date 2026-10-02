@@ -475,6 +475,16 @@ def _worktree(tmp_path: Path) -> Path:
     ("static/js/runStatus.js", "'waiting'];", "'waiting', 'cancelled'];", "cancelled"),
     # And the one `B84` closed, re-armed: a status with no word to show for it.
     ("static/js/runStatus.js", "  aborted:  ['Stopped',  'Stopped'],\n", "", "aborted"),
+    # `P22-11`: a parked status one language knows and the other does not —
+    # the browser would call a waiting run finished while the scheduler holds
+    # its workflow.
+    ("static/js/runStatus.js", "export const RUN_PARKED_STATUSES = ['waiting'];",
+     "export const RUN_PARKED_STATUSES = ['waiting', 'held'];", "RUN_PARKED_STATUSES"),
+    ("core/database.py", 'TASK_RUN_PARKED_STATUSES = ("waiting",)',
+     'TASK_RUN_PARKED_STATUSES = ("waiting", "queued")', "TASK_RUN_PARKED_STATUSES"),
+    # And `waiting` with no stated notify policy (`B112`).
+    ("core/database.py", '    "waiting": (\n        False,\n',
+     '    "waiting_": (\n        False,\n', "waiting"),
 ])
 def test_a_seventh_status_fails_the_checker_by_name(tmp_path, where, old, new, expect):
     tree = _worktree(tmp_path)
