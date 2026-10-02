@@ -64,6 +64,7 @@ JOIN_WORDS = {JOIN_ALL: "all of these", JOIN_ANY: "any of these"}
 UNARY_OPERATORS = (OP_IS_EMPTY,)
 
 _NUMBER_RE = re.compile(r"[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?")
+_WHOLE_RE = re.compile(r"[+-]?[0-9]+")
 _YES = frozenset({"true", "yes"})
 _NO = frozenset({"false", "no"})
 _ISO_DATE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
@@ -72,15 +73,24 @@ _ISO_DATE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
 # ── One comparison ───────────────────────────────────────────────────────────
 
 def _number(value):
-    """A number, numeric text as a number, or `None`."""
+    """A number, numeric text as a number, or `None`. A whole number stays an
+    `int` — Python compares an int with a float exactly, so a 400-digit
+    integer in a webhook body orders correctly instead of overflowing
+    `float()`."""
     if isinstance(value, bool):
         return None
-    if isinstance(value, (int, float)):
-        return float(value) if value == value else None  # NaN is not a number here
-    if isinstance(value, str) and _NUMBER_RE.fullmatch(value.strip()):
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return value if value == value else None  # NaN is not a number here
+    if isinstance(value, str):
+        text = value.strip()
         try:
-            return float(value.strip())
-        except ValueError:  # pragma: no cover - the pattern is a float literal
+            if _WHOLE_RE.fullmatch(text):
+                return int(text)
+            if _NUMBER_RE.fullmatch(text):
+                return float(text)
+        except ValueError:  # more digits than Python will read as an int
             return None
     return None
 

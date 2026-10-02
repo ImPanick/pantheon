@@ -88,6 +88,9 @@ def test_a_reference_parses_into_where_it_reads(text, root, node, field, path):
     "{{ steps.a.data." + "k" * 65 + " }}",  # a key: 64 at most
     "{{ steps.a.data.x }}" + " {{ x }}",
     "{{}}",
+    "{{\u00a0steps.a.data.x }}",             # a no-break space is not whitespace here
+    "{{ steps.a.data.x\u2003}}",             # nor an em space
+    "{{\u3000steps.a.data.x\u3000}}",        # nor an ideographic space
 ])
 def test_anything_else_with_braces_is_refused_not_guessed(text):
     with pytest.raises(wr.RefError) as err:

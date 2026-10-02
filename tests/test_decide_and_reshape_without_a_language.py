@@ -10,6 +10,7 @@ equal to nothing, Switch takes the first match, and Set builds an object from
 picked fields and typed values.
 """
 
+import json
 import math
 import random
 
@@ -65,6 +66,9 @@ def test_the_closed_list_is_six_operators_and_two_joins_each_with_its_words():
     ("is_empty", False, None, False), ("is_empty", "x", None, False), ("is_empty", [None], None, False),
     # ordering: numbers and ISO dates, nothing else
     ("greater_than", "12", 9, True), ("greater_than", 9, "12", False), ("less_than", -1, "0", True),
+    ("greater_than", 10 ** 400, 5, True), ("equals", 10 ** 400, "1" + "0" * 400, True),
+    ("greater_than", "1" + "0" * 400, 1e300, True), ("equals", "007", 7, True),
+    ("less_than", "0001-01-01T00:00:00+14:00", "2026-01-01", False),
     ("greater_than", "2026-10-02", "2026-10-01T23:59", True),
     ("less_than", "2026-10-02T07:00:00Z", "2026-10-02T08:00:00+00:00", True),
     ("greater_than", "2026-10-02T09:00:00+02:00", "2026-10-02T08:00:00Z", False),
@@ -83,7 +87,10 @@ def test_each_operator_reads_the_way_the_design_writes_it(op, left, right, expec
 
 WEIRD = [None, wr.MISSING, True, 0, -1, 1.5, math.nan, math.inf, "", "  ", "x", "12", "1e309",
          "2026-10-02", "2026-02-30", "NaN", [], [1, [2]], {}, {"a": {"b": None}}, object(),
-         b"bytes", ("t",), {1, 2}, "9" * 400]
+         b"bytes", ("t",), {1, 2}, "9" * 400,
+         json.loads("1" + "0" * 400),  # a 400-digit integer from a webhook body
+         "0001-01-01T00:00:00+14:00",  # a date whose UTC is before year 1: astimezone() overflows
+         "9" * 5000]  # more digits than int() reads
 
 
 def test_no_operator_ever_raises_whatever_it_is_handed():

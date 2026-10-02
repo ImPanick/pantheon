@@ -52,6 +52,9 @@ CHAT_SCHEMA = {"type": "object", "properties": {
     "body_html": {"type": ["string", "null"]},
     "attachments": {"type": "array"}, "meta": {"type": "object"},
     "link_text": {"type": "string", "format": "uri"},
+    # Allowlisted NAMES whose schema still says never: the schema decides too.
+    "caption": {"type": "string", "format": "uri"}, "notes": {"type": "array"},
+    "summary": {"type": "object"},
 }}
 RES = wd.WorkflowResources(
     integrations={"miniflux": {"name": "Miniflux", "enabled": True}},
@@ -286,6 +289,15 @@ SAVE_CASES = [
                                         args={"link_text": REF}), "args.link_text"),
     ("MCP object", step("m", "mcp", tool="mcp__chat__send_message",
                         args={"meta": {"text": REF}}), "args.meta.text"),
+    ("MCP caption, a word, with a uri format", step("m", "mcp", tool="mcp__chat__send_message",
+                                                    args={"caption": REF}), "args.caption"),
+    ("MCP notes, a word, that is a list", step("m", "mcp", tool="mcp__chat__send_message",
+                                               args={"notes": REF}), "args.notes"),
+    ("MCP summary, a word, that is an object", step("m", "mcp", tool="mcp__chat__send_message",
+                                                    args={"summary": REF}), "args.summary"),
+    ("MCP message, a word the schema does not have", step("m", "mcp",
+                                                          tool="mcp__chat__send_message",
+                                                          args={"message": REF}), "args.message"),
     ("ssh_command's command", step("a", "action", action="ssh_command",
                                    prompt="echo " + REF), "prompt"),
     ("run_local's script", step("a", "action", action="run_local", prompt=REF), "prompt"),
