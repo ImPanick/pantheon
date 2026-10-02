@@ -376,7 +376,10 @@ async function _fetchEvents() {
  * `#task-form-event-payload`, under the description, and follows the
  * selection the way the description does.
  */
-async function _populateEventPicker(selectedName, root = document, mode = 'task') {
+async function _populateEventPicker(selectedName, root = document) {
+  // `P22-05` (wf-ui). The sentence a workflow's start says differs from a
+  // task's; which form this host holds is the mount's (`_formModes`).
+  const mode = _formModes.get(root) || 'task';
   const events = await _fetchEvents();
   const sel = _byId(root, 'task-form-event');
   const desc = _byId(root, 'task-form-event-desc');
@@ -742,6 +745,8 @@ export function resetTaskFieldCaches() {
 /** The forms mounted right now, by host — so a second mount into the same host
  *  retires the first, and a retired form's late fetches find nothing. */
 const _mounted = new WeakMap();
+/** `P22-05` (wf-ui). Each host's form mode (`'task'`, `'node'`, `'trigger'`). */
+const _formModes = new WeakMap();
 
 // ---- Form ----
 
@@ -761,6 +766,7 @@ export function mountTaskFields(host, { task = null, tasks = [], onSaved = null,
   // task form, so a caller that passes nothing gets what it always got.
   const isNode = mode === 'node';
   const isTrigger = mode === 'trigger';
+  _formModes.set(host, isNode || isTrigger ? mode : 'task');
   const previous = _mounted.get(host);
   if (previous) previous.destroy();
   let alive = true;
@@ -1240,7 +1246,7 @@ ${(isNode && taskType === 'research') ? '' : `
           });
         }
       }
-      _populateEventPicker(existing?.trigger_event, host, mode);
+      _populateEventPicker(existing?.trigger_event, host);
     } else if (triggerType === 'webhook') {
       if (existing?.webhook_token) {
         const url = `${API_BASE}/api/tasks/${existing.id}/webhook/${existing.webhook_token}`;
@@ -1466,87 +1472,6 @@ ${(isNode && taskType === 'research') ? '' : `
     if (typeof onCancel === 'function') onCancel();
   });
 
-  // `P22-05` (wf-ui). The trigger's fields, read into `payload` — the task's
-  // save and a workflow start's save both call this, so the trigger is read
-  // one way (`Law 7`). `false` when the person has been told what to fix.
-  const _triggerInto = (payload) => {
-    // Trigger specifics
-    if (triggerType === 'schedule') {
-      const schedSelect = $('task-form-schedule');
-      payload.schedule = schedSelect?.value || 'daily';
-      // `P22-03`. The zone the time means; `''` clears one (the API reads an
-      // empty string as "no zone of its own").
-      const zone = $('task-form-tz')?.value || '';
-
-      if (payload.schedule === 'cron') {
-        const cronVal = $('task-form-cron')?.value?.trim();
-        if (!cronVal) {
-          if (uiModule) uiModule.showError('Cron expression is required');
-          return false;
-        }
-        payload.cron_expression = cronVal;
-      } else {
-        const timeVal = _getTimePickerValue('task-form-time-wrap', host);
-        // With a zone the server reads this as that zone's clock, so it goes
-        // out as typed; without one it is UTC, as it always was.
-        payload.scheduled_time = zone ? timeVal : _localTimeToUtc(timeVal);
-
-        const dayInput = $('task-form-day');
-        if (dayInput) payload.scheduled_day = parseInt(dayInput.value, 10);
-
-        if (payload.schedule === 'once' && $('task-form-date')) {
-          const pickedDate = _getDatePickerValue('task-form-date', host);
-          const [h, m] = timeVal.split(':').map(Number);
-          if (zone) {
-            if (!_zoneDrawable(zone)) {
-              if (uiModule) uiModule.showError(`This browser cannot place a date in ${zone}. Pick another time zone.`);
-              return false;
-            }
-            payload.scheduled_date = _instantOfWallClock(
-              zone, pickedDate.getFullYear(), pickedDate.getMonth(), pickedDate.getDate(), h, m,
-            ).toISOString();
-          } else {
-            pickedDate.setHours(h, m, 0, 0);
-            payload.scheduled_date = pickedDate.toISOString();
-          }
-        }
-      }
-      payload.tz_name = zone;
-      // Retries are a schedule's: a failed event or webhook task waits for its
-      // next trigger and is never re-run on a clock (`failure_next_run`), so the
-      // box is only drawn, and only sent, for a scheduled task.
-      const retries = _readRetries(host);
-      if (retries.error) {
-        if (uiModule) uiModule.showError(retries.error);
-        return false;
-      }
-      payload.max_retries = retries.value;
-    } else if (triggerType === 'event') {
-      const evSel = $('task-form-event');
-      const countInput = $('task-form-trigger-count');
-      if (!evSel?.value) {
-        if (uiModule) uiModule.showError('Select an event');
-        return false;
-      }
-      payload.trigger_event = evSel.value;
-      // `P8-31`. The second of the two fives. The served default is the answer
-      // when the field is blank; `DEFAULT_TRIGGER_COUNT` lives beside the bus
-      // that reads it and ships on `/meta/actions`.
-      payload.trigger_count = parseInt(countInput?.value || String(_defaultTriggerCount()), 10);
-    }
-    // webhook: no extra fields needed, token is auto-generated server-side
-
-    // `P22-03`. A ceiling on one run's wall clock, for every trigger. Blank is
-    // `0`, which the API stores as "no limit" — so clearing the box clears it.
-    const limit = _readTimeLimit(host);
-    if (limit.error) {
-      if (uiModule) uiModule.showError(limit.error);
-      return false;
-    }
-    payload.timeout_seconds = limit.value;
-    return true;
-  };
-
   // `P22-05` (wf-ui). A step's Done: what the form holds, as the step, and NO
   // request — the step lives in the workflow's draft until the workflow's own
   // Save. The config holds § 1.2's keys for the kind and nothing else, so the
@@ -1617,13 +1542,13 @@ ${(isNode && taskType === 'research') ? '' : `
   // is edited by — and nothing else, so a start's save cannot change what
   // the task is (`task_type`), what it says (`prompt`), where it delivers,
   // its model or a chain.
-  const _saveTrigger = async () => {
+  const _saveTrigger = async (readTrigger) => {
     if (!existing || !existing.id) {
       if (uiModule) uiModule.showError('This workflow has no start to save yet.');
       return;
     }
     const payload = { trigger_type: triggerType };
-    if (!_triggerInto(payload)) return;
+    if (!readTrigger(payload)) return;
     const notifEl = $('task-form-notif');
     if (notifEl) payload.notifications_enabled = !!notifEl.checked;
     try {
@@ -1639,8 +1564,91 @@ ${(isNode && taskType === 'research') ? '' : `
   // Named rather than anonymous: 200 lines of payload assembly that no
   // stack trace and no test could refer to by anything but a line number.
   const _saveTaskForm = async () => {
+    // `P22-05` (wf-ui). The trigger's fields, read into `payload` — the task's
+    // save and a workflow start's save both call this, so the trigger is read
+    // one way (`Law 7`). `false` when the person has been told what to fix.
+    // It is here, inside the Save every mode goes through, so the save's own
+    // scope still holds the served trigger-count default it always did.
+    const _triggerInto = (payload) => {
+      // Trigger specifics
+      if (triggerType === 'schedule') {
+        const schedSelect = $('task-form-schedule');
+        payload.schedule = schedSelect?.value || 'daily';
+        // `P22-03`. The zone the time means; `''` clears one (the API reads an
+        // empty string as "no zone of its own").
+        const zone = $('task-form-tz')?.value || '';
+
+        if (payload.schedule === 'cron') {
+          const cronVal = $('task-form-cron')?.value?.trim();
+          if (!cronVal) {
+            if (uiModule) uiModule.showError('Cron expression is required');
+            return false;
+          }
+          payload.cron_expression = cronVal;
+        } else {
+          const timeVal = _getTimePickerValue('task-form-time-wrap', host);
+          // With a zone the server reads this as that zone's clock, so it goes
+          // out as typed; without one it is UTC, as it always was.
+          payload.scheduled_time = zone ? timeVal : _localTimeToUtc(timeVal);
+
+          const dayInput = $('task-form-day');
+          if (dayInput) payload.scheduled_day = parseInt(dayInput.value, 10);
+
+          if (payload.schedule === 'once' && $('task-form-date')) {
+            const pickedDate = _getDatePickerValue('task-form-date', host);
+            const [h, m] = timeVal.split(':').map(Number);
+            if (zone) {
+              if (!_zoneDrawable(zone)) {
+                if (uiModule) uiModule.showError(`This browser cannot place a date in ${zone}. Pick another time zone.`);
+                return false;
+              }
+              payload.scheduled_date = _instantOfWallClock(
+                zone, pickedDate.getFullYear(), pickedDate.getMonth(), pickedDate.getDate(), h, m,
+              ).toISOString();
+            } else {
+              pickedDate.setHours(h, m, 0, 0);
+              payload.scheduled_date = pickedDate.toISOString();
+            }
+          }
+        }
+        payload.tz_name = zone;
+        // Retries are a schedule's: a failed event or webhook task waits for its
+        // next trigger and is never re-run on a clock (`failure_next_run`), so the
+        // box is only drawn, and only sent, for a scheduled task.
+        const retries = _readRetries(host);
+        if (retries.error) {
+          if (uiModule) uiModule.showError(retries.error);
+          return false;
+        }
+        payload.max_retries = retries.value;
+      } else if (triggerType === 'event') {
+        const evSel = $('task-form-event');
+        const countInput = $('task-form-trigger-count');
+        if (!evSel?.value) {
+          if (uiModule) uiModule.showError('Select an event');
+          return false;
+        }
+        payload.trigger_event = evSel.value;
+        // `P8-31`. The second of the two fives. The served default is the answer
+        // when the field is blank; `DEFAULT_TRIGGER_COUNT` lives beside the bus
+        // that reads it and ships on `/meta/actions`.
+        payload.trigger_count = parseInt(countInput?.value || String(_defaultTriggerCount()), 10);
+      }
+      // webhook: no extra fields needed, token is auto-generated server-side
+
+      // `P22-03`. A ceiling on one run's wall clock, for every trigger. Blank is
+      // `0`, which the API stores as "no limit" — so clearing the box clears it.
+      const limit = _readTimeLimit(host);
+      if (limit.error) {
+        if (uiModule) uiModule.showError(limit.error);
+        return false;
+      }
+      payload.timeout_seconds = limit.value;
+      return true;
+    };
+
     if (isNode) { _applyNode(); return; }
-    if (isTrigger) { await _saveTrigger(); return; }
+    if (isTrigger) { await _saveTrigger(_triggerInto); return; }
     const nameEl = $('task-form-name');
     const outputSelValue = $('task-form-output')?.value || 'session';
     let outputTarget = outputSelValue;

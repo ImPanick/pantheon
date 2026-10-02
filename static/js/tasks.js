@@ -2699,20 +2699,6 @@ function _categoryLabel(taskName) {
   return 'other';
 }
 
-/** `B1062`. What a stopped run's Activity row says beside its name: that it
- *  stopped, and the first line of why ("stopped — Paused because Pantheon
- *  became active"), or the reason alone when it already says it stopped
- *  ("Stopped by user"). A run that left no reason says so rather than
- *  nothing. */
-function _stoppedWords(result) {
-  const word = runStatusLabel('aborted', 'job');
-  const line = String(result || '').split('\n').map((l) => l.trim()).find(Boolean) || '';
-  const why = line.length > 160 ? line.slice(0, 159) + '…' : line;
-  if (!why) return `${word.toLowerCase()} — no reason was recorded`;
-  if (why.toLowerCase().startsWith(word.toLowerCase())) return why;
-  return `${word.toLowerCase()} — ${why}`;
-}
-
 function _renderActivityEntry(entry, opts = {}) {
   // Canonical index into _activityEntries (map() passes the FILTERED
   // index, which would be wrong) — used by the Open-in-chat handler.
@@ -2955,6 +2941,20 @@ function _renderActivityEntry(entry, opts = {}) {
       </div>
     </div>
   `;
+}
+
+/** `B1062`. What a stopped run's Activity row says beside its name: that it
+ *  stopped, and the first line of why ("stopped — Paused because Pantheon
+ *  became active"), or the reason alone when it already says it stopped
+ *  ("Stopped by user"). A run that left no reason says so rather than
+ *  nothing. */
+function _stoppedWords(result) {
+  const word = runStatusLabel('aborted', 'job');
+  const line = String(result || '').split('\n').map((l) => l.trim()).find(Boolean) || '';
+  const why = line.length > 160 ? line.slice(0, 159) + '…' : line;
+  if (!why) return `${word.toLowerCase()} — no reason was recorded`;
+  if (why.toLowerCase().startsWith(word.toLowerCase())) return why;
+  return `${word.toLowerCase()} — ${why}`;
 }
 
 // `B611`, closed by `B866`'s sweep. This file had two escapers and every
