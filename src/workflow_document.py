@@ -1774,6 +1774,14 @@ def _shown(value) -> str:
     return json.dumps(value, ensure_ascii=False, default=str)
 
 
+# `P22-18`. What a Code step does, in the words for where it runs (`B967`):
+# the person's own workstation account — not "as the user Pantheon runs as",
+# which is an action's command (`EFFECT_SENTENCES[EFFECT_RUNS_CODE]`). Its
+# plan and *Test this step*'s effects both say this (`integrate-d`: they said
+# "in your workstation, as you" and then "as the user Pantheon runs as").
+CODE_EFFECT_SENTENCE = "runs your code in your own workstation account, not on this machine"
+
+
 def plan_lines(node: dict, resources: WorkflowResources | None = None) -> list:
     """What this step would do, as lines, for the dry run. Executes nothing
     and resolves nothing: `never` settings are shown verbatim and `value`
@@ -1781,7 +1789,7 @@ def plan_lines(node: dict, resources: WorkflowResources | None = None) -> list:
     (`SLICE-CD-DESIGN` § 1.3). The task kinds are `dry_run_plan`'s lines (one
     planner, `Law 7`)."""
     from src.builtin_actions import (
-        EFFECT_RUNS_CODE, EFFECT_SENTENCES, EFFECT_TOUCHES_REMOTE, dry_run_plan,
+        EFFECT_SENTENCES, EFFECT_TOUCHES_REMOTE, dry_run_plan,
     )
 
     resources = resources if isinstance(resources, WorkflowResources) else EMPTY_RESOURCES
@@ -1878,7 +1886,7 @@ def plan_lines(node: dict, resources: WorkflowResources | None = None) -> list:
                      f"workstation, as you.")
         for entry in config.get("input") or ():
             lines.append(f"Hands it {entry.get('name')}: {_shown(entry.get('value'))}")
-        lines.append(f"It would: {EFFECT_SENTENCES[EFFECT_RUNS_CODE]}")
+        lines.append(f"It would: {CODE_EFFECT_SENTENCE}")
     else:
         lines.append(f"A {kind!r} step is not one this Pantheon runs.")
     return lines

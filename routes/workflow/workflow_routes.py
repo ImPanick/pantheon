@@ -810,7 +810,17 @@ def _node_plan(node, owner, tasks_by_id, resources=None) -> list:
 
 
 def _node_effect_sentences(node, tasks_by_id, resources=None) -> list:
-    from src.builtin_actions import EFFECT_SENTENCES
-    from src.workflow_document import node_effects
-    return [EFFECT_SENTENCES[e] for e in (node_effects(node, tasks_by_id, resources) or ())
-            if e in EFFECT_SENTENCES]
+    """What testing this step would do, in words. A Code step's command runs in
+    the person's workstation, so it says so (`CODE_EFFECT_SENTENCE`) where an
+    action's says it runs as the user Pantheon runs as."""
+    from src.builtin_actions import EFFECT_RUNS_CODE, EFFECT_SENTENCES
+    from src.workflow_document import (
+        CODE_EFFECT_SENTENCE, NODE_KIND_CODE, NODE_KIND_FOREACH, node_effects,
+    )
+    step = node
+    if node.get("kind") == NODE_KIND_FOREACH:
+        inner = (node.get("config") or {}).get("step")
+        step = inner if isinstance(inner, dict) else {}
+    code = step.get("kind") == NODE_KIND_CODE
+    return [CODE_EFFECT_SENTENCE if (code and e == EFFECT_RUNS_CODE) else EFFECT_SENTENCES[e]
+            for e in (node_effects(node, tasks_by_id, resources) or ()) if e in EFFECT_SENTENCES]

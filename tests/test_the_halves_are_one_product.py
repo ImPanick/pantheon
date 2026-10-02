@@ -580,3 +580,25 @@ async def test_a_failed_run_names_the_step_it_failed_on_and_the_room_opens_there
         out({ failed: src.state().failed });
     """)
     assert o["failed"]["nodeId"] == "each" and o["failed"]["firstLine"] == "Item 2 of 3 failed: It broke on b."
+
+
+def test_testing_a_code_step_says_it_runs_in_the_workstation_not_as_pantheon():
+    """Found by the merged drive (P22-18): *Test this step* on a Code step
+    said "Would run 4 lines of Python in your workstation, as you" and then
+    "It would: runs the command on this task, as the user Pantheon runs as" —
+    the action-command sentence, which is false of a Code step. The plan and
+    the effects list now say where it runs, in one set of words."""
+    from routes.workflow import workflow_routes as routes
+    from src import workflow_document as wd
+    code = node("total", "Total", "code", language="python", source="print(1)\n",
+                input=[{"name": "prices", "value": "{{ steps.start.data.json.prices }}"}])
+    each = node("each", "Each", "foreach", list="{{ steps.start.data.json.lists }}",
+                step={"kind": "code", "label": "Total", "config": code["config"]})
+    res = wd.WorkflowResources(workstation_why=None)
+    for step in (code, each):
+        plan = routes._node_plan(step, "root", {}, res)
+        effects = routes._node_effect_sentences(step, {}, res)
+        said = " ".join(plan + effects)
+        assert "as the user Pantheon runs as" not in said, said
+        assert effects == [wd.CODE_EFFECT_SENTENCE]
+    assert plan == wd.plan_lines(each, res)
