@@ -83,19 +83,32 @@ export const NEED_DOORS = Object.freeze({
   skills: 'Open Skills',
 });
 
-/** What a need is: `integration` | `mcp` | `skill` | `task` | `other`. */
+/** The field a need is about, as the step's form names it: the server writes
+ *  a For-each's inner step's as `step.config.<field>` (wb-assist's
+ *  `import_file`), a refusal's as `config.<field>`. */
+export function needField(need) {
+  return String((need && need.field) || '').replace(/^(?:step\.config\.|config\.)/, '');
+}
+
+/** What a need is: `integration` | `mcp` | `skill` | `task` | `header` |
+ *  `ai_tool` | `workstation` | `other` — read from its field (wb-assist's
+ *  `import_file` writes one per kind of thing a file may refer to). */
 export function needKind(need) {
   const n = need && typeof need === 'object' ? need : {};
-  const field = String(n.field || '').replace(/^config\./, '');
+  const field = needField(n);
   if (field === 'integration') return 'integration';
-  if (field === 'tool' || field.startsWith('args') || n.server != null || n.tool != null) return 'mcp';
+  if (field === 'tool' || n.server != null || n.tool != null) return 'mcp';
   if (field === 'skill') return 'skill';
   if (field === 'task_id') return 'task';
+  if (/^headers\[\d+\]\.value$/.test(field)) return 'header';
+  if (field === 'tools') return 'ai_tool';
+  if (field === 'language' && String(n.name || '') === 'workstation') return 'workstation';
   if (n.preset != null) return 'integration';
   return 'other';
 }
 
-/** The room a need's door opens, or null (a task is picked on the step). */
+/** The room a need's door opens, or null (what is picked or typed on the
+ *  step itself has no room). */
 export function needDoor(need) {
   const kind = needKind(need);
   if (kind === 'integration' || kind === 'mcp') return 'integrations';
@@ -123,6 +136,12 @@ export function needWords(need, { here = false } = {}) {
         + `Add it in Skills, then pick it ${where}.`;
     case 'task':
       return `It ran a task${name ? ` called “${name}”` : ''} on the Pantheon it came from. Pick the task it runs ${where}.`;
+    case 'header':
+      return `It sends the header “${name || 'a header'}”, and a file never carries its value. Type it ${where}.`;
+    case 'ai_tool':
+      return `It may use the tool “${name || 'a tool'}”, which you cannot use here. Change its tools ${where}.`;
+    case 'workstation':
+      return 'It runs code in your workstation, which cannot run it now.';
     default:
       return `It needs ${name ? `“${name}”` : 'something this Pantheon does not have'}`
         + `${n.field ? ` (${String(n.field)})` : ''}.`;
@@ -845,7 +864,10 @@ export function mountStepFields(host, {
   // (the Integration, the tool, the skill), with its door; one the form does
   // not draw is said at the top.
   for (const need of (Array.isArray(needs) ? needs : [])) {
-    const field = String((need && need.field) || '').replace(/^config\./, '');
+    // A For-each's inner step's need (`step.config.…`) is not a field of
+    // this form: it is said at the top, as one the form does not draw is.
+    const inner = /^step\.config\./.test(String((need && need.field) || ''));
+    const field = inner ? '' : needField(need);
     const el = field ? Array.from(wrap.querySelectorAll('[data-field]')).find((x) => x.dataset.field === field) : null;
     const line = needLine(need, { here: !!el, openRoom, cls: 'wf-sf-need' });
     if (field) line.dataset.field = field;
@@ -976,5 +998,5 @@ export function mountAiOptions(host, { node, palette = null } = {}) {
 
 export default {
   mountStepFields, mountAiOptions, slotFor, STEP_FIELD_KINDS, DEFAULT_OPERATORS, INNER_EXCLUDED, CODE_TEMPLATES,
-  HTTP_METHODS, ANSWER_TYPES, NEED_DOORS, needKind, needDoor, needWords, needLine,
+  HTTP_METHODS, ANSWER_TYPES, NEED_DOORS, needField, needKind, needDoor, needWords, needLine,
 };

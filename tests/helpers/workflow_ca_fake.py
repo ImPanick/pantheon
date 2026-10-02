@@ -459,3 +459,66 @@ def recorded_explain(tmp_path: Path, *, name: str, graph: dict, node_id: str, an
     finally:
         feeds.close()
     return {"source": "recorded", **out}
+
+
+# ── `P22-24`: a workflow file, exported on one install and imported on another ──
+# Where `wb-assist`'s share is in the tree (`workflow_share.import_file`), the
+# file is EXPORTED from a real install that has the Integration and the skill
+# the workflow uses (`GET …/export`: its bytes and the name its
+# `Content-Disposition` gives), and IMPORTED on a second real install that has
+# neither (`POST /api/workflows {file}`) — the row's Verify, recorded. On this
+# branch alone both are C-A's literal shapes.
+
+def share_present() -> bool:
+    try:
+        from src import workflow_share
+        from tests.helpers import assist_harness  # noqa: F401
+    except Exception:
+        return False
+    return hasattr(workflow_share, "import_file") and hasattr(workflow_share, "export_file")
+
+
+def recorded_file(tmp_path: Path, *, name: str, graph: dict, skill: str, literal: dict) -> dict:
+    """`{source, file, filename, export_text, import_reply}`."""
+    if not share_present():
+        return {"source": "literal", **literal}
+    import asyncio
+    import re
+
+    import pytest
+
+    from tests.helpers.assist_harness import PERSON, build_world, miniflux
+    from tests.helpers.walker_harness import client_for
+
+    async def export(w):
+        async with client_for(w.app) as client:
+            made = await client.post("/api/workflows", headers=PERSON, json={"name": name})
+            assert made.status_code == 200, made.text
+            wid = made.json()["workflow"]["id"]
+            saved = await client.put(f"/api/workflows/{wid}", headers=PERSON,
+                                     json={"graph": graph, "base_version": 1})
+            assert saved.status_code == 200, saved.text
+            res = await client.get(f"/api/workflows/{wid}/export", headers=PERSON)
+            assert res.status_code == 200, res.text
+            said = res.headers.get("content-disposition") or ""
+            assert said.startswith("attachment"), said
+            m = re.search(r'filename="?([^";]+)"?', said)
+            return res.text, (m.group(1) if m else "")
+
+    async def import_(w, file):
+        async with client_for(w.app) as client:
+            res = await client.post("/api/workflows", headers=PERSON, json={"file": file})
+            assert res.status_code == 200, res.text
+            return res.json()
+
+    (tmp_path / "one").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "two").mkdir(parents=True, exist_ok=True)
+    with pytest.MonkeyPatch.context() as mp:
+        one = build_world(mp, tmp_path / "one", integrations=[miniflux()], skills=[(skill, "Print the digest.")],
+                          name="one.db")
+        text, filename = asyncio.run(export(one))
+    file = json.loads(text)
+    with pytest.MonkeyPatch.context() as mp:
+        two = build_world(mp, tmp_path / "two", integrations=[], name="two.db")
+        reply = asyncio.run(import_(two, file))
+    return {"source": "recorded", "file": file, "filename": filename, "export_text": text, "import_reply": reply}

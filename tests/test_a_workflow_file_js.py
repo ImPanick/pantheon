@@ -13,7 +13,11 @@ about. The Versions list says the three new version sources in words.
 
 Driven: the real room, canvas, panels, step forms, source and `workflowApi.js`
 over the C-A fake server (`tests/helpers/workflow_ca_fake.py`); C-R's door is
-the shim's `loadWorkbench` stand-in.
+the shim's `loadWorkbench` stand-in. The file and the import's reply are
+RECORDED from wb-assist's real routes wherever its share is in the tree — the
+file exported on an install that has Miniflux and the skill, imported on one
+that has neither (the row's Verify) — and are C-A's literal shapes on this
+branch alone.
 """
 
 from __future__ import annotations
@@ -29,7 +33,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from test_tool_effect_surfaces_js import _run  # noqa: E402
 from test_the_workbench_canvas_js import _SHIM as _CANVAS_SHIM  # noqa: E402
-from helpers.workflow_ca_fake import ROOM_PREAMBLE, as_js, build_sandbox, palette  # noqa: E402
+from helpers.workflow_ca_fake import ROOM_PREAMBLE, as_js, build_sandbox, palette, recorded_file  # noqa: E402
 
 pytestmark = pytest.mark.skipif(not shutil.which("node"), reason="node binary not on PATH")
 
@@ -74,16 +78,36 @@ _FILE = {"pantheon_workflow": 1, "name": "Unread digest", "exported_at": _AT, "t
                       "skills": ["print-digest"], "tasks": [], "workstation": False}}
 
 
-def _world(pal=None):
+# The workflow on the install it is exported from (Miniflux and the skill there).
+_GRAPH1 = {"v": 1, "nodes": [
+    {"id": "fetch-unread", "kind": "http", "label": "Fetch unread", "position": None, "pinned": None,
+     "config": {"integration": "intg-miniflux", "method": "GET", "path": "/v1/entries",
+                "query": [{"name": "status", "value": "unread"}]}},
+    {"id": "summarise", "kind": "llm", "label": "Summarise", "position": None, "pinned": None,
+     "config": {"prompt": "Summarise {{ steps.fetch-unread.data.entries }}"}},
+    {"id": "print-it", "kind": "skill", "label": "Print it", "position": None, "pinned": None,
+     "config": {"skill": "print-digest", "prompt": "Print the summary"}}],
+    "edges": [{"from": "fetch-unread", "port": "success", "to": "summarise"},
+              {"from": "summarise", "port": "success", "to": "print-it"}]}
+_LITERAL = {"file": _FILE, "filename": "unread-digest.workflow.json", "export_text": json.dumps(_FILE),
+            "import_reply": {"workflow": _imported(), "notes": ["Imported “Unread digest”: 3 steps, switched off."],
+                             "missing": _MISSING, "destinations": ["Would call Miniflux — GET /v1/entries"]}}
+
+
+@pytest.fixture(scope="module")
+def rec(tmp_path_factory):
+    return recorded_file(tmp_path_factory.mktemp("share"), name="Unread digest", graph=_GRAPH1, skill="print-digest",
+                         literal=_LITERAL)
+
+
+def _world(rec, pal=None):
     p = pal or palette()
     p["integrations"] = []          # this Pantheon has no Miniflux
     return (
         f"cw.palette = {as_js(p)};\n"
-        f"const IMPORTED = {as_js(_imported())};\n"
-        f"const FILE = {as_js(_FILE)};\n"
-        "ca.importFile = () => ({ status: 200, body: { workflow: JSON.parse(JSON.stringify(IMPORTED)),\n"
-        "  notes: ['Imported “Unread digest”: 3 steps, switched off.'],\n"
-        f"  missing: {as_js(_MISSING)}, destinations: ['Would call Miniflux — GET /v1/entries'] }} }});\n"
+        f"const REC = {as_js(rec)};\n"
+        "const FILE = REC.file;\n"
+        "ca.importFile = () => ({ status: 200, body: JSON.parse(JSON.stringify(REC.import_reply)) });\n"
         "const pick = (input, name, text) => { input.files = [{ name, size: text.length, text: async () => text }];\n"
         "  input.dispatchEvent({ type: 'change', target: input }); };\n"
         "const openFile = async (text = JSON.stringify(FILE)) => {\n"
@@ -105,15 +129,15 @@ def box(tmp_path_factory):
     return build_sandbox(tmp_path_factory.mktemp("wffile"), _CANVAS_SHIM)
 
 
-def _case(box, script, **world):
-    return _run(box, ROOM_PREAMBLE + _world(**world), script)
+def _case(box, rec, script):
+    return _run(box, ROOM_PREAMBLE + _world(rec), script)
 
 
-def test_export_downloads_the_saved_workflow_as_a_file(box):
-    o = _case(box, """
+def test_export_downloads_the_saved_workflow_as_a_file(box, rec):
+    o = _case(box, rec, """
         seed(SAVED);
-        ca.exportBody = { pantheon_workflow: 1, name: 'Unread digest', graph: { nodes: [], edges: [] } };
-        ca.exportName = 'unread-digest.workflow.json';
+        ca.exportBody = JSON.parse(REC.export_text);
+        ca.exportName = REC.filename;
         const { r } = await room({ workflowId: 'wf1' });
         const offered = !by(r, 'wf-export').hidden;
         fire(by(r, 'wf-export'), 'click'); await settle(30);
@@ -128,18 +152,19 @@ def test_export_downloads_the_saved_workflow_as_a_file(box):
     assert o["gets"] == [["/api/workflows/wf1/export", None]] * 2
     c = o["clean"]
     assert len(c["clicked"]) == 1 and c["clicked"][0]["tag"] == "A"
-    assert c["clicked"][0]["download"] == "unread-digest.workflow.json", "the file is named as the server names it"
+    assert c["clicked"][0]["download"] == rec["filename"] and rec["filename"].endswith(".json"), \
+        "the file is named as the server names it"
     assert c["clicked"][0]["href"].startswith("blob:")
     assert c["made"] == 1 and c["revoked"] is True and c["left"] == 0, "the object URL is taken back and the link removed"
-    assert json.loads(c["bytes"]) == {"pantheon_workflow": 1, "name": "Unread digest", "graph": {"nodes": [], "edges": []}}, \
-        "the file is the server's bytes, as they came"
-    assert c["said"] == ("Downloaded “unread-digest.workflow.json”. It holds the saved steps and the names of what they "
+    assert json.loads(c["bytes"]) == json.loads(rec["export_text"]), "the file is the server's bytes, as they came"
+    assert rec["file"]["pantheon_workflow"] == 1
+    assert c["said"] == (f"Downloaded “{rec['filename']}”. It holds the saved steps and the names of what they "
                          "use; keys, tokens, addresses and pinned samples are left out.")
     assert o["dirtySaid"].endswith("Your unsaved changes are not in it.")
 
 
-def test_an_export_the_server_refuses_is_said_in_its_words_and_nothing_downloads(box):
-    o = _case(box, """
+def test_an_export_the_server_refuses_is_said_in_its_words_and_nothing_downloads(box, rec):
+    o = _case(box, rec, """
         seed(SAVED);
         ca.exportRefusal = { status: 400, detail: '“Call the API” has what looks like a key in its header “X-Auth-Token”. Take it out of the step, then export.' };
         const { r } = await room({ workflowId: 'wf1' });
@@ -151,16 +176,17 @@ def test_an_export_the_server_refuses_is_said_in_its_words_and_nothing_downloads
     assert o["clicked"] == 0
 
 
-def test_open_a_file_posts_it_and_the_import_opens_off_marked_with_what_is_missing_and_its_doors(box):
-    o = _case(box, """
+def test_open_a_file_posts_it_and_the_import_opens_off_marked_with_what_is_missing_and_its_doors(box, rec):
+    o = _case(box, rec, """
         const { r } = await openFile();
         const said = sayOf(r);
         const arrived = by(r, 'wf-arrived');
         const lines = all(arrived, 'wf-arrived-line').map((li) => [by(li, 'wf-arrived-text').textContent,
           li.dataset.nodeId || null, li.querySelectorAll('button').map((b) => [b.textContent, b.dataset.room || null])]);
-        const mcpLine = all(arrived, 'wf-arrived-line')[0];
+        const lineOf = (word) => all(arrived, 'wf-arrived-line').find((li) => by(li, 'wf-arrived-text').textContent.includes(word));
+        const mcpLine = lineOf('Miniflux');
         fire(mcpLine.querySelector('.wf-arrived-door'), 'click'); await settle(10);
-        fire(all(arrived, 'wf-arrived-line')[2].querySelector('.wf-arrived-door'), 'click'); await settle(10);
+        fire(lineOf('print-digest').querySelector('.wf-arrived-door'), 'click'); await settle(10);
         const marks = steps(r).map((n) => [n.dataset.itemId, n.dataset.unchecked || null,
           n.querySelectorAll('.wb-node-badge').map((b) => b.textContent)]);
         fire(mcpLine.querySelector('.wf-arrived-show'), 'click'); await settle(30);
@@ -177,15 +203,20 @@ def test_open_a_file_posts_it_and_the_import_opens_off_marked_with_what_is_missi
                         doors: all(banner, 'wf-step-check-need-door').map((b) => b.textContent) },
               onField, said });
     """)
-    assert o["posts"] == [["/api/workflows", {"file": _FILE}]], "the file's JSON, as C-A's {file}"
+    reply = rec["import_reply"]
+    assert o["posts"] == [["/api/workflows", {"file": rec["file"]}]], "the file's JSON, as C-A's {file}"
     assert o["switchWord"] == "Off"
     assert o["head"] == "Imported from a file"
-    assert o["subs"] == ["Where it sends things:", "What this Pantheon is missing:"]
-    assert o["lines"] == [
-        [_MISSING[0], "fetch-unread", [["Open MCP & Integrations", "integrations"], ["Show the step", None]]],
-        [_MISSING[1], None, []],
-        [_MISSING[2], "print-it", [["Open Skills", "skills"], ["Show the step", None]]],
-    ], "each missing line the server wrote, with the door its need opens; a line with no need has none"
+    assert o["subs"] == (["Where it sends things:"] if reply["destinations"] else []) + ["What this Pantheon is missing:"]
+    assert [line[0] for line in o["lines"]] == reply["missing"], "each missing line, as the server wrote it"
+    for text, node, doors in o["lines"]:
+        if "Miniflux" in text:
+            assert (node, doors) == ("fetch-unread", [["Open MCP & Integrations", "integrations"], ["Show the step", None]])
+        elif "print-digest" in text:
+            assert (node, doors) == ("print-it", [["Open Skills", "skills"], ["Show the step", None]])
+        else:
+            assert (node, doors) == (None, []), "a line that names no need has no door"
+    assert sum("Miniflux" in t or "print-digest" in t for t, _, _ in o["lines"]) == 2
     assert o["doors"][:2] == [{"room": "integrations"}, {"room": "skills"}], "C-R: openWorkbench({ room })"
     assert o["marks"] == [["fetch-unread", "imported", ["Imported — check me"]],
                           ["summarise", "imported", ["Imported — check me"]],
@@ -199,11 +230,11 @@ def test_open_a_file_posts_it_and_the_import_opens_off_marked_with_what_is_missi
                              "not have. Add it in MCP & Integrations, then pick it here.", "Open MCP & Integrations"]], \
         "said on the field it is about"
     assert o["doors"][2:] == [{"room": "integrations"}]
-    assert o["said"] == "Imported “Unread digest”: 3 steps, switched off."
+    assert o["said"] == " ".join(reply["notes"]), "the server's notes, said once it is drawn"
 
 
-def test_a_file_that_is_not_json_is_said_and_nothing_is_sent_and_a_refused_one_in_the_servers_words(box):
-    o = _case(box, """
+def test_a_file_that_is_not_json_is_said_and_nothing_is_sent_and_a_refused_one_in_the_servers_words(box, rec):
+    o = _case(box, rec, """
         const { r } = await openFile('this is not { json');
         const notJson = { said: by(r, 'wf-new-say').textContent, posts: calls('POST', (u) => u === '/api/workflows').length,
           open: !by(r, 'wf-new').hidden };
@@ -217,8 +248,8 @@ def test_a_file_that_is_not_json_is_said_and_nothing_is_sent_and_a_refused_one_i
     assert o["view"] is True
 
 
-def test_the_versions_list_says_the_three_new_sources_in_words(box):
-    o = _case(box, """
+def test_the_versions_list_says_the_three_new_sources_in_words(box, rec):
+    o = _case(box, rec, """
         seed(SAVED);
         ca.versions = ['fixed', 'imported', 'drafted', 'restored', 'converted', 'user'].map((source, i) => ({
           version: 6 - i, name: 'Unread digest', saved_at: '2026-10-02T06:00:00Z', source, step_count: 1, current: i === 0 }));
@@ -230,12 +261,12 @@ def test_the_versions_list_says_the_three_new_sources_in_words(box):
                           "an older version put back", "made from a chain", "saved"]
 
 
-def test_an_mcp_step_with_no_tool_here_names_the_room_and_its_door_opens_it(box):
+def test_an_mcp_step_with_no_tool_here_names_the_room_and_its_door_opens_it(box, rec):
     """The MCP step's form said "Add a server in Settings → MCP" — a place that
     does not exist (design § 0.6: MCP servers are a card of Integrations, the
     Workbench's MCP & Integrations room since `P22-21`). It names the room and
     opens it, as an imported step's need does."""
-    o = _case(box, """
+    o = _case(box, rec, """
         cw.palette.mcp_tools = [];
         seed({ ...SAVED, graph: { v: 1, start: { position: null }, nodes: [
           { id: 'post', kind: 'mcp', label: 'Post it', config: { tool: '', args: {} }, position: null, pinned: null }],
@@ -249,3 +280,50 @@ def test_an_mcp_step_with_no_tool_here_names_the_room_and_its_door_opens_it(box)
     assert o["words"] == "No MCP tool is available. Add a server in MCP & Integrations, then pick its tool here.Open MCP & Integrations"
     assert o["door"] == "Open MCP & Integrations"
     assert o["doors"] == [{"room": "integrations"}]
+
+
+def test_every_kind_of_need_an_import_writes_is_said_in_words_with_a_door_only_where_there_is_a_room(box, rec):
+    """wb-assist's `import_file` writes a need per kind of thing a file may
+    refer to — an Integration, an MCP tool, a skill, a task, a header's value,
+    an AI step's tool, the workstation — and a For-each's inner step's as
+    `step.config.<field>`. Each is said in words; only an Integration, a tool
+    and a skill have a room to add them in."""
+    o = _case(box, rec, """
+        const mark = (needs) => ({ origin: 'imported', at: '2026-10-02T09:00:00Z', needs });
+        const n = (id, kind, label, config, needs) => ({ id, kind, label, config, position: null, pinned: null, unchecked: mark(needs) });
+        seed({ ...SAVED, graph: { v: 1, start: { position: null }, nodes: [
+          n('call', 'http', 'Call it', { integration: '', method: 'GET', path: '/x', headers: [{ name: 'X-Auth-Token', value: '' }] },
+            [{ field: 'headers[0].value', name: 'X-Auth-Token' }]),
+          n('each', 'foreach', 'Each one', { list: '{{ steps.call.data.items }}', on_error: 'stop',
+            step: { kind: 'http', label: 'Fetch', config: { integration: '', method: 'GET', path: '/y' } } },
+            [{ field: 'step.config.integration', name: 'Miniflux', preset: 'miniflux' }]),
+          n('ask', 'llm', 'Ask', { prompt: 'x', tools: ['web_fetch'] }, [{ field: 'tools', name: 'web_fetch' }]),
+          n('tally', 'code', 'Tally', { language: 'python', source: 'print(1)' }, [{ field: 'language', name: 'workstation' }]),
+          n('post', 'mcp', 'Post', { tool: '', args: {} }, [{ field: 'tool', name: 'Chat · send_message', server: 'Chat', tool: 'send_message' }]),
+          n('run', 'run_task', 'Run it', { task_id: '__missing__' }, [{ field: 'task_id', name: 'Nightly backup' }])],
+          edges: [] } });
+        const { r } = await room({ workflowId: 'wf1' });
+        const seen = {};
+        for (const id of ['call', 'each', 'ask', 'tally', 'post', 'run']) {
+          fire(nodeEl(r, id), 'click'); await settle(30);
+          const b = by(r, 'wf-step-check');
+          seen[id] = { words: all(b, 'wf-step-check-need-text').map((x) => x.textContent),
+                       doors: all(b, 'wf-step-check-need-door').map((x) => x.dataset.room),
+                       top: all(r, 'wf-sf-need').map((x) => [x.dataset.field || null, x.parentNode.className]) };
+        }
+        out(seen);
+    """)
+    assert o["call"]["words"] == ["It sends the header “X-Auth-Token”, and a file never carries its value. Type it on the step."]
+    assert o["call"]["doors"] == []
+    assert o["each"]["words"] == ["It uses an Integration called “Miniflux” (miniflux), which this Pantheon does not have. "
+                                  "Add it in MCP & Integrations, then pick it on the step."]
+    assert o["each"]["doors"] == ["integrations"]
+    assert o["each"]["top"] == [[None, "wf-sf-problems"]], "an inner step's need is said at the top of the For-each's form"
+    assert o["ask"]["words"] == ["It may use the tool “web_fetch”, which you cannot use here. Change its tools on the step."]
+    assert o["tally"]["words"] == ["It runs code in your workstation, which cannot run it now."]
+    assert o["post"]["words"] == ["It uses the tool “send_message” of an MCP server called “Chat”, which this Pantheon "
+                                  "does not have. Add the server in MCP & Integrations, then pick the tool on the step."]
+    assert o["post"]["doors"] == ["integrations"]
+    assert o["run"]["words"] == ["It ran a task called “Nightly backup” on the Pantheon it came from. Pick the task it "
+                                 "runs on the step."]
+    assert all(o[k]["doors"] == [] for k in ("call", "ask", "tally", "run")), "no room to add these in"
