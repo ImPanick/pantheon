@@ -360,8 +360,11 @@ btn.setAttribute('id', 'skill-import-url-btn'); btn.innerHTML = '<svg></svg>Impo
 const statusEl = document.body.appendChild(document.createElement('p'));
 statusEl.setAttribute('id', 'skill-import-status'); statusEl.hidden = true;
 %(defs)s
-const first = importSkillFromUrl();
-const second = importSkillFromUrl();   // Enter pressed again while it runs
+// `P22-21`. The import reaches its box, button and line through a mount — the
+// window's, made by the shipped `_makeMount`, whose ids are the page's own.
+const m = _makeMount(document.body);
+const first = importSkillFromUrl(m);
+const second = importSkillFromUrl(m);   // Enter pressed again while it runs
 await first; await second;
 %(after)s
 console.log(JSON.stringify({ ...seen,
@@ -373,7 +376,9 @@ console.log(JSON.stringify({ ...seen,
         "status": status,
         "answer": json.dumps(answer),
         "url": json.dumps(url),
-        "defs": "\n".join(_cut(n) for n in ("_importStatus", "_importInFlight", "importSkillFromUrl")),
+        "defs": "const _SCOPE_KEY = 'skillsScope';\n" + "\n".join(
+            _cut(n) for n in ("_readScope", "_makeMount", "_importStatus", "_importInFlight",
+                              "importSkillFromUrl")),
         "after": after,
     }
     (tmp_path / "case.mjs").write_text(case)

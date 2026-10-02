@@ -1,10 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// skills.js — the Skills window (`#skills-modal`, `P9-06`).
+// skills.js — the Skills window (`#skills-modal`, `P9-06`) and the Workbench's
+// Skills room (`P22-21`).
 //
 // It was a tab in the Brain until 2026-09-30. The owner asked for skills to be
 // groupable — packages that arrive together and groups a person makes — and
 // chose a window of its own for them (`D-2026-09-30-01`). The Brain's Skills
 // tab now opens this window.
+//
+// `P22-21` / `D-2026-10-02-02` §2: the window stays, and the Workbench gains a
+// Skills room that mounts THIS module — not a copy of it (`Law 7`). So every
+// view this file draws is drawn into a *mount* (see `_makeMount`), and the
+// window and the room are two mounts of one module reading one store.
 //
 // Skills are SKILL.md files (frontmatter + body) under data/skills/.
 // This UI supports: list, search, view (read SKILL.md), edit (replace
@@ -30,8 +36,6 @@ let _loadPromise = null;
 
 function esc(s) { return uiModule.esc(String(s ?? '')); }
 
-let _pendingFocusSkill = null;
-
 // ── packages and groups — `P8-49` … `P8-52` ─────────────────────────────────
 // `GET /api/skills/collections`: `{ packages, groups, off }`. A group is a list
 // of names — a skill in two groups is one skill (`D-2026-09-30-01`) — and
@@ -39,13 +43,94 @@ let _pendingFocusSkill = null;
 // injection rather than recomputed here.
 let _collections = { packages: [], groups: [], off: {} };
 const _SCOPE_KEY = 'skillsScope';
-let _scope = (() => {
+
+// ── mounts — `P22-21`, `D-2026-10-02-02` §2 ────────────────────────────────
+//
+// One module, two places. The Skills window (`#skills-modal`) and the
+// Workbench's Skills room (`#skills-room`) both draw this module's views, and
+// neither holds a copy of its code (`Law 7`). What a *view* owns — its
+// controls, and its scope, sort, filter and selection — lives on a mount; what
+// is true of the skills themselves — the list, the packages and groups, the
+// SKILL.md cache — lives once, at the top of this file. So an edit made in one
+// place is drawn in the other the moment the store reloads, and the two can
+// still be looking at different packages.
+//
+// A mount finds its controls by id **with its own prefix**. The window's ids
+// are the page's own, unchanged since `P9-06` (prefix ''); the room's copy of
+// the same markup — stamped from the window's at first use (`_stampRoom`), so
+// the markup is one source too — carries `wb-` in front of every id. Both can
+// be on the page at once and no id is declared twice. Anything a mount looks
+// for that is not an id, it looks for inside its own host.
+const ROOM_PREFIX = 'wb-';
+const _ROOM_SCOPE_KEY = 'skillsRoomScope';
+const _mounts = [];
+// Where a person last pressed or typed. A toast's button (*See what changed*)
+// lives outside both mounts; the card it means is the one in this mount.
+let _lastMount = null;
+
+function _readScope(key) {
   try {
-    const v = JSON.parse(localStorage.getItem(_SCOPE_KEY) || 'null');
+    const v = JSON.parse(localStorage.getItem(key) || 'null');
     if (v && typeof v.kind === 'string') return v;
   } catch (_) {}
   return { kind: 'all' };
-})();
+}
+
+/** A place this module draws into: `host` holds the markup, `prefix` is what
+ *  its ids carry, and the rest is what that one view has chosen. */
+function _makeMount(host, { prefix = '', scopeKey = _SCOPE_KEY } = {}) {
+  return {
+    host,
+    prefix,
+    scopeKey,
+    el: (id) => document.getElementById(prefix + id),
+    scope: _readScope(scopeKey),
+    sort: 'confidence',
+    draftsOnly: false,
+    publishedOnly: false,
+    confMax: null,          // confidence ceiling filter (%, e.g. 90 = show ≤90%); null = off
+    selectMode: false,
+    selected: new Set(),
+    cascadeNext: false,     // play the domino-in entrance on this mount's next render
+    pendingFocus: null,     // a skill to open once the list has loaded
+  };
+}
+
+/** The window's mount, made the first time anything asks: its ids are the
+ *  page's own, so it exists whether or not the window was ever opened. */
+function _windowMount() {
+  let m = _mounts.find((x) => x.prefix === '');
+  if (!m) {
+    m = _makeMount(document.getElementById('skills-modal') || document.body);
+    _mounts.unshift(m);
+  }
+  return m;
+}
+
+function _allMounts() { _windowMount(); return _mounts.slice(); }
+
+/** The mount holding `node`, or the window's. */
+function _mountOf(node) {
+  return (node && _mounts.find((m) => m.host !== document.body && m.host.contains(node)))
+    || _windowMount();
+}
+
+/** Where the person is working now: the mount holding the focus, else the
+ *  one they last pressed or typed in, else the window. */
+function _activeMount() {
+  const here = document.activeElement && _mounts.find((m) => m.host !== document.body
+    && m.host.contains(document.activeElement));
+  return here || _lastMount || _windowMount();
+}
+
+/** Draw the store into every mount. */
+function _renderAll() {
+  for (const m of _allMounts()) {
+    renderSkillsList(m);
+    _renderSkillsSide(m);
+  }
+  updateCount();
+}
 
 async function _fetchCollections() {
   try {
@@ -63,8 +148,6 @@ async function _fetchCollections() {
     // it cannot read its switches.
   }
 }
-let _cascadeNext = false;   // set true to play the domino-in entrance on the next render
-
 function _playSkillsCascade(container = document.getElementById('skills-list')) {
   if (!container || !container.querySelector('.skill-card')) return false;
   container.classList.remove('doclib-just-opened');
@@ -126,10 +209,11 @@ function _applySectionCollapse(container) {
 
 export async function loadSkills(cascade = false) {
   // Play the domino-in entrance on this load (set when the tab is opened,
-  // not for the silent re-loads after an edit/delete).
-  if (cascade) _cascadeNext = true;
+  // not for the silent re-loads after an edit/delete). `true` is the window;
+  // a mount is that mount (`P22-21`).
+  if (cascade) (cascade === true ? _windowMount() : cascade).cascadeNext = true;
   // Always re-fetch when the tab is explicitly opened — the cascade
-  // animation is handled inside renderSkillsList() via _cascadeNext.
+  // animation is handled inside renderSkillsList() via the mount's cascadeNext.
   // Skipping the fetch here caused stale data on panel close/reopen (#5870).
   if (_loadPromise) return _loadPromise;
   _loadPromise = (async () => {
@@ -151,17 +235,16 @@ export async function loadSkills(cascade = false) {
     _loadSkillApprovalThreshold();
     await _loadBuiltinCapabilities();
     loaded = true;
-    renderSkillsList();
-    _renderSkillsSide();
-    updateCount();
-    if (_pendingFocusSkill) {
-      _focusSkillRow(_pendingFocusSkill);
-      _pendingFocusSkill = null;
+    _renderAll();
+    for (const m of _allMounts()) {
+      if (!m.pendingFocus) continue;
+      _focusSkillRow(m, m.pendingFocus);
+      m.pendingFocus = null;
     }
     // If a background audit is running, re-show its progress panel.
     if (!_auditPoll) {
       _fetchAuditStatus().then(st => {
-        if (st.status === 'running') _auditAllSkills();
+        if (st.status === 'running') _showAudit(st);
       }).catch(() => {});
     }
   } catch (e) {
@@ -195,9 +278,9 @@ async function _loadBuiltinCapabilities() {
   }
 }
 
-function _focusSkillRow(name) {
+function _focusSkillRow(m, name) {
   setTimeout(() => {
-    const card = document.querySelector(`.skill-card[data-skill-name="${CSS.escape(name)}"]`);
+    const card = _findSkillCard(name, m);
     if (!card) return;
     card.scrollIntoView({ behavior: 'smooth', block: 'center' });
     card.classList.add('skill-row-flash');
@@ -211,28 +294,32 @@ function _focusSkillRow(name) {
 // anchor-link delegate ([name](#skill-<name>)), the "skills used" pill and an
 // import's "Open it". `opts.scope` narrows the list first — an import opens on
 // the package it just installed.
-export function openSkill(name, opts = {}) {
-  _pendingFocusSkill = name || null;
-  if (opts && opts.scope) _setScope(opts.scope, { render: false });
-  else if (name && !_inScope(skills.find(s => (s.name || s.id) === name) || {})) {
-    _setScope({ kind: 'all' }, { render: false });
+//
+// `P22-21`. `m` is where to open it: left out — every caller before the room —
+// it is the window, as it always was; the room's own import and fork pass the
+// room, so they open on the skill where the person is rather than in a second
+// window.
+export function openSkill(name, opts = {}, m = null) {
+  const at = m || _windowMount();
+  at.pendingFocus = name || null;
+  if (opts && opts.scope) _setScope(at, opts.scope, { render: false });
+  else if (name && !_inScope(at, skills.find(s => (s.name || s.id) === name) || {})) {
+    _setScope(at, { kind: 'all' }, { render: false });
   }
-  openSkillsWindow('browse');
+  if (at.prefix === '') { openSkillsWindow('browse'); return; }
+  _showSkillsView(at, 'browse');
+  loadSkills();
 }
 
-let _skillsSort = 'confidence';
-let _showDraftsOnly = false;
-let _showPublishedOnly = false;
-let _confMax = null;   // confidence ceiling filter (%, e.g. 90 = show ≤90%); null = off
-let _selectMode = false;
-const _selectedNames = new Set();
 let _skillApprovalThreshold = 0.85;
 
 function updateCount() {
   const el = document.getElementById('skills-count');
   if (el) el.textContent = skills.length || '0';
-  const elH = document.getElementById('skills-count-h2');
-  if (elH) elH.textContent = skills.length + ' skill' + (skills.length === 1 ? '' : 's');
+  for (const m of _allMounts()) {
+    const elH = m.el('skills-count-h2');
+    if (elH) elH.textContent = skills.length + ' skill' + (skills.length === 1 ? '' : 's');
+  }
   const summary = document.getElementById('skills-launcher-summary');
   if (summary) {
     const n = (k, one, many) => `${k} ${k === 1 ? one : many}`;
@@ -242,13 +329,13 @@ function updateCount() {
   }
 }
 
-function _sortSkills(list) {
+function _sortSkills(m, list) {
   const arr = list.slice();
-  if (_skillsSort === 'confidence') {
+  if (m.sort === 'confidence') {
     arr.sort((a, b) => (b.confidence || 0) - (a.confidence || 0) || (a.name || '').localeCompare(b.name || ''));
-  } else if (_skillsSort === 'uses') {
+  } else if (m.sort === 'uses') {
     arr.sort((a, b) => (b.uses || 0) - (a.uses || 0) || (a.name || '').localeCompare(b.name || ''));
-  } else if (_skillsSort === 'recent') {
+  } else if (m.sort === 'recent') {
     arr.sort((a, b) => (b.updated_at || b.created_at || 0) - (a.updated_at || a.created_at || 0));
   } else {
     arr.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
@@ -464,7 +551,7 @@ function _auditMarks(sk) {
 // header HTML still composes without changing other layout.
 function _auditDot(sk) { return ''; }
 
-function _isDraftsFilter() { return !!_showDraftsOnly; }
+function _isDraftsFilter(m) { return !!m.draftsOnly; }
 
 // Confidence → colour. 90%+ is solidly green, scaling down through
 // yellow/orange to red at 50% and below (hue 120→0 over 90→50).
@@ -485,6 +572,9 @@ const _ICON = {
   update: '<polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>',
   rename: '<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>',
   check: '<polyline points="20 6 9 17 4 12"/>',
+  // `P22-23`. A clock turned back, and the import button's own tray arrow.
+  history: '<path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/><path d="M12 7v5l4 2"/>',
+  download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>',
 };
 function _svg(paths, { fill = 'none', size = 13 } = {}) {
   const stroke = fill === 'currentColor' ? '' : 'stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"';
@@ -493,7 +583,7 @@ function _svg(paths, { fill = 'none', size = 13 } = {}) {
 
 // Kebab dropdown for a collapsed skill card — same actions + icons as the
 // expanded footer (Publish/Unpublish · Edit · Delete).
-function _openSkillMenu(btn, card, sk, name, isPublished) {
+function _openSkillMenu(m, btn, card, sk, name, isPublished) {
   document.querySelectorAll('.skill-kebab-menu').forEach(dismissOrRemove);
   const menu = document.createElement('div');
   menu.className = 'skill-kebab-menu';
@@ -514,9 +604,9 @@ function _openSkillMenu(btn, card, sk, name, isPublished) {
   selItem.addEventListener('click', (e) => {
     e.stopPropagation();
     close();
-    if (!_selectMode) _enterSelectMode();
-    _selectedNames.add(name);
-    renderSkillsList();
+    if (!m.selectMode) _enterSelectMode(m);
+    m.selected.add(name);
+    renderSkillsList(m);
   });
   menu.appendChild(selItem);
 
@@ -529,11 +619,15 @@ function _openSkillMenu(btn, card, sk, name, isPublished) {
   // copy your last save replaced and once on what is there now.
   mk(_ICON.test, 'Compare with previous', {}, () => _compareSkill(card, name));
   // Audit kicks off the bulk audit-all loop (test → judge → fix → retry → demote).
-  mk(_ICON.test, 'Audit', {}, () => _auditAllSkills());
+  mk(_ICON.test, 'Audit', {}, () => _auditAllSkills(m));
   // `P8-50`. A group lists the skill; it is not copied into it.
-  mk(_ICON.group, 'Groups…', {}, () => _openGroupMenu(btn, [name]));
+  mk(_ICON.group, 'Groups…', {}, () => _openGroupMenu(m, btn, [name]));
   // `P8-52`. The one deliberate copy — a separate skill to change freely.
-  mk(_ICON.fork, 'Fork', {}, () => _forkSkill(name));
+  mk(_ICON.fork, 'Fork', {}, () => _forkSkill(m, name));
+  // `P22-23`. The two things a terminal could do with one skill and a person
+  // could not: see and put back its earlier copies, and take it away as a file.
+  mk(_ICON.history, 'History', {}, () => _showSkillHistory(card, name));
+  mk(_ICON.download, 'Download', {}, () => _downloadSkill(name));
   mk(_ICON.del, 'Delete', { danger: true }, () => _deleteSkill(name, card));
 
   // Mobile-only Cancel — mirrors the email/documents/brain popup pattern.
@@ -576,12 +670,12 @@ function _openSkillMenu(btn, card, sk, name, isPublished) {
 // "Built-in capabilities 0" header under a drafts filter says the built-ins
 // went away, and they did not. The search box does apply, because a person
 // typing a tool's name is looking for that tool wherever it lives.
-function _getFilteredBuiltins() {
-  if (_showDraftsOnly || _showPublishedOnly || _confMax != null) return [];
+function _getFilteredBuiltins(m) {
+  if (m.draftsOnly || m.publishedOnly || m.confMax != null) return [];
   // A package, a group or "Built-in" is a list of SKILL.md files; the native
   // tool capabilities belong to none of them.
-  if (_scope.kind !== 'all') return [];
-  const query = (document.getElementById('skills-search')?.value || '').toLowerCase();
+  if (m.scope.kind !== 'all') return [];
+  const query = (m.el('skills-search')?.value || '').toLowerCase();
   if (!query) return builtinSkills;
   return builtinSkills.filter(b =>
     String(b.name || '').toLowerCase().includes(query) ||
@@ -766,31 +860,31 @@ async function _revertBuiltin(name) {
   } catch (e) { uiModule.showError('Revert failed: ' + e.message); }
 }
 
-function _getFilteredSkills() {
-  const query = (document.getElementById('skills-search')?.value || '').toLowerCase();
-  let filtered = _scope.kind === 'all' ? skills : skills.filter(_inScope);
+function _getFilteredSkills(m) {
+  const query = (m.el('skills-search')?.value || '').toLowerCase();
+  let filtered = m.scope.kind === 'all' ? skills : skills.filter(sk => _inScope(m, sk));
   if (query) filtered = filtered.filter(sk => _matches(sk, query));
-  if (_showDraftsOnly) {
+  if (m.draftsOnly) {
     filtered = filtered.filter(sk => (sk.status || 'draft') !== 'published');
   }
-  if (_showPublishedOnly) {
+  if (m.publishedOnly) {
     filtered = filtered.filter(sk => (sk.status || 'draft') === 'published');
   }
-  if (_confMax != null) {
+  if (m.confMax != null) {
     // "≤ X%" — surface the lower-confidence skills that may need review.
-    filtered = filtered.filter(sk => Math.round((sk.confidence || 0) * 100) <= _confMax);
+    filtered = filtered.filter(sk => Math.round((sk.confidence || 0) * 100) <= m.confMax);
   }
-  return _sortSkills(filtered);
+  return _sortSkills(m, filtered);
 }
 
-function renderSkillsList() {
-  const container = document.getElementById('skills-list');
+function renderSkillsList(m) {
+  const container = m.el('skills-list');
   if (!container) return;
   // Re-render rebuilds the cards (none expanded), so clear the expand flag
   // on the admin-card or it would keep the toolbar hidden with nothing open.
   container.closest('.admin-card')?.classList.remove('skills-has-expanded');
 
-  const sorted = _getFilteredSkills();
+  const sorted = _getFilteredSkills(m);
   // Built-in capabilities show as their own section: the agent's native tools,
   // with the instruction block each one is given and an editor for it.
   //
@@ -799,18 +893,18 @@ function renderSkillsList() {
   // coming apart again — an empty list draws no header, whether it is empty
   // because the loader has not run yet, because the person is not an admin and
   // the gated route answered 403, or because a filter excluded the section.
-  const builtins = _getFilteredBuiltins();
+  const builtins = _getFilteredBuiltins(m);
   const showBuiltin = builtins.length > 0;
 
   if (!sorted.length && !showBuiltin) {
-    const selectBtn = document.getElementById('skills-select-btn');
+    const selectBtn = m.el('skills-select-btn');
     if (selectBtn) selectBtn.disabled = true;
-    if (_selectMode) _exitSelectMode();
-    container.innerHTML = `<div style="text-align:center;opacity:0.4;padding:24px 0;font-size:11px;">${loaded ? esc(_emptyListText()) : 'Loading…'}</div>`;
+    if (m.selectMode) _exitSelectMode(m);
+    container.innerHTML = `<div style="text-align:center;opacity:0.4;padding:24px 0;font-size:11px;">${loaded ? esc(_emptyListText(m)) : 'Loading…'}</div>`;
     return;
   }
 
-  const selectBtn = document.getElementById('skills-select-btn');
+  const selectBtn = m.el('skills-select-btn');
   if (selectBtn) selectBtn.disabled = false;
 
   // Library-style cards: a compact bar that expands in-place to show the
@@ -851,8 +945,8 @@ function renderSkillsList() {
     card.dataset.skillName = name;
     card.dataset.skillStatus = sk.status || 'draft';
 
-    const checked = _selectedNames.has(name) ? 'checked' : '';
-    const cbHtml = _selectMode
+    const checked = m.selected.has(name) ? 'checked' : '';
+    const cbHtml = m.selectMode
       ? `<input type="checkbox" class="memory-select-cb skill-select-cb" data-name="${esc(name)}" ${checked} style="margin-right:6px;flex-shrink:0;cursor:pointer;" />`
       : '';
 
@@ -884,7 +978,7 @@ function renderSkillsList() {
     // expanded footer). Clicking the kebab opens it; it doesn't expand.
     header.querySelector('.skill-kebab-btn').addEventListener('click', (e) => {
       e.stopPropagation();
-      _openSkillMenu(e.currentTarget, card, sk, name, isPublished);
+      _openSkillMenu(m, e.currentTarget, card, sk, name, isPublished);
     });
 
     // Preview (hidden until expanded) — SKILL.md goes here + footer.
@@ -974,7 +1068,7 @@ function renderSkillsList() {
       // NOT collapse the card — that silently discards unsaved edits. Only
       // Save/Cancel exit edit mode.
       if (card.querySelector('.skill-md-editor')) return;
-      if (_selectMode) {
+      if (m.selectMode) {
         const cb = card.querySelector('.skill-select-cb');
         if (cb) { cb.checked = !cb.checked; cb.dispatchEvent(new Event('change')); }
         return;
@@ -1049,24 +1143,24 @@ function renderSkillsList() {
   // staggered entrance the document/chat library uses (.doclib-just-opened
   // → section-domino-in on each .doclib-card child). Only consumes the flag
   // set on tab-open, so search/sort/edit re-renders stay instant.
-  if (_cascadeNext && cards.length) {
-    _cascadeNext = false;
+  if (m.cascadeNext && cards.length) {
+    m.cascadeNext = false;
     _playSkillsCascade(container);
   }
 
   // Select-mode checkbox wiring (card-body click is handled in the card's
   // own click listener above).
-  if (_selectMode) {
+  if (m.selectMode) {
     container.querySelectorAll('.skill-select-cb').forEach(cb => {
       cb.addEventListener('change', () => {
         const name = cb.dataset.name;
-        if (cb.checked) _selectedNames.add(name); else _selectedNames.delete(name);
-        const all = document.getElementById('skills-select-all');
+        if (cb.checked) m.selected.add(name); else m.selected.delete(name);
+        const all = m.el('skills-select-all');
         if (all) {
-          const visible = _getFilteredSkills().map(s => s.name || s.id);
-          all.checked = visible.length > 0 && visible.every(n => _selectedNames.has(n));
+          const visible = _getFilteredSkills(m).map(s => s.name || s.id);
+          all.checked = visible.length > 0 && visible.every(n => m.selected.has(n));
         }
-        _updateBulkBar();
+        _updateBulkBar(m);
       });
     });
   }
@@ -1252,6 +1346,9 @@ async function _saveSkillEdit(card, name) {
   const preview = card.querySelector('.skill-card-preview');
   const ta = preview?.querySelector('.skill-md-editor');
   if (!ta) return;
+  // `P22-21`. *See what changed* is pressed in a toast, outside both mounts;
+  // it means the card in the place this save was made.
+  _lastMount = _mountOf(card);
   try {
     const res = await fetch(`${API}/api/skills/${encodeURIComponent(name)}/markdown`, {
       method: 'POST',
@@ -2007,14 +2104,17 @@ function _confirmAuditSkills(label) {
   });
 }
 
-async function _auditAllSkills(opts = {}) {
-  const panel = document.getElementById('skills-audit-panel');
+// `P22-21`. There is one audit at a time on the server, so the job is not a
+// mount's: it is started from the mount whose list it audits (`m`), and drawn
+// into every mount's panel while it runs (`_showAudit`).
+async function _auditAllSkills(m, opts = {}) {
+  const panel = m.el('skills-audit-panel');
   if (!panel) return;
   // If a run is already going, just (re)attach to it.
   let st = await _fetchAuditStatus();
   if (st.status !== 'running') {
     const explicitNames = Array.isArray(opts.names) ? opts.names.filter(Boolean) : null;
-    const visibleNames = _getFilteredSkills()
+    const visibleNames = _getFilteredSkills(m)
       .map(sk => sk.name || sk.id)
       .filter(Boolean);
     const names = explicitNames || visibleNames;
@@ -2037,16 +2137,27 @@ async function _auditAllSkills(opts = {}) {
     } catch (e) { uiModule.showError('Audit failed: ' + (e.message || e)); return; }
     _auditSeenResults = 0;
   }
-  panel.classList.remove('hidden');
+  _showAudit(st);
+}
+
+function _auditPanels() {
+  return _allMounts().map((m) => m.el('skills-audit-panel')).filter(Boolean);
+}
+
+/** The audit's progress, in every mount's panel, kept up by one poll. */
+function _showAudit(st) {
+  const panels = _auditPanels();
+  if (!panels.length) return;
+  panels.forEach((panel) => panel.classList.remove('hidden'));
   _auditSeenResults = Math.min(_auditSeenResults, (st.results || []).length);
-  _renderAuditPanel(panel, st);
+  panels.forEach((panel) => _renderAuditPanel(panel, st));
   _applyAuditResults(st);
   _highlightAuditCard(st.status === 'running' ? st.current : null);
   if (_auditPoll) clearInterval(_auditPoll);
   if (st.status === 'running') {
     _auditPoll = setInterval(async () => {
       const s = await _fetchAuditStatus();
-      _renderAuditPanel(panel, s);
+      _auditPanels().forEach((panel) => _renderAuditPanel(panel, s));
       _applyAuditResults(s);
       _highlightAuditCard(s.status === 'running' ? s.current : null);
       if (s.status !== 'running') {
@@ -2058,10 +2169,27 @@ async function _auditAllSkills(opts = {}) {
   }
 }
 
-function _findSkillCard(name) {
+/** A skill's card in `m`'s list — or, with no mount named, in the one the
+ *  person is working in first, then any (`P22-21`). */
+function _findSkillCard(name, m = null) {
   if (!name) return null;
-  return [...document.querySelectorAll('.skill-card[data-skill-name]')]
-    .find(c => c.dataset.skillName === name) || null;
+  const order = m ? [m] : [_activeMount(), ..._allMounts()];
+  for (const at of order) {
+    const card = _skillCardsIn(at).find(c => c.dataset.skillName === name);
+    if (card) return card;
+  }
+  return null;
+}
+
+function _skillCardsIn(m) {
+  const list = m && m.el('skills-list');
+  return list ? [...list.querySelectorAll('.skill-card[data-skill-name]')] : [];
+}
+
+/** Every mount's card for one skill: an audit's verdict is the skill's, so it
+ *  is drawn wherever the skill is listed. */
+function _skillCardsNamed(name) {
+  return _allMounts().map((m) => _findSkillCard(name, m)).filter(Boolean);
 }
 
 function _mergeSkillState(state) {
@@ -2111,7 +2239,7 @@ function _applyAuditResults(st) {
     const state = r.skill_state || null;
     _mergeSkillState(state);
     const verdict = state?.audit_verdict || r.verdict?.verdict || (r.result === 'flagged' ? 'fail' : null);
-    _applySkillStateToHeader(_findSkillCard(name), state, verdict);
+    for (const card of _skillCardsNamed(name)) _applySkillStateToHeader(card, state, verdict);
   }
   _auditSeenResults = results.length;
 }
@@ -2122,8 +2250,7 @@ function _highlightAuditCard(name) {
   document.querySelectorAll('.skill-card.skill-audit-active')
     .forEach(c => { c.classList.remove('skill-audit-active'); _setCardRunning(c, false); });
   if (!name) return;
-  const card = _findSkillCard(name);
-  if (card) {
+  for (const card of _skillCardsNamed(name)) {
     card.classList.add('skill-audit-active');
     _setCardRunning(card, true);
     card.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
@@ -2249,42 +2376,42 @@ function _renderAuditPanel(panel, st) {
 const _SKILLS_SELECT_BTN_DOT_SVG = '<svg class="memory-select-btn-icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:3px;"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"/></svg>';
 const _SKILLS_SELECT_BTN_X_SVG = '<svg class="memory-select-btn-icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" style="vertical-align:-2px;margin-right:3px;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
 
-function _enterSelectMode() {
-  _selectMode = true;
-  _selectedNames.clear();
-  const bar = document.getElementById('skills-bulk-bar');
-  const btn = document.getElementById('skills-select-btn');
+function _enterSelectMode(m) {
+  m.selectMode = true;
+  m.selected.clear();
+  const bar = m.el('skills-bulk-bar');
+  const btn = m.el('skills-select-btn');
   if (bar) bar.classList.remove('hidden');
   if (btn) { btn.classList.add('active'); btn.innerHTML = _SKILLS_SELECT_BTN_X_SVG + 'Cancel'; }
-  _updateBulkBar();
-  renderSkillsList();
+  _updateBulkBar(m);
+  renderSkillsList(m);
 }
 
-function _exitSelectMode() {
-  _selectMode = false;
-  _selectedNames.clear();
-  const bar = document.getElementById('skills-bulk-bar');
-  const btn = document.getElementById('skills-select-btn');
-  const all = document.getElementById('skills-select-all');
+function _exitSelectMode(m) {
+  m.selectMode = false;
+  m.selected.clear();
+  const bar = m.el('skills-bulk-bar');
+  const btn = m.el('skills-select-btn');
+  const all = m.el('skills-select-all');
   if (bar) bar.classList.add('hidden');
   if (btn) { btn.classList.remove('active'); btn.innerHTML = _SKILLS_SELECT_BTN_DOT_SVG + 'Select'; }
   if (all) all.checked = false;
-  renderSkillsList();
+  renderSkillsList(m);
 }
 
-function _updateBulkBar() {
-  const countEl = document.getElementById('skills-selected-count');
-  const delBtn = document.getElementById('skills-bulk-delete');
-  const delNonPassingBtn = document.getElementById('skills-bulk-delete-nonpassing');
-  const pubBtn = document.getElementById('skills-bulk-publish');
-  const auditBtn = document.getElementById('skills-bulk-audit');
-  if (countEl) countEl.textContent = `${_selectedNames.size} Selected`;
-  if (delBtn) delBtn.disabled = _selectedNames.size === 0;
-  if (auditBtn) auditBtn.disabled = _selectedNames.size === 0;
-  const groupBtn = document.getElementById('skills-bulk-group');
-  if (groupBtn) groupBtn.disabled = _selectedNames.size === 0;
+function _updateBulkBar(m) {
+  const countEl = m.el('skills-selected-count');
+  const delBtn = m.el('skills-bulk-delete');
+  const delNonPassingBtn = m.el('skills-bulk-delete-nonpassing');
+  const pubBtn = m.el('skills-bulk-publish');
+  const auditBtn = m.el('skills-bulk-audit');
+  if (countEl) countEl.textContent = `${m.selected.size} Selected`;
+  if (delBtn) delBtn.disabled = m.selected.size === 0;
+  if (auditBtn) auditBtn.disabled = m.selected.size === 0;
+  const groupBtn = m.el('skills-bulk-group');
+  if (groupBtn) groupBtn.disabled = m.selected.size === 0;
   if (delNonPassingBtn) {
-    const count = _selectedNonPassingSkills().length;
+    const count = _selectedNonPassingSkills(m.selected).length;
     delNonPassingBtn.disabled = count === 0;
     delNonPassingBtn.title = count
       // `P9-12` / `Law 15`. The tooltip is where a person finds out what the
@@ -2294,26 +2421,26 @@ function _updateBulkBar() {
       : 'None of the selected skills has failed an audit. Skills that have not been audited yet are never counted here.';
   }
   // Approve is only meaningful when at least one selected skill is still a draft.
-  const anyDraft = [..._selectedNames].some(n => {
+  const anyDraft = [...m.selected].some(n => {
     const sk = skills.find(s => (s.name || s.id) === n);
     return sk && (sk.status || 'draft') !== 'published';
   });
   if (pubBtn) pubBtn.disabled = !anyDraft;
 }
 
-function _toggleSelectAll() {
-  const all = document.getElementById('skills-select-all');
+function _toggleSelectAll(m) {
+  const all = m.el('skills-select-all');
   if (!all) return;
-  const visible = _getFilteredSkills().map(s => s.name || s.id);
-  if (all.checked) visible.forEach(n => _selectedNames.add(n));
-  else visible.forEach(n => _selectedNames.delete(n));
-  _updateBulkBar();
-  renderSkillsList();
+  const visible = _getFilteredSkills(m).map(s => s.name || s.id);
+  if (all.checked) visible.forEach(n => m.selected.add(n));
+  else visible.forEach(n => m.selected.delete(n));
+  _updateBulkBar(m);
+  renderSkillsList(m);
 }
 
-async function _bulkDelete() {
-  if (!_selectedNames.size) return;
-  const n = _selectedNames.size;
+async function _bulkDelete(m) {
+  if (!m.selected.size) return;
+  const n = m.selected.size;
   const ok = await uiModule.styledConfirm(
     `Delete ${n} ${n === 1 ? 'skill' : 'skills'}? This removes their SKILL.md files.`,
     { confirmText: 'Delete', danger: true }
@@ -2321,7 +2448,7 @@ async function _bulkDelete() {
   if (!ok) return;
   let deleted = 0;
   const deletedNames = [];
-  for (const name of _selectedNames) {
+  for (const name of m.selected) {
     try {
       const res = await fetch(`${API}/api/skills/${encodeURIComponent(name)}`, { method: 'DELETE' });
       if (res.ok) {
@@ -2331,11 +2458,10 @@ async function _bulkDelete() {
     } catch {}
   }
   for (const name of deletedNames) {
-    const card = document.querySelector(`.skill-card[data-skill-name="${CSS.escape(name)}"]`);
-    if (card) card.classList.add('doclib-card-deleting');
+    for (const card of _skillCardsNamed(name)) card.classList.add('doclib-card-deleting');
   }
   if (deletedNames.length) await new Promise(resolve => setTimeout(resolve, 320));
-  _exitSelectMode();
+  _exitSelectMode(m);
   await loadSkills();
   uiModule.showToast(`Deleted ${deleted}`);
 }
@@ -2413,7 +2539,11 @@ const _FAILING_AUDIT_VERDICTS = new Set(['fail', 'needs_work']);
  * moment it is created until an audit lifts it. The bar therefore applies to
  * skills that have been scored, which is the only time it means anything.
  */
-function _selectedNonPassingSkills() {
+//
+// `P22-21`. The selection is a mount's now and is handed in; the parameter
+// keeps the name the module-level set had, so the body below — the part of
+// this row that decides what a delete takes — is the body it was.
+function _selectedNonPassingSkills(_selectedNames) {
   const selected = new Set(_selectedNames);
   return skills.filter(sk => {
     const name = sk.name || sk.id;
@@ -2495,8 +2625,8 @@ async function _restoreDeletedSkills(saved) {
   }
 }
 
-async function _bulkDeleteNonPassing() {
-  const targets = _selectedNonPassingSkills();
+async function _bulkDeleteNonPassing(m) {
+  const targets = _selectedNonPassingSkills(m.selected);
   if (!targets.length) {
     uiModule.showToast('No selected skills have failed an audit');
     return;
@@ -2557,11 +2687,10 @@ async function _bulkDeleteNonPassing() {
     } catch {}
   }
   for (const name of deletedNames) {
-    const card = document.querySelector(`.skill-card[data-skill-name="${CSS.escape(name)}"]`);
-    if (card) card.classList.add('doclib-card-deleting');
+    for (const card of _skillCardsNamed(name)) card.classList.add('doclib-card-deleting');
   }
   if (deletedNames.length) await new Promise(resolve => setTimeout(resolve, 320));
-  _exitSelectMode();
+  _exitSelectMode(m);
   await loadSkills();
   if (!restorable.length) {
     uiModule.showToast('Nothing was deleted');
@@ -2574,10 +2703,10 @@ async function _bulkDeleteNonPassing() {
   });
 }
 
-async function _bulkApprove() {
-  if (!_selectedNames.size) return;
+async function _bulkApprove(m) {
+  if (!m.selected.size) return;
   let published = 0;
-  for (const name of _selectedNames) {
+  for (const name of m.selected) {
     const sk = skills.find(s => (s.name || s.id) === name);
     if (sk && sk.status === 'published') continue;
     try {
@@ -2589,19 +2718,19 @@ async function _bulkApprove() {
       if (res.ok) published++;
     } catch {}
   }
-  _exitSelectMode();
+  _exitSelectMode(m);
   await loadSkills();
   uiModule.showToast(`Published ${published}`);
 }
 
-async function _bulkAudit() {
-  if (!_selectedNames.size) return;
-  const selected = new Set(_selectedNames);
-  const ordered = _getFilteredSkills()
+async function _bulkAudit(m) {
+  if (!m.selected.size) return;
+  const selected = new Set(m.selected);
+  const ordered = _getFilteredSkills(m)
     .map(sk => sk.name || sk.id)
     .filter(n => selected.has(n));
-  _exitSelectMode();
-  await _auditAllSkills({ names: ordered });
+  _exitSelectMode(m);
+  await _auditAllSkills(m, { names: ordered });
 }
 
 // ---- The prompt preview: what the AI is actually handed (`P8-06`/`P8-07`) ----
@@ -2630,10 +2759,10 @@ const _PROMPT_PREVIEW_GATE =
   'All of it arrives as untrusted text, because you or a teacher model wrote it and it can say anything. '
   + 'So a reply that gets a skill asks you before anything that writes, runs, sends or deletes.';
 
-function _closePromptPreview() {
-  const panel = document.getElementById('skills-prompt-panel');
+function _closePromptPreview(m) {
+  const panel = m.el('skills-prompt-panel');
   if (panel) { panel.classList.add('hidden'); panel.replaceChildren(); }
-  const btn = document.getElementById('skills-preview-btn');
+  const btn = m.el('skills-preview-btn');
   if (btn) btn.setAttribute('aria-expanded', 'false');
 }
 
@@ -2656,11 +2785,11 @@ function _formatChars(n) {
   return v.toLocaleString ? v.toLocaleString() : String(v);
 }
 
-async function _renderPromptPreview() {
-  const panel = document.getElementById('skills-prompt-panel');
+async function _renderPromptPreview(m) {
+  const panel = m.el('skills-prompt-panel');
   if (!panel) return;
-  const btn = document.getElementById('skills-preview-btn');
-  if (!panel.classList.contains('hidden')) { _closePromptPreview(); return; }
+  const btn = m.el('skills-preview-btn');
+  if (!panel.classList.contains('hidden')) { _closePromptPreview(m); return; }
   panel.classList.remove('hidden');
   if (btn) btn.setAttribute('aria-expanded', 'true');
   panel.replaceChildren(_el('div', 'skills-audit-summary', 'Reading the catalogue…'));
@@ -2699,7 +2828,7 @@ async function _renderPromptPreview() {
   head.appendChild(_el('span', 'skills-audit-title', _PROMPT_PREVIEW_TITLE));
   const close = _el('button', 'memory-toolbar-btn skill-prompt-close', 'Close');
   close.type = 'button';
-  close.addEventListener('click', (e) => { e.stopPropagation(); _closePromptPreview(); });
+  close.addEventListener('click', (e) => { e.stopPropagation(); _closePromptPreview(m); });
   head.appendChild(close);
 
   // ---- The text itself, which is the answer this panel exists to give. ----
@@ -2828,8 +2957,8 @@ async function _showSkillSource(name) {
 
 // `B926`. The import's own status line (`#skill-import-status`), under the box
 // it was started from. Everything it says is text.
-function _importStatus(kind, lines, openName) {
-  const el = document.getElementById('skill-import-status');
+function _importStatus(m, kind, lines, openName) {
+  const el = m.el('skill-import-status');
   if (!el) return null;
   el.hidden = false;
   el.className = `memory-desc skill-import-status${kind ? ` is-${kind}` : ''}`;
@@ -2844,7 +2973,7 @@ function _importStatus(kind, lines, openName) {
     open.type = 'button';
     open.className = 'skill-import-open';
     open.textContent = 'Open it';
-    open.addEventListener('click', () => openSkill(openName));
+    open.addEventListener('click', () => openSkill(openName, {}, m));
     el.appendChild(open);
   }
   return el;
@@ -2852,18 +2981,18 @@ function _importStatus(kind, lines, openName) {
 
 let _importInFlight = false;
 
-async function importSkillFromUrl() {
-  const input = document.getElementById('skill-import-url');
+async function importSkillFromUrl(m) {
+  const input = m.el('skill-import-url');
   const url = (input?.value || '').trim();
   if (!url) {
-    _importStatus('error', 'Paste a GitHub or skills.sh link to a skill folder or its SKILL.md first.');
+    _importStatus(m, 'error', 'Paste a GitHub or skills.sh link to a skill folder or its SKILL.md first.');
     uiModule.showError('Paste a GitHub or skills.sh URL first');
     return;
   }
   // `B926`. Enter while an import runs used to start a second one.
   if (_importInFlight) return;
   _importInFlight = true;
-  const btn = document.getElementById('skill-import-url-btn');
+  const btn = m.el('skill-import-url-btn');
   const btnHtml = btn ? btn.innerHTML : '';
   if (btn) {
     btn.disabled = true;
@@ -2876,7 +3005,7 @@ async function importSkillFromUrl() {
   const started = Date.now();
   const tick = () => {
     const s = Math.round((Date.now() - started) / 1000);
-    _importStatus('busy', [
+    _importStatus(m, 'busy', [
       `Downloading from GitHub… ${s}s`,
       s >= 8 ? 'Pantheon asks GitHub for about one file a second, so a skill with many files takes a while.' : '',
     ]);
@@ -2905,15 +3034,15 @@ async function importSkillFromUrl() {
       ? `Imported ${pkg.title} — ${fresh + again} skills${again ? ` (${fresh} new, ${again} refreshed)` : ''}.`
       : `Imported ${name} — ${count} file${count === 1 ? '' : 's'}.`;
     clearInterval(timer);
-    _importStatus(notes.length ? 'warn' : 'ok', [headline, ...notes], name);
+    _importStatus(m, notes.length ? 'warn' : 'ok', [headline, ...notes], name);
     uiModule.showToast(many ? `Imported ${pkg.title} (${fresh + again} skills)`
                             : `Imported ${name} (${count} file${count === 1 ? '' : 's'})`);
     await loadSkills();
-    if (name) openSkill(name, many ? { scope: { kind: 'package', id: pkg.id } } : undefined);
+    if (name) openSkill(name, many ? { scope: { kind: 'package', id: pkg.id } } : undefined, m);
   } catch (err) {
     clearInterval(timer);
     const msg = (err && err.message) || String(err);
-    _importStatus('error', `Import failed: ${msg}`);
+    _importStatus(m, 'error', `Import failed: ${msg}`);
     uiModule.showError('Import failed: ' + msg);
   } finally {
     clearInterval(timer);
@@ -2945,8 +3074,8 @@ function _csvOf(raw) {
  * chances to disagree about whether the procedure box was empty, and the whole
  * point of linting before a save is that it is judging what the save will send.
  */
-function _draftFromForm() {
-  const v = (id) => document.getElementById(id)?.value.trim() || '';
+function _draftFromForm(m) {
+  const v = (id) => m.el(id)?.value.trim() || '';
   const name = v('new-skill-name') || v('new-skill-title');
   const description = v('new-skill-description') || v('new-skill-title');
   return {
@@ -2976,8 +3105,8 @@ function _draftIsEmpty(draft) {
 // sees red beside a button reasonably assumes the button is now refusing.
 const _LINT_NEVER_BLOCKS = 'None of this stops you saving.';
 
-function _renderLint(result, opts) {
-  const panel = document.getElementById('skill-lint-panel');
+function _renderLint(m, result, opts) {
+  const panel = m.el('skill-lint-panel');
   if (!panel) return;
   const o = opts || {};
   const findings = Array.isArray(result && result.findings) ? result.findings : [];
@@ -3016,11 +3145,23 @@ function _renderLint(result, opts) {
     if (f && f.fix) row.appendChild(_el('span', 'skill-lint-fix', f.fix));
     kids.push(row);
   }
+  // `P22-23`. Once the skill exists, the model can fix what the lint found —
+  // `manage_skills action=improve`'s button. Before it is saved there is no
+  // skill to rewrite, and the panel says only that nothing stops a save.
+  if (o.saved && o.name && findings.length) {
+    const fix = _el('button', 'doclib-card-text-btn doclib-card-action-btn skill-lint-fix-btn',
+      'Fix these with the model');
+    fix.type = 'button';
+    fix.title = 'The model rewrites the skill to answer these findings. It cannot publish it '
+      + 'or change who can use it, and the text it replaces is kept in History.';
+    fix.addEventListener('click', () => _fixWithModel(m, o.name, fix));
+    kids.push(fix);
+  }
   panel.replaceChildren(...kids);
 }
 
-function _clearLint() {
-  const panel = document.getElementById('skill-lint-panel');
+function _clearLint(m) {
+  const panel = m.el('skill-lint-panel');
   if (!panel) return;
   panel.classList.add('hidden');
   panel.replaceChildren();
@@ -3039,9 +3180,9 @@ function _clearLint() {
  * silent by design: the check is advice, and an error toast for advice nobody
  * asked for would punish the person for the network.
  */
-async function _runSkillLint(opts) {
-  const draft = _draftFromForm();
-  if (_draftIsEmpty(draft)) { _clearLint(); return null; }
+async function _runSkillLint(m, opts) {
+  const draft = _draftFromForm(m);
+  if (_draftIsEmpty(draft)) { _clearLint(m); return null; }
   try {
     const res = await fetch(`${API}/api/skills/lint`, {
       method: 'POST',
@@ -3050,7 +3191,7 @@ async function _runSkillLint(opts) {
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const result = await res.json();
-    _renderLint(result, opts);
+    _renderLint(m, result, opts);
     return result;
   } catch (e) {
     return null;
@@ -3063,8 +3204,8 @@ async function _runSkillLint(opts) {
 // reaches every one of them. They were a `Law 15` failure: the only route to
 // them was knowing the frontmatter format. So they go on the form that already
 // posts to this endpoint. No second write path.
-async function addSkill() {
-  const draft = _draftFromForm();
+async function addSkill(m) {
+  const draft = _draftFromForm(m);
   const { name, description, category, when_to_use: whenToUse,
           procedure, tags, pitfalls, verification, platforms,
           requires_toolsets } = draft;
@@ -3079,7 +3220,7 @@ async function addSkill() {
   // early, and no branch below reads the verdict. Someone saving a skill with
   // four problems gets the skill AND the list. It is drawn here rather than
   // after the POST so a save that fails still leaves the findings on screen.
-  const lint = await _runSkillLint();
+  const lint = await _runSkillLint(m);
 
   try {
     const res = await fetch(`${API}/api/skills/add`, {
@@ -3100,14 +3241,17 @@ async function addSkill() {
       }),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const added = await res.json().catch(() => ({}));
+    const savedName = (added && added.skill && added.skill.name) || name;
     ['new-skill-name', 'new-skill-title', 'new-skill-description', 'new-skill-when',
      'new-skill-problem', 'new-skill-procedure', 'new-skill-solution', 'new-skill-tags',
      'new-skill-category', 'new-skill-pitfalls', 'new-skill-verification',
      'new-skill-platforms', 'new-skill-toolsets']
-      .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+      .forEach(id => { const el = m.el(id); if (el) el.value = ''; });
+    _clearDraftNote(m);
     // The form is empty again, so the findings have to say which skill they are
     // about or they read as a verdict on the blank form in front of them.
-    if (lint) _renderLint(lint, { saved: true });
+    if (lint) _renderLint(m, lint, { saved: true, name: savedName });
     await loadSkills();
     uiModule.showToast('Skill added (draft)');
   } catch (err) {
@@ -3123,8 +3267,8 @@ function _packageOf(name) {
   return _collections.packages.find(p => (p.skills || []).includes(name)) || null;
 }
 
-function _scopeNames() {
-  const sc = _scope;
+function _scopeNames(m) {
+  const sc = m.scope;
   if (sc.kind === 'package' || sc.kind === 'section') {
     const p = _collections.packages.find(x => x.id === sc.id);
     if (!p) return null;
@@ -3139,27 +3283,27 @@ function _scopeNames() {
   return null;
 }
 
-function _inScope(sk) {
-  const kind = _scope.kind;
+function _inScope(m, sk) {
+  const kind = m.scope.kind;
   if (kind === 'all') return true;
   const name = sk.name || sk.id;
   if (kind === 'bundled') return _isBundled(sk);
   if (kind === 'mine') return !_isBundled(sk) && !_packageOf(name);
-  const names = _scopeNames();
+  const names = _scopeNames(m);
   // A package or group removed elsewhere leaves nothing to narrow to.
   return names ? names.has(name) : true;
 }
 
-function _setScope(scope, { render = true } = {}) {
-  _scope = (scope && typeof scope.kind === 'string') ? scope : { kind: 'all' };
-  try { localStorage.setItem(_SCOPE_KEY, JSON.stringify(_scope)); } catch (_) {}
+function _setScope(m, scope, { render = true } = {}) {
+  m.scope = (scope && typeof scope.kind === 'string') ? scope : { kind: 'all' };
+  try { localStorage.setItem(m.scopeKey, JSON.stringify(m.scope)); } catch (_) {}
   if (!render) return;
-  renderSkillsList();
-  _renderSkillsSide();
+  renderSkillsList(m);
+  _renderSkillsSide(m);
 }
 
-function _scopeTitle() {
-  const sc = _scope;
+function _scopeTitle(m) {
+  const sc = m.scope;
   if (sc.kind === 'package' || sc.kind === 'section') {
     const p = _collections.packages.find(x => x.id === sc.id);
     const sec = p && sc.kind === 'section' ? (p.sections || []).find(x => x.id === sc.section) : null;
@@ -3169,15 +3313,15 @@ function _scopeTitle() {
   return '';
 }
 
-function _emptyListText() {
-  const sc = _scope;
+function _emptyListText(m) {
+  const sc = m.scope;
   if (sc.kind === 'group') {
-    return `No skills in “${_scopeTitle()}” yet. Press Select and then Group, or open a skill's ⋯ menu and choose Groups, to add some.`;
+    return `No skills in “${_scopeTitle(m)}” yet. Press Select and then Group, or open a skill's ⋯ menu and choose Groups, to add some.`;
   }
   if (sc.kind === 'package' || sc.kind === 'section') return 'This package has no skills left here.';
   if (sc.kind === 'mine') return 'None yet. Skills you write under Add, and the ones the AI learns, appear here.';
   if (sc.kind === 'bundled') return 'No built-in skills on this install.';
-  if ((document.getElementById('skills-search')?.value || '').trim()) return 'No skill matches that search.';
+  if ((m.el('skills-search')?.value || '').trim()) return 'No skill matches that search.';
   return 'No skills yet. Import a package under Add, write one, or let the agent learn them.';
 }
 
@@ -3197,16 +3341,16 @@ function _sameScope(a, b) {
   return a.kind === b.kind && (a.id || '') === (b.id || '') && (a.section || '') === (b.section || '');
 }
 
-function _sideRow({ title, count, scope, hint = '', sub = false, toggle = null, menu = null }) {
+function _sideRow(m, { title, count, scope, hint = '', sub = false, toggle = null, menu = null }) {
   const row = document.createElement('div');
   row.className = 'skills-side-row' + (sub ? ' skills-side-sub' : '')
-    + (_sameScope(scope, _scope) ? ' is-active' : '')
+    + (_sameScope(scope, m.scope) ? ' is-active' : '')
     + (toggle && !toggle.on ? ' is-off' : '');
   const pick = document.createElement('button');
   pick.type = 'button';
   pick.className = 'skills-side-pick';
   if (hint) pick.title = hint;
-  if (_sameScope(scope, _scope)) pick.setAttribute('aria-current', 'true');
+  if (_sameScope(scope, m.scope)) pick.setAttribute('aria-current', 'true');
   const t = document.createElement('span');
   t.className = 'skills-side-title';
   t.textContent = title;
@@ -3215,7 +3359,7 @@ function _sideRow({ title, count, scope, hint = '', sub = false, toggle = null, 
   c.textContent = String(count);
   pick.appendChild(t);
   pick.appendChild(c);
-  pick.addEventListener('click', () => _setScope(scope));
+  pick.addEventListener('click', () => _setScope(m, scope));
   row.appendChild(pick);
   if (toggle) {
     const label = document.createElement('label');
@@ -3246,24 +3390,24 @@ function _sideRow({ title, count, scope, hint = '', sub = false, toggle = null, 
   return row;
 }
 
-function _renderSkillsSide() {
-  const side = document.getElementById('skills-side');
+function _renderSkillsSide(m) {
+  const side = m.el('skills-side');
   if (!side) return;
   // A scope whose package or group has gone is not a place to leave someone.
-  if (['package', 'section', 'group'].includes(_scope.kind) && !_scopeNames()) {
-    _scope = { kind: 'all' };
+  if (['package', 'section', 'group'].includes(m.scope.kind) && !_scopeNames(m)) {
+    m.scope = { kind: 'all' };
   }
   const bundled = skills.filter(_isBundled).length;
   const mine = skills.filter(sk => !_isBundled(sk) && !_packageOf(sk.name || sk.id)).length;
   side.replaceChildren();
   side.appendChild(_sideHead('Library'));
-  side.appendChild(_sideRow({ title: 'All skills', count: skills.length, scope: { kind: 'all' } }));
-  side.appendChild(_sideRow({
+  side.appendChild(_sideRow(m, { title: 'All skills', count: skills.length, scope: { kind: 'all' } }));
+  side.appendChild(_sideRow(m, {
     title: 'Yours', count: mine, scope: { kind: 'mine' },
     hint: 'Skills you wrote and skills the AI learned — not built in, not from a package',
   }));
   if (bundled) {
-    side.appendChild(_sideRow({
+    side.appendChild(_sideRow(m, {
       title: 'Built-in', count: bundled, scope: { kind: 'bundled' },
       hint: 'Shipped with Pantheon. Fork one to make a copy you can change.',
     }));
@@ -3279,7 +3423,7 @@ function _renderSkillsSide() {
   for (const p of _collections.packages) {
     const count = (p.skills || []).length;
     const src = p.source && p.source.owner ? `${p.source.owner}/${p.source.repo}` : '';
-    side.appendChild(_sideRow({
+    side.appendChild(_sideRow(m, {
       title: p.title || p.id, count, scope: { kind: 'package', id: p.id },
       hint: [p.description, src && `From ${src}${p.version ? ` · version ${p.version}` : ''}`,
              p.mode === 'partial' ? 'Imported one skill at a time' : ''].filter(Boolean).join('\n'),
@@ -3293,7 +3437,7 @@ function _renderSkillsSide() {
     }));
     if ((p.sections || []).length > 1) {
       for (const sec of p.sections) {
-        side.appendChild(_sideRow({
+        side.appendChild(_sideRow(m, {
           title: sec.title || sec.id, count: (sec.skills || []).length, sub: true,
           scope: { kind: 'section', id: p.id, section: sec.id }, hint: sec.description || '',
         }));
@@ -3306,7 +3450,7 @@ function _renderSkillsSide() {
   add.className = 'skills-side-new';
   add.textContent = '+ New';
   add.title = 'Make a group';
-  add.addEventListener('click', () => _newGroup([]));
+  add.addEventListener('click', () => _newGroup(m, []));
   side.appendChild(_sideHead('Groups', add));
   if (!_collections.groups.length) {
     const e = document.createElement('div');
@@ -3316,7 +3460,7 @@ function _renderSkillsSide() {
   }
   for (const g of _collections.groups) {
     const count = (g.skills || []).length;
-    side.appendChild(_sideRow({
+    side.appendChild(_sideRow(m, {
       title: g.title || g.id, count, scope: { kind: 'group', id: g.id },
       toggle: { on: g.enabled !== false, onChange: (on, input) => _switchGroup(g, on, input) },
       menu: () => [
@@ -3388,9 +3532,7 @@ async function _skillsApi(method, path, body) {
 
 async function _refreshAfterCollections() {
   await _fetchCollections();
-  renderSkillsList();
-  _renderSkillsSide();
-  updateCount();
+  _renderAll();
 }
 
 async function _switchPackage(p, on, input) {
@@ -3446,11 +3588,11 @@ async function _removePackage(p, keepSkills) {
     uiModule.showError('Could not remove the package: ' + e.message);
     return;
   }
-  if (_scope.id === p.id) _scope = { kind: 'all' };
+  for (const m of _allMounts()) if (m.scope.id === p.id) m.scope = { kind: 'all' };
   await loadSkills();
 }
 
-async function _newGroup(names) {
+async function _newGroup(m, names) {
   const title = await uiModule.styledPrompt(
     names.length
       ? `Name a group for ${names.length === 1 ? `“${names[0]}”` : `these ${names.length} skills`}. They stay one skill each, wherever they are listed.`
@@ -3460,17 +3602,17 @@ async function _newGroup(names) {
   try {
     const data = await _skillsApi('POST', '/api/skills/groups', { title: String(title).trim(), skills: names });
     uiModule.showToast(names.length ? `Made ${data.group.title} with ${names.length} ${names.length === 1 ? 'skill' : 'skills'}` : `Made ${data.group.title}`);
-    if (!names.length) _scope = { kind: 'group', id: data.group.id };
+    if (!names.length) m.scope = { kind: 'group', id: data.group.id };
   } catch (e) {
     uiModule.showError('Could not make the group: ' + e.message);
     return;
   }
-  if (_selectMode && names.length) _exitSelectMode();
+  if (m.selectMode && names.length) _exitSelectMode(m);
   await _refreshAfterCollections();
 }
 
 /** A skill's groups, or a selection's: tick to add, untick to take out. */
-function _openGroupMenu(btn, names) {
+function _openGroupMenu(m, btn, names) {
   names = (names || []).filter(Boolean);
   if (!names.length) return;
   const items = _collections.groups.map(g => {
@@ -3493,7 +3635,7 @@ function _openGroupMenu(btn, names) {
       },
     };
   });
-  items.push({ icon: _ICON.group, label: 'New group…', onClick: () => _newGroup(names) });
+  items.push({ icon: _ICON.group, label: 'New group…', onClick: () => _newGroup(m, names) });
   _popMenu(btn, items);
 }
 
@@ -3521,11 +3663,11 @@ async function _deleteGroup(g) {
     uiModule.showError('Could not delete the group: ' + e.message);
     return;
   }
-  if (_scope.kind === 'group' && _scope.id === g.id) _scope = { kind: 'all' };
+  for (const m of _allMounts()) if (m.scope.kind === 'group' && m.scope.id === g.id) m.scope = { kind: 'all' };
   await _refreshAfterCollections();
 }
 
-async function _forkSkill(name) {
+async function _forkSkill(m, name) {
   const title = await uiModule.styledPrompt(
     `A fork is a separate skill you can change without touching “${name}”. Name the copy.`,
     { title: 'Fork skill', defaultValue: `${name}-fork`, confirmText: 'Fork', maxLength: 80 });
@@ -3539,26 +3681,223 @@ async function _forkSkill(name) {
   }
   uiModule.showToast(`Forked ${name} as ${made.name}`);
   await loadSkills();
-  openSkill(made.name, { scope: { kind: 'mine' } });
+  openSkill(made.name, { scope: { kind: 'mine' } }, m);
 }
 
-// ── the window — `P9-06` ─────────────────────────────────────────────────────
+// ── `P22-23` · the actions only a terminal could reach ──────────────────────
+//
+// Draft from a description, *Fix these with the model*, History with *Put this
+// back*, and Download. Each was a `manage_skills` action and nothing else
+// (design § 0.9); each is now a route (`routes/skills_routes.py`) called from
+// here, in whichever mount the person pressed it.
+
+/** `skill-draft-status`: what the drafter did, said as text beside its box. */
+function _draftNote(m, kind, text) {
+  const el = m.el('skill-draft-status');
+  if (!el) return;
+  el.hidden = !text;
+  el.className = `memory-desc skill-import-status${kind ? ` is-${kind}` : ''}`;
+  el.textContent = text || '';
+}
+
+function _clearDraftNote(m) { _draftNote(m, '', ''); }
+
+let _draftInFlight = false;
+
+/** *Draft from a description*: `POST /api/skills/draft` fills the Add form.
+ *  Nothing is saved — the person reads it and presses *Add Skill*. */
+async function _draftFromDescription(m) {
+  const box = m.el('skill-draft-text');
+  const text = (box?.value || '').trim();
+  if (!text) {
+    _draftNote(m, 'error', 'Say what the skill is for first — one sentence is enough.');
+    return;
+  }
+  if (_draftInFlight) return;
+  _draftInFlight = true;
+  const btn = m.el('skill-draft-btn');
+  if (btn) { btn.disabled = true; btn.setAttribute('aria-busy', 'true'); }
+  _draftNote(m, 'busy', 'Asking the model for a draft…');
+  try {
+    const res = await fetch(`${API}/api/skills/draft`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ description: text }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
+    const d = data.draft || {};
+    const put = (id, value) => { const el = m.el(id); if (el) el.value = value || ''; };
+    put('new-skill-name', d.name);
+    put('new-skill-description', d.description);
+    put('new-skill-when', d.when_to_use);
+    put('new-skill-procedure', (d.procedure || []).join('\n'));
+    put('new-skill-category', d.category && d.category !== 'general' ? d.category : '');
+    put('new-skill-tags', (d.tags || []).join(', '));
+    put('new-skill-pitfalls', (d.pitfalls || []).join('\n'));
+    put('new-skill-verification', (d.verification || []).join('\n'));
+    if ((d.pitfalls || []).length || (d.verification || []).length) {
+      const more = m.host.querySelector('details.skill-more');
+      if (more) more.open = true;
+    }
+    _draftNote(m, 'ok', `Drafted by ${data.model || 'the model'}. Read it and change anything — `
+      + 'nothing is saved until you press Add Skill.');
+    _runSkillLint(m);
+  } catch (err) {
+    _draftNote(m, 'error', (err && err.message) || String(err));
+  } finally {
+    _draftInFlight = false;
+    if (btn) { btn.disabled = false; btn.removeAttribute('aria-busy'); }
+  }
+}
+
+function _countWords(c) {
+  const p = Number(c && c.problem) || 0;
+  const a = Number(c && c.advisory) || 0;
+  return `${p} ${p === 1 ? 'problem' : 'problems'}, ${a} ${a === 1 ? 'suggestion' : 'suggestions'}`;
+}
+
+/** *Fix these with the model*: `POST /api/skills/{name}/improve`, and the
+ *  lint's counts before and after, in the panel the findings were in. */
+async function _fixWithModel(m, name, btn) {
+  const panel = m.el('skill-lint-panel');
+  if (btn) { btn.disabled = true; btn.textContent = 'Fixing…'; }
+  try {
+    const res = await fetch(`${API}/api/skills/${encodeURIComponent(name)}/improve`, { method: 'POST' });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
+    const line = data.outcome === 'nothing_to_fix'
+      ? `Nothing left to fix in ${name}.`
+      : `Fixed ${name} with the model. Before: ${_countWords(data.before)}. `
+        + `After: ${_countWords(data.after)}. The earlier text is kept — History on its card puts it back.`;
+    if (panel) {
+      panel.classList.remove('hidden');
+      panel.replaceChildren(_el('div', 'skill-lint-head skill-lint-fixed', line));
+    }
+    _mdCache.delete(name);
+    await loadSkills();
+  } catch (err) {
+    if (btn) { btn.disabled = false; btn.textContent = 'Fix these with the model'; }
+    const msg = (err && err.message) || String(err);
+    if (panel) panel.appendChild(_el('div', 'skill-lint-finding skill-lint-problem', msg));
+    else uiModule.showError(msg);
+  }
+}
+
+function _when(seconds) {
+  return seconds ? new Date(seconds * 1000).toLocaleString() : '';
+}
+
+/** *History*: a skill's earlier copies, newest first, each with *View* and
+ *  *Put this back* — `P8-11`'s rollback, reachable from the card at last. */
+async function _showSkillHistory(card, name) {
+  if (!card) return;
+  if (!card.classList.contains('doclib-card-expanded')) await _expandSkillCard(card, name);
+  const preview = card.querySelector('.skill-card-preview');
+  if (!preview) return;
+  if (card._testPoll) { clearInterval(card._testPoll); card._testPoll = null; }
+  const wrap = _el('div', 'skill-test skill-history');
+  preview.replaceChildren(wrap);
+  wrap.appendChild(_el('div', 'skill-test-task', `History — ${name}`));
+  const versions = await _fetchSkillVersions(name);
+  if (!versions.length) {
+    wrap.appendChild(_el('div', 'skill-test-meta',
+      'No earlier copies yet. One is kept each time this skill is saved, so the next edit will be here.'));
+    return;
+  }
+  const current = skills.find((s) => (s.name || s.id) === name) || {};
+  wrap.appendChild(_el('div', 'skill-test-meta',
+    `Each is a copy an edit replaced. The skill now is version ${current.version || '—'}.`));
+  const list = _el('div', 'skill-history-list');
+  wrap.appendChild(list);
+  const text = _el('pre', 'skill-md-pre skill-history-text');
+  text.hidden = true;
+  for (const v of versions) {
+    const row = _el('div', 'skill-history-row');
+    row.appendChild(_el('span', 'skill-history-when',
+      `Saved ${_when(v.saved_at)} — was version ${v.version}`));
+    const view = _el('button', 'doclib-card-text-btn doclib-card-action-btn', 'View');
+    view.type = 'button';
+    view.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      try {
+        const res = await fetch(`${API}/api/skills/${encodeURIComponent(name)}/versions/${encodeURIComponent(v.id)}`);
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
+        text.textContent = data.markdown || '';
+      } catch (err) {
+        text.textContent = `Could not read it: ${(err && err.message) || err}`;
+      }
+      text.hidden = false;
+    });
+    const back = _el('button', 'doclib-card-text-btn doclib-card-action-btn', 'Put this back');
+    back.type = 'button';
+    back.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const ok = await uiModule.styledConfirm(
+        `Put back the copy saved ${_when(v.saved_at)} (version ${v.version})? It replaces the skill as it `
+        + `is now (version ${current.version || '—'}), which is kept in History, so this can be undone.`,
+        { confirmText: 'Put this back' });
+      if (!ok) return;
+      try {
+        const res = await fetch(`${API}/api/skills/${encodeURIComponent(name)}/versions/${encodeURIComponent(v.id)}/restore`,
+          { method: 'POST' });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
+        _mdCache.delete(name);
+        uiModule.showToast(`Put back the copy saved ${_when(v.saved_at)}. What it replaced is in History.`);
+        await loadSkills();
+      } catch (err) {
+        uiModule.showError(`Could not put it back: ${(err && err.message) || err}`);
+      }
+    });
+    row.appendChild(view);
+    row.appendChild(back);
+    list.appendChild(row);
+  }
+  wrap.appendChild(text);
+}
+
+/** *Download*: the skill as `<name>.json` — `{skill, files}`, what an import
+ *  reads back. A blob saved through a link the page makes, so nothing opens
+ *  inline (the route answers `attachment` too). */
+async function _downloadSkill(name) {
+  try {
+    const res = await fetch(`${API}/api/skills/${encodeURIComponent(name)}/export`);
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.detail || `HTTP ${res.status}`);
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${name}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  } catch (err) {
+    uiModule.showError(`Could not download ${name}: ${(err && err.message) || err}`);
+  }
+}
+
+// ── the window — `P9-06` — and the room — `P22-21` ──────────────────────────
 
 let _windowWired = false;
 
-function _showSkillsView(view) {
-  const modal = document.getElementById('skills-modal');
-  if (!modal) return;
+function _showSkillsView(m, view) {
+  if (!m || !m.host || m.host === document.body) return;
   const want = view === 'add' ? 'add' : 'browse';
-  modal.querySelectorAll('[data-skills-view]').forEach(tab => {
+  m.host.querySelectorAll('[data-skills-view]').forEach(tab => {
     const on = tab.getAttribute('data-skills-view') === want;
     tab.classList.toggle('active', on);
     tab.setAttribute('aria-selected', on ? 'true' : 'false');
   });
-  modal.querySelectorAll('[data-skills-view-panel]').forEach(panel => {
+  m.host.querySelectorAll('[data-skills-view-panel]').forEach(panel => {
     panel.classList.toggle('hidden', panel.getAttribute('data-skills-view-panel') !== want);
   });
-  if (want === 'add') setTimeout(() => document.getElementById('skill-import-url')?.focus(), 60);
+  if (want === 'add') setTimeout(() => m.el('skill-import-url')?.focus(), 60);
 }
 
 function _wireSkillsWindow() {
@@ -3567,9 +3906,6 @@ function _wireSkillsWindow() {
   if (!modal) return;
   _windowWired = true;
   document.getElementById('close-skills-modal')?.addEventListener('click', closeSkillsWindow);
-  modal.querySelectorAll('[data-skills-view]').forEach(tab => {
-    tab.addEventListener('click', () => _showSkillsView(tab.getAttribute('data-skills-view')));
-  });
   const content = modal.querySelector('.modal-content');
   const header = modal.querySelector('.modal-header');
   if (content && header) {
@@ -3585,7 +3921,7 @@ export async function openSkillsWindow(view) {
   const modal = document.getElementById('skills-modal');
   if (!modal) return false;
   _wireSkillsWindow();
-  if (view) _showSkillsView(view);
+  if (view) _showSkillsView(_windowMount(), view);
   try {
     const Modals = await import('./modalManager.js?v=20261002slicesce');
     if (Modals.isMinimized('skills-modal')) Modals.restore('skills-modal');
@@ -3601,7 +3937,8 @@ export async function openSkillsWindow(view) {
 export function closeSkillsWindow() {
   const modal = document.getElementById('skills-modal');
   if (!modal || modal.classList.contains('hidden')) return;
-  if (_selectMode) _exitSelectMode();
+  const m = _windowMount();
+  if (m.selectMode) _exitSelectMode(m);
   const content = modal.querySelector('.modal-content');
   const done = () => {
     modal.classList.add('hidden');
@@ -3613,54 +3950,57 @@ export function closeSkillsWindow() {
   setTimeout(() => { if (!modal.classList.contains('hidden')) done(); }, 250);
 }
 
-document.addEventListener('DOMContentLoaded', () => {
-  document.getElementById('skill-import-url-btn')?.addEventListener('click', importSkillFromUrl);
-  document.getElementById('skill-import-url')?.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') importSkillFromUrl();
+/** Every control one mount holds, wired to that mount. Was this file's
+ *  `DOMContentLoaded` handler, reaching each control by its page-wide id
+ *  (`:3616-3674` when design § 2 measured it); `P22-21` gave it the mount, so
+ *  the same lines wire the window and the room. */
+function _wireMount(m) {
+  if (m.wired) return;
+  m.wired = true;
+  const on = (id, type, fn) => { m.el(id)?.addEventListener(type, fn); };
+  on('skill-import-url-btn', 'click', () => importSkillFromUrl(m));
+  on('skill-import-url', 'keydown', (e) => {
+    if (e.key === 'Enter') importSkillFromUrl(m);
   });
-  document.getElementById('add-skill-btn')?.addEventListener('click', addSkill);
-  document.getElementById('skills-search')?.addEventListener('input', renderSkillsList);
-  document.getElementById('skills-sort')?.addEventListener('change', (e) => {
+  on('add-skill-btn', 'click', () => addSkill(m));
+  on('skills-search', 'input', () => renderSkillsList(m));
+  on('skills-sort', 'change', (e) => {
     // Dropdown holds two optgroups: Sort (sort:<key>) and Filter (filter:<key>).
     // Picking a sort option leaves the filter alone, and vice-versa.
     const v = e.target.value || '';
     if (v.startsWith('sort:')) {
-      _skillsSort = v.slice(5);
+      m.sort = v.slice(5);
     } else if (v.startsWith('filter:')) {
       const f = v.slice(7);
-      if (f === 'all') { _showDraftsOnly = false; _showPublishedOnly = false; _confMax = null; }
-      else if (f === 'drafts') { _showDraftsOnly = true; _showPublishedOnly = false; _confMax = null; }
-      else if (f === 'published') { _showPublishedOnly = true; _showDraftsOnly = false; _confMax = null; }
-      else if (f.startsWith('conf')) { _showDraftsOnly = false; _showPublishedOnly = false; _confMax = parseInt(f.slice(4), 10) || null; }
+      if (f === 'all') { m.draftsOnly = false; m.publishedOnly = false; m.confMax = null; }
+      else if (f === 'drafts') { m.draftsOnly = true; m.publishedOnly = false; m.confMax = null; }
+      else if (f === 'published') { m.publishedOnly = true; m.draftsOnly = false; m.confMax = null; }
+      else if (f.startsWith('conf')) { m.draftsOnly = false; m.publishedOnly = false; m.confMax = parseInt(f.slice(4), 10) || null; }
     }
-    renderSkillsList();
+    renderSkillsList(m);
   });
-  document.getElementById('skills-select-btn')?.addEventListener('click', () => {
-    if (_selectMode) _exitSelectMode(); else _enterSelectMode();
+  on('skills-select-btn', 'click', () => {
+    if (m.selectMode) _exitSelectMode(m); else _enterSelectMode(m);
   });
-  document.getElementById('skills-audit-btn')?.addEventListener('click', _auditAllSkills);
-  document.getElementById('skills-preview-btn')?.addEventListener('click', _renderPromptPreview);
-  document.getElementById('skills-select-all')?.addEventListener('change', _toggleSelectAll);
-  document.getElementById('skills-bulk-cancel')?.addEventListener('click', _exitSelectMode);
-  document.getElementById('skills-bulk-audit')?.addEventListener('click', _bulkAudit);
-  document.getElementById('skills-bulk-delete')?.addEventListener('click', _bulkDelete);
-  document.getElementById('skills-bulk-delete-nonpassing')?.addEventListener('click', _bulkDeleteNonPassing);
-  document.getElementById('skills-bulk-publish')?.addEventListener('click', _bulkApprove);
-  document.getElementById('skills-bulk-group')?.addEventListener('click', (e) => {
-    _openGroupMenu(e.currentTarget, [..._selectedNames]);
+  on('skills-audit-btn', 'click', () => _auditAllSkills(m));
+  on('skills-preview-btn', 'click', () => _renderPromptPreview(m));
+  on('skills-select-all', 'change', () => _toggleSelectAll(m));
+  on('skills-bulk-cancel', 'click', () => _exitSelectMode(m));
+  on('skills-bulk-audit', 'click', () => _bulkAudit(m));
+  on('skills-bulk-delete', 'click', () => _bulkDelete(m));
+  on('skills-bulk-delete-nonpassing', 'click', () => _bulkDeleteNonPassing(m));
+  on('skills-bulk-publish', 'click', () => _bulkApprove(m));
+  on('skills-bulk-group', 'click', (e) => {
+    _openGroupMenu(m, e.currentTarget, [...m.selected]);
   });
-  // `P9-06`. Every "Open Skills" door — the Brain's launcher card and its Add
-  // tab — is one delegated listener, so a door added later needs no wiring.
-  document.addEventListener('click', (e) => {
-    const door = e.target && e.target.closest && e.target.closest('[data-open-skills]');
-    if (door) openSkillsWindow(door.getAttribute('data-open-skills') || 'browse');
+  on('new-skill-title', 'keydown', (e) => {
+    if (e.key === 'Enter') addSkill(m);
   });
-  document.getElementById('new-skill-title')?.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') addSkill();
+  on('new-skill-name', 'keydown', (e) => {
+    if (e.key === 'Enter') addSkill(m);
   });
-  document.getElementById('new-skill-name')?.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') addSkill();
-  });
+  // `P22-23`. *Draft from a description*, beside the form it fills.
+  on('skill-draft-btn', 'click', () => _draftFromDescription(m));
   // `P8-12`. On blur, because that is the moment a person has finished saying
   // one thing and has not yet committed to the whole — early enough to be
   // advice, late enough not to be nagging at them mid-word. Every field is
@@ -3669,11 +4009,117 @@ document.addEventListener('DOMContentLoaded', () => {
                     'new-skill-procedure', 'new-skill-category', 'new-skill-tags',
                     'new-skill-pitfalls', 'new-skill-verification',
                     'new-skill-title', 'new-skill-problem', 'new-skill-solution']) {
-    document.getElementById(id)?.addEventListener('blur', () => { _runSkillLint(); });
+    on(id, 'blur', () => { _runSkillLint(m); });
   }
+  // The view tabs (Skills · Add) are this mount's own.
+  if (m.host && m.host !== document.body) {
+    m.host.querySelectorAll('[data-skills-view]').forEach(tab => {
+      tab.addEventListener('click', () => _showSkillsView(m, tab.getAttribute('data-skills-view')));
+    });
+    m.host.addEventListener('focusin', () => { _lastMount = m; });
+    m.host.addEventListener('pointerdown', () => { _lastMount = m; });
+  }
+}
+
+// The window's body as the page shipped it, read before anything draws into
+// it: the room is stamped from this, so the Skills markup has one source as
+// well as the code (`Law 7`). Module scripts run after the page is parsed and
+// before `DOMContentLoaded`, which is when this file first draws.
+const _pristineBody = (() => {
+  try {
+    const body = document.getElementById('skills-modal')?.querySelector('.skills-modal-body');
+    return body && typeof body.cloneNode === 'function' ? body.cloneNode(true) : null;
+  } catch (_) { return null; }
+})();
+
+const _ID_REF_ATTRS = ['for', 'aria-labelledby', 'aria-describedby', 'aria-controls', 'list'];
+
+/** Copy the window's markup into `host` with every id — and every attribute
+ *  that names an id — given the room's prefix. */
+function _stampRoom(host) {
+  if (!_pristineBody) return false;
+  const body = _pristineBody.cloneNode(true);
+  for (const n of [body, ...body.querySelectorAll('*')]) {
+    if (n.id) n.id = ROOM_PREFIX + n.id;
+    for (const a of _ID_REF_ATTRS) {
+      const v = n.getAttribute && n.getAttribute(a);
+      if (v) n.setAttribute(a, v.trim().split(/\s+/).map((x) => ROOM_PREFIX + x).join(' '));
+    }
+  }
+  host.replaceChildren(...body.childNodes);
+  return true;
+}
+
+// `P22-21`. The *Skills enabled* switch at the head of the list belongs to
+// `memory.js` (`syncPrefToggle`, by its page id), which reads and writes the
+// `skills_enabled` preference. The room's copy is a second view of that one
+// switch, not a second writer (`Law 14`): pressing it presses the window's, the
+// window's moving moves it, and it dims the room's list the way `memory.js`
+// dims the window's.
+function _mirrorSkillsSwitch(m) {
+  const mine = m.el('skills-enabled-header-toggle');
+  const theirs = document.getElementById('skills-enabled-header-toggle');
+  if (!mine || !theirs || mine === theirs) return () => {};
+  const panel = m.host.querySelector('[data-skills-view-panel="browse"]');
+  const sync = () => {
+    mine.checked = !!theirs.checked;
+    if (panel) panel.style.opacity = theirs.checked ? '' : '0.3';
+  };
+  mine.addEventListener('change', () => {
+    if (theirs.checked !== mine.checked) {
+      theirs.checked = mine.checked;
+      theirs.dispatchEvent(new Event('change'));
+    }
+    sync();
+  });
+  theirs.addEventListener('change', sync);
+  sync();
+  return sync;
+}
+
+/**
+ * `P22-21`. Mount the Skills views into `host` — the Workbench's Skills room.
+ *
+ * The first call stamps the window's markup into `host` (ids prefixed), makes
+ * the mount and wires it; later calls find it. `view` ('browse' | 'add') and
+ * `skill` (a name to open) are where to land. Returns the room's handle:
+ * `shown()` when the room comes back into view (reload, as opening the window
+ * does), `showView(view)`, `focusSkill(name)`.
+ */
+export function mountSkills(host, { view = null, skill = null } = {}) {
+  if (!host) return null;
+  let m = _mounts.find((x) => x.host === host);
+  if (!m) {
+    if (!_stampRoom(host)) return null;
+    _windowMount();   // the window's mount is always the first
+    m = _makeMount(host, { prefix: ROOM_PREFIX, scopeKey: _ROOM_SCOPE_KEY });
+    _mounts.push(m);
+    _wireMount(m);
+    m.syncSwitch = _mirrorSkillsSwitch(m);
+  }
+  const handle = {
+    mount: m,
+    shown() { m.syncSwitch?.(); return loadSkills(m); },
+    showView(v) { _showSkillsView(m, v); },
+    focusSkill(name) { if (name) openSkill(name, {}, m); },
+  };
+  if (view) handle.showView(view);
+  if (skill) handle.focusSkill(skill);
+  else handle.shown();
+  return handle;
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  _wireMount(_windowMount());
+  // `P9-06`. Every "Open Skills" door — the Brain's launcher card and its Add
+  // tab — is one delegated listener, so a door added later needs no wiring.
+  document.addEventListener('click', (e) => {
+    const door = e.target && e.target.closest && e.target.closest('[data-open-skills]');
+    if (door) openSkillsWindow(door.getAttribute('data-open-skills') || 'browse');
+  });
 });
 
-export default { loadSkills, openSkill, openSkillsWindow, closeSkillsWindow };
+export default { loadSkills, openSkill, openSkillsWindow, closeSkillsWindow, mountSkills };
 
 // Populate the Skills badge on first load so the count is right before the
 // user clicks into the tab. Cheap fetch — same as the lazy path.
