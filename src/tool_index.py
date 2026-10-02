@@ -98,7 +98,7 @@ BUILTIN_TOOL_DESCRIPTIONS: Dict[str, str] = {
     "computer": "Use the workstation's desktop (an Ubuntu machine with a browser) by looking at its screen and working its mouse and keyboard: take a screenshot, click, double/right/middle click, move, drag, scroll, type text, press keys, wait. Every action returns a screenshot of the result. Use for GUI work — clicking through a web page or an app on the workstation, filling a form, checking what something looks like. Not for running commands or editing files; bash, python and the file tools do that.",
     "manage_rag": "RAG document index: list indexed files, add or remove a directory, store arbitrary text (add_text), or search the vector store (search). Use add_text to offload a large tool result you must retain and search to get it back, instead of holding it all in context. NOT for durable facts about the user — those go in manage_memory.",
     "manage_skills": "Skill management: add, update, publish, or search reusable skills/presets.",
-    "manage_tasks": "Scheduled task management: list, create, edit, delete, pause, resume, or run cron tasks — or dry_run one to say what a run would do without running it.",
+    "manage_tasks": "Scheduled task management: list, create, edit, delete, pause, resume, or run cron tasks — or dry_run one to say what a run would do without running it, or draft_workflow to draft a workflow of several steps that run one after another.",
     "manage_endpoints": "Endpoint management: list, add, delete, enable, or disable model API endpoints.",
     "manage_mcp": "MCP server management: list, add, delete, reconnect servers, or list available tools.",
     "manage_webhooks": "Webhook management: list, add, delete, enable, or disable webhooks.",

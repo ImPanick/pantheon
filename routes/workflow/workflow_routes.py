@@ -25,6 +25,14 @@ and, from `/work/notes/SLICE-CD-DESIGN.md` § 3's contract **C-W** (wave D):
     GET    /api/workflows/{id}/nodes/{node_id}/fields       what a step can pick from (P22-09)
     POST   /api/workflows/{id}/runs/{run_id}/answer         a parked step's yes or no (P22-17)
 
+and, from `/work/notes/SLICE-EF-DESIGN.md` § 3's contract **C-A** (wave E):
+
+    POST   /api/workflows  {describe, tz?} | {file}         a draft, or a file (P22-19, P22-24)
+    PUT    /api/workflows/{id}  {checked: [node ids]}       a person says steps look right (P22-19)
+    GET    /api/workflows/{id}/export                       the workflow as a file (P22-24)
+    POST   /api/workflows/{id}/runs/{run_id}/explain        "Why did this fail?" (P22-20)
+    POST   /api/workflows/{id}/nodes/{node_id}/fix          apply a fix (P22-20)
+
 The two literal ones are declared before `/{workflow_id}`, or FastAPI would
 read "palette" as a workflow's id.
 
@@ -53,7 +61,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
 from core.database import SessionLocal
-from src.auth_helpers import get_current_user
+from src.auth_helpers import get_current_user, request_is_a_person
 from src import workflow_store as store
 from src.workflow_store import WorkflowRefused
 
@@ -93,11 +101,36 @@ def _answers(handler):
     return wrapper
 
 
+# `P22-24` (`SLICE-EF-DESIGN` § 0.12). The most any body here may be: a
+# workflow file is the biggest thing posted (a document is at most
+# `WORKFLOW_GRAPH_MAX_BYTES`, 256 KiB, plus what it requires), and `_body` read
+# with no ceiling at all until this row — the whole stream, into memory.
+WORKFLOW_BODY_MAX_BYTES = 1024 * 1024
+BODY_TOO_BIG = "The request is larger than 1 MiB, so it was not read. Nothing was saved."
+
+
 async def _body(request: Request) -> dict:
+    """The JSON object a request carries, read under `WORKFLOW_BODY_MAX_BYTES`.
+    A declared length over it is refused before a byte is read; the stream is
+    then counted as it arrives (a chunked body declares nothing), and refused
+    one byte past the cap — `backup_routes._load_import_body`'s move."""
     try:
-        raw = await request.body()
+        declared = int(request.headers.get("content-length") or 0)
+    except (TypeError, ValueError):
+        declared = 0
+    if declared > WORKFLOW_BODY_MAX_BYTES:
+        raise WorkflowRefused(413, BODY_TOO_BIG)
+    raw = bytearray()
+    try:
+        async for chunk in request.stream():
+            raw.extend(chunk)
+            if len(raw) > WORKFLOW_BODY_MAX_BYTES:
+                raise WorkflowRefused(413, BODY_TOO_BIG)
+    except WorkflowRefused:
+        raise
     except Exception:
-        raw = b""
+        raw = bytearray()
+    raw = bytes(raw)
     if not raw.strip():
         return {}
     try:
@@ -153,12 +186,29 @@ def setup_workflow_routes(task_scheduler) -> APIRouter:
     @_answers
     async def create_workflow(request: Request):
         """New and empty, or (`from_task_id`, `P22-06`) a copy of the chain that
-        task is a step of. Either way it is created switched off."""
+        task is a step of, or (`describe`, `P22-19`) a draft from the person's
+        words, or (`file`, `P22-24`) a workflow file. Every way it is created
+        switched off; a draft and a file come back with every step marked
+        `unchecked`, what is `missing`, and every step's `destinations` (C-A)."""
         user = _owner(request)
         body = await _body(request)
         from_task_id = body.get("from_task_id")
+        ways = [key for key in ("from_task_id", "describe", "file") if body.get(key) is not None]
+        if len(ways) > 1:
+            raise WorkflowRefused(400, "Send one of: from_task_id, describe, or file.")
         db = SessionLocal()
         try:
+            if "describe" in ways:
+                from src import workflow_assist
+                drafted = await workflow_assist.draft_workflow(
+                    db, user, body.get("describe"), tz=body.get("tz"))
+                return {"workflow": doc(db, drafted.wf, drafted.trigger), "notes": drafted.notes,
+                        "missing": drafted.missing, "destinations": drafted.destinations}
+            if "file" in ways:
+                from src import workflow_share
+                made = workflow_share.import_file(db, user, body.get("file"))
+                return {"workflow": doc(db, made.wf, made.trigger), "notes": made.notes,
+                        "missing": made.missing, "destinations": made.destinations}
             if from_task_id:
                 wf, trigger, notes = store.convert_chain(
                     db, owner=user, from_task_id=str(from_task_id), name=body.get("name"),
@@ -196,9 +246,16 @@ def setup_workflow_routes(task_scheduler) -> APIRouter:
         the AI step's tool choices, the workstation and the limits this engine
         holds a document to — `wf-effects`' `build_palette`, whose `limits` are
         the walker's own readers (`workflow_runs`; `integrate-d`: this route
-        restated them over the builder's answer)."""
+        restated them over the builder's answer).
+
+        `examples` (`P22-19`, `D-2026-10-02-02` §1): the sentences *Describe
+        it* offers to start from — `workflow_assist.EXAMPLE_SENTENCES`, the one
+        place they are written, read by the drafter's tests and the browser."""
         from src import workflow_effects as we
-        return dict(we.build_palette(_owner(request)) or {})
+        from src.workflow_assist import EXAMPLE_SENTENCES
+        out = dict(we.build_palette(_owner(request)) or {})
+        out["examples"] = list(EXAMPLE_SENTENCES)
+        return out
 
     @router.get("/waiting")
     @_answers
@@ -227,24 +284,35 @@ def setup_workflow_routes(task_scheduler) -> APIRouter:
     @router.put("/{workflow_id}")
     @_answers
     async def save_workflow(request: Request, workflow_id: str, check: bool = False):
-        """Four bodies, each its own door to one fact (design § 5):
+        """Five bodies, each its own door to one fact (design § 5):
 
           {name?, graph, base_version}   a content save; a new version only if
                                          the content moved; 409 if stale
           the same with ?check=true      the same answers, writing nothing
           {positions}                    where steps sit; never a version
           {pins}                         samples pinned on steps; never a version
+          {checked: [node ids]}          `P22-19`: a person says these steps look
+                                         right; their marks go; never a version;
+                                         403 unless a person (`request_is_a_person`)
         """
         body = await _body(request)
-        sent = [key for key in ("graph", "positions", "pins") if key in body]
+        sent = [key for key in ("graph", "positions", "pins", "checked") if key in body]
         if len(sent) != 1:
             raise WorkflowRefused(
-                400, "Send one of: the document (graph, with base_version), positions, or pins.")
+                400, "Send one of: the document (graph, with base_version), positions, pins, "
+                     "or the steps you checked.")
         if check and sent[0] != "graph":
             raise WorkflowRefused(400, "?check=true checks a document; send its graph.")
+        if sent[0] == "checked" and not request_is_a_person(request):
+            # `SLICE-EF-DESIGN` § 1.1. Asked before the workflow is even read:
+            # the `app_api` blocklist cannot see a body, so this is the control.
+            raise WorkflowRefused(403, store.ONLY_A_PERSON_CHECKS)
         db = SessionLocal()
         try:
             wf = store.owned_workflow(db, workflow_id, _owner(request))
+            if sent[0] == "checked":
+                saved = store.check_steps(db, wf, body["checked"])
+                return {"workflow": doc(db, wf), "saved": saved}
             if sent[0] == "positions":
                 saved = store.save_positions(db, wf, body["positions"])
                 return {"saved": saved, "version": wf.version}
@@ -263,6 +331,26 @@ def setup_workflow_routes(task_scheduler) -> APIRouter:
             return {"workflow": doc(db, wf, trigger), "saved": saved}
         finally:
             db.close()
+
+    @router.get("/{workflow_id}/export")
+    @_answers
+    def export_workflow(request: Request, workflow_id: str):
+        """`P22-24`. The workflow as a file to hand someone (`workflow_share.
+        export_file`, `pantheon_workflow: 1`) — never a webhook token, a key, a
+        base URL, a header's value, a sample or an endpoint URL. Sent as an
+        attachment, never inline."""
+        from fastapi.responses import Response
+        from src import workflow_share
+        db = SessionLocal()
+        try:
+            wf = store.owned_workflow(db, workflow_id, _owner(request))
+            data = workflow_share.export_file(db, wf, store.trigger_of(db, wf))
+            name = workflow_share.file_name(wf.name)
+        finally:
+            db.close()
+        return Response(content=json.dumps(data, indent=2, ensure_ascii=False),
+                        media_type="application/json",
+                        headers={"Content-Disposition": f'attachment; filename="{name}"'})
 
     @router.delete("/{workflow_id}")
     @_answers
@@ -592,6 +680,102 @@ def setup_workflow_routes(task_scheduler) -> APIRouter:
         return {"ok": True, "outcome": outcome, "sentence": verdict.sentence,
                 "step": label}
 
+    # ── C-A: "Why did this fail?" and "fix this step" (`P22-20`) ─────────────
+
+    @router.post("/{workflow_id}/runs/{run_id}/explain")
+    @_answers
+    async def explain_step(request: Request, workflow_id: str, run_id: str):
+        """`P22-20`. The model reads one step's record of one run — what it
+        was handed, what came back, its error and its log, ONLY inside the
+        untrusted-context guard — and says why it failed, with a change to the
+        step's settings that `FIX_FIELDS` allows, or none. Owner-scoped
+        (another owner's run is a 404). The step is the CURRENT document's;
+        `changed_since_run` says whether it differs from the one that ran.
+        Nothing is written. `{why, model, changed_since_run, proposal,
+        left_out}` (C-A)."""
+        from core.database import TaskRun, TaskRunNode
+        from src import workflow_assist
+        from src.task_action_policy import owner_has_admin_task_privileges
+        from src.workflow_document import DocumentError, parse_graph
+        from src.workflow_effects import workflow_resources
+        from src.workflow_runs import node_record_to_dict
+        body = await _body(request)
+        node_id = str(body.get("node_id") or "")
+        item = body.get("item")
+        if item is not None and (isinstance(item, bool) or not isinstance(item, int)):
+            raise WorkflowRefused(400, "item must be a whole number or null.")
+        user = _owner(request)
+        db = SessionLocal()
+        try:
+            wf = store.owned_workflow(db, workflow_id, user)
+            run = (db.query(TaskRun).filter(TaskRun.id == run_id, TaskRun.task_id == wf.task_id)
+                   .first() if wf.task_id else None)
+            if run is None:
+                raise WorkflowRefused(404, "No such run of this workflow.")
+            q = db.query(TaskRunNode).filter(TaskRunNode.run_id == run.id,
+                                             TaskRunNode.node_id == node_id,
+                                             TaskRunNode.dry.is_(False))
+            q = q.filter(TaskRunNode.item.is_(None)) if item is None else \
+                q.filter(TaskRunNode.item == item)
+            rec = q.order_by(TaskRunNode.attempt.desc(), TaskRunNode.seq.desc()).first()
+            if rec is None:
+                raise WorkflowRefused(404, "That step has no record in this run.")
+            record = node_record_to_dict(rec)
+            try:
+                current = parse_graph(store.stored_graph(wf))
+            except DocumentError as err:
+                raise store._document_error_refusal(err) from None
+            node = next((n for n in store.nodes_of(current) if str(n.get("id")) == node_id), None)
+            if node is None:
+                raise WorkflowRefused(404, "That step is not in the workflow any more.")
+            ran_graph, kept = store.graph_of_version(db, wf, rec.workflow_version)
+            ran = next((n for n in store.nodes_of(ran_graph) if str(n.get("id")) == node_id), None)
+            changed = (ran is None or store._step_content(ran) != store._step_content(node)
+                       or (not kept and rec.workflow_version != wf.version))
+            rows = store.owner_rows(db, wf.owner)
+            trigger = store.trigger_of(db, wf)
+            owner = wf.owner
+            base_version = wf.version
+        finally:
+            db.close()
+        resources = workflow_resources(owner)
+        try:
+            explained = await workflow_assist.explain_step(
+                owner, node=node, record=record, graph=current, base_version=base_version,
+                item=item, resources=resources, tasks_by_id=rows[0], crew_ids=rows[1],
+                owner_is_admin=owner_has_admin_task_privileges(owner),
+                own_task_id=trigger.id if trigger is not None else None)
+        except workflow_assist.NoModelSetUp:
+            raise WorkflowRefused(503, workflow_assist.NO_MODEL_TO_EXPLAIN) from None
+        except ValueError:
+            raise WorkflowRefused(422, workflow_assist.EXPLAIN_UNREADABLE) from None
+        return {"why": explained.why, "model": workflow_assist.model_name(owner),
+                "changed_since_run": changed, "proposal": explained.proposal,
+                "left_out": explained.left_out}
+
+    @router.post("/{workflow_id}/nodes/{node_id}/fix")
+    @_answers
+    async def fix_node(request: Request, workflow_id: str, node_id: str):
+        """`P22-20`, *Apply*. A person's only (`request_is_a_person` — not a
+        bearer token, not the assistant's loopback): the server asks the fix
+        rule again against the stored step (`store.save_fix`), writes a new
+        version (source `fixed`) and answers `undo_version`, the version it
+        started from, which the existing restore door puts back. A stale base
+        is a 409 (`_stale`)."""
+        if not request_is_a_person(request):
+            raise WorkflowRefused(403, store.ONLY_A_PERSON_FIXES)
+        body = await _body(request)
+        db = SessionLocal()
+        try:
+            wf = store.owned_workflow(db, workflow_id, _owner(request))
+            trigger = store.require_trigger(db, wf)
+            base = body.get("base_version")
+            saved = store.save_fix(db, wf, trigger, node_id=node_id, config=body.get("config"),
+                                   base_version=base)
+            return {"workflow": doc(db, wf, trigger), "saved": saved, "undo_version": int(base)}
+        finally:
+            db.close()
+
     return router
 
 
@@ -718,35 +902,24 @@ async def _test_input(db, wf, trigger, stored, graph, node, source, raw):
 async def _write_example(owner, label, fields) -> dict:
     """`P8-08`'s shape: leave it blank and the model invents a plausible
     example — here, one JSON object with exactly the fields the step is handed.
-    The utility model, falling back to the default, as `POST /api/tasks/parse`
-    asks."""
-    import re
-    from src.endpoint_resolver import resolve_endpoint
-    from src.llm_core import llm_call_async
-    from src.text_helpers import strip_think
+    The utility model, falling back to the default — `workflow_assist.
+    ask_for_json`, the one model call `POST /api/tasks/parse` and the
+    drafter ask too (`P22-19`, `Law 7`)."""
+    from src import workflow_assist
 
-    url, model, headers = resolve_endpoint("utility", owner=owner or None)
-    if not (url and model):
-        url, model, headers = resolve_endpoint("default", owner=owner or None)
-    if not (url and model):
-        raise WorkflowRefused(400, "No model is set up to write an example. Paste a sample instead.")
     system = (
         "You write ONE realistic, invented example of the data a workflow step is handed. "
         "Reply with ONLY a JSON object whose keys are exactly the fields listed, each with "
         "a short plausible value. No prose, no markdown fences.")
     try:
-        raw = await llm_call_async(
-            url=url, model=model, headers=headers, timeout=45, temperature=0.7, max_tokens=600,
-            messages=[{"role": "system", "content": system},
-                      {"role": "user", "content": f"Step: {str(label)[:120]}\nFields: {', '.join(fields)}"}])
-    except Exception as err:
-        raise WorkflowRefused(502, f"The model did not write an example: {type(err).__name__}: {err}") from None
-    text = strip_think(raw or "", prose=False, prompt_echo=False).strip()
-    found = re.search(r"\{.*\}", text, re.S)
-    try:
-        data = json.loads(found.group(0) if found else text)
-    except (TypeError, ValueError):
-        data = None
+        data, why = await workflow_assist.ask_for_json(
+            owner, [{"role": "system", "content": system},
+                    {"role": "user", "content": f"Step: {str(label)[:120]}\nFields: {', '.join(fields)}"}],
+            max_tokens=600, temperature=0.7, timeout=45)
+    except workflow_assist.NoModelSetUp:
+        raise WorkflowRefused(400, "No model is set up to write an example. Paste a sample instead.") from None
+    if why is not None and why.kind == workflow_assist.ASK_NO_ANSWER:
+        raise WorkflowRefused(502, f"The model did not write an example: {why.sentence}")
     if not isinstance(data, dict):
         raise WorkflowRefused(502, "The model's example could not be read as JSON. Try again, or paste one.")
     return data

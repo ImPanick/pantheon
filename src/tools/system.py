@@ -906,6 +906,33 @@ async def do_manage_tasks(content: str, owner: Optional[str] = None) -> Dict:
                     return {"error": "Task is already running", "exit_code": 1}
             return {"error": "Task scheduler not available", "exit_code": 1}
 
+        elif action == "draft_workflow":
+            # `P22-19` (folds `B673`). The model had no way to make one task
+            # run after another, or to build a workflow at all: a `workflow`
+            # start is refused at `create` (`WORKFLOW_MADE_IN_WORKBENCH`) and
+            # chains are `D-2026-10-01-05` §1's legacy path, so `then_task_id`
+            # is not added here. It drafts the workflow the Workbench's
+            # *Describe it* drafts — `workflow_assist.draft_workflow`, the one
+            # drafter — saved switched off with every step marked; a person
+            # checks each step before it can run (`PUT {checked}` is a person's
+            # only), and the switch says so until they have.
+            from src import workflow_assist, workflow_store
+            described = args.get("description") or args.get("prompt")
+            try:
+                drafted = await workflow_assist.draft_workflow(
+                    db, owner, described, tz=args.get("tz_name"))
+            except workflow_store.WorkflowRefused as refused:
+                return {"error": refused.sentence, "exit_code": 1}
+            count = len(workflow_store.nodes_of(workflow_store.stored_graph(drafted.wf)))
+            said = (f"Drafted “{drafted.wf.name}” as a workflow of {count} "
+                    f"step{'s' if count != 1 else ''}, switched off. A person checks each "
+                    f"step in the Workbench before it can run (Automations → "
+                    f"“{drafted.wf.name}”), and switches it on there.")
+            if drafted.missing:
+                said += " Not drafted: " + " ".join(drafted.missing)
+            return {"response": said, "workflow_id": drafted.wf.id,
+                    "task_id": drafted.trigger.id, "exit_code": 0}
+
         elif action == "dry_run":
             # `P22-04` (`B803`). "What would this do if it ran" is asked in
             # words far more often than anybody looks for a button. This is the

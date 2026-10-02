@@ -1725,11 +1725,17 @@ def setup_task_routes(task_scheduler) -> APIRouter:
         """Turn a free-form description ("every weekday at 7am research the top
         AI news and summarize it") into a structured task draft the frontend
         can pre-fill the form with. Returns a draft only — the user reviews and
-        saves it, so a misread schedule never goes live unreviewed."""
-        from src.endpoint_resolver import resolve_endpoint
-        from src.llm_core import llm_call_async
-        from src.text_helpers import strip_think as _strip_think
-        import json as _json, re as _re
+        saves it, so a misread schedule never goes live unreviewed.
+
+        `P22-19` (`SLICE-EF-DESIGN` § 1.3). The model call is
+        `workflow_assist.ask_for_json` — the utility model, else the default,
+        owner-scoped, no tools — which the Workbench's drafter and *Test this
+        step*'s example writer ask too; it was copied here and in the example
+        writer until then (`Law 7`). This door still drafts ONE task and
+        writes nothing; a workflow is drafted at `POST /api/workflows
+        {describe}`, so a door named "parse" never creates anything (`Law 10`)."""
+        from src import workflow_assist
+        import re as _re
         from datetime import datetime as _dt
 
         body = await request.json()
@@ -1763,27 +1769,15 @@ def setup_task_routes(task_scheduler) -> APIRouter:
             "use cron '0 H * * 1-5'. Keep the prompt actionable and self-contained."
         )
         try:
-            url, model, headers = resolve_endpoint("utility", owner=user or None)
-            if not url:
-                url, model, headers = resolve_endpoint("default", owner=user or None)
-            if not (url and model):
+            try:
+                draft, why = await workflow_assist.ask_for_json(
+                    user, [{"role": "system", "content": sys},
+                           {"role": "user", "content": desc[:1000]}],
+                    max_tokens=400, temperature=0.2, timeout=45)
+            except workflow_assist.NoModelSetUp:
                 return {"success": False, "message": "No model endpoint configured"}
-            raw = await llm_call_async(
-                url=url, model=model,
-                messages=[{"role": "system", "content": sys},
-                          {"role": "user", "content": desc[:1000]}],
-                temperature=0.2, max_tokens=400, headers=headers, timeout=45,
-            )
-            text = _strip_think(raw or "", prose=False, prompt_echo=False).strip()
-            if text.startswith("```"):
-                text = text.strip("`")
-                if text.lower().startswith("json"):
-                    text = text[4:].lstrip()
-            # Pull the first {...} block in case the model added stray text.
-            m = _re.search(r"\{.*\}", text, _re.S)
-            draft = _json.loads(m.group(0) if m else text)
-            if not isinstance(draft, dict):
-                raise ValueError("not an object")
+            if why is not None:
+                return {"success": False, "message": why.sentence}
             # Whitelist + light validation so the frontend gets clean fields.
             out: Dict[str, Any] = {}
             if draft.get("task_type") in ("llm", "research"):

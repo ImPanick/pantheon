@@ -192,6 +192,13 @@ CASES = [
      lambda: check(doc([step("n1", kind="foreach", list="{{ steps.start.data.items }}",
                              step={"kind": "wait", "config": {}})])),
      wd.REFUSE_FOREACH_INNER, "repeats a step of kind 'wait'"),
+    # `P22-19` (wb-assist). Not `validate_document`'s — a save takes a marked
+    # draft — but the switch's and the walker's (`unchecked_refusal`), so it is
+    # driven here through the function that answers it.
+    ("a drafted step nobody has checked",
+     lambda: wd.unchecked_refusal(doc([dict(step("n1", label="Summarise"), unchecked={
+         "origin": "drafted", "at": "2026-10-02T09:00:00Z", "needs": []})])),
+     wd.REFUSE_UNCHECKED, "The model drafted 1 step nobody has checked yet: “Summarise”"),
 ]
 
 

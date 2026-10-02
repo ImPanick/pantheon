@@ -40,8 +40,9 @@ tool, a skill, an AI tool, the workstation — is checked against
 `WorkflowResources`, built by the caller from what the person can reach.
 
 `FORBIDDEN.md` Part 1: `GRAPH_VERSION`'s value, the `NODE_KINDS`, the port
-words, the start key, the three `WORKFLOW_VERSION_SOURCES` and
-`WORKFLOW_TASK_TYPE` are stored in rows; a rename orphans every stored workflow.
+words, the start key, the `WORKFLOW_VERSION_SOURCES` (three until `P22-19`,
+six since) and `WORKFLOW_TASK_TYPE` are stored in rows; a rename orphans every
+stored workflow. So are the `unchecked` key and its two origins (`P22-19`).
 """
 
 from __future__ import annotations
@@ -158,7 +159,31 @@ START_PORTS = (PORT_SUCCESS,)
 VERSION_SOURCE_USER = "user"
 VERSION_SOURCE_CONVERTED = "converted"
 VERSION_SOURCE_RESTORED = "restored"
-WORKFLOW_VERSION_SOURCES = (VERSION_SOURCE_USER, VERSION_SOURCE_CONVERTED, VERSION_SOURCE_RESTORED)
+# `P22-19`, `P22-24`, `P22-20` (`SLICE-EF-DESIGN` § 1.2). A document the model
+# drafted, one that arrived in a file, and a fix a person applied. Added, none
+# renamed (`FORBIDDEN.md` Part 1 at the merge).
+VERSION_SOURCE_DRAFTED = "drafted"
+VERSION_SOURCE_IMPORTED = "imported"
+VERSION_SOURCE_FIXED = "fixed"
+WORKFLOW_VERSION_SOURCES = (VERSION_SOURCE_USER, VERSION_SOURCE_CONVERTED, VERSION_SOURCE_RESTORED,
+                            VERSION_SOURCE_DRAFTED, VERSION_SOURCE_IMPORTED, VERSION_SOURCE_FIXED)
+
+# `P22-19` / `P22-24` (`SLICE-EF-DESIGN` § 1.1). "A person has looked at this":
+# a step the model drafted, or one that came in a file, carries
+#   unchecked: {origin: "drafted" | "imported", at: ISO, needs: [{field, name, preset?, server?, tool?}]}
+# until a person says it looks right (or changes it). D §4 lets an authored
+# deterministic step run without a card because the AUTHOR decided it; a
+# drafted step was decided by a model that read third-party text, an imported
+# one by whoever wrote the file, so the mark keeps that premise true until a
+# person has looked. The key, and the two origins, are stored values.
+UNCHECKED_KEY = "unchecked"
+ORIGIN_DRAFTED = "drafted"
+ORIGIN_IMPORTED = "imported"
+UNCHECKED_ORIGINS = (ORIGIN_DRAFTED, ORIGIN_IMPORTED)
+# What one `needs` entry may say: the setting, and what it names.
+NEED_KEYS = ("field", "name", "preset", "server", "tool")
+NEEDS_MAX = 20
+NEED_TEXT_MAX = 300
 
 # The words the new kinds' settings store.
 MERGE_ALL = "all"
@@ -285,6 +310,10 @@ REFUSE_UNKNOWN_TOOL = "unknown_tool"
 REFUSE_UNKNOWN_SKILL = "unknown_skill"
 REFUSE_WORKSTATION = "workstation"
 REFUSE_FOREACH_INNER = "foreach_inner"
+# `P22-19`. Asked by the switch and by the walker, never by a save: a draft
+# with marks is a document that may be edited, tested and dry-run, and not yet
+# switched on (`SLICE-EF-DESIGN` § 1.1).
+REFUSE_UNCHECKED = "unchecked"
 
 WORKFLOW_REFUSAL_REASONS = {
     REFUSE_UNREADABLE: "the workflow could not be read",
@@ -321,6 +350,7 @@ WORKFLOW_REFUSAL_REASONS = {
     REFUSE_UNKNOWN_SKILL: "a step follows a skill that is not one of yours",
     REFUSE_WORKSTATION: "a Code step runs in your workstation, and it cannot run there now",
     REFUSE_FOREACH_INNER: "a For-each step repeats a kind of step it cannot repeat",
+    REFUSE_UNCHECKED: "a step nobody has checked yet cannot run",
 }
 
 
@@ -433,6 +463,35 @@ def _position(value, where: str):
     _fail(REFUSE_UNREADABLE, detail=f"{where} has a position that is not two numbers")
 
 
+def _mark(value, label, node_id):
+    """`P22-19`. A step's `unchecked` mark, shaped — or `None` for no mark.
+
+    Only its shape is checked here; who may set, keep or clear one is the
+    store's (`workflow_store.create_from_document`, `_marks_kept`,
+    `check_steps`). Anything that is not a mark this Pantheon writes is
+    refused, so a mark can never carry something else into a stored row."""
+    if value is None:
+        return None
+    where = _called(label)
+    if (not isinstance(value, dict) or value.get("origin") not in UNCHECKED_ORIGINS
+            or set(value) - {"origin", "at", "needs"}):
+        _fail(REFUSE_UNREADABLE, (node_id,), f"{where} has a mark this Pantheon does not write")
+    at = value.get("at")
+    if at is not None and (not isinstance(at, str) or len(at) > 64):
+        _fail(REFUSE_UNREADABLE, (node_id,), f"{where} has a mark with no time")
+    needs_in = value.get("needs")
+    needs_in = [] if needs_in is None else needs_in
+    if not isinstance(needs_in, list) or len(needs_in) > NEEDS_MAX:
+        _fail(REFUSE_UNREADABLE, (node_id,), f"{where} has a mark whose needs are not a list")
+    needs = []
+    for need in needs_in:
+        if (not isinstance(need, dict) or set(need) - set(NEED_KEYS)
+                or not all(isinstance(v, str) and len(v) <= NEED_TEXT_MAX for v in need.values())):
+            _fail(REFUSE_UNREADABLE, (node_id,), f"{where} has a mark whose needs cannot be read")
+        needs.append(dict(need))
+    return {"origin": value["origin"], "at": at, "needs": needs}
+
+
 def parse_graph(raw) -> dict:
     """The stored document, read and shaped. Raises `DocumentError`.
 
@@ -441,6 +500,11 @@ def parse_graph(raw) -> dict:
     a fresh dict with exactly the schema's keys:
     `{v, start: {position}, nodes: [{id, kind, label, config, position, pinned}],
     edges: [{from, port, to}]}`. What the steps SAY is `validate_document`'s.
+
+    `P22-19`: a step that carries an `unchecked` mark keeps it, shaped
+    (`_mark`); a step with none has no `unchecked` key at all (read it as
+    null), so an ordinary save does not change a stored document's bytes.
+    Every other key is still dropped.
     """
     if isinstance(raw, (bytes, bytearray)):
         try:
@@ -493,14 +557,18 @@ def parse_graph(raw) -> dict:
         pinned = node.get("pinned")
         if pinned is not None and not isinstance(pinned, dict):
             _fail(REFUSE_UNREADABLE, (node_id,), f"{_called(label)} has a sample that is not an object")
-        nodes.append({
+        shaped = {
             "id": node_id,
             "kind": kind,
             "label": label,
             "config": dict(config),
             "position": _position(node.get("position"), _called(label)),
             "pinned": pinned,
-        })
+        }
+        mark = _mark(node.get(UNCHECKED_KEY), label, node_id)
+        if mark is not None:
+            shaped[UNCHECKED_KEY] = mark
+        nodes.append(shaped)
     edges = []
     for index, edge in enumerate(edges_in, start=1):
         if not isinstance(edge, dict) or not all(
@@ -1574,6 +1642,53 @@ def without_pins(graph: dict) -> dict:
     return out
 
 
+def version_graph(graph: dict) -> dict:
+    """`P22-19`. What a kept version holds: `without_pins`, and no step's
+    `unchecked` mark. A mark is the CURRENT document's state, not its content
+    (`content_fingerprint` leaves it out), so a version never carries one and
+    a restore never brings one back (`workflow_store._marks_kept` decides what
+    a restore keeps)."""
+    out = without_pins(graph)
+    for node in out.get("nodes") or ():
+        if isinstance(node, dict):
+            node.pop(UNCHECKED_KEY, None)
+    return out
+
+
+def marked_nodes(graph: dict) -> list:
+    """The steps that carry an `unchecked` mark, in document order."""
+    return [n for n in graph.get("nodes") or ()
+            if isinstance(n, dict) and isinstance(n.get(UNCHECKED_KEY), dict)]
+
+
+def unchecked_refusal(graph: dict) -> DocumentRefusal | None:
+    """`P22-19` (`SLICE-EF-DESIGN` § 1.1). Why this document may not be switched
+    on or run for real while a step carries a mark, or `None`.
+
+    Asked by `workflow_store.switch_workflow` (so the task route's resume and
+    `manage_tasks resume`, which go through it, are refused too) and by the
+    walker before a real run's first step — which covers a marked document
+    written straight to the database while its trigger is on. NOT asked by a
+    save, the dry run or *Test this step*: checking a step is exactly when
+    you want to test it."""
+    marked = marked_nodes(graph)
+    if not marked:
+        return None
+    origins = {n[UNCHECKED_KEY].get("origin") for n in marked}
+    if origins == {ORIGIN_IMPORTED}:
+        who = "A file brought in"
+    elif origins == {ORIGIN_DRAFTED}:
+        who = "The model drafted"
+    else:
+        who = "The model drafted, or a file brought in,"
+    count = len(marked)
+    named = ", ".join(_called(n) for n in marked[:6]) + (" …" if count > 6 else "")
+    which = "it" if count == 1 else "each one"
+    sentence = (f"{who} {count} step{'s' if count != 1 else ''} nobody has checked yet: "
+                f"{named}. Open {which} and press Looks right (or change it), then switch it on.")
+    return DocumentRefusal(REFUSE_UNCHECKED, tuple(n["id"] for n in marked), sentence)
+
+
 def content_fingerprint(name: str, graph: dict) -> str:
     """What has to move before a save is an edit (`P8-10`'s rule).
 
@@ -1890,6 +2005,28 @@ def plan_lines(node: dict, resources: WorkflowResources | None = None) -> list:
     else:
         lines.append(f"A {kind!r} step is not one this Pantheon runs.")
     return lines
+
+
+def destination_lines(graph: dict, resources: WorkflowResources | None = None) -> list:
+    """`P22-19` / `P22-24` (`SLICE-EF-DESIGN` § 1.6). Everything a document
+    would do and send somewhere, one line per step, in one place: the step's
+    `plan_lines` (the dry run's planner, `Law 7`) and, where it delivers its
+    result, the address — which `plan_lines` leaves to the dry run's own
+    extra line. What a drafted or imported workflow answers as `destinations`,
+    so a destination the model or a file chose is read before anything runs."""
+    out = []
+    for node in graph.get("nodes") or ():
+        if not isinstance(node, dict):
+            continue
+        lines = list(plan_lines(node, resources))
+        config = node.get("config") if isinstance(node.get("config"), dict) else {}
+        inner = config.get("step") if isinstance(config.get("step"), dict) else {}
+        inner_config = inner.get("config") if isinstance(inner.get("config"), dict) else {}
+        for target in (config.get("output_target"), inner_config.get("output_target")):
+            if isinstance(target, str) and target.strip():
+                lines.append(f"Where the result goes: {target}")
+        out.append(f"{_called(node)}: " + " · ".join(str(line).strip() for line in lines))
+    return out
 
 
 # ── The stand-in ─────────────────────────────────────────────────────────────

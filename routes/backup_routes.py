@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Backup routes — export/import user data (memories, presets, settings, skills, preferences)."""
+"""Backup routes — export/import user data (memories, presets, settings, skills, preferences,
+and — `P22-24` — tasks and workflows)."""
 
 import json
 import logging
@@ -107,6 +108,177 @@ async def _load_import_body(request: Request, limit: int):
     return json.loads(bytes(raw))
 
 
+# `P22-24` (`SLICE-EF-DESIGN` § 2). What a backup does not carry, said in the
+# file itself (`Law 10`): a restore brings back each workflow's current
+# document and every task, not their history.
+NOT_CARRIED = "Workflow versions, task runs and their step records are not in a backup."
+TASKS_UNREADABLE = "Tasks and workflows could not be read, so they are not in this backup."
+# A task's columns a backup never restores as given: when it was written.
+_TASK_STAMPS = ("created_at", "updated_at")
+
+
+def _plain(value):
+    return value.isoformat() if isinstance(value, datetime) else value
+
+
+def backup_tasks(db, user) -> list:
+    """`P22-24`. The owner's tasks, every column — webhook tokens included:
+    `B958`'s logic is that a restore needs what does not re-pair on its own,
+    and a webhook URL is bound to its token (`FORBIDDEN.md` Part 1's shape)."""
+    from core.database import ScheduledTask
+    q = db.query(ScheduledTask)
+    if user:
+        q = q.filter(ScheduledTask.owner == user)
+    columns = [c.name for c in ScheduledTask.__table__.columns]
+    return [{name: _plain(getattr(t, name)) for name in columns}
+            for t in q.order_by(ScheduledTask.created_at, ScheduledTask.id).all()]
+
+
+def backup_workflows(db, user) -> list:
+    """`P22-24`. The owner's workflows: `{id, name, graph, version, task_id,
+    source_chain}`. The graph is `without_pins` — a sample is real data from a
+    run, and runs are not carried — and KEEPS each step's `unchecked` mark, so
+    a draft nobody checked is restored still waiting for a person (a backup
+    round trip is not a way to clear a mark, `P22-19`)."""
+    from core.database import Workflow
+    from src import workflow_store as store
+    from src.workflow_document import without_pins
+    q = db.query(Workflow)
+    if user:
+        q = q.filter(Workflow.owner == user)
+    return [{"id": wf.id, "name": wf.name, "graph": without_pins(store.stored_graph(wf)),
+             "version": wf.version, "task_id": wf.task_id, "source_chain": wf.source_chain}
+            for wf in q.order_by(Workflow.id).all()]
+
+
+def _column_value(column, value):
+    """A backed-up value as its column takes it, or None when it is not one."""
+    from sqlalchemy import Boolean, DateTime, Integer
+    if value is None:
+        return None
+    kind = column.type
+    if isinstance(kind, DateTime):
+        try:
+            return datetime.fromisoformat(str(value).replace("Z", "")).replace(tzinfo=None)
+        except ValueError:
+            return None
+    if isinstance(kind, Boolean):
+        return value if isinstance(value, bool) else None
+    if isinstance(kind, Integer):
+        return value if isinstance(value, int) and not isinstance(value, bool) else None
+    return value if isinstance(value, str) else None
+
+
+def restore_tasks(db, user, tasks) -> int:
+    """Tasks, by their own ids; an id this install already has is skipped.
+    Each becomes the importing person's. A chain's arrows are joined after
+    every task is in (the foreign keys want their targets first), and only to
+    a task that is there; a chat or a crew member this install does not have
+    is let go rather than pointed at."""
+    from core.database import CrewMember, ScheduledTask, Session as ChatSession
+    from src.task_scheduler import _resolve_task_timezone, compute_next_run
+    columns = {c.name: c for c in ScheduledTask.__table__.columns}
+    existing = {row[0] for row in db.query(ScheduledTask.id).all()}
+    made, edges = [], []
+    for item in tasks:
+        if not isinstance(item, dict) or not isinstance(item.get("id"), str) or not item["id"]:
+            continue
+        if item["id"] in existing:
+            continue
+        values = {name: _column_value(columns[name], item.get(name)) for name in columns
+                  if name in item and name not in _TASK_STAMPS}
+        values["owner"] = user if user else values.get("owner")
+        edges.append((item["id"], values.pop("then_task_id", None), values.pop("else_task_id", None)))
+        session_id = values.get("session_id")
+        if session_id and db.query(ChatSession.id).filter(ChatSession.id == session_id).first() is None:
+            values["session_id"] = None
+        crew = values.get("crew_member_id")
+        if crew and db.query(CrewMember.id).filter(CrewMember.id == crew,
+                                                  CrewMember.owner == values["owner"]).first() is None:
+            values["crew_member_id"] = None
+        task = ScheduledTask(**values)
+        if not task.name:
+            task.name = "Untitled Task"
+        db.add(task)
+        existing.add(item["id"])
+        made.append(task)
+    db.flush()
+    for task_id, then_id, else_id in edges:
+        task = db.query(ScheduledTask).filter(ScheduledTask.id == task_id).first()
+        for column, target in (("then_task_id", then_id), ("else_task_id", else_id)):
+            if target and db.query(ScheduledTask.id).filter(ScheduledTask.id == target).first():
+                setattr(task, column, target)
+    for task in made:
+        # A restored schedule runs from now on, not to catch up the time the
+        # backup sat in a drawer.
+        if (task.status or "active") == "active" and (task.trigger_type or "schedule") == "schedule":
+            task.next_run = compute_next_run(task.schedule, task.scheduled_time, task.scheduled_day,
+                                             task.scheduled_date, cron_expression=task.cron_expression,
+                                             tz_name=_resolve_task_timezone(db, task))
+    db.commit()
+    return len(made)
+
+
+def restore_workflows(db, user, workflows) -> tuple:
+    """`(restored, switched_off)` — workflows, by their own ids, after the
+    tasks; an id this install already has is skipped. Each is asked the
+    rule as a save is (`check_document`) and whether a step still waits to be
+    checked (`unchecked_refusal`); one this install refuses — a missing MCP
+    server, say — is restored with its trigger switched OFF, and named with
+    the refusal's sentence. A trigger that is not the importing person's own
+    workflow start is not linked."""
+    from core.database import ScheduledTask, Workflow
+    from src import workflow_store as store
+    from src.workflow_document import (
+        VERSION_SOURCE_RESTORED, DocumentError, parse_graph, unchecked_refusal,
+    )
+    restored, off = 0, []
+    for item in workflows:
+        if not isinstance(item, dict) or not isinstance(item.get("id"), str) or not item["id"]:
+            continue
+        if db.query(Workflow.id).filter(Workflow.id == item["id"]).first() is not None:
+            continue
+        name = store.clean_name(item.get("name"), required=False) or store.NEW_WORKFLOW_NAME
+        graph_in = item.get("graph") if isinstance(item.get("graph"), dict) else {}
+        try:
+            graph, why = parse_graph(graph_in), None
+        except DocumentError as err:
+            graph, why = graph_in, err.refusal.sentence
+        task_id = item.get("task_id") if isinstance(item.get("task_id"), str) else None
+        trigger = (db.query(ScheduledTask).filter(ScheduledTask.id == task_id).first()
+                   if task_id else None)
+        if (trigger is None or (user and trigger.owner != user)
+                or (trigger.task_type or "") != "workflow"
+                or db.query(Workflow.id).filter(Workflow.task_id == task_id).first() is not None):
+            trigger, task_id = None, None
+        version = item.get("version")
+        version = version if isinstance(version, int) and not isinstance(version, bool) \
+            and version >= 1 else 1
+        chain = item.get("source_chain") if isinstance(item.get("source_chain"), str) else None
+        wf = Workflow(id=item["id"], owner=user if user else item.get("owner"), name=name,
+                      task_id=task_id, graph=json.dumps(graph), version=version, source_chain=chain)
+        db.add(wf)
+        db.flush()
+        store._write_version(db, wf, graph, source=VERSION_SOURCE_RESTORED)
+        if why is None:
+            marks = unchecked_refusal(graph)
+            why = marks.sentence if marks is not None else None
+        if why is None:
+            try:
+                store.check_document(db, graph, owner=wf.owner, own_task_id=task_id)
+            except store.WorkflowRefused as refused:
+                why = refused.sentence
+        if trigger is None:
+            why = why or store.LOST_TRIGGER
+        if why and trigger is not None:
+            trigger.status = "paused"
+        if why:
+            off.append({"id": wf.id, "name": name, "why": why})
+        db.commit()
+        restored += 1
+    return restored, off
+
+
 def setup_backup_routes(memory_manager, preset_manager, skills_manager) -> APIRouter:
     router = APIRouter(tags=["backup"])
 
@@ -137,6 +309,25 @@ def setup_backup_routes(memory_manager, preset_manager, skills_manager) -> APIRo
         from routes.prefs_routes import _load_for_user
         preferences = _load_for_user(user)
 
+        # `P22-24`. Tasks and workflows — the backup carried neither. A task
+        # table that cannot be read leaves them out and says so in the file,
+        # rather than taking the memories and settings down with it (`Law 10`:
+        # never an empty list that reads as "there were none").
+        from sqlalchemy.exc import SQLAlchemyError
+        from core.database import SessionLocal
+        tasks = workflows = None
+        not_carried = NOT_CARRIED
+        db = SessionLocal()
+        try:
+            tasks = backup_tasks(db, user)
+            workflows = backup_workflows(db, user)
+        except SQLAlchemyError as err:
+            logger.warning("Backup: tasks and workflows could not be read: %s", err)
+            tasks = workflows = None
+            not_carried = f"{TASKS_UNREADABLE} {NOT_CARRIED}"
+        finally:
+            db.close()
+
         export_data = {
             "version": 1,
             "exported_at": datetime.now().isoformat(),
@@ -148,6 +339,10 @@ def setup_backup_routes(memory_manager, preset_manager, skills_manager) -> APIRo
             "features": features,
             "preferences": preferences,
         }
+        if tasks is not None:
+            export_data["tasks"] = tasks
+            export_data["workflows"] = workflows
+        export_data["not_carried"] = not_carried
 
         filename = f"pantheon_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
         return Response(
@@ -319,14 +514,31 @@ def setup_backup_routes(memory_manager, preset_manager, skills_manager) -> APIRo
             _save_for_user(user, current)
             imported.append("preferences")
 
+        # ── Tasks, then workflows (`P22-24`) ──
+        switched_off = []
+        if isinstance(body.get("tasks"), list) or isinstance(body.get("workflows"), list):
+            from core.database import SessionLocal
+            db = SessionLocal()
+            try:
+                if isinstance(body.get("tasks"), list):
+                    count = restore_tasks(db, user, body["tasks"])
+                    imported.append(f"{count} task{'s' if count != 1 else ''}")
+                if isinstance(body.get("workflows"), list):
+                    count, switched_off = restore_workflows(db, user, body["workflows"])
+                    imported.append(f"{count} workflow{'s' if count != 1 else ''}")
+            finally:
+                db.close()
+
         if not imported:
             return {"ok": False, "message": "No recognized data found in the file"}
 
         message = f"Imported: {', '.join(imported)}"
+        for wf in switched_off:
+            message += f". “{wf['name']}” was restored switched off: {wf['why'].rstrip('.')}"
         if left_alone:
             names = ", ".join(WITHHELD_SETTING_LABELS[k] for k in left_alone)
             message += f". Left as it was: {names} — it pairs again on its own."
         return {"ok": True, "imported": imported, "left_alone": left_alone,
-                "message": message}
+                "switched_off": switched_off, "message": message}
 
     return router
