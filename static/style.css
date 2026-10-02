@@ -47554,3 +47554,235 @@ button.task-card-toggle {
   .wf-picker { left: 8px; right: 8px; width: auto; }
   .wf-approval-dialog { right: 8px; left: 8px; bottom: 8px; width: auto; }
 }
+/* ===== wb-canvas-e — `P22-19`, `P22-20`, `P22-24` (P22 wave E, Slice E) =====
+   *Or describe it* and its example sentences, *Or open a file…*, a step nobody
+   has checked yet (its mark on the canvas, its banner, *Check them now*), what
+   arrived with a drafted or imported workflow and the doors beside what it
+   needs, *Why did this fail?* and its proposed change, and *Export*. Tokens
+   only, no `--accent`, no focus ring of its own (the global one serves), and
+   nothing animates; a state is a shape and a word before a hue: an unchecked
+   step is dashed and says "check me", a checked banner turns solid and says
+   "Checked.", a proposed value that changes where a request goes or came out
+   of the run is barred and said in words. */
+.wb-node[data-unchecked] { border-width: 2px; border-style: dashed; }
+.wb-node[data-unchecked] .wb-node-badge { font-weight: 700; }
+@media (min-width: 769px) {
+  /* The New workflow form takes room for a sentence while it is open. */
+  .wf-shelf:has(.wf-new:not([hidden])) { flex-basis: 300px; }
+}
+.wf-new-describe,
+.wf-new-file-group { display: flex; flex-direction: column; gap: 6px; padding-top: 6px; border-top: 1px solid var(--border); }
+.wf-new-text {
+  width: 100%;
+  min-height: 5.5em;
+  box-sizing: border-box;
+  resize: vertical;
+  font: inherit;
+  font-size: 12px;
+  color: var(--fg);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 8px;
+}
+.wf-new-examples { display: flex; flex-direction: column; gap: 4px; }
+.wf-new-example-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 3px; }
+.wf-new-example {
+  width: 100%;
+  height: auto;
+  padding: 3px 6px;
+  font: inherit;
+  font-size: 11.5px;
+  line-height: 1.35;
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  color: var(--fg);
+  background: none;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.wf-new-example:hover { background: color-mix(in srgb, var(--fg) 7%, transparent); }
+.wf-new-say { margin: 0; font-size: 11.5px; overflow-wrap: anywhere; }
+.wf-new-say:empty { display: none; }
+.wf-new-refusal { padding-left: 6px; font-weight: 600; border-left: 3px solid var(--red); }
+.wf-export,
+.wf-new-draft,
+.wf-new-file,
+.wf-arrived-check,
+.wf-arrived-close,
+.wf-arrived-door,
+.wf-arrived-show,
+.wf-check-open,
+.wf-check-yes,
+.wf-check-all,
+.wf-check-switch,
+.wf-check-close,
+.wf-step-check-yes,
+.wf-why-ask,
+.wf-why-apply,
+.wf-why-undo,
+.wf-why-again,
+.wf-sf-door,
+.wf-need-door,
+.wf-sf-need-door,
+.wf-step-check-need-door,
+.wf-check-need-door {
+  height: auto;
+  font: inherit;
+  font-size: 12px;
+  color: var(--fg);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 10px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.wf-export:hover, .wf-new-draft:hover, .wf-new-file:hover, .wf-arrived-check:hover, .wf-arrived-close:hover,
+.wf-arrived-door:hover, .wf-arrived-show:hover, .wf-check-open:hover, .wf-check-yes:hover, .wf-check-all:hover,
+.wf-check-switch:hover, .wf-check-close:hover, .wf-step-check-yes:hover, .wf-why-ask:hover, .wf-why-apply:hover,
+.wf-why-undo:hover, .wf-why-again:hover, .wf-sf-door:hover, .wf-need-door:hover, .wf-sf-need-door:hover,
+.wf-step-check-need-door:hover, .wf-check-need-door:hover { background: color-mix(in srgb, var(--fg) 8%, var(--panel)); }
+.wf-new-draft,
+.wf-arrived-check,
+.wf-check-yes,
+.wf-check-all,
+.wf-check-switch,
+.wf-step-check-yes,
+.wf-why-apply { font-weight: 600; }
+.wf-new-draft,
+.wf-new-file { align-self: flex-start; }
+.wf-sf-door { margin-left: 6px; }
+/* What a step needs, with its door: on its banner, its field, and the lists. */
+.wf-need,
+.wf-sf-need,
+.wf-step-check-need,
+.wf-check-need,
+.wf-arrived-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  margin: 2px 0;
+  font-size: 11.5px;
+  overflow-wrap: anywhere;
+}
+.wf-sf-need,
+.wf-step-check-need,
+.wf-check-need { padding-left: 6px; border-left: 3px dashed var(--warn); }
+.wf-need-text,
+.wf-sf-need-text,
+.wf-step-check-need-text,
+.wf-check-need-text,
+.wf-arrived-text { flex: 1 1 220px; min-width: 0; }
+/* What arrived: a drafted or imported workflow, on top of its canvas. */
+.wf-arrived,
+.wf-check {
+  margin: 6px 10px 0;
+  padding: 8px 10px;
+  max-height: 40vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--fg);
+  background: var(--panel);
+  border-radius: 8px;
+}
+.wf-arrived { border: 1px dashed var(--fg); }
+.wf-check { border: 2px solid var(--fg); }
+.wf-arrived-head,
+.wf-check-head { margin: 0; font-weight: 700; font-size: 13px; }
+.wf-arrived-lede,
+.wf-check-lede,
+.wf-arrived-sub { margin: 0; overflow-wrap: anywhere; }
+.wf-arrived-sub { font-weight: 600; }
+.wf-arrived-destinations,
+.wf-arrived-missing,
+.wf-check-plan,
+.wf-step-check-plan { margin: 0; padding-left: 18px; overflow-wrap: anywhere; }
+.wf-arrived-missing { padding-left: 0; list-style: none; }
+.wf-arrived-buttons,
+.wf-check-buttons,
+.wf-check-foot,
+.wf-step-check-buttons,
+.wf-why-buttons { display: flex; flex-wrap: wrap; gap: 6px; }
+/* Check them now: one row per step. */
+.wf-check-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
+.wf-check-step { display: flex; flex-direction: column; gap: 3px; padding: 6px 8px; border: 1px dashed var(--border); border-radius: 6px; }
+.wf-check-step[data-checked="true"] { border-style: solid; }
+.wf-check-name { margin: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; }
+.wf-check-label { font-weight: 700; overflow-wrap: anywhere; }
+.wf-check-origin,
+.wf-check-note,
+.wf-check-wait,
+.wf-step-check-wait { font-size: 11px; color: var(--color-muted-alt); }
+.wf-check-note { margin: 0; }
+.wf-check-said { margin: 0; font-weight: 600; }
+.wf-check-said:empty { display: none; }
+.wf-check-foot { padding-top: 4px; border-top: 1px solid var(--border); }
+/* A step's banner while nobody has checked it. */
+.wf-step-check {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 8px;
+  padding: 8px;
+  font-size: 12px;
+  border: 2px dashed var(--fg);
+  border-radius: 6px;
+}
+.wf-step-check[data-checked="true"] { border-style: solid; }
+.wf-step-check-head { margin: 0; font-weight: 700; }
+.wf-step-check-note,
+.wf-step-check-sub { margin: 0; overflow-wrap: anywhere; }
+.wf-step-check-sub { font-weight: 600; }
+.wf-step-check-said { margin: 0; font-size: 11.5px; }
+.wf-step-check-said:empty { display: none; }
+.wf-step-check-refusal { font-weight: 600; padding-left: 6px; border-left: 3px solid var(--red); }
+/* Why did this fail? — under a failed step's record. */
+.wf-why { display: flex; flex-direction: column; gap: 4px; margin: 6px 0; }
+.wf-record-item .wf-why { grid-column: 1 / -1; font-weight: normal; }
+.wf-why-ask { align-self: flex-start; }
+.wf-why-said { margin: 0; font-size: 11.5px; }
+.wf-why-said:empty { display: none; }
+.wf-why-refusal { font-weight: 600; padding-left: 6px; border-left: 3px solid var(--red); }
+.wf-why-answer { display: flex; flex-direction: column; gap: 4px; padding: 8px; border: 1px solid var(--border); border-radius: 6px; }
+.wf-why-head { margin: 0; font-weight: 700; }
+.wf-why-note,
+.wf-why-model { margin: 0; font-size: 11px; color: var(--color-muted-alt); overflow-wrap: anywhere; }
+.wf-why-text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; padding-left: 8px; border-left: 3px solid var(--border); }
+.wf-why-sub { margin: 4px 0 0; font-weight: 600; }
+.wf-why-changes,
+.wf-why-left { margin: 0; padding-left: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; }
+.wf-why-left { padding-left: 18px; list-style: disc; overflow-wrap: anywhere; }
+.wf-why-change { padding: 6px; border: 1px dashed var(--border); border-radius: 6px; }
+.wf-why-field { margin: 0 0 2px; font-weight: 700; overflow-wrap: anywhere; }
+.wf-why-diff { display: grid; grid-template-columns: auto 1fr; gap: 2px 8px; align-items: baseline; }
+.wf-why-label { font-size: 11px; color: var(--color-muted-alt); white-space: nowrap; }
+.wf-why-before,
+.wf-why-after {
+  margin: 0;
+  padding: 2px 6px;
+  font-size: 11.5px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.wf-why-before { text-decoration: line-through; text-decoration-thickness: 1px; }
+.wf-why-after { font-weight: 600; }
+.wf-why-where,
+.wf-why-from-run { margin: 2px 0 0; font-size: 11.5px; font-weight: 600; padding-left: 6px; border-left: 3px dashed var(--warn); }
+.wf-why-applied { margin: 0; font-weight: 600; }
+.wf-why-applied:empty { display: none; }
+.wf-why-apply-row { display: flex; flex-direction: column; gap: 4px; }
+@media (max-width: 768px) {
+  .wf-arrived,
+  .wf-check { margin: 6px 8px 0; max-height: 46vh; }
+  .wf-why-diff { grid-template-columns: 1fr; }
+}
