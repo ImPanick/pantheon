@@ -652,6 +652,17 @@ class ToolApprovalStore:
             return self._ttl_seconds
         return resolve_approval_ttl_seconds(owner)
 
+    def _card_ttl_seconds(self, owner: Any, asked: Any) -> int:
+        """`create`'s `ttl_seconds`, clamped to the store's bounds; the
+        store's own deadline when none (or no number) was asked for."""
+        if asked is None or isinstance(asked, bool):
+            return self.ttl_seconds(owner)
+        try:
+            value = int(asked)
+        except (TypeError, ValueError, OverflowError):
+            return self.ttl_seconds(owner)
+        return max(MIN_APPROVAL_TTL_SECONDS, min(MAX_APPROVAL_TTL_SECONDS, value))
+
     def _purge_expired_locked(self, now: float) -> list[PendingToolApproval]:
         """Drop every lapsed approval and return them, for announcing.
 
@@ -721,6 +732,7 @@ class ToolApprovalStore:
         taint_trail: Any = None,
         runs_in: Any = None,
         continuation_turn: Any = None,
+        ttl_seconds: Any = None,
     ) -> PendingToolApproval:
         """`gate_decision` and `taint_trail` are display-only (`P7-07`,
         `P7-08`). Both default to nothing so the producers that have no run
@@ -729,7 +741,17 @@ class ToolApprovalStore:
         `runs_in` (`B967`) is display-only in the same way and defaults the
         same way: the card says "on this machine" unless told otherwise.
         `continuation_turn` (`B1069`) is the interrupted turn's own record,
-        outside the seal for the reason given on the field."""
+        outside the seal for the reason given on the field.
+
+        `ttl_seconds` (`D-2026-10-02-01` §1): this card's deadline, when the
+        caller has its own — a workflow step's question waits
+        `workflow_approval_timeout_seconds` (12 h) while a chat card keeps
+        the operator's `approval_timeout_seconds`. `None` (every existing
+        caller) is the store's deadline, exactly as before. A number is clamped
+        to `MIN_APPROVAL_TTL_SECONDS`…`MAX_APPROVAL_TTL_SECONDS`, the bounds
+        the setting itself resolves within: the TTL is `FORBIDDEN.md` Part 2's,
+        so no caller can name a card that never lapses (`0`) or one that waits
+        a week. Anything that is not a number is the store's deadline."""
         now = time.time()
         effects = tuple(sorted(effect.value for effect in capabilities.effects))
         result_integrity = capabilities.result_integrity.value
@@ -767,7 +789,7 @@ class ToolApprovalStore:
             result_integrity=result_integrity,
             digest=_canonical_digest(payload),
             created_at=now,
-            expires_at=now + self.ttl_seconds(owner),
+            expires_at=now + self._card_ttl_seconds(owner, ttl_seconds),
             selected_tools=tuple(payload["selected_tools"]),
             continuation_query=payload["continuation_query"],
             requested_round=_coerced_round(requested_round),

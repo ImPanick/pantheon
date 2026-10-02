@@ -4871,8 +4871,14 @@ async def stream_agent_loop(
     suppress_skills: bool = False,
     loop_caps_source: str = CAPS_FROM_CALLER,
     explicit_params=frozenset(),
+    approval_ttl_seconds: Optional[int] = None,
 ) -> AsyncGenerator[str, None]:
     """Streaming agent loop generator.
+
+    ``approval_ttl_seconds`` (`D-2026-10-02-01` §1) is how long a card this
+    run mints waits — a workflow step's question waits
+    ``workflow_approval_timeout_seconds``. ``None`` is the store's own deadline,
+    which every chat run keeps; the store clamps any number to its bounds.
 
     ``explicit_params`` names the sampling parameters the person chose
     (`P2-13`); the chat route passes its preset's. With ``"temperature"`` in it
@@ -7926,6 +7932,10 @@ async def stream_agent_loop(
                             round_num=round_num,
                             resumed_from=exact_approval,
                         ),
+                        # `D-2026-10-02-01` §1. The caller's deadline for this
+                        # card (a workflow step's), clamped by the store; None
+                        # is the store's own, as for every chat card.
+                        ttl_seconds=approval_ttl_seconds,
                     )
                     desc = f"{block.tool_type}: APPROVAL REQUIRED"
                     result = {
