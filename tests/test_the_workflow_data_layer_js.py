@@ -604,3 +604,43 @@ def test_a_run_is_drawn_read_only_with_each_steps_outcome_and_the_step_it_failed
     assert o["words"] == "This run, step by step"
     assert o["positions"] == [["__start__", {"x": 5, "y": 5}]]
     assert o["writes"] == []
+
+
+def test_a_cleared_runs_step_says_it_was_cleared_in_the_servers_words(box):
+    """The wave C seam between wf-api's source and wf-ui's record panel: the
+    panel tells a cleared run's step from one the run never reached by
+    `run.cleared`, which is the run REPLY's (`GET /runs/{id}` → `cleared`,
+    `cleared_sentence`), not the run row's. The source handed the row alone,
+    so every step of a cleared run said "not reached" (`Law 10`), and the
+    panel's own sentence typed "30 days" whatever the window was set to. The
+    real source drives the real panel here."""
+    o = _case(box, """
+        const { installDom } = await import('./dom.js');
+        installDom();
+        const { createWorkflowPanels } = await import('./workbench/workflowPanels.js');
+        const said = 'Its step details were cleared after 7 days (workflow_node_records_days).';
+        const run = (cleared) => ({
+          run: { id: 'r1', status: 'success', steps: [{ kind: 'node', node: 'n1' }] },
+          version: 2, version_kept: true, cleared, cleared_sentence: cleared ? said : null,
+          graph: { v: 1, start: { position: null }, nodes: [node('n1', 'llm', 'Summarise my inbox')], edges: [] },
+          nodes: [],
+        });
+        const texts = (host) => host._walk([]).filter((n) => n.className === 'wf-record-note').map((n) => n.textContent);
+        const panels = createWorkflowPanels({ mountTaskFields: () => ({ destroy() {} }) });
+        const shown = {};
+        for (const cleared of [true, false]) {
+          server.execution = run(cleared);
+          const s = source({ mode: 'run', runId: 'r1', panels });
+          await s.ready;
+          await s.load();
+          const host = document.createElement('div');
+          s.openPanel(host, { id: 'n1' }, {});
+          shown[cleared] = { note: texts(host), empty: s.words.emptyText || null };
+        }
+        out(shown);
+    """)
+    assert o["true"]["note"] == ["Its step details were cleared after 7 days (workflow_node_records_days)."]
+    assert o["true"]["empty"].startswith("Its step details were cleared after 7 days")
+    assert o["false"]["note"] == [
+        "This step was not reached in this run, so it was handed nothing and made nothing."]
+    assert not o["false"]["empty"]

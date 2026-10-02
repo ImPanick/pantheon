@@ -136,7 +136,7 @@ export function createWorkflowApi({ fetch } = {}) {
       return call('POST', `/api/workflows/${enc(id)}/restore-chain`);
     },
     /** One run, every step (`P22-07`).
-     *  → `{ run, version, version_kept, graph, nodes: [NodeRecord], cleared }` */
+     *  → `{ run, version, version_kept, graph, nodes: [NodeRecord], cleared, cleared_sentence }` */
     getExecution(id, runId) {
       return call('GET', `/api/workflows/${enc(id)}/runs/${enc(runId)}`);
     },

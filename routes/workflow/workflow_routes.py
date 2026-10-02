@@ -320,10 +320,14 @@ def setup_workflow_routes(task_scheduler) -> APIRouter:
         own step log says steps ran, it ended longer ago than records are
         kept, and they are not there — which a person is told, rather than
         shown a run that seems to have done nothing (`Law 10`).
+        `cleared_sentence` is what they are told: the engine's
+        `records_cleared_sentence()`, naming the window as it is set (added at
+        the wave C merge — the panel had typed "30 days" itself, which was
+        false once the setting was changed).
         """
         from core.database import TaskRun, TaskRunNode
         from routes.task.task_routes import _run_to_dict
-        from src.workflow_runs import node_record_to_dict
+        from src.workflow_runs import node_record_to_dict, records_cleared_sentence
         db = SessionLocal()
         try:
             wf = store.owned_workflow(db, workflow_id, _owner(request))
@@ -336,13 +340,15 @@ def setup_workflow_routes(task_scheduler) -> APIRouter:
                     .order_by(TaskRunNode.seq, TaskRunNode.attempt).all())
             version = next((r.workflow_version for r in recs if r.workflow_version is not None), None)
             graph, kept = store.graph_of_version(db, wf, version)
+            cleared = not recs and store.records_were_cleared(run)
             return {
                 "run": _run_to_dict(run),
                 "version": version,
                 "version_kept": kept,
                 "graph": graph,
                 "nodes": [node_record_to_dict(r) for r in recs],
-                "cleared": not recs and store.records_were_cleared(run),
+                "cleared": cleared,
+                "cleared_sentence": records_cleared_sentence() if cleared else None,
             }
         finally:
             db.close()
