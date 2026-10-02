@@ -122,9 +122,9 @@ const MEASURE = () => [...document.querySelectorAll('#skills-list .skill-card[da
            nameBox: Math.round(n.width), drawn: Math.round(drawn), text: Math.round(text),
            clipped: nameEl.scrollHeight > nameEl.clientHeight + 1,
            pillsBesideName: right.top < n.bottom - 1,
-           clusterInside: right.right <= c.getBoundingClientRect().right + 0.5
-             && [...c.querySelectorAll('.skill-card-right > *')].every((p) =>
-               p.getBoundingClientRect().right <= c.getBoundingClientRect().right + 0.5) };
+           clusterInside: [right, ...[...c.querySelectorAll('.skill-card-right > *')]
+               .map((p) => p.getBoundingClientRect())].filter((r) => r.width > 0 && r.height > 0).every((r) =>
+             r.right <= c.getBoundingClientRect().right + 0.5 && r.left >= c.getBoundingClientRect().left - 0.5) };
 });
 (async () => {
   const browser = await chromium.launch({ args: ['--no-sandbox'] });
@@ -184,6 +184,8 @@ def test_a_card_with_four_pills_shows_its_name_at_phone_width(measured, width):
         assert c["drawn"] == c["text"] > 0, f"the name is not all drawn inside its box: {c}"
         assert not c["clipped"], c
         assert c["clusterInside"] is True, f"the pills run past the card: {c}"
+        # The design, not only its result: the cluster moved under the name.
+        assert c["pillsBesideName"] is False, c
 
 
 def test_a_one_pill_card_keeps_one_line_at_phone_width(measured):

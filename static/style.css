@@ -20142,13 +20142,13 @@ body:not(.email-doc-split-active) #email-lib-modal.email-lib-fullscreen:not(.mod
    could neither shrink nor move: measured in Chromium, four pills made the
    cluster 358px, and on a 370px card (the Workbench's Skills room at 440px) or
    a 342px one (the window at 390px) every duplicate's name box was 0px wide.
-   The name now keeps 10rem (or the whole card, if narrower) and the header
-   wraps, so the cluster moves under the name instead of over it. 10rem, not
-   more: a one-pill card still fits on one line at 390px (measured: 12rem
-   wrapped every card there). */
+   The name's basis is now 10rem and the header wraps, so when the cluster
+   does not fit beside 10rem of name it moves under the name instead of over
+   it. 10rem, not more: a one-pill card still fits on one line at 390px
+   (measured: 12rem wrapped every card there). */
 .skill-card-textcol {
   flex: 1 1 10rem;
-  min-width: min(10rem, 100%);
+  min-width: 0;
   overflow: hidden;
 }
 .skill-card-name {
