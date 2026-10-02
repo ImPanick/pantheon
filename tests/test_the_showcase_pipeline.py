@@ -397,7 +397,7 @@ def test_a_chat_that_leaves_the_script_is_refused(seeded):
 
 
 def test_a_plain_conversation_answers_the_workbenchs_plain_requests_and_side_requests_stay_ok():
-    """`integrate-e` (wb-canvas-e's `B-NEW-2`). The drafter and *Why did this
+    """`integrate-e` (`B1133`). The drafter and *Why did this
     fail?* ask one plain request — not streamed, no tools — and the stand-in
     answered every such request "OK", so neither could be scripted. A
     conversation marked `plain` now answers its own plain requests with the

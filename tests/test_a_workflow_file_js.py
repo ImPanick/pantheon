@@ -268,7 +268,7 @@ def test_open_a_file_posts_it_and_the_import_opens_off_marked_with_what_is_missi
     assert [line[0] for line in o["lines"]] == reply["missing"], "each missing line, as the server wrote it"
     assert reply["missing"][0] == ("“Fetch unread” uses an Integration called “Miniflux” (miniflux). Add it in "
                                    "MCP & Integrations, then pick it on the step."), \
-        "the server's line names the room its door opens (wb-canvas-e's B-NEW-4)"
+        "the server's line names the room its door opens (`B1135`)"
     for text, node, doors in o["lines"]:
         if "Miniflux" in text:
             assert (node, doors) == ("fetch-unread", [["Open MCP & Integrations", "integrations"], ["Show the step", None]])
@@ -363,7 +363,7 @@ def test_the_versions_list_says_the_three_new_sources_in_words(box, two):
 def test_a_step_with_nothing_to_pick_names_the_room_and_its_door_opens_it(box, monkeypatch, tmp_path):
     """The MCP step's form said "Add a server in Settings → MCP" — a place that
     does not exist (design § 0.6) — and the HTTP step's "Add one in Settings →
-    Integrations" (wb-rooms' B-NEW-8). Both name the room, and both open it
+    Integrations" (`B1126`). Both name the room, and both open it
     (`integrate-e` gave the HTTP hint the door the MCP hint had). The steps were
     saved while the server and the Integration existed; an admin removed them."""
     from tests.helpers.assist_harness import build_world, miniflux

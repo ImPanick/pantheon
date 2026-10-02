@@ -538,7 +538,7 @@ def setup_mcp_routes(mcp_manager: McpManager):
                 "check": check, "registration": made["registration"],
                 "agent_refusal": made["agent_refusal"]}
 
-    # `integrate-e` (the integrator's call on mcp-build's `B-NEW-2`): a
+    # `integrate-e` (the integrator's call on `B1129`): a
     # registration pins the code (`workstation_mcp.PIN_FLAG`), and once a
     # server is registered only a person changes its code here — the
     # assistant's `app_api` loopback is refused (a bearer token already is,

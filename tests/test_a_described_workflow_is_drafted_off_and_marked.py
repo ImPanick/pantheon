@@ -103,7 +103,7 @@ async def test_a_description_becomes_three_steps_switched_off_and_marked(world, 
     wf, _graph, trigger = stored(w.factory, doc["id"])
     assert trigger.status == "paused" and trigger.webhook_token != "forged-token"
     assert trigger.tz_name == "Europe/London"
-    # `integrate-e` (wb-canvas-e's B-NEW-3): only where things are sent — the If
+    # `integrate-e` (`B1134`): only where things are sent — the If
     # and the summary send nothing anywhere, so the one line is the post's, the
     # tool named as its panel names it, and the channel only a person types.
     assert body["destinations"] == ["“Post to #dev” sends to Chat: send_message — channel: #dev."]

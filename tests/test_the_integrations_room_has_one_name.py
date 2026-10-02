@@ -56,7 +56,7 @@ def test_the_browser_and_the_server_name_the_rooms_alike():
 
 
 def _sentences() -> dict:
-    import src.agent_tools  # noqa: F401 — `tool_schemas` imports it first (B-NEW-3)
+    import src.agent_tools  # noqa: F401 — `tool_schemas` imports it first (`B1118`)
     from src import mail_auth, mcp_scaffold, workflow_effects, workstation_mcp
     from src.tools.system import do_app_api
 
@@ -92,7 +92,7 @@ def test_every_sentence_that_sends_a_person_to_the_room_names_it(which):
 
 def test_an_imports_missing_line_names_the_room_its_door_opens(tmp_path, monkeypatch):
     """The server's missing line and the browser's door (`NEED_DOORS`, "Open
-    MCP & Integrations") name one place — wb-canvas-e's `B-NEW-4`."""
+    MCP & Integrations") name one place — `B1135`."""
     from tests.helpers.assist_harness import PERSON, build_world, miniflux
     from tests.helpers.walker_harness import client_for
 

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""`P22-19`, the integrator's call on wb-assist's `B-NEW-2` (`integrate-e`) — a
+"""`P22-19`, the integrator's call on `B1117` (`integrate-e`) — a
 step's `unchecked` mark clears only by a person.
 
 **Measured before this file, on the merged tree `0b9adaa`:** `_marks_kept`
@@ -118,7 +118,7 @@ def _origins(w, wf_id):
 
 
 async def test_the_assistant_touching_every_step_leaves_each_marked_and_the_switch_refused(world):
-    """wb-assist's `B-NEW-2`, the attack itself: draft, touch each step through
+    """`B1117`, the attack itself: draft, touch each step through
     `app_api`, resume. Every step is still unchecked — now the assistant's —
     and both the switch and `manage_tasks resume` refuse."""
     from src.tools.system import do_manage_tasks

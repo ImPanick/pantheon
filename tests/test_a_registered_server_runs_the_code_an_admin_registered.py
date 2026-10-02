@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""`P22-22`, the integrator's call on mcp-build's `B-NEW-2` (`integrate-e`) — a
+"""`P22-22`, the integrator's call on `B1129` (`integrate-e`) — a
 registration pins the code an admin approved.
 
 **Measured before this file, on the merged tree `0b9adaa`:** a registered

@@ -2840,7 +2840,7 @@ async function _showCalSettings() {
 
   // Integrations link — close this overlay and open the Workbench's MCP &
   // Integrations room (`P22-21`: `settings.open('integrations')` opens it; the
-  // link names it — `integrate-e`, wb-rooms' `B-NEW-8`).
+  // link names it — `integrate-e`, `B1126`).
   overlay.querySelector('#cal-settings-open-caldav')?.addEventListener('click', (e) => {
     e.preventDefault();
     cleanup();

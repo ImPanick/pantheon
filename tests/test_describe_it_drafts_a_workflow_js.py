@@ -148,7 +148,7 @@ def test_the_describe_box_posts_describe_and_tz_and_the_draft_opens_marked_and_o
     assert o["switchWord"] == "Off"
     assert o["arrived"]["head"] == "Drafted by the model"
     assert o["arrived"]["lede"].startswith("It is switched off, and each step is marked “check me”")
-    # `integrate-e` (wb-canvas-e's B-NEW-3): one line, only where it sends things.
+    # `integrate-e` (`B1134`): one line, only where it sends things.
     assert reply["destinations"] == ["“Post to #dev” sends to Chat: send_message — channel: #dev."]
     assert o["arrived"]["where"] == ["".join(reply["destinations"])], "where it sends things, in the server's words"
     assert o["arrived"]["buttons"] == ["Check them now", "Close"]
@@ -325,7 +325,7 @@ def test_a_step_changed_in_the_draft_is_the_persons_and_drops_its_mark_before_sa
 
 
 def test_a_step_the_assistant_changed_reads_as_its_and_waits_for_a_person(box, live):
-    """`integrate-e` (the integrator's call on wb-assist's B-NEW-2): a person
+    """`integrate-e` (the integrator's call on `B1117`): a person
     checked every step; the assistant then changed one through the save route
     (its loopback — not a person). That step is marked again, origin
     `assistant`, and the room says so in words — on the canvas, on its banner,

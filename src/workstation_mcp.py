@@ -103,7 +103,7 @@ WS_FOLDER = "mcp-servers"
 RELAY_PATH = os.path.abspath(__file__)
 OWNER_FLAG = "--owner"
 SERVER_FLAG = "--server"
-#: `integrate-e` (the integrator's call on mcp-build's `B-NEW-2`): the
+#: `integrate-e` (the integrator's call on `B1129`): the
 #: fingerprint of the server's code as it was when an admin registered it
 #: (`PROBE_HARNESS`'s `fingerprint`). Stored in `mcp_servers.args`; the relay
 #: runs nothing whose code no longer matches it.

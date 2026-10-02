@@ -285,7 +285,7 @@ CONVERSATIONS.append({"key": "describe", "needs": "drafter", "plain": True, "tit
 # (measured: the agent's own rounds always stream), and they are answered
 # plainly so nothing is invented: the script's title, no facts, no skill.
 #
-# `integrate-e` (wb-canvas-e's `B-NEW-2`): the Workbench's drafter (`P22-19`)
+# `integrate-e` (`B1133`): the Workbench's drafter (`P22-19`)
 # and *Why did this fail?* (`P22-20`) ask a model the same way — one plain,
 # non-streaming request with no tools, through `workflow_assist.ask_for_json` —
 # and every such request was answered "OK", so neither could be scripted and

@@ -177,7 +177,7 @@ WORKFLOW_VERSION_SOURCES = (VERSION_SOURCE_USER, VERSION_SOURCE_CONVERTED, VERSI
 # one by whoever wrote the file, so the mark keeps that premise true until a
 # person has looked. The key, and the origins, are stored values.
 #
-# `integrate-e` (wb-assist's `B-NEW-2`, the integrator's call): a mark clears
+# `integrate-e` (`B1117`, the integrator's call): a mark clears
 # only by a PERSON — their *Looks right*, or their own save of that step. A
 # change to a step by anything that is not a person (the assistant through
 # `app_api`, an API token: `request_is_a_person` false) marks that step
@@ -2063,7 +2063,7 @@ def _sends(node: dict, resources: WorkflowResources) -> list:
 def destination_lines(graph: dict, resources: WorkflowResources | None = None) -> list:
     """`P22-19` / `P22-24` (`SLICE-EF-DESIGN` § 1.6). Where a document would
     send something, one line per step that sends — and only those (`integrate-e`,
-    wb-canvas-e's `B-NEW-3`: this was every step's whole `plan_lines`, so a
+    `B1134`: this was every step's whole `plan_lines`, so a
     three-step draft answered three paragraphs about conditions and prompts,
     and the one line that mattered was hard to find). What a drafted or
     imported workflow answers as `destinations`, so a destination the model or

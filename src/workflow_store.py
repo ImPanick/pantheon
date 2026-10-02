@@ -610,7 +610,7 @@ def _marks_kept(graph: dict, before: dict, *, by_person: bool) -> dict:
           - anything else's change (the assistant through `app_api`, an API
             token) marks it `assistant`, even a step a person had checked.
 
-    `integrate-e`, the integrator's call on wb-assist's `B-NEW-2`: a mark
+    `integrate-e`, the integrator's call on `B1117`: a mark
     clears only by a person. Before, any change cleared it, so the assistant
     could touch each drafted step through `PUT /api/workflows/{id}` and then
     `manage_tasks resume` — the draft ran with nobody pressing *Looks right*.

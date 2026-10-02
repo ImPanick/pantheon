@@ -272,7 +272,7 @@ def test_build_draws_into_the_same_form_element_and_register_comes_back_to_it(bo
 
 
 def test_register_again_after_an_edit_is_the_same_rows_edit_with_the_new_fingerprint(box):
-    """`integrate-e` (the integrator's call on mcp-build's B-NEW-2). A
+    """`integrate-e` (the integrator's call on `B1129`). A
     registration pins the code (`--sha256`); after the author changes it the
     relay runs nothing until an admin registers it again. *Register* on a build
     already registered for that author and folder opens THAT row's Edit (the

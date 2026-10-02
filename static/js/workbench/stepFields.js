@@ -551,7 +551,7 @@ function buildHttp(ctx) {
   const { body, cfg, palette } = ctx;
   const integrations = palette && Array.isArray(palette.integrations) ? palette.integrations : [];
   // `integrate-e`: these two said "Settings → Integrations" — the card is the
-  // Workbench's MCP & Integrations room since `P22-21` (wb-rooms' `B-NEW-8`).
+  // Workbench's MCP & Integrations room since `P22-21` (`B1126`).
   body.appendChild(_el('p', 'wf-sf-lede', `Calls a service you set up in ${ROOM_NAMES.integrations}. Its address and key are never `
     + 'shown here: Pantheon adds them when the step runs.'));
   if (!integrations.length) {

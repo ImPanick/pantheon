@@ -47,7 +47,7 @@ from types import SimpleNamespace
 from src.workflow_assist import INSTALL_FIELDS
 # Where a missing thing is added, in the tab strip's words (`integrate-e`: these
 # said "Integrations" and "Connect that server" beside the browser's door
-# "Open MCP & Integrations" — wb-canvas-e's `B-NEW-4`).
+# "Open MCP & Integrations" — `B1135`).
 from src.workbench_rooms import INTEGRATIONS_ROOM, SKILLS_ROOM
 
 # Stored in every file (`FORBIDDEN.md` Part 1 at the merge): the key, and the
