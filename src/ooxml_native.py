@@ -2,7 +2,7 @@
 """Dependency-free `.docx` and `.xlsx` readers, written to give the server the
 document the Library's browser converters give.
 
-`B-NEW` (f-import: on a default install one `.docx` is two documents and one
+`B1156` (f-import: on a default install one `.docx` is two documents and one
 `.xlsx` a document or a refusal, depending on the door). markitdown is optional
 and the default image does not install it, and `python-docx` is not in
 `requirements.txt`. Measured with LibreOffice's files
@@ -87,7 +87,12 @@ def _toggle(el) -> bool:
     """`w:b` / `w:i`: present and not switched off."""
     if el is None:
         return False
-    return el.get(W + "val") not in ("0", "false", "off")
+    # flag-spelling: not ours. `w:val` is the document's own XML (ECMA-376
+    # `ST_OnOff`), and the words that switch a run's bold or italic off are the
+    # ones mammoth — the Library's converter — honours: `readBooleanElement`
+    # reads anything but "false" and "0" as on. "off" was read as off here too
+    # until the release gate asked; now both doors bold the same run.
+    return el.get(W + "val") not in ("0", "false")
 
 
 def docx_markdown(path: str) -> str | None:
@@ -563,7 +568,11 @@ def xlsx_sheets(path: str):
         if wb is None:
             return None
         pr = wb.find(S + "workbookPr")
-        date1904 = pr is not None and (pr.get("date1904") or "").lower() in ("1", "true")
+        # flag-spelling: not ours. `date1904` is the workbook's own XML
+        # attribute, and SheetJS (the Library's reader) judges it with its
+        # `parsexmlbool`: exactly "1" or "true" is yes, case and all. Lowering
+        # the case first would date a `TRUE` workbook four years from SheetJS.
+        date1904 = pr is not None and pr.get("date1904") in ("1", "true")
         shared = []
         sst = _part(z, "xl/sharedStrings.xml") if "xl/sharedStrings.xml" in names else None
         if sst is not None:

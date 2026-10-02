@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""`B-NEW` (f-import) — on a default install, one `.docx` and one `.xlsx` are
+"""`B1156` (f-import) — on a default install, one `.docx` and one `.xlsx` are
 the same document whichever door they come through.
 
 Measured by `f-import` and again here on the tree before this row, with
@@ -55,6 +55,23 @@ ROOT = Path(__file__).resolve().parents[1]
 DOCLIB = (ROOT / "static" / "js" / "documentLibrary.js").read_text(encoding="utf-8")
 LIB = ROOT / "static" / "lib"
 
+def _edited(body: bytes, part: str, *swaps) -> bytes:
+    """*body* with *part*'s XML edited by hand: each `(old, new)` once, in order."""
+    import io
+    import zipfile
+
+    src, out = zipfile.ZipFile(io.BytesIO(body)), io.BytesIO()
+    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
+        for info in src.infolist():
+            data = src.read(info.filename)
+            if info.filename == part:
+                for old, new in swaps:
+                    assert old in data, old
+                    data = data.replace(old, new, 1)
+            z.writestr(info, data)
+    return out.getvalue()
+
+
 FILES = {
     "Q3 Board Pack.docx": office_fixture(".docx"),
     "Board minutes.docx": office_sample("structured.docx"),
@@ -62,6 +79,17 @@ FILES = {
     "Formats.xlsx": office_sample("formats.xlsx"),
     "Ledger 2026.xlsx": office_sample("ledger.xlsx"),
 }
+# The spellings the two readers could judge apart (the release gate's
+# VOCABULARY rule asked whose they are): `w:val="off"` on a bold run — mammoth
+# switches bold off only for "false" and "0" — and `w:val="false"`; an empty
+# heading, which mammoth drops; `date1904="TRUE"`, which SheetJS's
+# `parsexmlbool` does not read as yes.
+FILES["Board minutes, edited by hand.docx"] = _edited(
+    FILES["Board minutes.docx"], "word/document.xml",
+    (b"<w:b/>", b'<w:b w:val="off"/>'), (b"<w:b/>", b'<w:b w:val="false"/>'),
+    (b"<w:body>", b'<w:body><w:p><w:pPr><w:pStyle w:val="Heading2"/></w:pPr></w:p>'))
+FILES["Formats, edited by hand.xlsx"] = _edited(
+    FILES["Formats.xlsx"], "xl/workbook.xml", (b'date1904="false"', b'date1904="TRUE"'))
 
 _CONVERT = r"""
 const { chromium } = require('playwright');
@@ -189,6 +217,23 @@ def test_a_one_sheet_workbook_is_one_document_at_every_door(env, monkeypatch, li
         assert OFFICE_SENTINEL in lib.current_content
 
 
+def test_a_spelling_the_xml_allows_reads_as_the_library_reads_it(env, monkeypatch, library):  # noqa: F811
+    """The file's own yes/no words are judged the way the Library's converter
+    judges them, and mammoth's dropped empty heading stays dropped."""
+    _without_markitdown(monkeypatch)
+    for name in ("Board minutes, edited by hand.docx", "Formats, edited by hand.xlsx"):
+        [lib] = _library_documents(env, name, library[name])
+        doors = _server_documents(env, monkeypatch, name, FILES[name])
+        for door, doc in doors.items():
+            assert _shape(doc) == _shape(lib), (name, door)
+        lines = lib.current_content.splitlines()
+        if name.endswith(".docx"):
+            assert "Held on **2 October**, chaired by *Rowan Ames*. STRUCTSENTINEL7c1" in lines
+            assert "Signed, *the secretary*." in lines and "##" not in [s.strip() for s in lines]
+        else:
+            assert lines[0].startswith("2026-10-02,14 Mar 2026,"), lines[0]
+
+
 def test_a_workbook_of_several_sheets_is_the_librarys_sheets_in_one_document(
         env, monkeypatch, library):  # noqa: F811
     """The Library makes one `csv` document per sheet; a server door answers
@@ -308,3 +353,30 @@ def test_a_hostile_or_broken_part_reads_as_nothing_and_says_so(env, monkeypatch,
     assert ox.docx_markdown(str(tmp_path / "big.docx")) is None
     (tmp_path / "big.xlsx").write_bytes(good)
     assert ox.xlsx_text(str(tmp_path / "big.xlsx")) is None
+
+
+def test_a_part_that_inflates_past_the_limit_is_not_read_past_it(tmp_path, monkeypatch):
+    """`PART_LIMIT` bounds the memory, not only the answer: a part that
+    inflates to 48 MiB of blanks (a zip of a few kilobytes) is read to the
+    limit and no further. Measured with `tracemalloc` around the read."""
+    import tracemalloc
+    import zipfile
+
+    import src.ooxml_native as ox
+
+    monkeypatch.setattr(ox, "PART_LIMIT", 1 << 20)
+    path = tmp_path / "inflates.docx"
+    with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:
+        with z.open("word/document.xml", "w") as fh:
+            fh.write(b'<?xml version="1.0"?><w:document xmlns:w="' + ox.W[1:-1].encode() + b'">')
+            blanks = b" " * (1 << 20)
+            for _ in range(48):
+                fh.write(blanks)
+            fh.write(b"<w:body/></w:document>")
+    tracemalloc.start()
+    try:
+        assert ox.docx_markdown(str(path)) is None
+        _, peak = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+    assert peak < 8 << 20, f"{peak / (1 << 20):.1f} MiB held to read one part"
