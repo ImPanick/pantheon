@@ -270,3 +270,24 @@ def test_an_ai_step_chooses_its_tools_and_the_shape_of_its_answer(box):
     assert o["bad"] == {"refusal": "A field’s name is letters, digits and _, such as title.", "field": "answer_fields[0].name"}
     assert o["shape"] == {"config": {"answer_fields": [{"name": "title", "type": "text", "description": "Its title"},
                                                        {"name": "n", "type": "number", "description": ""}]}}
+
+
+def test_a_fields_name_finds_the_field_and_nothing_else(box):
+    """Found by the Chromium drive: the slot box beside a field carried the
+    field's own `data-field`, so `[data-field="path"]` answered two elements and a
+    refusal's sentence could land beside the wrong one. The box names it as
+    `data-slot-for`."""
+    o = _case(box, """
+        const { decorateField } = await import('./fieldPicker.js');
+        const pickField = (input, { field, slot }) => decorateField(input, { slot, field, pick: async () => null });
+        const m = mount({ kind: 'http', label: 'Fetch', config: { integration: 'int1', method: 'POST', path: '/v1',
+          query: [{ key: 'status', value: 'unread' }], body: [{ key: 'text', value: 'x' }] } }, { pickField });
+        const names = m.h.querySelectorAll('[data-field]').map((n) => n.dataset.field);
+        out({ dup: names.filter((n, i) => names.indexOf(n) !== i),
+              slots: m.h.querySelectorAll('.wf-slot').map((b) => [b.dataset.slotFor, b.dataset.mapping]) });
+    """)
+    assert o["dup"] == [], "one element per field name"
+    # A key the palette gives no slot is offered nothing (fails closed); its box is
+    # where a refusal about it would be said.
+    assert o["slots"] == [["path", "never"], ["query[0].key", None], ["query[0].value", "value"],
+                          ["body[0].key", None], ["body[0].value", "value"]]
