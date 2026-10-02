@@ -546,10 +546,12 @@ def setup_workflow_routes(task_scheduler) -> APIRouter:
             # and the plan of an HTTP, MCP or Code step is the document's own.
             resources = workflow_resources(wf.owner)
             if needs_test_confirmation(checked, tasks_by_id, resources) and not body.get("confirm"):
+                plan = _node_plan(checked, wf.owner, tasks_by_id, resources)
                 return {
                     "outcome": TEST_NEEDS_CONFIRMATION,
-                    "plan": _node_plan(checked, wf.owner, tasks_by_id, resources),
-                    "effects": _node_effect_sentences(checked, tasks_by_id, resources),
+                    "plan": plan,
+                    "effects": _effects_not_in(plan, _node_effect_sentences(
+                        checked, tasks_by_id, resources)),
                     "input_used": envelope, "dropped": dropped, "source": source,
                 }
             name = wf.name
@@ -985,6 +987,26 @@ def _node_plan(node, owner, tasks_by_id, resources=None) -> list:
     return dry_run_plan(task_type=kind, action=config.get("action"), prompt=config.get("prompt"),
                         owner=owner, model=config.get("model"),
                         endpoint_url=config.get("endpoint_url"))
+
+
+# What a planner's line says an effect with (`dry_run_plan`, `plan_lines`):
+# "It would: runs your code in your own workstation account, …".
+PLAN_EFFECT_LEAD = "It would: "
+
+
+def _effects_not_in(plan, sentences) -> list:
+    """`B1112`. The effect sentences the plan's own "It would: …" lines do not
+    already say. Both are written from one set of sentences
+    (`EFFECT_SENTENCES`, `CODE_EFFECT_SENTENCE`), and *Test this step* drew
+    the plan and then the effects beside it — so a Code step said "runs your
+    code in your own workstation account" twice, an Action step each of its
+    effects twice (measured by `integrate-d`, P22-18; the pattern predates
+    wave D). An effect the plan does not say (a Run task step's "calls a
+    model", say) is still listed. Only the plan's effect lines are read, so
+    a prompt that happens to contain the words does not hide one."""
+    said = [str(line)[len(PLAN_EFFECT_LEAD):] for line in plan or ()
+            if str(line).startswith(PLAN_EFFECT_LEAD)]
+    return [s for s in sentences if not any(s in line for line in said)]
 
 
 def _node_effect_sentences(node, tasks_by_id, resources=None) -> list:

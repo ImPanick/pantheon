@@ -104,7 +104,10 @@ def test_an_action_that_deletes_shows_its_plan_and_asks_first(client, wf, sched,
     out = res.json()
     assert out["outcome"] == "needs_confirmation"
     assert out["plan"] and all(isinstance(line, str) for line in out["plan"])
-    assert EFFECT_SENTENCES["deletes"] in out["effects"]
+    # `B1112`: said once — by the plan's own "It would: …" line, so the list
+    # beside it does not say it again.
+    assert f"It would: {EFFECT_SENTENCES['deletes']}" in out["plan"]
+    assert EFFECT_SENTENCES["deletes"] not in out["effects"]
     assert sched.tests == [], "nothing ran before the yes"
     _nothing_written(wf_db)
     again = _test(client, wf, DOC["nodes"][2], source="none", confirm=True)
