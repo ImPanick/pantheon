@@ -365,7 +365,7 @@ async def test_starting_the_pollers_twice_starts_one_check(world):
     assert pollers._inbox_task is first
 
 
-def test_the_app_starts_the_email_pollers_where_a_loop_is_running():
+async def test_the_app_starts_the_email_pollers_where_a_loop_is_running():
     """`launcher.py` imports the app before uvicorn's loop exists, so the
     import-time start is deferred to the first inbox listing — the app's own
     startup starts them. Scoped to `_startup_event` (`Law 20` § 2): entering

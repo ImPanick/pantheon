@@ -134,6 +134,7 @@ async def test_another_owners_default_is_not_this_mailbox(world, monkeypatch):
     db.commit()
     db.close()
     srv.box.deliver(message(frm="a@example.test", subject="Seen", mid="seen@x"))
+    srv.box.deliver(message(frm="b@example.test", subject="Also there", mid="also@x"))
     con = sqlite3.connect(seen_db)
     con.execute("CREATE TABLE IF NOT EXISTS email_event_seen (owner TEXT NOT NULL, account_key TEXT NOT NULL, "
                 "folder TEXT NOT NULL, message_key TEXT NOT NULL, first_seen_at TEXT NOT NULL, "
@@ -143,5 +144,38 @@ async def test_another_owners_default_is_not_this_mailbox(world, monkeypatch):
     con.close()
 
     await listing(account_id="work-acct", bust="1")
-    assert fired == [], "the work account has no baseline of its own yet: this look is its baseline"
+    assert fired == [], ("the work account has no baseline of its own yet: this look is its "
+                         "baseline, and the home mailbox's old rows are not its")
     assert _seen_rows(seen_db, "<seen@x>") == [("default",), ("work-acct",)]
+
+
+async def test_two_listings_at_once_fire_a_new_mail_once(world):
+    """Two listings of one inbox at the same moment — the Email window's and
+    the background check's, or two workers' — decide together: the baseline
+    count, what was seen and what is claimed are one write transaction, and a
+    message fires only where its row was added."""
+    import threading
+
+    import routes.email_routes as email_routes
+
+    fired = world["fired"]
+    baseline = [{"message_id": "<old@x>", "uid": "1"}]
+    email_routes._record_email_received_events(OWNER, ACCOUNT, "INBOX", baseline)
+    # Forty-five arrivals (under the fifty one listing fires) and sixteen
+    # listings, so each one's claims take long enough for the others' reads
+    # to land among them.
+    window = baseline + [{"message_id": f"<new-{i}@x>", "uid": str(i + 2),
+                          "from_address": "statements@northwindbank.example.com"} for i in range(45)]
+    start = threading.Barrier(16)
+
+    def lister():
+        start.wait()
+        email_routes._record_email_received_events(OWNER, ACCOUNT, "INBOX", window)
+
+    threads = [threading.Thread(target=lister) for _ in range(16)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(20)
+    keys = sorted(p["message_key"] for _n, _o, p in fired)
+    assert keys == sorted(f"<new-{i}@x>" for i in range(45)), (len(keys), len(set(keys)))
