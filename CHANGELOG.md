@@ -39,7 +39,7 @@ scheme that stops it drifting again.
   nothing else, and the rows that still stand between this tree and a stranger
   using it are listed in [`.pantheon/SHIP-LINE.md`](.pantheon/SHIP-LINE.md).
   *(Until 2026-10-02 this sentence said the repository was not public yet. It
-  has been public since then, and stays so — `D-2026-10-02-03`.)*
+  is public, and stays so — `D-2026-10-02-03`.)*
   **`1.0.0` is the first release that is public, tagged and supported.** Until
   then, an operator-visible break bumps the **minor** and gets a *Changed — read
   this before upgrading* block; everything else bumps the **patch**.
