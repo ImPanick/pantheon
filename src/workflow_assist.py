@@ -427,7 +427,9 @@ def normalise_draft(answer: dict, *, tz=None) -> Draft:
               "scheduled_date": trigger.get("date"), "cron_expression": trigger.get("cron"),
               "trigger_event": trigger.get("event"), "tz_name": tz}
     fields = {k: v for k, v in fields.items() if v is not None}
-    missing = [" ".join(str(m).split())[:MISSING_CLIP] for m in answer.get("missing") or ()
+    said = answer.get("missing")
+    said = said if isinstance(said, list) else ([said] if isinstance(said, str) else [])
+    missing = [" ".join(m.split())[:MISSING_CLIP] for m in said
                if isinstance(m, str) and m.strip()][:MISSING_MAX]
     name = " ".join(str(answer.get("name") or "").split())[:200]
     graph = {"v": GRAPH_VERSION, "start": {"position": None}, "nodes": nodes, "edges": edges}
