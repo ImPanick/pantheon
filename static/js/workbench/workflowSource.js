@@ -317,6 +317,8 @@ export function createWorkflowSource({
     // `P22-19`. What each step of the saved version would do, from its dry
     // run: `{ version, promise }`, asked once per saved version.
     plans: null,
+    // `B1136`. The step panel open now, so a palette read again reaches it.
+    openStep: null,
   };
   const isRun = mode === 'run';
   const describe = (task) => {
@@ -966,7 +968,7 @@ export function createWorkflowSource({
       plan: () => planLines().then((p) => (p.ok ? { ok: true, lines: p.plans.get(id) || null, declined: p.declined || null } : p)),
       looksRight: () => checkSteps([id]),
     } : null;
-    return panels.node(host, {
+    const view = panels.node(host, {
       node: clone(node),
       tasks: S.tasks,
       workflow: S.doc,
@@ -1003,6 +1005,34 @@ export function createWorkflowSource({
       },
       onCancel,
     });
+    // `B1136`. Held while it is open, so `reloadPalette` can hand it what
+    // was added in another room.
+    S.openStep = view;
+    return {
+      ...view,
+      destroy() {
+        if (S.openStep === view) S.openStep = null;
+        if (view && typeof view.destroy === 'function') view.destroy();
+      },
+    };
+  }
+
+  /** `B1136`. Read the palette again and hand it to the step panel that is
+   *  open. A step's door opens another room — MCP & Integrations, Skills — and
+   *  what a person adds there was not offered on the step until the Workbench
+   *  was reopened (measured by `integrate-e`, P22-24: "Choose one…" alone,
+   *  after Miniflux was added through the import's door). The room calls this
+   *  when it is shown again. Answers the state. */
+  async function reloadPalette() {
+    await ready;
+    if (isRun) return state();
+    await loadPalette();
+    const open = S.openStep;
+    if (open && S.palette && typeof open.paletteChanged === 'function') {
+      try { open.paletteChanged(S.palette); } catch (_) { /* the form keeps what it had */ }
+    }
+    emit();
+    return state();
   }
 
   /** `P22-09`. Step `id`, added in this draft, re-keyed by its first label —
@@ -1475,7 +1505,7 @@ export function createWorkflowSource({
     },
     ready,
     load, connect, disconnect, loadPositions, savePositions, openPanel, newItem, removeItem, dryRun,
-    state, refresh, rename, save, discard, setPin, test, runNow, switchOn, restoreChain,
+    state, refresh, reloadPalette, rename, save, discard, setPin, test, runNow, switchOn, restoreChain,
     versions, showVersion, restoreVersion, answer: answerStep, listFields, upstreamOf,
     // Slice E (C-A).
     marked, checkSteps, planLines, fix, exportFile, explain: explainStep,

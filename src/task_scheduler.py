@@ -2112,6 +2112,20 @@ class TaskScheduler:
             logger.debug("Task abort marker failed for %s", task_id, exc_info=True)
             return False
 
+    def _task_type_of(self, task_id: str) -> str | None:
+        """`B1138`. A task's `task_type`, read fresh (the gate holds no row)."""
+        try:
+            from core.database import SessionLocal, ScheduledTask
+            db = SessionLocal()
+            try:
+                row = db.query(ScheduledTask.task_type).filter(ScheduledTask.id == task_id).first()
+                return (row[0] or "llm") if row else None
+            finally:
+                db.close()
+        except Exception:
+            logger.debug("Could not read the type of task %s", task_id, exc_info=True)
+            return None
+
     def _stopped_as(self, run_id: str) -> str | None:
         """Why this run was stopped, if whoever stopped it already said.
 
@@ -3091,6 +3105,12 @@ class TaskScheduler:
                         await asyncio.sleep(0.25)
                         if has_foreground_activity():
                             foreground_cancel["hit"] = True
+                            # `B1138`. Said in the run's slot too, where the
+                            # walker reads it (`_is_takeover`): without it a
+                            # workflow's interrupted step was ended `aborted`
+                            # while the cancel branch parked the run `waiting`
+                            # — a run waiting on no step (measured).
+                            self._state_for(run_id)["takeover"] = True
                             logger.info("Task '%s' interrupted because Pantheon became active", task.name)
                             if current_task:
                                 current_task.cancel()
@@ -3249,9 +3269,11 @@ class TaskScheduler:
                 # branch's own guess is for the monitor above, which writes
                 # nothing first, and for a cancel nobody explained.
                 said = self._stopped_as(run_id)
+                # `B1138`. The gate leaves a workflow run's row alone and says
+                # so in the run's slot instead (`_is_takeover` reads both).
                 msg = said or (
                     FOREGROUND_TAKEOVER
-                    if foreground_cancel.get("hit")
+                    if foreground_cancel.get("hit") or self._is_takeover(run_id)
                     else STOPPED_BY_USER
                 )
                 takeover = msg == FOREGROUND_TAKEOVER
@@ -6730,7 +6752,9 @@ class TaskScheduler:
         (`_mark_run_aborted`'s default), so a run nobody stopped said its owner
         had. What this stops now says what happened: `FOREGROUND_TAKEOVER`.
         The row is written before the cancel lands, and the cancel branch keeps
-        it (`_stopped_as`).
+        it (`_stopped_as`) — except a workflow run's (`B1138`): that one is
+        parked, not ended, so its row is left to the cancel branch and the
+        takeover is said in the run's slot (`_is_takeover`).
 
         `B1060`. Running background runs only. A QUEUED one waits for Pantheon
         to be idle before it takes the model slot (`_execute_task`), so it
@@ -6750,10 +6774,26 @@ class TaskScheduler:
             run_id = running.get(task_id)
             if run_id is None:
                 continue
+            # `B1138`. Who stopped it is said in the run's own slot, which the
+            # walker (`_stop_steps`) and the cancel branch read through
+            # `_is_takeover`. Safe to write: a run still in `_gate_stoppable`
+            # has not reached the `finally` that drops both, and nothing here
+            # awaits.
+            self._state_for(run_id)["takeover"] = True
             handle = self._task_handles.get(task_id)
-            if handle and not handle.done():
+            live = bool(handle and not handle.done())
+            if live:
                 handle.cancel()
                 stopped += 1
+            if live and self._task_type_of(task_id) == "workflow":
+                # `B1138`. A workflow run is parked `waiting` by its cancel
+                # branch (`P22-11`), so the row is left as it is until then:
+                # written `aborted` first, as below, it read stopped — to a
+                # poll, to Activity — for as long as the cancel took to land
+                # (measured by `integrate-e`: `aborted`, then `success` a
+                # minute later). If the run cannot park (switched off
+                # meanwhile), the cancel branch ends it with these words.
+                continue
             if self._mark_run_aborted(task_id, run_id=run_id, message=FOREGROUND_TAKEOVER):
                 stopped += 1
         if stopped:

@@ -795,6 +795,21 @@ DEFAULT_SETTINGS = {
     # ntfy (JSON mode), or any service that accepts a POST with a JSON body.
     "reminder_webhook_integration_id": "",
     "reminder_webhook_payload_template": "",
+    # `B1137`. Minutes between two background looks at every configured
+    # account's inbox, which is what fires "when mail arrives"
+    # (`email_received`) for a person who never opens the Email window
+    # (`routes/email_pollers._inbox_check_loop`). `0` turns it off, and then
+    # only a listing fires the event, as before the check existed.
+    #
+    # Five minutes is a mail client's ordinary pace, and each look is one
+    # login, one SEARCH and a header fetch of only what the message index has
+    # not seen. A minute is allowed and is an operator's choice; nothing
+    # here polls a provider every minute by nobody having thought about it
+    # (`P15-08`'s argument).
+    #
+    # SETTINGS-ONLY, for the reason spelled out at `events_retention_days`:
+    # an env fallback beneath a truthy default is unreachable code.
+    "email_inbox_check_minutes": 5,
     # Email triage scanner rules. Running/paused state and schedule live in
     # Tasks via the built-in `check_email_urgency` task.
     "urgent_email_prompt": (
@@ -1053,6 +1068,9 @@ def int_setting_ranges() -> dict[str, tuple[int, int]]:
         # LAN is entitled to; a day is the top, because past that the floor
         # is not a floor, it is the schedule.
         "min_task_interval_minutes": (0, 1440),
+        # `B1137`. The background inbox check, in minutes: `0` is off and a
+        # day is the top, for the reason the line above gives.
+        "email_inbox_check_minutes": (0, 1440),
         # `P22-07`. A workflow step's record cap and how long records are
         # kept, imported from the module that owns them (`Law 7`).
         NODE_RECORD_MAX_CHARS_SETTING: NODE_RECORD_MAX_CHARS_RANGE,

@@ -9,7 +9,11 @@ Background loops that periodically scan IMAP and act on mail:
     - `_auto_summarize_poller` — driver that wakes the pass on a 30-min cadence.
     - `_scheduled_email_poller` — polls the `scheduled_emails` SQLite for
       due rows and delivers them via SMTP.
-    - `_start_poller` — entry point called once at app startup; spawns both
+    - `_inbox_check_loop` — `B1137`: looks at every configured account's
+      inbox every `email_inbox_check_minutes` and fires `email_received` for
+      what arrived, so "when mail arrives" does not wait for someone to open
+      the Email window.
+    - `_start_poller` — entry point called once at app startup; spawns the
       pollers + handles the deferred-start trick when the event loop is not
       yet running.
 
@@ -1516,8 +1520,185 @@ async def _scheduled_email_poller():
             logger.error(f"Scheduled poller error: {e}")
 
 
+# ── `B1137` · the background inbox check ─────────────────────────────────────
+#
+# `email_received` had one producer, the inbox LISTING (`GET /api/email/list`,
+# `_record_email_received_events`), and no poller: measured in `P22-00`'s three
+# drives, the bank's mail sat in IMAP with the workflow on and nothing fired
+# until a person pressed Refresh in the Email window (its opening list was the
+# 45 s cache and fired nothing either). "When mail from my bank arrives" ran
+# only while somebody browsed mail.
+#
+# This is that listing, run in the background: the same `_list_emails_sync`
+# the route runs (handed over by `setup_email_routes` — `_INBOX_HOOKS`), the
+# same producer, so a message is new once whichever of the two sees it first,
+# and the seen keys live in `email_event_seen`, so a restart fires nothing
+# twice (`Law 14`: one way to read an inbox, one way to decide what is new).
+#
+#   * every enabled account with an inbox, each as its OWNER — the event is
+#     that person's and wakes only their tasks; an account with no owner yet
+#     waits for the legacy-owner sweep rather than being guessed at;
+#   * at an interval an admin sets (`email_inbox_check_minutes`; 0 is off),
+#     jittered (`P15-10`);
+#   * after the foreground gate's quiet, account by account — background work
+#     waits while somebody is using Pantheon (`src/interactive_gate.py`);
+#   * paced and backed off through the one limiter (`FORBIDDEN.md` Part 2):
+#     the host is paced, and a mailbox that fails is penalised under its own
+#     key (`imap-inbox:<account>`) on `penalise`'s escalating ladder, because
+#     repeated failing logins are what providers lock accounts for;
+#   * nothing at all while no account is configured — no connection, no log.
+#
+# `PANTHEON_INPROCESS_POLLERS=0` turns it off with the other in-process email
+# pollers; nothing outside the process drives it, so with that set
+# `email_received` comes from listings only, as before this row.
+#
+# The setting's default (5) and bounds (0 – 1440) are stated once, in
+# `src/settings.py` (`DEFAULT_SETTINGS`, `int_setting_ranges`), and read from
+# there — both doors that write it clamp through the same table (`B931`).
+INBOX_CHECK_SETTING = "email_inbox_check_minutes"
+# How many of the newest messages each check looks at: the Email window's
+# first page, which is what the listing has always decided "new" over.
+INBOX_CHECK_WINDOW = 50
+# How long "a minute" is to the loop. A constant so a test can drive the real
+# loop at a pace a test can wait for; nothing else should change it.
+_SECONDS_PER_MINUTE = 60
+
+# Filled in by `setup_email_routes()` with its closure's `_list_emails_sync`
+# (the pool and the message index live in that closure, as `_POOL_HOOKS`'s
+# helpers do). Until then the check has nothing to read with and waits.
+_INBOX_HOOKS: dict = {"list": None}
+
+
+def inbox_check_minutes() -> int:
+    """`B1137`. Minutes between two background checks of every inbox; 0 is off."""
+    from src.settings import DEFAULT_SETTINGS, int_setting_ranges, resolve_limit
+
+    lo, hi = int_setting_ranges()[INBOX_CHECK_SETTING]
+    value, _source = resolve_limit(INBOX_CHECK_SETTING, DEFAULT_SETTINGS[INBOX_CHECK_SETTING],
+                                   minimum=lo, maximum=hi)
+    return value
+
+
+def _inbox_accounts() -> list[dict]:
+    """`B1137`. The inboxes to check: `[{account_id, owner, host}]`.
+
+    Every enabled account row with an IMAP host and an owner. With no enabled
+    row at all, the settings/environment mailbox `_get_email_config` falls back
+    to — read for the primary owner, the owner an ownerless event goes to
+    (`event_bus._resolve_event_owner`) — when it names an IMAP host. Nothing is
+    configured → `[]`, and the check does nothing.
+    """
+    from core.database import SessionLocal as _SL, EmailAccount as _EA
+
+    db = _SL()
+    try:
+        rows = (db.query(_EA).filter(_EA.enabled == True)  # noqa: E712
+                .order_by(_EA.is_default.desc(), _EA.created_at.asc()).all())
+        found = [{"account_id": r.id, "owner": (r.owner or "").strip(), "host": (r.imap_host or "").strip()}
+                 for r in rows]
+    finally:
+        db.close()
+    if found:
+        return [a for a in found if a["owner"] and a["host"]]
+    # The same resolver `_get_email_config` reads the field with, asked first
+    # so an install with no mail at all is not told so in the log every pass.
+    from src.settings import env_backed
+    if not env_backed(_load_settings(), "imap_host", "IMAP_HOST"):
+        return []
+    cfg = _get_email_config()
+    if not (cfg.get("imap_host") and cfg.get("imap_user")):
+        return []
+    from src.event_bus import _resolve_event_owner
+    owner = _resolve_event_owner(None)
+    return [{"account_id": None, "owner": owner, "host": cfg["imap_host"]}] if owner else []
+
+
+async def _check_inbox(account: dict) -> str:
+    """`B1137`. Look at one inbox once; fire `email_received` for what arrived.
+    Answers what happened, in words, for the log and for tests."""
+    import asyncio
+    from src.rate_limiter import outbound
+    from routes.email_routes import _account_cache_key, _record_email_received_events
+
+    lister = _INBOX_HOOKS.get("list")
+    if lister is None:
+        return "not ready"
+    account_id, owner, host = account.get("account_id"), account.get("owner") or "", account.get("host") or ""
+    key = f"imap-inbox:{_account_cache_key(account_id, owner)}"
+    blocked = outbound.blocked_for(key)
+    if blocked > 0:
+        # Not knocked on while it is backing off: the ladder below set this.
+        return f"backing off for {int(blocked)}s"
+    try:
+        await outbound.acquire_async(host, authenticated=True)
+    except Exception as e:  # a host cooling down past `max_wait`, or out of scope
+        return f"not checked: {type(e).__name__}"
+    try:
+        result = await asyncio.to_thread(lister, "INBOX", INBOX_CHECK_WINDOW, 0, "all",
+                                         account_id, None, False, owner)
+        failure = ""
+        # `_list_emails_sync` reports a failure as an `error` key, never a
+        # raise (the reason `unread_state`'s backoff reads it the same way).
+        if not isinstance(result, dict):
+            failure = "no answer"
+        elif result.get("error"):
+            failure = str(result.get("error"))[:200]
+    except Exception as e:
+        result, failure = None, (str(e)[:200] or type(e).__name__)
+    if failure:
+        cooldown = outbound.penalise(key, base=120.0, cap=3600.0, reason=failure)
+        logger.warning("Inbox check failed for %s; backing off %.0fs: %s", key, cooldown, failure)
+        return f"failed; backing off for {int(cooldown)}s"
+    outbound.succeeded(key)
+    _record_email_received_events(owner, account_id, "INBOX", result.get("emails") or [])
+    return "checked"
+
+
+async def _inbox_check_pass() -> dict:
+    """`B1137`. One look at every configured inbox: `{account: outcome}`.
+    Each waits for the foreground gate's quiet first."""
+    import asyncio
+    from src.interactive_gate import wait_for_interactive_quiet
+
+    accounts = await asyncio.to_thread(_inbox_accounts)
+    outcomes = {}
+    for account in accounts:
+        await wait_for_interactive_quiet("background inbox check")
+        try:
+            outcomes[account.get("account_id") or "default"] = await _check_inbox(account)
+        except Exception as e:
+            logger.warning("Inbox check skipped for %s: %s", account.get("account_id") or "default", e)
+            outcomes[account.get("account_id") or "default"] = f"skipped: {type(e).__name__}"
+    return outcomes
+
+
+async def _inbox_check_loop():
+    """`B1137`. The background inbox check, for the life of the process.
+
+    The setting is read every time round, so an admin changing it — or turning
+    it on from 0 — takes effect without a restart; while it is 0 the loop only
+    looks at the setting again, once a minute."""
+    import asyncio
+    from src.jitter import sleep_jittered
+
+    while True:
+        try:
+            minutes = inbox_check_minutes()
+            await sleep_jittered((minutes or 1) * _SECONDS_PER_MINUTE)
+            if inbox_check_minutes() <= 0:
+                continue
+            outcomes = await _inbox_check_pass()
+            if outcomes:
+                logger.debug("Inbox check: %s", outcomes)
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            logger.error(f"Inbox check error: {e}")
+
+
 _poller_task = None
 _summarize_task = None
+_inbox_task = None
 
 def _inprocess_pollers_enabled() -> bool:
     """Honour `PANTHEON_INPROCESS_POLLERS` — set to `0`/`false`/`no`/`off`
@@ -1535,6 +1716,13 @@ def _start_poller():
     """Start background pollers. Called at module load; if no event loop is
     running yet (common at import time), defer via a first-request hook.
 
+    `B1137`. And again from the app's startup (`app._startup_event`), where a
+    loop is running: the first-request hook is the inbox LISTING, so a process
+    whose module was imported before its loop started (`launcher.py`'s
+    `uvicorn.run(app)`) began sending scheduled mail — and would have begun
+    checking inboxes — only once somebody opened the Email window. Idempotent:
+    a poller already started is left as it is.
+
     Skipped entirely when `PANTHEON_INPROCESS_POLLERS=0` — use that when
     you're driving polling from cron / systemd to avoid two copies of
     `_scheduled_poll_once` racing on the same SQLite."""
@@ -1547,11 +1735,15 @@ def _start_poller():
     import asyncio
 
     def _launch():
-        global _poller_task, _summarize_task
+        global _poller_task, _summarize_task, _inbox_task
         loop = asyncio.get_running_loop()
         if _poller_task is None:
             _poller_task = loop.create_task(_scheduled_email_poller())
             logger.info("Started scheduled email poller")
+        if _inbox_task is None:
+            _inbox_task = loop.create_task(_inbox_check_loop())
+            logger.info("Started the background inbox check (every %s min; 0 is off)",
+                        inbox_check_minutes())
         _summarize_task = None
 
     try:

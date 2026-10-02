@@ -1705,6 +1705,16 @@ async def _startup_event():
             "In-process task scheduler disabled (PANTHEON_INPROCESS_TASKS=0); "
             "drive task firing externally (e.g. cron)."
         )
+    # `B1137`. The email pollers — the scheduled-mail sender and the background
+    # inbox check — start here, where a loop is running. `setup_email_routes`
+    # starts them at import only when the import itself ran inside a loop
+    # (`uvicorn app:app`); otherwise their start waited for the first inbox
+    # listing. Idempotent, and it honours `PANTHEON_INPROCESS_POLLERS`.
+    try:
+        from routes.email_pollers import _start_poller as _start_email_pollers
+        _start_email_pollers()
+    except Exception as e:
+        logger.warning("Email pollers did not start: %s", e)
     # Periodic null-owner sweep — re-runs the legacy-owner assignment hourly
     # so any data created while auth was disabled / localhost-bypassed gets
     # claimed by the admin instead of staying world-visible (M19).
