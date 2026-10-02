@@ -236,7 +236,8 @@ export async function mountMcpBuildDoor(host, { onOpen } = {}) {
   wrap.appendChild(line);
   const why = _el('p', 'mcp-build-door-why');
   why.id = _id('why');
-  why.style.cssText = _NOTE + 'opacity:0.7;display:none;';
+  why.style.cssText = _NOTE + 'opacity:0.7;';
+  why.style.display = 'none';  // on its own, so it reads back outside a full CSSOM
   wrap.appendChild(why);
   host.replaceChildren(wrap);
 
@@ -318,7 +319,8 @@ export async function mountMcpBuild(host, { isAdmin = false, onRegister, onClose
   panel.appendChild(lead);
   const why = _el('p', 'mcp-build-why');
   why.setAttribute('role', 'status');
-  why.style.cssText = _NOTE + 'display:none;';
+  why.style.cssText = _NOTE;
+  why.style.display = 'none';
   panel.appendChild(why);
 
   // New server
