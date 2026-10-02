@@ -144,10 +144,16 @@ class Scheduler:
         finally:
             db.close()
 
-    async def test_workflow_node(self, task, workflow_name, node, *, input_envelope, timeout=None):
+    async def test_workflow_node(self, task, workflow_name, node, *, input_envelope, timeout=None,
+                                 graph=None):
+        # `P22-09`/`P22-10` (`C-W`): the route also hands the document the step
+        # stands in, so its references read the steps before it.
         self.tests.append({"task_id": task.id, "workflow_name": workflow_name, "node": node,
-                           "input": input_envelope, "timeout": timeout})
+                           "input": input_envelope, "timeout": timeout, "graph": graph})
         return dict(self.result)
+
+    def in_flight_sentence(self, task_id):
+        return None
 
 
 @pytest.fixture()
@@ -401,7 +407,8 @@ def test_a_document_the_engine_refuses_is_refused_with_its_own_sentence(client, 
     res = save(client, wf, looped)
     assert res.status_code == 400
     body = res.json()
-    assert set(body) == {"detail", "reason", "node_ids"}
+    # `P22-09` (`C-W`): a refusal also names the field it is about ("" here).
+    assert set(body) == {"detail", "reason", "node_ids", "field"}
     assert isinstance(body["detail"], str) and body["detail"].strip()
     doc = wc.document()
     assert body["reason"] in doc.WORKFLOW_REFUSAL_REASONS

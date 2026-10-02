@@ -226,7 +226,9 @@ def test_a_sample_typed_as_plain_text_goes_where_the_step_reads_text(client, wf,
     first = _test(client, wf, DOC["nodes"][0], source="custom", input="Three mails.")
     assert first.status_code == 400
     assert first.json()["detail"] == (
-        "“Summarise my inbox” is handed account, folder, message_key. Paste the sample as JSON "
+        # `P22-09` (§ 0.12): `email_received` also names the sender and subject.
+        "“Summarise my inbox” is handed account, folder, message_key, from_address, subject. "
+        "Paste the sample as JSON "
         "with those fields, for example {\"account\": \"…\"}.")
     assert len(sched.tests) == 2
 

@@ -116,18 +116,23 @@ class WorkflowRefused(Exception):
     """
 
     def __init__(self, status: int, sentence: str, *, reason: str | None = None,
-                 node_ids=()):
+                 node_ids=(), field: str = ""):
         super().__init__(sentence)
         self.status = int(status)
         self.sentence = sentence
         self.reason = reason
         self.node_ids = tuple(node_ids or ())
+        # `P22-09` (`C-W`). The setting a refusal is about — `DocumentRefusal.field`,
+        # e.g. "path" or "args.channel" — so the panel puts the sentence on
+        # that field. Empty when the refusal is about the step or the whole.
+        self.field = field or ""
 
     def body(self) -> dict:
         out = {"detail": self.sentence}
         if self.reason is not None:
             out["reason"] = self.reason
             out["node_ids"] = list(self.node_ids)
+            out["field"] = self.field
         return out
 
 
@@ -313,14 +318,13 @@ def summary(wf, trigger, last_run, chain, tasks, *, name_of) -> dict:
 
 def is_running(db, scheduler, task_id: str) -> bool:
     """Is a run of this trigger in flight: the scheduler's own claim (`B674`),
-    or a run row that has not finished — a queued run holds no claim yet."""
-    from core.database import TASK_RUN_ACTIVE_STATUSES
-    _, TaskRun, _, _ = _models()
+    or a run row that has not finished — a queued run holds no claim yet, and
+    (`P22-11`) a parked one holds none either — `workflow_runs.run_in_flight`,
+    the one question."""
+    from src.workflow_runs import run_in_flight
     if task_id in (getattr(scheduler, "_executing", None) or ()):
         return True
-    return db.query(TaskRun.id).filter(
-        TaskRun.task_id == task_id,
-        TaskRun.status.in_(TASK_RUN_ACTIVE_STATUSES)).first() is not None
+    return run_in_flight(db, task_id) is not None
 
 
 def owner_rows(db, owner: str | None) -> tuple:
@@ -342,7 +346,8 @@ def refusal_from(refusal, status: int = 400) -> WorkflowRefused:
     """A `DocumentRefusal` as the refusal a person reads."""
     return WorkflowRefused(status, getattr(refusal, "sentence", None) or str(refusal),
                            reason=getattr(refusal, "reason", None),
-                           node_ids=getattr(refusal, "node_ids", None) or ())
+                           node_ids=getattr(refusal, "node_ids", None) or (),
+                           field=getattr(refusal, "field", "") or "")
 
 
 def _document_error_refusal(err) -> WorkflowRefused:
@@ -391,9 +396,15 @@ def check_document(db, graph, *, owner: str | None, own_task_id: str | None,
     if action and not is_admin:
         raise WorkflowRefused(403, admin_refusal_message(action))
     tasks_by_id, crew_ids = rows if rows is not None else owner_rows(db, owner)
+    # `P22-09`…`P22-18`. Checked against what the owner can reach right now —
+    # integrations, MCP tools, skills, the workstation (`WorkflowResources`,
+    # `wf-effects`' `workflow_resources`) — exactly as the walker checks it at
+    # run, so a refusal is the same sentence on the same field at both.
+    from src.workflow_effects import workflow_resources
     refusal = validate_document(parsed, owner=owner, tasks_by_id=tasks_by_id,
                                 crew_ids=crew_ids, owner_is_admin=is_admin,
-                                own_task_id=own_task_id)
+                                own_task_id=own_task_id,
+                                resources=workflow_resources(owner))
     if refusal is not None:
         raise refusal_from(refusal)
     return parsed
@@ -1088,3 +1099,70 @@ def restore_chain(db, wf, trigger, *, owner, name_of=None) -> tuple:
     resumed = {"task_id": head.id, "name": name_of(head),
                "next_run": head.next_run.isoformat() + "Z" if head.next_run else None}
     return resumed, ["The chain runs again and this workflow is switched off. Nothing was deleted."]
+
+
+# ── `P22-17` · the question a parked step asks, and its answer ──────────────
+
+# `C-W`. The two answers the Workbench sends. `approve_task` is the row's own
+# scope word; `approve` (chat-session scope) has no chat to be remembered in.
+ANSWER_DECISIONS = ("approve_task", "deny")
+NO_CHAT_TO_REMEMBER = "There is no chat to remember this in; choose Allow once."
+
+
+def waiting_list(db, owner: str | None) -> list:
+    """`GET /api/workflows/waiting` (`C-W`): every step of the owner's
+    workflows that waits right now, oldest first —
+    `{workflow_id, workflow, run_id, node_id, item, label, kind, since, until,
+    approval}`. `approval` is the card while the store still holds it (so the
+    page re-offers only a question that can still be answered), else null."""
+    from core.database import TaskRunNode
+    from src.tool_approvals import tool_approval_store
+    from src.workflow_runs import WAITING_APPROVAL, waiting_of
+    ScheduledTask, TaskRun, Workflow, _ = _models()
+    q = (db.query(TaskRunNode, TaskRun, Workflow)
+         .join(TaskRun, TaskRun.id == TaskRunNode.run_id)
+         .join(Workflow, Workflow.task_id == TaskRun.task_id)
+         .filter(TaskRunNode.status == "waiting", TaskRun.status == "waiting",
+                 TaskRunNode.item.is_(None)))
+    if owner:
+        q = q.filter(Workflow.owner == owner)
+    out = []
+    for rec, run, wf in q.order_by(TaskRunNode.started_at, TaskRunNode.seq).all():
+        waiting = waiting_of(rec) or {}
+        kind = waiting.get("kind")
+        approval = None
+        if kind == WAITING_APPROVAL and tool_approval_store.peek(waiting.get("approval_id")):
+            approval = waiting.get("card")
+        out.append({
+            "workflow_id": wf.id, "workflow": wf.name, "run_id": run.id,
+            "node_id": rec.node_id,
+            "item": waiting.get("item") if isinstance(waiting.get("item"), int) else None,
+            "label": rec.label, "kind": kind, "since": waiting.get("since"),
+            "until": waiting.get("until"), "approval": approval,
+        })
+    return out
+
+
+def find_waiting_step(db, wf, run_id: str, node_id: str, item, approval_id: str):
+    """`(run, record, waiting)` for the question this answer is about, or a
+    refusal: the run must be this workflow's and `waiting`, and the step's
+    own record must wait on exactly this card."""
+    from core.database import TaskRunNode
+    from src.workflow_runs import WAITING_APPROVAL, waiting_of
+    _, TaskRun, _, _ = _models()
+    run = (db.query(TaskRun).filter(TaskRun.id == str(run_id or ""),
+                                    TaskRun.task_id == wf.task_id).first()
+           if wf.task_id else None)
+    if run is None:
+        raise WorkflowRefused(404, "No such run of this workflow.")
+    if run.status != "waiting":
+        raise WorkflowRefused(409, "This run is not waiting for an answer any more.")
+    rec = (db.query(TaskRunNode)
+           .filter(TaskRunNode.run_id == run.id, TaskRunNode.node_id == str(node_id or ""),
+                   TaskRunNode.item.is_(None), TaskRunNode.status == "waiting").first())
+    waiting = waiting_of(rec) if rec is not None else None
+    asked_item = waiting.get("item") if isinstance((waiting or {}).get("item"), int) else None
+    if (rec is None or not waiting or waiting.get("kind") != WAITING_APPROVAL
+            or waiting.get("approval_id") != approval_id or asked_item != item):
+        raise WorkflowRefused(409, "That step is not waiting on this question any more.")
+    return run, rec, waiting

@@ -56,6 +56,9 @@ def task_db(monkeypatch, tmp_path):
     monkeypatch.setattr(ts, "owner_has_admin_task_privileges", lambda owner: owner == "root")
     import src.tool_index as tool_index
     monkeypatch.setattr(tool_index, "get_tool_index", lambda: None)
+    # Wave D's C-R / C-E halves, where this branch lacks them (none merged).
+    from tests.helpers import workflow_cd_contract
+    workflow_cd_contract.install(monkeypatch)
     return factory
 
 
@@ -207,9 +210,12 @@ async def test_every_morning_summarise_my_inbox_then_send_me_the_summary(task_db
     assert run["result"] == "You have 3 bills; Ana wrote."
     assert run["model"] == "m"
     records = records_of(task_db, run["id"])
+    # `P22-11`: a record's port is ALWAYS the outcome port now (it was `None`
+    # where the branch ended); a port with no arrow ends that branch, and the
+    # Runs view lights only arrows that exist.
     assert [(r["seq"], r["node_id"], r["label"], r["status"], r["port"]) for r in records] == [
         (1, "n1", "Summarise my inbox", "success", "success"),
-        (2, "n2", "Send me the summary", "success", None),
+        (2, "n2", "Send me the summary", "success", "success"),
     ]
     assert [r["output"]["text"] for r in records] == [
         "Three bills and a letter from Ana.", "You have 3 bills; Ana wrote."]
@@ -270,7 +276,8 @@ async def test_a_failure_takes_the_if_it_fails_arrow_and_a_handled_failure_is_a_
     assert run["status"] == "success", "a failure routed to a step that works"
     records = records_of(task_db, run["id"])
     assert [(r["node_id"], r["status"], r["port"]) for r in records] == [
-        ("n1", "error", "error"), ("n2", "success", None)]
+        # `P22-11`: the outcome port always (was `None` where the branch ended).
+        ("n1", "error", "error"), ("n2", "success", "success")]
     assert records[0]["error"] == "IMAP refused"
     handed = s.calls[1]["trigger"]["data"]
     assert (handed["status"], handed["result"]) == ("error", "IMAP refused")
@@ -290,7 +297,11 @@ async def test_an_unhandled_failure_fails_the_run_and_backs_off(task_db):
     s = recording_scheduler({"Morning digest · Fetch": NodeResult("error", payload="IMAP refused")})
     await s._execute_task("wf")
     run = runs_of(task_db, "wf")[0]
-    assert (run["status"], run["error"]) == ("error", "IMAP refused")
+    # `P22-11`: the run's error names the step that failed (`SLICE-CD-DESIGN`
+    # § 1.4, "run.error names the failing step and item"); its result is still
+    # what that step said.
+    assert (run["status"], run["error"]) == ("error", "“Fetch” failed: IMAP refused")
+    assert run["result"] == "IMAP refused"
     assert any("retrying (attempt 1 of 2)" in (st.get("detail") or "") for st in run["steps"])
     db = task_db()
     try:
@@ -567,7 +578,8 @@ async def test_a_busy_run_task_target_is_said_and_not_dropped(task_db):
     await s._execute_task("wf")
     run = runs_of(task_db, "wf")[0]
     assert (run["status"], run["error"]) == (
-        "error", "Did not run “Weekly report”: it was already running")
+        # `P22-11`: the run's error names the step (`“Report” failed: …`).
+        "error", "“Report” failed: Did not run “Weekly report”: it was already running")
     assert runs_of(task_db, "t2") == []
     assert "t2" in s._executing, "someone else's claim is left alone"
 
@@ -637,7 +649,8 @@ async def test_testing_a_step_runs_it_alone_and_writes_nothing(task_db, monkeypa
     step["config"].update(model="m", endpoint_url="http://127.0.0.1:9/v1",
                           prompt="Classify it, edited and not yet saved.")
     out = await s.test_workflow_node(trigger, "Morning digest", step, input_envelope=sample)
-    assert set(out) == {"status", "text", "data", "steps", "model", "took_ms"}
+    # `P22-10` (`C-W`): a test also says which port the step left by.
+    assert set(out) == {"status", "text", "data", "steps", "model", "took_ms", "port"}
     assert (out["status"], out["text"], out["model"]) == ("success", "Looks like a bill.", "m")
     assert seen[0][0] == "Morning digest · Classify" and seen[0][2] is None
     assert '"message_key": "9"' in seen[0][1]["content"]

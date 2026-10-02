@@ -47,6 +47,9 @@ def bus(monkeypatch, tmp_path):
     factory = sessionmaker(bind=engine, autoflush=False, autocommit=False)
     monkeypatch.setattr(cdb, "SessionLocal", factory)
     monkeypatch.setenv("BACKGROUND_TASK_FOREGROUND_GATE", "0")
+    # Wave D's C-R / C-E halves, where this branch lacks them (none merged).
+    from tests.helpers import workflow_cd_contract
+    workflow_cd_contract.install(monkeypatch)
     db = factory()
     try:
         db.add(ScheduledTask(id="wf", owner=OWNER, name="Doc keeper", task_type="workflow",

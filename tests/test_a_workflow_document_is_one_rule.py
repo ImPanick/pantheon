@@ -273,10 +273,15 @@ def test_a_pin_is_built_by_the_one_envelope_builder_and_names_what_it_dropped():
     mail = task("trigger", trigger_type="event", trigger_event="email_received")
     envelope, dropped = wd.build_pin(graph, "n1", mail,
                                      {"account": "work", "folder": "INBOX",
-                                      "message_key": "42", "subject": "Hi"})
+                                      "message_key": "42", "subject": "Hi",
+                                      "priority": "high"})
     assert envelope["source"] == "event" and envelope["event"] == "email_received"
-    assert envelope["data"] == {"account": "work", "folder": "INBOX", "message_key": "42"}
-    assert dropped == ("subject",)
+    # `P22-09` (`SLICE-CD-DESIGN` § 0.12): `email_received` declares the
+    # subject and the sender now, so a sample keeps the subject; an undeclared
+    # key is still dropped and named.
+    assert envelope["data"] == {"account": "work", "folder": "INBOX", "message_key": "42",
+                                "subject": "Hi"}
+    assert dropped == ("priority",)
 
 
 @pytest.mark.parametrize("node,asks", [
@@ -386,7 +391,9 @@ def test_contract_c1_is_exactly_what_the_routes_import():
     assert sig(TaskScheduler.test_workflow_node)[:4] == [
         ("self", pos, True), ("task", pos, True), ("workflow_name", pos, True), ("node", pos, True)]
     assert [p[:2] for p in sig(TaskScheduler.test_workflow_node)[4:]] == [
-        ("input_envelope", kw), ("timeout", kw)]
+        ("input_envelope", kw), ("timeout", kw),
+        # `P22-10` (`C-W`): the document the step stands in, for its references.
+        ("graph", kw)]
     register = inspect.signature(TaskScheduler._execute_task).parameters["register_handle"]
     assert (register.kind.name, register.default) == (kw, True)
     assert [p[0] for p in sig(task_action_policy.admin_only_action_of)] == ["db", "task"]

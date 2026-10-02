@@ -1327,7 +1327,10 @@ def setup_task_routes(task_scheduler) -> APIRouter:
         started = await task_scheduler.run_task_now(
             task_id, force=force, dry=dry, started_by=STARTED_BY_PERSON)
         if not started:
-            raise HTTPException(409, "Task is already running")
+            # `B674` / `P22-11`. A workflow whose run is parked says which run
+            # and what it waits for — the `skipped` row's own sentence.
+            raise HTTPException(409, task_scheduler.in_flight_sentence(task_id)
+                                or "Task is already running")
         if dry:
             out = {"ok": True, "dry": True,
                    "message": "Dry run — planned, nothing executed"}
@@ -1694,7 +1697,10 @@ def setup_task_routes(task_scheduler) -> APIRouter:
         )
         started = await task_scheduler.run_task_now(task_id, trigger=trigger)
         if not started:
-            raise HTTPException(409, "Task is already running")
+            # `B674` / `P22-11`. The 409 stays; for a workflow whose run is
+            # parked it says which run and what it waits for.
+            raise HTTPException(409, task_scheduler.in_flight_sentence(task_id)
+                                or "Task is already running")
         return {"ok": True, "message": "Task triggered via webhook"}
 
     @router.post("/{task_id}/webhook-regenerate")

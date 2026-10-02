@@ -4880,6 +4880,7 @@ async def stream_agent_loop(
     suppress_skills: bool = False,
     loop_caps_source: str = CAPS_FROM_CALLER,
     explicit_params=frozenset(),
+    approval_ttl_seconds: Optional[int] = None,
 ) -> AsyncGenerator[str, None]:
     """Streaming agent loop generator.
 
@@ -7935,6 +7936,9 @@ async def stream_agent_loop(
                             round_num=round_num,
                             resumed_from=exact_approval,
                         ),
+                        # `P22-17`. A parked workflow step's card waits its own
+                        # deadline (`D-2026-10-02-01` §1); `None` everywhere else.
+                        ttl_seconds=approval_ttl_seconds,
                     )
                     desc = f"{block.tool_type}: APPROVAL REQUIRED"
                     result = {

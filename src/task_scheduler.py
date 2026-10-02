@@ -1417,6 +1417,76 @@ WORKFLOW_DOCUMENT_MISSING = ("This workflow’s steps are missing, so there was 
 # ended part-way.
 NODE_STOPPED = "Stopped before it finished"
 
+# `P22-11`. What a parked run's row says, and what a run says that was
+# switched off while it waited.
+TAKEOVER_PARKED = ("Waiting for Pantheon to be idle: it became active while this "
+                   "ran, so the step it was on stopped. It goes on from that step once "
+                   "Pantheon is idle; the steps that finished are kept.")
+SWITCHED_OFF_WHILE_WAITING = "Switched off while it waited"
+
+# `P22-11`. How many deterministic and logic steps of one run run side by side.
+# A constant for mistake prevention, not a control (`Law 17`): the run still
+# holds ONE model-slot permit, and its model-driven steps take a per-run lock
+# one at a time, so the concurrency cap still applies.
+WORKFLOW_PARALLEL_STEPS = 4
+
+# `P22-17`. What became of a step's question. `allow` resumes the step once
+# with the consumed approval; the other three take its failure port.
+ANSWER_ALLOW = "allow"
+ANSWER_DENY = "deny"
+ANSWER_LAPSED = "lapsed"
+ANSWER_RESTARTED = "restarted"
+
+
+class StepDone(NamedTuple):
+    """One step's end: its `NodeResult`, and the port it chose — a logic
+    step's `then` / `otherwise` / `case:<id>`; `None` means the outcome's own
+    (`success` / `error`)."""
+    result: Any
+    port: Any = None
+
+
+class StepAnswer(NamedTuple):
+    """`P22-17`. The answer a parked step resumes with. `exact_approval` is the
+    consumed `ExactToolApproval` (Allow, SINGLE_ACTION scope) and travels in
+    memory only: a restart in the window between the answer and the resume
+    is a lapsed answer, and the step says so. `sentence` is what the step's
+    log and the run's say ("Allowed once by joseph at 07:42: send_reply")."""
+    node_id: str
+    item: Any
+    decision: str
+    sentence: str = ""
+    exact_approval: Any = None
+
+
+class _Walk:
+    """One segment of one run's walk: what `_run_workflow`'s parts share."""
+
+    def __init__(self, *, task, db, run_id, wf, graph, state, name, version,
+                 started_by, waits_for):
+        self.task, self.db, self.run_id = task, db, run_id
+        self.wf, self.graph, self.state = wf, graph, state
+        self.name, self.version = name, version
+        self.started_by, self.waits_for = started_by, waits_for
+        self.running = {}          # asyncio.Task → (node, record, slot)
+        self.started = set()       # step ids begun or settled in this segment
+        self.timers = {}           # Wait step id → (node, record, until)
+        self.model_lock = asyncio.Lock()
+        self.question_open = False
+        self.last_model = None
+
+
+def _port_word(node: dict, port) -> str:
+    """The word a person reads for a port: a Switch case's own label, else the
+    port itself."""
+    if isinstance(port, str) and port.startswith("case:"):
+        case_id = port.split(":", 1)[1]
+        for case in (node.get("config") or {}).get("cases") or ():
+            if isinstance(case, dict) and str(case.get("id")) == case_id:
+                return str(case.get("label") or case_id)
+        return case_id
+    return str(port)
+
 
 def node_slot(run_id: str, node_id: str) -> str:
     """The `_run_state` key a workflow step runs under."""
@@ -1997,20 +2067,31 @@ class TaskScheduler:
         it was still waiting.
         """
         try:
-            from core.database import SessionLocal, TaskRun, TASK_RUN_ACTIVE_STATUSES
+            from core.database import SessionLocal, TaskRun, TASK_RUN_IN_FLIGHT_STATUSES
             db = SessionLocal()
             try:
                 q = db.query(TaskRun)
                 if run_id:
                     q = q.filter(TaskRun.id == run_id)
                 else:
+                    # `P22-11`. IN FLIGHT, not only active: Stop ends a run
+                    # that is parked, which no coroutine holds to cancel.
                     q = q.filter(
                         TaskRun.task_id == task_id,
-                        TaskRun.status.in_(TASK_RUN_ACTIVE_STATUSES),
+                        TaskRun.status.in_(TASK_RUN_IN_FLIGHT_STATUSES),
                     ).order_by(TaskRun.started_at.desc())
                 run = q.first()
-                if not run or run.status not in TASK_RUN_ACTIVE_STATUSES:
+                if not run or run.status not in TASK_RUN_IN_FLIGHT_STATUSES:
                     return False
+                if run.status == "waiting":
+                    # Its waiting steps end with the same words, and their
+                    # cards are retired, so nothing it asked can be answered.
+                    from core.database import ScheduledTask
+                    from src import workflow_runs as _wr
+                    owner_task = db.query(ScheduledTask).filter(
+                        ScheduledTask.id == run.task_id).first()
+                    self._retire_cards(db, run.id, owner_task)
+                    _wr.end_waiting_records(db, run.id, status="aborted", error=message)
                 run.status = "aborted"
                 run.error = message
                 run.result = message
@@ -2151,6 +2232,10 @@ class TaskScheduler:
                 # Zombies from a prior server crash. Tagged "aborted" (not
                 # "error") so the Activity view + error-rate stats don't
                 # falsely blame the task for what was an infrastructure event.
+                # `P22-11`: ACTIVE, never PARKED — a `waiting` run is held by
+                # no process, so a restart leaves it waiting, and it goes on
+                # from its records (a card it held lapsed with the old
+                # process; the sweeper says so on its failure port).
                 stale = db.query(TaskRun).filter(
                     TaskRun.status.in_(TASK_RUN_ACTIVE_STATUSES)
                 ).all()
@@ -2162,6 +2247,13 @@ class TaskScheduler:
                         r.error = "Server restarted while task was " + old_status
                         r.finished_at = now
                     db.commit()
+                    # The steps of a run it aborts that were waiting — parked
+                    # on a card while another branch ran — wait for nothing now.
+                    from src import workflow_runs as _wr
+                    for r in stale:
+                        _wr.end_waiting_records(
+                            db, r.id, status="aborted",
+                            error="Server restarted while this run was going")
                     logger.info(f"Cleared {len(stale)} stale task_runs from previous run")
             finally:
                 db.close()
@@ -2419,6 +2511,12 @@ class TaskScheduler:
                         sleep_for = max(1.0, min(60.0, delta))
                 finally:
                     _db.close()
+                # `P22-11`. Wake for a parked step's time too, so a Wait until
+                # 08:00 goes on at 08:00 rather than up to a minute later.
+                due = self._next_resume_at()
+                if due is not None:
+                    delta = (due - _utcnow()).total_seconds()
+                    sleep_for = max(1.0, min(sleep_for, delta))
             except Exception:
                 pass
             await asyncio.sleep(sleep_for)
@@ -2470,6 +2568,11 @@ class TaskScheduler:
                 asyncio.create_task(self._dispatch_after(task_id, hold))
         finally:
             db.close()
+        # `P22-11`. Parked workflow runs whose wait is over go on.
+        try:
+            await self._resume_due_waits()
+        except Exception:
+            logger.warning("The parked-run sweep failed", exc_info=True)
 
     async def _dispatch_after(self, task_id: str, hold: float) -> None:
         """Hold a scheduled task briefly, then run it (`P15-10`).
@@ -2577,7 +2680,14 @@ class TaskScheduler:
                             release_executing: bool = True, trigger: dict | None = None,
                             dry: bool = False,
                             started_by: str = STARTED_BY_BACKGROUND,
-                            register_handle: bool = True):
+                            register_handle: bool = True,
+                            resume_run_id: str | None = None, answer=None):
+        # `P22-11`. `resume_run_id` is a parked (`waiting`) workflow run going
+        # on: no new row — the run is the one that parked — and every gate is
+        # asked again (paused, admin, B1060's idle wait for background work,
+        # the model slot, the time limit, which applies per segment).
+        # `answer` (`P22-17`) is what a person said to its question.
+        #
         # Create the run record with status="queued" BEFORE waiting on the
         # semaphore so the UI can show that a manually-triggered task is in
         # line behind another. Once we acquire the slot, flip to "running"
@@ -2595,7 +2705,8 @@ class TaskScheduler:
                 self._started_by_map()[task_id] = started_by
 
         _hold_handle()
-        run_id = self._new_queued_run(task_id)
+        run_id = resume_run_id or self._new_queued_run(task_id)
+        resume = resume_run_id is not None
         # `B1060`. Background work waits for Pantheon to be idle BEFORE it takes
         # the model slot. A person's run keeps `B1047`'s chat wait, inside
         # `_execute_task_locked`; a dry run and a forced run wait for nothing.
@@ -2623,6 +2734,7 @@ class TaskScheduler:
                         started_by=started_by,
                         waited_for_idle=waited,
                         may_requeue=takeovers + 1 < FOREGROUND_STOPS_LIMIT,
+                        resume=resume, answer=answer,
                     )
                 else:
                     sem, waited = await self._take_model_slot(
@@ -2637,6 +2749,7 @@ class TaskScheduler:
                             started_by=started_by,
                             waited_for_idle=waited,
                             may_requeue=takeovers + 1 < FOREGROUND_STOPS_LIMIT,
+                            resume=resume, answer=answer,
                         )
                     finally:
                         sem.release()
@@ -2673,6 +2786,7 @@ class TaskScheduler:
                 takeovers += 1
                 _hold_handle()
                 run_id = self._new_queued_run(task_id)
+                resume, answer = False, None
         except asyncio.CancelledError:
             # If cancellation happens while queued behind the semaphore,
             # _execute_task_locked never runs and cannot update the Activity row.
@@ -2744,6 +2858,8 @@ class TaskScheduler:
         started_by: str = STARTED_BY_BACKGROUND,
         waited_for_idle: float = 0.0,
         may_requeue: bool = True,
+        resume: bool = False,
+        answer=None,
     ):
         """Run one queued run to its end. Answers `REQUEUED` when the
         foreground gate stopped it while it ran and it goes back in the queue
@@ -2781,6 +2897,17 @@ class TaskScheduler:
                 # privilege oracle — it just changes nothing and tells nobody.
                 self._record_dry_run(db, task, run_id)
                 return
+            if resume:
+                # `P22-11`. A parked run going on. Stopped meanwhile (Stop ends
+                # a waiting run) — nothing to resume. Switched off meanwhile —
+                # it ends `aborted`, says so, and its cards are retired.
+                parked = db.query(TaskRun).filter(TaskRun.id == run_id).first()
+                if parked is None or parked.status != "waiting":
+                    return
+                if not task or task.status != "active":
+                    self._end_parked_run(db, task, parked, status="aborted",
+                                         sentence=SWITCHED_OFF_WHILE_WAITING)
+                    return
             if not task or task.status != "active":
                 # Task was paused/deleted while queued — record that outcome
                 # so the run row doesn't sit as "queued" forever.
@@ -2800,6 +2927,17 @@ class TaskScheduler:
                     self._notify_run_outcome(task, "skipped", body=stale.error,
                                              task_id=task_id)
                 return
+
+            # `B674`, written once (`workflow_runs.run_in_flight`): one workflow
+            # runs once at a time. A new trigger while a run of it is still
+            # going — parked on a Wait or a person's yes, or running — is a
+            # `skipped` run that says why, never a second run beside it.
+            if not resume and (task.task_type or "llm") == "workflow":
+                from src import workflow_runs as _wr
+                _other = _wr.run_in_flight(db, task_id, exclude=run_id)
+                if _other is not None and _other.status != "queued":
+                    self._skip_for_in_flight(db, task, run_id, _other)
+                    return
 
             # `P22-05`. One question for a task and for a workflow: the task's
             # own action, or any step of its document (`admin_only_action_of`)
@@ -2860,7 +2998,25 @@ class TaskScheduler:
             # actual execution start so queue wait time is visible from
             # created_at vs started_at if we ever surface that.
             run = db.query(TaskRun).filter(TaskRun.id == run_id).first()
-            if run:
+            if run and resume:
+                # `P22-11`. The same run, going on: `waiting → running`. It keeps
+                # its start time and its step log so far, and says why it is
+                # going on.
+                run.status = "running"
+                run.result = "Resumed…"
+                run.finished_at = None
+                db.commit()
+                try:
+                    kept = json.loads(run.steps) if run.steps else []
+                except (TypeError, ValueError):
+                    kept = []
+                slot["steps"] = list(kept) if isinstance(kept, list) else []
+                slot["resuming"] = True
+                slot["answer"] = answer
+                self._record_run_step(run_id, kind="progress", detail=(
+                    f"Resumed: {answer.sentence}" if answer is not None and answer.sentence
+                    else "Resumed"))
+            elif run:
                 run.status = "running"
                 run.started_at = _utcnow()
                 run.result = "Starting…"
@@ -2884,7 +3040,7 @@ class TaskScheduler:
 
             task_type = task.task_type or "llm"
 
-            from src.builtin_actions import TaskDeferred, TaskNoop
+            from src.builtin_actions import TaskDeferred, TaskNoop, TaskWaiting
 
             # `P8-23`. What fired this run, recorded before anything it does —
             # so the first line of the step log is the cause and the rest is the
@@ -2988,7 +3144,9 @@ class TaskScheduler:
                     run.status = "success" if node.ok else "error"
                     run.result = result
                     if node.failed:
-                        run.error = (result or "")[:2000]
+                        # `P22-11`. The step (and item) that failed, by name.
+                        run.error = (self._state_for(run_id).get("run_error")
+                                     or result or "")[:2000]
                     self._state_for(run_id)["payload"] = node.payload
                 else:
                     # LLM task — use agent loop for tool access
@@ -3027,12 +3185,39 @@ class TaskScheduler:
                 msg = (f"Timed out after {_human_gap(budget)} — this task's own "
                        f"timeout. Nothing after that point ran.")
                 logger.warning("Task '%s' exceeded its %ss timeout", task.name, budget)
+                if task_type == "workflow":
+                    # `P22-11`. The time limit is per segment; a run that ran
+                    # out of it waits for nothing any more.
+                    self._retire_cards(db, run_id, task)
+                    from src import workflow_runs as _wr
+                    _wr.end_waiting_records(db, run_id, status="error", error=msg)
                 run.status = "error"
                 run.result = msg
                 run.error = msg
                 self._record_run_step(run_id, kind="progress", detail=msg)
                 self._attach_run_steps(run_id, run)
                 result = msg
+            except TaskWaiting as parked:
+                # `P22-11`. The run PARKS: `waiting`, with what it waits for.
+                # Its step records are its state, so nothing here holds it — the
+                # coroutine exits, which lets go of the model slot, the
+                # foreground monitor, the time limit and the claim. No outcome
+                # notification (the run has not ended; a question goes out as
+                # its own notification) and no chain advance. A scheduled task
+                # gets its next time as normal; an event or webhook task none —
+                # a trigger while it waits is a `skipped` run (`B674`).
+                logger.info("Workflow '%s' parked: %s", task.name, parked.sentence)
+                run.status = "waiting"
+                run.result = parked.sentence
+                run.error = None
+                run.finished_at = None
+                if self.run_model(run_id):
+                    run.model = self.run_model(run_id)
+                self._attach_run_steps(run_id, run)
+                task.last_run = _utcnow()
+                task.next_run = self._next_run_after(db, task)
+                db.commit()
+                return
             except TaskDeferred as defer:
                 count = self._task_defer_counts.get(task_id, 0) + 1
                 self._task_defer_counts[task_id] = count
@@ -3073,6 +3258,35 @@ class TaskScheduler:
                 # back as a run nothing had chained.
                 requeue = False
                 said = msg
+                if takeover and task_type == "workflow":
+                    # `P22-11`. A workflow run is PARKED, not re-queued: the
+                    # step the takeover stopped is `waiting {kind: idle}` (the
+                    # walker wrote it), the finished steps are kept, and only
+                    # that step runs again once Pantheon is idle — so a POST
+                    # that was already sent is not sent twice. One durable
+                    # mechanism; `B1060`'s re-queue stays for every other task.
+                    try:
+                        db.refresh(task)
+                        still_on = task.status == "active"
+                    except Exception:
+                        still_on = False
+                    run_obj = db.query(TaskRun).filter(TaskRun.id == run_id).first()
+                    if still_on and run_obj is not None:
+                        run_obj.status = "waiting"
+                        run_obj.result = TAKEOVER_PARKED
+                        run_obj.error = None
+                        run_obj.finished_at = None
+                        self._attach_run_steps(run_id, run_obj)
+                        task.last_run = _utcnow()
+                        db.commit()
+                        logger.info("Workflow '%s' parked for Pantheon to be idle", task.name)
+                        return
+                if task_type == "workflow":
+                    # Stopped, timed out or switched off: what its steps waited
+                    # for will not come.
+                    self._retire_cards(db, run_id, task)
+                    from src import workflow_runs as _wr
+                    _wr.end_waiting_records(db, run_id, status="aborted", error=msg)
                 if takeover:
                     try:
                         db.refresh(task)     # switched off while it ran?
@@ -3401,6 +3615,229 @@ class TaskScheduler:
 
 
 
+    # ── `P22-11` / `B674` · a run that waits ──────────────────────────────────
+
+    def _next_run_after(self, db, task):
+        """A scheduled task's next time, as a finished run would set it; `None`
+        for an event or webhook task (it runs when it is triggered)."""
+        if (task.trigger_type or "schedule") != "schedule":
+            return None
+        return compute_next_run(
+            task.schedule, task.scheduled_time, task.scheduled_day, task.scheduled_date,
+            after=_utcnow(), cron_expression=task.cron_expression,
+            tz_name=_resolve_task_timezone(db, task))
+
+    def _skip_for_in_flight(self, db, task, run_id: str, other) -> str:
+        """`B674`. This run did not start because another of the same workflow
+        is still going: its row is `skipped` with the sentence that says which
+        run and what it waits for. Nobody is notified — the run that waits
+        already asked its question — and the task's next time moves on as a
+        no-op's would. Answers the sentence."""
+        from core.database import TaskRun
+        from src import workflow_runs as wr
+
+        tz_name = _resolve_task_timezone(db, task)
+        sentence = (wr.parked_sentence(db, other, tz_name=tz_name) if other.status == "waiting"
+                    else (f"Did not start: the {wr._clock(other.started_at, tz_name)} run "
+                          f"is still running."))
+        run = db.query(TaskRun).filter(TaskRun.id == run_id).first()
+        if run is not None:
+            run.status = "skipped"
+            run.result = sentence
+            run.error = sentence
+            run.finished_at = _utcnow()
+        task.next_run = self._next_run_after(db, task)
+        db.commit()
+        logger.info("Workflow '%s': %s", task.name, sentence)
+        return sentence
+
+    def in_flight_sentence(self, task_id: str) -> str | None:
+        """`B674`. Why a run of this workflow cannot start now, when a run of it
+        is parked — the sentence the webhook's 409 and Run now's say — or
+        `None`."""
+        from core.database import SessionLocal, ScheduledTask
+        from src import workflow_runs as wr
+
+        db = SessionLocal()
+        try:
+            task = db.query(ScheduledTask).filter(ScheduledTask.id == task_id).first()
+            if task is None or (task.task_type or "llm") != "workflow":
+                return None
+            parked = wr.parked_run(db, task_id)
+            if parked is None:
+                return None
+            return wr.parked_sentence(db, parked, tz_name=_resolve_task_timezone(db, task))
+        finally:
+            db.close()
+
+    def _record_parked_skip(self, task_id: str) -> str | None:
+        """`B674` for `run_task_now`: a trigger that arrives while this
+        workflow's run is parked writes its own `skipped` row (the same
+        sentence) and starts nothing. Answers the sentence, or `None` when no
+        run of it is parked."""
+        from core.database import SessionLocal, ScheduledTask, TaskRun
+        from src import workflow_runs as wr
+
+        db = SessionLocal()
+        try:
+            task = db.query(ScheduledTask).filter(ScheduledTask.id == task_id).first()
+            if task is None or (task.task_type or "llm") != "workflow":
+                return None
+            parked = wr.parked_run(db, task_id)
+            if parked is None:
+                return None
+            run_id = str(uuid.uuid4())
+            db.add(TaskRun(id=run_id, task_id=task_id, started_at=_utcnow(),
+                           status="queued", result="Queued — waiting for a free slot…"))
+            db.commit()
+            return self._skip_for_in_flight(db, task, run_id, parked)
+        finally:
+            db.close()
+
+    def _retire_cards(self, db, run_id: str, task) -> int:
+        """Every card a waiting step of this run holds is retired — consumed as
+        a denial, the way a scheduled run's card always was — so a Stop, a
+        switch-off or a time limit leaves no card that could still be
+        answered. Answers how many."""
+        from src import workflow_runs as wr
+        from src.tool_approvals import tool_approval_store
+
+        retired = 0
+        for rec in wr.waiting_records(db, run_id):
+            waiting = wr.waiting_of(rec) or {}
+            if waiting.get("kind") != wr.WAITING_APPROVAL or not waiting.get("approval_id"):
+                continue
+            try:
+                tool_approval_store.consume(
+                    waiting["approval_id"], decision="deny",
+                    owner=getattr(task, "owner", None) if task is not None else None,
+                    session_id=waiting.get("session_id") or "")
+                retired += 1
+            except Exception:
+                logger.debug("Could not retire card %s", waiting.get("approval_id"),
+                             exc_info=True)
+        return retired
+
+    def _end_parked_run(self, db, task, run, *, status: str, sentence: str) -> None:
+        """A parked run that will not go on: its cards retired, its waiting
+        steps ended with the same words, the run `status` with them."""
+        from src import workflow_runs as wr
+
+        self._retire_cards(db, run.id, task)
+        wr.end_waiting_records(db, run.id, status="aborted", error=sentence)
+        run.status = status
+        run.result = sentence
+        run.error = sentence
+        run.finished_at = _utcnow()
+        db.commit()
+        if task is not None:
+            self._notify_run_outcome(task, status, body=sentence, task_id=task.id)
+
+    async def _claim_for_resume(self, task_id: str) -> bool:
+        """Take the task's claim for a resume; `False` while something else
+        holds it (a trigger being skipped, say) — try again shortly."""
+        async with self._executing_lock:
+            if task_id in self._executing:
+                return False
+            self._executing.add(task_id)
+            return True
+
+    def _spawn_resume(self, task_id: str, run_id: str, *, started_by: str, answer=None):
+        """Go on with a parked run whose claim is held. Spawned, so whoever
+        asked — the answer route, the sweeper — is not held for the run."""
+        return asyncio.create_task(self._execute_task(
+            task_id, resume_run_id=run_id, started_by=started_by, answer=answer))
+
+    async def resume_workflow_run(self, run_id: str, *, started_by: str = STARTED_BY_BACKGROUND,
+                                  answer=None) -> bool:
+        """`P22-11` / `P22-17`. Go on with a parked run: every gate asked again,
+        on the version it started with, from where it stopped. `False` when
+        the run is not parked, or its task's claim is held right now."""
+        from core.database import SessionLocal, TaskRun
+
+        if started_by not in STARTED_BY:
+            raise ValueError(f"started_by must be one of {STARTED_BY}, not {started_by!r}")
+        db = SessionLocal()
+        try:
+            run = db.query(TaskRun).filter(TaskRun.id == run_id).first()
+            if run is None or run.status != "waiting":
+                return False
+            task_id = run.task_id
+        finally:
+            db.close()
+        if not await self._claim_for_resume(task_id):
+            return False
+        self._spawn_resume(task_id, run_id, started_by=started_by, answer=answer)
+        return True
+
+    async def _resume_due_waits(self) -> int:
+        """`P22-11`. The sweeper: every parked run whose wait is over goes on.
+
+          * a Wait whose time has come (`time`);
+          * a card the store no longer holds — it lapsed, or Pantheon
+            restarted (`approval`; the step says which and takes its failure
+            port);
+          * a step a takeover stopped, once Pantheon is idle (`idle`);
+          * a run whose workflow was switched off (it ends, and says so).
+        Resumed as background work, so `B1060`'s wait applies: "at 08:00, or
+        as soon after as Pantheon is idle". Answers how many it resumed."""
+        from core.database import SessionLocal, ScheduledTask, TaskRun
+        from src import workflow_runs as wr
+        from src.tool_approvals import tool_approval_store
+
+        try:
+            from src.interactive_gate import has_foreground_activity
+            busy = has_foreground_activity()
+        except Exception:
+            busy = False
+        due = []
+        db = SessionLocal()
+        try:
+            now = _utcnow()
+            for run in db.query(TaskRun).filter(TaskRun.status == "waiting").all():
+                if run.task_id in self._executing:
+                    continue
+                task = db.query(ScheduledTask).filter(ScheduledTask.id == run.task_id).first()
+                if task is None or task.status != "active":
+                    due.append(run.id)
+                    continue
+                for rec in wr.waiting_records(db, run.id):
+                    waiting = wr.waiting_of(rec) or {}
+                    kind = waiting.get("kind")
+                    if kind == wr.WAITING_TIME and rec.resume_at is not None \
+                            and rec.resume_at <= now:
+                        due.append(run.id)
+                        break
+                    if kind == wr.WAITING_APPROVAL and \
+                            tool_approval_store.peek(waiting.get("approval_id")) is None:
+                        due.append(run.id)
+                        break
+                    if kind == wr.WAITING_IDLE and not busy:
+                        due.append(run.id)
+                        break
+        except Exception:
+            logger.warning("Could not read the parked workflow runs", exc_info=True)
+        finally:
+            db.close()
+        resumed = 0
+        for run_id in dict.fromkeys(due):
+            if await self.resume_workflow_run(run_id, started_by=STARTED_BY_BACKGROUND):
+                resumed += 1
+        return resumed
+
+    def _next_resume_at(self):
+        """The earliest time a parked step is due, for `_loop`'s sleep."""
+        from core.database import SessionLocal, TaskRunNode
+
+        db = SessionLocal()
+        try:
+            row = (db.query(TaskRunNode.resume_at)
+                   .filter(TaskRunNode.status == "waiting", TaskRunNode.resume_at.isnot(None))
+                   .order_by(TaskRunNode.resume_at.asc()).first())
+            return row[0] if row else None
+        finally:
+            db.close()
+
     # Built-in housekeeping actions whose output is pure infra (no user-facing
     # content) — don't pollute the assistant chat session with their summaries.
     # Activity log + reminder email already carry everything the user needs.
@@ -3472,13 +3909,12 @@ class TaskScheduler:
             graph = None
         if graph is None:
             return True
-        for node in graph["nodes"]:
-            kind = node.get("kind")
-            if kind != wd.NODE_KIND_ACTION:
-                return True
-            if self._action_needs_model((node.get("config") or {}).get("action")):
-                return True
-        return False
+        # `P22-11`. `node_needs_model` replaces "every kind that is not an
+        # action" (`SLICE-CD-DESIGN` § 0.9): a workflow of logic, HTTP, MCP and
+        # Code steps does not queue behind a model run. A Run task step still
+        # does (its task may call a model, inside this workflow's slot).
+        return any(self._node_needs_model(node) or node.get("kind") == wd.NODE_KIND_RUN_TASK
+                   for node in graph["nodes"])
 
     def _log_to_assistant(self, db, task, result_text: str):
         """Log a task result to the assistant's chat session."""
@@ -3939,6 +4375,11 @@ class TaskScheduler:
         # not obey. `None` when nothing triggered it, which is every scheduled
         # run — so those build exactly the message list they built before.
         _trigger_msg = _trigger_context_message(self.run_trigger(run_id))
+        # `P22-09` / `P22-15`. What a workflow step hands its model beside the
+        # trigger — the values its named slots read, a skill it follows — each
+        # already wrapped untrusted with the gate armed. On the step's own slot
+        # (`P8-27`'s mechanism), inserted after the trigger message.
+        _context_msgs = list((self._runs().get(run_id) or {}).get("context_messages") or ())
 
         # Try using the agent loop for full tool access
         try:
@@ -3948,6 +4389,7 @@ class TaskScheduler:
                 relevant_tools=relevant_tools,
                 datetime_context_msg=_dt_msg,
                 trigger_context_msg=_trigger_msg,
+                context_msgs=_context_msgs,
                 run_id=run_id,
             )
         except Exception as e:
@@ -3962,6 +4404,7 @@ class TaskScheduler:
             # not say what fired it.
             if _trigger_msg:
                 messages.append(_trigger_msg)
+            messages.extend(_context_msgs)
             messages.append({"role": "user", "content": task.prompt})
             result = await task_llm_call_async(
                 messages,
@@ -4170,9 +4613,18 @@ class TaskScheduler:
                               override_user_message: str | None = None,
                               datetime_context_msg: dict | None = None,
                               trigger_context_msg: dict | None = None,
-                              run_id: str | None = None) -> str:
-        """Run the full agent loop with tool access, collecting the final text."""
+                              run_id: str | None = None,
+                              context_msgs: list | None = None) -> str:
+        """Run the full agent loop with tool access, collecting the final text.
+
+        `P22-17`. A workflow step's slot may carry `may_wait` — the step can
+        park on a card instead of the card being denied on the spot — and, when
+        it resumes after an Allow, the consumed `exact_approval` the loop
+        replays first. A plain scheduled Prompt task carries neither and keeps
+        "paused safely" exactly as before (`Law 1`).
+        """
         from src.agent_loop import stream_agent_loop
+        from src.interactive_gate import STARTED_BY_PERSON
 
         system_content = system_prompt or "You are a helpful assistant executing a scheduled task. Use available tools to complete the task thoroughly."
         user_content = override_user_message or task.prompt
@@ -4188,7 +4640,38 @@ class TaskScheduler:
         # fired the task immediately before being told what to do about it.
         if trigger_context_msg:
             messages.append(trigger_context_msg)
+        # `P22-09` / `P22-15`. A step's named-slot values and a followed skill,
+        # each its own untrusted block, after what fired the run.
+        for extra in context_msgs or ():
+            if isinstance(extra, dict):
+                messages.append(extra)
         messages.append({"role": "user", "content": user_content})
+        _slot = self._runs().get(run_id) or {}
+        _exact_approval = _slot.get("exact_approval")
+        _may_wait = bool(_slot.get("may_wait"))
+        # `SLICE-CD-DESIGN` § 0.11 (wf-ui's B-NEW-1, reproduced by `integrate-c`
+        # on P22-08). This was `workload="background"` for every run, and the
+        # local-model gate (`llm_core._local_model_slot`) holds a background
+        # call while there is foreground activity — so a step a person tested,
+        # ran or allowed from a notification never reached a model on this
+        # machine while their page was open, the page that was waiting for it.
+        # The workload follows who started the run (`B1047`'s `started_by`):
+        # a person's is foreground, background work stays background.
+        _workload = ("foreground" if self._run_started_by(run_id) == STARTED_BY_PERSON
+                     else "background")
+        _loop_extra = {}
+        if _exact_approval is not None:
+            _loop_extra["exact_approval"] = _exact_approval
+        if _may_wait:
+            from src.workflow_runs import workflow_approval_ttl_seconds
+            _loop_extra["approval_ttl_seconds"] = workflow_approval_ttl_seconds(task.owner)
+        if _slot.get("allowed_tools") is not None:
+            # `P22-16`. An AI step limited to its own tools (`wf-effects`' policy).
+            from src.tool_policy import ToolPolicy
+            _loop_extra["tool_policy"] = ToolPolicy(
+                allowed_tools=frozenset(_slot["allowed_tools"]))
+        if _slot.get("suppress_skills"):
+            _loop_extra["suppress_skills"] = True
 
         # Resolve headers from the endpoint's API key
         headers = {}
@@ -4251,7 +4734,8 @@ class TaskScheduler:
             disabled_tools=disabled_tools,
             relevant_tools=relevant_tools,
             fallbacks=_task_fallbacks,
-            workload="background",
+            workload=_workload,
+            **_loop_extra,
         ):
             if event_str.startswith("data: ") and not event_str.startswith("data: [DONE]"):
                 try:
@@ -4331,6 +4815,24 @@ class TaskScheduler:
                                 # (`Law 10`).
                                 "reason": (approval.get("description") or "").strip(),
                             }
+                            if _may_wait:
+                                # `P22-17`. A workflow step parks on the card:
+                                # it stays pending (its own deadline, above),
+                                # the person answers it from a notification,
+                                # and Allow resumes this step ONCE. Raised, a
+                                # `BaseException`, so `_execute_llm_task`'s
+                                # fallback cannot answer around it.
+                                from src.builtin_actions import TaskWaiting
+                                raise TaskWaiting(
+                                    f"Waiting for your yes on {approval_pause['tool']}",
+                                    kind="approval",
+                                    approval_id=approval_pause["approval_id"],
+                                    session_id=session_id,
+                                    tool=approval_pause["tool"],
+                                    reason=approval_pause["reason"],
+                                    until=approval.get("expires_at"),
+                                    card=approval,
+                                )
                             # Scheduled tasks have no interactive surface that
                             # can safely resume a one-use grant. Retire the
                             # record immediately instead of leaving it pending
@@ -4567,21 +5069,41 @@ class TaskScheduler:
             q = db.query(CrewMember.id).filter(CrewMember.id.in_(crew))
             q = q.filter(CrewMember.owner == owner) if owner else q.filter(CrewMember.owner.is_(None))
             crew_ids = {row[0] for row in q.all()}
+        # `P22-09`…`P22-18`. What the document is checked against beyond the
+        # owner's tasks and crew: integrations, MCP tools, skills, the AI
+        # tool choices, the workstation, the For-each cap (`WorkflowResources`,
+        # built by `wf-effects`) — read fresh, so the run is checked against
+        # what is true now, in the save's words.
+        from src import workflow_effects as we
         return {"owner": owner, "tasks_by_id": tasks_by_id, "crew_ids": crew_ids,
                 "owner_is_admin": owner_has_admin_task_privileges(owner),
-                "own_task_id": task.id}
+                "own_task_id": task.id,
+                "resources": we.workflow_resources(owner)}
 
-    def _load_workflow(self, db, task):
+    def _load_workflow(self, db, task, version=None):
         """`(workflow row, document, refusal sentence)` — the refusal is the
-        same sentence the save was told, or why there is nothing to run."""
-        from core.database import Workflow
+        same sentence the save was told, or why there is nothing to run.
+
+        `P22-11`. `version` is the one a resumed run started with: a run
+        resumes on its own document, not on an edit made while it waited. If
+        that version was pruned since, the run cannot go on, and says so."""
+        from core.database import Workflow, WorkflowVersion
         from src import workflow_document as wd
 
         wf = db.query(Workflow).filter(Workflow.task_id == task.id).first()
         if wf is None:
             return None, None, WORKFLOW_DOCUMENT_MISSING
+        raw = wf.graph
+        if version is not None and version != wf.version:
+            kept = (db.query(WorkflowVersion)
+                    .filter(WorkflowVersion.workflow_id == wf.id,
+                            WorkflowVersion.version == version).first())
+            if kept is None:
+                return wf, None, (f"This run started on version {version} of the workflow, "
+                                  f"which is no longer kept, so it cannot go on.")
+            raw = kept.graph
         try:
-            graph = wd.parse_graph(wf.graph)
+            graph = wd.parse_graph(raw)
             refusal = wd.validate_document(graph, **self._document_context(db, task, graph))
         except wd.DocumentError as exc:
             return wf, None, exc.refusal.sentence
@@ -4650,6 +5172,13 @@ class TaskScheduler:
                 return [], declined
             lines = [f"Would run the task “{target.name}”, as its own run with its "
                      f"own history.", *dry_run_lines(target)[1:]]
+        elif kind not in wd.STAND_IN_KINDS:
+            # `P22-10`…`P22-18`. A logic, HTTP, MCP, Skill, Code, Wait, Merge or
+            # For-each step: the document's own planner (`plan_lines`), which
+            # shows `never` slots verbatim and value slots as their references,
+            # never as values.
+            from src import workflow_effects as we
+            lines = list(wd.plan_lines(node, we.workflow_resources(task.owner)))
         else:
             lines = dry_run_plan(
                 task_type=kind, action=config.get("action"), prompt=config.get("prompt"),
@@ -4660,117 +5189,1031 @@ class TaskScheduler:
         return [shape_run_step({"kind": "dry-run", "detail": line}) for line in lines], None
 
     async def _run_workflow(self, task, db, run_id: str):
-        """Walk the document from its first step. Answers a `NodeResult`.
+        """Walk the document. Answers a `NodeResult`; raises `TaskWaiting` when
+        the run parks (`P22-11`).
 
-        How the run ends — one rule, written once (`Law 10`):
-          * the last step that ran ended `error` → the run is `error`;
-          * every step that ran was `skipped` → the run is `skipped`;
-          * anything else → `success`. A failure routed through an *if it
-            fails* arrow to a step that then works is a successful run; the
-            failed step's own record still says it failed.
-        A step that asked to wait (`deferred`) ends its branch as `skipped`,
-        with why — never the run row deleted under its step records.
+        `SLICE-CD-DESIGN` § 1.4. The run's state is its step records
+        (`workflow_runs.RunState`, `Law 7`), so a run that parked — on a Wait,
+        a person's yes, or a foreground takeover — and a run a restart left
+        waiting pick up from the same place: every step whose arrows have
+        fired and that has no record is ready; a Merge waits for its inputs.
+
+          * Branches run side by side. Steps that drive a model take a per-run
+            lock one at a time; deterministic and logic steps run beside them,
+            at most `WORKFLOW_PARALLEL_STEPS` at once. The run holds one
+            model-slot permit, so the concurrency cap still applies.
+          * One question at a time per run: while a step waits for a yes, the
+            run's other model steps do not start (a session's newer card would
+            supersede it, `tool_approvals.create`), though other branches go on.
+          * When nothing can go on and something waits, the run parks: records
+            written, `TaskWaiting` raised, and `_execute_task_locked` lets go of
+            the model slot, the time limit and the claim.
+
+        How a run ends — one rule, written once (`Law 10`):
+          * a branch that ended on an UNHANDLED `error` (no arrow out of its
+            failure port) → `error`, naming the step (and item) that failed;
+          * every step `skipped` → `skipped`;
+          * anything else → `success`. `result` is what the step that finished
+            last made.
         """
+        from src import workflow_runs as wr
+        from src.builtin_actions import NODE_STATUS_ERROR, NodeResult
+        from src.event_bus import run_origin
+
+        run_slot = self._state_for(run_id)
+        answer = run_slot.pop("answer", None)
+        resuming = bool(run_slot.get("resuming"))
+        records = [r for r in wr.run_node_records(db, run_id) if not r.dry]
+        version = (next((r.workflow_version for r in records
+                         if r.workflow_version is not None), None)
+                   if resuming else None)
+        wf, graph, refused = self._load_workflow(db, task, version=version)
+        if refused:
+            self._record_run_step(run_id, kind="progress", detail=refused)
+            if resuming:
+                wr.end_waiting_records(db, run_id, status="error", error=refused)
+            return NodeResult(NODE_STATUS_ERROR, payload=refused)
+        state = wr.RunState(graph, records, trigger=self.run_trigger(run_id))
+        if state.trigger is not None and run_slot.get("trigger") is None:
+            run_slot["trigger"] = state.trigger
+        w = _Walk(task=task, db=db, run_id=run_id, wf=wf, graph=graph, state=state,
+                  name=wf.name or task.name,
+                  version=version if version is not None else wf.version,
+                  started_by=run_slot.get("started_by") or STARTED_BY_BACKGROUND,
+                  waits_for=self._run_waits_for(run_id))
+        with run_origin(task.id, w.name, run_id):
+            try:
+                reruns = self._apply_resume(w, answer)
+                for node, rec, verdict in reruns:
+                    self._start_step(w, node, rec=rec, answer=verdict)
+                while True:
+                    self._start_ready(w)
+                    if not w.running:
+                        if w.timers and self._fire_due_timers(w):
+                            continue
+                        break
+                    timeout = self._seconds_to_next_timer(w)
+                    done, _pending = await asyncio.wait(
+                        list(w.running), timeout=timeout,
+                        return_when=asyncio.FIRST_COMPLETED)
+                    for finished in done:
+                        self._finish_step(w, finished)
+                    self._fire_due_timers(w)
+            except asyncio.CancelledError:
+                await self._stop_steps(w)
+                raise
+        if w.last_model:
+            self.set_run_model(run_id, w.last_model)
+        waiting = state.waiting()
+        if waiting:
+            raise self._park_signal(w, waiting)
+        wr.maybe_prune_node_records(db)
+        return self._run_outcome(w)
+
+    # ── the walker's parts ─────────────────────────────────────────────────
+
+    def _node_needs_model(self, node: dict) -> bool:
+        """`P22-11`. Does this step drive a model (and so take the run's model
+        lock)? `workflow_document.node_needs_model`, which replaces Slice B's
+        "not an action" test, plus a model-backed built-in action — the one
+        fact `_action_needs_model` owns (`P8-22`)."""
         from src import workflow_document as wd
+
+        if wd.node_needs_model(node):
+            return True
+        config = node.get("config") or {}
+        if node.get("kind") == wd.NODE_KIND_ACTION:
+            return self._action_needs_model(config.get("action"))
+        if node.get("kind") == wd.NODE_KIND_FOREACH:
+            inner = config.get("step") if isinstance(config.get("step"), dict) else {}
+            return self._node_needs_model(inner) if inner else False
+        return False
+
+    def _start_ready(self, w) -> None:
+        """Start every step that is ready, up to the parallel cap. A Wait and a
+        Merge finish here, without a coroutine of their own."""
+        from src import workflow_document as wd
+
+        progressed = True
+        while progressed:
+            progressed = False
+            for node in w.state.ready():
+                if node["id"] in w.started:
+                    continue
+                kind = node.get("kind")
+                if kind == wd.NODE_KIND_WAIT:
+                    self._start_wait(w, node)
+                    progressed = True
+                    continue
+                if kind == wd.NODE_KIND_MERGE:
+                    self._finish_merge(w, node)
+                    progressed = True
+                    continue
+                if w.question_open and self._node_needs_model(node):
+                    # One question at a time per run (`SLICE-CD-DESIGN` § 1.5).
+                    continue
+                if len(w.running) >= WORKFLOW_PARALLEL_STEPS:
+                    return
+                self._start_step(w, node)
+                progressed = True
+
+    def _handed(self, w, node: dict):
+        """What a step is handed (`P8-29`, kept — `Law 1`): what fired the run
+        for a step the start leads to, else the hand-off of the step whose
+        arrow into it fired first — the same envelope a chain hands on,
+        wrapped untrusted at the far end."""
+        state = w.state
+        node_id = node["id"]
+        if node_id in state.starts:
+            into = state.incoming(node_id)
+            if not into or any(e.get("from") == state.start for e in into):
+                return state.trigger
+        for source in state.arrived_from(node_id):
+            if source == state.start:
+                return state.trigger
+            rec = state.record(source)
+            out = state.output_of(source) or {}
+            text, data = out.get("text") or "", out.get("data")
+            if not (text or data):
+                return None
+            label = (state.by_id.get(source) or {}).get("label") or source
+            return _build_task_handoff(
+                task_name=label, task_id=w.task.id, run_id=w.run_id,
+                status=rec.status if rec is not None else "success",
+                result=text, payload=data)
+        return None
+
+    def _start_step(self, w, node: dict, *, rec=None, answer=None) -> None:
+        from src import workflow_runs as wr
+
+        node_id = node["id"]
+        handed = self._handed(w, node)
+        if rec is None:
+            rec = wr.record_node_start(
+                w.db, run_id=w.run_id, node=node, seq=w.state.next_seq(),
+                input_envelope=handed, workflow_version=w.version, owner=w.task.owner)
+        else:
+            wr.record_node_resumed(w.db, rec)
+        w.state.note_record(rec)
+        w.started.add(node_id)
+        slot = node_slot(w.run_id, node_id)
+        self._state_for(slot).update(trigger=handed, started_by=w.started_by,
+                                     waits_for=w.waits_for)
+        if answer is not None and answer.sentence:
+            self._record_run_step(slot, kind="progress", detail=answer.sentence)
+        self._set_run_progress(w.run_id, f"{node.get('label') or node_id}…")
+        step = asyncio.create_task(self._run_step_guarded(w, node, slot, rec, answer))
+        w.running[step] = (node, rec, slot)
+
+    async def _run_step_guarded(self, w, node: dict, slot: str, rec, answer):
+        """One step, in a database session of its own (steps run side by side
+        and an executor commits), under the run's model lock if it drives a
+        model."""
+        from core.database import SessionLocal
+
+        step_db = SessionLocal()
+        try:
+            ctx = w.state.context()
+            if self._node_needs_model(node):
+                async with w.model_lock:
+                    return await self._run_workflow_step(
+                        w.task, w.name, node, step_db, slot, deliver=True, ctx=ctx,
+                        answer=answer, walk=w, rec=rec)
+            return await self._run_workflow_step(
+                w.task, w.name, node, step_db, slot, deliver=True, ctx=ctx,
+                answer=answer, walk=w, rec=rec)
+        finally:
+            step_db.close()
+
+    def _finish_step(self, w, finished) -> None:
+        """A step's coroutine ended: its record, its line, the arrows it fired
+        — or, for a step that parked, its `waiting` record and (for a card)
+        the question to the person."""
         from src import workflow_runs as wr
         from src.builtin_actions import (
             NODE_STATUS_DEFERRED, NODE_STATUS_ERROR, NODE_STATUS_SKIPPED,
-            NODE_STATUS_SUCCESS, NodeResult, TaskDeferred, TaskNoop,
+            NodeResult, TaskDeferred, TaskNoop, TaskWaiting,
         )
-        from src.event_bus import run_origin
 
-        wf, graph, refused = self._load_workflow(db, task)
-        if refused:
-            self._record_run_step(run_id, kind="progress", detail=refused)
-            return NodeResult(NODE_STATUS_ERROR, payload=refused)
-        name = wf.name or task.name
-        run_slot = self._state_for(run_id)
-        started_by = run_slot.get("started_by") or STARTED_BY_BACKGROUND
-        waits_for = self._run_waits_for(run_id)
-        outcomes = []
-        last = None
-        last_model = None
-        handed = self.run_trigger(run_id)
-        node = wd.entry_node(graph)
-        with run_origin(task.id, name, run_id):
-            # A path through a document with no loop visits each step at most
-            # once, so it is at most as long as the document.
-            for seq in range(1, len(graph["nodes"]) + 1):
-                label = node["label"]
-                rec = wr.record_node_start(db, run_id=run_id, node=node, seq=seq,
-                                           input_envelope=handed,
-                                           workflow_version=wf.version, owner=task.owner)
-                slot = node_slot(run_id, node["id"])
-                self._state_for(slot).update(trigger=handed, started_by=started_by,
-                                             waits_for=waits_for)
-                self._set_run_progress(run_id, f"Step {seq}: {label}…")
-                try:
-                    res = await self._run_workflow_node(task, name, node, db, slot,
-                                                        deliver=True)
-                except asyncio.CancelledError:
-                    wr.record_node_end(db, rec, status="aborted", error=NODE_STOPPED,
-                                       steps=self.run_steps(slot), model=self.run_model(slot),
-                                       owner=task.owner)
-                    self._clear_run_state(slot)
-                    self._record_run_step(run_id, kind="node", node=node["id"], label=label,
-                                          status="aborted", detail=NODE_STOPPED)
-                    raise
-                except (TaskNoop, TaskDeferred) as signal:
-                    # `BaseException`s, so `except Exception` would let one
-                    # through and leave this step's record `running`.
-                    # `_execute_action` already answers them as statuses; an
-                    # executor that raises one is read the same way (`P8-24`).
-                    res = NodeResult.from_signal(signal)
-                except Exception as exc:
-                    logger.warning("Workflow '%s' step %r raised", name, label, exc_info=True)
-                    res = NodeResult(NODE_STATUS_ERROR, payload=f"{type(exc).__name__}: {exc}")
-                steps, model = self.run_steps(slot), self.run_model(slot)
-                self._clear_run_state(slot)
-                last_model = model or last_model
-                status, text = res.status, res.text or ""
-                if status == NODE_STATUS_DEFERRED:
-                    status = NODE_STATUS_SKIPPED
-                    text = f"It asked to wait, so this run ends here: {text}".rstrip(": ")
-                port = (EDGE_WHEN_SUCCESS if status == NODE_STATUS_SUCCESS
-                        else EDGE_WHEN_ERROR if status == NODE_STATUS_ERROR else None)
-                nxt = wd.next_node(graph, node["id"], port) if port else None
-                data = None if isinstance(res.payload, str) else res.payload
-                wr.record_node_end(
-                    db, rec, status=status, text=text, data=data,
-                    error=text if status == NODE_STATUS_ERROR else None,
-                    steps=steps, model=model, port=port if nxt else None, owner=task.owner)
-                self._record_run_step(run_id, kind="node", node=node["id"], label=label,
-                                      status=status, detail=(text.splitlines() or [""])[0])
-                outcomes.append(status)
-                last = NodeResult(status, payload=res.payload if status != NODE_STATUS_SKIPPED
-                                  else text, text=text)
-                if nxt is None:
-                    break
+        node, rec, slot = w.running.pop(finished)
+        steps, model = self.run_steps(slot), self.run_model(slot)
+        self._clear_run_state(slot)
+        w.last_model = model or w.last_model
+        label = node.get("label") or node["id"]
+        try:
+            done = finished.result()
+        except TaskWaiting as parked:
+            self._park_record(w, node, rec, parked, steps=steps, model=model)
+            return
+        except (TaskNoop, TaskDeferred) as signal:
+            done = StepDone(NodeResult.from_signal(signal), None)
+        except asyncio.CancelledError:
+            done = StepDone(NodeResult(NODE_STATUS_ERROR, payload=NODE_STOPPED), None)
+        except Exception as exc:
+            logger.warning("Workflow '%s' step %r raised", w.name, label, exc_info=True)
+            done = StepDone(NodeResult(NODE_STATUS_ERROR,
+                                       payload=f"{type(exc).__name__}: {exc}"), None)
+        res = done.result
+        status, text = res.status, res.text or ""
+        if status == NODE_STATUS_DEFERRED:
+            status = NODE_STATUS_SKIPPED
+            text = f"It asked to wait, so this branch ends here: {text}".rstrip(": ")
+        self._end_record(w, node, rec, status=status, text=text,
+                         data=None if isinstance(res.payload, str) else res.payload,
+                         port=done.port, steps=steps, model=model)
+
+    def _end_record(self, w, node: dict, rec, *, status: str, text: str, data,
+                    port, steps=None, model=None) -> None:
+        """Finish one step's own record, say so in the run's log, and name the
+        arrows it fires. `port` is ALWAYS the outcome port now (`P22-11`): a
+        port with no arrow ends that branch, and the Runs view lights only
+        arrows that exist."""
+        from src import workflow_runs as wr
+        from src.builtin_actions import NODE_STATUS_ERROR, NODE_STATUS_SUCCESS
+
+        if port is None:
+            port = (EDGE_WHEN_SUCCESS if status == NODE_STATUS_SUCCESS
+                    else EDGE_WHEN_ERROR if status == NODE_STATUS_ERROR else None)
+        wr.record_node_end(w.db, rec, status=status, text=text, data=data,
+                           error=text if status == NODE_STATUS_ERROR else None,
+                           steps=steps, model=model, port=port, owner=w.task.owner)
+        w.state.note_record(rec)
+        w.state.note_live(node["id"], text=text, data=data)
+        label = node.get("label") or node["id"]
+        self._record_run_step(w.run_id, kind="node", node=node["id"], label=label,
+                              status=status, detail=(text.splitlines() or [""])[0])
+        for edge in w.state.outgoing(node["id"], port) if port else ():
+            target = w.state.by_id.get(edge["to"]) or {}
+            lead = ("Continued to" if port == EDGE_WHEN_SUCCESS
+                    else "Failed, so continued to" if port == EDGE_WHEN_ERROR
+                    else f"Went the “{_port_word(node, port)}” way, to")
+            self._record_run_step(w.run_id, kind="progress",
+                                  detail=f"{lead} {target.get('label') or edge['to']}")
+
+    def _park_record(self, w, node: dict, rec, parked, *, steps=None, model=None) -> None:
+        """A step raised `TaskWaiting`: its record waits, with what for. A card
+        opens the run's one question and goes to the person as a
+        notification — even with the workflow's notifications off: a
+        question is not a report on an outcome (`SLICE-CD-DESIGN` § 1.5)."""
+        from src import workflow_runs as wr
+
+        detail = dict(parked.detail)
+        waiting = {"kind": parked.kind, **detail}
+        until = detail.get("until")
+        if isinstance(until, (int, float)):
+            waiting["until"] = datetime.fromtimestamp(
+                until, tz=timezone.utc).replace(tzinfo=None).isoformat() + "Z"
+        resume_at = None
+        if parked.kind == wr.WAITING_TIME:
+            resume_at = wr._parse_iso(waiting.get("until"))
+        wr.record_node_waiting(w.db, rec, waiting=waiting, resume_at=resume_at,
+                               steps=steps, model=model)
+        w.state.note_record(rec)
+        label = node.get("label") or node["id"]
+        self._record_run_step(w.run_id, kind="node", node=node["id"], label=label,
+                              status="waiting", detail=parked.sentence)
+        if parked.kind == wr.WAITING_APPROVAL:
+            w.question_open = True
+            self._ask_the_person(w, node, rec, waiting)
+
+    def _ask_the_person(self, w, node: dict, rec, waiting: dict) -> None:
+        """`P22-17`. The card, in a notification with `review` (`B1006`'s
+        key): which workflow, run, step and item, and the card itself."""
+        card = waiting.get("card") if isinstance(waiting.get("card"), dict) else {}
+        tool = waiting.get("tool") or (card.get("action") or {}).get("tool") or "an action"
+        label = node.get("label") or node["id"]
+        item = waiting.get("item")
+        where = f"“{label}”" + (f", item {int(item) + 1}," if isinstance(item, int) else "")
+        self.add_notification(
+            w.task.name, "waiting", w.task.id, owner=w.task.owner,
+            body=f"{where} is waiting for your yes: {tool}.",
+            review={"kind": "workflow_approval", "workflow_id": w.wf.id,
+                    "run_id": w.run_id, "node_id": node["id"], "item": item,
+                    "approval": card or None})
+
+    def _start_wait(self, w, node: dict) -> None:
+        """A Wait step: its record waits until its time (`P22-11`), or is over
+        at once when the time has come."""
+        from src import workflow_runs as wr
+        from src.builtin_actions import NODE_STATUS_ERROR, NODE_STATUS_SUCCESS
+
+        rec = wr.record_node_start(
+            w.db, run_id=w.run_id, node=node, seq=w.state.next_seq(),
+            input_envelope=None, workflow_version=w.version, owner=w.task.owner)
+        w.state.note_record(rec)
+        w.started.add(node["id"])
+        until, problem = self._wait_until(w, node)
+        if problem:
+            self._end_record(w, node, rec, status=NODE_STATUS_ERROR, text=problem,
+                             data=None, port=None)
+            return
+        if until <= _utcnow():
+            self._end_record(w, node, rec, status=NODE_STATUS_SUCCESS,
+                             text=f"Waited until {self._clock_words(w, until)}.",
+                             data={"until": until.isoformat() + "Z"}, port=None)
+            return
+        wr.record_node_waiting(w.db, rec, waiting={
+            "kind": wr.WAITING_TIME, "until": until.isoformat() + "Z"}, resume_at=until)
+        w.state.note_record(rec)
+        w.timers[node["id"]] = (node, rec, until)
+        self._record_run_step(w.run_id, kind="node", node=node["id"],
+                              label=node.get("label") or node["id"], status="waiting",
+                              detail=(f"Waiting until {self._clock_words(w, until)}, or as "
+                                      f"soon after as Pantheon is idle"))
+
+    def _wait_until(self, w, node: dict) -> tuple:
+        """`(until, problem)` — when a Wait is over, as UTC, or why it cannot
+        wait. `{mode: "for", minutes}` or `{mode: "until", time: "HH:MM",
+        tz}`; the trigger's time zone when `tz` is unset; at most
+        `workflow_wait_max_hours`. Every Wait field is the author's (`never`)."""
+        from src import workflow_runs as wr
+
+        config = node.get("config") or {}
+        mode = config.get("mode") or "for"
+        now = _utcnow()
+        cap = wr.wait_max_hours()
+        if mode == "until":
+            raw = str(config.get("time") or "")
+            try:
+                hour, minute = (int(part) for part in raw.split(":", 1))
+                if not (0 <= hour < 24 and 0 <= minute < 60):
+                    raise ValueError(raw)
+            except ValueError:
+                return None, f"“{node.get('label')}” has no time to wait until (HH:MM)."
+            tz_name = valid_timezone(config.get("tz")) or _resolve_task_timezone(w.db, w.task)
+            try:
+                from zoneinfo import ZoneInfo
+                zone = ZoneInfo(tz_name) if tz_name else timezone.utc
+            except Exception:
+                zone = timezone.utc
+            local_now = now.replace(tzinfo=timezone.utc).astimezone(zone)
+            target = local_now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+            if target <= local_now:
+                target = target + timedelta(days=1)
+            until = target.astimezone(timezone.utc).replace(tzinfo=None)
+        else:
+            minutes = config.get("minutes")
+            if isinstance(minutes, bool) or not isinstance(minutes, (int, float)) or minutes < 0:
+                return None, f"“{node.get('label')}” has no number of minutes to wait."
+            until = now + timedelta(minutes=float(minutes))
+        if until - now > timedelta(hours=cap):
+            return None, (f"“{node.get('label')}” would wait longer than {cap} hours, "
+                          f"which workflow_wait_max_hours allows.")
+        return until, None
+
+    def _clock_words(self, w, when) -> str:
+        from src import workflow_runs as wr
+        return wr._clock(when, _resolve_task_timezone(w.db, w.task))
+
+    def _fire_due_timers(self, w) -> bool:
+        """End every Wait whose time has come. Answers whether any did."""
+        from src.builtin_actions import NODE_STATUS_SUCCESS
+
+        now = _utcnow()
+        fired = False
+        for node_id, (node, rec, until) in list(w.timers.items()):
+            if until <= now:
+                del w.timers[node_id]
+                self._end_record(w, node, rec, status=NODE_STATUS_SUCCESS,
+                                 text=f"Waited until {self._clock_words(w, until)}.",
+                                 data={"until": until.isoformat() + "Z"}, port=None)
+                fired = True
+        return fired
+
+    def _seconds_to_next_timer(self, w):
+        if not w.timers:
+            return None
+        soonest = min(until for _n, _r, until in w.timers.values())
+        return max(0.05, (soonest - _utcnow()).total_seconds())
+
+    def _finish_merge(self, w, node: dict) -> None:
+        """A Merge: `{inputs, missing}` in arrival order, at once."""
+        from src import workflow_runs as wr
+        from src.builtin_actions import NODE_STATUS_SUCCESS
+
+        rec = wr.record_node_start(
+            w.db, run_id=w.run_id, node=node, seq=w.state.next_seq(),
+            input_envelope=None, workflow_version=w.version, owner=w.task.owner)
+        w.state.note_record(rec)
+        w.started.add(node["id"])
+        data = w.state.merge_output(node["id"])
+        n_in, n_out = len(data["inputs"]), len(data["missing"])
+        text = f"{n_in} arrived" + (f"; {n_out} did not: " + ", ".join(
+            f"“{(w.state.by_id.get(m['from']) or {}).get('label') or m['from']}” ({m['why']})"
+            for m in data["missing"]) if n_out else "") + "."
+        self._end_record(w, node, rec, status=NODE_STATUS_SUCCESS, text=text, data=data,
+                         port=None)
+
+    def _apply_resume(self, w, answer) -> list:
+        """A resumed run: what each waiting record waited for has come, or
+        not. Answers the steps to run again — `(node, record, verdict)`.
+
+          * a Wait whose time has come is over; one still ahead waits on;
+          * a step a takeover stopped runs again (and only it — finished steps
+            are kept, `SLICE-CD-DESIGN` § 1.4);
+          * a card: the person's answer (Allow resumes the step ONCE, with the
+            consumed approval; Deny takes its failure port); a card the store
+            no longer holds lapsed, or Pantheon restarted — the failure port,
+            saying which. A card still pending keeps the run's one question
+            open."""
+        from src import workflow_document as wd
+        from src import workflow_runs as wr
+        from src.builtin_actions import NODE_STATUS_ERROR
+
+        reruns = []
+        now = _utcnow()
+        for rec in list(w.state.waiting()):
+            if rec.item is not None:
+                continue            # an item is its For-each step's business
+            node = w.state.by_id.get(rec.node_id)
+            waiting = wr.waiting_of(rec) or {}
+            kind = waiting.get("kind")
+            w.started.add(rec.node_id)
+            if node is None:
+                wr.end_waiting_records(w.db, w.run_id, status="error",
+                                       error="This step is not in the version this run started with.")
+                continue
+            if kind == wr.WAITING_TIME:
+                if node.get("kind") == wd.NODE_KIND_WAIT:
+                    w.timers[rec.node_id] = (node, rec, rec.resume_at or now)
+                else:
+                    reruns.append((node, rec, None))
+            elif kind == wr.WAITING_IDLE:
                 self._record_run_step(
-                    run_id, kind="progress",
-                    detail=(f"{'Continued to' if port == EDGE_WHEN_SUCCESS else 'Failed, so continued to'} "
-                            f"{nxt['label']}"))
-                # `P8-29`. What this step made, handed to the next in the same
-                # envelope a chain hands on — wrapped untrusted at the far end,
-                # the post-external gate armed (`FORBIDDEN.md` Part 2). A step
-                # that made nothing hands nothing.
-                handed = (_build_task_handoff(task_name=label, task_id=task.id, run_id=run_id,
-                                              status=status, result=text, payload=res.payload)
-                          if (text or res.payload) else None)
-                node = nxt
-        if last_model:
-            self.set_run_model(run_id, last_model)
-        wr.maybe_prune_node_records(db)
-        if last is None:
+                    w.run_id, kind="progress",
+                    detail=(f"“{node.get('label')}” runs again: Pantheon became active "
+                            f"while it ran, so it was stopped and waited"))
+                reruns.append((node, rec, None))
+            elif kind == wr.WAITING_APPROVAL:
+                verdict = self._approval_verdict(w, rec, waiting, answer, now=now)
+                if verdict is None:
+                    w.question_open = True
+                elif verdict.decision == ANSWER_ALLOW or node.get("kind") == wd.NODE_KIND_FOREACH:
+                    reruns.append((node, rec, verdict))
+                else:
+                    self._record_run_step(w.run_id, kind="progress", detail=verdict.sentence)
+                    steps = list(json.loads(rec.steps)) if rec.steps else []
+                    steps.append(shape_run_step({"kind": "progress", "detail": verdict.sentence}))
+                    self._end_record(w, node, rec, status=NODE_STATUS_ERROR,
+                                     text=verdict.sentence, data=None, port=None,
+                                     steps=steps, model=rec.model)
+        self._fire_due_timers(w)
+        return reruns
+
+    def _approval_verdict(self, w, rec, waiting: dict, answer, *, now=None):
+        """The answer for this waiting card, or `None` while it is still open."""
+        from src.tool_approvals import tool_approval_store
+
+        item = waiting.get("item") if isinstance(waiting.get("item"), int) else None
+        if (answer is not None and answer.node_id == rec.node_id
+                and answer.item == item):
+            return answer
+        approval_id = waiting.get("approval_id")
+        if approval_id and tool_approval_store.peek(approval_id) is not None:
+            return None
+        from src import workflow_runs as wr
+        until = wr._parse_iso(waiting.get("until"))
+        tool = waiting.get("tool") or "the action"
+        if until is not None and (now or _utcnow()) >= until:
+            sentence = (f"Nobody answered by {self._clock_words(w, until)} — {tool} was "
+                        f"not done.")
+            return StepAnswer(rec.node_id, item, ANSWER_LAPSED, sentence)
+        return StepAnswer(rec.node_id, item, ANSWER_RESTARTED,
+                          f"Pantheon restarted before you answered — {tool} was not done.")
+
+    async def _stop_steps(self, w) -> None:
+        """The run was cancelled — Stop, the time limit, or Pantheon becoming
+        active. Every step in flight is stopped and its record says so: a
+        takeover leaves it `waiting {kind: idle}`, to run again when Pantheon
+        is idle (finished steps kept); anything else `aborted`."""
+        from src import workflow_runs as wr
+
+        takeover = self._is_takeover(w.run_id)
+        for step in list(w.running):
+            step.cancel()
+        for step in list(w.running):
+            try:
+                await step
+            except BaseException:
+                pass
+        for step, (node, rec, slot) in list(w.running.items()):
+            steps, model = self.run_steps(slot), self.run_model(slot)
+            self._clear_run_state(slot)
+            label = node.get("label") or node["id"]
+            if takeover:
+                wr.record_node_waiting(w.db, rec, waiting={"kind": wr.WAITING_IDLE},
+                                       steps=steps, model=model)
+                self._record_run_step(w.run_id, kind="node", node=node["id"], label=label,
+                                      status="waiting",
+                                      detail="Stopped because Pantheon became active; it "
+                                             "runs again once Pantheon is idle")
+            else:
+                wr.record_node_end(w.db, rec, status="aborted", error=NODE_STOPPED,
+                                   steps=steps, model=model, owner=w.task.owner)
+                self._record_run_step(w.run_id, kind="node", node=node["id"], label=label,
+                                      status="aborted", detail=NODE_STOPPED)
+        w.running.clear()
+
+    def _is_takeover(self, run_id: str) -> bool:
+        """Was this run stopped because a person started using Pantheon?"""
+        if (self._runs().get(run_id) or {}).get("takeover"):
+            return True
+        return self._stopped_as(run_id) == FOREGROUND_TAKEOVER
+
+    def _park_signal(self, w, waiting) -> BaseException:
+        """The run parks: one sentence for its row ("Waiting for your yes on
+        “Send reply”" / "Waiting until 08:00" / "Waiting for Pantheon to be
+        idle"), a card first."""
+        from src import workflow_runs as wr
+        from src.builtin_actions import TaskWaiting
+
+        order = {wr.WAITING_APPROVAL: 0, wr.WAITING_TIME: 1, wr.WAITING_IDLE: 2}
+        ranked = sorted(waiting, key=lambda r: (order.get((wr.waiting_of(r) or {}).get("kind"), 3),
+                                                r.seq or 0))
+        first = ranked[0]
+        kind = (wr.waiting_of(first) or {}).get("kind") or wr.WAITING_IDLE
+        label = first.label or first.node_id
+        if kind == wr.WAITING_APPROVAL:
+            sentence = f"Waiting for your yes on “{label}”"
+        elif kind == wr.WAITING_TIME:
+            sentence = f"Waiting until {self._clock_words(w, first.resume_at)}"
+        else:
+            sentence = "Waiting for Pantheon to be idle"
+        return TaskWaiting(sentence, kind=kind)
+
+    def _run_outcome(self, w):
+        """`RunState.outcome` as the walker's `NodeResult`. A failed run's
+        `error` names the step (and item) that failed — on the run's slot,
+        which `_execute_task_locked` writes as the row's `error`."""
+        from src.builtin_actions import (
+            NODE_STATUS_ERROR, NODE_STATUS_SKIPPED, NODE_STATUS_SUCCESS, NodeResult,
+        )
+
+        status, text, failed = w.state.outcome()
+        if status is None:
             return NodeResult(NODE_STATUS_ERROR, payload=WORKFLOW_DOCUMENT_MISSING)
-        if last.status == NODE_STATUS_ERROR:
-            return last
-        if all(s == NODE_STATUS_SKIPPED for s in outcomes):
-            return NodeResult(NODE_STATUS_SKIPPED, payload=last.text)
-        return NodeResult(NODE_STATUS_SUCCESS, payload=last.payload, text=last.text)
+        if status == NODE_STATUS_ERROR:
+            label = failed.label or failed.node_id
+            self._state_for(w.run_id)["run_error"] = (
+                f"“{label}” failed: {failed.error or text}")[:2000]
+            return NodeResult(NODE_STATUS_ERROR, payload=text or failed.error or "")
+        if status == NODE_STATUS_SKIPPED:
+            return NodeResult(NODE_STATUS_SKIPPED, payload=text)
+        last = w.state.finish_order[-1] if w.state.finish_order else None
+        out = w.state.output_of(last) if last else None
+        data = (out or {}).get("data")
+        return NodeResult(NODE_STATUS_SUCCESS, payload=data if data is not None else text,
+                          text=text)
+
+    async def _run_workflow_step(self, task, workflow_name: str, node: dict, db, slot: str, *,
+                                 deliver: bool, ctx: dict, answer=None, walk=None, rec=None,
+                                 may_wait: bool = True):
+        """Run one step of any kind under `slot`. Answers a `StepDone` — the
+        step's `NodeResult` and, for a logic step, the port it chose. Raises
+        `TaskWaiting` when the step parks (never for a step test,
+        `may_wait=False`).
+
+        `ctx` is the pure-JSON context references read (`workflow_refs`). The
+        Slice B kinds run as they did (`_run_workflow_node`); what is new is
+        that a value a step reads by reference reaches it only through a
+        `value` slot — named and carried untrusted for a model step, placed as a
+        JSON value for an authored call — never spliced into what it does.
+        """
+        from src import workflow_document as wd
+        from src.builtin_actions import NODE_STATUS_ERROR, NodeResult
+
+        kind = node.get("kind")
+        if kind in (wd.NODE_KIND_IF, wd.NODE_KIND_SWITCH):
+            from src import workflow_logic as wl
+            port = wl.choose_port(node, ctx)
+            word = _port_word(node, port)
+            text = (f"Went the “{word}” way." if port != wd.PORT_OTHERWISE
+                    else "None of its conditions held, so it went the “otherwise” way.")
+            self._record_run_step(slot, kind="progress", detail=text)
+            return StepDone(NodeResult("success", payload={"port": port}, text=text), port)
+        if kind == wd.NODE_KIND_SET:
+            from src import workflow_logic as wl
+            data, missing = wl.build_set(node, ctx)
+            text = "Set " + ", ".join(f"“{k}”" for k in (data or {})) + "."
+            if missing:
+                text += " Not found, so left empty: " + ", ".join(str(m) for m in missing) + "."
+            return StepDone(NodeResult("success", payload=data or {}, text=text), None)
+        if kind == wd.NODE_KIND_MERGE:
+            data = walk.state.merge_output(node["id"]) if walk is not None else {"inputs": [], "missing": []}
+            return StepDone(NodeResult("success", payload=data,
+                                       text=f"{len(data['inputs'])} arrived."), None)
+        if kind == wd.NODE_KIND_WAIT:
+            return StepDone(NodeResult("success", payload=None,
+                                       text="A Wait is not tested; in a run it waits."), None)
+        if kind == wd.NODE_KIND_FOREACH:
+            return await self._run_foreach(task, workflow_name, node, db, slot, ctx=ctx,
+                                           answer=answer, walk=walk, deliver=deliver,
+                                           may_wait=may_wait)
+        if kind in (wd.NODE_KIND_HTTP, wd.NODE_KIND_MCP, wd.NODE_KIND_CODE):
+            return await self._run_authored_step(task, node, slot, ctx=ctx, answer=answer,
+                                                 may_wait=may_wait)
+        if kind in (wd.NODE_KIND_PROMPT, wd.NODE_KIND_SKILL):
+            return await self._run_model_step(task, workflow_name, node, db, slot, ctx=ctx,
+                                              answer=answer, deliver=deliver, may_wait=may_wait)
+        if kind == wd.NODE_KIND_RESEARCH:
+            prompt = (node.get("config") or {}).get("prompt") or ""
+            if "{{" in prompt:
+                # `P22-09`. A Research step's question is a value slot carried
+                # inline (`NODE_SLOTS`): it becomes the search, not an order.
+                from src import workflow_refs as refs
+                prompt, missing = refs.render_text(refs.parse_template(prompt), ctx)
+                if missing:
+                    return StepDone(NodeResult(NODE_STATUS_ERROR, payload=self._missing_words(
+                        node, missing, walk)), None)
+                node = dict(node, config=dict(node.get("config") or {}, prompt=prompt))
+        res = await self._run_workflow_node(task, workflow_name, node, db, slot, deliver=deliver)
+        return StepDone(res, None)
+
+    def _missing_words(self, node: dict, missing, walk=None) -> str:
+        """Why a step could not read what it refers to. A record cut past
+        `workflow_node_record_max_chars` after a resume is named so."""
+        names = ", ".join(str(m) for m in (missing or ()))
+        cut = []
+        if walk is not None:
+            cut = [n for n in walk.state.own if walk.state.truncated(n)]
+        tail = (" A step it reads was kept only in part (workflow_node_record_max_chars), "
+                "so after a pause its value is not there." if cut else "")
+        return f"“{node.get('label')}” refers to something that is not there: {names}.{tail}"
+
+    async def _run_model_step(self, task, workflow_name: str, node: dict, db, slot: str, *,
+                              ctx: dict, answer, deliver: bool, may_wait: bool):
+        """A Prompt (AI) or Skill step — the steps a model drives, gated exactly
+        as today (`D-2026-10-01-05` §4).
+
+          * `P22-09`: a reference in the prompt becomes a named slot —
+            "Summarise the issue titled [title]." — and the values travel in
+            their own untrusted block (`untrusted_context_message`, the gate
+            armed), clipped as a trigger payload is (`clip_field`).
+          * `P22-15`: a Skill step follows the skill read at run time, wrapped
+            as the skill tester wraps it, with skills not injected again.
+          * `P22-16`: `tools` limits what it may call; `answer_fields` asks for
+            JSON and checks it after the run.
+          * `P22-17`: in a real run it may park on a card (`may_wait`), and an
+            Allow comes back as the consumed approval the loop replays once.
+        """
+        from src import workflow_document as wd
+        from src.builtin_actions import NODE_STATUS_ERROR, NODE_STATUS_SUCCESS, NodeResult
+        from src.event_bus import TRIGGER_FIELD_MAX_CHARS, TRIGGER_MAX_CHARS, clip_field
+
+        config = dict(node.get("config") or {})
+        state = self._state_for(slot)
+        extra = list(state.get("context_messages") or ())
+        if node.get("kind") == wd.NODE_KIND_SKILL:
+            from src import workflow_effects as we
+            try:
+                messages, line = we.skill_context(task.owner, config.get("skill"))
+            except we.StepRefused as refused:
+                return StepDone(NodeResult(NODE_STATUS_ERROR, payload=str(
+                    getattr(refused, "sentence", None) or refused)), None)
+            extra.extend(messages or ())
+            state["suppress_skills"] = True
+            if line:
+                self._record_run_step(slot, kind="progress", detail=line)
+        prompt = config.get("prompt") or ""
+        if "{{" in prompt:
+            from src import workflow_refs as refs
+            from src.prompt_security import untrusted_context_message
+            prompt, named = refs.render_named_slots(refs.parse_template(prompt), ctx)
+            missing = [ref for _slot, ref, value in named if value is refs.MISSING]
+            if missing:
+                return StepDone(NodeResult(NODE_STATUS_ERROR, payload=self._missing_words(
+                    node, missing, None)), None)
+            lines = []
+            for slot_name, _ref, value in named:
+                shown = value if isinstance(value, str) else json.dumps(value, default=str)
+                lines.append(f"[{slot_name}] = {clip_field(shown, TRIGGER_FIELD_MAX_CHARS)}")
+            body = "\n".join(lines)
+            if len(body) > TRIGGER_MAX_CHARS:
+                body = body[:TRIGGER_MAX_CHARS].rstrip() + "\n… (truncated)"
+            extra.append(untrusted_context_message(
+                "values this step was handed", body,
+                provenance_origin="external", arm_tool_gate=True))
+        fields = config.get("answer_fields") or None
+        if fields:
+            from src import workflow_effects as we
+            prompt = f"{prompt}\n\n{we.answer_instruction(fields)}"
+        if config.get("tools") is not None:
+            state["allowed_tools"] = list(config.get("tools") or ())
+        state["context_messages"] = extra
+        state["may_wait"] = bool(may_wait)
+        if answer is not None and answer.decision == ANSWER_ALLOW:
+            state["exact_approval"] = answer.exact_approval
+        as_prompt = {**node, "kind": wd.NODE_KIND_PROMPT, "config": {
+            k: v for k, v in config.items()
+            if k in wd.NODE_CONFIG_FIELDS[wd.NODE_KIND_PROMPT]}}
+        as_prompt["config"]["prompt"] = prompt
+
+        def check_answer(res):
+            if not fields or not res.ok:
+                return res
+            from src import workflow_effects as we
+            data, problem = we.parse_answer(res.text, fields)
+            if problem:
+                return NodeResult(NODE_STATUS_ERROR,
+                                  payload=f"The answer was not in the shape asked for: {problem}")
+            return NodeResult(NODE_STATUS_SUCCESS, payload=data, text=res.text)
+
+        res = await self._run_workflow_node(task, workflow_name, as_prompt, db, slot,
+                                            deliver=deliver, after=check_answer)
+        return StepDone(res, None)
+
+    async def _run_foreach(self, task, workflow_name: str, node: dict, db, slot: str, *,
+                           ctx: dict, answer, walk, deliver: bool, may_wait: bool):
+        """`P22-12`. One step, run for each item of a referenced list, IN ORDER,
+        each item with its own record (`item = i`, "Summarise · item 3 of 5")
+        and its own slot. The step's own record holds `{items, worked,
+        failed}`; any item that failed sends it out by `error`, naming it.
+        Over `workflow_foreach_max_items` it is refused with that name — nothing
+        is cut silently. A resumed run does not run a finished item again."""
+        from src import workflow_refs as refs
+        from src import workflow_runs as wr
+        from src.builtin_actions import (
+            NODE_STATUS_ERROR, NODE_STATUS_SUCCESS, NodeResult, TaskDeferred, TaskNoop,
+            TaskWaiting,
+        )
+
+        config = node.get("config") or {}
+        inner = config.get("step") if isinstance(config.get("step"), dict) else {}
+        on_error = "stop" if config.get("on_error") == "stop" else "continue"
+        source = config.get("list")
+        template = refs.parse_template(source) if isinstance(source, str) else source
+        value, missing = refs.render_value(template, ctx)
+        label = node.get("label") or node["id"]
+        if missing or value is refs.MISSING:
+            return StepDone(NodeResult(NODE_STATUS_ERROR, payload=self._missing_words(
+                node, missing or [source], walk)), None)
+        if not isinstance(value, list):
+            return StepDone(NodeResult(NODE_STATUS_ERROR, payload=(
+                f"“{label}” was handed {type(value).__name__}, not a list, so there was "
+                f"nothing to go through.")), None)
+        cap = wr.foreach_max_items(task.owner)
+        total = len(value)
+        if total > cap:
+            return StepDone(NodeResult(NODE_STATUS_ERROR, payload=(
+                f"“{label}” was handed {total} items; workflow_foreach_max_items allows "
+                f"{cap}. Nothing was run.")), None)
+        inner_label = inner.get("label") or label
+        done_items = (walk.state.items.get(node["id"]) if walk is not None else None) or {}
+        results = []
+        for index, item in enumerate(value):
+            item_label = f"{inner_label} · item {index + 1} of {total}"
+            item_node = {"id": node["id"], "kind": inner.get("kind"), "label": item_label,
+                         "config": dict(inner.get("config") or {})}
+            prev = done_items.get(index)
+            if prev is not None and prev.status in wr.STEP_FINISHED:
+                out = wr._loads(prev.output) or {}
+                if wr.is_truncated(out):
+                    out = {}
+                results.append({"index": index, "status": prev.status,
+                                "text": (out.get("text") if isinstance(out, dict) else "") or
+                                        (prev.error or ""),
+                                "data": out.get("data") if isinstance(out, dict) else None})
+                if prev.status == NODE_STATUS_ERROR and on_error == "stop":
+                    break
+                continue
+            handed = _build_task_handoff(
+                task_name=f"{label} · item {index + 1} of {total}", task_id=task.id,
+                run_id=run_of_slot(slot), status="success",
+                result=item if isinstance(item, str) else json.dumps(item, default=str),
+                payload=None if isinstance(item, str) else item)
+            item_answer = None
+            if prev is not None and prev.status == "waiting":
+                wr.record_node_resumed(walk.db if walk is not None else db, prev)
+                rec = prev
+                if answer is not None and answer.item == index:
+                    item_answer = answer
+                    if answer.decision != ANSWER_ALLOW:
+                        self._record_run_step(slot, kind="progress", detail=answer.sentence)
+                        wr.record_node_end(walk.db if walk is not None else db, rec,
+                                           status=NODE_STATUS_ERROR, text=answer.sentence,
+                                           error=answer.sentence, port=EDGE_WHEN_ERROR,
+                                           owner=task.owner)
+                        results.append({"index": index, "status": NODE_STATUS_ERROR,
+                                        "text": answer.sentence, "data": None})
+                        if on_error == "stop":
+                            break
+                        continue
+            elif walk is not None:
+                rec = wr.record_node_start(
+                    walk.db, run_id=walk.run_id, node=item_node, seq=walk.state.next_seq(),
+                    input_envelope=handed, workflow_version=walk.version,
+                    owner=task.owner, item=index, label=item_label)
+            else:
+                rec = None
+            if rec is not None and walk is not None:
+                walk.state.note_record(rec)
+            item_slot = node_slot(run_of_slot(slot), f"{node['id']}#{index}")
+            parent = self._runs().get(slot) or {}
+            self._state_for(item_slot).update(
+                trigger=handed, started_by=parent.get("started_by") or STARTED_BY_BACKGROUND,
+                waits_for=parent.get("waits_for", "idle"))
+            item_ctx = dict(ctx)
+            item_ctx["item"] = json.loads(json.dumps(item, default=str))
+            try:
+                done = await self._run_workflow_step(
+                    task, workflow_name, item_node, db, item_slot, deliver=deliver,
+                    ctx=item_ctx, answer=item_answer, walk=None, may_wait=may_wait)
+                res = done.result
+            except TaskWaiting as parked:
+                steps, model = self.run_steps(item_slot), self.run_model(item_slot)
+                self._clear_run_state(item_slot)
+                if rec is not None and walk is not None:
+                    detail = dict(parked.detail)
+                    until = detail.get("until")
+                    if isinstance(until, (int, float)):
+                        detail["until"] = datetime.fromtimestamp(
+                            until, tz=timezone.utc).replace(tzinfo=None).isoformat() + "Z"
+                    wr.record_node_waiting(walk.db, rec, waiting={"kind": parked.kind, **detail},
+                                           steps=steps, model=model)
+                raise TaskWaiting(f"{parked.sentence} (item {index + 1} of {total})",
+                                  kind=parked.kind, item=index, **parked.detail)
+            except (TaskNoop, TaskDeferred) as signal:
+                res = NodeResult.from_signal(signal)
+            except Exception as exc:
+                res = NodeResult(NODE_STATUS_ERROR, payload=f"{type(exc).__name__}: {exc}")
+            steps, model = self.run_steps(item_slot), self.run_model(item_slot)
+            self._clear_run_state(item_slot)
+            status = res.status if res.status in (NODE_STATUS_SUCCESS, NODE_STATUS_ERROR) else "skipped"
+            text = res.text or ""
+            data = None if isinstance(res.payload, str) else res.payload
+            if rec is not None and walk is not None:
+                wr.record_node_end(walk.db, rec, status=status, text=text, data=data,
+                                   error=text if status == NODE_STATUS_ERROR else None,
+                                   steps=steps, model=model,
+                                   port=(EDGE_WHEN_SUCCESS if status == NODE_STATUS_SUCCESS
+                                         else EDGE_WHEN_ERROR if status == NODE_STATUS_ERROR
+                                         else None),
+                                   owner=task.owner)
+            self._record_run_step(slot, kind="progress",
+                                  detail=f"Item {index + 1} of {total}: {status}")
+            results.append({"index": index, "status": status, "text": text, "data": data})
+            if status == NODE_STATUS_ERROR and on_error == "stop":
+                break
+        failed = [r for r in results if r["status"] == NODE_STATUS_ERROR]
+        worked = sum(1 for r in results if r["status"] == NODE_STATUS_SUCCESS)
+        data = {"items": results, "worked": worked, "failed": len(failed)}
+        if failed:
+            first = failed[0]
+            text = f"Item {first['index'] + 1} of {total} failed: {first['text']}"
+            return StepDone(NodeResult(NODE_STATUS_ERROR, payload=data, text=text), None)
+        return StepDone(NodeResult(NODE_STATUS_SUCCESS, payload=data,
+                                   text=f"{worked} of {total} items worked."), None)
+
+    async def _run_authored_step(self, task, node: dict, slot: str, *, ctx: dict, answer,
+                                 may_wait: bool):
+        """`P22-17`'s Run half — an HTTP, MCP or Code step: the AUTHOR's
+        decision, not a model's (`D-2026-10-01-05` §4).
+
+        `workflow_slots.render_call` builds the call from the step's settings:
+        every `never` slot (tool, destination, recipient, URL, host, command)
+        copied verbatim as the author typed it — a reference found in one
+        refuses the step before anything is dispatched — and outside data only
+        in `value` slots, as JSON values. Its security context is
+        `authored_call_context` (untainted, no standing approval, the owner's
+        rung), and the gate is asked exactly as it is for any call: at the
+        default rung the step runs with no card; at a stricter rung the person
+        asked to be asked, so it parks on a headless card bound to this run,
+        step and item, and an Allow replays exactly the sealed content once.
+        The real dispatcher always runs (`execute_tool_block`, through
+        `wf-effects`), so the admin gate, the disabled lists, event recording
+        and taint observation all apply.
+        """
+        from src import workflow_document as wd
+        from src import workflow_slots as ws
+        from src.agent_loop import _resolve_allow_rule_lookup, apply_role_floor, resolve_trust_rung
+        from src.builtin_actions import NODE_STATUS_ERROR, NODE_STATUS_SUCCESS, NodeResult, TaskWaiting
+        from src.tool_capabilities import authored_call_context
+
+        kind = node.get("kind")
+        config = node.get("config") or {}
+        run_id = run_of_slot(slot)
+        item_part = slot.split(NODE_SLOT_SEPARATOR, 1)[-1] if NODE_SLOT_SEPARATOR in slot else node["id"]
+        try:
+            if kind == wd.NODE_KIND_CODE:
+                from src import workflow_refs as refs
+                input_obj, missing = {}, []
+                for entry in config.get("input") or ():
+                    if not isinstance(entry, dict) or not entry.get("name"):
+                        continue
+                    raw = entry.get("value")
+                    if isinstance(raw, str) and "{{" in raw:
+                        value, gone = refs.render_value(refs.parse_template(raw), ctx)
+                        missing.extend(gone or ())
+                        input_obj[entry["name"]] = None if value is refs.MISSING else value
+                    else:
+                        input_obj[entry["name"]] = raw
+                if missing:
+                    return StepDone(NodeResult(NODE_STATUS_ERROR, payload=self._missing_words(
+                        node, missing)), None)
+                language = config.get("language") or "python"
+                # The source is `never`: the author's text, verbatim, and the
+                # values arrive on stdin — so the call the gate is asked about
+                # is exactly what will run.
+                call = ws.RenderedCall(kind="code", tool=language,
+                                       content=str(config.get("source") or ""),
+                                       value_paths=tuple(input_obj), missing=())
+            else:
+                mcp_schema = None
+                if kind == wd.NODE_KIND_MCP:
+                    from src import workflow_effects as we
+                    resources = we.workflow_resources(task.owner)
+                    tool = (getattr(resources, "mcp_tools", None) or {}).get(config.get("tool"))
+                    if isinstance(tool, dict):
+                        mcp_schema = tool.get("input_schema")
+                    else:
+                        mcp_schema = getattr(tool, "input_schema", None)
+                call = ws.render_call(node, ctx, mcp_schema=mcp_schema)
+        except ws.SlotError as refused:
+            # Defence in depth: a document written straight to the database
+            # with a reference in a `never` slot. Nothing is dispatched.
+            sentence = str(getattr(refused, "sentence", None) or refused)
+            self._record_run_step(slot, kind="progress", detail=f"Not run: {sentence}")
+            return StepDone(NodeResult(NODE_STATUS_ERROR, payload=f"Not run: {sentence}"), None)
+        if getattr(call, "missing", None):
+            return StepDone(NodeResult(NODE_STATUS_ERROR, payload=self._missing_words(
+                node, call.missing)), None)
+        rung = apply_role_floor(resolve_trust_rung(), task.owner)
+        context = authored_call_context(
+            call, rung=rung, run_id=f"{run_id}:{item_part}",
+            allow_rule_lookup=_resolve_allow_rule_lookup(task.owner, ""))
+        exact = answer.exact_approval if (answer is not None and answer.decision == ANSWER_ALLOW) else None
+        if exact is None:
+            decision = context.decision_for(call.tool, call.content)
+            if not decision.allowed:
+                if not may_wait:
+                    return StepDone(NodeResult(NODE_STATUS_ERROR, payload=(
+                        f"Not tested: {decision.reason} A real run asks you first.")), None)
+                raise self._headless_card(task, node, call, context, decision, run_id, item_part)
+        else:
+            self._record_run_step(slot, kind="progress", detail=answer.sentence)
+        outcome = await self._dispatch_authored(
+            task, node, call, context, exact,
+            code_input=input_obj if kind == wd.NODE_KIND_CODE else None)
+        status = getattr(outcome, "status", NODE_STATUS_ERROR)
+        status = NODE_STATUS_SUCCESS if status == NODE_STATUS_SUCCESS else NODE_STATUS_ERROR
+        text = getattr(outcome, "text", "") or ""
+        data = getattr(outcome, "data", None)
+        return StepDone(NodeResult(status, payload=data if data is not None else text,
+                                   text=text), None)
+
+    async def _dispatch_authored(self, task, node: dict, call, context, exact, *,
+                                 code_input=None):
+        """The step's executor — `wf-effects`' (`C-E`). HTTP and MCP go through
+        the real dispatcher (`execute_tool_block`), which claims a replayed
+        approval; Code runs in the person's workstation and claims its sealed
+        approval here, against the exact source, before it runs."""
+        from src import workflow_document as wd
+        from src import workflow_effects as we
+        from src.builtin_actions import NODE_STATUS_ERROR
+
+        kind = node.get("kind")
+        if kind == wd.NODE_KIND_CODE:
+            if exact is not None and not exact.claim(owner=task.owner, session_id="",
+                                                     tool_name=call.tool, content=call.content,
+                                                     workspace=None):
+                return we.StepOutcome(NODE_STATUS_ERROR,
+                                      "The approval did not match this step's code, so it "
+                                      "was not run.", None, None)
+            return await we.run_code_step(node, dict(code_input or {}), owner=task.owner,
+                                          timeout=None)
+        runner = we.run_http_step if kind == wd.NODE_KIND_HTTP else we.run_mcp_step
+        if exact is not None:
+            return await runner(call, owner=task.owner, security_context=context,
+                                exact_approval=exact)
+        return await runner(call, owner=task.owner, security_context=context)
+
+    def _headless_card(self, task, node: dict, call, context, decision, run_id: str,
+                       item_part: str):
+        """A strict rung asked, so a deterministic step parks on a card bound to
+        nobody's chat (`session_id=""`) and to this run, step and item — the
+        skill tester's convention, so branches never supersede each other.
+        Its deadline is `workflow_approval_timeout_seconds`."""
+        from src import workflow_runs as wr
+        from src.builtin_actions import TaskWaiting
+        from src.tool_approvals import tool_approval_store
+        from src.tool_capabilities import capabilities_for_action
+
+        pending = tool_approval_store.create(
+            owner=task.owner, session_id="", origin_run_id=f"{run_id}:{item_part}",
+            tool_name=call.tool, content=call.content, workspace=None,
+            external_untrusted_context_seen=False,
+            capabilities=capabilities_for_action(call.tool, call.content),
+            gate_decision=decision, taint_trail=context.taint_trail,
+            ttl_seconds=wr.workflow_approval_ttl_seconds(task.owner))
+        card = pending.public_payload(reason=decision.reason)
+        return TaskWaiting(
+            f"Waiting for your yes on {call.tool}", kind=wr.WAITING_APPROVAL,
+            approval_id=pending.approval_id, session_id="", tool=call.tool,
+            reason=decision.reason, until=pending.expires_at, card=card,
+            headless=True, content=call.content)
 
     async def _run_workflow_node(self, task, workflow_name: str, node: dict, db,
-                                 slot: str, *, deliver: bool):
+                                 slot: str, *, deliver: bool, after=None):
         """Run one step under `slot`. Answers a `NodeResult`.
 
         A Prompt step reads its input only through `trigger_context_message`
@@ -4779,7 +6222,8 @@ class TaskScheduler:
         its own settings only (`P8-29`'s rule, `B806`'s constraint). With
         `deliver`, a step that worked and has an output setting is delivered
         through `_deliver_task_result`, as a task is; a delivery that raises
-        makes the step `error`.
+        makes the step `error`. `after` (`P22-16`) reads the result before it
+        is delivered — an AI step's answer checked against its shape.
         """
         from src import workflow_document as wd
         from src.builtin_actions import NODE_STATUS_ERROR, NODE_STATUS_SUCCESS, NodeResult
@@ -4797,6 +6241,8 @@ class TaskScheduler:
             text = await self._execute_llm_task(stand_in, db, run_id=slot)
             res = NodeResult(NODE_STATUS_SUCCESS, payload=text)
         self._keep_workflow_chat(db, task, stand_in, kind)
+        if after is not None:
+            res = after(res)
         if deliver and res.ok and stand_in.output_target:
             try:
                 await self._deliver_node_result(task, stand_in, res.text, db,
@@ -4902,7 +6348,7 @@ class TaskScheduler:
         return NodeResult(NODE_STATUS_ERROR, payload=said or f"“{label}” failed")
 
     async def test_workflow_node(self, task, workflow_name: str, node: dict, *,
-                                 input_envelope=None, timeout=None) -> dict:
+                                 input_envelope=None, timeout=None, graph=None) -> dict:
         """`P22-08` — run ONE step, now, with the input the person chose.
 
         Under a slot of its own (`test:<uuid>`) that no row has, so it writes
@@ -4913,8 +6359,12 @@ class TaskScheduler:
         and the person is watching it. A Run task step really runs its task —
         which is why testing one asks first (`needs_test_confirmation`).
 
-        Answers `{status, text, data, steps, model, took_ms}`; `status` is a
-        node status (`success` / `error` / `skipped` / `deferred`).
+        Answers `{status, text, data, steps, model, took_ms, port}`; `status` is
+        a node status (`success` / `error` / `skipped` / `deferred`). `P22-10`:
+        every kind is tested, and `port` says which way a logic step went —
+        references read the input chosen (as `start`) and, for the steps
+        before it, their last real records (`graph`, the document it is in).
+        A test never parks: a step that would ask for a yes says so instead.
         """
         from core.database import SessionLocal
         from src.builtin_actions import NODE_STATUS_ERROR, NodeResult
@@ -4927,12 +6377,15 @@ class TaskScheduler:
         started = time.monotonic()
         db = SessionLocal()
         try:
+            ctx = self._test_context(db, task, graph, node, input_envelope)
+            port = None
             with run_origin(task.id, workflow_name, slot, test=True):
                 try:
-                    res = await asyncio.wait_for(
-                        self._run_workflow_node(task, workflow_name, node, db, slot,
-                                                deliver=False),
+                    done = await asyncio.wait_for(
+                        self._run_workflow_step(task, workflow_name, node, db, slot,
+                                                deliver=False, ctx=ctx, may_wait=False),
                         timeout=budget)
+                    res, port = done.result, done.port
                 except asyncio.TimeoutError:
                     res = NodeResult(NODE_STATUS_ERROR,
                                      payload=f"Timed out after {_human_gap(budget)}.")
@@ -4945,10 +6398,37 @@ class TaskScheduler:
                 "steps": self.run_steps(slot),
                 "model": self.run_model(slot),
                 "took_ms": _human_ms(time.monotonic() - started),
+                "port": port or (EDGE_WHEN_SUCCESS if res.status == "success"
+                                 else EDGE_WHEN_ERROR if res.status == "error" else None),
             }
         finally:
             self._clear_run_state(slot)
             db.close()
+
+    def _test_context(self, db, task, graph, node: dict, input_envelope) -> dict:
+        """What a tested step's references read: the chosen input as the start,
+        and each other step's newest real record (`last_node_record` — never a
+        dry plan)."""
+        from src import workflow_runs as wr
+        from src.event_bus import trigger_summary
+
+        steps = {}
+        for other in (graph or {}).get("nodes") or ():
+            if other.get("id") == node.get("id"):
+                continue
+            rec = wr.last_node_record(db, task.id, other["id"])
+            if rec is None or rec.status not in wr.STEP_FINISHED:
+                continue
+            out = wr._loads(rec.output)
+            if not isinstance(out, dict) or wr.is_truncated(out):
+                continue
+            steps[other["id"]] = {"status": rec.status, "text": out.get("text") or "",
+                                  "data": out.get("data")}
+        envelope = input_envelope if isinstance(input_envelope, dict) else None
+        steps[wr._start_key()] = {"status": "success",
+                                  "data": (envelope or {}).get("data"),
+                                  "text": trigger_summary(envelope) if envelope else ""}
+        return {"steps": json.loads(json.dumps(steps, default=str))}
 
     async def _run_chained(self, task_id: str, *, handoff: dict | None = None,
                            started_by: str = STARTED_BY_BACKGROUND):
@@ -5130,6 +6610,13 @@ class TaskScheduler:
         """
         if started_by not in STARTED_BY:
             raise ValueError(f"started_by must be one of {STARTED_BY}, not {started_by!r}")
+        if not dry and self._record_parked_skip(task_id) is not None:
+            # `B674`. A workflow whose run is parked runs once at a time: this
+            # trigger is a `skipped` run that says why, and the caller is told
+            # it did not start (the webhook keeps its 409, with those words —
+            # `in_flight_sentence`). A dry run plans and touches nothing, so it
+            # is not held.
+            return False
         if force:
             coro = self._execute_task(
                 task_id, bypass_model_slot=True, release_executing=False,

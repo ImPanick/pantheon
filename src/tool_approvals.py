@@ -721,6 +721,7 @@ class ToolApprovalStore:
         taint_trail: Any = None,
         runs_in: Any = None,
         continuation_turn: Any = None,
+        ttl_seconds: Any = None,
     ) -> PendingToolApproval:
         """`gate_decision` and `taint_trail` are display-only (`P7-07`,
         `P7-08`). Both default to nothing so the producers that have no run
@@ -729,8 +730,24 @@ class ToolApprovalStore:
         `runs_in` (`B967`) is display-only in the same way and defaults the
         same way: the card says "on this machine" unless told otherwise.
         `continuation_turn` (`B1069`) is the interrupted turn's own record,
-        outside the seal for the reason given on the field."""
+        outside the seal for the reason given on the field.
+
+        `ttl_seconds` (`P22-17`, `D-2026-10-02-01` §1) is a caller saying how
+        long THIS card waits — a parked workflow step's twelve hours. Clamped
+        to the store's own bounds (`MIN_APPROVAL_TTL_SECONDS` …
+        `MAX_APPROVAL_TTL_SECONDS`), so it moves the deadline and never lifts
+        it; `None` is today's deadline. (`wf-effects`' half of the contract;
+        `wf-walker` carries the same lines so its half runs — one copy at the
+        merge.)"""
         now = time.time()
+        if ttl_seconds is None:
+            card_ttl = self.ttl_seconds(owner)
+        else:
+            try:
+                card_ttl = int(ttl_seconds)
+            except (TypeError, ValueError):
+                card_ttl = self.ttl_seconds(owner)
+            card_ttl = max(MIN_APPROVAL_TTL_SECONDS, min(MAX_APPROVAL_TTL_SECONDS, card_ttl))
         effects = tuple(sorted(effect.value for effect in capabilities.effects))
         result_integrity = capabilities.result_integrity.value
         payload = _binding_payload(
@@ -767,7 +784,7 @@ class ToolApprovalStore:
             result_integrity=result_integrity,
             digest=_canonical_digest(payload),
             created_at=now,
-            expires_at=now + self.ttl_seconds(owner),
+            expires_at=now + card_ttl,
             selected_tools=tuple(payload["selected_tools"]),
             continuation_query=payload["continuation_query"],
             requested_round=_coerced_round(requested_round),
