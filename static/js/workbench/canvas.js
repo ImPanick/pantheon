@@ -628,6 +628,10 @@ export function mountCanvas(root, opts = {}) {
     if (plan) node.dataset.plan = plan.state;
     else node.dataset.outcome = out.tone || 'none';
     if (it.paused) node.dataset.paused = 'true';
+    // `P22-19`, `P22-24` (wb-canvas-e). A step nobody has checked yet — drafted
+    // by the model or imported from a file — carries its origin word, so its
+    // border is a shape (dashed) beside the words its mark says.
+    if (it.unchecked) node.dataset.unchecked = String(it.unchecked);
 
     const title = _el('div', 'wb-node-title', name);
     title.title = name;

@@ -500,9 +500,10 @@ def test_new_change_and_remove_are_draft_edits_and_discard_takes_them_back(box):
                                  "sentence": "Changed “Tidy chats”. Save the workflow to keep it."}]
     # `P22-09`…`P22-18` (wf-canvas, C-W): the panel is also handed the
     # palette, the steps before it, whether it is saved, a field lister and
-    # the draft's problem when it names this step.
-    assert o["panelArgs"] == ["fields", "node", "onApply", "onCancel", "palette", "problem", "saved", "source",
-                              "tasks", "upstream", "workflow"]
+    # the draft's problem when it names this step. `P22-19` (wb-canvas-e, C-A):
+    # and `check` — a step nobody has checked yet opens on it (null here).
+    assert o["panelArgs"] == ["check", "fields", "node", "onApply", "onCancel", "palette", "problem", "saved",
+                              "source", "tasks", "upstream", "workflow"]
     assert o["after"] == ["__start__", "n1", "n2"]
     assert o["writes"] == [], "a draft edit writes nothing; Discard writes nothing"
 

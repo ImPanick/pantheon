@@ -69,6 +69,100 @@ export const ANSWER_TYPES = Object.freeze([
 const KEY_RE = /^[A-Za-z_][A-Za-z0-9_]{0,63}$/;
 const ANSWER_MAX = 20;
 
+// ── `P22-24` (wb-canvas-e). What an imported step needs ────────────────────
+// A step brought in from a file that refers to something this Pantheon does
+// not have carries it in its mark's `needs` (C-A: `[{ field, name, preset?,
+// server?, tool? }]`, the server's rebinding answer). It is said in words on
+// the step's banner, on the field it is about, and in the import's list, each
+// with a door to the room where it is added (`openWorkbench({ room })`, C-R).
+// One reading of a need, here (`Law 7`); the panels and the room import it.
+
+/** The rooms a need's door opens, with the words on the button. */
+export const NEED_DOORS = Object.freeze({
+  integrations: 'Open MCP & Integrations',
+  skills: 'Open Skills',
+});
+
+/** The field a need is about, as the step's form names it: the server writes
+ *  a For-each's inner step's as `step.config.<field>` (wb-assist's
+ *  `import_file`), a refusal's as `config.<field>`. */
+export function needField(need) {
+  return String((need && need.field) || '').replace(/^(?:step\.config\.|config\.)/, '');
+}
+
+/** What a need is: `integration` | `mcp` | `skill` | `task` | `header` |
+ *  `ai_tool` | `workstation` | `other` — read from its field (wb-assist's
+ *  `import_file` writes one per kind of thing a file may refer to). */
+export function needKind(need) {
+  const n = need && typeof need === 'object' ? need : {};
+  const field = needField(n);
+  if (field === 'integration') return 'integration';
+  if (field === 'tool' || n.server != null || n.tool != null) return 'mcp';
+  if (field === 'skill') return 'skill';
+  if (field === 'task_id') return 'task';
+  if (/^headers\[\d+\]\.value$/.test(field)) return 'header';
+  if (field === 'tools') return 'ai_tool';
+  if (field === 'language' && String(n.name || '') === 'workstation') return 'workstation';
+  if (n.preset != null) return 'integration';
+  return 'other';
+}
+
+/** The room a need's door opens, or null (what is picked or typed on the
+ *  step itself has no room). */
+export function needDoor(need) {
+  const kind = needKind(need);
+  if (kind === 'integration' || kind === 'mcp') return 'integrations';
+  if (kind === 'skill') return 'skills';
+  return null;
+}
+
+/** A need in words. `here` — said on the field itself ("pick it here"). */
+export function needWords(need, { here = false } = {}) {
+  const n = need && typeof need === 'object' ? need : {};
+  const name = String(n.name || '').trim();
+  const where = here ? 'here' : 'on the step';
+  switch (needKind(n)) {
+    case 'integration':
+      return `It uses an Integration called “${name || 'one this Pantheon does not have'}”`
+        + `${n.preset ? ` (${String(n.preset)})` : ''}, which this Pantheon does not have. `
+        + `Add it in MCP & Integrations, then pick it ${where}.`;
+    case 'mcp': {
+      const tool = String(n.tool || name || 'a tool');
+      return `It uses the tool “${tool}”${n.server ? ` of an MCP server called “${String(n.server)}”` : ''}, `
+        + `which this Pantheon does not have. Add the server in MCP & Integrations, then pick the tool ${where}.`;
+    }
+    case 'skill':
+      return `It follows a skill called “${name || 'one you do not have'}”, which you do not have. `
+        + `Add it in Skills, then pick it ${where}.`;
+    case 'task':
+      return `It ran a task${name ? ` called “${name}”` : ''} on the Pantheon it came from. Pick the task it runs ${where}.`;
+    case 'header':
+      return `It sends the header “${name || 'a header'}”, and a file never carries its value. Type it ${where}.`;
+    case 'ai_tool':
+      return `It may use the tool “${name || 'a tool'}”, which you cannot use here. Change its tools ${where}.`;
+    case 'workstation':
+      return 'It runs code in your workstation, which cannot run it now.';
+    default:
+      return `It needs ${name ? `“${name}”` : 'something this Pantheon does not have'}`
+        + `${n.field ? ` (${String(n.field)})` : ''}.`;
+  }
+}
+
+/** A need's line: its words, and — when there is a room to add it in and an
+ *  `openRoom(room)` to open it — the door. */
+export function needLine(need, { here = false, openRoom = null, cls = 'wf-need' } = {}) {
+  const line = _el('p', cls);
+  line.appendChild(_el('span', cls + '-text', needWords(need, { here })));
+  const room = needDoor(need);
+  if (room && typeof openRoom === 'function') {
+    const door = _button(cls + '-door', NEED_DOORS[room]);
+    door.dataset.room = room;
+    door.addEventListener('click', () => { openRoom(room); });
+    line.appendChild(door);
+  }
+  return line;
+}
+
 function _el(tag, cls, text) {
   const n = document.createElement(tag);
   if (cls) n.className = cls;
@@ -536,7 +630,19 @@ function buildMcp(ctx) {
   const { body, cfg, palette } = ctx;
   const tools = palette && Array.isArray(palette.mcp_tools) ? palette.mcp_tools : [];
   body.appendChild(_el('p', 'wf-sf-lede', 'Calls one tool of an MCP server you added, with the arguments you give it here.'));
-  if (!tools.length) body.appendChild(_el('p', 'wf-sf-hint wf-sf-warn', 'No MCP tool is available. Add a server in Settings → MCP.'));
+  // `wb-canvas-e`: this named "Settings → MCP", a place that does not exist
+  // (design § 0.6 — MCP servers are a card of Integrations, and the
+  // Workbench's MCP & Integrations room since `P22-21`); it names the room and
+  // opens it.
+  if (!tools.length) {
+    const warn = body.appendChild(_el('p', 'wf-sf-hint wf-sf-warn'));
+    warn.appendChild(_el('span', null, 'No MCP tool is available. Add a server in MCP & Integrations, then pick its tool here.'));
+    if (typeof ctx.openRoom === 'function') {
+      const door = warn.appendChild(_button('wf-sf-door', NEED_DOORS.integrations));
+      door.dataset.room = 'integrations';
+      door.addEventListener('click', () => ctx.openRoom('integrations'));
+    }
+  }
   const choice = _selectField(body, 'Tool', [['', 'Choose one…'],
     ...tools.map((t) => [t.qualified_name, `${t.server_name ? t.server_name + ': ' : ''}${t.name}`])],
   { value: cfg.tool || '', field: 'tool' });
@@ -684,10 +790,14 @@ function showOnField(root, handles, problem, fallbackEl) {
  * `problem`   — the draft's refusal naming this step (`{ sentence, field }`),
  *               said on its field when the panel opens.
  * `editInner(step, done)` — a For-each step's inner step, edited in place.
+ * `needs`     — `P22-24`: what an imported step needs (its mark's `needs`),
+ *               each said on its field with its door.
+ * `openRoom(room)` — opens the Workbench at a room (`openWorkbench({ room })`).
  * `onApply({ label, kind, config })`, `onCancel()`.
  */
 export function mountStepFields(host, {
   node, palette = null, upstream = [], pickField = null, onApply = null, onCancel = null, problem = null, editInner = null,
+  needs = null, openRoom = null,
 } = {}) {
   const n = node && typeof node === 'object' ? node : {};
   const kind = String(n.kind || '');
@@ -707,7 +817,7 @@ export function mountStepFields(host, {
   const handles = {};
   const destroyers = [];
   const ctx = {
-    body, cfg, palette, upstream, slots, editInner,
+    body, cfg, palette, upstream, slots, editInner, openRoom,
     limits: palette && palette.limits ? palette.limits : {},
     operators: palette && Array.isArray(palette.operators) && palette.operators.length ? palette.operators : DEFAULT_OPERATORS,
     onDestroy: (fn) => destroyers.push(fn),
@@ -750,6 +860,24 @@ export function mountStepFields(host, {
   });
   cancel.addEventListener('click', () => { if (typeof onCancel === 'function') onCancel(); });
   if (problem && problem.sentence) showOnField(wrap, allHandles(), problem, top);
+  // `P22-24`. What an imported step needs, said on the field it is about
+  // (the Integration, the tool, the skill), with its door; one the form does
+  // not draw is said at the top.
+  for (const need of (Array.isArray(needs) ? needs : [])) {
+    // A For-each's inner step's need (`step.config.…`) is not a field of
+    // this form: it is said at the top, as one the form does not draw is.
+    const inner = /^step\.config\./.test(String((need && need.field) || ''));
+    const field = inner ? '' : needField(need);
+    const el = field ? Array.from(wrap.querySelectorAll('[data-field]')).find((x) => x.dataset.field === field) : null;
+    const line = needLine(need, { here: !!el, openRoom, cls: 'wf-sf-need' });
+    if (field) line.dataset.field = field;
+    if (el && el.parentNode) {
+      const next = el.nextSibling;
+      if (next) el.parentNode.insertBefore(line, next); else el.parentNode.appendChild(line);
+    } else {
+      top.appendChild(line);
+    }
+  }
 
   return {
     read,
@@ -870,5 +998,5 @@ export function mountAiOptions(host, { node, palette = null } = {}) {
 
 export default {
   mountStepFields, mountAiOptions, slotFor, STEP_FIELD_KINDS, DEFAULT_OPERATORS, INNER_EXCLUDED, CODE_TEMPLATES,
-  HTTP_METHODS, ANSWER_TYPES,
+  HTTP_METHODS, ANSWER_TYPES, NEED_DOORS, needField, needKind, needDoor, needWords, needLine,
 };

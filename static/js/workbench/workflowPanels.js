@@ -24,12 +24,20 @@
 // markup assignment is a run's step log, drawn by the Tasks card's own renderer
 // (`tasks.js:renderRunSteps`, handed in by the glue), which escapes every value
 // with `ui.js:esc` — the canvas's one exception, for the same reason (`P22-04`).
+//
+// **Slice E (`P22-19`, `P22-20`, `P22-24`, wb-canvas-e).** A step nobody has
+// checked yet — drafted by the model, or brought in by a file — opens on a
+// banner: who decided it, what it needs (each with its door), what it would
+// do, and *Looks right*. A failed step's record offers *Why did this fail?*:
+// the model's reading, the change it proposes and what was left out, *Apply*,
+// *Undo* and *Run it again*. Every word a model or a run wrote — a reason, a
+// label, a value before or after — is text, as everything else here is.
 
 import { KIND_WORDS, waitingWords } from '../tasks/workflowDiagram.js';
 import { runStatusTone, runStatusLabel } from '../runStatus.js';
 // `P22-09`…`P22-18` (wf-canvas): the step forms Slices C and D add, the field
 // picker, and the gate card a waiting step is answered with.
-import { mountStepFields, mountAiOptions, STEP_FIELD_KINDS } from './stepFields.js';
+import { mountStepFields, mountAiOptions, STEP_FIELD_KINDS, needLine } from './stepFields.js';
 import { decorateField, openFieldPicker } from './fieldPicker.js';
 import { approvalBox } from '../approvalBox.js';
 
@@ -65,6 +73,33 @@ export const DOES_NOT_READ = 'This kind of step does not read what it is handed;
 /** `P22-17`. Under a waiting step's card: what each answer does. */
 export const ANSWER_WORDS = 'Allow once lets this one action run, and the next one asks again. '
   + 'Deny takes the step’s “if it fails” way.';
+/** `P22-19`, `P22-24` (wb-canvas-e). The banner a step nobody has checked
+ *  opens with, by its mark's origin (C-A: `drafted` | `imported`). */
+export const CHECK_WORDS = Object.freeze({
+  drafted: 'Drafted by the model — check it.',
+  imported: 'Imported from a file — check it.',
+});
+/** Under it: who decided this step, and what makes it the person's. */
+export const CHECK_NOTES = Object.freeze({
+  drafted: 'The model wrote this step from your description and what this Pantheon can reach. It does not run '
+    + 'until you say it looks right — or change it, which makes it yours.',
+  imported: 'Whoever wrote the file chose this step. It does not run until you say it looks right — or change it, '
+    + 'which makes it yours.',
+});
+/** Said once a step is checked. */
+export const CHECKED_WORDS = 'Checked. It runs as it is once the workflow is switched on.';
+/** `P22-20`. *Why did this fail?* — the title names who is asked. */
+export const WHY_TITLE = 'Asks a model — your utility model, or your default one if none is set — to read what this step '
+  + 'was handed and what came back. Nothing changes unless you press Apply.';
+/** Over the model's answer: where its words come from (`Law 17`). */
+export const READING_NOTE = 'It read what this step was handed and what came back — text someone else may have '
+  + 'written — so read it as a suggestion.';
+/** A proposed field whose slot says where the request goes (`where`). */
+export const whereWords = (name) => `This changes where the request goes (still to “${name || 'the same service'}”).`;
+/** A proposed value found verbatim in what the run recorded (`from_run`). */
+export const FROM_RUN_WORDS = 'This value comes from what the run recorded — what the step was handed or what came '
+  + 'back — not from you.';
+
 /** The kinds the task form draws (`taskFields.js`, `'node'` mode). */
 const TASK_KINDS = new Set(['llm', 'research', 'action', 'run_task']);
 
@@ -167,10 +202,15 @@ function _section(title, text, { open = false, note = '', cls = '' } = {}) {
  * `onChanged(nodeId)` — a sample was pinned or unpinned (saved at once, no
  *   version): the room redraws the canvas so the step's mark says so.
  * `layer()` — the element a palette is drawn in (the room).
+ * `fixer` — `P22-20`: `{ apply(proposal) → { ok, sentence, undoVersion },
+ *   undo(version) → { ok, sentence }, runAgain() }`, the room's, which holds
+ *   the document (a run's panel holds only the run).
+ * `openRoom(room)` — `P22-24`: opens the Workbench at a room (C-R's
+ *   `openWorkbench({ room })`), the door beside what a step needs.
  */
 export function createWorkflowPanels({
   mountTaskFields, renderSteps = null, holdEscape = null, onRecordShown = null, onChanged = null, layer = null,
-  onAnswered = null,
+  onAnswered = null, fixer = null, openRoom = null,
 } = {}) {
   const hold = typeof holdEscape === 'function' ? holdEscape : () => () => {};
 
@@ -322,7 +362,8 @@ export function createWorkflowPanels({
 
   /** One step's editor in `formHost`: the task form for a task kind (with
    *  the hooks), the step forms for the rest. */
-  function mountEditor(formHost, { step, tasks, pal, upstream, fields, problem, inForeach = null, onApply, onCancel, editInner }) {
+  function mountEditor(formHost, { step, tasks, pal, upstream, fields, problem, inForeach = null, onApply, onCancel, editInner,
+    needs = null }) {
     const n = step || {};
     const kind = String(n.kind || 'llm');
     const entry = entryOf(pal, kind);
@@ -351,7 +392,7 @@ export function createWorkflowPanels({
     }
     if (!STEP_FIELD_KINDS.includes(kind)) return null;
     return mountStepFields(formHost, {
-      node: n, palette: pal, upstream, pickField, problem, editInner,
+      node: n, palette: pal, upstream, pickField, problem, editInner, needs, openRoom,
       onApply: (change) => { if (typeof onApply === 'function') onApply(change); },
       onCancel: () => { if (typeof onCancel === 'function') onCancel(); },
     });
@@ -359,10 +400,12 @@ export function createWorkflowPanels({
 
   function node(host, {
     node: step, tasks = [], workflow = null, source = null, palette: pal = null, upstream = [], fields = null,
-    problem = null, onApply, onCancel,
+    problem = null, check = null, onApply, onCancel,
   } = {}) {
     const n = step || {};
     const wrap = _el('div', 'wf-step');
+    // `P22-19`, `P22-24`. A step nobody has checked yet opens on that.
+    const banner = check ? checkBanner(wrap, n, check) : null;
     const formHost = _el('div', 'wf-step-form');
     wrap.appendChild(formHost);
     host.appendChild(wrap);
@@ -401,6 +444,7 @@ export function createWorkflowPanels({
     };
     const form = mountEditor(formHost, {
       step: n, tasks, pal, upstream, fields, problem, onApply, onCancel, editInner,
+      needs: check && Array.isArray(check.needs) ? check.needs : null,
     });
     if (!form) formHost.textContent = 'The step form did not load. Close the Workbench and open it again to retry.';
     let edited = false;
@@ -413,12 +457,240 @@ export function createWorkflowPanels({
     function syncHint() { if (test) test.formEdited(edited); }
     return {
       destroy() {
+        if (banner) banner.destroy();
         if (test) test.destroy();
         try { if (inner && typeof inner.destroy === 'function') inner.destroy(); } catch (_) { /* gone */ }
         try { if (form && typeof form.destroy === 'function') form.destroy(); } catch (_) { /* gone */ }
         wrap.remove();
       },
     };
+  }
+
+  /**
+   * `P22-19`, `P22-24` (wb-canvas-e). The banner of a step nobody has checked
+   * yet (`check`, from the source: `{ origin, needs, plan(), looksRight() }`):
+   * who decided it, what it needs (each with its door), what it would do —
+   * the dry run's plan of the saved version, nothing run — and *Looks right*
+   * (C-A's `PUT {checked}`; a person only, so a refusal is said as it came).
+   */
+  function checkBanner(parent, step, check) {
+    let alive = true;
+    const origin = Object.prototype.hasOwnProperty.call(CHECK_WORDS, check.origin) ? check.origin : 'drafted';
+    const box = _el('section', 'wf-step-check');
+    box.dataset.origin = origin;
+    box.setAttribute('aria-label', CHECK_WORDS[origin]);
+    box.appendChild(_el('p', 'wf-step-check-head', CHECK_WORDS[origin]));
+    box.appendChild(_el('p', 'wf-step-check-note', CHECK_NOTES[origin]));
+    for (const need of (Array.isArray(check.needs) ? check.needs : [])) {
+      box.appendChild(needLine(need, { openRoom, cls: 'wf-step-check-need' }));
+    }
+    const planHead = _el('p', 'wf-step-check-sub', 'What it would do (planned; nothing ran):');
+    const plan = _el('ul', 'wf-step-check-plan');
+    plan.appendChild(_el('li', 'wf-step-check-wait', 'Planning…'));
+    box.appendChild(planHead);
+    box.appendChild(plan);
+    const row = _el('div', 'wf-step-check-buttons');
+    const yes = _button('wf-step-check-yes', 'Looks right', 'Say this step is right as it is. Nothing else changes.');
+    row.appendChild(yes);
+    box.appendChild(row);
+    const said = _el('p', 'wf-step-check-said');
+    said.setAttribute('role', 'status');
+    said.setAttribute('aria-live', 'polite');
+    box.appendChild(said);
+    parent.appendChild(box);
+
+    if (typeof check.plan === 'function') {
+      Promise.resolve().then(() => check.plan()).then((r) => {
+        if (!alive) return;
+        if (!r || r.ok === false) {
+          plan.replaceChildren(_el('li', 'wf-step-check-wait',
+            `It could not be planned: ${String((r && r.sentence) || 'no answer').replace(/\.$/, '')}.`));
+          return;
+        }
+        const lines = Array.isArray(r.lines) ? r.lines.map(String).filter(Boolean) : null;
+        if (!lines) {
+          plan.replaceChildren(_el('li', 'wf-step-check-wait', r.declined
+            ? `It cannot be planned yet: ${String(r.declined).replace(/\.$/, '')}.` : 'The plan did not reach this step.'));
+          return;
+        }
+        plan.replaceChildren(...(lines.length ? lines : ['It would do nothing.']).map((l) => _el('li', null, l)));
+      }, () => { if (alive) plan.replaceChildren(_el('li', 'wf-step-check-wait', 'It could not be planned.')); });
+    } else {
+      planHead.hidden = true;
+      plan.hidden = true;
+    }
+
+    yes.addEventListener('click', async () => {
+      if (typeof check.looksRight !== 'function') return;
+      yes.disabled = true;
+      said.textContent = 'Saying it looks right…';
+      let r = null;
+      try { r = await check.looksRight(); } catch (err) { r = { ok: false, sentence: String((err && (err.sentence || err.message)) || '') }; }
+      if (!alive) return;
+      if (!r || r.ok === false) {
+        yes.disabled = false;
+        said.textContent = `Not checked: ${String((r && r.sentence) || 'the server refused').replace(/\.$/, '')}.`;
+        said.classList.add('wf-step-check-refusal');
+        return;
+      }
+      box.dataset.checked = 'true';
+      box.replaceChildren(_el('p', 'wf-step-check-head', CHECKED_WORDS));
+      if (typeof onChanged === 'function') { try { onChanged(step.id); } catch (_) { /* the mark only */ } }
+    });
+    return { destroy() { alive = false; box.remove(); } };
+  }
+
+  /**
+   * `P22-20` (wb-canvas-e). *Why did this fail?* under a failed step's record
+   * (or a failed item's): asks a model through the run's own source
+   * (`explain`, C-A's explain route; nothing is written) and shows its
+   * reading AS TEXT, labelled as coming from what the step was handed; each
+   * change it proposes as a row — what it is now, what it would be, and in
+   * words when it changes where the request goes (`where`) or when the new
+   * value came out of the run (`from_run`); what was left out (`left_out`);
+   * then *Apply* (the room's `fixer`, with the proposal's base version),
+   * *Undo* (`restoreVersion` of `undo_version`) and *Run it again*.
+   */
+  function whySection(parent, { nodeId, item = null, explain, current = null, palette: pal = null }) {
+    let alive = true;
+    const box = _el('section', 'wf-why');
+    box.setAttribute('aria-label', 'Why did this fail?');
+    const ask = _button('wf-why-ask', 'Why did this fail?', WHY_TITLE);
+    box.appendChild(ask);
+    const said = _el('p', 'wf-why-said');
+    said.setAttribute('role', 'status');
+    said.setAttribute('aria-live', 'polite');
+    box.appendChild(said);
+    const answerHost = _el('div', 'wf-why-answer');
+    answerHost.hidden = true;
+    box.appendChild(answerHost);
+    parent.appendChild(box);
+
+    /** Where a proposed `where` change still sends: the step's Integration,
+     *  or its MCP tool's server, by name. */
+    const destination = () => {
+      const c = current && current.config && typeof current.config === 'object' ? current.config : {};
+      const list = (key) => (pal && Array.isArray(pal[key]) ? pal[key] : []);
+      const integ = list('integrations').find((i) => i && String(i.id) === String(c.integration));
+      if (integ) return String(integ.name || '');
+      const tool = list('mcp_tools').find((t) => t && String(t.qualified_name) === String(c.tool));
+      return tool ? String(tool.server_name || tool.name || '') : '';
+    };
+
+    function draw(r) {
+      answerHost.replaceChildren();
+      const head = _el('p', 'wf-why-head', 'The model’s reading');
+      answerHost.appendChild(head);
+      answerHost.appendChild(_el('p', 'wf-why-note', READING_NOTE));
+      answerHost.appendChild(_el('p', 'wf-why-text', String(r.why == null ? '' : r.why).trim() || 'It gave no reason.'));
+      if (r.model) answerHost.appendChild(_el('p', 'wf-why-model', `Asked: ${String(r.model)}`));
+      if (r.changed_since_run) {
+        answerHost.appendChild(_el('p', 'wf-why-note wf-why-changed',
+          'This step has changed since this run. A change below is to the step as it is now.'));
+      }
+      const proposal = r.proposal && typeof r.proposal === 'object' ? r.proposal : null;
+      const changes = proposal && Array.isArray(proposal.changes) ? proposal.changes.filter((c) => c && typeof c === 'object') : [];
+      if (proposal && changes.length) {
+        answerHost.appendChild(_el('p', 'wf-why-sub', 'What it would change:'));
+        const ul = _el('ul', 'wf-why-changes');
+        for (const c of changes) {
+          const li = _el('li', 'wf-why-change');
+          if (c.field != null) li.dataset.field = String(c.field);
+          li.appendChild(_el('p', 'wf-why-field', String(c.words || c.field || 'A setting')));
+          const diff = _el('div', 'wf-why-diff');
+          diff.appendChild(_el('span', 'wf-why-label', 'Now'));
+          diff.appendChild(_el('pre', 'wf-why-before', pretty(c.before) || '(empty)'));
+          diff.appendChild(_el('span', 'wf-why-label', 'It would be'));
+          diff.appendChild(_el('pre', 'wf-why-after', pretty(c.after) || '(empty)'));
+          li.appendChild(diff);
+          if (c.where === true) li.appendChild(_el('p', 'wf-why-where', whereWords(destination())));
+          if (c.from_run === true) li.appendChild(_el('p', 'wf-why-from-run', FROM_RUN_WORDS));
+          ul.appendChild(li);
+        }
+        answerHost.appendChild(ul);
+      }
+      const left = (Array.isArray(r.left_out) ? r.left_out : []).map((x) => String(x == null ? '' : x)).filter(Boolean);
+      if (left.length) {
+        answerHost.appendChild(_el('p', 'wf-why-sub', 'It also suggested these, which are yours to decide:'));
+        const ul = _el('ul', 'wf-why-left');
+        for (const line of left) ul.appendChild(_el('li', null, line));
+        answerHost.appendChild(ul);
+      }
+      if (!(proposal && changes.length)) {
+        answerHost.appendChild(_el('p', 'wf-why-note', 'It proposes no change that can be applied here.'));
+      } else if (fixer && typeof fixer.apply === 'function') {
+        answerHost.appendChild(applyRow(proposal));
+      }
+      answerHost.hidden = false;
+    }
+
+    function applyRow(proposal) {
+      const row = _el('div', 'wf-why-buttons');
+      const apply = _button('wf-why-apply', 'Apply', 'Save this change as a new version of the workflow. Undo puts the version before it back.');
+      const undo = _button('wf-why-undo', 'Undo', 'Put the version before this fix back');
+      const again = _button('wf-why-again', 'Run it again', 'Run the workflow now, as it is saved');
+      undo.hidden = true;
+      again.hidden = true;
+      const out = _el('p', 'wf-why-applied');
+      out.setAttribute('role', 'status');
+      out.setAttribute('aria-live', 'polite');
+      let undoVersion = null;
+      apply.addEventListener('click', async () => {
+        apply.disabled = true;
+        out.textContent = 'Applying…';
+        let r = null;
+        try { r = await fixer.apply(proposal); } catch (err) { r = { ok: false, sentence: String((err && (err.sentence || err.message)) || '') }; }
+        if (!alive) return;
+        if (!r || r.ok === false) {
+          apply.disabled = false;
+          out.textContent = `Not applied: ${String((r && r.sentence) || 'the server refused').replace(/\.$/, '')}.`;
+          return;
+        }
+        undoVersion = r.undoVersion != null ? r.undoVersion : proposal.base_version;
+        out.textContent = r.sentence || 'Applied.';
+        apply.hidden = true;
+        undo.hidden = !(typeof fixer.undo === 'function' && undoVersion != null);
+        again.hidden = typeof fixer.runAgain !== 'function';
+      });
+      undo.addEventListener('click', async () => {
+        undo.disabled = true;
+        let r = null;
+        try { r = await fixer.undo(undoVersion); } catch (err) { r = { ok: false, sentence: String((err && (err.sentence || err.message)) || '') }; }
+        if (!alive) return;
+        if (!r || r.ok === false) {
+          undo.disabled = false;
+          out.textContent = `Not undone: ${String((r && r.sentence) || 'the server refused').replace(/\.$/, '')}.`;
+          return;
+        }
+        out.textContent = r.sentence || 'Undone.';
+        undo.hidden = true;
+      });
+      again.addEventListener('click', () => { try { fixer.runAgain(); } catch (_) { /* the room says */ } });
+      for (const b of [apply, undo, again]) row.appendChild(b);
+      const wrap = _el('div', 'wf-why-apply-row');
+      wrap.appendChild(row);
+      wrap.appendChild(out);
+      return wrap;
+    }
+
+    ask.addEventListener('click', async () => {
+      ask.disabled = true;
+      said.textContent = 'Asking the model… it reads this step’s record.';
+      let r = null;
+      try { r = await explain({ nodeId, item }); } catch (err) { r = { ok: false, sentence: String((err && (err.sentence || err.message)) || '') }; }
+      if (!alive) return;
+      ask.disabled = false;
+      if (!r || r.ok === false) {
+        said.textContent = `Not answered: ${String((r && r.sentence) || 'no answer').replace(/\.$/, '')}.`;
+        said.classList.add('wf-why-refusal');
+        return;
+      }
+      said.textContent = '';
+      said.classList.remove('wf-why-refusal');
+      ask.textContent = 'Ask again';
+      draw(r);
+    });
+    return { destroy() { alive = false; box.remove(); } };
   }
 
   /** `P22-08`. *Test this step*: one step, on an input the person chose, and
@@ -751,7 +1023,7 @@ export function createWorkflowPanels({
 
   /** `P22-12`. A For-each step's items: each a line, the failed one first
    *  to be read. */
-  function itemsPart(items, nodeId, answer) {
+  function itemsPart(items, nodeId, answer, why = null) {
     const d = _el('details', 'wf-record-part wf-record-items');
     const failed = items.filter((r) => runStatusTone(r.status) === 'error');
     if (failed.length || items.some((r) => r.status === 'waiting')) d.open = true;
@@ -769,13 +1041,18 @@ export function createWorkflowPanels({
       li.appendChild(_el('span', 'wf-record-item-word',
         `Item ${Number(r.item) + 1} of ${total}: ${w.word}${first ? ` — ${first.length > 160 ? first.slice(0, 159) + '…' : first}` : ''}`));
       if (r.status === 'waiting') li.appendChild(waitingPart(r, { answer, nodeId, item: Number(r.item) }));
+      // `P22-20`. A failed item is explained on its own (`item`).
+      if (why && w.tone === 'error') why(li, Number(r.item));
       ol.appendChild(li);
     }
     d.appendChild(ol);
     return d;
   }
 
-  function record(host, { node: step = null, record: rec = null, run = null, items = [], answer = null } = {}) {
+  function record(host, {
+    node: step = null, record: rec = null, run = null, items = [], answer = null,
+    explain = null, current = null, palette: pal = null,
+  } = {}) {
     const n = step || {};
     const wrap = _el('div', 'wf-record');
     host.appendChild(wrap);
@@ -796,8 +1073,14 @@ export function createWorkflowPanels({
 
     const itemRecs = Array.isArray(items) ? items : [];
     const nodeId = String(n.id || (rec && rec.node_id) || '');
+    // `P22-20`. *Why did this fail?*, on a failed record only, when the run's
+    // source can ask (C-A).
+    const whys = [];
+    const why = typeof explain === 'function'
+      ? (parent, item) => whys.push(whySection(parent, { nodeId, item, explain, current, palette: pal }))
+      : null;
     if (rec && status === 'waiting') wrap.appendChild(waitingPart(rec, { answer, nodeId, item: null }));
-    if (itemRecs.length) wrap.appendChild(itemsPart(itemRecs, nodeId, answer));
+    if (itemRecs.length) wrap.appendChild(itemsPart(itemRecs, nodeId, answer, why));
     if (!rec && itemRecs.length) {
       // A For-each step whose own record is not written yet: its items are
       // what there is to read.
@@ -834,6 +1117,7 @@ export function createWorkflowPanels({
         wrap.appendChild(_section('What went wrong', String(rec.error || 'It failed and left no message.'),
           { open: true, cls: 'wf-record-error' }));
       }
+      if (failed && why && !rec.dry) why(wrap, null);
       const output = readCapped(rec.output);
       const out = output.value && typeof output.value === 'object' && !Array.isArray(output.value) ? output.value : { text: output.value };
       const made = _el('details', 'wf-record-part wf-record-output');
@@ -857,7 +1141,7 @@ export function createWorkflowPanels({
     if (typeof onRecordShown === 'function') {
       try { onRecordShown({ node: n, record: rec, run }); } catch (_) { /* the room's sentence only */ }
     }
-    return { destroy() { wrap.remove(); } };
+    return { destroy() { for (const x of whys) x.destroy(); wrap.remove(); } };
   }
 
   return { palette, node, start, record };
@@ -865,4 +1149,5 @@ export function createWorkflowPanels({
 
 export default {
   createWorkflowPanels, PALETTE_KINDS, TEST_SOURCES, PIN_SENTENCE, NOTHING_ELSE, DOES_NOT_READ, ANSWER_WORDS,
+  CHECK_WORDS, CHECK_NOTES, CHECKED_WORDS, WHY_TITLE, READING_NOTE, whereWords, FROM_RUN_WORDS,
 };
