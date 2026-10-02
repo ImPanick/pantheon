@@ -167,3 +167,33 @@ async def settle(scheduler, *, rounds=200):
             if not pending:
                 return
     raise AssertionError(f"runs did not settle: {scheduler._executing}")
+
+
+def app_for(factory, scheduler, monkeypatch):
+    """The task and workflow routers, as `app.py` includes them, over the real
+    scheduler; the caller is named by an `x-test-user` header."""
+    from fastapi import FastAPI
+    import routes.task.task_routes as task_routes
+    import routes.workflow.workflow_routes as workflow_routes
+
+    monkeypatch.setattr(task_routes, "SessionLocal", factory)
+    monkeypatch.setattr(workflow_routes, "SessionLocal", factory)
+    app = FastAPI()
+
+    @app.middleware("http")
+    async def _who(request, call_next):
+        request.state.current_user = request.headers.get("x-test-user")
+        return await call_next(request)
+
+    app.include_router(task_routes.setup_task_routes(scheduler))
+    app.include_router(workflow_routes.setup_workflow_routes(scheduler))
+    return app
+
+
+def client_for(app):
+    """An HTTP client that runs the app on the TEST's own event loop (httpx's
+    ASGI transport), so a run a route spawns — a resume, a webhook's run — goes
+    on after the response, where `settle` can wait for it. (`TestClient` runs
+    the app on a loop of its own that ends with the request.)"""
+    import httpx
+    return httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test")

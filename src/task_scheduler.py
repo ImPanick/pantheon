@@ -6245,15 +6245,25 @@ class TaskScheduler:
         kind = node.get("kind")
         if kind == wd.NODE_KIND_RUN_TASK:
             return await self._run_task_node(task, node, slot)
+        from src.builtin_actions import TaskWaiting
+
         stand_in = wd.node_stand_in(task, workflow_name, node)
-        if kind == wd.NODE_KIND_ACTION:
-            res = await self._execute_action(stand_in, run_id=slot)
-        elif kind == wd.NODE_KIND_RESEARCH:
-            text = await self._execute_research_task(stand_in, db, run_id=slot)
-            res = NodeResult(NODE_STATUS_SUCCESS, payload=text)
-        else:
-            text = await self._execute_llm_task(stand_in, db, run_id=slot)
-            res = NodeResult(NODE_STATUS_SUCCESS, payload=text)
+        try:
+            if kind == wd.NODE_KIND_ACTION:
+                res = await self._execute_action(stand_in, run_id=slot)
+            elif kind == wd.NODE_KIND_RESEARCH:
+                text = await self._execute_research_task(stand_in, db, run_id=slot)
+                res = NodeResult(NODE_STATUS_SUCCESS, payload=text)
+            else:
+                text = await self._execute_llm_task(stand_in, db, run_id=slot)
+                res = NodeResult(NODE_STATUS_SUCCESS, payload=text)
+        except TaskWaiting:
+            # `P22-17`. A step that parks on a card keeps the chat it made on
+            # the trigger FIRST: the card is sealed to that chat, and the step
+            # that resumes after an Allow must run in it, or the seal refuses
+            # the replay (as it should — found by the Allow test).
+            self._keep_workflow_chat(db, task, stand_in, kind)
+            raise
         self._keep_workflow_chat(db, task, stand_in, kind)
         if after is not None:
             res = after(res)
