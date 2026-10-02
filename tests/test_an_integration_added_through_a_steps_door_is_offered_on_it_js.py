@@ -106,6 +106,9 @@ def test_an_integration_added_through_the_steps_door_is_offered_on_the_open_step
         fire(nodeEl(r, 'fetch'), 'click'); await quiet();
         const before = offered(byField(r, 'integration'));
         const warn = doorWarn(r);
+        // The kind's own line (the palette's `why` for HTTP) — a warning with no door.
+        const kindLine = r.querySelectorAll('.wf-sf-warn').find((x) => !x.querySelector('.wf-sf-door')) || null;
+        const kindBefore = kindLine ? [kindLine.textContent, !!kindLine.hidden] : null;
         typed(byField(r, 'path'), '/v1/entries?status=unread');      // typed before leaving
         fire(warn.querySelector('.wf-sf-door'), 'click'); await quiet();
         await addInRoom('integration');                               // Miniflux, added in the room
@@ -115,7 +118,8 @@ def test_an_integration_added_through_the_steps_door_is_offered_on_the_open_step
         const after = offered(sel);
         changed(sel, 'intg-miniflux');
         fire(by(r, 'wf-step-done'), 'click'); await quiet();
-        out({ before, after, shownAgain, doors: doors.opened, warnHidden: warn.hidden,
+        out({ before, after, shownAgain, doors: doors.opened, warnHidden: warn.hidden, kindBefore,
+              kindAfter: kindLine ? !!kindLine.hidden : null,
               path: byField(r, 'path') ? byField(r, 'path').value : null, palettes: palettes(), say: sayOf(r) });
     """, WID=world.wid)
     assert o["before"] == ["Choose one…"]
@@ -123,6 +127,10 @@ def test_an_integration_added_through_the_steps_door_is_offered_on_the_open_step
     assert o["shownAgain"] is True
     assert o["after"] == ["Choose one…", "Miniflux (miniflux)"], o
     assert o["warnHidden"] is True, "it no longer says no integration is set up"
+    # Measured in Chromium: the kind's own line still said none was switched on.
+    assert o["kindBefore"] is not None and o["kindBefore"][1] is False
+    assert "Integration" in o["kindBefore"][0]
+    assert o["kindAfter"] is True
     assert o["palettes"] == 2, "read once when the workflow opened, again when the room was shown"
     assert o["say"] == "Changed “Fetch it”. Save the workflow to keep it."
 

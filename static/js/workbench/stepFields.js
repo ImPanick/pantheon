@@ -861,7 +861,8 @@ export function mountStepFields(host, {
   wrap.dataset.kind = kind;
   wrap.appendChild(_el('h3', 'wf-sf-head', `Edit step · ${KIND_WORDS[kind] || kind}`));
   wrap.appendChild(_el('p', 'wf-sf-hint', 'Done puts it on the canvas; Save above the canvas keeps the workflow.'));
-  if (entry.available === false && entry.why) wrap.appendChild(_el('p', 'wf-sf-hint wf-sf-warn', String(entry.why)));
+  const unavailable = entry.available === false && entry.why
+    ? wrap.appendChild(_el('p', 'wf-sf-hint wf-sf-warn', String(entry.why))) : null;
   const top = _el('div', 'wf-sf-problems');
   wrap.appendChild(top);
   const name = _textField(wrap, 'Name', { value: n.label || '', field: 'label', placeholder: KIND_WORDS[kind] || 'Step' });
@@ -942,6 +943,13 @@ export function mountStepFields(host, {
      *  a skill added in another room — on this open form, in place: what is
      *  typed and chosen stays. */
     paletteChanged(pal) {
+      // Measured in Chromium: with Miniflux offered, the kind's own line still
+      // said "No Integrations are switched on" above it.
+      if (unavailable) {
+        const now = kindEntry(pal, kind);
+        unavailable.hidden = !(now.available === false && now.why);
+        if (!unavailable.hidden) unavailable.textContent = String(now.why);
+      }
       for (const fn of onPalette) { try { fn(pal); } catch (_) { /* the form keeps what it had */ } }
     },
     destroy() {
