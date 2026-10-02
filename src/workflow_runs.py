@@ -277,17 +277,23 @@ def run_node_records(db, run_id: str) -> list:
             .order_by(TaskRunNode.seq, TaskRunNode.started_at).all())
 
 
-def dry_node_entries(db, run_id: str) -> list:
+def dry_node_entries(db, run_id: str, graph: dict | None = None) -> list:
     """A workflow dry run's plan, one entry per step, breadth first — the
     shape wave B's chain dry run answers in (`chain` entries), for the
     `nodes` key of `POST /api/tasks/{id}/run?dry=true` on a workflow task:
-    `{node_id, kind, name, when, depth, steps, declined}`."""
+    `{node_id, kind, name, when, depth, steps, declined}`, and `task_id` on a
+    Run task step when `graph` (the document the plan was made from) is given
+    — a step record keeps the plan, not the step's settings."""
+    targets = {}
+    for node in (graph or {}).get("nodes") or ():
+        if node.get("kind") == "run_task":
+            targets[str(node.get("id"))] = (node.get("config") or {}).get("task_id")
     out = []
     for rec in run_node_records(db, run_id):
         if not rec.dry:
             continue
         steps = _loads(rec.steps)
-        out.append({
+        entry = {
             "node_id": rec.node_id,
             "kind": rec.kind,
             "name": rec.label,
@@ -295,7 +301,10 @@ def dry_node_entries(db, run_id: str) -> list:
             "depth": rec.depth if rec.depth is not None else 0,
             "steps": steps if isinstance(steps, list) else [],
             "declined": rec.error,
-        })
+        }
+        if rec.node_id in targets:
+            entry["task_id"] = targets[rec.node_id]
+        out.append(entry)
     return out
 
 

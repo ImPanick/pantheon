@@ -446,6 +446,8 @@ async def test_a_dry_run_plans_every_step_breadth_first_and_runs_none(task_db):
     try:
         assert ts.is_dry_run(db.query(TaskRun).filter(TaskRun.id == run_id).first())
         entries = wr.dry_node_entries(db, run_id)
+        graph = wd.parse_graph(db.query(Workflow).filter(Workflow.task_id == "wf").first().graph)
+        with_targets = wr.dry_node_entries(db, run_id, graph)
         assert wr.last_node_record(db, "wf", "n1") is None, "a plan is never a last run"
     finally:
         db.close()
@@ -457,6 +459,8 @@ async def test_a_dry_run_plans_every_step_breadth_first_and_runs_none(task_db):
     assert plan["n3"][0] == "Would run the task “Weekly report”, as its own run with its own history."
     assert "It is paused, so a real run would not start it." in plan["n3"]
     assert all(e["declined"] is None for e in entries)
+    assert [e.get("task_id") for e in with_targets] == [None, "t2", None, None]
+    assert "task_id" not in entries[1], "without the document there is nothing to name"
     lines = run["result"].splitlines()
     assert lines[1].startswith("Step 1, “Summarise”:")
     assert lines[3].startswith("Step 3, “Tidy” (if the step before fails):")
