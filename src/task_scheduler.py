@@ -4675,7 +4675,7 @@ class TaskScheduler:
         from src import workflow_runs as wr
         from src.builtin_actions import (
             NODE_STATUS_DEFERRED, NODE_STATUS_ERROR, NODE_STATUS_SKIPPED,
-            NODE_STATUS_SUCCESS, NodeResult,
+            NODE_STATUS_SUCCESS, NodeResult, TaskDeferred, TaskNoop,
         )
         from src.event_bus import run_origin
 
@@ -4715,6 +4715,12 @@ class TaskScheduler:
                     self._record_run_step(run_id, kind="node", node=node["id"], label=label,
                                           status="aborted", detail=NODE_STOPPED)
                     raise
+                except (TaskNoop, TaskDeferred) as signal:
+                    # `BaseException`s, so `except Exception` would let one
+                    # through and leave this step's record `running`.
+                    # `_execute_action` already answers them as statuses; an
+                    # executor that raises one is read the same way (`P8-24`).
+                    res = NodeResult.from_signal(signal)
                 except Exception as exc:
                     logger.warning("Workflow '%s' step %r raised", name, label, exc_info=True)
                     res = NodeResult(NODE_STATUS_ERROR, payload=f"{type(exc).__name__}: {exc}")

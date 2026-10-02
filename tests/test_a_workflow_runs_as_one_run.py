@@ -334,6 +334,21 @@ async def test_a_step_that_asks_to_wait_ends_the_branch_and_never_deletes_the_ru
 
 
 @pytest.mark.asyncio
+async def test_a_step_that_raises_nothing_to_do_is_skipped_not_left_running(task_db):
+    """`TaskNoop` is a `BaseException`; an executor that raises it (rather
+    than returning it) is read as `skipped`, and its record is closed."""
+    from src.builtin_actions import TaskNoop
+
+    seed_workflow(task_db, [node("n1", "Check"), node("n2", "Never")], [arrow("n1", "n2")])
+    s = recording_scheduler({"Morning digest · Check": TaskNoop("No new mail")})
+    await s._execute_task("wf")
+    run = runs_of(task_db, "wf")[0]
+    assert (run["status"], run["result"]) == ("skipped", "No new mail")
+    assert [(r["status"], r["port"]) for r in records_of(task_db, run["id"])] == [("skipped", None)]
+    assert not s._run_state
+
+
+@pytest.mark.asyncio
 async def test_stop_leaves_the_running_step_aborted(task_db):
     seed_workflow(task_db, [node("n1", "Slow", "action", action="daily_brief"),
                             node("n2", "Never")], [arrow("n1", "n2")])
