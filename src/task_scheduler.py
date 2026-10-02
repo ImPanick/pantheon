@@ -3044,8 +3044,14 @@ class TaskScheduler:
                 slot["steps"] = list(kept) if isinstance(kept, list) else []
                 slot["resuming"] = True
                 slot["answer"] = answer
+                # `B1110`. The answer is said here only when it lets the step
+                # run again (Allow): a denial, a lapse or a withdrawn question
+                # ends the step, and the step's own end line in this log says
+                # it — said here too, and once more by `_apply_resume`, a
+                # denied step's run log read the same sentence three times.
                 self._record_run_step(run_id, kind="progress", detail=(
-                    f"Resumed: {answer.sentence}" if answer is not None and answer.sentence
+                    f"Resumed: {answer.sentence}"
+                    if answer is not None and answer.sentence and answer.decision == ANSWER_ALLOW
                     else "Resumed"))
             elif run:
                 run.status = "running"
@@ -5734,7 +5740,8 @@ class TaskScheduler:
                 elif verdict.decision == ANSWER_ALLOW or node.get("kind") == wd.NODE_KIND_FOREACH:
                     reruns.append((node, rec, verdict))
                 else:
-                    self._record_run_step(w.run_id, kind="progress", detail=verdict.sentence)
+                    # `B1110`. Said once on the run — by `_end_record`'s line
+                    # for this step — and once in the step's own log, here.
                     steps = list(json.loads(rec.steps)) if rec.steps else []
                     steps.append(shape_run_step({"kind": "progress", "detail": verdict.sentence}))
                     self._end_record(w, node, rec, status=NODE_STATUS_ERROR,
@@ -6081,7 +6088,8 @@ class TaskScheduler:
                 if answer is not None and answer.item == index:
                     item_answer = answer
                     if answer.decision != ANSWER_ALLOW:
-                        self._record_run_step(slot, kind="progress", detail=answer.sentence)
+                        # `B1110`. The step's log already says the answer: the
+                        # resumed step's first line is it (`_start_step`).
                         wr.record_node_end(walk.db if walk is not None else db, rec,
                                            status=NODE_STATUS_ERROR, text=answer.sentence,
                                            error=answer.sentence, port=EDGE_WHEN_ERROR,
