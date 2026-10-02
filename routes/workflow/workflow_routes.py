@@ -25,6 +25,14 @@ and, from `/work/notes/SLICE-CD-DESIGN.md` § 3's contract **C-W** (wave D):
     GET    /api/workflows/{id}/nodes/{node_id}/fields       what a step can pick from (P22-09)
     POST   /api/workflows/{id}/runs/{run_id}/answer         a parked step's yes or no (P22-17)
 
+and, from `/work/notes/SLICE-EF-DESIGN.md` § 3's contract **C-A** (wave E):
+
+    POST   /api/workflows  {describe, tz?} | {file}         a draft, or a file (P22-19, P22-24)
+    PUT    /api/workflows/{id}  {checked: [node ids]}       a person says steps look right (P22-19)
+    GET    /api/workflows/{id}/export                       the workflow as a file (P22-24)
+    POST   /api/workflows/{id}/runs/{run_id}/explain        "Why did this fail?" (P22-20)
+    POST   /api/workflows/{id}/nodes/{node_id}/fix          apply a fix (P22-20)
+
 The two literal ones are declared before `/{workflow_id}`, or FastAPI would
 read "palette" as a workflow's id.
 
@@ -646,6 +654,102 @@ def setup_workflow_routes(task_scheduler) -> APIRouter:
                                      answer=verdict)
         return {"ok": True, "outcome": outcome, "sentence": verdict.sentence,
                 "step": label}
+
+    # ── C-A: "Why did this fail?" and "fix this step" (`P22-20`) ─────────────
+
+    @router.post("/{workflow_id}/runs/{run_id}/explain")
+    @_answers
+    async def explain_step(request: Request, workflow_id: str, run_id: str):
+        """`P22-20`. The model reads one step's record of one run — what it
+        was handed, what came back, its error and its log, ONLY inside the
+        untrusted-context guard — and says why it failed, with a change to the
+        step's settings that `FIX_FIELDS` allows, or none. Owner-scoped
+        (another owner's run is a 404). The step is the CURRENT document's;
+        `changed_since_run` says whether it differs from the one that ran.
+        Nothing is written. `{why, model, changed_since_run, proposal,
+        left_out}` (C-A)."""
+        from core.database import TaskRun, TaskRunNode
+        from src import workflow_assist
+        from src.task_action_policy import owner_has_admin_task_privileges
+        from src.workflow_document import DocumentError, parse_graph
+        from src.workflow_effects import workflow_resources
+        from src.workflow_runs import node_record_to_dict
+        body = await _body(request)
+        node_id = str(body.get("node_id") or "")
+        item = body.get("item")
+        if item is not None and (isinstance(item, bool) or not isinstance(item, int)):
+            raise WorkflowRefused(400, "item must be a whole number or null.")
+        user = _owner(request)
+        db = SessionLocal()
+        try:
+            wf = store.owned_workflow(db, workflow_id, user)
+            run = (db.query(TaskRun).filter(TaskRun.id == run_id, TaskRun.task_id == wf.task_id)
+                   .first() if wf.task_id else None)
+            if run is None:
+                raise WorkflowRefused(404, "No such run of this workflow.")
+            q = db.query(TaskRunNode).filter(TaskRunNode.run_id == run.id,
+                                             TaskRunNode.node_id == node_id,
+                                             TaskRunNode.dry.is_(False))
+            q = q.filter(TaskRunNode.item.is_(None)) if item is None else \
+                q.filter(TaskRunNode.item == item)
+            rec = q.order_by(TaskRunNode.attempt.desc(), TaskRunNode.seq.desc()).first()
+            if rec is None:
+                raise WorkflowRefused(404, "That step has no record in this run.")
+            record = node_record_to_dict(rec)
+            try:
+                current = parse_graph(store.stored_graph(wf))
+            except DocumentError as err:
+                raise store._document_error_refusal(err) from None
+            node = next((n for n in store.nodes_of(current) if str(n.get("id")) == node_id), None)
+            if node is None:
+                raise WorkflowRefused(404, "That step is not in the workflow any more.")
+            ran_graph, kept = store.graph_of_version(db, wf, rec.workflow_version)
+            ran = next((n for n in store.nodes_of(ran_graph) if str(n.get("id")) == node_id), None)
+            changed = (ran is None or store._step_content(ran) != store._step_content(node)
+                       or (not kept and rec.workflow_version != wf.version))
+            rows = store.owner_rows(db, wf.owner)
+            trigger = store.trigger_of(db, wf)
+            owner = wf.owner
+            base_version = wf.version
+        finally:
+            db.close()
+        resources = workflow_resources(owner)
+        try:
+            explained = await workflow_assist.explain_step(
+                owner, node=node, record=record, graph=current, base_version=base_version,
+                item=item, resources=resources, tasks_by_id=rows[0], crew_ids=rows[1],
+                owner_is_admin=owner_has_admin_task_privileges(owner),
+                own_task_id=trigger.id if trigger is not None else None)
+        except workflow_assist.NoModelSetUp:
+            raise WorkflowRefused(503, workflow_assist.NO_MODEL_TO_EXPLAIN) from None
+        except ValueError:
+            raise WorkflowRefused(422, workflow_assist.EXPLAIN_UNREADABLE) from None
+        return {"why": explained.why, "model": workflow_assist.model_name(owner),
+                "changed_since_run": changed, "proposal": explained.proposal,
+                "left_out": explained.left_out}
+
+    @router.post("/{workflow_id}/nodes/{node_id}/fix")
+    @_answers
+    async def fix_node(request: Request, workflow_id: str, node_id: str):
+        """`P22-20`, *Apply*. A person's only (`request_is_a_person` — not a
+        bearer token, not the assistant's loopback): the server asks the fix
+        rule again against the stored step (`store.save_fix`), writes a new
+        version (source `fixed`) and answers `undo_version`, the version it
+        started from, which the existing restore door puts back. A stale base
+        is a 409 (`_stale`)."""
+        if not request_is_a_person(request):
+            raise WorkflowRefused(403, store.ONLY_A_PERSON_FIXES)
+        body = await _body(request)
+        db = SessionLocal()
+        try:
+            wf = store.owned_workflow(db, workflow_id, _owner(request))
+            trigger = store.require_trigger(db, wf)
+            base = body.get("base_version")
+            saved = store.save_fix(db, wf, trigger, node_id=node_id, config=body.get("config"),
+                                   base_version=base)
+            return {"workflow": doc(db, wf, trigger), "saved": saved, "undo_version": int(base)}
+        finally:
+            db.close()
 
     return router
 

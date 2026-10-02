@@ -689,6 +689,60 @@ def restore_version(db, wf, trigger, version, *, base_version) -> str:
     return SAVED_NEW_VERSION
 
 
+def save_fix(db, wf, trigger, *, node_id, config, base_version) -> str:
+    """`P22-20`. *Apply*: one step's settings replaced by a fix, as a NEW
+    version (`source="fixed"`). Undo is the restore door with the version this
+    started from (`restore_version`, source `restored`) — nothing new.
+
+    The fix rule is asked HERE, against the STORED step, whatever the client
+    sends (`workflow_assist.fix_problem`: `FIX_FIELDS`, effects that do not
+    grow, the whole document's rule) — so the browser is not trusted to send
+    only what was proposed (`SLICE-EF-DESIGN` § 5.1). Then the save's own
+    check, pins and marks kept (the step a person fixed is theirs now, so its
+    mark goes, `_marks_kept`), and `_stale`'s 409. Who may apply it is the
+    route's question (`ONLY_A_PERSON_FIXES`). Returns `SAVED_NEW_VERSION` or
+    `SAVED_UNCHANGED`."""
+    from src import workflow_assist
+    from src.task_action_policy import owner_has_admin_task_privileges
+    from src.workflow_document import (
+        VERSION_SOURCE_FIXED, DocumentError, content_fingerprint, parse_graph,
+    )
+    from src.workflow_effects import workflow_resources
+    _stale(wf, base_version)
+    if not isinstance(config, dict):
+        raise WorkflowRefused(400, "Send the step's settings (config), as the fix proposed them.")
+    try:
+        current = parse_graph(stored_graph(wf))
+    except DocumentError as err:
+        raise _document_error_refusal(err) from None
+    node = next((n for n in nodes_of(current) if str(n.get("id")) == str(node_id)), None)
+    if node is None:
+        raise WorkflowRefused(404, "No such step in this workflow.")
+    own = trigger.id if trigger is not None else None
+    rows = owner_rows(db, wf.owner)
+    resources = workflow_resources(wf.owner)
+    after = dict(node, config=config)
+    refused = workflow_assist.fix_problem(
+        node, after, current, resources=resources, tasks_by_id=rows[0], crew_ids=rows[1],
+        owner=wf.owner, owner_is_admin=owner_has_admin_task_privileges(wf.owner), own_task_id=own)
+    if refused is not None:
+        raise WorkflowRefused(400, refused.sentence, reason=refused.reason,
+                              node_ids=(str(node_id),), field=refused.field)
+    patched = dict(current)
+    patched["nodes"] = [after if n is node else n for n in nodes_of(current)]
+    parsed = check_document(db, patched, owner=wf.owner, own_task_id=own, rows=rows,
+                            resources=resources)
+    before = stored_graph(wf)
+    parsed = _marks_kept(_pins_kept(parsed, before), before)
+    if content_fingerprint(wf.name, parsed) == content_fingerprint(wf.name, before):
+        return SAVED_UNCHANGED
+    wf.graph = json.dumps(parsed)
+    base = wf.version
+    wf.version = (wf.version or 0) + 1
+    _commit_version(db, wf, parsed, source=VERSION_SOURCE_FIXED, base=base)
+    return SAVED_NEW_VERSION
+
+
 # ── positions and pins: saved by themselves, never a version ─────────────────
 
 def _xy(value):

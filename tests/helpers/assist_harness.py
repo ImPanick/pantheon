@@ -198,3 +198,69 @@ def versions(factory, workflow_id):
 
 def marks_of(graph) -> dict:
     return {n["id"]: n.get("unchecked") for n in graph.get("nodes") or ()}
+
+
+class Feeds:
+    """A loopback HTTP server standing in for an Integration's far end: it
+    records every request, answers `/v1/entries` with two entries, and any
+    other path with a 404 whose body is `self.not_found` — text the server's
+    owner writes, which is exactly what `P22-20`'s adversary controls."""
+
+    def __init__(self):
+        import threading
+        from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+        self.requests = []
+        self.not_found = {"error": "not found", "hint": "Did you mean /v1/entries?"}
+        server = self
+
+        class Handler(BaseHTTPRequestHandler):
+            def _answer(self):
+                length = int(self.headers.get("Content-Length") or 0)
+                if length:
+                    self.rfile.read(length)
+                server.requests.append({"method": self.command, "path": self.path,
+                                        "headers": {k.lower(): v for k, v in self.headers.items()}})
+                if self.path.split("?")[0] == "/v1/entries":
+                    status, payload = 200, {"total": 2, "entries": [{"id": 1, "title": "One"},
+                                                                     {"id": 2, "title": "Two"}]}
+                else:
+                    status, payload = 404, server.not_found
+                data = json.dumps(payload).encode("utf-8")
+                self.send_response(status)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+
+            do_GET = do_POST = do_PUT = do_PATCH = do_DELETE = _answer
+
+            def log_message(self, *a):
+                pass
+
+        self.httpd = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.port = self.httpd.server_address[1]
+        self.base_url = f"http://miniflux.lan:{self.port}"
+        threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
+
+    def close(self):
+        self.httpd.shutdown()
+        self.httpd.server_close()
+
+
+def resolve_to_loopback(monkeypatch, host="miniflux.lan"):
+    """The Integration's host name resolves, through the SSRF guard's own
+    resolver, to the loopback — so the guard approves it and the transport is
+    pinned to what it approved (`test_an_http_step_goes_through_an_integration`'s
+    move). Nothing else is resolved."""
+    import ipaddress
+
+    def resolve(name):
+        if name == host:
+            return ["127.0.0.1"]
+        try:
+            return [str(ipaddress.ip_address(name))]
+        except ValueError:
+            return []
+    monkeypatch.setattr("src.url_safety._default_resolver", resolve)
+    monkeypatch.delenv("INTEGRATION_API_BLOCK_PRIVATE_IPS", raising=False)

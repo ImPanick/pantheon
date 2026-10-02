@@ -69,7 +69,10 @@ def test_each_workflow_route_is_reached_by_workflow_api_and_by_nothing_else():
     assert as_is["source"] == "app", "the checker fell back to a source scan; the app did not import"
     # Nine from Slice B, and wave D's four (`C-W`: palette, waiting, a step's
     # fields, a parked step's answer) — each spelled out in `workflowApi.js`.
-    assert len(mounted) == 13 and all(p.startswith("/api/workflows") for p in mounted)
+    # Wave E's `C-A` adds a step's "why did this fail?" and its fix (`P22-20`)
+    # and a workflow's file (`P22-24`), spelled out there the same way
+    # (wb-assist; a draft and a file reuse `POST`, a check reuses `PUT`).
+    assert len(mounted) == 15 and all(p.startswith("/api/workflows") for p in mounted)
     assert not [p for p in as_is["findings"] if p.startswith("/api/workflows")]
     assert sorted(set(hidden["findings"]) - set(as_is["findings"])) == mounted
     assert as_is["exit"] == 0, f"over the ceiling with the caller: {len(as_is['findings'])}"
