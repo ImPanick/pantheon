@@ -2,7 +2,9 @@
 # Apache-2.0 §4(b) change notice. This file is part of the Deep Research
 # pipeline adapted from Tongyi DeepResearch (Alibaba-NLP / Tongyi Lab),
 # licensed Apache-2.0. It is NOT Tongyi's original: it has been changed.
-# Changed by Odysseus. Pantheon redistributes it unmodified.
+# Changed by Odysseus, and further by Pantheon: the warning when a result
+# cannot be marked consumed (`P3-17`), the `research_completed` event (`P8-23`)
+# and the SPDX line above (`P0-18`).
 #
 # Upstream licence text (Tongyi DeepResearch): licenses/DeepResearch-Apache-2.0.txt
 # Attribution: CREDITS.md
