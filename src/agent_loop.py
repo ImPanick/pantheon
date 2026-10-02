@@ -5150,7 +5150,10 @@ async def stream_agent_loop(
                 messages,
                 include_memory=True,
             )
+            # `B1100`: not for a step that names its tools — that prompt
+            # names `manage_memory` and the email tools.
             if _pan_qwen_finetune_model
+            and (tool_policy is None or tool_policy.allowed_tools is None)
             else [{"role": "user", "content": _last_user}]
         )
         direct_response = ""
@@ -5667,8 +5670,16 @@ async def stream_agent_loop(
 
     def _route_finetune_modes(candidate_model: str):
         is_ody = _is_pantheon_qwen_model(candidate_model)
+        # `B1100`. A workflow AI step that names its tools (`P22-16`) gets
+        # none of the three `pantheon-qwen3` modes: each sends a fixed prompt
+        # naming its own tools (`manage_notes`, `manage_calendar`,
+        # `manage_tasks`, the document tools, `manage_memory` and the email
+        # tools) and clamps the selection to them — the notes mode even lifts
+        # its three managers out of the denylist the step's list built. The
+        # step's own list is the selection; the full prompt names only it.
+        finetune_modes = is_ody and _allowed_tools is None
         doc_mode = (
-            is_ody
+            finetune_modes
             and not _runtime_skill_tools
             and (
                 "documents" in _intent_domains
@@ -5679,7 +5690,7 @@ async def stream_agent_loop(
             and not guide_only
         )
         notes_mode = (
-            is_ody
+            finetune_modes
             and not _runtime_skill_tools
             and not doc_mode
             and (
@@ -5694,7 +5705,7 @@ async def stream_agent_loop(
             and not guide_only
         )
         general_no_tool_mode = (
-            is_ody
+            finetune_modes
             and not _runtime_skill_tools
             and not doc_mode
             and not notes_mode
@@ -5991,6 +6002,7 @@ async def stream_agent_loop(
             route_mcp_schemas = []
         elif (
             is_ody
+            and _allowed_tools is None   # `B1100`: a step's list stands it down
             and not _runtime_skill_tools
             and not plan_mode
             and not approved_plan
