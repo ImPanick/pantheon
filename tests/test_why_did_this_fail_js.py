@@ -170,7 +170,7 @@ def test_the_answer_is_the_models_reading_the_diff_rows_with_their_words_and_wha
         const a = rp.querySelector('.wf-why-answer');
         out({ posted: calls('POST', (u) => u.endsWith('/explain')),
               head: by(a, 'wf-why-head').textContent, notes: all(a, 'wf-why-note').map((p) => p.textContent),
-              why: by(a, 'wf-why-text').textContent, model: by(a, 'wf-why-model').textContent,
+              why: by(a, 'wf-why-text').textContent, model: (by(a, 'wf-why-model') || {}).textContent || null,
               rows: all(a, 'wf-why-change').map((li) => ({ field: li.dataset.field, words: by(li, 'wf-why-field').textContent,
                 labels: all(li, 'wf-why-label').map((s) => s.textContent),
                 before: by(li, 'wf-why-before').textContent, after: by(li, 'wf-why-after').textContent,
@@ -185,7 +185,10 @@ def test_the_answer_is_the_models_reading_the_diff_rows_with_their_words_and_wha
                             {"node_id": "fetch-unread", "item": None}]]
     assert o["head"] == "The model’s reading"
     assert o["notes"][0].startswith("It read what this step was handed and what came back — text someone else may have written")
-    assert o["why"] == ex["why"] and o["model"] == f"Asked: {ex['model']}"
+    assert o["why"] == ex["why"]
+    # The model it asked, when the server names one (wb-assist's test world
+    # has none configured behind its scripted seam, and answers null).
+    assert o["model"] == (f"Asked: {ex['model']}" if ex["model"] else None)
     changes = ex["proposal"]["changes"]
     assert [c["field"] for c in changes] == ["path"], "the path, and nothing a fix may not change"
     assert changes[0]["after"] == "/v1/entries" and changes[0]["where"] is True and changes[0]["from_run"] is True
