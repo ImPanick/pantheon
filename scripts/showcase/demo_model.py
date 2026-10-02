@@ -327,6 +327,7 @@ class _Handler(BaseHTTPRequestHandler):
     log = None        # a list to append each request to; set by DemoModel
     progress = None   # a `_Progress`, one per DemoModel
     conversations = None  # the script; `CONVERSATIONS` unless DemoModel is given one
+    max_model_len = None  # served the way vLLM serves a model (`_vllm_refusal`), when set
 
     def log_message(self, *args):  # quiet
         pass
@@ -341,8 +342,10 @@ class _Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path.rstrip("/").endswith("/models"):
-            return self._json(200, {"object": "list", "data": [
-                {"id": MODEL_ID, "object": "model", "owned_by": "pantheon-showcase"}]})
+            entry = {"id": MODEL_ID, "object": "model", "owned_by": "pantheon-showcase"}
+            if self.max_model_len:
+                entry["max_model_len"] = self.max_model_len   # vLLM's `/v1/models` says it
+            return self._json(200, {"object": "list", "data": [entry]})
         self._json(404, {"error": {"message": "not found"}})
 
     def do_POST(self):
@@ -360,7 +363,14 @@ class _Handler(BaseHTTPRequestHandler):
             self.log.append({"stream": bool(body.get("stream")), "tools": len(body.get("tools") or []),
                              "roles": [m.get("role") for m in messages],
                              "conv": (conv or {}).get("key"), "first": first,
-                             "messages": messages})
+                             "messages": messages,
+                             "max_tokens": body.get("max_completion_tokens") or body.get("max_tokens")})
+        refused = self._vllm_refusal(body)
+        if refused:
+            if self.log is not None:
+                self.log[-1]["refused"] = refused
+            return self._json(400, {"error": {"message": refused, "type": "BadRequestError",
+                                              "param": None, "code": 400}})
 
         side = None
         if not body.get("stream") and not body.get("tools"):
@@ -407,6 +417,34 @@ class _Handler(BaseHTTPRequestHandler):
         deltas += [{"content": w} for w in _words(step.get("say") or "Done.")]
         return self._stream(deltas, finish="stop")
 
+    def _vllm_refusal(self, body: Dict[str, Any]) -> Optional[str]:
+        """What vLLM's OpenAI server answers a request it will not run, or None.
+
+        `B1029`. With `max_model_len` set, this model checks a request the way
+        vLLM's `OpenAIServing._validate_input` does — read from vLLM's source at
+        v0.6.6, v0.8.5, v0.10.1 and v0.11.0, the same rule in all four: the
+        prompt must be shorter than the window, and the prompt plus
+        `max_completion_tokens or max_tokens` may not exceed it; anything else
+        is a 400 `BadRequestError` before a token is generated, with this
+        message (v0.10.1's words). vLLM counts the prompt with the model's own
+        tokenizer over the rendered chat template, tools included; this one
+        counts a token per four characters of the messages and tools as JSON —
+        the rule is vLLM's, the count is an approximation of one.
+        """
+        if not self.max_model_len:
+            return None
+        window = self.max_model_len
+        prompt = (len(json.dumps(body.get("messages") or [])) + len(json.dumps(body.get("tools") or []))) // 4
+        if prompt >= window:
+            return (f"This model's maximum context length is {window} tokens. However, your "
+                    f"request has {prompt} input tokens. Please reduce the length of the input messages.")
+        asked = body.get("max_completion_tokens") or body.get("max_tokens")
+        if asked is not None and prompt + asked > window:
+            return (f"'max_tokens' or 'max_completion_tokens' is too large: {asked}. This model's "
+                    f"maximum context length is {window} tokens and your request has {prompt} "
+                    f"input tokens ({asked} > {window} - {prompt}).")
+        return None
+
     def _stream(self, deltas: List[Dict[str, Any]], finish: str) -> None:
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream")
@@ -446,11 +484,15 @@ class DemoModel:
     """The scripted model on a loopback port, in a daemon thread."""
 
     def __init__(self, port: int = 0, pace: float = 0.0, log: Optional[list] = None,
-                 conversations: Optional[List[Dict[str, Any]]] = None):
+                 conversations: Optional[List[Dict[str, Any]]] = None,
+                 max_model_len: Optional[int] = None):
         """`conversations` replaces the showcase's script (a test plays its own
-        through the same model); `log` receives every request it is sent."""
+        through the same model); `log` receives every request it is sent;
+        `max_model_len` serves it the way vLLM serves a model with that window
+        (`_Handler._vllm_refusal`, `B1029`)."""
         handler = type("Handler", (_Handler,), {"pace": pace, "log": log, "progress": _Progress(),
-                                                "conversations": conversations})
+                                                "conversations": conversations,
+                                                "max_model_len": max_model_len})
         self.httpd = ThreadingHTTPServer(("127.0.0.1", port), handler)
         self.httpd.daemon_threads = True
         self.port = self.httpd.server_address[1]
