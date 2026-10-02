@@ -750,29 +750,33 @@ export function mountAutomations(host, opts = {}) {
     await showWorkflow(w.id, { notes: ['This is the workflow as it is saved now. Your changes were not kept.'] });
   }
 
-  async function toggleSwitch() {
+  /** On or Off — the other way from now, or `want`. Answers `{ on, words,
+   *  action }` (what it said, or with `quiet` would have), or null. */
+  async function toggleSwitch(want = null, { quiet = false } = {}) {
     const w = R.wf;
-    if (!w || !w.source) return;
-    const on = !isOn(docOf(w.source));
+    if (!w || !w.source) return null;
+    const on = want == null ? !isOn(docOf(w.source)) : !!want;
     switchBtn.disabled = true;
     let reply = null;
     let err = null;
     try { reply = await w.source.switchOn(on); } catch (e) { err = e; }
-    if (R.destroyed || R.wf !== w) return;
+    if (R.destroyed || R.wf !== w) return null;
     switchBtn.disabled = false;
     if (err || (reply && reply.ok === false)) {
       say(`Not switched ${on ? 'on' : 'off'}: ${_sentence(err || reply, 'the server refused')}`, { refusal: true });
       syncBar();
-      return;
+      return null;
     }
     const notes = (Array.isArray(reply && reply.notes) ? reply.notes : []).map(String).filter(Boolean);
     let words = notes.join(' ') || (on ? 'Switched on.' : OFF_WORDS);
     if (on && stateOf(w.source).dirty) words += ' It runs the saved version; your unsaved changes are not in it.';
     // The route's `chain_paused`, or the same as a source names it.
     const paused = on && reply && (reply.chain_paused || reply.chainPaused);
-    say(words, { action: paused ? { label: 'Put the old chain back', run: () => restoreChain() } : null });
+    const action = paused ? { label: 'Put the old chain back', run: () => restoreChain() } : null;
+    if (!quiet) say(words, { action });
     syncBar();
     refreshShelf();
+    return { on, words, action };
   }
 
   async function restoreChain() {
@@ -794,9 +798,25 @@ export function mountAutomations(host, opts = {}) {
     refreshShelf();
   }
 
-  async function runNow() {
+  /** `lead` — what switching it on just said, said first. */
+  async function runNow(lead = null) {
     const w = R.wf;
     if (!w || !w.source) return;
+    // Measured on a merge of the three branches: a switched-off workflow's
+    // Run now is recorded "skipped — Task no longer active (status=paused)",
+    // and the room had already said "Started". A new workflow is made
+    // switched off, so that was the first thing a person met. It says so
+    // before asking, and offers the one click they meant.
+    if (!isOn(docOf(w.source))) {
+      say(`“${wfName(w.source)}” is switched off, so it would not run. Switch it on to run it; `
+        + 'Show me what this would do and Test this step work while it is off.', {
+        action: {
+          label: 'Switch on and run now',
+          run: async () => { const sw = await toggleSwitch(true, { quiet: true }); if (sw && sw.on) runNow(sw); },
+        },
+      });
+      return;
+    }
     runBtn.disabled = true;
     let reply = null;
     let err = null;
@@ -807,9 +827,11 @@ export function mountAutomations(host, opts = {}) {
       say(`Not started: ${_sentence(err || reply, 'the server refused')}`, { refusal: true });
       return;
     }
-    say('Started. Its run will be listed under Runs.'
+    // A chain paused by switching on keeps its way back as the action.
+    say((lead && lead.words ? lead.words.replace(/\s*It runs the saved version;.*$/, '') + ' ' : '')
+      + 'Started. Its run will be listed under Runs.'
       + (stateOf(w.source).dirty ? ' It runs the saved version; your unsaved changes are not in it.' : ''),
-    { action: { label: 'Show the runs', run: () => setTab('runs') } });
+    { action: (lead && lead.action) || { label: 'Show the runs', run: () => setTab('runs') } });
     if (w.tab === 'runs') loadRuns();
   }
 

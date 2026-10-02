@@ -314,6 +314,30 @@ def test_a_chain_made_a_workflow_is_switched_on_and_the_chain_put_back_with_one_
                          "sw": "false", "chainBtn": False, "calls": 1}
 
 
+def test_run_now_on_a_switched_off_workflow_says_so_and_offers_to_switch_it_on(box):
+    # Measured on a merge of the three branches: Run now on a switched-off
+    # workflow is recorded "skipped — Task no longer active (status=paused)",
+    # and the room had said "Started". New workflows are made switched off.
+    o = _case(box, """
+        const { root } = await room();
+        await openW(root);
+        fire(named(root, 'Run now'), 'click'); await settle(5);
+        const off = { said: sayOf(root), action: sayButton(root) && sayButton(root).textContent,
+                      runs: called('runWorkflow').length };
+        fire(sayButton(root), 'click'); await settle(10);
+        const on = { calls: W.calls.map((c) => c[0]).filter((n) => ['switchWorkflow', 'runWorkflow'].includes(n)),
+                     said: sayOf(root), sw: by(root, 'wf-switch').getAttribute('aria-checked') };
+        fire(named(root, 'Run now'), 'click'); await settle(5);
+        out({ off, on, again: called('runWorkflow').length });
+    """)
+    assert o["off"]["runs"] == 0, "a run that would be skipped is not asked for"
+    assert o["off"]["said"] == ("“Morning brief” is switched off, so it would not run. Switch it on to run it; "
+                                "Show me what this would do and Test this step work while it is off.")
+    assert o["off"]["action"] == "Switch on and run now"
+    assert o["on"]["calls"] == ["switchWorkflow", "runWorkflow"] and o["on"]["sw"] == "true"
+    assert o["on"]["said"] == "Switched on. Started. Its run will be listed under Runs."
+    assert o["again"] == 2, "switched on, Run now runs"
+
 def test_a_failed_run_opens_on_its_failed_step_with_what_it_was_handed_open(box):
     o = _case(box, """
         const { root } = await room();
