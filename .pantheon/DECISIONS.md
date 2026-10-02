@@ -2731,3 +2731,28 @@ short *Start from* list against `DEFERRED.md` D-07 (`P22-24`).
    DeepResearch expression and are unchanged — a notice saying they were changed would be false. The eight files that
    do derive from DeepResearch keep theirs.
 
+## D-2026-10-02-04 — this release is 0.2.0, the source link points at the public repository, and the landing page is rewritten for Pantheon
+
+**Asked**, 2026-10-02, from `P10-12`'s release notes (agent `f-release`), `f-claims`' and `f-release`'s source-link rows,
+and `f-brand`'s landing-page row.
+
+1. **The release's number.** `CHANGELOG.md` heads `[0.1.0]` dated 2026-09-17 for a release never tagged, while
+   `P20`–`P22` landed after it. *Call this release 0.2.0* — the owner's answer, against the recommended re-dating of
+   0.1.0. `[0.1.0]` stays as the historical heading it is; `APP_VERSION`, the release notes, the CHANGELOG section,
+   `SECURITY.md`'s version line and every other declaration `tests/test_one_version_string.py` holds together move to
+   `0.2.0`. Cutting the tag is a separate act and waits for the owner's word.
+2. **The AGPL §13 source offer.** *Point it at the public repository by default*: `source_url` defaults to
+   `https://github.com/ImPanick/pantheon`, so an unmodified install offers its source; `PANTHEON_SOURCE_URL` still
+   overrides it, and the docs say that a modified copy must point it at its own source. The rule that a `*_url`
+   default ships empty (`.pantheon/check-destinations.py`) gains this one named exception, with the reason.
+   Supersedes the empty default `P0-17` shipped "until the repository is public" (`D-2026-09-08-06`).
+3. **`docs/index.html`.** *Rewrite it for Pantheon*: a short page in the project's own voice, crediting Odysseus,
+   using the README's pictures and the new mark, loading nothing from another site (`Law 16`). Upstream's first-person
+   story, slogan, third-party avatars and missing videos go.
+
+**Addendum to `D-2026-10-02-03` §3** (from `f-claims`, 2026-10-02): of that ruling's two reasons, "unchanged" no longer
+holds — Pantheon added SPDX lines to all nine `services/search/` files and changed `core.py` and `providers.py` — while
+"no DeepResearch expression" still does (zero matches for the four Tongyi names). §4(b)'s notice is owed on modified
+files *of the licensed Work*; files containing none of it are not that Work, so the ruling stands on the second reason
+alone. Recorded so the ruling is not read as resting on a fact that has since changed.
+
