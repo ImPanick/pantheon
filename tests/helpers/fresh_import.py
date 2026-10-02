@@ -46,7 +46,20 @@ def drop_for_fresh_import(monkeypatch, *names):
         parent_name, _, child = name.rpartition(".")
         parent = sys.modules.get(parent_name) if parent_name else None
         if parent is not None:
-            monkeypatch.setattr(parent, child, getattr(parent, child, None), raising=False)
+            # `B1049`: through the package's `__dict__`, the way `sys.modules`
+            # is handled below. `setattr(parent, child, None)` for an attribute
+            # that was not there made it `None` for the test — and
+            # `from src import integrations` reads the attribute first, so it
+            # got `None` and imported nothing — and pytest undoes a `setattr`
+            # of an absent attribute with a bare `delattr`. A placeholder then
+            # removed leaves it absent, and its undo deletes whatever the
+            # re-import bound there, absent or not.
+            namespace = vars(parent)
+            if child in namespace:
+                monkeypatch.setitem(namespace, child, namespace[child])
+            else:
+                monkeypatch.setitem(namespace, child, _PLACEHOLDER)
+                namespace.pop(child, None)
         monkeypatch.setitem(sys.modules, name, _PLACEHOLDER)
         sys.modules.pop(name, None)
 

@@ -20,7 +20,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.helpers.fresh_import import drop_for_fresh_import
+from tests.helpers.fresh_import import drop_for_fresh_import, reimported_under_stubs
 
 
 # ── prompt-injection context wrapper ────────────────────────────
@@ -49,8 +49,9 @@ def test_untrusted_context_policy_marks_sources_as_data():
 
 def _import_secret_storage(tmp_path, monkeypatch):
     """Import src.secret_storage with the key file redirected to tmp."""
-    # Make sure a previous test's cached module doesn't reuse its key.
-    sys.modules.pop("src.secret_storage", None)
+    # Make sure a previous test's cached module doesn't reuse its key. `B1049`:
+    # through the shared helper, which puts the module back at teardown.
+    drop_for_fresh_import(monkeypatch, "src.secret_storage")
     from src import secret_storage  # noqa: WPS433
     monkeypatch.setattr(secret_storage, "_KEY_PATH", tmp_path / ".app_key")
     monkeypatch.setattr(secret_storage, "_fernet", None)
@@ -155,7 +156,7 @@ def test_ollama_cookbook_runner_does_not_force_public_bind():
 def _import_integrations(tmp_path, monkeypatch):
     """Import src.integrations with data + encryption key redirected to tmp."""
     _import_secret_storage(tmp_path, monkeypatch)
-    sys.modules.pop("src.integrations", None)
+    drop_for_fresh_import(monkeypatch, "src.integrations")   # `B1049`
     from src import integrations  # noqa: WPS433
     monkeypatch.setattr(integrations, "DATA_FILE", str(tmp_path / "integrations.json"))
     return integrations
@@ -212,8 +213,10 @@ def test_integrations_plaintext_keys_migrate_on_load(tmp_path, monkeypatch):
 # ── _q IMAP mailbox quoter ─────────────────────────────────────
 
 def _import_q():
-    sys.modules.pop("routes.email_helpers", None)
-    from routes.email_helpers import _q  # noqa: WPS433
+    # `B1049`. A fresh copy for the caller, and `sys.modules` (and the package
+    # attribute) back as they were once it is imported.
+    with reimported_under_stubs(pop=["routes.email_helpers"]):
+        from routes.email_helpers import _q  # noqa: WPS433
     return _q
 
 
@@ -250,8 +253,8 @@ def test_q_empty_input():
 # ── provider auth error normalization ──────────────────────────
 
 def _import_friendly_email_auth_error():
-    sys.modules.pop("routes.email_helpers", None)
-    from routes.email_helpers import _friendly_email_auth_error  # noqa: WPS433
+    with reimported_under_stubs(pop=["routes.email_helpers"]):   # `B1049`
+        from routes.email_helpers import _friendly_email_auth_error  # noqa: WPS433
     return _friendly_email_auth_error
 
 
@@ -444,7 +447,9 @@ def test_chat_preprocess_does_not_surface_cross_owner_attachment(tmp_path, monke
 def test_document_upload_lookup_rejects_cross_owner_marker(tmp_path, monkeypatch):
     from src.upload_handler import UploadHandler
 
-    sys.modules.pop("routes.document_helpers", None)
+    # `B1049`. Imported under the stub `core.database` below; the helper puts
+    # the module, and the `routes` attribute that names it, back at teardown.
+    drop_for_fresh_import(monkeypatch, "routes.document_helpers")
     _stub_core_database_for_route_imports(monkeypatch)
     from routes.document_helpers import _locate_upload
 
@@ -453,7 +458,6 @@ def test_document_upload_lookup_rejects_cross_owner_marker(tmp_path, monkeypatch
 
     assert _locate_upload(str(upload_dir), bob_id, owner="alice", upload_handler=handler) is None
     assert _locate_upload(str(upload_dir), bob_id, owner="bob", upload_handler=handler).endswith(bob_id)
-    sys.modules.pop("routes.document_helpers", None)
 
 
 def test_find_source_upload_id_rejects_path_traversal_marker():
@@ -467,7 +471,7 @@ def test_pdf_marker_write_rejects_cross_owner_upload(tmp_path, monkeypatch):
     """Saving a doc whose front-matter points at another user's upload must 400."""
     from src.upload_handler import UploadHandler
 
-    sys.modules.pop("routes.document_helpers", None)
+    drop_for_fresh_import(monkeypatch, "routes.document_helpers")   # `B1049`
     _stub_core_database_for_route_imports(monkeypatch)
     from fastapi import HTTPException
     from routes.document_helpers import _assert_pdf_marker_upload_owned
@@ -499,8 +503,6 @@ def test_pdf_marker_write_rejects_cross_owner_upload(tmp_path, monkeypatch):
     # Own upload is allowed
     own_marker = f'<!-- pdf_source upload_id="{_alice_id}" -->\n\n# Notes\n'
     _assert_pdf_marker_upload_owned(_Req(), own_marker, "alice", handler)
-
-    sys.modules.pop("routes.document_helpers", None)
 
 
 def test_pdf_marker_render_lookup_denies_cross_owner_without_doc_leak(tmp_path):
@@ -564,8 +566,7 @@ def test_inprocess_pollers_gate(monkeypatch):
     the asyncio pollers when cron / systemd is driving the one-shot
     `pantheon-mail poll-*` CLI subcommands instead. Two pollers racing
     on the same SQLite would mark scheduled rows as 'sent' twice."""
-    import sys as _sys
-    _sys.modules.pop("routes.email_pollers", None)
+    drop_for_fresh_import(monkeypatch, "routes.email_pollers")   # `B1049`
     from routes.email_pollers import _inprocess_pollers_enabled  # noqa: WPS433
 
     # Defaults to enabled (preserves single-process deployments).
@@ -832,11 +833,12 @@ def test_internal_tool_owner_header_logic_requires_known_user():
     assert resolve_owner("") == "internal-tool"
 
 
-def test_auth_manager_migrates_legacy_admin_role(tmp_path):
+def test_auth_manager_migrates_legacy_admin_role(tmp_path, monkeypatch):
     """Old setup.py wrote role='admin'; startup must turn that into is_admin."""
-    sys.modules.pop("core.auth", None)
-    if "core" in sys.modules and hasattr(sys.modules["core"], "auth"):
-        delattr(sys.modules["core"], "auth")
+    # `B1049`. A fresh `core.auth`, and the one every earlier file holds put
+    # back at teardown — by name and as `core.auth`. Popping it and deleting the
+    # attribute left the fresh copy in both for the rest of the session.
+    drop_for_fresh_import(monkeypatch, "core.auth")
     from core.auth import AuthManager
 
     auth_path = tmp_path / "auth.json"
@@ -1014,8 +1016,8 @@ def test_web_fetch_guard_blocks_redirect_into_private(monkeypatch):
 # ── audit fixes (2026-06-01): email XSS, attachment traversal, authz ──
 
 def _import_attachment_extract_dir():
-    sys.modules.pop("routes.email_helpers", None)
-    from routes.email_helpers import attachment_extract_dir, ATTACHMENTS_DIR
+    with reimported_under_stubs(pop=["routes.email_helpers"]):   # `B1049`
+        from routes.email_helpers import attachment_extract_dir, ATTACHMENTS_DIR
     return attachment_extract_dir, ATTACHMENTS_DIR
 
 
@@ -1083,16 +1085,16 @@ def test_mcp_oauth_page_escapes_reflected_values():
     assert "{host}" not in page
 
 
-def _import_mcp_routes():
-    sys.modules.pop("routes.mcp_routes", None)
+def _import_mcp_routes(monkeypatch):
+    drop_for_fresh_import(monkeypatch, "routes.mcp_routes")   # `B1049`
     return importlib.import_module("routes.mcp_routes")
 
 
 def test_google_mcp_oauth_uses_configured_redirect_base(monkeypatch):
     monkeypatch.setenv("OAUTH_REDIRECT_BASE_URL", "https://pantheon.example/app/")
     monkeypatch.delenv("APP_PUBLIC_URL", raising=False)
-    sys.modules.pop("src.mcp_oauth", None)
-    mcp_routes = _import_mcp_routes()
+    drop_for_fresh_import(monkeypatch, "src.mcp_oauth")   # `B1049`
+    mcp_routes = _import_mcp_routes(monkeypatch)
 
     assert (
         mcp_routes._mcp_oauth_redirect_uri()
@@ -1101,7 +1103,7 @@ def test_google_mcp_oauth_uses_configured_redirect_base(monkeypatch):
 
 
 def test_mcp_oauth_paths_resolve_under_data_dir(tmp_path, monkeypatch):
-    mcp_routes = _import_mcp_routes()
+    mcp_routes = _import_mcp_routes(monkeypatch)
     monkeypatch.setattr(mcp_routes, "MCP_OAUTH_DIR", str(tmp_path / "data" / "mcp_oauth"))
 
     resolved = Path(mcp_routes._resolve_mcp_oauth_path("gmail/credentials.json", "token_file"))
@@ -1118,7 +1120,7 @@ def test_mcp_oauth_paths_resolve_under_data_dir(tmp_path, monkeypatch):
 def test_mcp_oauth_paths_reject_escapes(tmp_path, monkeypatch, raw_path):
     from fastapi import HTTPException
 
-    mcp_routes = _import_mcp_routes()
+    mcp_routes = _import_mcp_routes(monkeypatch)
     monkeypatch.setattr(mcp_routes, "MCP_OAUTH_DIR", str(tmp_path / "data" / "mcp_oauth"))
 
     with pytest.raises(HTTPException) as exc:
@@ -1129,7 +1131,7 @@ def test_mcp_oauth_paths_reject_escapes(tmp_path, monkeypatch, raw_path):
 def test_mcp_oauth_filename_join_cannot_escape_base(tmp_path, monkeypatch):
     from fastapi import HTTPException
 
-    mcp_routes = _import_mcp_routes()
+    mcp_routes = _import_mcp_routes(monkeypatch)
     monkeypatch.setattr(mcp_routes, "MCP_OAUTH_DIR", str(tmp_path / "data" / "mcp_oauth"))
 
     safe_dir = mcp_routes._resolve_mcp_oauth_path("gmail", "dir")
@@ -1138,7 +1140,7 @@ def test_mcp_oauth_filename_join_cannot_escape_base(tmp_path, monkeypatch):
 
 
 def test_mcp_oauth_config_sanitizes_paths_and_env(tmp_path, monkeypatch):
-    mcp_routes = _import_mcp_routes()
+    mcp_routes = _import_mcp_routes(monkeypatch)
     monkeypatch.setattr(mcp_routes, "MCP_OAUTH_DIR", str(tmp_path / "data" / "mcp_oauth"))
 
     cfg = mcp_routes._sanitize_mcp_oauth_config({
@@ -1175,33 +1177,27 @@ def test_gmail_mcp_preset_uses_contained_oauth_paths():
 
 # -- export/gallery filename hardening ----------------------------------------
 
-def _drop_route_module_cache(dotted_name):
-    """Evict a cached route module from both sys.modules and the parent package
-    attribute. The next import then re-binds against the live core.database
-    instead of reusing a stale (possibly stub-polluted) module object — Python
-    can reach a module via either path, so both must be cleared."""
-    sys.modules.pop(dotted_name, None)
-    pkg_name, _, attr = dotted_name.rpartition(".")
-    pkg = sys.modules.get(pkg_name)
-    if pkg is not None and hasattr(pkg, attr):
-        delattr(pkg, attr)
-
-
 def _import_session_routes_for_filename():
     # Only the pure _sanitize_export_filename helper is exercised here, so import
     # against the REAL core.database. Importing under a stub Session class would
     # leak a stub-bound DbSession into the cached module and break later tests
     # that reuse routes.session_routes (e.g. the archived-sessions filter).
-    _drop_route_module_cache("routes.session_routes")
-    return importlib.import_module("routes.session_routes")
+    #
+    # `B1049`. A fresh copy for this caller, and the module every earlier file
+    # holds put back — by name and as the package's attribute — once it is
+    # imported. Evicting both and leaving the fresh copy in them (what this did)
+    # handed every later file a second module while those collected earlier
+    # kept the first.
+    with reimported_under_stubs(pop=["routes.session_routes"]):
+        return importlib.import_module("routes.session_routes")
 
 
 def _import_gallery_routes_for_filename():
     # Same rationale as the session route helper: import _sanitize_gallery_filename
-    # against the real core.database and leave a clean, real module cached.
-    _drop_route_module_cache("routes.gallery.gallery_routes")
-    _drop_route_module_cache("routes.gallery.gallery_helpers")
-    return importlib.import_module("routes.gallery.gallery_routes")
+    # against the real core.database, and put back what was there (`B1049`).
+    with reimported_under_stubs(pop=["routes.gallery.gallery_routes",
+                                     "routes.gallery.gallery_helpers"]):
+        return importlib.import_module("routes.gallery.gallery_routes")
 
 
 def test_export_filename_sanitizer_blocks_header_and_path_chars():
@@ -1595,3 +1591,78 @@ def test_dns_rebinding_transport_uses_public_apis(monkeypatch):
         f"content.py imports from httpx's private transport module: {leaked_imports}. "
         "Use only the public httpx and httpcore APIs."
     )
+
+
+# ── `B1049` · every test here that drops a module puts it back ─────────────
+#
+# `B1020` fixed the two drops on its own path (`routes.chat_helpers`,
+# `src.auth_helpers`) and filed the rest. Measured before this row with a probe
+# that imports each module before the run — as a file collected earlier holds
+# it — and checks it is the same object afterwards (this file after
+# `test_chat_helpers.py`, `-p no:randomly`): ten were not. Replaced by name and
+# as the package's attribute: `src.secret_storage`, `routes.email_helpers`,
+# `routes.email_pollers`, `src.mcp_oauth`, `core.auth`, `routes.session_routes`,
+# `routes.gallery.gallery_routes`, `routes.gallery.gallery_helpers`; emptied
+# from `sys.modules` and left reachable only as the attribute:
+# `src.integrations`, `routes.document_helpers` — the second a copy bound to
+# this file's stub `core.database`. `B1020`'s shape exactly: a file collected
+# before this one binds the first copy, and a test after it patches the second
+# by dotted name. Each drop now goes through `drop_for_fresh_import` (a test
+# with a `monkeypatch`) or `reimported_under_stubs` (a helper with none).
+
+_DROPPING_TESTS = [
+    # (an id, a test that drops and re-imports, the modules it drops)
+    ("secret-storage", test_secret_storage_roundtrip, ("src.secret_storage",)),
+    ("integrations", test_integrations_api_keys_are_encrypted_at_rest,
+     ("src.secret_storage", "src.integrations")),
+    ("email-q", test_q_plain_name, ("routes.email_helpers",)),
+    ("email-auth-error", test_outlook_smtp_basic_auth_error_is_actionable,
+     ("routes.email_helpers",)),
+    ("email-attachments", test_attachment_extract_dir_stays_contained, ("routes.email_helpers",)),
+    ("document-lookup", test_document_upload_lookup_rejects_cross_owner_marker,
+     ("routes.document_helpers", "core.database")),
+    ("document-marker", test_pdf_marker_write_rejects_cross_owner_upload,
+     ("routes.document_helpers", "core.database")),
+    ("email-pollers", test_inprocess_pollers_gate, ("routes.email_pollers",)),
+    ("core-auth", test_auth_manager_migrates_legacy_admin_role, ("core.auth",)),
+    ("mcp-oauth", test_google_mcp_oauth_uses_configured_redirect_base,
+     ("src.mcp_oauth", "routes.mcp_routes")),
+    ("mcp-paths", test_mcp_oauth_paths_resolve_under_data_dir, ("routes.mcp_routes",)),
+    ("session-routes", test_export_filename_sanitizer_blocks_header_and_path_chars,
+     ("routes.session_routes",)),
+    ("gallery-routes", test_gallery_replace_filename_sanitizer_uses_basename,
+     ("routes.gallery.gallery_routes", "routes.gallery.gallery_helpers")),
+]
+
+
+def _run_as_collected(test, tmp_path, patch):
+    """Call a test of this file with the fixtures it names; a parametrized one
+    with a case of its own."""
+    import inspect
+
+    given = {"tmp_path": tmp_path, "monkeypatch": patch,
+             "folder": "../../../../tmp/evil", "uid": "1"}
+    test(**{name: given[name] for name in inspect.signature(test).parameters})
+
+
+@pytest.mark.parametrize("test, modules", [(t, m) for _id, t, m in _DROPPING_TESTS],
+                         ids=[i for i, _t, _m in _DROPPING_TESTS])
+def test_every_test_that_drops_a_module_puts_it_back(tmp_path, test, modules):
+    """Held before — as a file collected earlier holds it — each module this
+    test drops is the same object after it, by name, by import and as its
+    package's attribute, once its own `monkeypatch` is undone. One test per
+    case: two sharing one `monkeypatch` would hide the second's leak behind
+    the first's restore. (`routes.document_helpers` and `routes.mcp_routes` are
+    shims whose re-import returns the module already loaded, so for them a
+    drop that leaves `sys.modules` empty is the leak there is to catch.)"""
+    held = {name: importlib.import_module(name) for name in modules}
+    patch = pytest.MonkeyPatch()
+    try:
+        _run_as_collected(test, tmp_path, patch)
+    finally:
+        patch.undo()
+    for name, module in held.items():
+        parent_name, _, child = name.rpartition(".")
+        assert sys.modules.get(name) is module, f"{name}: sys.modules"
+        assert importlib.import_module(name) is module, f"{name}: import"
+        assert getattr(sys.modules[parent_name], child, None) is module, f"{name}: {parent_name}.{child}"

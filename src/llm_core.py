@@ -2567,12 +2567,16 @@ async def llm_call_async(
     availability_only_transport: bool = False,
     return_model_metadata: bool = False,
     explicit_params=frozenset(),
+    max_tokens_floor: Optional[int] = None,
 ) -> str | tuple[str, str]:
     """Asynchronous LLM call using httpx with connection pooling, timeout, retry logic, and performance logging.
 
     ``explicit_params`` names the sampling parameters a person chose (`P2-13`,
     see ``_apply_local_generation_stability``). `/api/chat` passes its preset's
     through ``llm_call_async_with_route_fallback``'s kwargs.
+
+    ``max_tokens_floor`` is `stream_llm`'s (`B1029`): with it, a length refusal
+    that states what the server can serve is sent once more asking for that.
     """
     # `P4-25` — the non-streaming path. `/api/chat` reaches the model through
     # `llm_call_async_with_route_fallback` → here and never touches
@@ -2674,6 +2678,8 @@ async def llm_call_async(
         _set_cached_response(cache_key, response, actual_model=actual_model)
         return (response, actual_model) if return_model_metadata else response
 
+    _length_key = None   # `B1029`; set only on the OpenAI-compatible payload
+    _resent = False
     if provider == "anthropic":
         target_url = _normalize_anthropic_url(url)
         h = _build_anthropic_headers(headers)
@@ -2703,6 +2709,7 @@ async def llm_call_async(
         if max_tokens and max_tokens > 0:
             tok_key = "max_completion_tokens" if _uses_max_completion_tokens(model) else "max_tokens"
             payload[tok_key] = max_tokens
+            _length_key = tok_key   # `B1029`: the field a length refusal is about
         # Suppress thinking for qwen3/gemma4 on Ollama /v1 — same as stream_llm.
         if _is_ollama_openai_compat_url(url) and _supports_thinking(model):
             payload["think"] = False
@@ -2726,6 +2733,22 @@ async def llm_call_async(
                 r = await httpx_post_kimi_aware_async(client, target_url, h, json=payload, timeout=call_timeout)
             duration = time.time() - start
             if not r.is_success:
+                # `B1029`, as `stream_llm`: once, asking for what the server
+                # said it can serve. Not a retry, so it spends no attempt.
+                _servable = (
+                    servable_max_tokens(r.status_code, r.text, payload.get(_length_key),
+                                        max_tokens_floor)
+                    if _length_key and not _resent else None
+                )
+                if _servable is not None:
+                    logger.info("[llm] %s refused max_tokens=%s; it can serve %s — sending again",
+                                _host_key(target_url), payload.get(_length_key), _servable)
+                    _resent = True
+                    payload[_length_key] = _servable
+                    _capture_run_config(temperature, _servable, session_id, url=url, model=model,
+                                        explicit_params=explicit_params, resent=True)
+                    attempt -= 1
+                    continue
                 friendly = _format_upstream_error(r.status_code, r.text, target_url)
                 logger.warning(
                     f"LLM async call to {target_url} failed in {duration:.2f}s "
@@ -2917,6 +2940,14 @@ _run_config_recorded: "contextvars.ContextVar[bool]" = contextvars.ContextVar(
 _run_config_had_tools: "contextvars.ContextVar[bool]" = contextvars.ContextVar(
     "pantheon_run_config_had_tools", default=False)
 
+# `B1029`. One corrective `run_config` row per turn: the receipt records the
+# turn's first request (`P4-25`), and when that request was refused for its
+# length and sent again, the receipt's `max_tokens` is the one the answer was
+# generated under. `events.receipt()` merges rows with later keys winning, so
+# the second row's `sampling` replaces the first's and its tools stay.
+_run_config_resent: "contextvars.ContextVar[bool]" = contextvars.ContextVar(
+    "pantheon_run_config_resent", default=False)
+
 
 # `B933`. The providers whose request is built by a builder of its own and never
 # passes through `_apply_local_generation_stability` — every other provider is
@@ -2958,7 +2989,8 @@ def _sent_sampling(url, model, temperature, max_tokens, explicit_params=frozense
 
 
 def _capture_run_config(temperature, max_tokens, session_id, *, tools=None,
-                        url=None, model=None, explicit_params=frozenset()) -> None:
+                        url=None, model=None, explicit_params=frozenset(),
+                        resent: bool = False) -> None:
     """Record the resolved configuration for this turn (`P4-25`).
 
     Called from **every** entry point a chat turn can take, and that plurality
@@ -2980,12 +3012,20 @@ def _capture_run_config(temperature, max_tokens, session_id, *, tools=None,
     `url`, `model` and `explicit_params` are the request's, so the sampling
     recorded is what the payload carries rather than what was asked for
     (`B933`, `_sent_sampling`). Without a `url` it is the two values given.
+
+    `resent` (`B1029`): the request was refused for its length and sent again
+    asking for `max_tokens`; written once per turn past the latch, so the
+    receipt's sampling is what the turn's first answered request carried.
     """
     try:
         from src.events import record_run_config, current_run_id
         if not current_run_id():
             return
-        if _run_config_recorded.get():
+        if resent:
+            if _run_config_resent.get():
+                return
+            _run_config_resent.set(True)
+        elif _run_config_recorded.get():
             # Already captured. The one thing worth a second row is a tool list
             # the first capture did not have; anything else is a duplicate.
             if not tools or _run_config_had_tools.get():
@@ -3000,6 +3040,57 @@ def _capture_run_config(temperature, max_tokens, session_id, *, tools=None,
         )
     except Exception:
         pass   # a receipt is never worth a failed reply
+
+
+# ── `B1029` · a server that says what it can serve is sent that ────────────
+#
+# Agent mode lifts a preset's `max_tokens` on local inference to the machine's
+# ceiling (`D-2026-09-08-02`: the preset a floor, 1,000,000 unless an operator
+# typed one). vLLM's OpenAI server refuses any request whose prompt plus
+# `max_completion_tokens or max_tokens` exceeds its window — `OpenAIServing.
+# _validate_input`, read at v0.6.6, v0.8.5, v0.10.1 and v0.11.0, a 400 before a
+# token is generated — so with a length-naming preset every Agent-mode request
+# to a vLLM failed outright. **Measured** through the real app against a model
+# served the way vLLM serves one (window 32,768): Agent mode with Brainstorm
+# sent 1,000,000 and the turn ended on the server's 400; no preset, and Chat
+# mode, answered.
+#
+# The refusal states the window and the prompt's size in tokens, counted by the
+# server's own tokenizer, so the request is sent once more asking for exactly
+# what the server said it can serve — the number vLLM itself uses when no
+# length is given. Never above what was asked (the ceiling, typed or not, still
+# bounds it) and never below `floor`, the preset's own number (the ruling's
+# floor): a request whose window leaves less room than the preset fails as it
+# did, and as Chat mode does — going below the preset is a call neither ruling
+# makes. A request sent unlifted (`sent == floor`) is never resent, and a server
+# that accepts the number is never asked twice, so nothing changes for any
+# endpoint that answered before.
+_CONTEXT_WINDOW_RE = re.compile(r"maximum context length is (\d+) tokens")
+_PROMPT_TOKENS_RES = (
+    re.compile(r"your request has (\d+) input tokens"),                # v0.10.1, v0.11.0
+    re.compile(r"\((\d+) in the messages, \d+ in the completion\)"),   # v0.6.6, v0.8.5
+)
+
+
+def servable_max_tokens(status, raw, sent, floor) -> Optional[int]:
+    """The `max_tokens` a server's length refusal says it can serve, when it is
+    worth asking again: at least `floor` and below `sent`. `None` otherwise.
+
+    `raw` is the refusal's body as text. `B1029`, above."""
+    try:
+        sent, floor = int(sent or 0), int(floor or 0)
+    except (TypeError, ValueError):
+        return None
+    # An unlifted request (`sent == floor`) can never pass the last line.
+    if status != 400 or floor <= 0:
+        return None
+    text = str(raw or "")
+    window = _CONTEXT_WINDOW_RE.search(text)
+    prompt = next((m for m in (r.search(text) for r in _PROMPT_TOKENS_RES) if m), None)
+    if not window or not prompt:
+        return None
+    servable = int(window.group(1)) - int(prompt.group(1))
+    return servable if floor <= servable < sent else None
 
 
 def _stream_target_url(url: str) -> str:
@@ -3018,7 +3109,11 @@ async def stream_llm(url: str, model: str, messages: List[Dict], temperature: fl
                      timeout: int = LLMConfig.STREAM_TIMEOUT, prompt_type: Optional[str] = None,
                      tools: Optional[List[Dict]] = None, session_id: Optional[str] = None,
                      tool_choice_none: bool = False, workload: str = "foreground",
-                     explicit_params=frozenset()):
+                     explicit_params=frozenset(), max_tokens_floor: Optional[int] = None):
+    """`max_tokens_floor` (`B1029`): the least this request may ask for — the
+    preset's own number, where the caller lifted it. With it, a length refusal
+    that states what the server can serve is sent once more asking for that
+    (`servable_max_tokens`); without it, as before."""
     target_url = _stream_target_url(url)
     _capture_run_config(temperature, max_tokens, session_id, tools=tools, url=url,
                         model=model, explicit_params=explicit_params)
@@ -3037,6 +3132,7 @@ async def stream_llm(url: str, model: str, messages: List[Dict], temperature: fl
             session_id=session_id,
             tool_choice_none=tool_choice_none,
             explicit_params=explicit_params,
+            max_tokens_floor=max_tokens_floor,
         ):
             yield chunk
 
@@ -3045,7 +3141,8 @@ async def _stream_llm_inner(url: str, model: str, messages: List[Dict], temperat
                             max_tokens: int = LLMConfig.DEFAULT_MAX_TOKENS, headers: Optional[Dict] = None,
                             timeout: int = LLMConfig.STREAM_TIMEOUT, prompt_type: Optional[str] = None,
                             tools: Optional[List[Dict]] = None, session_id: Optional[str] = None,
-                            tool_choice_none: bool = False, explicit_params=frozenset()):
+                            tool_choice_none: bool = False, explicit_params=frozenset(),
+                            max_tokens_floor: Optional[int] = None):
     """Stream LLM responses with improved error handling.
 
     Yields SSE chunks:
@@ -3559,6 +3656,23 @@ async def _stream_llm_inner(url: str, model: str, messages: List[Dict], temperat
             _clear_host_dead(target_url)
             if r.status_code != 200:
                 raw = (await r.aread()).decode(errors="replace")
+                # `B1029`. A length refusal stating what the server can serve:
+                # once more, asking for that, and nothing else about the request
+                # changed. No floor is passed down, so it is asked once.
+                _servable = servable_max_tokens(r.status_code, raw, max_tokens, max_tokens_floor)
+                if _servable is not None:
+                    logger.info("[llm] %s refused max_tokens=%s; it can serve %s — sending again",
+                                _host_key(target_url), max_tokens, _servable)
+                    _capture_run_config(temperature, _servable, session_id, url=url, model=model,
+                                        explicit_params=explicit_params, resent=True)
+                    async for _chunk in _stream_llm_inner(
+                        url, model, messages, temperature=temperature, max_tokens=_servable,
+                        headers=headers, timeout=timeout, prompt_type=prompt_type, tools=tools,
+                        session_id=session_id, tool_choice_none=tool_choice_none,
+                        explicit_params=explicit_params,
+                    ):
+                        yield _chunk
+                    return
                 friendly = _format_upstream_error(r.status_code, raw, target_url)
                 yield f'event: error\ndata: {json.dumps({"status": r.status_code, "text": friendly, "raw": raw[:500]})}\n\n'
                 return

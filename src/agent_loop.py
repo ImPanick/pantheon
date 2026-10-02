@@ -9,6 +9,7 @@ The LLM decides when to use tools by writing fenced code blocks.
 
 import asyncio
 import collections
+import copy
 import json
 import re
 import time
@@ -473,7 +474,8 @@ def consume_steers_for_round(session_id: Optional[str], messages: List[Dict]) ->
         return []
     applied = take_steers(session_id)
     for text in applied:
-        messages.append({"role": "user", "content": steer_directive(text)})
+        # `B1069`: the run's own, so a card's record of the turn keeps it.
+        messages.append(_in_turn({"role": "user", "content": steer_directive(text)}))
     return applied
 
 
@@ -3766,6 +3768,7 @@ def _append_tool_results(
     without the per-round accumulation.
     """
     tool_result_records = tool_result_records or []
+    appended_from = len(messages)   # `B1069`: what this call adds is the run's
     # Strip reasoning_content from earlier assistant turns; only the newest keeps it.
     for _m in messages:
         if _m.get("role") == "assistant":
@@ -3876,6 +3879,178 @@ def _append_tool_results(
     if images_message is not None:
         messages.append(images_message)
         tool_result_images.bound_images(messages)
+    _mark_in_turn(messages, appended_from)
+
+
+# ── `B1069` · a turn that stops for a card resumes with what it had ─────────
+#
+# **Measured before this was written**, with the README showcase's scripted
+# model recording every request through the real app: the filing chat's
+# request before its card carried `[system, user, assistant(tool_calls),
+# tool]` — the document list, every id in it; the request after *Allow for
+# this task* carried `[system, user, assistant("Allow this task to
+# continue?"), user(the approved call's result)]`. The continuation was
+# rebuilt from saved history, which holds a turn's words and not its tool
+# traffic, so everything the turn had learned before the card was gone and a
+# model that needed those ids had to call again or guess. An approval on a
+# turn's first call loses nothing, which is why it went unnoticed.
+#
+# The paused turn is now kept beside the card, server-side, and the
+# continuation asks the model with it: every message the turn added before the
+# card, in order, and then the paused round exactly as the loop would have
+# appended it had the call run without a card — its assistant `tool_calls`, the
+# results of the calls before the gated one, and the approved call's own result
+# answering the model's own call id. The saved reply that stood in for the turn
+# (*"Allow this task to continue?"*) is the one thing taken out of the request:
+# it is what the history had in place of the turn, and the turn is back.
+#
+# Every message is restored as it was, wrapping and gate metadata included, so
+# the resumed run's taint is the interrupted run's (`FORBIDDEN.md` Part 2): a
+# result in the transcript that armed the gate armed it before the card was
+# minted, so the card was sealed tainted, and a result that did not, does not.
+
+# A message this run added to the conversation — a tool round, a steer, a
+# nudge. Kept through every rebuild (`_strip_agent_injected_messages` copies
+# keys) and stripped before any provider sees it (`llm_core`'s whitelist).
+_IN_TURN_KEY = "_agent_in_turn"
+
+
+def _mark_in_turn(messages: List[Dict], start: int = 0) -> None:
+    """Mark `messages[start:]` as added by this run."""
+    for message in messages[start:]:
+        if isinstance(message, dict):
+            message[_IN_TURN_KEY] = True
+
+
+def _in_turn(message: Dict) -> Dict:
+    """One message this run adds, marked."""
+    message[_IN_TURN_KEY] = True
+    return message
+
+
+def _approval_ids_answered_by(message: Dict) -> Set[str]:
+    """The approval cards a saved reply carries, by id."""
+    metadata = message.get("metadata") if isinstance(message, dict) else None
+    events = metadata.get("tool_events") if isinstance(metadata, dict) else None
+    ids = set()
+    for event in events if isinstance(events, list) else ():
+        ask = event.get("ask_user") if isinstance(event, dict) else None
+        if isinstance(ask, dict) and ask.get("approval_id"):
+            ids.add(str(ask["approval_id"]))
+    return ids
+
+
+def _without_stand_ins(messages: List[Dict], approval_ids) -> List[Dict]:
+    """`messages` without the saved replies that stood in for a paused turn."""
+    ids = {str(i) for i in approval_ids or () if i}
+    if not ids:
+        return list(messages)
+    return [
+        m for m in messages
+        if not (m.get("role") == "assistant" and _approval_ids_answered_by(m) & ids)
+    ]
+
+
+@dataclass(frozen=True)
+class PausedTurn:
+    """`B1069`. A turn stopped by an approval card, as it stood.
+
+    `messages` — every message the run had added to the conversation, oldest
+    first, copied (the run that made them is over by the time anyone reads
+    this). `paused_round` — the round the card stopped, the arguments the loop
+    would have handed `_append_tool_results` with the gated call's result
+    still missing: its text and reasoning, its calls up to and including the
+    gated one, and the results of the calls before it. `replaces` — the cards
+    this turn already came back through, whose stand-in replies it supersedes
+    as well as this card's own (a strict rung can stop one turn more than
+    once).
+    """
+    messages: tuple
+    paused_round: Dict[str, Any]
+    replaces: tuple = ()
+
+
+def _paused_turn(
+    messages: List[Dict],
+    *,
+    round_response: str,
+    round_reasoning: str,
+    used_native: bool,
+    calls: list,
+    tool_results: list,
+    tool_result_texts: list,
+    tool_result_records: list,
+    round_num: int,
+    resumed_from=None,
+) -> Optional[PausedTurn]:
+    """The record a card keeps of the turn it stopped (`B1069`).
+
+    `calls` are the round's calls up to and including the gated one; the
+    three result lists hold the calls before it. `resumed_from` is the
+    `ExactToolApproval` this run itself resumed, if any.
+    """
+    # The stand-ins this turn already replaced, and the one it replaced on
+    # resuming. Only a run that put a turn back replaced anything: a card that
+    # kept no turn (a teacher's) left its saved reply in the history as an
+    # ordinary message, and it stays one.
+    replaces: tuple = ()
+    earlier = getattr(getattr(resumed_from, "pending", None), "continuation_turn", None)
+    if isinstance(earlier, PausedTurn):
+        replaces = tuple(earlier.replaces) + (resumed_from.pending.approval_id,)
+    try:
+        return PausedTurn(
+            messages=tuple(copy.deepcopy([m for m in messages if m.get(_IN_TURN_KEY)])),
+            paused_round=copy.deepcopy({
+                "round_response": round_response,
+                "round_reasoning": round_reasoning,
+                "used_native": bool(used_native),
+                "calls": list(calls) if used_native else [],
+                "tool_results": list(tool_results),
+                "tool_result_texts": list(tool_result_texts),
+                "tool_result_records": list(tool_result_records),
+                "round_num": round_num,
+            }),
+            replaces=replaces,
+        )
+    except Exception:
+        # A result that cannot be copied (no tool returns one today) leaves the
+        # card with no record, which resumes exactly as before this row — the
+        # approved result alone. Said in the log, because that is a model about
+        # to be asked without what it had.
+        logger.warning("[agent] B1069: could not keep the paused turn for its card",
+                       exc_info=True)
+        return None
+
+
+def _resume_paused_turn(
+    messages: List[Dict],
+    approved,
+    approved_text: str,
+    approved_record: Dict[str, Any],
+) -> bool:
+    """Put a paused turn back into `messages` and answer its gated call with
+    the approved result. False when the card kept no turn, and nothing moves.
+
+    `approved` is the consumed `PendingToolApproval`."""
+    turn = getattr(approved, "continuation_turn", None)
+    if not isinstance(turn, PausedTurn):
+        return False
+    stand_ins = set(turn.replaces) | {approved.approval_id}
+    messages[:] = _without_stand_ins(messages, stand_ins)
+    messages.extend(copy.deepcopy(list(turn.messages)))
+    paused = copy.deepcopy(turn.paused_round)
+    _append_tool_results(
+        messages,
+        paused["round_response"],
+        paused["calls"],
+        paused["tool_results"] + [approved_text],
+        paused["tool_result_texts"] + [approved_text],
+        paused["used_native"],
+        paused["round_num"],
+        round_reasoning=paused["round_reasoning"],
+        tool_result_records=paused["tool_result_records"] + [approved_record],
+    )
+    return True
 
 
 def _compute_final_metrics(
@@ -6070,6 +6245,32 @@ async def stream_agent_loop(
     )
 
     _approved_result_injected = False
+    # `B1069`. The saved replies that stood in for the turn this run resumes;
+    # none unless the card kept the turn (`_resume_paused_turn`).
+    _stand_in_ids: Set[str] = set()
+    if exact_approval is not None and isinstance(
+        getattr(exact_approval.pending, "continuation_turn", None), PausedTurn
+    ):
+        _stand_in_ids = set(exact_approval.pending.continuation_turn.replaces) | {
+            exact_approval.pending.approval_id
+        }
+
+    def _round_one_source_messages():
+        """`B1069`. What a fallback candidate's round-1 request is built from.
+
+        Round 1 builds each fallback from the route-neutral history the run
+        started with (`_initial_route_source_messages`), so a larger candidate
+        can recover history the primary's compaction set aside — and that
+        history holds nothing this run has added. A resumed turn's transcript
+        and its approved result, and a steer delivered at round 1, reached the
+        primary and not one fallback. The same history, then, with the stand-in
+        replies out and what the run added after it: the rule later rounds
+        already keep by building from `messages`."""
+        added = [m for m in messages if isinstance(m, dict) and m.get(_IN_TURN_KEY)]
+        if not added:
+            return _initial_route_source_messages
+        return _without_stand_ins(_initial_route_source_messages, _stand_in_ids) + added
+
     if exact_approval is not None:
         approved = exact_approval.pending
         approved_block = ToolBlock(approved.tool_name, approved.content)
@@ -6387,23 +6588,27 @@ async def stream_agent_loop(
         if approved.tool_name in _VERIFIER_EFFECTFUL_TOOLS:
             _effectful_used = True
         formatted_approved_result = format_tool_result(desc, approved_result)
-        _append_tool_results(
-            messages,
-            "",
-            [],
-            [formatted_approved_result],
-            [formatted_approved_result],
-            False,
-            0,
-            tool_result_records=[
-                {
-                    "tool_name": approved.tool_name,
-                    "content": approved.content,
-                    "result": approved_result,
-                    "text": formatted_approved_result,
-                }
-            ],
-        )
+        approved_record = {
+            "tool_name": approved.tool_name,
+            "content": approved.content,
+            "result": approved_result,
+            "text": formatted_approved_result,
+        }
+        # `B1069`. The turn the card stopped, put back with the approved result
+        # answering its own call; a card that kept no turn resumes as before.
+        if not _resume_paused_turn(
+            messages, approved, formatted_approved_result, approved_record,
+        ):
+            _append_tool_results(
+                messages,
+                "",
+                [],
+                [formatted_approved_result],
+                [formatted_approved_result],
+                False,
+                0,
+                tool_result_records=[approved_record],
+            )
         _approved_result_injected = True
 
     # --- cybertooth custom: lift guardrail caps for local/self-hosted inference ---
@@ -6572,7 +6777,7 @@ async def stream_agent_loop(
                 state = _active_route_state
             else:
                 candidate_source_messages = (
-                    _initial_route_source_messages if round_num == 1 else messages
+                    _round_one_source_messages() if round_num == 1 else messages
                 )
                 state = await _build_route_request_state(
                     candidate_url,
@@ -6615,6 +6820,9 @@ async def stream_agent_loop(
                     # `B1034`. Its own length, as its own temperature (`B935`):
                     # a cloud candidate is never handed the local lift.
                     "max_tokens": candidate_max_tokens(_preset_max_tokens, candidate_url),
+                    # `B1029`. The preset's own number is the least a server's
+                    # length refusal may talk this request down to.
+                    "max_tokens_floor": _preset_max_tokens,
                 },
             }
 
@@ -7142,13 +7350,13 @@ async def stream_agent_loop(
                     native_tool_calls = _filtered_converted_calls
                 if not tool_blocks:
                     _force_answer = True
-                    messages.append({
+                    messages.append(_in_turn({
                         "role": "system",
                         "content": (
                             "Answer the user's identity/personal-memory question from the compact "
                             "saved memory facts already provided. Do not call manage_memory or any tool."
                         ),
-                    })
+                    }))
                     _step = _next_step_frame(round_num)   # `B906`
                     if _step:
                         yield _step
@@ -7181,9 +7389,22 @@ async def stream_agent_loop(
                             "what you have and note what's missing in one short line."
                         ),
                     }]
+                    # `B1050`. Asked of the candidate that answered: once a
+                    # fallback answers, the pin rebinds `endpoint_url`, `model`
+                    # and `headers` to it, so the call already went there — but
+                    # with the run's `max_tokens`, the primary's lift. Measured
+                    # through the real route, loop and wrapper: a local primary
+                    # down, its hosted fallback's rounds sent 4096 and its
+                    # salvage 1,000,000, which a hosted provider refuses, so the
+                    # turn ended on the apology below. `B1034`'s one rule, about
+                    # this call's URL; for an unpinned run that is the primary's,
+                    # and the number is the run's own, as before.
                     _raw = await llm_call_async(
                         url=endpoint_url, model=model, messages=_synth_messages,
-                        headers=headers, temperature=0.3, max_tokens=max_tokens, timeout=60,
+                        headers=headers, temperature=0.3,
+                        max_tokens=candidate_max_tokens(_preset_max_tokens, endpoint_url),
+                        max_tokens_floor=_preset_max_tokens,   # `B1029`
+                        timeout=60,
                     )
                     _raw_text = _raw or ""
                     _synth = _strip_think_blocks(strip_tool_blocks(_raw_text)).strip()
@@ -7295,7 +7516,7 @@ async def stream_agent_loop(
                     _note = "\n\n_Double-checked the work and found something to fix._\n\n"
                     yield f'data: {json.dumps({"delta": _note})}\n\n'
                     full_response += _note
-                    messages.append({
+                    messages.append(_in_turn({
                         "role": "system",
                         "content": (
                             "An independent verifier reviewed your work against the "
@@ -7303,7 +7524,7 @@ async def stream_agent_loop(
                             "this is actually done:\n- " + "\n- ".join(_vfail.issues) +
                             "\n\nFix these now using tools, then finish."
                         ),
-                    })
+                    }))
                     # Require fresh effectful work before verifying again, so we
                     # never re-verify an unchanged state in a loop.
                     _effectful_used = False
@@ -7364,7 +7585,7 @@ async def stream_agent_loop(
                         "session_id from the serve/list result. Never answer with "
                         "\"check logs\" when those tools are available."
                     )
-                messages.append({
+                messages.append(_in_turn({
                     "role": "system",
                     "content": (
                         f"You just wrote: \"{_matched_phrase}\" — but ended the "
@@ -7376,7 +7597,7 @@ async def stream_agent_loop(
                         "If you decided not to do it after all, say so plainly in "
                         "one sentence instead of restating the plan."
                     ),
-                })
+                }))
                 # Visible signal in the stream so the user knows we caught it.
                 _step = _next_step_frame(round_num)   # `B906`
                 if _step:
@@ -7493,7 +7714,7 @@ async def stream_agent_loop(
             _off_note = (f" ({', '.join(_off)} is currently disabled — say so if "
                          f"you needed it.)" if _off else "")
             _force_answer = True
-            messages.append({
+            messages.append(_in_turn({
                 "role": "system",
                 "content": (
                     "You're repeating tool calls without converging. STOP calling "
@@ -7502,7 +7723,7 @@ async def stream_agent_loop(
                     "(b) if you're genuinely blocked, say plainly what's blocking "
                     "you in a sentence or two." + _off_note
                 ),
-            })
+            }))
             full_response += "\n\n"
             _step = _next_step_frame(round_num)   # `B906`
             if _step:
@@ -7700,6 +7921,20 @@ async def stream_agent_loop(
                         taint_trail=run_security.taint_trail,
                         # `B967`. Display-only, outside the seal.
                         runs_in=block_runs_in,
+                        # `B1069`. What this turn had gathered, for the
+                        # continuation — outside the seal, see the field.
+                        continuation_turn=_paused_turn(
+                            messages,
+                            round_response=round_response,
+                            round_reasoning=round_reasoning,
+                            used_native=used_native,
+                            calls=converted_calls[: i + 1],
+                            tool_results=tool_results,
+                            tool_result_texts=tool_result_texts,
+                            tool_result_records=tool_result_records,
+                            round_num=round_num,
+                            resumed_from=exact_approval,
+                        ),
                     )
                     desc = f"{block.tool_type}: APPROVAL REQUIRED"
                     result = {
