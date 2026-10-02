@@ -1182,6 +1182,27 @@ def _conditions_semantics(node, conditions, join, where: str) -> DocumentRefusal
     return None
 
 
+def _inner_kind_problem(node: dict) -> DocumentRefusal | None:
+    """A For-each's step is of a kind this Pantheon runs, and one a For-each
+    may repeat — asked before its settings are read, so the person is told
+    the kind, not what an unknown kind's settings fall closed to."""
+    inner = (node.get("config") or {}).get("step")
+    if node.get("kind") != NODE_KIND_FOREACH or not isinstance(inner, dict):
+        return None
+    inner_kind = inner.get("kind")
+    if references_in_text(inner_kind):
+        return None  # `_reference_problem` says it: the kind is the author's to type
+    if inner_kind not in NODE_KINDS:
+        return _refusal(REFUSE_BAD_KIND, (node["id"],),
+                        f"{_called(node)} repeats a {inner_kind!r} step", "step.kind")
+    if inner_kind in FOREACH_REFUSED_KINDS:
+        return _refusal(REFUSE_FOREACH_INNER, (node["id"],),
+                        f"{_called(node)} repeats a step of kind {inner_kind!r}. It can "
+                        f"repeat one step of any kind but If, Switch, Merge, Wait and "
+                        f"For-each", "step.kind")
+    return None
+
+
 def _kind_problem(node: dict, *, owner, tasks_by_id, crew_ids, owner_is_admin,
                   own_task_id, resources: WorkflowResources) -> DocumentRefusal | None:
     """What one step of its kind needs to run, or why it cannot."""
@@ -1315,14 +1336,9 @@ def _kind_problem(node: dict, *, owner, tasks_by_id, crew_ids, owner_is_admin,
             return _refusal(REFUSE_MISSING_SETTING, (node_id,),
                             f"{_called(node)} needs a step to repeat")
         inner_kind = inner.get("kind")
-        if inner_kind not in NODE_KINDS:
-            return _refusal(REFUSE_BAD_KIND, (node_id,),
-                            f"{_called(node)} repeats a {inner_kind!r} step")
-        if inner_kind in FOREACH_REFUSED_KINDS:
-            return _refusal(REFUSE_FOREACH_INNER, (node_id,),
-                            f"{_called(node)} repeats a step of kind {inner_kind!r}. It can "
-                            f"repeat one step of any kind but If, Switch, Merge, Wait and "
-                            f"For-each", "step.kind")
+        found = _inner_kind_problem(node)
+        if found:
+            return found
         as_node = {"id": node_id, "kind": inner_kind,
                    "label": inner.get("label") or node.get("label"),
                    "config": inner.get("config") or {}}
@@ -1466,7 +1482,7 @@ def validate_document(graph: dict, *, owner: str | None, tasks_by_id: dict,
         problem = _setting_problem(kind, config)
         if problem:
             return _refusal(REFUSE_BAD_SETTING, (node_id,), f"{_called(node)}: {problem}")
-        found = _reference_problem(node, resources)
+        found = _inner_kind_problem(node) or _reference_problem(node, resources)
         if found:
             return found
         found = _kind_problem(node, owner=owner, tasks_by_id=tasks_by_id, crew_ids=crew_ids,

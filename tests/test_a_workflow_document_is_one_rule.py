@@ -55,9 +55,10 @@ def task(task_id, *, owner=OWNER, task_type="llm", action=None, name=None, **kw)
                            notifications_enabled=True, session_id=kw.get("session_id"))
 
 
-def check(graph, *, tasks=(), crew=(), admin=False, own="trigger"):
+def check(graph, *, tasks=(), crew=(), admin=False, own="trigger", resources=None):
     return wd.validate_document(graph, owner=OWNER, tasks_by_id={t.id: t for t in tasks},
-                                crew_ids=set(crew), owner_is_admin=admin, own_task_id=own)
+                                crew_ids=set(crew), owner_is_admin=admin, own_task_id=own,
+                                resources=resources)
 
 
 def parse_refusal(raw):
@@ -87,7 +88,8 @@ CASES = [
     ("an id called start", lambda: check(doc([step("start")])), wd.REFUSE_BAD_ID, "'start'"),
     ("an id with a colon", lambda: check(doc([step("a:b")])), wd.REFUSE_BAD_ID, "'a:b'"),
     ("two steps one id", lambda: check(doc([step("n1"), step("n1")])), wd.REFUSE_DUPLICATE_ID, "'n1'"),
-    ("a kind nobody runs", lambda: check(doc([step("n1", kind="code")])), wd.REFUSE_BAD_KIND, "'code'"),
+    ("a kind nobody runs", lambda: check(doc([step("n1", kind="teleport")])), wd.REFUSE_BAD_KIND,
+     "'teleport'"),
     ("no name", lambda: check(doc([dict(step("n1"), label="  ")])), wd.REFUSE_BAD_LABEL, "needs a name"),
     ("a long name", lambda: check(doc([step("n1", label="x" * 121)])), wd.REFUSE_BAD_LABEL, "120"),
     ("a setting it does not take",
@@ -134,9 +136,9 @@ CASES = [
      wd.REFUSE_BAD_EDGE, "not in the workflow"),
     ("an arrow on no port", lambda: check(doc([step("n1"), step("n2")], [arrow("n1", "n2", "maybe")])),
      wd.REFUSE_BAD_EDGE, "neither"),
-    ("two arrows one outcome",
-     lambda: check(doc([step("n1"), step("n2"), step("n3")], [arrow("n1", "n2"), arrow("n1", "n3")])),
-     wd.REFUSE_TWO_ARROWS, "two “if it works” arrows"),
+    ("the same arrow twice",
+     lambda: check(doc([step("n1"), step("n2")], [arrow("n1", "n2"), arrow("n1", "n2")])),
+     wd.REFUSE_TWO_ARROWS, "“N1” → “N2”, if it works, is drawn twice"),
     ("a loop through the failure arrow",
      lambda: check(doc([step("n1", label="Backup"), step("n2", label="Cleanup")],
                        [arrow("n1", "n2", "error"), arrow("n2", "n1", "success")])),
@@ -156,6 +158,40 @@ CASES = [
     ("a chain into another owner's task",
      lambda: _convert_refusal([task("h", then="x"), task("x", owner="bob", name="Secret")], "h"),
      wd.REFUSE_CROSS_OWNER, "another owner"),
+    # Slices C and D (`P22-09` … `P22-18`): every new reason, driven here too so
+    # the table below keeps meaning "no reason goes undriven".
+    ("two branches meeting outside a Merge",
+     lambda: check(doc([step("n1"), step("n2"), step("n3"), step("n4")],
+                       [arrow("n1", "n2"), arrow("n1", "n3"), arrow("n2", "n4"), arrow("n3", "n4")])),
+     wd.REFUSE_NEEDS_MERGE, "both reach “N4”. Put a Merge step before it"),
+    ("a reference in a command",
+     lambda: check(doc([step("n1"), step("n2", kind="action", action="ssh_command",
+                                         prompt="echo {{ steps.n1.text }}")], [arrow("n1", "n2")]),
+                   admin=True),
+     wd.REFUSE_MAPPED_NEVER, "“N2”, Command"),
+    ("a reference that does not parse",
+     lambda: check(doc([step("n1", prompt="{{ STEPS.n0.text }}")])),
+     wd.REFUSE_BAD_REFERENCE, "is not a reference"),
+    ("a reference to a later step",
+     lambda: check(doc([step("n1", prompt="{{ steps.n2.text }}"), step("n2")], [arrow("n1", "n2")])),
+     wd.REFUSE_NOT_UPSTREAM, "which does not run before it"),
+    ("an Integration nobody set up",
+     lambda: check(doc([step("n1", kind="http", integration="miniflux", method="GET", path="/")]),
+                   admin=True),
+     wd.REFUSE_UNKNOWN_INTEGRATION, "not set up"),
+    ("an MCP tool nobody has",
+     lambda: check(doc([step("n1", kind="mcp", tool="mcp__x__y")]), admin=True),
+     wd.REFUSE_UNKNOWN_TOOL, "'mcp__x__y'"),
+    ("someone else's skill",
+     lambda: check(doc([step("n1", kind="skill", skill="theirs")])),
+     wd.REFUSE_UNKNOWN_SKILL, "not one of yours"),
+    ("code with no workstation",
+     lambda: check(doc([step("n1", kind="code", language="bash", source="echo hi")])),
+     wd.REFUSE_WORKSTATION, "could not check your workstation"),
+    ("a For-each of a Wait",
+     lambda: check(doc([step("n1", kind="foreach", list="{{ steps.start.data.items }}",
+                             step={"kind": "wait", "config": {}})])),
+     wd.REFUSE_FOREACH_INNER, "repeats a step of kind 'wait'"),
 ]
 
 
@@ -211,8 +247,11 @@ def test_a_good_document_of_every_kind_passes():
 
 def test_the_ports_are_the_chain_conditions_not_a_second_vocabulary():
     assert wd.PORTS is EDGE_CONDITIONS
-    assert wd.NODE_KINDS == ("llm", "research", "action", "run_task")
+    assert wd.NODE_KINDS == ("llm", "research", "action", "run_task",
+                             "if", "switch", "set", "merge", "wait", "foreach",
+                             "http", "mcp", "skill", "code")
     assert set(wd.NODE_CONFIG_FIELDS) == set(wd.NODE_KINDS)
+    assert wd.ports_of({"kind": "llm"}) is EDGE_CONDITIONS
 
 
 def test_the_fingerprint_moves_on_an_edit_and_not_on_bookkeeping():
@@ -364,7 +403,7 @@ def test_contract_c1_is_exactly_what_the_routes_import():
                  "chain_to_document", "WorkflowNodeTask", "node_stand_in"):
         assert hasattr(wd, name), name
     assert (wd.GRAPH_VERSION, wd.START_KEY) == (1, "start")
-    assert wd.DocumentRefusal._fields == ("reason", "node_ids", "sentence")
+    assert wd.DocumentRefusal._fields == ("reason", "node_ids", "sentence", "field")
 
     def sig(fn):
         return [(p.name, p.kind.name, p.default is inspect.Parameter.empty)
@@ -374,7 +413,8 @@ def test_contract_c1_is_exactly_what_the_routes_import():
     pos = "POSITIONAL_OR_KEYWORD"
     assert sig(wd.validate_document) == [
         ("graph", pos, True), ("owner", kw, True), ("tasks_by_id", kw, True),
-        ("crew_ids", kw, True), ("owner_is_admin", kw, True), ("own_task_id", kw, True)]
+        ("crew_ids", kw, True), ("owner_is_admin", kw, True), ("own_task_id", kw, True),
+        ("resources", kw, False)]
     assert sig(wd.chain_to_document) == [("rows", pos, True), ("head_id", pos, True),
                                          ("positions", kw, False)]
     assert [p[0] for p in sig(wd.build_pin)] == ["graph", "node_id", "trigger_task", "data"]

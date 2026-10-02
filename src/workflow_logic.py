@@ -210,10 +210,13 @@ def operand(value, ctx):
     texts each likewise; a number, yes/no or null is itself."""
     if isinstance(value, str):
         try:
-            rendered, _missing = render_value(parse_template(value), ctx)
+            template = parse_template(value)
         except RefError:
             return MISSING
-        if rendered is None and parse_template(value).single is not None:
+        rendered, missing = render_value(template, ctx)
+        if template.single is not None and missing:
+            # A field that is not there is MISSING — empty, and equal to
+            # nothing — which a real `null` is not.
             return MISSING
         return rendered
     if isinstance(value, list):
