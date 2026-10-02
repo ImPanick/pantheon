@@ -332,6 +332,28 @@ def test_a_spreadsheet_from_device_opens_here_and_is_not_picked_twice(live, name
     assert all(d["session_id"] == "chat-1" for d in docs)
 
 
+def test_every_sheet_of_a_workbook_opens_the_first_in_front(live):
+    """One document per sheet, as the Library makes them — and the panel opens
+    each of them, not only the first. Written by SheetJS itself: the question
+    is how many sheets become tabs, not whether a reader agrees with a writer."""
+    path = _file(live, "Two regions.xlsx", b"")
+    shown = _node(live.tmp, live.base, f"""
+        await ensureXLSX();
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['region', 'total'], ['north', 17]]), 'North');
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['region', 'total'], ['south', 5]]), 'South');
+        (await import('fs')).writeFileSync({json.dumps(path)}, XLSX.write(wb, {{ type: 'buffer', bookType: 'xlsx' }}));
+        console.log(JSON.stringify(await pick(fileOf({json.dumps(path)}, 'Two regions.xlsx', ''))));
+    """)
+    assert shown["errors"] == [], shown
+    north, south = _docs(live)
+    assert (north["title"], south["title"]) == ("Two regions - North", "Two regions - South")
+    _readable(north["content"], "north,17")
+    _readable(south["content"], "south,5")
+    assert north["source_name"] == south["source_name"] == "Two regions.xlsx"
+    _opened(shown, north["id"], south["id"])
+
+
 @pytest.mark.parametrize("name", ["Launch deck.pptx", "Field guide.epub"])
 def test_a_format_only_markitdown_reads_opens_or_says_why_not(live, name):
     """`.pptx`/`.epub` are read by the server's markitdown, which is optional and
