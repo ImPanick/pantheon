@@ -323,6 +323,17 @@ def _collect_queue_depth(out: _Out) -> None:
             out.add("pantheon_queue_depth", int(n or 0), {"queue": "task_runs"})
         except Exception as e:
             logger.debug("task_runs depth unavailable: %s", e)
+        try:
+            # `P22-11`. Parked workflow runs — waiting for a time, a person's
+            # yes, or Pantheon to be idle — are items waiting too, but they
+            # hold no slot, so they are their own series rather than folded
+            # into the run queue above (which keeps meaning "wants the slot").
+            from core.database import TaskRun, TASK_RUN_PARKED_STATUSES
+            n = (db.query(func.count(TaskRun.id))
+                   .filter(TaskRun.status.in_(TASK_RUN_PARKED_STATUSES)).scalar())
+            out.add("pantheon_queue_depth", int(n or 0), {"queue": "task_runs_waiting"})
+        except Exception as e:
+            logger.debug("task_runs_waiting depth unavailable: %s", e)
     finally:
         db.close()
 

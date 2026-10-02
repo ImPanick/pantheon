@@ -67,7 +67,9 @@ def test_each_workflow_route_is_reached_by_workflow_api_and_by_nothing_else():
     out = json.loads(lines[-1][len("RESULT "):])
     as_is, hidden, mounted = out["as_is"], out["hidden"], out["mounted"]
     assert as_is["source"] == "app", "the checker fell back to a source scan; the app did not import"
-    assert len(mounted) == 9 and all(p.startswith("/api/workflows") for p in mounted)
+    # Nine from Slice B, and wave D's four (`C-W`: palette, waiting, a step's
+    # fields, a parked step's answer) — each spelled out in `workflowApi.js`.
+    assert len(mounted) == 13 and all(p.startswith("/api/workflows") for p in mounted)
     assert not [p for p in as_is["findings"] if p.startswith("/api/workflows")]
     assert sorted(set(hidden["findings"]) - set(as_is["findings"])) == mounted
     assert as_is["exit"] == 0, f"over the ceiling with the caller: {len(as_is['findings'])}"

@@ -544,10 +544,17 @@ def _record_email_received_events(owner: str, account_id: str | None, folder: st
         account_key = (account_id or "default").strip() or "default"
         now = datetime.utcnow().isoformat() + "Z"
         keys = []
+        # `P22-09` (`SLICE-CD-DESIGN` § 0.12). The message dicts are already in
+        # hand, so each event can also say who sent it and what it is about —
+        # `from_address` and `subject`, added to the catalogue's payload after
+        # the three it always carried. `build_trigger` clips both.
+        about = {}
         for e in emails:
             key = (e.get("message_id") or e.get("uid") or "").strip()
             if key and key not in keys:
                 keys.append(key)
+                about[key] = {"from_address": e.get("from_address") or "",
+                              "subject": e.get("subject") or ""}
         if not keys:
             return
 
@@ -590,7 +597,7 @@ def _record_email_received_events(owner: str, account_id: str | None, folder: st
                 # — which is what the email tools take to fetch it.
                 fire_event("email_received", owner,
                            {"account": account_key, "folder": folder,
-                            "message_key": _key})
+                            "message_key": _key, **about.get(_key, {})})
             logger.info("Fired email_received for %d new message(s)", min(len(new_keys), 50))
             try:
                 loop = asyncio.get_running_loop()

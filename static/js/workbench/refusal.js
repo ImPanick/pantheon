@@ -37,6 +37,8 @@ export async function readRefusal(res, fallback) {
     sentence,
     reason: body && typeof body.reason === 'string' ? body.reason : null,
     nodeIds: body && Array.isArray(body.node_ids) ? body.node_ids.map(String) : [],
+    // `P22-09` (`C-W`). The setting a document refusal is about, or ''.
+    field: body && typeof body.field === 'string' ? body.field : '',
   };
 }
 

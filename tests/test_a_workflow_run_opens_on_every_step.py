@@ -29,7 +29,10 @@ from test_a_workflow_is_kept_as_one_document import (  # noqa: F401
 
 NODE_RECORD_KEYS = {"id", "node_id", "kind", "label", "seq", "status", "attempt", "dry", "port",
                     "workflow_version", "started_at", "finished_at", "input", "input_summary",
-                    "output", "error", "steps", "model"}
+                    "output", "error", "steps", "model",
+                    # `P22-11`/`P22-12` (`C-W`): the For-each item and what a
+                    # parked step waits for.
+                    "item", "waiting"}
 PLAN_KEYS = {"node_id", "kind", "name", "when", "depth", "steps", "declined"}
 
 

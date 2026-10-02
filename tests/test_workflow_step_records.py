@@ -31,7 +31,9 @@ from src.event_bus import build_task_handoff, build_trigger  # noqa: E402
 
 C2_NODE_RECORD = {"id", "node_id", "kind", "label", "seq", "status", "attempt", "dry",
                   "port", "workflow_version", "started_at", "finished_at", "input",
-                  "input_summary", "output", "error", "steps", "model"}
+                  "input_summary", "output", "error", "steps", "model",
+                  # `P22-11`/`P22-12` (`C-W`).
+                  "item", "waiting"}
 
 
 @pytest.fixture()

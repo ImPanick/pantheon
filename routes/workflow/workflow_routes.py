@@ -18,6 +18,16 @@ nothing else:
     GET    /api/workflows/{id}/runs/{run_id}                one run, every step (P22-07)
     POST   /api/workflows/{id}/nodes/{node_id}/test         test one step (P22-08)
 
+and, from `/work/notes/SLICE-CD-DESIGN.md` § 3's contract **C-W** (wave D):
+
+    GET    /api/workflows/palette                           what a step can be (P22-09…18)
+    GET    /api/workflows/waiting                           every step waiting now (P22-17)
+    GET    /api/workflows/{id}/nodes/{node_id}/fields       what a step can pick from (P22-09)
+    POST   /api/workflows/{id}/runs/{run_id}/answer         a parked step's yes or no (P22-17)
+
+The two literal ones are declared before `/{workflow_id}`, or FastAPI would
+read "palette" as a workflow's id.
+
 **What is reused, not added.** Running a workflow, its dry run, stopping it and
 its list of runs are the trigger task's own routes (`POST /api/tasks/{id}/run`,
 `/stop`, `GET /api/tasks/{id}/runs`); its trigger settings are `PUT
@@ -171,6 +181,41 @@ def setup_workflow_routes(task_scheduler) -> APIRouter:
         except Exception:
             logger.debug("No task canvas positions for %s", user, exc_info=True)
             return None
+
+    # ── C-W: the palette, and every step waiting now ─────────────────────────
+    #
+    # Literal paths, BEFORE `/{workflow_id}` (FastAPI matches in order).
+
+    @router.get("/palette")
+    @_answers
+    def get_palette(request: Request):
+        """`P22-09`…`P22-18`. What a step can be, for this person: each kind
+        with whether they can use it and why not, the mapping of every field
+        (`value` / `never`, `workflow_slots`, so the browser derives nothing),
+        their integrations (never a key, never a base URL), MCP tools, skills,
+        the AI step's tool choices, the workstation — `wf-effects`'
+        `build_palette` — and the limits this engine holds a document to."""
+        from src import workflow_effects as we
+        from src.task_scheduler import WORKFLOW_PARALLEL_STEPS
+        from src.workflow_runs import foreach_max_items, wait_max_hours
+        user = _owner(request)
+        out = dict(we.build_palette(user) or {})
+        out["limits"] = {"foreach_max_items": foreach_max_items(user),
+                         "wait_max_hours": wait_max_hours(),
+                         "parallel_steps": WORKFLOW_PARALLEL_STEPS}
+        return out
+
+    @router.get("/waiting")
+    @_answers
+    def list_waiting(request: Request):
+        """`P22-17`. Every step of this person's workflows that waits now — for
+        a yes, a time, or Pantheon to be idle — re-offered on page load like
+        the plans the Documents Tidy waits on (`static/js/tasks.js`)."""
+        db = SessionLocal()
+        try:
+            return {"waiting": store.waiting_list(db, _owner(request))}
+        finally:
+            db.close()
 
     # ── 3: one workflow ──────────────────────────────────────────────────────
 
@@ -387,11 +432,21 @@ def setup_workflow_routes(task_scheduler) -> APIRouter:
             # of one, so an unsaved step is tested on its unsaved settings and a
             # refusal is the sentence a save would give.
             from src.workflow_document import GRAPH_VERSION, START_KEY
-            alone = {"v": GRAPH_VERSION, START_KEY: {"position": None},
-                     "nodes": [dict(node, pinned=None)], "edges": []}
-            checked = store.nodes_of(store.check_document(
-                db, alone, owner=wf.owner, own_task_id=trigger.id, rows=rows))[0]
             stored = store.stored_graph(wf)
+            if "{{" in json.dumps(node.get("config") or {}, default=str):
+                # `P22-09`. A step that refers to the steps before it is
+                # checked where it stands — a reference must name a step
+                # upstream of it, which a document of one never has.
+                checked_graph = store.check_document(
+                    db, _with_node(stored, dict(node, pinned=None)), owner=wf.owner,
+                    own_task_id=trigger.id, rows=rows)
+                checked = next(n for n in store.nodes_of(checked_graph)
+                               if str(n.get("id")) == str(node_id))
+            else:
+                alone = {"v": GRAPH_VERSION, START_KEY: {"position": None},
+                         "nodes": [dict(node, pinned=None)], "edges": []}
+                checked = store.nodes_of(store.check_document(
+                    db, alone, owner=wf.owner, own_task_id=trigger.id, rows=rows))[0]
             graph = _with_node(stored, checked)
             envelope, dropped = await _test_input(
                 db, wf, trigger, stored, graph, checked, source, body.get("input"))
@@ -409,7 +464,7 @@ def setup_workflow_routes(task_scheduler) -> APIRouter:
             db.close()
         try:
             result = await task_scheduler.test_workflow_node(
-                trigger, name, checked, input_envelope=envelope, timeout=None)
+                trigger, name, checked, input_envelope=envelope, timeout=None, graph=graph)
         except WorkflowRefused:
             raise
         except Exception as err:
@@ -420,6 +475,121 @@ def setup_workflow_routes(task_scheduler) -> APIRouter:
         out.update(result or {})
         out.update({"input_used": envelope, "dropped": dropped, "source": source})
         return out
+
+    # ── C-W: what a step can pick, and a parked step's answer ────────────────
+
+    @router.get("/{workflow_id}/nodes/{node_id}/fields")
+    @_answers
+    def list_fields(request: Request, workflow_id: str, node_id: str):
+        """`P22-09`. The fields a step can pick from the steps before it — the
+        last run's records, a pinned sample, what a step promises to answer —
+        each with an example and where it came from (`wf-effects`'
+        `available_fields`)."""
+        from src import workflow_effects as we
+        db = SessionLocal()
+        try:
+            wf = store.owned_workflow(db, workflow_id, _owner(request))
+            trigger = store.trigger_of(db, wf)
+            graph = store.stored_graph(wf)
+            if not any(str(n.get("id")) == str(node_id) for n in store.nodes_of(graph)):
+                raise WorkflowRefused(404, "No such step in this workflow.")
+            return we.available_fields(db, wf, trigger, graph, str(node_id))
+        finally:
+            db.close()
+
+    @router.post("/{workflow_id}/runs/{run_id}/answer")
+    @_answers
+    async def answer_step(request: Request, workflow_id: str, run_id: str):
+        """`P22-17` — a parked step's yes or no, from the person whose workflow
+        it is. The skill test's `/test-approval` move, in this order:
+
+          1. owner-scoped: anyone else's workflow is a 404, and nothing is
+             consumed;
+          2. the run must be `waiting` and the step's record must wait on
+             exactly this card;
+          3. the store must still hold it, for this owner and the session it
+             was minted in;
+          4. `consume(..., allow_continuation=False)` — SINGLE_ACTION scope, so
+             Allow resumes the step ONCE and the gate re-arms behind the sealed
+             action (a second gated call in the same turn asks again).
+             `approve_task` or `deny`; `approve` (a chat's scope) is a 400 —
+             there is no chat to remember it in;
+          5. the answer, said with who and when, goes in the step's log and
+             the run's, and the run goes on (`resume_workflow_run`, as a
+             person's). The consumed approval travels in memory: a restart in
+             that window is a lapsed answer, and the step says so.
+
+        The seal, the TTL, single use and owner binding are the store's,
+        unchanged (`FORBIDDEN.md` Part 2).
+        """
+        from src.interactive_gate import STARTED_BY_PERSON
+        from src.task_scheduler import (
+            ANSWER_ALLOW, ANSWER_DENY, ANSWER_LAPSED, StepAnswer, _resolve_task_timezone,
+        )
+        from src.tool_approvals import _normalized_owner, tool_approval_store
+        from src.workflow_runs import _clock
+        body = await _body(request)
+        decision = str(body.get("decision") or "").strip().lower()
+        if decision == "approve":
+            raise WorkflowRefused(400, store.NO_CHAT_TO_REMEMBER)
+        if decision not in store.ANSWER_DECISIONS:
+            raise WorkflowRefused(400, "decision must be approve_task (Allow once) or deny.")
+        node_id = str(body.get("node_id") or "")
+        approval_id = str(body.get("approval_id") or "")
+        item = body.get("item")
+        if item is not None and (isinstance(item, bool) or not isinstance(item, int)):
+            raise WorkflowRefused(400, "item must be a whole number or null.")
+        user = _owner(request)
+        db = SessionLocal()
+        try:
+            wf = store.owned_workflow(db, workflow_id, user)
+            run, rec, waiting = store.find_waiting_step(db, wf, run_id, node_id, item, approval_id)
+            trigger = store.trigger_of(db, wf)
+            owner = wf.owner
+            session = waiting.get("session_id") or ""
+            tool = waiting.get("tool") or "the action"
+            label = rec.label or rec.node_id
+            tz_name = _resolve_task_timezone(db, trigger) if trigger is not None else None
+            task_id = run.task_id
+        finally:
+            db.close()
+        pending = tool_approval_store.peek(approval_id)
+        if pending is not None and (pending.owner != _normalized_owner(owner)
+                                    or pending.session_id != session):
+            # Not this workflow's card: nothing about it is said or consumed.
+            raise WorkflowRefused(404, "No such question.")
+        if not await task_scheduler._claim_for_resume(task_id):
+            raise WorkflowRefused(409, "The workflow is busy for a moment. Answer again.")
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        who = user or owner or "you"
+        at = _clock(now, tz_name)
+        if pending is None:
+            verdict = StepAnswer(node_id, item, ANSWER_LAPSED,
+                                 f"Nobody answered in time — {tool} was not done.")
+            outcome = "lapsed"
+        else:
+            said = {}
+            exact = tool_approval_store.consume(
+                approval_id, decision=decision, owner=owner, session_id=session,
+                allow_continuation=False, outcome=said)
+            if decision == "deny":
+                verdict = StepAnswer(node_id, item, ANSWER_DENY,
+                                     f"Denied by {who} at {at}: {tool} — it was not done.")
+                outcome = "denied"
+            elif exact is None:
+                verdict = StepAnswer(node_id, item, ANSWER_LAPSED,
+                                     f"Nobody answered in time — {tool} was not done.")
+                outcome = "lapsed"
+            else:
+                verdict = StepAnswer(node_id, item, ANSWER_ALLOW,
+                                     f"Allowed once by {who} at {at}: {tool}",
+                                     exact_approval=exact)
+                outcome = "resumed"
+        task_scheduler._spawn_resume(task_id, run.id, started_by=STARTED_BY_PERSON,
+                                     answer=verdict)
+        return {"ok": True, "outcome": outcome, "sentence": verdict.sentence,
+                "step": label}
 
     return router
 

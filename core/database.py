@@ -1042,8 +1042,18 @@ class EditorDraft(TimestampMixin, Base):
 #            whole reason this value exists. Written by `_mark_run_aborted`,
 #            `start` (the restart sweep) and `_execute_task_locked`.
 #
-# Only `queued` and `running` mean "still in flight"; the other four are
-# terminal.
+#   waiting  `P22-11` / `P22-17`. A workflow run PARKED: a step waits for a
+#            time (Wait), for a person's yes (a card), or for Pantheon to be
+#            idle again (a foreground takeover). No coroutine holds it — the
+#            model slot, the time limit and `_executing` are all released —
+#            and its step records are the run's state, so it survives a
+#            restart and resumes where it stopped. NOT finished: a new trigger
+#            while a run waits is a `skipped` run that says why (`B674`), and
+#            Stop ends it. Written by `_execute_task_locked`'s `TaskWaiting`
+#            branch; left by `resume_workflow_run` (→ `running`).
+#
+# `queued` and `running` mean "a coroutine holds it" (ACTIVE); `waiting` means
+# "in flight, parked" (PARKED); the four others are terminal.
 TASK_RUN_ACTIVE_STATUSES = ("queued", "running")
 
 # `B78`. The vocabulary above was prose plus ONE constant covering two of the
@@ -1061,9 +1071,20 @@ TASK_RUN_ACTIVE_STATUSES = ("queued", "running")
 # carries the same three lists for the client, and a test asserts the two
 # languages still agree — which is the check that was missing when
 # `_pollTaskNotifications` came to know two of the six.
-TASK_RUN_STATUSES = ("queued", "running", "success", "error", "skipped", "aborted")
+TASK_RUN_STATUSES = ("queued", "running", "success", "error", "skipped", "aborted",
+                     "waiting")
+# `P22-11`. A parked run: in flight, held by no coroutine. Appended rather than
+# slotted in after `running`, so nothing that reads the six by position moves
+# (`Law 1`). `static/js/runStatus.js` carries `RUN_PARKED_STATUSES`, and
+# `.pantheon/check-run-statuses.py` holds the two equal.
+TASK_RUN_PARKED_STATUSES = ("waiting",)
+# `B674`'s question — "is a run of this task still going?" — is asked of this
+# set: a parked run holds its workflow exactly as a running one does. ACTIVE
+# keeps meaning "a coroutine holds it", so the restart sweep (which aborts
+# what a dead process held) leaves a waiting run alone.
+TASK_RUN_IN_FLIGHT_STATUSES = TASK_RUN_ACTIVE_STATUSES + TASK_RUN_PARKED_STATUSES
 TASK_RUN_TERMINAL_STATUSES = tuple(
-    s for s in TASK_RUN_STATUSES if s not in TASK_RUN_ACTIVE_STATUSES
+    s for s in TASK_RUN_STATUSES if s not in TASK_RUN_IN_FLIGHT_STATUSES
 )
 
 # `B112`. Which outcomes are worth telling the owner about, and why — one
@@ -1127,6 +1148,11 @@ TASK_RUN_NOTIFY: "dict[str, tuple[bool, str]]" = {
         "for when Pantheon is idle (B1060) — one toast per task per restart, "
         "about something already rescheduled, is noise. The Activity row carries "
         "it, and _mark_run_aborted's message says which event it was.",
+    ),
+    "waiting": (
+        False,
+        "the run has not ended; a step waiting for a yes asks through its own "
+        "card, and a Wait is the author's choice",
     ),
 }
 
@@ -1229,8 +1255,9 @@ class TaskRunNode(Base):
     made, how it ended. The record `B806` says `TaskRun` cannot hold.
 
     `status` is `TASK_RUN_STATUSES`' vocabulary and nothing else —
-    `running / success / error / skipped / aborted`; never `queued`, and a
-    step that asked to be deferred is recorded `skipped` with why.
+    `running / success / error / skipped / aborted`, and `waiting` for a step
+    a parked run stopped at (`P22-11`); never `queued`, and a step that asked
+    to be deferred is recorded `skipped` with why.
     `.pantheon/check-run-statuses.py` reads this model as it reads `TaskRun`,
     so a literal outside the six fails the build.
 
@@ -1271,11 +1298,23 @@ class TaskRunNode(Base):
     error            = Column(Text, nullable=True)
     steps            = Column(Text, nullable=True)   # JSON: this step's own step log
     model            = Column(String, nullable=True)
+    # `P22-12`. Which item of a For-each step this record is (0-based), or
+    # NULL for a step's own record. One record per item, so a resumed run
+    # does not run a finished item again.
+    item             = Column(Integer, nullable=True)
+    # `P22-11`. When a `waiting` step is due (a Wait's time), or NULL. The
+    # sweeper reads `(status, resume_at)`.
+    resume_at        = Column(DateTime, nullable=True)
+    # `P22-11` / `P22-17`. What a `waiting` step waits for, as JSON
+    # `{kind: "time"|"approval"|"idle", since, until?, approval_id?, …}`
+    # (`WAITING_KINDS`, `src/workflow_runs.py`); NULL otherwise.
+    waiting          = Column(Text, nullable=True)
 
     __table_args__ = (
         Index('ix_task_run_nodes_run', 'run_id', 'seq'),
         Index('ix_task_run_nodes_finished', 'finished_at'),
         Index('ix_task_run_nodes_node', 'node_id'),
+        Index('ix_task_run_nodes_wait', 'status', 'resume_at'),
     )
 
 
@@ -1736,6 +1775,48 @@ def _migrate_add_task_run_steps_column():
         except Exception:
             # Never opened, or already closed by the error path above.
             pass
+
+def _migrate_add_task_run_node_columns():
+    """`P22-11` / `P22-12`. Three columns on `task_run_nodes`, and their index.
+
+    The table is Slice B's and may already exist on an install, so `create_all`
+    cannot add them — an ALTER, modelled on the two task-run migrations above,
+    guarded by `PRAGMA table_info` and idempotent. All three are nullable: a
+    record written before them is a step's own record (`item` NULL) that waits
+    for nothing (`resume_at`, `waiting` NULL), which is what every one of them
+    is. The `(status, resume_at)` index the sweeper reads is created after the
+    columns, `IF NOT EXISTS`, because `create_all` makes indexes only with the
+    table it creates.
+    """
+    import sqlite3
+    db_path = DATABASE_URL.replace("sqlite:///", "")
+    if not os.path.exists(db_path):
+        return
+    conn = None
+    try:
+        conn = sqlite3.connect(db_path)
+        cursor = conn.execute("PRAGMA table_info(task_run_nodes)")
+        columns = [row[1] for row in cursor.fetchall()]
+        if not columns:
+            return
+        for name, ddl in (("item", "INTEGER"), ("resume_at", "DATETIME"),
+                          ("waiting", "TEXT")):
+            if name not in columns:
+                conn.execute(f"ALTER TABLE task_run_nodes ADD COLUMN {name} {ddl}")
+                logging.getLogger(__name__).info(
+                    "Migrated: added '%s' column to task_run_nodes", name)
+        conn.execute("CREATE INDEX IF NOT EXISTS ix_task_run_nodes_wait "
+                     "ON task_run_nodes (status, resume_at)")
+        conn.commit()
+    except Exception as e:
+        logging.getLogger(__name__).warning(f"task_run_nodes column migration failed: {e}")
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            # Never opened, or already closed by the error path above.
+            pass
+
 
 def _migrate_add_scheduled_task_else_column():
     """Add `else_task_id` to scheduled_tasks if it isn't there.
@@ -2976,6 +3057,7 @@ def init_db():
     _migrate_add_comparison_vote_meta_column()
     _migrate_add_task_run_model_column()
     _migrate_add_task_run_steps_column()
+    _migrate_add_task_run_node_columns()
     _migrate_add_scheduled_task_else_column()
     _migrate_add_scheduled_task_execution_columns()
     _migrate_add_owner_column()

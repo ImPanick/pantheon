@@ -1935,6 +1935,49 @@ class ToolRunSecurityContext:
             self._note_taint(tool_name, TAINT_KIND_TOOL)
 
 
+def authored_call_context(call: Any, *, rung: Any, run_id: str,
+                          allow_rule_lookup: Any = None) -> ToolRunSecurityContext:
+    """`P22-17` (`D-2026-10-01-05` §4). ONE deterministic workflow step's call,
+    whose tool and every `never` slot the author fixed at save and whose
+    `value` slots `workflow_slots.render_call` filled at run — proven by the
+    type: anything that is not a `RenderedCall` raises `TypeError`. No model
+    chose this action, so the taint the gate exists for (untrusted text
+    choosing a privileged action) is absent by construction.
+
+    **The adversary (`Law 17`):** whoever writes an inbound mail or webhook
+    body — and, through a model's output, whoever steered it. Their bytes may
+    reach `value` slots, as JSON values `render_call` placed; they never choose
+    the tool, the destination, a recipient, a URL, a host or a command, which
+    the author typed and the document rule refuses a reference in.
+
+    Starts untainted, with NO standing approval (`approval_gate_bypassed`
+    False, whatever any other step was allowed) and no allow rules unless the
+    rung consults them, at the owner's rung (`apply_role_floor(
+    resolve_trust_rung(), owner)`, the caller's — this module reads no
+    setting). Nothing in `decision_for`, `POST_EXTERNAL_BLOCKED_EFFECTS` or
+    `observe_tool_result` changes (`FORBIDDEN.md` Part 2): at the default rung
+    an untainted context is allowed; at a stricter one the person asked to be
+    asked, and the step parks on a card. A step's RESULT stays untrusted — a
+    Prompt step that reads it is wrapped and gated exactly as today.
+    """
+    from src.workflow_slots import RenderedCall
+
+    if not isinstance(call, RenderedCall):
+        raise TypeError(
+            "authored_call_context takes a workflow_slots.RenderedCall — a call "
+            "the author fixed and render_call filled — and nothing else")
+    run_rung = coerce_trust_rung(rung)
+    return ToolRunSecurityContext(
+        external_untrusted_context_seen=False,
+        approval_gate_bypassed=False,
+        delegated_credential=False,
+        rung=run_rung,
+        run_id=str(run_id),
+        allow_rule_lookup=(allow_rule_lookup if rung_consults_allow_rules(run_rung)
+                           else None),
+    )
+
+
 def blocked_tool_result(tool_name: Any, reason: str) -> tuple[str, dict]:
     return (
         f"{tool_name}: BLOCKED",

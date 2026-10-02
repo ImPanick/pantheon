@@ -92,8 +92,13 @@ EVENT_CATALOGUE = (
      "payload_summary": "the research session's id and its topic"},
     {"name": EVENT_EMAIL_RECEIVED,
      "description": "Fires when new inbox mail is observed",
-     "payload": ("account", "folder", "message_key"),
-     "payload_summary": "the account, the folder and the message's id"},
+     # `P22-09` (`SLICE-CD-DESIGN` § 0.12). Who sent it and what it is about,
+     # ADDED after the three it always carried (`Law 1`): "mail from my bank"
+     # could not be routed by sender while the payload named only where the
+     # message sits. Both are text someone else wrote — `trigger_context_message`
+     # wraps the whole envelope untrusted, as it always has.
+     "payload": ("account", "folder", "message_key", "from_address", "subject"),
+     "payload_summary": "the account, the folder, the message's id, who sent it and its subject"},
     {"name": EVENT_SKILL_ADDED,
      "description": "Fires when a new skill is created",
      "payload": ("name",),
@@ -158,8 +163,12 @@ DEFAULT_TRIGGER_COUNT = 1
 _task_scheduler = None
 
 
-def _clip(value, limit: int = TRIGGER_FIELD_MAX_CHARS):
+def clip_field(value, limit: int = TRIGGER_FIELD_MAX_CHARS):
     """One payload field, small enough to put in a prompt and a row.
+
+    `P22-09`. Public, because a workflow step's named slots ride in the same
+    untrusted block a trigger payload does and are clipped by the same rule
+    (`Law 7`); `_clip` stays as its old name for every caller here.
 
     Structure survives the cap: a parsed webhook body stays a dict as long as
     it fits, so a task can be told `data.json.issue.title` rather than handed
@@ -179,6 +188,9 @@ def _clip(value, limit: int = TRIGGER_FIELD_MAX_CHARS):
     if len(text) <= limit:
         return value
     return text[:limit].rstrip() + "\u2026"
+
+
+_clip = clip_field
 
 
 class RunOrigin(NamedTuple):
@@ -469,15 +481,16 @@ def _workflow_run_in_flight(db, task) -> bool:
     tell a workflow's own write from anyone else's (its context var is a
     different process's). `B674`'s rule (one workflow runs once at a time),
     asked of the run rows instead of the in-memory set.
+
+    `P22-11`. The rule is `workflow_runs.run_in_flight`, written once, so a
+    run that is parked (`waiting`) holds its workflow here exactly as it does
+    in the scheduler.
     """
     if (getattr(task, "task_type", None) or "llm") != "workflow":
         return False
-    from core.database import TaskRun, TASK_RUN_ACTIVE_STATUSES
+    from src.workflow_runs import run_in_flight
 
-    return db.query(TaskRun.id).filter(
-        TaskRun.task_id == task.id,
-        TaskRun.status.in_(TASK_RUN_ACTIVE_STATUSES),
-    ).first() is not None
+    return run_in_flight(db, task.id) is not None
 
 
 async def _handle_event(event_name: str, owner: Optional[str] = None,

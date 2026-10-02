@@ -13,7 +13,9 @@
 // each written literally below, keep that count where it was; a helper that
 // assembled them from pieces would hide them from the checker and push it
 // over. `tests/test_every_workflow_route_has_its_caller.py` runs the checker
-// without this file and watches the nine come back.
+// without this file and watches the nine come back. Wave D (`C-W`) adds four —
+// the palette, the waiting list, a step's fields and a parked step's answer —
+// each spelled out the same way, so the count still does not move.
 //
 // **A refusal is a `WorkflowRefusal`**, carrying the status and the server's
 // own sentence (`{detail}`, read by `refusal.js`), and — for a document the
@@ -24,7 +26,7 @@ import { readRefusal } from './refusal.js';
 
 /** Thrown for any answer that is not a 2xx, and when nothing answered. */
 export class WorkflowRefusal extends Error {
-  constructor(status, sentence, { reason = null, nodeIds = [] } = {}) {
+  constructor(status, sentence, { reason = null, nodeIds = [], field = '' } = {}) {
     super(sentence);
     this.name = 'WorkflowRefusal';
     /** The HTTP status; 0 when Pantheon could not be reached. */
@@ -35,6 +37,10 @@ export class WorkflowRefusal extends Error {
     this.reason = reason;
     /** The steps that refusal names. */
     this.nodeIds = nodeIds;
+    /** `P22-09`. The setting the refusal is about ("path", "args.channel"),
+     *  so the panel can put the sentence on that field; '' when it is about
+     *  the step or the whole. */
+    this.field = field;
   }
 }
 
@@ -66,7 +72,8 @@ export function createWorkflowApi({ fetch } = {}) {
     }
     if (!res || !res.ok) {
       const r = await readRefusal(res);
-      throw new WorkflowRefusal(r.status, r.sentence, { reason: r.reason, nodeIds: r.nodeIds });
+      throw new WorkflowRefusal(r.status, r.sentence,
+        { reason: r.reason, nodeIds: r.nodeIds, field: r.field || '' });
     }
     try {
       return await res.json();
@@ -168,6 +175,35 @@ export function createWorkflowApi({ fetch } = {}) {
      *  route every task surface reads; an addition beside `C3`'s list. */
     listTasks() {
       return call('GET', `/api/tasks`);
+    },
+    /** `C-W`. What a step can be, for this person: every kind (available or
+     *  not, and why), each field's mapping (`value` / `never`, with the
+     *  reason), integrations, MCP tools, skills, the AI step's tools, the
+     *  workstation, the limits and the operators. The browser derives none of
+     *  it. → `{ kinds, integrations, mcp_tools, skills, ai_tools, workstation,
+     *  limits, operators }` */
+    getPalette() {
+      return call('GET', `/api/workflows/palette`);
+    },
+    /** `C-W`. The fields a step can pick from the steps before it, each with
+     *  an example and where it came from. → `{ sources: [{ node_id, label,
+     *  kind, origin, at, fields: [{ ref, path, type, example }] }] }` */
+    listFields(id, nodeId) {
+      return call('GET', `/api/workflows/${enc(id)}/nodes/${enc(nodeId)}/fields`);
+    },
+    /** `C-W`. Every step of this person's workflows that waits now — for a
+     *  yes (`approval` is the card while it can still be answered), a time,
+     *  or Pantheon to be idle. → `{ waiting: [{ workflow_id, workflow, run_id,
+     *  node_id, item, label, kind, since, until, approval }] }` */
+    listWaiting() {
+      return call('GET', `/api/workflows/waiting`);
+    },
+    /** `C-W`. A parked step's answer: `decision` is `approve_task` (Allow
+     *  once) or `deny`; `item` is the For-each item, or null.
+     *  → `{ ok, outcome: "resumed" | "denied" | "lapsed", sentence, step }` */
+    answerStep(id, runId, { nodeId, item = null, approvalId, decision } = {}) {
+      return call('POST', `/api/workflows/${enc(id)}/runs/${enc(runId)}/answer`,
+        { node_id: nodeId, item: item == null ? null : item, approval_id: approvalId, decision });
     },
   };
 }

@@ -434,9 +434,9 @@ class TaskDeferred(BaseException):
 
 
 # `P22-11` / `P22-17`. What a parked step is waiting for — stored in a step
-# record's `waiting` JSON (`FORBIDDEN.md` Part 1 at the merge): a time (a Wait
-# step), a person's yes (a step whose tool needs one), or Pantheon being idle (a
-# step a foreground takeover interrupted, `SLICE-CD-DESIGN` § 1.4).
+# record's `waiting` JSON (`FORBIDDEN.md` Part 1): a time (a Wait step), a
+# person's yes (a step whose tool needs one), or Pantheon being idle (a step a
+# foreground takeover interrupted, `SLICE-CD-DESIGN` § 1.4).
 WAIT_KIND_TIME = "time"
 WAIT_KIND_APPROVAL = "approval"
 WAIT_KIND_IDLE = "idle"
@@ -444,24 +444,42 @@ WAIT_KINDS = (WAIT_KIND_TIME, WAIT_KIND_APPROVAL, WAIT_KIND_IDLE)
 
 
 class TaskWaiting(BaseException):
-    """Raised when a workflow run parks: a step is waiting for a time, a yes or
-    an idle Pantheon, and the run's coroutine exits so its model slot, its time
-    limit and its place in `_executing` are released (`P22-11`).
+    """`P22-11` / `P22-17`. A workflow step — or a whole workflow run — parks.
 
-    A `BaseException`, beside `TaskNoop` and `TaskDeferred`, for their reason:
-    `_execute_llm_task`'s `except Exception` fallback must not swallow it and
-    turn a parked step into a failed one. `summary` is the run's result
-    sentence ("Waiting for your yes on “Send reply”"); `kind` a `WAIT_KINDS`
-    word; `details` what resuming needs (the approval id and session, the card,
-    the time), carried as given."""
+    Raised by a step that must wait for something no coroutine should hold the
+    model slot for: a person's yes on a card (`kind="approval"`), a time (a
+    Wait step, `kind="time"`) or Pantheon being idle again (`kind="idle"`). The
+    walker records the step `waiting` with `detail` as its JSON and, once
+    nothing else in the run can go on, raises one of these itself so
+    `_execute_task_locked` writes the run `waiting` and lets go of everything —
+    its model slot, its time limit and its place in `_executing`.
 
-    def __init__(self, summary: str = "", *, kind: str | None = None, **details):
+    A `BaseException` beside `TaskNoop` and `TaskDeferred`, for their reason:
+    `_execute_llm_task`'s `except Exception` fallback (a simple model call when
+    the agent loop fails) would otherwise swallow a card and answer anyway.
+
+    One class at the merge (`Law 7`): `wf-rules` and `wf-walker` each carried
+    one, the first spelling its fields `summary`/`details`, the second
+    `sentence`/`detail`; this keeps `wf-walker`'s constructor and attributes,
+    which the walker reads, `wf-rules`' check that `kind` is a `WAIT_KINDS`
+    word, and the other spelling as read-only aliases.
+    """
+
+    def __init__(self, sentence: str = "", *, kind: str | None = None, **detail):
         if kind is not None and kind not in WAIT_KINDS:
             raise ValueError(f"not a wait kind: {kind!r}")
-        super().__init__(summary)
-        self.summary = summary
+        super().__init__(sentence)
+        self.sentence = sentence
         self.kind = kind
-        self.details = details
+        self.detail = dict(detail)
+
+    @property
+    def summary(self) -> str:
+        return self.sentence
+
+    @property
+    def details(self) -> dict:
+        return self.detail
 
 
 # ── `P8-24` · what a node hands back ────────────────────────────────────────

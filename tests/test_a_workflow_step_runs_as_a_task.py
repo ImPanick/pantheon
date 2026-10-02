@@ -99,6 +99,9 @@ def task_db(monkeypatch, tmp_path):
     monkeypatch.setattr(cdb, "SessionLocal", factory)
     import src.tool_index as tool_index
     monkeypatch.setattr(tool_index, "get_tool_index", lambda: None)
+    # Wave D's C-R / C-E halves, where this branch lacks them (none merged).
+    from tests.helpers import workflow_cd_contract
+    workflow_cd_contract.install(monkeypatch)
     db = factory()
     db.add(ScheduledTask(id="wf", owner="alice", name="Morning", task_type="workflow",
                          tz_name="Europe/London"))

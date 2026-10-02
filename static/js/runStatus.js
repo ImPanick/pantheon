@@ -63,14 +63,23 @@
  * they are stored in rows and pinned by `FORBIDDEN.md`.
  */
 
-/** `queued → running → success | error | skipped | aborted` — core/database.py. */
-export const RUN_STATUSES = ['queued', 'running', 'success', 'error', 'skipped', 'aborted'];
+/** `queued → running → success | error | skipped | aborted`, and `waiting` for
+ *  a parked workflow run (`P22-11`, appended so nothing read by position
+ *  moves) — core/database.py. */
+export const RUN_STATUSES = ['queued', 'running', 'success', 'error', 'skipped', 'aborted', 'waiting'];
 
 /** The two that mean "still in flight". The same pair Python exports as
  *  `TASK_RUN_ACTIVE_STATUSES`; a test asserts the two lists are equal, because
  *  before `B78` the JS half was spelled out by hand at each site that needed
  *  it and one of them had quietly grown a third member. */
 export const RUN_ACTIVE_STATUSES = ['queued', 'running'];
+
+/** `P22-11`. A run that is still in flight but held by nothing — a workflow
+ *  run parked on a Wait, a person's yes, or Pantheon being idle again. The
+ *  list Python exports as `TASK_RUN_PARKED_STATUSES`;
+ *  `.pantheon/check-run-statuses.py` holds the two equal. Not ACTIVE: no
+ *  coroutine holds it, so nothing on the page should count it as running. */
+export const RUN_PARKED_STATUSES = ['waiting'];
 
 /** Both subjects a run status can belong to. An enum, not a boolean: a third
  *  kind of thing is a new column here, not a new argument (`Law 10`). */
@@ -90,6 +99,11 @@ const WORDS = {
   error:    ['Failed',   'Failed'],
   skipped:  ['Skipped',  'Skipped'],
   aborted:  ['Stopped',  'Stopped'],
+  // `P22-11`. *Waiting* for a job — a run parked until a time, a person's yes
+  // or Pantheon being idle. The message column already says *Waiting* for
+  // `queued`, so a message that ever reads this status is *Held*, not a second
+  // meaning of the same word on the same surface.
+  waiting:  ['Waiting',  'Held'],
 };
 
 /**
@@ -111,7 +125,8 @@ export function runStatusTone(status) {
     case 'failed': return 'error';      // `failed` is not in the vocabulary;
                                         // accepted because older rows carry it.
     case 'queued':
-    case 'running': return 'pending';
+    case 'running':
+    case 'waiting': return 'pending';   // `P22-11`: not over, not a verdict
     case 'skipped':
     case 'aborted': return 'info';
     default: return null;               // unknown / absent — caller decides.
@@ -141,10 +156,12 @@ export function runStatusDotClass(status) {
 }
 
 /** Whether a stored status means the run is over. The four terminal values,
- *  stated as the complement of the active pair so a seventh status added to
- *  `RUN_STATUSES` is terminal-by-default rather than silently neither. */
+ *  stated as the complement of the in-flight ones (active and parked) so an
+ *  eighth status added to `RUN_STATUSES` is terminal-by-default rather than
+ *  silently neither. `P22-11`: a `waiting` run is not over. */
 export function isRunFinished(status) {
-  return !RUN_ACTIVE_STATUSES.includes(status || '');
+  const s = status || '';
+  return !RUN_ACTIVE_STATUSES.includes(s) && !RUN_PARKED_STATUSES.includes(s);
 }
 
 /**

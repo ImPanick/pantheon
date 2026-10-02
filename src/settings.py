@@ -266,6 +266,20 @@ DEFAULT_SETTINGS = {
     #
     # SETTINGS-ONLY, for the reason spelled out at `events_retention_days`.
     "workflow_node_records_days": 30,
+    # `P22-12`. How many items one For-each step may run (`src/workflow_runs.py`
+    # owns the bounds). Over it the step is refused with this name; nothing is
+    # cut silently. Resolves with the owner, so a role may carry it.
+    "workflow_foreach_max_items": 50,
+    # `P22-11`. The longest a Wait step may wait, in hours (7 days).
+    "workflow_wait_max_hours": 168,
+    # `P22-17` (`D-2026-10-02-01` §1). How long a parked workflow step's
+    # approval card waits for an answer: twelve hours, so an overnight
+    # question is still answerable in the morning. Its own key, beside
+    # `approval_timeout_seconds` and resolved the same four ways, held to the
+    # store's bounds — so the TTL `FORBIDDEN.md` Part 2 keeps is moved for one
+    # kind of card, never lifted. In `_SELF_RESTRAINT_KEYS` for the reason
+    # that key is.
+    "workflow_approval_timeout_seconds": 43200,
     # Serve GET /metrics for a Prometheus scrape (`P16-12`). Ships OFF.
     #
     # Off is not shyness about telemetry — `Law 16` clause 4 explicitly permits
@@ -911,9 +925,19 @@ def role_limit_ranges() -> dict[str, tuple[int, int]]:
     # `P22-07`. A workflow step's record cap resolves with the step's owner and
     # ships a real default — the sixth of that kind, here for the same reason.
     from src.workflow_runs import NODE_RECORD_MAX_CHARS_RANGE, NODE_RECORD_MAX_CHARS_SETTING
+    # `P22-12` / `P22-17`. Two more of that kind: the For-each cap and a
+    # parked step's card deadline, each resolved with the owner.
+    from src.workflow_runs import (
+        FOREACH_MAX_ITEMS_RANGE,
+        FOREACH_MAX_ITEMS_SETTING,
+        WORKFLOW_APPROVAL_TIMEOUT_SETTING,
+    )
 
     ranges = dict(LIMIT_RANGES)
     ranges[NODE_RECORD_MAX_CHARS_SETTING] = NODE_RECORD_MAX_CHARS_RANGE
+    ranges[FOREACH_MAX_ITEMS_SETTING] = FOREACH_MAX_ITEMS_RANGE
+    ranges[WORKFLOW_APPROVAL_TIMEOUT_SETTING] = (
+        MIN_APPROVAL_TTL_SECONDS, MAX_APPROVAL_TTL_SECONDS)
     ranges[TASK_CONCURRENCY_CAP_SETTING] = (1, TASK_CONCURRENCY_CAP_MAX)
     ranges[APPROVAL_TIMEOUT_SETTING] = (
         MIN_APPROVAL_TTL_SECONDS, MAX_APPROVAL_TTL_SECONDS)
@@ -949,10 +973,15 @@ def int_setting_ranges() -> dict[str, tuple[int, int]]:
         MIN_APPROVAL_TTL_SECONDS,
     )
     from src.workflow_runs import (
+        FOREACH_MAX_ITEMS_RANGE,
+        FOREACH_MAX_ITEMS_SETTING,
         NODE_RECORD_MAX_CHARS_RANGE,
         NODE_RECORD_MAX_CHARS_SETTING,
         NODE_RECORDS_DAYS_RANGE,
         NODE_RECORDS_DAYS_SETTING,
+        WAIT_MAX_HOURS_RANGE,
+        WAIT_MAX_HOURS_SETTING,
+        WORKFLOW_APPROVAL_TIMEOUT_SETTING,
     )
     from src.upload_limits import (
         MAX_UPLOAD_BURST_LIMIT,
@@ -1022,6 +1051,12 @@ def int_setting_ranges() -> dict[str, tuple[int, int]]:
         # kept, imported from the module that owns them (`Law 7`).
         NODE_RECORD_MAX_CHARS_SETTING: NODE_RECORD_MAX_CHARS_RANGE,
         NODE_RECORDS_DAYS_SETTING: NODE_RECORDS_DAYS_RANGE,
+        # `P22-11` / `P22-12` / `P22-17`, the same way.
+        FOREACH_MAX_ITEMS_SETTING: FOREACH_MAX_ITEMS_RANGE,
+        WAIT_MAX_HOURS_SETTING: WAIT_MAX_HOURS_RANGE,
+        WORKFLOW_APPROVAL_TIMEOUT_SETTING: (
+            MIN_APPROVAL_TTL_SECONDS, MAX_APPROVAL_TTL_SECONDS,
+        ),
     }
 
 

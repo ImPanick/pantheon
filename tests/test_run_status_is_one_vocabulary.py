@@ -67,6 +67,11 @@ WORDS_JS = ROOT / "static" / "js" / "runStatus.js"
 pytestmark = pytest.mark.skipif(not shutil.which("node"), reason="node binary not on PATH")
 
 SIX = ["queued", "running", "success", "error", "skipped", "aborted"]
+# `P22-11` appended a seventh, `waiting` — a parked workflow run — in one
+# change across Python, `runStatus.js`, `TASK_RUN_NOTIFY` and the checker.
+# The six surfaces below that word the six are unchanged; the vocabulary
+# itself is these seven.
+STORED = SIX + ["waiting"]
 
 
 def _h(harness: Path, *args):
@@ -95,25 +100,34 @@ def test_python_and_the_client_hold_the_same_six_values():
     three."""
     from core.database import (
         TASK_RUN_STATUSES, TASK_RUN_ACTIVE_STATUSES, TASK_RUN_TERMINAL_STATUSES,
+        TASK_RUN_PARKED_STATUSES, TASK_RUN_IN_FLIGHT_STATUSES,
     )
     out = _h_eval()
-    assert list(TASK_RUN_STATUSES) == SIX
+    assert list(TASK_RUN_STATUSES) == STORED
     assert list(TASK_RUN_ACTIVE_STATUSES) == ["queued", "running"]
+    assert list(TASK_RUN_PARKED_STATUSES) == ["waiting"]
     assert out["six"] == list(TASK_RUN_STATUSES), "JS and Python disagree on the six"
     assert out["active"] == list(TASK_RUN_ACTIVE_STATUSES)
-    # Derived, not re-typed: a seventh value lands in exactly one of the two.
+    assert out["parked"] == list(TASK_RUN_PARKED_STATUSES)
+    # Derived, not re-typed: a new value lands in exactly one of the three.
+    # `P22-11`: terminal is the complement of IN FLIGHT (active + parked), so
+    # a waiting run is never "finished" — in Python or in the browser.
+    assert list(TASK_RUN_IN_FLIGHT_STATUSES) == ["queued", "running", "waiting"]
     assert list(TASK_RUN_TERMINAL_STATUSES) == [
-        s for s in TASK_RUN_STATUSES if s not in TASK_RUN_ACTIVE_STATUSES
+        s for s in TASK_RUN_STATUSES if s not in TASK_RUN_IN_FLIGHT_STATUSES
     ]
-    assert set(TASK_RUN_ACTIVE_STATUSES) & set(TASK_RUN_TERMINAL_STATUSES) == set()
+    assert set(TASK_RUN_IN_FLIGHT_STATUSES) & set(TASK_RUN_TERMINAL_STATUSES) == set()
+    assert out["finished"]["waiting"] is False
+    assert out["dots"]["waiting"] == "waiting"
 
 
 def _h_eval():
     proc = subprocess.run(
         ["node", "--input-type=module", "--eval",
-         "import { RUN_STATUSES, RUN_ACTIVE_STATUSES, runStatusDotClass, isRunFinished }"
-         " from '%s';\n"
+         "import { RUN_STATUSES, RUN_ACTIVE_STATUSES, RUN_PARKED_STATUSES, runStatusDotClass,"
+         " isRunFinished } from '%s';\n"
          "console.log(JSON.stringify({ six: RUN_STATUSES, active: RUN_ACTIVE_STATUSES,"
+         " parked: RUN_PARKED_STATUSES,"
          " dots: Object.fromEntries(RUN_STATUSES.concat(['failed','nope'])"
          "   .map(s => [s, runStatusDotClass(s)])),"
          " finished: Object.fromEntries(RUN_STATUSES.map(s => [s, isRunFinished(s)])) }));"
@@ -457,9 +471,20 @@ def _worktree(tmp_path: Path) -> Path:
     ("src/task_scheduler.py", 'run.status = "skipped"',
      'run.status = "cancelled"', "cancelled"),
     # The other shape the row names: a value declared in one language only.
-    ("static/js/runStatus.js", "'aborted'];", "'aborted', 'cancelled'];", "cancelled"),
+    # (`P22-11`: the array now ends at `waiting`, the anchor moved with it.)
+    ("static/js/runStatus.js", "'waiting'];", "'waiting', 'cancelled'];", "cancelled"),
     # And the one `B84` closed, re-armed: a status with no word to show for it.
     ("static/js/runStatus.js", "  aborted:  ['Stopped',  'Stopped'],\n", "", "aborted"),
+    # `P22-11`: a parked status one language knows and the other does not —
+    # the browser would call a waiting run finished while the scheduler holds
+    # its workflow.
+    ("static/js/runStatus.js", "export const RUN_PARKED_STATUSES = ['waiting'];",
+     "export const RUN_PARKED_STATUSES = ['waiting', 'held'];", "RUN_PARKED_STATUSES"),
+    ("core/database.py", 'TASK_RUN_PARKED_STATUSES = ("waiting",)',
+     'TASK_RUN_PARKED_STATUSES = ("waiting", "queued")', "TASK_RUN_PARKED_STATUSES"),
+    # And `waiting` with no stated notify policy (`B112`).
+    ("core/database.py", '    "waiting": (\n        False,\n',
+     '    "waiting_": (\n        False,\n', "waiting"),
 ])
 def test_a_seventh_status_fails_the_checker_by_name(tmp_path, where, old, new, expect):
     tree = _worktree(tmp_path)

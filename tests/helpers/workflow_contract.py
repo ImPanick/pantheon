@@ -53,12 +53,18 @@ def _missing() -> list:
 
 
 def install(monkeypatch) -> dict:
-    """Nothing is faked any more: answers `{}` (what was faked), and fails —
-    naming the half — if a C1 half is absent, rather than standing one in."""
-    del monkeypatch  # kept in the signature: the fixtures call `install(monkeypatch)`
+    """Nothing of C1 is faked any more: fails — naming the half — if a C1 half
+    is absent, rather than standing one in.
+
+    Wave D (`wf-walker`): the walker and the routes now import contracts C-R
+    and C-E, which `wf-rules` and `wf-effects` build on their own branches, so
+    on `wf-walker` alone `tests/helpers/workflow_cd_contract.install` stands in
+    for the names those halves do not have yet — and on the merged tree it
+    installs nothing. Answers what it stood in for."""
+    from tests.helpers import workflow_cd_contract
     gone = _missing()
     assert not gone, f"a C1 half is missing from this tree: {', '.join(gone)}"
-    return {}
+    return {"wave_d": workflow_cd_contract.install(monkeypatch)}
 
 
 def document():
