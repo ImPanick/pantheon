@@ -244,6 +244,38 @@ def test_readme_drift_is_caught(checker, claims, tmp_path, monkeypatch):
     assert any("badge" in p for p in checker.verify())
 
 
+def test_the_readme_trend_is_the_ship_lines_own(checker):
+    """`B1148`. The README's trend sentence and checker count, held to the
+    functions that compute them. Fails on the README as it stood on 2026-10-02:
+    *49.7% → 63.0%*, *192 → 229*, *237 … 200*, *1.185* and *Twenty-three*."""
+    assert checker._readme_trend_problems() == []
+
+
+def test_a_copied_trend_and_a_stale_checker_count_are_caught(checker, tmp_path, monkeypatch):
+    # Whitespace flattened, as the checker reads it: the README wraps its prose.
+    readme = " ".join(README.read_text(encoding="utf-8").split())
+    t = checker._ship_line().trend_summary(checker.TRACKER.read_text(encoding="utf-8"))
+    stale = (readme.replace(f"**{t['done_from']}% → {t['done_to']}%**", "**49.7% → 63.0%**")
+                   .replace(f"ratio of **{t['ratio']}**", "ratio of **1.185**")
+                   .replace("Twenty-four checkers run in CI", "Twenty-three checkers run in CI"))
+    assert stale != readme
+    fake = tmp_path / "README.md"
+    fake.write_text(stale, encoding="utf-8")
+    monkeypatch.setattr(checker, "README", fake)
+    problems = checker._readme_trend_problems()
+    assert any("% →" in p for p in problems), problems
+    assert any("ratio of" in p for p in problems), problems
+    assert any("checkers run in CI" in p for p in problems), problems
+    assert any(p in checker.verify() for p in problems)
+
+
+@pytest.mark.parametrize("n,word", [(0, "none"), (3, "three"), (20, "twenty"),
+                                    (24, "twenty-four"), (31, "thirty-one")])
+def test_the_readme_spells_its_counts(checker, n, word):
+    assert checker._count_word(n) == word
+    assert checker._count_word(n, capital=True) == word[:1].upper() + word[1:]
+
+
 def test_tracker_total_drift_is_caught(checker, tmp_path, monkeypatch):
     """Derive the current figures rather than typing them.
 

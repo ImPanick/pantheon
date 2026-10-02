@@ -508,6 +508,71 @@ def _readme_problems() -> list:
     return problems
 
 
+def _ship_line():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("_ledger_ship_line",
+                                                  ROOT / ".pantheon" / "ship-line.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _readme_trend_problems() -> list:
+    """`B1148`. The README's *Status* paragraph restated the ship line's trend —
+    *"done went 49.7% → 63.0% and open went 192 → 229: 237 rows filed against
+    200 closed, a file-to-close ratio of 1.185"* — and said the figures were
+    recomputed by `ship-line.py --trend`; they were a copy, and `--trend` said
+    70.8% → 72.5%, 290 → 314, 149 against 125, 1.192. Its *On AI* section said
+    *"Twenty-three checkers run in CI"* against `ci.yml`'s 24. Each is held here
+    to the function that computes it, the way the badge and the tracked/done
+    line already are, so the integrator who adds a § Progress entry restates
+    them in the same commit or the gate says which one moved."""
+    if not README.exists() or not TRACKER.exists():
+        return []
+    readme = " ".join(README.read_text(encoding="utf-8").split())
+    sl = _ship_line()
+    text = TRACKER.read_text(encoding="utf-8")
+    t = sl.trend_summary(text)
+    problems = []
+    for want in (f"**{t['done_from']}% → {t['done_to']}%**",
+                 f"**{t['open_from']} → {t['open_to']}**",
+                 f"{t['filed']} rows filed against {t['closed']} closed",
+                 f"ratio of **{t['ratio']}**"):
+        if want not in readme:
+            problems.append(f"README's trend does not read {want!r} — "
+                            f"`ship-line.py --trend` moved")
+    recent, blocking = sl.composition(sl.parse_rows(text),
+                                      sl.parse_register(sl.PROPOSAL.read_text(encoding="utf-8")))
+    span = f"(`{recent[0].id}`–`{recent[-1].id}`), **{_count_word(len(blocking))}**"
+    if span not in readme:
+        problems.append(f"README's ship-line sentence does not read {span!r}")
+    try:
+        ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    except OSError:
+        return problems
+    live = len(re.findall(r"^\s*- name: check-[\w-]+\s*$", ci, re.M))
+    if live and f"{_count_word(live, capital=True)} checkers run in CI" not in readme:
+        problems.append(f"README does not say '{_count_word(live, capital=True)} "
+                        f"checkers run in CI' — `ci.yml` lists {live}")
+    return problems
+
+
+_TENS = ("", "", "twenty", "thirty", "forty")
+
+
+def _count_word(n: int, capital: bool = False) -> str:
+    """`0` → *none*, `24` → *twenty-four*: the README spells its counts."""
+    if n == 0:
+        word = "none"
+    elif n < len(_WORDS):
+        word = _WORDS[n].lower()
+    elif n < 50:
+        word = _TENS[n // 10] + (f"-{_WORDS[n % 10].lower()}" if n % 10 else "")
+    else:
+        word = str(n)
+    return word[:1].upper() + word[1:] if capital else word
+
+
 def verify() -> list:
     """Every way a claim can be wrong that a script can see. Returns problems."""
     problems = []
@@ -567,6 +632,7 @@ def verify() -> list:
             )
 
     problems.extend(_readme_problems())
+    problems.extend(_readme_trend_problems())
     problems.extend(_upstream_gap_problems())
     problems.extend(_checker_count_problems())
     problems.extend(_repro_problems()[0])

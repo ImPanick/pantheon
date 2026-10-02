@@ -1,4 +1,4 @@
-<h1 align="center">Pantheon</h1>
+<h1 align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/brand/pantheon-lockup-dark.svg"><img src="docs/brand/pantheon-lockup-light.svg" alt="Pantheon" width="360"></picture></h1>
 
 <p align="center">
   <strong>A self-hosted AI workspace.</strong><br>
@@ -245,18 +245,19 @@ by nineteen and carried forward unread from entry to entry, because each author 
 above.
 
 **Read that number with the trend beside it, because one line of it is misleading on its own.**
-Over the last ten waves, *done* went **49.7% → 63.0%** and *open* went **192 → 229**: 237 rows
-filed against 200 closed, a file-to-close ratio of **1.185**. Both movements are real and neither
+Over the last ten waves, *done* went **70.8% → 72.5%** and *open* went **290 → 314**: 149 rows
+filed against 125 closed, a file-to-close ratio of **1.192**. Both movements are real and neither
 is a counting error — the fraction converges because closure outruns filing as a share of the
 total, and the open count grows because it does not outrun filing in absolute terms. **The open
-count falls only when we stop looking**, since most of those 237 rows are defects found by sweeps
+count falls only when we stop looking**, since most of those rows are defects found by sweeps
 over code that was already here, not new work invented. What makes that survivable rather than
 hopeless is a different number: of the last 40 backlog rows filed (`B1101`–`B1140`), **none** is
 on the ship line — the short list of rows that stop a stranger relying on this repository now
 that it is public (measured 2026-10-02). The series, the classification and what counts as
 blocking are in
-[`.pantheon/SHIP-LINE.md`](.pantheon/SHIP-LINE.md), and every figure in it is recomputed by
-`.pantheon/ship-line.py --trend` rather than copied from the line above.
+[`.pantheon/SHIP-LINE.md`](.pantheon/SHIP-LINE.md). Every figure in this paragraph is
+`.pantheon/ship-line.py`'s, and `.pantheon/check-ledger.py` fails the build when one here stops
+matching it.
 
 Test suite: **14,154 passing**, nothing red. The fourteen standing failures this fork
 inherited and carried were cleared on 2026-09-12 — eight were a container missing dependencies
@@ -264,10 +265,12 @@ the project already declares, three were stale test stubs hiding behind broad `e
 and three were rules pinned to upstream's shape rather than this fork's.
 
 Measured against the fork point `b4d1293`: **156 commits, 1,964 files changed, 175,966
-insertions — 537 files added, 1,387 modified and 5 removed.** That last number is this fork's
-first law as a measurement: *an elevation, not a rewrite — we add, never subtract.* All five
+insertions — 537 files added, 1,387 modified and 7 removed.** That last number is this fork's
+first law as a measurement: *an elevation, not a rewrite — we add, never subtract.* All seven
 deletions are named and argued in the [ledger](LEDGER.md); the fifth was found by a failing
-test nobody had looked at, and turned out to be upstream's logo wearing our filename.
+test nobody had looked at, and turned out to be upstream's logo wearing our filename, and the
+sixth and seventh were upstream's pictures under our filenames too, gone the day Pantheon got
+[a mark of its own](docs/brand/README.md).
 
 ## What's next
 
@@ -336,7 +339,7 @@ of the output before it lands.
 made by a person, and the work is theirs to accept.
 
 The rest of this repository is the argument for taking that seriously. Every change is a tracked
-row with a `Verify:` line, and a row cannot be ticked on a claim nobody checked. Twenty-three
+row with a `Verify:` line, and a row cannot be ticked on a claim nobody checked. Twenty-four
 checkers run in CI, each one added after a specific defect got through — not designed in advance.
 A test earns its place by failing on the tree as it stood *before* the fix, and mutation testing
 is what proves it would. [`.pantheon/ROADMAP.md`](.pantheon/ROADMAP.md) records the mistakes with

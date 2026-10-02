@@ -16,6 +16,10 @@ repainted** — the file said `pantheon` and the pixels said `Odysseus` — so i
 orphaned rather than shipped, and `B71` removes it. The README opens with a
 centered `<h1>` until the mark `P0-13` is blocked on exists.
 
+**Since 2026-10-02 it has one** (`P0-13`, `D-2026-10-02-03` §2): Pantheon's own
+mark, drawn by `scripts/branding/make_marks.py` into `docs/brand/`, and the README
+opens on its lockup — an `<h1>` holding the light and dark SVGs, `alt="Pantheon"`.
+
 So the guard pins the **intent** — a recognisable Pantheon title in the first few
 lines — and accepts either form. It is not weakened: the `#1390` ASCII-fence
 guard below is untouched, and an image is still accepted the moment there is an
