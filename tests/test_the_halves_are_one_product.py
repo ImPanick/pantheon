@@ -503,3 +503,36 @@ def test_every_field_a_panel_offers_a_picker_on_is_one_the_renderer_fills(js_box
             (gap if kind == "http" and path[-1] == "value" else mismatched).append((kind, field, rule))
     assert mismatched == [], mismatched
     assert gap == [("http", "body[0].value", "value")], "the one filed gap, and only it"
+
+
+@pytestmark_js
+def test_the_picker_lists_a_nested_field_as_its_reference_spells_it(js_box):
+    """The fields route answers each field's `path` as a list of segments
+    (`flatten_fields`, the form `format_ref` takes); the picker printed it as
+    it came, so a nested field read `json,subject` (found by the drive). It now
+    lists the path as the server's own reference spells it, and a field a step
+    only promises shows no example (it showed the word "null")."""
+    from src import workflow_effects as we
+    data = {"json": {"subject": "URGENT: the build is red"}, "headers": {"content-type": "application/json"},
+            "items": [{"title": "first"}]}
+    sources = [we._source("start", "What started it", "start", we.ORIGIN_LAST_RUN, None,
+                          we._fields_of("start", None, data)),
+               we._source("rename", "Rename", "set", we.ORIGIN_DECLARED, None,
+                          we._declared_fields("rename", [("headline", None)]))]
+    o = _js(js_box, "const SOURCES = %s;\n" % json.dumps(sources) + r"""
+        const { openFieldPicker } = await import('./fieldPicker.js');
+        const root = host();
+        const anchor = root.appendChild(new Node('button'));
+        openFieldPicker(anchor, { load: async () => ({ ok: true, sources: SOURCES }), layer: () => root });
+        await settle(); await settle();
+        out({ groups: root.querySelectorAll('.wf-picker-source').map((g) => [
+          g.querySelector('.wf-picker-step-name').textContent,
+          g.querySelectorAll('.wf-picker-field').map((b) => [b.querySelector('.wf-picker-path').textContent,
+            (b.querySelector('.wf-picker-example') || { textContent: null }).textContent, b.dataset.ref])]) });
+    """)
+    start = {path: (example, ref) for path, example, ref in o["groups"][0][1]}
+    assert start["json.subject"] == ("URGENT: the build is red", "{{ steps.start.data.json.subject }}")
+    assert start['headers["content-type"]'][1] == '{{ steps.start.data.headers["content-type"] }}'
+    assert start["items[0].title"] == ("first", "{{ steps.start.data.items[0].title }}")
+    assert not [p for p in start if "," in p], "no field is listed by a comma-joined list"
+    assert o["groups"][1] == ["Rename", [["headline", None, "{{ steps.rename.data.headline }}"]]]

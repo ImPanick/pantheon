@@ -121,6 +121,20 @@ export function usesLine(text, labelOf) {
   return parts.length ? `Uses: ${parts.join('; ')}.` : '';
 }
 
+/** The words a field is listed by: its path as the server's own reference
+ *  spells it — `title`, `json.subject`, `items[0].title`,
+ *  `headers["content-type"]` — read off the field's `ref`. The fields route
+ *  answers `path` as a LIST of segments (`workflow_refs.flatten_fields`, the
+ *  form `format_ref` takes); printed as it came, a nested field read
+ *  `json,subject` (`integrate-d`, found by the drive). A string `path` (an
+ *  item's, which the panel lists itself) is read as it is. */
+export function pathWords(f) {
+  const r = refsIn(String((f && f.ref) || ''))[0];
+  if (r && r.path) return r.path;
+  if (f && typeof f.path === 'string' && f.path) return f.path;
+  return String((f && f.ref) || '').includes('.text') ? 'its text' : 'everything it made';
+}
+
 /** Put `text` at `input`'s caret (or over its selection), and say so to the
  *  form the way typing would (`input`, bubbling). */
 export function insertAtCaret(input, text) {
@@ -202,10 +216,13 @@ export function openFieldPicker(anchor, { load, extra = [], holdEscape = null, l
           if (!f || !f.ref) continue;
           const b = _button('wf-picker-field', null);
           b.dataset.ref = String(f.ref);
-          const path = String(f.path || '') || (String(f.ref).includes('.text') ? 'its text' : 'everything it made');
+          const path = pathWords(f);
           b.appendChild(_el('span', 'wf-picker-path', path));
           if (f.type) b.appendChild(_el('span', 'wf-picker-type', String(f.type)));
-          const ex = exampleText(f.example);
+          // A field a step only promises (`declared`) has no value yet: the
+          // server sends `example: null`, which read as the word "null" under
+          // every promised field (`integrate-d`, found by the drive).
+          const ex = src.origin === 'declared' ? '' : exampleText(f.example);
           if (ex) b.appendChild(_el('span', 'wf-picker-example', ex));
           b.setAttribute('aria-label', `${path}, from ${String(src.label || 'a step')}${ex ? '. For example: ' + ex : ''}`);
           b.addEventListener('click', () => finish(String(f.ref)));
@@ -319,6 +336,7 @@ export function decorateField(input, { slot = null, pick = null, labelOf = null,
 }
 
 export default {
+  pathWords,
   openFieldPicker, decorateField, refsIn, usesLine, insertAtCaret, originWords, exampleText, looksLikeRef,
   NEVER_FALLBACK,
 };
