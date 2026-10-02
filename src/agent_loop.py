@@ -5410,16 +5410,45 @@ async def stream_agent_loop(
         for _sid, _names in _mcp_block_map.items():
             _mcp_disabled_map.setdefault(_sid, set()).update(_names)
         disabled_tools.update(_mcp_block_q)
+    # `P22-16`. A workflow AI step's own tool list (`ToolPolicy.allowed_tools`).
+    # Every known name outside it joins the denylist, and every MCP tool
+    # outside it the per-server map, because those two are what the prompt,
+    # the function schemas and the per-call refusal all read — so an EMPTY list
+    # stays empty on every channel, where an empty `relevant_tools` would mean
+    # "everything" to the schema filter. `ToolPolicy.blocks` refuses any other
+    # name (one nobody knows yet); the selection below never widens past it.
+    _allowed_tools = tool_policy.allowed_tools if tool_policy is not None else None
+    if _allowed_tools is not None:
+        from src.tool_policy import known_tool_names as _known_tool_names
+        disabled_tools.update(n for n in _known_tool_names() if tool_policy.outside_allowed(n))
+        if mcp_mgr:
+            for _mcp_tool in mcp_mgr.get_all_tools(_mcp_disabled_map, overrides={}):
+                if tool_policy.outside_allowed(_mcp_tool["qualified_name"]):
+                    _mcp_disabled_map.setdefault(_mcp_tool["server_id"], set()).add(_mcp_tool["name"])
+                    disabled_tools.add(_mcp_tool["qualified_name"])
+        logger.info("[tool-rag] step's own tools only: %s", sorted(_allowed_tools))
+
+    def _within_allowed(names) -> Set[str]:
+        """`P22-16`. The names a selection or a clamp may add — none outside a
+        step's own list. Every name when there is no list."""
+        if _allowed_tools is None:
+            return set(names)
+        return {n for n in names if not tool_policy.outside_allowed(n)}
+
     prep_timings["request_setup"] = time.time() - _t0
 
     # RAG-based tool selection: retrieve relevant tools for this query.
     # If caller provided a pre-computed set (e.g. task_scheduler), use that.
     _relevant_tools = relevant_tools
+    if _allowed_tools is not None:
+        # `P22-16`. The author's list is the selection: no retrieval over the
+        # prompt, and no caller's set in its place.
+        _relevant_tools = set(_allowed_tools)
     yield _agent_prep_frame(prep_timings, running="tool_selection")   # `P4-08`
     _t1 = time.time()
     if _relevant_tools:
         logger.info(f"[tool-rag] Using caller-provided relevant_tools ({len(_relevant_tools)} tools)")
-    if not guide_only and not _relevant_tools and _low_signal_turn:
+    if not guide_only and not _relevant_tools and _low_signal_turn and _allowed_tools is None:
         from src.tool_index import ALWAYS_AVAILABLE
         if workspace:
             # An active workspace IS the file-work signal: a vague "look at the
@@ -5436,7 +5465,7 @@ async def stream_agent_loop(
             # Non-English queries are flagged low_signal by the English-only
             # intent classifier, but fastembed retrieval works across languages.
             logger.info("[tool-rag] Low-signal query; will run RAG retrieval")
-    if not guide_only and not _relevant_tools:
+    if not guide_only and not _relevant_tools and _allowed_tools is None:
         try:
             from src.tool_index import get_tool_index, ALWAYS_AVAILABLE
             try:
@@ -5488,7 +5517,7 @@ async def stream_agent_loop(
 
     # Fallback: if RAG unavailable, use keyword-based tool selection
     # instead of sending ALL tools (which overwhelms the model).
-    if not guide_only and not _relevant_tools and _retrieval_query:
+    if not guide_only and not _relevant_tools and _retrieval_query and _allowed_tools is None:
         # `P17-14`. This used to be a SECOND COPY of the selector's keyword
         # loop, and it had drifted from the one in `src/tool_index.py` in both
         # directions at once: it matched `kw in ql` (raw substring), so
@@ -5632,6 +5661,12 @@ async def stream_agent_loop(
         except Exception as _e:
             logger.debug(f"[tool-rag] skill-aware tool include skipped: {_e}")
 
+    if _allowed_tools is not None and _relevant_tools is not None:
+        # `P22-16`. After every widening above — the intent's domains, the open
+        # document, uploads, forced tools, the browser expansion, a skill's
+        # declared tools — and before anything reads the selection.
+        _relevant_tools = _within_allowed(_relevant_tools)
+
     _intent_domains = set(_intent.get("domains") or set())
     _base_relevant_tools = None if _relevant_tools is None else set(_relevant_tools)
     _runtime_skill_tools: Set[str] = set()
@@ -5703,6 +5738,8 @@ async def stream_agent_loop(
             }
         elif general_no_tool_mode:
             route_tools = set()
+        if route_tools is not None:
+            route_tools = _within_allowed(route_tools)    # `P22-16`
         return route_tools
 
     (
@@ -5716,9 +5753,9 @@ async def stream_agent_loop(
     if _pan_doc_finetune_mode and _relevant_tools is not None:
         logger.info("[agent-intent] pantheon doc finetune tool clamp=%s", sorted(_relevant_tools))
     elif _pan_notes_finetune_mode and _relevant_tools is not None:
-        disabled_tools.difference_update({
+        disabled_tools.difference_update(_within_allowed({
             "manage_notes", "manage_calendar", "manage_tasks",
-        })
+        }))
         logger.info("[agent-intent] pantheon notes finetune tool clamp=%s", sorted(_relevant_tools))
     elif _pan_general_no_tool_mode:
         try:
@@ -6186,6 +6223,14 @@ async def stream_agent_loop(
         # the exact call that the server will seal for user approval.  Schema
         # visibility is not authority: both the loop and dispatcher still gate
         # execution, and only a one-use server record can cross that boundary.
+        if _allowed_tools is not None:
+            # `P22-16`. The one exit both transports' schemas leave by: nothing
+            # outside a step's own list is advertised, whichever branch built it.
+            return [
+                schema for schema in schemas
+                if not tool_policy.outside_allowed(
+                    (schema.get("function") or {}).get("name") or schema.get("name"))
+            ]
         return schemas
 
     def _tool_schemas_for_route(route_state):
@@ -7175,9 +7220,9 @@ async def stream_agent_loop(
                                 # candidate's notes mode must re-enable the
                                 # personal managers in the shared execution
                                 # blocklist, or its tool calls are rejected.
-                                disabled_tools.difference_update({
+                                disabled_tools.difference_update(_within_allowed({
                                     "manage_notes", "manage_calendar", "manage_tasks",
-                                })
+                                }))
                             data["pinned_for_run"] = True
                         _compaction_frame = _committed_compaction_frame(candidate_index)   # `B921`
                         if _compaction_frame:
@@ -7774,6 +7819,8 @@ async def stream_agent_loop(
             _pan_clamped_tool_allowed = (
                 _pan_notes_finetune_mode
                 and block.tool_type in {"manage_notes", "manage_calendar", "manage_tasks"}
+                # `P22-16`: the clamp lifts the denylist, never a step's own list.
+                and block.tool_type in _within_allowed({block.tool_type})
             )
             policy_names = email_tool_policy_names(block.tool_type)
             blocked_by_tool_policy = bool(
@@ -8046,10 +8093,10 @@ async def stream_agent_loop(
                         _known = _ktn()
                         for _sk in _SkM(_DD).load(owner=owner):
                             if _sk.get("name") == _ms_name:
-                                _new = {
+                                _new = _within_allowed({
                                     t for t in (_sk.get("requires_toolsets") or [])
                                     if t in _known and t not in _relevant_tools
-                                }
+                                })    # `P22-16`: a skill never widens a step's list
                                 if _new:
                                     _relevant_tools.update(_new)
                                     _runtime_skill_tools.update(_new)
