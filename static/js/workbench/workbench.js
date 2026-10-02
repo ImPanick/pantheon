@@ -101,8 +101,9 @@ function mountSkillsRoom(panel, opts = {}) {
 function mountIntegrationsRoom(panel, opts = {}) {
   const form = panel.querySelector('#unified-intg-form');
   let release = null;
-  const formOpen = () => !!(form && form.style.display && form.style.display !== 'none'
-    && form.children.length > 0);
+  // Open is how `settings.js` opens it — `style.display = ''` over the
+  // markup's `display:none` — with something drawn in it.
+  const formOpen = () => !!(form && form.style.display !== 'none' && form.children.length > 0);
   const watch = () => {
     if (formOpen() && !release) {
       const unregister = registerMenuDismiss(() => {

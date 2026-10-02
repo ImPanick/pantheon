@@ -210,7 +210,7 @@ def test_escape_closes_the_integration_form_before_the_window(glue):
         await settle(5);
         const form = $('unified-intg-form');
         form.appendChild(document.createElement('div'));
-        form.style.display = 'block';
+        form.style.display = '';                 // how settings.js opens it
         mutate();
         const marked = $('workbench-room-integrations').dataset.escLayer;
         const took = dismissTopMenu();
