@@ -197,10 +197,12 @@ def test_each_place_keeps_its_own_search_scope_and_selection(box):
         const searched = { win: names('skills-list'), room: names('wb-skills-list') };
         $('wb-skills-search').value = '';
         fire($('wb-skills-search'), 'input');
-        const ops = $('skills-side').querySelectorAll('.skills-side-row')
+        const ops = $('wb-skills-side').querySelectorAll('.skills-side-row')
           .find((r) => r.textContent.startsWith('Ops'));
         fire(ops.querySelector('.skills-side-pick'), 'click');
-        const scoped = { win: names('skills-list'), room: names('wb-skills-list') };
+        const scoped = { win: names('skills-list'), room: names('wb-skills-list'),
+          active: [$('skills-side'), $('wb-skills-side')].map((side) => side.querySelectorAll('.skills-side-row')
+            .filter((r) => r.className.includes('is-active')).map((r) => r.textContent.replace(/\d+$/, ''))) };
         fire($('wb-skills-select-btn'), 'click');
         const selecting = { room: $('wb-skills-bulk-bar').classList.contains('hidden'),
                             win: $('skills-bulk-bar').classList.contains('hidden'),
@@ -213,8 +215,9 @@ def test_each_place_keeps_its_own_search_scope_and_selection(box):
         out({ searched, scoped, selecting, addShown });
     """)
     assert o["searched"] == {"win": ["alpha-logs", "beta-print"], "room": ["beta-print"]}
-    assert o["scoped"]["win"] == ["alpha-logs"] and sorted(o["scoped"]["room"]) == ["alpha-logs", "beta-print"]
-    assert o["selecting"] == {"room": False, "win": True, "roomBoxes": 2, "winBoxes": 0}
+    assert sorted(o["scoped"]["win"]) == ["alpha-logs", "beta-print"] and o["scoped"]["room"] == ["alpha-logs"]
+    assert o["scoped"]["active"] == [["All skills"], ["Ops"]]
+    assert o["selecting"] == {"room": False, "win": True, "roomBoxes": 1, "winBoxes": 0}
     assert o["addShown"] == {"room": True, "win": False}
 
 
