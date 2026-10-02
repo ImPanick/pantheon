@@ -2675,3 +2675,20 @@ Four direction calls shape `P22`; each was put with the alternatives and the cos
 *Workbench* while identifiers stay (`D-2026-09-18-04`); one workflow still runs once at a time (`B674`); the node
 palette offers a person only what their agent can already reach. **Still the owner's, asked when reached:** a
 short *Start from* list against `DEFERRED.md` D-07 (`P22-24`).
+
+## D-2026-10-02-01 — a workflow step's question waits twelve hours, and a local server that has less room answers shorter rather than not at all
+
+**Asked**, 2026-10-02, from the Slice C/D design (`P22-17`) and from `B1029`'s follow-up (filed by `w8-agent`).
+
+1. **How long a parked workflow step's approval card waits.** *Twelve hours for workflow cards.* A separate
+   `workflow_approval_timeout_seconds`, default 12 h, settable from 30 s to 24 h through the same four-layer resolution
+   as `approval_timeout_seconds`; the approval store's `create` takes an optional `ttl_seconds`, clamped to the store's
+   own bounds. Chat cards keep their 10-minute default. The seal, single use and owner binding are unchanged
+   (`FORBIDDEN.md` Part 2). Not chosen: one deadline for every card, which lapses an overnight question unless the
+   chat deadline is raised too.
+2. **When a local server enforcing its window has less room left than a preset's reply length.** *Ask for what fits.*
+   When the server refuses and states what it can serve, the request is sent once more asking for exactly that, even
+   below the preset — the preset stops being a floor in that one case (`servable_max_tokens`' floor becomes 1). It
+   never asks for more than was sent, so a typed ceiling still bounds it. Not chosen: keeping the preset as a floor
+   and trimming the conversation harder so it always fits.
+
