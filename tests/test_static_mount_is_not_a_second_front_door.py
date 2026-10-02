@@ -27,6 +27,10 @@ a **route** serves, and the mount redirects those three to their route
 (`ROUTE_OWNED_STATIC_PAGES` in `app.py`). Every other byte under `/static` is
 served exactly as before, unauthenticated, including the two `*-variants.html`
 prototypes `B120` and `B122` both require to keep reaching the network.
+*(Until `B370`, 2026-10-02: the three `*-variants.html` sandboxes are in the
+table now and redirect to `/sandbox/…`, which needs a session — that file is
+`tests/test_a_developer_sandbox_is_not_a_public_page.py`. A navigation to them
+still reaches the network, which answers with the redirect.)*
 
 So this file asserts both halves, because the second is the way this fix
 breaks: the shell is not reachable without a session, **and** everything the
@@ -82,11 +86,13 @@ def followed(c, url):
             "head": res.text[:400]}
 
 
-# The three documents under the mount that a route serves. Named here rather
-# than read out of `app.py` so that this probe boots — and every measurement
-# below is taken — on a tree that has no such table, which is the tree these
-# assertions have to be able to fail on (`Law 9`).
-NAMES = ["index.html", "login.html", "backgrounds.html"]
+# The documents under the mount that a route serves. Named here rather than
+# read out of `app.py` so that this probe boots — and every measurement below
+# is taken — on a tree that has no such table, which is the tree these
+# assertions have to be able to fail on (`Law 9`). The last three are `B370`'s
+# developer sandboxes, which the mount served itself until 2026-10-02.
+NAMES = ["index.html", "login.html", "backgrounds.html",
+         "wave-variants.html", "whirlpool-variants.html", "modal-control-variants.html"]
 owned = getattr(app_module, "ROUTE_OWNED_STATIC_PAGES", None)
 urls = ["/", "/login", "/docs"] + ["/static/" + name for name in NAMES]
 # The same three asked for in the spellings a filesystem or a URL normaliser
@@ -256,6 +262,10 @@ def test_the_redirect_lands_in_the_deployment_and_not_in_the_mount(gated):
     assert gated["root_path"]["/static/index.html"]["location"] == "/pantheon/"
     assert gated["root_path"]["/static/login.html"]["location"] == "/pantheon/login"
     assert gated["root_path"]["/static/backgrounds.html"]["location"] == "/pantheon/backgrounds"
+    # `B370`'s sandboxes go through the same redirect, so they land in the
+    # deployment the same way.
+    assert (gated["root_path"]["/static/wave-variants.html"]["location"]
+            == "/pantheon/sandbox/wave-variants")
 
 
 @pytest.fixture(scope="module")
@@ -314,7 +324,12 @@ def test_the_table_the_mount_reads_is_the_table_the_routes_read(gated):
         "app.py has no ROUTE_OWNED_STATIC_PAGES — the mount and the three "
         "route handlers are each spelling out their own paths again")
     assert owned == {"index.html": "/", "login.html": "/login",
-                     "backgrounds.html": "/backgrounds"}, owned
+                     "backgrounds.html": "/backgrounds",
+                     # `B370`.
+                     "wave-variants.html": "/sandbox/wave-variants",
+                     "whirlpool-variants.html": "/sandbox/whirlpool-variants",
+                     "modal-control-variants.html": "/sandbox/modal-control-variants",
+                     }, owned
     for name, route in owned.items():
         assert gated["direct"]["/static/" + name]["location"] == route, name
     # `backgrounds.html` is the entry for a file this build does not ship

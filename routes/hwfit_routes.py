@@ -6,8 +6,9 @@ import shlex
 import subprocess
 from copy import deepcopy
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
+from core.middleware import require_admin
 from core.platform_compat import run_ssh_command
 from routes._validators import validate_remote_host, validate_ssh_port
 
@@ -181,7 +182,33 @@ def _inspect_model_path(model_path: str, host: str = "", ssh_port: str = "") -> 
 
 
 def setup_hwfit_routes():
-    router = APIRouter(prefix="/api/hwfit", tags=["hwfit"])
+    # `B541`. Every route here detects hardware — on the serving host, or over
+    # SSH on a host the caller names in `?host=` / `?ssh_port=` — and until
+    # 2026-10-02 `AuthMiddleware` was the whole gate. Measured that day against
+    # the real app with `AUTH_ENABLED=true`: a signed-in non-admin got 200 from
+    # all four and detection ran each time; `/profiles` also reached
+    # `run_ssh_command` through `_inspect_model_path`, and with no host the
+    # same helper runs `bash -lc 'test -d <path>'` on the serving host — so it
+    # answered "does this directory exist?" for any path a caller typed. The
+    # same question is admin-only one file over: `GET /api/cookbook/gpus` and
+    # `POST /api/cookbook/test-ssh` are `require_admin`, and
+    # `routes/codex_routes.py`'s `_require_cookbook_scope` writes the reason
+    # down — "cookbook surfaces expose host topology". Detection is host
+    # topology, and choosing which box this instance opens SSH to is the
+    # operator's call (`P11-AUTH-MAP.md` § A, `operator`).
+    #
+    # **On the router, not on each handler**, so a fifth `/api/hwfit` route is
+    # gated on the commit that adds it — the shape `routes/embedding_routes.py`
+    # already uses, and the one the map says `P11-02` should prefer. FastAPI
+    # resolves a dependency before it validates the query, so a refused caller
+    # gets 403 before any parameter is read, the SSRF validators included.
+    # The Forge is the only caller in the product, and every other read it
+    # makes (`/api/cookbook/state`, `/gpus`, `/model/cached`) is admin-only
+    # already; a single-user owner is the admin, and with auth off
+    # `require_admin` returns. The validators still run after this (`FORBIDDEN.md`
+    # Part 2): an admin naming `-oProxyCommand=…` is refused as before.
+    router = APIRouter(prefix="/api/hwfit", tags=["hwfit"],
+                       dependencies=[Depends(require_admin)])
 
     @router.get("/system")
     def get_system(host: str = "", ssh_port: str = "", platform: str = "", fresh: bool = False):

@@ -217,6 +217,218 @@ def test_a_route_with_no_auth_call_reports_none(checker, tmp_path):
     assert [(r.key, sorted(r.auth)) for r in found] == [("POST /api/bare/clear-cache", [])]
 
 
+# ── rule E: a host the caller names is the operator's to reach (`B541`) ──────
+
+_SSH_ROUTES = """
+    from fastapi import Depends
+    from core.middleware import require_admin
+    from routes._validators import validate_remote_host
+
+    def _target(host):
+        return validate_remote_host(host)
+
+    def setup():
+        router = APIRouter(prefix="/api/probe")
+
+        @router.get("/open")
+        def open_probe(host: str = ""):
+            return {"host": _target(host)}
+
+        @router.get("/gated")
+        def gated_probe(request, host: str = ""):
+            require_admin(request)
+            return {"host": _target(host)}
+
+        @router.get("/decorated", dependencies=[Depends(require_admin)])
+        def decorated_probe(host: str = ""):
+            return {"host": _target(host)}
+
+        @router.get("/local")
+        def local_only():
+            return {}
+"""
+
+
+def test_a_route_that_reaches_a_caller_named_host_is_found_and_judged(checker, tmp_path):
+    """The rule's mechanism, on a fixture written for it.
+
+    The validator is one helper away, as `_validate_detection_target` is in
+    `routes/hwfit_routes.py`; a route that names no host is not in the
+    population at all; and an admin gate counts wherever it is declared —
+    called in the handler or as a `Depends` on the route's own decorator.
+    """
+    root = _fixture_tree(tmp_path, {"routes/probe_routes.py": _SSH_ROUTES})
+    found = checker.ssh_target_routes(root, ["routes/probe_routes.py"])
+    assert [(t.key, t.func, t.gated) for t in found] == [
+        ("GET /api/probe/open", "open_probe", False),
+        ("GET /api/probe/gated", "gated_probe", True),
+        ("GET /api/probe/decorated", "decorated_probe", True),
+    ], found
+
+
+def test_a_router_level_admin_gate_covers_every_route_under_it(checker, tmp_path):
+    """The shape `B541` was fixed in, and `routes/embedding_routes.py` before it."""
+    root = _fixture_tree(tmp_path, {"routes/fleet.py": """
+        from fastapi import Depends
+        from core.middleware import require_admin as _gate
+        from core.platform_compat import run_ssh_command
+
+        def setup():
+            router = APIRouter(prefix="/api/fleet", dependencies=[Depends(_gate)])
+
+            @router.get("/uptime")
+            def uptime(host: str = ""):
+                return run_ssh_command(host, None, "uptime")
+    """})
+    found = checker.ssh_target_routes(root, ["routes/fleet.py"])
+    assert [(t.key, t.gated) for t in found] == [("GET /api/fleet/uptime", True)]
+
+
+def test_rule_b_and_rule_e_read_one_answer_for_what_gates_a_route(checker, tmp_path):
+    """`route_reach` is shared, so a decorator-level gate rule E can see is a
+    gate § B's derived column sees too — the two cannot disagree about a route."""
+    root = _fixture_tree(tmp_path, {"routes/probe_routes.py": _SSH_ROUTES})
+    by_key = {r.key: sorted(r.auth) for r in checker.routes_in(root, "routes/probe_routes.py")}
+    assert by_key == {
+        "GET /api/probe/open": [],
+        "GET /api/probe/gated": ["require_admin"],
+        "GET /api/probe/decorated": ["require_admin"],
+        "GET /api/probe/local": [],
+    }, by_key
+
+
+def test_an_ungated_route_to_a_caller_named_host_fails_the_check(checker, map_text, tmp_path):
+    """The failure the rule exists for, reported by `problems()` on a tree that
+    has one. `B541`'s four routes were exactly this until 2026-10-02."""
+    real = checker.ssh_target_routes
+    root = _fixture_tree(tmp_path, {"routes/probe_routes.py": _SSH_ROUTES})
+    extra = checker.ssh_target_routes(root, ["routes/probe_routes.py"])
+    try:
+        checker.ssh_target_routes = lambda _root=ROOT, rels=None: real(ROOT) + extra
+        found, counts = checker.problems(ROOT, map_text, max_other=_ci_ceiling())
+    finally:
+        checker.ssh_target_routes = real
+    ungated = [p for p in found if "GET /api/probe/open" in p]
+    assert len(ungated) == 1 and "B541" in ungated[0], found
+    assert counts["ssh_ungated"] == 1, counts
+
+
+def test_every_route_in_the_tree_to_a_caller_named_host_is_behind_require_admin(checker):
+    """Rule E against the shipped tree — and not vacuously: the population holds
+    `B541`'s four and the cookbook route that was already right, so a scan
+    that found nothing would fail here rather than pass."""
+    found = checker.ssh_target_routes(ROOT)
+    keys = {t.key for t in found}
+    for want in ("GET /api/hwfit/system", "GET /api/hwfit/models",
+                 "GET /api/hwfit/profiles", "GET /api/hwfit/image-models",
+                 "GET /api/cookbook/gpus", "POST /api/cookbook/test-ssh"):
+        assert want in keys, (want, sorted(keys))
+    assert [t for t in found if not t.gated] == []
+
+
+# ── rule F: the `/static` mount hands out no page (`B370`) ─────────────────
+
+_APP_WITH_TABLE = """
+    AUTH_EXEMPT_EXACT = {"/login"}
+    AUTH_EXEMPT_PREFIXES = ["/static"]
+
+    ROUTE_OWNED_STATIC_PAGES = {
+        "index.html": "/",
+        "login.html": "/login",
+        "sandbox.html": "/sandbox/sandbox",
+    }
+"""
+
+
+def test_the_table_is_read_out_of_app_py(checker, tmp_path):
+    root = _fixture_tree(tmp_path, {"app.py": _APP_WITH_TABLE})
+    assert checker.route_owned_static_pages(root) == ({
+        "index.html": "/", "login.html": "/login", "sandbox.html": "/sandbox/sandbox",
+    }, 0)
+
+
+def test_an_entry_the_rule_cannot_read_is_counted_not_skipped(checker, tmp_path):
+    """Three things parse the table, and a `**` splice is a page two of them
+    cannot see — so the reader says how many entries it could not read, and
+    `problems()` turns that into a failure rather than a silent "unowned"."""
+    root = _fixture_tree(tmp_path, {"app.py": """
+        SANDBOXES = {"sandbox.html": "/sandbox/sandbox"}
+        ROUTE_OWNED_STATIC_PAGES = {"index.html": "/", **SANDBOXES}
+    """})
+    assert checker.route_owned_static_pages(root) == ({"index.html": "/"}, 1)
+
+
+def test_an_unreadable_table_entry_fails_the_check(checker, map_text):
+    real = checker.route_owned_static_pages
+    try:
+        checker.route_owned_static_pages = lambda _root=ROOT: (real(ROOT)[0], 1)
+        found, _ = checker.problems(ROOT, map_text, max_other=_ci_ceiling())
+    finally:
+        checker.route_owned_static_pages = real
+    assert any("not a string literal" in p for p in found), found
+
+
+def test_a_page_is_what_the_mount_would_answer_as_a_page(checker, tmp_path):
+    """Decided by the media type `StaticFiles` would send, not by a suffix
+    written here — so `.HTM` and `.xhtml` are pages, and a stylesheet or an
+    icon, which the login page needs while logged out, is not."""
+    root = _fixture_tree(tmp_path, {
+        "app.py": _APP_WITH_TABLE,
+        "static/index.html": "<!doctype html>",
+        "static/sandbox.html": "<!doctype html>",
+        "static/stray.HTM": "<!doctype html>",
+        "static/deep/page.xhtml": "<html/>",
+        "static/style.css": "body{}",
+        "static/icon.svg": "<svg/>",
+        "static/js/app.js": "1",
+    })
+    assert checker.static_documents(root) == [
+        "static/deep/page.xhtml", "static/index.html", "static/sandbox.html", "static/stray.HTM",
+    ]
+
+
+def test_a_page_without_a_route_fails_the_check_naming_b370(checker, map_text):
+    """The failure the rule exists for. The three sandboxes were exactly this
+    until 2026-10-02 — served to a caller with no session by the mount."""
+    real = checker.static_documents
+    try:
+        checker.static_documents = lambda _root=ROOT: real(ROOT) + ["static/fourth-variants.html"]
+        found, counts = checker.problems(ROOT, map_text, max_other=_ci_ceiling())
+    finally:
+        checker.static_documents = real
+    stray = [p for p in found if p.startswith("static/fourth-variants.html")]
+    assert len(stray) == 1 and "B370" in stray[0], found
+    assert counts["static_unowned"] == 1, counts
+
+
+def test_every_page_under_static_has_a_route(checker):
+    """Rule F against the shipped tree, and not vacuously: the population is
+    the shell, the login page and the three sandboxes, and each has a route."""
+    docs = checker.static_documents(ROOT)
+    for want in ("static/index.html", "static/login.html", "static/wave-variants.html",
+                 "static/whirlpool-variants.html", "static/modal-control-variants.html"):
+        assert want in docs, docs
+    table, unreadable = checker.route_owned_static_pages(ROOT)
+    assert unreadable == 0, "app.py's table has an entry rule F cannot read"
+    owned = {k.casefold() for k in table}
+    assert [d for d in docs if d[len("static/"):].casefold() not in owned] == []
+
+
+def test_the_static_documents_line_is_derived(checker, map_text):
+    mutated = re.sub(r"derived-static-documents: \d+ under", "derived-static-documents: 1 under",
+                     map_text)
+    assert mutated != map_text
+    found, _ = checker.problems(ROOT, mutated, max_other=_ci_ceiling())
+    assert any("`derived-static-documents:` line" in p for p in found), found
+
+
+def test_the_ssh_targets_line_is_derived(checker, map_text):
+    mutated = re.sub(r"derived-ssh-targets: \d+ routes", "derived-ssh-targets: 1 routes", map_text)
+    assert mutated != map_text
+    found, _ = checker.problems(ROOT, mutated, max_other=_ci_ceiling())
+    assert any("`derived-ssh-targets:` line" in p for p in found), found
+
+
 def test_the_exemption_is_matched_on_path_alone(checker):
     """`B542`'s premise, taken from `app.py` rather than asserted.
 
@@ -267,24 +479,51 @@ def test_the_map_may_not_name_a_site_that_is_gone(checker, map_text):
                for p in found), found
 
 
+def _route_rows(checker, map_text):
+    """Every § B row, in file order, with the exact line it was parsed from.
+
+    The two tests below used to mutate one named row — `POST /api/tts/clear-cache`,
+    the `B540` hole — and `B540` closing would have left them asserting on a line
+    that no longer exists (`mutated == map_text`). `B520`'s rule, which this file
+    already follows four tests down: *assert the invariant, never the instance.*
+    """
+    parsed = checker.parse_map(map_text)
+    rows = []
+    for rows_in_file in parsed.routes.values():
+        for row in rows_in_file.values():
+            line = (f"| `{row['route']}` | `{row['handler']}` | `{row['gate']}` "
+                    f"| {row['intended']} |")
+            assert line in map_text, line
+            rows.append((row, line))
+    assert rows, "the map parsed to no § B rows — the tests below would be about nothing"
+    return rows
+
+
 def test_a_route_gate_claim_is_checked_against_the_source(checker, map_text):
-    """Claiming a gate the route does not have is the failure this file exists for."""
+    """Claiming a gate the route does not have is the failure this file exists for.
+
+    The anchor is the first login-only route in the map, given an admin gate it
+    does not have — computed, so it survives any one row being fixed."""
+    row, line = next((r, l) for r, l in _route_rows(checker, map_text)
+                     if r["gate"] == "middleware")
     mutated = map_text.replace(
-        "| `POST /api/tts/clear-cache` | `clear_tts_cache` | `middleware` |",
-        "| `POST /api/tts/clear-cache` | `clear_tts_cache` | `middleware + require_admin` |",
-    )
+        line, line.replace("| `middleware` |", "| `middleware + require_admin` |", 1))
     assert mutated != map_text
     found, _ = checker.problems(ROOT, mutated, max_other=_ci_ceiling())
-    assert any("POST /api/tts/clear-cache" in p and "the source says" in p
-               for p in found), found
+    assert any(row["route"] in p and "the source says" in p for p in found), found
 
 
 def test_an_unintended_route_must_name_a_bug_row(checker, map_text):
-    """`no` with no `Bxxx` is an unfiled hole sitting quietly in a table."""
-    mutated = map_text.replace("no — `B540`. An instance-wide", "no. An instance-wide")
+    """`no` with no `Bxxx` is an unfiled hole sitting quietly in a table.
+
+    Any row will do, so the first one is turned into an unfiled `no` — which
+    keeps this test meaningful on the day the map has no holes left in it."""
+    row, line = _route_rows(checker, map_text)[0]
+    mutated = map_text.replace(
+        line, line.replace(f"| {row['intended']} |", "| no. Nothing filed. |", 1))
     assert mutated != map_text
     found, _ = checker.problems(ROOT, mutated, max_other=_ci_ceiling())
-    assert any("names no `Bxxx`" in p for p in found), found
+    assert any(row["route"] in p and "names no `Bxxx`" in p for p in found), found
 
 
 def test_a_tier_total_that_does_not_add_up_fails(checker, map_text, sites):

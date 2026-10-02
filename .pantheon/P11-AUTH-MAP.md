@@ -74,14 +74,14 @@ The four tiers are `P11-02b`'s own question. A site is exactly one of them:
   ownership check or a privilege key that does not exist. The fix is a data model, not
   an auth change.
 
-derived: direct 102 · Depends 20 · total 122
+derived: direct 103 · Depends 21 · total 124
 
 ### tier summary
 
 | tier | sites |
 |---|---|
 | `superuser` | 45 |
-| `operator` | 52 |
+| `operator` | 54 |
 | `power-user` | 4 |
 | `only-because-nothing-finer-existed` | 21 |
 
@@ -135,14 +135,14 @@ derived: direct 102 · Depends 20 · total 122
 | `routes/auth_routes.py` | `remove_role` | `DELETE /api/auth/roles/{name}` | removes a role and revokes it from every user holding it. `P11-02` |
 | `routes/auth_routes.py` | `set_user_role` | `PUT /api/auth/users/{username}/role` | grants somebody else a role. `P11-02` |
 
-### `operator` — **52 operator sites.** Running the box: endpoints, models, probes, logs, webhooks, storage. A person who keeps the instance up needs all of it and needs none of the tier above. This is the tier that makes a role model worth building, because today the only way to hand someone the operator's job is to hand them the owner's.
+### `operator` — **54 operator sites.** Running the box: endpoints, models, probes, logs, webhooks, storage. A person who keeps the instance up needs all of it and needs none of the tier above. This is the tier that makes a role model worth building, because today the only way to hand someone the operator's job is to hand them the owner's.
 
 | file | function | route | protects |
 |---|---|---|---|
 | `routes/codex_routes.py` | `_require_cookbook_scope` | `—` | not a route: the helper nine Codex cookbook routes call. It demands the scope from a bearer token and admin from a cookie session, and its docstring is the clearest statement in the tree of why cookbook is gated — host topology, task logs, tmux commands, model-serving controls |
 | `routes/font_routes.py` | `upload_custom_font` | `POST /api/fonts/custom` | adds a font every browser on the instance loads. Fonts are instance-wide theme assets, so adding one is running the box, not using it. `P2-24`; the route keeps its own allowlist and content check on top of this gate |
 | `routes/font_routes.py` | `delete_custom_font` | `DELETE /api/fonts/custom/{filename}` | removes an uploaded font from every browser on the instance — the same act as adding one, undone. `B937`; the route keeps the upload's stored-name pattern and containment check on top of this gate |
-| `routes/cookbook_routes.py` | `list_gpus` | `GET /api/cookbook/gpus` | host GPU inventory. Compare `GET /api/hwfit/system`, which answers the same question with no gate at all — see `B541` |
+| `routes/cookbook_routes.py` | `list_gpus` | `GET /api/cookbook/gpus` | host GPU inventory. `GET /api/hwfit/system` answers the same question, and since `B541` behind the same gate |
 | `routes/cookbook_routes.py` | `get_cookbook_state` | `GET /api/cookbook/state` | the serve-state file: which models are up, on which hosts |
 | `routes/cookbook_routes.py` | `cookbook_tasks_status` | `GET /api/cookbook/tasks/status` | progress of in-flight downloads and serves |
 | `routes/cookbook_routes.py` | `model_cached` | `GET /api/model/cached` | what is already on disk |
@@ -160,6 +160,7 @@ derived: direct 102 · Depends 20 · total 122
 | `routes/diagnostics_routes.py` | `prometheus_metrics` | `GET /metrics` | the Prometheus scrape endpoint. `Law 16` clause 4 makes this the operator's to point where they like, which is exactly the operator tier |
 | `routes/diagnostics_routes.py` | `run_eval` | `POST /api/diagnostics/evals/{name}/run` | runs one; it costs the instance's model budget |
 | `routes/diagnostics_routes.py` | `test_research` | `POST /api/test-research` | a research-pipeline probe that spends model budget |
+| `routes/hwfit_routes.py` | `setup_hwfit_routes` | `—` | not a route: a router-level `dependencies=[Depends(require_admin)]` covering all four `/api/hwfit` routes — hardware detection on the serving host, or over SSH on a host the caller names. Host topology, like `list_gpus` above, and the choice of which box this instance opens SSH to. `B541`: until 2026-10-02 the middleware was the whole gate, and `/profiles` with no host was a directory-existence probe on the serving host for any signed-in account |
 | `routes/embedding_routes.py` | `setup_embedding_routes` | `—` | not a route: a router-level `dependencies=[Depends(require_admin)]` covering every route under `/api/embeddings`. One site, whole-surface reach — the shape `P11-02`'s refactor should prefer |
 | `routes/model_routes.py` | `delete_model_endpoint` | `DELETE /api/model-endpoints/{ep_id}` | deletes it |
 | `routes/model_routes.py` | `discover_local` | `GET /api/discover` | LAN/local discovery, which makes outbound connections |
@@ -184,6 +185,7 @@ derived: direct 102 · Depends 20 · total 122
 | `routes/skills_routes.py` | `set_builtin_override` | `PUT /api/skills/builtin/{name}` | rewrites a built-in skill's text for every user's agent |
 | `routes/upload_routes.py` | `upload_stats` | `GET /api/upload/stats` | aggregate upload storage |
 | `routes/upload_routes.py` | `manual_cleanup` | `POST /api/upload/cleanup` | deletes expired uploads across all owners |
+| `routes/tts_routes.py` | `clear_tts_cache` | `POST /api/tts/clear-cache` | discards every cached speech clip on the instance — one directory, keyed by text, provider, model, voice and speed and never by person, so there is no owner scope to give it. The same act as the upload cleanup above, at the same height. `B540`: it made no privilege check until 2026-10-02, when a signed-in non-admin was measured emptying it |
 | `routes/webhook/webhook_routes.py` | `delete_webhook` | `DELETE /api/webhooks/{webhook_id}` | removes one |
 | `routes/webhook/webhook_routes.py` | `list_webhooks` | `GET /api/webhooks` | the outbound webhook inventory. All five reach `require_admin` under the alias `_require_admin`, which is why a grep for `require_admin(` finds none of them |
 | `routes/webhook/webhook_routes.py` | `toggle_webhook` | `PATCH /api/webhooks/{webhook_id}` | enables or disables one |
@@ -250,7 +252,7 @@ The `gate` column is derived, never asserted, and reads as a chain:
 
 The `intended` column is a verdict and must begin `yes` or `no`. A `no` must name a
 `Bxxx`; the checker fails on one that does not, so a hole cannot sit in this table
-unfiled. **There are seven `no`s and they are `B540`, `B541` and `B542`.**
+unfiled. **There are two `no`s and both are `B542`.** `B540` and `B541` were the other five until 2026-10-02.
 
 #### `routes/assistant_routes.py`
 
@@ -395,16 +397,16 @@ routes: 4
 
 #### `routes/hwfit_routes.py`
 
-All four take `host` and `ssh_port` and run hardware detection over SSH against them. `GET /api/cookbook/gpus` answers the same question behind `require_admin`, and `routes/codex_routes.py:114` writes down why. See `B541`.
+All four take `host` and `ssh_port` and run hardware detection over SSH against them — or, with no host, on the serving host itself. `GET /api/cookbook/gpus` answers the same question behind `require_admin`, and `routes/codex_routes.py`'s `_require_cookbook_scope` writes down why. Since `B541` the router carries the same gate, so a fifth route here is gated on the commit that adds it; § E holds every route in the tree that reaches a caller-named host to that.
 
 routes: 4
 
 | route | handler | gate | intended |
 |---|---|---|---|
-| `GET /api/hwfit/system` | `get_system` | `middleware` | no — `B541`. `?host=user@server` makes the instance open SSH to a host the caller names; `GET /api/cookbook/gpus` asks the same question behind `require_admin`. |
-| `GET /api/hwfit/models` | `get_models` | `middleware` | no — `B541`. Same `host`/`ssh_port` pair, same detection path. |
-| `GET /api/hwfit/profiles` | `get_serve_profiles` | `middleware` | no — `B541`. Same. |
-| `GET /api/hwfit/image-models` | `get_image_models` | `middleware` | no — `B541`. Same. |
+| `GET /api/hwfit/system` | `get_system` | `middleware + require_admin` | yes — `B541`. `?host=user@server` makes the instance open SSH to a host the caller names; admin, as `GET /api/cookbook/gpus` is for the same question. The SSRF validators still run behind the gate. |
+| `GET /api/hwfit/models` | `get_models` | `middleware + require_admin` | yes — `B541`. Same `host`/`ssh_port` pair, same detection path; `refresh_catalog=1` also forces a HuggingFace catalogue refresh on the instance's paced outbound budget. |
+| `GET /api/hwfit/profiles` | `get_serve_profiles` | `middleware + require_admin` | yes — `B541`. Same, and `model_path` runs `test -d` / `find` on the target, the serving host when no host is named. |
+| `GET /api/hwfit/image-models` | `get_image_models` | `middleware + require_admin` | yes — `B541`. Same. |
 
 #### `routes/prefs_routes.py`
 
@@ -456,7 +458,7 @@ routes: 3
 |---|---|---|---|
 | `GET /api/tts/stats` | `get_tts_stats` | `middleware` | yes — counters for a local service. |
 | `POST /api/tts/synthesize` | `synthesize_speech` | `middleware` | yes — a signed-in user synthesising their own text. |
-| `POST /api/tts/clear-cache` | `clear_tts_cache` | `middleware` | no — `B540`. An instance-wide mutation with no privilege check, while the same act on uploads (`POST /api/upload/cleanup`) is `require_admin`. |
+| `POST /api/tts/clear-cache` | `clear_tts_cache` | `middleware + require_admin` | yes — `B540`. An instance-wide mutation, so admin, at the height of the same act on uploads (`POST /api/upload/cleanup`). There is no owner to scope it to — nothing records whose clip is whose — and the product's one caller runs it after an admin-only voice change. A no-login install keeps it: `require_admin` returns when auth is off. |
 
 #### `routes/workspace_routes.py`
 
@@ -482,7 +484,7 @@ the number of admin decisions added — which is the behaviour the map was built
 The paragraph above is about the 107 that predate roles; the counts below are live.
 
 - **45 superuser sites do not move.** They are already right.
-- **52 operator sites are the phase's return.** Today the only way to let someone keep
+- **54 operator sites are the phase's return.** Today the only way to let someone keep
   the instance up is to make them the owner. An `operator` overlay on
   `DEFAULT_PRIVILEGES` retires 48 gates without touching a single one of the 37.
 - **4 power-user sites are one privilege key.** `allowed_models` already exists in
@@ -496,6 +498,45 @@ And before any of it: **the other three admin gates in § A's preamble.** `P11-0
 already exists for the `_ADMIN_TOOLS` name collision *"one grep away from a serious
 mistake during an RBAC refactor"*. These are the same hazard in a different spelling,
 and `B543` is filed for them.
+
+## E · a host the caller names is the operator's to reach (`B541`)
+
+Every route in the tree — not only § B's fifteen files — whose handler reaches
+`validate_remote_host`, `validate_ssh_port` or `run_ssh_command` must also reach
+`require_admin`. The two validators are the `FORBIDDEN.md` Part 2 SSRF control on a
+caller-chosen target, so reaching one marks a route that will open a connection to a
+box its caller picked; the third opens the SSH session itself. Reach is the same
+closure § B uses: the module's own call graph, plus every `Depends(f)` on the router
+or the route's decorator. The Codex cookbook routes count as gated because
+`_require_cookbook_scope` reaches `require_admin` for a cookie session; an API token
+there is held to its `cookbook:*` scope instead, which is that helper's documented
+design.
+
+`B541` is why this exists: four `/api/hwfit/*` routes opened SSH to a host any
+signed-in account named, while `GET /api/cookbook/gpus` — one directory away, the same
+question — was admin-only. Nobody had compared the two files. There is no ceiling,
+because the number allowed through ungated is zero:
+
+derived-ssh-targets: 14 routes in 3 files, 14 behind require_admin
+
+## F · the `/static` mount hands out no page (`B370`)
+
+`/static` is in `AUTH_EXEMPT_PREFIXES` and has to be: the login page loads its stylesheet,
+modules, fonts, icon and manifest from it before anyone is signed in (`B262`). Anything
+else under it is served to a caller with no session too. So every tracked file under
+`static/` the mount would answer as a page — `text/html` or `application/xhtml+xml`, by
+the `mimetypes` table `StaticFiles` itself uses — must be a key of
+`ROUTE_OWNED_STATIC_PAGES` in `app.py`. The mount answers those with a 302 to the route,
+and the route stands behind the middleware unless `AUTH_EXEMPT_EXACT` names it, so the
+pages a stranger is handed are exactly the ones that list names. That is the exemption
+`B370` asked to have written down, and `app.py` writes it beside the prefix.
+
+`B370` is why this exists: three developer sandboxes (`wave-variants.html`,
+`whirlpool-variants.html`, `modal-control-variants.html`) answered 200 with no cookie
+while every page with a route answered `302 → /login`. They now have routes under
+`/sandbox/`, for anyone signed in.
+
+derived-static-documents: 5 under static/, 5 with a route, handed to a caller with no session: /login
 
 ## What this file does not cover
 

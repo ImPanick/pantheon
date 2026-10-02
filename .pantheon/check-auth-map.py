@@ -42,6 +42,28 @@ Four populations, derived:
      starts `yes` or `no`, and a `no` must name a `Bxxx`. An unfiled hole
      cannot sit in the map quietly, which is the failure mode a table is for.
 
+  E  a host the caller names is the operator's to reach (`B541`). Every
+     route in the tree — not only the fifteen files — whose handler reaches
+     `validate_remote_host`, `validate_ssh_port` or `run_ssh_command` must
+     reach `require_admin` too. Those two validators are the `FORBIDDEN.md`
+     Part 2 SSRF control on a caller-chosen target, so reaching one is the
+     mark of a route that will open a connection to a box its caller picked.
+     Four `/api/hwfit/*` routes did that for any signed-in account while
+     `GET /api/cookbook/gpus` asked the same question admin-only. This rule
+     has no ceiling: the population behind it is every such route, and the
+     number allowed through ungated is zero.
+
+  F  the `/static` mount hands out no document (`B370`). `/static` is an
+     auth-exempt prefix because the login page loads its assets from it
+     before anyone is signed in — and anything else that lands under it is
+     served to a caller with no session. So every tracked file under
+     `static/` that the mount would answer as a page (a media type of
+     `text/html` or `application/xhtml+xml`, by the `mimetypes` table
+     `StaticFiles` itself uses) must be a key of `ROUTE_OWNED_STATIC_PAGES` in
+     `app.py`, which the mount answers with a redirect to the route — and the
+     route stands behind the middleware unless `AUTH_EXEMPT_EXACT` names it.
+     Three developer sandboxes were the documents it had been handing out.
+
 **Sites are keyed by file and enclosing function, never by line number.** All
 107 keys are unique that way (this checker fails if that ever stops being
 true). A line number in a committed table is the one field that goes stale on
@@ -54,6 +76,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+import mimetypes
 import re
 import subprocess
 import sys
@@ -156,7 +179,8 @@ def tracked_python(root: Path = ROOT) -> list[str]:
     return [f for f in out.split() if not f.startswith(SKIP_PREFIXES)]
 
 
-def _parse(root: Path, rel: str, *, containing: str | None = None) -> ast.Module | None:
+def _parse(root: Path, rel: str, *,
+           containing: str | tuple[str, ...] | None = None) -> ast.Module | None:
     """Parse one module, or `None` if it will not parse or cannot matter.
 
     `containing` is a cheap pre-filter and it is sound rather than
@@ -169,8 +193,10 @@ def _parse(root: Path, rel: str, *, containing: str | None = None) -> ast.Module
         source = (root / rel).read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError):
         return None
-    if containing is not None and containing not in source:
-        return None
+    if containing is not None:
+        needles = (containing,) if isinstance(containing, str) else containing
+        if not any(n in source for n in needles):
+            return None
     try:
         return ast.parse(source)
     except SyntaxError:
@@ -346,6 +372,58 @@ def _reachable(graph: dict[str, set[str]], start: str) -> set[str]:
     return out
 
 
+def _depends_names(value: ast.AST) -> set[str]:
+    """The `f` of every `Depends(f)` under `value`."""
+    names: set[str] = set()
+    for c in ast.walk(value):
+        if isinstance(c, ast.Call) and _called_name(c) == "Depends" and c.args:
+            arg = c.args[0]
+            inner = arg.attr if isinstance(arg, ast.Attribute) else getattr(arg, "id", None)
+            if inner:
+                names.add(inner)
+    return names
+
+
+def route_reach(tree: ast.Module) -> list[tuple[ast.AST, str, str, set[str]]]:
+    """`(handler, METHOD, path, names it can reach)` for every route in a module.
+
+    The one answer to "what stands in front of this route", shared by rule B
+    and rule E so the two cannot disagree about it (`Law 14`). Reach is the
+    module's own call graph, closed transitively, plus every `Depends(f)` the
+    route is declared under — on the router (`chat_routes.py` and
+    `embedding_routes.py` gate whole surfaces that way, and since `B541` so
+    does `hwfit_routes.py`) or on the route's own decorator — and whatever
+    those dependencies reach in turn. A name defined in another module is
+    reached by name and no further; that is the scope, stated (`Law 5`).
+    """
+    prefix = module_prefix(tree)
+    graph = _call_graph(tree)
+    router_deps: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and _called_name(node) == "APIRouter":
+            for kw in node.keywords:
+                if kw.arg == "dependencies":
+                    router_deps |= _depends_names(kw.value)
+    out: list[tuple[ast.AST, str, str, set[str]]] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        for dec in node.decorator_list:
+            found = _decorator_route(dec)
+            if not found:
+                continue
+            method, path = found
+            deps = set(router_deps)
+            for kw in dec.keywords:
+                if kw.arg == "dependencies":
+                    deps |= _depends_names(kw.value)
+            reach = _reachable(graph, node.name) | deps
+            for dep in deps:
+                reach |= _reachable(graph, dep)
+            out.append((node, method, f"{prefix}{path}", reach))
+    return out
+
+
 def routes_in(root: Path, rel: str) -> list[Route]:
     """Every route in one module, with the auth names its handler can reach.
 
@@ -356,34 +434,56 @@ def routes_in(root: Path, rel: str) -> list[Route]:
     tree = _parse(root, rel)
     if tree is None:
         return []
-    prefix = module_prefix(tree)
-    graph = _call_graph(tree)
-    # A `dependencies=[Depends(f)]` on the router applies to every route it
-    # carries. `chat_routes.py` gates its whole surface that way.
-    router_deps: set[str] = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Call) and _called_name(node) == "APIRouter":
-            for kw in node.keywords:
-                if kw.arg == "dependencies":
-                    for c in ast.walk(kw.value):
-                        if isinstance(c, ast.Call) and _called_name(c) == "Depends" and c.args:
-                            arg = c.args[0]
-                            inner = arg.attr if isinstance(arg, ast.Attribute) else getattr(arg, "id", None)
-                            if inner:
-                                router_deps.add(inner)
-    out: list[Route] = []
-    for node in ast.walk(tree):
-        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            continue
-        for dec in node.decorator_list:
-            found = _decorator_route(dec)
-            if not found:
-                continue
-            method, path = found
-            auth = (_reachable(graph, node.name) | router_deps) & AUTH_NAMES
-            out.append(Route(rel, method, f"{prefix}{path}", node.name, node.lineno,
-                             frozenset(auth)))
+    out = [
+        Route(rel, method, path, node.name, node.lineno, frozenset(reach & AUTH_NAMES))
+        for node, method, path, reach in route_reach(tree)
+    ]
     out.sort(key=lambda r: r.line)
+    return out
+
+
+#: `B541`. A route that reaches one of these will open a connection to a host
+#: its caller chose: the two are the SSRF validators `FORBIDDEN.md` Part 2 keeps
+#: on every caller-named target, and the third opens the SSH session itself.
+SSH_TARGET_NAMES = frozenset({"validate_remote_host", "validate_ssh_port", "run_ssh_command"})
+
+
+class TargetRoute(NamedTuple):
+    """One route that reaches a caller-named remote host, and whether
+    `require_admin` stands in front of it."""
+    file: str
+    method: str
+    path: str
+    func: str
+    line: int
+    gated: bool
+
+    @property
+    def key(self) -> str:
+        return f"{self.method} {self.path}"
+
+
+def ssh_target_routes(root: Path = ROOT, rels: list[str] | None = None) -> list[TargetRoute]:
+    """Rule E: every route in the tree that reaches a caller-named host.
+
+    Every tracked module, not the fifteen of § B — the defect `B541` names was
+    a route file nobody had compared with `cookbook_routes.py`, one directory
+    away, which already answered the same question behind `require_admin`.
+    `require_admin` is resolved through its aliases, as in rule A.
+    """
+    if rels is None:
+        rels = tracked_python(root)
+    out: list[TargetRoute] = []
+    for rel in rels:
+        tree = _parse(root, rel, containing=tuple(SSH_TARGET_NAMES))
+        if tree is None:
+            continue
+        admin = require_admin_aliases(tree)
+        for node, method, path, reach in route_reach(tree):
+            if reach & SSH_TARGET_NAMES:
+                out.append(TargetRoute(rel, method, path, node.name, node.lineno,
+                                       bool(reach & admin)))
+    out.sort(key=lambda r: (r.file, r.line))
     return out
 
 
@@ -436,6 +536,56 @@ def is_exempt(path: str, exact: set[str], patterns: list[re.Pattern]) -> bool:
     if path in exact:
         return True
     return any(p.match(path) for p in patterns)
+
+
+#: `B370`. The media types `StaticFiles` answers a page with, as opposed to a
+#: subresource. Decided by `mimetypes.guess_type` — the call Starlette's
+#: `FileResponse` makes — so the checker and the mount cannot disagree about
+#: which files are pages. Case-insensitive on the extension, as that table is.
+DOCUMENT_TYPES = frozenset({"text/html", "application/xhtml+xml"})
+
+#: The directory `app.py` mounts at the auth-exempt `/static` prefix
+#: (`STATIC_DIR` in `src/constants.py`), repo-relative.
+STATIC_DIR_REL = "static/"
+
+
+def route_owned_static_pages(root: Path = ROOT) -> tuple[dict[str, str], int]:
+    """`ROUTE_OWNED_STATIC_PAGES` read out of `app.py`: `(filename -> route,
+    how many entries could not be read)`.
+
+    Read, not copied (`Law 7`). The table is one literal dict on purpose and
+    three things parse it — this rule, `tests/test_agpl_source_link.py` and
+    the mount at runtime — so an entry that is not a string literal (a `**`
+    splice, a computed key) is counted rather than skipped: skipped, it would
+    be a page this rule calls unowned for a reason nobody could see.
+    """
+    tree = _parse(root, "app.py")
+    if tree is None:
+        return {}, 0
+    for node in tree.body:
+        if not (isinstance(node, ast.Assign) and isinstance(node.value, ast.Dict)):
+            continue
+        if not any(isinstance(t, ast.Name) and t.id == "ROUTE_OWNED_STATIC_PAGES"
+                   for t in node.targets):
+            continue
+        table: dict[str, str] = {}
+        unreadable = 0
+        for key, value in zip(node.value.keys, node.value.values):
+            if (isinstance(key, ast.Constant) and isinstance(key.value, str)
+                    and isinstance(value, ast.Constant) and isinstance(value.value, str)):
+                table[key.value] = value.value
+            else:
+                unreadable += 1
+        return table, unreadable
+    return {}, 0
+
+
+def static_documents(root: Path = ROOT) -> list[str]:
+    """Every tracked file under `static/` the mount would serve as a page."""
+    out = subprocess.run(["git", "ls-files", "-z", "--", STATIC_DIR_REL], cwd=root,
+                         capture_output=True, text=True, check=True).stdout
+    return sorted(f for f in out.split("\0")
+                  if f and mimetypes.guess_type(f)[0] in DOCUMENT_TYPES)
 
 
 def other_admin_gates(root: Path = ROOT, rels: list[str] | None = None) -> list[str]:
@@ -496,6 +646,8 @@ class ParsedMap(NamedTuple):
     other_total: str     # the claimed `derived-others:` line, raw
     routes: dict         # file -> "METHOD path" -> row
     route_counts: dict   # file -> claimed route count
+    ssh_total: str = ""  # the claimed `derived-ssh-targets:` line, raw (rule E)
+    static_total: str = ""  # the claimed `derived-static-documents:` line, raw (rule F)
 
 
 def parse_map(text: str) -> ParsedMap:
@@ -504,6 +656,8 @@ def parse_map(text: str) -> ParsedMap:
     tier_summary: dict[str, int] = {}
     site_total = ""
     other_total = ""
+    ssh_total = ""
+    static_total = ""
     routes: dict[str, dict[str, dict]] = {}
     route_counts: dict[str, int] = {}
 
@@ -528,6 +682,12 @@ def parse_map(text: str) -> ParsedMap:
             continue
         if line.lower().startswith("derived-others:"):
             other_total = line[len("derived-others:"):].strip()
+            continue
+        if line.lower().startswith("derived-ssh-targets:"):
+            ssh_total = line[len("derived-ssh-targets:"):].strip()
+            continue
+        if line.lower().startswith("derived-static-documents:"):
+            static_total = line[len("derived-static-documents:"):].strip()
             continue
         m = re.match(r"^routes:\s*(\d+)\s*$", line, re.I)
         if m and route_file:
@@ -558,7 +718,8 @@ def parse_map(text: str) -> ParsedMap:
                     "route": _bare(cells[0]), "handler": _bare(cells[1]),
                     "gate": _bare(cells[2]), "intended": cells[3],
                 }
-    return ParsedMap(sites, tier_summary, site_total, other_total, routes, route_counts)
+    return ParsedMap(sites, tier_summary, site_total, other_total, routes, route_counts,
+                     ssh_total, static_total)
 
 
 def _gate_from_source(route: Route, exact: set[str], patterns: list[re.Pattern]) -> str:
@@ -727,10 +888,69 @@ def problems(root: Path, text: str, *, max_other: int) -> tuple[list[str], dict]
             "than writing a further way to ask the same question."
         )
 
+    # ── E ────────────────────────────────────────────────────────────────────
+    targets = ssh_target_routes(root)
+    ungated = [t for t in targets if not t.gated]
+    for t in ungated:
+        out.append(
+            f"{t.file}:{t.line}: `{t.key}` reaches a remote host its caller names "
+            f"(`{t.func}` reaches {' / '.join(sorted(SSH_TARGET_NAMES))}) and no "
+            "`require_admin` stands in front of it. Which box this instance opens a "
+            "connection to is the operator's call (`B541`): gate the route, or put "
+            "its router behind `Depends(require_admin)`."
+        )
+    target_files = {t.file for t in targets}
+    want_ssh = (f"{len(targets)} routes in {len(target_files)} files, "
+                f"{len(targets) - len(ungated)} behind require_admin")
+    if parsed.ssh_total != want_ssh:
+        out.append(
+            f"§ E's `derived-ssh-targets:` line says `{parsed.ssh_total}` and the tree "
+            f"says `{want_ssh}`."
+        )
+
+    # ── F ────────────────────────────────────────────────────────────────────
+    table, unreadable = route_owned_static_pages(root)
+    owned = {name.casefold(): route for name, route in table.items()}
+    if not owned:
+        out.append("app.py yielded no ROUTE_OWNED_STATIC_PAGES entries — rule F below "
+                   "is not evidence about anything.")
+    if unreadable:
+        out.append(
+            f"app.py: {unreadable} `ROUTE_OWNED_STATIC_PAGES` entr"
+            f"{'y is' if unreadable == 1 else 'ies are'} not a string literal. Keep the "
+            "table one literal dict — rule F, `tests/test_agpl_source_link.py` and the "
+            "mount all read it, and a `**` splice is a page the first two cannot see."
+        )
+    documents = static_documents(root)
+    unowned: list[str] = []
+    anonymous: set[str] = set()
+    for rel in documents:
+        # The mount matches casefolded (`B262`), so this does too.
+        route = owned.get(rel[len(STATIC_DIR_REL):].casefold())
+        if route is None:
+            unowned.append(rel)
+            out.append(
+                f"{rel}: a page under the auth-exempt `/static` mount with no route, so "
+                "the mount hands it to a caller with no session (`B370`). Give it a "
+                "route in `ROUTE_OWNED_STATIC_PAGES` in app.py — a developer page goes "
+                "in `DEVELOPER_SANDBOX_PAGES` — or take it out of `static/`."
+            )
+        elif is_exempt(route, exact, patterns):
+            anonymous.add(route)
+    want_static = (f"{len(documents)} under static/, {len(documents) - len(unowned)} "
+                   f"with a route, handed to a caller with no session: "
+                   f"{', '.join(sorted(anonymous)) or 'none'}")
+    if parsed.static_total != want_static:
+        out.append(
+            f"§ F's `derived-static-documents:` line says `{parsed.static_total}` and the "
+            f"tree says `{want_static}`."
+        )
+
     return out, {
         "sites": len(sites), "direct": direct, "depends": depends,
         "mapped": len(parsed.sites), "routes": live_routes,
-        "others": len(others),
+        "others": len(others), "ssh_targets": len(targets), "ssh_ungated": len(ungated),
+        "static_documents": len(documents), "static_unowned": len(unowned),
     }
 
 
@@ -752,7 +972,10 @@ def main(argv: list[str] | None = None) -> int:
         f"require_admin sites {n['sites']} (direct {n['direct']} · Depends "
         f"{n['depends']})  ·  mapped {n['mapped']}  ·  routes in "
         f"{len(ROUTE_FILES)} files {n['routes']}  ·  admin gates outside "
-        f"require_admin {n['others']} (max {args.max})  ·  PROBLEMS {len(found)}"
+        f"require_admin {n['others']} (max {args.max})  ·  routes reaching a "
+        f"caller-named host {n['ssh_targets']} ({n['ssh_ungated']} ungated)  ·  "
+        f"pages under static/ {n['static_documents']} ({n['static_unowned']} without a "
+        f"route)  ·  PROBLEMS {len(found)}"
     )
     for p in found:
         print(f"  {p}")
