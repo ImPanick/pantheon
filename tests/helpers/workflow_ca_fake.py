@@ -29,10 +29,11 @@ real function here can compute is that function's: the palette is
 `workflow_effects.build_palette`'s (`helpers.workflow_cw_fake.real_palette`),
 and a step's dry-run plan is `workflow_document.plan_lines`' answer.
 
-Two keys C-A does not name, said so where they are used: the palette's
-`examples` (`D-2026-10-02-02` §1's example sentences, "served by wb-assist";
-read from the palette — merge point) and `exportWorkflow`'s answer (a `Blob`,
-or `{ blob, filename }`; both are read).
+Two things C-A does not name, which wb-assist's branch has since settled the
+same way (measured on its `22f953d`/`e927759`): the palette's `examples`
+(`D-2026-10-02-02` §1's example sentences, `workflow_assist.EXAMPLE_SENTENCES`)
+and `exportWorkflow`'s answer — a `Blob` named by the server's
+`Content-Disposition` (`blob.filename`).
 
   * ``CA_FAKE_JS`` — `workbench/cafake.js`: a fake **server** (`net`) answering
     C-A's routes from the C-W fake's one in-memory workflow (`cwfake.js`'s
@@ -98,13 +99,14 @@ export const ca = {
   draft: null, importFile: null,      // (body) → { status, body }
   checkRefusal: null,                  // { status, detail }
   switchRefusal: null,                 // the 409 body while marks remain (recorded or literal)
-  exportRefusal: null, exportBody: null,
+  exportRefusal: null, exportBody: null, exportName: null,
   explain: null, fix: null,            // (body, nodeId) → { status, body } | null for the default
   dryNodes: {},                        // node_id → [plan line]
   versions: [], graphs: {},            // the Versions list; a version's graph, for a restore
 };
-const reply = (status, body, blob) => ({
+const reply = (status, body, blob, headers = {}) => ({
   ok: status >= 200 && status < 300, status,
+  headers: { get: (k) => headers[String(k).toLowerCase()] || null },
   json: async () => (body === undefined ? Promise.reject(new Error('no body')) : clone(body)),
   blob: async () => blob,
 });
@@ -160,7 +162,9 @@ export async function net(url, init = {}) {
     note();
     if (ca.exportRefusal) return reply(ca.exportRefusal.status, { detail: ca.exportRefusal.detail });
     const file = ca.exportBody || { pantheon_workflow: 1, name: doc.name, graph: { nodes: [], edges: [] } };
-    return reply(200, undefined, new Blob([JSON.stringify(file)], { type: 'application/json' }));
+    // An attachment, named by the server (C-A).
+    return reply(200, undefined, new Blob([JSON.stringify(file)], { type: 'application/json' }),
+      { 'content-disposition': `attachment; filename="${ca.exportName || 'workflow.json'}"` });
   }
   const explain = new RegExp(`^${base}/runs/([^/]+)/explain$`).exec(path);
   if (method === 'POST' && explain) {
@@ -226,7 +230,15 @@ export function caApi(fetchFn = net) {
       const r = await readRefusal(res);
       throw new WorkflowRefusal(r.status, r.sentence, { reason: r.reason, nodeIds: r.nodeIds, field: r.field });
     }
-    if (raw) return res.blob();
+    if (raw) {
+      // As wb-assist's `exportWorkflow` does: a Blob, named by the server's
+      // `Content-Disposition`.
+      const blob = await res.blob();
+      const said = (res.headers && res.headers.get && res.headers.get('Content-Disposition')) || '';
+      const m = /filename="?([^";]+)"?/i.exec(said);
+      blob.filename = m ? m[1] : 'workflow.json';
+      return blob;
+    }
     try { return await res.json(); } catch (_) { return null; }
   }
   api.createWorkflow = ({ name, fromTaskId, describe, tz, file } = {}) =>
@@ -383,3 +395,67 @@ def recorded_draft(tmp_path: Path, doc: dict, *, describe: str, notes, missing, 
         reply, refusal, examples = asyncio.run(record(w))
     assert list(examples) == list(wa.EXAMPLE_SENTENCES)
     return {"source": "recorded", "examples": list(examples), "reply": reply, "switch_refusal": refusal}
+
+
+# ── `P22-20`: a failed run and its explanation, recorded from wb-assist's routes
+# Where `wb-assist`'s explain route is in the tree (`workflow_assist.explain_step`
+# and its harness's `Feeds`), the workflow, its failed run (the REAL walker over
+# a loopback server whose `/v1/entriess` answers 404), the run's records, the
+# Runs list, the Versions list and the explanation (a scripted model answering
+# `answer`) are recorded from the real routes as a person's browser asks; on
+# this branch alone they are C-A's literal shapes, built the same way.
+
+def explainer_present() -> bool:
+    try:
+        from src import workflow_assist
+        from tests.helpers import assist_harness
+    except Exception:
+        return False
+    return hasattr(workflow_assist, "explain_step") and hasattr(assist_harness, "Feeds")
+
+
+def recorded_explain(tmp_path: Path, *, name: str, graph: dict, node_id: str, answer: dict, literal: dict) -> dict:
+    """`{source, doc, runs, run_id, execution, versions, explain}`. `literal`
+    is that dict in C-A's shapes, used where the explain route is absent."""
+    if not explainer_present():
+        return {"source": "literal", **literal}
+    import asyncio
+
+    import pytest
+
+    from core.database import TaskRun
+    from tests.helpers.assist_harness import PERSON, Feeds, build_world, miniflux, resolve_to_loopback, rows, script_model
+    from tests.helpers.walker_harness import client_for
+
+    async def record(w):
+        async with client_for(w.app) as client:
+            async def call(method, path, **kw):
+                res = await client.request(method, path, headers=PERSON, **kw)
+                assert res.status_code == 200, (path, res.status_code, res.text)
+                return res.json()
+            made = await call("POST", "/api/workflows", json={"name": name})
+            wid, task_id = made["workflow"]["id"], made["workflow"]["task_id"]
+            await call("PUT", f"/api/workflows/{wid}", json={"graph": graph, "base_version": 1})
+            await call("POST", f"/api/workflows/{wid}/switch", json={"on": True})
+            await w.s._execute_task(task_id)
+            [run] = rows(w.factory, TaskRun, task_id=task_id)
+            assert run.status == "error", (run.status, run.error)
+            doc = (await call("GET", f"/api/workflows/{wid}"))["workflow"]
+            runs = (await call("GET", f"/api/tasks/{task_id}/runs"))["runs"]
+            execution = await call("GET", f"/api/workflows/{wid}/runs/{run.id}")
+            versions = (await call("GET", f"/api/workflows/{wid}/versions"))["versions"]
+            explain = await call("POST", f"/api/workflows/{wid}/runs/{run.id}/explain",
+                                 json={"node_id": node_id, "item": None})
+            return {"doc": doc, "runs": runs, "run_id": run.id, "execution": execution,
+                    "versions": versions, "explain": explain}
+
+    feeds = Feeds()
+    try:
+        with pytest.MonkeyPatch.context() as mp:
+            resolve_to_loopback(mp)
+            w = build_world(mp, tmp_path, integrations=[miniflux(feeds.base_url)])
+            script_model(mp, answer)
+            out = asyncio.run(record(w))
+    finally:
+        feeds.close()
+    return {"source": "recorded", **out}

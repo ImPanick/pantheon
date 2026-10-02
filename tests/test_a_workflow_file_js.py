@@ -113,6 +113,7 @@ def test_export_downloads_the_saved_workflow_as_a_file(box):
     o = _case(box, """
         seed(SAVED);
         ca.exportBody = { pantheon_workflow: 1, name: 'Unread digest', graph: { nodes: [], edges: [] } };
+        ca.exportName = 'unread-digest.workflow.json';
         const { r } = await room({ workflowId: 'wf1' });
         const offered = !by(r, 'wf-export').hidden;
         fire(by(r, 'wf-export'), 'click'); await settle(30);
@@ -127,7 +128,7 @@ def test_export_downloads_the_saved_workflow_as_a_file(box):
     assert o["gets"] == [["/api/workflows/wf1/export", None]] * 2
     c = o["clean"]
     assert len(c["clicked"]) == 1 and c["clicked"][0]["tag"] == "A"
-    assert c["clicked"][0]["download"] == "unread-digest.workflow.json"
+    assert c["clicked"][0]["download"] == "unread-digest.workflow.json", "the file is named as the server names it"
     assert c["clicked"][0]["href"].startswith("blob:")
     assert c["made"] == 1 and c["revoked"] is True and c["left"] == 0, "the object URL is taken back and the link removed"
     assert json.loads(c["bytes"]) == {"pantheon_workflow": 1, "name": "Unread digest", "graph": {"nodes": [], "edges": []}}, \
