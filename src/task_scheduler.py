@@ -26,6 +26,7 @@ from src.interactive_gate import STARTED_BY, STARTED_BY_BACKGROUND, STARTED_BY_P
 from src.owner_identity import REQUEST_SENTINEL_OWNERS
 from src import paced_http  # `B1014`: NO_PROXY ranges, read for every client
 from src.task_action_policy import (
+    admin_only_action_of,
     is_admin_only_task_action,
     owner_has_admin_task_privileges,
     record_admin_refusal,
@@ -367,7 +368,8 @@ def load_chain_rows(db, start_ids, *, known=None,
 
 
 def describe_graph_refusal(refusal: GraphRefusal, names=None, *,
-                           first: str | None = None) -> str:
+                           first: str | None = None,
+                           lead: str | None = None) -> str:
     """The sentence a person is told on Save, naming the tasks. `P22-01`.
 
     Led by `CHAIN_REFUSAL_REASONS[reason]`, the same words the run's step log
@@ -377,13 +379,17 @@ def describe_graph_refusal(refusal: GraphRefusal, names=None, *,
     task that leads to it. `first` is the task the person is saving: a loop
     through it is told starting from it, because that is the link they just
     drew.
+
+    `P22-05`. `lead` replaces the reason's words for a caller whose thing is
+    not a chain — a workflow document's loop is told "The workflow loops back
+    on itself: …", the rest of the sentence built here exactly as for a chain.
     """
     names = names or {}
 
     def called(task_id):
         return f"“{names.get(task_id) or task_id}”"
 
-    lead = CHAIN_REFUSAL_REASONS[refusal.reason]
+    lead = lead or CHAIN_REFUSAL_REASONS[refusal.reason]
     lead = lead[:1].upper() + lead[1:]
     path = list(refusal.path)
     if refusal.reason == CHAIN_CYCLE and path:
@@ -632,11 +638,17 @@ def consecutive_failures(db, task_id: str, *, before_run_id: str = None,
     worked. `skipped` and `aborted` are not failures and are not successes
     either — they end the streak only in the sense that they are not part of it,
     so they stop the count rather than resetting it to zero.
+
+    `B1059`. A DRY run is not part of the history this reads: it is recorded
+    `skipped` (`P8-33`), so one *Show me what this would do* between two
+    failures stopped the count at zero and handed out a fresh retry budget and
+    the first rung of `P15-08`'s ladder — a side effect of the one button that
+    promises none. `real_run_clause` is `is_dry_run`, negated, in SQL (`B1054`).
     """
     from core.database import TaskRun
 
     q = (db.query(TaskRun.id, TaskRun.status)
-           .filter(TaskRun.task_id == task_id)
+           .filter(TaskRun.task_id == task_id, real_run_clause(TaskRun))
            .order_by(TaskRun.started_at.desc(), TaskRun.id.desc())
            .limit(limit))
     n = 0
@@ -1212,13 +1224,18 @@ def not_active_words(task) -> str | None:
     return NOT_ACTIVE_WORDS.get(status, f"its status is {status}")
 
 
-def dry_run_declined(task) -> str | None:
+def dry_run_declined(task, db=None) -> str | None:
     """Why a dry run would not plan `task`, or `None` if it plans it.
 
     `B1036`. Two reasons and no third: the task is gone, or its action is one
     the engine would refuse to run for this owner (`ADMIN_ONLY_TASK_ACTIONS`) —
     the same sentence the real run's refusal writes, so a dry run is not a way
     to read an admin-only task's configuration. A paused task is planned.
+
+    `P22-05`. With `db`, a workflow's trigger is asked the same question about
+    every step in its document (`admin_only_action_of`), so a workflow is not a
+    way to read an admin-only step's command either — declined in the same
+    words, nothing paused, nobody told (`B1036`'s ruling, kept for workflows).
     """
     if task is None:
         return "Task no longer active (status=deleted)"
@@ -1226,6 +1243,11 @@ def dry_run_declined(task) -> str | None:
             and not owner_has_admin_task_privileges(task.owner)):
         from src.task_action_policy import admin_refusal_message
         return admin_refusal_message(task.action)
+    if db is not None and (task.task_type or "llm") == "workflow":
+        from src.task_action_policy import admin_only_action_of, admin_refusal_message
+        found = admin_only_action_of(db, task)
+        if found and not owner_has_admin_task_privileges(task.owner):
+            return admin_refusal_message(found)
     return None
 
 
@@ -1342,6 +1364,83 @@ FOREGROUND_TAKEOVER = "Paused because Pantheon became active"
 # written, beside `_execute_task`'s "Queued — waiting for a free slot…" and the
 # background gate's "Queued — waiting for Pantheon to be idle…".
 WAITING_FOR_CHAT = "Queued — waiting for the chat reply in progress to finish…"
+WAITING_FOR_IDLE = "Queued — waiting for Pantheon to be idle…"
+
+# `B1060`. How many times in a row one trigger's run may be stopped by the
+# foreground gate WHILE RUNNING; the stops before the last put it back in the
+# queue, the last one lets it go and says so. Each attempt starts again from the
+# beginning — the model calls and whatever the steps did are spent again — so a
+# run longer than the person's idle spells would otherwise restart every time
+# they look away, for ever. Mistake prevention, not a control (`Law 17`): three
+# is "the person came back three times while it ran".
+FOREGROUND_STOPS_LIMIT = 3
+
+
+class _Requeued:
+    """`B1060`. What `_execute_task_locked` answers when the foreground gate
+    stopped the run while it was running and the run goes back in the queue
+    with its trigger. One instance, compared by identity; never stored."""
+
+    __slots__ = ()
+
+    def __repr__(self):  # pragma: no cover - diagnostics
+        return "REQUEUED"
+
+
+REQUEUED = _Requeued()
+
+
+def _human_ms(seconds: float) -> int:
+    return int(round(max(0.0, seconds) * 1000))
+
+
+# `P22-05`. Which task types say so when a run WORKED — a run that produced
+# something a person reads. Housekeeping actions stay quiet on success. It was
+# the literal `{"llm", "research"}`, twice (`_notify_run_outcome` and the error
+# path's notification); a workflow — the person's own steps, producing their
+# result — notifies as a Prompt task does. One tuple, both places (`Law 7`).
+NOTIFY_ON_SUCCESS_TASK_TYPES = ("llm", "research", "workflow")
+
+# `P22-05` / `P8-27`. A workflow step runs under its own slot in `_run_state`,
+# `"<run id>:<step id>"`, created when the step starts and dropped when it ends
+# — so each step's model, step log and trigger are its own, and a run's slot
+# keeps the run's. Run ids are uuids and step ids `[A-Za-z0-9_-]`, so the
+# separator cannot occur in either. *Test this step* uses `"test:<uuid>"`,
+# which names no run row.
+NODE_SLOT_SEPARATOR = ":"
+TEST_SLOT_PREFIX = "test"
+
+# `P22-05`. What the walker says when a trigger has no document to run.
+WORKFLOW_DOCUMENT_MISSING = ("This workflow’s steps are missing, so there was "
+                             "nothing to run.")
+# `P22-05`. A step that the stop button, the foreground gate or the time limit
+# ended part-way.
+NODE_STOPPED = "Stopped before it finished"
+
+
+def node_slot(run_id: str, node_id: str) -> str:
+    """The `_run_state` key a workflow step runs under."""
+    return f"{run_id}{NODE_SLOT_SEPARATOR}{node_id}"
+
+
+def run_of_slot(slot):
+    """The run a slot belongs to: itself for a run, the run for a step's slot,
+    `"test"` for a step test (which no row has)."""
+    if isinstance(slot, str) and NODE_SLOT_SEPARATOR in slot:
+        return slot.split(NODE_SLOT_SEPARATOR, 1)[0]
+    return slot
+
+
+def _waited_words(seconds: float) -> str:
+    """`B1060`. How long a run waited for Pantheon to be idle, for its step log."""
+    seconds = max(0, int(round(seconds)))
+    if seconds < 1:
+        return "under a second"
+    if seconds < 120:
+        return f"{seconds} s"
+    if seconds < 7200:
+        return f"{seconds // 60} min"
+    return f"{seconds // 3600} h {(seconds % 3600) // 60} min"
 
 
 class TaskScheduler:
@@ -1377,6 +1476,12 @@ class TaskScheduler:
         # tell a run a person asked for from background work before it stops
         # anything.
         self._task_started_by = {}
+        # `B1060`. The background runs the foreground gate may stop: task id →
+        # run id, from the moment the run flips to `running` until it ends. A
+        # background run that is still QUEUED is not here — it waits for
+        # Pantheon to be idle before it takes the model slot, so it holds
+        # nothing and there is nothing to stop.
+        self._gate_stoppable = {}
         # `P8-27` / `B603`. Per-run state, keyed by run.
         #
         # `_last_run_model` and `_last_run_steps` were single instance
@@ -1464,7 +1569,13 @@ class TaskScheduler:
                 self._slot_permits += 1
 
     def _set_run_progress(self, run_id: str, message: str):
-        """Persist short live progress text for Activity while a run is active."""
+        """Persist short live progress text for Activity while a run is active.
+
+        `P22-05`. A workflow step's slot (`node_slot`) writes its run's row, so
+        a step's progress is the run's live text; a step test's slot names no
+        row and writes nothing.
+        """
+        run_id = run_of_slot(run_id)
         if not run_id:
             return
         try:
@@ -1517,6 +1628,14 @@ class TaskScheduler:
         if started is None:
             started = self._task_started_by = {}
         return started
+
+    def _gate_stoppable_map(self) -> dict:
+        """`B1060`. `_gate_stoppable`, created on demand, for the same
+        `__new__`-built test schedulers."""
+        found = getattr(self, "_gate_stoppable", None)
+        if found is None:
+            found = self._gate_stoppable = {}
+        return found
 
     def _state_for(self, run_id):
         """This run's slot, created on first write."""
@@ -1815,7 +1934,13 @@ class TaskScheduler:
         from core.database import TaskRun
 
         run = db.query(TaskRun).filter(TaskRun.id == run_id).first()
-        declined = dry_run_declined(task)
+        declined = dry_run_declined(task, db=db)
+        if declined is None and (task.task_type or "llm") == "workflow":
+            # `P22-05`. A workflow's plan is per step, on step records (`dry`),
+            # each step planned by the same `dry_run_plan` a task's is.
+            declined = self._record_workflow_dry_run(db, task, run_id, run)
+            if declined is None:
+                return
         if declined is not None:
             if run is not None:
                 run.status = "skipped"
@@ -1979,7 +2104,7 @@ class TaskScheduler:
         if not getattr(task, "notifications_enabled", True):
             return False
         if quiet_for_actions and \
-                (getattr(task, "task_type", None) or "llm") not in {"llm", "research"}:
+                (getattr(task, "task_type", None) or "llm") not in NOTIFY_ON_SUCCESS_TASK_TYPES:
             return False
         self.add_notification(
             task.name, status, task_id or getattr(task, "id", None),
@@ -2012,14 +2137,10 @@ class TaskScheduler:
         self._pending_notifications = keep
         return take
 
-    async def start(self):
-        # Re-read the concurrency cap here, not just in __init__: the scheduler
-        # is constructed at import/wiring time, so a settings change made after
-        # boot would otherwise need a full process restart to take effect.
-        # Nothing holds the semaphore yet at this point. `_check_due_tasks`
-        # re-reads it every tick as well (`P6-08`); this call is what makes the
-        # start-up log line report the cap the first dispatch will actually use.
-        self._refresh_concurrency_cap()
+    def _sweep_runs_left_by_a_restart(self) -> None:
+        """On startup, mark every run (and workflow step) a previous process
+        left in flight as aborted. Moved out of `start` unchanged, so it can be
+        called and tested on its own (`P22-07` added the step records)."""
         # On startup, mark any leftover "running" task_runs as aborted. Without
         # this, a server crash leaves rows stuck running indefinitely and the
         # _executing in-memory set forgets them, so the UI shows phantoms.
@@ -2046,6 +2167,36 @@ class TaskScheduler:
                 db.close()
         except Exception as e:
             logger.warning(f"Could not clear stale task_runs on startup: {e}")
+        # `P22-07`. The same event for a workflow's step: the run above is
+        # aborted, and the step it was on would read "running" in the Runs view
+        # for ever. A step record is only ever `running` while its walker is.
+        try:
+            from core.database import SessionLocal, TaskRunNode
+            db = SessionLocal()
+            try:
+                stuck = db.query(TaskRunNode).filter(TaskRunNode.status == "running").all()
+                if stuck:
+                    now = _utcnow()
+                    for rec in stuck:
+                        rec.status = "aborted"
+                        rec.error = "Server restarted while this step was running"
+                        rec.finished_at = now
+                    db.commit()
+                    logger.info("Cleared %d workflow step record(s) left running", len(stuck))
+            finally:
+                db.close()
+        except Exception as e:
+            logger.warning(f"Could not clear stale workflow step records on startup: {e}")
+
+    async def start(self):
+        # Re-read the concurrency cap here, not just in __init__: the scheduler
+        # is constructed at import/wiring time, so a settings change made after
+        # boot would otherwise need a full process restart to take effect.
+        # Nothing holds the semaphore yet at this point. `_check_due_tasks`
+        # re-reads it every tick as well (`P6-08`); this call is what makes the
+        # start-up log line report the cap the first dispatch will actually use.
+        self._refresh_concurrency_cap()
+        self._sweep_runs_left_by_a_restart()
 
         # Advance next_run for active tasks whose next_run is already in the
         # past. Without this, a restart hits _check_due_tasks() with an empty
@@ -2344,66 +2495,184 @@ class TaskScheduler:
                 raise
         await self._execute_task(task_id)
 
-    async def _execute_task(self, task_id: str, *, bypass_model_slot: bool = False,
-                            release_executing: bool = True, trigger: dict | None = None,
-                            dry: bool = False,
-                            started_by: str = STARTED_BY_BACKGROUND):
-        # Create the run record with status="queued" BEFORE waiting on the
-        # semaphore so the UI can show that a manually-triggered task is in
-        # line behind another. Once we acquire the slot, flip to "running"
-        # and hand off to _execute_task_locked.
+    def _new_queued_run(self, task_id: str) -> str:
+        """Write a `queued` run row and answer its id.
+
+        Created BEFORE any wait, so the UI can show that a run is in line behind
+        another one or behind the person using Pantheon. `B1060` writes a second
+        one when a run the foreground gate stopped goes back in the queue.
+        """
         from core.database import SessionLocal, TaskRun
-        current = asyncio.current_task()
-        if current:
-            self._task_handles[task_id] = current
-            self._started_by_map()[task_id] = started_by
         run_id = str(uuid.uuid4())
         _q_db = SessionLocal()
         try:
-            run = TaskRun(
+            _q_db.add(TaskRun(
                 id=run_id,
                 task_id=task_id,
                 started_at=_utcnow(),
                 status="queued",
                 result="Queued — waiting for a free slot…",
-            )
-            _q_db.add(run)
+            ))
             _q_db.commit()
         except Exception:
             logger.exception(f"Failed to create queued run row for task {task_id}")
         finally:
             _q_db.close()
+        return run_id
+
+    async def _wait_until_idle(self, task_id: str, run_id: str) -> float:
+        """`B1060`. A background run's wait for Pantheon to be idle, while it is
+        still `queued` and holds nothing. Answers how long it waited.
+
+        It was inside `_execute_task_locked`, i.e. INSIDE the model slot, so a
+        background run waiting for a person to stop using Pantheon held the one
+        slot every other run needed — and the foreground gate stopped waiting
+        runs for that reason. Stopped, a webhook's or an event's run was gone
+        with its payload (`_defer_immediately_due_task` only re-queues a task
+        whose `next_run` has passed, which those never have) while its row said
+        "Paused". It now waits here, holding nothing, and the gate leaves it be.
+        """
+        from core.database import SessionLocal, TaskRun
+        from src.interactive_gate import wait_for_interactive_quiet
+
+        db = SessionLocal()
+        try:
+            waiting = db.query(TaskRun).filter(TaskRun.id == run_id).first()
+            if waiting is not None and waiting.status == "queued":
+                waiting.result = WAITING_FOR_IDLE
+                db.commit()
+        except Exception:
+            logger.debug("Could not mark run %s waiting for idle", run_id, exc_info=True)
+        finally:
+            db.close()
+        started = time.monotonic()
+        waited = await wait_for_interactive_quiet(f"scheduled task {task_id}")
+        return (time.monotonic() - started) if waited else 0.0
+
+    async def _take_model_slot(self, task_id: str, run_id: str, *,
+                               idle_first: bool):
+        """Take one permit of the model slot. Answers `(semaphore, seconds
+        waited for idle)` — release THAT semaphore, because `_sync_run_slot`
+        may replace the attribute while the permit is held.
+
+        `B1060`. With `idle_first` — a background run under the foreground gate
+        — Pantheon must be idle before the slot is taken AND still idle once it
+        is held: a person who arrived while this run waited for the slot gets
+        the slot back at once, and this run waits for idle again, holding
+        nothing.
+        """
+        from src.interactive_gate import has_foreground_activity
+
+        waited = 0.0
+        while True:
+            if idle_first:
+                waited += await self._wait_until_idle(task_id, run_id)
+            sem = self._run_semaphore
+            await sem.acquire()
+            if not idle_first or not has_foreground_activity():
+                return sem, waited
+            sem.release()
+
+    async def _execute_task(self, task_id: str, *, bypass_model_slot: bool = False,
+                            release_executing: bool = True, trigger: dict | None = None,
+                            dry: bool = False,
+                            started_by: str = STARTED_BY_BACKGROUND,
+                            register_handle: bool = True):
+        # Create the run record with status="queued" BEFORE waiting on the
+        # semaphore so the UI can show that a manually-triggered task is in
+        # line behind another. Once we acquire the slot, flip to "running"
+        # and hand off to _execute_task_locked.
+        #
+        # `P22-05`. `register_handle=False` keeps `_task_handles[task_id]` off
+        # this asyncio task: a workflow's *Run task* step awaits its target from
+        # inside the WORKFLOW's task, and a handle pointing there would let a
+        # later `stop_task(target)` cancel the whole workflow.
+        current = asyncio.current_task()
+
+        def _hold_handle():
+            if current and register_handle:
+                self._task_handles[task_id] = current
+                self._started_by_map()[task_id] = started_by
+
+        _hold_handle()
+        run_id = self._new_queued_run(task_id)
+        # `B1060`. Background work waits for Pantheon to be idle BEFORE it takes
+        # the model slot. A person's run keeps `B1047`'s chat wait, inside
+        # `_execute_task_locked`; a dry run and a forced run wait for nothing.
+        gated = not (bypass_model_slot or dry)
+        idle_first = gated and started_by != STARTED_BY_PERSON
+        takeovers = 0
 
         try:
-            # `P8-33`. A dry run makes no model call and touches nothing, so it
-            # neither waits for the model slot nor waits for Pantheon to go
-            # idle. Queueing a plan behind a real run's semaphore would make the
-            # one button that is safe to press the slowest one.
-            if dry or bypass_model_slot or not self._task_needs_model_slot(task_id):
-                await self._execute_task_locked(
-                    task_id,
-                    run_id,
-                    release_executing=release_executing,
-                    gate_foreground=not (bypass_model_slot or dry),
-                    trigger=trigger,
-                    dry=dry,
-                    started_by=started_by,
-                )
-                # `P22-04`. The run's id, so a caller that awaited this — a dry
-                # run, below in `run_task_now` — can read back what it wrote.
-                # Every spawned caller ignores it, as it ignored `None`.
-                return run_id
-
-            async with self._run_semaphore:
-                await self._execute_task_locked(
-                    task_id,
-                    run_id,
-                    release_executing=release_executing,
-                    gate_foreground=True,
-                    trigger=trigger,
-                    started_by=started_by,
-                )
-            return run_id
+            while True:
+                waited = 0.0
+                # `P8-33`. A dry run makes no model call and touches nothing, so
+                # it neither waits for the model slot nor waits for Pantheon to
+                # go idle. Queueing a plan behind a real run's semaphore would
+                # make the one button that is safe to press the slowest one.
+                if dry or bypass_model_slot or not self._task_needs_model_slot(task_id):
+                    if idle_first:
+                        waited = await self._wait_until_idle(task_id, run_id)
+                    outcome = await self._execute_task_locked(
+                        task_id,
+                        run_id,
+                        release_executing=False,
+                        gate_foreground=gated,
+                        trigger=trigger,
+                        dry=dry,
+                        started_by=started_by,
+                        waited_for_idle=waited,
+                        may_requeue=takeovers + 1 < FOREGROUND_STOPS_LIMIT,
+                    )
+                else:
+                    sem, waited = await self._take_model_slot(
+                        task_id, run_id, idle_first=idle_first)
+                    try:
+                        outcome = await self._execute_task_locked(
+                            task_id,
+                            run_id,
+                            release_executing=False,
+                            gate_foreground=True,
+                            trigger=trigger,
+                            started_by=started_by,
+                            waited_for_idle=waited,
+                            may_requeue=takeovers + 1 < FOREGROUND_STOPS_LIMIT,
+                        )
+                    finally:
+                        sem.release()
+                if outcome is not REQUEUED:
+                    # `P22-04`. The run's id, so a caller that awaited this — a
+                    # dry run, below in `run_task_now` — can read back what it
+                    # wrote. Every spawned caller ignores it, as it ignored `None`.
+                    return run_id
+                # `B1060`. The foreground gate stopped this run while it ran,
+                # and its row says it will run again. It goes back in the queue
+                # with the SAME trigger — the webhook body, the event, the step
+                # before it — still holding its `_executing` claim, so no other
+                # path can start the task in between.
+                #
+                # The cancel that stopped it was answered in
+                # `_execute_task_locked`, so asyncio is told so — once, for the
+                # one cancel that was delivered. Not down to zero: a Stop pressed
+                # since is a cancel still pending, and on 3.13+ `uncancel()`
+                # reaching zero drops a pending cancel. (Measured on 3.11.15
+                # without it: a later `asyncio.timeout` in this task still timed
+                # out, so this is correctness for `TaskGroup`/`timeout`
+                # bookkeeping, not a behaviour that was seen to break.)
+                if current is not None and current.cancelling():
+                    current.uncancel()
+                if release_executing and task_id not in self._executing:
+                    # A Stop pressed between the two attempts. `stop_task` lets
+                    # the claim go before anything else, and its cancel can be
+                    # absorbed while the stopped attempt tears down its monitor
+                    # (`await foreground_monitor` swallows a cancel), so the
+                    # claim is the one sure sign. The person's stop is the last
+                    # word on the row that promised another attempt.
+                    self._restate_stopped_by_user(run_id)
+                    return run_id
+                takeovers += 1
+                _hold_handle()
+                run_id = self._new_queued_run(task_id)
         except asyncio.CancelledError:
             # If cancellation happens while queued behind the semaphore,
             # _execute_task_locked never runs and cannot update the Activity row.
@@ -2413,6 +2682,9 @@ class TaskScheduler:
             self._defer_immediately_due_task(task_id, delay=timedelta(minutes=15))
             raise
         finally:
+            # A run stopped while it waited never reached `_execute_task_locked`,
+            # whose `finally` drops the slot; this one does, for that case.
+            self._clear_run_state(run_id)
             handle = self._task_handles.get(task_id)
             if handle is current:
                 self._task_handles.pop(task_id, None)
@@ -2420,6 +2692,23 @@ class TaskScheduler:
             if release_executing:
                 async with self._executing_lock:
                     self._executing.discard(task_id)
+
+    def _restate_stopped_by_user(self, run_id: str) -> None:
+        """`B1060`. A run the gate stopped said it would run again; the person
+        stopped it before it did. Its `result` says so; its `error` keeps why
+        the attempt itself ended."""
+        try:
+            from core.database import SessionLocal, TaskRun
+            db = SessionLocal()
+            try:
+                run = db.query(TaskRun).filter(TaskRun.id == run_id).first()
+                if run is not None and run.status == "aborted":
+                    run.result = STOPPED_BY_USER
+                    db.commit()
+            finally:
+                db.close()
+        except Exception:
+            logger.debug("Could not restate run %s as stopped", run_id, exc_info=True)
 
     def _defer_immediately_due_task(self, task_id: str, *, delay: timedelta):
         """A queued task can be cancelled before _execute_task_locked gets a DB
@@ -2453,7 +2742,18 @@ class TaskScheduler:
         trigger: dict | None = None,
         dry: bool = False,
         started_by: str = STARTED_BY_BACKGROUND,
+        waited_for_idle: float = 0.0,
+        may_requeue: bool = True,
     ):
+        """Run one queued run to its end. Answers `REQUEUED` when the
+        foreground gate stopped it while it ran and it goes back in the queue
+        (`B1060`), and `None` otherwise.
+
+        `waited_for_idle` is how long `_execute_task` held it in the queue for
+        Pantheon to be idle (`B1060`), said in its step log after the cause.
+        `may_requeue` is whether a stop by the gate puts it back
+        (`FOREGROUND_STOPS_LIMIT`).
+        """
         from core.database import SessionLocal, ScheduledTask, TaskRun
 
         db = SessionLocal()
@@ -2501,8 +2801,12 @@ class TaskScheduler:
                                              task_id=task_id)
                 return
 
+            # `P22-05`. One question for a task and for a workflow: the task's
+            # own action, or any step of its document (`admin_only_action_of`)
+            # — asked before any step runs, so no earlier step runs first.
+            _admin_action = admin_only_action_of(db, task)
             if (
-                is_admin_only_task_action(task.task_type, task.action)
+                _admin_action
                 and not owner_has_admin_task_privileges(task.owner)
             ):
                 # `skipped`, not `error` — the action never ran, so by the
@@ -2510,7 +2814,8 @@ class TaskScheduler:
                 # through the shared helper because the webhook path in
                 # routes/task/task_routes.py enforces the same rule and used to
                 # record nothing at all.
-                _refusal = record_admin_refusal(db, task, run_id=run_id)
+                _refusal = record_admin_refusal(db, task, run_id=run_id,
+                                                action=_admin_action)
                 logger.warning(
                     "Paused admin-only task %s for non-admin owner %r",
                     task_id,
@@ -2546,13 +2851,10 @@ class TaskScheduler:
                         waiting.result = WAITING_FOR_CHAT
                         db.commit()
                     await wait_for_chat_quiet(f"task {task.name}")
-            elif gate_foreground:
-                waiting = db.query(TaskRun).filter(TaskRun.id == run_id).first()
-                if waiting and waiting.status == "queued":
-                    waiting.result = "Queued — waiting for Pantheon to be idle…"
-                    db.commit()
-                from src.interactive_gate import wait_for_interactive_quiet
-                await wait_for_interactive_quiet(f"scheduled task {task.name}")
+            # `B1060`. A background run's wait for Pantheon to be idle was here,
+            # inside the model slot. It is `_execute_task`'s now, before the
+            # slot is taken (`_wait_until_idle`), so a waiting run holds nothing
+            # and the foreground gate has no reason to stop it.
 
             # Flip the run from queued → running. Reset started_at to the
             # actual execution start so queue wait time is visible from
@@ -2575,6 +2877,10 @@ class TaskScheduler:
                 )
                 db.add(run)
                 db.commit()
+            if gate_foreground and not person:
+                # `B1060`. From here until it ends, this is a RUNNING background
+                # run, the one kind the foreground gate stops.
+                self._gate_stoppable_map()[task_id] = run_id
 
             task_type = task.task_type or "llm"
 
@@ -2588,6 +2894,14 @@ class TaskScheduler:
                 self._record_run_step(
                     run_id, kind="trigger",
                     detail=_trigger_summary(trigger),
+                )
+            # `B1060`. A run the queue held for Pantheon to be idle says so, after
+            # its cause: "its row says it waited".
+            if waited_for_idle > 0:
+                self._record_run_step(
+                    run_id, kind="progress",
+                    detail=(f"Waited {_waited_words(waited_for_idle)} for Pantheon "
+                            f"to be idle, then started"),
                 )
             # `P8-27`. Nothing to clear: this run's slot is keyed by `run_id`
             # and is created empty on first write. The two lines that used to be
@@ -2659,6 +2973,23 @@ class TaskScheduler:
                         self._execute_research_task(task, db, run_id=run_id))
                     run.status = "success"
                     run.result = result
+                elif task_type == "workflow":
+                    # `P22-05`. The walker, inside every gate above — paused,
+                    # admin, both foreground waits, this task's time limit, the
+                    # cancel monitor — and answering in the action branch's
+                    # vocabulary, so a run that ends `skipped` goes through the
+                    # one `TaskNoop` branch below, and a failure backs off and
+                    # takes this task's own failure edge like any task's.
+                    node = await _bounded(self._run_workflow(task, db, run_id))
+                    signal = node.as_signal()
+                    if signal is not None:
+                        raise signal
+                    result = node.text
+                    run.status = "success" if node.ok else "error"
+                    run.result = result
+                    if node.failed:
+                        run.error = (result or "")[:2000]
+                    self._state_for(run_id)["payload"] = node.payload
                 else:
                     # LLM task — use agent loop for tool access
                     result = await _bounded(
@@ -2669,7 +3000,10 @@ class TaskScheduler:
                 if self.run_model(run_id):
                     run.model = self.run_model(run_id)
                 self._attach_run_steps(run_id, run)
-                if run.status == "success":
+                # `P22-05`. A workflow delivers per step, each through its own
+                # output setting; delivering the run's result again here would
+                # send the last step's twice.
+                if run.status == "success" and task_type != "workflow":
                     await self._deliver_task_result(task, result, db, model=self.run_model(run_id))
             except asyncio.TimeoutError:
                 # `P8-32`. `error`, not `aborted`. `core/database.py`'s own
@@ -2729,12 +3063,38 @@ class TaskScheduler:
                 )
                 takeover = msg == FOREGROUND_TAKEOVER
                 logger.info("Task '%s' %s", task.name, msg)
+                # `B1060`. A run the foreground gate stopped goes back in the
+                # queue with its trigger, unless the task was switched off or
+                # deleted meanwhile, or this trigger has already been stopped
+                # `FOREGROUND_STOPS_LIMIT` times — and the row says which. It
+                # was `next_run = now + 15 min` for every trigger type, so an
+                # event's or a webhook's task came back a quarter of an hour
+                # later as a plain run with no payload, and a chained step came
+                # back as a run nothing had chained.
+                requeue = False
+                said = msg
+                if takeover:
+                    try:
+                        db.refresh(task)     # switched off while it ran?
+                        why_not = (None if task.status == "active"
+                                   else not_active_words(task))
+                    except Exception:
+                        why_not = "the task was deleted"
+                    if why_not is None and not may_requeue:
+                        why_not = (f"it was stopped {FOREGROUND_STOPS_LIMIT} times "
+                                   f"in a row because Pantheon became active")
+                    requeue = why_not is None
+                    said = (f"{msg}. It will run again, with what started it, once "
+                            f"Pantheon is idle." if requeue
+                            else f"{msg}. It will not be retried: {why_not}.")
                 run_obj = db.query(TaskRun).filter(TaskRun.id == run_id).first()
                 if run_obj:
-                    if run_obj.status in ("queued", "running"):
+                    if run_obj.status in ("queued", "running") or takeover:
                         # Nothing was produced yet: `result` holds "Starting…"
                         # or a progress line, which would read as still going.
-                        run_obj.result = msg
+                        # (`B1060`: a takeover's row says what happens next,
+                        # over the gate's own placeholder.)
+                        run_obj.result = said
                     else:
                         run_obj.result = run_obj.result or msg
                     run_obj.status = "aborted"
@@ -2744,8 +3104,13 @@ class TaskScheduler:
                     # steps for; the other is the one that errored, below.
                     self._attach_run_steps(run_id, run_obj)
                 task.last_run = _utcnow()
-                if takeover:
-                    task.next_run = _utcnow() + timedelta(minutes=15)
+                if requeue:
+                    # `_execute_task` writes the next queued row and holds the
+                    # task's claim throughout; `next_run` is left where it was,
+                    # because the run it describes has not happened yet.
+                    db.commit()
+                    self._notify_run_outcome(task, "aborted", body=said, task_id=task_id)
+                    return REQUEUED
                 elif (task.trigger_type or "schedule") == "schedule":
                     task.next_run = compute_next_run(
                         task.schedule, task.scheduled_time,
@@ -2759,11 +3124,11 @@ class TaskScheduler:
                 db.commit()
                 # `B112`. Declared silent in `TASK_RUN_NOTIFY`, with the reason:
                 # the restart sweep aborts every in-flight run on every boot and
-                # a foreground takeover re-queues this one in 15 minutes. The
-                # call is here anyway so the silence is the policy's answer and
-                # not this branch forgetting the notify block, which is how it
-                # read before.
-                self._notify_run_outcome(task, "aborted", body=msg, task_id=task_id)
+                # a foreground takeover re-queues this one for when Pantheon is
+                # idle (`B1060`). The call is here anyway so the silence is the
+                # policy's answer and not this branch forgetting the notify
+                # block, which is how it read before.
+                self._notify_run_outcome(task, "aborted", body=said, task_id=task_id)
                 return
             except TaskNoop as noop:
                 # Action reported "nothing to do". Mark the run as `skipped`
@@ -2906,7 +3271,7 @@ class TaskScheduler:
                 _t_for_notify = db.query(ScheduledTask).filter(ScheduledTask.id == task_id).first()
                 _should_notify_error = (
                     bool(_t_for_notify)
-                    and (_t_for_notify.task_type or "llm") in {"llm", "research"}
+                    and (_t_for_notify.task_type or "llm") in NOTIFY_ON_SUCCESS_TASK_TYPES
                     and getattr(_t_for_notify, "notifications_enabled", True)
                 )
             except Exception:
@@ -3023,6 +3388,9 @@ class TaskScheduler:
             # that never reached an executor. Dropping the slot here and nowhere
             # else is what keeps `_run_state` the size of what is in flight.
             self._clear_run_state(run_id)
+            stoppable = self._gate_stoppable_map()
+            if stoppable.get(task_id) == run_id:
+                stoppable.pop(task_id, None)
             handle = self._task_handles.get(task_id)
             if handle is asyncio.current_task():
                 self._task_handles.pop(task_id, None)
@@ -3079,11 +3447,38 @@ class TaskScheduler:
             if not task:
                 return True
             task_type = getattr(task, "task_type", "") or "llm"
+            if task_type == "workflow":
+                return self._workflow_needs_model_slot(db, task)
             if task_type != "action":
                 return True
             return self._action_needs_model(getattr(task, "action", ""))
         finally:
             db.close()
+
+    def _workflow_needs_model_slot(self, db, task) -> bool:
+        """`P22-05`. A workflow waits in the model queue if any step may call a
+        model: a Prompt or Research step, a model-backed action, or a Run task
+        step (its task may, and it runs inside this workflow's slot). A
+        workflow of housekeeping actions does not queue behind a model run, as
+        the same chain would not. A document that cannot be read queues, as an
+        unknown task does — it fails at once either way."""
+        from core.database import Workflow
+        from src import workflow_document as wd
+
+        wf = db.query(Workflow).filter(Workflow.task_id == task.id).first()
+        try:
+            graph = wd.parse_graph(wf.graph) if wf is not None else None
+        except wd.DocumentError:
+            graph = None
+        if graph is None:
+            return True
+        for node in graph["nodes"]:
+            kind = node.get("kind")
+            if kind != wd.NODE_KIND_ACTION:
+                return True
+            if self._action_needs_model((node.get("config") or {}).get("action")):
+                return True
+        return False
 
     def _log_to_assistant(self, db, task, result_text: str):
         """Log a task result to the assistant's chat session."""
@@ -4139,6 +4534,422 @@ class TaskScheduler:
 
         return report
 
+    # ── `P22-05` · the walker: a workflow is one document, run as one run ────
+    #
+    # `D-2026-10-01-05` §1. `_execute_task_locked` hands a `task_type="workflow"`
+    # trigger here, inside every gate a task has. The walker runs the document's
+    # steps through the executors that already exist — `_execute_action`,
+    # `_execute_llm_task`, `_execute_research_task`, and `_execute_task` for a
+    # Run task step — each as a stand-in (`workflow_document.node_stand_in`) and
+    # each under its own slot (`node_slot`), so a step's model, step log and
+    # input are its own. Every step is recorded (`task_run_nodes`, `P22-07`);
+    # the run's own step log holds what fired it and one line per step. One
+    # step at a time, one path: each step leaves by exactly one port, so a step
+    # never runs twice in a run (fan-out is `P22-11`'s).
+
+    def _document_context(self, db, task, graph: dict) -> dict:
+        """What `validate_document` checks a document against, read fresh:
+        the owner's tasks the Run task steps name, the owner's crew members the
+        Prompt steps name, whether the owner may run admin-only actions."""
+        from core.database import CrewMember, ScheduledTask
+
+        task_ids = {(n.get("config") or {}).get("task_id") for n in graph.get("nodes") or ()}
+        task_ids = [i for i in task_ids if isinstance(i, str) and i]
+        crew = {(n.get("config") or {}).get("crew_member_id") for n in graph.get("nodes") or ()}
+        crew = [i for i in crew if isinstance(i, str) and i]
+        owner = task.owner
+        tasks_by_id = {}
+        if task_ids:
+            q = db.query(ScheduledTask).filter(ScheduledTask.id.in_(task_ids))
+            tasks_by_id = {row.id: row for row in q.all()}
+        crew_ids = set()
+        if crew:
+            q = db.query(CrewMember.id).filter(CrewMember.id.in_(crew))
+            q = q.filter(CrewMember.owner == owner) if owner else q.filter(CrewMember.owner.is_(None))
+            crew_ids = {row[0] for row in q.all()}
+        return {"owner": owner, "tasks_by_id": tasks_by_id, "crew_ids": crew_ids,
+                "owner_is_admin": owner_has_admin_task_privileges(owner),
+                "own_task_id": task.id}
+
+    def _load_workflow(self, db, task):
+        """`(workflow row, document, refusal sentence)` — the refusal is the
+        same sentence the save was told, or why there is nothing to run."""
+        from core.database import Workflow
+        from src import workflow_document as wd
+
+        wf = db.query(Workflow).filter(Workflow.task_id == task.id).first()
+        if wf is None:
+            return None, None, WORKFLOW_DOCUMENT_MISSING
+        try:
+            graph = wd.parse_graph(wf.graph)
+            refusal = wd.validate_document(graph, **self._document_context(db, task, graph))
+        except wd.DocumentError as exc:
+            return wf, None, exc.refusal.sentence
+        return wf, graph, (refusal.sentence if refusal else None)
+
+    def _record_workflow_dry_run(self, db, task, run_id: str, run) -> str | None:
+        """`P22-05` / `P22-04`. Plan every step of a workflow; run nothing.
+
+        Breadth first from the first step, each step once, `when` from its
+        first parent — wave B's chain dry run's shape, on a document. Each
+        step's plan is `dry_run_plan`'s lines (one planner, `Law 7`) on a `dry`
+        step record, so a plan of many steps is not cut by the run's 200-line
+        step log and is never read as a step's last run. The run's own log is
+        the headline and one line per step. Answers why it was not planned —
+        the same sentence a save or a real run gets — or `None`.
+        """
+        from src import workflow_document as wd
+        from src import workflow_runs as wr
+
+        wf, graph, refused = self._load_workflow(db, task)
+        if refused:
+            return refused
+        lines = [DRY_RUN_HEADLINE]
+        for seq, entry in enumerate(wd.reachable_bfs(graph), start=1):
+            node = entry["node"]
+            steps, declined = self._plan_workflow_node(db, task, node)
+            wr.record_dry_node(db, run_id=run_id, node=node, seq=seq, steps=steps,
+                               declined=declined, reached_by=entry["when"],
+                               depth=entry["depth"], workflow_version=wf.version)
+            how = ("" if entry["when"] is None else
+                   " (if the step before works)" if entry["when"] == EDGE_WHEN_SUCCESS
+                   else " (if the step before fails)")
+            said = declined or next(
+                (s["detail"] for s in steps if s.get("detail") != DRY_RUN_HEADLINE), "")
+            lines.append(f"Step {seq}, “{node['label']}”{how}: {said}")
+        why_not = not_active_words(task)
+        if why_not:
+            lines.append(f"{why_not[:1].upper()}{why_not[1:]}, so a real run would not start it.")
+        for line in lines:
+            self._record_run_step(run_id, kind="dry-run", detail=line)
+        if run is not None:
+            run.status = "skipped"
+            run.result = "\n".join(lines)
+            run.finished_at = _utcnow()
+            self._attach_run_steps(run_id, run)
+        db.commit()
+        logger.info("Dry run of workflow '%s' (run %s): planned %d step(s), executed nothing",
+                    task.name, run_id, len(lines) - 1)
+        return None
+
+    def _plan_workflow_node(self, db, task, node: dict) -> tuple:
+        """`(steps, declined)` for one step of a workflow dry run."""
+        from core.database import ScheduledTask
+        from src.builtin_actions import dry_run_plan
+        from src import workflow_document as wd
+
+        config = node.get("config") or {}
+        kind = node.get("kind")
+        if kind == wd.NODE_KIND_RUN_TASK:
+            target = db.query(ScheduledTask).filter(
+                ScheduledTask.id == config.get("task_id")).first()
+            if target is not None and target.owner != task.owner:
+                target = None
+            declined = dry_run_declined(target, db=db)
+            if declined:
+                return [], declined
+            lines = [f"Would run the task “{target.name}”, as its own run with its "
+                     f"own history.", *dry_run_lines(target)[1:]]
+        else:
+            lines = dry_run_plan(
+                task_type=kind, action=config.get("action"), prompt=config.get("prompt"),
+                owner=task.owner, model=config.get("model"),
+                endpoint_url=config.get("endpoint_url"),
+                extra=[f"Where the result would go: "
+                       f"{config.get('output_target') or 'only to the next step'}"])
+        return [shape_run_step({"kind": "dry-run", "detail": line}) for line in lines], None
+
+    async def _run_workflow(self, task, db, run_id: str):
+        """Walk the document from its first step. Answers a `NodeResult`.
+
+        How the run ends — one rule, written once (`Law 10`):
+          * the last step that ran ended `error` → the run is `error`;
+          * every step that ran was `skipped` → the run is `skipped`;
+          * anything else → `success`. A failure routed through an *if it
+            fails* arrow to a step that then works is a successful run; the
+            failed step's own record still says it failed.
+        A step that asked to wait (`deferred`) ends its branch as `skipped`,
+        with why — never the run row deleted under its step records.
+        """
+        from src import workflow_document as wd
+        from src import workflow_runs as wr
+        from src.builtin_actions import (
+            NODE_STATUS_DEFERRED, NODE_STATUS_ERROR, NODE_STATUS_SKIPPED,
+            NODE_STATUS_SUCCESS, NodeResult, TaskDeferred, TaskNoop,
+        )
+        from src.event_bus import run_origin
+
+        wf, graph, refused = self._load_workflow(db, task)
+        if refused:
+            self._record_run_step(run_id, kind="progress", detail=refused)
+            return NodeResult(NODE_STATUS_ERROR, payload=refused)
+        name = wf.name or task.name
+        run_slot = self._state_for(run_id)
+        started_by = run_slot.get("started_by") or STARTED_BY_BACKGROUND
+        waits_for = self._run_waits_for(run_id)
+        outcomes = []
+        last = None
+        last_model = None
+        handed = self.run_trigger(run_id)
+        node = wd.entry_node(graph)
+        with run_origin(task.id, name, run_id):
+            # A path through a document with no loop visits each step at most
+            # once, so it is at most as long as the document.
+            for seq in range(1, len(graph["nodes"]) + 1):
+                label = node["label"]
+                rec = wr.record_node_start(db, run_id=run_id, node=node, seq=seq,
+                                           input_envelope=handed,
+                                           workflow_version=wf.version, owner=task.owner)
+                slot = node_slot(run_id, node["id"])
+                self._state_for(slot).update(trigger=handed, started_by=started_by,
+                                             waits_for=waits_for)
+                self._set_run_progress(run_id, f"Step {seq}: {label}…")
+                try:
+                    res = await self._run_workflow_node(task, name, node, db, slot,
+                                                        deliver=True)
+                except asyncio.CancelledError:
+                    wr.record_node_end(db, rec, status="aborted", error=NODE_STOPPED,
+                                       steps=self.run_steps(slot), model=self.run_model(slot),
+                                       owner=task.owner)
+                    self._clear_run_state(slot)
+                    self._record_run_step(run_id, kind="node", node=node["id"], label=label,
+                                          status="aborted", detail=NODE_STOPPED)
+                    raise
+                except (TaskNoop, TaskDeferred) as signal:
+                    # `BaseException`s, so `except Exception` would let one
+                    # through and leave this step's record `running`.
+                    # `_execute_action` already answers them as statuses; an
+                    # executor that raises one is read the same way (`P8-24`).
+                    res = NodeResult.from_signal(signal)
+                except Exception as exc:
+                    logger.warning("Workflow '%s' step %r raised", name, label, exc_info=True)
+                    res = NodeResult(NODE_STATUS_ERROR, payload=f"{type(exc).__name__}: {exc}")
+                steps, model = self.run_steps(slot), self.run_model(slot)
+                self._clear_run_state(slot)
+                last_model = model or last_model
+                status, text = res.status, res.text or ""
+                if status == NODE_STATUS_DEFERRED:
+                    status = NODE_STATUS_SKIPPED
+                    text = f"It asked to wait, so this run ends here: {text}".rstrip(": ")
+                port = (EDGE_WHEN_SUCCESS if status == NODE_STATUS_SUCCESS
+                        else EDGE_WHEN_ERROR if status == NODE_STATUS_ERROR else None)
+                nxt = wd.next_node(graph, node["id"], port) if port else None
+                data = None if isinstance(res.payload, str) else res.payload
+                wr.record_node_end(
+                    db, rec, status=status, text=text, data=data,
+                    error=text if status == NODE_STATUS_ERROR else None,
+                    steps=steps, model=model, port=port if nxt else None, owner=task.owner)
+                self._record_run_step(run_id, kind="node", node=node["id"], label=label,
+                                      status=status, detail=(text.splitlines() or [""])[0])
+                outcomes.append(status)
+                last = NodeResult(status, payload=res.payload if status != NODE_STATUS_SKIPPED
+                                  else text, text=text)
+                if nxt is None:
+                    break
+                self._record_run_step(
+                    run_id, kind="progress",
+                    detail=(f"{'Continued to' if port == EDGE_WHEN_SUCCESS else 'Failed, so continued to'} "
+                            f"{nxt['label']}"))
+                # `P8-29`. What this step made, handed to the next in the same
+                # envelope a chain hands on — wrapped untrusted at the far end,
+                # the post-external gate armed (`FORBIDDEN.md` Part 2). A step
+                # that made nothing hands nothing.
+                handed = (_build_task_handoff(task_name=label, task_id=task.id, run_id=run_id,
+                                              status=status, result=text, payload=res.payload)
+                          if (text or res.payload) else None)
+                node = nxt
+        if last_model:
+            self.set_run_model(run_id, last_model)
+        wr.maybe_prune_node_records(db)
+        if last is None:
+            return NodeResult(NODE_STATUS_ERROR, payload=WORKFLOW_DOCUMENT_MISSING)
+        if last.status == NODE_STATUS_ERROR:
+            return last
+        if all(s == NODE_STATUS_SKIPPED for s in outcomes):
+            return NodeResult(NODE_STATUS_SKIPPED, payload=last.text)
+        return NodeResult(NODE_STATUS_SUCCESS, payload=last.payload, text=last.text)
+
+    async def _run_workflow_node(self, task, workflow_name: str, node: dict, db,
+                                 slot: str, *, deliver: bool):
+        """Run one step under `slot`. Answers a `NodeResult`.
+
+        A Prompt step reads its input only through `trigger_context_message`
+        (wrapped untrusted, the gate armed); a Research step does not read it
+        (`B671`); an Action step never receives it — its parameters come from
+        its own settings only (`P8-29`'s rule, `B806`'s constraint). With
+        `deliver`, a step that worked and has an output setting is delivered
+        through `_deliver_task_result`, as a task is; a delivery that raises
+        makes the step `error`.
+        """
+        from src import workflow_document as wd
+        from src.builtin_actions import NODE_STATUS_ERROR, NODE_STATUS_SUCCESS, NodeResult
+
+        kind = node.get("kind")
+        if kind == wd.NODE_KIND_RUN_TASK:
+            return await self._run_task_node(task, node, slot)
+        stand_in = wd.node_stand_in(task, workflow_name, node)
+        if kind == wd.NODE_KIND_ACTION:
+            res = await self._execute_action(stand_in, run_id=slot)
+        elif kind == wd.NODE_KIND_RESEARCH:
+            text = await self._execute_research_task(stand_in, db, run_id=slot)
+            res = NodeResult(NODE_STATUS_SUCCESS, payload=text)
+        else:
+            text = await self._execute_llm_task(stand_in, db, run_id=slot)
+            res = NodeResult(NODE_STATUS_SUCCESS, payload=text)
+        self._keep_workflow_chat(db, task, stand_in, kind)
+        if deliver and res.ok and stand_in.output_target:
+            try:
+                await self._deliver_node_result(task, stand_in, res.text, db,
+                                                model=self.run_model(slot))
+            except Exception as exc:
+                return NodeResult(
+                    NODE_STATUS_ERROR,
+                    payload=(f"It worked, but the result could not be delivered: "
+                             f"{type(exc).__name__}: {exc}"))
+            self._keep_workflow_chat(db, task, stand_in, kind)
+        return res
+
+    def _keep_workflow_chat(self, db, task, stand_in, kind: str) -> None:
+        """A Prompt or Action step that made the workflow's chat leaves it on
+        the trigger, so the next step writes into the same "[Task] …" chat.
+        A Research step's report keeps its own session (`node_stand_in`)."""
+        from core.database import ScheduledTask
+        from src import workflow_document as wd
+
+        made = getattr(stand_in, "session_id", None)
+        if kind == wd.NODE_KIND_RESEARCH or not made or getattr(task, "session_id", None):
+            return
+        try:
+            db.query(ScheduledTask).filter(
+                ScheduledTask.id == task.id, ScheduledTask.session_id.is_(None),
+            ).update({ScheduledTask.session_id: made}, synchronize_session=False)
+            db.commit()
+            task.session_id = made
+        except Exception:
+            logger.debug("Could not keep workflow %s's chat", task.id, exc_info=True)
+
+    async def _deliver_node_result(self, task, stand_in, text: str, db, model=None) -> None:
+        """One step's delivery: `_deliver_task_result`, as a task's — and for
+        `notification`, which that function leaves to the run's notification,
+        the step's own notification with its result, under the trigger's own
+        notification switch (a task with notifications off sends none)."""
+        if (stand_in.output_target or "") == "notification":
+            if getattr(task, "notifications_enabled", True):
+                self.add_notification(stand_in.name, "success", task.id,
+                                      owner=task.owner, body=text)
+            return
+        await self._deliver_task_result(stand_in, text, db, model=model)
+
+    async def _run_task_node(self, task, node: dict, slot: str):
+        """A Run task step: run the named task, as itself, and read its run.
+
+        The target keeps its own run, its own history, its own delivery and its
+        own chain. It is claimed as a chained step is (`_claim_chained`, so a
+        busy target is said, not dropped), runs without taking the model slot
+        (the workflow already holds one) and without registering its handle (so
+        stopping the target cannot cancel the workflow, `register_handle`), and
+        is handed this step's input as its own trigger, wrapped untrusted.
+        """
+        from core.database import SessionLocal, ScheduledTask, TaskRun
+        from src.builtin_actions import (
+            NODE_STATUS_ERROR, NODE_STATUS_SKIPPED, NODE_STATUS_SUCCESS, NodeResult,
+        )
+        from src import workflow_document as wd
+
+        target_id = (node.get("config") or {}).get("task_id")
+        lookup = SessionLocal()
+        try:
+            target = lookup.query(ScheduledTask).filter(ScheduledTask.id == target_id).first()
+            label = target.name if target is not None else target_id
+            usable = (target is not None and target.owner == task.owner
+                      and (target.task_type or "llm") != wd.WORKFLOW_TASK_TYPE)
+        finally:
+            lookup.close()
+        if not usable:
+            return NodeResult(NODE_STATUS_ERROR,
+                              payload="Did not run it: that task is gone, or is not one of yours.")
+        if not self._claim_chained(target_id):
+            return NodeResult(NODE_STATUS_ERROR,
+                              payload=f"Did not run “{label}”: {CHAIN_ALREADY_RUNNING}")
+        self._record_run_step(slot, kind="progress", detail=f"Running the task “{label}”")
+        target_run = await self._execute_task(
+            target_id, bypass_model_slot=True, trigger=self.run_trigger(slot),
+            register_handle=False, started_by=self._run_started_by(slot))
+        current = asyncio.current_task()
+        if current is not None and current.cancelling():
+            # The target's run answers a cancel by recording it and returning
+            # (its `CancelledError` branch does not re-raise), so a stop or a
+            # time limit that landed while it ran arrives here as a return.
+            # The workflow was stopped; it does not go on to its next step.
+            raise asyncio.CancelledError()
+        lookup = SessionLocal()
+        try:
+            row = lookup.query(TaskRun).filter(TaskRun.id == target_run).first()
+            status = row.status if row is not None else None
+            said = ((row.result or row.error) if row is not None else None) or ""
+        finally:
+            lookup.close()
+        self._record_run_step(slot, kind="progress",
+                              detail=f"“{label}” ended: {status or 'it asked to wait'}")
+        if status == "success":
+            return NodeResult(NODE_STATUS_SUCCESS, payload=said)
+        if status == "skipped" or status is None:
+            return NodeResult(NODE_STATUS_SKIPPED,
+                              payload=said or f"“{label}” asked to wait, so it did not run now")
+        if status == "aborted":
+            return NodeResult(NODE_STATUS_ERROR,
+                              payload=f"“{label}” was stopped before it finished: {said}".rstrip(": "))
+        return NodeResult(NODE_STATUS_ERROR, payload=said or f"“{label}” failed")
+
+    async def test_workflow_node(self, task, workflow_name: str, node: dict, *,
+                                 input_envelope=None, timeout=None) -> dict:
+        """`P22-08` — run ONE step, now, with the input the person chose.
+
+        Under a slot of its own (`test:<uuid>`) that no row has, so it writes
+        no run and no step record; it delivers nothing, notifies nobody,
+        continues to nothing and — inside `run_origin(test=True)` — wakes no
+        task with anything it writes. It takes no model slot and waits for
+        nothing (`waits_for` None): it is foreground work, like a chat reply,
+        and the person is watching it. A Run task step really runs its task —
+        which is why testing one asks first (`needs_test_confirmation`).
+
+        Answers `{status, text, data, steps, model, took_ms}`; `status` is a
+        node status (`success` / `error` / `skipped` / `deferred`).
+        """
+        from core.database import SessionLocal
+        from src.builtin_actions import NODE_STATUS_ERROR, NodeResult
+        from src.event_bus import run_origin
+
+        slot = f"{TEST_SLOT_PREFIX}{NODE_SLOT_SEPARATOR}{uuid.uuid4()}"
+        self._state_for(slot).update(trigger=input_envelope, started_by=STARTED_BY_PERSON,
+                                     waits_for=None)
+        budget = timeout or task_timeout_seconds(task) or 300
+        started = time.monotonic()
+        db = SessionLocal()
+        try:
+            with run_origin(task.id, workflow_name, slot, test=True):
+                try:
+                    res = await asyncio.wait_for(
+                        self._run_workflow_node(task, workflow_name, node, db, slot,
+                                                deliver=False),
+                        timeout=budget)
+                except asyncio.TimeoutError:
+                    res = NodeResult(NODE_STATUS_ERROR,
+                                     payload=f"Timed out after {_human_gap(budget)}.")
+                except Exception as exc:
+                    res = NodeResult(NODE_STATUS_ERROR, payload=f"{type(exc).__name__}: {exc}")
+            return {
+                "status": res.status,
+                "text": res.text,
+                "data": None if isinstance(res.payload, str) else res.payload,
+                "steps": self.run_steps(slot),
+                "model": self.run_model(slot),
+                "took_ms": _human_ms(time.monotonic() - started),
+            }
+        finally:
+            self._clear_run_state(slot)
+            db.close()
+
     async def _run_chained(self, task_id: str, *, handoff: dict | None = None,
                            started_by: str = STARTED_BY_BACKGROUND):
         """Run a chained task whose `_executing` claim is already held.
@@ -4369,19 +5180,30 @@ class TaskScheduler:
         had. What this stops now says what happened: `FOREGROUND_TAKEOVER`.
         The row is written before the cancel lands, and the cancel branch keeps
         it (`_stopped_as`).
+
+        `B1060`. Running background runs only. A QUEUED one waits for Pantheon
+        to be idle before it takes the model slot (`_execute_task`), so it
+        holds nothing and is left to wait; stopping it threw away its trigger —
+        a webhook's body, an event, the step before it — because nothing could
+        put it back. A running one is stopped, and its cancel branch puts it
+        back in the queue with its trigger or says it will not be retried.
         """
         async with self._executing_lock:
             task_ids = list(self._executing)
         started_by = self._started_by_map()
+        running = self._gate_stoppable_map()
         stopped = 0
         for task_id in task_ids:
             if started_by.get(task_id) == STARTED_BY_PERSON:
+                continue
+            run_id = running.get(task_id)
+            if run_id is None:
                 continue
             handle = self._task_handles.get(task_id)
             if handle and not handle.done():
                 handle.cancel()
                 stopped += 1
-            if self._mark_run_aborted(task_id, message=FOREGROUND_TAKEOVER):
+            if self._mark_run_aborted(task_id, run_id=run_id, message=FOREGROUND_TAKEOVER):
                 stopped += 1
         if stopped:
             logger.info("Stopped %d background scheduler task(s): %s", stopped, reason)
