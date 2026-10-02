@@ -765,7 +765,7 @@ def setup_upload_routes(upload_handler):
 
     # `B1155` (f-import: the chat's HEAD for an upload's kind always got 405).
     # `chat.js` `_uploadKind` asks `HEAD /api/upload/{id}` for `X-Upload-Kind`,
-    # and its comment says Starlette adds HEAD to a GET route. FastAPI's
+    # and its comment said Starlette adds HEAD to a GET route. FastAPI's
     # `APIRoute` does not (FastAPI 0.141.1): measured `405`, `Allow: GET`, so
     # every *open as document* fell back to the name-only half and the server's
     # verdict on the bytes never arrived. Registered here, as its own route, so

@@ -3,7 +3,7 @@
 
 `static/js/chat.js` `_uploadKind` asks ``HEAD /api/upload/{id}`` for
 ``X-Upload-Kind`` before it opens a chat attachment as a document, and its
-comment says the route "registers GET and Starlette adds HEAD to it". FastAPI's
+comment said the route "registers GET and Starlette adds HEAD to it". FastAPI's
 ``APIRoute`` does not. Measured on the tree before this row through the real
 upload router: ``HEAD`` → **405**, ``Allow: GET``, for a `.toml` whose ``GET``
 said ``X-Upload-Kind: text``. So the verdict `B232` published never arrived;
