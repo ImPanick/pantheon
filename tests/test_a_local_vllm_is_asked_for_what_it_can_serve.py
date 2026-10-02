@@ -97,7 +97,7 @@ def world(pantheon):
     window (`vllm`), as vLLM serves one too small for the preset (`small`), or
     as a server that takes any length (`accepts`) — on a loopback port of its
     own for every turn. A server that stated its window is remembered
-    (w8-agent's B-NEW-3), so a turn that must meet the server for the first time
+    (`B1089`), so a turn that must meet the server for the first time
     meets a new one."""
     import contextlib
 
@@ -205,7 +205,7 @@ def test_the_force_answer_salvage_is_sent_what_fits(world):
     circles until the loop breaker forces an answer that still has no prose,
     whose one non-streaming synthesis call (`llm_call_async`) is lifted too.
     The turn's first round taught the server's window, so the salvage asks for
-    what fits it and is not refused (w8-agent's B-NEW-3; before it, it was
+    what fits it and is not refused (`B1089`; before it, it was
     refused and sent again) — and the turn does not end on the canned apology.
     `llm_call_async`'s own resend is held by `/api/chat`
     (`test_the_chat_doors_are_asked_for_what_the_server_can_serve.py`) and by
@@ -355,7 +355,7 @@ def refusing(monkeypatch):
         stream=lambda method, url, json=None, headers=None, **kw: _Stream(json)))
     monkeypatch.setattr(llm_core, "_is_host_dead", lambda url: False)
     monkeypatch.setattr(llm_core, "note_model_activity", lambda *a, **k: None)
-    # What one case's server stated is not carried into the next (w8-agent's B-NEW-3).
+    # What one case's server stated is not carried into the next (`B1089`).
     monkeypatch.setattr(llm_core, "_stated_windows", {})
     llm_core._response_cache.clear()
     yield model

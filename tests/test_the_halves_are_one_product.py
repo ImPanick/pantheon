@@ -197,7 +197,7 @@ def test_which_workflows_wait_for_the_model_slot(factory, nodes, wants):
     (node("post", "Post", "mcp", tool=SEND, args={"channel": "#ops", "text": "hi"}), SEND),
 ])
 async def test_a_non_admins_workflow_with_an_admin_step_is_paused_before_any_step_runs(factory, step, named):
-    """`wf-rules`' B-NEW: `admin_only_action_of` read top-level Action steps
+    """`B1097`: `admin_only_action_of` read top-level Action steps
     only, so these ran into the rule at run and were recorded `error`; every
     other admin-only step pauses its task with a `skipped` run that says so."""
     seed_workflow(factory, [node("first", "First", "action", action="tidy_sessions"),

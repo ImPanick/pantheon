@@ -2588,7 +2588,7 @@ async def llm_call_async(
     # No `tools=`: this path sends none, and the key is omitted rather than
     # written empty so a diff can tell 'none sent' from 'not looked at'.
     #
-    # w8-agent's B-NEW-3, as `stream_llm`: at most what fits a server that
+    # `B1089`, as `stream_llm`: at most what fits a server that
     # stated its window — before the receipt and the cache key, which both
     # record the number sent.
     max_tokens = fitted_max_tokens(url, model, messages, None, max_tokens, max_tokens_floor)
@@ -2741,7 +2741,7 @@ async def llm_call_async(
             if not r.is_success:
                 # `B1029`, as `stream_llm`: once, asking for what the server
                 # said it can serve. Not a retry, so it spends no attempt.
-                if _length_key and max_tokens_floor is not None:   # w8-agent's B-NEW-3
+                if _length_key and max_tokens_floor is not None:   # `B1089`
                     _remember_stated_window(r.status_code, r.text, url, model,
                                             _prompt_chars(payload.get("messages")))
                 _servable = (
@@ -3121,7 +3121,7 @@ def _stated_window(status, raw) -> Optional[Tuple[int, int]]:
     return int(window.group(1)), int(prompt.group(1))
 
 
-# ── w8-agent's B-NEW-3 · a server that stated its window is asked for what fits ──
+# ── `B1089` · a server that stated its window is asked for what fits ──
 #
 # `B1029`'s resend answers one request at a time, so against a server that
 # holds a request to its window every lifted request was refused once before it
@@ -3224,7 +3224,7 @@ async def stream_llm(url: str, model: str, messages: List[Dict], temperature: fl
     (the server's own words are the floor's one exception); without it, as
     before. With it too, a server that has stated its window is asked for at
     most what fits it, never below this number on that estimate
-    (`fitted_max_tokens`, w8-agent's B-NEW-3)."""
+    (`fitted_max_tokens`, `B1089`)."""
     target_url = _stream_target_url(url)
     # Before the receipt, so it records the number sent (`B933`).
     max_tokens = fitted_max_tokens(url, model, messages, tools, max_tokens, max_tokens_floor)
@@ -3772,7 +3772,7 @@ async def _stream_llm_inner(url: str, model: str, messages: List[Dict], temperat
                 # `B1029`. A length refusal stating what the server can serve:
                 # once more, asking for that, and nothing else about the request
                 # changed. No floor is passed down, so it is asked once.
-                if max_tokens_floor is not None:   # w8-agent's B-NEW-3: and kept
+                if max_tokens_floor is not None:   # `B1089`: and kept
                     _remember_stated_window(r.status_code, raw, url, model,
                                             _prompt_chars(payload.get("messages"), tools))
                 _servable = (servable_max_tokens(r.status_code, raw, max_tokens)

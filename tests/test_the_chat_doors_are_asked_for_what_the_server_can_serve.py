@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""`B1029`'s resend on the chat doors — w8-agent's B-NEW-1.
+"""`B1029`'s resend on the chat doors — `B1087`.
 
 `D-2026-10-01-04` made a *Local reply ceiling* a person typed apply on every
 door (`B934`, `local_door_max_tokens`), so a person who types their server's

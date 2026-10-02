@@ -4667,7 +4667,7 @@ class TaskScheduler:
         _slot = self._runs().get(run_id) or {}
         _exact_approval = _slot.get("exact_approval")
         _may_wait = bool(_slot.get("may_wait"))
-        # `SLICE-CD-DESIGN` § 0.11 (wf-ui's B-NEW-1, reproduced by `integrate-c`
+        # `SLICE-CD-DESIGN` § 0.11 (`B1080`, reproduced by `integrate-c`
         # on P22-08). This was `workload="background"` for every run, and the
         # local-model gate (`llm_core._local_model_slot`) holds a background
         # call while there is foreground activity — so a step a person tested,

@@ -114,7 +114,7 @@ def admin_only_action_of(db, task) -> str | None:
     A document that cannot be read answers `None` here: the walker refuses it
     at run with its own sentence, and nothing in it runs.
 
-    `P22-12` / `P22-13` / `P22-14` (`wf-rules`' B-NEW, closed by `integrate-d`).
+    `P22-12` / `P22-13` / `P22-14` (`B1097`, closed by `integrate-d`).
     The step a For-each repeats is asked too, and so are the two kinds only an
     admin's agent may run (`workflow_document.ADMIN_ONLY_KINDS`, one rule with
     the save's `admin_only`): an HTTP step answers the tool it calls through,

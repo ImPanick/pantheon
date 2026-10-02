@@ -7430,7 +7430,7 @@ async def stream_agent_loop(
                             "what you have and note what's missing in one short line."
                         ),
                     }]
-                    # w8-agent's B-NEW-5. Shaped and trimmed as every round is,
+                    # `B1091`. Shaped and trimmed as every round is,
                     # for the candidate it goes to (`_candidate_request`): the
                     # tool pictures as this model can take them (`P20-04`),
                     # then this route's window. It was the whole transcript —
@@ -7452,7 +7452,7 @@ async def stream_agent_loop(
                     # this call's URL; for an unpinned run that is the primary's,
                     # and the number is the run's own, as before.
                     #
-                    # w8-agent's B-NEW-4. Its temperature by the rounds' rule
+                    # `B1090`. Its temperature by the rounds' rule
                     # too (`B935`): the salvage's own 0.3 is a default, so a
                     # `pantheon-qwen3` candidate is held at its 0.2 and a
                     # temperature the person chose is theirs here as on every

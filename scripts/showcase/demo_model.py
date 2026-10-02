@@ -493,7 +493,7 @@ class DemoModel:
         `max_model_len` serves it the way vLLM serves a model with that window
         (`_Handler._vllm_refusal`, `B1029`); `model_id` is the name it lists and
         answers under — a test that needs Pantheon to treat it as one model
-        family or another (a `pantheon-qwen3` finetune, w8-agent's B-NEW-4)
+        family or another (a `pantheon-qwen3` finetune, `B1090`)
         gives it that family's name. The showcase keeps `MODEL_ID`."""
         handler = type("Handler", (_Handler,), {"pace": pace, "log": log, "progress": _Progress(),
                                                 "conversations": conversations,

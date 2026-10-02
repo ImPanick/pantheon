@@ -334,7 +334,7 @@ async def test_a_plain_scheduled_prompt_task_still_pauses_safely(world):
 
 
 async def test_a_step_a_person_runs_reaches_a_local_model_while_their_page_is_open(world, monkeypatch):
-    """§ 0.11 (`wf-ui`'s B-NEW-1, reproduced on `P22-08`): `workload` follows
+    """§ 0.11 (`B1080`, reproduced on `P22-08`): `workload` follows
     who started the run. A person's Run now / Test this step is foreground."""
     w = world
     from src.interactive_gate import STARTED_BY_PERSON

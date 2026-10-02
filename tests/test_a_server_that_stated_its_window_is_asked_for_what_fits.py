@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""w8-agent's B-NEW-3 — a server that stated its window is asked for what fits.
+"""`B1089` — a server that stated its window is asked for what fits.
 
 `B1029` answers a window-enforcing server's length refusal by sending the
 request once more asking for what the server said it can serve — one request at
@@ -200,7 +200,7 @@ def test_a_later_turn_is_asked_for_what_fits_from_its_first_request(world):
 
 @pytest.mark.parametrize("door", ["chat", "api"])
 def test_the_chat_doors_learn_the_window_and_are_asked_for_what_fits(world, typed, door):
-    """32,768 typed (w8-agent's B-NEW-1): a first chat turn through either door
+    """32,768 typed (`B1087`): a first chat turn through either door
     is refused and sent again, and teaches the window; the next turn through the
     same door on the same server is sent what fits, once."""
     typed(WINDOW)

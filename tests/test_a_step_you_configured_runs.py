@@ -146,7 +146,7 @@ async def test_a_non_admin_s_mcp_step_is_refused_by_the_dispatcher(world, monkey
     """An MCP tool is an admin's (§ 0.6). The front door: a non-admin's
     workflow holding one is paused with a `skipped` run and the admin
     sentence before any step runs (`admin_only_action_of`, `integrate-d`
-    closing `wf-rules`' B-NEW) — as an admin-only Action step is. The
+    closing `B1097`) — as an admin-only Action step is. The
     backstop: with that door and the rule both made to wave it through, the
     real dispatcher still refuses it."""
     w = world

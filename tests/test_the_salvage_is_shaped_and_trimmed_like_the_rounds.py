@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""w8-agent's B-NEW-5 — the force-answer salvage is shaped and trimmed as a round is.
+"""`B1091` — the force-answer salvage is shaped and trimmed as a round is.
 
 When an Agent-mode run's forced, tool-free round still writes no prose, the
 loop makes one non-streaming synthesis call over what the turn gathered (the
