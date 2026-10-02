@@ -426,8 +426,12 @@ def _coerce(value: Any, kind: str) -> Tuple[bool, Any]:
     if kind == ANSWER_TYPE_YES_NO:
         if isinstance(value, bool):
             return True, value
-        if isinstance(value, str) and value.strip().lower() in ("yes", "true", "no", "false"):
-            return True, value.strip().lower() in ("yes", "true")
+        if isinstance(value, str):
+            # The one vocabulary a field's words are read with (`B97`); a
+            # word outside it is not an answer, never a guessed False.
+            from src.env_flags import request_truthy
+            said = request_truthy(value)
+            return (said is not None), said
         return False, None
     if kind == ANSWER_TYPE_LIST:
         return (True, value) if isinstance(value, list) else (False, None)
@@ -488,7 +492,7 @@ def ai_tool_choices(owner) -> list:
     single-user install). `[{name, label, kind}]`, `kind` `builtin` or `mcp`.
     """
     from src.tool_index import BUILTIN_TOOL_DESCRIPTIONS
-    from src.tool_security import blocked_tools_for_owner, owner_is_admin_or_single_user
+    from src.tool_security import blocked_tools_for_owner
 
     blocked = set(blocked_tools_for_owner(owner))
     if blocked:
@@ -501,13 +505,13 @@ def ai_tool_choices(owner) -> list:
     out = [{"name": name, "label": _words(name), "kind": "builtin"}
            for name in sorted(BUILTIN_TOOL_DESCRIPTIONS)
            if name not in blocked and name not in disabled]
-    if owner_is_admin_or_single_user(owner):
-        for tool in _mcp_tools():
-            if tool.get("is_disabled") or tool["qualified_name"] in disabled:
-                continue
-            out.append({"name": tool["qualified_name"],
-                        "label": f"{tool.get('server_name') or tool.get('server_id')} · {tool['name']}",
-                        "kind": "mcp"})
+    for tool in _mcp_tools():
+        if (tool.get("is_disabled") or tool["qualified_name"] in disabled
+                or not _reaches(owner, tool["qualified_name"])):
+            continue
+        out.append({"name": tool["qualified_name"],
+                    "label": f"{tool.get('server_name') or tool.get('server_id')} · {tool['name']}",
+                    "kind": "mcp"})
     return out
 
 
@@ -524,9 +528,21 @@ def _mcp_tools() -> list:
 
 # ── What a person can reach: `WorkflowResources` (C-R) ───────────────────────
 
-def _is_admin(owner) -> bool:
-    from src.tool_security import owner_is_admin_or_single_user
-    return bool(owner_is_admin_or_single_user(owner))
+# Any name under the `mcp__` prefix: the policy refuses the namespace, not one
+# tool at a time (`tool_security.is_public_blocked_tool`).
+_ANY_MCP_TOOL = "mcp__"
+
+
+def _reaches(owner, tool: str) -> bool:
+    """Whether this person's agent may call `tool` at all — the dispatcher's
+    own rule (`tool_execution._execute_tool_block_impl`): a name
+    `is_public_blocked_tool` refuses is refused to every owner the non-admin
+    policy applies to (`blocked_tools_for_owner` is empty only for an admin or
+    a single-user install). Asked of the tool policy, so the palette and the
+    dispatcher cannot disagree — and not as a further "is this an admin"
+    (`.pantheon/check-auth-map.py` rule C)."""
+    from src.tool_security import blocked_tools_for_owner, is_public_blocked_tool
+    return not (is_public_blocked_tool(tool) and blocked_tools_for_owner(owner))
 
 
 def _integrations(owner) -> list:
@@ -534,7 +550,7 @@ def _integrations(owner) -> list:
     preset, description and whether it is on — never the key, never the base
     URL (`P22-13`: "never seeing the key"). Admins only, because only an
     admin's agent can call one (`api_call` is in `NON_ADMIN_BLOCKED_TOOLS`)."""
-    if not _is_admin(owner):
+    if not _reaches(owner, "api_call"):
         return []
     from src.integrations import load_integrations
     out = []
@@ -579,12 +595,11 @@ def workstation_why(owner) -> Optional[str]:
 
 
 def _usable_mcp_tools(owner, disabled: set) -> list:
-    """The MCP tools a step may call: an admin's, switched on by the server
-    and not switched off for everyone."""
-    if not _is_admin(owner):
-        return []
+    """The MCP tools a step may call: ones this person's agent reaches,
+    switched on by the server and not switched off for everyone."""
     return [t for t in _mcp_tools()
-            if not t.get("is_disabled") and t.get("qualified_name") not in disabled]
+            if not t.get("is_disabled") and t.get("qualified_name") not in disabled
+            and _reaches(owner, t.get("qualified_name") or _ANY_MCP_TOOL)]
 
 
 def _limits(owner) -> dict:
@@ -716,7 +731,7 @@ def build_palette(owner) -> dict:
     from src.workflow_document import NODE_KINDS, ports_of
     from src.workflow_logic import OPERATOR_WORDS, OPERATORS
 
-    admin = _is_admin(owner)
+    reaches = {"http": _reaches(owner, "api_call"), "mcp": _reaches(owner, _ANY_MCP_TOOL)}
     disabled = global_disabled_tools()
     integrations = [i for i in _integrations(owner) if i["enabled"]]
     mcp_tools = [_mcp_tool_entry(t) for t in _usable_mcp_tools(owner, disabled)]
@@ -724,7 +739,7 @@ def build_palette(owner) -> dict:
     station_why = workstation_why(owner)
 
     def availability(kind: str) -> Tuple[bool, str]:
-        if kind in _ADMIN_ONLY_WHY and not admin:
+        if kind in _ADMIN_ONLY_WHY and not reaches[kind]:
             return False, _ADMIN_ONLY_WHY[kind]
         if kind == "http" and not integrations:
             return False, NO_INTEGRATIONS_SENTENCE
