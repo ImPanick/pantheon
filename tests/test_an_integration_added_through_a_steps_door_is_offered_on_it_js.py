@@ -38,9 +38,17 @@ from helpers.workflow_live import LIVE_PREAMBLE, LiveServer, as_js, build_sandbo
 pytestmark = pytest.mark.skipif(not shutil.which("node"), reason="node binary not on PATH")
 
 
+# The shim's opt-in parser also gives `select.value` a browser's rules — a
+# value no option has is not kept — which is what "the step's saved choice is
+# chosen again once it is offered again" is about. Without it a select keeps
+# whatever was assigned, and that case passed for the wrong reason (a mutation
+# run found it).
+_PARSED_SHIM = _CANVAS_SHIM + "\nimport { installHtmlParsing } from './dom.js';\ninstallHtmlParsing();\n"
+
+
 @pytest.fixture(scope="module")
 def box(tmp_path_factory):
-    return build_sandbox(tmp_path_factory.mktemp("doorpalette"), _CANVAS_SHIM)
+    return build_sandbox(tmp_path_factory.mktemp("doorpalette"), _PARSED_SHIM)
 
 
 @pytest.fixture()
