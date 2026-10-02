@@ -1150,6 +1150,34 @@ import { chevronIcon, playIcon } from './icons.js';
     return text || res.statusText || `HTTP ${res.status}`;
   }
 
+  /**
+   * `B-NEW` (f-import). The PDF pane when pages cannot be drawn: the text the
+   * import read (the document's own markdown, its hidden `pdf_source` /
+   * field / annotation markers taken out), on a page, under one line saying
+   * why — the server's words. Text, never markup: it is whatever the PDF held.
+   */
+  function _showPdfTextInstead(pane, docId, why) {
+    const doc = docs.get(docId);
+    const text = String((doc && doc.content) || '')
+      .replace(/<!--[\s\S]*?-->/g, '')
+      .replace(/[ \t]+$/gm, '')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+    pane.replaceChildren();
+    const box = document.createElement('div');
+    box.className = 'doc-pdf-text-fallback';
+    const note = document.createElement('p');
+    note.className = 'doc-pdf-text-note';
+    note.setAttribute('role', 'note');
+    note.textContent = `Showing the text read from this PDF. ${why || 'The page view is not available here.'}`;
+    const page = document.createElement('div');
+    page.className = 'doc-pdf-text-page';
+    page.textContent = text || 'No text could be read from this PDF.';
+    box.appendChild(note);
+    box.appendChild(page);
+    pane.appendChild(box);
+  }
+
   async function _renderPdfPane() {
     const pane = document.getElementById('doc-pdf-view');
     if (!pane || !activeDocId) return;
@@ -1162,6 +1190,21 @@ import { chevronIcon, playIcon } from './icons.js';
     let data;
     try {
       const res = await fetch(`${API_BASE}/api/document/${docId}/render-pages`);
+      if (res.status === 503) {
+        // `B-NEW` (f-import: on a default install an imported PDF opened to
+        // an error). 503 is the server saying it cannot draw pages here — the
+        // page renderer, PyMuPDF, is optional and the default image has none
+        // (`_load_pdf_viewer_fitz`). Measured in Chromium before this: the
+        // pane said "Failed to load PDF view: PDF viewer requires PyMuPDF…"
+        // in red where the PDF should be, while the text the import read was
+        // in the document all along. So the text is shown, with the server's
+        // own sentence above it as the one line saying why.
+        const why = await _pdfResponseErrorMessage(res);
+        if (docId !== activeDocId) return;
+        _showPdfTextInstead(pane, docId, why);
+        if (savedPill) pane.appendChild(savedPill);
+        return;
+      }
       if (!res.ok) throw new Error(await _pdfResponseErrorMessage(res));
       data = await res.json();
     } catch (e) {
