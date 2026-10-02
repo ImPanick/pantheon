@@ -58,7 +58,30 @@ export const PORTS = Object.freeze(Object.keys(EDGE_WORDS));
  *  the last-run row, which is what lets each carry its own words. */
 const PORT_TOP = 20;
 const PORT_STEP = 42;
-const INPUT_Y = NODE_H / 2;
+/** `P22-10`/`P22-11` (wf-canvas). Below a step's last port: the same room the
+ *  two-port step has under its second (96 − 62), so a step with more ports is
+ *  taller by exactly one port's step for each port past the second. */
+const PORT_FOOT = NODE_H - (PORT_TOP + PORT_STEP);
+
+/**
+ * `P22-10`/`P22-11` (wf-canvas). How tall a step with `ports` is drawn.
+ *
+ * A step of a workflow document may have named ports — an If's *if so* and
+ * *otherwise*, a Switch's one per case and *otherwise* (`ports_of` in
+ * `src/workflow_document.py`) — and each port carries its own words on the
+ * step's right edge, one per row. Two ports or fewer is the step every
+ * canvas has drawn since `P22-02` (`NODE_H`), so a task and every existing
+ * step are the same size they were; each port past the second adds one row.
+ * `ports` is an array (its length is what counts) or a count.
+ */
+export function nodeHeight(ports) {
+  const n = Array.isArray(ports) ? ports.length : Math.max(0, Number(ports) || 0);
+  if (n <= 2) return NODE_H;
+  return PORT_TOP + (n - 1) * PORT_STEP + PORT_FOOT;
+}
+
+/** A position's drawn height: its own `h` when the layout gave it one. */
+const _h = (p) => (p && Number(p.h) > 0 ? Number(p.h) : NODE_H);
 
 const _r = (n) => Math.round(n * 10) / 10;
 
@@ -74,10 +97,13 @@ function _toMap(saved) {
   return out;
 }
 
-/** The order a condition's port takes, unknown conditions after the known. */
-function _portIndex(when) {
-  const i = PORTS.indexOf(String(when));
-  return i < 0 ? PORTS.length : i;
+/** The order a condition's port takes, unknown conditions after the known.
+ *  `ports` is the step's own list when it has one (`P22-10`); without it, the
+ *  two every task has. */
+function _portIndex(when, ports) {
+  const list = Array.isArray(ports) && ports.length ? ports.map(String) : PORTS;
+  const i = list.indexOf(String(when));
+  return i < 0 ? list.length : i;
 }
 
 /** Every id the graph names — its nodes in the order served, then the far end
@@ -106,7 +132,7 @@ function _ids(graph) {
  * the columns are then the longest path over what is left — a DAG, so it
  * terminates whatever the database holds.
  */
-function _columns(members, edges, index) {
+function _columns(members, edges, index, portsOf = () => null) {
   const out = new Map(members.map((id) => [id, []]));
   const incoming = new Map(members.map((id) => [id, 0]));
   for (const e of edges) {
@@ -180,7 +206,7 @@ function _columns(members, edges, index) {
       const bary = from.length
         ? from.reduce((sum, p) => sum + row.get(p.from), 0) / from.length
         : index.get(id);
-      const when = from.length ? Math.min(...from.map((p) => _portIndex(p.when))) : 0;
+      const when = from.length ? Math.min(...from.map((p) => _portIndex(p.when, portsOf(p.from)))) : 0;
       return [bary, when, index.get(id)];
     };
     const keyed = columns.get(c).map((id) => [id, key(id)]);
@@ -192,7 +218,15 @@ function _columns(members, edges, index) {
 
 function _overlaps(a, b) {
   return a.x < b.x + NODE_W + GAP_Y / 2 && b.x < a.x + NODE_W + GAP_Y / 2
-    && a.y < b.y + NODE_H + GAP_Y / 2 && b.y < a.y + NODE_H + GAP_Y / 2;
+    && a.y < b.y + _h(b) + GAP_Y / 2 && b.y < a.y + _h(a) + GAP_Y / 2;
+}
+
+/** `{ heights, ports }` from `layoutGraph`'s third argument: each a `Map` or
+ *  a plain object keyed by id. */
+function _lookup(value) {
+  if (!value) return () => null;
+  if (value instanceof Map) return (id) => (value.has(String(id)) ? value.get(String(id)) : null);
+  return (id) => (Object.prototype.hasOwnProperty.call(value, String(id)) ? value[String(id)] : null);
 }
 
 /**
@@ -200,11 +234,21 @@ function _overlaps(a, b) {
  *
  * `graph` is `build_task_graph`'s shape (`{ nodes, edges }`); `saved` maps a
  * task id to `{ x, y }` (a `Map` or a plain object) for every step a person has
- * placed. Returns `{ nodes: [{ id, x, y, saved, missing }], bounds,
+ * placed. Returns `{ nodes: [{ id, x, y, h, saved, missing }], bounds,
  * components }` — an array, so the order is the drawing order and a caller
  * never meets JavaScript's integer-key ordering of plain objects.
+ *
+ * `opts` (`P22-10`, wf-canvas): `heights` — a step's drawn height by id
+ * (`nodeHeight` of its ports; `NODE_H` for any step not named), and `ports` —
+ * a step's own port list by id, which orders the steps an If or a Switch leads
+ * to the way its ports are ordered. A row of a workflow is as tall as its
+ * tallest step, so the rows of every column still line up; with every step
+ * `NODE_H` tall this is the layout `P22-02` drew, to the pixel.
  */
-export function layoutGraph(graph, saved) {
+export function layoutGraph(graph, saved, opts = {}) {
+  const heightOf = _lookup(opts && opts.heights);
+  const hOf = (id) => { const v = Number(heightOf(id)); return v > 0 ? v : NODE_H; };
+  const portsLookup = _lookup(opts && opts.ports);
   const ids = _ids(graph);
   const index = new Map(ids.map((id, i) => [id, i]));
   const known = new Set(((graph && graph.nodes) || []).map((n) => String(n.id)));
@@ -233,27 +277,43 @@ export function layoutGraph(graph, saved) {
   for (const c of chains) {
     const memberSet = new Set(c.members);
     const own = edges.filter((e) => memberSet.has(String(e.from)) && memberSet.has(String(e.to)));
-    const { column, row } = _columns(c.members, own, index);
-    let rows = 0;
+    const { column, row } = _columns(c.members, own, index, portsLookup);
+    // Each row as tall as its tallest step, so a Switch with five ports does
+    // not run into the step under it and every column's rows still line up.
+    const rowH = [];
+    for (const id of c.members) {
+      const r = row.get(id);
+      rowH[r] = Math.max(rowH[r] || 0, hOf(id));
+    }
+    const rowTop = [];
+    let y = top;
+    for (let r = 0; r < rowH.length; r++) { rowTop[r] = y; y += (rowH[r] || NODE_H) + GAP_Y; }
     for (const id of c.members) {
       base.set(id, {
         x: MARGIN + column.get(id) * (NODE_W + GAP_X),
-        y: top + row.get(id) * (NODE_H + GAP_Y),
+        y: rowTop[row.get(id)],
       });
-      rows = Math.max(rows, row.get(id) + 1);
     }
-    top += rows * (NODE_H + GAP_Y) + GAP_Y;
+    top = y + GAP_Y;
   }
+  // Tasks chained to nothing, a grid of rows each as tall as its tallest.
+  const loneRows = [];
+  lone.forEach((c, k) => {
+    const r = Math.floor(k / LONE_COLUMNS);
+    loneRows[r] = Math.max(loneRows[r] || 0, hOf(c.members[0]));
+  });
+  const loneTop = [];
+  { let y = top; for (let r = 0; r < loneRows.length; r++) { loneTop[r] = y; y += loneRows[r] + GAP_Y; } }
   lone.forEach((c, k) => {
     base.set(c.members[0], {
       x: MARGIN + (k % LONE_COLUMNS) * (NODE_W + GAP_X),
-      y: top + Math.floor(k / LONE_COLUMNS) * (NODE_H + GAP_Y),
+      y: loneTop[Math.floor(k / LONE_COLUMNS)],
     });
   });
 
   // What a person placed stays exactly where it is.
   const placed = new Map();
-  for (const id of ids) if (fixed.has(id)) placed.set(id, { ...fixed.get(id) });
+  for (const id of ids) if (fixed.has(id)) placed.set(id, { ...fixed.get(id), h: hOf(id) });
 
   // Everything else keeps the place the layout gives it unless something is
   // in the way. A step in a workflow that has a placed step goes where the
@@ -272,17 +332,17 @@ export function layoutGraph(graph, saved) {
       const dx = placed.get(anchor).x - base.get(anchor).x;
       const dy = placed.get(anchor).y - base.get(anchor).y;
       for (const id of free) {
-        const a = { x: base.get(id).x + dx, y: base.get(id).y + dy };
+        const a = { x: base.get(id).x + dx, y: base.get(id).y + dy, h: hOf(id) };
         for (let guard = 0; guard <= ids.length && taken.some((b) => _overlaps(a, b)); guard++) a.y += row;
         taken.push(a);
         placed.set(id, a);
       }
     } else {
       let dy = 0;
-      const clash = () => free.some((id) => taken.some((b) => _overlaps({ x: base.get(id).x, y: base.get(id).y + dy }, b)));
+      const clash = () => free.some((id) => taken.some((b) => _overlaps({ x: base.get(id).x, y: base.get(id).y + dy, h: hOf(id) }, b)));
       for (let guard = 0; guard <= ids.length && clash(); guard++) dy += row;
       for (const id of free) {
-        const a = { x: base.get(id).x, y: base.get(id).y + dy };
+        const a = { x: base.get(id).x, y: base.get(id).y + dy, h: hOf(id) };
         taken.push(a);
         placed.set(id, a);
       }
@@ -293,6 +353,7 @@ export function layoutGraph(graph, saved) {
     id,
     x: _r(placed.get(id).x),
     y: _r(placed.get(id).y),
+    h: hOf(id),
     saved: fixed.has(id),
     missing: !known.has(id),
   }));
@@ -303,30 +364,33 @@ export function layoutGraph(graph, saved) {
   };
 }
 
-/** The box around a set of steps, node size included. Empty → a zero box. */
+/** The box around a set of steps, node size included (a point's own `h`
+ *  when it has one). Empty → a zero box. */
 export function boundsOf(points) {
   const list = [...(points || [])];
   if (!list.length) return { x: 0, y: 0, w: 0, h: 0 };
   const xs = list.map((p) => p.x);
-  const ys = list.map((p) => p.y);
   const x = Math.min(...xs);
-  const y = Math.min(...ys);
-  return { x, y, w: Math.max(...xs) + NODE_W - x, h: Math.max(...ys) + NODE_H - y };
+  const y = Math.min(...list.map((p) => p.y));
+  return { x, y, w: Math.max(...xs) + NODE_W - x, h: Math.max(...list.map((p) => p.y + _h(p))) - y };
 }
 
-/** Where an arrow for condition `when` leaves a step at `pos`. */
-export function portPoint(pos, when) {
-  return { x: _r(pos.x + NODE_W), y: _r(pos.y + PORT_TOP + _portIndex(when) * PORT_STEP) };
+/** Where an arrow for condition `when` leaves a step at `pos`. `ports` is the
+ *  step's own list (`P22-10`: an If's, a Switch's); without it, the two every
+ *  task has, so `P22-02`'s geometry is unchanged. */
+export function portPoint(pos, when, ports) {
+  return { x: _r(pos.x + NODE_W), y: _r(pos.y + PORT_TOP + _portIndex(when, ports) * PORT_STEP) };
 }
 
 /** The port's offset from the step's top edge, for the canvas to place it. */
-export function portOffset(when) {
-  return PORT_TOP + _portIndex(when) * PORT_STEP;
+export function portOffset(when, ports) {
+  return PORT_TOP + _portIndex(when, ports) * PORT_STEP;
 }
 
-/** Where every arrow arrives on a step at `pos`. */
+/** Where every arrow arrives on a step at `pos`: halfway down its left edge
+ *  (`pos.h` for a taller step; `NODE_H` otherwise, as it always was). */
 export function inputPoint(pos) {
-  return { x: _r(pos.x), y: _r(pos.y + INPUT_Y) };
+  return { x: _r(pos.x), y: _r(pos.y + _h(pos) / 2) };
 }
 
 /** A curve from a port to a step's input — horizontal at both ends, so it
@@ -389,21 +453,21 @@ function _rounded(points) {
  * the target from its left, where the arrowhead points in. The words sit on
  * the lane, clear of both boxes.
  */
-export function edgeRoute(from, to, when) {
-  const a = portPoint(from, when);
+export function edgeRoute(from, to, when, ports) {
+  const a = portPoint(from, when, ports);
   const b = inputPoint(to);
   if (b.x - a.x >= CURVE_MIN_GAP) {
     const m = edgeMid(a, b);
     return { d: edgePath(a, b), label: { x: m.x, y: _r(m.y - 6) }, end: b, routed: false };
   }
   const fromTop = from.y;
-  const fromBottom = from.y + NODE_H;
+  const fromBottom = from.y + _h(from);
   const toTop = to.y;
-  const toBottom = to.y + NODE_H;
+  const toBottom = to.y + _h(to);
   let lane;
   if (toBottom + ROUTE_CLEAR * 2 <= fromTop) lane = (toBottom + fromTop) / 2;
   else if (fromBottom + ROUTE_CLEAR * 2 <= toTop) lane = (fromBottom + toTop) / 2;
-  else if (_portIndex(when) === 0) lane = Math.min(fromTop, toTop) - ROUTE_CLEAR;
+  else if (_portIndex(when, ports) === 0) lane = Math.min(fromTop, toTop) - ROUTE_CLEAR;
   else lane = Math.max(fromBottom, toBottom) + ROUTE_CLEAR;
   const out = a.x + ROUTE_STUB;
   const into = b.x - ROUTE_STUB;
@@ -424,7 +488,7 @@ export function nodeAt(nodes, point, exclude) {
   for (let i = list.length - 1; i >= 0; i--) {
     const n = list[i];
     if (exclude != null && String(n.id) === String(exclude)) continue;
-    if (point.x >= n.x && point.x <= n.x + NODE_W && point.y >= n.y && point.y <= n.y + NODE_H) {
+    if (point.x >= n.x && point.x <= n.x + NODE_W && point.y >= n.y && point.y <= n.y + _h(n)) {
       return String(n.id);
     }
   }
@@ -460,6 +524,6 @@ export function fitView(bounds, width, height, pad = MARGIN) {
 
 export default {
   layoutGraph, boundsOf, portPoint, portOffset, inputPoint, edgePath, edgeMid, edgeRoute,
-  arrowPath, nodeAt, clampZoom, fitView,
+  arrowPath, nodeAt, clampZoom, fitView, nodeHeight,
   NODE_W, NODE_H, GAP_X, GAP_Y, MARGIN, LONE_COLUMNS, ZOOM_MIN, ZOOM_MAX, PORTS,
 };

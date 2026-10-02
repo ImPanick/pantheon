@@ -80,10 +80,24 @@
 // (`newItem`). Optional keys only this branch's sources use are named where
 // they are read (`idKey`, `dryRunFrom`, `openItem`, `offer`, `item.fixed`,
 // `item.builtin`, `words.*` beyond the five).
+//
+// **Named ports, fan-out and the start's port (`P22-10`, `P22-11`, wf-canvas;
+// `/work/notes/SLICE-CD-DESIGN.md` § 3's JS contract).** A step of a workflow
+// document may leave by ports of its own — an If's *if so* / *otherwise*, a
+// Switch's one per case — so an item's `ports` are drawn one per row down its
+// right edge, each with its own words (`item.portWords[port]`, falling back to
+// `EDGE_WORDS` and then to the port itself), and the step is as tall as its
+// ports need (`graphLayout.js:nodeHeight`); every arrow leaves from its own
+// port (`portPoint(pos, when, ports)`). A source with `fanOut` keeps several
+// arrows on one port: *Connect…* and a drag ADD an arrow there instead of
+// moving the one that was. An item marked `entry` is where a run starts (a
+// workflow's start, which since `P22-11` has one port, *starts*, and real
+// arrows); its arrows read "When it starts, … runs.". With none of these keys
+// a source is drawn exactly as `P22-02`'s and `P22-05`'s were.
 
 import {
   layoutGraph, boundsOf, portPoint, portOffset, edgePath, edgeRoute,
-  arrowPath, nodeAt, clampZoom, fitView, NODE_W, NODE_H, PORTS,
+  arrowPath, nodeAt, clampZoom, fitView, nodeHeight, NODE_W, NODE_H, PORTS,
 } from './graphLayout.js';
 import { EDGE_WORDS, KIND_WORDS, componentOf } from '../tasks/workflowDiagram.js';
 import { computeSnap } from '../editor/snap.js';
@@ -351,14 +365,29 @@ export function mountCanvas(root, opts = {}) {
     const it = S.byId.get(String(id));
     return it && !it.missing ? String(it.name) : word('unknownName');
   };
+  /** `P22-10`. The words on port `when` of item `id`: the item's own
+   *  (`portWords` — an If's "if so", a Switch case's label), else the two every
+   *  task has (`EDGE_WORDS`), else the port as it is stored. */
+  const portWord = (id, when) => {
+    const it = S.byId.get(String(id));
+    const own = it && it.portWords && typeof it.portWords === 'object' ? it.portWords[String(when)] : null;
+    return own != null && own !== '' ? String(own) : (EDGE_WORDS[when] || String(when));
+  };
+  /** Whether arrows from `id` start a run (a workflow's start, `entry`). */
+  const isEntry = (id) => { const it = S.byId.get(String(id)); return !!(it && it.entry); };
+  /** `P22-11`. A source that keeps several arrows on one port. */
+  const fan = () => !!src.fanOut;
   const edgeOf = (from, when, to) => (S.graph.edges || []).find((e) => e.from === String(from)
     && e.when === String(when) && e.to === String(to)) || null;
   const edgeSentence = (from, when, to) => {
+    // `P22-11`. An arrow from where a run starts: with fan-out several steps
+    // may run when it starts, so none of them is "first".
+    if (isEntry(from)) return `When it starts, ${nameOf(to)} runs.`;
     const e = edgeOf(from, when, to);
     // A fixed arrow with words of its own is a workflow's start: it always
     // leads to the step that goes first.
     if (e && e.fixed && e.label) return `${nameOf(to)} runs first.`;
-    return `After ${nameOf(from)}, ${EDGE_WORDS[when] || when}, ${nameOf(to)} runs.`;
+    return `After ${nameOf(from)}, ${portWord(from, when)}, ${nameOf(to)} runs.`;
   };
 
   function say(text, { refusal = false, action = null } = {}) {
@@ -528,6 +557,12 @@ export function mountCanvas(root, opts = {}) {
 
   /** The ports an item has: its own, or the two every task has. */
   const portsOf = (it) => (it && Array.isArray(it.ports) ? it.ports.map(String) : PORTS);
+  /** `P22-10`. The port list an item's arrows are placed by: its own when it
+   *  has some, else the two every task has (an item with none — a start
+   *  drawn by a source without its port — leaves where the first would be). */
+  const geomPorts = (it) => (it && Array.isArray(it.ports) && it.ports.length ? it.ports.map(String) : PORTS);
+  /** How tall item `id` is drawn: by the ports it has (`nodeHeight`). */
+  const heightOf = (it) => (it && !it.missing ? nodeHeight(portsOf(it)) : NODE_H);
   /** Whether an arrow may land on an item. */
   const accepts = (id) => {
     const it = S.byId.get(id);
@@ -560,7 +595,7 @@ export function mountCanvas(root, opts = {}) {
     // reader of `P22-02`'s canvas looks for them (`data-task-id`).
     if (src.idKey) node.dataset[src.idKey] = id;
     node.style.width = NODE_W + 'px';
-    node.style.height = NODE_H + 'px';
+    node.style.height = (Number(lay.h) > 0 ? lay.h : NODE_H) + 'px';
     place(node, lay);
     S.nodeEls.set(id, node);
 
@@ -609,11 +644,12 @@ export function mountCanvas(root, opts = {}) {
     if (plan) said.title = plan.line;
     last.appendChild(said);
     const actions = _el('div', 'wb-node-actions');
-    const ports = ro() ? [] : portsOf(it);
+    const allPorts = portsOf(it);
+    const ports = ro() ? [] : allPorts;
     if (ports.length) {
       const connectBtn = _el('button', 'wb-node-connect', 'Connect…');
       connectBtn.type = 'button';
-      connectBtn.title = `Choose what runs after ${name}`;
+      connectBtn.title = it.entry ? 'Choose what runs when it starts' : `Choose what runs after ${name}`;
       connectBtn.addEventListener('click', (e) => {
         if (e && e.stopPropagation) e.stopPropagation();
         openConnect(id, connectBtn);
@@ -645,12 +681,13 @@ export function mountCanvas(root, opts = {}) {
     for (const when of ports) {
       const port = _el('span', 'wb-port');
       port.dataset.when = when;
-      port.style.top = (portOffset(when) - 7) + 'px';
-      port.title = `${_cap(EDGE_WORDS[when] || when)}: drag to the step that should run`;
+      port.style.top = (portOffset(when, allPorts) - 7) + 'px';
+      port.title = `${_cap(portWord(id, when))}: drag to the step that should run`
+        + (fan() ? ' (another arrow is added; the ones there stay)' : '');
       // The keyboard's way to the same thing is Connect…; a port is a pointer
       // handle and is not announced twice.
       port.setAttribute('aria-hidden', 'true');
-      port.appendChild(_el('span', 'wb-port-label', EDGE_WORDS[when] || when));
+      port.appendChild(_el('span', 'wb-port-label', portWord(id, when)));
       port.addEventListener('pointerdown', (e) => startLink(e, id, when, port));
       port.addEventListener('pointermove', (e) => moveLink(e));
       port.addEventListener('pointerup', (e) => finishLink(e));
@@ -703,7 +740,7 @@ export function mountCanvas(root, opts = {}) {
       const head = _svg('path', 'wb-edge-head');
       const label = _svg('text', 'wb-edge-label');
       label.setAttribute('text-anchor', 'middle');
-      label.textContent = edge.label ? String(edge.label) : (EDGE_WORDS[when] || when);
+      label.textContent = edge.label ? String(edge.label) : portWord(from, when);
       for (const n of [hit, line, head, label]) g.appendChild(n);
       const rec = { edge, from, to, when, fixed, key: `${from}\u0000${when}\u0000${to}`, g, hit, line, head, label };
       g.addEventListener('pointerdown', (e) => { if (e && e.stopPropagation) e.stopPropagation(); });
@@ -727,7 +764,8 @@ export function mountCanvas(root, opts = {}) {
       const geom = fromItem && Array.isArray(fromItem.ports) && !fromItem.ports.length ? PORTS[0] : r.when;
       // `B1053`. Routed round both steps when the target is not to the right,
       // so an arrow to a step on the left reads the way it was saved.
-      const route = edgeRoute(S.pos.get(r.from), S.pos.get(r.to), geom);
+      // `P22-10`: from the step's own port, by its own port list.
+      const route = edgeRoute(S.pos.get(r.from), S.pos.get(r.to), geom, geomPorts(fromItem));
       r.hit.setAttribute('d', route.d);
       r.line.setAttribute('d', route.d);
       r.head.setAttribute('d', arrowPath(route.end));
@@ -788,8 +826,16 @@ export function mountCanvas(root, opts = {}) {
     // placed are laid out (`graphLayout.js`).
     const fixed = new Map(S.pinned);
     for (const [id, p] of S.pos) fixed.set(id, p);
-    const lay = layoutGraph(graph, fixed);
-    S.pos = new Map(lay.nodes.map((n) => [n.id, { x: n.x, y: n.y }]));
+    // `P22-10`. Each step as tall as its ports need, and the steps an If or a
+    // Switch leads to ordered the way its ports are.
+    const heights = new Map();
+    const portLists = new Map();
+    for (const it of S.items) {
+      heights.set(it.id, heightOf(it));
+      if (Array.isArray(it.ports) && it.ports.length) portLists.set(it.id, it.ports.map(String));
+    }
+    const lay = layoutGraph(graph, fixed, { heights, ports: portLists });
+    S.pos = new Map(lay.nodes.map((n) => [n.id, { x: n.x, y: n.y, h: n.h }]));
     S.missing = new Set(lay.nodes.filter((n) => n.missing).map((n) => n.id));
     S.order = lay.nodes.map((n) => n.id);
     S.nodeEls = new Map();
@@ -816,7 +862,8 @@ export function mountCanvas(root, opts = {}) {
   }
 
   function moveNode(id, x, y) {
-    S.pos.set(id, { x, y });
+    const was = S.pos.get(id);
+    S.pos.set(id, { x, y, h: was && was.h ? was.h : NODE_H });
     const node = S.nodeEls.get(id);
     if (node) place(node, { x, y });
     updateEdges();
@@ -861,11 +908,11 @@ export function mountCanvas(root, opts = {}) {
     const others = [];
     for (const [oid, p] of S.pos) {
       if (oid === id || S.missing.has(oid)) continue;
-      others.push({ visible: true, id: oid, canvas: { width: NODE_W, height: NODE_H }, offset: p });
+      others.push({ visible: true, id: oid, canvas: { width: NODE_W, height: p.h || NODE_H }, offset: p });
     }
     // `editor/snap.js`, the image editor's layer snap: a step dragged near
     // another step's edge or centre lines up with it.
-    const snap = computeSnap({ id, canvas: { width: NODE_W, height: NODE_H } },
+    const snap = computeSnap({ id, canvas: { width: NODE_W, height: (S.pos.get(id) || {}).h || NODE_H } },
       d.x0 + dx / S.view.zoom, d.y0 + dy / S.view.zoom,
       { zoom: S.view.zoom, canvasW: 0, canvasH: 0, otherLayers: others });
     drawGuides(snap.guides);
@@ -908,8 +955,9 @@ export function mountCanvas(root, opts = {}) {
     const items = [];
     for (const s of steps) {
       items.push({ kind: 'node', id: s.id, el: S.nodeEls.get(s.id) });
+      const own = geomPorts(S.byId.get(s.id));
       S.edgeEls.filter((r) => r.from === s.id)
-        .sort((a, b) => PORTS.indexOf(a.when) - PORTS.indexOf(b.when))
+        .sort((a, b) => own.indexOf(a.when) - own.indexOf(b.when))
         .forEach((r) => items.push({ kind: 'edge', id: r.from, key: r.key, el: r.g }));
     }
     return items;
@@ -1047,13 +1095,15 @@ export function mountCanvas(root, opts = {}) {
     endLink(null);
     S.link = {
       from, when, port, pointerId: e.pointerId, over: null,
-      start: portPoint(S.pos.get(from), when),
+      start: portPoint(S.pos.get(from), when, geomPorts(S.byId.get(from))),
       unregister: holdEscape(() => endLink(null)),
     };
     try { if (port.setPointerCapture) port.setPointerCapture(e.pointerId); } catch (_) { /* a synthetic pointer */ }
     ghost.setAttribute('d', edgePath(S.link.start, S.link.start));
     root.classList.add('wb-linking');
-    say(`${_cap(EDGE_WORDS[when] || when)}: let go over the step that should run after ${nameOf(from)}.`);
+    say(isEntry(from)
+      ? 'Let go over the step that should run when it starts.'
+      : `${_cap(portWord(from, when))}: let go over the step that should run after ${nameOf(from)}.`);
   }
 
   function moveLink(e) {
@@ -1102,9 +1152,11 @@ export function mountCanvas(root, opts = {}) {
       return { ok: false, sentence };
     }
     const sentence = edgeSentence(from, when, to);
-    const was = before && before.to !== String(to) ? ` It used to be ${nameOf(before.to)}.` : '';
+    // `P22-11`. On a source with fan-out the arrow that was there stays, so
+    // there is nothing it "used to be".
+    const was = !fan() && before && before.to !== String(to) ? ` It used to be ${nameOf(before.to)}.` : '';
     await reload();
-    say(`Connected. ${sentence}${was}`);
+    say(`Connected. ${sentence}${was}` + (res.sentence ? ' ' + String(res.sentence) : ''));
     return res;
   }
 
@@ -1117,7 +1169,9 @@ export function mountCanvas(root, opts = {}) {
       say('Not removed: ' + ((res && res.sentence) || 'The change was refused.'), { refusal: true });
       return res || { ok: false };
     }
-    const sentence = `${nameOf(rec.to)} no longer runs after ${nameOf(rec.from)} ${EDGE_WORDS[rec.when] || rec.when}.`;
+    const sentence = isEntry(rec.from)
+      ? `${nameOf(rec.to)} no longer runs when it starts.`
+      : `${nameOf(rec.to)} no longer runs after ${nameOf(rec.from)} ${portWord(rec.from, rec.when)}.`;
     await reload();
     focusNode(rec.from);
     say('Removed. ' + sentence);
@@ -1223,18 +1277,20 @@ export function mountCanvas(root, opts = {}) {
     const box = _el('div', 'wb-connect');
     box.setAttribute('role', 'dialog');
     box.setAttribute('aria-label', `Connect ${name}`);
-    box.appendChild(_el('p', 'wb-connect-head', `After ${name}…`));
+    box.appendChild(_el('p', 'wb-connect-head', it.entry ? 'When it starts…' : `After ${name}…`));
 
     const ports = portsOf(it);
     const whenLabel = _el('label', 'wb-connect-field');
     whenLabel.appendChild(_el('span', 'wb-connect-label', 'Outcome'));
     const whenSel = _el('select', 'wb-connect-when');
     for (const w of ports) {
-      const o = _el('option', null, EDGE_WORDS[w] || w);
+      const o = _el('option', null, portWord(from, w));
       o.value = w;
       whenSel.appendChild(o);
     }
     whenLabel.appendChild(whenSel);
+    // One way out (a workflow's start, a Set): nothing to choose.
+    whenLabel.hidden = ports.length === 1;
 
     const toLabel = _el('label', 'wb-connect-field');
     toLabel.appendChild(_el('span', 'wb-connect-label', 'Run next'));
@@ -1260,15 +1316,17 @@ export function mountCanvas(root, opts = {}) {
     row.appendChild(cancel);
     for (const n of [whenLabel, toLabel, now, said, row]) box.appendChild(n);
 
-    const current = (when) => {
-      const e = (S.graph.edges || []).find((x) => x.from === from && x.when === when);
-      return e ? e.to : null;
-    };
+    const current = (when) => (S.graph.edges || []).filter((x) => x.from === from && x.when === when).map((x) => x.to);
     const syncNow = () => {
       const cur = current(whenSel.value);
-      now.textContent = cur
-        ? `Now: ${nameOf(cur)} runs ${EDGE_WORDS[whenSel.value] || whenSel.value}. Connecting replaces it.`
-        : '';
+      const words = isEntry(from) ? 'when it starts' : portWord(from, whenSel.value);
+      if (!cur.length) { now.textContent = ''; return; }
+      const names = cur.map((x) => nameOf(x));
+      const list = names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : names[0];
+      // `P22-11`. With fan-out the arrows there stay and one is added.
+      now.textContent = fan()
+        ? `Now: ${list} ${names.length > 1 ? 'run' : 'runs'} ${words}. Connecting adds another; ${names.length > 1 ? 'they all run' : 'both run'}.`
+        : `Now: ${list} runs ${words}. Connecting replaces it.`;
     };
     // Stated rather than left to the browser's default, so the first choice
     // is the same however the picker is driven.
@@ -1554,8 +1612,9 @@ export function mountCanvas(root, opts = {}) {
       if (!e.depth || !e.when) return;
       const parent = order.slice(0, i).find((p) => (S.graph.edges || [])
         .some((g) => g.from === p && g.to === id && g.when === e.when));
-      const words = EDGE_WORDS[e.when] || e.when;
-      e.after = parent ? `After ${nameOf(parent)}, ${words}` : _cap(words);
+      const words = parent ? portWord(parent, e.when) : (EDGE_WORDS[e.when] || e.when);
+      e.after = parent && isEntry(parent) ? 'When it starts'
+        : parent ? `After ${nameOf(parent)}, ${words}` : _cap(words);
     });
     const head = String(result.head || headId || order[0] || '');
     const dirty = !!(S.panel && S.panel.dirty);
