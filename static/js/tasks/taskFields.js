@@ -760,7 +760,10 @@ const _formModes = new WeakMap();
  * replaced by `$` (this form's own host) and the two tab switches replaced by
  * the owner's callbacks.
  */
-export function mountTaskFields(host, { task = null, tasks = [], onSaved = null, onCancel = null, mode = 'task' } = {}) {
+export function mountTaskFields(host, {
+  task = null, tasks = [], onSaved = null, onCancel = null, mode = 'task',
+  slots = null, pickField = null, extra = null, problem = null,
+} = {}) {
   if (!host) return { destroy() {} };
   // `P22-05` (wf-ui). Which form: see the sections below. Anything else is the
   // task form, so a caller that passes nothing gets what it always got.
@@ -801,6 +804,23 @@ export function mountTaskFields(host, { task = null, tasks = [], onSaved = null,
   //   'trigger' — a workflow's start: the Trigger section, Time limit and
   //               Notifications only, saved by `PUT /api/tasks/{id}` with none
   //               of task_type, output, model, chain or prompt.
+  //
+  // `P22-09`/`P22-16` (wf-canvas) — three hooks, read in `'node'` mode only,
+  // so the other two draw what they always drew:
+  //   `slots`     — the palette's slots for this kind (`{ field: { mapping,
+  //                 why } }`, C-W); which of the step's text boxes may take a
+  //                 field from an earlier step is the server's answer.
+  //   `pickField(input, { field, slot })` — the room's decorator
+  //                 (`workbench/fieldPicker.js:decorateField`), handed each
+  //                 text box the step stores (`prompt`): *Insert a field…* on a
+  //                 `value` one, the reason on a `never` one. This file draws
+  //                 neither and imports neither — a sandbox that loads the task
+  //                 form needs nothing new.
+  //   `extra(el)` — a section of the caller's under the step's fields (a
+  //                 Prompt step's tools and answer shape), whose `read()` adds
+  //                 its keys to Done's config, or refuses.
+  //   `problem`   — the draft's refusal naming this step (`{ sentence, field }`),
+  //                 said on that field.
   const heading = isNode ? 'Edit step' : isTrigger ? 'What starts it'
     : (existing?.id ? 'Edit Task' : 'New Task');
   const lede = isNode
@@ -923,13 +943,31 @@ export function mountTaskFields(host, { task = null, tasks = [], onSaved = null,
       <div id="task-form-output-extra"></div>
 `;
   }
+  if (isNode) sections.extra = '\n      <div id="task-form-step-extra" class="task-form-step-extra"></div>\n';
   const order = isNode
     ? ['head', 'name', 'type', ...(curTaskType === 'run_task' ? [] : ['output']),
-      ...(curTaskType === 'llm' || curTaskType === 'research' ? ['model'] : []), 'actions']
+      ...(curTaskType === 'llm' || curTaskType === 'research' ? ['model'] : []),
+      ...(typeof extra === 'function' ? ['extra'] : []), 'actions']
     : isTrigger
       ? ['head', 'trigger', 'timeout', 'notif', 'actions']
       : ['head', 'name', 'type', 'trigger', 'output', 'model', 'timeout', 'chain', 'notif', 'actions'];
   host.innerHTML = order.map((k) => sections[k]).join('');
+
+  // --- `P22-09` (wf-canvas): a step's text boxes, told what they may take ---
+  const nodeHandles = {};
+  const problemField = isNode && problem && problem.field
+    ? String(problem.field).replace(/^config\./, '') : '';
+  let problemShown = false;
+  const _decorate = (el, field) => {
+    if (!isNode || !el || typeof pickField !== 'function') return null;
+    if (nodeHandles[field]) { try { nodeHandles[field].destroy(); } catch (_) { /* gone */ } }
+    const slot = slots && typeof slots === 'object' && slots[field] ? slots[field] : null;
+    let h = null;
+    try { h = pickField(el, { field, slot }); } catch (_) { h = null; }
+    if (h) nodeHandles[field] = h;
+    if (h && problemField === field && typeof h.show === 'function') { h.show(problem.sentence); problemShown = true; }
+    return h;
+  };
 
   // --- Task type toggle ---
   let taskType = curTaskType;
@@ -984,6 +1022,7 @@ ${(isNode && taskType === 'research') ? '' : `
       // `P22-05`. A Research step takes no persona (its config has no
       // `character_id`), so its step form does not offer one; every other
       // use of this form draws the same text it always did.
+      _decorate($('task-form-prompt'), 'prompt');
     } else {
       typeOpts.innerHTML = `
         <label class="task-form-label">Action</label>
@@ -1020,6 +1059,9 @@ ${(isNode && taskType === 'research') ? '' : `
           // arbitrary text and `</textarea>` in it would close the element.
           const paramEl = $('task-form-action-param');
           if (paramEl && existing?.action === action) paramEl.value = existing.prompt || '';
+          // `P22-09`. An action's parameter is a command or a host — never
+          // filled from another step — and the step's box says so.
+          _decorate(paramEl, 'prompt');
         }
         if (!_EMAIL_ACCOUNT_ACTIONS.has(action)) return;
         await _renderEmailActionOptions(action, existing, extra);
@@ -1070,6 +1112,25 @@ ${(isNode && taskType === 'research') ? '' : `
     $('task-form-event')?.dispatchEvent(new Event('change'));
   });
   renderTypeOpts();
+
+  // `P22-16` (wf-canvas). The caller's section under a step's fields.
+  let extraView = null;
+  if (isNode && typeof extra === 'function' && $('task-form-step-extra')) {
+    try { extraView = extra($('task-form-step-extra')); } catch (_) { extraView = null; }
+  }
+  // The draft's refusal for this step, when no box of the form took it.
+  if (isNode && problem && problem.sentence) {
+    setTimeout(() => {
+      if (problemShown || !alive) return;
+      const form = host.querySelector('.task-form');
+      if (!form) return;
+      const line = document.createElement('p');
+      line.className = 'task-form-problem';
+      line.setAttribute('role', 'alert');
+      line.textContent = String(problem.sentence);
+      form.insertBefore(line, form.firstChild);
+    }, 0);
+  }
 
   // --- Trigger type toggle ---
   let triggerType = curTriggerType;
@@ -1494,6 +1555,19 @@ ${(isNode && taskType === 'research') ? '' : `
     if (kind === 'llm') {
       keep('crew_member_id', existing?.crew_member_id);
       keep('max_steps', existing?.max_steps);
+      // `P22-16`. An AI step's tools and answer shape: the caller's section
+      // decides them when it is drawn; without it they are kept as they came.
+      if (extraView && typeof extraView.read === 'function') {
+        const more = extraView.read();
+        if (more && more.refusal) {
+          refuse(more.refusal);
+          return;
+        }
+        for (const [k, v] of Object.entries((more && more.config) || {})) config[k] = v;
+      } else {
+        keep('tools', existing?.tools);
+        keep('answer_fields', existing?.answer_fields);
+      }
     }
     const outSel = $('task-form-output');
     if (outSel && _outputsLoaded) {
@@ -1765,6 +1839,8 @@ ${(isNode && taskType === 'research') ? '' : `
   const view = {
     destroy() {
       if (!alive) return;
+      for (const h of Object.values(nodeHandles)) { try { if (h && h.destroy) h.destroy(); } catch (_) { /* gone */ } }
+      if (extraView && typeof extraView.destroy === 'function') { try { extraView.destroy(); } catch (_) { /* gone */ } }
       alive = false;
       if (_mounted.get(host) === view) _mounted.delete(host);
       if (typeof host.replaceChildren === 'function') host.replaceChildren();
