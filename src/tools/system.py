@@ -345,79 +345,41 @@ async def do_manage_skills(content: str, owner: Optional[str] = None) -> Dict:
         # an install with no model at all — so the findings are printed even
         # when the rewrite cannot run, rather than disappearing into "no model
         # configured" (`Law 16`'s install is the common one, not the exotic one).
+        #
+        # `P22-23`. The body is `services/memory/skill_improve.improve_from_lint`
+        # now, shared with the Skills window's *Fix these with the model*
+        # (`POST /api/skills/{skill_id}/improve`), and it pins the live skill's
+        # lifecycle and visibility so a body cannot promote itself (§ 5.4).
+        # What this handler says is unchanged; only where the work happens moved.
         if not name:
             return {"error": "name is required for improve", "exit_code": 1}
-        md = sm.read_skill_md(name, owner=owner)
-        if md is None:
-            return {"error": f"Skill {name!r} not found", "exit_code": 1}
-        from services.memory.skill_lint import format_lint, lint_skill
+        from services.memory.skill_improve import ImproveOutcome, improve_from_lint
+        from services.memory.skill_lint import format_lint
 
-        library = sm.load(owner=owner)
-        current = next((x for x in library if x.get("name") == name), None)
-        if current is None:
+        done = await improve_from_lint(sm, name, owner)
+        if done.outcome is ImproveOutcome.NOT_FOUND:
             return {"error": f"Skill {name!r} not found", "exit_code": 1}
-        result = lint_skill(current, [x for x in library if x.get("name") != name])
-        findings = result.get("findings") or []
-        if not findings:
+        if done.outcome is ImproveOutcome.NOTHING_TO_FIX:
             return {"results": (
                 f"`{name}` has nothing the lint can fix — no missing section, no "
                 "over-long description, no overlap with another skill. Nothing "
                 "was sent to a model and nothing was written."
             )}
-
-        # `metadata:` is the prefix `_improve_skill_md`'s system prompt reads as
-        # permission to edit frontmatter. A finding about the category or the
-        # tags that arrives without it is a finding that prompt tells the model
-        # to leave alone, so the mapping is explicit rather than incidental.
-        _METADATA_FIELDS = {"name", "description", "category", "tags"}
-        issues = []
-        for f in findings:
-            field = f.get("field") or ""
-            prefix = "metadata: " if field in _METADATA_FIELDS else ""
-            issues.append(f"{prefix}{field}: {f.get('message', '')} "
-                          f"Fix: {f.get('fix', '')}".strip())
-
-        try:
-            from routes.skills_routes import _resolve_audit_models
-            url, model_id, headers, _teacher = _resolve_audit_models(owner)
-        except Exception as e:
-            return {"error": f"{e}\n\nThe lint costs nothing and ran anyway:\n"
-                             f"{format_lint(result)}", "exit_code": 1}
-
-        from routes.skills_routes import _apply_skill_md, _improve_skill_md
-        fixed = await _improve_skill_md(
-            md,
-            {
-                "verdict": "pass",
-                "confidence": 1.0,
-                "summary": ("Authoring lint only — the procedure has not been "
-                            "shown to be wrong. Fill in what is missing and "
-                            "tighten what is vague."),
-                "issues": issues,
-            },
-            ("Authoring lint only: no test was run and no reviewer judged this "
-             "procedure. Do not rewrite steps you have no evidence against."),
-            url, model_id, headers,
-        )
-        # `.strip()` on the left as well as the right: a model that answered
-        # with whitespace is truthy, and `_apply_skill_md` parses `"   "` into a
-        # nameless, descriptionless skill and writes it — measured while
-        # mutation-testing this handler, by parametrising the empty reply.
-        if not (fixed or "").strip() or fixed.strip() == md.strip():
+        if done.outcome is ImproveOutcome.NO_MODEL:
+            return {"error": f"{done.why}\n\nThe lint costs nothing and ran anyway:\n"
+                             f"{format_lint(done.before)}", "exit_code": 1}
+        if done.outcome is ImproveOutcome.NO_REWRITE:
             return {"error": (f"The model returned no usable rewrite for `{name}`. "
-                              f"Nothing was written.\n\n{format_lint(result)}"),
+                              f"Nothing was written.\n\n{format_lint(done.before)}"),
                     "exit_code": 1}
-        if not _apply_skill_md(sm, name, fixed, owner):
+        if done.outcome is ImproveOutcome.NOT_SAVED:
             return {"error": f"Could not save the rewritten `{name}`. Nothing changed.",
                     "exit_code": 1}
 
-        after = lint_skill(
-            next((x for x in sm.load(owner=owner) if x.get("name") == name), {}),
-            [x for x in sm.load(owner=owner) if x.get("name") != name])
-        before_counts = result.get("counts") or {}
-        after_counts = after.get("counts") or {}
+        before_counts = done.before_counts
+        after_counts = done.after_counts
         return {"results": (
-            f"Rewrote `{name}` from {len(findings)} lint finding(s).\n"
+            f"Rewrote `{name}` from {len(done.findings)} lint finding(s).\n"
             f"Before: {before_counts.get('problem', 0)} problem(s), "
             f"{before_counts.get('advisory', 0)} advisory(ies). "
             f"After: {after_counts.get('problem', 0)} problem(s), "

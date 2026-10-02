@@ -852,11 +852,20 @@ class SkillsManager:
         return None
 
     def _files_under(self, base: str) -> Dict[str, str]:
-        """A skill folder as `{relative path: text}` — `export_skill`'s walk."""
+        """A skill folder as `{relative path: text}` — `export_skill`'s walk.
+
+        `P22-23` (design § 0.11). `followlinks=False` governs *directories*
+        only: a symlinked FILE is still listed in `files`, and `open()` follows
+        it — so a skill folder holding `notes.md -> ~/.ssh/id_rsa` exported the
+        key. Export is a button now (`GET /api/skills/{skill_id}/export`), so a
+        symlinked file is skipped, and anything whose real path has left the
+        skill's folder is skipped too.
+        """
         from .skill_importer import MAX_FILES, MAX_FILE_BYTES, MAX_TOTAL_BYTES
 
         out: Dict[str, str] = {}
         total = 0
+        real_base = os.path.realpath(base)
         for root, dirs, files in os.walk(base, followlinks=False):
             dirs[:] = sorted(d for d in dirs if d != VERSIONS_DIRNAME)
             for fn in sorted(files):
@@ -864,6 +873,13 @@ class SkillsManager:
                     return out
                 full = os.path.join(root, fn)
                 rel = os.path.relpath(full, base).replace(os.sep, "/")
+                if os.path.islink(full):
+                    logger.info("Skill export: skipping symlinked %s", rel)
+                    continue
+                real = os.path.realpath(full)
+                if os.path.commonpath([real_base, real]) != real_base:
+                    logger.info("Skill export: skipping %s, outside the skill's folder", rel)
+                    continue
                 try:
                     if os.path.getsize(full) > MAX_FILE_BYTES:
                         logger.info("Skill export: skipping oversized %s", rel)
