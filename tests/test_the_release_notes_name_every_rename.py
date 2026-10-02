@@ -164,18 +164,26 @@ def _tracked_texts() -> tuple:
     return tuple(texts)
 
 
+@functools.lru_cache(maxsize=None)
+def _first_file_naming() -> dict:
+    """`PANTHEON_*` name → the first tracked file, in path order and outside
+    the docs, that names it. One pass over the tree rather than one per name."""
+    first: dict = {}
+    word = re.compile(r"(?<![A-Z0-9_])PANTHEON_[A-Z0-9_]+")
+    for rel, text in sorted(_tracked_texts()):
+        if rel.startswith("docs/") or rel.endswith(".md"):
+            continue
+        for name in set(word.findall(text)):
+            first.setdefault(name, rel)
+    return first
+
+
 def read_in(name: str) -> str | None:
     """Where an operator would meet a variable: `.env.example` when it is
     declared there, else the first tracked file outside the docs that names it."""
     if name in tree_env_declared():
         return ".env.example"
-    word = re.compile(rf"(?<![A-Z0-9_]){re.escape(name)}(?![A-Z0-9_])")
-    for rel, text in sorted(_tracked_texts()):
-        if rel.startswith("docs/") or rel.endswith(".md"):
-            continue
-        if word.search(text):
-            return rel
-    return None
+    return _first_file_naming().get(name)
 
 
 @functools.lru_cache(maxsize=None)
@@ -635,10 +643,9 @@ def test_the_forks_first_commit_is_the_one_the_credit_names(version):
 
 @pytest.mark.parametrize("version", _versions())
 def test_every_env_row_is_the_mechanical_rename_and_still_exists(version):
-    texts = "\n".join(t for _r, t in _tracked_texts())
     for old, new, where in (r[:3] for r in _pairs(version, ENV)):
         assert renamed(old) == new and old.startswith("ODYSSEUS_"), (old, new)
-        assert new in texts, f"{new} is in the notes and nowhere in the tree"
+        assert read_in(new), f"{new} is in the notes and nowhere in the tree"
         assert where == read_in(new), f"{new}: the notes say {where!r}, the tree says {read_in(new)!r}"
 
 
