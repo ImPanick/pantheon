@@ -38,7 +38,7 @@ import { runStatusTone, runStatusLabel } from '../runStatus.js';
 // `P22-09`…`P22-18` (wf-canvas): the step forms Slices C and D add, the field
 // picker, and the gate card a waiting step is answered with.
 import { mountStepFields, mountAiOptions, STEP_FIELD_KINDS, needLine } from './stepFields.js';
-import { decorateField, openFieldPicker } from './fieldPicker.js';
+import { decorateField, openFieldPicker, exampleText } from './fieldPicker.js';
 import { approvalBox } from '../approvalBox.js';
 
 /** The kinds a step can be, in the palette's order, with what each does in
@@ -161,6 +161,30 @@ export function statusWords(status) {
   if (!status) return { tone: 'none', mark: OUTCOME_MARKS.none, word: 'Not reached in this run' };
   const tone = runStatusTone(status) || 'info';
   return { tone, mark: OUTCOME_MARKS[tone] || OUTCOME_MARKS.info, word: runStatusLabel(status, 'job') || String(status) };
+}
+
+/** `B1109`. The first line of `text` that is words: a reasoning model's
+ *  `<think>` block is left out, and so is a code fence's line (```json). */
+function _wordsLine(text) {
+  const t = String(text == null ? '' : text).replace(/<think>[\s\S]*?<\/think>/gi, '');
+  return t.split('\n').map((l) => l.trim()).find((l) => l && !l.startsWith('```')) || '';
+}
+
+/** `B1109`. What a For-each item's line says after its status: its error's
+ *  first line; else its answer — an answer in the shape asked (`data`, an
+ *  object) as its fields, "name: value", the way the picker shows a field;
+ *  else the first line of its text that is words. Measured by `integrate-d`:
+ *  every item that answered in shape read "Item 1 of 5: Success — ```json",
+ *  the first line of a fenced answer `parse_answer` had already read. */
+export function itemAnswer(rec) {
+  const r = rec && typeof rec === 'object' ? rec : {};
+  if (r.error) return _wordsLine(r.error);
+  const out = r.output && typeof r.output === 'object' && !Array.isArray(r.output) ? r.output : { text: r.output };
+  const data = out.data;
+  if (data && typeof data === 'object' && !Array.isArray(data) && Object.keys(data).length) {
+    return Object.entries(data).map(([k, v]) => `${k}: ${exampleText(v, 60)}`).join(' · ');
+  }
+  return _wordsLine(out.text);
 }
 
 function _when(iso) {
@@ -1050,7 +1074,7 @@ export function createWorkflowPanels({
       const mark = _el('span', 'wf-record-mark', w.mark);
       mark.setAttribute('aria-hidden', 'true');
       li.appendChild(mark);
-      const first = String((r.error || (r.output && (r.output.text || '')) || '')).split('\n')[0].trim();
+      const first = itemAnswer(r);
       li.appendChild(_el('span', 'wf-record-item-word',
         `Item ${Number(r.item) + 1} of ${total}: ${w.word}${first ? ` — ${first.length > 160 ? first.slice(0, 159) + '…' : first}` : ''}`));
       if (r.status === 'waiting') li.appendChild(waitingPart(r, { answer, nodeId, item: Number(r.item) }));
