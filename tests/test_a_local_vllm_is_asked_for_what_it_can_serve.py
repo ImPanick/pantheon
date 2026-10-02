@@ -88,38 +88,47 @@ def pantheon(tmp_path_factory):
         server.stop()
 
 
+WINDOWS = {"vllm": WINDOW, "small": 9_000, "accepts": None}
+
+
 @pytest.fixture(scope="module")
 def world(pantheon):
-    """A signed-in person and the scripted model on three loopback endpoints:
-    served as vLLM serves a 32,768 window, as vLLM serves one too small for the
-    preset, and as a server that takes any length."""
+    """A signed-in person and the scripted model, served as vLLM serves a 32,768
+    window (`vllm`), as vLLM serves one too small for the preset (`small`), or
+    as a server that takes any length (`accepts`) — on a loopback port of its
+    own for every turn. A server that stated its window is remembered
+    (w8-agent's B-NEW-3), so a turn that must meet the server for the first time
+    meets a new one."""
+    import contextlib
+
     import httpx
 
     client = httpx.Client(base_url=pantheon.base, timeout=180)
     seed.setup_admin(client, secrets.token_urlsafe(18))
     log: list = []
-    with demo_model.DemoModel(log=log, conversations=SCRIPT, max_model_len=WINDOW) as vllm, \
-            demo_model.DemoModel(log=log, conversations=SCRIPT, max_model_len=9_000) as small, \
-            demo_model.DemoModel(log=log, conversations=SCRIPT) as accepts:
-        endpoints = {}
-        for name, model in (("vllm", vllm), ("small", small), ("accepts", accepts)):
-            out = seed._ok(client.post("/api/model-endpoints", data={
-                "name": f"Demo model ({name})", "base_url": model.base_url,
-                "supports_tools": "true", "require_models": "true"}), name)
-            endpoints[name] = out["id"]
-        yield client, endpoints, log
+    with contextlib.ExitStack() as models:
+        def endpoint(kind):
+            model = models.enter_context(demo_model.DemoModel(
+                log=log, conversations=SCRIPT, max_model_len=WINDOWS[kind]))
+            return seed._ok(client.post("/api/model-endpoints", data={
+                "name": f"Demo model ({kind}, {model.port})", "base_url": model.base_url,
+                "supports_tools": "true", "require_models": "true"}), kind)["id"]
+
+        yield client, endpoint, log
     client.close()
 
 
 def _turn(world, key, endpoint="vllm", preset="brainstorm"):
-    """One Agent-mode turn. Returns the requests the model was sent for it (in
-    order), the events, the saved reply and the run's id."""
-    client, endpoints, log = world
-    sess = seed._ok(client.post("/api/session", data={"endpoint_id": endpoints[endpoint],
+    """One Agent-mode turn, on a server met for the first time. Returns the
+    requests the model was sent for it (in order), the events, the saved reply
+    and the run's id."""
+    client, new_endpoint, log = world
+    endpoint_id = new_endpoint(endpoint)
+    sess = seed._ok(client.post("/api/session", data={"endpoint_id": endpoint_id,
                                                       "model": seed.DEMO_MODEL_ID}), "chat")
     form = {"message": WORDS[key], "session": sess.get("session_id") or sess.get("id"),
             "mode": "agent", "plan_mode": "false", "selected_model": seed.DEMO_MODEL_ID,
-            "selected_endpoint_id": endpoints[endpoint], "allow_bash": "false",
+            "selected_endpoint_id": endpoint_id, "allow_bash": "false",
             "allow_web_search": "false", "preset_id": preset}
     start = len(log)
     resp = client.post("/api/chat_stream", data=form)
@@ -128,6 +137,13 @@ def _turn(world, key, endpoint="vllm", preset="brainstorm"):
     sent = [e for e in log[start:] if e["conv"] == key]
     said = "".join(e["delta"] for e in events if isinstance(e.get("delta"), str))
     return {"sent": sent, "events": events, "said": said, "session": form["session"]}
+
+
+def _side(entry):
+    """A request Pantheon makes on the side — the chat's title — rather than
+    the turn's own, by the scripted model's own patterns (`demo_model._SIDE`)."""
+    system = " ".join(str(m.get("content")) for m in entry["messages"] if m.get("role") == "system")
+    return any(pattern.search(system) for pattern, _answer in demo_model._SIDE)
 
 
 def _stated(refusal):
@@ -184,18 +200,22 @@ def test_the_receipt_says_what_the_answer_was_generated_under(world, pantheon):
     assert receipt["config"]["sampling"]["max_tokens"] == resent["max_tokens"]
 
 
-def test_the_force_answer_salvage_is_sent_again_too(world):
-    """The other door a lifted length goes through: a turn going round in circles
-    until the loop breaker forces an answer that still has no prose, whose
-    one non-streaming synthesis call (`llm_call_async`) is refused and sent
-    again the same way — so the turn does not end on the canned apology."""
+def test_the_force_answer_salvage_is_sent_what_fits(world):
+    """The other door a lifted length goes through: a turn going round in
+    circles until the loop breaker forces an answer that still has no prose,
+    whose one non-streaming synthesis call (`llm_call_async`) is lifted too.
+    The turn's first round taught the server's window, so the salvage asks for
+    what fits it and is not refused (w8-agent's B-NEW-3; before it, it was
+    refused and sent again) — and the turn does not end on the canned apology.
+    `llm_call_async`'s own resend is held by `/api/chat`
+    (`test_the_chat_doors_are_asked_for_what_the_server_can_serve.py`) and by
+    the door cases below."""
     turn = _turn(world, "circles")
-    refused = [e for e in turn["sent"] if not e["stream"] and e.get("refused")]
-    assert len(refused) == 1 and refused[0]["max_tokens"] == LIFT, turn["sent"]
-    window, prompt = _stated(refused[0]["refused"])
-    after = turn["sent"][turn["sent"].index(refused[0]) + 1]
-    assert not after["stream"] and after["max_tokens"] == window - prompt
-    assert not after.get("refused")
+    salvage = [e for e in turn["sent"] if not e["stream"] and not _side(e)]
+    assert len(salvage) == 1, [(e["stream"], e["max_tokens"]) for e in turn["sent"]]
+    first = turn["sent"][0]
+    window, _prompt = _stated(first["refused"])
+    assert 4096 < salvage[0]["max_tokens"] < window and not salvage[0].get("refused")
     assert any(e.get("type") == "loop_breaker_triggered" for e in turn["events"])
     assert "couldn't pull a clean answer together" not in turn["said"]
 
@@ -335,6 +355,8 @@ def refusing(monkeypatch):
         stream=lambda method, url, json=None, headers=None, **kw: _Stream(json)))
     monkeypatch.setattr(llm_core, "_is_host_dead", lambda url: False)
     monkeypatch.setattr(llm_core, "note_model_activity", lambda *a, **k: None)
+    # What one case's server stated is not carried into the next (w8-agent's B-NEW-3).
+    monkeypatch.setattr(llm_core, "_stated_windows", {})
     llm_core._response_cache.clear()
     yield model
     llm_core._response_cache.clear()
