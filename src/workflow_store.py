@@ -595,45 +595,59 @@ def _step_content(node: dict) -> str:
                       sort_keys=True, default=str, ensure_ascii=False)
 
 
-def _marks_kept(graph: dict, before: dict) -> dict:
-    """`P22-19` (`SLICE-EF-DESIGN` § 1.1). A content save or a restore keeps
-    the `unchecked` marks on the stored steps — beside `_pins_kept`, and by the
-    same rule that a save's body cannot set or clear one:
+def _marks_kept(graph: dict, before: dict, *, by_person: bool) -> dict:
+    """`P22-19` (`SLICE-EF-DESIGN` § 1.1). A content save, a restore or a fix
+    keeps the `unchecked` marks on the stored steps — beside `_pins_kept`, and
+    by the same rule that a save's body cannot set or clear one:
 
       * whatever mark the client sent is dropped — a save cannot set a mark,
         and cannot clear one by sending none;
       * a stored mark stays on a step whose kind, name and settings are
         unchanged (moving it, or pinning a sample, is not a change);
-      * a step that was changed loses its mark: changing a step makes it the
-        editor's own. An edit is attributed to whoever made it, as every edit
-        is; the agent's edits are its own actions, gated as each of its
-        actions is, and saying "a person looked at this" without changing it
-        is `check_steps`', which is a person's only.
+      * a step that was changed — or added — is decided by WHO changed it
+        (`by_person`, the route's `request_is_a_person`):
+          - a person's change makes the step theirs, and its mark goes;
+          - anything else's change (the assistant through `app_api`, an API
+            token) marks it `assistant`, even a step a person had checked.
+
+    `integrate-e`, the integrator's call on wb-assist's `B-NEW-2`: a mark
+    clears only by a person. Before, any change cleared it, so the assistant
+    could touch each drafted step through `PUT /api/workflows/{id}` and then
+    `manage_tasks resume` — the draft ran with nobody pressing *Looks right*.
+    Saying "a person looked at this" without changing it is `check_steps`',
+    which is a person's only too.
     """
-    from src.workflow_document import UNCHECKED_KEY
+    from src.workflow_document import ORIGIN_ASSISTANT, UNCHECKED_KEY
     stored = {}
     for node in nodes_of(before):
-        mark = node.get(UNCHECKED_KEY)
-        if isinstance(mark, dict):
-            stored[str(node.get("id"))] = (_step_content(node), mark)
+        stored[str(node.get("id"))] = (_step_content(node), node.get(UNCHECKED_KEY))
+    at = None
     out = dict(graph)
     nodes = []
     for node in nodes_of(graph):
         node = {k: v for k, v in node.items() if k != UNCHECKED_KEY}
         kept = stored.get(str(node.get("id")))
         if kept is not None and kept[0] == _step_content(node):
-            node[UNCHECKED_KEY] = kept[1]
+            if isinstance(kept[1], dict):
+                node[UNCHECKED_KEY] = kept[1]
+        elif not by_person:
+            at = at or _utcnow().isoformat() + "Z"
+            node[UNCHECKED_KEY] = {"origin": ORIGIN_ASSISTANT, "at": at, "needs": []}
         nodes.append(node)
     out["nodes"] = nodes
     return out
 
 
-def save_document(db, wf, trigger, *, name, graph, base_version, check: bool = False) -> str:
+def save_document(db, wf, trigger, *, name, graph, base_version, by_person: bool,
+                  check: bool = False) -> str:
     """Save a content edit. A new version only if the content moved.
 
     `check=True` answers exactly what the save would — stale, refused or fine —
     and writes nothing (`PUT ?check=true`, which the canvas asks on each
-    connect). Returns `SAVED_NEW_VERSION`, `SAVED_UNCHANGED` or `"check"`.
+    connect). `by_person` — whether a person is saving (`request_is_a_person`),
+    which decides what a changed step's mark becomes (`_marks_kept`); required,
+    so no door can leave it unsaid. Returns `SAVED_NEW_VERSION`,
+    `SAVED_UNCHANGED` or `"check"`.
     """
     from src.workflow_document import content_fingerprint
     _stale(wf, base_version)
@@ -642,7 +656,7 @@ def save_document(db, wf, trigger, *, name, graph, base_version, check: bool = F
     if check:
         return "check"
     before = stored_graph(wf)
-    parsed = _marks_kept(_pins_kept(parsed, before), before)
+    parsed = _marks_kept(_pins_kept(parsed, before), before, by_person=by_person)
     moved = content_fingerprint(new_name, parsed) != content_fingerprint(wf.name, before)
     # Where steps sit is saved either way: the draft knows where they are.
     wf.graph = json.dumps(parsed)
@@ -661,8 +675,10 @@ def save_document(db, wf, trigger, *, name, graph, base_version, check: bool = F
     return SAVED_NEW_VERSION
 
 
-def restore_version(db, wf, trigger, version, *, base_version) -> str:
+def restore_version(db, wf, trigger, version, *, base_version, by_person: bool) -> str:
     """Put a kept version back, as a NEW version (`source="restored"`).
+    `by_person` as `save_document`'s: a step the restore changes is marked
+    `assistant` unless a person restored it.
 
     Restoring the content that is already current writes nothing. The restored
     document is checked as a save is — a run-task step's target may have been
@@ -675,7 +691,7 @@ def restore_version(db, wf, trigger, version, *, base_version) -> str:
     graph = json.loads(row.graph)
     parsed = check_document(db, graph, owner=wf.owner, own_task_id=trigger.id if trigger else None)
     before = stored_graph(wf)
-    parsed = _marks_kept(_pins_kept(parsed, before), before)
+    parsed = _marks_kept(_pins_kept(parsed, before), before, by_person=by_person)
     if content_fingerprint(row.name, parsed) == content_fingerprint(wf.name, before):
         return SAVED_UNCHANGED
     wf.graph = json.dumps(parsed)
@@ -733,7 +749,9 @@ def save_fix(db, wf, trigger, *, node_id, config, base_version) -> str:
     parsed = check_document(db, patched, owner=wf.owner, own_task_id=own, rows=rows,
                             resources=resources)
     before = stored_graph(wf)
-    parsed = _marks_kept(_pins_kept(parsed, before), before)
+    # *Apply* is a person's only (the route's `ONLY_A_PERSON_FIXES`), so the
+    # step they fixed is theirs.
+    parsed = _marks_kept(_pins_kept(parsed, before), before, by_person=True)
     if content_fingerprint(wf.name, parsed) == content_fingerprint(wf.name, before):
         return SAVED_UNCHANGED
     wf.graph = json.dumps(parsed)
@@ -1020,14 +1038,15 @@ def create_from_document(db, *, owner, name, graph, trigger_fields, origin, need
          dropped first, so neither door depends on its caller to strip them;
       5. version 1, source `drafted` or `imported` (`version_graph`: no marks).
 
-    Nothing else sets a mark. Raises `WorkflowRefused`, writing nothing, when
-    the document is refused.
+    Nothing else marks a whole document; a step changed by anything that is
+    not a person is marked `assistant` by `_marks_kept`. Raises
+    `WorkflowRefused`, writing nothing, when the document is refused.
     """
     from src.workflow_document import (
-        ORIGIN_DRAFTED, UNCHECKED_KEY, UNCHECKED_ORIGINS, VERSION_SOURCE_DRAFTED,
+        DOOR_ORIGINS, ORIGIN_DRAFTED, UNCHECKED_KEY, VERSION_SOURCE_DRAFTED,
         VERSION_SOURCE_IMPORTED,
     )
-    if origin not in UNCHECKED_ORIGINS:
+    if origin not in DOOR_ORIGINS:
         raise ValueError(f"not an origin a mark can have: {origin!r}")
     _, _, Workflow, _ = _models()
     name = clean_name(name, required=False) or NEW_WORKFLOW_NAME

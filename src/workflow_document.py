@@ -175,11 +175,26 @@ WORKFLOW_VERSION_SOURCES = (VERSION_SOURCE_USER, VERSION_SOURCE_CONVERTED, VERSI
 # deterministic step run without a card because the AUTHOR decided it; a
 # drafted step was decided by a model that read third-party text, an imported
 # one by whoever wrote the file, so the mark keeps that premise true until a
-# person has looked. The key, and the two origins, are stored values.
+# person has looked. The key, and the origins, are stored values.
+#
+# `integrate-e` (wb-assist's `B-NEW-2`, the integrator's call): a mark clears
+# only by a PERSON — their *Looks right*, or their own save of that step. A
+# change to a step by anything that is not a person (the assistant through
+# `app_api`, an API token: `request_is_a_person` false) marks that step
+# `assistant`, even one a person had checked — otherwise the assistant could
+# clear every mark by touching each step and then switch the draft on itself.
 UNCHECKED_KEY = "unchecked"
 ORIGIN_DRAFTED = "drafted"
 ORIGIN_IMPORTED = "imported"
-UNCHECKED_ORIGINS = (ORIGIN_DRAFTED, ORIGIN_IMPORTED)
+ORIGIN_ASSISTANT = "assistant"
+UNCHECKED_ORIGINS = (ORIGIN_DRAFTED, ORIGIN_IMPORTED, ORIGIN_ASSISTANT)
+# The two a whole document arrives with (`workflow_store.create_from_document`);
+# `assistant` is set step by step, by `workflow_store._marks_kept`.
+DOOR_ORIGINS = (ORIGIN_DRAFTED, ORIGIN_IMPORTED)
+# Who a refusal says wrote the steps nobody has checked, by origin.
+ORIGIN_WHO = {ORIGIN_DRAFTED: "The model drafted",
+              ORIGIN_IMPORTED: "A file brought in",
+              ORIGIN_ASSISTANT: "Your assistant (or an API token) changed"}
 # What one `needs` entry may say: the setting, and what it names.
 NEED_KEYS = ("field", "name", "preset", "server", "tool")
 NEEDS_MAX = 20
@@ -1675,12 +1690,10 @@ def unchecked_refusal(graph: dict) -> DocumentRefusal | None:
     if not marked:
         return None
     origins = {n[UNCHECKED_KEY].get("origin") for n in marked}
-    if origins == {ORIGIN_IMPORTED}:
-        who = "A file brought in"
-    elif origins == {ORIGIN_DRAFTED}:
-        who = "The model drafted"
+    if len(origins) == 1 and next(iter(origins)) in ORIGIN_WHO:
+        who = ORIGIN_WHO[next(iter(origins))]
     else:
-        who = "The model drafted, or a file brought in,"
+        who = "The model, a file or your assistant wrote"
     count = len(marked)
     named = ", ".join(_called(n) for n in marked[:6]) + (" …" if count > 6 else "")
     which = "it" if count == 1 else "each one"

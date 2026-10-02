@@ -69,6 +69,9 @@ export const EXAMPLES_MAX = 6;
 export const ARRIVED_WORDS = Object.freeze({
   drafted: 'Drafted by the model',
   imported: 'Imported from a file',
+  // `integrate-e`: not an arrival — the origin of a step the assistant
+  // changed, as *Check them now* lists it.
+  assistant: 'Changed by your assistant',
 });
 /** Said over every workflow that arrived: it does nothing until checked. */
 export const ARRIVED_LEDE = 'It is switched off, and each step is marked “check me” until you look at it: open a step '
