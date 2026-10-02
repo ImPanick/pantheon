@@ -70,7 +70,40 @@ export const KIND_WORDS = Object.freeze({
   // that starts a workflow (`task_type="workflow"`) where a task is drawn.
   run_task: 'Run task',
   workflow: 'Workflow',
+  // `P22-10`…`P22-18` (wf-canvas). The kinds Slices C and D add to a
+  // workflow document (`src/workflow_document.py`; stored words, protected by
+  // `FORBIDDEN.md` Part 1 at the merge — never renamed, only worded here). An
+  // AI step is a Prompt step (`llm`) given a tool list or an answer shape.
+  if: 'If',
+  switch: 'Switch',
+  set: 'Set fields',
+  merge: 'Merge',
+  wait: 'Wait',
+  foreach: 'For each item',
+  http: 'HTTP request',
+  mcp: 'MCP tool',
+  skill: 'Skill',
+  code: 'Code',
 });
+
+/**
+ * `P22-10`/`P22-11` (wf-canvas). The words on a workflow step's ports — the
+ * stored port words of `ports_of` (`src/workflow_document.py`: `success`,
+ * `error`, `then`, `otherwise`, and `case:<id>` per Switch case) as a person
+ * reads them on the canvas. `EDGE_WORDS` keeps its two: they are also every
+ * task's two ports (`graphLayout.js:PORTS`), and a third key there would put a
+ * third port on every task. A Switch case's port reads as the case's own
+ * label, which only the step knows; `portWordsOf` in `workflowSource.js` asks
+ * for it.
+ */
+export const PORT_WORDS = Object.freeze({
+  ...EDGE_WORDS,
+  then: 'if so',
+  otherwise: 'otherwise',
+});
+/** A step with one way out (Set fields, Merge, Wait) leaves by `success`, and
+ *  "if it works" would say it might not: it says "then". */
+export const ONLY_WAY_WORD = 'then';
 
 /** Node shape per `task_type`, as Mermaid spells it. `P22-05`: a workflow's
  *  trigger task is a subroutine box — it stands for steps of its own — where

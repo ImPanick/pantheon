@@ -44,17 +44,119 @@
 // Nothing here draws or words a panel: the palette, the step form, the start
 // form and the record panel are injected (`panels`), and every word a person
 // wrote reaches the canvas as data the canvas sets as text.
+//
+// **Slices C and D (`P22-09`…`P22-18`, wf-canvas; `SLICE-CD-DESIGN.md` § 3,
+// contract C-W).** The palette (`GET /api/workflows/palette`) is read once
+// when a document opens: the kinds a person may add — each with its ports,
+// whether it is available and, when it is not, why — and the integrations, MCP
+// tools, skills and AI tools the step panels offer. A step's ports are its
+// kind's (an If's *if so* / *otherwise*; a Switch's one per case, `case:<id>`,
+// then *otherwise*), drawn with their words. Several arrows may leave one port
+// (`fanOut`), and the start has one port of its own whose arrows are real
+// (`{from: "start", port: "success", to}`): a document with none keeps Slice
+// B's one implied entry, and the first arrow drawn from the start writes that
+// entry out beside the new one, so nothing that ran stops running. A new step's
+// id is a slug of its label (`fetch-issue`), taken when it is first named and
+// kept through every later rename, so a reference reads like words. A run that
+// is waiting (`P22-11`, `P22-17`) names its waiting step in `state().waiting`,
+// and its question is answered through `answer()` (`POST …/answer`,
+// `approve_task` or `deny`).
 
-import { EDGE_WORDS, KIND_WORDS } from '../tasks/workflowDiagram.js';
+import { EDGE_WORDS, KIND_WORDS, PORT_WORDS, ONLY_WAY_WORD } from '../tasks/workflowDiagram.js';
 import { runStatusTone, runStatusLabel } from '../runStatus.js';
 import { PORTS } from './graphLayout.js';
 import { WorkflowRefusal } from './workflowApi.js';
 
-/** The start's item id on the canvas. Never a step's id: steps are `n<k>`. */
+/** The start's item id on the canvas. Never a step's id: a step's id is
+ *  `[A-Za-z0-9_-]`, so it can never hold the start's underscores-only shape
+ *  as a slug of a label (`slugOf` keeps letters and digits). */
 export const START_ID = '__start__';
-/** The document's own key for the start (`graph.start`, the positions map) —
- *  `START_KEY` in `src/workflow_document.py`. */
+/** The document's own key for the start (`graph.start`, the positions map,
+ *  and the `from` of a start arrow) — `START_KEY` in `src/workflow_document.py`. */
 const START_KEY = 'start';
+
+/** `P22-09`. The id rule a step's id must keep (`src/workflow_document.py`). */
+const ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
+
+/**
+ * `P22-09`. A step's id from its label: "Fetch issue" → `fetch-issue`, so a
+ * reference written into another step reads like words
+ * (`{{ steps.fetch-issue.data.title }}`). Letters and digits, joined by
+ * hyphens, at most 40 characters; a label with none becomes `step`.
+ */
+export function slugOf(label) {
+  const base = String(label == null ? '' : label).normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40).replace(/-+$/g, '');
+  return base || 'step';
+}
+
+/** `slugOf(label)`, made unique among `taken` (and never the start's key). */
+function freeId(label, taken) {
+  const base = slugOf(label);
+  let id = base;
+  for (let i = 2; taken.has(id) || id === START_KEY || !ID_RE.test(id); i += 1) id = `${base}-${i}`;
+  return id;
+}
+
+/** `P22-10`. The ports a kind leaves by when no palette says (`ports_of`,
+ *  `src/workflow_document.py` § 1.3's table) — the palette's own `ports` win
+ *  when it is loaded; a Switch's are always its cases'. */
+export const KIND_PORTS = Object.freeze({
+  llm: ['success', 'error'], research: ['success', 'error'], action: ['success', 'error'],
+  run_task: ['success', 'error'], http: ['success', 'error'], mcp: ['success', 'error'],
+  skill: ['success', 'error'], code: ['success', 'error'], foreach: ['success', 'error'],
+  if: ['then', 'otherwise'], set: ['success'], merge: ['success'], wait: ['success'],
+});
+/** The prefix of a Switch case's port (`case:<id>`), a stored word. */
+export const CASE_PREFIX = 'case:';
+
+/** The ports step `node` leaves by: a Switch's one per case and then
+ *  *otherwise*; any other kind's from the palette's entry for it, else
+ *  `KIND_PORTS`, else the two every task has. */
+export function portsOfNode(node, palette) {
+  const kind = String((node && node.kind) || 'llm');
+  if (kind === 'switch') {
+    const cases = Array.isArray(node && node.config && node.config.cases) ? node.config.cases : [];
+    return [...cases.filter((c) => c && c.id != null && String(c.id) !== '').map((c) => CASE_PREFIX + String(c.id)), 'otherwise'];
+  }
+  const entry = palette && Array.isArray(palette.kinds) ? palette.kinds.find((k) => k && k.kind === kind) : null;
+  if (entry && Array.isArray(entry.ports) && entry.ports.length) return entry.ports.map(String);
+  return (KIND_PORTS[kind] || PORTS).slice();
+}
+
+/** The words on each of `node`'s ports: a Switch case's own label, "then"
+ *  for a step with one way out, the shared words for the rest. */
+export function portWordsOf(node, ports) {
+  const out = {};
+  const cases = Array.isArray(node && node.config && node.config.cases) ? node.config.cases : [];
+  for (const p of ports) {
+    if (p.startsWith(CASE_PREFIX)) {
+      const c = cases.find((x) => x && CASE_PREFIX + String(x.id) === p);
+      out[p] = c && String(c.label || '').trim() ? `if ${String(c.label).trim()}` : 'if this case';
+    } else if (ports.length === 1 && p === 'success') {
+      out[p] = ONLY_WAY_WORD;
+    } else {
+      out[p] = PORT_WORDS[p] || p;
+    }
+  }
+  return out;
+}
+
+/** `P22-11`, `P22-17`. What a waiting step waits for, in words. */
+export function waitingWords(waiting) {
+  const w = waiting && typeof waiting === 'object' ? waiting : {};
+  const until = w.until ? _clock(w.until) : '';
+  if (w.kind === 'approval') return 'Waiting for your yes';
+  if (w.kind === 'time') return until ? `Waiting until ${until}` : 'Waiting';
+  if (w.kind === 'idle') return 'Waiting for Pantheon to be idle';
+  return 'Waiting';
+}
+
+function _clock(iso) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return String(iso);
+  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
 
 /** What the canvas says while a document is being edited. */
 export const EDIT_WORDS = Object.freeze({
@@ -87,6 +189,9 @@ export const RUN_WORDS = Object.freeze({
 });
 
 const STARTS_LABEL = 'starts';
+/** `P22-13`…`P22-18`. What the canvas says under a step, by kind: one short
+ *  line of what it does, from its own settings. */
+const WAIT_UNIT = (m) => (m % 60 === 0 && m >= 60 ? `${m / 60} h` : `${m} min`);
 const NOT_REACHED = 'Not reached in this run';
 const PINNED_MARK = 'Sample pinned';
 const READ_ONLY = 'This is a record, so it cannot be changed here.';
@@ -153,7 +258,8 @@ function refusalOf(err) {
 
 const answer = (err) => {
   const r = refusalOf(err);
-  return { ok: false, status: r.status, sentence: r.sentence, reason: r.reason, nodeIds: r.nodeIds };
+  return { ok: false, status: r.status, sentence: r.sentence, reason: r.reason, nodeIds: r.nodeIds,
+    field: r.field || null };
 };
 
 /**
@@ -177,6 +283,10 @@ export function createWorkflowSource({
     doc: null, draft: null, base: null, gen: 0,
     tasks: [], run: null, viewing: null,
     checks: [], problem: null, stale: false, busy: false, loadError: null,
+    // `P22-09`…`P22-18`. The palette (C-W), or null when this Pantheon has
+    // none to serve (the panels then offer Slice B's four kinds); and the
+    // steps added in this draft whose id still follows their first label.
+    palette: null, paletteError: null, fresh: new Set(),
   };
   const isRun = mode === 'run';
   const describe = (task) => {
@@ -197,11 +307,71 @@ export function createWorkflowSource({
   const shownNode = (id) => nodesOf(shown()).find((n) => String(n.id) === String(id)) || null;
   const taskById = (id) => S.tasks.find((t) => String(t.id) === String(id)) || null;
 
-  /** The newest record of a step in the run being drawn. */
+  /** The newest record of a step in the run being drawn — the step's own,
+   *  not one of a For-each's items (`P22-12`: those carry `item`). */
   function recordOf(id) {
     const recs = (S.run && Array.isArray(S.run.nodes) ? S.run.nodes : [])
-      .filter((r) => String(r.node_id) === String(id));
+      .filter((r) => String(r.node_id) === String(id) && (r.item == null));
     return recs.length ? recs[recs.length - 1] : null;
+  }
+
+  /** `P22-12`. A For-each step's item records, in item order. */
+  function itemRecordsOf(id) {
+    return (S.run && Array.isArray(S.run.nodes) ? S.run.nodes : [])
+      .filter((r) => String(r.node_id) === String(id) && r.item != null)
+      .sort((a, b) => (Number(a.item) - Number(b.item)) || ((Number(a.seq) || 0) - (Number(b.seq) || 0)));
+  }
+
+  /** `P22-11`, `P22-17`. The step a waiting run waits on: its record whose
+   *  status is `waiting` (an item's, if the step is a For-each's). */
+  function waitingStep() {
+    if (!isRun || !S.run) return null;
+    const recs = (Array.isArray(S.run.nodes) ? S.run.nodes : []).filter((r) => r && r.status === 'waiting');
+    const rec = recs[recs.length - 1];
+    if (!rec) return null;
+    const w = rec.waiting && typeof rec.waiting === 'object' ? rec.waiting : {};
+    return {
+      nodeId: String(rec.node_id), item: rec.item == null ? null : Number(rec.item),
+      label: String(rec.label || rec.node_id), kind: w.kind || null, since: w.since || null,
+      until: w.until || null, approval: w.approval || null, words: waitingWords(w),
+    };
+  }
+
+  /** `P22-09`. The steps that run before `id` — the ones a reference in it
+   *  may name — and the start, in the order a walk back from it meets them. */
+  function upstreamOf(id) {
+    const g = S.draft ? S.draft.graph : shown();
+    const into = new Map();
+    for (const e of edgesOf(g)) {
+      const to = String(e.to);
+      if (!into.has(to)) into.set(to, []);
+      into.get(to).push(String(e.from));
+    }
+    // Slice B's implied entry: a document with no start arrows starts at the
+    // step nothing leads to.
+    if (!edgesOf(g).some((e) => String(e.from) === START_KEY)) {
+      const first = entryOf(g);
+      if (first) {
+        if (!into.has(String(first.id))) into.set(String(first.id), []);
+        into.get(String(first.id)).push(START_KEY);
+      }
+    }
+    const seen = new Set();
+    const out = [];
+    const queue = [String(id)];
+    while (queue.length) {
+      for (const from of into.get(queue.shift()) || []) {
+        if (seen.has(from) || from === String(id)) continue;
+        seen.add(from);
+        queue.push(from);
+        if (from === START_KEY) out.push({ id: START_KEY, label: 'The start', kind: 'start' });
+        else {
+          const n = nodesOf(g).find((x) => String(x.id) === from);
+          if (n) out.push({ id: from, label: String(n.label || KIND_WORDS[n.kind] || from), kind: String(n.kind || 'llm') });
+        }
+      }
+    }
+    return out;
   }
 
   /** The step a failed run ended on: the last record, when it failed. */
@@ -242,7 +412,10 @@ export function createWorkflowSource({
       versionKept: isRun && S.run ? !!S.run.version_kept : null,
       cleared: isRun && S.run ? !!S.run.cleared : null,
       failed: failedStep(),
+      waiting: waitingStep(),
       loadError: S.loadError ? S.loadError.sentence : null,
+      palette: S.palette,
+      paletteError: S.paletteError,
     };
   }
 
@@ -291,11 +464,27 @@ export function createWorkflowSource({
           S.tasks = [];
         }
       }
+      await loadPalette();
     } catch (err) {
       S.loadError = refusalOf(err);
     }
     emit();
     return state();
+  }
+
+  /** `P22-10`…`P22-18`. The palette, once (C-W's `getPalette`). A Pantheon
+   *  without the route, or a refusal, leaves it null and says why; the
+   *  document opens either way and the panels offer Slice B's four kinds. */
+  async function loadPalette() {
+    if (!api || typeof api.getPalette !== 'function') return;
+    try {
+      const p = await api.getPalette();
+      S.palette = p && typeof p === 'object' ? p : null;
+      S.paletteError = null;
+    } catch (err) {
+      S.palette = null;
+      S.paletteError = refusalOf(err).sentence;
+    }
   }
 
   const ready = init();
@@ -331,48 +520,122 @@ export function createWorkflowSource({
       const cause = steps.find((s) => s && s.kind === 'trigger');
       outcome = { tone: 'info', word: String((cause && cause.detail) || 'Started') };
     }
+    // `P22-11`. The start has one port, *starts*: an arrow drawn from it is
+    // a real arrow of the document, and several may leave it.
     return {
       id: START_ID, name: 'Starts', kind: 'start',
       sub: describe(t) || (t ? '' : 'Its start could not be read'),
-      paused: !isRun && !isOn(), outcome, ports: [], marks: [], accepts: false, missing: false,
-      fixed: true,
+      paused: !isRun && !isOn(), outcome, ports: ['success'], portWords: { success: STARTS_LABEL },
+      entry: true, marks: [], accepts: false, missing: false, fixed: true,
     };
+  }
+
+  /** `P22-13`…`P22-18`. One short line of what a step does, from its own
+   *  settings: what a person needs to tell two steps of one kind apart. */
+  function detailOf(kind, config) {
+    const c = config || {};
+    const pal = S.palette || {};
+    const named = (list, key, value) => (Array.isArray(list) ? list.find((x) => x && String(x[key]) === String(value)) : null);
+    switch (kind) {
+      case 'action': return c.action ? String(c.action) : '';
+      case 'run_task': {
+        const target = taskById(c.task_id);
+        return target ? `Runs “${target.name || 'Untitled task'}”`
+          : (c.task_id ? 'Runs a task that is not in your list' : 'Choose the task it runs');
+      }
+      case 'http': {
+        const integ = named(pal.integrations, 'id', c.integration);
+        const where = [String(c.method || 'GET').toUpperCase(), c.path ? String(c.path) : ''].filter(Boolean).join(' ');
+        return [integ ? integ.name : (c.integration ? '' : 'Choose an integration'), c.integration ? where : ''].filter(Boolean).join(' · ');
+      }
+      case 'mcp': {
+        const tool = named(pal.mcp_tools, 'qualified_name', c.tool);
+        return tool ? `${tool.server_name || ''}${tool.server_name ? ': ' : ''}${tool.name}` : (c.tool ? String(c.tool) : 'Choose a tool');
+      }
+      case 'skill': return c.skill ? `Follows “${c.skill}”` : 'Choose a skill';
+      case 'code': return c.language === 'bash' ? 'Bash' : 'Python';
+      case 'wait': {
+        if (c.mode === 'until' && c.time) return `Until ${c.time}`;
+        const m = Number(c.minutes);
+        return Number.isFinite(m) && m > 0 ? `For ${WAIT_UNIT(m)}` : 'Choose how long';
+      }
+      case 'merge': return c.mode === 'first' ? 'Goes on with the first to arrive' : 'Waits for every branch';
+      case 'set': {
+        const n = Array.isArray(c.fields) ? c.fields.length : 0;
+        return n ? `${n} field${n === 1 ? '' : 's'}` : 'Choose the fields';
+      }
+      case 'switch': {
+        const n = Array.isArray(c.cases) ? c.cases.length : 0;
+        return n ? `${n} case${n === 1 ? '' : 's'}` : 'Add a case';
+      }
+      case 'if': {
+        const n = Array.isArray(c.conditions) ? c.conditions.length : 0;
+        return n ? `${n} condition${n === 1 ? '' : 's'}` : 'Add a condition';
+      }
+      case 'foreach': {
+        const inner = c.step && typeof c.step === 'object' ? c.step : null;
+        return inner ? `Each item: ${inner.label || KIND_WORDS[inner.kind] || inner.kind || 'a step'}` : 'Choose what it does for each item';
+      }
+      case 'llm': {
+        const parts = [];
+        if (Array.isArray(c.tools)) parts.push(c.tools.length ? `${c.tools.length} tool${c.tools.length === 1 ? '' : 's'}` : 'No tools');
+        if (Array.isArray(c.answer_fields) && c.answer_fields.length) parts.push(`Answers ${c.answer_fields.map((f) => f && f.name).filter(Boolean).join(', ')}`);
+        return parts.join(' · ');
+      }
+      default: return '';
+    }
   }
 
   function nodeItem(n) {
     const id = String(n.id);
     const kind = String(n.kind || 'llm');
     const config = n.config && typeof n.config === 'object' ? n.config : {};
-    let detail = '';
-    if (kind === 'action' && config.action) detail = String(config.action);
-    if (kind === 'run_task') {
-      const target = taskById(config.task_id);
-      detail = target ? `Runs “${target.name || 'Untitled task'}”`
-        : (config.task_id ? 'Runs a task that is not in your list' : 'Choose the task it runs');
-    }
+    const detail = detailOf(kind, config);
     let outcome = { tone: 'none', word: '' };
     if (isRun) {
       const rec = recordOf(id);
-      outcome = rec
-        ? { tone: runStatusTone(rec.status) || 'info', word: runStatusLabel(rec.status, 'job') }
-        : { tone: 'none', word: NOT_REACHED };
+      const items = itemRecordsOf(id);
+      const waitingItem = items.find((r) => r.status === 'waiting');
+      if (rec && rec.status === 'waiting') {
+        // `P22-11`, `P22-17`. A step that is waiting says what for.
+        outcome = { tone: runStatusTone('waiting') || 'pending', word: waitingWords(rec.waiting) };
+      } else if (waitingItem) {
+        outcome = { tone: runStatusTone('waiting') || 'pending',
+          word: `Item ${Number(waitingItem.item) + 1}: ${waitingWords(waitingItem.waiting).toLowerCase()}` };
+      } else if (rec) {
+        outcome = { tone: runStatusTone(rec.status) || 'info', word: runStatusLabel(rec.status, 'job') };
+      } else if (items.length) {
+        const last = items[items.length - 1];
+        outcome = { tone: runStatusTone(last.status) || 'info', word: `Item ${Number(last.item) + 1}: ${runStatusLabel(last.status, 'job')}` };
+      } else {
+        outcome = { tone: 'none', word: NOT_REACHED };
+      }
     }
+    const ports = portsOfNode(n, S.palette);
     return {
       id, name: String(n.label || KIND_WORDS[kind] || kind), kind,
       sub: [KIND_WORDS[kind] || kind, detail].filter(Boolean).join(' · '),
-      paused: false, outcome, ports: PORTS.slice(),
+      paused: false, outcome, ports, portWords: portWordsOf(n, ports),
       marks: !isRun && !S.viewing && n.pinned ? [PINNED_MARK] : [],
       accepts: !readOnly(), missing: false,
     };
   }
+
+  /** `P22-11`. The document's own start arrows (`from: "start"`). */
+  const startEdgesOf = (g) => edgesOf(g).filter((e) => String(e.from) === START_KEY);
 
   async function load() {
     await ready;
     if (S.loadError) throw S.loadError;
     const g = shown();
     const items = [startItem(), ...nodesOf(g).map(nodeItem)];
-    const edges = edgesOf(g).map((e) => ({ from: String(e.from), to: String(e.to), when: String(e.port || '') }));
-    const first = entryOf(g);
+    const edges = edgesOf(g).map((e) => ({
+      from: String(e.from) === START_KEY ? START_ID : String(e.from), to: String(e.to), when: String(e.port || ''),
+    }));
+    // A document with no start arrows of its own starts at the one step
+    // nothing leads to (Slice B, `Law 1`): drawn as a fixed arrow, the way it
+    // always was.
+    const first = startEdgesOf(g).length ? null : entryOf(g);
     if (first) {
       edges.unshift({ from: START_ID, to: String(first.id), when: PORTS[0], label: STARTS_LABEL, fixed: true });
     }
@@ -402,7 +665,10 @@ export function createWorkflowSource({
     return result;
   }
 
-  const problemOf = (r) => ({ sentence: r.sentence, reason: r.reason || null, nodeIds: r.nodeIds || [] });
+  // `P22-09`: a refusal may name the field it is about (`field`, C-W), so the
+  // step's panel can put the sentence on that field.
+  const problemOf = (r) => ({ sentence: r.sentence, reason: r.reason || null, nodeIds: r.nodeIds || [],
+    field: r.field || null });
 
   /** After an edit nothing can refuse (a step added or removed, an arrow
    *  taken away, a step changed): say what the draft still lacks, if
@@ -447,7 +713,7 @@ export function createWorkflowSource({
         return { ok: true, sentence: r.sentence };
       }
     }
-    return { ok: false, status: r.status, sentence: r.sentence, reason: r.reason, nodeIds: r.nodeIds };
+    return { ok: false, status: r.status, sentence: r.sentence, reason: r.reason, nodeIds: r.nodeIds, field: r.field || null };
   }
 
   async function connect(from, when, to) {
@@ -456,23 +722,47 @@ export function createWorkflowSource({
     const a = String(from);
     const b = String(to);
     const port = String(when);
-    if (a === START_ID || b === START_ID) return { ok: false, sentence: START_FIXED };
-    if (!PORTS.includes(port)) return { ok: false, sentence: `A step has no “${port}” outcome.` };
-    if (!draftNode(a) || !draftNode(b)) return { ok: false, sentence: 'That step is not in this workflow.' };
+    if (b === START_ID) return { ok: false, sentence: START_FIXED };
+    if (!draftNode(b)) return { ok: false, sentence: 'That step is not in this workflow.' };
     const g = clone(S.draft.graph);
-    // One arrow per outcome (design § 1.2): drawing from a port that already
-    // has one moves it, as it does on the tasks canvas.
-    g.edges = edgesOf(g).filter((e) => !(String(e.from) === a && String(e.port) === port));
-    g.edges.push({ from: a, port, to: b });
+    if (a === START_ID) {
+      // `P22-11`. An arrow from the start is real. A document that had none
+      // started at its one entry; that arrow is written out beside the new
+      // one, so the step that ran first still runs.
+      if (port !== 'success') return { ok: false, sentence: 'The start has one way out: it starts.' };
+      const own = startEdgesOf(g);
+      if (own.some((e) => String(e.to) === b)) return { ok: false, sentence: `“${draftNode(b).label || b}” already runs when it starts.` };
+      if (!own.length) {
+        const first = entryOf(g);
+        if (first && String(first.id) !== b) g.edges = [...edgesOf(g), { from: START_KEY, port: 'success', to: String(first.id) }];
+      }
+      g.edges = [...edgesOf(g), { from: START_KEY, port: 'success', to: b }];
+      return tryEdit(g);
+    }
+    const n = draftNode(a);
+    if (!n) return { ok: false, sentence: 'That step is not in this workflow.' };
+    const ports = portsOfNode(n, S.palette);
+    if (!ports.includes(port)) {
+      return { ok: false, sentence: `“${n.label || a}” has no “${PORT_WORDS[port] || port}” way out.` };
+    }
+    // `P22-11`. Fan-out: several arrows may leave one port, and drawing one
+    // adds it; only the very same arrow twice is refused.
+    if (edgesOf(g).some((e) => String(e.from) === a && String(e.port) === port && String(e.to) === b)) {
+      return { ok: false, sentence: 'That arrow is already there.' };
+    }
+    g.edges = [...edgesOf(g), { from: a, port, to: b }];
     return tryEdit(g);
   }
 
   async function disconnect(from, when, to) {
     await ready;
     if (readOnly()) return { ok: false, sentence: READ_ONLY };
-    if (String(from) === START_ID) return { ok: false, sentence: START_FIXED };
     const g = clone(S.draft.graph);
-    const kept = edgesOf(g).filter((e) => !(String(e.from) === String(from) && String(e.port) === String(when)
+    // `P22-11`. A start arrow of the document's own can be taken away; the
+    // implied one (a document with none) cannot.
+    const a = String(from) === START_ID ? START_KEY : String(from);
+    if (a === START_KEY && !startEdgesOf(g).length) return { ok: false, sentence: START_FIXED };
+    const kept = edgesOf(g).filter((e) => !(String(e.from) === a && String(e.port) === String(when)
       && (to == null || String(e.to) === String(to))));
     if (kept.length === edgesOf(g).length) return { ok: false, sentence: 'There is no such arrow.' };
     g.edges = kept;
@@ -570,7 +860,12 @@ export function createWorkflowSource({
       // cleared run's every step said "not reached" — `Law 10`).
       const run = S.run ? { ...(S.run.run || {}), cleared: S.run.cleared === true,
         cleared_sentence: S.run.cleared_sentence || null } : null;
-      return panels.record(host, { node: clone(shownNode(id)), record: clone(recordOf(id)), run });
+      // `P22-12`: a For-each's items; `P22-17`: a waiting step's question,
+      // answered from here as from the notification.
+      return panels.record(host, {
+        node: clone(shownNode(id)), record: clone(recordOf(id)), run,
+        items: clone(itemRecordsOf(id)), answer: (args) => answerStep(args),
+      });
     }
     if (S.viewing) {
       return message(host, `This is how the step was in version ${S.viewing.version}. Restore that version to change it.`);
@@ -578,38 +873,92 @@ export function createWorkflowSource({
     const node = draftNode(id);
     if (!node) return message(host, 'That step is not in this workflow.');
     if (typeof panels.node !== 'function') return message(host, 'The step editor did not load.');
+    const problem = S.problem && (S.problem.nodeIds || []).map(String).includes(id) ? { ...S.problem } : null;
     return panels.node(host, {
       node: clone(node),
       tasks: S.tasks,
       workflow: S.doc,
       source: self,
+      // `P22-09`…`P22-18`, C-W. What the step panels offer and may refer to.
+      palette: S.palette,
+      upstream: upstreamOf(id),
+      saved: !!savedNode(id),
+      fields: () => listFields(id),
+      problem,
       onApply: async (change) => {
-        const n = draftNode(id);
+        let n = draftNode(id);
         if (!n || !change) return;
         if (change.label != null) n.label = String(change.label);
         if (change.config && typeof change.config === 'object') n.config = clone(change.config);
+        // `P22-09`. A step added in this draft takes its id from the label it
+        // is first given, and keeps it after (`fresh` is spent here).
+        let nowId = id;
+        if (S.fresh.has(id)) {
+          S.fresh.delete(id);
+          nowId = renameFresh(id, n.label);
+          n = draftNode(nowId) || n;
+        }
         edited();
         await recheck();
-        saved({ id, name: n.label, sentence: `Changed “${n.label}”. Save the workflow to keep it.` });
+        saved({ id: nowId, was: nowId !== id ? id : null, name: n.label,
+          sentence: `Changed “${n.label}”. Save the workflow to keep it.` });
       },
       onCancel,
     });
   }
 
+  /** `P22-09`. Step `id`, added in this draft, re-keyed by its first label —
+   *  unless nothing would change, the label's slug is taken, or another step
+   *  already names it in a reference. Answers the id it has now. */
+  function renameFresh(id, label) {
+    const g = S.draft.graph;
+    const taken = new Set(nodesOf(g).map((n) => String(n.id)).filter((x) => x !== String(id)));
+    const next = freeId(label, taken);
+    if (next === String(id)) return id;
+    const named = new RegExp('steps\\.' + String(id).replace(/[-]/g, '\\-') + '\\.');
+    if (nodesOf(g).some((n) => String(n.id) !== String(id) && named.test(JSON.stringify(n.config || {})))) return id;
+    for (const n of nodesOf(g)) if (String(n.id) === String(id)) n.id = next;
+    for (const e of edgesOf(g)) {
+      if (String(e.from) === String(id)) e.from = next;
+      if (String(e.to) === String(id)) e.to = next;
+    }
+    return next;
+  }
+
+  /** `P22-09`. The fields a reference in step `id` may name (C-W's
+   *  `GET /api/workflows/{id}/nodes/{node_id}/fields`), as the panel's
+   *  picker lists them. A step the server has not seen yet (added in this
+   *  draft) has none to list until the workflow is saved. */
+  async function listFields(id) {
+    await ready;
+    if (!api || typeof api.listFields !== 'function') {
+      return { ok: false, sentence: 'This Pantheon cannot list the fields other steps made.' };
+    }
+    if (!savedNode(id)) {
+      return { ok: false, sentence: 'Save the workflow first: the fields other steps made are listed for a saved step.' };
+    }
+    try {
+      const out = await api.listFields(workflowId, String(id));
+      return { ok: true, sources: Array.isArray(out && out.sources) ? out.sources : [] };
+    } catch (err) {
+      return answer(err);
+    }
+  }
+
   async function newItem(anchor) {
     await ready;
     if (readOnly() || !S.draft || typeof panels.palette !== 'function') return null;
-    const kind = await panels.palette(anchor);
+    const kind = await panels.palette(anchor, { palette: S.palette, paletteError: S.paletteError });
     if (!kind) return null;
     const nodes = nodesOf(S.draft.graph);
-    const taken = new Set(nodes.map((n) => String(n.id)));
-    let k = nodes.reduce((m, n) => Math.max(m, Number(/^n(\d+)$/.exec(String(n.id))?.[1] || 0)), 0) + 1;
-    while (taken.has(`n${k}`)) k += 1;
-    const id = `n${k}`;
     const word = KIND_WORDS[kind] || String(kind);
     const labels = new Set(nodes.map((n) => String(n.label || '')));
     let label = word;
     for (let i = 2; labels.has(label); i += 1) label = `${word} ${i}`;
+    // `P22-09`. The id is the label's slug — `http-request` until the step
+    // is first named, then that name's (`renameFresh`), and kept after.
+    const id = freeId(label, new Set(nodes.map((n) => String(n.id))));
+    S.fresh.add(id);
     S.draft.graph = { ...S.draft.graph, nodes: [...nodes, { id, kind: String(kind), label, config: {}, position: null, pinned: null }] };
     edited();
     await recheck();
@@ -858,8 +1207,35 @@ export function createWorkflowSource({
     }
   }
 
+  /** `P22-17`. Answer the question a waiting step asks (C-W's
+   *  `POST /api/workflows/{id}/runs/{run_id}/answer`): `approve_task` — Allow
+   *  once, the only yes a workflow has (no chat to remember it in) — or
+   *  `deny`. The run is read again after, so the canvas says what happened. */
+  async function answerStep({ nodeId, item = null, approvalId, decision } = {}) {
+    await ready;
+    if (!isRun) return { ok: false, sentence: 'Only a run that is waiting can be answered.' };
+    if (decision !== 'approve_task' && decision !== 'deny') {
+      return { ok: false, sentence: 'A step is answered with Allow once or Deny.' };
+    }
+    if (!api || typeof api.answerStep !== 'function') {
+      return { ok: false, sentence: 'This Pantheon cannot answer a waiting step.' };
+    }
+    let out;
+    try {
+      out = await api.answerStep(workflowId, runId, { nodeId, item, approvalId, decision });
+    } catch (err) {
+      return answer(err);
+    }
+    try { S.run = await api.getExecution(workflowId, runId); } catch (_) { /* drawn from what was */ }
+    emit();
+    return { ok: !!(out && out.ok !== false), outcome: out ? out.outcome : null,
+      sentence: out && out.sentence ? String(out.sentence) : '' };
+  }
+
   const self = {
     get readOnly() { return readOnly(); },
+    /** `P22-11`. Several arrows may leave one port of a document's step. */
+    get fanOut() { return !isRun; },
     get words() {
       if (!isRun) return EDIT_WORDS;
       if (!(S.run && S.run.cleared)) return RUN_WORDS;
@@ -872,7 +1248,7 @@ export function createWorkflowSource({
     ready,
     load, connect, disconnect, loadPositions, savePositions, openPanel, newItem, removeItem, dryRun,
     state, refresh, rename, save, discard, setPin, test, runNow, switchOn, restoreChain,
-    versions, showVersion, restoreVersion,
+    versions, showVersion, restoreVersion, answer: answerStep, listFields, upstreamOf,
   };
   if (isRun) {
     // A run cannot be added to or taken from: the optional verbs are absent,
@@ -883,4 +1259,7 @@ export function createWorkflowSource({
   return self;
 }
 
-export default { createWorkflowSource, contentOf, START_ID, EDIT_WORDS, RUN_WORDS };
+export default {
+  createWorkflowSource, contentOf, START_ID, EDIT_WORDS, RUN_WORDS, slugOf, portsOfNode, portWordsOf,
+  waitingWords, KIND_PORTS, CASE_PREFIX,
+};

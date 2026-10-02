@@ -1387,6 +1387,14 @@ export function mountCanvas(root, opts = {}) {
 
   async function onSaved(saved) {
     const id = saved && saved.id != null ? String(saved.id) : null;
+    // `P22-09`. A source may re-key a step as it is first named (`was`); it
+    // stays where it was drawn.
+    const was = saved && saved.was != null ? String(saved.was) : null;
+    if (id && was && was !== id) {
+      for (const map of [S.pos, S.pinned]) {
+        if (map.has(was)) { map.set(id, map.get(was)); map.delete(was); }
+      }
+    }
     closePanel(false);
     await reload();
     if (id) focusNode(id);
