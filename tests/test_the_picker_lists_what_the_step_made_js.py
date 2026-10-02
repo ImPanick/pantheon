@@ -44,15 +44,19 @@ JS = ROOT / "static" / "js"
 
 pytestmark = pytest.mark.skipif(not shutil.which("node"), reason="node binary not on PATH")
 
+# The three origins are the server's own words (`integrate-d`: this list once
+# said "pinned", which the server never sends — it sends `ORIGIN_PIN`).
+from src.workflow_effects import ORIGIN_DECLARED, ORIGIN_LAST_RUN, ORIGIN_PIN  # noqa: E402
+
 _SOURCES = {"sources": [
-    {"node_id": "fetch-issue", "label": "Fetch issue", "kind": "http", "origin": "last_run", "at": "2026-10-02T07:00:00Z",
+    {"node_id": "fetch-issue", "label": "Fetch issue", "kind": "http", "origin": ORIGIN_LAST_RUN, "at": "2026-10-02T07:00:00Z",
      "fields": [
          {"ref": "{{ steps.fetch-issue.data.title }}", "path": "title", "type": "text",
           "example": "Login fails <img src=x onerror=alert(1)>"},
          {"ref": "{{ steps.fetch-issue.data.labels }}", "path": "labels", "type": "list", "example": ["bug", "p1"]}]},
-    {"node_id": "classify", "label": "Classify", "kind": "llm", "origin": "declared",
+    {"node_id": "classify", "label": "Classify", "kind": "llm", "origin": ORIGIN_DECLARED,
      "fields": [{"ref": "{{ steps.classify.data.urgent }}", "path": "urgent", "type": "yes/no"}]},
-    {"node_id": "start", "label": "The start", "kind": "start", "origin": "pinned",
+    {"node_id": "start", "label": "The start", "kind": "start", "origin": ORIGIN_PIN,
      "fields": [{"ref": "{{ steps.start.data.body }}", "path": "body", "type": "text", "example": "Hello"}]},
 ]}
 

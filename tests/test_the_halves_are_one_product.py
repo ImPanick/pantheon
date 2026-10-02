@@ -539,6 +539,55 @@ def test_the_picker_lists_a_nested_field_as_its_reference_spells_it(js_box):
 
 
 @pytest.mark.asyncio
+async def test_the_picker_says_where_every_source_the_server_sends_came_from(factory, js_box):
+    """Found by the merged pass at 390 px: the server says a pinned sample's
+    origin as `ORIGIN_PIN` ("pin"); the picker's words were keyed "pinned"
+    (wf-canvas's stand-in), so a pinned sample was listed with no word of where
+    it came from — and the start's webhook fields read "what the step promises
+    to answer". The real fields route's answer, after a real run, through the
+    real picker: every source says where it came from, in its own words."""
+    from core.database import ScheduledTask, Workflow
+    from src import workflow_document as wd
+    from src import workflow_effects as we
+    nodes = [node("make", "Make the headline", "set", fields=[{"name": "headline", "value": "{{ steps.start.data.body }}"}]),
+             node("sum", "Summarise", "set", fields=[{"name": "said", "value": "{{ steps.make.data.headline }}"}])]
+    nodes[0]["pinned"] = {"data": {"body": "a pinned body"}}
+    nodes[1]["pinned"] = {"data": {"result": "", "data": {"headline": "a pinned headline"}}}
+    seed_workflow(factory, nodes, [arrow("start", "make"), arrow("make", "sum")], trigger_type="webhook")
+    s = recording_scheduler()
+    await s._execute_task("wf", trigger=_webhook("the build is red"))
+    assert runs_of(factory, "wf")[0]["status"] == "success"
+    db = factory()
+    try:
+        wf = db.query(Workflow).first()
+        trigger = db.query(ScheduledTask).filter(ScheduledTask.id == "wf").first()
+        sources = we.available_fields(db, wf, trigger, wd.parse_graph(wf.graph), "sum")["sources"]
+    finally:
+        db.close()
+    sent = {(src["node_id"], src["origin"]) for src in sources}
+    assert sent == {("start", we.ORIGIN_LAST_RUN), ("start", we.ORIGIN_PIN), ("start", we.ORIGIN_DECLARED),
+                    ("make", we.ORIGIN_LAST_RUN), ("make", we.ORIGIN_PIN), ("make", we.ORIGIN_DECLARED)}, sent
+    o = _js(js_box, "const SOURCES = %s;\n" % json.dumps(sources, default=str) + r"""
+        const { openFieldPicker } = await import('./fieldPicker.js');
+        const root = host();
+        const anchor = root.appendChild(new Node('button'));
+        openFieldPicker(anchor, { load: async () => ({ ok: true, sources: SOURCES }), layer: () => root });
+        await settle(); await settle();
+        out({ heads: root.querySelectorAll('.wf-picker-source').map((g) => [
+          g.querySelector('.wf-picker-step-name').textContent,
+          (g.querySelector('.wf-picker-origin') || { textContent: '' }).textContent]) });
+    """)
+    said = {}
+    for (step, words), src in zip(o["heads"], sources):
+        said[(src["node_id"], src["origin"])] = words
+    assert all(said.values()), f"a source listed with no word of where it came from: {said}"
+    assert said[("start", we.ORIGIN_PIN)] == said[("make", we.ORIGIN_PIN)] == "from the pinned sample"
+    assert said[("start", we.ORIGIN_LAST_RUN)].startswith("from the last run, ")
+    assert said[("make", we.ORIGIN_DECLARED)] == "what the step promises to answer"
+    assert said[("start", we.ORIGIN_DECLARED)] == "what every run is handed", "a webhook's fields are no answer"
+
+
+@pytest.mark.asyncio
 async def test_a_failed_run_names_the_step_it_failed_on_and_the_room_opens_there(factory, monkeypatch, js_box):
     """Found by the merged drive (P22-12): a run whose For-each failed on an
     item did not open on its failed step — the room took "the last record, when

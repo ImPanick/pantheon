@@ -26,15 +26,16 @@
 // or from outside data (a mail subject, a webhook body) and reach the page
 // through `textContent` only.
 
-/** C-W's `origin` words for where a field was seen. */
+/** C-W's `origin` words for where a field was seen — keyed by the server's
+ *  own three (`workflow_effects.ORIGIN_LAST_RUN` / `ORIGIN_PIN` /
+ *  `ORIGIN_DECLARED`). The start's `declared` fields are what every run of
+ *  its kind is handed (a webhook's body, an event's fields), not an answer. */
 const ORIGINS = Object.freeze({
   last_run: 'from the last run',
-  run: 'from the last run',
-  pinned: 'from the pinned sample',
+  pin: 'from the pinned sample',
   declared: 'what the step promises to answer',
-  shape: 'what the step promises to answer',
-  trigger: 'what the start hands on',
 });
+const START_DECLARED = 'what every run is handed';
 
 /** Said on a `never` field when the server gave no sentence of its own. */
 export const NEVER_FALLBACK = 'Typed here only: a field from another step cannot go here.';
@@ -60,11 +61,14 @@ function _when(iso) {
   return d.toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 }
 
-/** "from the last run, 2 Oct 07:00" — where a source's fields were seen. */
-export function originWords(origin, at) {
-  const base = ORIGINS[String(origin || '')] || '';
+/** "from the last run, 2 Oct 07:00" — where a source's fields were seen.
+ *  `kind` is the source's (`'start'` for what started the run). */
+export function originWords(origin, at, kind) {
+  const o = String(origin || '');
+  if (o === 'declared' && kind === 'start') return START_DECLARED;
+  const base = ORIGINS[o] || '';
   if (!base) return '';
-  return (origin === 'last_run' || origin === 'run') && at ? `${base}, ${_when(at)}` : base;
+  return o === 'last_run' && at ? `${base}, ${_when(at)}` : base;
 }
 
 /** An example value as one short line of text. */
@@ -209,7 +213,7 @@ export function openFieldPicker(anchor, { load, extra = [], holdEscape = null, l
         const group = _el('section', 'wf-picker-source');
         const head = _el('p', 'wf-picker-step');
         head.appendChild(_el('span', 'wf-picker-step-name', String(src.label || src.node_id || 'A step')));
-        const from = originWords(src.origin, src.at);
+        const from = originWords(src.origin, src.at, src.kind);
         if (from) head.appendChild(_el('span', 'wf-picker-origin', from));
         group.appendChild(head);
         for (const f of src.fields) {
