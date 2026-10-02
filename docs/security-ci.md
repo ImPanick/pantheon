@@ -71,7 +71,11 @@ the signature of exhausted Actions minutes or a spending limit on a private
 repository owned by a user account, and no change to a workflow file makes a
 runner appear. Actions itself is enabled
 (`{"enabled":true,"allowed_actions":"all"}`). Making the repository public makes
-Actions free and unlimited for it, which is the fix and is the owner's call.
+Actions free and unlimited for it, which was the fix and was the owner's call.
+**It has been made**: the repository is public (measured 2026-10-02,
+`D-2026-10-02-03`), and the first CI run that ever completed did so on
+2026-09-19 (`B860`). Whether `main` is green today is what the badges below
+are for, not this paragraph.
 
 The part that was ours is that **five waves of work shipped that day, each
 reporting "gate green on 22 checkers", and every one of those was a local
@@ -94,16 +98,17 @@ What the badges do and do not tell you:
 
 | State | What a logged-out reader sees | What it means |
 |---|---|---|
-| Private repo (today) | A blank or broken image | **Nothing.** `badge.svg` needs read access; a stranger learns nothing, and neither does a stranger's scraper |
+| Public repo (today) | The real status | The latest run on `main` for that workflow, to everybody |
+| Private repo | A blank or broken image | **Nothing.** `badge.svg` needs read access; a stranger learns nothing, and neither does a stranger's scraper. This was the state until the repository was made public |
 | Private repo, signed in with access | The real status | The latest run on `main` for that workflow |
-| Public repo | The real status | The same, to everybody |
-| Any state, workflow never ran | `no status` | **Not "passing".** No run has happened — which is exactly today's situation and the one most easily misread |
+| Any state, workflow never ran | `no status` | **Not "passing".** No run has happened — the state this page called today's on 2026-09-17, and the one most easily misread |
 
-So the badge is necessary and **not sufficient**, for three reasons: it is
-invisible while the repo is private, "no status" reads as absence rather than
-failure, and a badge is green whenever the *workflow* concluded green — which a
-job that fails open does. The first two are facts to know; the third is what the
-checker below is for.
+So the badge is necessary and **not sufficient**, for two reasons now that the
+repository is public: "no status" reads as absence rather than failure, and a
+badge is green whenever the *workflow* concluded green — which a job that fails
+open does. The first is a fact to know; the second is what the checker below is
+for. *(While the repository was private there was a third: the badge was
+invisible to anyone without access.)*
 
 ### The checker
 
@@ -156,9 +161,12 @@ and the Actions tab are.
 
 ## One-time settings to turn on
 
-These three settings unlock the full value. You only do them once. Do the third
-one **before** the repository is public, not after — it is the only one where
-being late has a cost you cannot take back.
+These three settings unlock the full value. You only do them once. The third is
+the only one where being late has a cost you cannot take back, and **it is on**:
+the repository is public (`D-2026-10-02-03`), and private vulnerability
+reporting was measured enabled on 2026-10-02 — §3 has the reading and the
+command that takes it. *(Until 2026-10-02 this said to do the third one before
+the repository was public, not after.)*
 
 ### 1. Require the blocking checks before merging
 
@@ -222,27 +230,39 @@ let the workflows run on one pull request first, then add them here.
 
 ### 3. Turn on private vulnerability reporting
 
-Do this before the repository goes public.
+**It is on.** Measured on 2026-10-02 from the owner's machine, with the
+repository public:
+
+    gh api repos/ImPanick/pantheon/private-vulnerability-reporting
+    {"enabled": true}
+
+That reading is the setting itself. Take it again whenever the repository's
+settings change hands: anything but `"enabled": true` means every route below
+ends in a 404. To turn it on, or back on:
 
 1. **Settings -> Code security** (or **Code security and analysis**).
 2. Turn on **Private vulnerability reporting**.
 
-Three documents send security reporters to
-`https://github.com/ImPanick/pantheon/security/advisories/new`: `SECURITY.md`,
-`CODE_OF_CONDUCT.md` (which uses it for conduct reports, because it is the only
-private channel this repository has), and `.github/ISSUE_TEMPLATE/config.yml`,
-which puts it in the chooser a person sees *before* they reach "New issue".
-With the setting off, that URL 404s and every one of those routes ends with a
-reporter standing in front of a dead end holding a vulnerability — and the next
-thing a reporter does when the private channel fails is file a public issue,
-which for most bugs in this project's surface publishes the exploit. All three
-documents say what to do if the page 404s, so the failure is handled rather
-than silent, but a fallback is not the fix; this setting is.
+Four files send security reporters to
+`https://github.com/ImPanick/pantheon/security/advisories/new`, five links
+between them: `SECURITY.md`, `CODE_OF_CONDUCT.md` (which uses it for conduct
+reports, because it is the only private channel this repository has),
+`.github/ISSUE_TEMPLATE/config.yml`, which puts it in the chooser a person sees
+*before* they reach "New issue", and `.github/ISSUE_TEMPLATE/bug_report.yml`,
+twice. With the setting off, that URL 404s and every one of those routes ends
+with a reporter standing in front of a dead end holding a vulnerability — and
+the next thing a reporter does when the private channel fails is file a public
+issue, which for most bugs in this project's surface publishes the exploit.
+Every one of them says what to do if the page 404s, or points at `SECURITY.md`,
+which does. **Those fallbacks stay** now that the setting is on: anyone with
+admin rights on the repository can switch it off again, and the fallback is what
+a reporter has on the day somebody does.
 
-`B357` could not verify it from the worktree: `api.github.com` is unreachable
-from there and the repository was not public yet, so nobody has confirmed the
-switch is on. It is checked off when the advisory URL shows the report form to
-a logged-out visitor.
+*`B357` could not verify the setting from the worktree on 2026-09-16:
+`api.github.com` was unreachable from there and the repository was not public
+yet, so nobody had confirmed the switch was on. The reading above closed that
+on 2026-10-02. What a logged-out visitor sees at the advisory URL was not part
+of it.*
 
 ## Keeping it current
 

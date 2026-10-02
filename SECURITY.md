@@ -21,7 +21,7 @@ to hold. Bugs will still get through; the reporting route below is how they reac
 
 Use **[GitHub private vulnerability reporting](https://github.com/ImPanick/pantheon/security/advisories/new)** — the repository's **Security** tab, then **Report a vulnerability**. That opens a draft advisory only the maintainer can read: it does not notify watchers, it does not appear in the issue list, and it is where a fix and a CVE would be coordinated from if one is warranted.
 
-If that page 404s, private reporting has not been turned on for this repository yet. Then open a public issue containing **only** the sentence *"I have a security report — please enable private vulnerability reporting"*: no component, no version, no reproduction. You will be contacted there.
+Private reporting is on for this repository (checked 2026-10-02; [`docs/security-ci.md`](docs/security-ci.md) has the command that checks it). If that page ever 404s, it has been switched off. Then open a public issue containing **only** the sentence *"I have a security report — please enable private vulnerability reporting"*: no component, no version, no reproduction. You will be contacted there.
 
 *Until 2026-09-16 this section said to report "by opening a minimal issue that does not disclose exploit details". That was written when the repository was private and it does not survive going public. This project ships shell execution, file read/write, mail send and read, and MCP process launch — for most bugs in that surface, naming the component **is** the exploit, and a reporter following that instruction would have published it. The advice is withdrawn.*
 
@@ -29,7 +29,7 @@ If that page 404s, private reporting has not been turned on for this repository 
 
 The more of this you have, the faster it moves. Send what you have; do not wait until the list is complete.
 
-- **The revision.** From the repository root: `git show -s --abbrev=12 --format='%h (%cs)' HEAD`.
+- **The version and the revision.** The version is what `GET /api/version` returns on the instance (see *Supported Versions* below); the revision, from the repository root: `git show -s --abbrev=12 --format='%h (%cs)' HEAD`. Send both — until releases are tagged, many commits report the same version.
 - **Install method** — Docker, manual Python, Windows native, macOS app.
 - **The configuration that matters.** At minimum `AUTH_ENABLED`, `LOCALHOST_BYPASS`, whether the instance is reachable beyond localhost, and what sits in front of it.
 - **Reproduction steps**, and what an attacker gets at the end of them.
@@ -59,7 +59,7 @@ These are not vulnerabilities in this project, and saying so up front saves you 
 
 ## Supported Versions
 
-**There are no tagged releases yet.** No `v1.0`, no release branches, no long-term-support line — and no release notes to subscribe to, so Watch → Custom → Releases will stay silent.
+**Pantheon has a version, and no tagged release yet.** No `v*` tag, no release branches, no long-term-support line — and no release notes to subscribe to, so Watch → Custom → Releases will stay silent until the first tag is cut.
 
 | Version | Supported |
 |---|---|
@@ -67,7 +67,11 @@ These are not vulnerabilities in this project, and saying so up front saves you 
 | Anything older than current `main` | No |
 | Tagged releases | None exist yet |
 
-If you self-host this, that means: track `main`, pull and redeploy to pick up a security fix, and pin to a commit rather than to a tag if you need a fixed target — the bug report form already asks for `git show -s --abbrev=12 --format='%h (%cs)' HEAD`, which is the only version identifier this project has. A fix does not get backported to the commit you happen to be sitting on; there is nowhere to backport it to. Watch the repository for pushes, or read [`CHANGELOG.md`](CHANGELOG.md), which has one `[Unreleased]` section and nothing else, for the same reason.
+**Which version am I running?** Ask the instance: `GET /api/version` returns `{"version": "0.1.0"}`. That is the `APP_VERSION` constant in `src/constants.py`; `GET /api/readiness` and the `pantheon_build_info` metric report the same string, and so does `--version` on every `pantheon-*` command. [`CHANGELOG.md`](CHANGELOG.md) § *Versions* has the scheme, and how that string, the changelog's newest version heading and a release tag are kept equal. A version names a release, and until releases are tagged many commits on `main` report the same one — so the commit is the finer identifier, and a report should carry both.
+
+If you self-host this, that means: track `main`, pull and redeploy to pick up a security fix, and pin to a commit rather than to a tag if you need a fixed target — the bug report form already asks for `git show -s --abbrev=12 --format='%h (%cs)' HEAD`. A fix does not get backported to the commit you happen to be sitting on; there is nowhere to backport it to. Watch the repository for pushes, or read [`CHANGELOG.md`](CHANGELOG.md): new entries land under `[Unreleased]` and move under a version heading when one is cut.
+
+*Until 2026-10-02 this paragraph called that `git show` output the project's only version identifier, and said the changelog had an `[Unreleased]` section and nothing else. Neither was true: `GET /api/version` already reported `APP_VERSION` and the `pantheon-*` commands printed a version of their own, and since 2026-09-17 (`B450`) both report one string, `0.1.0`, which the changelog carries as a `## [0.1.0]` heading (`B452`).*
 
 ## Dependencies
 

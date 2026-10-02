@@ -31,7 +31,9 @@ and discarded, lighting what was already written, and building the authoring
 surfaces the engines deserved. The hard parts were already solved.
 
 - **Licence:** AGPL-3.0-or-later
-- **Forked at:** `b4d1293`, 2026-08-24
+- **Forked at:** `b4d1293`, which was committed upstream on 2026-08-20; the
+  fork began on 2026-08-24 (UTC), with this repository's first commit of its
+  own, `a4c44567`
 - **Modifications:** see `CHANGELOG.md` and `NOTICE`
 
 ### Two upstream identities, and which is which
@@ -41,7 +43,7 @@ both, because naming one of two would be an incomplete AGPL §5(a) notice.
 
 | | Identity | What it is, verifiably |
 |---|---|---|
-| **Clone source** | [`pewdiepie-archdaemon/odysseus`](https://github.com/pewdiepie-archdaemon/odysseus) | The repository Pantheon was actually cloned from. It is the `origin` remote of the fork-point checkout, and `CHANGELOG.md` records the fork from it at `b4d1293` (branch `dev`) on 2026-08-24. |
+| **Clone source** | [`pewdiepie-archdaemon/odysseus`](https://github.com/pewdiepie-archdaemon/odysseus) | The repository Pantheon was actually cloned from. It is the `origin` remote of the fork-point checkout, and `CHANGELOG.md` records the fork from it at `b4d1293` (branch `dev`). |
 | **Referenced identity** | [`odysseus-dev/odysseus`](https://github.com/odysseus-dev/odysseus) | The identity Odysseus's **own** code and documentation point at. At commit `b4d1293` it appears **47 times across 16 files** — the README's `git clone` command, `CONTRIBUTING.md`, `package.json`'s `repository.url`, the four `.github/` issue and PR templates, `docs/`, and the outbound `HTTP-Referer` header set in `src/endpoint_resolver.py` and `src/llm_core.py`. |
 
 *(Scope of the 47 / 16: case-insensitive literal `odysseus-dev` in tracked files
@@ -231,21 +233,36 @@ carry one at the top as of 2026-08-27: the six under `services/research/`,
 and `src/goal_based_extractor.py`, which declare their Alibaba derivation in
 their own docstrings.
 
-**`services/search/` appears in the path list above because that is upstream
-Odysseus's own attribution, carried forward verbatim** — the copyright holder's
-words, not ours. It is *not* stamped, and the reason belongs on the record: its
-nine files contain no Tongyi DeepResearch expression (zero matches for `Tongyi`,
-`DeepResearch`, `IterResearch` or `Alibaba` across 2,222 lines, measured
-2026-08-27) and every one is byte-identical to the fork point. A §4(b) notice
-states that the files were changed; putting one on a file nobody changed is a
-false statement in the other direction. The path stays in the attribution, which
-costs nothing and errs toward crediting. The stamp does not.
+**`services/search/` keeps its credit and carries no change notice — the
+owner's ruling of 2026-10-02 (`D-2026-10-02-03`).** It appears in the path list
+above because that is upstream Odysseus's own attribution, carried forward
+verbatim — the copyright holder's words, not ours — and the attribution stays:
+it costs nothing and errs toward crediting. No Apache-2.0 §4(b) notice goes on
+its nine files. A §4(b) notice is owed by a file derived from Tongyi's work
+that has been changed, and these contain no Tongyi DeepResearch expression to
+have changed: zero matches for `Tongyi`, `DeepResearch`, `IterResearch` or
+`Alibaba` across all nine files and 2,336 lines, measured 2026-10-02 (2,222
+lines when first measured, 2026-08-27).
 
-**Seven of the eight stamped files are also unchanged by Pantheon** — only
-`routes/research/research_routes.py` differs from the fork point. Their notices
-say exactly that, and name Odysseus as the party that changed them. §4(b) still
-applies: they are modified files relative to Tongyi's original, and Pantheon
-redistributes them.
+**They are no longer byte-identical to the fork point**, which is what this
+paragraph said on 2026-08-27, and the ruling gave as its second reason. Pantheon
+has since changed them as Odysseus's files: an SPDX licence line at the top of
+all nine (`P0-18`), the rate-limit handling in `core.py` (`P15-04`), and the
+outbound pacing and default search engines in `providers.py` (`P15-06`,
+`P16-01`, `P16-02`, `P16-10`, `B90`). Those are modifications of Odysseus's
+AGPL code, which `NOTICE` and `CHANGELOG.md` record under AGPL §5(a). None of
+them changes anything of Tongyi's, so the ruling rests on the first reason, and
+the second is corrected here so nobody leans on it.
+
+**When the notices were written (2026-08-27), seven of the eight stamped files
+were unchanged by Pantheon** — only `routes/research/research_routes.py`
+differed from the fork point — and their notices say so: *"Changed by Odysseus.
+Pantheon redistributes it unmodified."* Two of them have been changed by
+Pantheon since and still say *unmodified*: `src/deep_research.py` (`P15-06`) and
+`src/research_handler.py` (`P3-17`, `P8-23`). That is a defect in those two
+headers, filed in the tracker on 2026-10-02. (All eight also gained an SPDX
+line in `P0-18`, which is a comment.) §4(b) still applies to all eight: they are
+modified files relative to Tongyi's original, and Pantheon redistributes them.
 
 *Paths updated for this tree: the llmfit CLI is now `scripts/pantheon-cookbook`,
 and the research routes moved to `routes/research/research_routes.py`
@@ -757,9 +774,10 @@ owner may ask for the mark to be removed, and the answer would be yes — they a
 four PNGs behind a `background: currentColor` mask, and the UI degrades to text
 labels without them.
 
-**Both were in the tree at the fork point** (`fff72ec`, baseline of cybertooth
-`c3b2120`) and neither was mentioned in Odysseus's acknowledgements or in this
-file until 2026-09-01. They were found the same week as OpenMoji and for the
+**Both were already in the tree at `fff72ec`** — the baseline import of
+cybertooth `c3b2120`, which is the earliest tree this was measured on, and not
+the fork point, which is `b4d1293` — and neither was mentioned in Odysseus's
+acknowledgements or in this file until 2026-09-01. They were found the same week as OpenMoji and for the
 same reason: someone finally compared what is *on disk* against what this file
 *says*. That comparison is now `.pantheon/check-licences.py`, and it runs in CI.
 

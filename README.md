@@ -26,10 +26,11 @@
 <p align="center">
   <sub>
     Live status of the five merge-blocking pipelines on <code>main</code>. These are the real thing —
-    click one and you get the run. <strong>A badge that says nothing is not a badge that says yes:</strong>
-    while this repository is private the images render blank or broken to anyone not signed in with
-    access, and a workflow that has never run reads <em>no status</em> rather than failing. What the
-    badges can and cannot tell you, in each state, is written down in
+    click one and you get the run. The repository is public, so they show the same status to everyone.
+    <strong>A badge that says nothing is not a badge that says yes:</strong> a workflow that has never
+    run reads <em>no status</em> rather than failing, and a badge is green whenever the workflow
+    finished green, which a job that fails open does. What the badges can and cannot tell you is
+    written down in
     <a href="docs/security-ci.md#how-to-tell-whether-ci-is-actually-passing">the security CI guide</a>.
     Anyway questions can be directed to my Discord which is in my profile or you can DM me on GH.
   </sub>
@@ -250,8 +251,10 @@ is a counting error — the fraction converges because closure outruns filing as
 total, and the open count grows because it does not outrun filing in absolute terms. **The open
 count falls only when we stop looking**, since most of those 237 rows are defects found by sweeps
 over code that was already here, not new work invented. What makes that survivable rather than
-hopeless is a different number: of the last 40 backlog rows filed, **four** would block making
-this repository public. The series, the classification and what counts as blocking are in
+hopeless is a different number: of the last 40 backlog rows filed (`B1101`–`B1140`), **none** is
+on the ship line — the short list of rows that stop a stranger relying on this repository now
+that it is public (measured 2026-10-02). The series, the classification and what counts as
+blocking are in
 [`.pantheon/SHIP-LINE.md`](.pantheon/SHIP-LINE.md), and every figure in it is recomputed by
 `.pantheon/ship-line.py --trend` rather than copied from the line above.
 
@@ -406,8 +409,9 @@ Pantheon is free software and isn't sold. We'd rather nobody else sold it either
 AGPL doesn't allow that restriction and we won't pretend otherwise. Use it internally at your
 company if it's useful.
 
-Pantheon is a modified version of Odysseus, forked from commit `b4d1293` on 24 August 2026 and
-released under the same licence. It is not affiliated with or endorsed by the Odysseus project,
+Pantheon is a modified version of Odysseus, forked from commit `b4d1293`, which was committed
+upstream on 20 August 2026; the fork itself began on 24 August 2026 (UTC), and it is released
+under the same licence. It is not affiliated with or endorsed by the Odysseus project,
 so please don't send them issues from here.
 
 Credits and third-party licences: [`CREDITS.md`](CREDITS.md), [`NOTICE`](NOTICE).
