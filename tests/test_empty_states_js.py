@@ -104,6 +104,7 @@ _STUBS = {
     "toolWindowZOrder.js": (
         "export function nextToolWindowZ(){ return 1; }\n"
         "export function topToolWindowZ(){ return 1; }\nexport function topPortalZ(){ return 1; }\n"
+        "export function toolWindowZ(){ return NaN; }\n"  # `B1068`: `ui.js` imports it
     ),
     "motion.js": "export function prefersReducedMotion(){ return false; }\n",
 }

@@ -485,11 +485,23 @@ function _watchForAssistantActivation() {
 // Activity / Settings tabs inside the Tasks modal (see tasks.js)". They do not:
 // `tasks.js` never imports this module. That migration was described and never
 // performed, which is why the entry point was removed and nothing replaced it.
-function _wireRailButton() {
-  const btn = document.getElementById('rail-assistant');
+// `B1044`. The rail is `display: none` whenever the sidebar is open — the
+// default on a desktop — so a person who never collapses it never saw the
+// rail's door. The Assistant gets the pair every tool has: its row in the
+// sidebar's Tools, and the rail button. Both are wired here, to the same
+// chat, rather than the rail pressing the row through `app.js:_railToolMap`:
+// the rail's own wiring is `H02`'s, and a second route to it would open the
+// chat twice.
+function _wireDoor(id) {
+  const btn = document.getElementById(id);
   if (!btn || btn.dataset.assistantWired === '1') return;
   btn.dataset.assistantWired = '1';
   btn.addEventListener('click', () => { openAssistantChat(); });
+}
+
+function _wireRailButton() {
+  _wireDoor('rail-assistant');
+  _wireDoor('tool-assistant-btn');
 }
 
 // ── Boot ───────────────────────────────────────────────────────────────────

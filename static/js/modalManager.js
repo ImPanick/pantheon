@@ -29,7 +29,7 @@
 import { previewZoneAt, clearPreview, snapModalToZone } from './tileManager.js';
 import { suspendDock, resumeDock, clearRightDock, applyEdgeDock } from './modalSnap.js';
 import { dismissOrRemove } from './escMenuStack.js';
-import { nextToolWindowZ } from './toolWindowZOrder.js';
+import { nextToolWindowZ, toolWindowZ } from './toolWindowZOrder.js';
 import { WORKFLOW_GLYPH, iconSvg } from './icons.js';
 
 const _state = new Map(); // id -> { restoreFn, closeFn, railBtnId, isMinimized, restoreMinHeight }
@@ -69,7 +69,10 @@ function _bringToFront(modal) {
   if (!modal) return;
   const z = nextToolWindowZ({
     exclude: modal,
-    current: getComputedStyle(modal).zIndex,
+    // `B1068`: the z this window was given. Read from the computed style it
+    // answered the value a reduced-motion transition was leaving, and this
+    // pushed a window `ui.js` had just raised to 1001 back down to 301.
+    current: toolWindowZ(modal),
     floor: _modalTopZ,
   });
   _modalTopZ = Math.max(_modalTopZ, z);

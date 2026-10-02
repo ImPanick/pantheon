@@ -9,7 +9,7 @@ import themeModule from './theme.js';
 import * as Modals from './modalManager.js?v=20261001workbench2';
 import spinnerModule from './spinner.js';
 import { registerMenuDismiss, dismissTopMenu, dismissOrRemove } from './escMenuStack.js';
-import { nextToolWindowZ, topToolWindowZ } from './toolWindowZOrder.js';
+import { nextToolWindowZ, topToolWindowZ, toolWindowZ } from './toolWindowZOrder.js';
 import { prefersReducedMotion } from './motion.js';
 import { esc } from './util/escapeHtml.js';
 
@@ -660,6 +660,19 @@ export function autoResize(textarea) {
   let clone = textarea._resizeClone;
   if (!clone) {
     clone = textarea.cloneNode(false);
+    // `B1073`. A measuring copy, not a second control. `cloneNode` copies every
+    // attribute, so after the first keystroke the composer had two
+    // `textarea#message` — the second hidden, `required`, `autofocus`, and
+    // labelled "Message input": `getElementById` still found the first, a
+    // strict locator, `querySelectorAll('#message')` and a validator did not.
+    // What only names, labels or submits it goes; what shapes the text it
+    // measures (rows, wrap, placeholder) stays.
+    for (const attr of clone.getAttributeNames()) {
+      if (attr === 'id' || attr === 'name' || attr === 'form' || attr === 'required'
+          || attr === 'autofocus' || attr.startsWith('aria-')) clone.removeAttribute(attr);
+    }
+    clone.setAttribute('aria-hidden', 'true');
+    clone.tabIndex = -1;
     clone.style.cssText = getComputedStyle(textarea).cssText;
     clone.style.position = 'absolute';
     clone.style.visibility = 'hidden';
@@ -1493,7 +1506,7 @@ if ('ontouchstart' in window) {
   const raiseModalToFront = (modal, floor = 250) => {
     const z = nextToolWindowZ({
       exclude: modal,
-      current: getComputedStyle(modal).zIndex,
+      current: toolWindowZ(modal),   // B1068: the z it was given, not one mid-transition
       floor,
     });
     modal.style.setProperty('z-index', String(z), 'important');
@@ -1600,7 +1613,10 @@ if (!window._odyEscExpandGuard) {
     // Re-entry guard: setting style.zIndex itself fires the observer that
     // calls us back. Skip if this element is already pinned to the top
     // (matches the current counter) so we don't spin into an infinite loop.
-    const cur = parseInt(getComputedStyle(m).zIndex, 10) || 0;
+    // `B1068`: read the z this element was given. The computed one lags a
+    // frame under reduced motion (see `toolWindowZ`), and this guard, reading
+    // it, spun forever on the Workbench and the Forge.
+    const cur = toolWindowZ(m) || 0;
     if (cur === _zCounter && cur > topToolWindowZ({ exclude: m })) return;
     const z = nextToolWindowZ({
       exclude: m,
