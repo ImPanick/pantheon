@@ -56,9 +56,10 @@ def task_db(monkeypatch, tmp_path):
     monkeypatch.setattr(ts, "owner_has_admin_task_privileges", lambda owner: owner == "root")
     import src.tool_index as tool_index
     monkeypatch.setattr(tool_index, "get_tool_index", lambda: None)
-    # Wave D's C-R / C-E halves, where this branch lacks them (none merged).
-    from tests.helpers import workflow_cd_contract
-    workflow_cd_contract.install(monkeypatch)
+    # Wave D's C-R / C-E halves are the real ones (`integrate-d`): this fails
+    # naming a missing half and stands nothing in.
+    from tests.helpers import workflow_contract
+    workflow_contract.install(monkeypatch)
     return factory
 
 

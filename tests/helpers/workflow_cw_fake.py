@@ -18,22 +18,30 @@ own branch at the same time, and the four functions it adds to
     GET  /api/workflows/{id}/runs/{run_id}: records gain item, waiting{kind,since,until,approval}; status may be "waiting"
     refusal bodies gain field
 
-Until the branches merge, these cases run against:
+These cases ran, on `wf-canvas`' branch, against a stand-in of all of C-W.
+**Since the merge (`integrate-d`) only the network is stood in:**
 
   * ``CW_FAKE_JS`` — a module written into the sandbox as `workbench/cwfake.js`:
-    a fake **server** (`net`) answering the C2 routes the real
-    `workflowSource.js` and `workflowApi.js` use and the C-W routes above, from
-    one in-memory workflow, recording every request; and ``cwApi(net)`` — the
-    REAL `createWorkflowApi` over that server, plus the four C-W functions
-    written to C-W's paths and bodies (`getPalette`, `listFields(id, nodeId)`,
-    `listWaiting`, `answerStep(id, runId, { nodeId, item, approvalId,
-    decision })` — the browser's names, the server's body keys, as every
-    function of `workflowApi.js` does). Where C-W names a function and not its
-    arguments, the names chosen here are listed in `wf-canvas`'s handoff note
-    as a merge point.
-  * ``PALETTE`` — a palette in C-W's shape, with every kind of § 1.3, two kinds
-    greyed with a reason, slots per § 2's table, one integration, two MCP tools
-    (one whose `channel` is `never` and `text` is `value`), skills, AI tools.
+    a fake **server** (`net`) answering the C2 and C-W routes the real
+    `workflowSource.js` and `workflowApi.js` call, from one in-memory workflow,
+    recording every request; and ``cwApi(net)`` — the REAL `createWorkflowApi`
+    over that server, C-W's four functions included (`getPalette`,
+    `listFields`, `listWaiting`, `answerStep`). It used to lay a second copy of
+    those four over the real ones (`cwFunctions`), so the room's tests drove
+    the copy; it now fails if the real module lacks one.
+  * ``PALETTE`` — the REAL palette: `workflow_effects.build_palette`'s answer
+    (`real_palette()`), so every kind's word, group, hint, ports, slots and
+    their reasons, the MCP arguments' mappings and the operators are the
+    server's. Only the person's environment is supplied — one Integration, two
+    MCP tools, a skill, three AI tools, the workstation switched off — because
+    the real readers of those reach a data directory, an MCP manager and a
+    skills store. It used to be hand-written, and said HTTP query and body
+    values were `value` where the server says `never` (`classify_argument` is
+    per entry name), and "Set" was "Set fields".
+
+The route answers the fake server gives (a fields list, a waiting list, an
+answer's sentence) are each test's own data; the real routes are driven by
+the Python route tests and the merged drive.
 
 Nothing here is the product; nothing here is copied from wf-walker's branch.
 """
@@ -51,86 +59,64 @@ UP = (
     "approvalBox.js", "skillGateNote.js", "settings/mcpFields.js", "toolWindowZOrder.js",
 )
 
-_V = {"mapping": "value", "why": ""}
-_WHERE = {"mapping": "never", "why": "Typed here only: it says where the result goes, so a field from another step can never fill it."}
-_WHAT = {"mapping": "never", "why": "Typed here only: it says what runs, so a field from another step can never fill it."}
-_WHEN = {"mapping": "never", "why": "Typed here only: it says when, so a field from another step can never fill it."}
+# The person's environment — what the real readers would find in a data
+# directory, an MCP manager and a skills store. Everything else in the palette
+# is `build_palette`'s own answer.
+ENV_INTEGRATIONS = [{"id": "int1", "name": "Miniflux", "preset": "miniflux",
+                     "description": "My feed reader.", "enabled": True}]
+ENV_MCP_TOOLS = [
+    {"qualified_name": "mcp__chat__send_message", "server_name": "chat", "name": "send_message",
+     "description": "Post a message to a channel.",
+     "input_schema": {"type": "object", "required": ["channel", "text"], "properties": {
+         "channel": {"type": "string", "description": "Where it goes, like #general."},
+         "text": {"type": "string", "description": "What it says."},
+         "silent": {"type": "boolean", "description": "Post without a ping."},
+         "priority": {"type": "integer", "description": "1 to 5."},
+         "mood": {"type": "string", "enum": ["calm", "loud"]},
+         "meta": {"type": "object", "description": "Extra fields."}}},
+     "annotations": {"readOnlyHint": False}, "is_readonly": False, "readonly_source": "annotation",
+     "override": None, "is_disabled": False},
+    {"qualified_name": "mcp__chat__list_channels", "server_name": "chat", "name": "list_channels",
+     "description": "List channels.", "input_schema": {"type": "object", "properties": {}},
+     "annotations": {"readOnlyHint": True}, "is_readonly": True, "readonly_source": "annotation",
+     "override": None, "is_disabled": False},
+]
+ENV_SKILLS = [{"name": "print-queue", "description": "Print what is in the queue."}]
+ENV_AI_TOOLS = [{"name": "web_search", "label": "Search the web", "kind": "builtin"},
+                {"name": "web_fetch", "label": "Read a page", "kind": "builtin"},
+                {"name": "bash", "label": "Run a shell command", "kind": "builtin"}]
 
-PALETTE = {
-    "kinds": [
-        {"kind": "llm", "word": "Prompt", "group": "Ask a model", "hint": "Ask a model to read, write or decide something.",
-         "ports": ["success", "error"], "available": True, "why": "",
-         "slots": {"prompt": _V, "model": _WHAT, "output_target": _WHERE, "tools": _WHAT, "answer_fields": _WHAT}},
-        {"kind": "research", "word": "Research", "group": "Ask a model", "hint": "Look something up and write a report.",
-         "ports": ["success", "error"], "available": True, "why": "", "slots": {"prompt": _V, "output_target": _WHERE}},
-        {"kind": "skill", "word": "Skill", "group": "Ask a model", "hint": "Follow one of your skills.",
-         "ports": ["success", "error"], "available": True, "why": "", "slots": {"skill": _WHAT, "prompt": _V}},
-        {"kind": "if", "word": "If", "group": "Decide and reshape", "hint": "Go one of two ways.",
-         "ports": ["then", "otherwise"], "available": True, "why": "",
-         "slots": {"conditions[].left": _V, "conditions[].right": _V, "conditions[].op": _WHAT, "join": _WHAT}},
-        {"kind": "switch", "word": "Switch", "group": "Decide and reshape", "hint": "Go the way of the first case that holds.",
-         "ports": ["otherwise"], "available": True, "why": "",
-         "slots": {"cases[].conditions[].left": _V, "cases[].conditions[].right": _V, "cases[].label": _WHAT}},
-        {"kind": "set", "word": "Set fields", "group": "Decide and reshape", "hint": "Name the fields the next step gets.",
-         "ports": ["success"], "available": True, "why": "", "slots": {"fields[].name": _WHAT, "fields[].value": _V}},
-        {"kind": "merge", "word": "Merge", "group": "Decide and reshape", "hint": "Bring branches back together.",
-         "ports": ["success"], "available": True, "why": "", "slots": {"mode": _WHAT}},
-        {"kind": "wait", "word": "Wait", "group": "Decide and reshape", "hint": "Hold the run, then go on.",
-         "ports": ["success"], "available": True, "why": "",
-         "slots": {"mode": _WHEN, "minutes": _WHEN, "time": _WHEN, "tz": _WHEN}},
-        {"kind": "foreach", "word": "For each item", "group": "Decide and reshape", "hint": "Run a step for each item of a list.",
-         "ports": ["success", "error"], "available": True, "why": "", "slots": {"list": _V, "on_error": _WHAT}},
-        {"kind": "action", "word": "Action", "group": "Do something", "hint": "Run one of Pantheon’s built-in actions.",
-         "ports": ["success", "error"], "available": True, "why": "",
-         "slots": {"action": _WHAT, "prompt": _WHAT, "output_target": _WHERE}},
-        {"kind": "run_task", "word": "Run task", "group": "Do something", "hint": "Run one of your tasks.",
-         "ports": ["success", "error"], "available": True, "why": "", "slots": {"task_id": _WHAT}},
-        {"kind": "http", "word": "HTTP request", "group": "Reach out", "hint": "Call a service you set up.",
-         "ports": ["success", "error"], "available": False,
-         "why": "Only an admin can add this step: it calls a service outside Pantheon, which your agent cannot do either.",
-         "slots": {"integration": _WHERE, "method": _WHAT, "path": _WHERE, "query[].value": _V, "body[].value": _V}},
-        {"kind": "mcp", "word": "MCP tool", "group": "Reach out", "hint": "Call a tool of an MCP server.",
-         "ports": ["success", "error"], "available": True, "why": "", "slots": {"tool": _WHAT}},
-        {"kind": "code", "word": "Code", "group": "Reach out", "hint": "Run your own code in your workstation.",
-         "ports": ["success", "error"], "available": False,
-         "why": "Your workstation is switched off. Switch it on in Settings → Workstation to run code.",
-         "slots": {"language": _WHAT, "source": _WHAT, "timeout_seconds": _WHAT, "input[].name": _WHAT, "input[].value": _V}},
-    ],
-    "integrations": [{"id": "int1", "name": "Miniflux", "preset": "miniflux", "description": "My feed reader."}],
-    "mcp_tools": [
-        {"qualified_name": "mcp__chat__send_message", "server_name": "chat", "name": "send_message",
-         "description": "Post a message to a channel.",
-         "input_schema": {"type": "object", "required": ["channel", "text"], "properties": {
-             "channel": {"type": "string", "description": "Where it goes, like #general."},
-             "text": {"type": "string", "description": "What it says."},
-             "silent": {"type": "boolean", "description": "Post without a ping."},
-             "priority": {"type": "integer", "description": "1 to 5."},
-             "mood": {"type": "string", "enum": ["calm", "loud"]},
-             "meta": {"type": "object", "description": "Extra fields."}}},
-         "annotations": {"readOnlyHint": False}, "is_readonly": False, "readonly_source": "annotation", "override": None,
-         "args": {"channel": _WHERE, "text": _V, "priority": _WHAT, "meta": _WHAT, "silent": _WHAT, "mood": _WHAT}},
-        {"qualified_name": "mcp__chat__list_channels", "server_name": "chat", "name": "list_channels",
-         "description": "List channels.", "input_schema": {"type": "object", "properties": {}},
-         "annotations": {"readOnlyHint": True}, "is_readonly": True, "readonly_source": "annotation", "override": None,
-         "args": {}},
-    ],
-    "skills": [{"name": "print-queue", "description": "Print what is in the queue."}],
-    "ai_tools": [{"name": "web_search", "label": "Search the web", "kind": "built-in"},
-                 {"name": "web_fetch", "label": "Read a page", "kind": "built-in"},
-                 {"name": "bash", "label": "Run a shell command", "kind": "built-in"}],
-    "workstation": {"available": False, "why": "Your workstation is switched off. Switch it on in Settings → Workstation to run code."},
-    "limits": {"foreach_max_items": 50, "wait_max_hours": 168, "parallel_steps": 4},
-    "operators": [{"op": "equals", "word": "is"}, {"op": "contains", "word": "contains"},
-                  {"op": "is_empty", "word": "is empty"}, {"op": "greater_than", "word": "is more than"},
-                  {"op": "less_than", "word": "is less than"}, {"op": "one_of", "word": "is one of"}],
-}
+
+def real_palette(*, admin: bool = True, workstation_why=None) -> dict:
+    """`workflow_effects.build_palette` — the server's palette — for a person
+    whose agent reaches what an admin's does (`admin=False`: the non-admin
+    policy, so HTTP and MCP are greyed with the server's sentence), in the
+    environment above. The workstation is switched off unless
+    `workstation_why` says otherwise (`""` for on)."""
+    from unittest import mock
+
+    from src import workflow_effects as we
+    from src.workstation_access import OFF_SENTENCE
+
+    why = OFF_SENTENCE if workstation_why is None else (workstation_why or None)
+    with mock.patch.object(we, "_reaches", lambda owner, tool: admin), \
+            mock.patch.object(we, "_integrations",
+                              lambda owner: [dict(i) for i in ENV_INTEGRATIONS] if admin else []), \
+            mock.patch.object(we, "_mcp_tools", lambda: [dict(t) for t in ENV_MCP_TOOLS]), \
+            mock.patch.object(we, "global_disabled_tools", lambda: set()), \
+            mock.patch.object(we, "_own_skills", lambda owner: [dict(x) for x in ENV_SKILLS]), \
+            mock.patch.object(we, "workstation_why", lambda owner: why), \
+            mock.patch.object(we, "ai_tool_choices", lambda owner: [dict(t) for t in ENV_AI_TOOLS]):
+        return json.loads(json.dumps(we.build_palette("rowan")))
+
+
+PALETTE = real_palette()
 
 CW_FAKE_JS = r"""
 // A server answering the C2 routes `workflowSource.js` uses and C-W's, from
 // one in-memory workflow, recording every request; and the real data layer
 // over it with C-W's four functions beside (see the Python module's doc).
-import { createWorkflowApi, WorkflowRefusal } from './workflowApi.js';
-import { readRefusal } from './refusal.js';
+import { createWorkflowApi } from './workflowApi.js';
 
 const clone = (v) => (v === undefined ? v : JSON.parse(JSON.stringify(v)));
 export const server = {
@@ -211,34 +197,14 @@ function summary() {
 }
 export function seed(doc) { server.doc = clone(doc); }
 
-/** C-W's four `workflowApi.js` functions, to C-W's paths and bodies. */
-export function cwFunctions(fetchFn = net) {
-  const enc = (v) => encodeURIComponent(String(v == null ? '' : v));
-  async function call(method, url, body) {
-    const init = { method, credentials: 'same-origin' };
-    if (body !== undefined) { init.headers = { 'Content-Type': 'application/json' }; init.body = JSON.stringify(body); }
-    let res;
-    try { res = await fetchFn(url, init); } catch (_) { throw new WorkflowRefusal(0, 'Pantheon could not be reached, so nothing changed.'); }
-    if (!res || !res.ok) {
-      const r = await readRefusal(res);
-      throw new WorkflowRefusal(r.status, r.sentence, { reason: r.reason, nodeIds: r.nodeIds, field: r.field });
-    }
-    try { return await res.json(); } catch (_) { return null; }
-  }
-  return {
-    getPalette() { return call('GET', `/api/workflows/palette`); },
-    listFields(id, nodeId) { return call('GET', `/api/workflows/${enc(id)}/nodes/${enc(nodeId)}/fields`); },
-    listWaiting() { return call('GET', `/api/workflows/waiting`); },
-    answerStep(id, runId, { nodeId, item = null, approvalId, decision } = {}) {
-      return call('POST', `/api/workflows/${enc(id)}/runs/${enc(runId)}/answer`,
-        { node_id: nodeId, item, approval_id: approvalId, decision });
-    },
-  };
-}
-
-/** The real data layer over the fake server, with C-W's four beside it. */
+/** The real data layer over the fake server — C-W's four functions are the
+ *  real module's (`integrate-d`: this laid its own copies over them). */
 export function cwApi(fetchFn = net) {
-  return { ...createWorkflowApi({ fetch: fetchFn }), ...cwFunctions(fetchFn) };
+  const api = createWorkflowApi({ fetch: fetchFn });
+  for (const name of ['getPalette', 'listFields', 'listWaiting', 'answerStep']) {
+    if (typeof api[name] !== 'function') throw new Error(`workflowApi.js has no ${name}: a C-W half is missing`);
+  }
+  return api;
 }
 """
 
@@ -267,5 +233,6 @@ def build_sandbox(root: Path, shim: str, *, stubs: dict = None) -> Path:
     return sandbox
 
 
-def palette_json() -> str:
-    return json.dumps(PALETTE)
+def palette_json(**kw) -> str:
+    """The real palette as JSON (`real_palette`)."""
+    return json.dumps(real_palette(**kw) if kw else PALETTE)

@@ -26,15 +26,16 @@
 // or from outside data (a mail subject, a webhook body) and reach the page
 // through `textContent` only.
 
-/** C-W's `origin` words for where a field was seen. */
+/** C-W's `origin` words for where a field was seen — keyed by the server's
+ *  own three (`workflow_effects.ORIGIN_LAST_RUN` / `ORIGIN_PIN` /
+ *  `ORIGIN_DECLARED`). The start's `declared` fields are what every run of
+ *  its kind is handed (a webhook's body, an event's fields), not an answer. */
 const ORIGINS = Object.freeze({
   last_run: 'from the last run',
-  run: 'from the last run',
-  pinned: 'from the pinned sample',
+  pin: 'from the pinned sample',
   declared: 'what the step promises to answer',
-  shape: 'what the step promises to answer',
-  trigger: 'what the start hands on',
 });
+const START_DECLARED = 'what every run is handed';
 
 /** Said on a `never` field when the server gave no sentence of its own. */
 export const NEVER_FALLBACK = 'Typed here only: a field from another step cannot go here.';
@@ -60,11 +61,14 @@ function _when(iso) {
   return d.toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 }
 
-/** "from the last run, 2 Oct 07:00" — where a source's fields were seen. */
-export function originWords(origin, at) {
-  const base = ORIGINS[String(origin || '')] || '';
+/** "from the last run, 2 Oct 07:00" — where a source's fields were seen.
+ *  `kind` is the source's (`'start'` for what started the run). */
+export function originWords(origin, at, kind) {
+  const o = String(origin || '');
+  if (o === 'declared' && kind === 'start') return START_DECLARED;
+  const base = ORIGINS[o] || '';
   if (!base) return '';
-  return (origin === 'last_run' || origin === 'run') && at ? `${base}, ${_when(at)}` : base;
+  return o === 'last_run' && at ? `${base}, ${_when(at)}` : base;
 }
 
 /** An example value as one short line of text. */
@@ -119,6 +123,20 @@ export function usesLine(text, labelOf) {
     parts.push(`${what}, from ${name}`);
   }
   return parts.length ? `Uses: ${parts.join('; ')}.` : '';
+}
+
+/** The words a field is listed by: its path as the server's own reference
+ *  spells it — `title`, `json.subject`, `items[0].title`,
+ *  `headers["content-type"]` — read off the field's `ref`. The fields route
+ *  answers `path` as a LIST of segments (`workflow_refs.flatten_fields`, the
+ *  form `format_ref` takes); printed as it came, a nested field read
+ *  `json,subject` (`integrate-d`, found by the drive). A string `path` (an
+ *  item's, which the panel lists itself) is read as it is. */
+export function pathWords(f) {
+  const r = refsIn(String((f && f.ref) || ''))[0];
+  if (r && r.path) return r.path;
+  if (f && typeof f.path === 'string' && f.path) return f.path;
+  return String((f && f.ref) || '').includes('.text') ? 'its text' : 'everything it made';
 }
 
 /** Put `text` at `input`'s caret (or over its selection), and say so to the
@@ -195,17 +213,20 @@ export function openFieldPicker(anchor, { load, extra = [], holdEscape = null, l
         const group = _el('section', 'wf-picker-source');
         const head = _el('p', 'wf-picker-step');
         head.appendChild(_el('span', 'wf-picker-step-name', String(src.label || src.node_id || 'A step')));
-        const from = originWords(src.origin, src.at);
+        const from = originWords(src.origin, src.at, src.kind);
         if (from) head.appendChild(_el('span', 'wf-picker-origin', from));
         group.appendChild(head);
         for (const f of src.fields) {
           if (!f || !f.ref) continue;
           const b = _button('wf-picker-field', null);
           b.dataset.ref = String(f.ref);
-          const path = String(f.path || '') || (String(f.ref).includes('.text') ? 'its text' : 'everything it made');
+          const path = pathWords(f);
           b.appendChild(_el('span', 'wf-picker-path', path));
           if (f.type) b.appendChild(_el('span', 'wf-picker-type', String(f.type)));
-          const ex = exampleText(f.example);
+          // A field a step only promises (`declared`) has no value yet: the
+          // server sends `example: null`, which read as the word "null" under
+          // every promised field (`integrate-d`, found by the drive).
+          const ex = src.origin === 'declared' ? '' : exampleText(f.example);
           if (ex) b.appendChild(_el('span', 'wf-picker-example', ex));
           b.setAttribute('aria-label', `${path}, from ${String(src.label || 'a step')}${ex ? '. For example: ' + ex : ''}`);
           b.addEventListener('click', () => finish(String(f.ref)));
@@ -319,6 +340,7 @@ export function decorateField(input, { slot = null, pick = null, labelOf = null,
 }
 
 export default {
+  pathWords,
   openFieldPicker, decorateField, refsIn, usesLine, insertAtCaret, originWords, exampleText, looksLikeRef,
   NEVER_FALLBACK,
 };

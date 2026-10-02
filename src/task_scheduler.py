@@ -1424,11 +1424,12 @@ TAKEOVER_PARKED = ("Waiting for Pantheon to be idle: it became active while this
                    "Pantheon is idle; the steps that finished are kept.")
 SWITCHED_OFF_WHILE_WAITING = "Switched off while it waited"
 
-# `P22-11`. How many deterministic and logic steps of one run run side by side.
-# A constant for mistake prevention, not a control (`Law 17`): the run still
-# holds ONE model-slot permit, and its model-driven steps take a per-run lock
-# one at a time, so the concurrency cap still applies.
-WORKFLOW_PARALLEL_STEPS = 4
+# `P22-11`. How many deterministic and logic steps of one run run side by side
+# — stated once, in `workflow_runs` beside the walker's other limits, where the
+# palette (`workflow_effects._limits`) reads it too (`integrate-d`: it was
+# stated here and read there, so every palette and every document check raised
+# `AttributeError` on the merged tree).
+from src.workflow_runs import WORKFLOW_PARALLEL_STEPS  # noqa: E402
 
 # `P22-17`. What became of a step's question. `allow` resumes the step once
 # with the consumed approval; the other three take its failure port.
@@ -3927,9 +3928,9 @@ class TaskScheduler:
         # `P22-11`. `node_needs_model` replaces "every kind that is not an
         # action" (`SLICE-CD-DESIGN` § 0.9): a workflow of logic, HTTP, MCP and
         # Code steps does not queue behind a model run. A Run task step still
-        # does (its task may call a model, inside this workflow's slot).
-        return any(self._node_needs_model(node) or node.get("kind") == wd.NODE_KIND_RUN_TASK
-                   for node in graph["nodes"])
+        # does (its task may call a model, inside this workflow's slot) — the
+        # rule's own answer says so.
+        return any(wd.node_needs_model(node) for node in graph["nodes"])
 
     def _log_to_assistant(self, db, task, result_text: str):
         """Log a task result to the assistant's chat session."""
@@ -4839,10 +4840,10 @@ class TaskScheduler:
                                 # and Allow resumes this step ONCE. Raised, a
                                 # `BaseException`, so `_execute_llm_task`'s
                                 # fallback cannot answer around it.
-                                from src.builtin_actions import TaskWaiting
+                                from src.builtin_actions import WAIT_KIND_APPROVAL, TaskWaiting
                                 raise TaskWaiting(
                                     f"Waiting for your yes on {approval_pause['tool']}",
-                                    kind="approval",
+                                    kind=WAIT_KIND_APPROVAL,
                                     approval_id=approval_pause["approval_id"],
                                     session_id=session_id,
                                     tool=approval_pause["tool"],
@@ -5291,20 +5292,14 @@ class TaskScheduler:
 
     def _node_needs_model(self, node: dict) -> bool:
         """`P22-11`. Does this step drive a model (and so take the run's model
-        lock)? `workflow_document.node_needs_model`, which replaces Slice B's
-        "not an action" test, plus a model-backed built-in action — the one
-        fact `_action_needs_model` owns (`P8-22`)."""
+        lock)? `workflow_document.node_needs_model` — the rule's one answer,
+        which replaces Slice B's "not an action" test and already reads a
+        model-backed action (`MODEL_BACKED_ACTIONS`, `P8-22`), a Run task step
+        and the step a For-each repeats (`integrate-d`: the walker restated
+        the last two)."""
         from src import workflow_document as wd
 
-        if wd.node_needs_model(node):
-            return True
-        config = node.get("config") or {}
-        if node.get("kind") == wd.NODE_KIND_ACTION:
-            return self._action_needs_model(config.get("action"))
-        if node.get("kind") == wd.NODE_KIND_FOREACH:
-            inner = config.get("step") if isinstance(config.get("step"), dict) else {}
-            return self._node_needs_model(inner) if inner else False
-        return False
+        return wd.node_needs_model(node)
 
     def _start_ready(self, w) -> None:
         """Start every step that is ready, up to the parallel cap. A Wait and a
@@ -5508,11 +5503,20 @@ class TaskScheduler:
         label = node.get("label") or node["id"]
         item = waiting.get("item")
         where = f"“{label}”" + (f", item {int(item) + 1}," if isinstance(item, int) else "")
+        # `label`, `workflow` and `since` are what the question's notice says
+        # ("“Overnight replies” is waiting for your yes: “Send reply” wants to
+        # use send_reply. Waiting since 07:00."), the same three the waiting
+        # list carries (`workflow_store.waiting_list`) — `integrate-d`: without
+        # them the notice said "A step wants to use …".
+        from src import workflow_runs as wr
+        since = waiting.get("since") or ((wr.waiting_of(rec) or {}).get("since")
+                                         if rec is not None else None)
         self.add_notification(
             w.task.name, "waiting", w.task.id, owner=w.task.owner,
             body=f"{where} is waiting for your yes: {tool}.",
             review={"kind": "workflow_approval", "workflow_id": w.wf.id,
-                    "run_id": w.run_id, "node_id": node["id"], "item": item,
+                    "workflow": w.name, "run_id": w.run_id, "node_id": node["id"],
+                    "item": item, "label": label, "since": since,
                     "approval": card or None})
 
     def _start_wait(self, w, node: dict) -> None:
@@ -6143,28 +6147,20 @@ class TaskScheduler:
         item_part = slot.split(NODE_SLOT_SEPARATOR, 1)[-1] if NODE_SLOT_SEPARATOR in slot else node["id"]
         try:
             if kind == wd.NODE_KIND_CODE:
-                from src import workflow_refs as refs
-                input_obj, missing = {}, []
-                for entry in config.get("input") or ():
-                    if not isinstance(entry, dict) or not entry.get("name"):
-                        continue
-                    raw = entry.get("value")
-                    if isinstance(raw, str) and "{{" in raw:
-                        value, gone = refs.render_value(refs.parse_template(raw), ctx)
-                        missing.extend(gone or ())
-                        input_obj[entry["name"]] = None if value is refs.MISSING else value
-                    else:
-                        input_obj[entry["name"]] = raw
-                if missing:
+                # `render_call` fills the inputs (its content is the stdin
+                # JSON: values coerced and capped, a reference in the language,
+                # the source or the time limit refused before anything runs —
+                # `integrate-d`: the walker filled them itself and skipped
+                # both). The gate is then asked about the SOURCE, the author's
+                # text verbatim, which is exactly what will run and what an
+                # Allow seals (`_dispatch_authored` claims against it); the
+                # values only ever arrive on stdin.
+                rendered = ws.render_call(node, ctx)
+                if rendered.missing:
                     return StepDone(NodeResult(NODE_STATUS_ERROR, payload=self._missing_words(
-                        node, missing)), None)
-                language = config.get("language") or "python"
-                # The source is `never`: the author's text, verbatim, and the
-                # values arrive on stdin — so the call the gate is asked about
-                # is exactly what will run.
-                call = ws.RenderedCall(kind="code", tool=language,
-                                       content=str(config.get("source") or ""),
-                                       value_paths=tuple(input_obj), missing=())
+                        node, rendered.missing)), None)
+                input_obj = json.loads(rendered.content)
+                call = rendered._replace(content=str(config.get("source") or ""), missing=())
             else:
                 mcp_schema = None
                 if kind == wd.NODE_KIND_MCP:

@@ -116,9 +116,14 @@ async def test_a_model_chosen_send_parks_and_an_allow_from_the_notification_send
     assert round(pending.expires_at - pending.created_at) == 12 * 60 * 60
     # The question reached the person as a notification with the card.
     [note] = [n for n in w.s.pop_notifications() if n["status"] == "waiting"]
+    # `integrate-d`: the review also names the step, the workflow and when it
+    # began to wait — what the question's notice says ("“Morning digest” is
+    # waiting for your yes: “Send reply” wants to use bash"), the same three
+    # the waiting list carries; without them the notice said "A step".
     assert note["review"] == {"kind": "workflow_approval", "workflow_id": "w-wf",
-                              "run_id": run["id"], "node_id": "reply", "item": None,
-                              "approval": card}
+                              "workflow": "Morning digest", "run_id": run["id"],
+                              "node_id": "reply", "item": None, "label": "Send reply",
+                              "since": rec["waiting"]["since"], "approval": card}
     assert w.seen[0]["workload"] == "background", "a scheduled step is background work"
 
     async with client_for(w.app) as client:

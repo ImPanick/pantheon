@@ -237,14 +237,17 @@ _CASE_ID_RE = re.compile(r"[A-Za-z0-9_-]{1,32}")
 _FIELD_NAME_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,63}")
 _HEADER_NAME_RE = re.compile(r"[A-Za-z0-9!#$%&'*+.^_`|~-]{1,128}")
 _TIME_RE = re.compile(r"([01][0-9]|2[0-3]):[0-5][0-9]")
-# The For-each cap and the longest Wait: their built-in defaults, stated here
-# once; the settings (`workflow_foreach_max_items`, `workflow_wait_max_hours`,
-# resolved role → instance → default) are the walker's (`SLICE-CD-DESIGN`
-# § 1.4) and arrive in `WorkflowResources`.
-WORKFLOW_FOREACH_MAX_ITEMS_DEFAULT = 50
-WORKFLOW_FOREACH_MAX_ITEMS_RANGE = (1, 1000)
-WORKFLOW_WAIT_MAX_HOURS_DEFAULT = 168
-WORKFLOW_WAIT_MAX_HOURS_RANGE = (1, 720)
+# The For-each cap and the longest Wait: their built-in defaults and ranges
+# are the walker's (`workflow_runs`, which resolves the two settings role →
+# instance → default, `SLICE-CD-DESIGN` § 1.4) and arrive here resolved in
+# `WorkflowResources`. Imported, not restated (`Law 7`, `integrate-d`: the
+# merge held three copies — this module, `workflow_runs` and `settings.py`).
+from src.workflow_runs import (  # noqa: E402
+    FOREACH_MAX_ITEMS_DEFAULT as WORKFLOW_FOREACH_MAX_ITEMS_DEFAULT,
+    FOREACH_MAX_ITEMS_RANGE as WORKFLOW_FOREACH_MAX_ITEMS_RANGE,
+    WAIT_MAX_HOURS_DEFAULT as WORKFLOW_WAIT_MAX_HOURS_DEFAULT,
+    WAIT_MAX_HOURS_RANGE as WORKFLOW_WAIT_MAX_HOURS_RANGE,
+)
 
 # ── Why a document may not run (`Law 10`: an enum, the sentence derived) ────
 REFUSE_UNREADABLE = "unreadable"
@@ -1771,6 +1774,14 @@ def _shown(value) -> str:
     return json.dumps(value, ensure_ascii=False, default=str)
 
 
+# `P22-18`. What a Code step does, in the words for where it runs (`B967`):
+# the person's own workstation account — not "as the user Pantheon runs as",
+# which is an action's command (`EFFECT_SENTENCES[EFFECT_RUNS_CODE]`). Its
+# plan and *Test this step*'s effects both say this (`integrate-d`: they said
+# "in your workstation, as you" and then "as the user Pantheon runs as").
+CODE_EFFECT_SENTENCE = "runs your code in your own workstation account, not on this machine"
+
+
 def plan_lines(node: dict, resources: WorkflowResources | None = None) -> list:
     """What this step would do, as lines, for the dry run. Executes nothing
     and resolves nothing: `never` settings are shown verbatim and `value`
@@ -1778,7 +1789,7 @@ def plan_lines(node: dict, resources: WorkflowResources | None = None) -> list:
     (`SLICE-CD-DESIGN` § 1.3). The task kinds are `dry_run_plan`'s lines (one
     planner, `Law 7`)."""
     from src.builtin_actions import (
-        EFFECT_RUNS_CODE, EFFECT_SENTENCES, EFFECT_TOUCHES_REMOTE, dry_run_plan,
+        EFFECT_SENTENCES, EFFECT_TOUCHES_REMOTE, dry_run_plan,
     )
 
     resources = resources if isinstance(resources, WorkflowResources) else EMPTY_RESOURCES
@@ -1875,7 +1886,7 @@ def plan_lines(node: dict, resources: WorkflowResources | None = None) -> list:
                      f"workstation, as you.")
         for entry in config.get("input") or ():
             lines.append(f"Hands it {entry.get('name')}: {_shown(entry.get('value'))}")
-        lines.append(f"It would: {EFFECT_SENTENCES[EFFECT_RUNS_CODE]}")
+        lines.append(f"It would: {CODE_EFFECT_SENTENCE}")
     else:
         lines.append(f"A {kind!r} step is not one this Pantheon runs.")
     return lines

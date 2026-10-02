@@ -436,11 +436,16 @@ class TaskDeferred(BaseException):
 # `P22-11` / `P22-17`. What a parked step is waiting for — stored in a step
 # record's `waiting` JSON (`FORBIDDEN.md` Part 1): a time (a Wait step), a
 # person's yes (a step whose tool needs one), or Pantheon being idle (a step a
-# foreground takeover interrupted, `SLICE-CD-DESIGN` § 1.4).
-WAIT_KIND_TIME = "time"
-WAIT_KIND_APPROVAL = "approval"
-WAIT_KIND_IDLE = "idle"
-WAIT_KINDS = (WAIT_KIND_TIME, WAIT_KIND_APPROVAL, WAIT_KIND_IDLE)
+# foreground takeover interrupted, `SLICE-CD-DESIGN` § 1.4). The words are the
+# record's, stated once in `workflow_runs.WAITING_KINDS` (which writes and
+# reads them) and named here as the signal's (`Law 7`, `integrate-d`: the
+# merge held two copies, `wf-rules`' here and `wf-walker`'s there).
+from src.workflow_runs import (  # noqa: E402
+    WAITING_APPROVAL as WAIT_KIND_APPROVAL,
+    WAITING_IDLE as WAIT_KIND_IDLE,
+    WAITING_KINDS as WAIT_KINDS,
+    WAITING_TIME as WAIT_KIND_TIME,
+)
 
 
 class TaskWaiting(BaseException):

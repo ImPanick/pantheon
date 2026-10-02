@@ -79,8 +79,11 @@ def test_a_run_comes_back_with_every_step_on_the_graph_it_ran(client, wf_db):
     res = call(client, "GET", f"/api/workflows/{wf['id']}/runs/{run_id}")
     assert res.status_code == 200, res.text
     out = res.json()
+    # `failed` (`integrate-d`): the step a failed run failed on, by the
+    # walker's own rule, so the Runs view opens on it — null for a run that
+    # did not fail.
     assert set(out) == {"run", "version", "version_kept", "graph", "nodes", "cleared",
-                        "cleared_sentence"}
+                        "cleared_sentence", "failed"}
     assert (out["version"], out["version_kept"], out["cleared"]) == (2, True, False)
     assert out["cleared_sentence"] is None, "said only when the records were cleared"
     assert [n["label"] for n in out["graph"]["nodes"]] == ["Summarise my inbox", "Send me the summary"]

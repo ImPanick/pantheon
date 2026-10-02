@@ -206,36 +206,42 @@ export function createWorkflowPanels({
         if (!kind && anchorEl && typeof anchorEl.focus === 'function') anchorEl.focus();
         resolve(kind || null);
       };
-      let group = null;
-      let groupName = null;
+      // `P22-10`. Grouped as the server groups them ("Decide and reshape",
+      // "Reach out" …), each group ONCE, under its own words, in the order its
+      // first kind comes — the server lists kinds in its own order, not by
+      // group (`integrate-d`: Skill comes after MCP tool there, so "Ask a
+      // model" and "Reach out" were each drawn twice). The arrow keys follow
+      // the order drawn.
+      const groups = new Map();
       for (const k of offered(pal)) {
-        // `P22-10`. Grouped as the server groups them ("Decide and reshape",
-        // "Reach out" …), each group a list under its own words.
-        if (k.group !== groupName) {
-          groupName = k.group;
-          group = _el('div', 'wf-palette-group');
-          if (k.group) group.appendChild(_el('p', 'wf-palette-group-head', k.group));
-          box.appendChild(group);
+        if (!groups.has(k.group)) groups.set(k.group, []);
+        groups.get(k.group).push(k);
+      }
+      for (const [groupName, members] of groups) {
+        const group = _el('div', 'wf-palette-group');
+        if (groupName) group.appendChild(_el('p', 'wf-palette-group-head', groupName));
+        box.appendChild(group);
+        for (const k of members) {
+          const b = _button('wf-palette-kind', null);
+          b.dataset.kind = k.kind;
+          b.appendChild(_el('span', 'wf-palette-word', k.word));
+          if (k.hint) b.appendChild(_el('span', 'wf-palette-hint', k.hint));
+          if (!k.available) {
+            // `D-2026-10-01-05`: the palette offers only what the person's agent
+            // can reach. A kind they may not use is shown, greyed, with the
+            // server's reason in words — never a colour or a lock alone.
+            b.disabled = true;
+            b.setAttribute('aria-disabled', 'true');
+            b.dataset.available = 'false';
+            b.appendChild(_el('span', 'wf-palette-why', k.why || 'Not available here.'));
+            b.setAttribute('aria-label', `${k.word}: not available. ${k.why || ''}`.trim());
+          } else {
+            b.setAttribute('aria-label', `${k.word}: ${k.hint}`);
+            b.addEventListener('click', () => finish(k.kind));
+            kinds.push(b);
+          }
+          group.appendChild(b);
         }
-        const b = _button('wf-palette-kind', null);
-        b.dataset.kind = k.kind;
-        b.appendChild(_el('span', 'wf-palette-word', k.word));
-        if (k.hint) b.appendChild(_el('span', 'wf-palette-hint', k.hint));
-        if (!k.available) {
-          // `D-2026-10-01-05`: the palette offers only what the person's agent
-          // can reach. A kind they may not use is shown, greyed, with the
-          // server's reason in words — never a colour or a lock alone.
-          b.disabled = true;
-          b.setAttribute('aria-disabled', 'true');
-          b.dataset.available = 'false';
-          b.appendChild(_el('span', 'wf-palette-why', k.why || 'Not available here.'));
-          b.setAttribute('aria-label', `${k.word}: not available. ${k.why || ''}`.trim());
-        } else {
-          b.setAttribute('aria-label', `${k.word}: ${k.hint}`);
-          b.addEventListener('click', () => finish(k.kind));
-          kinds.push(b);
-        }
-        (group || box).appendChild(b);
       }
       const cancel = _button('wf-palette-cancel', 'Cancel');
       cancel.addEventListener('click', () => finish(null));

@@ -469,7 +469,12 @@ function buildHttp(ctx) {
     { value: String(cfg.method || 'GET').toUpperCase(), field: 'method' });
   const path = _textField(body, 'Path', { value: cfg.path || '', field: 'path', placeholder: '/v1/entries' });
   const hp = ctx.decorate(path, 'path');
-  const kv = (label, key, add, items) => {
+  // `P22-13`. Each query or body entry is `{ name, value }` — the shape the
+  // document rule checks and `render_call` sends (`src/workflow_document.py`
+  // `_check_entries`, `src/workflow_slots.py`), as a Set field's and a Code
+  // input's are. `integrate-d`: this wrote `{ key, value }`, which every save
+  // refused ("each of “query” is a name and a value").
+  const kv = (label, list, add, items) => {
     const box = _el('div', 'wf-sf-group');
     box.appendChild(_el('p', 'wf-sf-sub', label));
     body.appendChild(box);
@@ -478,15 +483,15 @@ function buildHttp(ctx) {
       empty: 'None.',
       draw(row, item, i) {
         const it = item && typeof item === 'object' ? item : {};
-        const k = _textField(row, 'Name', { value: it.key || '', field: `${key}[${i}].key` });
-        const hk = ctx.decorate(k, `${key}[${i}].key`);
-        const v = _textField(row, 'Value', { value: it.value == null ? '' : it.value, field: `${key}[${i}].value` });
-        const hv = ctx.decorate(v, `${key}[${i}].value`);
+        const k = _textField(row, 'Name', { value: it.name || '', field: `${list}[${i}].name` });
+        const hk = ctx.decorate(k, `${list}[${i}].name`);
+        const v = _textField(row, 'Value', { value: it.value == null ? '' : it.value, field: `${list}[${i}].value` });
+        const hv = ctx.decorate(v, `${list}[${i}].value`);
         return {
-          snapshot: () => ({ key: k.value, value: v.value }),
+          snapshot: () => ({ name: k.value, value: v.value }),
           read: (j) => (String(k.value).trim()
-            ? { value: { key: String(k.value).trim(), value: String(v.value) } }
-            : { refusal: 'Give this a name, or remove it.', field: `${key}[${j}].key` }),
+            ? { value: { name: String(k.value).trim(), value: String(v.value) } }
+            : { refusal: 'Give this a name, or remove it.', field: `${list}[${j}].name` }),
           destroy() { for (const h of [hk, hv]) { try { if (h && h.destroy) h.destroy(); } catch (_) { /* gone */ } } },
         };
       },

@@ -105,6 +105,11 @@ def _run_fallback(query: str) -> set:
     scope = {
         "guide_only": False,
         "_relevant_tools": None,
+        # `P22-16` (`wf-effects`): the branch also asks that no AI step limited
+        # the turn to its own tools — an allowlist skips retrieval and this
+        # fallback. `None` is every turn that is not such a step, the case this
+        # measurement is about (`integrate-d`: the scope lacked the name).
+        "_allowed_tools": None,
         "_retrieval_query": query,
         "logger": logging.getLogger("test-fallback"),
     }

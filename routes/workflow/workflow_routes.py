@@ -193,17 +193,12 @@ def setup_workflow_routes(task_scheduler) -> APIRouter:
         with whether they can use it and why not, the mapping of every field
         (`value` / `never`, `workflow_slots`, so the browser derives nothing),
         their integrations (never a key, never a base URL), MCP tools, skills,
-        the AI step's tool choices, the workstation — `wf-effects`'
-        `build_palette` — and the limits this engine holds a document to."""
+        the AI step's tool choices, the workstation and the limits this engine
+        holds a document to — `wf-effects`' `build_palette`, whose `limits` are
+        the walker's own readers (`workflow_runs`; `integrate-d`: this route
+        restated them over the builder's answer)."""
         from src import workflow_effects as we
-        from src.task_scheduler import WORKFLOW_PARALLEL_STEPS
-        from src.workflow_runs import foreach_max_items, wait_max_hours
-        user = _owner(request)
-        out = dict(we.build_palette(user) or {})
-        out["limits"] = {"foreach_max_items": foreach_max_items(user),
-                         "wait_max_hours": wait_max_hours(),
-                         "parallel_steps": WORKFLOW_PARALLEL_STEPS}
-        return out
+        return dict(we.build_palette(_owner(request)) or {})
 
     @router.get("/waiting")
     @_answers
@@ -394,6 +389,7 @@ def setup_workflow_routes(task_scheduler) -> APIRouter:
                 "nodes": [node_record_to_dict(r) for r in recs],
                 "cleared": cleared,
                 "cleared_sentence": records_cleared_sentence() if cleared else None,
+                "failed": _failed_step(run, graph, kept, recs),
             }
         finally:
             db.close()
@@ -452,11 +448,16 @@ def setup_workflow_routes(task_scheduler) -> APIRouter:
                 db, wf, trigger, stored, graph, checked, source, body.get("input"))
             tasks_by_id = rows[0]
             from src.workflow_document import needs_test_confirmation
-            if needs_test_confirmation(checked, tasks_by_id) and not body.get("confirm"):
+            from src.workflow_effects import workflow_resources
+            # `P22-13`/`P22-14` (`wf-rules`' merge point 5). What the person can
+            # reach — so an MCP tool its server marks read-only is known to be,
+            # and the plan of an HTTP, MCP or Code step is the document's own.
+            resources = workflow_resources(wf.owner)
+            if needs_test_confirmation(checked, tasks_by_id, resources) and not body.get("confirm"):
                 return {
                     "outcome": TEST_NEEDS_CONFIRMATION,
-                    "plan": _node_plan(checked, wf.owner, tasks_by_id),
-                    "effects": _node_effect_sentences(checked, tasks_by_id),
+                    "plan": _node_plan(checked, wf.owner, tasks_by_id, resources),
+                    "effects": _node_effect_sentences(checked, tasks_by_id, resources),
                     "input_used": envelope, "dropped": dropped, "source": source,
                 }
             name = wf.name
@@ -751,13 +752,50 @@ async def _write_example(owner, label, fields) -> dict:
     return data
 
 
-def _node_plan(node, owner, tasks_by_id) -> list:
+def _failed_step(run, graph, kept, recs) -> dict | None:
+    """`P22-07` / `P22-11`. The step a failed run failed on — the walker's own
+    rule (`workflow_runs.RunState.unhandled_error`: the last step that failed
+    with no arrow out of its failure port), so the Runs view opens on the step
+    the run's `error` names. `integrate-d`: the room took "the last record,
+    when it failed", Slice B's single path — with branches side by side or a
+    For-each's item records after its own, the last record is often another
+    one, and the failed run opened on nothing ("This run ended: failed.").
+    `None` for any other run, or when the graph is not the version it ran."""
+    if run.status != "error" or not kept or not recs:
+        return None
+    from src.workflow_document import DocumentError, parse_graph
+    from src.workflow_runs import RunState
+    try:
+        state = RunState(parse_graph(graph), [r for r in recs if not r.dry])
+    except DocumentError:
+        return None
+    rec = state.unhandled_error()
+    if rec is None:
+        return None
+    return {"node_id": rec.node_id, "label": rec.label or rec.node_id, "error": rec.error or ""}
+
+
+def _node_plan(node, owner, tasks_by_id, resources=None) -> list:
     """What the step would do, as the dry run says it (`dry_run_plan`, the one
     planner): a run-task step is "Would run the task …" and that task's own
-    plan, which is what testing it does."""
+    plan, which is what testing it does.
+
+    `P22-10`…`P22-18`. Any kind that is not a task's — a logic, HTTP, MCP,
+    Skill, Code, Wait, Merge or For-each step — is the document's own planner
+    (`plan_lines`), exactly as the workflow's dry run plans it
+    (`TaskScheduler._plan_workflow_node`). `integrate-d`: this answered
+    `dry_run_plan(task_type=kind)` for every kind, so testing an HTTP POST said
+    it "Would send this task's prompt to a model, with tools".
+    """
     from src.builtin_actions import dry_run_plan
+    from src import workflow_document as wd
     config = node.get("config") if isinstance(node.get("config"), dict) else {}
     kind = node.get("kind")
+    if kind != wd.NODE_KIND_RUN_TASK and kind not in wd.STAND_IN_KINDS:
+        if resources is None:
+            from src.workflow_effects import workflow_resources
+            resources = workflow_resources(owner)
+        return list(wd.plan_lines(node, resources))
     if kind == "run_task":
         from routes.task.task_routes import _display_task_name
         from src.task_scheduler import DRY_RUN_HEADLINE, dry_run_lines
@@ -771,8 +809,18 @@ def _node_plan(node, owner, tasks_by_id) -> list:
                         endpoint_url=config.get("endpoint_url"))
 
 
-def _node_effect_sentences(node, tasks_by_id) -> list:
-    from src.builtin_actions import EFFECT_SENTENCES
-    from src.workflow_document import node_effects
-    return [EFFECT_SENTENCES[e] for e in (node_effects(node, tasks_by_id) or ())
-            if e in EFFECT_SENTENCES]
+def _node_effect_sentences(node, tasks_by_id, resources=None) -> list:
+    """What testing this step would do, in words. A Code step's command runs in
+    the person's workstation, so it says so (`CODE_EFFECT_SENTENCE`) where an
+    action's says it runs as the user Pantheon runs as."""
+    from src.builtin_actions import EFFECT_RUNS_CODE, EFFECT_SENTENCES
+    from src.workflow_document import (
+        CODE_EFFECT_SENTENCE, NODE_KIND_CODE, NODE_KIND_FOREACH, node_effects,
+    )
+    step = node
+    if node.get("kind") == NODE_KIND_FOREACH:
+        inner = (node.get("config") or {}).get("step")
+        step = inner if isinstance(inner, dict) else {}
+    code = step.get("kind") == NODE_KIND_CODE
+    return [CODE_EFFECT_SENTENCE if (code and e == EFFECT_RUNS_CODE) else EFFECT_SENTENCES[e]
+            for e in (node_effects(node, tasks_by_id, resources) or ()) if e in EFFECT_SENTENCES]

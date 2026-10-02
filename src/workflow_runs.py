@@ -58,6 +58,17 @@ FOREACH_MAX_ITEMS_RANGE = (1, 1000)
 WAIT_MAX_HOURS_SETTING = "workflow_wait_max_hours"
 WAIT_MAX_HOURS_DEFAULT = 168
 WAIT_MAX_HOURS_RANGE = (1, 720)
+# These two defaults and ranges are stated HERE and nowhere else (`Law 7`,
+# `integrate-d`): `workflow_document` (the save-time check, `WorkflowResources`)
+# and `src/settings.py` (`DEFAULT_SETTINGS`) import them. This module imports
+# nothing of the product at load, so both can.
+
+# `P22-11`. How many deterministic and logic steps of one run run side by side.
+# A constant for mistake prevention, not a control (`Law 17`): the run still
+# holds ONE model-slot permit, and its model-driven steps take a per-run lock
+# one at a time, so the concurrency cap still applies. The walker
+# (`task_scheduler`) and the palette's `limits` (`workflow_effects`) read it.
+WORKFLOW_PARALLEL_STEPS = 4
 
 # `P22-17` (`D-2026-10-02-01` §1). How long a parked workflow step's card waits
 # for an answer. Its own deadline, so an overnight question does not lapse at
@@ -648,16 +659,13 @@ def _start_key() -> str:
 
 
 def start_targets(graph: dict) -> list:
-    """The steps the start leads to: its explicit arrows (`P22-11` — the start
-    can fan out), or, in a document with none, Slice B's implied entry — every
-    step nothing leads to (`Law 1`; the rule refuses more than one)."""
-    start = _start_key()
-    edges = list(graph.get("edges") or ())
-    explicit = [e["to"] for e in edges if e.get("from") == start]
-    if explicit:
-        return list(dict.fromkeys(explicit))
-    led = {e["to"] for e in edges if e.get("from") != start}
-    return [n["id"] for n in graph.get("nodes") or () if n["id"] not in led]
+    """The ids of the steps the start leads to — `workflow_document.start_nodes`,
+    the document rule's one answer (`Law 7`, `integrate-d`: the merge held
+    three readings of it — here, `workflow_effects` and the rule): its explicit
+    arrows (`P22-11` — the start can fan out), or, in a document with none,
+    Slice B's implied entry (`Law 1`; the rule refuses more than one)."""
+    from src.workflow_document import start_nodes
+    return [n["id"] for n in start_nodes(graph)]
 
 
 class RunState:

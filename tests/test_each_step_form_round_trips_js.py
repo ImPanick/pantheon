@@ -85,8 +85,8 @@ _CONFIGS = {
     "wait": {"mode": "until", "time": "08:00", "tz": "Europe/London"},
     "foreach": {"list": "{{ steps.read.data.emails }}", "on_error": "stop",
                 "step": {"kind": "llm", "label": "Summarise", "config": {"prompt": "Summarise {{ item.subject }}"}}},
-    "http": {"integration": "int1", "method": "POST", "path": "/v1/entries", "query": [{"key": "status", "value": "unread"}],
-             "body": [{"key": "text", "value": "{{ steps.read.text }}"}], "body_mode": "json"},
+    "http": {"integration": "int1", "method": "POST", "path": "/v1/entries", "query": [{"name": "status", "value": "unread"}],
+             "body": [{"name": "text", "value": "{{ steps.read.text }}"}], "body_mode": "json"},
     "mcp": {"tool": "mcp__chat__send_message", "args": {"channel": "#general", "text": "{{ steps.sum.text }}",
                                                          "silent": True, "priority": 2, "mood": "calm", "meta": {"a": 1}}},
     "skill": {"skill": "print-queue", "prompt": "Print today’s queue"},
@@ -178,7 +178,8 @@ def test_a_skill_step_says_p8_18s_sentence_and_code_starts_from_a_three_line_tem
     assert o["pyLines"] == 3 and "json.load(sys.stdin)" in o["py"] and "print(json.dumps(" in o["py"]
     assert o["sh"].startswith("input=$(cat)")
     assert o["kept"] == "echo mine", "written code is never replaced by a template"
-    assert o["warn"] == "Your workstation is switched off. Switch it on in Settings → Workstation to run code."
+    from src.workstation_access import OFF_SENTENCE
+    assert o["warn"] == OFF_SENTENCE, "the server's sentence (`workflow_effects.workstation_why`)"
 
 
 def test_a_new_case_is_a_new_way_out_with_its_own_words(box):
@@ -281,13 +282,16 @@ def test_a_fields_name_finds_the_field_and_nothing_else(box):
         const { decorateField } = await import('./fieldPicker.js');
         const pickField = (input, { field, slot }) => decorateField(input, { slot, field, pick: async () => null });
         const m = mount({ kind: 'http', label: 'Fetch', config: { integration: 'int1', method: 'POST', path: '/v1',
-          query: [{ key: 'status', value: 'unread' }], body: [{ key: 'text', value: 'x' }] } }, { pickField });
+          query: [{ name: 'status', value: 'unread' }], body: [{ name: 'text', value: 'x' }] } }, { pickField });
         const names = m.h.querySelectorAll('[data-field]').map((n) => n.dataset.field);
         out({ dup: names.filter((n, i) => names.indexOf(n) !== i),
               slots: m.h.querySelectorAll('.wf-slot').map((b) => [b.dataset.slotFor, b.dataset.mapping]) });
     """)
     assert o["dup"] == [], "one element per field name"
-    # A key the palette gives no slot is offered nothing (fails closed); its box is
-    # where a refusal about it would be said.
-    assert o["slots"] == [["path", "never"], ["query[0].key", None], ["query[0].value", "value"],
-                          ["body[0].key", None], ["body[0].value", "value"]]
+    # The server's palette (`integrate-d`): an entry's name says where the value
+    # goes, and whether its value may come from another step depends on that
+    # name (`classify_argument`), which a palette cannot answer once per kind —
+    # so both are `never` here, fail-closed, and the box says why (filed: an
+    # HTTP body value named `text` does not offer the picker).
+    assert o["slots"] == [["path", "never"], ["query[0].name", "never"], ["query[0].value", "never"],
+                          ["body[0].name", "never"], ["body[0].value", "never"]]
