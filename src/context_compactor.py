@@ -132,8 +132,20 @@ def _message_text_token_estimate(text: str) -> int:
     return int(len(text) * 0.3) + 4
 
 
-def _truncate_text_to_token_budget(text: str, token_budget: int) -> str:
-    """Trim a too-large current user message instead of dropping it entirely."""
+# The words a cut leaves where it cut, by default: a person's pasted message.
+PASTED_MESSAGE_CUT_NOTICE = (
+    "\n\n[Notice: the pasted message was too large for this model's context "
+    "window, so Pantheon kept the beginning and end.]"
+)
+
+
+def _truncate_text_to_token_budget(text: str, token_budget: int, *,
+                                   notice: str = PASTED_MESSAGE_CUT_NOTICE) -> str:
+    """Trim a too-large current user message instead of dropping it entirely.
+
+    `notice` is what the cut says where it cut. `B1107`: auto-memory's
+    transcript cuts a long reply with this same rule and says so in its own
+    words — a reply is not a pasted message (`Law 10`)."""
     if token_budget <= 32:
         return "[Current user message omitted: it exceeded the model context window.]"
 
@@ -147,10 +159,6 @@ def _truncate_text_to_token_budget(text: str, token_budget: int) -> str:
     if len(text) <= max_chars:
         return text
 
-    notice = (
-        "\n\n[Notice: the pasted message was too large for this model's context "
-        "window, so Pantheon kept the beginning and end.]"
-    )
     keep_chars = max(200, max_chars - len(notice))
     head_len = max(100, int(keep_chars * 0.7))
     tail_len = max(80, keep_chars - head_len)

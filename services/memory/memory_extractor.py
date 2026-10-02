@@ -696,6 +696,94 @@ def _parse_extraction_json(raw: str) -> list:
     return facts if isinstance(facts, list) else []
 
 
+# `B1107`. The reply length the extraction asks for. A reasoning model spends
+# most of it on <think> before the JSON (the old 500 truncated every answer);
+# the facts list itself is short.
+EXTRACT_MAX_TOKENS = 4096
+
+# What a cut leaves where it cut, in the transcript the model reads (`B1107`).
+TRANSCRIPT_CUT_NOTICE = (
+    "\n\n[Part of this message was left out here to fit the model's context window.]"
+)
+
+# The least a cut message keeps, in estimated tokens: the chat path's own floor
+# for a message it shrinks (`context_compactor.trim_for_context`, `max(64, …)`).
+_MIN_CUT_TOKENS = 64
+
+
+def _transcript_line(m) -> str:
+    """One message as the transcript shows it: `role: text`, a multimodal
+    message's text parts joined."""
+    c = m.get("content", "")
+    if isinstance(c, list):
+        c = " ".join(
+            b.get("text", "") for b in c
+            if isinstance(b, dict) and b.get("type") == "text"
+        )
+    return f"{m.get('role', '?')}: {c}"
+
+
+def _extraction_messages(transcript: str) -> list:
+    return [
+        {"role": "system", "content": EXTRACT_SYSTEM_PROMPT},
+        {"role": "user", "content": (
+            "Conversation to analyze:\n\n" + transcript
+            + "\n\nReturn the JSON array of durable facts now (or [] if none)."
+        )},
+    ]
+
+
+def _water_level(sizes: list, room: int) -> int:
+    """The largest share `c` with `sum(min(size, c)) <= room`: every message at
+    or under it is kept whole, every one over it is cut to it."""
+    remaining = max(int(room), 0)
+    ordered = sorted(sizes)
+    for k, size in enumerate(ordered):
+        share = remaining // (len(ordered) - k)
+        if size > share:
+            return share
+        remaining -= size
+    return ordered[-1] if ordered else 0
+
+
+def _fit_transcript(messages: list, endpoint_url: str, model: str) -> list:
+    """`B1107`. The messages, held to the room the endpoint's window leaves once
+    the reply's share and the extraction's own words are set aside.
+
+    The window is the one the endpoint PROVED (`budget_context_for_model`, the
+    agent path's reading — 0 when it is only a default, and then nothing is
+    cut). The reply's share is `EXTRACT_MAX_TOKENS`, or half the window when the
+    window is smaller than twice that. Every message stays; when they do not fit, the longest are
+    cut in the middle to one share (`_water_level`) by the chat path's own cut
+    (`context_compactor._truncate_text_to_token_budget`), so the person's own
+    short words survive a long reply — dropping the oldest turns, as the chat
+    path's trim does for a conversation it continues, would drop exactly the
+    words this pass reads for. Measured on `7a7f9b2`: a 72,548-character reply
+    on a 20,000 window was refused (`4096 > 20000 - 18537`) and the pass fell
+    back to its heuristics."""
+    from src.context_compactor import _message_text_token_estimate, _truncate_text_to_token_budget
+    from src.model_context import budget_context_for_model, estimate_tokens
+
+    window = budget_context_for_model(endpoint_url, model)
+    if window <= 0 or not messages:
+        return messages
+    room = (window - min(EXTRACT_MAX_TOKENS, window // 2)
+            - estimate_tokens(_extraction_messages("")))
+    sizes = [_message_text_token_estimate(_transcript_line(m)) for m in messages]
+    if sum(sizes) <= room:
+        return messages
+    cap = max(_water_level(sizes, room), _MIN_CUT_TOKENS)
+    fitted = []
+    for m, size in zip(messages, sizes):
+        if size > cap:
+            role = m.get("role", "?")
+            text = _transcript_line(m)[len(f"{role}: "):]
+            m = {"role": role, "content": _truncate_text_to_token_budget(
+                text, cap, notice=TRANSCRIPT_CUT_NOTICE)}
+        fitted.append(m)
+    return fitted
+
+
 async def extract_and_store(
     session,
     memory_manager,
@@ -755,23 +843,11 @@ async def extract_and_store(
         # the model actually extract. Controlled repro on this model: 0/6 trials
         # with the old structure vs 6/6 with this one. The skill extractor flattens
         # for the same reason.
-        def _flatten_msg(m):
-            c = m.get("content", "")
-            if isinstance(c, list):
-                c = " ".join(
-                    b.get("text", "") for b in c
-                    if isinstance(b, dict) and b.get("type") == "text"
-                )
-            return f"{m.get('role', '?')}: {c}"
-
-        transcript = "\n\n".join(_flatten_msg(m) for m in stripped_recent)
-        extraction_messages = [
-            {"role": "system", "content": EXTRACT_SYSTEM_PROMPT},
-            {"role": "user", "content": (
-                "Conversation to analyze:\n\n" + transcript
-                + "\n\nReturn the JSON array of durable facts now (or [] if none)."
-            )},
-        ]
+        # `B1107`: held to the room the endpoint's window leaves (`_fit_transcript`).
+        transcript = "\n\n".join(
+            _transcript_line(m)
+            for m in _fit_transcript(stripped_recent, endpoint_url, model))
+        extraction_messages = _extraction_messages(transcript)
 
         facts = []
         try:
@@ -786,7 +862,12 @@ async def extract_and_store(
                 # audit path hit the same wall and raised to 16384; extraction's
                 # output (a short facts list) is small, so an ample ceiling is
                 # enough once thinking has room.
-                max_tokens=4096,
+                max_tokens=EXTRACT_MAX_TOKENS,
+                # `B1107`. `B1029`'s resend: a server with room for the
+                # transcript but not for this reply says what it can serve and
+                # is asked for that (`D-2026-10-02-01` §2), rather than the
+                # refusal ending the pass on its heuristics.
+                max_tokens_floor=EXTRACT_MAX_TOKENS,
                 headers=headers,
             )
 
