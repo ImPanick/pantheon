@@ -616,8 +616,8 @@ function buildMcp(ctx) {
   // Workbench's MCP & Integrations room since `P22-21`); it names the room and
   // opens it.
   if (!tools.length) {
-    const warn = body.appendChild(_el('p', 'wf-sf-hint wf-sf-warn',
-      'No MCP tool is available. Add a server in MCP & Integrations, then pick its tool here.'));
+    const warn = body.appendChild(_el('p', 'wf-sf-hint wf-sf-warn'));
+    warn.appendChild(_el('span', null, 'No MCP tool is available. Add a server in MCP & Integrations, then pick its tool here.'));
     if (typeof ctx.openRoom === 'function') {
       const door = warn.appendChild(_button('wf-sf-door', NEED_DOORS.integrations));
       door.dataset.room = 'integrations';

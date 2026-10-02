@@ -227,3 +227,24 @@ def test_the_versions_list_says_the_three_new_sources_in_words(box):
     """)
     assert o["words"] == ["a fix you applied", "imported from a file", "drafted by the model",
                           "an older version put back", "made from a chain", "saved"]
+
+
+def test_an_mcp_step_with_no_tool_here_names_the_room_and_its_door_opens_it(box):
+    """The MCP step's form said "Add a server in Settings → MCP" — a place that
+    does not exist (design § 0.6: MCP servers are a card of Integrations, the
+    Workbench's MCP & Integrations room since `P22-21`). It names the room and
+    opens it, as an imported step's need does."""
+    o = _case(box, """
+        cw.palette.mcp_tools = [];
+        seed({ ...SAVED, graph: { v: 1, start: { position: null }, nodes: [
+          { id: 'post', kind: 'mcp', label: 'Post it', config: { tool: '', args: {} }, position: null, pinned: null }],
+          edges: [{ from: 'start', port: 'success', to: 'post' }] } });
+        const { r } = await room({ workflowId: 'wf1' });
+        fire(nodeEl(r, 'post'), 'click'); await settle(30);
+        const warn = r.querySelector('.wf-sf-warn');
+        fire(warn.querySelector('.wf-sf-door'), 'click'); await settle(10);
+        out({ words: warn.textContent, door: warn.querySelector('.wf-sf-door').textContent, doors: doors.opened });
+    """)
+    assert o["words"] == "No MCP tool is available. Add a server in MCP & Integrations, then pick its tool here.Open MCP & Integrations"
+    assert o["door"] == "Open MCP & Integrations"
+    assert o["doors"] == [{"room": "integrations"}]
