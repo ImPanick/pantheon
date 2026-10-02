@@ -596,8 +596,11 @@ export function mountCanvas(root, opts = {}) {
     title.title = name;
     const sub = _el('div', 'wb-node-sub', subText);
     const last = _el('div', plan ? 'wb-node-plan' : 'wb-node-last');
+    // A step that has no outcome to tell (a workflow's step being edited:
+    // a draft has no last run) shows no mark — measured in Chromium, a lone
+    // "○" under every step of a document, saying nothing.
     const mark = _el('span', 'wb-node-mark', plan ? PLAN_MARKS[plan.state]
-      : (OUTCOME_MARKS[out.tone] || OUTCOME_MARKS.info));
+      : (out.word ? (OUTCOME_MARKS[out.tone] || OUTCOME_MARKS.info) : ''));
     mark.setAttribute('aria-hidden', 'true');
     last.appendChild(mark);
     const said = _el('span', plan ? 'wb-node-plan-line' : 'wb-node-word', plan ? plan.line : (out.word || ''));

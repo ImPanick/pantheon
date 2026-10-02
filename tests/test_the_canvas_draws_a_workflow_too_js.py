@@ -169,11 +169,16 @@ def test_a_mark_is_a_word_on_the_step_and_nothing_a_person_wrote_is_markup(box):
         const edges0 = JSON.parse(JSON.stringify(DOC_EDGES)); edges0[0].label = '<i>starts</i>';
         const { root } = await mount({ items, edges: edges0 });
         const n1 = itemOf(root, 'n1');
+        const n2 = itemOf(root, 'n2');
         out({ title: n1.querySelector('.wb-node-title').textContent,
               badges: n1.querySelectorAll('.wb-node-badge').map((b) => b.textContent),
-              label: edges(root)[0].words, markup: markup(root) });
+              label: edges(root)[0].words, markup: markup(root),
+              marks: ['__start__', 'n1'].map((id) => itemOf(root, id).querySelector('.wb-node-mark').textContent) });
     """ % json.dumps(hostile))
     assert o["title"] == hostile
+    # An outcome is a mark AND a word: a step with no word to say (the start
+    # here, a draft's step) has no lone mark either.
+    assert o["marks"] == ["", "○"]
     assert o["badges"] == ["Sample pinned", "<b>bold</b>"]
     assert o["label"] == "<i>starts</i>"
     assert o["markup"] == [], "no innerHTML with data anywhere in the room"
