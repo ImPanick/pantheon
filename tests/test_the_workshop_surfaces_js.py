@@ -600,8 +600,18 @@ def test_the_task_comes_from_a_box_the_user_can_type_in():
     # Blank is a real choice and the box has to say what it costs, or the
     # server's invented scenario looks like the product ignoring the field.
     assert "Leave blank" in body
-    # `P8-18` where a person will actually meet it.
-    assert "stop halfway" in body
+    # `P8-18` where a person will actually meet it. Since `P22-15` (wf-canvas)
+    # the sentence is one constant (`skillGateNote.js`) that a workflow's Skill
+    # step says too: the panel draws it, and the constant still says it.
+    assert "'<div class=\"skill-test-gate-note\">' + SKILL_GATE_NOTE + '</div>'" in body
+    import subprocess
+    note = ROOT / "static" / "js" / "skillGateNote.js"
+    said = subprocess.run(
+        ["node", "--input-type=module", "-e",
+         f"const m = await import({json.dumps(note.as_uri())}); process.stdout.write(m.SKILL_GATE_NOTE);"],
+        capture_output=True, text=True, timeout=30)
+    assert said.returncode == 0, said.stderr
+    assert "stop halfway" in said.stdout
 
 
 def test_retry_starts_from_the_task_the_last_run_used():
