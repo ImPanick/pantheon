@@ -31,6 +31,7 @@ from services.memory.skill_lint import (
     should_check_retrieval_precision as _should_check_retrieval_precision,
     skill_similarity as _skill_similarity,
 )
+from services.memory.skill_improve import pinned_of as _pinned_of
 from src.auth_helpers import get_current_user
 from src.prompt_security import untrusted_context_message
 from core.middleware import require_admin
@@ -985,11 +986,11 @@ def _apply_skill_md(skills_manager, name: str, md: str, owner, keep: Optional[di
     """Parse + persist an edited SKILL.md. Returns True on success.
 
     `keep` (`P22-23`): fields whose stored value wins over the text's. Improve
-    passes the live skill's lifecycle and visibility here
-    (`skill_improve.PINNED_ON_IMPROVE`), because the text is a model's rewrite
-    of a body anyone could have written, and a body asking to be published must
-    not be able to publish itself (design § 5.4). Callers that pass nothing
-    write what the text says, as before.
+    and the audit (`B1123`) pass the live skill's lifecycle and visibility here
+    (`skill_improve.pinned_of`), because the text is a model's rewrite of a
+    body anyone could have written, and a body asking to be published must not
+    be able to publish itself (design § 5.4). Callers that pass nothing write
+    what the text says, as before — today that is none of them.
     """
     try:
         from services.memory.skill_format import Skill, slugify
@@ -1205,6 +1206,20 @@ async def _audit_one_skill(skills_manager, skill, url, model, headers,
         log(f"{name}: no source — skipped")
         return {"skill": name, "result": "skipped"}
 
+    # `B1123`. Every rewrite below is a model's answer to this skill's own body,
+    # and the body is text anyone could have written (an import, a colleague's
+    # file — design § 5.4's adversary). `_apply_skill_md` with no `keep` wrote
+    # the answer's `status`, `confidence`, `source`, `platforms` and
+    # `requires_toolsets`; `P22-23` pinned them for Improve only. Measured
+    # here, the audit's own decisions did not cover the gap: the status and
+    # confidence it sets afterwards are not set on the approval path (it keeps
+    # "the current state", which the retrieval rewrite had just written from
+    # the text), and nothing ever reset the other three — so a demoted draft
+    # whose rewrite said `source: teacher-escalation` stayed in the catalogue
+    # (`SkillsManager.index_for` lets such drafts through). Read once, from the
+    # skill as it stood before the audit touched it, and handed to all four.
+    keep = _pinned_of(skill)
+
     # Advisory necessity/redundancy check — runs once, independent of the test
     # outcome, and only records a flag the UI surfaces (never deletes/demotes).
     others = []
@@ -1259,7 +1274,7 @@ async def _audit_one_skill(skills_manager, skill, url, model, headers,
                     "summary": rp.get("summary") or "Retrieval metadata is too broad.",
                     "issues": issues,
                 }, "Retrieval audit only: the procedure may work, but matching metadata is too broad.", url, model, headers)
-                if fixed and fixed.strip() != md.strip() and _apply_skill_md(skills_manager, name, fixed, owner):
+                if fixed and fixed.strip() != md.strip() and _apply_skill_md(skills_manager, name, fixed, owner, keep=keep):
                     md = fixed
                     refreshed = next((s for s in skills_manager.load(owner=owner) if s.get("name") == name), None)
                     if refreshed:
@@ -1301,7 +1316,7 @@ async def _audit_one_skill(skills_manager, skill, url, model, headers,
             log(f"{name}: pass, but fixing {len(meta_issues)} metadata issue(s)…")
             fixed = await _improve_skill_md(md, verdict, transcript, url, model, headers)
             if fixed and fixed.strip() != md.strip():
-                _apply_skill_md(skills_manager, name, fixed, owner)
+                _apply_skill_md(skills_manager, name, fixed, owner, keep=keep)
         _set_conf(0.95)
         skills_manager.set_audit(name, "pass", by_teacher=False, worker_model=model, owner=owner)
         refreshed = next((s for s in skills_manager.load(owner=owner) if s.get("name") == name), None)
@@ -1317,7 +1332,7 @@ async def _audit_one_skill(skills_manager, skill, url, model, headers,
     # Self-edit + retry.
     log(f"{name}: self-editing to fix issues…")
     new_md = await _improve_skill_md(md, verdict, transcript, url, model, headers)
-    if new_md and new_md.strip() != md.strip() and _apply_skill_md(skills_manager, name, new_md, owner):
+    if new_md and new_md.strip() != md.strip() and _apply_skill_md(skills_manager, name, new_md, owner, keep=keep):
         md = new_md
         transcript, verdict = await _run_skill_test_once(md, task, url, model, headers, owner)
         v = verdict.get("verdict")
@@ -1340,7 +1355,7 @@ async def _audit_one_skill(skills_manager, skill, url, model, headers,
         t_url, t_model, t_headers = teacher
         log(f"{name}: teacher {t_model} rewriting the skill…")
         t_md = await _improve_skill_md(md, verdict, transcript, t_url, t_model, t_headers)
-        if t_md and t_md.strip() != md.strip() and _apply_skill_md(skills_manager, name, t_md, owner):
+        if t_md and t_md.strip() != md.strip() and _apply_skill_md(skills_manager, name, t_md, owner, keep=keep):
             md = t_md
         # Re-test with the STUDENT model (the model the skill runs under in use).
         transcript, verdict = await _run_skill_test_once(md, task, url, model, headers, owner)

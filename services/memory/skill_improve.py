@@ -38,6 +38,18 @@ from typing import Optional
 PINNED_ON_IMPROVE = ("status", "confidence", "source", "platforms",
                      "requires_toolsets", "owner")
 
+
+def pinned_of(skill: Optional[dict]) -> dict:
+    """The live skill's values for `PINNED_ON_IMPROVE` — `_apply_skill_md`'s `keep`.
+
+    One reading of "what a rewrite may not change", for every door that writes
+    a model's rewrite of a skill (`Law 7`): Improve, and since `B1123` the
+    audit's four rewrites (`routes/skills_routes._audit_one_skill`), which ran
+    the same rewriter over the same untrusted body with no `keep` at all.
+    """
+    skill = skill or {}
+    return {k: skill.get(k) for k in PINNED_ON_IMPROVE if k in skill}
+
 # `metadata:` is the prefix `_improve_skill_md`'s system prompt reads as
 # permission to edit frontmatter. A finding about the category or the tags
 # that arrives without it is a finding that prompt tells the model to leave
@@ -139,8 +151,7 @@ async def improve_from_lint(sm, name: str, owner: Optional[str], *, models=None)
     # reply (`P8-13`).
     if not (fixed or "").strip() or fixed.strip() == md.strip():
         return ImproveResult(ImproveOutcome.NO_REWRITE, name, findings, before)
-    keep = {k: current.get(k) for k in PINNED_ON_IMPROVE if k in current}
-    if not _routes._apply_skill_md(sm, name, fixed, owner, keep=keep):
+    if not _routes._apply_skill_md(sm, name, fixed, owner, keep=pinned_of(current)):
         return ImproveResult(ImproveOutcome.NOT_SAVED, name, findings, before)
 
     library = sm.load(owner=owner)
