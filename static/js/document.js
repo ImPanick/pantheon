@@ -5530,19 +5530,28 @@ import { chevronIcon, playIcon } from './icons.js';
     const handleCaretIntent = (e) => {
       if (e && e.__pantheonEmailCaretHandled) return;
       const now = Date.now();
-      if (e && e.type === 'click' && now - lastCaretToggleAt < 350) {
-        e.preventDefault();
-        e.stopPropagation();
-        e.__pantheonEmailCaretHandled = true;
-        return;
-      }
       const rawTarget = e && e.target;
       const target = rawTarget && rawTarget.nodeType === Node.TEXT_NODE ? rawTarget.parentElement : rawTarget;
       const carets = Array.from(document.querySelectorAll('#doc-email-send-caret'));
       const targetCaret = target && target.closest ? target.closest('#doc-email-send-caret') : null;
       const rectCaret = carets.find((candidate) => _eventInsideElement(e, candidate));
       const caret = targetCaret || rectCaret || null;
+      // `B-NEW` (f-import: the caret cancelled any click for 350 ms). The
+      // window below swallows the caret's OWN trailing `click` — `pointerdown`
+      // already toggled the menu, and a cancelled `pointerdown` suppresses
+      // `mousedown` but not `click`. It used to run before this question, by
+      // time alone, so a click anywhere in the page within 350 ms of a toggle
+      // — the menu item just opened, among others — was cancelled too
+      // (driven under node with the shipped handler: a click at (10, 10)
+      // came back cancelled). A click that is not on the caret is not this
+      // handler's.
       if (!caret) return;
+      if (e && e.type === 'click' && now - lastCaretToggleAt < 350) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.__pantheonEmailCaretHandled = true;
+        return;
+      }
       if (e) {
         e.preventDefault();
         e.stopPropagation();
