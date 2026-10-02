@@ -223,11 +223,113 @@ function defineGlobal(name, value) {
   Object.defineProperty(globalThis, name, { value, writable: true, configurable: true });
 }
 
+/*
+ * `B-NEW` (f-mail: the sandbox gave a `<select>` no browser rules unless a
+ * test opted in). Moved here from `installHtmlParsing` and applied by
+ * `installDom` to every `select` and `option` the page creates, so it is the
+ * default for every sandbox built on this shim. Measured by `f-mail`'s
+ * mutation run (`B1136`): with a plain `Node` a select kept any value assigned
+ * to it — one no option has included — and a case asserting "the saved choice
+ * is chosen" passed with the code that chooses it removed.
+ *
+ * A browser's rules, as far as the modules here use them: `select.value`
+ * follows the selected `option` and, assigned, selects the option with that
+ * value or none (reading `''`); with nothing selected it is the first
+ * option's; `option.selected` deselects its siblings; an `option` with no
+ * `value` has its text as its value; `options`, `selectedIndex` and
+ * `selectedOptions` read the same state. One leniency is kept on purpose: a
+ * select with NO option nodes keeps the value assigned to it, because without
+ * `installHtmlParsing` options written through `innerHTML` are a string, not
+ * nodes, and the shim cannot see them.
+ */
+const optionsOf = (s) => s._walk([]).filter((n) => n.tagName === 'OPTION');
+function selectOf(o) {
+  let s = o.parentNode;
+  while (s && s.tagName !== 'SELECT') s = s.parentNode;
+  return s;
+}
+export function makeOption(o) {
+  let on = false;
+  let own = null;
+  o._setSelected = (v) => { on = !!v; };
+  Object.defineProperty(o, 'selected', {
+    configurable: true, enumerable: true,
+    get() { return on; },
+    set(v) {
+      on = !!v;
+      if (!on) return;
+      const s = selectOf(o);
+      if (!s) return;
+      for (const other of optionsOf(s)) if (other !== o && other._setSelected) other._setSelected(false);
+      if (s._clearMiss) s._clearMiss();
+    },
+  });
+  Object.defineProperty(o, 'value', {
+    configurable: true, enumerable: true,
+    get() {
+      if (own !== null) return own;
+      const attr = o.getAttribute('value');
+      return attr !== null ? attr : String(o.textContent).replace(/\s+/g, ' ').trim();
+    },
+    set(v) { own = String(v == null ? '' : v); },
+  });
+  return o;
+}
+export function makeSelect(s) {
+  let miss = false;
+  let explicit = null;
+  s._clearMiss = () => { miss = false; };
+  const chosen = () => {
+    const all = optionsOf(s);
+    const picked = all.filter((o) => o.selected);
+    if (picked.length) return picked[picked.length - 1];
+    return miss || !all.length ? null : all[0];
+  };
+  Object.defineProperty(s, 'value', {
+    configurable: true, enumerable: true,
+    get() {
+      if (!optionsOf(s).length) return explicit == null ? '' : explicit;
+      const o = chosen();
+      return o ? o.value : '';
+    },
+    set(v) {
+      const want = String(v == null ? '' : v);
+      explicit = want;
+      let hit = false;
+      for (const o of optionsOf(s)) {
+        const yes = !hit && String(o.value) === want;
+        if (o._setSelected) o._setSelected(yes); else o.selected = yes;
+        if (yes) hit = true;
+      }
+      miss = !hit && optionsOf(s).length > 0;
+    },
+  });
+  Object.defineProperty(s, 'options', { configurable: true, get() { return optionsOf(s); } });
+  Object.defineProperty(s, 'selectedOptions', {
+    configurable: true, get() { const o = chosen(); return o ? [o] : []; },
+  });
+  Object.defineProperty(s, 'selectedIndex', {
+    configurable: true,
+    get() { const o = chosen(); return o ? optionsOf(s).indexOf(o) : -1; },
+    set(i) {
+      const all = optionsOf(s);
+      all.forEach((o, k) => { if (o._setSelected) o._setSelected(k === i); });
+      miss = !(i >= 0 && i < all.length);
+    },
+  });
+  return s;
+}
+function browserControl(n) {
+  if (n.tagName === 'SELECT') makeSelect(n);
+  else if (n.tagName === 'OPTION') makeOption(n);
+  return n;
+}
+
 export function installDom() {
   const document = new Node('#document');
   document.head = document.appendChild(new Node('head'));
   document.body = document.appendChild(new Node('body'));
-  document.createElement = (tag) => new Node(tag);
+  document.createElement = (tag) => browserControl(new Node(tag));
   document.createElementNS = (ns, tag) => new Node(tag);
   document.createTextNode = (text) => { const n = new Node('#text'); n.textContent = text; return n; };
   document.createDocumentFragment = () => new Node('#fragment');
@@ -274,11 +376,11 @@ export function installDom() {
  *
  * Scope, so a reader knows what it is not: tags, quoted and bare attributes,
  * the five named entities and numeric ones, void elements, and raw-text
- * elements (`textarea` content becomes its value). `select.value` follows the
- * selected `option` and selects one on assignment; `option.selected` deselects
- * its siblings; an `option` with no `value` takes its text. `closest` and
- * `contains` walk the parent chain. Whitespace-only text between tags is not
- * kept, so `childNodes` of a `select` is its options. Nothing else.
+ * elements (`textarea` content becomes its value). `closest` and `contains`
+ * walk the parent chain. Whitespace-only text between tags is not kept, so
+ * `childNodes` of a `select` is its options — which is what makes the
+ * browser's `select` rules (`makeSelect`, now `installDom`'s default for every
+ * sandbox) apply to a select written as markup. Nothing else.
  */
 export function installHtmlParsing() {
   const VOID = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input',
@@ -294,59 +396,11 @@ export function installHtmlParsing() {
     return v === undefined ? m : v;
   });
 
-  const optionsOf = (s) => s._walk([]).filter((n) => n.tagName === 'OPTION');
-  function makeOption(o) {
-    let on = false;
-    o._setSelected = (v) => { on = !!v; };
-    Object.defineProperty(o, 'selected', {
-      configurable: true, enumerable: true,
-      get() { return on; },
-      set(v) {
-        on = !!v;
-        if (!on) return;
-        let s = o.parentNode;
-        while (s && s.tagName !== 'SELECT') s = s.parentNode;
-        if (!s) return;
-        for (const other of optionsOf(s)) if (other !== o && other._setSelected) other._setSelected(false);
-        if (s._clearMiss) s._clearMiss();
-      },
-    });
-  }
-  function makeSelect(s) {
-    let miss = false;
-    let explicit = null;
-    s._clearMiss = () => { miss = false; };
-    Object.defineProperty(s, 'value', {
-      configurable: true, enumerable: true,
-      get() {
-        const all = optionsOf(s);
-        if (!all.length) return explicit == null ? '' : explicit;
-        const chosen = all.filter((o) => o.selected);
-        if (chosen.length) return chosen[chosen.length - 1].value;
-        return miss ? '' : all[0].value;
-      },
-      set(v) {
-        const want = String(v == null ? '' : v);
-        explicit = want;
-        let hit = false;
-        for (const o of optionsOf(s)) {
-          const yes = !hit && String(o.value) === want;
-          if (o._setSelected) o._setSelected(yes); else o.selected = yes;
-          if (yes) hit = true;
-        }
-        miss = !hit && optionsOf(s).length > 0;
-      },
-    });
-    Object.defineProperty(s, 'options', { configurable: true, get() { return optionsOf(s); } });
-  }
-
+  // `select` and `option` already have a browser's rules (`installDom`).
   const plainCreate = document.createElement;
   document.createElement = (tag) => {
     const n = plainCreate(tag);
-    const t = String(tag).toLowerCase();
-    if (t === 'select') makeSelect(n);
-    else if (t === 'option') makeOption(n);
-    else if (t === 'input') n.checked = false;
+    if (String(tag).toLowerCase() === 'input') n.checked = false;
     return n;
   };
 
