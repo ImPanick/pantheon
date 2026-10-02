@@ -29,6 +29,11 @@ const REAL_MODULES = new Set([
   // for the same reason: `settings.js` imports it at load, and the shell
   // mounts the picker the module builds.
   path.join(JS, 'settings/mcpPresets.js'),
+  // `P22-22`. *Build an MCP server* and *Try a tool*, real for the same
+  // reason: `settings.js` imports the module at load, and its *Try* form is
+  // the one schema form (`workbench/argsForm.js`), which it imports in turn.
+  path.join(JS, 'settings/mcpBuild.js'),
+  path.join(JS, 'workbench/argsForm.js'),
   path.join(JS, 'settings/dom.js'),
   path.join(JS, 'settings/registry.js'),
   path.join(JS, 'settings/search.js'),

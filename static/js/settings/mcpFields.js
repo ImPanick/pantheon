@@ -410,6 +410,39 @@ export function describeServerRefusal(status, body) {
   return { field, text };
 }
 
+/**
+ * `P22-22`. What an *Edit* saved (`PUT /api/mcp/servers/{id}`, `P8-35`), in
+ * words: whether it is connected, and the two lists the route keeps for a
+ * person to read and no page drew — tools the operator had switched off, and
+ * tools they had described or marked, that the edited command no longer
+ * offers. Both are KEPT (re-pointing back must not lose them), and saying so
+ * is the difference between "kept" and "lost" to someone who cannot see the
+ * row. Every name is the server's and is joined as text.
+ */
+export function describeMcpEdit(answer) {
+  const a = answer && typeof answer === 'object' ? answer : {};
+  const lines = [];
+  if (a.connected) {
+    lines.push(`Saved, under the same id. It is connected (${Number(a.tool_count) || 0} tools).`);
+  } else if (a.is_enabled === false) {
+    lines.push('Saved, under the same id. It is switched off, so it was not started.');
+  } else {
+    lines.push('Saved, under the same id, and it is not connected — its state is above.');
+  }
+  const names = (list) => (Array.isArray(list) ? list.map((n) => String(n)) : []);
+  const offList = names(a.stale_disabled_tools);
+  if (offList.length) {
+    lines.push(`It no longer offers ${offList.join(', ')}, which you had switched off for the `
+      + 'assistant. That is kept, in case you point it back.');
+  }
+  const overridden = names(a.stale_tool_overrides);
+  if (overridden.length) {
+    lines.push(`It no longer offers ${overridden.join(', ')}, which you had described or marked `
+      + 'read-only. That is kept too.');
+  }
+  return lines.join(' ');
+}
+
 /** The command line as it will actually be run, for the line under the form. */
 export function formatCommandLine(command, args) {
   const parts = [String(command || '').trim()]
@@ -1043,6 +1076,10 @@ export function createMcpFieldEditor(spec) {
  * The checkbox keeps `data-mcp-tool-name` and its `checked` state, because the
  * save path (`panel.querySelectorAll('input[type=checkbox]')`) reads exactly
  * that and this row is not the place to reorganise it.
+ *
+ * `options.onTry(tool, host)` (`P22-22`) adds *Try* to the closed row: the
+ * first press hands the caller this tool's entry and an empty place under the
+ * row to draw the call form into (`settings/mcpBuild.js:mountToolTry`).
  */
 export function createMcpToolRow(tool, options) {
   const data = tool && typeof tool === 'object' ? tool : {};
@@ -1131,6 +1168,37 @@ export function createMcpToolRow(tool, options) {
     + 'font-size:10px;cursor:pointer;padding:0 2px;flex-shrink:0;white-space:nowrap;';
   toggle.setAttribute('aria-expanded', 'false');
   label.appendChild(toggle);
+
+  // `P22-22`. *Try* — call this tool once with what you type, the call the
+  // agent makes, and read what it said. The row draws the button and the
+  // place; `options.onTry(tool, host)` fills the place (`settings/mcpBuild.js`
+  // `mountToolTry`), so this module draws no form and imports none.
+  let tryHost = null;
+  if (typeof opts.onTry === 'function') {
+    const tryBtn = elem('button', { type: 'button', textContent: 'Try' });
+    tryBtn.className = 'mcp-tool-try-open';
+    tryBtn.setAttribute('data-mcp-try', name);
+    tryBtn.setAttribute('aria-expanded', 'false');
+    tryBtn.title = `Call ${name} once with what you type, and see what it answers`;
+    tryBtn.style.cssText = OVERRIDE_BUTTON_STYLE + 'flex-shrink:0;';
+    label.appendChild(tryBtn);
+    tryHost = elem('div');
+    tryHost.className = 'mcp-tool-try';
+    tryHost.setAttribute('data-mcp-try-host', name);
+    tryHost.style.cssText = 'margin:0 0 8px 26px;';
+    tryHost.style.display = 'none';
+    let mounted = false;
+    tryBtn.addEventListener('click', (event) => {
+      if (event && event.preventDefault) event.preventDefault();
+      const open = tryHost.style.display !== 'none';
+      if (!open && !mounted) {
+        mounted = true;
+        opts.onTry(data, tryHost);
+      }
+      tryHost.style.display = open ? 'none' : 'block';
+      tryBtn.setAttribute('aria-expanded', open ? 'false' : 'true');
+    });
+  }
   entry.appendChild(label);
 
   const detail = elem('div');
@@ -1141,6 +1209,7 @@ export function createMcpToolRow(tool, options) {
   // outside a full CSSOM.
   detail.style.display = 'none';
   entry.appendChild(detail);
+  if (tryHost) entry.appendChild(tryHost);
 
   const closedLabel = `${describeParameters(summary)} \u25b8`;
   toggle.textContent = closedLabel;
@@ -1548,5 +1617,5 @@ export function collectMcpStdioFields(argsField, envField) {
 export default {
   createMcpFieldEditor, parseJsonField, describeServerRefusal, formatCommandLine,
   summariseSchema, describeParameters, describeReadonly, createMcpToolRow,
-  collectMcpStdioFields,
+  collectMcpStdioFields, describeMcpEdit,
 };
