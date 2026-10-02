@@ -31,9 +31,26 @@
 //
 // **Every word that came from a person is text**: names, notes, sentences and
 // run records reach the page through `textContent` and attribute values.
+//
+// **Slice E (`P22-19`, `P22-20`, `P22-24`, wb-canvas-e; `SLICE-EF-DESIGN.md`
+// § 2, § 3 B, contract C-A).** *New workflow* gains *Or describe it* — a box,
+// *Draft it*, and at most six example sentences that fill the box
+// (`D-2026-10-02-02` §1: the palette's `examples`; nothing is installed or
+// fetched) — and *Or open a file…*. Either makes a workflow switched off with
+// every step marked; the room opens it on what arrived: what it sends where
+// (`destinations`) and what is missing (`missing`), each line with its door
+// (`openWorkbench({ room })`, C-R). Switching on while a step is unchecked is
+// refused by the server (409, `reason: "unchecked"`), and that refusal offers
+// *Check them now*: every unchecked step with what it would do, *Looks right*
+// each and *All look right*, then *Switch on*. *Export* downloads the saved
+// workflow as a file. A failed step's *Why did this fail?* lives in its record
+// panel; applying its fix and undoing it are this room's (`fixer`), because
+// the room holds the document. Every word a model wrote — a drafted label, a
+// reason, a missing line — is text.
 
 import { mountCanvas } from './canvas.js';
 import { createWorkflowPanels } from './workflowPanels.js';
+import { needLine, needDoor, NEED_DOORS } from './stepFields.js';
 import { runStatusTone, runStatusLabel } from '../runStatus.js';
 import { registerMenuDismiss } from '../escMenuStack.js';
 
@@ -45,6 +62,42 @@ const RUNS_SHOWN = 30;
 /** Said when a workflow is off — the design's words (§ 6.2). */
 export const OFF_WORDS = 'Switched off — it will not run until you switch it on.';
 export const ON_WORDS = 'On — it runs whenever what starts it happens.';
+/** `P22-19`. At most this many example sentences are offered under *Describe
+ *  it* (`D-2026-10-02-02` §1). */
+export const EXAMPLES_MAX = 6;
+/** `P22-19`, `P22-24`. Who decided the steps of a workflow that arrived. */
+export const ARRIVED_WORDS = Object.freeze({
+  drafted: 'Drafted by the model',
+  imported: 'Imported from a file',
+});
+/** Said over every workflow that arrived: it does nothing until checked. */
+export const ARRIVED_LEDE = 'It is switched off, and each step is marked “check me” until you look at it: open a step '
+  + 'and press Looks right, or press Check them now.';
+/** `P22-24`. What the export says the file holds (C-A's export, design § 1.6). */
+export const EXPORT_WORDS = 'It holds the saved steps and the names of what they use; keys, tokens, addresses and '
+  + 'pinned samples are left out.';
+
+/** `P22-24`. Hand `blob` to the browser as a download named `filename`. */
+function _download(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.hidden = true;
+  document.body.appendChild(a);
+  try {
+    a.click();
+  } finally {
+    a.remove();
+    setTimeout(() => { try { URL.revokeObjectURL(url); } catch (_) { /* gone */ } }, 0);
+  }
+}
+
+/** `P22-19`. The person's time zone, for the drafter's start time; none when
+ *  the browser cannot say. */
+function _timeZone() {
+  try { return Intl.DateTimeFormat().resolvedOptions().timeZone || undefined; } catch (_) { return undefined; }
+}
 
 function _el(tag, cls, text) {
   const n = document.createElement(tag);
@@ -116,6 +169,9 @@ export function mountAutomations(host, opts = {}) {
     tasksCanvas: null,
     wf: null,            // { id, source, canvas, tab, runs, runSource, runCanvas, runId, failFocus, failSentence }
     asking: null, versions: null, newForm: null,
+    // `P22-19`, `P22-24`. The open check layer, the arrival box, and the
+    // example sentences (read once, from the palette).
+    checking: null, arrived: null, examples: null, making: false,
   };
 
   // ── the skeleton ─────────────────────────────────────────────────────────
@@ -147,6 +203,41 @@ export function mountAutomations(host, opts = {}) {
   newRow.appendChild(newCancel);
   newForm.appendChild(newLabel);
   newForm.appendChild(newRow);
+  // `P22-19`. *Or describe it*: the model drafts the steps.
+  const describeGroup = _el('div', 'wf-new-describe');
+  const describeLabel = _el('label', 'wf-new-field');
+  describeLabel.appendChild(_el('span', 'wf-new-label', 'Or describe it'));
+  const describeBox = _el('textarea', 'wf-new-text');
+  describeBox.rows = 4;
+  describeBox.placeholder = 'When it starts, and each thing it does — e.g. every morning at 8, summarise my unread mail and send it to me';
+  describeLabel.appendChild(describeBox);
+  describeGroup.appendChild(describeLabel);
+  const draftGo = _button('wf-new-draft', 'Draft it',
+    'The model drafts the steps from what this Pantheon can reach. It is made switched off, and you check each step before it can run.');
+  const draftRow = _el('div', 'wf-new-buttons');
+  draftRow.appendChild(draftGo);
+  describeGroup.appendChild(draftRow);
+  const examples = _el('div', 'wf-new-examples');
+  examples.setAttribute('role', 'group');
+  examples.setAttribute('aria-label', 'Start from an example');
+  examples.hidden = true;
+  describeGroup.appendChild(examples);
+  // `P22-24`. *Or open a file…*: a workflow someone exported.
+  const fileGroup = _el('div', 'wf-new-file-group');
+  const fileBtn = _button('wf-new-file', 'Or open a file…',
+    'Import a workflow someone exported. It is made switched off, and you check each step before it can run.');
+  const fileInput = _el('input', 'wf-new-file-input');
+  fileInput.type = 'file';
+  fileInput.accept = '.json,application/json';
+  fileInput.hidden = true;
+  fileInput.setAttribute('aria-hidden', 'true');
+  fileInput.tabIndex = -1;
+  fileGroup.appendChild(fileBtn);
+  fileGroup.appendChild(fileInput);
+  const newSay = _el('p', 'wf-new-say');
+  newSay.setAttribute('role', 'status');
+  newSay.setAttribute('aria-live', 'polite');
+  for (const n of [describeGroup, fileGroup, newSay]) newForm.appendChild(n);
   const shelfNote = _el('p', 'wf-shelf-note');
   shelfNote.setAttribute('role', 'status');
   // At phone width the shelf is one row at the top — this select and *New
@@ -195,6 +286,8 @@ export function mountAutomations(host, opts = {}) {
     'Resume the chain this workflow was made from, and switch this workflow off. Nothing is deleted.');
   chainBtn.hidden = true;
   const runBtn = _button('wf-run-now', 'Run now', 'Run the saved workflow once, now');
+  // `P22-24`. The saved workflow as a file.
+  const exportBtn = _button('wf-export', 'Export', 'Download the saved workflow as a file to hand someone. ' + EXPORT_WORDS);
   const dryBtn = _button('wf-dry', 'Show me what this would do',
     'Plans a run of the saved workflow and shows the plan on the canvas. Nothing runs and nothing changes.');
   const tabs = _el('div', 'wf-tabs');
@@ -216,7 +309,7 @@ export function mountAutomations(host, opts = {}) {
   switchGroup.appendChild(switchWord);
   switchGroup.appendChild(chainBtn);
   const runGroup = _el('span', 'wf-bar-group');
-  for (const n of [versionsBtn, runBtn, dryBtn]) runGroup.appendChild(n);
+  for (const n of [versionsBtn, runBtn, dryBtn, exportBtn]) runGroup.appendChild(n);
   for (const n of [nameGroup, switchGroup, runGroup, tabs]) bar.appendChild(n);
 
   const viewing = _el('div', 'wf-viewing');
@@ -321,7 +414,34 @@ export function mountAutomations(host, opts = {}) {
     // `P22-17` (wf-canvas). A waiting step answered from its record: the run
     // is drawn again, and the list says how it stands now.
     onAnswered: (info) => answered(info),
+    // `P22-20` (wb-canvas-e). A fix is applied to the document, which this
+    // room holds; a run's record panel holds only the run.
+    fixer: {
+      apply: (proposal) => applyFix(proposal),
+      undo: (version) => undoFix(version),
+      runAgain: () => runNow(),
+    },
+    // `P22-24`. The door beside what a step needs.
+    openRoom: (room) => openRoom(room),
   });
+
+  /** `P22-24`. Open the Workbench at `room` (C-R: `openWorkbench({ room })`,
+   *  wb-rooms' — the rooms are kept when another is shown, so this room's
+   *  draft survives). `workbench.js` is reached through `import()` with the
+   *  spelling every other door uses, so it is the page's one instance. */
+  function openRoom(room) {
+    const load = typeof opts.loadWorkbench === 'function' ? opts.loadWorkbench : () => import('./workbench.js');
+    return Promise.resolve().then(() => load()).then((m) => {
+      const open = m && (typeof m.openWorkbench === 'function' ? m.openWorkbench
+        : (m.default && typeof m.default.openWorkbench === 'function' ? m.default.openWorkbench : null));
+      if (!open) throw new Error('no door');
+      open({ room: String(room) });
+      return true;
+    }).catch(() => {
+      if (!R.destroyed) say(`${NEED_DOORS[room] ? NEED_DOORS[room].replace(/^Open /, '') : 'That room'} could not be opened here.`, { refusal: true });
+      return false;
+    });
+  }
 
   function stateOf(source) {
     if (!source || typeof source.state !== 'function') return {};
@@ -571,6 +691,8 @@ export function mountAutomations(host, opts = {}) {
     const w = R.wf;
     closeVersions();
     closeAsk();
+    closeCheck();
+    closeArrived();
     if (!w) return;
     teardownRun();
     if (w.canvas) { try { w.canvas.destroy(); } catch (_) { /* gone */ } }
@@ -590,7 +712,7 @@ export function mountAutomations(host, opts = {}) {
   /** Open workflow `id` (no question asked — callers ask through
    *  `guardLeave`). `notes` are the server's own sentences to say once it is
    *  drawn (what was made, what was paused). */
-  async function showWorkflow(id, { notes = null, focusName = false } = {}) {
+  async function showWorkflow(id, { notes = null, focusName = false, arrived = null } = {}) {
     const mods = await ensureMods();
     if (R.destroyed) return false;
     if (!mods) {
@@ -632,6 +754,7 @@ export function mountAutomations(host, opts = {}) {
     if (R.destroyed || R.wf !== w) return false;
     const words = (Array.isArray(notes) ? notes : []).map(String).filter(Boolean).join(' ');
     if (words) say(words);
+    if (arrived) drawArrived(arrived);
     if (focusName) { nameInput.focus(); if (typeof nameInput.select === 'function') nameInput.select(); }
     return true;
   }
@@ -684,7 +807,9 @@ export function mountAutomations(host, opts = {}) {
     if (v != null) {
       viewingText.textContent = `You are looking at version ${v}. It cannot be changed here.`;
     }
-    for (const b of [saveBtn, switchBtn, runBtn, dryBtn]) b.disabled = v != null;
+    for (const b of [saveBtn, switchBtn, runBtn, dryBtn, exportBtn]) b.disabled = v != null;
+    // `P22-24`. Offered only where the data layer can export (C-A).
+    exportBtn.hidden = !(R.api && typeof R.api.exportWorkflow === 'function');
     nameInput.readOnly = v != null;
   }
 
@@ -771,7 +896,16 @@ export function mountAutomations(host, opts = {}) {
     if (R.destroyed || R.wf !== w) return null;
     switchBtn.disabled = false;
     if (err || (reply && reply.ok === false)) {
-      say(`Not switched ${on ? 'on' : 'off'}: ${_sentence(err || reply, 'the server refused')}`, { refusal: true });
+      const why = err || reply;
+      // `P22-19`. Switching on while a step is unchecked is refused (C-A: 409,
+      // `reason: "unchecked"`, `node_ids`); the refusal is said as the server
+      // wrote it, and offers the check.
+      const unchecked = on && why.reason === 'unchecked';
+      const ids = Array.isArray(why.nodeIds) ? why.nodeIds.map(String) : [];
+      say(`Not switched ${on ? 'on' : 'off'}: ${_sentence(why, 'the server refused')}`, {
+        refusal: true,
+        action: unchecked ? { label: 'Check them now', run: () => openCheck(ids) } : null,
+      });
       syncBar();
       return null;
     }
@@ -858,6 +992,7 @@ export function mountAutomations(host, opts = {}) {
     w.canvas.dryRun(null, { title: wfName(w.source) });
   }
 
+  exportBtn.addEventListener('click', () => exportIt());
   saveBtn.addEventListener('click', () => save());
   switchBtn.addEventListener('click', () => toggleSwitch());
   chainBtn.addEventListener('click', () => restoreChain());
@@ -875,7 +1010,12 @@ export function mountAutomations(host, opts = {}) {
     if (restoreFocus) versionsBtn.focus();
   }
 
-  const SOURCE_WORDS = { user: 'saved', converted: 'made from a chain', restored: 'an older version put back' };
+  // `P22-19`, `P22-20`, `P22-24`: the three sources Slice E adds (C-A's
+  // `version.source`), each in the words of what made it.
+  const SOURCE_WORDS = {
+    user: 'saved', converted: 'made from a chain', restored: 'an older version put back',
+    drafted: 'drafted by the model', imported: 'imported from a file', fixed: 'a fix you applied',
+  };
 
   async function openVersions() {
     const w = R.wf;
@@ -1205,12 +1345,432 @@ export function mountAutomations(host, opts = {}) {
     newWfBtn.hidden = true;
     newForm.hidden = false;
     newName.value = '';
+    newSay.textContent = '';
+    newSay.classList.remove('wf-new-refusal');
+    // `P22-19`, `P22-24`. Offered where the data layer can make a workflow
+    // that arrives marked AND take its checks (C-A): a describe or a file
+    // sent to a data layer without them would make an empty workflow.
+    const can = canArrive();
+    describeGroup.hidden = !can;
+    fileGroup.hidden = !can;
+    if (can) loadExamples();
     R.newForm = { release: holdEscape(() => { R.newForm = null; newForm.hidden = true; newWfBtn.hidden = false; newWfBtn.focus(); }) };
     newName.focus();
   }
 
+  /** `P22-19`, `P22-24`. Whether the data layer has C-A's calls. */
+  const canArrive = () => !!(R.api && typeof R.api.checkSteps === 'function');
+
+  /** `P22-19` (`D-2026-10-02-02` §1). The example sentences under *Describe
+   *  it*: the palette's `examples` (served by the drafter's package), at most
+   *  six; picking one fills the box — nothing is sent, installed or fetched. */
+  async function loadExamples() {
+    if (R.examples == null) {
+      R.examples = [];
+      if (R.api && typeof R.api.getPalette === 'function') {
+        try {
+          const p = await R.api.getPalette();
+          const list = p && Array.isArray(p.examples) ? p.examples : [];
+          R.examples = list.map((x) => String(x == null ? '' : x).trim()).filter(Boolean).slice(0, EXAMPLES_MAX);
+        } catch (_) { R.examples = []; }
+      }
+      if (R.destroyed) return;
+    }
+    examples.replaceChildren();
+    if (!R.examples.length) { examples.hidden = true; return; }
+    examples.appendChild(_el('p', 'wf-new-label', 'Start from an example'));
+    const ul = _el('ul', 'wf-new-example-list');
+    for (const text of R.examples) {
+      const li = _el('li', null);
+      const b = _button('wf-new-example', text, 'Put this sentence in the box. Nothing is drafted until you press Draft it.');
+      b.addEventListener('click', () => {
+        describeBox.value = text;
+        describeBox.focus();
+        newSay.textContent = '';
+      });
+      li.appendChild(b);
+      ul.appendChild(li);
+    }
+    examples.appendChild(ul);
+    examples.hidden = false;
+  }
+
+  function newSays(text, refusal = false) {
+    newSay.textContent = text || '';
+    newSay.classList.toggle('wf-new-refusal', !!refusal);
+  }
+
+  function making(on) {
+    R.making = !!on;
+    for (const b of [newGo, draftGo, fileBtn]) b.disabled = !!on;
+    describeBox.readOnly = !!on;
+  }
+
+  /** `P22-19`. *Draft it*: C-A's create door with `{ describe, tz }`. The
+   *  model's answer is made switched off and marked, or refused in the
+   *  server's words (no model; a draft that could not be used). */
+  async function draftIt() {
+    if (!R.api || R.making) return;
+    const text = describeBox.value.trim();
+    if (!text) {
+      newSays('Say what it should do first: when it starts, and each thing it does.', true);
+      describeBox.focus();
+      return;
+    }
+    making(true);
+    newSays('Drafting… the model is writing the steps. This can take a minute.');
+    let reply = null;
+    let err = null;
+    try { reply = await R.api.createWorkflow({ describe: text, tz: _timeZone() }); } catch (e) { err = e; }
+    if (R.destroyed) return;
+    making(false);
+    if (err || !reply || !reply.workflow) {
+      newSays(`Not drafted: ${_sentence(err, 'the server answered without a workflow')}`, true);
+      return;
+    }
+    describeBox.value = '';
+    await arrive(reply, 'drafted');
+  }
+
+  /** `P22-24`. *Or open a file…*: the file is read here and handed to C-A's
+   *  create door as `{ file }`; the server checks it and says what this
+   *  Pantheon is missing. A file that is not JSON is said here. */
+  async function openFile() {
+    const f = fileInput.files && fileInput.files[0];
+    if (!f || !R.api || R.making) return;
+    const name = String(f.name || 'That file');
+    let data;
+    try {
+      data = JSON.parse(await f.text());
+    } catch (_) {
+      newSays(`“${name}” is not a workflow file: it is not JSON. Nothing was made.`, true);
+      try { fileInput.value = ''; } catch (_) { /* a fresh pick works either way */ }
+      return;
+    }
+    try { fileInput.value = ''; } catch (_) { /* as above */ }
+    making(true);
+    newSays(`Opening “${name}”…`);
+    let reply = null;
+    let err = null;
+    try { reply = await R.api.createWorkflow({ file: data }); } catch (e) { err = e; }
+    if (R.destroyed) return;
+    making(false);
+    if (err || !reply || !reply.workflow) {
+      newSays(`Not imported: ${_sentence(err, 'the server answered without a workflow')}`, true);
+      return;
+    }
+    await arrive(reply, 'imported');
+  }
+
+  /** A drafted or imported workflow is made: open it on what arrived. */
+  async function arrive(reply, origin) {
+    closeNewForm();
+    await refreshShelf();
+    if (R.destroyed) return;
+    const arrived = {
+      origin,
+      missing: (Array.isArray(reply.missing) ? reply.missing : []).map((x) => String(x == null ? '' : x)).filter(Boolean),
+      destinations: (Array.isArray(reply.destinations) ? reply.destinations : []).map((x) => String(x == null ? '' : x)).filter(Boolean),
+    };
+    guardLeave(() => { showWorkflow(reply.workflow.id, { notes: reply.notes, arrived }); });
+  }
+
+  // ── what arrived (`P22-19`, `P22-24`) ────────────────────────────────────
+  function closeArrived() {
+    const a = R.arrived;
+    if (!a) return;
+    R.arrived = null;
+    a.remove();
+  }
+
+  /** A `missing` line's need, if one of the marked steps' needs is named in
+   *  it verbatim (the server's sentence names what it could not find — C-A
+   *  gives the line no kind, so its door is the need's). → `{ step, need }` */
+  function needOfLine(line, pool) {
+    const said = (x) => { const t = String(x == null ? '' : x).trim(); return t.length > 1 && line.includes(t); };
+    const fits = pool.filter((p) => !p.used && (said(p.need.name) || said(p.need.tool) || said(p.need.server)));
+    const best = fits.find((p) => said(p.step.label)) || fits[0] || null;
+    if (best) best.used = true;
+    return best;
+  }
+
+  function drawArrived({ origin = 'drafted', missing = [], destinations = [] } = {}) {
+    closeArrived();
+    const w = R.wf;
+    if (!w) return;
+    const o = Object.prototype.hasOwnProperty.call(ARRIVED_WORDS, origin) ? origin : 'drafted';
+    const box = _el('section', 'wf-arrived');
+    box.dataset.origin = o;
+    box.setAttribute('aria-label', ARRIVED_WORDS[o]);
+    box.appendChild(_el('p', 'wf-arrived-head', ARRIVED_WORDS[o]));
+    box.appendChild(_el('p', 'wf-arrived-lede', ARRIVED_LEDE));
+    if (destinations.length) {
+      box.appendChild(_el('p', 'wf-arrived-sub', 'Where it sends things:'));
+      const ul = _el('ul', 'wf-arrived-destinations');
+      for (const line of destinations) ul.appendChild(_el('li', null, line));
+      box.appendChild(ul);
+    }
+    if (missing.length) {
+      box.appendChild(_el('p', 'wf-arrived-sub', o === 'imported'
+        ? 'What this Pantheon is missing:' : 'What the model could not draft:'));
+      const marks = typeof w.source.marked === 'function' ? w.source.marked() : [];
+      const pool = [];
+      for (const step of marks) for (const need of step.needs) pool.push({ step, need, used: false });
+      const ul = _el('ul', 'wf-arrived-missing');
+      for (const line of missing) {
+        const li = _el('li', 'wf-arrived-line');
+        li.appendChild(_el('span', 'wf-arrived-text', line));
+        const hit = needOfLine(line, pool);
+        if (hit) {
+          li.dataset.nodeId = hit.step.id;
+          const room = needDoor(hit.need);
+          if (room) {
+            const door = _button('wf-arrived-door', NEED_DOORS[room]);
+            door.dataset.room = room;
+            door.addEventListener('click', () => openRoom(room));
+            li.appendChild(door);
+          }
+          const show = _button('wf-arrived-show', 'Show the step');
+          show.setAttribute('aria-label', `Show “${hit.step.label}”`);
+          show.addEventListener('click', () => showStep(hit.step.id));
+          li.appendChild(show);
+        }
+        ul.appendChild(li);
+      }
+      box.appendChild(ul);
+    }
+    const row = _el('div', 'wf-arrived-buttons');
+    const check = _button('wf-arrived-check', 'Check them now');
+    check.addEventListener('click', () => openCheck(null));
+    const close = _button('wf-arrived-close', 'Close');
+    close.addEventListener('click', () => closeArrived());
+    row.appendChild(check);
+    row.appendChild(close);
+    box.appendChild(row);
+    view.insertBefore(box, viewing);
+    R.arrived = box;
+  }
+
+  /** Open step `id` on the canvas (its panel, with its banner). */
+  function showStep(id) {
+    const w = R.wf;
+    if (!w || !w.canvas) return;
+    if (w.tab !== 'edit') setTab('edit', { quiet: true });
+    w.canvas.select(String(id));
+    w.canvas.focusChain(String(id));
+  }
+
+  // ── Check them now (`P22-19`) ────────────────────────────────────────────
+  function closeCheck(restoreFocus) {
+    const c = R.checking;
+    if (!c) return;
+    R.checking = null;
+    c.alive = false;
+    c.release();
+    c.box.remove();
+    if (restoreFocus) switchBtn.focus();
+  }
+
+  /** The layer: every step nobody has checked (`nodeIds` — the server's
+   *  refusal names them — or, without, every marked step of the saved
+   *  document), each with what it needs, what it would do, *Open it* and
+   *  *Looks right*; *All look right* sends the rest at once. Once none is
+   *  left it offers *Switch on*. */
+  function openCheck(nodeIds = null) {
+    const w = R.wf;
+    if (!w || !w.source) return;
+    closeCheck();
+    closeVersions();
+    if (w.tab !== 'edit') setTab('edit', { quiet: true });
+    const all = typeof w.source.marked === 'function' ? w.source.marked() : [];
+    const ids = Array.isArray(nodeIds) && nodeIds.length ? nodeIds.map(String) : all.map((m) => m.id);
+    const docNodes = (docOf(w.source).graph && Array.isArray(docOf(w.source).graph.nodes)) ? docOf(w.source).graph.nodes : [];
+    const steps = ids.map((id) => all.find((m) => m.id === id) || {
+      id, label: String(((docNodes.find((n) => n && String(n.id) === id) || {}).label) || id),
+      origin: 'drafted', needs: [], changed: false,
+    });
+    const C = { box: null, release: () => {}, alive: true, rows: new Map() };
+    const box = _el('section', 'wf-check');
+    box.setAttribute('role', 'dialog');
+    box.setAttribute('aria-label', 'Check them now');
+    box.appendChild(_el('p', 'wf-check-head', 'Check them now'));
+    const lede = _el('p', 'wf-check-lede');
+    box.appendChild(lede);
+    if (stateOf(w.source).dirty) {
+      box.appendChild(_el('p', 'wf-check-note', 'You have changes that are not saved: this checks the steps as they are saved.'));
+    }
+    const ul = _el('ul', 'wf-check-list');
+    for (const st of steps) {
+      const li = _el('li', 'wf-check-step');
+      li.dataset.nodeId = st.id;
+      const name = _el('p', 'wf-check-name');
+      name.appendChild(_el('span', 'wf-check-label', st.label));
+      name.appendChild(_el('span', 'wf-check-origin', ARRIVED_WORDS[st.origin] || ARRIVED_WORDS.drafted));
+      li.appendChild(name);
+      for (const need of st.needs || []) li.appendChild(needLine(need, { openRoom, cls: 'wf-check-need' }));
+      if (st.changed) {
+        li.appendChild(_el('p', 'wf-check-note', 'You changed this step. Save, and it is yours: it needs no check.'));
+      }
+      const plan = _el('ul', 'wf-check-plan');
+      plan.appendChild(_el('li', 'wf-check-wait', 'Planning…'));
+      li.appendChild(plan);
+      const buttons = _el('div', 'wf-check-buttons');
+      const open = _button('wf-check-open', 'Open it');
+      open.setAttribute('aria-label', `Open “${st.label}”`);
+      open.addEventListener('click', () => { closeCheck(); showStep(st.id); });
+      const yes = _button('wf-check-yes', 'Looks right');
+      yes.setAttribute('aria-label', `“${st.label}” looks right`);
+      yes.addEventListener('click', () => checkThese([st.id]));
+      buttons.appendChild(open);
+      buttons.appendChild(yes);
+      li.appendChild(buttons);
+      const said = _el('p', 'wf-check-said');
+      said.setAttribute('role', 'status');
+      li.appendChild(said);
+      ul.appendChild(li);
+      C.rows.set(st.id, { li, plan, buttons, said, done: false, label: st.label });
+    }
+    box.appendChild(ul);
+    const foot = _el('div', 'wf-check-foot');
+    box.appendChild(foot);
+    C.box = box;
+    R.checking = C;
+
+    function left() { return [...C.rows.entries()].filter(([, r]) => !r.done).map(([id]) => id); }
+    function drawFoot() {
+      const n = left().length;
+      lede.textContent = n
+        ? `${n} step${n === 1 ? '' : 's'} nobody has checked yet. Read what each would do, then press Looks right — `
+          + 'or open it and change it, which makes it yours.'
+        : 'Every step is checked.';
+      const kids = [];
+      if (n) {
+        const allYes = _button('wf-check-all', 'All look right');
+        allYes.addEventListener('click', () => checkThese(left()));
+        kids.push(allYes);
+      } else {
+        const on = _button('wf-check-switch', 'Switch on');
+        on.addEventListener('click', () => { closeCheck(); toggleSwitch(true); });
+        kids.push(on);
+      }
+      const close = _button('wf-check-close', 'Close');
+      close.addEventListener('click', () => closeCheck(true));
+      kids.push(close);
+      foot.replaceChildren(...kids);
+    }
+
+    async function checkThese(list) {
+      const todo = list.filter((id) => C.rows.has(id) && !C.rows.get(id).done);
+      if (!todo.length) return;
+      for (const id of todo) { C.rows.get(id).buttons.querySelectorAll('button').forEach((b) => { b.disabled = true; }); }
+      const r = await w.source.checkSteps(todo);
+      if (!C.alive || R.destroyed || R.wf !== w) return;
+      if (!r || r.ok === false) {
+        for (const id of todo) {
+          const row = C.rows.get(id);
+          row.buttons.querySelectorAll('button').forEach((b) => { b.disabled = false; });
+          row.said.textContent = `Not checked: ${_sentence(r, 'the server refused').replace(/\.$/, '')}.`;
+        }
+        return;
+      }
+      for (const id of todo) {
+        const row = C.rows.get(id);
+        row.done = true;
+        row.li.dataset.checked = 'true';
+        row.buttons.remove();
+        row.said.textContent = 'Checked.';
+      }
+      if (w.canvas) await w.canvas.reload();
+      if (!C.alive || R.destroyed || R.wf !== w) return;
+      drawFoot();
+      if (!left().length) {
+        const on = foot.querySelector('.wf-check-switch');
+        if (on) on.focus();
+      }
+    }
+
+    drawFoot();
+    view.insertBefore(box, viewing);
+    C.release = holdEscape(() => { if (R.checking === C) { R.checking = null; C.alive = false; box.remove(); switchBtn.focus(); } });
+    const first = box.querySelector('.wf-check-yes') || box.querySelector('button');
+    if (first) first.focus();
+
+    // What each would do: the saved version's dry-run plan, once.
+    if (typeof w.source.planLines === 'function') {
+      w.source.planLines().then((p) => {
+        if (!C.alive) return;
+        for (const [id, row] of C.rows) {
+          if (!p || p.ok === false) {
+            row.plan.replaceChildren(_el('li', 'wf-check-wait',
+              `It could not be planned: ${_sentence(p, 'no answer').replace(/\.$/, '')}.`));
+            continue;
+          }
+          const lines = p.plans.get(id);
+          if (!lines) { row.plan.replaceChildren(_el('li', 'wf-check-wait', 'The plan did not reach this step.')); continue; }
+          row.plan.replaceChildren(...(lines.length ? lines : ['It would do nothing.']).map((l) => _el('li', null, l)));
+        }
+      });
+    }
+  }
+
+  // ── a fix, its undo, and the file (`P22-20`, `P22-24`) ───────────────────
+  /** `P22-20`. *Apply*: the proposal on the document (C-A's fix route, with
+   *  the version it was proposed on), saved as a new version. */
+  async function applyFix(proposal) {
+    const w = R.wf;
+    if (!w || !w.source || typeof w.source.fix !== 'function' || !proposal) {
+      return { ok: false, sentence: 'The workflow is not open, so nothing was applied.' };
+    }
+    const r = await w.source.fix(proposal.node_id, { config: proposal.config, baseVersion: proposal.base_version });
+    if (R.destroyed || R.wf !== w || !r || r.ok === false) return r;
+    if (w.canvas) await w.canvas.reload();
+    justSaved = true;
+    syncBar();
+    refreshShelf();
+    return { ok: true, undoVersion: r.undoVersion, version: r.version,
+      sentence: r.version != null ? `Applied as version ${r.version}.` : 'Applied.' };
+  }
+
+  /** `P22-20`. *Undo*: the version the fix was made on, put back
+   *  (`restoreVersion`, source `restored`) — nothing is lost. */
+  async function undoFix(version) {
+    const w = R.wf;
+    if (!w || !w.source) return { ok: false, sentence: 'The workflow is not open, so nothing was undone.' };
+    const r = await w.source.restoreVersion(version);
+    if (R.destroyed || R.wf !== w || !r || r.ok === false) return r;
+    if (w.canvas) await w.canvas.reload();
+    justSaved = true;
+    syncBar();
+    refreshShelf();
+    const doc = docOf(w.source);
+    return { ok: true, sentence: `Undone: version ${version} is back`
+      + `${doc && doc.version != null ? `, saved as version ${doc.version}` : ''}. The fix is still in Versions….` };
+  }
+
+  /** `P22-24`. *Export*: the saved workflow, downloaded as a file. */
+  async function exportIt() {
+    const w = R.wf;
+    if (!w || !w.source || typeof w.source.exportFile !== 'function') return;
+    exportBtn.disabled = true;
+    let r = null;
+    try { r = await w.source.exportFile(); } catch (e) { r = { ok: false, sentence: _sentence(e, '') }; }
+    if (R.destroyed || R.wf !== w) return;
+    exportBtn.disabled = false;
+    if (!r || r.ok === false) {
+      say(`Not exported: ${_sentence(r, 'the server refused')}`, { refusal: true });
+      return;
+    }
+    try {
+      _download(r.blob, r.filename);
+    } catch (e) {
+      say(`Not downloaded: ${_sentence(e, 'the browser refused')}`, { refusal: true });
+      return;
+    }
+    say(`Downloaded “${r.filename}”. ${EXPORT_WORDS}${r.unsaved ? ' Your unsaved changes are not in it.' : ''}`);
+  }
+
   async function makeNew() {
-    if (!R.api) return;
+    if (!R.api || R.making) return;
     const name = newName.value.trim();
     newGo.disabled = true;
     let reply = null;
@@ -1229,6 +1789,9 @@ export function mountAutomations(host, opts = {}) {
 
   newWfBtn.addEventListener('click', () => guardLeave(() => openNewForm()));
   newGo.addEventListener('click', () => makeNew());
+  draftGo.addEventListener('click', () => draftIt());
+  fileBtn.addEventListener('click', () => { if (typeof fileInput.click === 'function') fileInput.click(); });
+  fileInput.addEventListener('change', () => openFile());
   newCancel.addEventListener('click', () => { closeNewForm(); newWfBtn.focus(); });
   newName.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); makeNew(); } });
 
@@ -1308,6 +1871,7 @@ export function mountAutomations(host, opts = {}) {
     if (R.destroyed) return;
     R.destroyed = true;
     closeNewForm();
+    closeCheck();
     teardownWorkflow();
     leaveTasksView();
     host.replaceChildren();
@@ -1353,4 +1917,6 @@ export function mountAutomations(host, opts = {}) {
   };
 }
 
-export default { mountAutomations, runWords, isDryRun, isOn, OFF_WORDS, ON_WORDS };
+export default {
+  mountAutomations, runWords, isDryRun, isOn, OFF_WORDS, ON_WORDS, EXAMPLES_MAX, ARRIVED_WORDS, ARRIVED_LEDE, EXPORT_WORDS,
+};

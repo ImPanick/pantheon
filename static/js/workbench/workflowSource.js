@@ -61,6 +61,24 @@
 // is waiting (`P22-11`, `P22-17`) names its waiting step in `state().waiting`,
 // and its question is answered through `answer()` (`POST …/answer`,
 // `approve_task` or `deny`).
+//
+// **Slice E (`P22-19`, `P22-20`, `P22-24`, wb-canvas-e; `SLICE-EF-DESIGN.md`
+// § 1.1, § 2, contract C-A).** A step the model drafted or a file brought in
+// carries the server's mark (`node.unchecked = { origin, at, needs }`) until a
+// person says it looks right. The mark is the SAVED document's — the server
+// keeps it, a save can neither set nor clear it, and a step the person changed
+// loses it on Save (`_marks_kept`) — so it is drawn from the saved node, and
+// only while the draft's step still reads as that node does: a step changed
+// here is the person's, as it will be once saved. Drawn as words on the step
+// ("Drafted — check me"), the step's `unchecked` origin for its dashed border,
+// and handed to its panel (`check`) with its `needs`, what it would do and
+// *Looks right* (`checkSteps`, C-A's `PUT {checked}`, which writes no version).
+// What a step would do is the dry run's plan of the saved version — the one
+// planner (`plan_lines`), the existing door, which plans a marked step
+// (design § 1.1) — asked once per saved version (`planLines`). A run's failed
+// step can be explained (`explain`, C-A's explain route) and a proposed change
+// applied as a new version (`fix`, source `fixed`) and undone with
+// `restoreVersion`. The saved workflow is a file (`exportFile`).
 
 import { EDGE_WORDS, KIND_WORDS, PORT_WORDS, ONLY_WAY_WORD, waitingWords } from '../tasks/workflowDiagram.js';
 import { runStatusTone, runStatusLabel } from '../runStatus.js';
@@ -175,6 +193,25 @@ export const RUN_WORDS = Object.freeze({
   loadFailed: 'This run could not be loaded. Close the Workbench and open it again to retry.',
 });
 
+/** `P22-19`, `P22-24`. The words on a step nobody has checked yet, by the
+ *  mark's `origin` (stored words, C-A: `drafted` | `imported`). */
+export const MARK_WORDS = Object.freeze({
+  drafted: 'Drafted — check me',
+  imported: 'Imported — check me',
+});
+/** The origin of a mark, read safely: a known word, else `drafted` (a mark the
+ *  server set is a mark whatever its origin says — fails closed). */
+export function markOrigin(unchecked) {
+  const o = unchecked && typeof unchecked === 'object' ? String(unchecked.origin || '') : '';
+  return Object.prototype.hasOwnProperty.call(MARK_WORDS, o) ? o : 'drafted';
+}
+/** A mark's `needs`, as the server wrote them (`[{ field, name, preset?,
+ *  server?, tool? }]`), keeping only entries that are objects. */
+export function needsOf(unchecked) {
+  const n = unchecked && typeof unchecked === 'object' && Array.isArray(unchecked.needs) ? unchecked.needs : [];
+  return n.filter((x) => x && typeof x === 'object').map((x) => ({ ...x }));
+}
+
 const STARTS_LABEL = 'starts';
 /** `P22-13`…`P22-18`. What the canvas says under a step, by kind: one short
  *  line of what it does, from its own settings. */
@@ -274,6 +311,9 @@ export function createWorkflowSource({
     // none to serve (the panels then offer Slice B's four kinds); and the
     // steps added in this draft whose id still follows their first label.
     palette: null, paletteError: null, fresh: new Set(),
+    // `P22-19`. What each step of the saved version would do, from its dry
+    // run: `{ version, promise }`, asked once per saved version.
+    plans: null,
   };
   const isRun = mode === 'run';
   const describe = (task) => {
@@ -293,6 +333,34 @@ export function createWorkflowSource({
   const savedNode = (id) => nodesOf(S.doc && S.doc.graph).find((n) => String(n.id) === String(id)) || null;
   const shownNode = (id) => nodesOf(shown()).find((n) => String(n.id) === String(id)) || null;
   const taskById = (id) => S.tasks.find((t) => String(t.id) === String(id)) || null;
+
+  /** `P22-19`, `P22-24`. Step `id`'s mark, as `{ origin, needs, at }`, or
+   *  null: the saved node's, while the draft's step still reads as it (its
+   *  kind, label and settings — the server's `_marks_kept` rule). Never on a
+   *  run or a kept version: their graphs carry no marks (`version_graph`). */
+  function markOf(id) {
+    if (isRun || S.viewing) return null;
+    const saved = savedNode(id);
+    if (!saved || !saved.unchecked || typeof saved.unchecked !== 'object') return null;
+    const now = draftNode(id);
+    const same = (a, b) => stable({ k: a.kind || '', l: a.label || '', c: a.config || {} })
+      === stable({ k: b.kind || '', l: b.label || '', c: b.config || {} });
+    if (!now || !same(now, saved)) return null;
+    return { origin: markOrigin(saved.unchecked), needs: needsOf(saved.unchecked), at: saved.unchecked.at || null };
+  }
+
+  /** Every step of the saved document still marked — `{ id, label, kind,
+   *  origin, needs, changed }`, in the document's order; `changed` is a step
+   *  the draft has changed (it is the person's once saved). */
+  function marked() {
+    if (isRun || !S.doc) return [];
+    return nodesOf(S.doc.graph)
+      .filter((n) => n.unchecked && typeof n.unchecked === 'object')
+      .map((n) => ({
+        id: String(n.id), label: String(n.label || KIND_WORDS[n.kind] || n.id), kind: String(n.kind || 'llm'),
+        origin: markOrigin(n.unchecked), needs: needsOf(n.unchecked), changed: !markOf(n.id),
+      }));
+  }
 
   /** The newest record of a step in the run being drawn — the step's own,
    *  not one of a For-each's items (`P22-12`: those carry `item`). */
@@ -612,13 +680,20 @@ export function createWorkflowSource({
       }
     }
     const ports = portsOfNode(n, S.palette);
-    return {
+    // `P22-19`, `P22-24`. Not checked yet: its words first, then any pin.
+    const mark = markOf(id);
+    const marks = [];
+    if (mark) marks.push(MARK_WORDS[mark.origin]);
+    if (!isRun && !S.viewing && n.pinned) marks.push(PINNED_MARK);
+    const item = {
       id, name: String(n.label || KIND_WORDS[kind] || kind), kind,
       sub: [KIND_WORDS[kind] || kind, detail].filter(Boolean).join(' · '),
       paused: false, outcome, ports, portWords: portWordsOf(n, ports),
-      marks: !isRun && !S.viewing && n.pinned ? [PINNED_MARK] : [],
+      marks,
       accepts: !readOnly(), missing: false,
     };
+    if (mark) item.unchecked = mark.origin;
+    return item;
   }
 
   /** `P22-11`. The document's own start arrows (`from: "start"`). */
@@ -862,9 +937,15 @@ export function createWorkflowSource({
         cleared_sentence: S.run.cleared_sentence || null } : null;
       // `P22-12`: a For-each's items; `P22-17`: a waiting step's question,
       // answered from here as from the notification.
+      // `P22-20`. A failed step can be explained (C-A's explain route) — of
+      // the step as the CURRENT document has it (`current`), which is what a
+      // proposed change would change; `palette` names its Integration.
+      const canExplain = !!api && typeof api.explainStep === 'function';
       return panels.record(host, {
         node: clone(shownNode(id)), record: clone(recordOf(id)), run,
         items: clone(itemRecordsOf(id)), answer: (args) => answerStep(args),
+        explain: canExplain ? (args) => explainStep(args) : null,
+        current: clone(savedNode(id)), palette: S.palette,
       });
     }
     if (S.viewing) {
@@ -874,6 +955,14 @@ export function createWorkflowSource({
     if (!node) return message(host, 'That step is not in this workflow.');
     if (typeof panels.node !== 'function') return message(host, 'The step editor did not load.');
     const problem = S.problem && (S.problem.nodeIds || []).map(String).includes(id) ? { ...S.problem } : null;
+    // `P22-19`, `P22-24`. A step nobody has checked yet: its panel opens on
+    // what it is, what it needs, what it would do, and *Looks right*.
+    const mark = markOf(id);
+    const check = mark ? {
+      origin: mark.origin, needs: mark.needs,
+      plan: () => planLines().then((p) => (p.ok ? { ok: true, lines: p.plans.get(id) || null } : p)),
+      looksRight: () => checkSteps([id]),
+    } : null;
     return panels.node(host, {
       node: clone(node),
       tasks: S.tasks,
@@ -885,6 +974,7 @@ export function createWorkflowSource({
       saved: !!savedNode(id),
       fields: () => listFields(id),
       problem,
+      check,
       onApply: async (change) => {
         let n = draftNode(id);
         if (!n || !change) return;
@@ -1237,6 +1327,129 @@ export function createWorkflowSource({
       sentence: out && out.sentence ? String(out.sentence) : '' };
   }
 
+  // ── Slice E (`P22-19`, `P22-20`, `P22-24`; C-A) ─────────────────────────
+
+  /** `P22-19`. *Looks right* on steps `ids` (C-A: `PUT {checked}`, a person
+   *  only — the server answers 403 to a token or the assistant). It writes
+   *  no version, so the draft and its base stay as they are; the saved
+   *  document comes back without those marks. */
+  async function checkSteps(ids) {
+    await ready;
+    if (isRun || !S.doc) return { ok: false, sentence: READ_ONLY };
+    if (!api || typeof api.checkSteps !== 'function') {
+      return { ok: false, sentence: 'This Pantheon cannot take a step’s check yet.' };
+    }
+    const list = (Array.isArray(ids) ? ids : []).map(String).filter(Boolean);
+    if (!list.length) return { ok: false, sentence: 'There is no step to check.' };
+    try {
+      const out = await api.checkSteps(workflowId, list);
+      if (out && out.workflow) takeDoc(out.workflow);
+      emit();
+      return { ok: true, checked: list, saved: out ? out.saved || null : null };
+    } catch (err) {
+      return answer(err);
+    }
+  }
+
+  /** `P22-19`. What each step of the SAVED version would do: the dry run's
+   *  plan (`POST /api/tasks/{start}/run?dry=true`, `nodes[].steps`), one
+   *  planner (`plan_lines`) and the existing door — nothing runs, and the
+   *  dry run plans a step nobody has checked (design § 1.1). Asked once per
+   *  saved version; a refusal is not kept. → `{ ok, plans: Map<id, [line]> }` */
+  function planLines() {
+    if (isRun || !S.doc) return Promise.resolve({ ok: false, sentence: READ_ONLY });
+    const version = S.doc.version;
+    if (S.plans && S.plans.version === version) return S.plans.promise;
+    const promise = (async () => {
+      try {
+        const reply = await api.runWorkflow(S.doc.task_id, { dry: true });
+        const plans = new Map();
+        for (const e of (Array.isArray(reply && reply.nodes) ? reply.nodes : [])) {
+          if (!e || e.node_id == null) continue;
+          const lines = (Array.isArray(e.steps) ? e.steps : [])
+            .map((s) => String((s && typeof s === 'object' ? s.detail : s) || '').trim()).filter(Boolean);
+          plans.set(String(e.node_id), e.declined ? [`Would not run: ${e.declined}`, ...lines] : lines);
+        }
+        return { ok: true, plans };
+      } catch (err) {
+        return answer(err);
+      }
+    })();
+    S.plans = { version, promise };
+    promise.then((r) => { if (!r.ok && S.plans && S.plans.promise === promise) S.plans = null; });
+    return promise;
+  }
+
+  /** `P22-20`. Apply a proposed change to step `nodeId` (C-A's fix route, a
+   *  person only): the server asks the fix rule again against the stored
+   *  step and writes a new version (source `fixed`); `undoVersion` is the one
+   *  it was made on, which `restoreVersion` puts back. Refused here while the
+   *  draft has changes the new version would leave stale. */
+  async function fix(nodeId, { config, baseVersion } = {}) {
+    await ready;
+    if (isRun || !S.doc) return { ok: false, sentence: READ_ONLY };
+    if (!api || typeof api.fixStep !== 'function') {
+      return { ok: false, sentence: 'This Pantheon cannot apply a fix yet.' };
+    }
+    if (dirty()) {
+      return { ok: false, sentence: 'This workflow has changes that are not saved. Save them or throw them away '
+        + 'first (in Edit), then apply the fix.' };
+    }
+    try {
+      const out = await api.fixStep(workflowId, String(nodeId), { config, baseVersion });
+      takeDoc(out && out.workflow, { force: true });
+      S.viewing = null;
+      S.checks = [];
+      S.problem = null;
+      S.stale = false;
+      emit();
+      return { ok: true, saved: out ? out.saved || null : null,
+        version: out && out.workflow ? out.workflow.version : null,
+        undoVersion: out && out.undo_version != null ? out.undo_version : null };
+    } catch (err) {
+      const r = refusalOf(err);
+      if (r.status === 409) { S.stale = true; emit(); }
+      return answer(r);
+    }
+  }
+
+  /** `P22-24`. The saved workflow as a file (C-A's export route, an
+   *  attachment): `{ ok, blob, filename, unsaved }`. */
+  async function exportFile() {
+    await ready;
+    if (!S.doc) return { ok: false, sentence: S.loadError ? S.loadError.sentence : 'This workflow has not loaded.' };
+    if (!api || typeof api.exportWorkflow !== 'function') {
+      return { ok: false, sentence: 'This Pantheon cannot export a workflow yet.' };
+    }
+    try {
+      const out = await api.exportWorkflow(workflowId);
+      const blob = out && typeof out === 'object' && 'blob' in out ? out.blob : out;
+      const filename = (out && typeof out === 'object' && typeof out.filename === 'string' && out.filename)
+        || `${slugOf(S.doc.name || 'workflow')}.workflow.json`;
+      return { ok: true, blob, filename, unsaved: dirty() };
+    } catch (err) {
+      return answer(err);
+    }
+  }
+
+  /** `P22-20`. Ask a model why step `nodeId` (item `item`) failed in this
+   *  run (C-A's explain route). Nothing is written. → `{ ok, why, model,
+   *  changed_since_run, proposal, left_out }` */
+  async function explainStep({ nodeId, item = null } = {}) {
+    await ready;
+    if (!isRun) return { ok: false, sentence: 'Only a step of a run can be explained.' };
+    if (!api || typeof api.explainStep !== 'function') {
+      return { ok: false, sentence: 'This Pantheon cannot explain a step yet.' };
+    }
+    try {
+      const out = await api.explainStep(workflowId, runId,
+        { nodeId: String(nodeId), item: item == null ? null : Number(item) });
+      return { ok: true, ...(out && typeof out === 'object' ? out : {}) };
+    } catch (err) {
+      return answer(err);
+    }
+  }
+
   const self = {
     get readOnly() { return readOnly(); },
     /** `P22-11`. Several arrows may leave one port of a document's step. */
@@ -1254,6 +1467,8 @@ export function createWorkflowSource({
     load, connect, disconnect, loadPositions, savePositions, openPanel, newItem, removeItem, dryRun,
     state, refresh, rename, save, discard, setPin, test, runNow, switchOn, restoreChain,
     versions, showVersion, restoreVersion, answer: answerStep, listFields, upstreamOf,
+    // Slice E (C-A).
+    marked, checkSteps, planLines, fix, exportFile, explain: explainStep,
   };
   if (isRun) {
     // A run cannot be added to or taken from: the optional verbs are absent,
@@ -1266,5 +1481,5 @@ export function createWorkflowSource({
 
 export default {
   createWorkflowSource, contentOf, START_ID, EDIT_WORDS, RUN_WORDS, slugOf, portsOfNode, portWordsOf,
-  KIND_PORTS, CASE_PREFIX,
+  KIND_PORTS, CASE_PREFIX, MARK_WORDS, markOrigin, needsOf,
 };
