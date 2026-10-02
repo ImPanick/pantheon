@@ -485,6 +485,11 @@ def _chat_candidate_request_factory(
     local inference, on a local candidate, and the preset's number on anything
     else — so a cloud fallback is never sent a local machine's number. With no
     ceiling typed it is the preset's number for every candidate, as before.
+
+    `B1029`'s resend (w8-agent's B-NEW-1) is not this factory's: both doors pass
+    the preset's own number as ``max_tokens_floor`` beside the call, and the
+    fallback wrappers merge it into every candidate's kwargs — one number, the
+    same for every candidate, so it is not set here a second time.
     """
 
     state = {
@@ -1410,6 +1415,10 @@ def setup_chat_routes(
             # local endpoint — the agent path's rule; with none typed, the
             # preset's number as before. The factory sets each fallback's own.
             max_tokens=local_door_max_tokens(ctx.preset.max_tokens, sess.endpoint_url),
+            # `B1029`'s resend on this door too (w8-agent's B-NEW-1): a server
+            # that refuses the length and states what it can serve is asked
+            # for that (`D-2026-10-02-01` §2).
+            max_tokens_floor=ctx.preset.max_tokens,
             prompt_type=preset_id,
             session_id=session,
             # `P2-13`. So a local MiniMax endpoint honours a chosen temperature
@@ -2641,6 +2650,8 @@ def setup_chat_routes(
                         # endpoint, as on `/api/chat` above.
                         max_tokens=local_door_max_tokens(ctx.preset.max_tokens,
                                                          sess.endpoint_url),
+                        # `B1029`'s resend, as on `/api/chat` above.
+                        max_tokens_floor=ctx.preset.max_tokens,
                         prompt_type=preset_id,
                         tools=None,
                         session_id=session,

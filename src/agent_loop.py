@@ -6860,8 +6860,8 @@ async def stream_agent_loop(
                     # `B1034`. Its own length, as its own temperature (`B935`):
                     # a cloud candidate is never handed the local lift.
                     "max_tokens": candidate_max_tokens(_preset_max_tokens, candidate_url),
-                    # `B1029`. The preset's own number is the least a server's
-                    # length refusal may talk this request down to.
+                    # `B1029`. The preset's own number: passing it lets a server
+                    # that states its window talk this request down to what fits.
                     "max_tokens_floor": _preset_max_tokens,
                 },
             }
@@ -7414,8 +7414,9 @@ async def stream_agent_loop(
                 # The model burned its budget gathering data but never wrote a
                 # final answer (common with weaker models on multi-source
                 # briefings). Salvage it: one blunt non-streaming synthesis call
-                # over the full conversation (which already holds every tool
-                # result) before falling back to the canned apology.
+                # over the conversation (which already holds every tool result),
+                # shaped and trimmed as a round is, before falling back to the
+                # canned apology.
                 _synth = ""
                 try:
                     from src.llm_core import llm_call_async
@@ -7429,6 +7430,17 @@ async def stream_agent_loop(
                             "what you have and note what's missing in one short line."
                         ),
                     }]
+                    # w8-agent's B-NEW-5. Shaped and trimmed as every round is,
+                    # for the candidate it goes to (`_candidate_request`): the
+                    # tool pictures as this model can take them (`P20-04`),
+                    # then this route's window. It was the whole transcript —
+                    # measured before it, a 20,000 window after a long chat: the
+                    # rounds were trimmed to it and the salvage sent 80,975
+                    # characters the server refused outright (20,244 tokens of
+                    # prompt), so the turn ended on the apology below.
+                    _synth_messages = _trim_route_request_messages(
+                        endpoint_url, model,
+                        await tool_result_images.for_model(_synth_messages, model, endpoint_url))
                     # `B1050`. Asked of the candidate that answered: once a
                     # fallback answers, the pin rebinds `endpoint_url`, `model`
                     # and `headers` to it, so the call already went there — but
@@ -7439,9 +7451,22 @@ async def stream_agent_loop(
                     # turn ended on the apology below. `B1034`'s one rule, about
                     # this call's URL; for an unpinned run that is the primary's,
                     # and the number is the run's own, as before.
+                    #
+                    # w8-agent's B-NEW-4. Its temperature by the rounds' rule
+                    # too (`B935`): the salvage's own 0.3 is a default, so a
+                    # `pantheon-qwen3` candidate is held at its 0.2 and a
+                    # temperature the person chose is theirs here as on every
+                    # round (`D-2026-08-26-06`: a default never overrides a
+                    # choice). Measured before it, through the real app: a
+                    # qwen candidate's rounds were sent 0.2 and its salvage
+                    # 0.3; with Brainstorm's 0.9 chosen, rounds 0.9, salvage 0.3.
+                    _synth_temperature = pan_qwen_route_temperature(
+                        _requested_temperature if "temperature" in (explicit_params or ())
+                        else 0.3,
+                        model, explicit_params)
                     _raw = await llm_call_async(
                         url=endpoint_url, model=model, messages=_synth_messages,
-                        headers=headers, temperature=0.3,
+                        headers=headers, temperature=_synth_temperature,
                         max_tokens=candidate_max_tokens(_preset_max_tokens, endpoint_url),
                         max_tokens_floor=_preset_max_tokens,   # `B1029`
                         timeout=60,

@@ -2575,8 +2575,9 @@ async def llm_call_async(
     see ``_apply_local_generation_stability``). `/api/chat` passes its preset's
     through ``llm_call_async_with_route_fallback``'s kwargs.
 
-    ``max_tokens_floor`` is `stream_llm`'s (`B1029`): with it, a length refusal
-    that states what the server can serve is sent once more asking for that.
+    ``max_tokens_floor`` is `stream_llm`'s (`B1029`, `D-2026-10-02-01` §2): with
+    it, a length refusal that states what the server can serve is sent once
+    more asking for that, even below the preset.
     """
     # `P4-25` — the non-streaming path. `/api/chat` reaches the model through
     # `llm_call_async_with_route_fallback` → here and never touches
@@ -2586,6 +2587,11 @@ async def llm_call_async(
     #
     # No `tools=`: this path sends none, and the key is omitted rather than
     # written empty so a diff can tell 'none sent' from 'not looked at'.
+    #
+    # w8-agent's B-NEW-3, as `stream_llm`: at most what fits a server that
+    # stated its window — before the receipt and the cache key, which both
+    # record the number sent.
+    max_tokens = fitted_max_tokens(url, model, messages, None, max_tokens, max_tokens_floor)
     _capture_run_config(temperature, max_tokens, session_id, url=url, model=model,
                         explicit_params=explicit_params)
 
@@ -2735,10 +2741,12 @@ async def llm_call_async(
             if not r.is_success:
                 # `B1029`, as `stream_llm`: once, asking for what the server
                 # said it can serve. Not a retry, so it spends no attempt.
+                if _length_key and max_tokens_floor is not None:   # w8-agent's B-NEW-3
+                    _remember_stated_window(r.status_code, r.text, url, model,
+                                            _prompt_chars(payload.get("messages")))
                 _servable = (
-                    servable_max_tokens(r.status_code, r.text, payload.get(_length_key),
-                                        max_tokens_floor)
-                    if _length_key and not _resent else None
+                    servable_max_tokens(r.status_code, r.text, payload.get(_length_key))
+                    if _length_key and max_tokens_floor is not None and not _resent else None
                 )
                 if _servable is not None:
                     logger.info("[llm] %s refused max_tokens=%s; it can serve %s — sending again",
@@ -3059,12 +3067,23 @@ def _capture_run_config(temperature, max_tokens, session_id, *, tools=None,
 # server's own tokenizer, so the request is sent once more asking for exactly
 # what the server said it can serve — the number vLLM itself uses when no
 # length is given. Never above what was asked (the ceiling, typed or not, still
-# bounds it) and never below `floor`, the preset's own number (the ruling's
-# floor): a request whose window leaves less room than the preset fails as it
-# did, and as Chat mode does — going below the preset is a call neither ruling
-# makes. A request sent unlifted (`sent == floor`) is never resent, and a server
-# that accepts the number is never asked twice, so nothing changes for any
-# endpoint that answered before.
+# bounds it), and a server that accepts the number is never asked twice, so
+# nothing changes for any endpoint that answered before.
+#
+# **Below the preset too — the owner's call (`D-2026-10-02-01` §2).** `B1029`
+# stopped at the preset's own number (`D-2026-09-08-02`'s floor), so a window
+# with less room left than the preset failed outright: measured (the scripted
+# model served as vLLM serves a 9,000 window), an Agent-mode Brainstorm turn
+# whose prompt the server counted at 7,830 was refused at 1,000,000 and not
+# sent again, because the 1,170 it could serve is below 4096 — and Chat mode
+# with Brainstorm on a 4,500 window was refused at 4096 the same way. It is
+# reachable in ordinary use: the agent's trim reserves at most 2,048 tokens for
+# the reply, which leaves less than Code Analyze's 8000 on a full 32k window.
+# "When the server refuses and states what it can serve, the request is sent
+# once more asking for exactly that, even below the preset — the preset stops
+# being a floor in that one case." So the floor is one token, the trim's
+# reserve is left as it is, and an unlifted request is sent again too; still
+# never for more than was sent.
 _CONTEXT_WINDOW_RE = re.compile(r"maximum context length is (\d+) tokens")
 _PROMPT_TOKENS_RES = (
     re.compile(r"your request has (\d+) input tokens"),                # v0.10.1, v0.11.0
@@ -3072,25 +3091,113 @@ _PROMPT_TOKENS_RES = (
 )
 
 
-def servable_max_tokens(status, raw, sent, floor) -> Optional[int]:
+def servable_max_tokens(status, raw, sent) -> Optional[int]:
     """The `max_tokens` a server's length refusal says it can serve, when it is
-    worth asking again: at least `floor` and below `sent`. `None` otherwise.
+    worth asking again: at least one token and below `sent`. `None` otherwise.
 
-    `raw` is the refusal's body as text. `B1029`, above."""
+    `raw` is the refusal's body as text. `B1029` and `D-2026-10-02-01` §2,
+    above. Whether a request may be sent again at all is its caller's to say
+    (`max_tokens_floor`, on `stream_llm` and `llm_call_async`)."""
     try:
-        sent, floor = int(sent or 0), int(floor or 0)
+        sent = int(sent or 0)
     except (TypeError, ValueError):
         return None
-    # An unlifted request (`sent == floor`) can never pass the last line.
-    if status != 400 or floor <= 0:
+    stated = _stated_window(status, raw)
+    if not stated:
+        return None
+    servable = stated[0] - stated[1]
+    return servable if 0 < servable < sent else None
+
+
+def _stated_window(status, raw) -> Optional[Tuple[int, int]]:
+    """`(window, prompt tokens)` as a length refusal states them, or `None`."""
+    if status != 400:
         return None
     text = str(raw or "")
     window = _CONTEXT_WINDOW_RE.search(text)
     prompt = next((m for m in (r.search(text) for r in _PROMPT_TOKENS_RES) if m), None)
     if not window or not prompt:
         return None
-    servable = int(window.group(1)) - int(prompt.group(1))
-    return servable if floor <= servable < sent else None
+    return int(window.group(1)), int(prompt.group(1))
+
+
+# ── w8-agent's B-NEW-3 · a server that stated its window is asked for what fits ──
+#
+# `B1029`'s resend answers one request at a time, so against a server that
+# holds a request to its window every lifted request was refused once before it
+# was answered — measured on `0e64d2b`, a ten-round Agent turn on a 32,768
+# window (the scripted model served as vLLM serves it): 20 streamed requests, 10
+# of them refused, and vLLM logs each refusal with a traceback. The refusal says
+# two things worth keeping: the window, and how many tokens the server counted
+# in the prompt it was sent. Both are kept, per endpoint and model — the window,
+# and the server's tokens per character of that request's messages and tools as
+# JSON — and a later request whose caller opts in (`max_tokens_floor`) asks for
+# at most `window − ⌈that rate × its own characters⌉`. Three rules, each stated:
+#
+#   * **It is an estimate, so it never takes a request below its caller's own
+#     number** (the preset's). Below that, only the server's own words do
+#     (`D-2026-10-02-01` §2): the request goes as asked and the resend answers
+#     it exactly. An estimate that is low is caught the same way — refused,
+#     sent again, the rate re-learned from the refusal.
+#   * **Never above what the caller asked**, so a typed ceiling still bounds it;
+#     and a server that took the number never refused it, is never in this
+#     table, and is sent exactly what it was sent before (llama.cpp, Ollama,
+#     LM Studio).
+#   * **Kept for `STATED_WINDOW_TTL_SECONDS`.** A local server can restart with
+#     another window (`model_context` re-queries local windows for that
+#     reason): a smaller one refuses and is re-learned at once; a larger one is
+#     learned when this lapses, and until then a reply may be held to less
+#     than the new window allows — never less than the preset.
+STATED_WINDOW_TTL_SECONDS = 10 * 60
+#: `(target URL, model)` → `(window, tokens per character, monotonic expiry)`.
+_stated_windows: Dict[Tuple[str, str], Tuple[int, float, float]] = {}
+
+
+def _prompt_chars(messages, tools=None) -> int:
+    """What a request's prompt is measured in here: its messages and tools as
+    JSON, in characters — the server's own count is the rate's numerator."""
+    try:
+        return len(json.dumps(messages or [], default=str)) + len(json.dumps(tools or [], default=str))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _remember_stated_window(status, raw, url: str, model: str, chars: int) -> None:
+    """Keep what a length refusal stated about `url`'s window for `model`."""
+    stated = _stated_window(status, raw)
+    if not stated or chars <= 0 or stated[0] <= 0 or stated[1] <= 0:
+        return
+    window, prompt = stated
+    _stated_windows[(_stream_target_url(url), model)] = (
+        window, prompt / chars, time.monotonic() + STATED_WINDOW_TTL_SECONDS)
+
+
+def fitted_max_tokens(url: str, model: str, messages, tools, asked, floor):
+    """The `max_tokens` to ask `url` for, given what its caller `asked`: at most
+    what fits the window the server stated, never below `floor` and never above
+    `asked`; `asked` itself when there is nothing stated, the caller passed no
+    `floor` (did not opt in), or what fits is not between the two. Above."""
+    if floor is None or not asked:
+        return asked
+    key = (_stream_target_url(url), model)
+    kept = _stated_windows.get(key)
+    if not kept:
+        return asked
+    window, rate, expires = kept
+    if time.monotonic() >= expires:
+        _stated_windows.pop(key, None)
+        return asked
+    chars = _prompt_chars(_sanitize_llm_messages(messages), tools)
+    fit = window - math.ceil(rate * chars)
+    try:
+        least, most = max(int(floor), 1), int(asked)
+    except (TypeError, ValueError):
+        return asked
+    if not least <= fit < most:
+        return asked
+    logger.info("[llm] %s stated a %s-token window for %s; asking for %s rather than %s",
+                _host_key(key[0]), window, model, fit, most)
+    return fit
 
 
 def _stream_target_url(url: str) -> str:
@@ -3110,11 +3217,17 @@ async def stream_llm(url: str, model: str, messages: List[Dict], temperature: fl
                      tools: Optional[List[Dict]] = None, session_id: Optional[str] = None,
                      tool_choice_none: bool = False, workload: str = "foreground",
                      explicit_params=frozenset(), max_tokens_floor: Optional[int] = None):
-    """`max_tokens_floor` (`B1029`): the least this request may ask for — the
-    preset's own number, where the caller lifted it. With it, a length refusal
-    that states what the server can serve is sent once more asking for that
-    (`servable_max_tokens`); without it, as before."""
+    """`max_tokens_floor` (`B1029`): the preset's own number, passed by a caller
+    whose request may be talked down. With it, a length refusal that states what
+    the server can serve is sent once more asking for that
+    (`servable_max_tokens`) — below this number too, since `D-2026-10-02-01` §2
+    (the server's own words are the floor's one exception); without it, as
+    before. With it too, a server that has stated its window is asked for at
+    most what fits it, never below this number on that estimate
+    (`fitted_max_tokens`, w8-agent's B-NEW-3)."""
     target_url = _stream_target_url(url)
+    # Before the receipt, so it records the number sent (`B933`).
+    max_tokens = fitted_max_tokens(url, model, messages, tools, max_tokens, max_tokens_floor)
     _capture_run_config(temperature, max_tokens, session_id, tools=tools, url=url,
                         model=model, explicit_params=explicit_params)
 
@@ -3659,7 +3772,11 @@ async def _stream_llm_inner(url: str, model: str, messages: List[Dict], temperat
                 # `B1029`. A length refusal stating what the server can serve:
                 # once more, asking for that, and nothing else about the request
                 # changed. No floor is passed down, so it is asked once.
-                _servable = servable_max_tokens(r.status_code, raw, max_tokens, max_tokens_floor)
+                if max_tokens_floor is not None:   # w8-agent's B-NEW-3: and kept
+                    _remember_stated_window(r.status_code, raw, url, model,
+                                            _prompt_chars(payload.get("messages"), tools))
+                _servable = (servable_max_tokens(r.status_code, raw, max_tokens)
+                             if max_tokens_floor is not None else None)
                 if _servable is not None:
                     logger.info("[llm] %s refused max_tokens=%s; it can serve %s — sending again",
                                 _host_key(target_url), max_tokens, _servable)
