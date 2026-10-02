@@ -9,6 +9,11 @@ the only section that can change what your host does without you editing anythin
 switches — `AUTH_ENABLED`, `PANTHEON_SINGLE_USER` and the `use_rag` field on
 `POST /api/chat_stream` — used to ignore values meaning *no*, and now honour them.
 
+**Coming from Odysseus?** The [0.1.0 release notes](docs/release-notes/0.1.0.md)
+name every rename you have to follow — each environment variable, command, path,
+service, stored value, header and browser key, derived from the fork point and
+checked by a test — and the upgrade steps in order.
+
 ---
 
 ## Versions
@@ -31,8 +36,10 @@ scheme that stops it drifting again.
 
 - **`MAJOR.MINOR.PATCH`, and the line starts at `0.1.0`.** `0.x` is a statement
   about support, not modesty: [`SECURITY.md`](SECURITY.md) supports `main` and
-  nothing else, and this repository is not public yet — the rows that gate the
-  flip are listed in [`.pantheon/SHIP-LINE.md`](.pantheon/SHIP-LINE.md).
+  nothing else, and the rows that still stand between this tree and a stranger
+  using it are listed in [`.pantheon/SHIP-LINE.md`](.pantheon/SHIP-LINE.md).
+  *(Until 2026-10-02 this sentence said the repository was not public yet. It
+  has been public since then, and stays so — `D-2026-10-02-03`.)*
   **`1.0.0` is the first release that is public, tagged and supported.** Until
   then, an operator-visible break bumps the **minor** and gets a *Changed — read
   this before upgrading* block; everything else bumps the **patch**.
@@ -41,6 +48,12 @@ scheme that stops it drifting again.
   annotated git tag `vx.y.z`. `tests/test_version_and_changelog_agree.py` pins
   the first two to each other; the tag is checked by the person cutting it,
   against the same string.
+- **Each version has release notes**, `docs/release-notes/x.y.z.md`, listed
+  under [Release notes](#release-notes) below — the account a person reads
+  before upgrading. Their rename tables are checked against the lists that own
+  each name (`tests/test_the_release_notes_name_every_rename.py`). Until
+  `vx.y.z` is tagged the notes follow the tree; once it is, they are a record,
+  like the heading.
 - **`## [Unreleased]` is where work lands between releases.** Cutting a release
   renames that heading to `## [x.y.z] — YYYY-MM-DD`, opens a fresh empty
   `[Unreleased]` above it, and moves `APP_VERSION` to match. Nothing is edited
@@ -62,6 +75,19 @@ scheme that stops it drifting again.
 `0.1.0` is not tagged in this tree yet, deliberately: a release tag has to point
 at the commit that is actually released, and the commit this section was written
 on is a worktree tip awaiting a merge. The tag is cut on the merge.
+
+---
+
+## Release notes
+
+One file per version, for the person deciding whether to upgrade.
+
+- **[0.1.0](docs/release-notes/0.1.0.md)** — the first release line (`P10-12`).
+  It leads with the Odysseus credit, then names every rename an Odysseus install
+  has to follow, what each phase since the fork added, the gates still open, and
+  the upgrade steps. The `[0.1.0]` section below is the record of 2026-09-17,
+  when the version line was set (`B450`), and stays as written; the notes
+  describe the tree of 2026-10-02, which reports the same version.
 
 ---
 
