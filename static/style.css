@@ -45547,6 +45547,15 @@ body.settings-sidebar-resize-active {
     overflow-y: hidden;
   }
 
+  /* `B1131`. The items live in `.settings-nav-list`, a column on the desktop,
+     and neither narrow block turned it into the rail they describe: measured
+     in Chromium at 390x844, 16 items in 16 rows, the tab list 555px tall and
+     the panel left 102px. */
+  .settings-nav-list {
+    flex-direction: row;
+    flex: 0 0 auto;
+  }
+
   .settings-nav-search-wrap,
   .settings-sidebar-resize-handle,
   .settings-sidebar-toggle {
@@ -45574,6 +45583,21 @@ body.settings-sidebar-resize-active {
     flex-direction: row;
     overflow-x: auto;
     overflow-y: hidden;
+  }
+
+  .settings-nav-list {  /* B1131, as in the container block above */
+    flex-direction: row;
+    flex: 0 0 auto;
+  }
+
+  /* B1131. A phone's Settings is a full-height sheet, and the layout kept the
+     centred window's cap (85vh - 60px): measured, the panel stopped 96px above
+     the bottom of an 844px sheet. It fills the sheet, as a docked window's
+     does (`.modal-right-docked .settings-layout`). */
+  .settings-layout {
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: none;
   }
 
   .settings-nav-search-wrap,
