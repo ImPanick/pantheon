@@ -558,8 +558,10 @@ def test_each_notes_file_is_a_changelog_version_and_is_linked_from_it(version):
         f"docs/release-notes/{version}.md names a version CHANGELOG.md has no "
         f"`## [{version}]` heading for"
     )
-    assert f"(docs/release-notes/{version}.md)" in changelog, (
-        "CHANGELOG.md does not link the notes; a stranger reads the changelog first"
+    listed = section(changelog, "## Release notes")
+    assert f"(docs/release-notes/{version}.md)" in listed, (
+        "CHANGELOG.md's § Release notes does not link the notes; a stranger reads "
+        "the changelog first, and § Versions says that is where they are listed"
     )
     title = _notes(version).split("\n", 1)[0]
     assert title.startswith("# ") and version in title, title
@@ -577,9 +579,15 @@ def test_the_first_section_is_the_odysseus_credit(version):
     assert headings and "Odysseus" in headings[0], headings[:2]
     credit = section(text, headings[0])
     c = _claims()
-    for needle in (f"https://github.com/{c.UPSTREAM_REMOTE}", c.FORK_POINT,
-                   c.FORK_POINT_DATE, c.FORK_CLONE_DATE, "AGPL-3.0-or-later"):
+    for needle in (f"https://github.com/{c.UPSTREAM_REMOTE}", f"`{c.FORK_POINT}`",
+                   "**AGPL-3.0-or-later**"):
         assert needle in credit, f"the credit does not state {needle!r}"
+    # Each date stated as itself, in bold, not merely inside a timestamp: the
+    # commit's date and the fork's start are two facts (`B349`).
+    for date in (c.FORK_POINT_DATE, c.FORK_CLONE_DATE):
+        assert re.search(rf"\*\*{re.escape(date)}\b", credit), (
+            f"the credit does not state {date} as a date of its own"
+        )
 
 
 @pytest.mark.parametrize("version", _versions())
