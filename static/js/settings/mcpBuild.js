@@ -251,6 +251,10 @@ export async function mountMcpBuildDoor(host, { onOpen } = {}) {
   }
   open.disabled = !state.available;
   if (!state.available) {
+    // Greyed where a person can see it, not only in the attribute: measured in
+    // the drive, a disabled `admin-btn-sm` looked live in the light palette.
+    open.style.opacity = '0.45';
+    open.style.cursor = 'not-allowed';
     open.setAttribute('aria-disabled', 'true');
     open.setAttribute('aria-describedby', why.id);
     open.title = String(state.why || '');
@@ -378,6 +382,8 @@ export async function mountMcpBuild(host, { isAdmin = false, onRegister, onClose
     why.textContent = ok ? '' : String((ws && ws.why) || '');
     why.style.display = ok ? 'none' : 'block';
     for (const input of [nameIn, toolIn, descIn, make]) input.disabled = !ok;
+    make.style.opacity = ok ? '' : '0.45';
+    make.style.cursor = ok ? '' : 'not-allowed';
   }
 
   function card(entry) {

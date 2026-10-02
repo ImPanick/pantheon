@@ -68,12 +68,13 @@ def test_the_door_is_greyed_with_the_workstations_own_sentence(box):
         const why = host.querySelector('.mcp-build-door-why');
         out({ state, disabled: btn.disabled, aria: btn.getAttribute('aria-disabled'),
               describedBy: btn.getAttribute('aria-describedby') === why.id, why: text(why),
-              shown: why.style.display, opened, title: btn.title });
+              shown: why.style.display, opened, title: btn.title, look: [btn.style.opacity, btn.style.cursor] });
     """)
     assert o["state"] == {"available": False, "why": OFF}
     assert o["disabled"] is True and o["aria"] == "true" and o["describedBy"] is True
     assert o["why"] == OFF and o["shown"] == "block" and o["title"] == OFF
     assert o["opened"] == 0
+    assert o["look"] == ["0.45", "not-allowed"]  # greyed where it can be seen, not only announced
 
 
 def test_the_door_opens_the_panel_when_the_workstation_is_yours(box):
