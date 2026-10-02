@@ -1559,6 +1559,14 @@ INBOX_CHECK_SETTING = "email_inbox_check_minutes"
 # How many of the newest messages each check looks at: the Email window's
 # first page, which is what the listing has always decided "new" over.
 INBOX_CHECK_WINDOW = 50
+# `B-NEW` (f-mail: more than fifty arrivals between two looks). When the newest
+# page holds no message seen before, more arrived than one page shows — a
+# mailing-list burst, Pantheon down for a day — and the check reads back a page
+# at a time until it reaches mail it has seen, so every arrival is announced
+# once. This bounds that reading: past it, the producer cannot tell arrivals
+# from older mail and says how many it did not announce
+# (`email_routes.EMAIL_RECEIVED_UNSURE_LIMIT`).
+INBOX_CHECK_BACKLOG = 500
 # How long "a minute" is to the loop. A constant so a test can drive the real
 # loop at a pace a test can wait for; nothing else should change it.
 _SECONDS_PER_MINUTE = 60
@@ -1650,8 +1658,54 @@ async def _check_inbox(account: dict) -> str:
         logger.warning("Inbox check failed for %s; backing off %.0fs: %s", key, cooldown, failure)
         return f"failed; backing off for {int(cooldown)}s"
     outbound.succeeded(key)
-    _record_email_received_events(owner, account_id, "INBOX", result.get("emails") or [])
+    emails = list(result.get("emails") or [])
+    emails, at_backlog = await _read_back_to_seen_mail(lister, account, emails)
+    announced, not_announced = _record_email_received_events(owner, account_id, "INBOX", emails) or (0, 0)
+    if at_backlog:
+        logger.warning("Inbox check for %s: more than %d messages arrived since the last look; "
+                       "older ones were not read", key, len(emails))
+    if not_announced:
+        return f"checked; {not_announced} new not announced"
     return "checked"
+
+
+async def _read_back_to_seen_mail(lister, account: dict, emails: list) -> tuple[list, bool]:
+    """`B-NEW` (f-mail). Read older pages until one holds mail seen before.
+
+    Measured on the tree before this: a baseline, then sixty messages, then one
+    check — fifty `email_received` events; the ten older arrivals were never
+    listed by any later check (newer mail keeps them out of the newest page)
+    and never fired. A page that holds a seen message marks where the arrivals
+    end, so the reading stops there — and so does it on the first look (no
+    baseline: the newest page is the baseline), on a short page (the mailbox's
+    end), on a failure (what was read is still decided on) and at
+    `INBOX_CHECK_BACKLOG`. Each page is paced through the one limiter, as the
+    first was (`FORBIDDEN.md` Part 2). Answers `(emails, stopped_at_backlog)`.
+    """
+    import asyncio
+    from src.rate_limiter import outbound
+    from routes.email_routes import email_events_seen
+
+    account_id, owner, host = account.get("account_id"), account.get("owner") or "", account.get("host") or ""
+    page = emails
+    while len(page) >= INBOX_CHECK_WINDOW:
+        baseline, seen = await asyncio.to_thread(email_events_seen, owner, account_id, "INBOX", page)
+        if not baseline or seen:
+            return emails, False
+        if len(emails) >= INBOX_CHECK_BACKLOG:
+            return emails, True
+        try:
+            await outbound.acquire_async(host, authenticated=True)
+            more = await asyncio.to_thread(lister, "INBOX", INBOX_CHECK_WINDOW, len(emails), "all",
+                                           account_id, None, False, owner)
+        except Exception as e:
+            logger.warning("Inbox check stopped reading back at %d messages: %s", len(emails), e)
+            return emails, False
+        if not isinstance(more, dict) or more.get("error"):
+            return emails, False
+        page = list(more.get("emails") or [])
+        emails.extend(page)
+    return emails, False
 
 
 async def _inbox_check_pass() -> dict:
