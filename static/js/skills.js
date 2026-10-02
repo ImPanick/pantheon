@@ -4039,13 +4039,16 @@ const _ID_REF_ATTRS = ['for', 'aria-labelledby', 'aria-describedby', 'aria-contr
 function _stampRoom(host) {
   if (!_pristineBody) return false;
   const body = _pristineBody.cloneNode(true);
-  for (const n of [body, ...body.querySelectorAll('*')]) {
+  const visit = (n) => {
+    if (typeof n.getAttribute !== 'function') return;   // text
     if (n.id) n.id = ROOM_PREFIX + n.id;
     for (const a of _ID_REF_ATTRS) {
-      const v = n.getAttribute && n.getAttribute(a);
+      const v = n.getAttribute(a);
       if (v) n.setAttribute(a, v.trim().split(/\s+/).map((x) => ROOM_PREFIX + x).join(' '));
     }
-  }
+    for (const c of [...(n.childNodes || [])]) visit(c);
+  };
+  visit(body);
   host.replaceChildren(...body.childNodes);
   return true;
 }
