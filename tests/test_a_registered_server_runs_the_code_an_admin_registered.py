@@ -150,6 +150,30 @@ def test_code_changed_between_a_list_and_a_call_is_not_run(client, station, monk
     assert not (_home(station, "ann") / "it-ran").exists()
 
 
+def test_the_person_who_allowed_the_call_reads_why_it_did_not_run(client, station, monkeypatch):
+    """An agent's call to a registered tool asks first once the turn has read
+    untrusted text — the usual case. The card the person had just allowed read
+    "(no output)" for the relay's refusal: the approved path read `stdout` and
+    not `stderr`, where `McpManager` puts an `isError` answer. The relay's real
+    answer, through the real approval replay."""
+    from tests.test_tool_effect_wire import _approved_run
+
+    reg = _make(client).json()["registration"]
+    _register(client, reg)
+    _relay_world(station, monkeypatch)
+
+    def rewrite():
+        (_folder(station) / "server.py").write_text(CODE_THAT_SAYS_IT_RAN)
+    _, _, _, (said,) = _relay(reg, then=rewrite)
+    assert said["stdout"] == "" and said["exit_code"] == 1, said
+    tool = "mcp__relay1__get_forecast"
+    events = _approved_run(monkeypatch, tool_name=tool, content='{"text": "Oslo"}',
+                           results={tool: said})
+    card = next(e for e in events if e.get("type") == "tool_output")
+    assert card["approved"] is True and card["status"] == "error", card
+    assert wm.changed_since_registered("weather") in card["output"], card["output"]
+
+
 @pytest.mark.parametrize("plant", ["a sibling module", "bytecode in __pycache__", "a symlink",
                                    "a symlinked package"])
 def test_code_beside_the_server_is_pinned_too(client, station, monkeypatch, plant):
