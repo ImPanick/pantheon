@@ -10,7 +10,7 @@
  *
  * Usage from a tool module:
  *
- *   import * as Modals from './modalManager.js?v=20261002slicesce';
+ *   import * as Modals from './modalManager.js?v=20261002workbenchef';
  *
  *   // After building the modal element and adding it to the body:
  *   Modals.register('gallery-modal', {
