@@ -360,7 +360,7 @@ def test_a_photo_is_refused_in_words_and_reaches_nothing(live):
            b"\x01\x00\xc9\xfe\x92\xef\x00\x00\x00\x00IEND\xaeB`\x82")
     shown = _device(live, "Team photo.png", png, "image/png")
     assert shown["pickerOpened"] and shown["sentEmail"] == 0, shown
-    assert shown["errors"] == ["Couldn't import Team photo.png — it is an image, not a document"]
+    assert shown["errors"] == ["Couldn't import Team photo.png — images can't be opened as documents"]
     assert shown["tabs"] == [] and shown["inputLeft"]
     assert _docs(live) == [] and live.handler._load_upload_index() == {}
 
@@ -378,7 +378,7 @@ def test_an_empty_workbook_is_said_not_counted(live):
         console.log(JSON.stringify(await pick(fileOf({json.dumps(path)}, 'Empty.xlsx', ''))));
     """)
     assert shown["pickerOpened"], shown
-    assert shown["errors"] == ["Couldn't import Empty.xlsx — every sheet in it is empty"]
+    assert shown["errors"] == ["Couldn't import Empty.xlsx — the workbook's sheets are all empty"]
     assert shown["tabs"] == [] and _docs(live) == []
 
 

@@ -2001,7 +2001,7 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
         made.push(await postDocument({ title: sheetTitle, language: 'csv', content: csv, source_name: name, folder }));
       }
       // Was counted "Imported 1 file" with nothing made.
-      if (!made.length) throw new Error('every sheet in it is empty');
+      if (!made.length) throw new Error("the workbook's sheets are all empty");
       return made;
     }
 
@@ -2016,8 +2016,9 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
     // `+xml` type (`image/svg+xml`) is text and still imports.
     const media = /^(image|audio|video)\//i.exec(String(file.type || ''));
     if (media && !/\+xml$/i.test(file.type) && ingestKindFromName(name, file.type) === null) {
-      const what = { image: 'an image', audio: 'a sound file', video: 'a video' }[media[1].toLowerCase()];
-      throw new Error(`it is ${what}, not a document`);
+      // Worded to stand alone: the Library's summary does not name the file.
+      const what = { image: 'images', audio: 'sound files', video: 'videos' }[media[1].toLowerCase()];
+      throw new Error(`${what} can't be opened as documents`);
     }
 
     const content = await readFileContent(file);
