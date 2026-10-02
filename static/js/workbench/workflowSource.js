@@ -960,7 +960,7 @@ export function createWorkflowSource({
     const mark = markOf(id);
     const check = mark ? {
       origin: mark.origin, needs: mark.needs,
-      plan: () => planLines().then((p) => (p.ok ? { ok: true, lines: p.plans.get(id) || null } : p)),
+      plan: () => planLines().then((p) => (p.ok ? { ok: true, lines: p.plans.get(id) || null, declined: p.declined || null } : p)),
       looksRight: () => checkSteps([id]),
     } : null;
     return panels.node(host, {
@@ -1370,7 +1370,14 @@ export function createWorkflowSource({
             .map((s) => String((s && typeof s === 'object' ? s.detail : s) || '').trim()).filter(Boolean);
           plans.set(String(e.node_id), e.declined ? [`Would not run: ${e.declined}`, ...lines] : lines);
         }
-        return { ok: true, plans };
+        // A document the engine would not run (a step that needs what this
+        // Pantheon lacks, say) is planned not at all: no step has an entry,
+        // and the run says why (measured in Chromium on an import whose
+        // Integration was missing — every step read "did not reach").
+        const run = reply && reply.run ? reply.run : null;
+        const declined = plans.size ? null
+          : String((run && (run.error || run.result)) || 'Nothing was planned.').split('\n')[0].trim();
+        return { ok: true, plans, declined };
       } catch (err) {
         return answer(err);
       }

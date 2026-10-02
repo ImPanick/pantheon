@@ -102,6 +102,7 @@ export const ca = {
   exportRefusal: null, exportBody: null, exportName: null,
   explain: null, fix: null,            // (body, nodeId) → { status, body } | null for the default
   dryNodes: {},                        // node_id → [plan line]
+  dryReason: null,                     // why a document is not planned at all
   versions: [], graphs: {},            // the Versions list; a version's graph, for a restore
 };
 const reply = (status, body, blob, headers = {}) => ({
@@ -198,6 +199,10 @@ export async function net(url, init = {}) {
   }
   if (method === 'POST' && url === `/api/tasks/${doc.task_id}/run?dry=true`) {
     note();
+    // A document the engine will not run is planned not at all: no step
+    // entries, and the run says why (`ca.dryReason`).
+    if (ca.dryReason) return reply(200, { ok: true, dry: true, nodes: [],
+      run: { id: 'dry' + ca.calls.length, status: 'skipped', result: '', error: ca.dryReason } });
     return reply(200, { ok: true, dry: true, run: { id: 'dry' + ca.calls.length },
       nodes: Object.entries(ca.dryNodes).map(([node_id, lines], i) => ({ node_id, kind: '', name: node_id,
         when: null, depth: i, declined: null, steps: lines.map((detail) => ({ kind: 'dry-run', detail })) })) });

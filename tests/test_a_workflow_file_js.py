@@ -327,3 +327,22 @@ def test_every_kind_of_need_an_import_writes_is_said_in_words_with_a_door_only_w
     assert o["run"]["words"] == ["It ran a task called “Nightly backup” on the Pantheon it came from. Pick the task it "
                                  "runs on the step."]
     assert all(o[k]["doors"] == [] for k in ("call", "ask", "tally", "run")), "no room to add these in"
+
+
+def test_a_step_that_cannot_be_planned_yet_says_why_not_that_the_plan_missed_it(box, rec):
+    """Measured in Chromium on the merged tree: an imported workflow whose
+    Integration is missing is not planned at all — the dry run records no step
+    and its run carries the engine's reason — and the banner said "The plan did
+    not reach this step". It says the reason."""
+    o = _case(box, rec, """
+        const doc = JSON.parse(JSON.stringify(REC.import_reply.workflow));
+        doc.id = 'wf1'; doc.task_id = 't1';
+        seed(doc);
+        ca.dryNodes = {};
+        // The dry run's reply: no step entries, and the run's reason.
+        ca.dryReason = '“Fetch unread” uses an Integration this Pantheon does not have.';
+        const { r } = await room({ workflowId: 'wf1' });
+        fire(nodeEl(r, 'fetch-unread'), 'click'); await settle(40);
+        out({ plan: by(r, 'wf-step-check').querySelector('.wf-step-check-plan').querySelectorAll('li').map((x) => x.textContent) });
+    """)
+    assert o["plan"] == ["It cannot be planned yet: “Fetch unread” uses an Integration this Pantheon does not have."]

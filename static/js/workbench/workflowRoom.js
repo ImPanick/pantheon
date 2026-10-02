@@ -1712,7 +1712,11 @@ export function mountAutomations(host, opts = {}) {
             continue;
           }
           const lines = p.plans.get(id);
-          if (!lines) { row.plan.replaceChildren(_el('li', 'wf-check-wait', 'The plan did not reach this step.')); continue; }
+          if (!lines) {
+            row.plan.replaceChildren(_el('li', 'wf-check-wait', p.declined
+              ? `It cannot be planned yet: ${String(p.declined).replace(/\.$/, '')}.` : 'The plan did not reach this step.'));
+            continue;
+          }
           row.plan.replaceChildren(...(lines.length ? lines : ['It would do nothing.']).map((l) => _el('li', null, l)));
         }
       });

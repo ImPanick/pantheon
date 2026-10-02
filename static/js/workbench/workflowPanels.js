@@ -508,7 +508,11 @@ export function createWorkflowPanels({
           return;
         }
         const lines = Array.isArray(r.lines) ? r.lines.map(String).filter(Boolean) : null;
-        if (!lines) { plan.replaceChildren(_el('li', 'wf-step-check-wait', 'The plan did not reach this step.')); return; }
+        if (!lines) {
+          plan.replaceChildren(_el('li', 'wf-step-check-wait', r.declined
+            ? `It cannot be planned yet: ${String(r.declined).replace(/\.$/, '')}.` : 'The plan did not reach this step.'));
+          return;
+        }
         plan.replaceChildren(...(lines.length ? lines : ['It would do nothing.']).map((l) => _el('li', null, l)));
       }, () => { if (alive) plan.replaceChildren(_el('li', 'wf-step-check-wait', 'It could not be planned.')); });
     } else {
