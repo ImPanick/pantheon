@@ -296,7 +296,8 @@ def test_every_kind_of_need_an_import_writes_is_said_in_words_with_a_door_only_w
             [{ field: 'headers[0].value', name: 'X-Auth-Token' }]),
           n('each', 'foreach', 'Each one', { list: '{{ steps.call.data.items }}', on_error: 'stop',
             step: { kind: 'http', label: 'Fetch', config: { integration: '', method: 'GET', path: '/y' } } },
-            [{ field: 'step.config.integration', name: 'Miniflux', preset: 'miniflux' }]),
+            [{ field: 'step.config.integration', name: 'Miniflux', preset: 'miniflux' },
+             { field: 'step.config.skill', name: 'print-digest' }]),
           n('ask', 'llm', 'Ask', { prompt: 'x', tools: ['web_fetch'] }, [{ field: 'tools', name: 'web_fetch' }]),
           n('tally', 'code', 'Tally', { language: 'python', source: 'print(1)' }, [{ field: 'language', name: 'workstation' }]),
           n('post', 'mcp', 'Post', { tool: '', args: {} }, [{ field: 'tool', name: 'Chat · send_message', server: 'Chat', tool: 'send_message' }]),
@@ -316,9 +317,11 @@ def test_every_kind_of_need_an_import_writes_is_said_in_words_with_a_door_only_w
     assert o["call"]["words"] == ["It sends the header “X-Auth-Token”, and a file never carries its value. Type it on the step."]
     assert o["call"]["doors"] == []
     assert o["each"]["words"] == ["It uses an Integration called “Miniflux” (miniflux), which this Pantheon does not have. "
-                                  "Add it in MCP & Integrations, then pick it on the step."]
-    assert o["each"]["doors"] == ["integrations"]
-    assert o["each"]["top"] == [[None, "wf-sf-problems"]], "an inner step's need is said at the top of the For-each's form"
+                                  "Add it in MCP & Integrations, then pick it on the step.",
+                                  "It follows a skill called “print-digest”, which you do not have. Add it in Skills, "
+                                  "then pick it on the step."], "an inner step's need is read through its step.config. prefix"
+    assert o["each"]["doors"] == ["integrations", "skills"]
+    assert o["each"]["top"] == [[None, "wf-sf-problems"]] * 2, "an inner step's need is said at the top of the For-each's form"
     assert o["ask"]["words"] == ["It may use the tool “web_fetch”, which you cannot use here. Change its tools on the step."]
     assert o["tally"]["words"] == ["It runs code in your workstation, which cannot run it now."]
     assert o["post"]["words"] == ["It uses the tool “send_message” of an MCP server called “Chat”, which this Pantheon "
