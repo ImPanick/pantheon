@@ -5,7 +5,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-visual">
 <title>Pantheon — Login</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 4L16 22L6 22Z' fill='%23e06c75'/%3E%3Cpath d='M16 8L16 22L24 22Z' fill='%23e06c75' opacity='0.6'/%3E%3Cpath d='M4 24Q10 20 16 24Q22 28 28 24' stroke='%23e06c75' stroke-width='2.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath fill='%23e06c75' fill-rule='evenodd' d='M5.18 12A11 11 0 0 1 26.82 12L25.74 12L16 7.82L6.26 12ZM16 10L30 16L2 16ZM4 18L28 18L28 20L4 20ZM5 20L8 20L8 26L5 26ZM11.33 20L14.33 20L14.33 26L11.33 26ZM17.67 20L20.67 20L20.67 26L17.67 26ZM24 20L27 20L27 26L24 26ZM2 26L30 26L30 28L2 28Z'/%3E%3C/svg%3E">
 <link rel="manifest" href="static/manifest.json">
 <link rel="apple-touch-icon" href="static/icons/icon-192.png">
 <script>
@@ -288,7 +288,8 @@
   .remember-toggle:hover .remember-dot {
     border-color: color-mix(in srgb, var(--fg) 40%, transparent);
   }
-  .logo-boat { width: 1.6rem; height: 1.6rem; margin-right: 0.4rem; vertical-align: -0.15em; color: var(--red); }
+  /* P0-13: Pantheon's mark (docs/brand/pantheon-mark.svg), not upstream's boat. */
+  .logo-mark { width: 1.6rem; height: 1.6rem; margin-right: 0.4rem; vertical-align: -0.15em; color: var(--red); }
   .version-label {
     position: fixed; bottom: 12px; right: 16px;
     font-size: 0.7rem; opacity: 0.25;
@@ -344,7 +345,7 @@
 <body>
 <main class="card">
   <h1 class="logo">
-    <svg class="logo-boat" viewBox="0 0 32 32" aria-hidden="true" focusable="false"><path d="M16 4L16 22L6 22Z" fill="currentColor"/><path d="M16 8L16 22L24 22Z" fill="currentColor" opacity="0.6"/><path d="M4 24Q10 20 16 24Q22 28 28 24" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round"/></svg><span>Pantheon</span>
+    <svg class="logo-mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false"><path fill="currentColor" fill-rule="evenodd" d="M5.18 12A11 11 0 0 1 26.82 12L25.74 12L16 7.82L6.26 12ZM16 10L30 16L2 16ZM4 18L28 18L28 20L4 20ZM5 20L8 20L8 26L5 26ZM11.33 20L14.33 20L14.33 26L11.33 26ZM17.67 20L20.67 20L20.67 26L17.67 26ZM24 20L27 20L27 26L24 26ZM2 26L30 26L30 28L2 28Z"/></svg><span>Pantheon</span>
   </h1>
   <p class="setup-note" id="setupNote" style="display:none"></p>
 

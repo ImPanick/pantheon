@@ -3232,7 +3232,8 @@ async function initReminderSettings() {
             new Notification('Test Reminder', {
               body: data.synthesis || 'This is a test reminder.',
               tag: 'reminder-test',
-              icon: '/static/favicon.ico',
+              // P0-13: was `/static/favicon.ico`, a file this app never had (a 404, so no icon).
+              icon: '/static/icons/icon-192.png',
             });
           } catch {}
         }

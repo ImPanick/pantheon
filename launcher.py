@@ -54,7 +54,9 @@ if getattr(sys, 'frozen', False):
             y = (hs - h) // 2
             splash_root.geometry(f"{w}x{h}+{x}+{y}")
 
-            tk.Label(splash_root, text="⛵ Pantheon", font=("Segoe UI", 22, "bold"), bg="#1a1c23", fg="#e06c75").pack(pady=(22, 2))
+            # P0-13: the name alone. The sailing-boat emoji in front of it was
+            # upstream's mark, which this fork does not reuse.
+            tk.Label(splash_root, text="Pantheon", font=("Segoe UI", 22, "bold"), bg="#1a1c23", fg="#e06c75").pack(pady=(22, 2))
             tk.Label(splash_root, text="Launching background services...", font=("Segoe UI", 10), bg="#1a1c23", fg="#d1d4e0").pack(pady=2)
             tk.Label(splash_root, text="Please wait, this will take a few seconds.", font=("Segoe UI", 8, "italic"), bg="#1a1c23", fg="#5c6370").pack(pady=(12, 0))
 
@@ -68,18 +70,19 @@ if getattr(sys, 'frozen', False):
 
 
 def create_tray_image():
-    # Generate a beautiful 64x64 icon matching Pantheon brand red accent (#e06c75)
-    from PIL import Image, ImageDraw
-    image = Image.new('RGBA', (64, 64), (0, 0, 0, 0))
-    dc = ImageDraw.Draw(image)
-    accent_red = (224, 108, 117, 255)
-    light_red = (224, 108, 117, 150)
+    """The tray icon: the 64 px frame of the shipped `static/icon.ico`.
 
-    # Draw premium sailing boat
-    dc.polygon([(32, 10), (32, 45), (12, 45)], fill=accent_red)
-    dc.polygon([(32, 18), (32, 45), (48, 45)], fill=light_red)
-    dc.polygon([(8, 48), (56, 48), (44, 56), (20, 56)], fill=accent_red)
-    return image
+    P0-13. This used to draw upstream's sailing boat here in three polygons — a
+    second copy of a mark, kept in sync with nothing. Now it is the same file
+    the exe's own icon is built from (`Pantheon.spec`, `build-windows-portable.ps1`),
+    whose every frame `scripts/branding/make_marks.py` draws at its own size,
+    so the tray and the taskbar cannot show two different pictures.
+    """
+    from PIL import Image
+    from src.runtime_paths import get_app_root
+
+    with Image.open(os.path.join(get_app_root(), "static", "icon.ico")) as ico:
+        return ico.ico.getimage((64, 64)).convert("RGBA")
 
 
 def on_open_browser(icon, item, url):

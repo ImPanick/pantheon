@@ -1093,7 +1093,8 @@ function _fireReminder(note, lateness) {
   const showLocal = (body) => {
     if ('Notification' in window && Notification.permission === 'granted') {
       try {
-        const n = new Notification(title, { body, tag: 'note-' + note.id, icon: '/static/favicon.ico' });
+        // P0-13: was `/static/favicon.ico`, a file this app never had (a 404, so no icon).
+        const n = new Notification(title, { body, tag: 'note-' + note.id, icon: '/static/icons/icon-192.png' });
         n.onclick = () => { window.focus(); openPanel(); n.close(); };
       } catch {}
     }
