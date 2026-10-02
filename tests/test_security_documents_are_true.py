@@ -284,3 +284,93 @@ def test_the_policy_says_it_is_on_and_keeps_the_fallback(security_md):
     assert on, reporting[:1200]
     assert "404" in reporting
     assert "please enable private vulnerability reporting" in reporting
+
+
+# ── `B452` — the version a reporter is told to quote ─────────────────────────
+
+def _supported_versions(security_md: str) -> list:
+    """The *Supported Versions* section's paragraphs, minus the italic history
+    notes — a note quoting what the section used to say is the record, not the
+    claim (`Law 20`'s `H02`)."""
+    section = security_md.split("## Supported Versions", 1)[1].split("\n## ", 1)[0]
+    paragraphs = [p.strip() for p in re.split(r"\n\s*\n", section) if p.strip()]
+    return [p for p in paragraphs if not re.match(r"\*(?!\*)", p)]
+
+
+def _get_version() -> dict:
+    """`GET /api/version`, called. The handler is cut out of `app.py` by its own
+    AST node — after checking the decorator really routes that path — and run,
+    so the answer is the route's rather than a second reading of the constant
+    behind it (`Law 20`). Importing `app.py` whole would start the app."""
+    import ast
+    import asyncio
+    import sys
+
+    if str(ROOT) not in sys.path:
+        sys.path.insert(0, str(ROOT))
+    tree = ast.parse((ROOT / "app.py").read_text(encoding="utf-8"))
+    routed = [n for n in tree.body if isinstance(n, ast.AsyncFunctionDef)
+              and any(isinstance(d, ast.Call) and getattr(d.func, "attr", "") == "get"
+                      and d.args and ast.literal_eval(d.args[0]) == "/api/version"
+                      for d in n.decorator_list)]
+    assert len(routed) == 1, [n.name for n in routed]
+    handler = routed[0]
+    handler.decorator_list = []
+    namespace = {}
+    exec(compile(ast.Module(body=[handler], type_ignores=[]), "app.py", "exec"), namespace)
+    return asyncio.run(namespace[handler.name]())
+
+
+def test_the_policy_names_what_the_version_route_returns(security_md):
+    """`B452`'s `Verify:` first clause. The answer is taken from the route, and
+    the policy has to print that answer verbatim — so cutting a release that
+    moves `APP_VERSION` without this page fails here. Fails on the tree as it
+    stood: the policy never mentioned `/api/version`."""
+    answer = _get_version()
+    assert set(answer) == {"version"} and answer["version"], answer
+    which = next((p for p in _supported_versions(security_md)
+                  if "Which version am I running?" in p), None)
+    assert which, _supported_versions(security_md)
+    assert "`GET /api/version`" in which, which
+    assert json.dumps(answer) in which, (json.dumps(answer), which)
+
+
+def _tag_statement_problem(tags: list, security_md: str):
+    """None when the policy's word on tags agrees with `tags`, else why not."""
+    claims_none = [p for p in _supported_versions(security_md)
+                   if re.search(r"no tagged release|None exist yet", p)]
+    if tags and claims_none:
+        return f"tags {tags} exist and the policy says none do: {claims_none}"
+    if not tags and not claims_none:
+        return "no release is tagged and the policy does not say so"
+    return None
+
+
+def test_the_policy_says_whether_a_release_is_tagged(security_md):
+    """`B452`'s second clause, against the repository rather than the prose:
+    if a `v*` tag exists, the policy may not say none does, and if none does it
+    has to say so. A clone without tags checks the second half; CI's full
+    checkout checks the first the day a tag is pushed — and the next test
+    drives that half here, without creating a tag every worktree would share."""
+    tags = subprocess.run(["git", "tag", "-l", "v*"], cwd=str(ROOT),
+                          capture_output=True, text=True, check=True).stdout.split()
+    assert _tag_statement_problem(tags, security_md) is None
+
+
+def test_a_cut_tag_makes_the_policy_wrong_until_it_is_edited(security_md):
+    """The day `v0.1.0` exists, *"None exist yet"* is false — and this says so."""
+    problem = _tag_statement_problem(["v0.1.0"], security_md)
+    assert problem and "the policy says none do" in problem, problem
+
+
+def test_the_policy_does_not_call_the_commit_the_only_identifier(security_md):
+    """`B452`'s third clause. The present-tense claim is refused anywhere in
+    the file; the dated note recording that it was once made is not a claim.
+    And the changelog the section points at has a version heading, so the
+    section may not say it has nothing but `[Unreleased]`. Fails on the tree as
+    it stood, on both counts."""
+    assert not re.search(r"is the only version identifier|only version identifier this project has",
+                         security_md)
+    changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+    assert re.search(r"^## \[\d+\.\d+\.\d+\] — \d{4}-\d{2}-\d{2}\s*$", changelog, re.M)
+    assert not [p for p in _supported_versions(security_md) if "and nothing else" in p]
