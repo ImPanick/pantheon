@@ -26,12 +26,22 @@ document that sends a reporter to that URL says what to do when it 404s, and
 the setting is on the pre-publication checklist in `docs/security-ci.md` rather
 than living only in a roadmap row nobody will read again.
 
+**Closed 2026-10-02.** The setting was measured from the owner's machine —
+`gh api repos/ImPanick/pantheon/private-vulnerability-reporting` answered
+`{"enabled": true}` — and the documents now say it is on. That is a claim
+about a repository setting this suite cannot reach, so what is asserted is its
+shape: the reading carries its date and the command that takes it, the command
+asks about the same repository the documents send reporters to, and every
+fallback is still there for the day the setting is switched off.
+
 Both are cross-artefact checks — the claim in the prose against the thing the
 prose is about, read out of the real workflow, the real register and the real
 audit script. A test that read only the document would agree with whatever the
 document said.
 """
 import importlib.util
+import json
+import re
 import subprocess
 import tomllib
 from pathlib import Path
@@ -234,3 +244,43 @@ def test_enabling_it_is_on_the_one_time_settings_checklist():
     # Before the repository is public, which is the only part with a deadline.
     assert "public" in lowered, body[-1500:]
     assert "these two settings" not in lowered, body[:400]
+
+
+def test_the_setting_is_recorded_as_a_reading_of_the_repository_reporters_are_sent_to():
+    """`B357`, closed: the checklist says the setting is on, and says it the
+    way a measurement is said — dated, with the value read and the command
+    that reads it — so the next person can take the reading again instead of
+    trusting the sentence.
+
+    Cross-artefact where it can be: the command asks about the repository
+    named in the advisory URL every reporter is sent to. A reading of a
+    different repository — a fork's, after a rename — would be a true reading
+    of the wrong thing. Fails on the tree as it stood: the section said *"Do
+    this before the repository goes public"* and nobody had read the setting.
+    """
+    doc = (ROOT / "docs" / "security-ci.md").read_text(encoding="utf-8")
+    section = doc.split("### 3. Turn on private vulnerability reporting", 1)[1]
+    section = section.split("\n## ", 1)[0]
+    command = re.search(
+        r"gh api repos/([\w.-]+)/([\w.-]+)/private-vulnerability-reporting", section)
+    assert command, section[:800]
+    reported_to = re.match(r"https://github\.com/([\w.-]+)/([\w.-]+)/security/", ADVISORY_URL)
+    assert command.groups() == reported_to.groups(), (command.groups(), reported_to.groups())
+    reading = section[command.end():].lstrip().splitlines()[0]
+    assert json.loads(reading) == {"enabled": True}, reading
+    assert re.search(r"[Mm]easured on (\d{4}-\d{2}-\d{2})", section), section[:800]
+
+
+def test_the_policy_says_it_is_on_and_keeps_the_fallback(security_md):
+    """`SECURITY.md` is the document a reporter reads first: it says the route
+    is open as of a date, and keeps the one sentence a reporter may put in a
+    public issue if it is ever closed. Fails on the tree as it stood: the
+    policy said private reporting *"has not been turned on for this
+    repository yet"*, which stopped being true on 2026-10-02."""
+    reporting = security_md.split("## Reporting a Vulnerability", 1)[1].split("\n### ", 1)[0]
+    assert "has not been turned on for this repository yet" not in reporting
+    on = re.search(r"Private reporting is on for this repository \(checked (\d{4}-\d{2}-\d{2})",
+                   reporting)
+    assert on, reporting[:1200]
+    assert "404" in reporting
+    assert "please enable private vulnerability reporting" in reporting

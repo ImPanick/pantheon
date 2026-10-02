@@ -21,7 +21,7 @@ to hold. Bugs will still get through; the reporting route below is how they reac
 
 Use **[GitHub private vulnerability reporting](https://github.com/ImPanick/pantheon/security/advisories/new)** — the repository's **Security** tab, then **Report a vulnerability**. That opens a draft advisory only the maintainer can read: it does not notify watchers, it does not appear in the issue list, and it is where a fix and a CVE would be coordinated from if one is warranted.
 
-If that page 404s, private reporting has not been turned on for this repository yet. Then open a public issue containing **only** the sentence *"I have a security report — please enable private vulnerability reporting"*: no component, no version, no reproduction. You will be contacted there.
+Private reporting is on for this repository (checked 2026-10-02; [`docs/security-ci.md`](docs/security-ci.md) has the command that checks it). If that page ever 404s, it has been switched off. Then open a public issue containing **only** the sentence *"I have a security report — please enable private vulnerability reporting"*: no component, no version, no reproduction. You will be contacted there.
 
 *Until 2026-09-16 this section said to report "by opening a minimal issue that does not disclose exploit details". That was written when the repository was private and it does not survive going public. This project ships shell execution, file read/write, mail send and read, and MCP process launch — for most bugs in that surface, naming the component **is** the exploit, and a reporter following that instruction would have published it. The advice is withdrawn.*
 
