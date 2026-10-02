@@ -675,7 +675,7 @@ FUNCTION_TOOL_SCHEMAS = [
         "type": "function",
         "function": {
             "name": "manage_tasks",
-            "description": "Manage scheduled/automated tasks: list, create, edit, delete, pause, resume, or run tasks — or dry_run one to say what a run would do without running anything. Use this for ANY recurring/scheduled request ('every morning…', 'each day at 7:30', 'daily summarize…') — create a task rather than doing it once. When the user asks what a task would do, or wants to check one before it runs, use dry_run, not run. Task types: llm (AI runs a prompt), research (runs the deep-research pipeline on a question), or action (built-in automation). Triggers can be time-based or event-based.",
+            "description": "Manage scheduled/automated tasks: list, create, edit, delete, pause, resume, or run tasks — or dry_run one to say what a run would do without running anything. Use this for ANY recurring/scheduled request ('every morning…', 'each day at 7:30', 'daily summarize…') — create a task rather than doing it once. When the user asks what a task would do, or wants to check one before it runs, use dry_run, not run. Task types: llm (AI runs a prompt), research (runs the deep-research pipeline on a question), or action (built-in automation). Triggers can be time-based or event-based. When the user wants several steps that run one after another, or one thing to happen when another finishes ('when X, do Y and then Z'), use draft_workflow with their words as description: it drafts a workflow, switched off, which a person checks step by step in the Workbench before it can run.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -683,19 +683,26 @@ FUNCTION_TOOL_SCHEMAS = [
                     # through `run_task_now(dry=True)`, the dry run `P8-33`
                     # built; offered here and handled there in one change, so
                     # neither half is a parameter with no consumer (`Law 13`).
-                    "action": {"type": "string", "enum": ["list", "create", "edit", "delete", "pause", "resume", "run", "dry_run"],
-                               "description": "The action to perform. dry_run plans the task — what it would run, touch and send — executes nothing, changes nothing, and returns the plan"},
+                    "action": {"type": "string", "enum": ["list", "create", "edit", "delete", "pause", "resume", "run", "dry_run", "draft_workflow"],
+                               "description": "The action to perform. dry_run plans the task — what it would run, touch and send — executes nothing, changes nothing, and returns the plan. draft_workflow drafts a workflow of several steps from description, switched off; a person checks each step before it can run"},
+                    # `P22-19` (`B673`). Served by `do_manage_tasks`'s
+                    # `draft_workflow` arm through `workflow_assist.draft_workflow`,
+                    # the Workbench's own drafter — offered and handled in one
+                    # change (`Law 13`).
+                    "description": {"type": "string", "description": "What the workflow should do, in the user's own words (for draft_workflow)"},
                     "task_id": {"type": "string", "description": "Task ID (for edit/delete/pause/resume/run/dry_run)"},
                     "name": {"type": "string", "description": "Task name"},
                     "prompt": {"type": "string", "description": "The instruction (for task_type=llm) or the research question (for task_type=research). Required for both."},
                     "task_type": {"type": "string", "enum": ["llm", "research", "action"],
                                   "description": "llm = AI runs your prompt; research = runs the deep-research pipeline on the prompt as a question; action = direct built-in function"},
-                    "action_name": {"type": "string", "enum": [
-                        "tidy_sessions", "tidy_documents", "consolidate_memory", "tidy_research",
-                        "summarize_emails", "draft_email_replies", "extract_email_events",
-                        "classify_events", "learn_sender_signatures",
-                        "test_skills", "audit_skills", "check_email_urgency"
-                    ],
+                    # `B800` (folded into `P22-19`). Filled from
+                    # `BUILTIN_ACTION_INFO` minus `ADMIN_ONLY_TASK_ACTIONS` by
+                    # `_install_action_name_enum` below, for `B21`'s reason (a
+                    # call inside this literal breaks the parity test's
+                    # `ast.literal_eval`). Written out, it listed 12 of the 14 a
+                    # person may schedule: `daily_brief` and
+                    # `email_auto_translate` could not be named by the model.
+                    "action_name": {"type": "string", "enum": [],
                                     "description": "Built-in action (for task_type=action)"},
                     "trigger_type": {"type": "string", "enum": ["schedule", "event"],
                                      "description": "schedule = time-based, event = count-based"},
@@ -1530,6 +1537,29 @@ def _install_trigger_event_enum() -> None:
 
 
 _install_trigger_event_enum()
+
+
+def _install_action_name_enum() -> None:
+    """`B800` (folded into `P22-19`). Point `manage_tasks.action_name` at the
+    one action registry: `BUILTIN_ACTION_INFO` (derived from
+    `BUILTIN_ACTION_META`, `P8-22`) minus `ADMIN_ONLY_TASK_ACTIONS`, whose four
+    a model is not offered — 14 today, and a nineteenth action reaches the
+    model without an edit here. Spliced after the literal and logged rather
+    than raised, as `_install_trigger_event_enum` above."""
+    from src.builtin_actions import BUILTIN_ACTION_INFO
+    from src.task_action_policy import ADMIN_ONLY_TASK_ACTIONS
+
+    for schema in FUNCTION_TOOL_SCHEMAS:
+        function = schema.get("function", {})
+        if function.get("name") != "manage_tasks":
+            continue
+        function["parameters"]["properties"]["action_name"]["enum"] = [
+            name for name in BUILTIN_ACTION_INFO if name not in ADMIN_ONLY_TASK_ACTIONS]
+        return
+    logger.error("manage_tasks schema not found; the model cannot name a built-in action")
+
+
+_install_action_name_enum()
 
 
 def _install_computer_bounds() -> None:

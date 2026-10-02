@@ -574,7 +574,7 @@ _PRIVATE_ACTION_WRITES: Mapping[str, frozenset[str]] = MappingProxyType(
             }
         ),
         "manage_skills": frozenset({"add", "edit", "patch", "publish", "delete", "restore"}),
-        "manage_tasks": frozenset({"create", "edit", "delete", "pause", "resume", "run"}),
+        "manage_tasks": frozenset({"create", "edit", "delete", "pause", "resume", "run", "draft_workflow"}),
     }
 )
 

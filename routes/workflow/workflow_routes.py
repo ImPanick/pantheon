@@ -178,12 +178,24 @@ def setup_workflow_routes(task_scheduler) -> APIRouter:
     @_answers
     async def create_workflow(request: Request):
         """New and empty, or (`from_task_id`, `P22-06`) a copy of the chain that
-        task is a step of. Either way it is created switched off."""
+        task is a step of, or (`describe`, `P22-19`) a draft from the person's
+        words, or (`file`, `P22-24`) a workflow file. Every way it is created
+        switched off; a draft and a file come back with every step marked
+        `unchecked`, what is `missing`, and every step's `destinations` (C-A)."""
         user = _owner(request)
         body = await _body(request)
         from_task_id = body.get("from_task_id")
+        ways = [key for key in ("from_task_id", "describe", "file") if body.get(key) is not None]
+        if len(ways) > 1:
+            raise WorkflowRefused(400, "Send one of: from_task_id, describe, or file.")
         db = SessionLocal()
         try:
+            if "describe" in ways:
+                from src import workflow_assist
+                drafted = await workflow_assist.draft_workflow(
+                    db, user, body.get("describe"), tz=body.get("tz"))
+                return {"workflow": doc(db, drafted.wf, drafted.trigger), "notes": drafted.notes,
+                        "missing": drafted.missing, "destinations": drafted.destinations}
             if from_task_id:
                 wf, trigger, notes = store.convert_chain(
                     db, owner=user, from_task_id=str(from_task_id), name=body.get("name"),
@@ -221,9 +233,16 @@ def setup_workflow_routes(task_scheduler) -> APIRouter:
         the AI step's tool choices, the workstation and the limits this engine
         holds a document to — `wf-effects`' `build_palette`, whose `limits` are
         the walker's own readers (`workflow_runs`; `integrate-d`: this route
-        restated them over the builder's answer)."""
+        restated them over the builder's answer).
+
+        `examples` (`P22-19`, `D-2026-10-02-02` §1): the sentences *Describe
+        it* offers to start from — `workflow_assist.EXAMPLE_SENTENCES`, the one
+        place they are written, read by the drafter's tests and the browser."""
         from src import workflow_effects as we
-        return dict(we.build_palette(_owner(request)) or {})
+        from src.workflow_assist import EXAMPLE_SENTENCES
+        out = dict(we.build_palette(_owner(request)) or {})
+        out["examples"] = list(EXAMPLE_SENTENCES)
+        return out
 
     @router.get("/waiting")
     @_answers
@@ -754,35 +773,24 @@ async def _test_input(db, wf, trigger, stored, graph, node, source, raw):
 async def _write_example(owner, label, fields) -> dict:
     """`P8-08`'s shape: leave it blank and the model invents a plausible
     example — here, one JSON object with exactly the fields the step is handed.
-    The utility model, falling back to the default, as `POST /api/tasks/parse`
-    asks."""
-    import re
-    from src.endpoint_resolver import resolve_endpoint
-    from src.llm_core import llm_call_async
-    from src.text_helpers import strip_think
+    The utility model, falling back to the default — `workflow_assist.
+    ask_for_json`, the one model call `POST /api/tasks/parse` and the
+    drafter ask too (`P22-19`, `Law 7`)."""
+    from src import workflow_assist
 
-    url, model, headers = resolve_endpoint("utility", owner=owner or None)
-    if not (url and model):
-        url, model, headers = resolve_endpoint("default", owner=owner or None)
-    if not (url and model):
-        raise WorkflowRefused(400, "No model is set up to write an example. Paste a sample instead.")
     system = (
         "You write ONE realistic, invented example of the data a workflow step is handed. "
         "Reply with ONLY a JSON object whose keys are exactly the fields listed, each with "
         "a short plausible value. No prose, no markdown fences.")
     try:
-        raw = await llm_call_async(
-            url=url, model=model, headers=headers, timeout=45, temperature=0.7, max_tokens=600,
-            messages=[{"role": "system", "content": system},
-                      {"role": "user", "content": f"Step: {str(label)[:120]}\nFields: {', '.join(fields)}"}])
-    except Exception as err:
-        raise WorkflowRefused(502, f"The model did not write an example: {type(err).__name__}: {err}") from None
-    text = strip_think(raw or "", prose=False, prompt_echo=False).strip()
-    found = re.search(r"\{.*\}", text, re.S)
-    try:
-        data = json.loads(found.group(0) if found else text)
-    except (TypeError, ValueError):
-        data = None
+        data, why = await workflow_assist.ask_for_json(
+            owner, [{"role": "system", "content": system},
+                    {"role": "user", "content": f"Step: {str(label)[:120]}\nFields: {', '.join(fields)}"}],
+            max_tokens=600, temperature=0.7, timeout=45)
+    except workflow_assist.NoModelSetUp:
+        raise WorkflowRefused(400, "No model is set up to write an example. Paste a sample instead.") from None
+    if why is not None and why.kind == workflow_assist.ASK_NO_ANSWER:
+        raise WorkflowRefused(502, f"The model did not write an example: {why.sentence}")
     if not isinstance(data, dict):
         raise WorkflowRefused(502, "The model's example could not be read as JSON. Try again, or paste one.")
     return data

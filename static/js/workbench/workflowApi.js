@@ -15,7 +15,10 @@
 // over. `tests/test_every_workflow_route_has_its_caller.py` runs the checker
 // without this file and watches the nine come back. Wave D (`C-W`) adds four —
 // the palette, the waiting list, a step's fields and a parked step's answer —
-// each spelled out the same way, so the count still does not move.
+// each spelled out the same way, so the count still does not move. Wave E
+// (`C-A`, `P22-19`/`20`/`24`) adds three — a workflow's file, a step's "why did
+// this fail?" and its fix — and two bodies on routes already here (a draft or a
+// file on `POST /api/workflows`, the steps a person checked on `PUT`).
 //
 // **A refusal is a `WorkflowRefusal`**, carrying the status and the server's
 // own sentence (`{detail}`, read by `refusal.js`), and — for a document the
@@ -88,10 +91,61 @@ export function createWorkflowApi({ fetch } = {}) {
     listWorkflows() {
       return call('GET', `/api/workflows`);
     },
-    /** A new, empty workflow, or (`fromTaskId`, `P22-06`) the chain that task
-     *  is a step of. Created switched off. → `{ workflow, notes }` */
-    createWorkflow({ name, fromTaskId } = {}) {
-      return call('POST', `/api/workflows`, given({ name, from_task_id: fromTaskId }));
+    /** A new, empty workflow; or (`fromTaskId`, `P22-06`) the chain that task
+     *  is a step of; or (`describe`, `P22-19`) a draft the model makes from
+     *  the person's words — send `tz` (`Intl…resolvedOptions().timeZone`) so
+     *  "at 8" means their 8; or (`file`, `P22-24`) a workflow file's parsed
+     *  JSON. Created switched off. → `{ workflow, notes }`, and for a draft
+     *  or a file also `{ missing: [sentence], destinations: [line] }`, with
+     *  every step of `workflow.graph` marked `unchecked` (C-A). */
+    createWorkflow({ name, fromTaskId, describe, tz, file } = {}) {
+      return call('POST', `/api/workflows`,
+        given({ name, from_task_id: fromTaskId, describe, tz, file }));
+    },
+    /** `P22-19`. A person looked at these steps and says they look right: their
+     *  `unchecked` marks go. Never a version; a 403 `WorkflowRefusal` unless a
+     *  person sent it. → `{ workflow, saved: "checked" }` */
+    checkSteps(id, nodeIds) {
+      return call('PUT', `/api/workflows/${enc(id)}`, { checked: Array.from(nodeIds || []) });
+    },
+    /** `P22-24`. The workflow as a file to hand someone (`pantheon_workflow: 1`)
+     *  — never a key, a token, an address, a header value or a sample. Answers
+     *  a `Blob`, with the server's own file name as `blob.filename`. */
+    async exportWorkflow(id) {
+      let res;
+      try {
+        res = await net(`/api/workflows/${enc(id)}/export`, { method: 'GET', credentials: 'same-origin' });
+      } catch (_) {
+        throw new WorkflowRefusal(0, UNREACHABLE);
+      }
+      if (!res || !res.ok) {
+        const r = await readRefusal(res);
+        throw new WorkflowRefusal(r.status, r.sentence, { reason: r.reason, nodeIds: r.nodeIds, field: r.field });
+      }
+      const blob = await res.blob();
+      const said = (res.headers && res.headers.get && res.headers.get('Content-Disposition')) || '';
+      const m = /filename="?([^";]+)"?/i.exec(said);
+      blob.filename = m ? m[1] : 'workflow.json';
+      return blob;
+    },
+    /** `P22-20`. "Why did this fail?" — the model reads what the step was
+     *  handed and what came back (as untrusted data) and answers. Writes
+     *  nothing. `item` is the For-each item's index, or null.
+     *  → `{ why, model, changed_since_run, proposal: { base_version, node_id,
+     *  item, config, changes: [{ field, words, before, after, where, from_run }] }
+     *  | null, left_out: [sentence] }` */
+    explainStep(id, runId, { nodeId, item = null } = {}) {
+      return call('POST', `/api/workflows/${enc(id)}/runs/${enc(runId)}/explain`,
+        { node_id: nodeId, item: item == null ? null : item });
+    },
+    /** `P22-20`. Apply a proposed fix to one step: a new version (source
+     *  `fixed`), refused (400) if the change is one a fix may not make, 409 if
+     *  the workflow moved since `baseVersion`, 403 unless a person sent it.
+     *  Undo is `restoreVersion(id, undo_version, newVersion)`.
+     *  → `{ workflow, saved, undo_version }` */
+    fixStep(id, nodeId, { config, baseVersion } = {}) {
+      return call('POST', `/api/workflows/${enc(id)}/nodes/${enc(nodeId)}/fix`,
+        { config, base_version: baseVersion });
     },
     /** → `{ workflow: Doc }` */
     getWorkflow(id) {

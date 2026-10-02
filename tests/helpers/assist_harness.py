@@ -89,11 +89,29 @@ def make_app(factory, scheduler, monkeypatch, *, backup=False):
 
 
 def build_world(monkeypatch, tmp_path, *, admin="alice", integrations=(), chat=None,
-                name="assist.db"):
+                name="assist.db", skills=(), workstation=False):
     """The real scheduler and routes over a real SQLite file, a chat server
     that records, the given Integrations, and `admin` the one admin — one
     answer from every place that asks (the dispatcher, the palette's reach, the
-    task policy the store and the walker read)."""
+    task policy the store and the walker read).
+
+    `skills` — `[(name, description)]` written for alice by the real
+    `SkillsManager` over a temporary data directory (`test_a_skill_is_a_step`'s
+    move). `workstation` — Code is available (the workstation's three
+    conditions answer None), so a test can show Code is left out of a draft by
+    the drafter's rule and not merely because the workstation is off."""
+    from services.memory.skills import SkillsManager, invalidate_skill_cache
+    data = tmp_path / "data"
+    data.mkdir(exist_ok=True)
+    monkeypatch.setattr("src.constants.DATA_DIR", str(data))
+    invalidate_skill_cache()
+    sm = SkillsManager(str(data))
+    for skill_name, description in skills:
+        sm.add_skill(name=skill_name, description=description, owner="alice",
+                     procedure=["Read it", "Do it"], status="published")
+    if workstation:
+        import src.workflow_effects as we
+        monkeypatch.setattr(we, "workstation_why", lambda owner: None)
     import src.agent_tools as agent_tools
     import src.integrations as integrations_mod
     import src.task_action_policy as tap
