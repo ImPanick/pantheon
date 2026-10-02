@@ -267,6 +267,14 @@ async def test_a_newer_or_foreign_file_and_an_oversized_one_are_refused(monkeypa
     big = {"file": dict(_hostile_file("/v1/entries"), padding="x" * (1024 * 1024))}
     over = await _call(w, "POST", "/api/workflows", json=big)
     assert over.status_code == 413 and "larger than 1 MiB" in over.json()["detail"]
+    # The cap is the body reader's (`_body`), on every route — not only the
+    # import's own check, which would hide its absence on `POST`.
+    made = await _call(w, "POST", "/api/workflows", json={"name": "Small"})
+    put = await _call(w, "PUT", f"/api/workflows/{made.json()['workflow']['id']}",
+                      json={"positions": {"start": [0, 0]}, "padding": "x" * (1024 * 1024)})
+    assert put.status_code == 413
+    from routes.workflow.workflow_routes import BODY_TOO_BIG
+    assert put.json() == {"detail": BODY_TOO_BIG}
     db = w.factory()
     try:
         with pytest.raises(store.WorkflowRefused) as err:
@@ -274,7 +282,7 @@ async def test_a_newer_or_foreign_file_and_an_oversized_one_are_refused(monkeypa
         assert err.value.status == 413
     finally:
         db.close()
-    assert rows(w.factory, Workflow) == []
+    assert [r.name for r in rows(w.factory, Workflow)] == ["Small"], "no file was imported"
 
 
 async def test_a_workflow_round_trips_to_another_install(monkeypatch, tmp_path):
