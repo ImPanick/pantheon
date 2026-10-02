@@ -9,7 +9,7 @@ import spinnerModule from '../spinner.js';
 import { sortModelIds } from '../modelSort.js';
 import { chevronIcon, playIcon } from '../icons.js';
 import { esc } from '../util/escapeHtml.js';
-import { promptRunMode as openRunModePicker } from '../runModePicker.js?v=20261001workbench2';
+import { promptRunMode as openRunModePicker } from '../runModePicker.js?v=20261002slicebee';
 
 // Rotating research textarea placeholders — pick one at random each
 // time the panel is rendered so the example keeps feeling fresh.

@@ -39,7 +39,7 @@
 // it, from the keyboard too — `P10-06`); its markup is built with
 // `createElement`, so no server string is ever parsed as HTML.
 
-import * as Modals from './modalManager.js?v=20261001workbench2';
+import * as Modals from './modalManager.js?v=20261002slicebee';
 import { makeWindowDraggable } from './windowDrag.js';
 import { confirmAndResetMine } from './workstation.js';
 

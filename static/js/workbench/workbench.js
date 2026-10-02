@@ -29,13 +29,13 @@
 import { mountTaskFields } from '../tasks/taskFields.js';
 import { mountAutomations } from './workflowRoom.js';
 import { makeWindowDraggable } from '../windowDrag.js';
-import * as Modals from '../modalManager.js?v=20261001workbench2';
+import * as Modals from '../modalManager.js?v=20261002slicebee';
 // `P22-04`. The step renderer the Tasks card draws a plan with, for the
 // canvas's full plan. Spelled exactly as `app.js` imports `tasks.js` — a
 // different spelling is a second module instance (`runStatus.js`'s header) —
 // so this is the instance already on the page, and the cache-buster moves with
 // the other importers.
-import { renderRunSteps } from '../tasks.js?v=20261001workbench2';
+import { renderRunSteps } from '../tasks.js?v=20261002slicebee';
 
 export const WORKBENCH_ID = 'workbench-modal';
 

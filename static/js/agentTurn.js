@@ -39,7 +39,7 @@ import {
   buildTodoCard,
   demoteSupersededTodoCards,
   safeToolScreenshotSrc,
-} from './chatRenderer.js?v=20261001workbench2';
+} from './chatRenderer.js?v=20261002slicebee';
 import { applyAgentThreadNode, agentThreadContent, toolOutputPanesHtml,
          screenshotSummary } from './agentThread.js';
 

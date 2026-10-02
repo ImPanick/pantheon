@@ -9,14 +9,14 @@
 import Storage from './storage.js';
 import uiModule from './ui.js';
 import sessionModule from './sessions.js';
-import chatRenderer, { buildDiffHtml } from './chatRenderer.js?v=20261001workbench2';
-import chatStream from './chatStream.js?v=20261001workbench2';
+import chatRenderer, { buildDiffHtml } from './chatRenderer.js?v=20261002slicebee';
+import chatStream from './chatStream.js?v=20261002slicebee';
 import { addAITTSButton } from './tts-ai.js';
 import { prefersReducedMotion } from './motion.js';
 import markdownModule from './markdown.js';
 import spinnerModule from './spinner.js';
 import presetsModule from './presets.js';
-import fileHandlerModule from './fileHandler.js?v=20261001workbench2';
+import fileHandlerModule from './fileHandler.js?v=20261002slicebee';
 import searchModule from './search.js';
 import documentModule from './document.js?v=20260815approvalsave1';
 import * as emailInbox from './emailInbox.js?v=20260815approvalsave1';
@@ -56,7 +56,7 @@ import * as contextUsage from './contextUsage.js';
 // `P10-06`. The context panel closes through the one popup registry, like
 // every other popup appended to <body> (see `_openContextPanel`).
 import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
-import queuePanel from './queuePanel.js?v=20261001workbench2';
+import queuePanel from './queuePanel.js?v=20261002slicebee';
 import { runStatusLabel } from './runStatus.js';
 import { playIcon, stopIcon } from './icons.js';
 import {
@@ -8515,7 +8515,7 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
   // `app.js:32` already imports `tasks.js` at boot, so this resolves from cache.
   let _activitySourceHandle = null;
   function _registerQueueActivitySource() {
-    import('./tasks.js?v=20261001workbench2').then((mod) => {
+    import('./tasks.js?v=20261002slicebee').then((mod) => {
       if (!mod || typeof mod.registerActivitySource !== 'function') return;
       mod.registerActivitySource('chat-queue', () => getQueueActivityEntries('all'));
       _activitySourceHandle = mod;

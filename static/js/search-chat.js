@@ -42,8 +42,8 @@
 // start a new chat.
 
 import sessionModule from './sessions.js';
-import settingsModule from './settings.js?v=20261001workbench2';
-import { doorShown, isMinimized, listWindows, showWindow } from './modalManager.js?v=20261001workbench2';
+import settingsModule from './settings.js?v=20261002slicebee';
+import { doorShown, isMinimized, listWindows, showWindow } from './modalManager.js?v=20261002slicebee';
 import { openSkillsWindow } from './skills.js';
 import { slashCatalog, insertSlashToken, loadSkillEntries, mergeSkillEntries } from './slashAutocomplete.js';
 import { SETTINGS_GROUPS, searchSettingsPanels } from './settings/registry.js';

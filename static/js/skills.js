@@ -15,7 +15,7 @@ import uiModule from './ui.js';
 import * as spinnerModule from './spinner.js';
 import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
 import { topPortalZ } from './toolWindowZOrder.js';
-import { setBackgroundWork } from './modalManager.js?v=20261001workbench2';
+import { setBackgroundWork } from './modalManager.js?v=20261002slicebee';
 import { PLAY_GLYPH, chevronIcon } from './icons.js';
 
 const API = window.location.origin;
@@ -3615,7 +3615,7 @@ export async function openSkillsWindow(view) {
   _wireSkillsWindow();
   if (view) _showSkillsView(view);
   try {
-    const Modals = await import('./modalManager.js?v=20261001workbench2');
+    const Modals = await import('./modalManager.js?v=20261002slicebee');
     if (Modals.isMinimized('skills-modal')) Modals.restore('skills-modal');
     else Modals.openClosedWindow('skills-modal');
   } catch (_) {
