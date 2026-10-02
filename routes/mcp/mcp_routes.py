@@ -454,6 +454,131 @@ def setup_mcp_routes(mcp_manager: McpManager):
             },
         }
 
+    # ── `P22-22`: build an MCP server in your workstation ───────────────────
+    #
+    # Six routes, all spelled in `static/js/settings/mcpBuild.js` (`B596`), all
+    # the caller's own: `require_user` (a bearer API token is refused) and then
+    # `workstation_for(owner)` inside every `workstation_mcp` call — the
+    # admin's switch, the address and `can_use_workstation`, asked exactly as
+    # the agent's workstation tools ask them, with the same sentences. The
+    # work happens in the caller's own workstation account; there is no
+    # parameter naming whose.
+    #
+    # **None of them writes an `McpServer` row.** Registering is `POST
+    # /servers` above, `require_admin`, the one door (`D-2026-09-27-01`); the
+    # browser fills that route's form with `registration`. `FORBIDDEN.md` Part
+    # 2's command/arg/env validation is read (`agent_refusal`) and not touched.
+
+    _SCAFFOLD_BODY_MAX = 1024 * 1024
+
+    async def _scaffold_body(request: Request) -> dict:
+        raw = await request.body()
+        if len(raw) > _SCAFFOLD_BODY_MAX:
+            raise HTTPException(413, "That is more than a server's source; nothing was saved.")
+        try:
+            body = json.loads(raw or b"{}")
+        except ValueError:
+            raise HTTPException(400, 'The body is JSON, e.g. {"name": "weather", "tools": ["get_forecast"]}')
+        if not isinstance(body, dict):
+            raise HTTPException(400, "The body is a JSON object.")
+        return body
+
+    def _scaffold_owner(request: Request):
+        from src.auth_helpers import require_user
+        return require_user(request), getattr(request.app.state, "auth_manager", None)
+
+    async def _scaffold_call(work):
+        from routes.workstation_routes import _http_error
+        from src.workstation_client import WorkstationError
+        from src.workstation_mcp import BuildError
+        try:
+            return await work
+        except BuildError as exc:
+            raise HTTPException(400, str(exc))
+        except WorkstationError as exc:
+            raise _http_error(exc)
+
+    @router.get("/scaffold")
+    async def scaffold_list(request: Request):
+        """The servers in the caller's `~/mcp-servers/`, and whether they may
+        build one — `{servers, workstation: {available, why}}`. Nothing is
+        started; `checked` is the last check's word (`works`, `broken`,
+        `changed`, `never`)."""
+        from src import workstation_mcp as wm
+        from src.workstation_client import WorkstationError
+        owner, auth = _scaffold_owner(request)
+        why = wm.workstation_why(owner, auth_manager=auth)
+        if why:
+            return {"servers": [], "workstation": {"available": False, "why": why}}
+        try:
+            servers = await wm.ws_list(owner, auth_manager=auth)
+        except WorkstationError as exc:
+            return {"servers": [], "workstation": {"available": False, "why": exc.message}}
+        return {"servers": servers, "workstation": {"available": True, "why": None}}
+
+    @router.post("/scaffold")
+    async def scaffold_create(request: Request):
+        """Make one in the caller's workstation, then start it once to prove
+        it runs. `{name, tools[], description}` → `{name, tools, check,
+        registration, agent_refusal}`. Never overwrites."""
+        from src import workstation_mcp as wm
+        from src.workstation_client import WorkstationError
+        owner, auth = _scaffold_owner(request)
+        body = await _scaffold_body(request)
+        tools = body.get("tools")
+        if tools is not None and not isinstance(tools, list):
+            raise HTTPException(400, 'tools is a list of names, e.g. ["get_forecast"]')
+        made = await _scaffold_call(wm.ws_create(owner, body.get("name"), tools,
+                                                 body.get("description") or "", auth_manager=auth))
+        try:
+            check = await wm.ws_verify(owner, made["name"], auth_manager=auth)
+        except WorkstationError as exc:
+            check = {"started": False, "tools": [], "error": exc.message, "offers": [], "stderr": ""}
+        return {"name": made["name"], "tools": made["tools"], "description": made["description"],
+                "check": check, "registration": made["registration"],
+                "agent_refusal": made["agent_refusal"]}
+
+    @router.get("/scaffold/{name}")
+    async def scaffold_read(name: str, request: Request):
+        """`server.py` as it is now, and what an admin registers it with."""
+        from src import workstation_mcp as wm
+        owner, auth = _scaffold_owner(request)
+        source = await _scaffold_call(wm.ws_read_source(owner, name, auth_manager=auth))
+        registration = wm.ws_registration(owner, name)  # the name passed the read's rule
+        return {"name": registration["name"], "source": source, "registration": registration,
+                "agent_refusal": wm.agent_refusal(registration)}
+
+    @router.put("/scaffold/{name}")
+    async def scaffold_write(name: str, request: Request):
+        """Replace an existing server's `server.py` with `{source}`."""
+        from src import workstation_mcp as wm
+        owner, auth = _scaffold_owner(request)
+        body = await _scaffold_body(request)
+        return await _scaffold_call(wm.ws_write_source(owner, name, body.get("source"),
+                                                       auth_manager=auth))
+
+    @router.post("/scaffold/{name}/check")
+    async def scaffold_check(name: str, request: Request):
+        """Start it in the caller's workstation and list what it offers —
+        `{started, tools, error}` (`verify_server`'s shape) plus `offers` and
+        `stderr`."""
+        from src import workstation_mcp as wm
+        owner, auth = _scaffold_owner(request)
+        return await _scaffold_call(wm.ws_verify(owner, name, auth_manager=auth))
+
+    @router.post("/scaffold/{name}/try")
+    async def scaffold_try(name: str, request: Request):
+        """Call one tool in the caller's workstation with `{tool, arguments}`
+        and hand back what it said, in `/servers/{id}/call`'s envelope."""
+        from src import workstation_mcp as wm
+        owner, auth = _scaffold_owner(request)
+        body = await _scaffold_body(request)
+        timeout = body.get("timeout", wm.CALL_TIMEOUT_S)
+        if not isinstance(timeout, (int, float)) or isinstance(timeout, bool):
+            timeout = wm.CALL_TIMEOUT_S
+        return await _scaffold_call(wm.ws_try(owner, name, body.get("tool"), body.get("arguments"),
+                                              timeout=timeout, auth_manager=auth))
+
     @router.put("/servers/{server_id}")
     async def update_server(
         server_id: str,

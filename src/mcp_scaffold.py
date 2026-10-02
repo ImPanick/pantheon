@@ -38,6 +38,8 @@ Public surface:
     registration_for(name)          the admin route's fields, exactly
     refusal_on_the_agent_path(reg)  why the assistant cannot register it
     list_servers()                  what has been generated here
+    render_server_py(name, tools)   the one template (standard library — `P22-22`)
+    render_workstation_readme(…)    the README beside a workstation-built server
     main(argv)                      the CLI behind `scripts/pantheon-mcp-new`
     run_parsed(args, parser)        the same, for `pantheon-mcp new`, which parsed already
 """
@@ -64,6 +66,11 @@ __all__ = [
     "verify_server",
     "main",
     "run_parsed",
+    "render_server_py",
+    "render_workstation_readme",
+    "validated_request",
+    "CHECK_HINT_CLI",
+    "CHECK_HINT_WORKSTATION",
 ]
 
 
@@ -93,10 +100,14 @@ _TOOL_RE = re.compile(r"^[a-z][a-z0-9_]{0,47}$")
 # Names the generated module already binds. A tool called `call_tool` would
 # shadow the dispatcher decorated three lines below it, and the server would
 # answer every call with the last definition to win.
+#
+# `P22-22`: the template is standard library now (below), and binds `sys`; the
+# set only grows — the SDK template's names stay refused, so a tool name that
+# was refused before is refused still (design § 2: "a superset").
 _RESERVED_TOOL_NAMES = frozenset({
     "asyncio", "json", "main", "server", "stdio_server", "list_tools",
     "call_tool", "Server", "Tool", "TextContent", "TOOLS", "HANDLERS",
-    "SERVER_NAME", "SERVER_DESCRIPTION",
+    "SERVER_NAME", "SERVER_DESCRIPTION", "sys",
 })
 
 MAX_TOOLS = 12
@@ -245,10 +256,10 @@ def _py_literal(text: Any) -> str:
     return json.dumps(str(text if text is not None else ""), ensure_ascii=True)
 
 
-_TOOL_BLOCK = '''    Tool(
-        name={name},
-        description={description},
-        inputSchema={{
+_TOOL_BLOCK = '''    {{
+        "name": {name},
+        "description": {description},
+        "inputSchema": {{
             "type": "object",
             "properties": {{
                 "text": {{
@@ -258,7 +269,7 @@ _TOOL_BLOCK = '''    Tool(
             }},
             "required": ["text"],
         }},
-    ),
+    }},
 '''
 
 _HANDLER_BLOCK = '''
@@ -275,8 +286,43 @@ async def {fn}(arguments: dict) -> str:
 '''
 
 
-def render_server_py(name: str, tools: Sequence[str], description: str = "") -> str:
-    """The generated `server.py`, as text."""
+# How a person checks the file after an edit, said in its docstring. Two fixed
+# sentences, one per place a server is made — never text anybody typed. The
+# workstation's is the panel's (`P22-22`), because a workstation has no
+# `pantheon-mcp-new` on its PATH.
+CHECK_HINT_CLI = "Run `pantheon-mcp-new {name} --check` after an edit"
+CHECK_HINT_WORKSTATION = ("Press Check beside it in Pantheon (Settings → Integrations → "
+                          "+ → MCP Tool Server → Build an MCP server) after an edit")
+
+
+def render_server_py(name: str, tools: Sequence[str], description: str = "",
+                     *, check_hint: str = CHECK_HINT_CLI) -> str:
+    """The generated `server.py`, as text.
+
+    **`P22-22`: standard library only, one template for both places a server
+    is made** (design § 6's default). It was the MCP SDK's `Server` and
+    `stdio_server`, which only Pantheon's own interpreter has — the workstation
+    image installs `python3` and not `mcp` (`workstation/provision.sh`'s
+    PACKAGES), so the SDK file could not start where `D-2026-10-02-02` §3 puts
+    a person's server. The MCP stdio transport is newline-delimited JSON-RPC
+    2.0, and a tool server needs four methods of it (`initialize`, `ping`,
+    `tools/list`, `tools/call`); class `Server` below is those four in about
+    sixty lines, and the CLI's file still completes `McpManager.connect_server`'s
+    handshake through the SDK's own client (`tests/test_a_generated_mcp_server_runs.py`).
+
+    Two things it does that the SDK file could not: `print()` is safe (stdout
+    is pointed at stderr on line one, and the wire is `sys.__stdout__`), and a
+    tool that raises answers with `isError` rather than as a success.
+    """
+    if check_hint not in (CHECK_HINT_CLI, CHECK_HINT_WORKSTATION):
+        raise ValueError("check_hint is one of the module's two sentences")
+    # Asked again here, not trusted from the caller: the name lands in the
+    # docstring and a tool name becomes a `def`, so neither may be anything
+    # the two rules have not passed (`P22-22`, design § 5.5 — the workstation
+    # door calls this too).
+    name = normalise_server_name(name)
+    tools = [normalise_tool_name(tool) for tool in tools]
+    hint = check_hint.format(name=name)
     tool_entries = "".join(
         _TOOL_BLOCK.format(
             name=_py_literal(tool),
@@ -294,26 +340,29 @@ def render_server_py(name: str, tools: Sequence[str], description: str = "") -> 
     handler_map = "".join(f'    {_py_literal(t)}: {t},\n' for t in tools)
 
     return f'''#!/usr/bin/env python3
-"""An MCP server, made by `pantheon-mcp-new`.
+"""An MCP server, made by Pantheon.
 
 Two things to know before you edit it.
 
-1. It talks over stdin/stdout. **Never `print()` in here** — that is the wire.
-   Write to `sys.stderr` if you want to see something while it runs.
+1. It needs nothing but Python 3: no packages to install. It talks MCP over
+   stdin and stdout, one JSON message per line. `print()` is safe in here —
+   whatever you print goes to standard error, which a check shows you; the
+   protocol keeps its own channel.
 2. It is yours. Nothing regenerates or overwrites this file.
 
-Run `pantheon-mcp-new {name} --check` after an edit: it starts this file the
-same way Pantheon does and tells you whether it still works.
+{hint}: it starts this file the same way Pantheon does and tells you whether it
+still works.
 """
 
 from __future__ import annotations
 
 import asyncio
 import json
+import sys
 
-from mcp.server import Server
-from mcp.server.stdio import stdio_server
-from mcp.types import TextContent, Tool
+# `print()` writes to standard error from here on. The protocol writes to the
+# real standard output itself (`sys.__stdout__`), so nothing printed can break it.
+sys.stdout = sys.stderr
 
 SERVER_NAME = {_py_literal(name)}
 SERVER_DESCRIPTION = {_py_literal(description)}
@@ -340,38 +389,93 @@ HANDLERS = {{
 
 # ===========================================================================
 # 3. THE WIRING. You should not need to change anything below this line.
+#    MCP over stdio is newline-delimited JSON-RPC 2.0; a tool server answers
+#    four of its methods, and this is those four.
 # ===========================================================================
-server = Server(SERVER_NAME)
+class Server:
+    def __init__(self, name, description, tools, handlers):
+        self.name = name
+        self.description = description
+        self.tools = tools
+        self.handlers = handlers
+
+    def answer(self, message):
+        """The reply to one message, or None for a notification."""
+        if not isinstance(message, dict):
+            return self.error(None, -32600, "Each message is one JSON object.")
+        if "id" not in message:
+            return None
+        ident = message.get("id")
+        method = message.get("method")
+        params = message.get("params")
+        params = params if isinstance(params, dict) else {{}}
+        if method == "initialize":
+            result = {{
+                "protocolVersion": str(params.get("protocolVersion") or "2025-06-18"),
+                "capabilities": {{"tools": {{}}}},
+                "serverInfo": {{"name": self.name, "version": "1"}},
+            }}
+            if self.description:
+                result["instructions"] = self.description
+            return self.reply(ident, result)
+        if method == "ping":
+            return self.reply(ident, {{}})
+        if method == "tools/list":
+            return self.reply(ident, {{"tools": self.tools}})
+        if method == "tools/call":
+            return self.reply(ident, self.call(params.get("name"), params.get("arguments")))
+        return self.error(ident, -32601, "This server does not answer " + str(method))
+
+    def call(self, name, arguments):
+        handler = self.handlers.get(name)
+        if handler is None:
+            return self.text("Unknown tool: " + str(name), failed=True)
+        try:
+            result = handler(arguments if isinstance(arguments, dict) else {{}})
+            if asyncio.iscoroutine(result):
+                result = asyncio.run(result)
+        except Exception as exc:  # a tool that raises must answer, not kill the server
+            return self.text("{{}} failed: {{}}: {{}}".format(name, type(exc).__name__, exc),
+                             failed=True)
+        if not isinstance(result, str):
+            result = json.dumps(result, default=str, ensure_ascii=False)
+        return self.text(result)
+
+    @staticmethod
+    def text(words, failed=False):
+        return {{"content": [{{"type": "text", "text": words}}], "isError": failed}}
+
+    @staticmethod
+    def reply(ident, result):
+        return {{"jsonrpc": "2.0", "id": ident, "result": result}}
+
+    @staticmethod
+    def error(ident, code, words):
+        return {{"jsonrpc": "2.0", "id": ident, "error": {{"code": code, "message": words}}}}
+
+    def run(self):
+        wire = sys.__stdout__.buffer
+        while True:
+            raw = sys.stdin.buffer.readline()
+            if not raw:
+                return
+            line = raw.decode("utf-8", "replace").strip()
+            if not line:
+                continue
+            try:
+                out = self.answer(json.loads(line))
+            except ValueError:
+                out = self.error(None, -32700, "That line was not JSON.")
+            if out is not None:
+                wire.write((json.dumps(out) + "\\n").encode("utf-8"))
+                wire.flush()
 
 
-@server.list_tools()
-async def list_tools() -> list[Tool]:
-    return TOOLS
-
-
-@server.call_tool()
-async def call_tool(name: str, arguments: dict) -> list[TextContent]:
-    handler = HANDLERS.get(name)
-    if handler is None:
-        return [TextContent(type="text", text="Unknown tool: " + str(name))]
-    try:
-        result = await handler(arguments or {{}})
-    except Exception as exc:  # a tool that raises must answer, not kill the server
-        result = "{{}} failed: {{}}: {{}}".format(name, type(exc).__name__, exc)
-    if not isinstance(result, str):
-        result = json.dumps(result, default=str, ensure_ascii=False)
-    return [TextContent(type="text", text=result)]
-
-
-async def main() -> None:
-    async with stdio_server() as (read_stream, write_stream):
-        await server.run(
-            read_stream, write_stream, server.create_initialization_options()
-        )
+server = Server(SERVER_NAME, SERVER_DESCRIPTION, TOOLS, HANDLERS)
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    server.run()
 '''
 
 
@@ -383,7 +487,15 @@ def render_readme(
     refusal: str,
 ) -> str:
     """The `README.md` written beside the server — the same words the CLI
-    prints, kept where the person will be when they come back to it."""
+    prints, kept where the person will be when they come back to it.
+
+    `P22-22` (design § 0.8): its environment line said a server registered
+    with no variables "starts with a minimal environment". That has been
+    false since `P8-42` — `McpManager._connect_stdio` starts every stdio
+    server with `{**os.environ, **env}` — so a person was told Pantheon's
+    keys and proxy settings were out of the server's reach when they were in
+    it. The workstation's README is `render_workstation_readme`, below.
+    """
     args_json = json.dumps(registration["args"])
     tool_lines = "\n".join(f"- `{t}`" for t in tools)
     return f"""# {name}
@@ -446,20 +558,108 @@ administrator's action and lives behind an administrator's door.
 
 ## Things that bite
 
-- **Never `print()` in `{SERVER_FILENAME}`.** stdout is the protocol. Use
-  `sys.stderr`.
+- **`print()` is safe in `{SERVER_FILENAME}`.** It goes to standard error, which
+  `--check` shows you; the protocol has its own channel. Writing to
+  `sys.__stdout__` yourself is the one way to break it.
 - **Check your work with `pantheon-mcp-new {name} --check`.** It starts the
   file exactly as Pantheon does and tells you what broke.
 - **After you edit it, reconnect the server** (Settings → Integrations, or
   `POST /api/mcp/servers/{{id}}/reconnect`). A running server is a running
   process; it does not re-read the file.
-- **If your tool needs an environment variable** — an API key, a proxy setting
-  — put it in the Environment box when you register. A server registered with
-  *no* environment variables at all starts with a minimal environment, so
-  `PYTHONPATH`, `NODE_PATH` and proxy variables are not inherited from
-  Pantheon.
+- **It starts with Pantheon's own environment.** Every variable Pantheon was
+  started with — `PATH`, `PYTHONPATH`, proxy settings, and any key Pantheon
+  holds in its environment — is visible to it, and the Environment box adds to
+  that (it does not replace it). If your tool needs an API key, put it in the
+  Environment box when you register rather than relying on what Pantheon
+  happens to have.
 - **This folder is on the data volume**, so it survives an image update. A file
   you put next to Pantheon's own `mcp_servers/` would not.
+"""
+
+
+def render_workstation_readme(
+    name: str,
+    tools: Sequence[str],
+    description: str,
+    registration: Dict[str, Any],
+    refusal: str,
+) -> str:
+    """The `README.md` beside a server built in a person's workstation
+    (`P22-22`, `D-2026-10-02-02` §3) — where it runs, how it is checked and
+    registered, and the four costs the owner accepted, said to the person who
+    pays them. The registration is the relay's (`workstation_mcp.ws_registration`)."""
+    tool_lines = "\n".join(f"- `{t}`" for t in tools)
+    arg_cells = " ".join(f"`{a}`" for a in registration["args"])
+    return f"""# {name}
+
+An MCP server. {description or "No description was given when it was made."}
+
+It lives in your workstation, in this folder, and it runs there — in your own
+account — every time it is checked, tried or called. Pantheon did not register
+it: registering a server lets every assistant on this Pantheon call it, so that
+is an administrator's decision.
+
+## What you got
+
+- `{SERVER_FILENAME}` — the server. Edit it. Nothing regenerates it. It needs
+  nothing but Python 3.
+- This file.
+
+Tools it offers right now:
+
+{tool_lines}
+
+Each one answers with a placeholder that repeats its argument back, so you can
+see the whole chain work before you write anything. Section 2 of
+`{SERVER_FILENAME}` is where the real code goes.
+
+## Check it and try it
+
+Settings → Integrations → + → MCP Tool Server → **Build an MCP server**. *Check*
+starts it in your workstation and lists what it offers; *Try* calls one tool
+with what you type and shows what it answered.
+
+## Register it
+
+An administrator presses **Register** beside it, which opens the *Add MCP
+Server* form already filled in, and saves it. These are the fields:
+
+| Field | What to put in it |
+|---|---|
+| Name | `{registration['name']}` |
+| Transport | `{registration['transport']}` |
+| Command | `{registration['command']}` |
+| Arguments | {arg_cells} (one box each) |
+| Environment | leave empty |
+
+That command is a relay inside Pantheon, and it runs nothing of yours itself:
+each time an assistant lists or calls this server's tools, the relay starts
+`{SERVER_FILENAME}` here, in your workstation account, asks it, and stops it.
+
+## Why the assistant cannot register it
+
+Ask it and it will refuse, with this:
+
+> {refusal}
+
+That refusal is deliberate. Text the assistant reads can reach `manage_mcp`, and
+a registration is a program to run, so the agent's own path allows neither an
+interpreter nor a command containing a path.
+
+## Things that bite
+
+- **Once registered it runs as you, for everyone.** Any assistant on this
+  Pantheon may call it, and every call runs in your account, with your files.
+- **Nothing is kept between calls.** It is started for each call and stopped
+  after it. Keep anything that must last in a file.
+- **Your workstation has to be on.** While it is off or not answering, this
+  server's tools answer with the reason instead.
+- **Its environment is your workstation account's** — your `HOME`, your files,
+  the workstation's `PATH`. Nothing of Pantheon's reaches it: not its
+  environment and not its keys. A key your tool needs goes in a file in your
+  home.
+- **`print()` is safe in `{SERVER_FILENAME}`.** It goes to standard error, which
+  *Check* and *Try* show you.
 """
 
 
@@ -467,18 +667,16 @@ administrator's action and lives behind an administrator's door.
 # Creating
 # ---------------------------------------------------------------------------
 
-def create_server(
-    name: str,
-    *,
-    tools: Optional[Sequence[str]] = None,
-    description: str = "",
-    data_dir: Optional[str] = None,
-    python: Optional[str] = None,
-) -> Dict[str, Any]:
-    """Write a new server. Returns what was written and how to register it.
+def validated_request(
+    name: Any, tools: Optional[Sequence[Any]], description: Any,
+) -> "tuple[str, List[str], str]":
+    """`(slug, tools, description)` for a new server, or a `ScaffoldError`.
 
-    Refuses if the directory already exists, and there is no `--force`: the
-    only thing an overwrite could do here is destroy code somebody wrote.
+    The rules for what may be asked for, in one place for both doors that
+    make a server — `create_server` here (the data volume) and
+    `workstation_mcp.ws_create` (a person's workstation, `P22-22`) — so the
+    browser cannot accept a name, a tool or a description the CLI refuses, or
+    the other way round (`Law 7`). Lifted out of `create_server` unchanged.
     """
     slug = normalise_server_name(name)
     wanted = list(tools) if tools else [DEFAULT_TOOL_NAME]
@@ -502,6 +700,23 @@ def create_server(
             f"{MAX_DESCRIPTION_CHARS}. It is a sentence, not the manual — the "
             "manual is the README next to the server."
         )
+    return slug, seen, text
+
+
+def create_server(
+    name: str,
+    *,
+    tools: Optional[Sequence[str]] = None,
+    description: str = "",
+    data_dir: Optional[str] = None,
+    python: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Write a new server. Returns what was written and how to register it.
+
+    Refuses if the directory already exists, and there is no `--force`: the
+    only thing an overwrite could do here is destroy code somebody wrote.
+    """
+    slug, seen, text = validated_request(name, tools, description)
 
     target = server_dir(slug, data_dir=data_dir)
     if os.path.exists(target):
@@ -657,8 +872,10 @@ async def verify_server(
             "tools": [],
             "error": (
                 f"it did not answer within {timeout:g}s. An MCP server that "
-                "writes to stdout — a print(), a banner, a progress bar — "
-                "corrupts the protocol and hangs exactly like this."
+                "writes anything but protocol messages to its standard output "
+                "hangs exactly like this — in the generated file print() is "
+                "safe, so look for a write to sys.__stdout__, or for work done "
+                "at import that takes this long."
             ),
         }
     try:

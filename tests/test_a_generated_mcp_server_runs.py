@@ -410,8 +410,12 @@ def test_hostile_text_in_a_description_cannot_become_code(text, tmp_path):
 
     imported = {a.name for n in ast.walk(tree) if isinstance(n, ast.Import) for a in n.names}
     imported |= {n.module for n in ast.walk(tree) if isinstance(n, ast.ImportFrom)}
-    assert imported == {"__future__", "asyncio", "json", "mcp.server",
-                        "mcp.server.stdio", "mcp.types"}
+    # `P22-22`: the template is standard library now (one file for the CLI and
+    # the workstation, whose image has no `mcp` package), so its own imports are
+    # these four — the SDK's three `mcp.*` modules went and `sys` came. The
+    # claim is unchanged: whatever is typed, the imports are exactly the
+    # template's own.
+    assert imported == {"__future__", "asyncio", "json", "sys"}
 
 
 @pytest.mark.parametrize("text", _HOSTILE)

@@ -13,10 +13,13 @@ import {
   collectMcpStdioFields,
   createMcpFieldEditor,
   createMcpToolRow,
+  describeMcpEdit,
   describeServerRefusal,
   formatCommandLine,
 } from './settings/mcpFields.js';
 import { createMcpPresetPicker } from './settings/mcpPresets.js';
+// `P22-22`: build a server in your workstation, and *Try* a tool.
+import { mountMcpBuild, mountMcpBuildDoor, mountToolTry } from './settings/mcpBuild.js';
 import { bindSettingsSearch } from './settings/search.js';
 import { bindSettingsSidebar } from './settings/sidebar.js';
 import {
@@ -5540,7 +5543,15 @@ async function initUnifiedIntegrations() {
   }
 
   // ── MCP form — full management view ──
-  async function showMcpForm(editId) {
+  //
+  // `P22-22`. `options`: `{ edit: srv }` draws the add form's own editors
+  // filled from the server and saves through `PUT` (one function, both modes —
+  // `Law 7`); `{ registration }` fills the add form from a server built in a
+  // workstation (*Register*). Everything is drawn into `formEl`, the element
+  // with id `unified-intg-form`, wherever `P22-21` has put it.
+  async function showMcpForm(editId, options) {
+    const editing = options && options.edit ? options.edit : null;
+    const prefill = editing || (options && options.registration) || null;
     // Toggle an in-flight loading state on a button (disabled + dimmed + label).
     function _setBtnLoading(btn, loading, label) {
       if (!btn) return;
@@ -5631,6 +5642,7 @@ async function initUnifiedIntegrations() {
             <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:8px;justify-content:flex-end;">
               <span id="uf-mcp-msg" style="font-size:11px;flex:1;margin-right:8px"></span>
               ${srv.needs_oauth ? `<a href="/api/mcp/oauth/authorize/${esc(encodeURIComponent(srv.id))}" target="_blank" class="admin-btn-add" style="background:transparent;color:var(--accent, var(--red));border-color:color-mix(in srgb, var(--accent, var(--red)) 45%, var(--border));text-decoration:none;font-weight:600;">Authorize</a>` : ''}
+              <button class="admin-btn-add" id="uf-mcp-edit" style="background:transparent;color:var(--accent, var(--red));border-color:color-mix(in srgb, var(--accent, var(--red)) 45%, var(--border));">Edit</button>
               <button class="admin-btn-add" id="uf-mcp-reconnect" style="background:transparent;color:var(--accent, var(--red));border-color:color-mix(in srgb, var(--accent, var(--red)) 45%, var(--border));">Reconnect</button>
               <button class="admin-btn-add" id="uf-mcp-toggle" style="background:transparent;color:var(--accent, var(--red));border-color:color-mix(in srgb, var(--accent, var(--red)) 45%, var(--border));">${srv.is_enabled ? 'Disable' : 'Enable'}</button>
               <button class="admin-btn-add" id="uf-mcp-cancel" style="background:transparent;color:var(--accent, var(--red));border-color:color-mix(in srgb, var(--accent, var(--red)) 45%, var(--border));">Close</button>
@@ -5656,6 +5668,8 @@ async function initUnifiedIntegrations() {
           showMcpForm(editId);
         });
         el('uf-mcp-cancel').addEventListener('click', () => { formEl.style.display = 'none'; });
+        // `P22-22`. Edit: the add form's own editors, filled from this row.
+        el('uf-mcp-edit').addEventListener('click', () => showMcpForm('new', { edit: srv }));
         // Load tools list
         if (srv.status === 'connected' && srv.tool_count > 0) {
           const panel = el('uf-mcp-tools-panel');
@@ -5711,7 +5725,23 @@ async function initUnifiedIntegrations() {
               };
               const onOverride = (toolName, value) => saveToolOverride(toolName, { read_only: value });
               const onDescription = (toolName, text) => saveToolOverride(toolName, { description: text });
-              tools.forEach(t => toolList.appendChild(createMcpToolRow(t, { onOverride, onDescription })));
+              // `P22-22`. *Try*: the call the agent makes (`McpManager.call_tool`,
+              // `P8-36`), from a form built from the tool's own schema; what came
+              // back is drawn as text. A refusal is the route's own sentence.
+              const callMcpTool = async (toolName, args) => {
+                const r = await fetch(`/api/mcp/servers/${encodeURIComponent(srv.id)}/call`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  credentials: 'same-origin',
+                  body: JSON.stringify({ tool: toolName, arguments: args }),
+                });
+                let payload = {};
+                try { payload = await r.json(); } catch (_) { payload = {}; }
+                if (!r.ok) throw new Error(describeServerRefusal(r.status, payload).text);
+                return payload;
+              };
+              const onTry = (tool, host) => mountToolTry(host, { tool, call: (args) => callMcpTool(tool.name, args) });
+              tools.forEach(t => toolList.appendChild(createMcpToolRow(t, { onOverride, onDescription, onTry })));
               const saveFn = async () => {
                 const dis = [];
                 panel.querySelectorAll('input[type=checkbox]').forEach(cb => { if (!cb.checked) dis.push(cb.dataset.mcpToolName); });
@@ -5730,8 +5760,13 @@ async function initUnifiedIntegrations() {
       // Add new MCP server form
       formEl.innerHTML = `
         <div class="admin-card" style="margin-top:8px">
-          <h2 style="font-size:13px">Add MCP Server</h2>
+          <h2 style="font-size:13px">${editing ? `Edit ${esc(editing.name)}` : 'Add MCP Server'}</h2>
           <div class="settings-col">
+            <!-- P22-22. "Build an MCP server" — greyed with the workstation's
+                 own sentence when it cannot be used (mcpBuild.js) — and the
+                 line a form filled from a workstation build carries. -->
+            <div id="uf-mcp-build-mount"></div>
+            <div id="uf-mcp-prefill-note" style="font-size:11px;line-height:1.45;opacity:0.85;"></div>
             <!-- P8-45. "Start from" — the preset catalogue that sat unreachable
                  in admin.js, filling the fields below rather than a second form
                  (Law 14). Built by createMcpPresetPicker in
@@ -5804,6 +5839,34 @@ async function initUnifiedIntegrations() {
         const urlInput = el('uf-mcp-url');
         if (urlInput) urlInput.placeholder = (v === 'http') ? 'https://mcp.example.com/mcp' : 'http://localhost:3001/sse';
       });
+      // `P22-22`. Filled from the server (Edit) or from a server built in a
+      // workstation (Register) — the same editors, so the same preview, the
+      // same field-level refusals and the same save rules.
+      if (prefill) {
+        el('uf-mcp-name').value = String(prefill.name || '');
+        el('uf-mcp-transport').value = ['sse', 'http'].includes(prefill.transport) ? prefill.transport : 'stdio';
+        el('uf-mcp-cmd').value = String(prefill.command || '');
+        el('uf-mcp-url').value = String(prefill.url || '');
+        argsField.setValue(Array.isArray(prefill.args) ? prefill.args : []);
+        envField.setValue(prefill.env && typeof prefill.env === 'object' && !Array.isArray(prefill.env) ? prefill.env : {});
+        el('uf-mcp-transport').dispatchEvent(new Event('change'));
+        _renderMcpPreview();
+      }
+      if (!editing && options && options.registration) {
+        const regArgs = Array.isArray(prefill.args) ? prefill.args : [];
+        const at = regArgs.indexOf('--owner');
+        const who = at >= 0 ? String(regArgs[at + 1] || '') : '';
+        const whose = who && !who.startsWith('__') ? `${who}'s workstation account` : 'the workstation account of the person who built it';
+        el('uf-mcp-prefill-note').textContent = 'Built in a workstation. Once you save it, every assistant on this '
+          + `Pantheon can call it, and each call runs in ${whose}, with their files — nothing they wrote runs as Pantheon.`;
+      }
+      // `P22-22`. *Build an MCP server*, drawn into this same form element.
+      const showMcpBuild = () => mountMcpBuild(formEl, {
+        isAdmin: !!window._isAdmin,
+        onRegister: (registration) => showMcpForm('new', { registration }),
+        onClose: () => { formEl.style.display = 'none'; },
+      });
+      if (!prefill) mountMcpBuildDoor(el('uf-mcp-build-mount'), { onOpen: showMcpBuild });
       // `P8-45`. The picker fills THESE controls — the ones above, which the
       // save below reads — and says in place what the person must supply and
       // what this install makes of the command, asked of the server's own rule
@@ -5828,8 +5891,38 @@ async function initUnifiedIntegrations() {
           return data;
         },
       });
-      el('uf-mcp-preset-mount').replaceChildren(presetPicker.element);
-      el('uf-mcp-cancel').addEventListener('click', () => { formEl.style.display = 'none'; });
+      // A form filled from a row or a build is not a preset choice to make.
+      if (!prefill) el('uf-mcp-preset-mount').replaceChildren(presetPicker.element);
+      el('uf-mcp-cancel').addEventListener('click', () => {
+        if (editing) showMcpForm(editing.id);
+        else formEl.style.display = 'none';
+      });
+      // `P22-22`. Edit saves through `PUT /api/mcp/servers/{id}` (`P8-35`: the
+      // id is kept, and so are `disabled_tools` and `tool_overrides`); the
+      // route's `_parsed_json_field` rule is unchanged. A refusal lands on the
+      // field it names, as the add path's does; the two lists the route keeps
+      // for a person are said in words (`describeMcpEdit`).
+      const saveMcpEdit = async (fd) => {
+        const r = await fetch(`/api/mcp/servers/${encodeURIComponent(editing.id)}`, { method: 'PUT', credentials: 'same-origin', body: fd });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) {
+          const refusal = describeServerRefusal(r.status, data);
+          const onField = refusal.field === 'args' ? argsField
+            : refusal.field === 'env' ? envField : null;
+          if (onField) {
+            onField.showProblem({ title: 'The server refused this', detail: refusal.text });
+            el('uf-mcp-msg').textContent = 'Not saved — see above.';
+          } else {
+            el('uf-mcp-msg').textContent = refusal.text;
+          }
+          return data;
+        }
+        await renderList();
+        await showMcpForm(editing.id);
+        const said = el('uf-mcp-msg');
+        if (said) said.textContent = describeMcpEdit(data);
+        return data;
+      };
       el('uf-mcp-save').addEventListener('click', async () => {
         const transport = el('uf-mcp-transport').value;
         // routes/mcp_routes.py uses FastAPI Form(...) — send multipart, not JSON.
@@ -5870,7 +5963,7 @@ async function initUnifiedIntegrations() {
           // what `add_server` writes the credentials file and the Authorize
           // flow from — ported from the unreachable admin form, whose save
           // was the only one that ever sent them.
-          const extras = presetPicker.saveExtras(JSON.parse(collected.env));
+          const extras = editing ? {} : presetPicker.saveExtras(JSON.parse(collected.env));
           for (const [key, value] of Object.entries(extras)) fd.append(key, value);
         } else {
           fd.append('url', el('uf-mcp-url').value);
@@ -5879,6 +5972,7 @@ async function initUnifiedIntegrations() {
         const _origLabel = saveBtn.textContent;
         _setBtnLoading(saveBtn, true, 'Saving…'); if (cancelBtn) cancelBtn.disabled = true;
         try {
+          if (editing) { await saveMcpEdit(fd); return; }
           const r = await fetch('/api/mcp/servers', { method: 'POST', credentials: 'same-origin', body: fd });
           const data = await r.json().catch(() => ({}));
           if (r.ok && data.needs_auth) {

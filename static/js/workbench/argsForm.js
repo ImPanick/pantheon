@@ -69,9 +69,15 @@ function _jsonText(v) {
  * `pickField(input, { field, slot })` — decorates one text box with what its
  *            slot allows (`fieldPicker.js:decorateField`); null → nothing.
  *
+ * `lenient`  — `P22-22`'s *Try a tool* (`settings/mcpBuild.js`): `read()`
+ *            never refuses. An empty box is left out and text that does not
+ *            read as its type is sent as typed, so the server — which
+ *            enforces its own schema (`D-2026-09-27-02`) — is the one that
+ *            answers. A workflow step keeps the refusals (the default).
+ *
  * Returns `{ read() → { args } | { refusal, field }, handles, destroy() }`.
  */
-export function mountArgsForm(host, { tool, values = {}, pickField = null } = {}) {
+export function mountArgsForm(host, { tool, values = {}, pickField = null, lenient = false } = {}) {
   const t = tool && typeof tool === 'object' ? tool : {};
   const schema = t.input_schema && typeof t.input_schema === 'object' ? t.input_schema : {};
   const props = schema.properties && typeof schema.properties === 'object' ? schema.properties : {};
@@ -150,7 +156,7 @@ export function mountArgsForm(host, { tool, values = {}, pickField = null } = {}
       const field = `args.${r.name}`;
       if (r.kind === 'enum' || r.kind === 'boolean') {
         if (raw === '') {
-          if (required.has(r.name)) return { refusal: `Choose ${r.name}: the tool needs it.`, field };
+          if (required.has(r.name) && !lenient) return { refusal: `Choose ${r.name}: the tool needs it.`, field };
           continue;
         }
         try { args[r.name] = JSON.parse(raw); } catch (_) { args[r.name] = raw; }
@@ -158,11 +164,12 @@ export function mountArgsForm(host, { tool, values = {}, pickField = null } = {}
       }
       const text = String(raw == null ? '' : raw);
       if (!text.trim()) {
-        if (required.has(r.name)) return { refusal: `Fill in ${r.name}: the tool needs it.`, field };
+        if (required.has(r.name) && !lenient) return { refusal: `Fill in ${r.name}: the tool needs it.`, field };
         continue;
       }
       if (r.kind === 'json') {
         try { args[r.name] = JSON.parse(text); } catch (_) {
+          if (lenient) { args[r.name] = text; continue; }
           return { refusal: `${r.name} must be ${typeWord(r.prop)}: it could not be read.`, field };
         }
         continue;
@@ -172,6 +179,7 @@ export function mountArgsForm(host, { tool, values = {}, pickField = null } = {}
       if ((r.kind === 'number' || r.kind === 'integer') && !/\{\{/.test(text)) {
         const n = Number(text.trim());
         if (!Number.isFinite(n) || (r.kind === 'integer' && !Number.isInteger(n))) {
+          if (lenient) { args[r.name] = text; continue; }
           return { refusal: `${r.name} must be ${typeWord(r.prop)}.`, field };
         }
         args[r.name] = n;
