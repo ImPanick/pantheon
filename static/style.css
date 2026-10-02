@@ -43227,7 +43227,7 @@ input.cp-swatch-input::selection { background: transparent; }
   border-color: var(--fg);
 }
 
-/* `B-NEW` (f-import): the PDF pane when its pages cannot be drawn (PyMuPDF,
+/* `B1157` (f-import): the PDF pane when its pages cannot be drawn (PyMuPDF,
    the page renderer, is optional and the default image has none): the text
    the import read, on a white sheet like the pages it stands in for, under one
    line saying why. The pane's grey and the sheet's white are fixed, as the

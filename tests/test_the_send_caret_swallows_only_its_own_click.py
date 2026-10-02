@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""`B-NEW` (f-import) — for 350 ms after the email Send caret toggles its menu,
+"""`B1159` (f-import) — for 350 ms after the email Send caret toggles its menu,
 only the caret's own trailing click is cancelled.
 
 ``handleCaretIntent`` (``static/js/document.js``) toggles the send-options menu

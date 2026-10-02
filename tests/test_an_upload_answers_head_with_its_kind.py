@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""`B-NEW` (f-import) — the chat's `HEAD` for an upload's kind is answered.
+"""`B1155` (f-import) — the chat's `HEAD` for an upload's kind is answered.
 
 `static/js/chat.js` `_uploadKind` asks ``HEAD /api/upload/{id}`` for
 ``X-Upload-Kind`` before it opens a chat attachment as a document, and its

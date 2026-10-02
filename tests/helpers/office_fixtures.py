@@ -491,7 +491,7 @@ _BY_EXT = {
 OFFICE_FIXTURE_EXTS = frozenset(_BY_EXT)
 
 
-# ── `B-NEW` (f-import): what a `.docx` and an `.xlsx` hold beyond one heading ──
+# ── `B1156` (f-import): what a `.docx` and an `.xlsx` hold beyond one heading ──
 #
 # Three more files LibreOffice made (24.2.7.2, `soffice --headless
 # --convert-to`), for the server's bundled `.docx`/`.xlsx` readers

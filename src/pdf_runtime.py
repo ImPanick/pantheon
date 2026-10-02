@@ -25,7 +25,7 @@ def load_pymupdf_for_pdf_viewer():
     return fitz
 
 
-# `B-NEW` (f-import: `import-pdf` accepted any file). What a PDF looks like
+# `B1154` (f-import: `import-pdf` accepted any file). What a PDF looks like
 # from its first bytes. The header is `%PDF-`; readers (pypdf, PyMuPDF, Acrobat)
 # accept it anywhere in the first 1024 bytes, because some producers write a
 # few bytes of junk first, so the probe looks there and no further.

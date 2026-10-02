@@ -247,7 +247,7 @@ def test_a_format_whose_extractor_is_not_installed_is_refused_with_the_reason(
                             office_fixture(ext))
     if ext in (".docx", ".xlsx"):
         # `.docx` has bundled readers, so it does not reach a refusal at all.
-        # Nor, since `B-NEW` (f-import), does `.xlsx` (`src/ooxml_native.py`):
+        # Nor, since `B1156` (f-import), does `.xlsx` (`src/ooxml_native.py`):
         # this case asserted its refusal, which was the defect.
         assert result.get("doc_id"), result
         return
@@ -265,7 +265,7 @@ def test_the_bundled_formats_open_with_markitdown_absent(
     `.docx` is in this list because `B240` moved the mailbox's `python-docx`
     reader into the extractor chain instead of deleting it (`Law 1`) — so the
     format markitdown normally handles still has an answer without it. `.xlsx`
-    since `B-NEW` (f-import) gave it a bundled reader.
+    since `B1156` (f-import) gave it a bundled reader.
     """
     _without_markitdown(monkeypatch)
     result = _drive_mailbox(tmp_path, monkeypatch, "report" + ext,
@@ -365,7 +365,7 @@ def test_the_gap_function_names_the_dependency_only_when_it_is_missing(monkeypat
         office_extraction_gap,
     )
 
-    # `B-NEW` (f-import): the example was `.xlsx`, which has a bundled reader
+    # `B1156` (f-import): the example was `.xlsx`, which has a bundled reader
     # now; `.pptx` is a format only markitdown reads.
     if HAVE_MARKITDOWN:
         # `B858`. The "installed" half of "both sides of the one condition" can
@@ -378,7 +378,7 @@ def test_the_gap_function_names_the_dependency_only_when_it_is_missing(monkeypat
     # bundled readers are always present, so a `.doc` or an `.odt` that came out
     # empty is empty — telling the person to install markitdown would point them
     # at a dependency that would not have read it either. A `.docx` or `.xlsx`
-    # a bundled reader found nothing in is the same (`B-NEW`, f-import).
+    # a bundled reader found nothing in is the same (`B1156`, f-import).
     for ext in sorted(NATIVE_OFFICE_EXTS | {".docx", ".xlsx"}):
         assert office_extraction_gap("/tmp/report" + ext) == NO_EXTRACTABLE_TEXT
 

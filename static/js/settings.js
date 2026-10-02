@@ -1769,7 +1769,7 @@ async function initEmailConfirm() {
   msg.textContent = describe(input.checked);
 }
 
-/* ── How often the inbox is checked (`B-NEW`, f-mail) ──
+/* ── How often the inbox is checked (`B1152`, f-mail) ──
    `email_inbox_check_minutes` (`B1137`: the background check that runs "when
    mail arrives" with nobody looking) had no field; an operator who wanted it
    off or faster had to know the key. The server clamps it (0 – 1440,
@@ -2815,7 +2815,7 @@ function initAll() {
   initAgentSettings();
   initSkillAudit();   // H16
   initEmailConfirm();   // H18 / B42
-  initInboxCheckInterval();   // `B-NEW` (f-mail)
+  initInboxCheckInterval();   // `B1152` (f-mail)
   initEnvBackedFlags();   // B95
   initAgentBudget();   // H18
   initTaskModel();     // H18

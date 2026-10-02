@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""`B-NEW` (f-import) — with no PyMuPDF, an imported PDF opens showing the
+"""`B1157` (f-import) — with no PyMuPDF, an imported PDF opens showing the
 text the import read, under one line saying why the pages are not drawn.
 
 PyMuPDF draws the PDF view's pages and is optional (`requirements-optional.txt`);

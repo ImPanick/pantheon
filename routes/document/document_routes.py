@@ -320,7 +320,7 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
         if upload_handler is None:
             raise HTTPException(500, "Upload handler not configured")
 
-        # `B-NEW` (f-import: `import-pdf` accepted any file). Measured before
+        # `B1154` (f-import: `import-pdf` accepted any file). Measured before
         # this check, through this route: a `.docx`, a PNG, a `.txt` and a PNG
         # named `scan.pdf` each answered 200 and became a "PDF" document whose
         # body was "[PDF processing failed: Stream has ended unexpectedly]"
@@ -514,7 +514,7 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
             # `markdown`, and it is now TRUE. `B161` moved `'.doc': 'markdown'`
             # into `CONVERTED_TO` with this row named beside it precisely
             # because the label described what SHOULD land, and this route is
-            # what makes it land. `B-NEW` (f-import): a one-sheet workbook read
+            # what makes it land. `B1156` (f-import): a one-sheet workbook read
             # by the bundled reader is its CSV, a `csv` document — what the
             # Library makes of the same file.
             doc = Document(

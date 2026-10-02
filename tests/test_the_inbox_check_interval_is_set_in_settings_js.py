@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""`B-NEW` (f-mail) — an admin sets how often the inbox is checked from
+"""`B1152` (f-mail) — an admin sets how often the inbox is checked from
 Settings → Email, and the next check follows it.
 
 `email_inbox_check_minutes` (`B1137`, default 5, 0 is off) was settable through

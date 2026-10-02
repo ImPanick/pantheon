@@ -224,7 +224,7 @@ function defineGlobal(name, value) {
 }
 
 /*
- * `B-NEW` (f-mail: the sandbox gave a `<select>` no browser rules unless a
+ * `B1153` (f-mail: the sandbox gave a `<select>` no browser rules unless a
  * test opted in). Moved here from `installHtmlParsing` and applied by
  * `installDom` to every `select` and `option` the page creates, so it is the
  * default for every sandbox built on this shim. Measured by `f-mail`'s

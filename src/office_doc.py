@@ -26,7 +26,7 @@ def create_office_document(
 
     `language` is the extraction's own (`markitdown_runtime.extracted_language`):
     a one-sheet workbook read by the bundled reader is a `csv` document, the
-    one the Library makes of it (`B-NEW`, f-import).
+    one the Library makes of it (`B1156`, f-import).
 
     Returns the new doc_id, or None on failure / empty body. The full
     extracted body lives in `current_content`, so the agent can fetch

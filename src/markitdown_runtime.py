@@ -41,7 +41,7 @@ OFFICE_EXTS = MARKITDOWN_EXTS | NATIVE_OFFICE_EXTS
 class ExtractedText(str):
     """Extracted text that knows what language its document is.
 
-    `B-NEW` (f-import). Every door stored an Office extraction as `markdown`,
+    `B1156` (f-import). Every door stored an Office extraction as `markdown`,
     which was true while markitdown was the only reader of a spreadsheet; the
     bundled `.xlsx` reader (`src/ooxml_native.py`) gives one sheet as CSV, the
     document the Library makes of it, and a `csv` document is what opens in the
@@ -539,7 +539,7 @@ def _run_native(extractor, path: str) -> str | None:
 # stays as the second. Every entry answers ``None`` for "I cannot read this",
 # which is what makes the chain a chain.
 def _extract_docx_structured(path: str) -> str | None:
-    """`B-NEW` (f-import). The `.docx` as the Library's import writes it —
+    """`B1156` (f-import). The `.docx` as the Library's import writes it —
     headings, lists, tables in place, bold, italic, links — with the standard
     library (`src/ooxml_native.py` says what was measured against mammoth)."""
     from src.ooxml_native import docx_markdown
@@ -547,13 +547,13 @@ def _extract_docx_structured(path: str) -> str | None:
 
 
 def _extract_xlsx_native(path: str) -> str | None:
-    """`B-NEW` (f-import). The `.xlsx` as SheetJS's CSV — the Library's — with
+    """`B1156` (f-import). The `.xlsx` as SheetJS's CSV — the Library's — with
     the standard library; one sheet is a `csv` document (`ExtractedText`)."""
     from src.ooxml_native import xlsx_text
     return xlsx_text(path)
 
 
-# `B-NEW` (f-import): the structured `.docx` reader is the first rung and
+# `B1156` (f-import): the structured `.docx` reader is the first rung and
 # `.xlsx` has one. On a default install the server doors used the bare `<w:t>`
 # walk — paragraphs, no headings — and refused a spreadsheet, while the Library
 # made markdown and CSV in the browser; these give the same document. The
@@ -608,7 +608,7 @@ def office_extraction_gap(path: str) -> str:
         return NO_OFFICE_EXTRACTOR
     ext = os.path.splitext(path)[1].lower() if isinstance(path, str) else ""
     if is_markitdown_format(path) and ext not in _NATIVE_EXTRACTORS:
-        # `B-NEW` (f-import): only a format NO bundled reader covers is a
+        # `B1156` (f-import): only a format NO bundled reader covers is a
         # missing dependency; a `.docx` or `.xlsx` a bundled reader found
         # nothing in is empty, as `.doc`/`.odt` always were.
         try:

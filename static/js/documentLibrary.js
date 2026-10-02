@@ -1918,7 +1918,7 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
    * (SheetJS) are converted here. On an install without the optional
    * markitdown the server reads `.docx` and `.xlsx` too, with bundled readers
    * that give the document these converters give (`src/ooxml_native.py`,
-   * `B-NEW` from f-import; it answered a `.xlsx` with a 422 before); `.xls` and
+   * `B1156` from f-import; it answered a `.xlsx` with a 422 before); `.xls` and
    * `.ods` only these read. Everything else is read as text. The
    * server titles every one from the file's name (`P21-03`).
    *

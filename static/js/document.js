@@ -1151,7 +1151,7 @@ import { chevronIcon, playIcon } from './icons.js';
   }
 
   /**
-   * `B-NEW` (f-import). The PDF pane when pages cannot be drawn: the text the
+   * `B1157` (f-import). The PDF pane when pages cannot be drawn: the text the
    * import read (the document's own markdown, its hidden `pdf_source` /
    * field / annotation markers taken out), on a page, under one line saying
    * why — the server's words. Text, never markup: it is whatever the PDF held.
@@ -1191,7 +1191,7 @@ import { chevronIcon, playIcon } from './icons.js';
     try {
       const res = await fetch(`${API_BASE}/api/document/${docId}/render-pages`);
       if (res.status === 503) {
-        // `B-NEW` (f-import: on a default install an imported PDF opened to
+        // `B1157` (f-import: on a default install an imported PDF opened to
         // an error). 503 is the server saying it cannot draw pages here — the
         // page renderer, PyMuPDF, is optional and the default image has none
         // (`_load_pdf_viewer_fitz`). Measured in Chromium before this: the
@@ -3941,7 +3941,7 @@ import { chevronIcon, playIcon } from './icons.js';
   }
 
   /**
-   * `B-NEW` (f-import: `_sendEmail` did not ask whether the open document is
+   * `B1158` (f-import: `_sendEmail` did not ask whether the open document is
    * an email). The footer's Send button lives in the panel for every document
    * and is only hidden for the others, and `_hideEmailFields` hides the To,
    * Cc and Subject inputs without emptying them — measured: after an email
@@ -5600,7 +5600,7 @@ import { chevronIcon, playIcon } from './icons.js';
       const targetCaret = target && target.closest ? target.closest('#doc-email-send-caret') : null;
       const rectCaret = carets.find((candidate) => _eventInsideElement(e, candidate));
       const caret = targetCaret || rectCaret || null;
-      // `B-NEW` (f-import: the caret cancelled any click for 350 ms). The
+      // `B1159` (f-import: the caret cancelled any click for 350 ms). The
       // window below swallows the caret's OWN trailing `click` — `pointerdown`
       // already toggled the menu, and a cancelled `pointerdown` suppresses
       // `mousedown` but not `click`. It used to run before this question, by

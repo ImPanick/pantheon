@@ -560,7 +560,7 @@ def _event_account_keys(account_id: str | None, owner: str) -> tuple[str, tuple[
     return key, (("default",) if key != "default" and key == default_id else ())
 
 
-# `B-NEW` (f-mail: more than fifty arrivals between two looks). When a listing
+# `B1151` (f-mail: more than fifty arrivals between two looks). When a listing
 # shows no message already seen, nothing in it marks where the arrivals end — a
 # burst bigger than the window, or the mail seen last time deleted — so at most
 # this many are announced and the rest are recorded, and the log says how many.
@@ -601,7 +601,7 @@ def _event_rows_seen(conn, owner: str, folder: str, known: tuple, keys: list) ->
 
 def email_events_seen(owner: str, account_id: str | None, folder: str,
                       emails: list[dict]) -> tuple[int, set]:
-    """`B-NEW` (f-mail). Read-only: has this mailbox a baseline yet, and which
+    """`B1151` (f-mail). Read-only: has this mailbox a baseline yet, and which
     of these listed messages were already seen. The background check asks it
     page by page to know whether its reading has reached mail it saw before."""
     keys = []
@@ -699,7 +699,7 @@ def _record_email_received_events(owner: str, account_id: str | None, folder: st
 
         announced = new_keys
         if count and not seen:
-            # `B-NEW` (f-mail). Nothing in this listing was seen before, so
+            # `B1151` (f-mail). Nothing in this listing was seen before, so
             # nothing in it says where the arrivals stop: announce the newest
             # few, record the rest, and say so. With seen mail in view, every
             # claimed key above it arrived since — `new_keys[:50]` used to drop
@@ -4154,7 +4154,7 @@ def setup_email_routes():
             if ext in OFFICE_EXTS:
                 content = convert_to_markdown(str(filepath))
                 if content and content.strip():
-                    # `B-NEW` (f-import): the language the reader says — a
+                    # `B1156` (f-import): the language the reader says — a
                     # one-sheet workbook is a `csv` document, as at the Library.
                     doc_id = _create_markdown_doc(
                         content, f"Imported from {ext.lstrip('.').upper()}",

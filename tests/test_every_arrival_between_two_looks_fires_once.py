@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""`B-NEW` (f-mail) — more than fifty arrivals between two looks at an inbox:
+"""`B1151` (f-mail) — more than fifty arrivals between two looks at an inbox:
 every one fires `email_received` once, or the log says how many did not.
 
 The background inbox check (`B1137`) read the newest fifty messages

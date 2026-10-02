@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""`B-NEW` (f-import) — `POST /api/documents/import-pdf` makes a document only
+"""`B1154` (f-import) — `POST /api/documents/import-pdf` makes a document only
 out of a PDF, and says what anything else is.
 
 Measured on the tree before this row, through this route with the real files

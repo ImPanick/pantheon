@@ -1559,7 +1559,7 @@ INBOX_CHECK_SETTING = "email_inbox_check_minutes"
 # How many of the newest messages each check looks at: the Email window's
 # first page, which is what the listing has always decided "new" over.
 INBOX_CHECK_WINDOW = 50
-# `B-NEW` (f-mail: more than fifty arrivals between two looks). When the newest
+# `B1151` (f-mail: more than fifty arrivals between two looks). When the newest
 # page holds no message seen before, more arrived than one page shows — a
 # mailing-list burst, Pantheon down for a day — and the check reads back a page
 # at a time until it reaches mail it has seen, so every arrival is announced
@@ -1670,7 +1670,7 @@ async def _check_inbox(account: dict) -> str:
 
 
 async def _read_back_to_seen_mail(lister, account: dict, emails: list) -> tuple[list, bool]:
-    """`B-NEW` (f-mail). Read older pages until one holds mail seen before.
+    """`B1151` (f-mail). Read older pages until one holds mail seen before.
 
     Measured on the tree before this: a baseline, then sixty messages, then one
     check — fifty `email_received` events; the ten older arrivals were never

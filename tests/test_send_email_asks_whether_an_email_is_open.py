@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""`B-NEW` (f-import) — ``_sendEmail()`` sends only an email.
+"""`B1158` (f-import) — ``_sendEmail()`` sends only an email.
 
 The Documents panel's email footer — Send, the To/Cc/Subject inputs — is in the
 panel for every document and only hidden for the others, and
