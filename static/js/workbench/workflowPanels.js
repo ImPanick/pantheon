@@ -461,6 +461,14 @@ export function createWorkflowPanels({
       : null;
     function syncHint() { if (test) test.formEdited(edited); }
     return {
+      /** `B1136`. A palette read again while this step is open (the room was
+       *  shown again): its form — and an inner step being edited — offer what
+       *  was added, in place. The task form reads no palette list. */
+      paletteChanged(next) {
+        for (const f of [form, inner]) {
+          if (f && typeof f.paletteChanged === 'function') { try { f.paletteChanged(next); } catch (_) { /* kept */ } }
+        }
+      },
       destroy() {
         if (banner) banner.destroy();
         if (test) test.destroy();

@@ -1924,6 +1924,15 @@ export function mountAutomations(host, opts = {}) {
     openRun: (workflowId, runId) => openRunOf(workflowId, runId),
     canClose,
     destroy,
+    /** `B1136`. The Workbench shows this room again (`workbench.js`
+     *  `_showRoom`), perhaps after an Integration, an MCP server or a skill
+     *  was added in another room through a step's door: the open document's
+     *  palette is read again, and the open step offers what was added. */
+    shown: () => {
+      const src = !R.destroyed && R.wf && R.wf.source;
+      return src && typeof src.reloadPalette === 'function'
+        ? src.reloadPalette().catch(() => null) : Promise.resolve(null);
+    },
     /** The canvas on screen (tests and the glue's Escape reach the room
      *  through its handle). */
     canvas: () => activeCanvas(),

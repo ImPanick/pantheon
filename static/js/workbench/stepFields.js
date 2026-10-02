@@ -10,7 +10,7 @@
 // (`/work/notes/SLICE-CD-DESIGN.md` § 2, § 3's JS contract):
 //
 //   mountStepFields(host, { node, palette, upstream, pickField, onApply, onCancel,
-//                           problem?, editInner? }) → { read, destroy }
+//                           problem?, editInner? }) → { read, showProblem, paletteChanged, destroy }
 //   mountAiOptions(host, { node, palette, pickField }) → { read, destroy }
 //
 // **Nothing here is a language** (`D-2026-10-01-05` §2). A condition is a
@@ -220,6 +220,24 @@ function _selectField(parent, label, choices, { value = '', field = '', hint = '
   parent.appendChild(sel);
   if (hint) parent.appendChild(_el('p', 'wf-sf-hint', hint));
   return sel;
+}
+
+/**
+ * `B1136`. Offer `choices` on a select already drawn, keeping what is chosen
+ * when it is still offered — else `prefer` (the step's saved value, which may
+ * be offered again now), else the first choice. Answers whether the choice
+ * moved.
+ */
+function _offer(sel, choices, prefer = '') {
+  const was = sel.value;
+  sel.replaceChildren(...choices.map(([v, words]) => {
+    const o = _el('option', null, words);
+    o.value = String(v);
+    return o;
+  }));
+  const has = (v) => v !== '' && choices.some(([c]) => String(c) === String(v));
+  sel.value = has(was) ? String(was) : (has(prefer) ? String(prefer) : String(choices.length ? choices[0][0] : ''));
+  return sel.value !== was;
 }
 
 /**
@@ -549,15 +567,16 @@ function buildForeach(ctx) {
 
 function buildHttp(ctx) {
   const { body, cfg, palette } = ctx;
-  const integrations = palette && Array.isArray(palette.integrations) ? palette.integrations : [];
+  let integrations = palette && Array.isArray(palette.integrations) ? palette.integrations : [];
   // `integrate-e`: these two said "Settings → Integrations" — the card is the
   // Workbench's MCP & Integrations room since `P22-21` (`B1126`).
   body.appendChild(_el('p', 'wf-sf-lede', `Calls a service you set up in ${ROOM_NAMES.integrations}. Its address and key are never `
     + 'shown here: Pantheon adds them when the step runs.'));
+  let warn = null;
   if (!integrations.length) {
     // The same door the MCP step's hint has (`Law 15`: the hint names a room,
     // so it opens it).
-    const warn = body.appendChild(_el('p', 'wf-sf-hint wf-sf-warn'));
+    warn = body.appendChild(_el('p', 'wf-sf-hint wf-sf-warn'));
     warn.appendChild(_el('span', null, `No integration is set up yet. Add one in ${ROOM_NAMES.integrations}, then pick it here.`));
     if (typeof ctx.openRoom === 'function') {
       const door = warn.appendChild(_button('wf-sf-door', NEED_DOORS.integrations));
@@ -565,9 +584,9 @@ function buildHttp(ctx) {
       door.addEventListener('click', () => ctx.openRoom('integrations'));
     }
   }
-  const integ = _selectField(body, 'Integration', [['', 'Choose one…'],
-    ...integrations.map((i) => [i.id, `${i.name}${i.preset ? ` (${i.preset})` : ''}`])],
-  { value: cfg.integration || '', field: 'integration' });
+  const choices = () => [['', 'Choose one…'],
+    ...integrations.map((i) => [i.id, `${i.name}${i.preset ? ` (${i.preset})` : ''}`])];
+  const integ = _selectField(body, 'Integration', choices(), { value: cfg.integration || '', field: 'integration' });
   const desc = _el('p', 'wf-sf-hint');
   body.appendChild(desc);
   const method = _selectField(body, 'Method', HTTP_METHODS.map((m) => [m, m]),
@@ -617,6 +636,14 @@ function buildHttp(ctx) {
   integ.addEventListener('change', sync);
   method.addEventListener('change', sync);
   sync();
+  // `B1136`. An Integration added in the room this step's door opens is
+  // offered here once the palette is read again — no reopening the Workbench.
+  ctx.onPalette((pal) => {
+    integrations = pal && Array.isArray(pal.integrations) ? pal.integrations : [];
+    _offer(integ, choices(), cfg.integration || '');
+    if (warn) warn.hidden = integrations.length > 0;
+    sync();
+  });
   ctx.onDestroy(() => { if (hp && hp.destroy) hp.destroy(); });
   return () => {
     if (!integ.value) return { refusal: 'Choose the integration it calls.', field: 'integration' };
@@ -639,14 +666,15 @@ function buildHttp(ctx) {
 
 function buildMcp(ctx) {
   const { body, cfg, palette } = ctx;
-  const tools = palette && Array.isArray(palette.mcp_tools) ? palette.mcp_tools : [];
+  let tools = palette && Array.isArray(palette.mcp_tools) ? palette.mcp_tools : [];
   body.appendChild(_el('p', 'wf-sf-lede', 'Calls one tool of an MCP server you added, with the arguments you give it here.'));
   // `wb-canvas-e`: this named "Settings → MCP", a place that does not exist
   // (design § 0.6 — MCP servers are a card of Integrations, and the
   // Workbench's MCP & Integrations room since `P22-21`); it names the room and
   // opens it.
+  let warn = null;
   if (!tools.length) {
-    const warn = body.appendChild(_el('p', 'wf-sf-hint wf-sf-warn'));
+    warn = body.appendChild(_el('p', 'wf-sf-hint wf-sf-warn'));
     warn.appendChild(_el('span', null, `No MCP tool is available. Add a server in ${ROOM_NAMES.integrations}, then pick its tool here.`));
     if (typeof ctx.openRoom === 'function') {
       const door = warn.appendChild(_button('wf-sf-door', NEED_DOORS.integrations));
@@ -654,9 +682,9 @@ function buildMcp(ctx) {
       door.addEventListener('click', () => ctx.openRoom('integrations'));
     }
   }
-  const choice = _selectField(body, 'Tool', [['', 'Choose one…'],
-    ...tools.map((t) => [t.qualified_name, `${t.server_name ? t.server_name + ': ' : ''}${t.name}`])],
-  { value: cfg.tool || '', field: 'tool' });
+  const choices = () => [['', 'Choose one…'],
+    ...tools.map((t) => [t.qualified_name, `${t.server_name ? t.server_name + ': ' : ''}${t.name}`])];
+  const choice = _selectField(body, 'Tool', choices(), { value: cfg.tool || '', field: 'tool' });
   const desc = _el('p', 'wf-sf-hint');
   body.appendChild(desc);
   const argsHost = _el('div', 'wf-sf-args');
@@ -672,6 +700,14 @@ function buildMcp(ctx) {
   };
   choice.addEventListener('change', () => { args = {}; sync(); });
   sync();
+  // `B1136`. A server added in the room this step's door opens: its tools
+  // are offered here once the palette is read again. The arguments typed so
+  // far stay, unless the chosen tool is no longer there.
+  ctx.onPalette((pal) => {
+    tools = pal && Array.isArray(pal.mcp_tools) ? pal.mcp_tools : [];
+    if (_offer(choice, choices(), cfg.tool || '')) sync();
+    if (warn) warn.hidden = tools.length > 0;
+  });
   ctx.onDestroy(() => { if (form) form.destroy(); });
   return () => {
     if (!choice.value) return { refusal: 'Choose the tool it calls.', field: 'tool' };
@@ -683,11 +719,11 @@ function buildMcp(ctx) {
 
 function buildSkill(ctx) {
   const { body, cfg, palette } = ctx;
-  const skills = palette && Array.isArray(palette.skills) ? palette.skills : [];
+  let skills = palette && Array.isArray(palette.skills) ? palette.skills : [];
   body.appendChild(_el('p', 'wf-sf-lede', 'Runs a model that follows one of your skills. The skill is read when the step runs, '
     + 'so an edit to it reaches the next run.'));
-  const choice = _selectField(body, 'Skill', [['', 'Choose one…'], ...skills.map((s) => [s.name, s.name])],
-    { value: cfg.skill || '', field: 'skill' });
+  const choices = () => [['', 'Choose one…'], ...skills.map((s) => [s.name, s.name])];
+  const choice = _selectField(body, 'Skill', choices(), { value: cfg.skill || '', field: 'skill' });
   const desc = _el('p', 'wf-sf-hint');
   body.appendChild(desc);
   const prompt = _textField(body, 'What to do with it', { value: cfg.prompt || '', field: 'prompt', area: true, rows: 4,
@@ -701,6 +737,12 @@ function buildSkill(ctx) {
   };
   choice.addEventListener('change', sync);
   sync();
+  // `B1136`. A skill added in the Skills room an import's door opens.
+  ctx.onPalette((pal) => {
+    skills = pal && Array.isArray(pal.skills) ? pal.skills : [];
+    _offer(choice, choices(), cfg.skill || '');
+    sync();
+  });
   ctx.onDestroy(() => { if (hp && hp.destroy) hp.destroy(); });
   return () => {
     if (!choice.value) return { refusal: 'Choose the skill it follows.', field: 'skill' };
@@ -827,11 +869,14 @@ export function mountStepFields(host, {
   wrap.appendChild(body);
   const handles = {};
   const destroyers = [];
+  const onPalette = [];
   const ctx = {
     body, cfg, palette, upstream, slots, editInner, openRoom,
     limits: palette && palette.limits ? palette.limits : {},
     operators: palette && Array.isArray(palette.operators) && palette.operators.length ? palette.operators : DEFAULT_OPERATORS,
     onDestroy: (fn) => destroyers.push(fn),
+    /** `B1136`. Called with a palette read again while this form is open. */
+    onPalette: (fn) => onPalette.push(fn),
     argsHandles: {},
     decorate(input, field) {
       return ctx.decorateSlot(input, { field, slot: slotFor(slots, field) });
@@ -893,6 +938,12 @@ export function mountStepFields(host, {
   return {
     read,
     showProblem: (p) => showOnField(wrap, allHandles(), p, top),
+    /** `B1136`. What the palette offers now — an Integration, an MCP tool or
+     *  a skill added in another room — on this open form, in place: what is
+     *  typed and chosen stays. */
+    paletteChanged(pal) {
+      for (const fn of onPalette) { try { fn(pal); } catch (_) { /* the form keeps what it had */ } }
+    },
     destroy() {
       for (const fn of destroyers) { try { fn(); } catch (_) { /* gone */ } }
       for (const h of Object.values(handles)) { try { if (h && h.destroy) h.destroy(); } catch (_) { /* gone */ } }
