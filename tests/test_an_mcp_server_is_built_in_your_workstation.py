@@ -120,8 +120,19 @@ def station(tmp_path, monkeypatch):
 
 @pytest.fixture
 def rows(monkeypatch):
-    """A real SQLite `mcp_servers` table holding one server, behind both
-    names a route could reach it by."""
+    """A real SQLite `mcp_servers` table holding one server, behind the three
+    names a route reaches it by.
+
+    `src.mcp_manager.SessionLocal` is the third (`integrate-e`: new server ids,
+    tool overrides, disabled tools). Without it the admin route reached the
+    session's `sqlite:///:memory:` engine from TestClient's portal threads, a
+    new one per request (measured: nine `asyncio-portal-*` threads over
+    `test_a_registered_server_runs_the_code_an_admin_registered`). That engine
+    is a `SingletonThreadPool` of five: past five threads it closes the oldest
+    connection — the main thread's, and with it the in-memory schema — and a
+    later file's real `manage_mcp` read "no such table: mcp_servers" (measured:
+    that file's first five cases, then
+    `test_mcp_manage_mcp_schema_names_its_arguments`; the pool 1 → 5)."""
     import core.database as cdb
     from core.database import Base, McpServer
     from sqlalchemy import create_engine
@@ -134,6 +145,7 @@ def rows(monkeypatch):
     factory = sessionmaker(bind=engine)
     monkeypatch.setattr(cdb, "SessionLocal", factory)
     monkeypatch.setattr("routes.mcp.mcp_routes.SessionLocal", factory)
+    monkeypatch.setattr("src.mcp_manager.SessionLocal", factory)
     db = factory()
     db.add(McpServer(id="pre1", name="already-here", transport="stdio", command="npx",
                      args="[]", env="{}", is_enabled=False))
