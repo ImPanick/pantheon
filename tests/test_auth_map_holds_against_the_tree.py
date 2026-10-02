@@ -217,6 +217,122 @@ def test_a_route_with_no_auth_call_reports_none(checker, tmp_path):
     assert [(r.key, sorted(r.auth)) for r in found] == [("POST /api/bare/clear-cache", [])]
 
 
+# ── rule E: a host the caller names is the operator's to reach (`B541`) ──────
+
+_SSH_ROUTES = """
+    from fastapi import Depends
+    from core.middleware import require_admin
+    from routes._validators import validate_remote_host
+
+    def _target(host):
+        return validate_remote_host(host)
+
+    def setup():
+        router = APIRouter(prefix="/api/probe")
+
+        @router.get("/open")
+        def open_probe(host: str = ""):
+            return {"host": _target(host)}
+
+        @router.get("/gated")
+        def gated_probe(request, host: str = ""):
+            require_admin(request)
+            return {"host": _target(host)}
+
+        @router.get("/decorated", dependencies=[Depends(require_admin)])
+        def decorated_probe(host: str = ""):
+            return {"host": _target(host)}
+
+        @router.get("/local")
+        def local_only():
+            return {}
+"""
+
+
+def test_a_route_that_reaches_a_caller_named_host_is_found_and_judged(checker, tmp_path):
+    """The rule's mechanism, on a fixture written for it.
+
+    The validator is one helper away, as `_validate_detection_target` is in
+    `routes/hwfit_routes.py`; a route that names no host is not in the
+    population at all; and an admin gate counts wherever it is declared —
+    called in the handler or as a `Depends` on the route's own decorator.
+    """
+    root = _fixture_tree(tmp_path, {"routes/probe_routes.py": _SSH_ROUTES})
+    found = checker.ssh_target_routes(root, ["routes/probe_routes.py"])
+    assert [(t.key, t.func, t.gated) for t in found] == [
+        ("GET /api/probe/open", "open_probe", False),
+        ("GET /api/probe/gated", "gated_probe", True),
+        ("GET /api/probe/decorated", "decorated_probe", True),
+    ], found
+
+
+def test_a_router_level_admin_gate_covers_every_route_under_it(checker, tmp_path):
+    """The shape `B541` was fixed in, and `routes/embedding_routes.py` before it."""
+    root = _fixture_tree(tmp_path, {"routes/fleet.py": """
+        from fastapi import Depends
+        from core.middleware import require_admin as _gate
+        from core.platform_compat import run_ssh_command
+
+        def setup():
+            router = APIRouter(prefix="/api/fleet", dependencies=[Depends(_gate)])
+
+            @router.get("/uptime")
+            def uptime(host: str = ""):
+                return run_ssh_command(host, None, "uptime")
+    """})
+    found = checker.ssh_target_routes(root, ["routes/fleet.py"])
+    assert [(t.key, t.gated) for t in found] == [("GET /api/fleet/uptime", True)]
+
+
+def test_rule_b_and_rule_e_read_one_answer_for_what_gates_a_route(checker, tmp_path):
+    """`route_reach` is shared, so a decorator-level gate rule E can see is a
+    gate § B's derived column sees too — the two cannot disagree about a route."""
+    root = _fixture_tree(tmp_path, {"routes/probe_routes.py": _SSH_ROUTES})
+    by_key = {r.key: sorted(r.auth) for r in checker.routes_in(root, "routes/probe_routes.py")}
+    assert by_key == {
+        "GET /api/probe/open": [],
+        "GET /api/probe/gated": ["require_admin"],
+        "GET /api/probe/decorated": ["require_admin"],
+        "GET /api/probe/local": [],
+    }, by_key
+
+
+def test_an_ungated_route_to_a_caller_named_host_fails_the_check(checker, map_text, tmp_path):
+    """The failure the rule exists for, reported by `problems()` on a tree that
+    has one. `B541`'s four routes were exactly this until 2026-10-02."""
+    real = checker.ssh_target_routes
+    root = _fixture_tree(tmp_path, {"routes/probe_routes.py": _SSH_ROUTES})
+    extra = checker.ssh_target_routes(root, ["routes/probe_routes.py"])
+    try:
+        checker.ssh_target_routes = lambda _root=ROOT, rels=None: real(ROOT) + extra
+        found, counts = checker.problems(ROOT, map_text, max_other=_ci_ceiling())
+    finally:
+        checker.ssh_target_routes = real
+    ungated = [p for p in found if "GET /api/probe/open" in p]
+    assert len(ungated) == 1 and "B541" in ungated[0], found
+    assert counts["ssh_ungated"] == 1, counts
+
+
+def test_every_route_in_the_tree_to_a_caller_named_host_is_behind_require_admin(checker):
+    """Rule E against the shipped tree — and not vacuously: the population holds
+    `B541`'s four and the cookbook route that was already right, so a scan
+    that found nothing would fail here rather than pass."""
+    found = checker.ssh_target_routes(ROOT)
+    keys = {t.key for t in found}
+    for want in ("GET /api/hwfit/system", "GET /api/hwfit/models",
+                 "GET /api/hwfit/profiles", "GET /api/hwfit/image-models",
+                 "GET /api/cookbook/gpus", "POST /api/cookbook/test-ssh"):
+        assert want in keys, (want, sorted(keys))
+    assert [t for t in found if not t.gated] == []
+
+
+def test_the_ssh_targets_line_is_derived(checker, map_text):
+    mutated = re.sub(r"derived-ssh-targets: \d+ routes", "derived-ssh-targets: 1 routes", map_text)
+    assert mutated != map_text
+    found, _ = checker.problems(ROOT, mutated, max_other=_ci_ceiling())
+    assert any("`derived-ssh-targets:` line" in p for p in found), found
+
+
 def test_the_exemption_is_matched_on_path_alone(checker):
     """`B542`'s premise, taken from `app.py` rather than asserted.
 
