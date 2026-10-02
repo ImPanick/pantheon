@@ -47434,6 +47434,11 @@ button.task-card-toggle {
 .wf-ai,
 .wf-args { display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
 .wf-sf-head { margin: 0; font-size: 15px; }
+/* Each label, field and button of a step's form on its own line: measured in
+   Chromium, a For-each's "Set up that step…" and the next label shared one. */
+.wf-sf-body,
+.wf-sf-right { display: flex; flex-direction: column; gap: 4px; }
+.wf-sf-label { display: block; }
 .wf-sf-lede,
 .wf-sf-hint,
 .wf-arg-desc,
@@ -47509,11 +47514,13 @@ button.task-card-toggle {
 .wf-record-waiting-said { margin: 0; font-size: 11.5px; font-weight: 600; }
 .wf-record-waiting-said:empty { display: none; }
 .wf-record-item-list { margin: 4px 0 0; padding-left: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; }
-.wf-record-item { display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: baseline; overflow-wrap: anywhere; }
+/* A grid, not a wrapping row: measured in Chromium, a failed item's longer line
+   wrapped its ✗ onto a line of its own. */
+.wf-record-item { display: grid; grid-template-columns: auto 1fr; gap: 4px 6px; align-items: baseline; overflow-wrap: anywhere; }
 .wf-record-item[data-tone="error"] { font-weight: 700; }
 .wf-record-item[data-tone="error"] .wf-record-mark { color: var(--red); }
 .wf-record-item[data-tone="ok"] .wf-record-mark { color: var(--green); }
-.wf-record-item .wf-record-waiting { flex: 1 1 100%; }
+.wf-record-item .wf-record-waiting { grid-column: 1 / -1; }
 /* A workflow's question, beside the page (workflowApprovalNotice.js). */
 .wf-approval-dialog {
   position: fixed;
