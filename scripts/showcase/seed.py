@@ -353,6 +353,49 @@ def seed_tasks(client, *, model: Optional[str] = None,
     return ids
 
 
+# ── a workflow: one named document with one start (`P22-05`) ───────────────
+
+# The Workbench's shelf lists each workflow beside *Tasks and chains*, so the
+# demo has one: every morning, summarise the inbox and send the person the
+# summary — `P22-05`'s own example, as the integrator's call 1 words it (step 2
+# delivers its write-up through its output setting, the chat). Made the way
+# the room makes one: create (switched off), save the document, set when it
+# starts on its start task, switch it on.
+WORKFLOW = {
+    "name": "Morning inbox brief",
+    "starts": {"schedule": "daily", "scheduled_time": "08:00"},
+    "steps": [
+        ("n1", "Summarise my inbox", {"prompt": "Summarise my unread mail in five lines."}),
+        ("n2", "Send me the summary", {"prompt": "Write the summary up as a short message to me.",
+                                       "output_target": "session"}),
+    ],
+    "edges": [("n1", "success", "n2")],
+}
+
+
+def seed_workflows(client, *, model: Optional[str] = None,
+                   endpoint_url: Optional[str] = None) -> Dict[str, str]:
+    """Create `WORKFLOW` through the workflow routes. Returns `{name: id}`."""
+    made = _ok(client.post("/api/workflows", json={"name": WORKFLOW["name"]}), "workflow")["workflow"]
+    nodes = []
+    for node_id, label, config in WORKFLOW["steps"]:
+        config = dict(config)
+        if model:
+            config["model"] = model
+            if endpoint_url:
+                config["endpoint_url"] = endpoint_url
+        nodes.append({"id": node_id, "kind": "llm", "label": label, "config": config,
+                      "position": None, "pinned": None})
+    graph = {"v": 1, "start": {"position": None}, "nodes": nodes,
+             "edges": [{"from": a, "port": p, "to": b} for a, p, b in WORKFLOW["edges"]]}
+    _ok(client.put(f"/api/workflows/{made['id']}",
+                   json={"name": WORKFLOW["name"], "graph": graph, "base_version": made["version"]}),
+        "workflow document")
+    _ok(client.put(f"/api/tasks/{made['task_id']}", json=WORKFLOW["starts"]), "workflow start")
+    _ok(client.post(f"/api/workflows/{made['id']}/switch", json={"on": True}), "workflow switched on")
+    return {WORKFLOW["name"]: made["id"]}
+
+
 # ── skills: the person's own, an imported package, and a group ─────────────
 
 SKILLS = [
@@ -632,6 +675,7 @@ def seed_chats(client, endpoint_id: str, have: Iterable[str] = ()) -> List[Dict[
 def counts(report: Dict[str, Any]) -> Dict[str, int]:
     """How much of each thing a `seed_all` report made, for the log line."""
     return {"documents": len(report.get("documents", {})), "automations": len(report.get("tasks", {})),
+            "workflows": len(report.get("workflows", {})),
             "skills": len((report.get("skills") or {}).get("skills", [])), "notes": report.get("notes", 0),
             "events": report.get("events", 0), "memories": report.get("memories", 0),
             "chats": len(report.get("chats", []))}
@@ -648,6 +692,8 @@ def seed_all(client, *, model_base_url: Optional[str] = None,
     report["documents"] = seed_documents(client)
     report["tasks"] = seed_tasks(client, model=DEMO_MODEL_ID if model else None,
                                  endpoint_url=model["chat_url"] if model else None)
+    report["workflows"] = seed_workflows(client, model=DEMO_MODEL_ID if model else None,
+                                         endpoint_url=model["chat_url"] if model else None)
     report["skills"] = seed_skills(client)
     report["notes"] = seed_notes(client)
     report["events"] = seed_calendar(client, today)

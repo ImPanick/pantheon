@@ -391,8 +391,10 @@ def scene_brain(st: Studio, theme: str):
 
     page = st.open(theme, path="/#" + st.chat_id("week"))
     page.locator("#tool-memory-btn").click()
-    # The window says "No memories yet" until its list arrives, which measured
-    # 7.4 s after the click on the seeded demo (filed with the handoff).
+    # The window asks for its list when it opens and says "Loading memories..."
+    # until it arrives (`B1070`; it used to say "No memories yet" for 7.4 s on
+    # the seeded demo). Measured since: the list is drawn ~300 ms after the
+    # click. The wait is for the first memory's words, whatever that takes.
     first = seed.MEMORIES[0][0][:24]
     page.wait_for_function("(t) => document.body.innerText.includes(t)", arg=first, timeout=60000)
     # Oldest first: the order they were told, which reads as a story.

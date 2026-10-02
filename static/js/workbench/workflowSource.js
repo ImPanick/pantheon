@@ -563,7 +563,14 @@ export function createWorkflowSource({
     }
     if (isRun) {
       if (typeof panels.record !== 'function') return message(host, 'The step’s record did not load.');
-      return panels.record(host, { node: clone(shownNode(id)), record: clone(recordOf(id)), run: S.run ? S.run.run : null });
+      // The panel reads `run.cleared` (wf-ui's `record`): whether a run with
+      // no record for this step had its records cleared, or never reached it.
+      // That is the run reply's, not the run row's, so it is handed on with
+      // the server's sentence (wave C merge: the row was handed alone, so a
+      // cleared run's every step said "not reached" — `Law 10`).
+      const run = S.run ? { ...(S.run.run || {}), cleared: S.run.cleared === true,
+        cleared_sentence: S.run.cleared_sentence || null } : null;
+      return panels.record(host, { node: clone(shownNode(id)), record: clone(recordOf(id)), run });
     }
     if (S.viewing) {
       return message(host, `This is how the step was in version ${S.viewing.version}. Restore that version to change it.`);
@@ -855,7 +862,12 @@ export function createWorkflowSource({
     get readOnly() { return readOnly(); },
     get words() {
       if (!isRun) return EDIT_WORDS;
-      return S.run && S.run.cleared ? { ...RUN_WORDS, emptyText: CLEARED } : RUN_WORDS;
+      if (!(S.run && S.run.cleared)) return RUN_WORDS;
+      // The server's sentence names the window as it is set (`cleared_sentence`,
+      // the engine's `records_cleared_sentence`); CLEARED only if it said none.
+      const said = typeof S.run.cleared_sentence === 'string' && S.run.cleared_sentence
+        ? `${S.run.cleared_sentence} The run’s own summary is still in the list.` : CLEARED;
+      return { ...RUN_WORDS, emptyText: said };
     },
     ready,
     load, connect, disconnect, loadPositions, savePositions, openPanel, newItem, removeItem, dryRun,

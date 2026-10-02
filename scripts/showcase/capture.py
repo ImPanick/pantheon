@@ -17,7 +17,8 @@ What it does, in order — and nothing here is a mock of the product:
      signs the demo person in to their desktop;
   3. seeds a fictional world through the real API (`seed.py`): documents in
      nested folders, a chain of automations with a failure branch and a dry
-     run, skills with an imported package and a group, notes, a week of
+     run, a workflow (two steps, one start), skills with an imported package
+     and a group, notes, a week of
      calendar, memories — and chats with a real agent trace, played by a
      scripted stand-in model on loopback (`demo_model.py`) while Pantheon runs
      the tools for real;

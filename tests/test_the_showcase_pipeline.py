@@ -326,6 +326,22 @@ def test_the_chain_has_both_branches_and_was_planned(seeded):
     assert {s["task_id"] for s in plan["chain"]} == {ids[k] for k in ("metrics", "report", "share", "alert")}
 
 
+def test_the_workflow_is_one_document_on_the_shelf_and_switched_on(seeded):
+    """The Workbench's shelf shows a workflow (`P22-05`): the seed makes one
+    through the workflow routes — two steps joined *if it works*, its start
+    every day at 08:00, switched on."""
+    client, report, _ = seeded
+    (name, wf_id), = report["workflows"].items()
+    listed = {w["id"]: w for w in client.get("/api/workflows").json()["workflows"]}
+    assert listed[wf_id]["name"] == name == seed.WORKFLOW["name"]
+    doc = client.get(f"/api/workflows/{wf_id}").json()["workflow"]
+    assert [n["label"] for n in doc["graph"]["nodes"]] == [s[1] for s in seed.WORKFLOW["steps"]]
+    assert doc["graph"]["edges"] == [{"from": "n1", "port": "success", "to": "n2"}]
+    start = {t["id"]: t for t in client.get("/api/tasks").json()["tasks"]}[doc["task_id"]]
+    assert (start["task_type"], start["status"], start["schedule"], start["scheduled_time"]) == (
+        "workflow", "active", "daily", "08:00")
+
+
 def test_the_skills_package_and_group_are_there(seeded):
     client, _, _ = seeded
     col = client.get("/api/skills/collections").json()

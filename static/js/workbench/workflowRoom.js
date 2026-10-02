@@ -773,6 +773,12 @@ export function mountAutomations(host, opts = {}) {
     // The route's `chain_paused`, or the same as a source names it.
     const paused = on && reply && (reply.chain_paused || reply.chainPaused);
     const action = paused ? { label: 'Put the old chain back', run: () => restoreChain() } : null;
+    // The start's box says On or Off too: redraw it from the source (wave C
+    // merge — measured in Chromium, the box read "Switched off" after On until
+    // the workflow was opened again). The draft lives in the source, so a
+    // redraw keeps any unsaved change.
+    if (w.canvas) await w.canvas.reload();
+    if (R.destroyed || R.wf !== w) return null;
     if (!quiet) say(words, { action });
     syncBar();
     refreshShelf();
@@ -793,6 +799,8 @@ export function mountAutomations(host, opts = {}) {
       return;
     }
     const notes = (Array.isArray(reply && reply.notes) ? reply.notes : []).map(String).filter(Boolean);
+    if (w.canvas) await w.canvas.reload();     // the start's box says Off again (as `toggleSwitch`)
+    if (R.destroyed || R.wf !== w) return;
     say(notes.join(' ') || 'The chain runs again and this workflow is switched off. Nothing was deleted.');
     syncBar();
     refreshShelf();

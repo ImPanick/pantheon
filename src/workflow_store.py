@@ -66,11 +66,10 @@ NEW_WORKFLOW_NAME = "New workflow"
 CONVERTED_SUFFIX = " (workflow)"
 WORKFLOW_NAME_MAX = 200
 
-# `workflow_versions.source` — stored values, so an enum written once.
-VERSION_SOURCE_USER = "user"
-VERSION_SOURCE_CONVERTED = "converted"
-VERSION_SOURCE_RESTORED = "restored"
-VERSION_SOURCES = (VERSION_SOURCE_USER, VERSION_SOURCE_CONVERTED, VERSION_SOURCE_RESTORED)
+# `workflow_versions.source` — stored values, written once, in the engine
+# (`workflow_document.VERSION_SOURCE_*` / `WORKFLOW_VERSION_SOURCES`,
+# `FORBIDDEN.md` Part 1), and imported where a version is written (`Law 7`;
+# closed at the wave C merge — this module had its own three until then).
 
 # What a `PUT /api/workflows/{id}` did, as the reply's `saved` (`Law 10`: an
 # enum, never a boolean a reader can take two ways).
@@ -80,16 +79,11 @@ SAVED_POSITIONS = "positions"
 SAVED_PINS = "pins"
 
 # The columns of a chain's first step that say when it runs — what a converted
-# workflow's trigger takes from it. An allowlist, so whatever else the engine's
+# workflow's trigger takes from it — are the engine's `TRIGGER_FIELDS`,
+# imported in `convert_chain` and used there as an allowlist, so whatever else
 # `chain_to_document` hands back can never reach a row unasked (an `id`, an
-# `owner`, a `status`). The same twelve as the engine's `TRIGGER_FIELDS`
-# (measured in wf-engine's `1b3dbb5`; not in `C1`, so not imported — a merge
-# point: at the merge this should read that tuple).
-TRIGGER_COLUMNS = (
-    "schedule", "scheduled_time", "scheduled_day", "scheduled_date",
-    "cron_expression", "trigger_type", "trigger_event", "trigger_count",
-    "tz_name", "max_retries", "timeout_seconds", "notifications_enabled",
-)
+# `owner`, a `status`). One list (`Law 7`; this module had its own copy of the
+# twelve until the wave C merge).
 
 
 def quoted(name) -> str:
@@ -144,16 +138,12 @@ def _models():
     return ScheduledTask, TaskRun, Workflow, WorkflowVersion
 
 
-def empty_graph() -> dict:
-    """A document with nothing in it yet: a start and no steps."""
-    from src.workflow_document import GRAPH_VERSION, START_KEY
-    return {"v": GRAPH_VERSION, START_KEY: {"position": None}, "nodes": [], "edges": []}
-
-
 def stored_graph(wf) -> dict:
     """The document as stored. It was validated when it was written; a row a
-    hand edit broke reads as the empty document rather than taking every list
-    down, and the next save or run says what is wrong with it."""
+    hand edit broke reads as the empty document (the engine's `empty_graph`)
+    rather than taking every list down, and the next save or run says what is
+    wrong with it."""
+    from src.workflow_document import empty_graph
     try:
         graph = json.loads(wf.graph or "")
     except (TypeError, ValueError):
@@ -589,6 +579,7 @@ def save_document(db, wf, trigger, *, name, graph, base_version, check: bool = F
         # Kept equal on every save, so the Tasks window and Activity read the
         # workflow's name on its start (design § 1.1).
         trigger.name = new_name
+    from src.workflow_document import VERSION_SOURCE_USER
     _commit_version(db, wf, parsed, source=VERSION_SOURCE_USER, base=base)
     return SAVED_NEW_VERSION
 
@@ -616,6 +607,7 @@ def restore_version(db, wf, trigger, version, *, base_version) -> str:
     wf.name = row.name
     if trigger is not None:
         trigger.name = row.name
+    from src.workflow_document import VERSION_SOURCE_RESTORED
     _commit_version(db, wf, parsed, source=VERSION_SOURCE_RESTORED, base=base)
     return SAVED_NEW_VERSION
 
@@ -723,7 +715,10 @@ def _new_trigger(*, owner, name, fields: dict):
 
 
 def create_workflow(db, *, owner, name=None):
-    """A new, empty workflow, switched off. Returns `(wf, trigger, notes)`."""
+    """A new, empty workflow, switched off. Returns `(wf, trigger, notes)`.
+    Created from the engine's `empty_graph` WITHOUT validating it (an empty
+    document is refused at save — `no_steps` — and this one is off)."""
+    from src.workflow_document import VERSION_SOURCE_USER, empty_graph
     _, _, Workflow, _ = _models()
     name = clean_name(name, required=False) or NEW_WORKFLOW_NAME
     trigger = _new_trigger(owner=owner, name=name, fields={})
@@ -806,7 +801,10 @@ def convert_chain(db, *, owner, from_task_id, name=None, positions=None, name_of
     written to any task of the chain. Returns `(wf, trigger, notes)`.
     """
     from src.task_scheduler import describe_graph_refusal, load_chain_rows, validate_graph
-    from src.workflow_document import DocumentError, WORKFLOW_MAX_NODES, chain_to_document
+    from src.workflow_document import (
+        TRIGGER_FIELDS, VERSION_SOURCE_CONVERTED, WORKFLOW_MAX_NODES, DocumentError,
+        chain_to_document,
+    )
     _, _, Workflow, _ = _models()
     name_of = name_of or (lambda task: task.name)
     depth = WORKFLOW_MAX_NODES + 1
@@ -842,7 +840,7 @@ def convert_chain(db, *, owner, from_task_id, name=None, positions=None, name_of
     except DocumentError as err:
         raise _document_error_refusal(err) from None
     name = clean_name(name, required=False) or clean_name(f"{name_of(head)}{CONVERTED_SUFFIX}")
-    fields = {k: v for k, v in dict(trigger_fields or {}).items() if k in TRIGGER_COLUMNS}
+    fields = {k: v for k, v in dict(trigger_fields or {}).items() if k in TRIGGER_FIELDS}
     trigger = _new_trigger(owner=owner, name=name, fields=fields)
     parsed = check_document(db, graph, owner=owner, own_task_id=trigger.id,
                             rows=(tasks_by_id, crew_ids))
@@ -929,30 +927,6 @@ def _json_list(raw) -> list:
     return value if isinstance(value, list) else []
 
 
-def bfs_places(graph) -> dict:
-    """`{node id: (when, depth)}` from the engine's breadth-first walk.
-
-    `reachable_bfs` (`C1`) is the one walk — every node once, `when` from its
-    first parent, as wave B's chain contract has it. Read as an ordered
-    iterable of `(node, when, depth)`, or of dicts carrying `node`/`node_id`,
-    `when` and `depth`, which is all `C1` fixes about its shape.
-    """
-    from src.workflow_document import reachable_bfs
-    out = {}
-    for entry in reachable_bfs(graph) or ():
-        if isinstance(entry, dict):
-            node = entry.get("node")
-            node_id = entry.get("node_id") or entry.get("id") or node
-            when, depth = entry.get("when"), entry.get("depth")
-        else:
-            node_id, when, depth = (tuple(entry) + (None, None, None))[:3]
-        if isinstance(node_id, dict):
-            node_id = node_id.get("id")
-        if node_id is not None:
-            out.setdefault(str(node_id), (when, depth))
-    return out
-
-
 def graph_of_version(db, wf, version) -> tuple:
     """`(graph, kept)`: the graph of the version a run used, or — when that
     version was pruned or is unknown — the current one, with `kept` False so
@@ -974,57 +948,36 @@ def graph_of_version(db, wf, version) -> tuple:
 
 
 def dry_plan_nodes(db, run_id: str) -> list:
-    """`P22-05`. A workflow's dry run, one entry per step, read from that run's
-    dry node records — `{node_id, kind, name, when, depth, steps, declined,
-    task_id?}`, beside wave B's `chain` entries (design § 5) — so the canvas
-    draws a document's plan as it draws a chain's. `task_id` is only a run-task
-    step's target; it is not overloaded with the step's own id."""
+    """`P22-05`. A workflow's dry run, one entry per step — the engine's
+    `workflow_runs.dry_node_entries` (`{node_id, kind, name, when, depth,
+    steps, declined, task_id?}`, beside wave B's `chain` entries, design § 5),
+    read from that run's dry step records, which carry how the plan reached
+    each step (`reached_by`, `depth`) from the walk that planned it. This
+    door only finds the document the plan was made from, so a Run task step's
+    entry names its target (`task_id`). One reading of a plan (`Law 7`;
+    closed at the wave C merge — this module walked the graph a second time
+    for records without a place until then, and the engine writes one on
+    every dry record)."""
+    from src.workflow_runs import dry_node_entries
     _, TaskRun, _, _ = _models()
     TaskRunNode = _node_model()
-    recs = (db.query(TaskRunNode)
-            .filter(TaskRunNode.run_id == run_id, TaskRunNode.dry.is_(True))
-            .order_by(TaskRunNode.seq).all())
-    if not recs:
+    first = (db.query(TaskRunNode)
+             .filter(TaskRunNode.run_id == run_id, TaskRunNode.dry.is_(True))
+             .order_by(TaskRunNode.seq).first())
+    if first is None:
         return []
     run = db.query(TaskRun).filter(TaskRun.id == run_id).first()
     wf = workflow_for_task(db, run.task_id) if run is not None else None
-    graph = graph_of_version(db, wf, recs[0].workflow_version)[0] if wf is not None else {}
-    places = bfs_places(graph) if wf is not None else {}
-    by_id = {str(n.get("id")): n for n in nodes_of(graph)}
-    out = []
-    for rec in recs:
-        when, depth = places.get(str(rec.node_id), (None, None))
-        if getattr(rec, "depth", None) is not None:
-            # The engine's dry record says how the plan reached the step
-            # (`reached_by`, `depth`), written by the same walk that planned
-            # it — so it is the one answer (`Law 7`), and the graph's walk
-            # above is only for records that do not carry it.
-            when, depth = getattr(rec, "reached_by", None), rec.depth
-        entry = {
-            "node_id": rec.node_id, "kind": rec.kind, "name": rec.label,
-            "when": when, "depth": depth,
-            "steps": _json_list(rec.steps),
-            "declined": rec.error or None,
-        }
-        if rec.kind == "run_task":
-            config = (by_id.get(str(rec.node_id)) or {}).get("config") or {}
-            entry["task_id"] = config.get("task_id")
-        out.append(entry)
-    return out
+    graph = graph_of_version(db, wf, first.workflow_version)[0] if wf is not None else None
+    return dry_node_entries(db, run_id, graph)
 
 
-# `P22-07`. How long a run's step records are kept — the key, default and
-# bounds `maybe_prune_node_records` resolves (design § 3.2: settings-only, no
-# owner), so "they were cleared" is said on exactly the runs the pruner can
-# have reached. A merge point with wf-engine: the two must stay one rule.
-NODE_RECORDS_DAYS_KEY = "workflow_node_records_days"
-NODE_RECORDS_DAYS_DEFAULT = 30
-
-
-def node_records_days() -> int:
-    from src.settings import resolve_limit
-    return resolve_limit(NODE_RECORDS_DAYS_KEY, NODE_RECORDS_DAYS_DEFAULT,
-                         minimum=1, maximum=3650)[0]
+# `P22-07`. How long a run's step records are kept is the pruner's own rule,
+# `workflow_runs.node_records_days` (the setting `workflow_node_records_days`,
+# its default and its bounds, `src/settings.py`), so "they were cleared" is
+# said on exactly the runs the pruner can have reached — one function, asked
+# by both (`Law 7`; this module resolved the setting itself until the wave C
+# merge).
 
 
 def records_were_cleared(run, *, now=None) -> bool:
@@ -1050,6 +1003,7 @@ def records_were_cleared(run, *, now=None) -> bool:
     ended = getattr(run, "finished_at", None) or getattr(run, "started_at", None)
     if ended is None:
         return False
+    from src.workflow_runs import node_records_days
     return ended < (now or _utcnow()) - timedelta(days=node_records_days())
 
 

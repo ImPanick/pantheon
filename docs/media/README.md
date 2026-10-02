@@ -29,10 +29,10 @@ requirements, pass the one that does: `--server-python .venv/bin/python`.
    so neither your shell nor your `.env` can put the demo into your real install, or
    your real models into a picture.
 2. Seeds a fictional world **through the API** — documents in nested folders, a chain
-   of automations with a failure branch and a dry run, skills with an imported package
-   and a group, notes, a week of calendar, memories. The skill package is the one
-   exception: importing fetches from GitHub, so the importer's own `install_package` is
-   handed the package instead, before the server starts.
+   of automations with a failure branch and a dry run, a workflow (two steps, one start),
+   skills with an imported package and a group, notes, a week of calendar, memories. The
+   skill package is the one exception: importing fetches from GitHub, so the importer's
+   own `install_package` is handed the package instead, before the server starts.
 3. Plays the chats on a **scripted stand-in model** (`scripts/showcase/demo_model.py`,
    shown as `scripted-demo`): its words are written down, and Pantheon runs every tool
    call for real against the demo data — the approval cards are real, and so are the
@@ -61,7 +61,7 @@ matches the reader's GitHub theme.
 |---|---|
 | `workstation-*` | the agent's Ubuntu desktop docked beside its chat: it wrote a page, ran a command and opened it in Firefox |
 | `chat-*` | an agent turn — each tool call, the approval card it raised, the answer |
-| `workbench-*` | the Workbench canvas after *Show me what this would do* on a chain with a failure branch |
+| `workbench-*` | the Workbench canvas after *Show me what this would do* on a chain with a failure branch, the shelf of workflows beside it |
 | `tasks-*` | the Tasks window |
 | `documents-*` | the Library's documents, in folders |
 | `skills-*` | the Skills window: the person's own, an imported package, a group |

@@ -550,8 +550,12 @@ export function createWorkflowPanels({
 
     if (!rec) {
       const cleared = !!(run && (run.cleared === true));
+      // The server's sentence names the window as it is set; a fixed number
+      // here was false once `workflow_node_records_days` was changed.
+      const clearedText = (run && typeof run.cleared_sentence === 'string' && run.cleared_sentence)
+        || 'Its step details were cleared after the time Pantheon keeps them (workflow_node_records_days).';
       wrap.appendChild(_el('p', 'wf-record-note', cleared
-        ? 'Its step details were cleared after 30 days (workflow_node_records_days).'
+        ? clearedText
         : 'This step was not reached in this run, so it was handed nothing and made nothing.'));
     } else {
       const times = [_when(rec.started_at), _took(rec.started_at, rec.finished_at)].filter(Boolean).join(' · ');

@@ -76,8 +76,10 @@ def test_a_run_comes_back_with_every_step_on_the_graph_it_ran(client, wf_db):
     res = call(client, "GET", f"/api/workflows/{wf['id']}/runs/{run_id}")
     assert res.status_code == 200, res.text
     out = res.json()
-    assert set(out) == {"run", "version", "version_kept", "graph", "nodes", "cleared"}
+    assert set(out) == {"run", "version", "version_kept", "graph", "nodes", "cleared",
+                        "cleared_sentence"}
     assert (out["version"], out["version_kept"], out["cleared"]) == (2, True, False)
+    assert out["cleared_sentence"] is None, "said only when the records were cleared"
     assert [n["label"] for n in out["graph"]["nodes"]] == ["Summarise my inbox", "Send me the summary"]
     assert out["run"]["id"] == run_id and out["run"]["status"] == "error"
     first, failed = out["nodes"]
@@ -121,12 +123,21 @@ def test_a_run_whose_records_were_cleared_says_so_and_one_that_had_none_does_not
     refused = _run(wf_db, wf["task_id"], steps=[{"kind": "progress", "detail": "Refused"}],
                    status="skipped", days_ago=90)
 
+    said = {}
+
     def cleared(run_id):
         out = call(client, "GET", f"/api/workflows/{wf['id']}/runs/{run_id}").json()
         assert out["nodes"] == []
+        said[run_id] = out["cleared_sentence"]
+        assert (out["cleared_sentence"] is not None) == out["cleared"]
         return out["cleared"]
     assert [cleared(r) for r in (old, recent, old_plan, new_plan, refused)] == [
         True, False, True, False, False]
+    # What a person is told is the engine's sentence, naming the window as it
+    # is set (wave C merge: the panel had typed "30 days" itself).
+    from src.workflow_runs import records_cleared_sentence
+    assert said[old] == records_cleared_sentence(30)
+    assert "after 30 days" in said[old]
     # The window is the setting's, read when asked: kept for a year, the
     # month-old run's records cannot have been cleared yet.
     import src.settings as settings
@@ -134,6 +145,12 @@ def test_a_run_whose_records_were_cleared_says_so_and_one_that_had_none_does_not
     monkeypatch.setattr(settings, "resolve_limit", lambda key, default, **kw: (
         (365, "instance setting") if key == "workflow_node_records_days" else real(key, default, **kw)))
     assert cleared(old) is False
+    # Kept for a week instead, the month-old run's were cleared — and the
+    # sentence says a week, not the default.
+    monkeypatch.setattr(settings, "resolve_limit", lambda key, default, **kw: (
+        (7, "instance setting") if key == "workflow_node_records_days" else real(key, default, **kw)))
+    assert cleared(recent) is False and cleared(old) is True
+    assert "after 7 days" in said[old]
 
 
 def test_a_run_of_something_else_is_not_this_workflows(client, wf_db):
