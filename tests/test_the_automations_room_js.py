@@ -291,17 +291,22 @@ def test_leaving_with_unsaved_changes_asks_and_escape_keeps_editing(box):
 def test_a_chain_made_a_workflow_is_switched_on_and_the_chain_put_back_with_one_click(box):
     o = _case(box, """
         const { root } = await room();
+        // What the start's box says about On/Off, as drawn on the canvas.
+        const startWord = () => { const n = root.querySelectorAll('.wb-node').find((x) => x.dataset.itemId === '__start__');
+          const l = n && n.querySelectorAll('.wb-node-last')[0]; return l ? l.textContent.replace(/^[^A-Za-z]+/, '') : null; };
         fire(nodeOf(root, 'a'), 'click'); await settle(5);
         const offer = sayButton(root) && sayButton(root).textContent;
         fire(sayButton(root), 'click'); await settle(20);
         const made = { call: called('createWorkflow'), said: sayOf(root), name: by(root, 'wf-name').value,
-                       sw: by(root, 'wf-switch').textContent };
+                       sw: by(root, 'wf-switch').textContent, start: startWord() };
         fire(by(root, 'wf-switch'), 'click'); await settle(10);
         const on = { said: sayOf(root), action: sayButton(root) && sayButton(root).textContent,
-                     sw: by(root, 'wf-switch').getAttribute('aria-checked'), chainBtn: !by(root, 'wf-chain-back').hidden };
+                     sw: by(root, 'wf-switch').getAttribute('aria-checked'), chainBtn: !by(root, 'wf-chain-back').hidden,
+                     start: startWord() };
         fire(sayButton(root), 'click'); await settle(10);
         out({ offer, made, on, back: { said: sayOf(root), sw: by(root, 'wf-switch').getAttribute('aria-checked'),
-              chainBtn: !by(root, 'wf-chain-back').hidden, calls: called('restoreChain').length } });
+              chainBtn: !by(root, 'wf-chain-back').hidden, calls: called('restoreChain').length,
+              start: startWord() } });
     """)
     assert o["offer"] == "Make this chain a workflow"
     assert o["made"]["call"] == [["createWorkflow", {"fromTaskId": "a"}]]
@@ -310,8 +315,12 @@ def test_a_chain_made_a_workflow_is_switched_on_and_the_chain_put_back_with_one_
     assert o["made"]["name"] == "Nightly backup (workflow)" and o["made"]["sw"] == "Off"
     assert o["on"]["said"] == "Switched on. The chain’s first step, “Nightly backup”, is paused so the two do not both run."
     assert o["on"]["action"] == "Put the old chain back" and o["on"]["sw"] == "true" and o["on"]["chainBtn"] is True
+    # The start's box says what the switch says (wave C merge: measured in Chromium on the merged tree, the
+    # box still read "Switched off" after On, until the workflow was opened again — the room redrew its
+    # toolbar and shelf but not the canvas).
+    assert [o["made"]["start"], o["on"]["start"]] == ["Switched off", "Switched on"]
     assert o["back"] == {"said": "The chain runs again and this workflow is switched off. Nothing was deleted.",
-                         "sw": "false", "chainBtn": False, "calls": 1}
+                         "sw": "false", "chainBtn": False, "calls": 1, "start": "Switched off"}
 
 
 def test_run_now_on_a_switched_off_workflow_says_so_and_offers_to_switch_it_on(box):
