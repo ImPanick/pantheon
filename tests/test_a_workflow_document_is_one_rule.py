@@ -345,3 +345,50 @@ def test_the_stand_in_carries_exactly_its_fields():
         prompt.notifications_enabled  # noqa: B018 - the read is the assertion
     with pytest.raises(ValueError):
         wd.node_stand_in(trig, "Morning", step("n3", kind="run_task", task_id="t2"))
+
+
+def test_contract_c1_is_exactly_what_the_routes_import():
+    """`SLICE-B-DESIGN` § 7, contract C1 — the names and signatures `wf-api`
+    imports, held here so a rename on this side fails on this side."""
+    import inspect
+
+    from src import task_action_policy, workflow_runs
+    from src.task_scheduler import TaskScheduler
+
+    for name in ("GRAPH_VERSION", "NODE_KINDS", "PORTS", "NODE_CONFIG_FIELDS",
+                 "STAND_IN_FIELDS", "WORKFLOW_MAX_NODES", "WORKFLOW_GRAPH_MAX_BYTES",
+                 "START_KEY", "WORKFLOW_REFUSAL_REASONS", "DocumentRefusal", "DocumentError",
+                 "parse_graph", "validate_document", "content_fingerprint", "without_pins",
+                 "merge_positions", "build_pin", "node_input_shape", "entry_node",
+                 "next_node", "reachable_bfs", "node_effects", "needs_test_confirmation",
+                 "chain_to_document", "WorkflowNodeTask", "node_stand_in"):
+        assert hasattr(wd, name), name
+    assert (wd.GRAPH_VERSION, wd.START_KEY) == (1, "start")
+    assert wd.DocumentRefusal._fields == ("reason", "node_ids", "sentence")
+
+    def sig(fn):
+        return [(p.name, p.kind.name, p.default is inspect.Parameter.empty)
+                for p in inspect.signature(fn).parameters.values()]
+
+    kw = "KEYWORD_ONLY"
+    pos = "POSITIONAL_OR_KEYWORD"
+    assert sig(wd.validate_document) == [
+        ("graph", pos, True), ("owner", kw, True), ("tasks_by_id", kw, True),
+        ("crew_ids", kw, True), ("owner_is_admin", kw, True), ("own_task_id", kw, True)]
+    assert sig(wd.chain_to_document) == [("rows", pos, True), ("head_id", pos, True),
+                                         ("positions", kw, False)]
+    assert [p[0] for p in sig(wd.build_pin)] == ["graph", "node_id", "trigger_task", "data"]
+    assert [p[0] for p in sig(wd.node_input_shape)] == ["graph", "node_id", "trigger_task"]
+    assert [p[0] for p in sig(wd.node_stand_in)] == ["trigger", "workflow_name", "node"]
+    assert [p[0] for p in sig(workflow_runs.node_record_to_dict)] == ["rec"]
+    assert [p[0] for p in sig(workflow_runs.last_node_record)] == ["db", "task_id", "node_id"]
+    assert [p[0] for p in sig(workflow_runs.maybe_prune_node_records)] == ["db"]
+    assert sig(TaskScheduler.test_workflow_node)[:4] == [
+        ("self", pos, True), ("task", pos, True), ("workflow_name", pos, True), ("node", pos, True)]
+    assert [p[:2] for p in sig(TaskScheduler.test_workflow_node)[4:]] == [
+        ("input_envelope", kw), ("timeout", kw)]
+    register = inspect.signature(TaskScheduler._execute_task).parameters["register_handle"]
+    assert (register.kind.name, register.default) == (kw, True)
+    assert [p[0] for p in sig(task_action_policy.admin_only_action_of)] == ["db", "task"]
+    assert sig(task_action_policy.record_admin_refusal) == [
+        ("db", pos, True), ("task", pos, True), ("run_id", kw, False), ("action", kw, False)]

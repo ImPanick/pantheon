@@ -2137,14 +2137,10 @@ class TaskScheduler:
         self._pending_notifications = keep
         return take
 
-    async def start(self):
-        # Re-read the concurrency cap here, not just in __init__: the scheduler
-        # is constructed at import/wiring time, so a settings change made after
-        # boot would otherwise need a full process restart to take effect.
-        # Nothing holds the semaphore yet at this point. `_check_due_tasks`
-        # re-reads it every tick as well (`P6-08`); this call is what makes the
-        # start-up log line report the cap the first dispatch will actually use.
-        self._refresh_concurrency_cap()
+    def _sweep_runs_left_by_a_restart(self) -> None:
+        """On startup, mark every run (and workflow step) a previous process
+        left in flight as aborted. Moved out of `start` unchanged, so it can be
+        called and tested on its own (`P22-07` added the step records)."""
         # On startup, mark any leftover "running" task_runs as aborted. Without
         # this, a server crash leaves rows stuck running indefinitely and the
         # _executing in-memory set forgets them, so the UI shows phantoms.
@@ -2171,6 +2167,36 @@ class TaskScheduler:
                 db.close()
         except Exception as e:
             logger.warning(f"Could not clear stale task_runs on startup: {e}")
+        # `P22-07`. The same event for a workflow's step: the run above is
+        # aborted, and the step it was on would read "running" in the Runs view
+        # for ever. A step record is only ever `running` while its walker is.
+        try:
+            from core.database import SessionLocal, TaskRunNode
+            db = SessionLocal()
+            try:
+                stuck = db.query(TaskRunNode).filter(TaskRunNode.status == "running").all()
+                if stuck:
+                    now = _utcnow()
+                    for rec in stuck:
+                        rec.status = "aborted"
+                        rec.error = "Server restarted while this step was running"
+                        rec.finished_at = now
+                    db.commit()
+                    logger.info("Cleared %d workflow step record(s) left running", len(stuck))
+            finally:
+                db.close()
+        except Exception as e:
+            logger.warning(f"Could not clear stale workflow step records on startup: {e}")
+
+    async def start(self):
+        # Re-read the concurrency cap here, not just in __init__: the scheduler
+        # is constructed at import/wiring time, so a settings change made after
+        # boot would otherwise need a full process restart to take effect.
+        # Nothing holds the semaphore yet at this point. `_check_due_tasks`
+        # re-reads it every tick as well (`P6-08`); this call is what makes the
+        # start-up log line report the cap the first dispatch will actually use.
+        self._refresh_concurrency_cap()
+        self._sweep_runs_left_by_a_restart()
 
         # Advance next_run for active tasks whose next_run is already in the
         # past. Without this, a restart hits _check_due_tasks() with an empty

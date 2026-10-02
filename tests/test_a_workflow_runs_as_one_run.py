@@ -278,6 +278,7 @@ async def test_a_failure_takes_the_if_it_fails_arrow_and_a_handled_failure_is_a_
         (st["kind"], st.get("detail")) for st in run["steps"]]
     assert [c["name"] for c in s.calls] == ["Morning digest · Fetch",
                                             "Morning digest · Tell me it failed"]
+    assert s.delivered == [], "no step asked to deliver, and the run delivers nothing of its own"
 
 
 @pytest.mark.asyncio
@@ -473,14 +474,13 @@ async def test_a_run_task_step_runs_its_task_as_itself_and_lets_its_claim_go(tas
     seed_task(task_db, "t2", "Weekly report")
     seed_workflow(task_db, [node("n1", "Summarise"), node("n2", "Report", "run_task", task_id="t2")],
                   [arrow("n1", "n2")])
-    s = recording_scheduler({"Weekly report": "Report: all quiet."})
-    handles = []
-    original = s._execute_task
+    held = {}
 
-    async def watch(task_id, **kw):
-        handles.append((task_id, s._task_handles.get(task_id), kw.get("register_handle")))
-        return await original(task_id, **kw)
-    s._execute_task = watch
+    async def report(task, run_id):
+        # While the target runs: its handle is not the workflow's.
+        held.update(target=s._task_handles.get("t2"), workflow=s._task_handles.get("wf"))
+        return "Report: all quiet."
+    s = recording_scheduler({"Weekly report": report})
     await s._execute_task("wf")
     run = runs_of(task_db, "wf")[0]
     assert run["status"] == "success" and run["result"] == "Report: all quiet."
@@ -488,8 +488,55 @@ async def test_a_run_task_step_runs_its_task_as_itself_and_lets_its_claim_go(tas
     assert [r["status"] for r in target_runs] == ["success"], "its own run, its own history"
     assert target_runs[0]["steps"][0]["detail"].startswith("Continued from Summarise")
     assert "t2" not in s._executing and "wf" not in s._executing
-    assert ("t2", None, False) in handles, "stopping the target cannot cancel the workflow"
+    assert held["target"] is None and held["workflow"] is not None, (
+        "stopping the target cannot cancel the workflow")
     assert [r["output"]["text"] for r in records_of(task_db, run["id"])][-1] == "Report: all quiet."
+
+
+@pytest.mark.asyncio
+async def test_a_stop_while_a_run_task_step_runs_stops_the_workflow_there(task_db):
+    """The target's run answers the cancel by recording it and returning; the
+    workflow must not read that as the step failing and go on to its *if it
+    fails* step."""
+    seed_task(task_db, "t2", "Weekly report")
+    seed_workflow(task_db, [node("n1", "Report", "run_task", task_id="t2"), node("n2", "Never")],
+                  [arrow("n1", "n2", "error")])
+    started = asyncio.Event()
+
+    async def slow(task, run_id):
+        started.set()
+        await asyncio.Event().wait()
+    s = recording_scheduler({"Weekly report": slow})
+    running = asyncio.create_task(s._execute_task("wf"))
+    await asyncio.wait_for(started.wait(), 5)
+    assert await s.stop_task("wf")
+    await asyncio.wait_for(running, 5)
+    run = runs_of(task_db, "wf")[0]
+    assert run["status"] == "aborted"
+    assert [r["status"] for r in records_of(task_db, run["id"])] == ["aborted"]
+    assert [c["name"] for c in s.calls] == ["Weekly report"], "it went on to its next step"
+    assert [r["status"] for r in runs_of(task_db, "t2")] == ["aborted"]
+
+
+def test_a_restart_leaves_no_step_running(task_db):
+    """The run a restart interrupted is aborted (as ever); so is the step it
+    was on, which would otherwise read "running" in the Runs view for ever."""
+    seed_workflow(task_db, [node("n1", "Done"), node("n2", "Slow")], [arrow("n1", "n2")])
+    db = task_db()
+    try:
+        db.add(TaskRun(id="r9", task_id="wf", status="running"))
+        db.commit()
+        done = wr.record_node_start(db, run_id="r9", node=node("n1", "Done"), seq=1,
+                                    input_envelope=None, workflow_version=1)
+        wr.record_node_end(db, done, status="success", text="ok", port="success")
+        wr.record_node_start(db, run_id="r9", node=node("n2", "Slow"), seq=2,
+                             input_envelope=None, workflow_version=1)
+    finally:
+        db.close()
+    TaskScheduler(None)._sweep_runs_left_by_a_restart()
+    assert runs_of(task_db, "wf")[0]["status"] == "aborted"
+    assert [(r["status"], r["error"]) for r in records_of(task_db, "r9")] == [
+        ("success", None), ("aborted", "Server restarted while this step was running")]
 
 
 @pytest.mark.asyncio

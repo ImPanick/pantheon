@@ -485,17 +485,15 @@ async def _handle_event(event_name: str, owner: Optional[str] = None,
                         origin: Optional[RunOrigin] = None):
     """Process an event: increment counters, fire tasks that hit their threshold.
 
-    `P22-05`. `origin` is the run whose step fired this (`fire_event` reads it
-    from `run_origin`; a direct call falls back to the current context). That
-    run's own task is left out — its counter does not move and its `next_run`
+    `P22-05`. `origin` is the run whose step fired this — `fire_event` reads it
+    from `run_origin` in the caller's context and passes it; a direct caller
+    passes its own. That run's own task is left out — its counter does not move and its `next_run`
     is not written — so a workflow that edits a document does not fire itself
     on `document_updated`. Other tasks it wakes are told what caused them. An
     event fired by *Test this step* (`origin.test`) wakes nothing at all.
     """
     from core.database import SessionLocal, ScheduledTask
 
-    if origin is None:
-        origin = _RUN_ORIGIN.get()
     if origin is not None and origin.test:
         logger.debug("Event %r from a step test: no task is woken", event_name)
         return
