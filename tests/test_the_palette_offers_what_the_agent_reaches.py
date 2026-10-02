@@ -16,7 +16,7 @@ for `validate_document` at save and at run.
 Driven for real where the facts live on this branch — the integration store
 (seam: `load_integrations`), a real `McpManager` and SQLite for the disabled
 list, a real `SkillsManager`, the real workstation settings and auth. C-R and
-wf-walker's limit readers are faked where absent (`tests/helpers/workflow_cr_fake.py`).
+wf-walker's limit readers are the real ones (`workflow_runs`; `integrate-d` removed the stand-ins).
 """
 import json
 from typing import Any, Dict
@@ -26,7 +26,6 @@ import pytest
 from src import integrations as integrations_mod
 from src import workflow_effects as fx
 from src.workstation_access import NOT_PERMITTED_SENTENCE, OFF_SENTENCE
-from tests.helpers import workflow_cr_fake as cr
 
 KEY = "sekret-api-key-123"
 BASE = "http://feeds.lan:8080"
@@ -42,7 +41,6 @@ def world(monkeypatch, tmp_path):
     from src.mcp_manager import McpManager
     from tests.helpers.sqlite_db import make_temp_sqlite
 
-    said = cr.install(monkeypatch)
     monkeypatch.setenv("AUTH_ENABLED", "false")
     monkeypatch.setattr(integrations_mod, "load_integrations", lambda: [
         {"id": "intg-1", "name": "Miniflux", "enabled": True, "base_url": BASE, "auth_type": "header",
@@ -83,7 +81,7 @@ def world(monkeypatch, tmp_path):
     real = S.get_setting
     monkeypatch.setattr(S, "get_setting",
                         lambda key, default=None: values[key] if key in values else real(key, default))
-    yield type("World", (), {"said": said, "settings": values, "mgr": mgr})
+    yield type("World", (), {"settings": values, "mgr": mgr})
     engine.dispose()
     invalidate_skill_cache()
 

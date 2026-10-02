@@ -357,13 +357,15 @@ def skill_context(owner, name) -> Tuple[List[dict], str]:
 # ── P22-16 · The AI step's answer shape ──────────────────────────────────────
 
 # The four words an answer field's type is stored as (`D-2026-10-01-05` §2: a
-# person picks one from a list; no schema language is typed).
-ANSWER_TYPE_TEXT = "text"
-ANSWER_TYPE_NUMBER = "number"
-ANSWER_TYPE_YES_NO = "yes/no"
-ANSWER_TYPE_LIST = "list"
-ANSWER_FIELD_TYPES = (ANSWER_TYPE_TEXT, ANSWER_TYPE_NUMBER, ANSWER_TYPE_YES_NO, ANSWER_TYPE_LIST)
-ANSWER_FIELDS_MAX = 20
+# person picks one from a list; no schema language is typed), and how many
+# fields one step may ask for — the document rule's, which refuses anything
+# else at save (`workflow_document.ANSWER_TYPES` / `ANSWER_FIELDS_MAX`),
+# imported so the check and the parser cannot disagree (`Law 7`,
+# `integrate-d`: the merge held a copy here).
+from src.workflow_document import ANSWER_FIELDS_MAX  # noqa: E402
+from src.workflow_document import ANSWER_TYPES as ANSWER_FIELD_TYPES  # noqa: E402
+
+ANSWER_TYPE_TEXT, ANSWER_TYPE_NUMBER, ANSWER_TYPE_YES_NO, ANSWER_TYPE_LIST = ANSWER_FIELD_TYPES
 
 _TYPE_PROMISE = {
     ANSWER_TYPE_TEXT: "text",
@@ -635,14 +637,18 @@ def workflow_resources(owner):
 
 # ── The palette (`GET /api/workflows/palette`, contract C-W) ─────────────────
 
-# The words a person meets for each kind. The first four are Slice B's, as the
-# Workbench says them today (`static/js/tasks/workflowDiagram.js:KIND_WORDS`,
-# `workflowPanels.js:PALETTE_KINDS`); the browser reads these from the palette
-# now and derives none (a merge point with wf-canvas: one copy, not two).
+# The words a person meets for each kind — the words the Workbench draws on
+# every box, panel and record (`static/js/tasks/workflowDiagram.js:KIND_WORDS`,
+# and the four Slice B hints `workflowPanels.js:PALETTE_KINDS`, which the room
+# uses when no palette loads). The palette serves them so the palette and the
+# boxes say one word; `tests/test_the_halves_are_one_product.py` loads the
+# browser's module and holds the two equal (`integrate-d`: the merge said
+# "Set" / "For each" in the palette and "Set fields" / "For each item" on the
+# step it made).
 KIND_WORDS = {
     "llm": "Prompt", "research": "Research", "action": "Action", "run_task": "Run task",
-    "if": "If", "switch": "Switch", "set": "Set",
-    "merge": "Merge", "wait": "Wait", "foreach": "For each",
+    "if": "If", "switch": "Switch", "set": "Set fields",
+    "merge": "Merge", "wait": "Wait", "foreach": "For each item",
     "http": "HTTP request", "mcp": "MCP tool", "skill": "Skill", "code": "Code",
 }
 KIND_HINTS = {
@@ -826,18 +832,6 @@ def _declared_fields(node_id: str, names_types) -> list:
     return out
 
 
-def _start_targets(graph: dict) -> list:
-    """The steps the start leads to: its own arrows, or — in a document with
-    none (Slice B's) — the steps nothing leads to."""
-    from src.workflow_document import START_KEY
-    edges = graph.get("edges") or ()
-    explicit = [e["to"] for e in edges if e.get("from") == START_KEY]
-    if explicit:
-        return explicit
-    led_to = {e["to"] for e in edges}
-    return [n["id"] for n in graph.get("nodes") or () if n["id"] not in led_to]
-
-
 def _successors(graph: dict, node_id: str) -> list:
     return [e["to"] for e in graph.get("edges") or () if e.get("from") == node_id]
 
@@ -866,7 +860,7 @@ def available_fields(db, wf, trigger, graph, node_id) -> dict:
     """
     from src.event_bus import EVENT_PAYLOAD_FIELDS, WEBHOOK_PAYLOAD_FIELDS
     from src.workflow_document import START_KEY, upstream_of
-    from src.workflow_runs import is_truncated, last_node_record
+    from src.workflow_runs import is_truncated, last_node_record, start_targets
 
     nodes = {n["id"]: n for n in graph.get("nodes") or ()}
     upstream = upstream_of(graph, node_id)
@@ -874,7 +868,7 @@ def available_fields(db, wf, trigger, graph, node_id) -> dict:
     sources = []
 
     # The start: what fired the run.
-    starters = _start_targets(graph)
+    starters = start_targets(graph)
     for first in starters:
         rec = last_node_record(db, task_id, first) if task_id else None
         envelope = _loads(rec.input) if rec is not None else None

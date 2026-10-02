@@ -13,6 +13,11 @@ import logging
 from typing import Any, Callable
 
 from src.constants import SETTINGS_FILE, FEATURES_FILE
+# `P22-11` / `P22-12`. The For-each cap's and the longest Wait's built-in
+# defaults are the walker's, stated once in `src/workflow_runs.py` beside their
+# ranges and imported here (`Law 7`; the merge held three copies). That module
+# imports nothing of the product at load, so this adds no cycle.
+from src.workflow_runs import FOREACH_MAX_ITEMS_DEFAULT, WAIT_MAX_HOURS_DEFAULT
 
 logger = logging.getLogger(__name__)
 
@@ -269,9 +274,10 @@ DEFAULT_SETTINGS = {
     # `P22-12`. How many items one For-each step may run (`src/workflow_runs.py`
     # owns the bounds). Over it the step is refused with this name; nothing is
     # cut silently. Resolves with the owner, so a role may carry it.
-    "workflow_foreach_max_items": 50,
-    # `P22-11`. The longest a Wait step may wait, in hours (7 days).
-    "workflow_wait_max_hours": 168,
+    "workflow_foreach_max_items": FOREACH_MAX_ITEMS_DEFAULT,
+    # `P22-11`. The longest a Wait step may wait, in hours (7 days;
+    # `src/workflow_runs.py` owns the number and the bounds).
+    "workflow_wait_max_hours": WAIT_MAX_HOURS_DEFAULT,
     # `P22-17` (`D-2026-10-02-01` §1). How long a parked workflow step's
     # approval card waits for an answer: twelve hours, so an overnight
     # question is still answerable in the morning. Its own key, beside

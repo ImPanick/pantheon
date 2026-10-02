@@ -9,7 +9,6 @@ what the brief is handed after the restart comes out of the records the first
 process wrote.
 """
 
-import asyncio
 import json
 from datetime import timedelta
 
@@ -19,7 +18,7 @@ from core.database import TaskRun, TaskRunNode, Workflow, WorkflowVersion
 from src.task_scheduler import TaskScheduler, _utcnow
 from tests.helpers.walker_harness import (
     arrow, make_db, node, records_of, recording_scheduler, row, runs_of, seed_workflow,
-    settle,
+    settle, skip_ahead,
 )
 
 pytestmark = pytest.mark.asyncio
@@ -35,14 +34,14 @@ FEEDS_THEN_WAIT = (
      node("b", "Feed B", "action", action="tidy_documents"),
      node("c", "Feed C", "action", action="consolidate_memory"),
      node("m", "Merge", "merge", mode="all"),
-     node("w", "Until later", "wait", mode="for", minutes=0.01),
+     node("w", "Until later", "wait", mode="for", minutes=1),
      node("brief", "Brief me")],
     [arrow("start", "a"), arrow("start", "b"), arrow("start", "c"),
      arrow("a", "m"), arrow("b", "m"), arrow("c", "m"), arrow("m", "w"), arrow("w", "brief")],
 )
 
 
-async def test_three_feeds_merge_wait_restart_brief_is_one_run(factory):
+async def test_three_feeds_merge_wait_restart_brief_is_one_run(factory, monkeypatch):
     """`P22-11`'s `Verify:` — "check three feeds at once, merge, wait, brief
     me" is ONE execution and survives a restart during the wait."""
     seed_workflow(factory, *FEEDS_THEN_WAIT)
@@ -63,7 +62,7 @@ async def test_three_feeds_merge_wait_restart_brief_is_one_run(factory):
     second = recording_scheduler(scheduler=TaskScheduler(None))
     second._sweep_runs_left_by_a_restart()
     assert runs_of(factory, "wf")[0]["status"] == "waiting", "the restart sweep left it waiting"
-    await asyncio.sleep(0.7)                      # the Wait's time comes
+    skip_ahead(monkeypatch, 61)                   # the Wait's time comes
     assert await second._resume_due_waits() == 1
     await settle(second)
 
@@ -126,9 +125,9 @@ async def test_a_wait_until_a_clock_time_and_its_cap(factory, monkeypatch):
     assert [c for c in s.calls] == []
 
 
-async def test_a_run_resumes_on_the_version_it_started_with(factory):
+async def test_a_run_resumes_on_the_version_it_started_with(factory, monkeypatch):
     """Edited while it waited: it goes on with the document it started with."""
-    nodes = [node("w", "Wait", "wait", mode="for", minutes=0.01),
+    nodes = [node("w", "Wait", "wait", mode="for", minutes=1),
              node("x", "Old step", "action", action="tidy_sessions")]
     seed_workflow(factory, nodes, [arrow("w", "x")], version=3)
     db = factory()
@@ -148,7 +147,7 @@ async def test_a_run_resumes_on_the_version_it_started_with(factory):
     wf.version = 4
     db.commit()
     db.close()
-    await asyncio.sleep(0.7)
+    skip_ahead(monkeypatch, 61)
     await s._resume_due_waits()
     await settle(s)
     assert [c["name"] for c in s.calls] == ["Morning digest · Old step"]
@@ -162,7 +161,7 @@ async def test_a_run_resumes_on_the_version_it_started_with(factory):
     wf.version = 8
     db.commit()
     db.close()
-    await asyncio.sleep(0.7)
+    skip_ahead(monkeypatch, 61)
     await s._resume_due_waits()
     await settle(s)
     run = runs_of(factory, "wf2")[0]
@@ -235,13 +234,13 @@ async def test_a_parked_runs_records_are_never_pruned(factory):
     assert left == ["parked-a"]
 
 
-async def test_after_a_restart_a_step_still_reads_what_started_the_run(factory):
+async def test_after_a_restart_a_step_still_reads_what_started_the_run(factory, monkeypatch):
     """The trigger lives on the run's slot in memory; after a restart it comes
     back from the records (the input of the step the start led to), so a step
     after the Wait still reads `steps.start.data` — the webhook body."""
     from src.event_bus import TRIGGER_SOURCE_WEBHOOK, WEBHOOK_PAYLOAD_FIELDS, build_trigger
     seed_workflow(factory, [
-        node("w", "Wait", "wait", mode="for", minutes=0.01),
+        node("w", "Wait", "wait", mode="for", minutes=1),
         node("say", "Say it", "set", fields=[{"name": "said",
                                              "value": "{{ steps.start.data.body }}"}]),
     ], [arrow("w", "say")], trigger_type="webhook")
@@ -252,7 +251,7 @@ async def test_after_a_restart_a_step_still_reads_what_started_the_run(factory):
     assert runs_of(factory, "wf")[0]["status"] == "waiting"
     second = recording_scheduler(scheduler=TaskScheduler(None))
     second._sweep_runs_left_by_a_restart()
-    await asyncio.sleep(0.7)
+    skip_ahead(monkeypatch, 61)
     assert await second._resume_due_waits() == 1
     await settle(second)
     [run] = runs_of(factory, "wf")

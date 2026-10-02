@@ -237,14 +237,17 @@ _CASE_ID_RE = re.compile(r"[A-Za-z0-9_-]{1,32}")
 _FIELD_NAME_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,63}")
 _HEADER_NAME_RE = re.compile(r"[A-Za-z0-9!#$%&'*+.^_`|~-]{1,128}")
 _TIME_RE = re.compile(r"([01][0-9]|2[0-3]):[0-5][0-9]")
-# The For-each cap and the longest Wait: their built-in defaults, stated here
-# once; the settings (`workflow_foreach_max_items`, `workflow_wait_max_hours`,
-# resolved role → instance → default) are the walker's (`SLICE-CD-DESIGN`
-# § 1.4) and arrive in `WorkflowResources`.
-WORKFLOW_FOREACH_MAX_ITEMS_DEFAULT = 50
-WORKFLOW_FOREACH_MAX_ITEMS_RANGE = (1, 1000)
-WORKFLOW_WAIT_MAX_HOURS_DEFAULT = 168
-WORKFLOW_WAIT_MAX_HOURS_RANGE = (1, 720)
+# The For-each cap and the longest Wait: their built-in defaults and ranges
+# are the walker's (`workflow_runs`, which resolves the two settings role →
+# instance → default, `SLICE-CD-DESIGN` § 1.4) and arrive here resolved in
+# `WorkflowResources`. Imported, not restated (`Law 7`, `integrate-d`: the
+# merge held three copies — this module, `workflow_runs` and `settings.py`).
+from src.workflow_runs import (  # noqa: E402
+    FOREACH_MAX_ITEMS_DEFAULT as WORKFLOW_FOREACH_MAX_ITEMS_DEFAULT,
+    FOREACH_MAX_ITEMS_RANGE as WORKFLOW_FOREACH_MAX_ITEMS_RANGE,
+    WAIT_MAX_HOURS_DEFAULT as WORKFLOW_WAIT_MAX_HOURS_DEFAULT,
+    WAIT_MAX_HOURS_RANGE as WORKFLOW_WAIT_MAX_HOURS_RANGE,
+)
 
 # ── Why a document may not run (`Law 10`: an enum, the sentence derived) ────
 REFUSE_UNREADABLE = "unreadable"

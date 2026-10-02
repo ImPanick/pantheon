@@ -11,15 +11,15 @@ before any run — an AI step's answer fields (so `P22-16`'s picker shows
 `title`, `url`, `why` before the step has ever run), a Set step's names, the
 start's webhook or event fields. Every `ref` is what the picker inserts.
 
-Real SQLite, real `record_node_start`/`record_node_end` (`Law 20`). C-R
-(`upstream_of`, `flatten_fields`, `format_ref`) is faked where absent.
+Real SQLite, real `record_node_start`/`record_node_end` (`Law 20`), and the
+real C-R (`upstream_of`, `flatten_fields`, `format_ref`; `integrate-d` removed
+the stand-ins).
 """
 from types import SimpleNamespace
 
 import pytest
 
 from src import workflow_effects as fx
-from tests.helpers import workflow_cr_fake as cr
 
 GRAPH = {
     "v": 1,
@@ -49,7 +49,6 @@ def db(monkeypatch):
     from core.database import Base, ScheduledTask, TaskRun
     from tests.helpers.sqlite_db import make_temp_sqlite
 
-    cr.install(monkeypatch)
     SessionLocal, engine, _tmp = make_temp_sqlite(Base.metadata)
     session = SessionLocal()
     session.add(ScheduledTask(id="trig", name="Issue brief", task_type="workflow",

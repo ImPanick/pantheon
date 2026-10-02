@@ -20,8 +20,12 @@ Two halves, both driven for real (`Law 20`):
 
 The local server is real (`ThreadingHTTPServer` on 127.0.0.1); the integration
 store is the one seam (`load_integrations`), because the real one reads an
-encrypted file in the data directory. C-R (wf-rules) is faked where absent —
-see `tests/helpers/workflow_cr_fake.py`.
+encrypted file in the data directory. The call each step is handed is the one
+the real `workflow_slots.render_call` builds from an HTTP step's settings, its
+body values arriving from outside BY REFERENCE (§ 5's path: the adversary's
+words reach a `value` slot); only the deliberately malformed calls that test
+the executor's own guards are made by hand, from the real `RenderedCall`
+(`integrate-d`: on `wf-effects`' branch every call was a stand-in's).
 """
 import asyncio
 import json
@@ -34,7 +38,7 @@ from src import integrations
 from src import workflow_effects as fx
 from src.tool_capabilities import ToolRunSecurityContext, TrustRung
 from src.tool_execution import format_tool_result
-from tests.helpers import workflow_cr_fake as cr
+from src.workflow_slots import RenderedCall, render_call
 
 HOST = "miniflux.lan"          # a name, so the pin is exercised: it resolves to the loopback
 KEY = "sekret-api-key-123"
@@ -92,7 +96,6 @@ def server(monkeypatch):
     monkeypatch.delenv("INTEGRATION_API_BLOCK_PRIVATE_IPS", raising=False)
     monkeypatch.setenv("AUTH_ENABLED", "false")      # the single-user owner: an admin
     _use_integration(monkeypatch, f"http://{HOST}:{srv.port}")
-    cr.install(monkeypatch)
     yield srv
     srv.close()
 
@@ -123,14 +126,35 @@ def _run(coro):
 
 def _call(path="/v1/entries", *, method="GET", params=None, body=None, missing=(),
           structured=True):
-    payload = {"integration": "Miniflux", "method": method, "path": path}
-    if params is not None:
-        payload["params"] = params
-    if body is not None:
-        payload["body"] = body
-    if structured is not None:
-        payload["structured"] = structured
-    return cr.render("http", "api_call", payload, missing=missing)
+    """The call `render_call` builds for an HTTP step to Miniflux: the query
+    values typed by the author (`never`: verbatim), each body value read from
+    the start by reference (`{{ steps.start.data.<name> }}` — so a hostile
+    value travels exactly the adversary's path), and `missing` references that
+    reach nothing. A call that does not ask for its body (`structured`) cannot
+    come out of `render_call`, which always asks: that one is made by hand,
+    to test the executor's own refusal."""
+    if structured is not True:
+        payload = {"integration": "Miniflux", "method": method, "path": path}
+        if params is not None:
+            payload["params"] = params
+        if body is not None:
+            payload["body"] = body
+        if structured is not None:
+            payload["structured"] = structured
+        return RenderedCall("http", "api_call", json.dumps(payload), (), tuple(missing))
+    config = {"integration": "Miniflux", "method": method, "path": path}
+    if params:
+        config["query"] = [{"name": k, "value": v} for k, v in params.items()]
+    data, entries = {}, []
+    for name, value in (body or {}).items():
+        entries.append({"name": name, "value": "{{ steps.start.data.%s }}" % name})
+        data[name] = value
+    for ref in missing:
+        entries.append({"name": "text", "value": ref})
+    if entries:
+        config["body"] = entries
+    node = {"id": "fetch", "kind": "http", "label": "Fetch", "config": config}
+    return render_call(node, {"steps": {"start": {"data": data, "text": "", "status": "success"}}})
 
 
 def _step(call, *, owner="local", ctx=None, exact_approval=None):
@@ -303,7 +327,9 @@ def test_only_a_rendered_call_is_run(server):
     with pytest.raises(TypeError):
         _step({"kind": "http", "tool": "api_call", "content": "{}"})
     with pytest.raises(TypeError):
-        _step(cr.render("mcp", "api_call", {"integration": "Miniflux", "structured": True}))
+        # A kind `render_call` would never pair with this tool: made by hand.
+        _step(RenderedCall("mcp", "api_call",
+                           json.dumps({"integration": "Miniflux", "structured": True}), (), ()))
     assert server.requests == []
 
 

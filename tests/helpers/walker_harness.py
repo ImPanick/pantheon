@@ -7,10 +7,10 @@ file), the real approval store, the real gates. What is not real is what would
 reach outside: a model (the executors are recorders, or the agent loop's model
 call is scripted) and a tool's far end (an MCP manager that records).
 
-Wave D's other halves (`C-R`, `C-E`) are not on this branch;
-`workflow_cd_contract.install` stands in for exactly the names that are absent
-and nothing else (it answers which), so the same tests drive the real halves
-once they are merged.
+Wave D's other halves (`C-R`, `C-E`) are the real ones since the merge
+(`integrate-d`): `workflow_contract.install` stands nothing in and fails naming
+a half that is missing, so these tests drive the real rule, the real
+references, slots and logic, and the real effects.
 """
 
 from __future__ import annotations
@@ -39,7 +39,7 @@ OWNER = "alice"
 def make_db(monkeypatch, path):
     """A real SQLite file the scheduler and the routes read through
     `core.database.SessionLocal`. Answers the session factory."""
-    from tests.helpers import workflow_cd_contract
+    from tests.helpers import workflow_contract
 
     monkeypatch.setitem(sys.modules, "core.database", cdb)
     engine = create_engine(f"sqlite:///{path}", connect_args={"check_same_thread": False},
@@ -52,8 +52,22 @@ def make_db(monkeypatch, path):
     monkeypatch.setattr(ts, "owner_has_admin_task_privileges", lambda owner: owner == "root")
     import src.tool_index as tool_index
     monkeypatch.setattr(tool_index, "get_tool_index", lambda: None)
-    workflow_cd_contract.install(monkeypatch)
+    workflow_contract.install(monkeypatch)
     return factory
+
+
+def skip_ahead(monkeypatch, seconds: float) -> None:
+    """Move the scheduler's clock (`task_scheduler._utcnow`, which the walker's
+    Wait, its timers and the sweeper read) `seconds` on — cumulatively — so a
+    Wait of the rule's shortest, one whole minute (`workflow_document`: Wait
+    `minutes` is a whole number from 1), comes due without a minute's sleep.
+    `integrate-d`: these tests slept 0.7 s through a Wait of `minutes=0.01`,
+    which the stand-in rule accepted and the real one refuses."""
+    from datetime import timedelta
+
+    import src.task_scheduler as ts
+    current = ts._utcnow
+    monkeypatch.setattr(ts, "_utcnow", lambda: current() + timedelta(seconds=seconds))
 
 
 def node(node_id, label, kind="llm", **config):

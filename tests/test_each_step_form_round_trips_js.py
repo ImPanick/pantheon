@@ -85,8 +85,8 @@ _CONFIGS = {
     "wait": {"mode": "until", "time": "08:00", "tz": "Europe/London"},
     "foreach": {"list": "{{ steps.read.data.emails }}", "on_error": "stop",
                 "step": {"kind": "llm", "label": "Summarise", "config": {"prompt": "Summarise {{ item.subject }}"}}},
-    "http": {"integration": "int1", "method": "POST", "path": "/v1/entries", "query": [{"key": "status", "value": "unread"}],
-             "body": [{"key": "text", "value": "{{ steps.read.text }}"}], "body_mode": "json"},
+    "http": {"integration": "int1", "method": "POST", "path": "/v1/entries", "query": [{"name": "status", "value": "unread"}],
+             "body": [{"name": "text", "value": "{{ steps.read.text }}"}], "body_mode": "json"},
     "mcp": {"tool": "mcp__chat__send_message", "args": {"channel": "#general", "text": "{{ steps.sum.text }}",
                                                          "silent": True, "priority": 2, "mood": "calm", "meta": {"a": 1}}},
     "skill": {"skill": "print-queue", "prompt": "Print today’s queue"},
@@ -281,7 +281,7 @@ def test_a_fields_name_finds_the_field_and_nothing_else(box):
         const { decorateField } = await import('./fieldPicker.js');
         const pickField = (input, { field, slot }) => decorateField(input, { slot, field, pick: async () => null });
         const m = mount({ kind: 'http', label: 'Fetch', config: { integration: 'int1', method: 'POST', path: '/v1',
-          query: [{ key: 'status', value: 'unread' }], body: [{ key: 'text', value: 'x' }] } }, { pickField });
+          query: [{ name: 'status', value: 'unread' }], body: [{ name: 'text', value: 'x' }] } }, { pickField });
         const names = m.h.querySelectorAll('[data-field]').map((n) => n.dataset.field);
         out({ dup: names.filter((n, i) => names.indexOf(n) !== i),
               slots: m.h.querySelectorAll('.wf-slot').map((b) => [b.dataset.slotFor, b.dataset.mapping]) });
@@ -289,5 +289,5 @@ def test_a_fields_name_finds_the_field_and_nothing_else(box):
     assert o["dup"] == [], "one element per field name"
     # A key the palette gives no slot is offered nothing (fails closed); its box is
     # where a refusal about it would be said.
-    assert o["slots"] == [["path", "never"], ["query[0].key", None], ["query[0].value", "value"],
-                          ["body[0].key", None], ["body[0].value", "value"]]
+    assert o["slots"] == [["path", "never"], ["query[0].name", None], ["query[0].value", "value"],
+                          ["body[0].name", None], ["body[0].value", "value"]]

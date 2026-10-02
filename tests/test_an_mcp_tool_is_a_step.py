@@ -15,8 +15,12 @@ here through the real `mcp_servers/email_server.call_tool`.
 Real: the dispatcher, `McpManager.call_tool`/`_do_call` (its result parsing),
 `load_disabled_map` over a temporary SQLite file, the approval store, the email
 server. The seam is the MCP session — the transport — which records what the
-server would have been sent. C-R is faked where absent
-(`tests/helpers/workflow_cr_fake.py`).
+server would have been sent. The call each step is handed is the one the real
+`workflow_slots.render_call` builds against the tool's schema, each `value`
+argument read from the start by reference (§ 5's path) and every `never`
+argument typed; only the malformed calls that test the executor's own guards
+are made by hand (`integrate-d`: on `wf-effects`' branch every call was a
+stand-in's).
 """
 import asyncio
 import json
@@ -28,7 +32,7 @@ import pytest
 from src import workflow_effects as fx
 from src.mcp_manager import McpManager
 from src.tool_capabilities import ToolRunSecurityContext, TrustRung
-from tests.helpers import workflow_cr_fake as cr
+from src.workflow_slots import MAPPING_VALUE, RenderedCall, classify_argument, render_call
 
 SEND = "mcp__chat__send_message"
 
@@ -71,13 +75,34 @@ def chat(monkeypatch):
     ]
     monkeypatch.setattr("src.tool_execution.get_mcp_manager", lambda: mgr)
     monkeypatch.setenv("AUTH_ENABLED", "false")          # the single-user owner: an admin
-    cr.install(monkeypatch)
     yield SimpleNamespace(mgr=mgr, session=session, SessionLocal=SessionLocal)
     engine.dispose()
 
 
+SCHEMAS = {SEND: {"type": "object", "properties": {
+    "channel": {"type": "string"}, "text": {"type": "string"}}}}
+
+
 def _call(args, tool=SEND, missing=()):
-    return cr.render("mcp", tool, args, missing=missing)
+    """The call `render_call` builds for an MCP step: an argument the schema
+    lets outside data fill (`classify_argument`: `text`) is read from the
+    start by reference, so a hostile value travels the adversary's path; the
+    rest (`channel`, `to`, any argument of a tool with no schema here) are
+    typed by the author. `missing` references go where a value may."""
+    schema = SCHEMAS.get(tool)
+    props = (schema or {}).get("properties") or {}
+    is_value = lambda name: classify_argument(name, props.get(name)).mapping == MAPPING_VALUE  # noqa: E731
+    config, data = {}, {}
+    for name, value in args.items():
+        if is_value(name):
+            config[name], data[name] = "{{ steps.start.data.%s }}" % name, value
+        else:
+            config[name] = value
+    for ref in missing:
+        config[next((n for n in config if is_value(n)), "text")] = ref
+    node = {"id": "post", "kind": "mcp", "label": "Post", "config": {"tool": tool, "args": config}}
+    return render_call(node, {"steps": {"start": {"data": data, "text": "", "status": "success"}}},
+                       mcp_schema=schema)
 
 
 def _step(call, *, owner="local", ctx=None, exact_approval=None):
@@ -129,7 +154,7 @@ def test_only_a_rendered_mcp_call_is_run(chat):
     with pytest.raises(TypeError):
         _step(_call({}, tool="bash"))
     with pytest.raises(TypeError):
-        _step(cr.render("http", SEND, {}))
+        _step(RenderedCall("http", SEND, "{}", (), ()))     # a kind render_call never pairs with it
     assert chat.session.calls == []
 
 
