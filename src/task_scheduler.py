@@ -5499,7 +5499,8 @@ class TaskScheduler:
 
         rec = wr.record_node_start(
             w.db, run_id=w.run_id, node=node, seq=w.state.next_seq(),
-            input_envelope=None, workflow_version=w.version, owner=w.task.owner)
+            input_envelope=self._handed(w, node), workflow_version=w.version,
+            owner=w.task.owner)
         w.state.note_record(rec)
         w.started.add(node["id"])
         until, problem = self._wait_until(w, node)
@@ -5510,7 +5511,7 @@ class TaskScheduler:
         if until <= _utcnow():
             self._end_record(w, node, rec, status=NODE_STATUS_SUCCESS,
                              text=f"Waited until {self._clock_words(w, until)}.",
-                             data={"until": until.isoformat() + "Z"}, port=None)
+                             data=self._wait_passes_on(w, node), port=None)
             return
         wr.record_node_waiting(w.db, rec, waiting={
             "kind": wr.WAITING_TIME, "until": until.isoformat() + "Z"}, resume_at=until)
@@ -5520,6 +5521,19 @@ class TaskScheduler:
                               label=node.get("label") or node["id"], status="waiting",
                               detail=(f"Waiting until {self._clock_words(w, until)}, or as "
                                       f"soon after as Pantheon is idle"))
+
+    def _wait_passes_on(self, w, node: dict):
+        """A Wait makes nothing; it hands on what it was handed — the `data`
+        of the step that led to it (or the trigger's) — so "merge, wait, brief
+        me" briefs on the merge. Read from the state, so after a restart it is
+        the record the first process wrote."""
+        for source in w.state.arrived_from(node["id"]):
+            if source == w.state.start:
+                return (w.state.trigger or {}).get("data") if isinstance(w.state.trigger, dict) else None
+            out = w.state.output_of(source)
+            if out is not None:
+                return out.get("data")
+        return None
 
     def _wait_until(self, w, node: dict) -> tuple:
         """`(until, problem)` — when a Wait is over, as UTC, or why it cannot
@@ -5576,7 +5590,7 @@ class TaskScheduler:
                 del w.timers[node_id]
                 self._end_record(w, node, rec, status=NODE_STATUS_SUCCESS,
                                  text=f"Waited until {self._clock_words(w, until)}.",
-                                 data={"until": until.isoformat() + "Z"}, port=None)
+                                 data=self._wait_passes_on(w, node), port=None)
                 fired = True
         return fired
 
