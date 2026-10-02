@@ -31,9 +31,11 @@ REG = {"where": "Settings → Integrations → + → MCP Tool Server (administra
        "route": "POST /api/mcp/servers", "name": "weather", "transport": "stdio",
        "command": "/usr/local/bin/python",
        "args": ["/app/src/workstation_mcp.py", "--owner", "ann", "--server", "weather"], "env": {}}
+# As `workstation_mcp._tool_offer` sends it: the server's own read/write verdict included.
 OFFER = {"name": "get_forecast", "description": "Forecast for a place.",
          "input_schema": {"type": "object", "properties": {"text": {"type": "string",
-                          "description": "Where."}}, "required": ["text"]}}
+                          "description": "Where."}}, "required": ["text"]},
+         "annotations": None, "is_readonly": True, "readonly_source": "heuristic"}
 
 _PREAMBLE = (
     "import { document, server, settle, click, type, tags, text } from './shim.js';\n"
@@ -127,7 +129,8 @@ def test_build_check_and_try_without_a_terminal(box):
               meta: text(result.querySelector('.mcp-try-meta')),
               sections: result.querySelectorAll('.mcp-try-section').map((s) => [
                 s.getAttribute('data-mcp-try-section'), s.querySelector('pre').textContent]),
-              argLabel: text(card.querySelector('.wf-arg-label')) });
+              argLabel: text(card.querySelector('.wf-arg-label')),
+              badge: text(card.querySelector('.wf-args-writes')) });
     """)
     assert o["said"] == "It started and offers: get_forecast"
     assert o["check"] == "It started and offers: get_forecast"
@@ -136,6 +139,7 @@ def test_build_check_and_try_without_a_terminal(box):
         ["POST", "/api/mcp/scaffold/weather/try", {"tool": "get_forecast", "arguments": {"text": "Oslo"}}],
     ]
     assert o["argLabel"] == "text needed · text"
+    assert o["badge"] == "Read-only (guessed from the name)"  # the verdict the row will show
     assert o["headline"] == "It answered in 168 ms."
     assert o["meta"] == "exit code 0 · 168 ms · finished in time"
     assert o["sections"] == [["What it answered",

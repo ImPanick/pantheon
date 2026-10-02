@@ -461,10 +461,20 @@ async def ws_write_source(owner: Optional[str], name: Any, source: Any, *,
 # ── checking and trying ───────────────────────────────────────────────────────
 
 def _tool_offer(tool: Dict[str, Any]) -> Dict[str, Any]:
+    """One tool as *Try* draws it — with the read/write verdict a registered
+    server's row shows (`McpManager.readonly_verdict`, the one place it is
+    decided: `P8-48`). Without it the badge fell back to "writes" with a
+    sentence about the name that was false for `get_forecast` (measured in the
+    drive, 2026-10-02)."""
+    from src.mcp_manager import readonly_verdict
     schema = tool.get("inputSchema")
-    return {"name": str(tool.get("name")),
+    annotations = tool.get("annotations") if isinstance(tool.get("annotations"), dict) else None
+    name = str(tool.get("name"))
+    is_readonly, source = readonly_verdict({"name": name, "annotations": annotations})
+    return {"name": name,
             "description": str(tool.get("description") or ""),
-            "input_schema": schema if isinstance(schema, dict) else {"type": "object"}}
+            "input_schema": schema if isinstance(schema, dict) else {"type": "object"},
+            "annotations": annotations, "is_readonly": is_readonly, "readonly_source": source}
 
 
 async def ws_verify(owner: Optional[str], name: Any, *, timeout: float = CHECK_TIMEOUT_S,

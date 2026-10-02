@@ -231,6 +231,10 @@ def test_check_then_try_answers_from_the_workstation(client, station):
     assert checked["tools"] == ["get_forecast"]
     offer, = checked["offers"]
     assert offer["input_schema"]["required"] == ["text"]
+    # The verdict the registered server's row will show, decided in one place.
+    from src.mcp_manager import readonly_verdict
+    assert (offer["is_readonly"], offer["readonly_source"]) == readonly_verdict(
+        {"name": "get_forecast"}) == (True, "heuristic")
     tried = client.post("/api/mcp/scaffold/weather/try", headers=_as("ann"),
                         json={"tool": "get_forecast", "arguments": {"text": "Oslo"}}).json()
     assert tried["ok"] is True and tried["exit_code"] == 0, tried
