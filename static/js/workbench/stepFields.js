@@ -657,6 +657,7 @@ function showOnField(root, handles, problem, fallbackEl) {
   const el = field ? Array.from(root.querySelectorAll('[data-field]')).find((n) => n.dataset.field === field) : null;
   const line = _el('p', 'wf-sf-problem', sentence);
   line.setAttribute('role', 'alert');
+  if (field) line.dataset.field = field;
   if (el && el.parentNode) {
     const next = el.nextSibling;
     if (next) el.parentNode.insertBefore(line, next); else el.parentNode.appendChild(line);

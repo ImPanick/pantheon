@@ -3325,7 +3325,7 @@ async function _pollTaskNotifications() {
       }
       // `P22-17`. A workflow step's question: answered, not announced.
       if (n.review && n.review.kind === 'workflow_approval') {
-        _offerWorkflowApproval({ workflow: n.task_name, ...n.review });
+        _offerWorkflowApproval({ ...n.review, workflow: n.review.workflow || n.task_name });
         continue;
       }
       const ok = n.status === 'success';

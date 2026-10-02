@@ -144,7 +144,8 @@ export function openWorkflowApproval(review) {
       const sentence = (reply && reply.sentence)
         || (decision === 'deny' ? 'Denied. The step takes its “if it fails” way.' : 'Allowed once. The run goes on.');
       _close();
-      uiModule.showToast(`${words.title.replace(/ is waiting for your yes$/, '')}: ${sentence}`, { duration: 8000 });
+      const name = String(review.workflow || review.workflow_name || '').trim() || 'The workflow';
+      uiModule.showToast(`${name}: ${sentence}`, { duration: 8000 });
     },
     onError: (message) => { said.textContent = `Not answered: ${String(message).replace(/\.$/, '')}.`; },
   }));

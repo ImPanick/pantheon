@@ -163,7 +163,7 @@ export function mountArgsForm(host, { tool, values = {}, pickField = null } = {}
       }
       if (r.kind === 'json') {
         try { args[r.name] = JSON.parse(text); } catch (_) {
-          return { refusal: `${r.name} must be JSON (${typeWord(r.prop)}): it could not be read.`, field };
+          return { refusal: `${r.name} must be ${typeWord(r.prop)}: it could not be read.`, field };
         }
         continue;
       }
