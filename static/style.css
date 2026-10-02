@@ -47524,7 +47524,6 @@ button.task-card-toggle {
 /* A workflow's question, beside the page (workflowApprovalNotice.js). */
 .wf-approval-dialog {
   position: fixed;
-  z-index: 10000;
   right: 16px;
   bottom: 16px;
   box-sizing: border-box;

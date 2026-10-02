@@ -14,7 +14,7 @@
  * module is what the person sees: a notice with **Answer**, and the gate card
  * (`approvalBox.js`, the one the skill test answers with) in a small window
  * with **Open the run** beside it. The answer goes to C-W's
- * `POST /api/workflows/{id}/runs/{run_id}/answer` through `workflowApi.js`
+ * answer route (`answerStep`) through `workflowApi.js`
  * (one door, `Law 14`) with `approve_task` — Allow once, the only yes a
  * workflow has: there is no chat to remember it in — or `deny`. The server
  * re-checks the owner, the run, the step and the sealed action before it
@@ -35,6 +35,9 @@
 import uiModule from './ui.js';
 import { approvalBox } from './approvalBox.js';
 import { registerMenuDismiss } from './escMenuStack.js';
+// `P3-18`'s rule: a window portaled to the body takes its z from the live
+// counter when shown, never a literal a long session climbs past.
+import { topPortalZ } from './toolWindowZOrder.js';
 
 const NOTICE_MS = 30000;
 
@@ -170,6 +173,7 @@ export function openWorkflowApproval(review) {
   row.appendChild(runBtn);
   row.appendChild(later);
   box.appendChild(row);
+  box.style.zIndex = String(topPortalZ());
   document.body.appendChild(box);
   _open = { box, release: registerMenuDismiss(() => { _open = null; box.remove(); }) };
   const first = box.querySelector('.confirm-btn-primary');
@@ -202,7 +206,7 @@ export function offerWorkflowApproval(review) {
 
 /** The questions still waiting, offered again after a reload — the queue
  *  says a thing once, and a person may not have been looking (C-W's
- *  `GET /api/workflows/waiting`). Answers how many were put on screen. */
+ *  waiting list, `listWaiting`). Answers how many were put on screen. */
 export async function offerWaitingWorkflowApprovals() {
   let listed;
   try {

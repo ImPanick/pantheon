@@ -46,7 +46,7 @@
 // wrote reaches the canvas as data the canvas sets as text.
 //
 // **Slices C and D (`P22-09`…`P22-18`, wf-canvas; `SLICE-CD-DESIGN.md` § 3,
-// contract C-W).** The palette (`GET /api/workflows/palette`) is read once
+// contract C-W).** The palette (C-W's palette route, `api.getPalette`) is read once
 // when a document opens: the kinds a person may add — each with its ports,
 // whether it is available and, when it is not, why — and the integrations, MCP
 // tools, skills and AI tools the step panels offer. A step's ports are its
@@ -918,7 +918,7 @@ export function createWorkflowSource({
   }
 
   /** `P22-09`. The fields a reference in step `id` may name (C-W's
-   *  `GET /api/workflows/{id}/nodes/{node_id}/fields`), as the panel's
+   *  fields route, `api.listFields`), as the panel's
    *  picker lists them. A step the server has not seen yet (added in this
    *  draft) has none to list until the workflow is saved. */
   async function listFields(id) {
@@ -1200,7 +1200,7 @@ export function createWorkflowSource({
   }
 
   /** `P22-17`. Answer the question a waiting step asks (C-W's
-   *  `POST /api/workflows/{id}/runs/{run_id}/answer`): `approve_task` — Allow
+   *  answer route, `api.answerStep`): `approve_task` — Allow
    *  once, the only yes a workflow has (no chat to remember it in) — or
    *  `deny`. The run is read again after, so the canvas says what happened. */
   async function answerStep({ nodeId, item = null, approvalId, decision } = {}) {

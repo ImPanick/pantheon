@@ -48,7 +48,7 @@ JS = ROOT / "static" / "js"
 # The modules the room, the panels and the canvas reach with `../`.
 UP = (
     "tasks/workflowDiagram.js", "runStatus.js", "editor/snap.js", "escMenuStack.js",
-    "approvalBox.js", "skillGateNote.js", "settings/mcpFields.js",
+    "approvalBox.js", "skillGateNote.js", "settings/mcpFields.js", "toolWindowZOrder.js",
 )
 
 _V = {"mapping": "value", "why": ""}

@@ -36,7 +36,7 @@ import { approvalBox } from '../approvalBox.js';
 /** The kinds a step can be, in the palette's order, with what each does in
  *  the words a person meets (`D-2026-10-01-05`: the palette offers only what
  *  the agent can already reach). Since `P22-10` (wf-canvas) the server's
- *  palette (`GET /api/workflows/palette`, C-W) is what is offered — every
+ *  palette (C-W's palette route, `workflowApi.getPalette`) is what is offered — every
  *  kind, grouped, a kind the person may not use greyed with the server's
  *  reason as text; these four are what a Pantheon without that route offers. */
 export const PALETTE_KINDS = Object.freeze([

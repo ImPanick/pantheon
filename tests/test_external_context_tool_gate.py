@@ -1322,7 +1322,12 @@ def test_frontend_tool_approval_uses_opaque_id_and_fixed_decisions():
     assert "const r = ev.round ?? 1" in renderer
     assert "/test-approval`" in skills
     assert "approval_id: approval.approval_id" in skills
-    assert "['approve', 'Allow once'" in skills
+    # `P22-17` (wf-canvas): the skill test's card is `approvalBox.js`'s, shared with
+    # a workflow step's question; the skill test still fixes its own two decisions
+    # (`approve`, `deny`) — the server never chooses what a button sends.
+    abox = (root / "static/js/approvalBox.js").read_text()
+    assert "allowValue: 'approve',\n    allowLabel: 'Allow once'," in skills
+    assert "['deny', denyLabel," in abox and "[allowValue, allowLabel," in abox
     # `B772`. This pinned the literal `20260815toolapproval4` and counted it.
     # `app.js`'s own `?v=` had been stale at that string for several waves while
     # every module it imports was bumped — so a cached `app.js` kept importing

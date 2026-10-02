@@ -102,7 +102,7 @@ def test_a_question_is_offered_once_and_allow_once_sends_approve_task(box):
           sub: d.querySelector('.wf-approval-sub').textContent.split(' Waiting since')[0],
           question: d.querySelector('.skill-test-meta').textContent, action: d.querySelector('.skill-test-out').textContent,
           buttons: d.querySelectorAll('button').map((b) => [b.textContent, b.dataset.decision || null]),
-          note: d.querySelector('.wf-approval-note').textContent, markup: markup(d) };
+          note: d.querySelector('.wf-approval-note').textContent, markup: markup(d), z: d.style.zIndex };
         fire(d.querySelectorAll('button').find((b) => b.dataset.decision === 'approve_task'), 'click');
         await settle(10);
         out({ first, again, toast, read, answers: answers(), gone: !dialog(), last: ui.toasts[ui.toasts.length - 1] });
@@ -117,6 +117,7 @@ def test_a_question_is_offered_once_and_allow_once_sends_approve_task(box):
                            'Approval fingerprint: ab12cd34')
     assert r["buttons"] == [["Deny", "deny"], ["Allow once", "approve_task"], ["Open the run", None], ["Not now", None]]
     assert r["note"].startswith("Allow once lets this one action run, and the next one asks again.")
+    assert int(r["z"]) > 10030, "its z from topPortalZ() when shown, above the dock's floor (P3-18), not a literal"
     assert o["answers"] == [["POST", "/api/workflows/wf1/runs/r1/answer",
                              {"node_id": "reply", "item": None, "approval_id": "ap1", "decision": "approve_task"}]]
     assert o["gone"] is True
