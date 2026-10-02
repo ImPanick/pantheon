@@ -14,13 +14,12 @@ import markdownModule from './markdown.js';
 import codeRunnerModule from './codeRunner.js';
 import { langIcon } from './langIcons.js';
 import spinnerModule from './spinner.js';
-import { openLibrary, closeLibrary, isLibraryOpen, initLibrary } from './documentLibrary.js';
+import { openLibrary, closeLibrary, isLibraryOpen, initLibrary, importFileAsDocuments } from './documentLibrary.js';
 import signatureModule from './signature.js';
 import * as Modals from './modalManager.js?v=20261002workbenchef';
 import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
 import { _matchesCombo } from './keyboard-shortcuts.js';   // H20: Find reads the registry
 import { topPortalZ } from './toolWindowZOrder.js';
-import { documentLanguage } from './attachmentLanguage.js';
 import { chevronIcon, playIcon } from './icons.js';
 
   let API_BASE = '';
@@ -5479,6 +5478,16 @@ import { chevronIcon, playIcon } from './icons.js';
     const _eventInsideElement = (e, el) => {
       if (!e || !el || typeof e.clientX !== 'number' || typeof e.clientY !== 'number') return false;
       const rect = el.getBoundingClientRect();
+      // `B400`. Nothing is inside an element with no area. A hidden Send
+      // button's rect is 0×0 at (0, 0), and a click made by `element.click()`
+      // arrives at (0, 0) — so while the Documents panel showed anything but
+      // an email, every programmatic click in the page "landed on" the hidden
+      // button: the two capture-phase handlers below cancelled it and ran
+      // `_sendEmail()`. Measured in Chromium: *Import from device*, the
+      // Library's Import and the composer's *Attach files* opened no file
+      // picker with the panel open, and the page said "To and body are
+      // required".
+      if (!(rect.width > 0 && rect.height > 0)) return false;
       return e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom;
     };
 
@@ -9494,86 +9503,15 @@ import { chevronIcon, playIcon } from './icons.js';
 
   // "Import from device" — open a file picker, upload, and immediately open
   // the resulting doc in THIS panel (vs. dumping it in the library and
-  // making the user click through). Mirrors the library's extension logic
-  // for text/code; routes PDFs through the dedicated import-pdf endpoint
-  // that handles AcroForm fields. Spreadsheets fall back to the library
-  // flow which already knows how to split sheets.
+  // making the user click through).
   function _importFromDevice() {
-    // `B161`. This function used to hold its own 36-entry extension→language
-    // map, one of three in the browser, and none of them knew `.toml`,
-    // `.markdown`, `.kt`, `.swift` or `.h`. The answer comes from
-    // `attachmentLanguage.js` now, which is the server's own derivation with
-    // its registers generated from `src/document_processor.py` and a checker
-    // that fails when the two disagree.
     const fi = document.createElement('input');
     fi.type = 'file';
     fi.style.display = 'none';
     fi.addEventListener('change', async () => {
       const file = fi.files?.[0];
-      if (!file) return;
-      const name = file.name;
-      const dotIdx = name.lastIndexOf('.');
-      const ext = dotIdx >= 0 ? name.slice(dotIdx).toLowerCase() : '';
-      const baseTitle = dotIdx > 0 ? name.slice(0, dotIdx) : name;
-      const isSpreadsheet = ['.xlsx','.xls','.ods'].includes(ext);
-      const isPdf = ext === '.pdf';
-      // Spreadsheets need the library's per-sheet split — defer to it.
-      if (isSpreadsheet) {
-        openLibrary();
-        requestAnimationFrame(() => requestAnimationFrame(() => document.getElementById('doclib-import-file-btn')?.click()));
-        return;
-      }
       try {
-        let docId = null;
-        if (isPdf) {
-          const fd = new FormData();
-          fd.append('file', file);
-          const sid = (sessionModule && sessionModule.getCurrentSessionId && sessionModule.getCurrentSessionId()) || _lastSessionId || '';
-          if (sid) fd.append('session_id', sid);
-          const r = await fetch(`${API_BASE}/api/documents/import-pdf`, { method: 'POST', body: fd, credentials: 'same-origin' });
-          if (!r.ok) throw new Error('PDF import failed');
-          const j = await r.json();
-          docId = j.doc_id || j.id;
-        } else {
-          const content = await new Promise((res, rej) => {
-            const reader = new FileReader();
-            reader.onload = () => res(reader.result || '');
-            reader.onerror = () => rej(reader.error);
-            reader.readAsText(file);
-          });
-          const lang = documentLanguage(name);
-          const sid = (sessionModule && sessionModule.getCurrentSessionId && sessionModule.getCurrentSessionId()) || _lastSessionId || '';
-          // `P21-03`: the server titles it from the file's name and keeps the
-          // name as the document's source (one rule for every door).
-          const body = { source_name: name, language: lang, content };
-          if (sid) body.session_id = sid;
-          const r = await fetch(`${API_BASE}/api/document`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'same-origin',
-            body: JSON.stringify(body),
-          });
-          if (!r.ok) throw new Error('Import failed');
-          const j = await r.json();
-          docId = j.id || j.doc_id;
-        }
-        if (docId) {
-          // Fetch the full doc so addDocToTabs has the proper content +
-          // language fields (it's used downstream by switchToDoc).
-          try {
-            const dr = await fetch(`${API_BASE}/api/document/${docId}`, { credentials: 'same-origin' });
-            const full = dr.ok ? await dr.json() : { id: docId, title: baseTitle };
-            const sid = (sessionModule && sessionModule.getCurrentSessionId && sessionModule.getCurrentSessionId()) || _lastSessionId || '';
-            addDocToTabs(full, full.session_id || sid);
-            switchToDoc(full.id || docId);
-          } catch (_) {
-            // Fallback — at least try to switch (may fail silently if not loaded).
-            addDocToTabs({ id: docId, title: baseTitle }, _lastSessionId || '');
-            switchToDoc(docId);
-          }
-        }
-      } catch (err) {
-        if (uiModule && uiModule.showError) uiModule.showError('Import failed: ' + (err.message || err));
+        if (file) await _importDeviceFile(file);
       } finally {
         fi.value = '';
         fi.remove();
@@ -9581,6 +9519,59 @@ import { chevronIcon, playIcon } from './icons.js';
     });
     document.body.appendChild(fi);
     fi.click();
+  }
+
+  /**
+   * `B400`. The file *Import from device* was given, imported and opened here.
+   *
+   * This was the third import path and it converted nothing: it held its own
+   * copy of the Library's branches — `.pdf` to `import-pdf`, spreadsheets
+   * deferred to the Library (which opened and asked for the file a second
+   * time), and everything else through `FileReader.readAsText`. Its comment
+   * said it *"mirrors the library's extension logic"*; it mirrored the half
+   * without the converters, so a `.docx`, `.pptx`, `.doc` or `.odt` was stored
+   * as its own zip or OLE2 bytes (measured in Chromium: `PK\u0003\u0004…`
+   * under language `docx`) three clicks away from a Library that gives
+   * markdown. Now it is the Library's own per-file function
+   * (`importFileAsDocuments`), so the two doors cannot disagree about a file:
+   * same converter, same route, same title (`P21-03`), same refusal.
+   *
+   * Kept from before (`Law 1`): the document is attached to the chat that is
+   * open, and opens here as a tab. A workbook opens one tab per sheet, the
+   * first in front. No folder is chosen at this door, so it lands Unfiled
+   * (`importFileAsDocuments` files into one when the Library passes it).
+   * What it could not import is said in words — the server's own reason when
+   * it gave one — and nothing is opened.
+   */
+  async function _importDeviceFile(file) {
+    const sid = (sessionModule && sessionModule.getCurrentSessionId && sessionModule.getCurrentSessionId()) || _lastSessionId || '';
+    let made;
+    try {
+      made = await importFileAsDocuments(file, { sessionId: sid || null });
+    } catch (err) {
+      if (uiModule && uiModule.showError) {
+        uiModule.showError(`Couldn't import ${file.name} — ${(err && err.message) || err}`);
+      }
+      return [];
+    }
+    const opened = [];
+    for (const one of made) {
+      const docId = one && (one.id || one.doc_id);
+      if (!docId) continue;
+      try {
+        // Fetch the full doc so addDocToTabs has the proper content +
+        // language fields (it's used downstream by switchToDoc).
+        const dr = await fetch(`${API_BASE}/api/document/${docId}`, { credentials: 'same-origin' });
+        const full = dr.ok ? await dr.json() : { id: docId, title: one.title };
+        addDocToTabs(full, full.session_id || sid);
+      } catch (_) {
+        // Fallback — at least try to show it (may fail silently if not loaded).
+        addDocToTabs({ id: docId, title: one.title }, _lastSessionId || '');
+      }
+      opened.push(docId);
+    }
+    if (opened.length) switchToDoc(opened[0]);
+    return opened;
   }
 
   function showExportMenu(e, anchorRect) {

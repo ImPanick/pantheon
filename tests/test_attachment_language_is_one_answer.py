@@ -229,8 +229,10 @@ def test_every_import_path_asks_the_shared_module():
     assert calls == {
         "static/js/attachmentLanguage.js": 1,   # the definition
         "static/js/chat.js": 2,                 # import banner + open-attachment
-        "static/js/document.js": 1,             # Import from device
-        "static/js/documentLibrary.js": 1,      # library import
+        # `B400`: *Import from device* (`document.js`) no longer decides
+        # anything about a file — it calls the library's own per-file
+        # `importFileAsDocuments`, so the one ask below is both doors'.
+        "static/js/documentLibrary.js": 1,      # library import + Import from device
     }, calls
 
 

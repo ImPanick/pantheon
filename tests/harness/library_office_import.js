@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //
-// `B233`. Runs the REAL per-file branch of `libraryImportFiles` out of
+// `B233`. Runs the REAL per-file branch of the library import out of
 // `static/js/documentLibrary.js` over one dropped file, and reports where the
 // bytes went: which endpoint, and — when the branch read the file in the
 // browser — what it read it as.
@@ -10,17 +10,24 @@
 // `FileReader.readAsText` and its OLE2 bytes were POSTed to `/api/document` as
 // `content`, under `language: 'markdown'`. Reading the source cannot show that:
 // the branch that is missing is not written down anywhere. Driving it can.
+//
+// `B400` moved that branch out of `libraryImportFiles`' loop into
+// `importFileAsDocuments` — the one per-file function the Library's Import and
+// the Documents panel's *Import from device* both call — so this lifts that
+// function, with `CONVERTED_TO` above it, and calls it. What it reports is
+// unchanged.
 const fs = require('fs');
 const path = require('path');
 
 const SRC = path.join(__dirname, '..', '..', 'static', 'js', 'documentLibrary.js');
 const source = fs.readFileSync(SRC, 'utf8');
 
-const START = "        const isSpreadsheet = ['.xlsx', '.xls', '.ods'].includes(ext);";
-const END = '      } catch (e) {';
+const START = '  const CONVERTED_TO = {';
+const END = '  async function libraryImportFiles(fileList';
 const from = source.indexOf(START);
 const to = source.indexOf(END, from);
-if (from < 0 || to < 0 || to <= from) {
+if (from < 0 || to < 0 || to <= from
+    || source.slice(from, to).indexOf('async function importFileAsDocuments(') < 0) {
   console.error('ANCHOR-MISSING: the library import branch moved');
   process.exit(2);
 }
@@ -35,8 +42,6 @@ const BODIES = { '.doc': OLE2, '.odt': 'PK\x03\x04', '.pptx': 'PK\x03\x04',
 
 const ext = name.slice(name.lastIndexOf('.')).toLowerCase();
 const body = BODIES[ext] !== undefined ? BODIES[ext] : 'plain words\n';
-const dotIdx = name.lastIndexOf('.');
-const baseTitle = dotIdx > 0 ? name.slice(0, dotIdx) : name;
 
 const posts = [];
 const API_BASE = '';
@@ -49,9 +54,9 @@ global.window = { XLSX: {
   read: () => ({ SheetNames: ['Sheet1'], Sheets: { Sheet1: {} } }),
   utils: { sheet_to_csv: () => 'a,b\n1,2\n' },
 } };
-const language = 'markdown';
-const isPdf = ext === '.pdf';
-let imported = 0;
+// The language is not this harness's question (`B161`'s harness asks it).
+const documentLanguage = () => 'markdown';
+const ingestKindFromName = () => null;
 
 global.fetch = async (url, opts) => {
   let payload = null;
@@ -74,39 +79,33 @@ async function readFileContent(f) {
 async function ensureXLSX() {}
 
 (async () => {
-  const run = new Function(
-    'ext', 'file', 'name', 'baseTitle', 'language', 'isPdf', 'API_BASE',
-    'readFileContent', 'ensureXLSX', 'fetch', 'FormData', 'OFFICE_EXTS',
-    'SERVER_EXTRACTED_EXTS', 'window',
-    // `B997`: the folder the library had open, which every branch sends. This
-    // harness imports from All documents, so there is none.
-    'folder',
-    // Wrapped in a one-iteration loop because the block is the BODY of
-    // `for (const file of fileList)` and uses `continue` to mean "this file is
-    // done". Lifting it out of its loop would change what those statements do.
-    '"use strict"; let imported = 0; return (async () => {' +
-    '\nfor (const _once of [0]) {\n' + block + '\n}\nreturn imported; })();');
+  const lift = new Function(
+    'API_BASE', 'readFileContent', 'ensureXLSX', 'fetch', 'FormData',
+    'SERVER_EXTRACTED_EXTS', 'window', 'documentLanguage', 'ingestKindFromName',
+    '"use strict";\n' + block + '\nreturn importFileAsDocuments;');
   // The two register constants are LIFTED OUT OF THE MODULE, not supplied:
   // handing the block a set this harness computed would test the harness.
   // `OFFICE_EXTS` comes from the generated register in `attachmentLanguage.js`
-  // the same way the module imports it. On the tree before this row neither
-  // constant exists and the block simply does not mention them.
+  // the same way the module imports it.
   const OFFICE = new Set(JSON.parse(process.env.OFFICE_EXTS_JSON || '[]'));
   const CSTART = "  const CLIENT_CONVERTED_EXTS";
-  const CEND = "  async function libraryImportFiles";
-  let SERVER;
+  const CEND = "  /** Read file contents";
   const cf = source.indexOf(CSTART);
   const ct = source.indexOf(CEND, cf);
-  if (cf >= 0 && ct > cf) {
-    SERVER = new Function('OFFICE_EXTS',
-      source.slice(cf, ct) + '\nreturn SERVER_EXTRACTED_EXTS;')(OFFICE);
-  } else {
-    SERVER = undefined;   // the tree before this row
+  if (cf < 0 || ct <= cf) {
+    console.error('ANCHOR-MISSING: SERVER_EXTRACTED_EXTS moved');
+    process.exit(2);
   }
+  const SERVER = new Function('OFFICE_EXTS',
+    source.slice(cf, ct) + '\nreturn SERVER_EXTRACTED_EXTS;')(OFFICE);
+  let imported = 0;
   try {
-    imported = await run(ext, file, name, baseTitle, language, isPdf, API_BASE,
-                         readFileContent, ensureXLSX, global.fetch, FormData,
-                         OFFICE, SERVER, global.window, null);
+    const importFileAsDocuments = lift(API_BASE, readFileContent, ensureXLSX, global.fetch,
+                                       FormData, SERVER, global.window, documentLanguage,
+                                       ingestKindFromName);
+    // The library imports from All documents here, so there is no folder.
+    const made = await importFileAsDocuments(file, { folder: null });
+    imported = made.length ? 1 : 0;
   } catch (e) {
     console.log(JSON.stringify({ error: String(e && e.message || e), posts }));
     process.exit(0);

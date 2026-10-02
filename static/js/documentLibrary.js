@@ -7,7 +7,7 @@
 
 import { topPortalZ } from './toolWindowZOrder.js';
 import uiModule from './ui.js';
-import { documentLanguage, OFFICE_EXTS } from './attachmentLanguage.js';
+import { documentLanguage, ingestKindFromName, OFFICE_EXTS } from './attachmentLanguage.js';
 import sessionModule from './sessions.js';
 import spinnerModule from './spinner.js';
 import markdownModule from './markdown.js';
@@ -1900,6 +1900,137 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
   };
 
   /**
+   * `B400`. One file in, the document(s) it became out — the one place the
+   * browser decides how a file picked from disk is converted. Two doors call
+   * it: the Library's Import button (`libraryImportFiles`, below) and the
+   * Documents panel's *Import from device* (`document.js`
+   * `_importDeviceFile`). That door used to hold a second copy of these
+   * branches with the converters left out — measured in Chromium on the tree
+   * before this row: a `.docx` and a `.pptx` stored as their zip bytes
+   * (`PK\u0003\u0004…`, language `docx`/`pptx`), a photo as replacement
+   * characters, and a spreadsheet re-opened the Library so it could be picked a
+   * second time — while the same files given to the Library's Import gave
+   * markdown and CSV.
+   *
+   * The routing is the one this module already had, moved here unchanged:
+   * `.pdf` is posted to `import-pdf`; the formats only the server extracts are
+   * posted to `import-office`; `.docx` (mammoth) and `.xls`/`.xlsx`/`.ods`
+   * (SheetJS) are converted here, and on an install without the optional
+   * markitdown those two converters are the only ones that can — the server
+   * answers a `.xlsx` with a 422 there; everything else is read as text. The
+   * server titles every one from the file's name (`P21-03`).
+   *
+   * `folder` files it (`B997`); `sessionId` attaches it to that chat, as
+   * *Import from device* always did. Returns the documents as the server
+   * answered them. Throws an `Error` whose message says in words why nothing
+   * was made — the server's own reason when it gave one.
+   */
+  async function importFileAsDocuments(file, { folder = null, sessionId = null } = {}) {
+    const name = file.name;
+    const dotIdx = name.lastIndexOf('.');
+    const ext = dotIdx >= 0 ? name.slice(dotIdx).toLowerCase() : '';
+    const baseTitle = dotIdx > 0 ? name.slice(0, dotIdx) : name;
+    const language = CONVERTED_TO[ext] !== undefined
+      ? CONVERTED_TO[ext] : documentLanguage(name);
+
+    const isSpreadsheet = ['.xlsx', '.xls', '.ods'].includes(ext);
+    const isPdf = ext === '.pdf';
+
+    // A refusal is surfaced, not swallowed: 415 means nothing reads this
+    // format and 422 means a reader ran and found no text, and the two are
+    // different things to tell someone (`B162`). The server's sentence is the
+    // reason; `what` says which step it was.
+    const refused = async (res, what) => {
+      let detail = `HTTP ${res.status}`;
+      try { const j = await res.json(); detail = j.detail || j.error || detail; } catch {}
+      return new Error(`${what}: ${detail}`);
+    };
+    // The URL is written out at each call below, not built from a route name:
+    // `.pantheon/check-unreachable.py` finds a route's caller by its literal path.
+    const postFile = async (url, what) => {
+      const fd = new FormData();
+      fd.append('file', file);
+      if (folder) fd.append('folder', folder);
+      if (sessionId) fd.append('session_id', sessionId);
+      const res = await fetch(url, {
+        method: 'POST',
+        body: fd,
+      });
+      if (!res.ok) throw await refused(res, what);
+      return [await res.json()];
+    };
+    const postDocument = async (body) => {
+      if (sessionId) body.session_id = sessionId;
+      const res = await fetch(`${API_BASE}/api/document`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw await refused(res, 'Server error');
+      return res.json();
+    };
+
+    if (isPdf) {
+      // Backend handles save + AcroForm detection in one shot — picks the
+      // right doc kind so fillable forms get clickable inputs in the PDF
+      // view, and plain PDFs get the static page-image viewer.
+      return postFile(`${API_BASE}/api/documents/import-pdf`, 'PDF import failed');
+    }
+
+    if (SERVER_EXTRACTED_EXTS.has(ext)) {
+      // `B233`. The same shape as the PDF branch directly above, and for
+      // the same reason: the extractor is on the server and posting the
+      // file is how the browser reaches it. `B102` bundled the `.doc`
+      // OLE2/CFB and `.odt` readers and `B240` drove all seven Office
+      // formats through them from the mailbox, so the same `.doc` emailed
+      // to you already produced its prose while the same `.doc` dropped
+      // here produced binary — one file, one product, two answers.
+      return postFile(`${API_BASE}/api/documents/import-office`, `${ext} import failed`);
+    }
+
+    if (isSpreadsheet) {
+      // Multi-sheet: create one document per sheet
+      await ensureXLSX();
+      const buf = await file.arrayBuffer();
+      const wb = window.XLSX.read(buf, { type: 'array' });
+      const made = [];
+      for (const sheetName of wb.SheetNames) {
+        const csv = window.XLSX.utils.sheet_to_csv(wb.Sheets[sheetName]);
+        if (!csv.trim()) continue;
+        const sheetTitle = wb.SheetNames.length > 1
+          ? `${baseTitle} - ${sheetName}` : baseTitle;
+        // `P21-03`: the workbook's own name rides along as the source.
+        made.push(await postDocument({ title: sheetTitle, language: 'csv', content: csv, source_name: name, folder }));
+      }
+      // Was counted "Imported 1 file" with nothing made.
+      if (!made.length) throw new Error("the workbook's sheets are all empty");
+      return made;
+    }
+
+    // `B400`. What reaches this line is read as text. A file the browser
+    // itself types as an image, a sound or a video, and whose name the shared
+    // register says nothing about, has no text to read: `readAsText` made a
+    // photo a document of replacement characters and the Library said
+    // "Imported 1 file" (measured, `Team photo.png`). Said instead. Not a
+    // byte probe (`B401` is the binary the browser has no type for): the
+    // browser's own type, and only when the name is silent — a `.ts` file is
+    // typed `video/mp2t` by most systems and `TEXT_EXTS` knows it is text; an
+    // `+xml` type (`image/svg+xml`) is text and still imports.
+    const media = /^(image|audio|video)\//i.exec(String(file.type || ''));
+    if (media && !/\+xml$/i.test(file.type) && ingestKindFromName(name, file.type) === null) {
+      // Worded to stand alone: the Library's summary does not name the file.
+      const what = { image: 'images', audio: 'sound files', video: 'videos' }[media[1].toLowerCase()];
+      throw new Error(`${what} can't be opened as documents`);
+    }
+
+    const content = await readFileContent(file);
+    // `P21-03`. The file's name, not a title cut from it here: the
+    // server titles it (`file_names.document_title`, one rule for every
+    // door) and keeps the name whole as the document's source.
+    return [await postDocument({ source_name: name, language, content, folder })];
+  }
+
+  /**
    * `B997`. `folder` is the library folder that was open (`importFolder`), and
    * every door below files into it: the two upload routes take it as a form
    * field, `POST /api/document` in its body. None means Unfiled, as before.
@@ -1914,96 +2045,10 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
     // session-less "library" document, so no session_id is sent.
     for (const file of fileList) {
       try {
-        const name = file.name;
-        const dotIdx = name.lastIndexOf('.');
-        const ext = dotIdx >= 0 ? name.slice(dotIdx).toLowerCase() : '';
-        const baseTitle = dotIdx > 0 ? name.slice(0, dotIdx) : name;
-        const language = CONVERTED_TO[ext] !== undefined
-          ? CONVERTED_TO[ext] : documentLanguage(name);
-
-        const isSpreadsheet = ['.xlsx', '.xls', '.ods'].includes(ext);
-        const isPdf = ext === '.pdf';
-
-        if (isPdf) {
-          // Backend handles save + AcroForm detection in one shot — picks the
-          // right doc kind so fillable forms get clickable inputs in the PDF
-          // view, and plain PDFs get the static page-image viewer.
-          const fd = new FormData();
-          fd.append('file', file);
-          if (folder) fd.append('folder', folder);
-          const res = await fetch(`${API_BASE}/api/documents/import-pdf`, {
-            method: 'POST',
-            body: fd,
-          });
-          if (!res.ok) {
-            let _e = `HTTP ${res.status}`;
-            try { const _j = await res.json(); _e = _j.detail || _j.error || _e; } catch {}
-            throw new Error('PDF import failed: ' + _e);
-          }
-          imported++;
-          continue;
-        }
-
-        if (SERVER_EXTRACTED_EXTS.has(ext)) {
-          // `B233`. The same shape as the PDF branch directly above, and for
-          // the same reason: the extractor is on the server and posting the
-          // file is how the browser reaches it. `B102` bundled the `.doc`
-          // OLE2/CFB and `.odt` readers and `B240` drove all seven Office
-          // formats through them from the mailbox, so the same `.doc` emailed
-          // to you already produced its prose while the same `.doc` dropped
-          // here produced binary — one file, one product, two answers.
-          //
-          // A refusal is surfaced, not swallowed: 415 means nothing reads this
-          // format and 422 means a reader ran and found no text, and the two
-          // are different things to tell someone (`B162`).
-          const fd = new FormData();
-          fd.append('file', file);
-          if (folder) fd.append('folder', folder);
-          const res = await fetch(`${API_BASE}/api/documents/import-office`, {
-            method: 'POST',
-            body: fd,
-          });
-          if (!res.ok) {
-            let _e = `HTTP ${res.status}`;
-            try { const _j = await res.json(); _e = _j.detail || _j.error || _e; } catch {}
-            throw new Error(`${ext} import failed: ` + _e);
-          }
-          imported++;
-          continue;
-        }
-
-        if (isSpreadsheet) {
-          // Multi-sheet: create one document per sheet
-          await ensureXLSX();
-          const buf = await file.arrayBuffer();
-          const wb = window.XLSX.read(buf, { type: 'array' });
-          for (const sheetName of wb.SheetNames) {
-            const csv = window.XLSX.utils.sheet_to_csv(wb.Sheets[sheetName]);
-            if (!csv.trim()) continue;
-            const sheetTitle = wb.SheetNames.length > 1
-              ? `${baseTitle} - ${sheetName}` : baseTitle;
-            const res = await fetch(`${API_BASE}/api/document`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              // `P21-03`: the workbook's own name rides along as the source.
-              body: JSON.stringify({ title: sheetTitle, language: 'csv', content: csv, source_name: name, folder }),
-            });
-            if (!res.ok) throw new Error('Server error');
-          }
-          imported++;
-        } else {
-          const content = await readFileContent(file);
-          // `P21-03`. The file's name, not a title cut from it here: the
-          // server titles it (`file_names.document_title`, one rule for every
-          // door) and keeps the name whole as the document's source.
-          const res = await fetch(`${API_BASE}/api/document`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ source_name: name, language, content, folder }),
-          });
-          if (!res.ok) throw new Error('Server error');
-          imported++;
-        }
+        // `B400`: the per-file branches are `importFileAsDocuments` above,
+        // which *Import from device* calls too.
+        await importFileAsDocuments(file, { folder });
+        imported++;
       } catch (e) {
         console.error('Failed to import file:', file.name, e);
         if (!_firstErr) _firstErr = (e && e.message) || String(e);
@@ -4134,3 +4179,10 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
   export function isLibraryOpen() {
     return _libraryOpen;
   }
+
+  // `B400`. The Documents panel's *Import from device* imports through the
+  // same per-file function as the Library's Import button. Exported down here
+  // rather than at its definition: `tests/harness/mammoth_docx_import.js`
+  // evaluates the span it sits in as a function body, where `export` is not
+  // allowed.
+  export { importFileAsDocuments };
