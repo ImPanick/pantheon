@@ -49,7 +49,10 @@ SCHEDULER_READERS = {
     "_deliver_node_result": "stand_in", "_keep_workflow_chat": "stand_in",
 }
 MODULE_READERS = {("src/task_scheduler.py", "_resolve_task_timezone"): "task",
-                  ("core/session_manager.py", "ensure_task_session"): "task"}
+                  ("core/session_manager.py", "ensure_task_session"): "task",
+                  # `B1114`: the name of the chat `_execute_llm_task` and
+                  # `_deliver_task_result` make, read off the stand-in.
+                  ("src/task_scheduler.py", "task_chat_name"): "task"}
 
 
 def _reads(fn: ast.AST, name: str) -> set:

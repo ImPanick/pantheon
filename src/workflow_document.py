@@ -247,10 +247,16 @@ NODE_CONFIG_FIELDS = {
 # `_execute_checkin`, `_run_agent_loop`, `_execute_research_task`,
 # `_deliver_task_result` and its two deliverers, `_resolve_task_timezone`, and
 # `SessionManager.ensure_task_session` (which writes `session_id`).
+#
+# `chat_name` (`B1114`) is the one field that is not a `ScheduledTask` column:
+# the name of the chat a step makes when the workflow has none yet — the
+# workflow's, so every step writes into a chat named for it
+# (`task_scheduler.task_chat_name`; a task row has no such attribute and keeps
+# its own name).
 STAND_IN_FIELDS = (
     "id", "owner", "name", "prompt", "task_type", "action", "model",
     "endpoint_url", "session_id", "crew_member_id", "character_id", "tz_name",
-    "max_steps", "output_target",
+    "max_steps", "output_target", "chat_name",
 )
 
 # ── Caps (mistake prevention, not a control — `Law 17`) ─────────────────────
@@ -2126,6 +2132,12 @@ def node_stand_in(trigger, workflow_name: str, node: dict) -> WorkflowNodeTask:
     or Action step shares the trigger's chat (`session_id`); a Research step
     starts with none, because a report is keyed by its session and two
     Research steps sharing one would overwrite each other.
+
+    `B1114`. The step that makes the workflow's chat names it for the
+    workflow (`chat_name`), not "workflow · step": the walker keeps that chat
+    on the trigger (`_keep_workflow_chat`) and every later step writes into
+    it — measured before this row, a later step's write-up sat in a chat
+    named after the first step.
     """
     kind = node.get("kind")
     if kind not in STAND_IN_KINDS:
@@ -2154,6 +2166,7 @@ def node_stand_in(trigger, workflow_name: str, node: dict) -> WorkflowNodeTask:
         output_target=cfg("output_target"),
         tz_name=getattr(trigger, "tz_name", None),
         session_id=None if kind == NODE_KIND_RESEARCH else getattr(trigger, "session_id", None),
+        chat_name=None if kind == NODE_KIND_RESEARCH else workflow_name,
     )
 
 

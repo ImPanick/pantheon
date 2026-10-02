@@ -1410,6 +1410,15 @@ NOTIFY_ON_SUCCESS_TASK_TYPES = ("llm", "research", "workflow")
 NODE_SLOT_SEPARATOR = ":"
 TEST_SLOT_PREFIX = "test"
 
+
+def task_chat_name(task) -> str:
+    """The name of the chat a task's run makes when it has none: "[Task]"
+    and the task's name — or, for a workflow step (`B1114`), the workflow's
+    (`WorkflowNodeTask.chat_name`), since the walker keeps the chat the first
+    step makes on the trigger and every later step writes into it. A task row
+    has no `chat_name`, so a Prompt task's chat is named as before."""
+    return f"[Task] {getattr(task, 'chat_name', None) or task.name}"
+
 # `P22-05`. What the walker says when a trigger has no document to run.
 WORKFLOW_DOCUMENT_MISSING = ("This workflow’s steps are missing, so there was "
                              "nothing to run.")
@@ -4308,7 +4317,7 @@ class TaskScheduler:
             session_id = str(uuid.uuid4())
             sess = DbSession(
                 id=session_id,
-                name=f"[Task] {task.name}",
+                name=task_chat_name(task),
                 endpoint_url=endpoint_url,
                 model=model,
                 owner=task.owner,
@@ -4322,7 +4331,7 @@ class TaskScheduler:
             if self._session_manager:
                 try:
                     self._session_manager.ensure_task_session(
-                        session_id, f"[Task] {task.name}", endpoint_url, model,
+                        session_id, task_chat_name(task), endpoint_url, model,
                         owner=task.owner, task=task
                     )
                 except Exception:
@@ -4520,7 +4529,7 @@ class TaskScheduler:
             session_id = str(uuid.uuid4())
             sess = DbSession(
                 id=session_id,
-                name=f"[Task] {task.name}",
+                name=task_chat_name(task),
                 endpoint_url=endpoint_url or "",
                 model=model_name or "",
                 owner=task.owner,
@@ -4534,7 +4543,7 @@ class TaskScheduler:
             if self._session_manager:
                 try:
                     self._session_manager.ensure_task_session(
-                        session_id, f"[Task] {task.name}", endpoint_url, model_name,
+                        session_id, task_chat_name(task), endpoint_url, model_name,
                         owner=task.owner, task=task
                     )
                 except Exception:
