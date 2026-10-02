@@ -308,3 +308,31 @@ def test_the_words_for_an_answer(box):
     assert quiet["sections"] == [["What it answered", "(nothing)"]]
     assert quiet["notes"][0].startswith("The assistant has this tool switched off.")
     assert empty == "It started, and offers no tools yet."
+
+
+def test_saving_a_registered_servers_code_says_an_admin_registers_it_again(box):
+    """`integrate-e`: a registration pins the code, so a person's save of a
+    registered server's code is saved — and said to take its tools off the air
+    until an admin registers it again (the route's `registered`)."""
+    o = _case(box, """
+        server.answer = (url, method) => {
+          if (url === '/api/mcp/scaffold') return [200, { servers: [{ name: 'weather', tools: [], modified: 1,
+            checked: 'works' }], workstation: { available: true, why: null } }];
+          if (url === '/api/mcp/scaffold/weather' && method === 'GET') return [200, { name: 'weather',
+            source: '# server.py', registration: REG, agent_refusal: '', registered: 'current' }];
+          if (url === '/api/mcp/scaffold/weather' && method === 'PUT') return [200, { saved: true, registered: true }];
+          if (url.endsWith('/check')) return [200, { started: true, tools: ['get_forecast'], error: null,
+            offers: [OFFER], stderr: '' }];
+          return [404, {}];
+        };
+        await B.mountMcpBuild(host, {});
+        const card = host.querySelector('[data-mcp-build-server="weather"]');
+        click(card.querySelector('.mcp-build-edit'));
+        await settle();
+        card.querySelector('.mcp-build-code').value = '# server.py\\n# changed';
+        click(card.querySelector('.mcp-build-save'));
+        await settle();
+        out({ msg: text(card.querySelector('.mcp-build-save-msg')) });
+    """)
+    assert o["msg"] == ("Saved. It is registered, so its tools do not run this code until an admin registers it "
+                        "again (Register).")

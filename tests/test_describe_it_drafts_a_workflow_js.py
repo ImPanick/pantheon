@@ -322,3 +322,58 @@ def test_a_step_changed_in_the_draft_is_the_persons_and_drops_its_mark_before_sa
         "a step changed here is the person's, as it will be once saved (the server's _marks_kept)"
     assert o["note"] == ["You changed this step. Save, and it is yours: it needs no check."]
     assert o["layerNote"] == "You have changes that are not saved: this checks the steps as they are saved."
+
+
+def test_a_step_the_assistant_changed_reads_as_its_and_waits_for_a_person(box, live):
+    """`integrate-e` (the integrator's call on wb-assist's B-NEW-2): a person
+    checked every step; the assistant then changed one through the save route
+    (its loopback — not a person). That step is marked again, origin
+    `assistant`, and the room says so in words — on the canvas, on its banner,
+    and in *Check them now* when the switch refuses."""
+    import asyncio
+
+    from tests.helpers.assist_harness import ASSISTANT, PERSON
+    from tests.helpers.walker_harness import client_for
+
+    live.script(_answer())
+
+    async def draft_check_and_touch():
+        async with client_for(live.app) as client:
+            made = (await client.post("/api/workflows", headers=PERSON,
+                                      json={"describe": _DESCRIBE, "tz": "UTC"})).json()["workflow"]
+            wid = made["id"]
+            ok = await client.put(f"/api/workflows/{wid}", headers=PERSON, json={"checked": IDS})
+            assert ok.status_code == 200, ok.text
+            doc = (await client.get(f"/api/workflows/{wid}", headers=PERSON)).json()["workflow"]
+            graph = doc["graph"]
+            for n in graph["nodes"]:
+                n.pop("unchecked", None)
+            graph["nodes"][2]["config"]["args"]["channel"] = "#leak"
+            saved = await client.put(f"/api/workflows/{wid}", headers=ASSISTANT,
+                                     json={"graph": graph, "base_version": doc["version"]})
+            assert saved.status_code == 200, saved.text
+            return wid
+    wid = asyncio.run(draft_check_and_touch())
+    o = _case(box, live, f"""
+        const {{ r }} = await room({{ workflowId: {as_js(wid)} }});
+        const marks = steps(r).map((n) => [n.dataset.itemId, n.dataset.unchecked || null,
+          n.querySelectorAll('.wb-node-badge').map((b) => b.textContent)]);
+        fire(nodeEl(r, 'post'), 'click'); await quiet();
+        const b = by(r, 'wf-step-check');
+        const banner = {{ origin: b.dataset.origin, head: by(b, 'wf-step-check-head').textContent,
+                          note: by(b, 'wf-step-check-note').textContent }};
+        fire(by(r, 'wf-switch'), 'click'); await quiet();
+        const refused = sayOf(r);
+        fire(sayButton(r), 'click'); await quiet();
+        const rows = all(by(r, 'wf-check'), 'wf-check-step').map((li) => [li.dataset.nodeId,
+          by(li, 'wf-check-origin').textContent]);
+        out({{ marks, banner, refused, rows }});
+    """)
+    assert o["marks"] == [["is-it-new", None, []], ["summarise", None, []],
+                          ["post", "assistant", ["Changed by your assistant — check me"]]]
+    assert o["banner"]["origin"] == "assistant"
+    assert o["banner"]["head"] == "Changed by your assistant — check it."
+    assert o["banner"]["note"].startswith("Your assistant, or something holding an API token, changed this step")
+    assert o["refused"].startswith("Not switched on: Your assistant (or an API token) changed 1 step nobody has "
+                                   "checked yet: “Post to #dev”.")
+    assert o["rows"] == [["post", "Changed by your assistant"]]

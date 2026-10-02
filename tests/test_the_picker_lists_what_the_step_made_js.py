@@ -205,6 +205,7 @@ def form(tmp_path_factory):
     box = _make_sandbox(tmp_path_factory.mktemp("pickform"), TASKS_JS, _SHIM_PARSED, _FORM_STUBS)
     (box / "workbench").mkdir(exist_ok=True)
     for rel in ("workbench/fieldPicker.js", "workbench/stepFields.js", "workbench/argsForm.js",
+                "workbench/rooms.js",  # `integrate-e`: stepFields reads the rooms' names from it
                 "skillGateNote.js", "settings/mcpFields.js", "tasks/workflowDiagram.js"):
         (box / rel).parent.mkdir(parents=True, exist_ok=True)
         shutil.copy(JS / rel, box / rel)
