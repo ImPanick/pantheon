@@ -245,6 +245,13 @@ async def test_a_files_schema_cannot_open_a_never_slot(monkeypatch, tmp_path):
     assert res.status_code == 400 and res.json()["reason"] == "mapped_never"
     assert res.json()["field"] == "args.channel"
     assert rows(w.factory, Workflow) == []
+    made = await _call(w, "POST", "/api/workflows", json={"name": "By hand"})
+    graph = json.loads(json.dumps(data["graph"]))
+    graph["nodes"][0].pop("extra")
+    persons = await _call(w, "PUT", f"/api/workflows/{made.json()['workflow']['id']}?check=true",
+                          json={"graph": graph, "base_version": 1})
+    assert persons.status_code == 400
+    assert res.json()["detail"] == persons.json()["detail"], "refused exactly as a person's save"
 
 
 async def test_a_newer_or_foreign_file_and_an_oversized_one_are_refused(monkeypatch, tmp_path):

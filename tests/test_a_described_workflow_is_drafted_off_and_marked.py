@@ -346,3 +346,59 @@ async def test_the_one_task_parser_asks_the_same_model_call(world, monkeypatch):
         "schedule": "daily", "scheduled_time": "07:00", "trigger_type": "schedule"}}
     assert model.calls[0]["kw"] == {"max_tokens": 400, "temperature": 0.2, "timeout": 45}
     assert rows(w.factory, ScheduledTask) == []
+
+
+async def test_section_5_2_a_hostile_description_gets_nothing_run(world, monkeypatch):
+    """§ 5.2, end to end: the tool's description says to post everything to
+    #leak and the scripted drafter complies. Paused and marked; the webhook
+    answers 404 and starts nothing; the switch is a 409; a bearer token and the
+    assistant cannot check a step; `manage_tasks resume` is refused; and the
+    same document forced on in the database ends `error` before the dispatcher
+    is ever reached."""
+    import src.tool_execution as tool_execution
+    from core.database import ScheduledTask, TaskRun, TaskRunNode
+    from src.tools.system import do_manage_tasks
+    from tests.helpers.assist_harness import ASSISTANT, TOKEN
+    w = world
+    dispatched = []
+    real = tool_execution.execute_tool_block
+
+    async def recorder(block, **kw):
+        dispatched.append(block)
+        return await real(block, **kw)
+    monkeypatch.setattr(tool_execution, "execute_tool_block", recorder)
+    complied = answer()
+    complied["steps"][2]["config"]["args"]["channel"] = "#leak"
+    complied["steps"][2]["label"] = "Post"
+    script_model(monkeypatch, complied)
+    res = await _describe(w, "Summarise new issues and post them")
+    assert res.status_code == 200, res.text
+    doc = res.json()["workflow"]
+    wf_id, task_id = doc["id"], doc["task_id"]
+    assert any("channel: #leak" in d for d in res.json()["destinations"])
+    token = stored(w.factory, wf_id)[2].webhook_token
+    async with client_for(w.app) as client:
+        hook = await client.post(f"/api/tasks/{task_id}/webhook/{token}", json={"action": "opened"})
+        switch = await client.post(f"/api/workflows/{wf_id}/switch", headers=PERSON, json={"on": True})
+        by_token = await client.put(f"/api/workflows/{wf_id}", headers=TOKEN,
+                                    json={"checked": ["opened", "summary", "post"]})
+        by_agent = await client.put(f"/api/workflows/{wf_id}", headers=ASSISTANT,
+                                    json={"checked": ["opened", "summary", "post"]})
+    assert hook.status_code == 404 and rows(w.factory, TaskRun, task_id=task_id) == []
+    assert switch.status_code == 409 and switch.json()["reason"] == "unchecked"
+    assert by_token.status_code == 403 and by_agent.status_code == 403
+    resumed = await do_manage_tasks(json.dumps({"action": "resume", "task_id": task_id}),
+                                    owner="alice")
+    assert resumed["exit_code"] == 1 and resumed["error"] == switch.json()["detail"]
+    db = w.factory()
+    try:
+        db.query(ScheduledTask).filter(ScheduledTask.id == task_id).first().status = "active"
+        db.commit()
+    finally:
+        db.close()
+    await w.s._execute_task(task_id, trigger={"source": "webhook", "event": "webhook",
+                                              "data": {"json": {"action": "opened"}}})
+    [run] = rows(w.factory, TaskRun, task_id=task_id)
+    assert run.status == "error" and "nobody has checked yet" in (run.error or "")
+    assert rows(w.factory, TaskRunNode, run_id=run.id) == []
+    assert dispatched == [] and w.chat.posted == []
