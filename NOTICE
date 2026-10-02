@@ -24,16 +24,20 @@ Pantheon is a MODIFIED VERSION of Odysseus.
     Upstream source  : https://github.com/pewdiepie-archdaemon/odysseus
     Upstream identity: https://github.com/odysseus-dev/odysseus
     Forked from      : commit b4d1293 (branch dev)
-    Date of fork     : 2026-08-24
+    Fork point       : committed upstream 2026-08-20
+    Date of fork     : 2026-08-24 (UTC) -- the fork began with this
+                       repository's first commit of its own, a4c44567
     Modified by      : Panick
+
+The two dates are two events, four days apart: the upstream commit Pantheon
+was taken from, and the first commit Pantheon made.
 
 Odysseus is reachable under two GitHub identities and both are named above,
 because naming one of two would be an incomplete notice.
 
     Upstream source   -- pewdiepie-archdaemon/odysseus -- is the repository
     Pantheon was cloned from.  It is the `origin` remote of the fork-point
-    checkout, and CHANGELOG.md records the fork from it at b4d1293 on
-    2026-08-24.
+    checkout, and CHANGELOG.md records the fork from it at b4d1293.
 
     Upstream identity -- odysseus-dev/odysseus -- is the identity Odysseus's
     own code and documentation point at.  At commit b4d1293 it appears 47

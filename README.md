@@ -406,8 +406,9 @@ Pantheon is free software and isn't sold. We'd rather nobody else sold it either
 AGPL doesn't allow that restriction and we won't pretend otherwise. Use it internally at your
 company if it's useful.
 
-Pantheon is a modified version of Odysseus, forked from commit `b4d1293` on 24 August 2026 and
-released under the same licence. It is not affiliated with or endorsed by the Odysseus project,
+Pantheon is a modified version of Odysseus, forked from commit `b4d1293`, which was committed
+upstream on 20 August 2026; the fork itself began on 24 August 2026 (UTC), and it is released
+under the same licence. It is not affiliated with or endorsed by the Odysseus project,
 so please don't send them issues from here.
 
 Credits and third-party licences: [`CREDITS.md`](CREDITS.md), [`NOTICE`](NOTICE).

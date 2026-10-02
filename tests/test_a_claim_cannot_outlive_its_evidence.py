@@ -20,9 +20,11 @@ hand it a broken tree.
 from __future__ import annotations
 
 import importlib.util
+import os
 import re
 import subprocess
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -585,19 +587,25 @@ def test_the_repro_rule_reports_rather_than_fails_a_different_metric(checker):
 
 def test_the_clone_date_and_the_commit_date_are_stated_separately(claims):
     """`2026-08-20` is when `b4d1293` was committed upstream; `2026-08-24` is
-    when this repository was taken from it. The repository stated both for one
-    event, sixty lines apart in the README. Neither is confirmable from a
-    worktree — `b4d1293` is not reachable — so they are labelled, not merged."""
+    the day the fork began, in UTC — the date of this repository's first commit
+    of its own, `a4c44567`. The repository stated both for one event, sixty
+    lines apart in the README, so they are labelled, not merged. (Until
+    2026-10-02 this said neither was confirmable from a worktree; the fork
+    point was confirmed by `B860` and the first commit by the integrator's
+    reading on the owner's machine — see `claims.py`.)"""
     assert claims.FORK_POINT_DATE != claims.FORK_CLONE_DATE
     assert claims.FORK_CLONE_DATE == "2026-08-24"
     assert claims.FORK_POINT_DATE == "2026-08-20"
+    assert claims.FORK_FIRST_COMMIT == "a4c44567"
 
 
 def test_the_clone_date_matches_the_agpl_notice(checker):
-    """`NOTICE`'s *Date of fork* is the §5(a) attribution surface."""
+    """`NOTICE` is the §5(a) attribution surface, and it carries both dates on
+    labelled lines: *Fork point: committed upstream* and *Date of fork*."""
     assert checker._fork_date_problems() == []
     notice = (ROOT / "NOTICE").read_text(encoding="utf-8")
     assert re.search(r"Date of fork\s*:\s*2026-08-24", notice)
+    assert re.search(r"Fork point\s*:\s*committed upstream\s+2026-08-20", notice)
 
 
 def test_a_notice_that_drifts_from_the_clone_date_is_caught(checker, claims,
@@ -605,6 +613,84 @@ def test_a_notice_that_drifts_from_the_clone_date_is_caught(checker, claims,
     monkeypatch.setattr(claims, "FORK_CLONE_DATE", "2026-01-01")
     problems = checker._fork_date_problems()
     assert any("FORK_CLONE_DATE" in p for p in problems), problems
+
+
+def test_a_notice_that_drifts_from_the_fork_point_date_is_caught(checker, claims,
+                                                                 monkeypatch):
+    """`B349`'s own `Verify:` — *"a checker compares `claims.py`'s
+    `FORK_POINT_DATE` with `NOTICE`"*. Until 2026-10-02 `NOTICE` did not state
+    the fork point's date at all, so there was nothing to compare."""
+    monkeypatch.setattr(claims, "FORK_POINT_DATE", "2026-08-21")
+    problems = checker._fork_date_problems()
+    assert any("NOTICE says the fork point was committed upstream on 2026-08-20"
+               in p and "FORK_POINT_DATE is 2026-08-21" in p for p in problems), problems
+
+
+def _surfaces(checker, **replacing):
+    """The real surfaces, with some replaced — so a probe is judged alongside
+    everything the tree already says."""
+    surfaces = checker._fork_surfaces()
+    surfaces.update(replacing)
+    return surfaces
+
+
+def test_every_surface_a_reader_is_told_a_fork_date_on_labels_it(checker):
+    """Both dates, on all five surfaces, each under its own label. Asserted as
+    what the scan FOUND, so a scan that matched nothing cannot pass."""
+    mentions, problems = checker._fork_date_mentions(checker._fork_surfaces())
+    assert problems == []
+    found = {(surface, meaning) for surface, _date, meaning in mentions}
+    for surface in ("NOTICE", "README.md", "CREDITS.md", "CHANGELOG.md"):
+        assert (surface, "point") in found, (surface, sorted(found))
+        assert (surface, "began") in found, (surface, sorted(found))
+    assert ("LEDGER.md", "point") in found, sorted(found)
+
+
+@pytest.mark.parametrize("surface, sentence", [
+    # The README's *Licence* line as it stood until 2026-10-02.
+    ("README.md", "Pantheon is a modified version of Odysseus, forked from "
+                  "commit `b4d1293` on 24 August 2026 and released under the same licence."),
+    # `CREDITS.md`'s *Forked at*, as it stood.
+    ("CREDITS.md", "- **Forked at:** `b4d1293`, 2026-08-24"),
+    # The ledger's own header, as it stood.
+    ("LEDGER.md", "> Fork point `b4d1293`, 2026-08-20 — *fix(agent): drop it*."),
+])
+def test_an_unlabelled_fork_date_is_caught(checker, surface, sentence):
+    """The shape of the defect: a date beside the fork commit with nothing to
+    say which of the two events it is."""
+    problems = checker._fork_date_problems(_surfaces(checker, **{surface: sentence}))
+    assert any(p.startswith(f"{surface}:") and "has no label" in p
+               for p in problems), problems
+
+
+def test_a_fork_date_under_the_other_label_is_caught(checker):
+    """The label nearest the date decides — so the upstream commit's date
+    presented as the day the fork began is refused, even with *committed*
+    earlier in the same clause."""
+    sentence = ("Forked from `b4d1293`, committed upstream, and the fork "
+                "began on 20 August 2026.")
+    problems = checker._fork_date_problems(_surfaces(checker, **{"README.md": sentence}))
+    assert any("README.md: 2026-08-20" in p and "says 'began'" in p
+               for p in problems), problems
+
+
+def test_a_third_fork_date_is_caught(checker):
+    sentence = "Forked from `b4d1293` on 2026-08-25, which is neither date."
+    problems = checker._fork_date_problems(_surfaces(checker, **{"CHANGELOG.md": sentence}))
+    assert any("CHANGELOG.md: a fork date of 2026-08-25" in p for p in problems), problems
+
+
+def test_a_date_that_is_not_about_the_fork_is_left_alone(checker):
+    """`Law 10` the other way: the README's own status line says *"this fork
+    inherited and carried were cleared on 2026-09-12"*, and the word *fork* in
+    a sentence is not a fork date. Nor is a date in the sentence AFTER one that
+    says *forked from*: the clause ends at the full stop."""
+    sentence = ("Pantheon was forked from `b4d1293`, which was committed upstream "
+                "on 2026-08-20. The fourteen standing failures this fork inherited "
+                "and carried were cleared on 2026-09-12. Measured against the fork "
+                "point `b4d1293` on 2026-10-02.")
+    problems = checker._fork_date_problems(_surfaces(checker, **{"README.md": sentence}))
+    assert problems == [], problems
 
 
 def test_collapsing_the_two_dates_into_one_is_caught(checker, claims, monkeypatch):
@@ -704,3 +790,70 @@ def test_a_reachable_fork_point_that_is_a_different_commit_fails():
     with pytest.raises(AssertionError, match="different commit"):
         test_the_fork_point_confirms_its_own_date_where_the_history_reaches_it(
             _claims_pointing_at("HEAD", FORK_POINT_SUBJECT="not this commit"))
+
+
+# --------------------------------------------------------------------------
+# `B349` — the day the fork began, against the commit that began it
+# --------------------------------------------------------------------------
+
+
+def test_the_first_commit_confirms_the_day_the_fork_began(claims, cwd=ROOT):
+    """`FORK_CLONE_DATE` used to be the one fork date nothing could check — *"no
+    commit records the day a clone was taken"*. One does: the first commit this
+    repository made of its own, `a4c44567`, which the integrator read on the
+    owner's machine on 2026-10-02 as `2026-08-23 16:37:07 -0800` — the date
+    `git log` prints by default, the **author** date, and so the one read here.
+
+    That is 2026-08-24 in UTC and 2026-08-23 where it was made, and the ledger
+    states the UTC date, labelled as such. So this compares the UTC date —
+    wherever the history reaches the commit (CI checks out with
+    `fetch-depth: 0`), and falls back to the label where it does not, exactly as
+    the fork-point test above does for `b4d1293`.
+    """
+    proc = subprocess.run(["git", "cat-file", "-t", claims.FORK_FIRST_COMMIT],
+                          cwd=str(cwd), capture_output=True, text=True)
+    if proc.returncode != 0:
+        # This container's clone begins at a snapshot import: a reading taken
+        # elsewhere, labelled as one.
+        assert claims.FORK_CLONE_DATE and claims.FORK_FIRST_COMMIT
+        return
+    shown = subprocess.run(["git", "show", "-s", "--format=%aI", claims.FORK_FIRST_COMMIT],
+                           cwd=str(cwd), capture_output=True, text=True, check=True)
+    authored = datetime.fromisoformat(shown.stdout.strip())
+    in_utc = authored.astimezone(timezone.utc).date().isoformat()
+    assert in_utc == claims.FORK_CLONE_DATE, (
+        f"FORK_CLONE_DATE says {claims.FORK_CLONE_DATE}; {claims.FORK_FIRST_COMMIT} "
+        f"was authored {authored.isoformat()}, which is {in_utc} in UTC")
+
+
+@pytest.fixture(scope="module")
+def a_first_commit_made_in_california(tmp_path_factory):
+    """A repository whose only commit carries `a4c44567`'s own timestamp — a
+    date that is the 23rd where it was made and the 24th in UTC, which is the
+    whole reason the ledger says *UTC*."""
+    repo = tmp_path_factory.mktemp("first-commit")
+    env = dict(os.environ, GIT_AUTHOR_DATE="2026-08-23T16:37:07-08:00",
+               GIT_COMMITTER_DATE="2026-08-23T16:37:07-08:00",
+               GIT_AUTHOR_NAME="probe", GIT_AUTHOR_EMAIL="probe@example.invalid",
+               GIT_COMMITTER_NAME="probe", GIT_COMMITTER_EMAIL="probe@example.invalid")
+    for argv in (["git", "init", "-q"],
+                 ["git", "commit", "-q", "--allow-empty", "-m", "first"]):
+        subprocess.run(argv, cwd=str(repo), env=env, check=True, capture_output=True)
+    return repo
+
+
+def test_a_reachable_first_commit_is_read_in_utc(a_first_commit_made_in_california):
+    """The `then` branch, driven: the commit is reachable and agrees."""
+    test_the_first_commit_confirms_the_day_the_fork_began(
+        SimpleNamespace(FORK_FIRST_COMMIT="HEAD", FORK_CLONE_DATE="2026-08-24"),
+        cwd=a_first_commit_made_in_california)
+
+
+def test_the_local_date_of_the_first_commit_is_refused(a_first_commit_made_in_california):
+    """And the mistake it exists to stop: *"correcting"* the date to the one the
+    commit shows in its own timezone, which would put a second date on the
+    same meaning."""
+    with pytest.raises(AssertionError, match="2026-08-24 in UTC"):
+        test_the_first_commit_confirms_the_day_the_fork_began(
+            SimpleNamespace(FORK_FIRST_COMMIT="HEAD", FORK_CLONE_DATE="2026-08-23"),
+            cwd=a_first_commit_made_in_california)

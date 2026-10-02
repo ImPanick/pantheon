@@ -31,7 +31,9 @@ and discarded, lighting what was already written, and building the authoring
 surfaces the engines deserved. The hard parts were already solved.
 
 - **Licence:** AGPL-3.0-or-later
-- **Forked at:** `b4d1293`, 2026-08-24
+- **Forked at:** `b4d1293`, which was committed upstream on 2026-08-20; the
+  fork began on 2026-08-24 (UTC), with this repository's first commit of its
+  own, `a4c44567`
 - **Modifications:** see `CHANGELOG.md` and `NOTICE`
 
 ### Two upstream identities, and which is which
@@ -41,7 +43,7 @@ both, because naming one of two would be an incomplete AGPL §5(a) notice.
 
 | | Identity | What it is, verifiably |
 |---|---|---|
-| **Clone source** | [`pewdiepie-archdaemon/odysseus`](https://github.com/pewdiepie-archdaemon/odysseus) | The repository Pantheon was actually cloned from. It is the `origin` remote of the fork-point checkout, and `CHANGELOG.md` records the fork from it at `b4d1293` (branch `dev`) on 2026-08-24. |
+| **Clone source** | [`pewdiepie-archdaemon/odysseus`](https://github.com/pewdiepie-archdaemon/odysseus) | The repository Pantheon was actually cloned from. It is the `origin` remote of the fork-point checkout, and `CHANGELOG.md` records the fork from it at `b4d1293` (branch `dev`). |
 | **Referenced identity** | [`odysseus-dev/odysseus`](https://github.com/odysseus-dev/odysseus) | The identity Odysseus's **own** code and documentation point at. At commit `b4d1293` it appears **47 times across 16 files** — the README's `git clone` command, `CONTRIBUTING.md`, `package.json`'s `repository.url`, the four `.github/` issue and PR templates, `docs/`, and the outbound `HTTP-Referer` header set in `src/endpoint_resolver.py` and `src/llm_core.py`. |
 
 *(Scope of the 47 / 16: case-insensitive literal `odysseus-dev` in tracked files
@@ -757,9 +759,10 @@ owner may ask for the mark to be removed, and the answer would be yes — they a
 four PNGs behind a `background: currentColor` mask, and the UI degrades to text
 labels without them.
 
-**Both were in the tree at the fork point** (`fff72ec`, baseline of cybertooth
-`c3b2120`) and neither was mentioned in Odysseus's acknowledgements or in this
-file until 2026-09-01. They were found the same week as OpenMoji and for the
+**Both were already in the tree at `fff72ec`** — the baseline import of
+cybertooth `c3b2120`, which is the earliest tree this was measured on, and not
+the fork point, which is `b4d1293` — and neither was mentioned in Odysseus's
+acknowledgements or in this file until 2026-09-01. They were found the same week as OpenMoji and for the
 same reason: someone finally compared what is *on disk* against what this file
 *says*. That comparison is now `.pantheon/check-licences.py`, and it runs in CI.
 

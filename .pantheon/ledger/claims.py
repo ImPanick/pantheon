@@ -58,12 +58,12 @@ FORK_POINT = "b4d1293"
 # reading independently while the checkout still existed: *"`/work/base` HEAD is
 # the fork point (2026-08-20)"*.
 #
-# `FORK_CLONE_DATE` is **the day this repository was taken from it**, which is
-# what `NOTICE`'s *Date of fork*, `CHANGELOG.md:18*, `CREDITS.md` and the
-# README's *Licence* section all state, and what the AGPL §5(a) notice needs.
-# It is consistent with this repository's own history, which begins
-# **2026-08-27** (`fff72ec baseline: cybertooth c3b2120`) — three days after the
-# clone and seven after the commit.
+# `FORK_CLONE_DATE` is **the day the fork began** — see the end of this block for
+# what it is measured from. It is what `NOTICE`'s *Date of fork*, `CHANGELOG.md`,
+# `CREDITS.md` and the README's *Licence* section state, and what the AGPL
+# §5(a) notice needs. (This paragraph used to call it *"the day this repository
+# was taken from it"* and to say the history begins **2026-08-27** at `fff72ec`;
+# that was this container's clone, and is corrected below.)
 #
 # **`FORK_POINT_DATE` is now confirmed against the commit itself** (`B860`).
 # Until 2026-09-19 this block said neither date could be checked from a worktree,
@@ -84,15 +84,33 @@ FORK_POINT = "b4d1293"
 # reaches_it` now makes that comparison wherever the history reaches the commit,
 # and falls back to the label where it does not.
 #
-# `FORK_CLONE_DATE` still cannot be read off anything — no commit records the day
-# a clone was taken — so it stays what `NOTICE`, `CHANGELOG.md`, `CREDITS.md` and
-# the README say it is, and `check-ledger.py` compares it with `NOTICE`'s *Date
-# of fork* so the §5(a) surface and the ledger cannot part company again. What
-# `B349` still needs from the owner is the §5(a) WORDING — *cloned* versus
-# *forked*, and whether the commit date belongs on that surface at all — not the
-# date, which is now evidence rather than a choice.
+# Until 2026-10-02 this block went on: *"`FORK_CLONE_DATE` still cannot be read
+# off anything — no commit records the day a clone was taken"*, and above, that
+# this repository's history *"begins 2026-08-27 (`fff72ec`)"*. **Both were facts
+# about one clone again.** `fff72ec` is the snapshot import this container was
+# seeded from, not the start of the fork, and the fork's start IS on a commit:
+# the first one this repository made of its own. Measured by the integrator on
+# 2026-10-02, on the owner's machine, where the whole history is:
+#
+#     a4c44567   2026-08-23 16:37:07 -0800   = 2026-08-24 00:37:07 UTC
+#
+# So **`FORK_CLONE_DATE` is the day the fork began, in UTC** — the date of
+# `FORK_FIRST_COMMIT` — and the old name stays because renaming a constant
+# three files read is churn that buys nothing. The date is stated in UTC on
+# purpose: in the timezone it was made in, the same commit is dated 2026-08-23,
+# and one meaning gets one date. `test_the_first_commit_confirms_the_day_the_
+# fork_began` checks it wherever the history reaches `a4c44567`, as the
+# fork-point test does for `b4d1293`.
+#
+# The wording, settled with `B349` on 2026-10-02: **the fork point is the
+# upstream commit of 2026-08-20, and the fork began 2026-08-24 UTC**, each
+# labelled wherever it is written. `check-ledger.py` holds every surface a reader
+# is told a fork date on — `NOTICE`, `README.md`, `CREDITS.md`, `CHANGELOG.md`
+# and the ledger itself — to that: both dates against `NOTICE`'s labelled lines,
+# and each date, wherever it appears, under its own label.
 FORK_POINT_DATE = "2026-08-20"      # the date `b4d1293` was committed upstream
-FORK_CLONE_DATE = "2026-08-24"      # the date Pantheon was cloned from it
+FORK_CLONE_DATE = "2026-08-24"      # the day the fork began, in UTC: FORK_FIRST_COMMIT's date
+FORK_FIRST_COMMIT = "a4c44567"      # this repository's first commit of its own
 FORK_POINT_SUBJECT = (
     "fix(agent): drop the empty assistant turn from an approved-action replay (#6124)"
 )

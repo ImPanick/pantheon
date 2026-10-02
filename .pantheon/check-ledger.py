@@ -300,36 +300,133 @@ def _repro_problems() -> tuple:
     return problems, notes
 
 
-def _fork_date_problems() -> list:
-    """`B349`. The §5(a) surface and the ledger must agree on the clone date.
+# `B349`. The fork has two dates and they mean different things: the day the
+# fork point `b4d1293` was committed upstream (`FORK_POINT_DATE`), and the day
+# this repository's own history began (`FORK_CLONE_DATE`). The README once stated
+# both for one event, sixty lines apart, and four attribution files said
+# *"forked … on 2026-08-24"* beside a commit dated four days earlier. So every
+# place a reader is told a fork date is checked here, not only `NOTICE`:
+#
+#   * **`NOTICE`, line by line.** It is the AGPL §5(a) notice, and its two
+#     labelled lines must equal the two constants.
+#   * **every surface, clause by clause** — `NOTICE`, `README.md`, `CREDITS.md`,
+#     `CHANGELOG.md` and the ledger as rendered. Either date, wherever it is
+#     written, must carry its own label in the clause that states it, and the
+#     label nearest before it decides which meaning it is: *committed* for the
+#     fork point, *began* or *Date of fork* for the start of the fork. A clause
+#     that says the repository was *forked* on some third date is refused too.
+#
+# A clause is the text since the last `. `, `; `, `|` or blank line, read with
+# its line breaks folded, because a wrapped Markdown sentence is still one
+# sentence.
+_FORK_SURFACES = ("NOTICE", "README.md", "CREDITS.md", "CHANGELOG.md")
+_FORK_LABELS = (("committed", "point"), ("began", "began"), ("date of fork", "began"))
+_FORK_EVENT = re.compile(r"forked (?:from|at)|date of fork|fork (?:itself )?began", re.I)
+_MONTHS = ("January", "February", "March", "April", "May", "June", "July",
+           "August", "September", "October", "November", "December")
+_A_DATE = re.compile(
+    r"\b(\d{4})-(\d{2})-(\d{2})\b|\b(\d{1,2}) (" + "|".join(_MONTHS) + r") (\d{4})\b")
 
-    Two dates, two meanings: `FORK_POINT_DATE` is when `b4d1293` was committed
-    upstream, `FORK_CLONE_DATE` is when this repository was taken from it. Only
-    the second is the *Date of fork* in `NOTICE`, which is the attribution the
-    licence requires — so that is the one pinned here. The first cannot be
-    checked from a worktree at all: `b4d1293` is not reachable.
+
+def _iso(match) -> str:
+    """Either spelling of a date, as `YYYY-MM-DD`."""
+    if match.group(1):
+        return f"{match.group(1)}-{match.group(2)}-{match.group(3)}"
+    month = _MONTHS.index(match.group(5)) + 1
+    return f"{match.group(6)}-{month:02d}-{int(match.group(4)):02d}"
+
+
+def _fork_date_mentions(surfaces: dict) -> tuple:
+    """`(mentions, problems)`: every fork date a reader is told, and which ones
+    are unlabelled, mislabelled or a third date. A mention is
+    `(surface, date, meaning)`."""
+    meaning_of = {C.FORK_POINT_DATE: "point", C.FORK_CLONE_DATE: "began"}
+    named = {"point": "the fork point's upstream commit date (label it *committed*)",
+             "began": "the day the fork began (label it *began* or *Date of fork*)"}
+    mentions, problems = [], []
+    for surface, text in surfaces.items():
+        for paragraph in re.split(r"\n\s*\n", text):
+            flat = " ".join(paragraph.split())
+            for match in _A_DATE.finditer(flat):
+                head = flat[:match.start()]
+                cut = max(head.rfind(". "), head.rfind("; "), head.rfind("|"))
+                clause = head[cut + 1:].lower()
+                date = _iso(match)
+                meaning = meaning_of.get(date)
+                if meaning is None:
+                    if _FORK_EVENT.search(clause):
+                        problems.append(
+                            f"{surface}: a fork date of {date} — neither "
+                            f"FORK_POINT_DATE ({C.FORK_POINT_DATE}) nor "
+                            f"FORK_CLONE_DATE ({C.FORK_CLONE_DATE}): "
+                            f"\"…{flat[max(0, match.start() - 60):match.end()]}\" (B349)")
+                    continue
+                found = [(clause.rfind(word), means) for word, means in _FORK_LABELS
+                         if word in clause]
+                label = max(found)[1] if found else None
+                mentions.append((surface, date, meaning))
+                if label != meaning:
+                    problems.append(
+                        f"{surface}: {date} is {named[meaning]}, and the clause "
+                        f"stating it {'says ' + repr(label) if label else 'has no label'}: "
+                        f"\"…{flat[max(0, match.start() - 60):match.end()]}\" (B349)")
+    return mentions, problems
+
+
+def _fork_surfaces() -> dict:
+    """What a reader is told, by file — plus the ledger as it would be rendered,
+    since `LEDGER.md` is checked against `render()` separately."""
+    surfaces = {}
+    for name in _FORK_SURFACES:
+        path = ROOT / name
+        if path.exists():
+            surfaces[name] = path.read_text(encoding="utf-8")
+    surfaces["LEDGER.md"] = render()
+    return surfaces
+
+
+def _fork_date_problems(surfaces: dict = None) -> list:
+    """`B349`. Two dates, two meanings, each labelled wherever it is written.
+
+    `FORK_POINT_DATE` is when `b4d1293` was committed upstream; `FORK_CLONE_DATE`
+    is when this repository's own history began. `NOTICE` states both on
+    labelled lines and both are pinned here — the row asked for the fork point
+    against `NOTICE`, and the start of the fork was already pinned. Every other
+    surface is read by `_fork_date_mentions`.
     """
-    notice = ROOT / "NOTICE"
-    if not notice.exists():
+    if surfaces is None:
+        surfaces = _fork_surfaces()
+    text = surfaces.get("NOTICE")
+    if text is None:
         return ["NOTICE is missing — the AGPL §5(a) modification notice is the file"]
-    text = notice.read_text(encoding="utf-8")
-    stated = re.search(r"Date of fork\s*:\s*(\d{4}-\d{2}-\d{2})", text)
-    if stated is None:
-        return ["NOTICE no longer carries a `Date of fork:` line"]
-    clone = getattr(C, "FORK_CLONE_DATE", None)
-    if clone is None:
-        return ["claims.py no longer defines FORK_CLONE_DATE — see B349"]
+    for name in ("FORK_POINT_DATE", "FORK_CLONE_DATE"):
+        if getattr(C, name, None) is None:
+            return [f"claims.py no longer defines {name} — see B349"]
     problems = []
-    if clone == getattr(C, "FORK_POINT_DATE", object()):
+    if C.FORK_CLONE_DATE == C.FORK_POINT_DATE:
         problems.append(
             "FORK_CLONE_DATE and FORK_POINT_DATE are the same date. They are two "
-            "different events — the upstream commit, and the clone — and if they "
-            "really coincide, say so where they are defined (B349).")
-    if stated.group(1) != clone:
+            "different events — the upstream commit, and the start of the fork — "
+            "and if they really coincide, say so where they are defined (B349).")
+    began = re.search(r"Date of fork\s*:\s*(\d{4}-\d{2}-\d{2})", text)
+    point = re.search(r"Fork point\s*:\s*committed upstream\s+(\d{4}-\d{2}-\d{2})", text)
+    if began is None:
+        problems.append("NOTICE no longer carries a `Date of fork:` line")
+    elif began.group(1) != C.FORK_CLONE_DATE:
         problems.append(
-            f"NOTICE says the fork is dated {stated.group(1)} and claims.py's "
-            f"FORK_CLONE_DATE is {clone}. These are the same fact in two files and "
-            f"one of them has moved (B349).")
+            f"NOTICE says the fork is dated {began.group(1)} and claims.py's "
+            f"FORK_CLONE_DATE is {C.FORK_CLONE_DATE}. These are the same fact in "
+            f"two files and one of them has moved (B349).")
+    if point is None:
+        problems.append(
+            "NOTICE no longer carries a `Fork point: committed upstream <date>` line")
+    elif point.group(1) != C.FORK_POINT_DATE:
+        problems.append(
+            f"NOTICE says the fork point was committed upstream on "
+            f"{point.group(1)} and claims.py's FORK_POINT_DATE is "
+            f"{C.FORK_POINT_DATE}. These are the same fact in two files and one "
+            f"of them has moved (B349).")
+    problems.extend(_fork_date_mentions(surfaces)[1])
     return problems
 
 
@@ -462,7 +559,8 @@ def render() -> str:
     a("# Pantheon — the proof ledger")
     a("")
     a(f"> A fork of **Odysseus** (`{C.UPSTREAM_REMOTE}`, AGPL-3.0-or-later).")
-    a(f"> Fork point `{C.FORK_POINT}`, {C.FORK_POINT_DATE} — *{C.FORK_POINT_SUBJECT}*.")
+    a(f"> Fork point `{C.FORK_POINT}`, committed upstream {C.FORK_POINT_DATE} — "
+      f"*{C.FORK_POINT_SUBJECT}*.")
     a(f"> Every figure below measured {C.MEASURED_ON}.")
     a("")
     a("**This file is generated.** It is rendered from `.pantheon/ledger/claims.py` by")

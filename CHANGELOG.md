@@ -82,7 +82,9 @@ operator upgrading from a commit rather than from a tag should read all of it.
 
 ### Diverged from Odysseus
 
-Forked from `pewdiepie-archdaemon/odysseus` @ `b4d1293` (branch `dev`) on 2026-08-24.
+Forked from `pewdiepie-archdaemon/odysseus` @ `b4d1293` (branch `dev`), which was
+committed upstream on 2026-08-20; the fork began on 2026-08-24 (UTC), with this
+repository's first commit of its own, `a4c44567`.
 
 #### Before the fork was named — local customisation (branch `custom`)
 

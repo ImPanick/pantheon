@@ -3,7 +3,7 @@
 # Pantheon — the proof ledger
 
 > A fork of **Odysseus** (`pewdiepie-archdaemon/odysseus`, AGPL-3.0-or-later).
-> Fork point `b4d1293`, 2026-08-20 — *fix(agent): drop the empty assistant turn from an approved-action replay (#6124)*.
+> Fork point `b4d1293`, committed upstream 2026-08-20 — *fix(agent): drop the empty assistant turn from an approved-action replay (#6124)*.
 > Every figure below measured 2026-09-11.
 
 **This file is generated.** It is rendered from `.pantheon/ledger/claims.py` by
