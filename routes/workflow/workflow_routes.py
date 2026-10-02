@@ -163,7 +163,44 @@ def setup_workflow_routes(task_scheduler) -> APIRouter:
         out["graph"] = store.stored_graph(wf)
         out["trigger_task"] = _task_to_dict(trigger, workflow_id=wf.id) if trigger is not None else None
         out["versions_kept"] = store.versions_kept(db, wf)
+        checking = check_plans(db, trigger, out["graph"])
+        if checking is not None:
+            out["plans"], out["plans_declined"] = checking
         return out
+
+    def check_plans(db, trigger, graph):
+        """`B1132`. While a step is marked "check me", what each marked step
+        would do: `{node_id: [line]}` — the workflow dry run's own plan of it
+        (`TaskScheduler._plan_workflow_node`, one planner, `Law 7`; a step it
+        would not run says why first) — and, when the engine would not run the
+        document at all (an import whose Integration is missing, say), no
+        plans and its sentence (`plans_declined`), as the dry run records.
+        `None` when no step is marked.
+
+        Before this row the banner and *Check them now* asked the existing
+        dry-run door (`POST /api/tasks/{id}/run?dry=true`) once per saved
+        version, and each asking recorded a `skipped` "Dry run" in the Runs —
+        checking a draft read as having run it, and a drive's run-wait picked
+        the check's dry run up as the newest run. Checking is reading: it
+        records nothing. A dry run a person asks for (*Show me what this would
+        do*) is still recorded (`Law 1`)."""
+        if trigger is None:
+            return None
+        marked = [n for n in store.nodes_of(graph)
+                  if isinstance(n, dict) and isinstance(n.get("unchecked"), dict)]
+        if not marked:
+            return None
+        _wf, parsed, refused = task_scheduler._load_workflow(db, trigger)
+        if refused or parsed is None:
+            return {}, refused or "Nothing was planned."
+        by_id = {str(n.get("id")): n for n in store.nodes_of(parsed)}
+        plans = {}
+        for mark in marked:
+            node_id = str(mark.get("id"))
+            steps, declined = task_scheduler._plan_workflow_node(db, trigger, by_id.get(node_id, mark))
+            lines = [str(s.get("detail")) for s in steps if isinstance(s, dict) and s.get("detail")]
+            plans[node_id] = ([f"Would not run: {declined}"] if declined else []) + lines
+        return plans, None
 
     # ── 1, 2: the list, and a new one ────────────────────────────────────────
 
