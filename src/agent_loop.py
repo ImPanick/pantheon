@@ -7864,10 +7864,10 @@ async def stream_agent_loop(
                 and not _pan_clamped_tool_allowed
             ):
                 if blocked_by_tool_policy:
-                    blocked_name = next(
-                        name for name in policy_names if tool_policy.blocks(name)
-                    )
-                    reason = tool_policy.reason_for(blocked_name)
+                    # `B1101`. One rule with the dispatcher's backstop: the
+                    # called spelling first, so both name the same one.
+                    reason = tool_policy.refusal_for(
+                        policy_names, called=block.tool_type)
                 else:
                     reason = (
                         f"Tool '{block.tool_type}' is disabled by the current "
