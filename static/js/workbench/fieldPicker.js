@@ -259,7 +259,7 @@ export function openFieldPicker(anchor, { load, extra = [], holdEscape = null, l
 export function decorateField(input, { slot = null, pick = null, labelOf = null, field = '' } = {}) {
   const mapping = slot && (slot.mapping === 'value' || slot.mapping === 'never') ? slot.mapping : null;
   const box = _el('div', 'wf-slot');
-  if (field) box.dataset.field = String(field);
+  if (field) box.dataset.slotFor = String(field);
   if (mapping) box.dataset.mapping = mapping;
   const problem = _el('p', 'wf-slot-problem');
   problem.setAttribute('role', 'alert');
