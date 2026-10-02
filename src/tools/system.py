@@ -15,6 +15,7 @@ from typing import Any, Dict, List, Optional
 
 from src.tools._common import _parse_tool_args
 from src import paced_http  # `B1014`: NO_PROXY ranges, read for every client
+from src.workbench_rooms import INTEGRATIONS_PLACE  # `integrate-e`: the room's one name
 
 logger = logging.getLogger(__name__)
 
@@ -1265,7 +1266,7 @@ async def do_app_api(content: str, owner: Optional[str] = None) -> Dict:
             # its own `busy`; the sentence names all three.
             return {"error": "Resetting a workstation erases a person's home in it, checking it pushes an admin's settings to it, and taking over its screen or typing into it speaks for the person at the keyboard — all of these are the person's to do, from Settings → Workstation or the Workstation screen window. I can't do any of them from here, even if asked, because the request looks the same whether it came from you or from something I was reading. To use the screen myself, I use the `computer` tool.", "exit_code": 1}
         if _match_path.startswith("/api/mcp/servers"):
-            return {"error": "Registering, editing, toggling, deleting or calling an MCP server this way skips the command check that keeps a stdio server from running arbitrary code — it is the person's action, from Settings → MCP. Use the `manage_mcp` tool for a server the agent may add (it enforces that check), or ask the person to add it in the UI.", "exit_code": 1}
+            return {"error": f"Registering, editing, toggling, deleting or calling an MCP server this way skips the command check that keeps a stdio server from running arbitrary code — it is the person's action, from {INTEGRATIONS_PLACE}. Use the `manage_mcp` tool for a server the agent may add (it enforces that check), or ask the person to add it in the UI.", "exit_code": 1}
         if "/api/email/accounts" in _match_path:
             return {"error": "Don't use /api/email/accounts via app_api — it is owner-filtered in tool context and may return empty. Use the `list_email_accounts` email tool, then pass `account` to list_emails/read_email.", "exit_code": 1}
         if "/api/cookbook/packages/install" in _match_path:

@@ -78,6 +78,7 @@ export const ANSWER_WORDS = 'Allow once lets this one action run, and the next o
 export const CHECK_WORDS = Object.freeze({
   drafted: 'Drafted by the model — check it.',
   imported: 'Imported from a file — check it.',
+  assistant: 'Changed by your assistant — check it.',
 });
 /** Under it: who decided this step, and what makes it the person's. */
 export const CHECK_NOTES = Object.freeze({
@@ -85,6 +86,10 @@ export const CHECK_NOTES = Object.freeze({
     + 'until you say it looks right — or change it, which makes it yours.',
   imported: 'Whoever wrote the file chose this step. It does not run until you say it looks right — or change it, '
     + 'which makes it yours.',
+  // `integrate-e`: a mark clears only by a person; a change made by anything
+  // else (the assistant, an API token) puts one back.
+  assistant: 'Your assistant, or something holding an API token, changed this step after it was last checked. It does '
+    + 'not run until you say it looks right — or change it yourself, which makes it yours.',
 });
 /** Said once a step is checked. */
 export const CHECKED_WORDS = 'Checked. It runs as it is once the workflow is switched on.';

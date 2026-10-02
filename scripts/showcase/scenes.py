@@ -165,11 +165,15 @@ class Studio:
 
     def __init__(self, pw, base: str, username: str, password: str, colours: Dict[str, Dict[str, str]],
                  out: Path, *, force: bool = False, model=None, client=None,
-                 report: Optional[dict] = None, workstation: bool = False):
+                 report: Optional[dict] = None, workstation: bool = False,
+                 python: Optional[str] = None):
         self.base, self.username, self.password = base, username, password
         self.colours, self.out, self.force = colours, out, force
         self.model, self.client, self.report = model, client, report or {}
         self.workstation = workstation
+        # The interpreter Pantheon runs with (it has the `mcp` package): what a
+        # scene's demo MCP server is started with (`gif_describe`).
+        self.python = python
         self.blocked: List[str] = []
         self.results: List[Tuple[str, str]] = []
         # `Law 16`. Everything off this machine goes to a proxy address nothing
@@ -537,6 +541,62 @@ def gif_palette(st: Studio, theme: str):
     st.close_page(page)
 
 
+def gif_describe(st: Studio, theme: str):
+    """`P22-19`, the Workbench's headline flow: the first example sentence under
+    *Describe it* → *Draft it* → the draft arrives switched off, every step
+    marked "Drafted — check me", and where it sends things → *Check them now*
+    → *All look right* → *Switch on*.
+
+    The demo world has no chat server, so this scene registers one
+    (`demo_chat.py`) through the admin route for its own length and removes it
+    after, with the workflow it drafted — the scenes before it never see
+    either. Last in `SCENES` for that reason."""
+    import shutil
+    import tempfile
+
+    if not st.python:
+        raise RuntimeError("gif_describe starts a demo MCP server: Studio needs `python`")
+    posts = Path(tempfile.mkdtemp(prefix="pantheon-showcase-chat-")) / "posts.jsonl"
+    made = st.client.post("/api/mcp/servers", data={
+        "name": "Chat", "transport": "stdio", "command": st.python,
+        "args": json.dumps([str(Path(__file__).resolve().parent / "demo_chat.py"), str(posts)])})
+    made.raise_for_status()
+    server_id = made.json()["id"]
+    try:
+        page = st.open(theme, path="/#" + st.chat_id("week"))
+        page.locator("#tool-workbench-btn").click()
+        page.wait_for_selector("#workbench-modal .wf-shelf-new", timeout=30000)
+        page.wait_for_timeout(800)
+        rec = Recorder(page)
+        rec.hold(0.6)
+        rec.click(page.locator("#workbench-modal .wf-shelf-new").first, settle=0.9)
+        rec.click(page.locator("#workbench-modal .wf-new-example").first, settle=0.8)
+        rec.click(page.locator("#workbench-modal .wf-new-draft").first, settle=0.2)
+        page.wait_for_selector("#workbench-modal .wf-arrived", timeout=60000)
+        rec.hold(0.4)
+        _fit(page)
+        rec.hold(3.0)
+        rec.click(page.locator("#workbench-modal .wf-arrived button", has_text="Check them now").first, settle=0.2)
+        page.wait_for_selector("#workbench-modal .wf-check .wf-check-plan li:not(.wf-check-wait)", timeout=30000)
+        rec.hold(2.4)
+        rec.click(page.locator("#workbench-modal .wf-check-all").first, settle=0.2)
+        page.wait_for_selector("#workbench-modal .wf-check-switch", timeout=30000)
+        rec.hold(1.2)
+        rec.click(page.locator("#workbench-modal .wf-check-switch").first, settle=0.2)
+        page.wait_for_function("() => (document.querySelector('#workbench-modal .wf-switch') || {}).textContent"
+                               " === 'On'", timeout=30000)
+        rec.move(DESKTOP[0] - 80, DESKTOP[1] - 60, 0.6)
+        rec.hold(2.6)
+        st.gif(rec, "describe")
+        st.close_page(page)
+    finally:
+        for wf in (st.client.get("/api/workflows").json() or {}).get("workflows", []):
+            if wf.get("name") == "Bank mail to chat":
+                st.client.delete(f"/api/workflows/{wf['id']}")
+        st.client.delete(f"/api/mcp/servers/{server_id}")
+        shutil.rmtree(posts.parent, ignore_errors=True)
+
+
 def gif_themes(st: Studio, theme: str):
     """Sixteen palettes; a few of them, one click each."""
     page = st.open(theme, path="/#" + st.chat_id("week"))
@@ -612,4 +672,6 @@ SCENES: List[Scene] = [
     Scene("filing", "gif", "drag documents into folders", gif_filing),
     Scene("palette-gif", "gif", "Ctrl+K: what matches work, then skills, Enter", gif_palette),
     Scene("themes-gif", "gif", "switching palettes", gif_themes),
+    # Last: it registers a demo chat server for its own length (see its doc).
+    Scene("describe", "gif", "describe it: a drafted workflow, its steps checked, switched on", gif_describe),
 ]

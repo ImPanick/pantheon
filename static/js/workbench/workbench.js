@@ -41,6 +41,7 @@
 
 import { mountTaskFields } from '../tasks/taskFields.js';
 import { mountAutomations } from './workflowRoom.js';
+import { ROOM_NAMES } from './rooms.js';
 import { makeWindowDraggable } from '../windowDrag.js';
 import { registerMenuDismiss } from '../escMenuStack.js';
 import * as EscStack from '../escMenuStack.js';
@@ -153,15 +154,15 @@ function mountIntegrationsRoom(panel, opts = {}) {
 export const ROOMS = [
   {
     id: 'automations',
-    label: 'Automations',
+    label: ROOM_NAMES.automations,
     panel: 'workbench-room',
     // `P22-05` (wf-ui). The room is the chains canvas and, beside it, the
     // workflows (`workflowRoom.js`); the form and the step renderer are handed
     // in from here, as they were to the canvas.
     mount: (host, opts) => mountAutomations(host, { ...opts, mountTaskFields, renderSteps: renderRunSteps }),
   },
-  { id: 'skills', label: 'Skills', panel: 'workbench-room-skills', mount: mountSkillsRoom },
-  { id: 'integrations', label: 'MCP & Integrations', panel: 'workbench-room-integrations', mount: mountIntegrationsRoom },
+  { id: 'skills', label: ROOM_NAMES.skills, panel: 'workbench-room-skills', mount: mountSkillsRoom },
+  { id: 'integrations', label: ROOM_NAMES.integrations, panel: 'workbench-room-integrations', mount: mountIntegrationsRoom },
 ];
 
 let _wired = false;

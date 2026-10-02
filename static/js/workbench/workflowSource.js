@@ -194,10 +194,13 @@ export const RUN_WORDS = Object.freeze({
 });
 
 /** `P22-19`, `P22-24`. The words on a step nobody has checked yet, by the
- *  mark's `origin` (stored words, C-A: `drafted` | `imported`). */
+ *  mark's `origin` (stored words, C-A: `drafted` | `imported`; `integrate-e`:
+ *  `assistant` — a step changed by something that is not a person, which only
+ *  a person's check or save clears). */
 export const MARK_WORDS = Object.freeze({
   drafted: 'Drafted — check me',
   imported: 'Imported — check me',
+  assistant: 'Changed by your assistant — check me',
 });
 /** The origin of a mark, read safely: a known word, else `drafted` (a mark the
  *  server set is a mark whatever its origin says — fails closed). */

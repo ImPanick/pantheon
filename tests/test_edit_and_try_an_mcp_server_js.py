@@ -269,3 +269,81 @@ def test_build_draws_into_the_same_form_element_and_register_comes_back_to_it(bo
     """)
     assert o["panelHere"] is True and o["inForm"] is True and o["name"] == "weather"
     assert o["args"] == [[a] for a in REG["args"]]
+
+
+def test_register_again_after_an_edit_is_the_same_rows_edit_with_the_new_fingerprint(box):
+    """`integrate-e` (the integrator's call on mcp-build's B-NEW-2). A
+    registration pins the code (`--sha256`); after the author changes it the
+    relay runs nothing until an admin registers it again. *Register* on a build
+    already registered for that author and folder opens THAT row's Edit (the
+    admin route's `PUT`), the command and arguments the new registration's —
+    the new fingerprint — over the row's, and says what saving approves; not a
+    second row beside the first (`POST`). The panel says the row's state."""
+    old = "a" * 64
+    new = "b" * 64
+    pinned = dict(SRV, args=REG["args"] + ["--sha256", old], env={})
+    fresh = dict(REG, args=REG["args"] + ["--sha256", new])
+    o = _case(box, f"""
+        window._isAdmin = true;
+        const PINNED = {json.dumps(pinned)}, FRESH = {json.dumps(fresh)};
+        server.answer = (url, method) => {{
+          if (url === '/api/mcp/scaffold') return [200, {{ servers: [{{ name: 'weather', tools: ['get_forecast'],
+            modified: 2, checked: 'changed' }}], workstation: {{ available: true, why: null }} }}];
+          if (url === '/api/mcp/scaffold/weather') return [200, {{ name: 'weather', source: '', registration: FRESH,
+            agent_refusal: '', registered: 'changed' }}];
+          if (url === '/api/mcp/servers' && method === 'GET') return [200, [PINNED]];
+          if (url === '/api/mcp/servers/srv1' && method === 'PUT') return [200, {{ id: 'srv1', connected: true,
+            tool_count: 1, is_enabled: true }}];
+          return [200, []];
+        }};
+        await showMcpForm('new');
+        await settle();
+        click(el('uf-mcp-build-mount').querySelector('[data-mcp-build-open]'));
+        await settle();
+        click(formEl.querySelector('.mcp-build-register'));
+        await settle();
+        const filled = {{ heading: text(formEl.querySelector('h2')), name: el('uf-mcp-name').value,
+          args: rowsOf(el('uf-mcp-args-mount')), note: text(el('uf-mcp-prefill-note')),
+          preview: text(el('uf-mcp-preview')) }};
+        click(el('uf-mcp-save'));
+        await settle();
+        out({{ filled, writes: writes() }});
+    """)
+    f = o["filled"]
+    assert f["heading"] == "Edit weather" and f["name"] == "weather"
+    assert f["args"] == [[a] for a in fresh["args"]], "the new fingerprint over the row's"
+    assert f["preview"].endswith(f"--sha256 {new}")
+    assert f["note"] == ("Registered before, with other code. Saving it registers the code as it is now — "
+                         "that is what you are approving; until then its tools do not run.")
+    (method, url, body), = o["writes"]
+    assert (method, url) == ("PUT", "/api/mcp/servers/srv1"), "its own row, not a second one"
+    assert json.loads(body["args"]) == fresh["args"]
+
+
+def test_the_build_panel_says_where_a_registration_stands(box):
+    """`registered` (`no` | `current` | `changed`) in words beside *Register*;
+    a non-admin sees it above the fields to send."""
+    o = _case(box, """
+        window._isAdmin = false;
+        server.answer = (url) => {
+          if (url === '/api/mcp/scaffold') return [200, { servers: [{ name: 'weather', tools: ['get_forecast'],
+            modified: 2, checked: 'changed' }], workstation: { available: true, why: null } }];
+          if (url === '/api/mcp/scaffold/weather') return [200, { name: 'weather', source: '', registration: REG,
+            agent_refusal: '', registered: 'changed' }];
+          return [200, []];
+        };
+        await showMcpForm('new');
+        await settle();
+        click(el('uf-mcp-build-mount').querySelector('[data-mcp-build-open]'));
+        await settle();
+        click(formEl.querySelector('.mcp-build-register'));
+        await settle();
+        const box = formEl.querySelector('.mcp-build-registration');
+        out({ state: text(box.querySelector('.mcp-build-registered')),
+              stateWord: box.querySelector('.mcp-build-registered').dataset.registered,
+              lead: text(box.querySelector('.mcp-build-admin-only')) });
+    """)
+    assert o["stateWord"] == "changed"
+    assert o["state"] == ("Registered with other code: it was changed since, so its tools do not run until an "
+                          "admin registers it again.")
+    assert o["lead"] == "Only an admin registers a server. Send them these fields:"

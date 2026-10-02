@@ -5551,7 +5551,13 @@ async function initUnifiedIntegrations() {
   // with id `unified-intg-form`, wherever `P22-21` has put it.
   async function showMcpForm(editId, options) {
     const editing = options && options.edit ? options.edit : null;
-    const prefill = editing || (options && options.registration) || null;
+    const registration = options && options.registration ? options.registration : null;
+    // `integrate-e`. A built server registered AGAIN after its code changed:
+    // its own row (Edit, `PUT`), with the registration's command and
+    // arguments — the new fingerprint — over the row's.
+    const prefill = editing && registration
+      ? { ...editing, command: registration.command, args: registration.args }
+      : (editing || registration || null);
     // Toggle an in-flight loading state on a button (disabled + dimmed + label).
     function _setBtnLoading(btn, loading, label) {
       if (!btn) return;
@@ -5852,7 +5858,11 @@ async function initUnifiedIntegrations() {
         el('uf-mcp-transport').dispatchEvent(new Event('change'));
         _renderMcpPreview();
       }
-      if (!editing && options && options.registration) {
+      if (editing && registration) {
+        el('uf-mcp-prefill-note').textContent = 'Registered before, with other code. Saving it registers the code '
+          + 'as it is now — that is what you are approving; until then its tools do not run.';
+      }
+      if (!editing && registration) {
         const regArgs = Array.isArray(prefill.args) ? prefill.args : [];
         const at = regArgs.indexOf('--owner');
         const who = at >= 0 ? String(regArgs[at + 1] || '') : '';
@@ -5860,10 +5870,37 @@ async function initUnifiedIntegrations() {
         el('uf-mcp-prefill-note').textContent = 'Built in a workstation. Once you save it, every assistant on this '
           + `Pantheon can call it, and each call runs in ${whose}, with their files — nothing they wrote runs as Pantheon.`;
       }
+      // `integrate-e`. *Register* on a server built in a workstation: a server
+      // already registered for the same author and folder is registered AGAIN —
+      // its own row, through Edit (`PUT`, `require_admin`), with the new
+      // fingerprint — rather than a second row beside the first. The relay's flags
+      // are read from the registration (`--owner`, `--server`), not restated.
+      function _relayOf(args) {
+        const a = Array.isArray(args) ? args.map(String) : [];
+        if (!a.length || !/(^|\/)workstation_mcp\.py$/.test(a[0])) return null;
+        const flag = (f) => { const i = a.indexOf(f); return i > 0 ? a[i + 1] : null; };
+        return { owner: flag('--owner'), server: flag('--server') };
+      }
+      async function registerBuilt(registration) {
+        const want = _relayOf(registration && registration.args);
+        let existing = null;
+        if (want) {
+          try {
+            const r = await fetch('/api/mcp/servers', { credentials: 'same-origin' });
+            const list = r.ok ? await r.json() : [];
+            existing = (Array.isArray(list) ? list : []).find((s) => {
+              const got = _relayOf(s && s.args);
+              return got && got.owner === want.owner && got.server === want.server;
+            }) || null;
+          } catch (_) { existing = null; }
+        }
+        if (existing) return showMcpForm('new', { edit: existing, registration });
+        return showMcpForm('new', { registration });
+      }
       // `P22-22`. *Build an MCP server*, drawn into this same form element.
       const showMcpBuild = () => mountMcpBuild(formEl, {
         isAdmin: !!window._isAdmin,
-        onRegister: (registration) => showMcpForm('new', { registration }),
+        onRegister: registerBuilt,
         onClose: () => { formEl.style.display = 'none'; },
       });
       if (!prefill) mountMcpBuildDoor(el('uf-mcp-build-mount'), { onOpen: showMcpBuild });

@@ -6459,9 +6459,15 @@ async def stream_agent_loop(
                 + "\n\n"
             )
 
+        # `integrate-e`. `stderr` too, as the main path reads it (`stdout or
+        # stderr or error`): an MCP tool that answers `isError` comes back as
+        # `stdout: ""` and its sentence on `stderr` (`McpManager._do_call`), so
+        # the card a person had just allowed read "(no output)" — a registered
+        # relay's "an admin registers it again" (`P22-22`) among them.
         approved_output = str(
             approved_result.get("output")
             or approved_result.get("stdout")
+            or approved_result.get("stderr")
             or approved_result.get("response")
             or approved_result.get("results")
             or approved_result.get("content")

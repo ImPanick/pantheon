@@ -323,9 +323,12 @@ def setup_workflow_routes(task_scheduler) -> APIRouter:
                         "dropped": dropped}
             if not isinstance(body["graph"], (dict, str)):
                 raise WorkflowRefused(400, "graph must be the workflow's document.")
+            # `integrate-e`: who is saving decides what a changed step's mark
+            # becomes — a person's change clears it, anything else's sets it.
             saved = store.save_document(
                 db, wf, trigger, name=body.get("name"), graph=body["graph"],
-                base_version=body.get("base_version"), check=check)
+                base_version=body.get("base_version"), check=check,
+                by_person=request_is_a_person(request))
             if saved == "check":
                 return {"ok": True, "check": True}
             return {"workflow": doc(db, wf, trigger), "saved": saved}
@@ -399,7 +402,8 @@ def setup_workflow_routes(task_scheduler) -> APIRouter:
             wf = store.owned_workflow(db, workflow_id, _owner(request))
             trigger = store.require_trigger(db, wf)
             saved = store.restore_version(db, wf, trigger, version,
-                                          base_version=body.get("base_version"))
+                                          base_version=body.get("base_version"),
+                                          by_person=request_is_a_person(request))
             return {"workflow": doc(db, wf, trigger), "saved": saved}
         finally:
             db.close()

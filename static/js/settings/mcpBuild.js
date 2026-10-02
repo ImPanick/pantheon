@@ -304,6 +304,17 @@ export function registrationText(reg) {
 
 const RUNS_AS_AUTHOR = 'Once it is registered, every assistant on this Pantheon can call it, '
   + 'and each call runs in your workstation account, with your files.';
+/** `integrate-e`. A registration pins the code an admin approved
+ *  (`workstation_mcp.PIN_FLAG`); the scaffold's read says where it stands
+ *  (`registered`: `no` | `current` | `changed`). */
+export const REGISTERED_WORDS = Object.freeze({
+  current: 'Registered, with the code as it is now.',
+  changed: 'Registered with other code: it was changed since, so its tools do not run until an admin '
+    + 'registers it again.',
+});
+/** Said after a person saves the code of a server that is registered. */
+export const SAVED_REGISTERED = 'Saved. It is registered, so its tools do not run this code until an admin '
+  + 'registers it again (Register).';
 
 /**
  * The Build panel into `host`. `isAdmin` decides what *Register* does:
@@ -518,12 +529,12 @@ export async function mountMcpBuild(host, { isAdmin = false, onRegister, onClose
         save.disabled = true;
         msg.textContent = 'Saving…';
         try {
-          await _ask(`/api/mcp/scaffold/${encodeURIComponent(name)}`, {
+          const saved = await _ask(`/api/mcp/scaffold/${encodeURIComponent(name)}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ source: area.value }),
           });
-          msg.textContent = 'Saved.';
+          msg.textContent = saved && saved.registered ? SAVED_REGISTERED : 'Saved.';
           await c.check();
         } catch (err) {
           msg.textContent = `Not saved — ${String((err && err.message) || err)}`;
@@ -549,8 +560,15 @@ export async function mountMcpBuild(host, { isAdmin = false, onRegister, onClose
       }
       const note = _el('p', 'mcp-build-runs-as', RUNS_AS_AUTHOR);
       note.style.cssText = _NOTE + 'opacity:0.8;';
+      const state = Object.prototype.hasOwnProperty.call(REGISTERED_WORDS, got.registered)
+        ? _el('p', 'mcp-build-registered', REGISTERED_WORDS[got.registered]) : null;
+      if (state) {
+        state.dataset.registered = got.registered;
+        state.style.cssText = _NOTE + (got.registered === 'changed' ? 'font-weight:600;' : '');
+      }
+      const said = state ? [state, note] : [note];
       if (isAdmin && typeof onRegister === 'function') {
-        register.replaceChildren(note);
+        register.replaceChildren(...said);
         onRegister(got.registration);
         return;
       }
@@ -558,7 +576,7 @@ export async function mountMcpBuild(host, { isAdmin = false, onRegister, onClose
       lead.style.cssText = _NOTE + 'font-weight:600;';
       const pre = _el('pre', 'mcp-build-fields', registrationText(got.registration));
       pre.style.cssText = _PRE;
-      register.replaceChildren(lead, pre, note);
+      register.replaceChildren(...(state ? [state] : []), lead, pre, note);
     };
 
     checkBtn.addEventListener('click', (e) => { if (e && e.preventDefault) e.preventDefault(); c.check(); });

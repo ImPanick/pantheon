@@ -120,8 +120,19 @@ def station(tmp_path, monkeypatch):
 
 @pytest.fixture
 def rows(monkeypatch):
-    """A real SQLite `mcp_servers` table holding one server, behind both
-    names a route could reach it by."""
+    """A real SQLite `mcp_servers` table holding one server, behind the three
+    names a route reaches it by.
+
+    `src.mcp_manager.SessionLocal` is the third (`integrate-e`: new server ids,
+    tool overrides, disabled tools). Without it the admin route reached the
+    session's `sqlite:///:memory:` engine from TestClient's portal threads, a
+    new one per request (measured: nine `asyncio-portal-*` threads over
+    `test_a_registered_server_runs_the_code_an_admin_registered`). That engine
+    is a `SingletonThreadPool` of five: past five threads it closes the oldest
+    connection — the main thread's, and with it the in-memory schema — and a
+    later file's real `manage_mcp` read "no such table: mcp_servers" (measured:
+    that file's first five cases, then
+    `test_mcp_manage_mcp_schema_names_its_arguments`; the pool 1 → 5)."""
     import core.database as cdb
     from core.database import Base, McpServer
     from sqlalchemy import create_engine
@@ -134,6 +145,7 @@ def rows(monkeypatch):
     factory = sessionmaker(bind=engine)
     monkeypatch.setattr(cdb, "SessionLocal", factory)
     monkeypatch.setattr("routes.mcp.mcp_routes.SessionLocal", factory)
+    monkeypatch.setattr("src.mcp_manager.SessionLocal", factory)
     db = factory()
     db.add(McpServer(id="pre1", name="already-here", transport="stdio", command="npx",
                      args="[]", env="{}", is_enabled=False))
@@ -216,7 +228,11 @@ def test_the_files_land_in_the_authors_own_workstation_home(client, station):
     assert made["check"]["tools"] == ["get_forecast"]
     reg = made["registration"]
     assert reg["transport"] == "stdio" and reg["command"] == sys.executable and reg["env"] == {}
-    assert reg["args"] == [wm.RELAY_PATH, "--owner", "ann", "--server", "weather"]
+    # `integrate-e`: the registration pins the code it was made for — the
+    # harness's fingerprint, read in ann's account (`--sha256`).
+    assert reg["args"][:5] == [wm.RELAY_PATH, "--owner", "ann", "--server", "weather"]
+    assert reg["args"][5] == "--sha256" and len(reg["args"]) == 7
+    assert reg["args"][6] == asyncio.run(wm.ws_fingerprint("ann", "weather"))
     assert os.path.basename(reg["args"][0]) == "workstation_mcp.py"
     # every exec ran the one fixed program, as ann, with the job on stdin
     assert station.execs and all(e["account"] == account_of("ann") for e in station.execs)
@@ -255,7 +271,8 @@ def test_the_list_says_what_the_last_check_found_and_when_it_went_stale(client, 
     source = client.get("/api/mcp/scaffold/weather", headers=_as("ann")).json()["source"]
     os.utime(_home(station, "ann") / "mcp-servers/weather/server.py", None)
     assert client.put("/api/mcp/scaffold/weather", headers=_as("ann"),
-                      json={"source": source + "\n# mine\n"}).json() == {"saved": True}
+                      json={"source": source + "\n# mine\n"}).json() == {"saved": True,
+                                                                         "registered": False}
     entry, = client.get("/api/mcp/scaffold", headers=_as("ann")).json()["servers"]
     assert entry["checked"] == "changed"
 
@@ -299,7 +316,7 @@ def test_a_hostile_server_name_stays_in_the_servers_folder(client, station, host
     if r.status_code == 200:
         slug = r.json()["name"]
         assert (home / "mcp-servers" / slug / "server.py").is_file()
-        assert r.json()["registration"]["args"][-1] == slug
+        assert r.json()["registration"]["args"][4] == slug
     else:
         assert r.status_code == 400
     made = sorted(str(p.relative_to(home)) for p in home.rglob("*") if p.is_file()) \

@@ -245,10 +245,56 @@ CONVERSATIONS: List[Dict[str, Any]] = [
     },
 ]
 
+# `integrate-e`. The README's *Describe it* animation: the drafter's answer to
+# the first example sentence. It reads the palette it was sent for the chat
+# server's `send_message` — the qualified name carries the server's id, which a
+# capture only knows once the scene has registered `demo_chat.py` — as a model
+# reads its prompt, and drafts the gate's workflow: mail from the bank → a
+# one-line summary → a post to #bank. `needs: "drafter"`: never played as a chat.
+DESCRIBE_SENTENCE = "When mail arrives from my bank, summarise it and post it to my chat server."
+
+
+def _bank_draft(ctx: Dict[str, Any]) -> Dict[str, Any]:
+    found = re.findall(r"mcp__[0-9A-Za-z_-]+?__send_message", ctx.get("sent") or "")
+    return {
+        "name": "Bank mail to chat",
+        "trigger": {"type": "event", "event": "email_received"},
+        "steps": [
+            {"id": "from-the-bank", "kind": "if", "label": "Is it from the bank?",
+             "config": {"join": "all", "conditions": [
+                 {"left": "{{ steps.start.data.from_address }}", "op": "contains", "right": "bank"}]}},
+            {"id": "summarise", "kind": "llm", "label": "Summarise it",
+             "config": {"prompt": "Summarise this mail from my bank in one line for my chat. "
+                                  "Subject: {{ steps.start.data.subject }}"}},
+            {"id": "post", "kind": "mcp", "label": "Post to #bank",
+             "config": {"tool": found[0] if found else "send_message",
+                        "args": {"channel": "#bank", "text": "{{ steps.summarise.text }}"}}},
+        ],
+        "arrows": [{"from": "from-the-bank", "port": "then", "to": "summarise"},
+                   {"from": "summarise", "port": "success", "to": "post"}],
+        "missing": [],
+    }
+
+
+CONVERSATIONS.append({"key": "describe", "needs": "drafter", "plain": True, "title": "Draft",
+                      "turns": [{"user": DESCRIBE_SENTENCE, "steps": [{"say": _bank_draft}]}]})
+
+
 # Requests Pantheon makes on the side — a title for a new chat, memory and
 # skill extraction after a turn. They are the non-streaming calls without tools
 # (measured: the agent's own rounds always stream), and they are answered
 # plainly so nothing is invented: the script's title, no facts, no skill.
+#
+# `integrate-e` (wb-canvas-e's `B-NEW-2`): the Workbench's drafter (`P22-19`)
+# and *Why did this fail?* (`P22-20`) ask a model the same way — one plain,
+# non-streaming request with no tools, through `workflow_assist.ask_for_json` —
+# and every such request was answered "OK", so neither could be scripted and
+# the drafter said "its answer was not a JSON object". A conversation marked
+# `"plain": True` answers a plain request whose person's words are its turn's
+# with that step's `say` (a dict is sent as JSON text; a function of the turn
+# reads what it was sent first); everything else plain is a side request, as
+# before. The model's words are still the script's; what Pantheon makes of
+# them is the product.
 _SIDE = [
     (re.compile(r"^\s*Generate a short title", re.I), None),       # the script's title
     (re.compile(r"memory extraction assistant", re.I), "[]"),
@@ -287,7 +333,9 @@ def _find_turn(messages: List[Dict[str, Any]], conversations: Optional[List[Dict
                            if m.get("role") in ("tool", "user")]
                 m = _TODAY.search(said)
                 today = _dt.date.fromisoformat(m.group(1)) if m else _dt.date.today()
-                return conv, turn, not after, {"results": results, "today": today}
+                sent = "\n".join(_text(m.get("content")) for m in messages)
+                return conv, turn, not after, {"results": results, "today": today, "said": said,
+                                               "sent": sent}
     return None, None, True, {}
 
 
@@ -375,6 +423,21 @@ class _Handler(BaseHTTPRequestHandler):
                                               "param": None, "code": 400}})
 
         side = None
+        if not body.get("stream") and not body.get("tools") and (conv or {}).get("plain"):
+            step_no, ctx["results"] = self.progress.advance(turn, first, ctx["results"])
+            said = turn["steps"][step_no].get("say")
+            # A `say` may read what it was sent (`ctx["sent"]`, every message —
+            # the drafter's palette is a turn before the person's words), as a
+            # model reads its prompt.
+            said = said(ctx) if callable(said) else said
+            text = said if isinstance(said, str) else json.dumps(said)
+            if self.log is not None:
+                self.log[-1]["plain"] = True
+            return self._json(200, {"id": "demo-" + uuid.uuid4().hex[:8], "object": "chat.completion",
+                                    "model": self.model_id,
+                                    "choices": [{"index": 0, "finish_reason": "stop",
+                                                 "message": {"role": "assistant", "content": text}}],
+                                    "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2}})
         if not body.get("stream") and not body.get("tools"):
             side = "OK"
             for pattern, answer in _SIDE:

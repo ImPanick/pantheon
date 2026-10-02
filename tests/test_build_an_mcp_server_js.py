@@ -27,10 +27,11 @@ from tests.helpers.mcp_build_sandbox import build
 pytestmark = pytest.mark.skipif(not shutil.which("node"), reason="node binary not on PATH")
 
 OFF = "The workstation is switched off. An admin turns it on in Settings → Workstation."
-REG = {"where": "Settings → Integrations → + → MCP Tool Server (administrators only)",
-       "route": "POST /api/mcp/servers", "name": "weather", "transport": "stdio",
-       "command": "/usr/local/bin/python",
-       "args": ["/app/src/workstation_mcp.py", "--owner", "ann", "--server", "weather"], "env": {}}
+# The registration the scaffold's read answers, from the real function
+# (`integrate-e`: it was a literal, and kept saying "Settings → Integrations"
+# and no fingerprint after both changed).
+PIN = "0123456789abcdef" * 4
+REG = __import__("src.workstation_mcp", fromlist=["ws_registration"]).ws_registration("ann", "weather", PIN)
 # As `workstation_mcp._tool_offer` sends it: the server's own read/write verdict included.
 OFFER = {"name": "get_forecast", "description": "Forecast for a place.",
          "input_schema": {"type": "object", "properties": {"text": {"type": "string",
@@ -224,9 +225,10 @@ def test_register_hands_an_admin_the_registration_and_a_non_admin_the_fields(box
     assert o["handed"] == [REG]
     assert o["adminSaw"].startswith("Once it is registered, every assistant")
     assert o["lead"] == "Only an admin registers a server. Send them these fields:"
-    assert o["fields"] == ("Name: weather\nTransport: stdio\nCommand: /usr/local/bin/python\n"
-                           "Arguments (one box each):\n  /app/src/workstation_mcp.py\n  --owner\n"
-                           "  ann\n  --server\n  weather\nEnvironment: leave empty")
+    assert o["fields"] == (f"Name: weather\nTransport: stdio\nCommand: {REG['command']}\n"
+                           f"Arguments (one box each):\n  {REG['args'][0]}\n  --owner\n"
+                           f"  ann\n  --server\n  weather\n  --sha256\n  {PIN}\n"
+                           "Environment: leave empty")
     assert "runs in your workstation account" in o["note"]
     assert o["writes"] == 0  # nothing here registers anything
 
@@ -306,3 +308,31 @@ def test_the_words_for_an_answer(box):
     assert quiet["sections"] == [["What it answered", "(nothing)"]]
     assert quiet["notes"][0].startswith("The assistant has this tool switched off.")
     assert empty == "It started, and offers no tools yet."
+
+
+def test_saving_a_registered_servers_code_says_an_admin_registers_it_again(box):
+    """`integrate-e`: a registration pins the code, so a person's save of a
+    registered server's code is saved — and said to take its tools off the air
+    until an admin registers it again (the route's `registered`)."""
+    o = _case(box, """
+        server.answer = (url, method) => {
+          if (url === '/api/mcp/scaffold') return [200, { servers: [{ name: 'weather', tools: [], modified: 1,
+            checked: 'works' }], workstation: { available: true, why: null } }];
+          if (url === '/api/mcp/scaffold/weather' && method === 'GET') return [200, { name: 'weather',
+            source: '# server.py', registration: REG, agent_refusal: '', registered: 'current' }];
+          if (url === '/api/mcp/scaffold/weather' && method === 'PUT') return [200, { saved: true, registered: true }];
+          if (url.endsWith('/check')) return [200, { started: true, tools: ['get_forecast'], error: null,
+            offers: [OFFER], stderr: '' }];
+          return [404, {}];
+        };
+        await B.mountMcpBuild(host, {});
+        const card = host.querySelector('[data-mcp-build-server="weather"]');
+        click(card.querySelector('.mcp-build-edit'));
+        await settle();
+        card.querySelector('.mcp-build-code').value = '# server.py\\n# changed';
+        click(card.querySelector('.mcp-build-save'));
+        await settle();
+        out({ msg: text(card.querySelector('.mcp-build-save-msg')) });
+    """)
+    assert o["msg"] == ("Saved. It is registered, so its tools do not run this code until an admin registers it "
+                        "again (Register).")

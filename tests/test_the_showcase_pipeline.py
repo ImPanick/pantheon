@@ -394,3 +394,41 @@ def test_a_chat_that_leaves_the_script_is_refused(seeded):
     with pytest.raises(seed.SeedError, match="off its script"):
         seed.send_chat(client, report["model"]["endpoint_id"], None,
                        "Write me a limerick about sourdough starters, please.")
+
+
+def test_a_plain_conversation_answers_the_workbenchs_plain_requests_and_side_requests_stay_ok():
+    """`integrate-e` (wb-canvas-e's `B-NEW-2`). The drafter and *Why did this
+    fail?* ask one plain request — not streamed, no tools — and the stand-in
+    answered every such request "OK", so neither could be scripted. A
+    conversation marked `plain` now answers its own plain requests with the
+    step's `say` (a dict as JSON), the repair round with the next step; every
+    other plain request is still a side request."""
+    import json as _json
+    import urllib.request
+
+    draft = {"name": "Bank mail to chat", "steps": [], "arrows": []}
+    script = [{"key": "plain-draft", "plain": True, "title": "Draft",
+               "turns": [{"user": "when mail arrives from my bank",
+                          "steps": [{"say": draft}, {"say": "a repaired draft"}]}]}]
+
+    def ask(model, messages, **extra):
+        req = urllib.request.Request(model.base_url + "/chat/completions", method="POST",
+                                     data=_json.dumps({"model": demo_model.MODEL_ID,
+                                                       "messages": messages, **extra}).encode(),
+                                     headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=10) as res:
+            return _json.loads(res.read())["choices"][0]["message"]["content"]
+
+    log = []
+    with demo_model.DemoModel(conversations=script, log=log) as model:
+        first = [{"role": "system", "content": "Answer with one JSON object."},
+                 {"role": "user", "content": "What the person wants:\nwhen mail arrives from my bank, post it"}]
+        assert _json.loads(ask(model, first)) == draft
+        again = first + [{"role": "assistant", "content": "{}"},
+                         {"role": "user", "content": "That draft was refused. Answer again."}]
+        assert ask(model, again) == "a repaired draft"
+        side = [{"role": "system", "content": "You are a memory extraction assistant."},
+                {"role": "user", "content": "Something else entirely."}]
+        assert ask(model, side) == "[]"
+        assert ask(model, [{"role": "user", "content": "Not in any script."}]) == "OK"
+    assert [entry.get("plain", False) for entry in log] == [True, True, False, False]

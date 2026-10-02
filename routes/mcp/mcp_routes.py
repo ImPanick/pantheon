@@ -538,24 +538,61 @@ def setup_mcp_routes(mcp_manager: McpManager):
                 "check": check, "registration": made["registration"],
                 "agent_refusal": made["agent_refusal"]}
 
+    # `integrate-e` (the integrator's call on mcp-build's `B-NEW-2`): a
+    # registration pins the code (`workstation_mcp.PIN_FLAG`), and once a
+    # server is registered only a person changes its code here — the
+    # assistant's `app_api` loopback is refused (a bearer token already is,
+    # `require_user`). A person's change is the dev loop and is allowed; the
+    # relay then runs nothing until an admin registers it again.
+    ONLY_A_PERSON_EDITS_REGISTERED = (
+        "This server is registered, so only you can change its code, from the Workbench — not an "
+        "API token and not your assistant. An admin then registers it again before it runs.")
+    REGISTERED_NO, REGISTERED_CURRENT, REGISTERED_CHANGED = "no", "current", "changed"
+
+    def _registered_rows(owner, name):
+        from src import workstation_mcp as wm
+        db = SessionLocal()
+        try:
+            return wm.registered_as(db.query(McpServer).all(), owner, name)
+        finally:
+            db.close()
+
     @router.get("/scaffold/{name}")
     async def scaffold_read(name: str, request: Request):
-        """`server.py` as it is now, and what an admin registers it with."""
+        """`server.py` as it is now, what an admin registers it with (pinned to
+        this code's fingerprint), and whether it is registered: `registered`
+        is `no`, `current` (a registration pins this code) or `changed` (it is
+        registered, with other code — it does not run until registered again)."""
         from src import workstation_mcp as wm
         owner, auth = _scaffold_owner(request)
         source = await _scaffold_call(wm.ws_read_source(owner, name, auth_manager=auth))
-        registration = wm.ws_registration(owner, name)  # the name passed the read's rule
+        pin = await _scaffold_call(wm.ws_fingerprint(owner, name, auth_manager=auth))
+        registration = wm.ws_registration(owner, name, pin)  # the name passed the read's rule
+        rows = _registered_rows(owner, name)
+        pins = {(wm.relay_target(r.command, json.loads(r.args or "[]")) or {}).get("pin")
+                for r in rows}
+        registered = (REGISTERED_NO if not rows else
+                      REGISTERED_CURRENT if pin in pins else REGISTERED_CHANGED)
         return {"name": registration["name"], "source": source, "registration": registration,
-                "agent_refusal": wm.agent_refusal(registration)}
+                "agent_refusal": wm.agent_refusal(registration), "registered": registered}
 
     @router.put("/scaffold/{name}")
     async def scaffold_write(name: str, request: Request):
-        """Replace an existing server's `server.py` with `{source}`."""
+        """Replace an existing server's `server.py` with `{source}`. Once it
+        is registered, a person's only; the answer says so (`registered`)."""
         from src import workstation_mcp as wm
+        from src.auth_helpers import request_is_a_person
         owner, auth = _scaffold_owner(request)
         body = await _scaffold_body(request)
-        return await _scaffold_call(wm.ws_write_source(owner, name, body.get("source"),
-                                                       auth_manager=auth))
+        try:
+            registered = bool(_registered_rows(owner, name))
+        except wm.BuildError as exc:
+            raise HTTPException(400, str(exc))
+        if registered and not request_is_a_person(request):
+            raise HTTPException(403, ONLY_A_PERSON_EDITS_REGISTERED)
+        saved = await _scaffold_call(wm.ws_write_source(owner, name, body.get("source"),
+                                                        auth_manager=auth))
+        return {**saved, "registered": registered}
 
     @router.post("/scaffold/{name}/check")
     async def scaffold_check(name: str, request: Request):

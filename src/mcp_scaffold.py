@@ -53,6 +53,10 @@ import re
 import sys
 from typing import Any, Dict, List, Optional, Sequence
 
+# `integrate-e`: where a server is registered, in the Workbench's own words —
+# one place for the room's name (`Law 7`); plain constants, no app import.
+from src.workbench_rooms import ADD_MCP_SERVER_PATH, INTEGRATIONS_PLACE
+
 __all__ = [
     "ScaffoldError",
     "scaffold_root",
@@ -291,8 +295,8 @@ async def {fn}(arguments: dict) -> str:
 # workstation's is the panel's (`P22-22`), because a workstation has no
 # `pantheon-mcp-new` on its PATH.
 CHECK_HINT_CLI = "Run `pantheon-mcp-new {name} --check` after an edit"
-CHECK_HINT_WORKSTATION = ("Press Check beside it in Pantheon (Settings → Integrations → "
-                          "+ → MCP Tool Server → Build an MCP server) after an edit")
+CHECK_HINT_WORKSTATION = (f"Press Check beside it in Pantheon ({ADD_MCP_SERVER_PATH} → "
+                          f"Build an MCP server) after an edit")
 
 
 def render_server_py(name: str, tools: Sequence[str], description: str = "",
@@ -521,7 +525,7 @@ see the whole chain work before you write anything. Section 2 of
 
 ## Register it — in the browser
 
-**Settings → Integrations → + → MCP Tool Server.** You need to be an
+**{ADD_MCP_SERVER_PATH}.** You need to be an
 administrator.
 
 | Field | What to put in it |
@@ -563,7 +567,7 @@ administrator's action and lives behind an administrator's door.
   `sys.__stdout__` yourself is the one way to break it.
 - **Check your work with `pantheon-mcp-new {name} --check`.** It starts the
   file exactly as Pantheon does and tells you what broke.
-- **After you edit it, reconnect the server** (Settings → Integrations, or
+- **After you edit it, reconnect the server** ({INTEGRATIONS_PLACE}, or
   `POST /api/mcp/servers/{{id}}/reconnect`). A running server is a running
   process; it does not re-read the file.
 - **It starts with Pantheon's own environment.** Every variable Pantheon was
@@ -615,7 +619,7 @@ see the whole chain work before you write anything. Section 2 of
 
 ## Check it and try it
 
-Settings → Integrations → + → MCP Tool Server → **Build an MCP server**. *Check*
+{ADD_MCP_SERVER_PATH} → **Build an MCP server**. *Check*
 starts it in your workstation and lists what it offers; *Try* calls one tool
 with what you type and shows what it answered.
 
@@ -636,6 +640,11 @@ That command is a relay inside Pantheon, and it runs nothing of yours itself:
 each time an assistant lists or calls this server's tools, the relay starts
 `{SERVER_FILENAME}` here, in your workstation account, asks it, and stops it.
 
+The last argument is a fingerprint of the code in this folder as it is now.
+The admin approves that code: after any change to it, the relay runs nothing
+until an administrator registers it again (**Register**, then Save), so an
+edit is never live before someone looked at it.
+
 ## Why the assistant cannot register it
 
 Ask it and it will refuse, with this:
@@ -650,6 +659,9 @@ interpreter nor a command containing a path.
 
 - **Once registered it runs as you, for everyone.** Any assistant on this
   Pantheon may call it, and every call runs in your account, with your files.
+- **An edit takes it off the air until it is registered again.** The
+  registration pins the code an admin approved; *Check* and *Try* here still
+  run your newest code.
 - **Nothing is kept between calls.** It is started for each call and stopped
   after it. Keep anything that must last in a file.
 - **Your workstation has to be on.** While it is off or not answering, this
@@ -771,7 +783,7 @@ def registration_for(
     target = server_dir(slug, data_dir=data_dir)
     interpreter = str(python or sys.executable or "python3")
     return {
-        "where": "Settings → Integrations → + → MCP Tool Server (administrators only)",
+        "where": f"{ADD_MCP_SERVER_PATH} (administrators only)",
         "route": "POST /api/mcp/servers",
         "name": slug,
         "transport": "stdio",
