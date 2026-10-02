@@ -809,9 +809,10 @@ export function replyModelPair(modelName, metadata) {
 }
 
 /**
- * Generate a consistent HSL color for a model name.
- * Returns an hsl() string. The hue is derived from a string hash,
- * saturation and lightness are fixed for readability on dark/light themes.
+ * Generate a consistent colour for a model name.
+ * The hue is derived from a string hash; the colour is a `light-dark()` pair,
+ * so it follows the palette's `color-scheme` (`theme.js:applyColors`) when the
+ * palette changes, without a redraw.
  */
 export function modelColor(name) {
   if (!name) return null;
@@ -821,7 +822,42 @@ export function modelColor(name) {
     hash = ((hash << 5) - hash + key.charCodeAt(i)) | 0;
   }
   const hue = ((hash % 360) + 360) % 360;
-  return `hsl(${hue}, 55%, 65%)`;
+  return modelColorForHue(hue);
+}
+
+// `B1072`. The name above a reply was `hsl(hue, 55%, 65%)` on every palette —
+// a lightness chosen for dark backgrounds. On the four light palettes it was
+// 1.41–1.73:1 against the bubble (measured on the seeded demo: `scripted-demo`
+// `rgb(117, 212, 215)` on `rgb(250, 246, 240)`, 1.60:1; the worst hue, a yellow,
+// 1.41:1 on `light`). The light arm keeps the hue and saturation and takes the
+// lightness at which the colour's relative luminance is `MODEL_NAME_LIGHT_Y`:
+// at most 0.12, so ≥ 5.7:1 on `light`'s bubble (luminance 0.92), ≥ 6.1:1 on
+// `paper`'s white, and ≥ 4.5:1 on any bubble of luminance ≥ 0.72. Searched per
+// hue because HSL lightness is not luminance: at one lightness a yellow is
+// three times as bright as a blue. The dark arm is the colour every dark
+// palette had before.
+export const MODEL_NAME_LIGHT_Y = 0.12;
+
+/** WCAG relative luminance of `hsl(h, s, l)` (s and l in 0–1). The formula
+ *  `calendar/utils.js:_relativeLuminance` and `theme.js:_isLightBackground` use. */
+function _hslLuminance(h, s, l) {
+  const k = (n) => (n + h / 30) % 12;
+  const a = s * Math.min(l, 1 - l);
+  const channel = (n) => l - a * Math.max(-1, Math.min(k(n) - 3, 9 - k(n), 1));
+  const lin = (c) => (c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4));
+  return 0.2126 * lin(channel(0)) + 0.7152 * lin(channel(8)) + 0.0722 * lin(channel(4));
+}
+
+export function modelColorForHue(hue) {
+  // Luminance rises with HSL lightness at a fixed hue and saturation, so the
+  // largest lightness at or under the target is found by halving.
+  let lo = 0, hi = 0.65;
+  for (let i = 0; i < 20; i++) {
+    const mid = (lo + hi) / 2;
+    if (_hslLuminance(hue, 0.55, mid) <= MODEL_NAME_LIGHT_Y) lo = mid; else hi = mid;
+  }
+  const light = `hsl(${hue}, 55%, ${(Math.floor(lo * 1000) / 10).toFixed(1)}%)`;
+  return `light-dark(${light}, hsl(${hue}, 55%, 65%))`;
 }
 
 /** Look up model info (pricing + context) by substring match */
