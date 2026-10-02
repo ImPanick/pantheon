@@ -319,7 +319,9 @@ _GLUE_STUBS = {
     ),
 }
 
-_UP = ("tasks/workflowDiagram.js", "runStatus.js", "editor/snap.js", "escMenuStack.js")
+_UP = ("tasks/workflowDiagram.js", "runStatus.js", "editor/snap.js", "escMenuStack.js",
+       # `P22-09`…`P22-18` (wf-canvas): the room's step forms reach these with `../`.
+       "approvalBox.js", "skillGateNote.js", "settings/mcpFields.js")
 
 
 @pytest.fixture(scope="module")

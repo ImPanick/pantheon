@@ -47,7 +47,9 @@ from test_tool_effect_surfaces_js import _make_sandbox, _run  # noqa: E402
 
 SOURCE_JS = JS / "workbench" / "workflowSource.js"
 _UP = ("tasks/workflowDiagram.js", "runStatus.js")
-_CANVAS_UP = ("editor/snap.js", "escMenuStack.js")
+_CANVAS_UP = ("editor/snap.js", "escMenuStack.js",
+              # `P22-09`…`P22-18` (wf-canvas): the panels' step forms reach these with `../`.
+              "approvalBox.js", "skillGateNote.js", "settings/mcpFields.js")
 
 _SHIM = r"""
 // A server answering the workflow routes in `C2`'s shapes, recording every

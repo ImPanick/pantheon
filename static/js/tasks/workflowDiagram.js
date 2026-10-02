@@ -105,6 +105,23 @@ export const PORT_WORDS = Object.freeze({
  *  "if it works" would say it might not: it says "then". */
 export const ONLY_WAY_WORD = 'then';
 
+/** `P22-11`, `P22-17` (wf-canvas). What a waiting step waits for, in words —
+ *  from its record's `waiting` (`{ kind: "approval" | "time" | "idle", until }`,
+ *  stored words). Here, beside the other workflow words, because the canvas's
+ *  source and the step's panel both say it, and the panel must not import the
+ *  source (the room loads the source on its own, `workflowRoom.js`). */
+export function waitingWords(waiting) {
+  const w = waiting && typeof waiting === 'object' ? waiting : {};
+  if (w.kind === 'approval') return 'Waiting for your yes';
+  if (w.kind === 'idle') return 'Waiting for Pantheon to be idle';
+  if (w.kind === 'time' && w.until) {
+    const d = new Date(w.until);
+    const at = Number.isNaN(d.getTime()) ? String(w.until) : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return `Waiting until ${at}`;
+  }
+  return 'Waiting';
+}
+
 /** Node shape per `task_type`, as Mermaid spells it. `P22-05`: a workflow's
  *  trigger task is a subroutine box — it stands for steps of its own — where
  *  it fell back to the rectangle a prompt is drawn with. The legend

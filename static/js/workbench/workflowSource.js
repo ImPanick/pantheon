@@ -62,7 +62,7 @@
 // and its question is answered through `answer()` (`POST …/answer`,
 // `approve_task` or `deny`).
 
-import { EDGE_WORDS, KIND_WORDS, PORT_WORDS, ONLY_WAY_WORD } from '../tasks/workflowDiagram.js';
+import { EDGE_WORDS, KIND_WORDS, PORT_WORDS, ONLY_WAY_WORD, waitingWords } from '../tasks/workflowDiagram.js';
 import { runStatusTone, runStatusLabel } from '../runStatus.js';
 import { PORTS } from './graphLayout.js';
 import { WorkflowRefusal } from './workflowApi.js';
@@ -142,30 +142,17 @@ export function portWordsOf(node, ports) {
   return out;
 }
 
-/** `P22-11`, `P22-17`. What a waiting step waits for, in words. */
-export function waitingWords(waiting) {
-  const w = waiting && typeof waiting === 'object' ? waiting : {};
-  const until = w.until ? _clock(w.until) : '';
-  if (w.kind === 'approval') return 'Waiting for your yes';
-  if (w.kind === 'time') return until ? `Waiting until ${until}` : 'Waiting';
-  if (w.kind === 'idle') return 'Waiting for Pantheon to be idle';
-  return 'Waiting';
-}
-
-function _clock(iso) {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return String(iso);
-  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-}
-
 /** What the canvas says while a document is being edited. */
 export const EDIT_WORDS = Object.freeze({
   region: 'Steps of this workflow',
   emptyTitle: 'No steps yet.',
-  emptyText: 'Add a step, and the start leads to it. A step is a prompt, a research run, an action or another task.',
-  hint: 'Drag from a step’s “' + EDGE_WORDS.success + '” or “' + EDGE_WORDS.error
-    + '” onto the step that should run next, or use its Connect… button. Click a step to change it. '
-    + 'Your changes stay here until you press Save.',
+  // `P22-10`…`P22-18` (wf-canvas): the kinds a step can be now, and its ways
+  // out beyond the two every task has.
+  emptyText: 'Add a step, and the start leads to it. A step asks a model, decides which way to go, '
+    + 'calls a service, waits, or runs your code.',
+  hint: 'Drag from a step’s way out — “' + EDGE_WORDS.success + '”, “' + EDGE_WORDS.error + '”, “'
+    + PORT_WORDS.then + '”, a case — onto the step that should run next, or use its Connect… button. '
+    + 'Click a step to change it. Your changes stay here until you press Save.',
   newLabel: 'New step',
   newTitle: 'Add a step to this workflow',
   unknownName: 'a step that is not in this workflow',
@@ -1261,5 +1248,5 @@ export function createWorkflowSource({
 
 export default {
   createWorkflowSource, contentOf, START_ID, EDIT_WORDS, RUN_WORDS, slugOf, portsOfNode, portWordsOf,
-  waitingWords, KIND_PORTS, CASE_PREFIX,
+  KIND_PORTS, CASE_PREFIX,
 };

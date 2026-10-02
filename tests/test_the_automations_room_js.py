@@ -175,7 +175,9 @@ def box(tmp_path_factory):
     root = tmp_path_factory.mktemp("wbroom")
     (root / "workbench").mkdir()
     sandbox = _make_sandbox(root / "workbench", ROOM_JS, _SHIM, {})
-    for rel in _UP:
+    # `P22-09`…`P22-18` (wf-canvas): the panels' step forms reach three
+    # modules with `../` (the gate card, P8-18's sentence, the MCP badge).
+    for rel in _UP + ("approvalBox.js", "skillGateNote.js", "settings/mcpFields.js"):
         (root / rel).parent.mkdir(parents=True, exist_ok=True)
         shutil.copy(JS / rel, root / rel)
     (root / "windowDrag.js").write_text(
