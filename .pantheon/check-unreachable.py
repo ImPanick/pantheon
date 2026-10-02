@@ -90,6 +90,12 @@ ALLOWED = {
     # the browser's font loader. A literal in the JS would be a second copy of
     # a path the server already owns.
     "/api/fonts/custom/{filename}": "the @font-face src theme.js builds from the url GET /api/fonts/custom returns",
+    # `B370`. Three developer sandboxes, which their own text says are opened
+    # by hand at `/static/<name>.html` and linked from nothing — the mount
+    # answers that URL with a redirect here, so the route's caller is the
+    # mount's redirect, not a literal any page could carry. Before `B370` the
+    # mount served them itself, to a caller with no session.
+    "/sandbox/": "developer sandboxes; /static/<name>.html redirects here (app.py DEVELOPER_SANDBOX_PAGES)",
 }
 
 _FRONTEND_GLOBS = ("static/*.js", "static/js", "static/*.html")

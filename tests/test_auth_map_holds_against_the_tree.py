@@ -326,6 +326,102 @@ def test_every_route_in_the_tree_to_a_caller_named_host_is_behind_require_admin(
     assert [t for t in found if not t.gated] == []
 
 
+# ── rule F: the `/static` mount hands out no page (`B370`) ─────────────────
+
+_APP_WITH_TABLE = """
+    AUTH_EXEMPT_EXACT = {"/login"}
+    AUTH_EXEMPT_PREFIXES = ["/static"]
+
+    ROUTE_OWNED_STATIC_PAGES = {
+        "index.html": "/",
+        "login.html": "/login",
+        "sandbox.html": "/sandbox/sandbox",
+    }
+"""
+
+
+def test_the_table_is_read_out_of_app_py(checker, tmp_path):
+    root = _fixture_tree(tmp_path, {"app.py": _APP_WITH_TABLE})
+    assert checker.route_owned_static_pages(root) == ({
+        "index.html": "/", "login.html": "/login", "sandbox.html": "/sandbox/sandbox",
+    }, 0)
+
+
+def test_an_entry_the_rule_cannot_read_is_counted_not_skipped(checker, tmp_path):
+    """Three things parse the table, and a `**` splice is a page two of them
+    cannot see — so the reader says how many entries it could not read, and
+    `problems()` turns that into a failure rather than a silent "unowned"."""
+    root = _fixture_tree(tmp_path, {"app.py": """
+        SANDBOXES = {"sandbox.html": "/sandbox/sandbox"}
+        ROUTE_OWNED_STATIC_PAGES = {"index.html": "/", **SANDBOXES}
+    """})
+    assert checker.route_owned_static_pages(root) == ({"index.html": "/"}, 1)
+
+
+def test_an_unreadable_table_entry_fails_the_check(checker, map_text):
+    real = checker.route_owned_static_pages
+    try:
+        checker.route_owned_static_pages = lambda _root=ROOT: (real(ROOT)[0], 1)
+        found, _ = checker.problems(ROOT, map_text, max_other=_ci_ceiling())
+    finally:
+        checker.route_owned_static_pages = real
+    assert any("not a string literal" in p for p in found), found
+
+
+def test_a_page_is_what_the_mount_would_answer_as_a_page(checker, tmp_path):
+    """Decided by the media type `StaticFiles` would send, not by a suffix
+    written here — so `.HTM` and `.xhtml` are pages, and a stylesheet or an
+    icon, which the login page needs while logged out, is not."""
+    root = _fixture_tree(tmp_path, {
+        "app.py": _APP_WITH_TABLE,
+        "static/index.html": "<!doctype html>",
+        "static/sandbox.html": "<!doctype html>",
+        "static/stray.HTM": "<!doctype html>",
+        "static/deep/page.xhtml": "<html/>",
+        "static/style.css": "body{}",
+        "static/icon.svg": "<svg/>",
+        "static/js/app.js": "1",
+    })
+    assert checker.static_documents(root) == [
+        "static/deep/page.xhtml", "static/index.html", "static/sandbox.html", "static/stray.HTM",
+    ]
+
+
+def test_a_page_without_a_route_fails_the_check_naming_b370(checker, map_text):
+    """The failure the rule exists for. The three sandboxes were exactly this
+    until 2026-10-02 — served to a caller with no session by the mount."""
+    real = checker.static_documents
+    try:
+        checker.static_documents = lambda _root=ROOT: real(ROOT) + ["static/fourth-variants.html"]
+        found, counts = checker.problems(ROOT, map_text, max_other=_ci_ceiling())
+    finally:
+        checker.static_documents = real
+    stray = [p for p in found if p.startswith("static/fourth-variants.html")]
+    assert len(stray) == 1 and "B370" in stray[0], found
+    assert counts["static_unowned"] == 1, counts
+
+
+def test_every_page_under_static_has_a_route(checker):
+    """Rule F against the shipped tree, and not vacuously: the population is
+    the shell, the login page and the three sandboxes, and each has a route."""
+    docs = checker.static_documents(ROOT)
+    for want in ("static/index.html", "static/login.html", "static/wave-variants.html",
+                 "static/whirlpool-variants.html", "static/modal-control-variants.html"):
+        assert want in docs, docs
+    table, unreadable = checker.route_owned_static_pages(ROOT)
+    assert unreadable == 0, "app.py's table has an entry rule F cannot read"
+    owned = {k.casefold() for k in table}
+    assert [d for d in docs if d[len("static/"):].casefold() not in owned] == []
+
+
+def test_the_static_documents_line_is_derived(checker, map_text):
+    mutated = re.sub(r"derived-static-documents: \d+ under", "derived-static-documents: 1 under",
+                     map_text)
+    assert mutated != map_text
+    found, _ = checker.problems(ROOT, mutated, max_other=_ci_ceiling())
+    assert any("`derived-static-documents:` line" in p for p in found), found
+
+
 def test_the_ssh_targets_line_is_derived(checker, map_text):
     mutated = re.sub(r"derived-ssh-targets: \d+ routes", "derived-ssh-targets: 1 routes", map_text)
     assert mutated != map_text

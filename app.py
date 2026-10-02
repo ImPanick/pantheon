@@ -316,6 +316,20 @@ if AUTH_ENABLED:
         "/api/version",
         "/login",
     }
+    # **What `/static` hands a caller with no session, written down (`B370`).**
+    # Assets: the stylesheet, the modules, the fonts, the icons, the manifest —
+    # the login page loads them before anyone is signed in, so the prefix has
+    # to be exempt (`B262`). **No document.** Every HTML document under the
+    # mount is a page a route serves, listed in `ROUTE_OWNED_STATIC_PAGES`
+    # below, and the mount answers a request for one with a 302 to that route,
+    # which stands behind this middleware like any page. So the only documents
+    # an anonymous caller is handed are the routes named in `AUTH_EXEMPT_EXACT`
+    # above — `/login`, which is the point. Measured 2026-10-02 before this:
+    # three developer sandboxes under the mount (`wave-variants.html`,
+    # `whirlpool-variants.html`, `modal-control-variants.html`) answered 200
+    # with no cookie while `/`, `/docs` and `/backgrounds` answered
+    # `302 → /login`. `.pantheon/check-auth-map.py` rule F fails the build if a
+    # document lands under `static/` without a route.
     AUTH_EXEMPT_PREFIXES = ["/static"]
     # Dynamic paths whose own handler proves identity via a path-embedded
     # secret instead of the session/bearer auth. The route handler at
@@ -567,6 +581,33 @@ ROUTE_OWNED_STATIC_PAGES = {
     # is here so that if a deployment drops the sandbox page in, the one URL
     # that serves it is still the route — not the mount, and not both.
     "backgrounds.html": "/backgrounds",
+    # `B370`. The developer sandboxes. Until 2026-10-02 the mount served them
+    # itself — to a caller with no session, under `AUTH_ENABLED=true`, while
+    # every page with a route answered `302 → /login`. Each is a
+    # self-contained page with its own copy of the styling: no user data, no
+    # API path, nothing the app links to. What they published to an
+    # unauthenticated port was that this project has loader, whirlpool and
+    # modal-control prototypes, documents anyone could fingerprint a
+    # deployment with. The row that found this named two; measured 2026-10-02
+    # there were three, and nothing would have caught a fourth — rule F of
+    # `.pantheon/check-auth-map.py` now does. They are kept (`Law 1`): a
+    # developer opens `/static/wave-variants.html` by hand exactly as the
+    # page's own text says, the mount sends them here, and the route serves
+    # the same bytes to anyone signed in — the bar every other page has.
+    # Signed in, not admin: nothing in them is the operator's.
+    "wave-variants.html": "/sandbox/wave-variants",
+    "whirlpool-variants.html": "/sandbox/whirlpool-variants",
+    "modal-control-variants.html": "/sandbox/modal-control-variants",
+}
+
+# The sandboxes, by the prefix their routes share (`B370`). Derived from the
+# table rather than spliced into it, so every reader of the table — this
+# module, `.pantheon/check-auth-map.py` rule F, the `P0-17` source-offer test —
+# reads one literal dict and none of them has to follow a `**` (`Law 13`).
+SANDBOX_ROUTE_PREFIX = "/sandbox/"
+DEVELOPER_SANDBOX_PAGES = {
+    name: route for name, route in ROUTE_OWNED_STATIC_PAGES.items()
+    if route.startswith(SANDBOX_ROUTE_PREFIX)
 }
 
 
@@ -600,6 +641,13 @@ class _RevalidatingStatic(StaticFiles):
     this mount serves gets the sources for its own inline blocks, derived from
     the bytes on disk and written down nowhere.
 
+    *Since `B370` (2026-10-02) the mount serves none of those pages itself:
+    the three prototypes are in `ROUTE_OWNED_STATIC_PAGES`, and their routes
+    authorise the same blocks through `serve_html_with_nonce`, from the same
+    `_read_page` cache. This stays (`Law 1`) — it costs nothing, and it is what
+    a document dropped under `static/` by hand renders with until rule F of
+    `.pantheon/check-auth-map.py` sends its author to give it a route.*
+
     **This is not a widening and it cannot become one.** A hash authorises
     exactly the bytes it was computed over, and `STATIC_DIR` is the shipped
     bundle: no route in this tree writes into it (`grep STATIC_DIR` is
@@ -624,12 +672,18 @@ class _RevalidatingStatic(StaticFiles):
         would be a lie about that; nothing is taken away, the bytes are still
         reachable from this URL, they just arrive from the route that owns
         them and therefore through the gate that route is behind. That is also
-        what keeps the fix from touching the rest of the mount: three
+        what keeps the fix from touching the rest of the mount: the table's
         filenames are redirected and every other byte under `/static` — the
-        stylesheet, the modules, the fonts, the icons, the two `*-variants`
-        prototypes `B120` and `B122` both require to keep reaching the
-        network — is served exactly as before, unauthenticated, because the
-        login page needs all of it *while logged out*.
+        stylesheet, the modules, the fonts, the icons — is served exactly as
+        before, unauthenticated, because the login page needs all of it
+        *while logged out*.
+
+        **`B370` put the developer sandboxes in the table** — they were the
+        last documents this mount handed to a caller with no session. `B120`
+        and `B122` both require a deep-linked `/static/*-variants.html`
+        navigation to reach the network rather than the cached shell, and it
+        still does: the network answers with this redirect, and the route
+        answers with the page.
 
         **302 and not 301**: a permanent redirect is cached by browsers until
         they are cleared, so it would outlive the decision. This one is
@@ -1192,6 +1246,36 @@ async def serve_backgrounds(request: Request):
     if not os.path.isfile(page):
         raise HTTPException(404, "static/backgrounds.html is not shipped in this build")
     return serve_html_with_nonce(request, page)
+
+
+def _developer_sandbox(filename: str):
+    """The route for one of `DEVELOPER_SANDBOX_PAGES` (`B370`).
+
+    Not exempt, so `AuthMiddleware` asks for a session exactly as it does for
+    `/` — the gate the mount could not give these pages. Served through
+    `serve_html_with_nonce`, so the page's one inline block is authorised from
+    its own bytes as the mount authorised it (`B211`) and the page still runs.
+    A build that strips the file answers 404 naming it, not a 500 (`B140`'s
+    lesson, same as `/backgrounds`).
+    """
+    async def serve_developer_sandbox(request: Request):
+        page = route_owned_page(filename)
+        if not os.path.isfile(page):
+            raise HTTPException(404, f"static/{filename} is not shipped in this build")
+        return serve_html_with_nonce(request, page)
+
+    serve_developer_sandbox.__name__ = "serve_" + filename.removesuffix(".html").replace("-", "_")
+    return serve_developer_sandbox
+
+
+# One route per entry, read from the table the mount reads (`Law 13`), so a
+# sandbox cannot be redirected to a route nobody registered. Out of the
+# OpenAPI document on purpose: that document is what `src/tools/system.py`'s
+# endpoint discovery reads, and a page for picking a loader's shape is not an
+# endpoint the agent should be offered.
+for _sandbox_file, _sandbox_route in DEVELOPER_SANDBOX_PAGES.items():
+    app.add_api_route(_sandbox_route, _developer_sandbox(_sandbox_file),
+                      methods=["GET"], include_in_schema=False)
 
 @app.get("/login")
 async def serve_login(request: Request):

@@ -4,9 +4,11 @@
      splash loader's shape side by side, and it is driven entirely by the one
      inline <script> at the bottom. `B211`: that block carried no nonce and was
      refused by the app CSP for this page's whole life, so it rendered a styled
-     empty frame; the `/static` mount now derives a 'sha256-…' source for the
-     inline blocks of every HTML document it serves (app.py,
-     `_RevalidatingStatic`), which is what makes it run. -->
+     empty frame; the page is now served with a 'sha256-…' source derived
+     from these bytes, which is what makes it run. `B370`: it is served at
+     /sandbox/wave-variants to anyone signed in (app.py,
+     `DEVELOPER_SANDBOX_PAGES`), and /static/wave-variants.html redirects
+     there — until then the mount handed it to a caller with no session. -->
 <html lang="en">
 <head>
   <meta charset="utf-8">

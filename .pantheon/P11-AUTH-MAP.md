@@ -519,6 +519,25 @@ because the number allowed through ungated is zero:
 
 derived-ssh-targets: 14 routes in 3 files, 14 behind require_admin
 
+## F · the `/static` mount hands out no page (`B370`)
+
+`/static` is in `AUTH_EXEMPT_PREFIXES` and has to be: the login page loads its stylesheet,
+modules, fonts, icon and manifest from it before anyone is signed in (`B262`). Anything
+else under it is served to a caller with no session too. So every tracked file under
+`static/` the mount would answer as a page — `text/html` or `application/xhtml+xml`, by
+the `mimetypes` table `StaticFiles` itself uses — must be a key of
+`ROUTE_OWNED_STATIC_PAGES` in `app.py`. The mount answers those with a 302 to the route,
+and the route stands behind the middleware unless `AUTH_EXEMPT_EXACT` names it, so the
+pages a stranger is handed are exactly the ones that list names. That is the exemption
+`B370` asked to have written down, and `app.py` writes it beside the prefix.
+
+`B370` is why this exists: three developer sandboxes (`wave-variants.html`,
+`whirlpool-variants.html`, `modal-control-variants.html`) answered 200 with no cookie
+while every page with a route answered `302 → /login`. They now have routes under
+`/sandbox/`, for anyone signed in.
+
+derived-static-documents: 5 under static/, 5 with a route, handed to a caller with no session: /login
+
 ## What this file does not cover
 
 - `require_privilege` (**17** call sites, same scope) and `owner_filter` (**32**).

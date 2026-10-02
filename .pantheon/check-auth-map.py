@@ -53,6 +53,17 @@ Four populations, derived:
      has no ceiling: the population behind it is every such route, and the
      number allowed through ungated is zero.
 
+  F  the `/static` mount hands out no document (`B370`). `/static` is an
+     auth-exempt prefix because the login page loads its assets from it
+     before anyone is signed in — and anything else that lands under it is
+     served to a caller with no session. So every tracked file under
+     `static/` that the mount would answer as a page (a media type of
+     `text/html` or `application/xhtml+xml`, by the `mimetypes` table
+     `StaticFiles` itself uses) must be a key of `ROUTE_OWNED_STATIC_PAGES` in
+     `app.py`, which the mount answers with a redirect to the route — and the
+     route stands behind the middleware unless `AUTH_EXEMPT_EXACT` names it.
+     Three developer sandboxes were the documents it had been handing out.
+
 **Sites are keyed by file and enclosing function, never by line number.** All
 107 keys are unique that way (this checker fails if that ever stops being
 true). A line number in a committed table is the one field that goes stale on
@@ -65,6 +76,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+import mimetypes
 import re
 import subprocess
 import sys
@@ -526,6 +538,56 @@ def is_exempt(path: str, exact: set[str], patterns: list[re.Pattern]) -> bool:
     return any(p.match(path) for p in patterns)
 
 
+#: `B370`. The media types `StaticFiles` answers a page with, as opposed to a
+#: subresource. Decided by `mimetypes.guess_type` — the call Starlette's
+#: `FileResponse` makes — so the checker and the mount cannot disagree about
+#: which files are pages. Case-insensitive on the extension, as that table is.
+DOCUMENT_TYPES = frozenset({"text/html", "application/xhtml+xml"})
+
+#: The directory `app.py` mounts at the auth-exempt `/static` prefix
+#: (`STATIC_DIR` in `src/constants.py`), repo-relative.
+STATIC_DIR_REL = "static/"
+
+
+def route_owned_static_pages(root: Path = ROOT) -> tuple[dict[str, str], int]:
+    """`ROUTE_OWNED_STATIC_PAGES` read out of `app.py`: `(filename -> route,
+    how many entries could not be read)`.
+
+    Read, not copied (`Law 7`). The table is one literal dict on purpose and
+    three things parse it — this rule, `tests/test_agpl_source_link.py` and
+    the mount at runtime — so an entry that is not a string literal (a `**`
+    splice, a computed key) is counted rather than skipped: skipped, it would
+    be a page this rule calls unowned for a reason nobody could see.
+    """
+    tree = _parse(root, "app.py")
+    if tree is None:
+        return {}, 0
+    for node in tree.body:
+        if not (isinstance(node, ast.Assign) and isinstance(node.value, ast.Dict)):
+            continue
+        if not any(isinstance(t, ast.Name) and t.id == "ROUTE_OWNED_STATIC_PAGES"
+                   for t in node.targets):
+            continue
+        table: dict[str, str] = {}
+        unreadable = 0
+        for key, value in zip(node.value.keys, node.value.values):
+            if (isinstance(key, ast.Constant) and isinstance(key.value, str)
+                    and isinstance(value, ast.Constant) and isinstance(value.value, str)):
+                table[key.value] = value.value
+            else:
+                unreadable += 1
+        return table, unreadable
+    return {}, 0
+
+
+def static_documents(root: Path = ROOT) -> list[str]:
+    """Every tracked file under `static/` the mount would serve as a page."""
+    out = subprocess.run(["git", "ls-files", "-z", "--", STATIC_DIR_REL], cwd=root,
+                         capture_output=True, text=True, check=True).stdout
+    return sorted(f for f in out.split("\0")
+                  if f and mimetypes.guess_type(f)[0] in DOCUMENT_TYPES)
+
+
 def other_admin_gates(root: Path = ROOT, rels: list[str] | None = None) -> list[str]:
     """Admin decisions taken without `require_admin` — rule C's ratchet.
 
@@ -585,6 +647,7 @@ class ParsedMap(NamedTuple):
     routes: dict         # file -> "METHOD path" -> row
     route_counts: dict   # file -> claimed route count
     ssh_total: str = ""  # the claimed `derived-ssh-targets:` line, raw (rule E)
+    static_total: str = ""  # the claimed `derived-static-documents:` line, raw (rule F)
 
 
 def parse_map(text: str) -> ParsedMap:
@@ -594,6 +657,7 @@ def parse_map(text: str) -> ParsedMap:
     site_total = ""
     other_total = ""
     ssh_total = ""
+    static_total = ""
     routes: dict[str, dict[str, dict]] = {}
     route_counts: dict[str, int] = {}
 
@@ -621,6 +685,9 @@ def parse_map(text: str) -> ParsedMap:
             continue
         if line.lower().startswith("derived-ssh-targets:"):
             ssh_total = line[len("derived-ssh-targets:"):].strip()
+            continue
+        if line.lower().startswith("derived-static-documents:"):
+            static_total = line[len("derived-static-documents:"):].strip()
             continue
         m = re.match(r"^routes:\s*(\d+)\s*$", line, re.I)
         if m and route_file:
@@ -652,7 +719,7 @@ def parse_map(text: str) -> ParsedMap:
                     "gate": _bare(cells[2]), "intended": cells[3],
                 }
     return ParsedMap(sites, tier_summary, site_total, other_total, routes, route_counts,
-                     ssh_total)
+                     ssh_total, static_total)
 
 
 def _gate_from_source(route: Route, exact: set[str], patterns: list[re.Pattern]) -> str:
@@ -841,10 +908,49 @@ def problems(root: Path, text: str, *, max_other: int) -> tuple[list[str], dict]
             f"says `{want_ssh}`."
         )
 
+    # ── F ────────────────────────────────────────────────────────────────────
+    table, unreadable = route_owned_static_pages(root)
+    owned = {name.casefold(): route for name, route in table.items()}
+    if not owned:
+        out.append("app.py yielded no ROUTE_OWNED_STATIC_PAGES entries — rule F below "
+                   "is not evidence about anything.")
+    if unreadable:
+        out.append(
+            f"app.py: {unreadable} `ROUTE_OWNED_STATIC_PAGES` entr"
+            f"{'y is' if unreadable == 1 else 'ies are'} not a string literal. Keep the "
+            "table one literal dict — rule F, `tests/test_agpl_source_link.py` and the "
+            "mount all read it, and a `**` splice is a page the first two cannot see."
+        )
+    documents = static_documents(root)
+    unowned: list[str] = []
+    anonymous: set[str] = set()
+    for rel in documents:
+        # The mount matches casefolded (`B262`), so this does too.
+        route = owned.get(rel[len(STATIC_DIR_REL):].casefold())
+        if route is None:
+            unowned.append(rel)
+            out.append(
+                f"{rel}: a page under the auth-exempt `/static` mount with no route, so "
+                "the mount hands it to a caller with no session (`B370`). Give it a "
+                "route in `ROUTE_OWNED_STATIC_PAGES` in app.py — a developer page goes "
+                "in `DEVELOPER_SANDBOX_PAGES` — or take it out of `static/`."
+            )
+        elif is_exempt(route, exact, patterns):
+            anonymous.add(route)
+    want_static = (f"{len(documents)} under static/, {len(documents) - len(unowned)} "
+                   f"with a route, handed to a caller with no session: "
+                   f"{', '.join(sorted(anonymous)) or 'none'}")
+    if parsed.static_total != want_static:
+        out.append(
+            f"§ F's `derived-static-documents:` line says `{parsed.static_total}` and the "
+            f"tree says `{want_static}`."
+        )
+
     return out, {
         "sites": len(sites), "direct": direct, "depends": depends,
         "mapped": len(parsed.sites), "routes": live_routes,
         "others": len(others), "ssh_targets": len(targets), "ssh_ungated": len(ungated),
+        "static_documents": len(documents), "static_unowned": len(unowned),
     }
 
 
@@ -868,7 +974,8 @@ def main(argv: list[str] | None = None) -> int:
         f"{len(ROUTE_FILES)} files {n['routes']}  ·  admin gates outside "
         f"require_admin {n['others']} (max {args.max})  ·  routes reaching a "
         f"caller-named host {n['ssh_targets']} ({n['ssh_ungated']} ungated)  ·  "
-        f"PROBLEMS {len(found)}"
+        f"pages under static/ {n['static_documents']} ({n['static_unowned']} without a "
+        f"route)  ·  PROBLEMS {len(found)}"
     )
     for p in found:
         print(f"  {p}")
