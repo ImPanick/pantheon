@@ -27101,6 +27101,8 @@ body:not(.welcome-ready) #welcome-screen {
 .task-log-status-running { background: #60a5fa; animation: task-log-pulse 1.4s ease-in-out infinite; }
 .task-log-status-skipped { background: color-mix(in srgb, var(--fg) 20%, transparent); }
 .task-log-status-aborted { background: color-mix(in srgb, var(--fg) 30%, transparent); border: 1px dashed color-mix(in srgb, var(--fg) 50%, transparent); }
+/* `P22-11`. A parked run: a hollow ring, not the queued dot — in flight, held by nothing. */
+.task-log-status-waiting { background: transparent; box-sizing: border-box; border: 2px solid var(--warn, #f0ad4e); }
 @keyframes task-log-pulse {
   0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, #60a5fa 60%, transparent); }
   50%      { box-shadow: 0 0 0 4px color-mix(in srgb, #60a5fa 0%, transparent); }

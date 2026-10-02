@@ -39,7 +39,10 @@ NEW_TABLES = {
     "task_run_nodes": {"id", "run_id", "node_id", "kind", "label", "seq", "status",
                        "attempt", "dry", "port", "reached_by", "depth",
                        "workflow_version", "started_at", "finished_at", "input",
-                       "output", "error", "steps", "model"},
+                       "output", "error", "steps", "model",
+                       # `P22-11` / `P22-12`: added by ALTER on an install that
+                       # already has the table (`_migrate_add_task_run_node_columns`).
+                       "item", "resume_at", "waiting"},
 }
 
 

@@ -723,6 +723,9 @@ async def do_manage_settings(content: str, owner: Optional[str] = None) -> Dict:
             # page the agent was told to read, which is the whole reason the
             # gate exists.
             "approval_timeout_seconds",
+            # `P22-17` (`D-2026-10-02-01` §1). The same deadline for a parked
+            # workflow step's card, for the same reason.
+            "workflow_approval_timeout_seconds",
             # Added by `H16`, which declared it — and declaring a key hands it
             # to the agent as well as to the person, because `DEFAULT_SETTINGS`
             # is the allowlist for both. A checker that the checked party can

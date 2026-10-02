@@ -433,6 +433,31 @@ class TaskDeferred(BaseException):
         self.delay_seconds = delay_seconds
 
 
+class TaskWaiting(BaseException):
+    """`P22-11` / `P22-17`. A workflow step — or a whole workflow run — parks.
+
+    Raised by a step that must wait for something no coroutine should hold the
+    model slot for: a person's yes on a card (`kind="approval"`), a time (a
+    Wait step, `kind="time"`) or Pantheon being idle again (`kind="idle"`). The
+    walker records the step `waiting` with `detail` as its JSON and, once
+    nothing else in the run can go on, raises one of these itself so
+    `_execute_task_locked` writes the run `waiting` and lets go of everything.
+
+    A `BaseException` beside `TaskNoop` and `TaskDeferred`, for their reason:
+    `_execute_llm_task`'s `except Exception` fallback (a simple model call when
+    the agent loop fails) would otherwise swallow a card and answer anyway.
+
+    (`SLICE-CD-DESIGN` § 3 puts this in `wf-rules`' half; `wf-walker` adds the
+    same class with this signature so its half runs — at the merge, one copy.)
+    """
+
+    def __init__(self, sentence: str, *, kind: str, **detail):
+        super().__init__(sentence)
+        self.sentence = sentence
+        self.kind = kind
+        self.detail = dict(detail)
+
+
 # ── `P8-24` · what a node hands back ────────────────────────────────────────
 #
 # Every built-in action returns `(text, success)`. A boolean is enough for a
@@ -467,8 +492,10 @@ NODE_STATUS_SUCCESS = "success"
 NODE_STATUS_ERROR = "error"
 NODE_STATUS_SKIPPED = "skipped"
 NODE_STATUS_DEFERRED = "deferred"
+# `P22-11`. A workflow step parked (`TaskWaiting`): not over, not a failure.
+NODE_STATUS_WAITING = "waiting"
 NODE_STATUSES = (NODE_STATUS_SUCCESS, NODE_STATUS_ERROR,
-                 NODE_STATUS_SKIPPED, NODE_STATUS_DEFERRED)
+                 NODE_STATUS_SKIPPED, NODE_STATUS_DEFERRED, NODE_STATUS_WAITING)
 # The two that mean the step produced nothing and the engine should not treat
 # that as failure. Named, because "is this a failure" is asked in four places.
 NODE_STATUSES_NOT_FAILURE = (NODE_STATUS_SUCCESS, NODE_STATUS_SKIPPED,

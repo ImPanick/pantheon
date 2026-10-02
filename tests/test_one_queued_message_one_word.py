@@ -190,7 +190,11 @@ def test_the_job_column_is_full_and_every_entry_has_a_consumer():
     # The subject still earns its keep: three of the six differ by column, and
     # the three that do are the three a person meets in the composer's queue.
     differ = [s for s, (job, msg) in words.items() if job != msg]
-    assert differ == ["queued", "running", "success"], differ
+    # `P22-11`: `waiting` (a parked run) is *Waiting* for a job and *Held* for
+    # a message, because the message column already spends *Waiting* on
+    # `queued` — one word, one meaning, per column.
+    assert differ == ["queued", "running", "success", "waiting"], differ
+    assert words["waiting"] == ["Waiting", "Held"]
     # The two consumers are not asserted by grepping for the call (`Law 20`:
     # that tests the file, and a reformat would fail it for nothing). They are
     # asserted by RUNNING both renderers over all six statuses, in
@@ -219,7 +223,9 @@ def test_the_words_module_covers_exactly_the_six_stored_values():
         capture_output=True, text=True, timeout=30)
     assert proc.returncode == 0, proc.stderr
     out = json.loads(proc.stdout)
-    assert out["six"] == SIX
+    # `P22-11` appended `waiting` (a parked workflow run) to the stored values;
+    # the six the panel words above are still these six.
+    assert out["six"] == SIX + ["waiting"]
     # Older rows carry `failed`; printing what the row says beats printing
     # nothing, and `runStatusTone` already accepts it for the same reason.
     assert out["legacy"] == "failed"

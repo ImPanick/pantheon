@@ -246,7 +246,7 @@ if (mode === 'tone') {
   const api = make(...names.map((n) => deps[n]), null, null, null);
   const out = {};
   for (const s of ['queued', 'running', 'success', 'error', 'skipped', 'aborted',
-                   'failed', '', undefined]) {
+                   'waiting', 'failed', '', undefined]) {
     out[String(s)] = api.runStatusTone(s);
   }
   console.log(JSON.stringify(out));

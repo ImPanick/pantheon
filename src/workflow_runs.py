@@ -46,6 +46,36 @@ NODE_RECORDS_DAYS_SETTING = "workflow_node_records_days"
 NODE_RECORDS_DAYS_DEFAULT = 30
 NODE_RECORDS_DAYS_RANGE = (1, 3650)
 
+# `P22-12`. How many items one For-each step may run. Over it the step is
+# refused with this setting's name — nothing is cut silently. Resolves with
+# the owner (a role may carry it), like the record cap above.
+FOREACH_MAX_ITEMS_SETTING = "workflow_foreach_max_items"
+FOREACH_MAX_ITEMS_DEFAULT = 50
+FOREACH_MAX_ITEMS_RANGE = (1, 1000)
+
+# `P22-11`. The longest a Wait step may wait, in hours. Mistake prevention,
+# not a control (`Law 17`): a Wait of a year is a typo.
+WAIT_MAX_HOURS_SETTING = "workflow_wait_max_hours"
+WAIT_MAX_HOURS_DEFAULT = 168
+WAIT_MAX_HOURS_RANGE = (1, 720)
+
+# `P22-17` (`D-2026-10-02-01` §1). How long a parked workflow step's card waits
+# for an answer. Its own deadline, so an overnight question does not lapse at
+# the chat card's ten minutes and a chat card does not linger twelve hours.
+# The same four layers as `approval_timeout_seconds` (role → setting → env →
+# default) and the store's own bounds, imported (`FORBIDDEN.md` Part 2: the
+# TTL is kept — this moves it, never lifts it).
+WORKFLOW_APPROVAL_TIMEOUT_SETTING = "workflow_approval_timeout_seconds"
+WORKFLOW_APPROVAL_TIMEOUT_ENV = "PANTHEON_WORKFLOW_APPROVAL_TIMEOUT_SECONDS"
+WORKFLOW_APPROVAL_TIMEOUT_DEFAULT = 12 * 60 * 60
+
+# `P22-11` / `P22-17`. What a `waiting` record waits for (`TaskRunNode.waiting`
+# JSON `kind`). Stored values (`FORBIDDEN.md` Part 1 at the merge).
+WAITING_TIME = "time"            # a Wait step, until `resume_at`
+WAITING_APPROVAL = "approval"    # a step's card, until it is answered or lapses
+WAITING_IDLE = "idle"            # a step a foreground takeover stopped
+WAITING_KINDS = (WAITING_TIME, WAITING_APPROVAL, WAITING_IDLE)
+
 # The same ceiling `TaskRun.error` is written under (`_execute_task_locked`).
 NODE_ERROR_MAX_CHARS = 2000
 # How much of an over-long value the record keeps to show, as a share of the
@@ -90,6 +120,44 @@ def node_records_days() -> int:
         NODE_RECORDS_DAYS_SETTING, NODE_RECORDS_DAYS_DEFAULT,
         minimum=lo, maximum=hi)
     return value
+
+
+def foreach_max_items(owner: str | None = None) -> int:
+    """`P22-12`. How many items one For-each step may run, for this owner."""
+    from src.settings import resolve_limit
+
+    lo, hi = FOREACH_MAX_ITEMS_RANGE
+    value, _source = resolve_limit(
+        FOREACH_MAX_ITEMS_SETTING, FOREACH_MAX_ITEMS_DEFAULT,
+        owner=owner, minimum=lo, maximum=hi)
+    return value
+
+
+def wait_max_hours() -> int:
+    """`P22-11`. The longest a Wait step may wait, in hours."""
+    from src.settings import resolve_limit
+
+    lo, hi = WAIT_MAX_HOURS_RANGE
+    value, _source = resolve_limit(
+        WAIT_MAX_HOURS_SETTING, WAIT_MAX_HOURS_DEFAULT, minimum=lo, maximum=hi)
+    return value
+
+
+def workflow_approval_ttl_seconds(owner: str | None = None) -> int:
+    """`P22-17`. A parked workflow step's card deadline, through `P12`'s four
+    layers exactly as `tool_approvals.resolve_approval_ttl_seconds` resolves
+    the chat card's — the same resolver, the same bounds, its own key."""
+    from src.limit_policy import resolve_int_limit
+    from src.tool_approvals import MAX_APPROVAL_TTL_SECONDS, MIN_APPROVAL_TTL_SECONDS
+
+    return resolve_int_limit(
+        WORKFLOW_APPROVAL_TIMEOUT_SETTING,
+        default=WORKFLOW_APPROVAL_TIMEOUT_DEFAULT,
+        env_name=WORKFLOW_APPROVAL_TIMEOUT_ENV,
+        owner=owner,
+        minimum=MIN_APPROVAL_TTL_SECONDS,
+        maximum=MAX_APPROVAL_TTL_SECONDS,
+    ).value
 
 
 def cap_json(value, *, limit: int, summary: str | None = None) -> str | None:

@@ -498,6 +498,9 @@ def main() -> int:
     consts = _module_constants(DB)
     stored = list(consts.get("TASK_RUN_STATUSES") or [])
     active = list(consts.get("TASK_RUN_ACTIVE_STATUSES") or [])
+    # `P22-11`. The parked set (`waiting`) is the third list both languages
+    # carry: a run in flight that no coroutine holds. Read like the other two.
+    parked = consts.get("TASK_RUN_PARKED_STATUSES")
     notify = consts.get("TASK_RUN_NOTIFY") or {}
     if not stored:
         print("core/database.py declares no TASK_RUN_STATUSES — nothing to check against.")
@@ -506,6 +509,7 @@ def main() -> int:
     js = _blank_comments(JS.read_text(encoding="utf-8"))
     js_six = _js_array(js, "RUN_STATUSES")
     js_active = _js_array(js, "RUN_ACTIVE_STATUSES")
+    js_parked = _js_array(js, "RUN_PARKED_STATUSES")
     subjects = _js_array(js, "RUN_SUBJECTS") or []
     words = _js_words(js)
 
@@ -520,6 +524,21 @@ def main() -> int:
     if js_active is not None and js_active != active:
         problems.append(
             f"RUN_ACTIVE_STATUSES {js_active} != TASK_RUN_ACTIVE_STATUSES {active}.")
+    # `P22-11`. A parked status one language knows and the other does not is
+    # how `isRunFinished` would call a waiting run finished in the browser
+    # while the scheduler still holds its workflow (`B674`).
+    if parked is not None or js_parked is not None:
+        if parked is None or js_parked is None or list(parked) != js_parked:
+            problems.append(
+                f"RUN_PARKED_STATUSES {js_parked} != TASK_RUN_PARKED_STATUSES "
+                f"{None if parked is None else list(parked)} — a run in flight that "
+                "no coroutine holds must be one list in both languages.")
+        else:
+            for status in parked:
+                if status not in stored or status in active:
+                    problems.append(
+                        f"TASK_RUN_PARKED_STATUSES has `{status}`, which is "
+                        f"{'not a stored status' if status not in stored else 'also ACTIVE'}.")
 
     # 2 — the word table and the notification policy, against the vocabulary
     if words is None:
