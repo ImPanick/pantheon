@@ -715,22 +715,13 @@ def _email_read_summary_from_tool_output(raw: str) -> str:
 
 
 def _load_mcp_disabled_map() -> Dict[str, set]:
-    """Load per-server disabled tool sets from the database."""
-    from core.database import McpServer, SessionLocal
-    disabled_map: Dict[str, set] = {}
-    db = SessionLocal()
-    try:
-        for srv in db.query(McpServer).all():
-            if srv.disabled_tools:
-                try:
-                    names = json.loads(srv.disabled_tools)
-                    if names:
-                        disabled_map[srv.id] = set(names)
-                except (json.JSONDecodeError, TypeError):
-                    pass
-    finally:
-        db.close()
-    return disabled_map
+    """Load per-server disabled tool sets from the database.
+
+    `P22-14`: the read is `mcp_manager.load_disabled_map`, public now that a
+    workflow's MCP step asks it too; this name is kept (`Law 1`).
+    """
+    from src.mcp_manager import load_disabled_map
+    return load_disabled_map()
 
 # System prompt that tells the LLM about available tools.
 # Always injected — the LLM decides whether to use them.

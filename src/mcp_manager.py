@@ -699,6 +699,37 @@ def normalize_tool_overrides(raw: Any) -> Dict[str, Dict[str, Any]]:
     return out
 
 
+def load_disabled_map() -> Dict[str, set]:
+    """`{server_id: {tool_name, ...}}` — each server's switched-off tools, from
+    the database.
+
+    `P22-14`. Public here because a workflow's MCP step asks the same question
+    the agent loop asks before it advertises a tool, and the loop's private
+    `_load_mcp_disabled_map` was the only reader (`Law 14`: one reader, two
+    callers). `src/agent_loop._load_mcp_disabled_map` is kept as a name for
+    this function (`Law 1`). `routes/mcp/mcp_routes._load_disabled_map` is a
+    third copy, filed rather than moved (not this package's file).
+
+    The database is imported when asked, as the loop's copy did, so a test that
+    swaps `core.database.SessionLocal` still reaches this read.
+    """
+    from core.database import McpServer as _McpServer, SessionLocal as _SessionLocal
+    disabled_map: Dict[str, set] = {}
+    db = _SessionLocal()
+    try:
+        for srv in db.query(_McpServer).all():
+            if srv.disabled_tools:
+                try:
+                    names = json.loads(srv.disabled_tools)
+                    if names:
+                        disabled_map[srv.id] = set(names)
+                except (json.JSONDecodeError, TypeError):
+                    pass
+    finally:
+        db.close()
+    return disabled_map
+
+
 def load_tool_overrides(server_id: Optional[str] = None) -> Dict[str, Dict[str, Dict[str, Any]]]:
     """`{server_id: {tool_name: {...}}}` straight from the database.
 

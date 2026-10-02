@@ -1514,6 +1514,10 @@ _FORMATTER_HANDLED_KEYS = {
     # (`src/tool_result_images.py`). Serialised here it was 8,000 characters of
     # base64 per browser screenshot that no model can read as a picture.
     "images", "screenshot_caption",
+    # `P22-13`. A structured `api_call`'s parsed body and status. The body is
+    # already in `output` (capped at 12,000 characters); echoed here it would
+    # reach the model a second time, up to 8,000 characters more of it.
+    "body_json", "http_status",
 }
 
 

@@ -1010,6 +1010,9 @@ async def do_api_call(content: str) -> Dict:
         params=args.get("params"),
         body=args.get("body"),
         extra_headers=args.get("headers"),
+        # `P22-13`. Only a literal `true` asks: a workflow's HTTP step reads
+        # `body_json`/`http_status`; a model's call is answered as before.
+        structured=args.get("structured") is True,
     )
 
 

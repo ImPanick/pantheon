@@ -581,6 +581,15 @@ def _validated_ips(raw_ips: List[str]) -> List[ipaddress._BaseAddress]:
     return ips
 
 
+# `P22-13`. The largest JSON body a structured call hands back parsed. A
+# workflow step reads fields out of it (`body_json` becomes the step's `data`),
+# and the step record that keeps it is capped again by
+# `workflow_node_record_max_chars`; this bounds the parse, not the record.
+API_CALL_BODY_JSON_MAX_BYTES = 1024 * 1024
+
+_UNPARSED = object()
+
+
 async def execute_api_call(
     integration_id: str,
     method: str,
@@ -588,8 +597,17 @@ async def execute_api_call(
     params: Optional[Dict[str, Any]] = None,
     body: Optional[Any] = None,
     extra_headers: Optional[Dict[str, str]] = None,
+    structured: bool = False,
 ) -> Dict[str, Any]:
-    """Execute an HTTP request against a registered integration."""
+    """Execute an HTTP request against a registered integration.
+
+    `structured` (`P22-13`): also answer `http_status` and, for a JSON reply of
+    at most `API_CALL_BODY_JSON_MAX_BYTES`, `body_json` — the parsed body, for a
+    caller that reads fields rather than text (a workflow's HTTP step). The
+    `output` text is unchanged either way, and `tool_execution`'s formatter
+    leaves both keys out of what a model reads, so a model that asks for a
+    structured call is not handed the body twice.
+    """
 
     integration = _find_integration(integration_id)
     if not integration:
@@ -700,13 +718,28 @@ async def execute_api_call(
         if len(parts) == 2:
             auth = httpx.BasicAuth(parts[0], parts[1])
 
+    from src import paced_http
+    from src.networks import NetworkScopeViolation
+    from src.rate_limiter import OutboundRateLimited
+
+    parsed_json: Any = _UNPARSED
     try:
+        # `P22-13`. Paced, through the pinned client (`FORBIDDEN.md` Part 2:
+        # `OutboundHostLimiter` on every third-party call). This was a bare
+        # `client.request` — one of the calls `check-outbound.py` counted — and
+        # a workflow fires it on a schedule with nobody watching. The SSRF check
+        # above and the pinned transport are untouched: `paced_http.request`
+        # takes the caller's client and only adds the acquire before and the
+        # `observe` after, so the socket still goes to the validated IPs and a
+        # redirect is still not followed (this client's default).
         async with httpx.AsyncClient(
             timeout=30.0, transport=_PinnedAsyncTransport(pinned_ips)
         ) as client:
-            response = await client.request(
+            response = await paced_http.request(
                 method,
                 url,
+                client=client,
+                authenticated=bool(api_key) and auth_type != "none",
                 params=params,
                 json=body if body is not None else None,
                 headers=headers,
@@ -720,6 +753,7 @@ async def execute_api_call(
         if "application/json" in content_type:
             try:
                 data = response.json()
+                parsed_json = data
                 full = json.dumps(data, indent=2, ensure_ascii=False)
                 if len(full) > 12000:
                     if isinstance(data, list):
@@ -797,6 +831,13 @@ async def execute_api_call(
 
         output = f"HTTP {status}\n{formatted}"
 
+        extra: Dict[str, Any] = {}
+        if structured:
+            extra["http_status"] = status
+            if (parsed_json is not _UNPARSED
+                    and len(response.content or b"") <= API_CALL_BODY_JSON_MAX_BYTES):
+                extra["body_json"] = parsed_json
+
         if status >= 400:
             return {
                 "error": output,
@@ -805,10 +846,18 @@ async def execute_api_call(
                 # it for diagnostics, but make its provenance explicit so the
                 # agent gate does not treat HTTP failure as content-free.
                 "untrusted_content": True,
+                **extra,
             }
 
-        return {"output": output, "exit_code": 0}
+        return {"output": output, "exit_code": 0, **extra}
 
+    except OutboundRateLimited as exc:
+        # The host said stop, and the wait is longer than a call sits through.
+        # Said with the host's own words and when, never retried here.
+        return {"error": f"{integration.get('name')}: {exc}", "exit_code": 1}
+    except NetworkScopeViolation as exc:
+        # `P16-16`'s scope, asked by the limiter now that this call is paced.
+        return {"error": str(exc), "exit_code": 1}
     except httpx.TimeoutException:
         return {"error": f"Request to {integration.get('name')} timed out", "exit_code": 1}
     except httpx.RequestError as exc:
