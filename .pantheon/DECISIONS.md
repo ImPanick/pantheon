@@ -2714,3 +2714,20 @@ short *Start from* list against `DEFERRED.md` D-07 (`P22-24`).
    route's, and the MCP command/argument/env validation (`FORBIDDEN.md` Part 2) is unchanged. Not chosen: copying it into
    Pantheon's data volume to run as the app user.
 
+## D-2026-10-02-03 — the repository is public and stays public; Pantheon gets a simple mark of its own; the search files keep their credit without a change notice
+
+**Asked**, 2026-10-02.
+
+1. **The repository's visibility.** Measured from the owner's machine (`gh api repos/ImPanick/pantheon`, 2026-10-02):
+   `private: false`, `visibility: public` — while `D-2026-09-08-06` recorded *"prime it, but dont flip that switch
+   yet."* Asked whether that was intentional: **yes — it stays public.** The ship line's blocking set (`SHIP-LINE.md`
+   § 3) is therefore live work, not preparation, and its security rows go first. Measured in the same call:
+   *Private vulnerability reporting* is enabled (`{"enabled": true}`), which is what `B357` waited on.
+2. **Branding (`B71`, `P0-13`).** *An agent makes a simple mark*: a typographic "Pantheon" wordmark and a simple
+   geometric icon, as SVG with PNG renders, for light and dark, replacing upstream's artwork wherever it ships (the
+   macOS app icon included). The owner may swap in artwork of their own later; nothing depends on this design.
+3. **`P0-16` — `services/search/`.** *Credit only, no change notice.* The nine files carry upstream Odysseus's
+   attribution to Tongyi DeepResearch in `CREDITS.md` and no Apache-2.0 §4(b) notice, because they contain no
+   DeepResearch expression and are unchanged — a notice saying they were changed would be false. The eight files that
+   do derive from DeepResearch keep theirs.
+
