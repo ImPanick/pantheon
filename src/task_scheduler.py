@@ -1166,6 +1166,38 @@ class LastRun(NamedTuple):
     error: str | None
 
 
+def plain_waiting_list(db, owner: str | None) -> list:
+    """`B1102`. `GET /api/tasks/waiting`: every plain Prompt task of `owner`'s
+    whose run waits for a yes right now, oldest first — `{task_id, task, run_id,
+    node_id, item, label, kind, since, until, approval}`, the workflow waiting
+    list's shape with the task in the workflow's place. `approval` is the card
+    while the store still holds it (so the page re-offers only a question that
+    can still be answered), else null. Never the session the card is bound to."""
+    from core.database import ScheduledTask, TaskRun, TaskRunNode
+    from src import workflow_runs as wr
+    from src.tool_approvals import tool_approval_store
+
+    q = (db.query(TaskRunNode, TaskRun, ScheduledTask)
+         .join(TaskRun, TaskRun.id == TaskRunNode.run_id)
+         .join(ScheduledTask, ScheduledTask.id == TaskRun.task_id)
+         .filter(TaskRunNode.node_id == PLAIN_TASK_NODE, TaskRunNode.status == "waiting",
+                 TaskRun.status == "waiting", ScheduledTask.task_type == "llm"))
+    if owner:
+        q = q.filter(ScheduledTask.owner == owner)
+    out = []
+    for rec, run, task in q.order_by(TaskRunNode.started_at).all():
+        waiting = wr.waiting_of(rec) or {}
+        kind = waiting.get("kind")
+        approval = None
+        if kind == wr.WAITING_APPROVAL and tool_approval_store.peek(waiting.get("approval_id")):
+            approval = waiting.get("card")
+        out.append({"task_id": task.id, "task": task.name, "run_id": run.id,
+                    "node_id": rec.node_id, "item": None, "label": rec.label, "kind": kind,
+                    "since": waiting.get("since"), "until": waiting.get("until"),
+                    "approval": approval})
+    return out
+
+
 def latest_real_runs(db, task_ids, *, clip: int = 500) -> dict:
     """The newest run of each task that is not a dry run, in one query.
 
@@ -1441,6 +1473,25 @@ ANSWER_RESTARTED = "restarted"
 # an ordinary message typed into its chat retires a waiting card
 # (`tool_approvals.retire_for_session`), the residual risk § 5 names.
 ANSWER_WITHDRAWN = "withdrawn"
+
+# `B1102`. A plain Prompt task's run that parks on a card keeps ONE waiting
+# record in `task_run_nodes` — the walker's record, under this step id — so the
+# sweeper (a lapse, a restart), Stop, a switch-off and the answer core read it
+# exactly as they read a workflow step's (`Law 14`). Written only when the run
+# parks: a run that never asks keeps the shape it always had.
+PLAIN_TASK_NODE = "task"
+#: The task types whose run can park: a workflow's (`P22-11`) and a plain
+#: Prompt task's (`B1102`). A parked run of either holds its task (`B674`).
+_PARKING_TASK_TYPES = ("workflow", "llm")
+
+
+class QuestionRefused(Exception):
+    """`B1102`. An answer `TaskScheduler.answer_question` will not take: the
+    HTTP status and the sentence. Each door says it in its own shape."""
+
+    def __init__(self, status: int, sentence: str):
+        super().__init__(sentence)
+        self.status, self.sentence = status, sentence
 
 
 class StepDone(NamedTuple):
@@ -2756,7 +2807,7 @@ class TaskScheduler:
                         started_by=started_by,
                         waited_for_idle=waited,
                         may_requeue=takeovers + 1 < FOREGROUND_STOPS_LIMIT,
-                        resume=resume, answer=answer,
+                        resume=resume, answer=answer, awaited=not register_handle,
                     )
                 else:
                     sem, waited = await self._take_model_slot(
@@ -2771,7 +2822,7 @@ class TaskScheduler:
                             started_by=started_by,
                             waited_for_idle=waited,
                             may_requeue=takeovers + 1 < FOREGROUND_STOPS_LIMIT,
-                            resume=resume, answer=answer,
+                            resume=resume, answer=answer, awaited=not register_handle,
                         )
                     finally:
                         sem.release()
@@ -2882,6 +2933,7 @@ class TaskScheduler:
         may_requeue: bool = True,
         resume: bool = False,
         answer=None,
+        awaited: bool = False,
     ):
         """Run one queued run to its end. Answers `REQUEUED` when the
         foreground gate stopped it while it ran and it goes back in the queue
@@ -2890,7 +2942,9 @@ class TaskScheduler:
         `waited_for_idle` is how long `_execute_task` held it in the queue for
         Pantheon to be idle (`B1060`), said in its step log after the cause.
         `may_requeue` is whether a stop by the gate puts it back
-        (`FOREGROUND_STOPS_LIMIT`).
+        (`FOREGROUND_STOPS_LIMIT`). `awaited` (`B1102`) is a run another run
+        awaits — a workflow's *Run task* step (`register_handle=False`) — which
+        cannot park on a card of its own: that step reads a finished run.
         """
         from core.database import SessionLocal, ScheduledTask, TaskRun
 
@@ -2959,6 +3013,17 @@ class TaskScheduler:
                 _other = _wr.run_in_flight(db, task_id, exclude=run_id)
                 if _other is not None and _other.status != "queued":
                     self._skip_for_in_flight(db, task, run_id, _other)
+                    return
+            # `B1102`. A plain Prompt task's run parked on a yes holds its task
+            # as a parked workflow run does: a trigger while it waits is a
+            # `skipped` run that says which run waits and for what — never a
+            # second run asking a second question. A RUNNING plain run keeps
+            # the `_executing` claim and its deliberate forced run (`Law 1`).
+            elif not resume and (task.task_type or "llm") == "llm":
+                from src import workflow_runs as _wr
+                _parked = _wr.parked_run(db, task_id, exclude=run_id)
+                if _parked is not None:
+                    self._skip_for_in_flight(db, task, run_id, _parked)
                     return
 
             # `P22-05`. One question for a task and for a workflow: the task's
@@ -3177,11 +3242,16 @@ class TaskScheduler:
                                      or result or "")[:2000]
                     self._state_for(run_id)["payload"] = node.payload
                 else:
-                    # LLM task — use agent loop for tool access
-                    result = await _bounded(
-                        self._execute_llm_task(task, db, run_id=run_id))
-                    run.status = "success"
+                    # LLM task — use agent loop for tool access. `B1102`: a
+                    # card parks the run (`TaskWaiting`, handled below as a
+                    # workflow's is), and a resumed run is answered here.
+                    status, result = await _bounded(self._run_plain_prompt(
+                        task, db, run_id, resume=resume, answer=answer,
+                        may_wait=not awaited))
+                    run.status = status
                     run.result = result
+                    if status == "error":
+                        run.error = result
                 # Record which model actually ran (resolved inside the executor).
                 if self.run_model(run_id):
                     run.model = self.run_model(run_id)
@@ -3234,7 +3304,7 @@ class TaskScheduler:
                 # its own notification) and no chain advance. A scheduled task
                 # gets its next time as normal; an event or webhook task none —
                 # a trigger while it waits is a `skipped` run (`B674`).
-                logger.info("Workflow '%s' parked: %s", task.name, parked.sentence)
+                logger.info("Task '%s' parked: %s", task.name, parked.sentence)
                 run.status = "waiting"
                 run.result = parked.sentence
                 run.error = None
@@ -3699,7 +3769,8 @@ class TaskScheduler:
         db = SessionLocal()
         try:
             task = db.query(ScheduledTask).filter(ScheduledTask.id == task_id).first()
-            if task is None or (task.task_type or "llm") != "workflow":
+            # `B1102`: a plain Prompt task's parked run holds it the same way.
+            if task is None or (task.task_type or "llm") not in _PARKING_TASK_TYPES:
                 return None
             parked = wr.parked_run(db, task_id)
             if parked is None:
@@ -3719,7 +3790,8 @@ class TaskScheduler:
         db = SessionLocal()
         try:
             task = db.query(ScheduledTask).filter(ScheduledTask.id == task_id).first()
-            if task is None or (task.task_type or "llm") != "workflow":
+            # `B1102`: a plain Prompt task's parked run holds it the same way.
+            if task is None or (task.task_type or "llm") not in _PARKING_TASK_TYPES:
                 return None
             parked = wr.parked_run(db, task_id)
             if parked is None:
@@ -3807,6 +3879,63 @@ class TaskScheduler:
             return False
         self._spawn_resume(task_id, run_id, started_by=started_by, answer=answer)
         return True
+
+    async def answer_question(self, *, task_id: str, run_id: str, node_id: str, item,
+                              approval_id: str, decision: str, owner, session: str,
+                              tool: str, who: str, tz_name: str | None,
+                              busy: str) -> tuple:
+        """`B1102`. A parked run's question, answered — the ONE core both doors
+        call: the workflow's answer route (`P22-17`) and a plain task's
+        (`POST /api/tasks/{id}/runs/{run_id}/answer`), each after scoping the run
+        to its owner and finding the record that waits on exactly this card
+        (`Law 14`). Answers `(outcome, StepAnswer)`; raises `QuestionRefused`.
+
+          * the store must still hold the card for this owner and the session it
+            was minted in — otherwise it is not this run's card: a 404, and
+            nothing about it is said or consumed (a card the store no longer
+            holds lapsed, and is answered so);
+          * the task's claim is taken for the resume (`busy` while another
+            holds it — "answer again");
+          * `consume(..., allow_continuation=False)` — SINGLE_ACTION scope, so
+            Allow resumes the run ONCE and the gate re-arms behind the sealed
+            action; `approve_task` or `deny` (the door refuses `approve`);
+          * the answer, with who and when, and the run goes on as the
+            person's (`STARTED_BY_PERSON`). The consumed approval travels in
+            memory: a restart in that window is a lapsed answer.
+
+        The seal, the TTL, single use and owner binding are the store's,
+        unchanged (`FORBIDDEN.md` Part 2)."""
+        from src.interactive_gate import STARTED_BY_PERSON
+        from src.tool_approvals import _normalized_owner, tool_approval_store
+        from src.workflow_runs import _clock
+
+        pending = tool_approval_store.peek(approval_id)
+        if pending is not None and (pending.owner != _normalized_owner(owner)
+                                    or pending.session_id != session):
+            raise QuestionRefused(404, "No such question.")
+        if not await self._claim_for_resume(task_id):
+            raise QuestionRefused(409, busy)
+        at = _clock(_utcnow(), tz_name)
+        lapsed = f"Nobody answered in time — {tool} was not done."
+        if pending is None:
+            verdict, outcome = StepAnswer(node_id, item, ANSWER_LAPSED, lapsed), "lapsed"
+        else:
+            exact = tool_approval_store.consume(
+                approval_id, decision=decision, owner=owner, session_id=session,
+                allow_continuation=False, outcome={})
+            if decision == "deny":
+                verdict = StepAnswer(node_id, item, ANSWER_DENY,
+                                     f"Denied by {who} at {at}: {tool} — it was not done.")
+                outcome = "denied"
+            elif exact is None:
+                verdict, outcome = StepAnswer(node_id, item, ANSWER_LAPSED, lapsed), "lapsed"
+            else:
+                verdict = StepAnswer(node_id, item, ANSWER_ALLOW,
+                                     f"Allowed once by {who} at {at}: {tool}",
+                                     exact_approval=exact)
+                outcome = "resumed"
+        self._spawn_resume(task_id, run_id, started_by=STARTED_BY_PERSON, answer=verdict)
+        return outcome, verdict
 
     async def _resume_due_waits(self) -> int:
         """`P22-11`. The sweeper: every parked run whose wait is over goes on.
@@ -4265,6 +4394,118 @@ class TaskScheduler:
             trigger_context_msg=_trigger_context_message(self.run_trigger(run_id)),
             run_id=run_id,
         )
+
+    async def _run_plain_prompt(self, task, db, run_id: str, *, resume: bool = False,
+                                answer=None, may_wait: bool = True) -> tuple:
+        """`B1102`. A plain Prompt task's run: `(status, text)` — `success` and
+        its output, or `error` and why. Raises `TaskWaiting` when it parks.
+
+        It waits for a yes exactly as a workflow's Prompt step does, through
+        the same parts: `_run_agent_loop` raises `TaskWaiting` on a card when
+        the run's slot says `may_wait` (the card then waits
+        `workflow_approval_timeout_seconds`, `D-2026-10-02-01` §1);
+        `_park_plain_run` keeps the walker's waiting record and asks the person;
+        a resume is answered by the walker's own `_approval_verdict` — Allow
+        replays the consumed approval ONCE (the loop's `exact_approval`) and
+        the run goes on; Deny, a lapse, a restart or a withdrawn card end it
+        `error`, saying which. Before, the card was consumed as a denial on the
+        spot ("Scheduled task paused safely", which a run another run awaits
+        still says — `may_wait=False`)."""
+        from types import SimpleNamespace
+
+        from src import workflow_runs as wr
+        from src.builtin_actions import TaskWaiting
+
+        slot = self._state_for(run_id)
+        rec = self._plain_record(db, run_id)
+        if resume:
+            waiting = (wr.waiting_of(rec) or {}) if rec is not None and rec.status == "waiting" else {}
+            if waiting.get("kind") != wr.WAITING_APPROVAL:
+                raise RuntimeError("This run was waiting for nothing it can go on from.")
+            verdict = self._approval_verdict(SimpleNamespace(db=db, task=task), rec, waiting, answer)
+            if verdict is None:
+                # Still open — no answer for it, and the store still holds it:
+                # it waits on, and the person was already asked.
+                raise TaskWaiting(f"Waiting for your yes on {waiting.get('tool') or 'an action'}",
+                                  kind=wr.WAITING_APPROVAL)
+            if verdict.decision != ANSWER_ALLOW:
+                if answer is None:
+                    # The sweeper's verdict (a lapse, a restart, a withdrawn
+                    # card); a person's answer is already in the log as "Resumed: …".
+                    self._record_run_step(run_id, kind="progress", detail=verdict.sentence)
+                wr.record_node_end(db, rec, status="error", text=verdict.sentence,
+                                   error=verdict.sentence, steps=self.run_steps(run_id),
+                                   model=rec.model, owner=task.owner)
+                return "error", verdict.sentence
+            wr.record_node_resumed(db, rec)
+            slot["exact_approval"] = verdict.exact_approval
+        slot["may_wait"] = bool(may_wait)
+        try:
+            result = await self._execute_llm_task(task, db, run_id=run_id)
+        except TaskWaiting as parked:
+            self._park_plain_run(db, task, run_id, parked, rec)
+            raise
+        except BaseException as exc:
+            if rec is not None:
+                stopped = isinstance(exc, asyncio.CancelledError)
+                wr.record_node_end(db, rec, status="aborted" if stopped else "error",
+                                   error=NODE_STOPPED if stopped else f"{type(exc).__name__}: {exc}",
+                                   steps=self.run_steps(run_id), model=self.run_model(run_id),
+                                   owner=task.owner)
+            raise
+        if rec is not None:
+            wr.record_node_end(db, rec, status="success", text=result,
+                               steps=self.run_steps(run_id), model=self.run_model(run_id),
+                               owner=task.owner)
+        return "success", result
+
+    def _plain_record(self, db, run_id: str):
+        """`B1102`. The waiting record a plain Prompt task's run keeps once it
+        has parked (`PLAIN_TASK_NODE`), or `None`."""
+        from core.database import TaskRunNode
+
+        return (db.query(TaskRunNode)
+                .filter(TaskRunNode.run_id == run_id, TaskRunNode.node_id == PLAIN_TASK_NODE)
+                .order_by(TaskRunNode.seq.desc()).first())
+
+    def _park_plain_run(self, db, task, run_id: str, parked, rec) -> None:
+        """`B1102`. A plain Prompt task's run parks: its waiting record (the
+        walker's shape, one per run, written on its first park), a line in its
+        log, and the question to the person — a notification with the card as
+        `review` (`kind: "task_approval"`), sent even with the task's
+        notifications off, because a question is not a report on an outcome
+        (`SLICE-CD-DESIGN` § 1.5). `_execute_task_locked`'s `TaskWaiting`
+        branch then writes the run `waiting` and lets go of its slot."""
+        from src import workflow_runs as wr
+
+        detail = dict(parked.detail)
+        waiting = {"kind": parked.kind, **detail}
+        # The card's deadline, as the walker writes it (`_park_record`): an ISO
+        # string the sweeper and the verdict read back with `_parse_iso`.
+        until = detail.get("until")
+        if isinstance(until, (int, float)):
+            waiting["until"] = datetime.fromtimestamp(
+                until, tz=timezone.utc).replace(tzinfo=None).isoformat() + "Z"
+        if rec is None:
+            rec = wr.record_node_start(
+                db, run_id=run_id,
+                node={"id": PLAIN_TASK_NODE, "kind": "llm", "label": task.name},
+                seq=0, input_envelope=self.run_trigger(run_id), workflow_version=None,
+                owner=task.owner)
+        wr.record_node_waiting(db, rec, waiting=waiting, steps=self.run_steps(run_id),
+                               model=self.run_model(run_id))
+        self._record_run_step(run_id, kind="progress", detail=parked.sentence)
+        if parked.kind != wr.WAITING_APPROVAL:
+            return
+        card = waiting.get("card") if isinstance(waiting.get("card"), dict) else {}
+        tool = waiting.get("tool") or (card.get("action") or {}).get("tool") or "an action"
+        self.add_notification(
+            task.name, "waiting", task.id, owner=task.owner,
+            body=f"“{task.name}” is waiting for your yes: {tool}.",
+            review={"kind": "task_approval", "task_id": task.id, "task": task.name,
+                    "run_id": run_id, "node_id": PLAIN_TASK_NODE, "item": None,
+                    "label": task.name, "since": (wr.waiting_of(rec) or {}).get("since"),
+                    "approval": card or None})
 
     async def _execute_llm_task(self, task, db, run_id: str | None = None) -> str:
         """Execute an LLM task with full tool access via the agent loop.

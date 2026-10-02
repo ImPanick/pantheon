@@ -615,12 +615,7 @@ def setup_workflow_routes(task_scheduler) -> APIRouter:
         The seal, the TTL, single use and owner binding are the store's,
         unchanged (`FORBIDDEN.md` Part 2).
         """
-        from src.interactive_gate import STARTED_BY_PERSON
-        from src.task_scheduler import (
-            ANSWER_ALLOW, ANSWER_DENY, ANSWER_LAPSED, StepAnswer, _resolve_task_timezone,
-        )
-        from src.tool_approvals import _normalized_owner, tool_approval_store
-        from src.workflow_runs import _clock
+        from src.task_scheduler import QuestionRefused, _resolve_task_timezone
         body = await _body(request)
         decision = str(body.get("decision") or "").strip().lower()
         if decision == "approve":
@@ -646,41 +641,16 @@ def setup_workflow_routes(task_scheduler) -> APIRouter:
             task_id = run.task_id
         finally:
             db.close()
-        pending = tool_approval_store.peek(approval_id)
-        if pending is not None and (pending.owner != _normalized_owner(owner)
-                                    or pending.session_id != session):
-            # Not this workflow's card: nothing about it is said or consumed.
-            raise WorkflowRefused(404, "No such question.")
-        if not await task_scheduler._claim_for_resume(task_id):
-            raise WorkflowRefused(409, "The workflow is busy for a moment. Answer again.")
-        from datetime import datetime, timezone
-        now = datetime.now(timezone.utc).replace(tzinfo=None)
-        who = user or owner or "you"
-        at = _clock(now, tz_name)
-        if pending is None:
-            verdict = StepAnswer(node_id, item, ANSWER_LAPSED,
-                                 f"Nobody answered in time — {tool} was not done.")
-            outcome = "lapsed"
-        else:
-            said = {}
-            exact = tool_approval_store.consume(
-                approval_id, decision=decision, owner=owner, session_id=session,
-                allow_continuation=False, outcome=said)
-            if decision == "deny":
-                verdict = StepAnswer(node_id, item, ANSWER_DENY,
-                                     f"Denied by {who} at {at}: {tool} — it was not done.")
-                outcome = "denied"
-            elif exact is None:
-                verdict = StepAnswer(node_id, item, ANSWER_LAPSED,
-                                     f"Nobody answered in time — {tool} was not done.")
-                outcome = "lapsed"
-            else:
-                verdict = StepAnswer(node_id, item, ANSWER_ALLOW,
-                                     f"Allowed once by {who} at {at}: {tool}",
-                                     exact_approval=exact)
-                outcome = "resumed"
-        task_scheduler._spawn_resume(task_id, run.id, started_by=STARTED_BY_PERSON,
-                                     answer=verdict)
+        # `B1102`. Steps 3–5 are the scheduler's one answer core, which a plain
+        # task's door calls too (`TaskScheduler.answer_question`, `Law 14`).
+        try:
+            outcome, verdict = await task_scheduler.answer_question(
+                task_id=task_id, run_id=run.id, node_id=node_id, item=item,
+                approval_id=approval_id, decision=decision, owner=owner, session=session,
+                tool=tool, who=user or owner or "you", tz_name=tz_name,
+                busy="The workflow is busy for a moment. Answer again.")
+        except QuestionRefused as refused:
+            raise WorkflowRefused(refused.status, refused.sentence)
         return {"ok": True, "outcome": outcome, "sentence": verdict.sentence,
                 "step": label}
 

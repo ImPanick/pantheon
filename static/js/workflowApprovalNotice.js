@@ -28,6 +28,14 @@
  *                    `D-2026-10-02-01` §1) and is offered again when
  *                    Pantheon is next opened (`offerWaitingWorkflowApprovals`).
  *
+ * `B1102`. A plain scheduled Prompt task's run parks on its card the same way,
+ * and this module puts that question in front of the person too — one notice
+ * for "a run is waiting for your yes" (`Law 14`). Its `review` is
+ * `{ kind: "task_approval", task_id, task, run_id, node_id, item, label, since,
+ * approval }`; it is answered at `POST /api/tasks/{id}/runs/{run_id}/answer`
+ * (the same server core as a workflow's), re-offered from
+ * `GET /api/tasks/waiting`, and **Deny** ends that run without the action.
+ *
  * Every string from the server reaches the page as text: the question and the
  * action came from a model reading outside data.
  */
@@ -40,6 +48,7 @@ import { registerMenuDismiss } from './escMenuStack.js';
 import { topPortalZ } from './toolWindowZOrder.js';
 
 const NOTICE_MS = 30000;
+const API_BASE = window.location.origin;
 
 // Approval ids offered on this page, so the queue's push and the reload's
 // catch-up never put the same question on screen twice; and the ones answered.
@@ -63,9 +72,20 @@ function _when(iso) {
   return Number.isNaN(d.getTime()) ? String(iso) : d.toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 }
 
+/** `B1102`. A plain task's question rather than a workflow step's. */
+const isTask = (review) => !!(review && review.kind === 'task_approval');
+
 /** What the notice says: `{ title, summary }`. */
 export function workflowApprovalWords(review) {
   const r = review || {};
+  if (isTask(r)) {
+    const name = String(r.task || r.task_name || '').trim();
+    const used = r.approval && r.approval.action && r.approval.action.tool ? String(r.approval.action.tool) : '';
+    return {
+      title: name ? `“${name}” is waiting for your yes` : 'A task is waiting for your yes',
+      summary: `It wants to ${used ? `use ${used}` : 'do something that needs your yes'}.`,
+    };
+  }
   const wf = String(r.workflow || r.workflow_name || '').trim();
   const step = String(r.label || r.node_label || '').trim();
   const item = r.item == null ? '' : ` (item ${Number(r.item) + 1})`;
@@ -76,9 +96,30 @@ export function workflowApprovalWords(review) {
   };
 }
 
-/** Whether `review` is a workflow question this module can put on screen. */
-const isQuestion = (review) => !!(review && review.kind === 'workflow_approval' && review.workflow_id != null
+/** Whether `review` is a question this module can put on screen: a workflow
+ *  step's, or a plain task's (`B1102`). */
+const isQuestion = (review) => !!(review
+  && ((review.kind === 'workflow_approval' && review.workflow_id != null)
+    || (review.kind === 'task_approval' && review.task_id != null))
   && review.run_id != null && review.approval && review.approval.approval_id);
+
+/** `B1102`. A plain task's answer, at its own door — the same server core. */
+async function _answerTask(review, decision) {
+  let res;
+  try {
+    res = await fetch(`${API_BASE}/api/tasks/${encodeURIComponent(review.task_id)}/runs/${encodeURIComponent(review.run_id)}/answer`, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ approval_id: review.approval.approval_id, decision }),
+    });
+  } catch (_) {
+    throw new Error('Pantheon could not be reached, so nothing was answered.');
+  }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || 'The answer was not taken.');
+  return data;
+}
 
 /**
  * Send the answer. `decision` is `approve_task` or `deny`. Answers the
@@ -87,6 +128,7 @@ const isQuestion = (review) => !!(review && review.kind === 'workflow_approval' 
  */
 export async function answerWorkflowApproval(review, decision) {
   if (decision !== 'approve_task' && decision !== 'deny') throw new Error('A step is answered with Allow once or Deny.');
+  if (isTask(review)) return _answerTask(review, decision);
   const api = await _api();
   if (!api || typeof api.answerStep !== 'function') throw new Error('This Pantheon cannot answer a waiting step.');
   return api.answerStep(review.workflow_id, review.run_id, {
@@ -95,8 +137,15 @@ export async function answerWorkflowApproval(review, decision) {
   });
 }
 
-/** The Workbench on this question's run (Runs, the run, opened on the step). */
+/** The Workbench on this question's run (Runs, the run, opened on the step);
+ *  for a plain task's question, the task in the Tasks window (`B1102`). */
 function openRun(review) {
+  if (isTask(review)) {
+    if (window.tasksModule && typeof window.tasksModule.openTasks === 'function') {
+      window.tasksModule.openTasks(review.task_id);
+    }
+    return Promise.resolve();
+  }
   return import('./workbench/workbench.js')
     .then((wb) => wb.openWorkbench({
       workflowId: review.workflow_id, runId: review.run_id,
@@ -144,10 +193,11 @@ export function openWorkflowApproval(review) {
       const reply = await answerWorkflowApproval(review, decision);
       if (reply && reply.ok === false) throw new Error(reply.sentence || 'The answer was not taken.');
       _answered.add(String(review.approval.approval_id));
-      const sentence = (reply && reply.sentence)
-        || (decision === 'deny' ? 'Denied. The step takes its “if it fails” way.' : 'Allowed once. The run goes on.');
+      const denied = isTask(review) ? 'Denied. The run ends without it.' : 'Denied. The step takes its “if it fails” way.';
+      const sentence = (reply && reply.sentence) || (decision === 'deny' ? denied : 'Allowed once. The run goes on.');
       _close();
-      const name = String(review.workflow || review.workflow_name || '').trim() || 'The workflow';
+      const name = String(review.workflow || review.workflow_name || review.task || '').trim()
+        || (isTask(review) ? 'The task' : 'The workflow');
       uiModule.showToast(`${name}: ${sentence}`, { duration: 8000 });
     },
     onError: (message) => { said.textContent = `Not answered: ${String(message).replace(/\.$/, '')}.`; },
@@ -155,7 +205,7 @@ export function openWorkflowApproval(review) {
   const note = document.createElement('p');
   note.className = 'wf-approval-note';
   note.textContent = 'Allow once lets this one action run, and the next one asks again. '
-    + 'Deny takes the step’s “if it fails” way.';
+    + (isTask(review) ? 'Deny ends this run without it.' : 'Deny takes the step’s “if it fails” way.');
   box.appendChild(note);
   box.appendChild(said);
   const row = document.createElement('div');
@@ -163,7 +213,7 @@ export function openWorkflowApproval(review) {
   const runBtn = document.createElement('button');
   runBtn.type = 'button';
   runBtn.className = 'wf-approval-open';
-  runBtn.textContent = 'Open the run';
+  runBtn.textContent = isTask(review) ? 'Open the task' : 'Open the run';
   runBtn.addEventListener('click', () => { _close(); openRun(review); });
   const later = document.createElement('button');
   later.type = 'button';
@@ -209,10 +259,33 @@ export function offerWorkflowApproval(review) {
  *  waiting list, `listWaiting`). Answers how many were put on screen. */
 export async function offerWaitingWorkflowApprovals() {
   let listed;
+  let shown = 0;
   try {
     const api = await _api();
-    if (!api || typeof api.listWaiting !== 'function') return 0;
-    listed = await api.listWaiting();
+    listed = (api && typeof api.listWaiting === 'function') ? await api.listWaiting() : null;
+  } catch (_) {
+    listed = null;
+  }
+  for (const w of (listed && Array.isArray(listed.waiting) ? listed.waiting : [])) {
+    if (!w || w.kind !== 'approval' || !w.approval) continue;
+    const review = {
+      kind: 'workflow_approval', workflow_id: w.workflow_id, run_id: w.run_id, node_id: w.node_id,
+      item: w.item == null ? null : w.item, approval: w.approval, workflow: w.workflow, label: w.label,
+      since: w.since, until: w.until,
+    };
+    if (offerWorkflowApproval(review)) shown += 1;
+  }
+  return shown + await _offerWaitingTaskQuestions();
+}
+
+/** `B1102`. A plain task's questions still waiting, offered again the same way
+ *  (`GET /api/tasks/waiting`). Answers how many were put on screen. */
+async function _offerWaitingTaskQuestions() {
+  let listed;
+  try {
+    const res = await fetch(`${API_BASE}/api/tasks/waiting`, { credentials: 'same-origin' });
+    if (!res.ok) return 0;
+    listed = await res.json();
   } catch (_) {
     return 0;
   }
@@ -220,9 +293,8 @@ export async function offerWaitingWorkflowApprovals() {
   for (const w of (listed && Array.isArray(listed.waiting) ? listed.waiting : [])) {
     if (!w || w.kind !== 'approval' || !w.approval) continue;
     const review = {
-      kind: 'workflow_approval', workflow_id: w.workflow_id, run_id: w.run_id, node_id: w.node_id,
-      item: w.item == null ? null : w.item, approval: w.approval, workflow: w.workflow, label: w.label,
-      since: w.since, until: w.until,
+      kind: 'task_approval', task_id: w.task_id, task: w.task, run_id: w.run_id, node_id: w.node_id,
+      item: null, approval: w.approval, label: w.label, since: w.since, until: w.until,
     };
     if (offerWorkflowApproval(review)) shown += 1;
   }
