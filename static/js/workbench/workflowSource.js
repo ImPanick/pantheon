@@ -887,8 +887,13 @@ export function createWorkflowSource({
         }
         edited();
         await recheck();
+        // `P22-09`. When the server says this step cannot be saved as it is
+        // (a field from another step in a command, say), it is said now —
+        // and again on the field when the step is opened or Save is pressed.
+        const p = S.problem && (S.problem.nodeIds || []).map(String).includes(nowId) ? S.problem : null;
         saved({ id: nowId, was: nowId !== id ? id : null, name: n.label,
-          sentence: `Changed “${n.label}”. Save the workflow to keep it.` });
+          sentence: p ? `Changed “${n.label}”, but it cannot be saved like this: ${p.sentence}`
+            : `Changed “${n.label}”. Save the workflow to keep it.` });
       },
       onCancel,
     });

@@ -318,6 +318,9 @@ export function mountAutomations(host, opts = {}) {
     // A pin is saved at once and makes no version; the step's "Sample pinned"
     // mark is the canvas's, so it is redrawn (the open panel stays open).
     onChanged: () => { if (R.wf && R.wf.canvas) R.wf.canvas.reload(); },
+    // `P22-17` (wf-canvas). A waiting step answered from its record: the run
+    // is drawn again, and the list says how it stands now.
+    onAnswered: (info) => answered(info),
   });
 
   function stateOf(source) {
@@ -722,6 +725,11 @@ export function mountAutomations(host, opts = {}) {
       const stale = why.status === 409 || why.stale === true;
       // The steps the server's refusal names: the first is shown.
       const nodeIds = Array.isArray(why.nodeIds) ? why.nodeIds.map(String) : [];
+      // `P22-09` (wf-canvas). A refusal about one field of a step — a
+      // reference in a command, a URL, a recipient — opens that step, and its
+      // panel says the sentence on the field (the source hands it the draft's
+      // problem). Opened first and fitted after, as a failed run's step is.
+      if (nodeIds.length && why.field && w.canvas && !(w.canvas.isDirty && w.canvas.isDirty())) w.canvas.select(nodeIds[0]);
       if (nodeIds.length && w.canvas) w.canvas.focusChain(nodeIds[0]);
       say(`Not saved: ${sentence}`, {
         refusal: true,
@@ -1110,6 +1118,17 @@ export function mountAutomations(host, opts = {}) {
     if (R.destroyed || R.wf !== w || w.runCanvas !== rc) return;
     const run = (w.runs || []).find((r) => String(r.id) === w.runId) || {};
     const failed = failedStep(rs, rc);
+    // `P22-11`, `P22-17` (wf-canvas). A run that is waiting opens on the step
+    // it waits on, with what it waits for — and, for a yes, its card — open
+    // beside it.
+    const waiting = stateOf(rs).waiting;
+    if (waiting && waiting.nodeId != null) {
+      const id = String(waiting.nodeId);
+      rc.select(id);
+      rc.focusChain(id);
+      rc.say(waitingSentence(waiting));
+      return;
+    }
     if (failed) {
       // `P22-07`: a failed run opens on its failed step, with what it was
       // handed open — "without being told where to look".
@@ -1127,6 +1146,36 @@ export function mountAutomations(host, opts = {}) {
     rc.say(isDryRun(run)
       ? 'A dry run: each step says what it would have done. Nothing ran.'
       : `This run ${runWords(run).word === 'Success' ? 'worked' : 'ended: ' + runWords(run).word.toLowerCase()}. Open a step to read what it was handed and what it made.`);
+  }
+
+  /** What a waiting run's line says when it opens on its waiting step. */
+  function waitingSentence(wt) {
+    const name = `“${wt.label || 'A step'}”` + (wt.item != null ? ` (item ${Number(wt.item) + 1})` : '');
+    if (wt.kind === 'approval') return `${name} is waiting for your yes. Its question is open beside it: Allow once, or Deny.`;
+    if (wt.kind === 'time') return `${name} is ${String(wt.words || 'waiting').replace(/^Waiting/, 'waiting')}. The run goes on by itself.`;
+    if (wt.kind === 'idle') return `${name} is waiting for Pantheon to be idle; the run goes on from that step.`;
+    return `${name} is waiting.`;
+  }
+
+  /** `P22-17`. After a waiting step was answered from its record. */
+  async function answered({ reply } = {}) {
+    const w = R.wf;
+    if (!w || !w.runCanvas) return;
+    const rc = w.runCanvas;
+    await rc.reload();
+    if (R.destroyed || R.wf !== w || w.runCanvas !== rc) return;
+    const sentence = reply && reply.sentence ? String(reply.sentence) : 'Answered.';
+    rc.say(sentence);
+    // The run's row in the list says how it stands now.
+    if (R.api && w.runs) {
+      try {
+        const doc = docOf(w.source);
+        const taskId = doc.task_id || (doc.trigger_task && doc.trigger_task.id);
+        const out = taskId ? await R.api.listExecutions(taskId, { limit: RUNS_SHOWN }) : null;
+        if (R.destroyed || R.wf !== w) return;
+        if (out && Array.isArray(out.runs)) { w.runs = out.runs; drawRuns(); }
+      } catch (_) { /* the list stays as it was */ }
+    }
   }
 
   function recordShown({ node, record }) {
@@ -1208,6 +1257,31 @@ export function mountAutomations(host, opts = {}) {
   }
 
   // ── doors for the window ─────────────────────────────────────────────────
+  /** `P22-17` (wf-canvas). Open workflow `workflowId` on its run `runId` —
+   *  the notification's *Open the run*: Runs, that run, drawn and opened on
+   *  the step it waits on. */
+  async function openRunOf(workflowId, runId) {
+    if (workflowId == null) return false;
+    const go = async () => {
+      if (!(R.view === 'workflow' && R.wf && R.wf.id === String(workflowId))) {
+        const ok = await showWorkflow(workflowId);
+        if (!ok) return false;
+      }
+      const w = R.wf;
+      if (!w) return false;
+      setTab('runs', { quiet: true });
+      if (runId == null) { await loadRuns(); return true; }
+      w.runId = String(runId);
+      await loadRuns();
+      if (R.wf === w && (!w.runCanvas || w.runId !== String(runId))) await openRun(runId);
+      return true;
+    };
+    if (R.view === 'workflow' && R.wf && R.wf.id === String(workflowId)) return go();
+    let result = false;
+    const ran = guardLeave(() => { result = go(); });
+    return ran ? result : false;
+  }
+
   function focusChain(taskId) {
     if (taskId == null) return;
     const w = R.workflows.find((x) => String(x.task_id) === String(taskId));
@@ -1252,7 +1326,7 @@ export function mountAutomations(host, opts = {}) {
   const ready = (async () => {
     const listed = refreshShelf();
     if (opts.workflowId != null) {
-      const ok = await showWorkflow(opts.workflowId);
+      const ok = opts.runId != null ? await openRunOf(opts.workflowId, opts.runId) : await showWorkflow(opts.workflowId);
       if (!ok && !R.destroyed && R.view !== 'tasks') showTasks();
     }
     if (R.tasksCanvas) await R.tasksCanvas.ready;
@@ -1270,6 +1344,7 @@ export function mountAutomations(host, opts = {}) {
     ready,
     focusChain,
     openWorkflow: (id) => openWorkflow(id),
+    openRun: (workflowId, runId) => openRunOf(workflowId, runId),
     canClose,
     destroy,
     /** The canvas on screen (tests and the glue's Escape reach the room
