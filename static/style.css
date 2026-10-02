@@ -47609,6 +47609,21 @@ button.task-card-toggle {
   min-height: 0;
   overflow: hidden;
 }
+/* The window stacks its sidebar by viewport width (`.skills-modal-body` under
+   768px); a Workbench docked to half a desktop is narrow at any viewport, and
+   measured at ~440px wide the list column hid every skill's name. So the room
+   stacks by its own width. */
+.workbench-room-skills { container-type: inline-size; container-name: skillsroom; }
+@container skillsroom (max-width: 720px) {
+  #skills-room { flex-direction: column; gap: 6px; }
+  #skills-room .skills-side {
+    flex: 0 0 auto;
+    max-height: 32vh;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    padding: 0 0 6px;
+  }
+}
 #skills-room .skills-view:not(.hidden) {
   display: flex;
   flex-direction: column;
