@@ -272,11 +272,16 @@ test nobody had looked at, and turned out to be upstream's logo wearing our file
   `if`/`else if` chain, and anything without a branch is dropped before it reaches the screen.
   Most of that phase has landed; the conspicuous gap left is that the metrics footer and the
   stats popup report a failed turn with the same shape and styling as a successful one.
-- **The Workbench** — the engines are in: skills are built, versioned and imported as whole
-  packages from skills.sh or GitHub; automations have triggers, branches, hand-offs and dry runs;
-  MCP servers are edited, tested and scaffolded. What is being built now is the room: a canvas to
-  wire automations, a workflow as one named document, a step you can test on sample data, and
-  skills and MCP servers authored in the same window, with the model drafting and fixing alongside.
+- **The Workbench** — built. One window, three rooms. In *Automations* a workflow is one named
+  document on a canvas: steps wired *if it works* or *if it fails*, fields picked from what an
+  earlier step made, If and Switch without code, HTTP calls, MCP tools, skills, AI steps and code
+  in your own workstation; every run is recorded step by step, and a step that needs your yes waits
+  for it. Say what should happen and the model drafts it — switched off, each step marked *check
+  me* until you have looked; when a step fails the model says why, and its fix is a version you can
+  undo; a workflow is a file you can hand someone, without its keys. *Skills* is the Skills
+  window's own module, with drafting from a sentence and fixing with the model; *MCP &
+  Integrations* builds an MCP server in your workstation and tries it before an admin registers it.
+  Next: a mail-triggered workflow that runs without anyone opening the inbox first.
 - **Persistent memory** — project knowledge that survives restarts, gains confidence as sources
   agree, and records contradictions instead of silently resolving them.
 - **Identity and limits** — SSO against your own provider, roles rather than a single admin
