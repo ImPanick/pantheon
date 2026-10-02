@@ -579,6 +579,8 @@ def xlsx_sheets(path: str):
                 try:
                     custom[int(nf.get("numFmtId"))] = nf.get("formatCode") or "General"
                 except (TypeError, ValueError):
+                    # A format with no usable id cannot be referred to by a
+                    # cell; leaving it out is what SheetJS does with it too.
                     pass
             xfs = styles.find(S + "cellXfs")
             for xf in (xfs if xfs is not None else []):
@@ -611,6 +613,8 @@ def xlsx_sheets(path: str):
                     try:
                         cells[pos] = shared[int(v)]
                     except (TypeError, ValueError, IndexError):
+                        # A shared-string index that points nowhere is a cell
+                        # with no text: left empty, as SheetJS leaves it.
                         pass
                 elif kind == "inlineStr":
                     is_ = c.find(S + "is")
