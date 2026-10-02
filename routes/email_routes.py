@@ -535,13 +535,46 @@ def _clear_done_response_tags(owner: str, account_id: str | None, folder: str, u
         logger.debug(f"clear done response tags skipped: {e}")
 
 
+def _event_account_keys(account_id: str | None, owner: str) -> tuple[str, tuple[str, ...]]:
+    """`B1139`. The account a listing READ, as `email_event_seen` keeps it, and
+    the older key its messages may already be recorded under.
+
+    A listing that names no account reads the owner's default mailbox
+    (`_get_email_config(None, owner)`), and its messages were recorded under
+    the word `default` while the same mailbox listed by its id was recorded
+    under the id — two keys for one mailbox, so one mail fired twice (measured:
+    `<stmt-dark-1400-…>` under `default` at 10:56:21 and `8d92c7a0…` at
+    10:57:54, `Fired email_received` logged both times). Now both are the id
+    the config resolves to; `default` is left only for a mailbox with no
+    account row (the settings/env fallback), which has no id.
+
+    The second value is what an install that ran before this recorded under
+    `default` for this same mailbox: read as already seen, so the first listing
+    after the upgrade neither fires it again nor takes a fresh baseline.
+    """
+    try:
+        default_id = ((_get_email_config(None, owner=owner) or {}).get("account_id") or "").strip()
+    except Exception:
+        default_id = ""
+    key = (account_id or "").strip() or default_id or "default"
+    return key, (("default",) if key != "default" and key == default_id else ())
+
+
 def _record_email_received_events(owner: str, account_id: str | None, folder: str, emails: list[dict]):
-    """Baseline inbox messages, then fire `email_received` for new arrivals."""
+    """Baseline inbox messages, then fire `email_received` for new arrivals.
+
+    `B1137` / `B1139`. The one producer of `email_received`, for both of its
+    callers — the inbox listing (`GET /api/email/list`) and the background
+    inbox check (`routes/email_pollers._check_inbox`) — so a message is new
+    once, whichever of them sees it first, across restarts (the seen keys are
+    rows in `email_event_seen`, claimed one by one: a key whose `INSERT OR
+    IGNORE` added no row was already claimed, by this process or another).
+    """
     if not owner or (folder or "INBOX").upper() != "INBOX" or not emails:
         return
     try:
         from src.event_bus import fire_event
-        account_key = (account_id or "default").strip() or "default"
+        account_key, older_keys = _event_account_keys(account_id, owner)
         now = datetime.utcnow().isoformat() + "Z"
         keys = []
         # `P22-09` (`SLICE-CD-DESIGN` § 0.12). The message dicts are already in
@@ -550,7 +583,7 @@ def _record_email_received_events(owner: str, account_id: str | None, folder: st
         # the three it always carried. `build_trigger` clips both.
         about = {}
         for e in emails:
-            key = (e.get("message_id") or e.get("uid") or "").strip()
+            key = str(e.get("message_id") or e.get("uid") or "").strip()
             if key and key not in keys:
                 keys.append(key)
                 about[key] = {"from_address": e.get("from_address") or "",
@@ -558,7 +591,9 @@ def _record_email_received_events(owner: str, account_id: str | None, folder: st
         if not keys:
             return
 
-        conn = _sql3.connect(SCHEDULED_DB)
+        known = (account_key, *older_keys)
+        known_ph = ",".join("?" * len(known))
+        conn = _sql3.connect(SCHEDULED_DB, timeout=10)
         try:
             conn.execute(
                 "CREATE TABLE IF NOT EXISTS email_event_seen ("
@@ -566,28 +601,39 @@ def _record_email_received_events(owner: str, account_id: str | None, folder: st
                 "message_key TEXT NOT NULL, first_seen_at TEXT NOT NULL, "
                 "PRIMARY KEY (owner, account_key, folder, message_key))"
             )
+            # `B1139`. One writer from here to the commit, so the baseline
+            # count, what was seen and what is claimed are one decision — two
+            # listings (or two processes) cannot both find a message new.
+            conn.execute("BEGIN IMMEDIATE")
             count = conn.execute(
-                "SELECT COUNT(*) FROM email_event_seen WHERE owner=? AND account_key=? AND folder=?",
-                (owner, account_key, folder),
+                f"SELECT COUNT(*) FROM email_event_seen WHERE owner=? AND folder=? "
+                f"AND account_key IN ({known_ph})",
+                (owner, folder, *known),
             ).fetchone()[0]
-            existing = set()
+            seen = set()
             if count:
                 placeholders = ",".join("?" * len(keys))
                 rows = conn.execute(
                     f"SELECT message_key FROM email_event_seen "
-                    f"WHERE owner=? AND account_key=? AND folder=? AND message_key IN ({placeholders})",
-                    (owner, account_key, folder, *keys),
+                    f"WHERE owner=? AND folder=? AND account_key IN ({known_ph}) "
+                    f"AND message_key IN ({placeholders})",
+                    (owner, folder, *known, *keys),
                 ).fetchall()
-                existing = {r[0] for r in rows}
-            new_keys = [k for k in keys if k not in existing]
-            conn.executemany(
-                "INSERT OR IGNORE INTO email_event_seen "
-                "(owner, account_key, folder, message_key, first_seen_at) VALUES (?, ?, ?, ?, ?)",
-                [(owner, account_key, folder, k, now) for k in keys],
-            )
+                seen = {r[0] for r in rows}
+            claimed = []
+            for k in keys:
+                cur = conn.execute(
+                    "INSERT OR IGNORE INTO email_event_seen "
+                    "(owner, account_key, folder, message_key, first_seen_at) VALUES (?, ?, ?, ?, ?)",
+                    (owner, account_key, folder, k, now),
+                )
+                if cur.rowcount == 1:
+                    claimed.append(k)
             conn.commit()
         finally:
             conn.close()
+
+        new_keys = [k for k in claimed if k not in seen]
 
         if count and new_keys:
             for _key in new_keys[:50]:
