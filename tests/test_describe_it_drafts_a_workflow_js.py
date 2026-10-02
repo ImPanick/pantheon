@@ -246,12 +246,13 @@ def test_a_label_a_reason_and_a_line_the_model_wrote_stay_text(box, tmp_path):
                       destinations=["<b>Posts</b> with Chat"])
     o = _run(box, ROOM_PREAMBLE + _world(hostile), """
         const { r } = await draftAndOpen();
+        const text = (cls) => all(r, cls).map((x) => x.textContent);
+        const missing = text('wf-arrived-text'), where = text('wf-arrived-destinations');
         fire(nodeEl(r, 'summarise'), 'click'); await settle(30);
         fire(by(r, 'wf-switch'), 'click'); await settle(20);
         fire(sayButton(r), 'click'); await settle(30);
-        const text = (cls) => all(r, cls).map((x) => x.textContent);
         out({ title: nodeEl(r, 'summarise').querySelector('.wb-node-title').textContent,
-              layer: text('wf-check-label'), missing: text('wf-arrived-text'), where: text('wf-arrived-destinations'),
+              layer: text('wf-check-label'), missing, where, arrivedGone: !by(r, 'wf-arrived'),
               imgs: r.querySelectorAll('img').length,
               markup: markup(r).filter((m) => m.includes('onerror') || m.includes('<b>')) });
     """)
@@ -263,6 +264,8 @@ def test_a_label_a_reason_and_a_line_the_model_wrote_stay_text(box, tmp_path):
     assert label in o["layer"]
     assert o["missing"] == reply["missing"]
     assert o["where"] == ["".join(reply["destinations"])]
+    assert o["arrivedGone"] is True, "Check them now takes the arrival box's place"
+
     assert o["imgs"] == 0 and o["markup"] == [], "nothing the model wrote was ever markup"
 
 

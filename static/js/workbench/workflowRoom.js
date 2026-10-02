@@ -748,13 +748,16 @@ export function mountAutomations(host, opts = {}) {
       return false;
     }
     if (R.destroyed || R.wf !== w) return false;
+    // What arrived is drawn before the canvas, so the canvas fits the room it
+    // has left (measured in Chromium at 1400×860: drawn after, it pushed the
+    // fitted steps to the window's bottom edge).
+    if (arrived) drawArrived(arrived);
     w.canvas = mountCanvas(editHost, { source, renderSteps });
     syncBar();
     await w.canvas.ready;
     if (R.destroyed || R.wf !== w) return false;
     const words = (Array.isArray(notes) ? notes : []).map(String).filter(Boolean).join(' ');
     if (words) say(words);
-    if (arrived) drawArrived(arrived);
     if (focusName) { nameInput.focus(); if (typeof nameInput.select === 'function') nameInput.select(); }
     return true;
   }
@@ -1581,6 +1584,9 @@ export function mountAutomations(host, opts = {}) {
     if (!w || !w.source) return;
     closeCheck();
     closeVersions();
+    // The layer says per step what the arrival box said (needs, doors), and
+    // the two together would leave the canvas no room: the box goes.
+    closeArrived();
     if (w.tab !== 'edit') setTab('edit', { quiet: true });
     const all = typeof w.source.marked === 'function' ? w.source.marked() : [];
     const ids = Array.isArray(nodeIds) && nodeIds.length ? nodeIds.map(String) : all.map((m) => m.id);

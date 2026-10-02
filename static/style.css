@@ -47678,11 +47678,14 @@ button.task-card-toggle {
 .wf-check-need-text,
 .wf-arrived-text { flex: 1 1 220px; min-width: 0; }
 /* What arrived: a drafted or imported workflow, on top of its canvas. */
+/* Neither shrinks under an open step panel (measured in Chromium at 1400×860: the
+   arrival box was squeezed to three lines); the canvas below gives way instead. */
 .wf-arrived,
 .wf-check {
+  flex: 0 0 auto;
   margin: 6px 10px 0;
   padding: 8px 10px;
-  max-height: 40vh;
+  max-height: 30vh;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
@@ -47693,7 +47696,7 @@ button.task-card-toggle {
   border-radius: 8px;
 }
 .wf-arrived { border: 1px dashed var(--fg); }
-.wf-check { border: 2px solid var(--fg); }
+.wf-check { max-height: 50vh; border: 2px solid var(--fg); }
 .wf-arrived-head,
 .wf-check-head { margin: 0; font-weight: 700; font-size: 13px; }
 .wf-arrived-lede,
@@ -47723,7 +47726,15 @@ button.task-card-toggle {
 .wf-check-note { margin: 0; }
 .wf-check-said { margin: 0; font-weight: 600; }
 .wf-check-said:empty { display: none; }
-.wf-check-foot { padding-top: 4px; border-top: 1px solid var(--border); }
+/* *All look right* stays in sight however long the list is. */
+.wf-check-foot {
+  position: sticky;
+  bottom: -8px;
+  margin: 0 -10px -8px;
+  padding: 6px 10px 8px;
+  background: var(--panel);
+  border-top: 1px solid var(--border);
+}
 /* A step's banner while nobody has checked it. */
 .wf-step-check {
   display: flex;
@@ -47783,6 +47794,8 @@ button.task-card-toggle {
 .wf-why-apply-row { display: flex; flex-direction: column; gap: 4px; }
 @media (max-width: 768px) {
   .wf-arrived,
-  .wf-check { margin: 6px 8px 0; max-height: 46vh; }
+  .wf-check { margin: 6px 8px 0; }
+  .wf-arrived { max-height: 34vh; }
+  .wf-check { max-height: 58vh; }
   .wf-why-diff { grid-template-columns: 1fr; }
 }
