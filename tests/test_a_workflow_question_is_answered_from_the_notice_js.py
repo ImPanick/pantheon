@@ -166,6 +166,9 @@ def test_questions_still_waiting_are_offered_again_when_pantheon_opens(box):
             kind: 'approval', since: '2026-10-02T03:12:00Z', until: '2026-10-02T15:12:00Z', approval: REVIEW.approval },
           { workflow_id: 'wf1', workflow: 'Overnight replies', run_id: 'r2', node_id: 'hold', item: null, label: 'Wait',
             kind: 'time', since: '2026-10-02T03:00:00Z', until: '2026-10-02T08:00:00Z', approval: null },
+          // A step waiting for Pantheon to be idle is not a question, whatever else it carries.
+          { workflow_id: 'wf1', workflow: 'Overnight replies', run_id: 'r4', node_id: 'post', item: null, label: 'Post',
+            kind: 'idle', since: '2026-10-02T03:00:00Z', approval: { ...REVIEW.approval, approval_id: 'ap4' } },
           { workflow_id: 'wf1', workflow: 'Overnight replies', run_id: 'r3', node_id: 'each', item: 2, label: 'Summarise',
             kind: 'approval', since: '2026-10-02T03:00:00Z', approval: { ...REVIEW.approval, approval_id: 'ap3' } },
         ];
