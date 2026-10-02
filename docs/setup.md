@@ -586,6 +586,7 @@ Pantheon is a self-hosted workspace with powerful local tools: shell access, fil
 - Prefer binding manual development runs to `127.0.0.1`; bind to `0.0.0.0` only when you intentionally want LAN/reverse-proxy access.
 - Keep ChromaDB, SearXNG, ntfy, Ollama, vLLM, llama.cpp, databases, and raw model/provider APIs internal-only. Expose only the authenticated Pantheon web/API entrypoint through your trusted proxy or private access layer.
 - Before publishing a fork, run `git status --short` and confirm no private files from `.env`, `data/`, `logs/`, uploads, backups, or local databases are staged.
+- If you run a modified copy for other people, set `PANTHEON_SOURCE_URL` to your own published source — see [The Source link](#the-source-link--and-what-a-modified-copy-owes-its-users).
 
 > **Upgrading an existing install:** `SECURE_COOKIES` used to default to
 > `false`, so an install set up before scheme derivation may still carry
@@ -821,8 +822,31 @@ Key settings:
 | `PANTHEON_STT_MAX_AUDIO_BYTES` | `26214400` | Speech-to-text audio cap in bytes (25 MB). |
 | `PANTHEON_ICS_MAX_BYTES` | `10485760` | Calendar `.ics` import cap in bytes (10 MB). |
 | `PANTHEON_FONT_UPLOAD_MAX_BYTES` | `26214400` | Custom font upload cap in bytes (25 MB), for the theme panel's **Add a font**. |
+| `PANTHEON_SOURCE_URL` | `https://github.com/ImPanick/pantheon` | Where the **Source** link on every page points. **A modified copy must point it at its own source** — see below. |
 
 All upload-limit vars are validated (must be a positive integer) and optional; an invalid value fails fast at startup.
+
+### The Source link — and what a modified copy owes its users
+
+Every page Pantheon serves, the login page included, has a small **Source** link in its
+bottom-right corner. It is the offer AGPL-3.0 §13 asks for: anyone who uses a modified
+version of this program over a network must be able to get its source. Out of the box it
+points at `https://github.com/ImPanick/pantheon`, which is the source an unmodified install
+is running.
+
+**If you change Pantheon's code and let anyone but yourself use it, point the link at your
+own published source** — your fork, with your changes in it:
+
+```bash
+# .env
+PANTHEON_SOURCE_URL=https://github.com/your-name/your-fork
+```
+
+The stored `source_url` setting (`POST /api/auth/settings` as an admin, or `data/settings.json`)
+wins over the variable, and the variable over the default. Only `http://` and `https://`
+addresses are accepted — anything else is refused on save and draws no link. Nothing is
+fetched from that address: it is a link a person clicks, so it makes no request until they do.
+The setting is checked on every page load, so a change needs no restart.
 
 ### Built-in MCP servers (optional setup)
 

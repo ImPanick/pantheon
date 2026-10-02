@@ -121,6 +121,10 @@ operator should know at a glance.
   the list that owns the name and checked against the fork point `b4d1293`.
 
 #### Added
+- **The AGPL-3.0 §13 source offer, on by default** (`P0-17`, `D-2026-10-02-04`
+  §2). Every page the app serves, the login page included, carries a *Source*
+  link to `https://github.com/ImPanick/pantheon`. `PANTHEON_SOURCE_URL` (or the
+  `source_url` setting) points it somewhere else.
 - **Pantheon's own mark** (`P0-13`, `B71`) — the favicon, the PWA and Windows
   icons, the tray, the macOS app icon and the login and welcome screens no longer
   carry upstream's boat. Sources and usage: `docs/brand/`.
@@ -130,6 +134,11 @@ operator should know at a glance.
   background check every `email_inbox_check_minutes` (default 5; 0 turns it off).
 
 #### Changed — read this before upgrading
+- **If you run a modified copy of Pantheon for other people, point the source
+  link at your own source.** An unmodified install now offers this repository's;
+  a modified one owes its users *its* source (AGPL-3.0 §13). Set
+  `PANTHEON_SOURCE_URL` in `.env`, or the `source_url` setting — `docs/setup.md`
+  says how.
 - **Three routes that any signed-in account could use are now admin-only**:
   `POST /api/tts/clear-cache` (`B540`) and the four `/api/hwfit/*` probes
   (`B541`). On a single-user install nothing changes — the first account is the

@@ -144,3 +144,80 @@ def test_the_allowlist_ships_empty():
     src = CHECKER.read_text(encoding="utf-8")
     body = src[src.index("ALLOWED = {"):src.index("}", src.index("ALLOWED = {"))]
     assert "://" not in body and "." not in body.replace("# ", "")
+
+
+# --- `D-2026-10-02-04` §2: one named shipped default, and where it can hide ---
+
+_OFFER = "https://github.com/ImPanick/pantheon"
+
+
+def _checker_module():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("_check_destinations_named", CHECKER)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_the_one_named_default_is_the_source_offer_the_code_ships():
+    """The exception names a setting, its variable and one exact address —
+    never a host — and the address is the one the code actually defaults to,
+    imported rather than restated."""
+    from src.source_link import DEFAULT_SOURCE_URL
+    module = _checker_module()
+    assert set(module.SHIPPED_DEFAULTS) == {("source_url", _OFFER),
+                                            ("PANTHEON_SOURCE_URL", _OFFER)}
+    assert DEFAULT_SOURCE_URL == _OFFER
+    assert all("D-2026-10-02-04" in why for why in module.SHIPPED_DEFAULTS.values())
+    assert module.ALLOWED == {}, "a host allowlist entry would excuse every key"
+
+
+def test_the_real_tree_ships_the_offer_where_the_checker_reads_it():
+    """Seen twice — the code's default and `.env.example`'s commented line — so
+    the checker is reading the default, not passing because it never saw it."""
+    r = subprocess.run([sys.executable, str(CHECKER)], cwd=ROOT,
+                       capture_output=True, text=True)
+    assert r.returncode == 0, r.stdout
+    assert "named defaults 2 (of 2 names)" in r.stdout, r.stdout
+
+
+def test_the_offer_under_another_name_fails(repo):
+    with (repo / ".env.example").open("a") as f:
+        f.write(f"\n# PANTHEON_ISSUE_TRACKER_URL={_OFFER}\n")
+    r = run(repo)
+    assert r.returncode == 1 and "github.com" in r.stdout, r.stdout
+
+
+def test_another_address_under_the_named_variable_fails(repo):
+    with (repo / ".env.example").open("a") as f:
+        f.write("\n# PANTHEON_SOURCE_URL=https://collect.newvendor-metrics.io/src\n")
+    r = run(repo)
+    assert r.returncode == 1 and "newvendor-metrics.io" in r.stdout, r.stdout
+
+
+def test_a_default_beneath_a_stored_setting_is_read(repo):
+    """`env_backed`'s fourth argument is where a filled default sits while
+    `DEFAULT_SETTINGS` stays empty — a constant or a literal, it is judged."""
+    (repo / "src" / "stats.py").write_text(
+        "from src.settings import env_backed\n"
+        "STATS = 'https://stats.newvendor-metrics.io/v1'\n"
+        "def a(s): return env_backed(s, 'stats_url', 'PANTHEON_STATS_URL', STATS)\n"
+        "def b(s): return env_backed(s, 'beacon_url', 'X_BEACON', "
+        "default='https://beacon.other-vendor.dev/i')\n")
+    r = run(repo)
+    assert r.returncode == 1, r.stdout
+    assert "stats.newvendor-metrics.io" in r.stdout and "beacon.other-vendor.dev" in r.stdout
+
+
+def test_the_named_default_beneath_its_own_setting_passes_and_nowhere_else(repo):
+    (repo / "src" / "offer.py").write_text(
+        "from src.settings import env_backed\n"
+        f"OFFER = '{_OFFER}'\n"
+        "def a(s): return env_backed(s, 'source_url', 'PANTHEON_SOURCE_URL', OFFER)\n")
+    assert run(repo).returncode == 0, run(repo).stdout
+    (repo / "src" / "offer.py").write_text(
+        "from src.settings import env_backed\n"
+        f"OFFER = '{_OFFER}'\n"
+        "def a(s): return env_backed(s, 'source_url', 'SOMEONE_ELSES_URL', OFFER)\n")
+    r = run(repo)
+    assert r.returncode == 1 and "SOMEONE_ELSES_URL" in r.stdout, r.stdout

@@ -6,12 +6,17 @@ an opportunity to receive the Corresponding Source. Pantheon is a modified
 Odysseus, so the obligation is the operator's the moment they put it in front of
 anybody else.
 
-**Both branches, because the shipped one is the dark one** (`D-2026-09-08-06`,
-*"prime it, but dont flip that switch yet"*). With no `source_url` there is no
-link: the repository is private, the default bind is loopback, no §13 offer is
-being made, and a link a stranger gets a 404 from would be an offer that cannot
-be honoured — the mistake `B25` recorded in `CHANGELOG.md`. With one set, the
-link is there, on every page, with the provenance sentence on it.
+**Both branches** (`Law 20`). From 2026-09-18 to 2026-10-02 the shipped branch
+was the dark one (`D-2026-09-08-06`, *"prime it, but dont flip that switch
+yet"*): the repository was private, and a link a stranger gets a 404 from is an
+offer that cannot be honoured — the mistake `B25` recorded in `CHANGELOG.md`.
+The repository is public now, and `D-2026-10-02-04` §2 points the offer at it by
+default: **with nothing configured, every page offers
+`https://github.com/ImPanick/pantheon`**, the source an unmodified install runs.
+**With `PANTHEON_SOURCE_URL` or the stored `source_url` set** — what a modified
+copy owes its users — every page offers that instead. Both are driven through
+the page the server actually sends, and so is the one way left to draw no link:
+an address that is not http(s).
 
 **The page list is derived, not typed** (`Law 13`). `app.py` already holds the
 one answer to *which documents do routes serve* —
@@ -33,13 +38,17 @@ from starlette.datastructures import Headers
 
 from src.app_helpers import _PAGE_CACHE, serve_html_with_nonce
 from src.source_link import (
+    DEFAULT_SOURCE_URL,
     SOURCE_LINK_TITLE,
     normalise_source_url,
     source_link_html,
+    source_url,
 )
 
 _REPO = pathlib.Path(__file__).resolve().parents[1]
 _URL = "https://github.com/ImPanick/pantheon"
+# A modified copy's own source — anything that is not the default.
+_FORK = "https://git.example.org/someone/pantheon-fork"
 
 
 def _route_owned_pages():
@@ -73,14 +82,31 @@ def _clean_page_cache():
 
 @pytest.fixture
 def configured(monkeypatch):
-    monkeypatch.setenv("PANTHEON_SOURCE_URL", _URL)
+    """A modified copy pointing the offer at its own source."""
+    monkeypatch.setenv("PANTHEON_SOURCE_URL", _FORK)
     _PAGE_CACHE.clear()
 
 
 @pytest.fixture
-def dark(monkeypatch):
+def unconfigured(monkeypatch):
+    """What ships: no variable, and the stored setting at its default."""
     monkeypatch.delenv("PANTHEON_SOURCE_URL", raising=False)
     _PAGE_CACHE.clear()
+
+
+@pytest.fixture
+def stored(monkeypatch):
+    """Point the stored `source_url` at a value, as `POST /api/auth/settings`
+    or `data/settings.json` would."""
+    import src.settings as settings
+
+    real = settings.load_settings
+
+    def _set(value):
+        monkeypatch.setattr(settings, "load_settings",
+                            lambda *a, **k: {**real(*a, **k), "source_url": value})
+        _PAGE_CACHE.clear()
+    return _set
 
 
 def _request(**headers):
@@ -100,14 +126,15 @@ def test_the_derivation_finds_the_pages_it_is_supposed_to_find():
     assert {"index.html", "login.html"} <= names
 
 
-# ── the lit branch ────────────────────────────────────────────────────────────
+# ── the configured branch: a modified copy names its own source ──────────────
 
 
 @pytest.mark.parametrize("page", list(_route_owned_pages()), ids=lambda p: p.name)
 def test_a_configured_repository_puts_the_offer_on_every_served_page(configured, page):
     html = _render(page)
     assert 'data-source-offer="1"' in html, f"{page.name} carries no §13 source offer"
-    assert f'href="{_URL}"' in html
+    assert f'href="{_FORK}"' in html
+    assert f'href="{_URL}"' not in html, "the default must not survive an override"
     assert SOURCE_LINK_TITLE in html
 
 
@@ -127,21 +154,60 @@ def test_the_login_page_carries_it_before_anyone_has_authenticated(configured):
     assert 'data-source-offer="1"' in _render(login)
 
 
-# ── the dark branch, which is what ships ──────────────────────────────────────
+# ── the default branch, which is what ships ───────────────────────────────────
 
 
 @pytest.mark.parametrize("page", list(_route_owned_pages()), ids=lambda p: p.name)
-def test_no_configured_repository_means_no_control_at_all(dark, page):
+def test_an_unconfigured_install_offers_the_public_repository(unconfigured, page):
+    """`D-2026-10-02-04` §2. Until 2026-10-02 this was the dark branch —
+    `test_no_configured_repository_means_no_control_at_all` — and an unmodified
+    install offered nothing."""
+    html = _render(page)
+    assert html.count('data-source-offer="1"') == 1, page.name
+    assert f'href="{_URL}"' in html
+    assert SOURCE_LINK_TITLE in html
+
+
+def test_the_default_is_this_repository_and_sits_beneath_the_stored_setting(unconfigured):
+    """The default is a code constant under the stored layer, not a stored
+    value: `DEFAULT_SETTINGS["source_url"]` ships empty, so the variable stays
+    reachable beneath it (`H06`, `B20`) — one admin save of the settings panel
+    cannot materialise the default over a variable the operator set."""
+    from src.settings import DEFAULT_SETTINGS
+    assert DEFAULT_SETTINGS["source_url"] == ""
+    assert DEFAULT_SOURCE_URL == _URL
+    assert source_url() == _URL
+
+
+def test_the_environment_overrides_the_default(configured):
+    assert source_url() == _FORK
+
+
+def test_a_stored_setting_overrides_the_environment(configured, stored):
+    stored("https://code.example.net/ops/pantheon")
+    assert source_url() == "https://code.example.net/ops/pantheon"
+    assert 'href="https://code.example.net/ops/pantheon"' in _render(
+        _REPO / "static" / "login.html")
+
+
+def test_a_blank_stored_setting_falls_through_to_the_environment(configured, stored):
+    """What the settings panel writes for a cleared field (`env_backed`)."""
+    stored("   ")
+    assert source_url() == _FORK
+
+
+@pytest.mark.parametrize("page", list(_route_owned_pages()), ids=lambda p: p.name)
+def test_an_address_that_is_not_http_draws_no_link_rather_than_a_wrong_one(
+        monkeypatch, page):
+    """The one way left to draw no control: a value that is set and is not an
+    absolute http(s) URL. It does not fall back to the default — an operator
+    who typed something meant to replace the offer, and a wrong offer is worse
+    than none (`B25`)."""
+    monkeypatch.setenv("PANTHEON_SOURCE_URL", "javascript:alert(1)")
+    _PAGE_CACHE.clear()
     html = _render(page)
     assert "data-source-offer" not in html
     assert SOURCE_LINK_TITLE not in html
-
-
-def test_the_shipped_default_is_empty():
-    # `D-2026-09-08-06`: built and left dark. If this ever ships non-empty, the
-    # product starts making a §13 offer nobody decided to make.
-    from src.settings import DEFAULT_SETTINGS
-    assert DEFAULT_SETTINGS["source_url"] == ""
 
 
 def test_the_address_is_the_only_switch():
@@ -181,7 +247,11 @@ def test_a_non_http_address_renders_nothing(bad):
     # The login page is served before authentication, so this href is the one
     # in the product with the least between it and an anonymous visitor.
     assert normalise_source_url(bad) == ""
-    assert source_link_html(bad) == ""
+    if bad is not None:
+        # `None` is `source_link_html`'s own "read the configuration" argument,
+        # which since `D-2026-10-02-04` §2 answers with the default — driven by
+        # the default branch above. Every other value here is an address.
+        assert source_link_html(bad) == ""
 
 
 def test_the_href_is_escaped():
@@ -192,7 +262,8 @@ def test_the_href_is_escaped():
 
 def test_an_unreadable_setting_does_not_take_the_app_down(monkeypatch):
     # This runs on the path that serves `/`. A licence control may not be able
-    # to 500 the application.
+    # to 500 the application — and an unreadable settings file is not a reason
+    # to withdraw the offer: the environment, then the default, still answer.
     import src.source_link as sl
 
     def boom(*a, **k):
@@ -200,9 +271,14 @@ def test_an_unreadable_setting_does_not_take_the_app_down(monkeypatch):
 
     monkeypatch.setattr(sl, "load_settings", boom, raising=False)
     monkeypatch.setattr("src.settings.load_settings", boom)
+    monkeypatch.delenv("PANTHEON_SOURCE_URL", raising=False)
     _PAGE_CACHE.clear()
     html = _render(_REPO / "static" / "login.html")
     assert html.rstrip().endswith("</html>")
+    assert f'href="{_URL}"' in html
+    monkeypatch.setenv("PANTHEON_SOURCE_URL", _FORK)
+    _PAGE_CACHE.clear()
+    assert f'href="{_FORK}"' in _render(_REPO / "static" / "login.html")
 
 
 # ── themes are protected ──────────────────────────────────────────────────────
@@ -244,12 +320,12 @@ def test_the_link_opens_out_of_the_app_safely():
 # ── the cache may not outlive the decision ────────────────────────────────────
 
 
-def test_turning_it_on_changes_the_next_response_without_a_restart(monkeypatch):
+def test_pointing_it_elsewhere_changes_the_next_response_without_a_restart(monkeypatch):
     login = _REPO / "static" / "login.html"
     monkeypatch.delenv("PANTHEON_SOURCE_URL", raising=False)
-    assert "data-source-offer" not in _render(login)
-    monkeypatch.setenv("PANTHEON_SOURCE_URL", _URL)
-    assert "data-source-offer" in _render(login), (
+    assert f'href="{_URL}"' in _render(login)
+    monkeypatch.setenv("PANTHEON_SOURCE_URL", _FORK)
+    assert f'href="{_FORK}"' in _render(login), (
         "the page cache is keyed on the file alone, so the operator's change "
         "would not appear until a restart")
 
@@ -258,11 +334,11 @@ def test_the_validator_describes_the_bytes_that_were_sent(monkeypatch):
     login = _REPO / "static" / "login.html"
     monkeypatch.delenv("PANTHEON_SOURCE_URL", raising=False)
     _PAGE_CACHE.clear()
-    dark_etag = serve_html_with_nonce(_request(), str(login)).headers["etag"]
-    monkeypatch.setenv("PANTHEON_SOURCE_URL", _URL)
+    default_etag = serve_html_with_nonce(_request(), str(login)).headers["etag"]
+    monkeypatch.setenv("PANTHEON_SOURCE_URL", _FORK)
     _PAGE_CACHE.clear()
     lit = serve_html_with_nonce(_request(), str(login))
-    assert lit.headers["etag"] != dark_etag, (
+    assert lit.headers["etag"] != default_etag, (
         "two different documents shared an ETag; a client would keep the one "
         "it had (RFC 9111 §4.3.4)")
     # And the ETag is over the bytes actually sent, injection included.
