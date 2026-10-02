@@ -1945,12 +1945,14 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
       try { const j = await res.json(); detail = j.detail || j.error || detail; } catch {}
       return new Error(`${what}: ${detail}`);
     };
-    const postFile = async (route, what) => {
+    // The URL is written out at each call below, not built from a route name:
+    // `.pantheon/check-unreachable.py` finds a route's caller by its literal path.
+    const postFile = async (url, what) => {
       const fd = new FormData();
       fd.append('file', file);
       if (folder) fd.append('folder', folder);
       if (sessionId) fd.append('session_id', sessionId);
-      const res = await fetch(`${API_BASE}/api/documents/${route}`, {
+      const res = await fetch(url, {
         method: 'POST',
         body: fd,
       });
@@ -1972,7 +1974,7 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
       // Backend handles save + AcroForm detection in one shot — picks the
       // right doc kind so fillable forms get clickable inputs in the PDF
       // view, and plain PDFs get the static page-image viewer.
-      return postFile('import-pdf', 'PDF import failed');
+      return postFile(`${API_BASE}/api/documents/import-pdf`, 'PDF import failed');
     }
 
     if (SERVER_EXTRACTED_EXTS.has(ext)) {
@@ -1983,7 +1985,7 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
       // formats through them from the mailbox, so the same `.doc` emailed
       // to you already produced its prose while the same `.doc` dropped
       // here produced binary — one file, one product, two answers.
-      return postFile('import-office', `${ext} import failed`);
+      return postFile(`${API_BASE}/api/documents/import-office`, `${ext} import failed`);
     }
 
     if (isSpreadsheet) {
