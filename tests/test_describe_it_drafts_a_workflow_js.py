@@ -15,9 +15,12 @@ what it would do, *Looks right* each, *All look right*, then *Switch on*. A
 label the model wrote stays text.
 
 Driven: the real room, canvas, panels, source and `workflowApi.js` over the
-C-A fake server (`tests/helpers/workflow_ca_fake.py` — C-A's literal shapes,
-because wb-assist's routes were not reachable; the palette is
-`build_palette`'s and every plan line is `plan_lines`').
+C-A fake server (`tests/helpers/workflow_ca_fake.py`). The drafter's replies —
+the create door's answer to `{describe}`, the switch's 409 and the palette's
+example sentences — are RECORDED from wb-assist's real routes wherever its
+drafter is in the tree (a scripted model answering this file's draft), and are
+C-A's literal shapes on this branch alone; the palette is `build_palette`'s and
+every plan line is `plan_lines`'.
 """
 
 from __future__ import annotations
@@ -33,7 +36,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from test_tool_effect_surfaces_js import _run  # noqa: E402
 from test_the_workbench_canvas_js import _SHIM as _CANVAS_SHIM  # noqa: E402
 from helpers.workflow_ca_fake import (  # noqa: E402
-    EXAMPLES, ROOM_PREAMBLE, as_js, build_sandbox, palette, plan_of,
+    ROOM_PREAMBLE, as_js, build_sandbox, palette, plan_of, recorded_draft,
 )
 
 pytestmark = pytest.mark.skipif(not shutil.which("node"), reason="node binary not on PATH")
@@ -65,20 +68,32 @@ def _drafted(label_summarise="Summarise"):
             "graph": {"v": 1, "start": {"position": None}, "nodes": nodes, "edges": edges}}
 
 
-def _world(doc=None, *, missing=(), destinations=("Posts with Chat: send_message to #dev",), pal=None):
+_DESCRIBE = "when a GitHub webhook says an issue opened, summarise it and post it to my chat server"
+
+
+def _record(tmp_path, doc=None, *, missing=(), destinations=("Posts with Chat: send_message to #dev",)):
     doc = doc or _drafted()
-    plans = {n["id"]: plan_of(n) for n in doc["graph"]["nodes"]}
+    return recorded_draft(tmp_path, doc, describe=_DESCRIBE,
+                          notes=[f"Drafted “{doc['name']}”: 3 steps, switched off."],
+                          missing=missing, destinations=destinations)
+
+
+def _world(rec, pal=None):
+    reply = rec["reply"]
+    plans = {n["id"]: plan_of(n) for n in reply["workflow"]["graph"]["nodes"]}
+    p = pal or palette()
+    p["examples"] = rec["examples"]
     return (
-        f"cw.palette = {as_js(pal or palette())};\n"
-        f"const DRAFT = {as_js(doc)};\n"
+        f"cw.palette = {as_js(p)};\n"
+        f"const REPLY = {as_js(reply)};\n"
         f"ca.dryNodes = {as_js(plans)};\n"
-        "ca.draft = () => ({ status: 200, body: { workflow: JSON.parse(JSON.stringify(DRAFT)),\n"
-        "  notes: ['Drafted “' + DRAFT.name + '”: 3 steps, switched off.'],\n"
-        f"  missing: {as_js(list(missing))}, destinations: {as_js(list(destinations))} }} }});\n"
+        f"ca.switchRefusal = {as_js(rec['switch_refusal'])};\n"
+        "ca.draft = () => ({ status: 200, body: JSON.parse(JSON.stringify(REPLY)) });\n"
+        "const WID = REPLY.workflow.id;\n"
         "const draftAndOpen = async () => {\n"
         "  const { r, handle } = await room();\n"
         "  fire(by(r, 'wf-shelf-new'), 'click'); await settle(10);\n"
-        "  typed(by(r, 'wf-new-text'), 'when a GitHub webhook says an issue opened, summarise it and post it to my chat server');\n"
+        f"  typed(by(r, 'wf-new-text'), {as_js(_DESCRIBE)});\n"
         "  fire(by(r, 'wf-new-draft'), 'click'); await settle(40);\n"
         "  return { r, handle };\n"
         "};\n"
@@ -90,12 +105,22 @@ def box(tmp_path_factory):
     return build_sandbox(tmp_path_factory.mktemp("describe"), _CANVAS_SHIM)
 
 
-def _case(box, script, **world):
-    return _run(box, ROOM_PREAMBLE + _world(**world), script)
+@pytest.fixture(scope="module")
+def rec(tmp_path_factory):
+    """The drafter's replies for this file's draft: recorded, or literal."""
+    return _record(tmp_path_factory.mktemp("drafter"))
 
 
-def test_the_describe_box_posts_describe_and_tz_and_the_draft_opens_marked_and_off(box):
-    o = _case(box, """
+def _case(box, rec, script):
+    return _run(box, ROOM_PREAMBLE + _world(rec), script)
+
+
+def _ids(rec):
+    return [n["id"] for n in rec["reply"]["workflow"]["graph"]["nodes"]]
+
+
+def test_the_describe_box_posts_describe_and_tz_and_the_draft_opens_marked_and_off(box, rec):
+    o = _case(box, rec, """
         const { r } = await room();
         fire(by(r, 'wf-shelf-new'), 'click'); await settle(10);
         const offered = all(r, 'wf-new-example').map((b) => b.textContent);
@@ -118,25 +143,27 @@ def test_the_describe_box_posts_describe_and_tz_and_the_draft_opens_marked_and_o
               said: sayOf(r),
               shelf: all(r, 'wf-shelf-name').map((s) => s.textContent) });
     """)
-    assert o["offered"] == EXAMPLES[:6], "at most six example sentences, the palette's, in its order"
-    assert o["filled"] == EXAMPLES[1] and o["afterPick"] == 0, "picking one fills the box and sends nothing"
-    assert o["posts"] == [["/api/workflows", {"describe": EXAMPLES[1], "tz": o["tz"]}]], "C-A's create door, describe and tz"
+    examples = rec["examples"]
+    assert o["offered"] == examples[:6], "at most six example sentences, the palette's, in its order"
+    assert o["filled"] == examples[1] and o["afterPick"] == 0, "picking one fills the box and sends nothing"
+    assert o["posts"] == [["/api/workflows", {"describe": examples[1], "tz": o["tz"]}]], "C-A's create door, describe and tz"
     assert o["formHidden"] is True
     word = ["Drafted — check me"]
-    assert o["steps"] == [["is-it-new", "drafted", word], ["summarise", "drafted", word], ["post", "drafted", word]], \
+    assert o["steps"] == [[i, "drafted", word] for i in _ids(rec)] and len(o["steps"]) == 3, \
         "every drafted step says so in words, and carries its origin for the dashed border"
     assert o["start"] is None, "the start is the trigger's, never marked"
     assert o["switchWord"] == "Off"
     assert o["arrived"]["head"] == "Drafted by the model"
     assert o["arrived"]["lede"].startswith("It is switched off, and each step is marked “check me”")
-    assert o["arrived"]["where"] == ["Posts with Chat: send_message to #dev"], "where it sends things, in the server's words"
+    assert o["arrived"]["where"] == ["".join(rec["reply"]["destinations"])], "where it sends things, in the server's words"
+    assert rec["reply"]["destinations"], "the reply names where it sends things"
     assert o["arrived"]["buttons"] == ["Check them now", "Close"]
-    assert o["said"] == "Drafted “New issues to #dev”: 3 steps, switched off.", "the server's notes, said once it is drawn"
-    assert "New issues to #dev" in o["shelf"]
+    assert o["said"] == " ".join(rec["reply"]["notes"]), "the server's notes, said once it is drawn"
+    assert rec["reply"]["workflow"]["name"] in o["shelf"]
 
 
-def test_a_marked_steps_panel_opens_on_its_banner_and_looks_right_checks_it_and_writes_no_version(box):
-    o = _case(box, """
+def test_a_marked_steps_panel_opens_on_its_banner_and_looks_right_checks_it_and_writes_no_version(box, rec):
+    o = _case(box, rec, """
         const { r } = await draftAndOpen();
         fire(nodeEl(r, 'summarise'), 'click'); await settle(30);
         const b = by(r, 'wf-step-check');
@@ -150,27 +177,29 @@ def test_a_marked_steps_panel_opens_on_its_banner_and_looks_right_checks_it_and_
         fire(nodeEl(r, 'post'), 'click'); await settle(30);
         const postPlan = by(r, 'wf-step-check').querySelector('.wf-step-check-plan').querySelectorAll('li').map((li) => li.textContent);
         out({ banner, checked, postPlan,
-              puts: calls('PUT', (u) => u === '/api/workflows/wf9'),
+              puts: calls('PUT', (u) => u === '/api/workflows/' + WID),
               dryRuns: calls('POST', (u) => u.endsWith('/run?dry=true')).length,
               versions: ca.versions.length, version: cw.doc.version, dirty: by(r, 'wf-dirty').textContent });
     """)
     b = o["banner"]
     assert b["origin"] == "drafted" and b["head"] == "Drafted by the model — check it."
     assert b["note"].startswith("The model wrote this step from your description")
-    assert b["plan"] == plan_of(_drafted()["graph"]["nodes"][1]), "what it would do: the dry run's plan, plan_lines' words"
+    nodes = rec["reply"]["workflow"]["graph"]["nodes"]
+    assert b["plan"] == plan_of(nodes[1]), "what it would do: the dry run's plan, plan_lines' words"
     assert b["yes"] == "Looks right"
-    assert o["puts"] == [["/api/workflows/wf9", {"checked": ["summarise"]}]], "C-A's check: the one step, nothing else"
+    assert o["puts"] == [[f"/api/workflows/{rec['reply']['workflow']['id']}", {"checked": ["summarise"]}]], \
+        "C-A's check: the one step, nothing else"
     assert o["checked"]["head"] == ["Checked. It runs as it is once the workflow is switched on."]
     assert o["checked"]["marks"] == [["is-it-new", "drafted"], ["summarise", None], ["post", "drafted"]], \
         "the canvas is drawn again: the checked step's mark is gone, the others keep theirs"
-    assert o["postPlan"] == plan_of(_drafted()["graph"]["nodes"][2])
+    assert o["postPlan"] == plan_of(nodes[2])
     assert o["dryRuns"] == 1, "the saved version is planned once, however many panels open"
     assert o["versions"] == 1 and o["version"] == 1, "a check writes no version"
     assert o["dirty"] == "", "and leaves the draft clean"
 
 
-def test_switching_on_with_unchecked_steps_offers_check_them_now_and_all_look_right_then_switch_on(box):
-    o = _case(box, """
+def test_switching_on_with_unchecked_steps_offers_check_them_now_and_all_look_right_then_switch_on(box, rec):
+    o = _case(box, rec, """
         const { r } = await draftAndOpen();
         fire(by(r, 'wf-switch'), 'click'); await settle(30);
         const refused = { said: sayOf(r), action: sayButton(r) && sayButton(r).textContent };
@@ -188,33 +217,34 @@ def test_switching_on_with_unchecked_steps_offers_check_them_now_and_all_look_ri
         fire(by(layer, 'wf-check-switch'), 'click'); await settle(30);
         out({ refused, listed, after,
               switches: calls('POST', (u) => u.endsWith('/switch')),
-              puts: calls('PUT', (u) => u === '/api/workflows/wf9'),
+              puts: calls('PUT', (u) => u === '/api/workflows/' + WID),
               on: by(r, 'wf-switch').textContent, layerGone: !by(r, 'wf-check') });
     """)
-    names = "“Is it a new issue?”, “Summarise”, “Post to #dev”"
-    assert o["refused"]["said"] == (f"Not switched on: 3 steps were drafted by the model and nobody has checked them yet: "
-                                    f"{names}. Open each one and press Looks right (or change it), then switch it on."), \
-        "the server's sentence, as it wrote it"
+    assert o["refused"]["said"] == "Not switched on: " + rec["switch_refusal"]["detail"], "the server's sentence, as it wrote it"
+    assert rec["switch_refusal"]["reason"] == "unchecked" and rec["switch_refusal"]["node_ids"] == _ids(rec)
     assert o["refused"]["action"] == "Check them now"
-    nodes = _drafted()["graph"]["nodes"]
+    nodes = rec["reply"]["workflow"]["graph"]["nodes"]
     assert o["listed"]["role"] == "dialog"
     assert o["listed"]["lede"].startswith("3 steps nobody has checked yet.")
     assert o["listed"]["rows"] == [[n["id"], n["label"], "Drafted by the model", plan_of(n)] for n in nodes], \
         "every step the refusal names, with what it would do"
     assert o["listed"]["foot"] == ["All look right", "Close"]
-    assert o["puts"] == [["/api/workflows/wf9", {"checked": ["is-it-new", "summarise", "post"]}]], "one check for the rest"
+    assert o["puts"] == [[f"/api/workflows/{rec['reply']['workflow']['id']}", {"checked": _ids(rec)}]], "one check for the rest"
     assert o["after"]["lede"] == "Every step is checked."
     assert o["after"]["said"] == ["Checked.", "Checked.", "Checked."]
     assert o["after"]["foot"] == ["Switch on", "Close"] and o["after"]["marks"] == 0
-    assert o["switches"] == [["/api/workflows/wf9/switch", {"on": True}]] * 2, "refused once, then switched on"
+    assert o["switches"] == [[f"/api/workflows/{rec['reply']['workflow']['id']}/switch", {"on": True}]] * 2, \
+        "refused once, then switched on"
     assert o["on"] == "On" and o["layerGone"] is True
 
 
 _HOSTILE = "<img src=x onerror=alert(1)>Summarise"
 
 
-def test_a_label_a_reason_and_a_line_the_model_wrote_stay_text(box):
-    o = _case(box, """
+def test_a_label_a_reason_and_a_line_the_model_wrote_stay_text(box, tmp_path):
+    hostile = _record(tmp_path, _drafted(_HOSTILE), missing=["<img src=x onerror=alert(2)> could not be drafted"],
+                      destinations=["<b>Posts</b> with Chat"])
+    o = _run(box, ROOM_PREAMBLE + _world(hostile), """
         const { r } = await draftAndOpen();
         fire(nodeEl(r, 'summarise'), 'click'); await settle(30);
         fire(by(r, 'wf-switch'), 'click'); await settle(20);
@@ -224,17 +254,20 @@ def test_a_label_a_reason_and_a_line_the_model_wrote_stay_text(box):
               layer: text('wf-check-label'), missing: text('wf-arrived-text'), where: text('wf-arrived-destinations'),
               imgs: r.querySelectorAll('img').length,
               markup: markup(r).filter((m) => m.includes('onerror') || m.includes('<b>')) });
-    """, doc=_drafted(_HOSTILE), missing=["<img src=x onerror=alert(2)> could not be drafted"],
-        destinations=["<b>Posts</b> with Chat"])
-    assert o["title"] == _HOSTILE
-    assert _HOSTILE in o["layer"]
-    assert o["missing"] == ["<img src=x onerror=alert(2)> could not be drafted"]
-    assert o["where"] == ["<b>Posts</b> with Chat"]
+    """)
+    reply = hostile["reply"]
+    label = reply["workflow"]["graph"]["nodes"][1]["label"]
+    if hostile["source"] == "literal":
+        assert label == _HOSTILE and reply["destinations"] == ["<b>Posts</b> with Chat"]
+    assert o["title"] == label, "the label as the server kept it, as text"
+    assert label in o["layer"]
+    assert o["missing"] == reply["missing"]
+    assert o["where"] == ["".join(reply["destinations"])]
     assert o["imgs"] == 0 and o["markup"] == [], "nothing the model wrote was ever markup"
 
 
-def test_a_refused_draft_is_said_in_the_servers_words_and_nothing_opens(box):
-    o = _case(box, """
+def test_a_refused_draft_is_said_in_the_servers_words_and_nothing_opens(box, rec):
+    o = _case(box, rec, """
         ca.draft = () => ({ status: 503, body: { detail: 'No model is set up to draft a workflow. Make it by hand.' } });
         const { r } = await room();
         fire(by(r, 'wf-shelf-new'), 'click'); await settle(10);
@@ -252,8 +285,8 @@ def test_a_refused_draft_is_said_in_the_servers_words_and_nothing_opens(box):
     assert o["view"] is True and o["refusal"] is True
 
 
-def test_without_c_as_calls_the_form_offers_no_describe_and_no_file(box):
-    o = _case(box, """
+def test_without_c_as_calls_the_form_offers_no_describe_and_no_file(box, rec):
+    o = _case(box, rec, """
         const { createWorkflowApi } = await import('./workflowApi.js');
         const real = createWorkflowApi({ fetch: canet });
         const bare = typeof real.checkSteps === 'function' ? null : real;
@@ -269,10 +302,9 @@ def test_without_c_as_calls_the_form_offers_no_describe_and_no_file(box):
     assert o["name"] is True
 
 
-def test_a_step_changed_in_the_draft_is_the_persons_and_drops_its_mark_before_save(box):
-    o = _case(box, """
+def test_a_step_changed_in_the_draft_is_the_persons_and_drops_its_mark_before_save(box, rec):
+    o = _case(box, rec, """
         const { r } = await draftAndOpen();
-        const src = r; // the room
         fire(nodeEl(r, 'post'), 'click'); await settle(30);
         // Done on the MCP step's form with a new label: the step is the person's now.
         const name = r.querySelector('.wf-sf').querySelectorAll('[data-field]').find((x) => x.dataset.field === 'label');

@@ -97,6 +97,7 @@ export const ca = {
   calls: [],                           // every request, in order
   draft: null, importFile: null,      // (body) → { status, body }
   checkRefusal: null,                  // { status, detail }
+  switchRefusal: null,                 // the 409 body while marks remain (recorded or literal)
   exportRefusal: null, exportBody: null,
   explain: null, fix: null,            // (body, nodeId) → { status, body } | null for the default
   dryNodes: {},                        // node_id → [plan line]
@@ -147,6 +148,8 @@ export async function net(url, init = {}) {
   }
   if (method === 'POST' && path === `${base}/switch` && body && body.on && marked().length) {
     note();
+    // The recorded (or literal) refusal, while any mark remains.
+    if (ca.switchRefusal) return reply(409, ca.switchRefusal);
     const ids = marked();
     const names = doc.graph.nodes.filter((n) => ids.includes(n.id)).map((n) => `“${n.label}”`).join(', ');
     return reply(409, { detail: `${ids.length} steps were drafted by the model and nobody has checked them yet: `
@@ -303,3 +306,80 @@ ROOM_PREAMBLE = (
     "const calls = (method, pred = () => true) => ca.calls.filter((c) => c.method === method && pred(c.url))\n"
     "  .map((c) => [c.url, c.body]);\n"
 )
+
+
+# ── `P22-19`: the drafter's replies, recorded from wb-assist's routes ───────
+# Where `wb-assist`'s drafter is in the tree (`src.workflow_assist.draft_workflow`
+# and its harness, `tests/helpers/assist_harness.py`), the replies the browser
+# is handed are RECORDED from its real routes — the create door with
+# `{describe}` (a scripted model answering the draft below), the switch's 409
+# while marks remain, and the palette's example sentences — on a real SQLite
+# file, as a person's browser asks (`assist_harness.PERSON`). Where it is not
+# (this branch alone), they are C-A's literal shapes. A tree that HAS the
+# drafter records or fails: a recording that breaks is not papered over with
+# the literal shape. Slice D's `real_palette` move (`integrate-d`).
+
+def drafter_present() -> bool:
+    try:
+        from src import workflow_assist  # noqa: F401
+        from tests.helpers import assist_harness  # noqa: F401
+    except Exception:
+        return False
+    return hasattr(workflow_assist, "draft_workflow") and hasattr(workflow_assist, "EXAMPLE_SENTENCES")
+
+
+def literal_switch_refusal(doc: dict) -> dict:
+    """C-A's 409 while marks remain, with the design's sentence (§ 1.1)."""
+    marked = [n for n in doc["graph"]["nodes"] if n.get("unchecked")]
+    names = ", ".join(f"“{n['label']}”" for n in marked)
+    return {"detail": f"{len(marked)} steps were drafted by the model and nobody has checked them yet: {names}. "
+                      f"Open each one and press Looks right (or change it), then switch it on.",
+            "reason": "unchecked", "node_ids": [n["id"] for n in marked]}
+
+
+def recorded_draft(tmp_path: Path, doc: dict, *, describe: str, notes, missing, destinations) -> dict:
+    """`{source, examples, reply, switch_refusal}` — recorded from the real
+    routes when the drafter is in the tree, else C-A's literal shapes built
+    from `doc`. The scripted model answers `doc`'s steps and arrows (the
+    start's implied entry is the one step nothing leads to)."""
+    if not drafter_present():
+        return {"source": "literal", "examples": list(EXAMPLES),
+                "reply": {"workflow": doc, "notes": list(notes), "missing": list(missing),
+                          "destinations": list(destinations)},
+                "switch_refusal": literal_switch_refusal(doc)}
+    import asyncio
+
+    import pytest
+
+    from src import workflow_assist as wa
+    from tests.helpers.assist_harness import PERSON, build_world, miniflux, script_model
+    from tests.helpers.walker_harness import client_for
+
+    answer = {
+        "name": doc["name"],
+        "trigger": {"type": (doc.get("trigger_task") or {}).get("trigger_type") or "webhook"},
+        "steps": [{"id": n["id"], "kind": n["kind"], "label": n["label"], "config": n["config"]}
+                  for n in doc["graph"]["nodes"]],
+        "arrows": [{"from": e["from"], "port": e["port"], "to": e["to"]}
+                   for e in doc["graph"]["edges"] if e["from"] != "start"],
+        "missing": list(missing),
+    }
+
+    async def record(w):
+        async with client_for(w.app) as client:
+            made = await client.post("/api/workflows", headers=PERSON, json={"describe": describe, "tz": "UTC"})
+            assert made.status_code == 200, made.text
+            reply = made.json()
+            wid = reply["workflow"]["id"]
+            refused = await client.post(f"/api/workflows/{wid}/switch", headers=PERSON, json={"on": True})
+            assert refused.status_code == 409, refused.text
+            palette_reply = await client.get("/api/workflows/palette", headers=PERSON)
+            assert palette_reply.status_code == 200, palette_reply.text
+            return reply, refused.json(), palette_reply.json().get("examples")
+
+    with pytest.MonkeyPatch.context() as mp:
+        w = build_world(mp, tmp_path, integrations=[miniflux()])
+        script_model(mp, answer)
+        reply, refusal, examples = asyncio.run(record(w))
+    assert list(examples) == list(wa.EXAMPLE_SENTENCES)
+    return {"source": "recorded", "examples": list(examples), "reply": reply, "switch_refusal": refusal}
