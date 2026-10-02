@@ -1130,6 +1130,7 @@ def _process_office_document(
     from src.markitdown_runtime import (
         is_office_format,
         convert_to_markdown,
+        extracted_language,
     )
 
     if not is_office_format(path):
@@ -1169,6 +1170,7 @@ def _process_office_document(
                     title=title,
                     body_text=markdown,
                     source_name=display_name or None,
+                    language=extracted_language(markdown),
                 )
                 if doc_id and auto_opened_docs is not None:
                     from src.database import SessionLocal, Document

@@ -245,8 +245,10 @@ def test_a_format_whose_extractor_is_not_installed_is_refused_with_the_reason(
     _without_markitdown(monkeypatch)
     result = _drive_mailbox(tmp_path, monkeypatch, "report" + ext,
                             office_fixture(ext))
-    if ext == ".docx":
+    if ext in (".docx", ".xlsx"):
         # `.docx` has bundled readers, so it does not reach a refusal at all.
+        # Nor, since `B-NEW` (f-import), does `.xlsx` (`src/ooxml_native.py`):
+        # this case asserted its refusal, which was the defect.
         assert result.get("doc_id"), result
         return
     assert "doc_id" not in result, result
@@ -255,14 +257,15 @@ def test_a_format_whose_extractor_is_not_installed_is_refused_with_the_reason(
     assert "report" + ext in result["error"]
 
 
-@pytest.mark.parametrize("ext", sorted(NATIVE_OFFICE_EXTS | {".docx"}))
+@pytest.mark.parametrize("ext", sorted(NATIVE_OFFICE_EXTS | {".docx", ".xlsx"}))
 def test_the_bundled_formats_open_with_markitdown_absent(
         tmp_path, monkeypatch, ext):
     """`B102`'s readers are bundled, so "install the optional dep" would be a lie.
 
     `.docx` is in this list because `B240` moved the mailbox's `python-docx`
     reader into the extractor chain instead of deleting it (`Law 1`) — so the
-    format markitdown normally handles still has an answer without it.
+    format markitdown normally handles still has an answer without it. `.xlsx`
+    since `B-NEW` (f-import) gave it a bundled reader.
     """
     _without_markitdown(monkeypatch)
     result = _drive_mailbox(tmp_path, monkeypatch, "report" + ext,
@@ -362,18 +365,21 @@ def test_the_gap_function_names_the_dependency_only_when_it_is_missing(monkeypat
         office_extraction_gap,
     )
 
+    # `B-NEW` (f-import): the example was `.xlsx`, which has a bundled reader
+    # now; `.pptx` is a format only markitdown reads.
     if HAVE_MARKITDOWN:
         # `B858`. The "installed" half of "both sides of the one condition" can
         # only be asserted where it is installed. The half below cannot be
         # faked away and runs everywhere.
-        assert office_extraction_gap("/tmp/sheet.xlsx") == NO_EXTRACTABLE_TEXT
+        assert office_extraction_gap("/tmp/deck.pptx") == NO_EXTRACTABLE_TEXT
     _without_markitdown(monkeypatch)
-    assert office_extraction_gap("/tmp/sheet.xlsx") == MARKITDOWN_MISSING
+    assert office_extraction_gap("/tmp/deck.pptx") == MARKITDOWN_MISSING
     # And `B102`'s distinction, which only shows with the dependency gone: the
     # bundled readers are always present, so a `.doc` or an `.odt` that came out
     # empty is empty — telling the person to install markitdown would point them
-    # at a dependency that would not have read it either.
-    for ext in sorted(NATIVE_OFFICE_EXTS):
+    # at a dependency that would not have read it either. A `.docx` or `.xlsx`
+    # a bundled reader found nothing in is the same (`B-NEW`, f-import).
+    for ext in sorted(NATIVE_OFFICE_EXTS | {".docx", ".xlsx"}):
         assert office_extraction_gap("/tmp/report" + ext) == NO_EXTRACTABLE_TEXT
 
 

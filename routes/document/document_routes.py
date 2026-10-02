@@ -514,12 +514,14 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
             # `markdown`, and it is now TRUE. `B161` moved `'.doc': 'markdown'`
             # into `CONVERTED_TO` with this row named beside it precisely
             # because the label described what SHOULD land, and this route is
-            # what makes it land.
+            # what makes it land. `B-NEW` (f-import): a one-sheet workbook read
+            # by the bundled reader is its CSV, a `csv` document — what the
+            # Library makes of the same file.
             doc = Document(
                 id=doc_id,
                 session_id=session_id,
                 title=title,
-                language="markdown",
+                language=markitdown_runtime.extracted_language(body_text),
                 current_content=body_text,
                 version_count=1,
                 is_active=True,

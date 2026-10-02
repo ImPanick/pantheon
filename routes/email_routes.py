@@ -3916,6 +3916,7 @@ def setup_email_routes():
             from src.markitdown_runtime import (
                 OFFICE_EXTS,
                 convert_to_markdown,
+                extracted_language,
                 office_extraction_gap,
             )
 
@@ -3965,7 +3966,7 @@ def setup_email_routes():
                     return None
             doc_session_id = _resolve_doc_session()
 
-            def _create_markdown_doc(content: str, summary: str):
+            def _create_markdown_doc(content: str, summary: str, language: str = "markdown"):
                 from src.database import SessionLocal as _SL, Document as _Doc, DocumentVersion as _DV
                 doc_id = str(uuid.uuid4())
                 ver_id = str(uuid.uuid4())
@@ -3988,7 +3989,7 @@ def setup_email_routes():
                     # who had just opened it until a restart backfilled one.
                     _db.add(_Doc(
                         id=doc_id, session_id=doc_session_id, title=title,
-                        language="markdown", current_content=content,
+                        language=language, current_content=content,
                         version_count=1, is_active=True,
                         owner=_doc_user or owner or None,
                         source_name=source_name,
@@ -4153,8 +4154,11 @@ def setup_email_routes():
             if ext in OFFICE_EXTS:
                 content = convert_to_markdown(str(filepath))
                 if content and content.strip():
+                    # `B-NEW` (f-import): the language the reader says — a
+                    # one-sheet workbook is a `csv` document, as at the Library.
                     doc_id = _create_markdown_doc(
-                        content, f"Imported from {ext.lstrip('.').upper()}"
+                        content, f"Imported from {ext.lstrip('.').upper()}",
+                        extracted_language(content),
                     )
                     return {"doc_id": doc_id, "filename": filepath.name}
                 # A refusal that names why. `office_extraction_gap` is the same
