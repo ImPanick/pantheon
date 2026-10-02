@@ -356,6 +356,8 @@ def maybe_prune_node_records(db) -> int:
         try:
             db.rollback()
         except Exception:
+            # The failure was logged on the line above; a rollback that fails
+            # too leaves the session to its owner, who closes it next.
             pass
         return 0
 
