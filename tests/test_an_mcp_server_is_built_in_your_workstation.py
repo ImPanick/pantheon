@@ -315,6 +315,40 @@ def test_the_harness_checks_the_folder_name_again_itself(station):
         assert answer["error"] == "That is not a server's folder name."
 
 
+def test_the_template_asks_the_name_rules_again_itself():
+    """`render_server_py` is called by both doors after their own checks; it
+    asks the two rules again, so a caller that skipped them still cannot put
+    a typed name into a `def` or the docstring."""
+    import ast
+
+    from src.mcp_scaffold import ScaffoldError, render_server_py
+    with pytest.raises(ScaffoldError):
+        render_server_py("weather", ['x"; import os#'])
+    tree = ast.parse(render_server_py('w"""\nimport os\n"""', ["get_forecast"]))
+    imported = {a.name for n in ast.walk(tree) if isinstance(n, ast.Import) for a in n.names}
+    assert imported == {"asyncio", "json", "sys"}
+    name = next(n for n in tree.body if isinstance(n, ast.Assign)
+                and getattr(n.targets[0], "id", None) == "SERVER_NAME")
+    assert ast.literal_eval(name.value) == "w-import-os"
+    assert "pantheon-mcp-new w-import-os --check" in ast.get_docstring(tree)
+
+
+def test_print_in_a_tool_is_shown_and_does_not_break_the_wire(client, station):
+    """The template points `print()` at stderr: a person debugging with it
+    sees the line under *Try*, and the answer still arrives."""
+    _make(client)
+    source = client.get("/api/mcp/scaffold/weather", headers=_as("ann")).json()["source"]
+    marker = '    text = arguments.get("text", "")\n'
+    assert source.count(marker) == 1
+    edited = source.replace(marker, marker + '    print("looking up", text)\n')
+    client.put("/api/mcp/scaffold/weather", headers=_as("ann"), json={"source": edited})
+    tried = client.post("/api/mcp/scaffold/weather/try", headers=_as("ann"),
+                        json={"tool": "get_forecast", "arguments": {"text": "Oslo"}}).json()
+    assert tried["ok"] is True, tried
+    assert tried["stdout"].endswith("text='Oslo'")
+    assert tried["printed"].strip() == "looking up Oslo"
+
+
 def test_arguments_arrive_byte_for_byte(client, station):
     _make(client)
     assert client.put("/api/mcp/scaffold/weather", headers=_as("ann"),
@@ -478,13 +512,17 @@ def test_the_relay_runs_each_call_in_the_authors_account(client, station, monkey
     _relay_world(station, monkeypatch)
     before = len(station.execs)
     started, status, tools, out = _through_the_manager(
-        reg, [("get_forecast", {"text": "Oslo"})])
+        reg, [("get_forecast", {"text": "Oslo"}), ("get_forecast", {})])
     assert started is True, status
     assert tools == ["get_forecast"]
-    assert out == [{"stdout": "get_forecast has not been written yet. It was called with "
-                              "text='Oslo'", "stderr": "", "exit_code": 0}]
+    assert out[0] == {"stdout": "get_forecast has not been written yet. It was called with "
+                                "text='Oslo'", "stderr": "", "exit_code": 0}
+    # The relay is not a second judge of the schema (`D-2026-09-27-02`): a
+    # call missing `text` reaches the server, whose own code answers it.
+    assert out[1] == {"stdout": "get_forecast has not been written yet. It was called with "
+                                "text=''", "stderr": "", "exit_code": 0}
     relayed = station.execs[before:]
-    assert [json.loads(e["body"]["stdin"])["action"] for e in relayed] == ["list", "call"]
+    assert [json.loads(e["body"]["stdin"])["action"] for e in relayed] == ["list", "call", "call"]
     assert {e["account"] for e in relayed} == {account_of("ann")}
     assert all(e["body"]["command"] == wm.PROBE_HARNESS for e in relayed)
 
