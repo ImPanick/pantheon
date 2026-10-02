@@ -489,6 +489,7 @@ weakest one in this document: it means nobody adjudicated them individually.
 | `B1021` | tracked | defect | the refusal holds — the datagram is not sent; only the sentence explaining it is missing for one silent tool |
 | `B1038` | tracked | defect | the engine refuses and pauses the admin-only task, so nothing runs; the tool misreports a refusal as success |
 | `B1070` | tracked | defect | a loading state drawn as an empty one for seconds; the memories arrive and nothing is lost |
+| `P22-08` | tracked | feature | the rule flagged it on *plain text*, which is the sample a person types to test a step, not a secret at rest; a feature row held open on `B1080` |
 
 ---
 
