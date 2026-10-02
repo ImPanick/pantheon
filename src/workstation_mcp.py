@@ -36,15 +36,29 @@ into the existing *Add MCP Server* form; the agent's `manage_mcp` refuses them
 `FORBIDDEN.md` Part 2, untouched), and `app_api`'s `/api/mcp/servers`
 blocklist refuses the loopback.
 
-**The relay's two flags are the registration, not the caller's.** `--owner`
-and `--server` are argv an admin saved; nothing a tool call carries can change
+**A registration pins the code (`integrate-e`).** An admin approves one
+program; `--sha256` is the fingerprint of the server's folder's code as it was
+then (`PROBE_HARNESS`'s `fingerprint`: every file Python could load as code
+there, and every symlink). Before each list or call the harness reads the
+fingerprint again and, if it moved, starts nothing — the relay answers
+`CHANGED_SINCE_REGISTERED`. Changing the code is the dev loop and stays
+allowed (a person's own edit in the panel; while it is registered, only a
+person's — `PUT /api/mcp/scaffold/{name}` refuses the assistant's loopback);
+it takes the server off the air until an admin registers it again, which
+re-pins through the admin route. The residue, said where it is decided: the
+pin covers the folder, not what the account's own Python loads from
+elsewhere (its user site-packages) — the author's environment, which
+`D-2026-10-02-02` §3 accepted along with the author's account.
+
+**The relay's flags are the registration, not the caller's.** `--owner`,
+`--server` and `--sha256` are argv an admin saved; nothing a tool call carries can change
 which account or folder the relay acts for — the call's name and arguments
 ride stdin to the harness as data. Pantheon's environment is never forwarded:
 the relay inherits it (`P8-42`) and sends none of it to the workstation.
 
 Stored words (`FORBIDDEN.md` Part 1 at the merge — they live in `mcp_servers`
-rows): this module's path `src/workstation_mcp.py`, its flags `--owner` and
-`--server`, and the workstation folder `~/mcp-servers/`.
+rows): this module's path `src/workstation_mcp.py`, its flags `--owner`,
+`--server` and `--sha256`, and the workstation folder `~/mcp-servers/`.
 
 Public surface:
 
@@ -55,7 +69,9 @@ Public surface:
     ws_read_source / ws_write_source    server.py, through the protocol's read/write
     ws_verify(owner, name)              start it there, list its tools: {started, tools, error}
     ws_try(owner, name, tool, args)     call one tool there: {ok, stdout, stderr, exit_code, …}
-    ws_registration(owner, name)        the admin route's fields — the relay
+    ws_fingerprint(owner, name)         the fingerprint of its code, as the harness reads it
+    ws_registration(owner, name, pin)   the admin route's fields — the relay, pinned to `pin`
+    relay_target(command, args)         whose server a registration relays to, and its pin
     main(argv)                          the relay itself (run as a script)
 """
 from __future__ import annotations
@@ -74,6 +90,7 @@ if __name__ == "__main__":
 
 import json
 import logging
+import re
 import time
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
@@ -86,6 +103,12 @@ WS_FOLDER = "mcp-servers"
 RELAY_PATH = os.path.abspath(__file__)
 OWNER_FLAG = "--owner"
 SERVER_FLAG = "--server"
+#: `integrate-e` (the integrator's call on mcp-build's `B-NEW-2`): the
+#: fingerprint of the server's code as it was when an admin registered it
+#: (`PROBE_HARNESS`'s `fingerprint`). Stored in `mcp_servers.args`; the relay
+#: runs nothing whose code no longer matches it.
+PIN_FLAG = "--sha256"
+_PIN_RE_TEXT = r"^[0-9a-f]{64}$"
 
 SERVER_FILENAME = "server.py"
 README_FILENAME = "README.md"
@@ -110,12 +133,53 @@ _EXEC_MARGIN_S = 15.0
 # object on the last line of stdout; `_probe` reads nothing else.
 
 PROBE_HARNESS = r'''
-import json, os, queue, re, signal, subprocess, sys, threading, time
+import hashlib, json, os, queue, re, signal, subprocess, sys, threading, time
 
 SLUG = re.compile(r"^[a-z0-9][a-z0-9-]{0,39}$")
+PIN = re.compile(r"^[0-9a-f]{64}$")
 FOLDER = "mcp-servers"
 TAIL = 4000
 MAX_TEXT = 200000
+# What Python can load as code from the server's folder: its own source, a
+# sibling module or package, compiled bytecode (in __pycache__ or beside its
+# source) and extension modules. The fingerprint covers every one of them.
+CODE = (".py", ".pyc", ".pyo", ".so", ".pyd")
+MAX_FILE = 16 * 1024 * 1024
+
+
+def fingerprint(folder):
+    """sha256 over every file Python could load as code from the folder, and
+    every symlink in it, by path. The registration pins this
+    (`integrate-e`): a server whose code changed after an admin registered it
+    is not run."""
+    h = hashlib.sha256()
+    for root, dirs, files in os.walk(folder):
+        rel = os.path.relpath(root, folder)
+        dirs.sort()
+        walk = []
+        for d in dirs:
+            path = os.path.join(root, d)
+            if os.path.islink(path):
+                h.update(("link\0%s\0%s\n" % (os.path.normpath(os.path.join(rel, d)),
+                                                os.readlink(path))).encode("utf-8", "replace"))
+            else:
+                walk.append(d)
+        dirs[:] = walk
+        for f in sorted(files):
+            path = os.path.join(root, f)
+            name = os.path.normpath(os.path.join(rel, f))
+            if os.path.islink(path):
+                h.update(("link\0%s\0%s\n" % (name, os.readlink(path))).encode("utf-8", "replace"))
+            if not f.endswith(CODE):
+                continue
+            try:
+                with open(path, "rb") as fh:
+                    data = fh.read(MAX_FILE)
+                digest = hashlib.sha256(data).hexdigest()
+            except OSError:
+                digest = "unreadable"
+            h.update(("file\0%s\0%s\n" % (name, digest)).encode("utf-8", "replace"))
+    return h.hexdigest()
 
 
 def say(answer):
@@ -141,8 +205,11 @@ def main():
     slug, action = job.get("slug"), job.get("action")
     if not isinstance(slug, str) or not SLUG.match(slug):
         return say({"started": False, "error": "That is not a server's folder name."})
-    if action not in ("list", "call"):
+    if action not in ("list", "call", "digest"):
         return say({"started": False, "error": "The check was asked to do something it does not do."})
+    pin = job.get("pin")
+    if pin is not None and (not isinstance(pin, str) or not PIN.match(pin)):
+        return say({"started": False, "error": "That is not a fingerprint of a server's code."})
     tool, arguments = job.get("tool"), job.get("arguments")
     if action == "call" and (not isinstance(tool, str) or not tool or len(tool) > 128):
         return say({"started": False, "error": "Say which tool to call."})
@@ -158,8 +225,17 @@ def main():
         return say({"started": False, "missing": True,
                     "error": "There is no server.py in ~/" + FOLDER + "/" + slug + "."})
     mtime = os.path.getmtime(source)
+    digest = fingerprint(folder)
+    if action == "digest":
+        return say({"started": False, "digest": digest, "mtime": mtime})
+    if pin is not None and pin != digest:
+        # Registered with other code than is here now: nothing starts.
+        return say({"started": False, "pin_mismatch": True, "digest": digest, "mtime": mtime,
+                    "error": "Its code has changed since it was registered."})
     began = time.monotonic()
-    child = subprocess.Popen([sys.executable, "-u", source], cwd=folder, stdin=subprocess.PIPE,
+    # `-B`: nothing this starts writes bytecode into the folder, so the
+    # fingerprint above only moves when somebody changes the code.
+    child = subprocess.Popen([sys.executable, "-B", "-u", source], cwd=folder, stdin=subprocess.PIPE,
                              stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                              start_new_session=True)
     lines, err = queue.Queue(), []
@@ -260,6 +336,7 @@ def main():
     answer["server_exit"] = child.returncode
     answer["duration_ms"] = int((time.monotonic() - began) * 1000)
     answer["mtime"] = mtime
+    answer["digest"] = digest
     say(answer)
 
 
@@ -415,14 +492,33 @@ async def ws_create(owner: Optional[str], name: Any, tools: Optional[Sequence[An
             f"{slug!r} already exists in your workstation (~/{WS_FOLDER}/{slug}). Nothing was "
             "changed — this never overwrites a server, because the only thing that could "
             "destroy is code you wrote. Pick another name, or open that one.")
-    registration = ws_registration(owner, slug)
-    refusal = agent_refusal(registration)
     await client.write(account, f"{_folder(slug)}/{SERVER_FILENAME}",
                        render_server_py(slug, wanted, text, check_hint=CHECK_HINT_WORKSTATION))
+    registration = ws_registration(owner, slug, await _fingerprint(client, account, slug))
+    refusal = agent_refusal(registration)
     await client.write(account, f"{_folder(slug)}/{README_FILENAME}",
                        render_workstation_readme(slug, wanted, text, registration, refusal))
     return {"name": slug, "tools": wanted, "description": text,
             "registration": registration, "agent_refusal": refusal}
+
+
+async def _fingerprint(client, account: str, slug: str) -> str:
+    answer = await _probe(client, account, {"slug": slug, "action": "digest",
+                                            "timeout": CHECK_TIMEOUT_S}, CHECK_TIMEOUT_S)
+    digest = answer.get("digest")
+    if not isinstance(digest, str) or not re.match(_PIN_RE_TEXT, digest):
+        raise BuildError(answer.get("error") or f"There is no server called {slug!r} in your "
+                                                "workstation.")
+    return digest
+
+
+async def ws_fingerprint(owner: Optional[str], name: Any, *, auth_manager: Any = None) -> str:
+    """`integrate-e`. The fingerprint of this server's code as it is now —
+    what a registration pins (`PIN_FLAG`). Read by the harness, in the
+    author's account, the one place it is computed."""
+    slug = _slug(name)
+    client, account = await _station(owner, auth_manager)
+    return await _fingerprint(client, account, slug)
 
 
 async def ws_read_source(owner: Optional[str], name: Any, *, auth_manager: Any = None) -> str:
@@ -477,17 +573,31 @@ def _tool_offer(tool: Dict[str, Any]) -> Dict[str, Any]:
             "annotations": annotations, "is_readonly": is_readonly, "readonly_source": source}
 
 
+def changed_since_registered(slug: str) -> str:
+    """What the relay answers for a server whose code moved since an admin
+    registered it (`integrate-e`)."""
+    return (f"“{slug}” was changed after an admin registered it, so it was not run: the admin "
+            f"approved the code as it was then. An admin registers it again to run the new code "
+            f"(Register beside it under Build an MCP server, then Save).")
+
+
 async def ws_verify(owner: Optional[str], name: Any, *, timeout: float = CHECK_TIMEOUT_S,
-                    auth_manager: Any = None) -> Dict[str, Any]:
+                    auth_manager: Any = None, pin: Optional[str] = None) -> Dict[str, Any]:
     """Start the server in this person's workstation, complete the handshake,
     list its tools, stop it. `verify_server`'s shape — `{started, tools,
     error}` — plus `offers` (each tool's description and input schema, which
     *Try* builds its form from) and `stderr` (what it printed). Never raises
-    for a server that does not work: that is the answer."""
+    for a server that does not work: that is the answer. `pin` — the relay's
+    registered fingerprint: code that no longer matches it is not started."""
     slug = _slug(name)
     client, account = await _station(owner, auth_manager)
-    answer = await _probe(client, account, {"slug": slug, "action": "list",
-                                            "timeout": timeout}, timeout)
+    job = {"slug": slug, "action": "list", "timeout": timeout}
+    if pin is not None:
+        job["pin"] = pin
+    answer = await _probe(client, account, job, timeout)
+    if answer.get("pin_mismatch"):
+        return {"started": False, "tools": [], "error": changed_since_registered(slug),
+                "offers": [], "stderr": "", "changed_since_registered": True}
     offers = [_tool_offer(t) for t in answer.get("tools") or []] if answer.get("started") else []
     error = answer.get("error") or answer.get("rpc_error")
     if answer.get("started") and answer.get("rpc_error"):
@@ -502,7 +612,8 @@ async def ws_verify(owner: Optional[str], name: Any, *, timeout: float = CHECK_T
 
 
 async def ws_try(owner: Optional[str], name: Any, tool: Any, arguments: Any, *,
-                 timeout: float = CALL_TIMEOUT_S, auth_manager: Any = None) -> Dict[str, Any]:
+                 timeout: float = CALL_TIMEOUT_S, auth_manager: Any = None,
+                 pin: Optional[str] = None) -> Dict[str, Any]:
     """Call one tool in this person's workstation and hand back what it said,
     in the envelope `POST /api/mcp/servers/{id}/call` answers with — `ok`,
     `stdout`, `stderr`, `exit_code`, `duration_ms`, `timed_out`, `error` — so
@@ -521,8 +632,15 @@ async def ws_try(owner: Optional[str], name: Any, tool: Any, arguments: Any, *,
     except (TypeError, ValueError):
         seconds = CALL_TIMEOUT_S
     client, account = await _station(owner, auth_manager)
-    answer = await _probe(client, account, {"slug": slug, "action": "call", "tool": tool.strip(),
-                                            "arguments": arguments, "timeout": seconds}, seconds)
+    job = {"slug": slug, "action": "call", "tool": tool.strip(), "arguments": arguments,
+           "timeout": seconds}
+    if pin is not None:
+        job["pin"] = pin
+    answer = await _probe(client, account, job, seconds)
+    if answer.get("pin_mismatch"):
+        return {"ok": False, "stdout": "", "stderr": "", "exit_code": 1, "duration_ms": None,
+                "timed_out": False, "error": changed_since_registered(slug), "printed": "",
+                "changed_since_registered": True}
     printed = str(answer.get("stderr") or "")
     duration = answer.get("duration_ms")
     if not answer.get("started"):
@@ -552,22 +670,60 @@ def _owner_word(owner: Optional[str]) -> str:
     return workstation_owner(owner) or DEFAULT_LOCAL_OWNER
 
 
-def ws_registration(owner: Optional[str], name: Any) -> Dict[str, Any]:
+def ws_registration(owner: Optional[str], name: Any, pin: str) -> Dict[str, Any]:
     """Exactly what `POST /api/mcp/servers` wants for a relayed server — the
     shape `mcp_scaffold.registration_for` returns, so one form fills from
     either. `--owner` is derived from whoever asked, never read from a body:
     a person can only ever hand an admin a registration for their own
-    account."""
+    account. `pin` is `ws_fingerprint`'s answer — the code the admin is
+    approving (`PIN_FLAG`)."""
+    from src.workbench_rooms import ADD_MCP_SERVER_PATH
+    if not isinstance(pin, str) or not re.match(_PIN_RE_TEXT, pin):
+        raise BuildError("A registration pins the server's code; its fingerprint is missing.")
     slug = _slug(name)
     return {
-        "where": "Settings → Integrations → + → MCP Tool Server (administrators only)",
+        "where": f"{ADD_MCP_SERVER_PATH} (administrators only)",
         "route": "POST /api/mcp/servers",
         "name": slug,
         "transport": "stdio",
         "command": sys.executable or "python3",
-        "args": [RELAY_PATH, OWNER_FLAG, _owner_word(owner), SERVER_FLAG, slug],
+        "args": [RELAY_PATH, OWNER_FLAG, _owner_word(owner), SERVER_FLAG, slug, PIN_FLAG, pin],
         "env": {},
     }
+
+
+def relay_target(command: Any, args: Any) -> Optional[Dict[str, str]]:
+    """`{owner, server, pin}` when a registration (`mcp_servers.command`/`args`)
+    is this relay, else `None` — so a route can ask whether a person's server
+    is registered without a second copy of the flags."""
+    if not isinstance(args, list) or not args or not all(isinstance(a, str) for a in args):
+        return None
+    if os.path.basename(args[0]) != os.path.basename(RELAY_PATH):
+        return None
+    flags = {}
+    rest = args[1:]
+    for i in range(0, len(rest) - 1, 2):
+        flags[rest[i]] = rest[i + 1]
+    if OWNER_FLAG not in flags or SERVER_FLAG not in flags:
+        return None
+    return {"owner": flags[OWNER_FLAG], "server": flags[SERVER_FLAG],
+            "pin": flags.get(PIN_FLAG) or ""}
+
+
+def registered_as(rows: Sequence[Any], owner: Optional[str], name: Any) -> List[Any]:
+    """The `mcp_servers` rows that relay to this person's server `name`."""
+    slug = _slug(name)
+    word = _owner_word(owner)
+    out = []
+    for row in rows:
+        try:
+            args = json.loads(getattr(row, "args", None) or "[]")
+        except ValueError:
+            continue
+        target = relay_target(getattr(row, "command", None), args)
+        if target and target["owner"] == word and target["server"] == slug:
+            out.append(row)
+    return out
 
 
 def agent_refusal(registration: Dict[str, Any]) -> str:
@@ -593,7 +749,11 @@ def _relay_args(argv: Sequence[str]):
                         help="the Pantheon user whose workstation the server lives in")
     parser.add_argument(SERVER_FLAG, required=True, dest="server",
                         help="the folder under ~/mcp-servers/")
+    parser.add_argument(PIN_FLAG, required=True, dest="pin",
+                        help="the fingerprint of the code an admin registered; other code is not run")
     args = parser.parse_args(list(argv))
+    if not re.match(_PIN_RE_TEXT, args.pin or ""):
+        parser.error(f"{PIN_FLAG} is the 64-character fingerprint Register shows")
     if not _NAME_RE.match(args.server or ""):
         parser.error(f"{SERVER_FLAG} must be a server's folder name (lowercase letters, digits "
                      "and dashes)")
@@ -608,10 +768,11 @@ def _relay_text(result: Dict[str, Any]) -> Tuple[str, bool]:
     return str(result.get("stderr") or result.get("error") or "It failed."), True
 
 
-def build_relay(owner: str, slug: str):
+def build_relay(owner: str, slug: str, pin: str):
     """The relay's SDK server: `tools/list` and `tools/call`, each one probe in
-    `owner`'s workstation. Built separately from `main` so a test can drive it
-    in-process as well as through `McpManager.connect_server`."""
+    `owner`'s workstation, each refused unless the code there still has the
+    fingerprint the admin registered (`pin`). Built separately from `main` so a
+    test can drive it in-process as well as through `McpManager.connect_server`."""
     import mcp.types as types
     from mcp.server.lowlevel import Server
 
@@ -622,9 +783,11 @@ def build_relay(owner: str, slug: str):
     @server.list_tools()
     async def _list_tools() -> List[Any]:
         try:
-            found = await ws_verify(owner, slug)
+            found = await ws_verify(owner, slug, pin=pin)
         except WorkstationError as exc:
             raise RuntimeError(exc.message) from None
+        if found.get("changed_since_registered"):
+            raise RuntimeError(found["error"])
         if not found["started"]:
             raise RuntimeError(f"{slug} did not start in the workstation: {found['error']}")
         return [types.Tool(name=o["name"], description=o["description"],
@@ -636,7 +799,7 @@ def build_relay(owner: str, slug: str):
     @server.call_tool(validate_input=False)
     async def _call_tool(name: str, arguments: Dict[str, Any]):
         try:
-            result = await ws_try(owner, slug, name, arguments or {})
+            result = await ws_try(owner, slug, name, arguments or {}, pin=pin)
         except WorkstationError as exc:
             result = {"ok": False, "error": exc.message}
         except BuildError as exc:
@@ -648,29 +811,30 @@ def build_relay(owner: str, slug: str):
     return server
 
 
-async def _serve(owner: str, slug: str) -> None:
+async def _serve(owner: str, slug: str, pin: str) -> None:
     from mcp.server.stdio import stdio_server
-    server = build_relay(owner, slug)
+    server = build_relay(owner, slug, pin)
     async with stdio_server() as (read_stream, write_stream):
         await server.run(read_stream, write_stream, server.create_initialization_options())
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
     """The relay's whole body: `python src/workstation_mcp.py --owner <user>
-    --server <name>`, started by `McpManager.connect_server` from an admin's
+    --server <name> --sha256 <fingerprint>`, started by `McpManager.connect_server` from an admin's
     registration."""
     import asyncio
     args = _relay_args(sys.argv[1:] if argv is None else argv)
     logging.basicConfig(level=logging.WARNING, stream=sys.stderr)
-    asyncio.run(_serve(args.owner, args.server))
+    asyncio.run(_serve(args.owner, args.server, args.pin))
     return 0
 
 
 __all__ = [
     "BuildError", "CALL_TIMEOUT_S", "CHECK_BROKEN", "CHECK_CHANGED", "CHECK_NEVER",
     "CHECK_TIMEOUT_S", "CHECK_WORKS", "MAX_SOURCE_BYTES", "OWNER_FLAG", "PROBE_HARNESS",
-    "RELAY_PATH", "SERVER_FLAG", "WS_FOLDER", "agent_refusal", "build_relay", "main",
-    "workstation_why", "ws_create", "ws_list", "ws_read_source", "ws_registration", "ws_try",
+    "PIN_FLAG", "RELAY_PATH", "SERVER_FLAG", "WS_FOLDER", "agent_refusal", "build_relay",
+    "changed_since_registered", "main", "registered_as", "relay_target", "workstation_why",
+    "ws_create", "ws_fingerprint", "ws_list", "ws_read_source", "ws_registration", "ws_try",
     "ws_verify", "ws_write_source",
 ]
 

@@ -216,7 +216,11 @@ def test_the_files_land_in_the_authors_own_workstation_home(client, station):
     assert made["check"]["tools"] == ["get_forecast"]
     reg = made["registration"]
     assert reg["transport"] == "stdio" and reg["command"] == sys.executable and reg["env"] == {}
-    assert reg["args"] == [wm.RELAY_PATH, "--owner", "ann", "--server", "weather"]
+    # `integrate-e`: the registration pins the code it was made for — the
+    # harness's fingerprint, read in ann's account (`--sha256`).
+    assert reg["args"][:5] == [wm.RELAY_PATH, "--owner", "ann", "--server", "weather"]
+    assert reg["args"][5] == "--sha256" and len(reg["args"]) == 7
+    assert reg["args"][6] == asyncio.run(wm.ws_fingerprint("ann", "weather"))
     assert os.path.basename(reg["args"][0]) == "workstation_mcp.py"
     # every exec ran the one fixed program, as ann, with the job on stdin
     assert station.execs and all(e["account"] == account_of("ann") for e in station.execs)
@@ -255,7 +259,8 @@ def test_the_list_says_what_the_last_check_found_and_when_it_went_stale(client, 
     source = client.get("/api/mcp/scaffold/weather", headers=_as("ann")).json()["source"]
     os.utime(_home(station, "ann") / "mcp-servers/weather/server.py", None)
     assert client.put("/api/mcp/scaffold/weather", headers=_as("ann"),
-                      json={"source": source + "\n# mine\n"}).json() == {"saved": True}
+                      json={"source": source + "\n# mine\n"}).json() == {"saved": True,
+                                                                         "registered": False}
     entry, = client.get("/api/mcp/scaffold", headers=_as("ann")).json()["servers"]
     assert entry["checked"] == "changed"
 
@@ -299,7 +304,7 @@ def test_a_hostile_server_name_stays_in_the_servers_folder(client, station, host
     if r.status_code == 200:
         slug = r.json()["name"]
         assert (home / "mcp-servers" / slug / "server.py").is_file()
-        assert r.json()["registration"]["args"][-1] == slug
+        assert r.json()["registration"]["args"][4] == slug
     else:
         assert r.status_code == 400
     made = sorted(str(p.relative_to(home)) for p in home.rglob("*") if p.is_file()) \

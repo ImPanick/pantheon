@@ -640,6 +640,11 @@ That command is a relay inside Pantheon, and it runs nothing of yours itself:
 each time an assistant lists or calls this server's tools, the relay starts
 `{SERVER_FILENAME}` here, in your workstation account, asks it, and stops it.
 
+The last argument is a fingerprint of the code in this folder as it is now.
+The admin approves that code: after any change to it, the relay runs nothing
+until an administrator registers it again (**Register**, then Save), so an
+edit is never live before someone looked at it.
+
 ## Why the assistant cannot register it
 
 Ask it and it will refuse, with this:
@@ -654,6 +659,9 @@ interpreter nor a command containing a path.
 
 - **Once registered it runs as you, for everyone.** Any assistant on this
   Pantheon may call it, and every call runs in your account, with your files.
+- **An edit takes it off the air until it is registered again.** The
+  registration pins the code an admin approved; *Check* and *Try* here still
+  run your newest code.
 - **Nothing is kept between calls.** It is started for each call and stopped
   after it. Keep anything that must last in a file.
 - **Your workstation has to be on.** While it is off or not answering, this

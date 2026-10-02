@@ -27,10 +27,11 @@ from tests.helpers.mcp_build_sandbox import build
 pytestmark = pytest.mark.skipif(not shutil.which("node"), reason="node binary not on PATH")
 
 OFF = "The workstation is switched off. An admin turns it on in Settings → Workstation."
-REG = {"where": "Settings → Integrations → + → MCP Tool Server (administrators only)",
-       "route": "POST /api/mcp/servers", "name": "weather", "transport": "stdio",
-       "command": "/usr/local/bin/python",
-       "args": ["/app/src/workstation_mcp.py", "--owner", "ann", "--server", "weather"], "env": {}}
+# The registration the scaffold's read answers, from the real function
+# (`integrate-e`: it was a literal, and kept saying "Settings → Integrations"
+# and no fingerprint after both changed).
+PIN = "0123456789abcdef" * 4
+REG = __import__("src.workstation_mcp", fromlist=["ws_registration"]).ws_registration("ann", "weather", PIN)
 # As `workstation_mcp._tool_offer` sends it: the server's own read/write verdict included.
 OFFER = {"name": "get_forecast", "description": "Forecast for a place.",
          "input_schema": {"type": "object", "properties": {"text": {"type": "string",
@@ -224,9 +225,10 @@ def test_register_hands_an_admin_the_registration_and_a_non_admin_the_fields(box
     assert o["handed"] == [REG]
     assert o["adminSaw"].startswith("Once it is registered, every assistant")
     assert o["lead"] == "Only an admin registers a server. Send them these fields:"
-    assert o["fields"] == ("Name: weather\nTransport: stdio\nCommand: /usr/local/bin/python\n"
-                           "Arguments (one box each):\n  /app/src/workstation_mcp.py\n  --owner\n"
-                           "  ann\n  --server\n  weather\nEnvironment: leave empty")
+    assert o["fields"] == (f"Name: weather\nTransport: stdio\nCommand: {REG['command']}\n"
+                           f"Arguments (one box each):\n  {REG['args'][0]}\n  --owner\n"
+                           f"  ann\n  --server\n  weather\n  --sha256\n  {PIN}\n"
+                           "Environment: leave empty")
     assert "runs in your workstation account" in o["note"]
     assert o["writes"] == 0  # nothing here registers anything
 
