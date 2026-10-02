@@ -129,6 +129,14 @@ function _when(iso) {
   return Number.isNaN(d.getTime()) ? String(iso) : d.toLocaleString();
 }
 
+/** `P22-11`, `P22-17`. A waiting step's times, short: "Oct 2, 04:40 AM". */
+function _short(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? String(iso)
+    : d.toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+}
+
 function _took(a, b) {
   const s = Date.parse(a);
   const e = Date.parse(b);
@@ -246,8 +254,13 @@ export function createWorkflowPanels({
       try {
         const a = anchorEl.getBoundingClientRect();
         const r = room.getBoundingClientRect();
-        box.style.top = Math.max(8, Math.round(a.bottom - r.top + 4)) + 'px';
+        const top = Math.max(8, Math.round(a.bottom - r.top + 4));
+        box.style.top = top + 'px';
         box.style.left = Math.max(8, Math.min(Math.round(a.left - r.left), Math.round((r.width || 0) - 300))) + 'px';
+        // Every kind fits the room it opens in, scrolling inside it: measured in
+        // Chromium at 1400×860, fourteen kinds ran past the window's edge and
+        // the last group (where Code is greyed) could not be reached.
+        if (r.height) box.style.maxHeight = Math.max(160, Math.round(r.height - top - 12)) + 'px';
       } catch (_) { /* no layout (a test): the sheet places it */ }
       room.appendChild(box);
       release = hold(() => finish(null));
@@ -694,19 +707,19 @@ export function createWorkflowPanels({
     const part = _el('section', 'wf-record-waiting');
     part.setAttribute('aria-label', 'What this step is waiting for');
     part.appendChild(_el('p', 'wf-record-waiting-head', waitingWords(wt)
-      + (wt.since ? ` · since ${_when(wt.since)}` : '')));
+      + (wt.since ? ` · since ${_short(wt.since)}` : '')));
     const said = _el('p', 'wf-record-waiting-said');
     said.setAttribute('role', 'status');
     said.setAttribute('aria-live', 'polite');
     if (wt.kind === 'time') {
       part.appendChild(_el('p', 'wf-record-note', wt.until
-        ? `It goes on at ${_when(wt.until)}, or as soon after as Pantheon is idle.`
+        ? `It goes on at ${_short(wt.until)}, or as soon after as Pantheon is idle.`
         : 'It goes on when its wait is over, as soon as Pantheon is idle.'));
     } else if (wt.kind === 'idle') {
       part.appendChild(_el('p', 'wf-record-note', 'Pantheon was busy with something you were doing. This step runs '
         + 'again as soon as Pantheon is idle; the steps before it are not run again.'));
     } else if (wt.kind === 'approval') {
-      if (wt.until) part.appendChild(_el('p', 'wf-record-note', `If nobody answers by ${_when(wt.until)}, it is not done and the step takes its “if it fails” way.`));
+      if (wt.until) part.appendChild(_el('p', 'wf-record-note', `If nobody answers by ${_short(wt.until)}, it is not done and the step takes its “if it fails” way.`));
       if (wt.approval && typeof answer === 'function') {
         part.appendChild(approvalBox(wt.approval, {
           allowValue: 'approve_task',
