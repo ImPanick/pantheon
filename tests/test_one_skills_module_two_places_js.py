@@ -80,7 +80,9 @@ installHtmlParsing();
 globalThis.matchMedia = () => ({ matches: false });
 globalThis.getComputedStyle = () => ({});
 globalThis.CSS = { escape: (s) => String(s) };
-// The browser has it; the shim does not — `_stampRoom` copies the window's markup.
+// The browser has these; the shim does not. `removeAttribute` ends a busy
+// button's `aria-busy`; `cloneNode` is how `_stampRoom` copies the markup.
+if (!Node.prototype.removeAttribute) Node.prototype.removeAttribute = function (k) { delete this.attrs[k]; };
 Node.prototype.cloneNode = function cloneNode(deep) {
   const tag = this.tagName === '#TEXT' ? '#text' : this.tagName.toLowerCase();
   const n = tag === '#text' ? new Node('#text') : document.createElement(tag);
