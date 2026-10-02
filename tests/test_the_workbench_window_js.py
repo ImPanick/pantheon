@@ -384,8 +384,16 @@ def test_opening_draws_the_rooms_wires_the_window_once_and_focuses_the_workflow(
     """)
     f = o["first"]
     assert f["hidden"] is False and f["open"] is True
-    assert f["tabs"] == [{"text": "Automations", "role": "tab", "selected": "true",
-                          "controls": "workbench-room", "id": "workbench-room-tab-automations"}]
+    # `P22-21` moved this premise deliberately: three rooms, each tab naming its
+    # own panel, and the window opens on Automations.
+    assert f["tabs"] == [
+        {"text": "Automations", "role": "tab", "selected": "true",
+         "controls": "workbench-room", "id": "workbench-room-tab-automations"},
+        {"text": "Skills", "role": "tab", "selected": "false",
+         "controls": "workbench-room-skills", "id": "workbench-room-tab-skills"},
+        {"text": "MCP & Integrations", "role": "tab", "selected": "false",
+         "controls": "workbench-room-integrations", "id": "workbench-room-tab-integrations"},
+    ]
     assert f["labelled"] == "workbench-room-tab-automations"
     assert f["drag"] == [{"id": "workbench-modal", "content": True, "header": True, "dock": True, "left": True}]
     assert f["room"] is True

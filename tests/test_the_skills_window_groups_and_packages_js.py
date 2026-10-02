@@ -40,7 +40,7 @@ pytestmark = pytest.mark.skipif(not shutil.which("node"), reason="node binary no
 # draw a skill card here — its first `header.querySelector` finds nothing. The
 # sidebar is built with `createElement` and CAN be driven; the list's filter is
 # a pure function of the store and is run as cut from the shipped file.
-_UNITS = ("_isBundled", "_packageOf", "_scopeNames", "_inScope", "_setScope", "_sameScope",
+_UNITS = ("_readScope", "_makeMount", "_isBundled", "_packageOf", "_scopeNames", "_inScope", "_setScope", "_sameScope",
           "_sideHead", "_sideRow", "_renderSkillsSide", "_getFilteredSkills", "_getFilteredBuiltins",
           "_matches", "_sortSkills", "_offPill", "_skillsApi", "_switchPackage", "_switchGroup",
           "_fetchCollections")
@@ -89,15 +89,17 @@ const _SCOPE_KEY = 'skillsScope';
 let skills = %(skills)s;
 let builtinSkills = [{ name: 'read_file', description: 'r' }];
 let _collections = { packages: [], groups: [], off: {} };
-let _scope = { kind: 'all' };
-let _skillsSort = 'alpha', _showDraftsOnly = false, _showPublishedOnly = false, _confMax = null;
 let renders = 0;
 function renderSkillsList() { renders += 1; }
 function updateCount() {}
 function _popMenu() {}
 function _newGroup() {}
-async function _refreshAfterCollections() { await _fetchCollections(); _renderSkillsSide(); }
+async function _refreshAfterCollections() { await _fetchCollections(); _renderSkillsSide(m); }
 %(defs)s
+// `P22-21`. The scope, sort and filters are a mount's now — the window's,
+// made by the shipped `_makeMount`, whose ids are the page's own.
+const m = _makeMount(document.body);
+m.sort = 'alpha';
 const kids = (n) => (n && n.children) ? [...n.children] : [];
 const rows = () => kids(side).filter(n => String(n.className).includes('skills-side-row'));
 const rowText = (r) => kids(kids(r)[0]).map(n => n.textContent).join(' ');
@@ -106,10 +108,10 @@ const pick = (title) => {
   if (!r) throw new Error('no row ' + title + ' in ' + rows().map(rowText).join(' | '));
   return r;
 };
-const shown = () => _getFilteredSkills().map(s => s.name);
+const shown = () => _getFilteredSkills(m).map(s => s.name);
 const tick = () => new Promise((r) => setTimeout(r, 0));
 await _fetchCollections();
-_renderSkillsSide();
+_renderSkillsSide(m);
 %(script)s
 """ % {"store": json.dumps(STORE), "skills": json.dumps(SKILLS), "script": script,
        "esc": esc_source(), "defs": "\n".join(_cut(n) for n in _UNITS)}
@@ -130,10 +132,10 @@ def test_the_sidebar_lists_the_library_the_packages_their_sections_and_the_group
 
 def test_choosing_a_package_narrows_the_list_and_the_tools_leave_with_the_rest(tmp_path):
     out = _drive(tmp_path, """
-        const before = { list: shown(), builtins: _getFilteredBuiltins().length };
+        const before = { list: shown(), builtins: _getFilteredBuiltins(m).length };
         const choose = (t) => kids(pick(t))[0].dispatchEvent({ type: 'click' });
         choose('taste-skill');
-        const inPackage = shown(), builtinsAfter = _getFilteredBuiltins().length;
+        const inPackage = shown(), builtinsAfter = _getFilteredBuiltins(m).length;
         choose('document-skills'); const inSection = shown();
         choose('Yours'); const yours = shown();
         choose('Design'); const group = shown();
@@ -199,10 +201,13 @@ btn.setAttribute('id', 'skill-import-url-btn');
 const statusEl = document.body.appendChild(document.createElement('p'));
 statusEl.setAttribute('id', 'skill-import-status');
 %(defs)s
-await importSkillFromUrl();
+const m = _makeMount(document.body);
+await importSkillFromUrl(m);
 console.log(JSON.stringify({ ...seen, status: statusEl.textContent }));
 """ % {"answer": json.dumps(answer),
-       "defs": "\n".join(_cut(n) for n in ("_importStatus", "_importInFlight", "importSkillFromUrl"))}
+       "defs": "const _SCOPE_KEY = 'skillsScope';\n" + "\n".join(
+           _cut(n) for n in ("_readScope", "_makeMount", "_importStatus", "_importInFlight",
+                             "importSkillFromUrl"))}
     (tmp_path / "case.mjs").write_text(case)
     proc = subprocess.run(["node", str(tmp_path / "case.mjs")], capture_output=True, text=True, timeout=30)
     assert proc.returncode == 0, proc.stderr

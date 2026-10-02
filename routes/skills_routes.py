@@ -105,6 +105,16 @@ class SkillImportUrlRequest(BaseModel):
     url: str = Field(..., min_length=8, max_length=2000)
 
 
+# `P22-23`. What a person types under *Draft from a description*. Not capped by
+# the model: a sentence over the cap is refused with a sentence, rather than
+# with pydantic's list of constraint violations.
+SKILL_DRAFT_MAX_CHARS = 2000
+
+
+class SkillDraftRequest(BaseModel):
+    description: str = ""
+
+
 class SkillGroupCreateRequest(BaseModel):
     title: str = Field(..., min_length=1, max_length=200)
     skills: List[str] = Field(default_factory=list, max_length=2000)
@@ -971,8 +981,16 @@ def _audit_finalize_status(skills_manager, name: str, owner, verdict: str,
     return status
 
 
-def _apply_skill_md(skills_manager, name: str, md: str, owner) -> bool:
-    """Parse + persist an edited SKILL.md. Returns True on success."""
+def _apply_skill_md(skills_manager, name: str, md: str, owner, keep: Optional[dict] = None) -> bool:
+    """Parse + persist an edited SKILL.md. Returns True on success.
+
+    `keep` (`P22-23`): fields whose stored value wins over the text's. Improve
+    passes the live skill's lifecycle and visibility here
+    (`skill_improve.PINNED_ON_IMPROVE`), because the text is a model's rewrite
+    of a body anyone could have written, and a body asking to be published must
+    not be able to publish itself (design § 5.4). Callers that pass nothing
+    write what the text says, as before.
+    """
     try:
         from services.memory.skill_format import Skill, slugify
         sk = Skill.from_markdown(md)
@@ -981,7 +999,7 @@ def _apply_skill_md(skills_manager, name: str, md: str, owner) -> bool:
         # skill — a changed `name` would move the dir and orphan the usage/audit
         # sidecar entries that the caller keeps writing under the original name.
         sk.name = name
-        return bool(skills_manager.update_skill(name, {
+        fields = {
             "name": sk.name, "description": sk.description, "version": sk.version,
             "category": sk.category, "tags": sk.tags, "platforms": sk.platforms,
             "requires_toolsets": sk.requires_toolsets, "fallback_for_toolsets": sk.fallback_for_toolsets,
@@ -989,7 +1007,11 @@ def _apply_skill_md(skills_manager, name: str, md: str, owner) -> bool:
             "teacher_model": sk.teacher_model, "owner": sk.owner or owner,
             "when_to_use": sk.when_to_use, "procedure": sk.procedure,
             "pitfalls": sk.pitfalls, "verification": sk.verification, "body_extra": sk.body_extra,
-        }, owner=owner))
+        }
+        for key, value in (keep or {}).items():
+            if key in fields and key != "name":
+                fields[key] = value
+        return bool(skills_manager.update_skill(name, fields, owner=owner))
     except Exception as e:
         logger.warning(f"Audit: could not save edited skill {name}: {e}")
         return False
@@ -1621,6 +1643,42 @@ def setup_skills_routes(skills_manager: SkillsManager) -> APIRouter:
                     if (s.get("name") or "") != name]
         return lint_skill(draft, siblings)
 
+    @router.post("/draft")
+    async def draft_skill(request: Request, body: SkillDraftRequest):
+        """A skill drafted from a sentence, for the Add form to fill. `P22-23`.
+
+        `services/memory/skill_extractor.draft_skill_from_description` was
+        written by `P8-14` and never called from anywhere (design § 0.9 —
+        `Law 13`). This is its caller. **Nothing is written**: the nine fields
+        come back, the Add view's boxes are filled with them, and the person
+        presses *Add Skill* — the existing add path, with its lint beside it.
+
+        The model is the one the audit and *Fix these with the model* use
+        (`_resolve_audit_models`: Utility, then Default). What the person typed
+        goes in the user turn; the system turn is our schema only (the
+        function's own rule, `P8-14`).
+        """
+        from services.memory.skill_extractor import draft_skill_from_description
+
+        user = _owner(request)
+        text = (body.description or "").strip()
+        if not text:
+            raise HTTPException(400, "Say what the skill is for first — one sentence is enough.")
+        if len(text) > SKILL_DRAFT_MAX_CHARS:
+            raise HTTPException(400, f"That is {len(text):,} characters. Describe it in under "
+                                     f"{SKILL_DRAFT_MAX_CHARS:,}.")
+        try:
+            url, model, headers, _teacher = _resolve_audit_models(user)
+        except Exception:
+            raise HTTPException(503, "No model is set up to draft a skill. Write it by hand below, "
+                                     "or set a Default or Utility model in Settings.")
+        draft = await draft_skill_from_description(text, endpoint_url=url, model=model,
+                                                   headers=headers)
+        if not draft:
+            raise HTTPException(422, "The model could not draft a skill from that. Nothing was "
+                                     "saved. Say it differently, or write it by hand below.")
+        return {"ok": True, "model": model, "draft": draft}
+
     @router.get("/slash-catalog")
     async def get_slash_catalog(request: Request):
         """Return skills that are available as slash commands.
@@ -2115,6 +2173,99 @@ def setup_skills_routes(skills_manager: SkillsManager) -> APIRouter:
         if versions is None:
             raise HTTPException(404, "Skill not found")
         return {"ok": True, "name": name, "versions": versions}
+
+    @router.get("/{skill_id}/versions/{version_id}")
+    async def read_skill_version(request: Request, skill_id: str, version_id: str):
+        """One earlier copy's text, for *History → View*. `P22-23`.
+
+        `read_version` resolves the id through `_version_path` — the
+        `NNNN-<label>` shape and a `realpath` that must stay inside the skill's
+        own `versions/` — so an id that is a path answers 404 like an id that
+        does not exist.
+        """
+        user = _owner(request)
+        match = _require_own_skill(skills_manager, skill_id, user)
+        name = match.get("name")
+        text = skills_manager.read_version(name, version_id, owner=user)
+        if text is None:
+            raise HTTPException(404, "No such earlier copy of this skill.")
+        return {"ok": True, "name": name, "id": version_id, "markdown": text}
+
+    @router.post("/{skill_id}/versions/{version_id}/restore")
+    async def restore_skill_version(request: Request, skill_id: str, version_id: str):
+        """*History → Put this back*. `P22-23`, the button `P8-11` lacked.
+
+        `restore_version` writes through the ordinary writer, so the copy it
+        replaces is itself kept — putting one back by mistake is undone by
+        putting the other back — and the name, category and owner stay the live
+        skill's.
+        """
+        user = _owner(request)
+        match = _require_own_skill(skills_manager, skill_id, user)
+        name = match.get("name")
+        if not skills_manager.restore_version(name, version_id, owner=user):
+            raise HTTPException(404, "No such earlier copy of this skill.")
+        markdown = skills_manager.read_skill_md(name, owner=user)
+        return {"ok": True, "name": name, "restored": version_id,
+                "markdown": markdown if isinstance(markdown, str) else None}
+
+    @router.get("/{skill_id}/export")
+    async def export_skill_file(request: Request, skill_id: str):
+        """One skill as a file to keep or hand on — *Download*. `P22-23`.
+
+        `{"skill": name, "files": {relative path: text}}`: the shape
+        `manage_skills action=export` returns and `import_bundle_from_files`
+        reads, so a download is an import's inverse (`P8-16`). `versions/` is
+        never in it, nor is a symlinked file (`_files_under`, design § 0.11).
+        An attachment, never inline (`FORBIDDEN.md` Part 2's rule for anything
+        a person downloads).
+        """
+        from fastapi.responses import JSONResponse
+
+        user = _owner(request)
+        match = _require_own_skill(skills_manager, skill_id, user)
+        name = match.get("name")
+        files = skills_manager.export_skill(name, owner=user)
+        if files is None:
+            raise HTTPException(404, "Skill not found")
+        safe = re.sub(r"[^A-Za-z0-9._-]", "_", name or "skill") or "skill"
+        return JSONResponse(
+            {"skill": name, "files": files},
+            headers={"Content-Disposition": f'attachment; filename="{safe}.json"'},
+        )
+
+    @router.post("/{skill_id}/improve")
+    async def improve_skill(request: Request, skill_id: str):
+        """*Fix these with the model* — `manage_skills action=improve`'s button. `P22-23`.
+
+        One body for both doors (`services/memory/skill_improve`), which pins
+        the live skill's status, confidence, source, platforms and required
+        tools so a rewrite cannot change how the skill is used (§ 5.4). The
+        reply carries the lint's counts before and after, which is what the
+        panel says.
+        """
+        from services.memory.skill_improve import ImproveOutcome, improve_from_lint
+
+        user = _owner(request)
+        match = _require_own_skill(skills_manager, skill_id, user)
+        name = match.get("name")
+        done = await improve_from_lint(skills_manager, name, user)
+        if done.outcome is ImproveOutcome.NOT_FOUND:
+            raise HTTPException(404, "Skill not found")
+        if done.outcome is ImproveOutcome.NO_MODEL:
+            raise HTTPException(503, "No model is set up to fix a skill. Fix the findings by hand, "
+                                     "or set a Default or Utility model in Settings.")
+        if done.outcome is ImproveOutcome.NO_REWRITE:
+            raise HTTPException(422, "The model returned no usable rewrite. Nothing was written.")
+        if done.outcome is ImproveOutcome.NOT_SAVED:
+            raise HTTPException(500, "The rewrite could not be saved. Nothing changed.")
+        return {"ok": True, "name": name, "outcome": done.outcome.value,
+                "findings": len(done.findings),
+                "before": {"problem": int(done.before_counts.get("problem", 0) or 0),
+                           "advisory": int(done.before_counts.get("advisory", 0) or 0)},
+                "after": ({"problem": int(done.after_counts.get("problem", 0) or 0),
+                           "advisory": int(done.after_counts.get("advisory", 0) or 0)}
+                          if done.after is not None else None)}
 
     @router.post("/{skill_id}/test-diff")
     async def diff_skill_test(request: Request, skill_id: str):

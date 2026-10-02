@@ -2676,6 +2676,23 @@ function _reportSettingsRegistryIssues(modal, issues) {
   list.appendChild(box);
 }
 
+/**
+ * `P22-21`. Settings → Integrations moved to the Workbench's MCP & Integrations
+ * room, with its ids. Every way into it — this panel's nav entry (through
+ * `admin.js`), `open('integrations')` from the Email panel's button and the
+ * Google sign-in's return, the calendar's links that press the nav entry —
+ * comes through `open`, and `open` sends it here. The module is the page's own
+ * instance of `workbench.js` (`app.js` and `tasks.js` spell it the same way).
+ */
+function _openIntegrationsRoom() {
+  return import('./workbench/workbench.js')
+    .then((wb) => wb.openWorkbench({ room: 'integrations' }))
+    .catch((e) => {
+      console.error('The Workbench did not load:', e);
+      uiModule.showError('The Workbench did not load. Reload the page and try again.');
+    });
+}
+
 function initAll() {
   modalEl = el('settings-modal');
   // Idempotent, and cheap. The nav was drawn at module load; redrawing here
@@ -2751,6 +2768,12 @@ function initAll() {
   initEmailAccountsSettings();
   initReminderSettings();
   initUnifiedIntegrations();
+  // `P22-21`. The Integrations panel's door to the room it moved to.
+  const door = el('settings-open-integrations-room');
+  if (door && door.dataset.bound !== '1') {
+    door.dataset.bound = '1';
+    door.addEventListener('click', () => _openIntegrationsRoom());
+  }
 }
 
 function notifyIntegrationsChanged() {
@@ -6419,6 +6442,14 @@ function syncAdminVisibility() {
    PUBLIC API
    ═══════════════════════════════════════════ */
 export function open(tab) {
+  // `P22-21`. Integrations is a Workbench room now. Opened from outside
+  // Settings, only the room opens; with Settings already on screen (its own nav
+  // entry), the panel's door card is shown too, so the nav says where you are.
+  if (tab === 'integrations') {
+    _openIntegrationsRoom();
+    const shown = modalEl && !modalEl.classList.contains('hidden') && modalEl.style.display !== 'none';
+    if (!shown) return;
+  }
   if (!initialized) initAll();
 
   syncAppearanceCheckboxes();

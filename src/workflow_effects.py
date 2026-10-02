@@ -678,9 +678,14 @@ _ADMIN_ONLY_WHY = {
     "http": "Only an admin's agent can send HTTP requests from the server.",
     "mcp": "Only an admin's agent can call MCP tools: each reaches whatever its server was connected to.",
 }
+# `P22-21`. Both name the room the Integrations card moved to — the Workbench's
+# MCP & Integrations tab, beside the palette that says this. The MCP one named
+# "Settings → MCP", which has never existed: MCP servers were cards in
+# Settings → Integrations (design § 0.6).
 NO_INTEGRATIONS_SENTENCE = ("No Integrations are switched on. An admin adds one in "
-                            "Settings → Integrations.")
-NO_MCP_TOOLS_SENTENCE = "No MCP tools are switched on. An admin connects a server in Settings → MCP."
+                            "the Workbench's MCP & Integrations tab.")
+NO_MCP_TOOLS_SENTENCE = ("No MCP tools are switched on. An admin connects a server in "
+                         "the Workbench's MCP & Integrations tab.")
 NO_SKILLS_SENTENCE = "You have no skills switched on yet. Make one in Skills."
 
 

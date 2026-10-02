@@ -679,6 +679,18 @@
                      beside the box it was started from. A toast alone was the only
                      answer, and a slow import gave none until it finished. -->
                 <p id="skill-import-status" class="memory-desc skill-import-status" role="status" aria-live="polite" hidden></p>
+                <!-- `P22-23`. Draft from a description: the model fills the form
+                     below from a sentence (`POST /api/skills/draft`), and nothing
+                     is saved until Add Skill. -->
+                <p class="memory-desc doclib-desc" style="margin-top:0;">Or describe it in a sentence, and the model fills in the form below for you to check.</p>
+                <div class="memory-add-row skill-draft-row" style="margin-top:4px;margin-bottom:6px;">
+                  <div class="skill-ph-wrap" style="flex:1;min-width:0;">
+                    <textarea id="skill-draft-text" placeholder=" " rows="2" maxlength="2000" class="memory-add-input skill-hint-input" style="resize:vertical;" aria-label="Describe the skill in a sentence"></textarea>
+                    <span class="skill-rich-ph skill-rich-ph-top"><span class="k">Describe it</span> — e.g. “when the print queue jams I clear it and restart the spooler”</span>
+                  </div>
+                  <button type="button" id="skill-draft-btn" class="theme-io-btn" title="The model drafts the fields below. Nothing is saved until you press Add Skill." style="flex:none;height:28px;font-size:12px;">Draft from a description</button>
+                </div>
+                <p id="skill-draft-status" class="memory-desc skill-import-status" role="status" aria-live="polite" hidden></p>
                 <p class="memory-desc doclib-desc" style="margin-top:0;">Or create a skill by hand — name, description, when to use it, and the procedure.</p>
                 <div class="skill-ph-wrap" style="margin-top:4px;margin-bottom:6px;">
                   <input type="text" id="new-skill-name" placeholder=" " maxlength="80" class="memory-add-input skill-hint-input" aria-label="Skill name" />
@@ -753,7 +765,11 @@
 
   <!-- ── Workbench window — `P22-02` ──
        Its rooms are drawn by `static/js/workbench/workbench.js` from `ROOMS`
-       into `#workbench-rooms`; the open room draws into `#workbench-room`.
+       into `#workbench-rooms`; each room has a panel of its own below
+       (`P22-21`) — Automations draws into `#workbench-room`, Skills into
+       `#skills-room`, and MCP & Integrations is Settings' Integrations card,
+       moved here with its ids. A switch hides one panel and shows another;
+       nothing is destroyed by it.
        The title's glyph is `icons.js:WORKFLOW_GLYPH`, spelled here because
        markup cannot import the table; a test holds the two equal. -->
   <div id="workbench-modal" class="modal hidden">
@@ -765,6 +781,30 @@
       <div class="memory-tabs workbench-rooms" id="workbench-rooms" role="tablist" aria-label="Rooms"></div>
       <div class="modal-body workbench-body">
         <div class="workbench-room" id="workbench-room" role="tabpanel"></div>
+        <!-- `P22-21`. The Skills room: `skills.js` — the module the Skills
+             window runs, not a copy (`D-2026-10-02-02` §2) — stamps the
+             window's own markup in here on first show, every id prefixed
+             `wb-`, so the window and the room can be open together. -->
+        <div class="workbench-room workbench-room-skills" id="workbench-room-skills" role="tabpanel" hidden>
+          <div id="skills-room" class="skills-room skills-modal-body"></div>
+        </div>
+        <!-- `P22-21`. MCP & Integrations: the card that was Settings →
+             Integrations, moved with its ids (`P9-06`'s precedent), so
+             `settings.js` draws the same list and the same forms here. -->
+        <div class="workbench-room workbench-room-integrations" id="workbench-room-integrations" role="tabpanel" hidden>
+          <div class="wb-intg">
+            <p class="wb-intg-head">MCP servers, APIs, mail and calendars — what Pantheon connects to.</p>
+            <div class="admin-card">
+              <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-2px;margin-right:5px;opacity:0.6"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>Integrations</h2>
+              <div class="admin-toggle-sub" style="margin-bottom:8px">All external service connections in one place.</div>
+              <div id="unified-integrations-list"></div>
+              <div id="unified-intg-form" style="display:none"></div>
+              <div style="text-align:right;padding:8px 0;">
+                <button type="button" class="admin-btn-add" id="unified-intg-add-btn" style="text-align:center;display:inline-flex;align-items:center;justify-content:center;gap:5px;flex-shrink:0;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>Add Integration</button>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -2909,14 +2949,17 @@
 
         <!-- ═══ TOOLS TAB ═══ -->
         <!-- ═══ INTEGRATIONS TAB ═══ -->
+        <!-- `P22-21`. The Integrations card moved to the Workbench's MCP &
+             Integrations room with its ids. Choosing this entry, or anything
+             that opens Settings here, opens that room (`settings.js` `open`);
+             this card stays as the door for a keyboard or a screen reader that
+             lands on the panel. -->
         <div data-settings-panel="integrations" class="hidden">
           <div class="admin-card">
             <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>Integrations</h2>
-            <div class="admin-toggle-sub" style="margin-bottom:8px">All external service connections in one place.</div>
-            <div id="unified-integrations-list"></div>
-            <div id="unified-intg-form" style="display:none"></div>
-            <div style="text-align:right;padding:8px 0;">
-              <button type="button" class="admin-btn-add" id="unified-intg-add-btn" style="text-align:center;display:inline-flex;align-items:center;justify-content:center;gap:5px;flex-shrink:0;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>Add Integration</button>
+            <div class="admin-toggle-sub" style="margin-bottom:8px">MCP servers, APIs, mail and calendars are in the Workbench now, in its MCP &amp; Integrations room, beside your skills and workflows.</div>
+            <div style="padding:4px 0;">
+              <button type="button" class="confirm-btn confirm-btn-primary" id="settings-open-integrations-room">Open MCP &amp; Integrations</button>
             </div>
           </div>
         </div>
