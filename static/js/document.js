@@ -3897,7 +3897,28 @@ import { chevronIcon, playIcon } from './icons.js';
     });
   }
 
+  /**
+   * `B-NEW` (f-import: `_sendEmail` did not ask whether the open document is
+   * an email). The footer's Send button lives in the panel for every document
+   * and is only hidden for the others, and `_hideEmailFields` hides the To,
+   * Cc and Subject inputs without emptying them — measured: after an email
+   * draft, the next document opened keeps the draft's `To`. So anything that
+   * reached `_sendEmail()` with another document open (a programmatic click
+   * on the hidden button, `B400`'s stray click before it was closed) sent THAT
+   * document's text to the old recipient. The same question Ctrl+Enter asks,
+   * plus the type picker's value: a document switched to Email this moment
+   * shows its Send button before `updateLanguage`'s PATCH has answered.
+   */
+  function _activeDocIsEmail() {
+    const doc = activeDocId && docs.get(activeDocId);
+    if (!doc) return false;
+    const picked = document.getElementById('doc-language-select')?.value;
+    return doc.language === 'email' || picked === 'email';
+  }
+
   async function _sendEmail() {
+    // Says nothing: nothing was asked of an email.
+    if (!_activeDocIsEmail()) return;
     if (_emailSendInFlight) {
       if (uiModule) uiModule.showToast('Already sending');
       return;
