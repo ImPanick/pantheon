@@ -346,3 +346,47 @@ async def test_a_step_a_person_runs_reaches_a_local_model_while_their_page_is_op
     out = await w.s.test_workflow_node(trigger, "Morning digest",
                                        node("ask", "Ask", "llm", prompt="Say hi.", **ENDPOINT))
     assert out["status"] == "success" and w.seen[-1]["workload"] == "foreground"
+
+
+async def test_one_question_at_a_time_a_second_model_step_waits_for_the_answer(world):
+    """§ 1.5: while a model step waits for a yes, the run's other model steps
+    do not start — a second card in the same chat would supersede the first —
+    though a deterministic branch goes on. After the answer, it runs."""
+    w = world
+    seed_workflow(w.factory, [
+        node("reply", "Send reply", "llm", prompt="Reply.", **ENDPOINT),
+        node("note", "Write a note", "llm", prompt="Note it.", **ENDPOINT),
+        node("tidy", "Tidy", "action", action="tidy_sessions"),
+    ], [arrow("start", "reply"), arrow("start", "note"), arrow("start", "tidy")],
+        trigger_type="webhook")
+    w.script.append("```bash\nprintf reply-sent\n```")
+    import src.task_scheduler as ts
+    tidied = []
+
+    async def tidy(task, run_id=None):
+        tidied.append(task.name)
+        from src.builtin_actions import NodeResult
+        return NodeResult("success", payload="tidied")
+    w.s._execute_action = tidy
+    await w.s._execute_task("wf", trigger=_webhook())
+    [run] = runs_of(w.factory, "wf")
+    by = {r["node_id"]: r for r in records_of(w.factory, run["id"])}
+    assert run["status"] == "waiting"
+    assert by["reply"]["status"] == "waiting"
+    assert "note" not in by, "the second model step did not start while a card was open"
+    assert by["tidy"]["status"] == "success" and tidied, "the deterministic branch went on"
+    assert len(tool_approval_store._pending) == 1
+    card = by["reply"]["waiting"]["approval"]
+    w.script.append("Replied.")
+    w.script.append("Noted.")
+    async with client_for(w.app) as client:
+        res = await client.post(f"/api/workflows/w-wf/runs/{run['id']}/answer",
+                                headers={"x-test-user": "alice"},
+                                json={"node_id": "reply", "approval_id": card["approval_id"],
+                                      "decision": "approve_task"})
+    assert res.status_code == 200
+    await settle(w.s)
+    [run] = runs_of(w.factory, "wf")
+    by = {r["node_id"]: r for r in records_of(w.factory, run["id"])}
+    assert run["status"] == "success" and by["note"]["status"] == "success"
+    assert w.executed == [("bash", "printf reply-sent")]

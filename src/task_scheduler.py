@@ -3511,6 +3511,14 @@ class TaskScheduler:
                     run_obj.error = err_text[:2000]
                     run_obj.finished_at = _utcnow()
                     self._attach_run_steps(run_id, run_obj)
+                    # `P22-11`. A workflow run that failed this way waits for
+                    # nothing any more: its waiting steps end with it, and
+                    # their cards are retired.
+                    _wf_task = db.query(ScheduledTask).filter(ScheduledTask.id == task_id).first()
+                    if _wf_task is not None and (_wf_task.task_type or "llm") == "workflow":
+                        from src import workflow_runs as _wr
+                        self._retire_cards(db, run_id, _wf_task)
+                        _wr.end_waiting_records(db, run_id, status="error", error=err_text)
                 # Advance next_run even on failure so a broken task doesn't
                 # busy-loop the scheduler every tick with a stale past date.
                 task_obj = db.query(ScheduledTask).filter(ScheduledTask.id == task_id).first()
@@ -5309,8 +5317,15 @@ class TaskScheduler:
                     self._finish_merge(w, node)
                     progressed = True
                     continue
-                if w.question_open and self._node_needs_model(node):
-                    # One question at a time per run (`SLICE-CD-DESIGN` § 1.5).
+                if self._node_needs_model(node) and (
+                        w.question_open or any(self._node_needs_model(n)
+                                               for n, _r, _s in w.running.values())):
+                    # One question at a time per run (`SLICE-CD-DESIGN` § 1.5):
+                    # a model step starts only when no other model step is in
+                    # flight and no card is open. Waiting on the lock is not
+                    # enough — a step queued behind one that then parks would
+                    # mint its own card in the same chat and supersede it
+                    # (`tool_approvals.create`).
                     continue
                 if len(w.running) >= WORKFLOW_PARALLEL_STEPS:
                     return
