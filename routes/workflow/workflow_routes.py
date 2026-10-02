@@ -204,6 +204,11 @@ def setup_workflow_routes(task_scheduler) -> APIRouter:
                     db, user, body.get("describe"), tz=body.get("tz"))
                 return {"workflow": doc(db, drafted.wf, drafted.trigger), "notes": drafted.notes,
                         "missing": drafted.missing, "destinations": drafted.destinations}
+            if "file" in ways:
+                from src import workflow_share
+                made = workflow_share.import_file(db, user, body.get("file"))
+                return {"workflow": doc(db, made.wf, made.trigger), "notes": made.notes,
+                        "missing": made.missing, "destinations": made.destinations}
             if from_task_id:
                 wf, trigger, notes = store.convert_chain(
                     db, owner=user, from_task_id=str(from_task_id), name=body.get("name"),
@@ -326,6 +331,26 @@ def setup_workflow_routes(task_scheduler) -> APIRouter:
             return {"workflow": doc(db, wf, trigger), "saved": saved}
         finally:
             db.close()
+
+    @router.get("/{workflow_id}/export")
+    @_answers
+    def export_workflow(request: Request, workflow_id: str):
+        """`P22-24`. The workflow as a file to hand someone (`workflow_share.
+        export_file`, `pantheon_workflow: 1`) — never a webhook token, a key, a
+        base URL, a header's value, a sample or an endpoint URL. Sent as an
+        attachment, never inline."""
+        from fastapi.responses import Response
+        from src import workflow_share
+        db = SessionLocal()
+        try:
+            wf = store.owned_workflow(db, workflow_id, _owner(request))
+            data = workflow_share.export_file(db, wf, store.trigger_of(db, wf))
+            name = workflow_share.file_name(wf.name)
+        finally:
+            db.close()
+        return Response(content=json.dumps(data, indent=2, ensure_ascii=False),
+                        media_type="application/json",
+                        headers={"Content-Disposition": f'attachment; filename="{name}"'})
 
     @router.delete("/{workflow_id}")
     @_answers
