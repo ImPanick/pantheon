@@ -48,35 +48,51 @@
 // (`workbench.js`) hands in `tasks/taskFields.js:mountTaskFields`, so there is
 // one form (`Law 7`) and this module is testable without it.
 //
-// **Where a step sits is the person's, and kept per person** through the
-// preferences door that exists (`PUT /api/prefs/{key}`, `routes/prefs_routes.py`)
-// under `workbench_positions` — see `POSITIONS_PREF` for why that name.
+// **Where a step sits is the person's, and kept per person** — for a task,
+// through the preferences door (`taskSource.js:POSITIONS_PREF`); for a step of
+// a workflow document, inside the document.
+//
+// **What it draws is a source's (`P22-05`, wf-ui).** Slice B draws a workflow
+// document on this same canvas — one canvas, not a second (`Law 14`) — so the
+// canvas no longer knows what a task is. Everything it reads and writes goes
+// through a SOURCE, the contract the design names C3
+// (`/work/notes/SLICE-B-DESIGN.md` § 6.3, § 7):
+//
+//   { readOnly, words: { region, emptyTitle, emptyText, hint, newLabel },
+//     load() → { items: [{ id, name, kind, sub, paused, outcome: { tone, word },
+//                          ports, marks, accepts, missing }],
+//                edges: [{ from, to, when, label?, fixed? }] },
+//     connect(from, when, to) / disconnect(from, when, to) → { ok, sentence? },
+//     loadPositions(), savePositions(map),
+//     openPanel(host, item, { onSaved, onCancel }) → { destroy },
+//     newItem?(anchor) → Promise<id|null>, removeItem?(id) → { ok, sentence? },
+//     dryRun?() → { ok, sentence?, plans: Map<id, { steps, declined, when, depth }> } }
+//
+// `opts.source` is that object; without one the canvas makes today's
+// (`taskSource.js:createTaskSource(opts)`), so every caller and test of
+// `P22-02`'s canvas is unchanged. What the canvas adds for a document, and
+// draws only when a source asks: an item with no `ports` (a workflow's start),
+// an arrow that is `fixed` (the start's, which cannot be removed) or carries
+// its own `label`, an item's `marks` as text badges ("Sample pinned"), a
+// `readOnly` source (a run: no ports, no Connect…, no Delete, no New, no
+// moving), a step removed by Delete pressed twice (`removeItem`, said first,
+// done second — the arrows' rule), and the palette behind *New step*
+// (`newItem`). Optional keys only this branch's sources use are named where
+// they are read (`idKey`, `dryRunFrom`, `openItem`, `offer`, `item.fixed`,
+// `item.builtin`, `words.*` beyond the five).
 
 import {
   layoutGraph, boundsOf, portPoint, portOffset, edgePath, edgeRoute,
   arrowPath, nodeAt, clampZoom, fitView, NODE_W, NODE_H, PORTS,
 } from './graphLayout.js';
-import { EDGE_WORDS, EDGE_COLUMNS, KIND_WORDS, componentOf } from '../tasks/workflowDiagram.js';
-import { runStatusTone, runStatusLabel } from '../runStatus.js';
+import { EDGE_WORDS, KIND_WORDS, componentOf } from '../tasks/workflowDiagram.js';
 import { computeSnap } from '../editor/snap.js';
 import { registerMenuDismiss } from '../escMenuStack.js';
 import { KEY_STEP, MOVE_THRESHOLD } from '../windowDrag.js';
+import { createTaskSource, refusalText, outcomeOf, POSITIONS_PREF, TASKS_URL } from './taskSource.js';
 
-/**
- * The preference key positions are kept under.
- *
- * Snake case beside the two task preferences the server already keeps in the
- * same per-person record (`tasks_opened`, `tasks_enabled`), and prefixed with
- * the window's name rather than the room's: `P22-05`'s workflow documents
- * carry their own node positions inside the document, so what lives here is
- * only where a *task* sits on this canvas. The value is
- * `{ v: 1, tasks: { "<task id>": [x, y] } }` — keyed by id, which survives a
- * rename, pruned to the tasks that still exist on every save so it cannot grow
- * without bound, and versioned so a later shape can be read beside this one.
- */
-export const POSITIONS_PREF = 'workbench_positions';
-/** The list the Tasks window reads, with each task's last run on it. */
-export const TASKS_URL = '/api/tasks?include_last_run=true';
+// Re-exported: `P22-02`'s callers and tests read them from here.
+export { refusalText, outcomeOf, POSITIONS_PREF, TASKS_URL };
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const SAVE_DELAY_MS = 400;
@@ -124,56 +140,75 @@ function _svg(tag, cls) {
   return n;
 }
 
-/** What the server said when it refused, as one sentence. FastAPI answers
- *  `{ detail: "…" }` for an `HTTPException` and `{ detail: [{ msg }] }` for a
- *  body it could not parse; an object detail is read for its words. */
-export function refusalText(detail) {
-  if (typeof detail === 'string') return detail.trim();
-  if (Array.isArray(detail)) {
-    return detail.map((d) => (d && (d.msg || d.message)) || '').filter(Boolean).join(' ').trim();
+/** Neutral words for a source that does not say its own. The task source says
+ *  every one of these (`taskSource.js:TASK_WORDS`), so nothing here is what the
+ *  tasks canvas has ever said. */
+const DEFAULT_WORDS = Object.freeze({
+  region: 'Steps',
+  emptyTitle: 'Nothing here yet.',
+  emptyTitleOwn: '',
+  emptyText: '',
+  hint: '',
+  newLabel: 'New step',
+  newTitle: '',
+  unknownName: 'a step you cannot see',
+  missingTitle: 'A step you cannot see',
+  missingSub: '',
+  loadFailed: 'This could not be loaded. Close the Workbench and open it again to retry.',
+});
+/** The key a new step's request is held under while the person is asked
+ *  (`B1067`); no item id is the empty string. */
+const NEW_KEY = '\u0000new';
+
+/** A position map from a source: a `Map` or a plain object, each value
+ *  `{ x, y }` or `[x, y]`. Anything unreadable is left out. */
+function _points(value) {
+  const out = new Map();
+  if (!value) return out;
+  const entries = value instanceof Map ? value.entries() : Object.entries(value);
+  for (const [id, p] of entries) {
+    const x = Number(Array.isArray(p) ? p[0] : p && p.x);
+    const y = Number(Array.isArray(p) ? p[1] : p && p.y);
+    if (Number.isFinite(x) && Number.isFinite(y)) out.set(String(id), { x, y });
   }
-  if (detail && typeof detail === 'object') {
-    return String(detail.message || detail.sentence || detail.reason || detail.detail || '').trim();
-  }
-  return '';
+  return out;
 }
 
-/** A step's last outcome: the tone that styles it and the words it says. */
-export function outcomeOf(task) {
-  const status = task && task.last_run_status;
-  if (!status) {
-    return { tone: 'none', word: task && task.last_run ? 'No record of the last run' : 'Not run yet' };
-  }
-  return { tone: runStatusTone(status) || 'info', word: 'Last run: ' + runStatusLabel(status, 'job') };
+/** The words of a refusal a source threw rather than answered. */
+function _thrown(err) {
+  return String((err && (err.sentence || err.message)) || '').trim();
 }
 
 /**
- * Draw the Automations room into `root`.
+ * Draw a canvas into `root`.
  *
- * `opts.mountPanel` — the `P22` panel contract (`mountTaskFields`).
- * `opts.fetch` — defaults to the page's `fetch`; injected so the test can see
- *   every request this makes and answer it.
- * `opts.describeTrigger(task)` — the words for what starts a task
- *   (`tasks.js:_scheduleLabel`, handed in by whoever opened the window so the
- *   schedule wording exists once).
- * `opts.focusId` — open on the workflow this task is part of.
+ * `opts.source` — what to draw (the C3 contract above). Without it:
+ *   `createTaskSource(opts)`, whose options are `opts.mountPanel` (the `P22`
+ *   panel contract, `mountTaskFields`), `opts.fetch` (defaults to the page's
+ *   `fetch`; injected so a test sees every request), `opts.describeTrigger(task)`
+ *   (the Tasks window's schedule words), `opts.openWorkflow` and
+ *   `opts.onMakeWorkflow` (the room's two doors from a task to a workflow).
+ * `opts.renderSteps` — `tasks.js:renderRunSteps`, for a step's full plan.
+ * `opts.focusId` — open on the workflow this item is part of.
  *
- * Returns `{ ready, reload, focusChain, select, destroy, flush }`; `ready`
- * settles once the first drawing is on the page.
+ * Returns `{ ready, reload, focusChain, select, destroy, flush, say, newStep,
+ * dryRun, items, current, isDirty }`; `ready` settles once the first drawing
+ * is on the page.
  */
 export function mountCanvas(root, opts = {}) {
-  const mountPanel = typeof opts.mountPanel === 'function' ? opts.mountPanel : null;
+  const src = opts.source || createTaskSource(opts);
   // `P22-04`. `tasks.js:renderRunSteps`, the Tasks card's step renderer,
   // handed in by the glue so a step's full plan is drawn the one way.
   const renderSteps = typeof opts.renderSteps === 'function' ? opts.renderSteps : null;
-  const net = typeof opts.fetch === 'function' ? opts.fetch : (url, init) => globalThis.fetch(url, init);
-  const describe = (task) => {
-    if (typeof opts.describeTrigger !== 'function') return '';
-    try { return String(opts.describeTrigger(task) || ''); } catch (_) { return ''; }
+  const word = (k) => {
+    const w = src.words && src.words[k];
+    return w != null && w !== '' ? String(w) : DEFAULT_WORDS[k];
   };
+  // Read each time: a source can become read-only (a version being looked at).
+  const ro = () => !!src.readOnly;
 
   const S = {
-    tasks: [], byId: new Map(), graph: { nodes: [], edges: [] },
+    items: [], byId: new Map(), graph: { nodes: [], edges: [] },
     pos: new Map(), pinned: new Map(), missing: new Set(), order: [],
     nodeEls: new Map(), edgeEls: [],
     view: { x: 0, y: 0, zoom: 1 }, viewed: false, loaded: false, destroyed: false,
@@ -189,9 +224,9 @@ export function mountCanvas(root, opts = {}) {
   // ── the skeleton ─────────────────────────────────────────────────────────
   root.classList.add('wb-room');
   const toolbar = _el('div', 'wb-toolbar');
-  const newBtn = _el('button', 'wb-tool wb-tool-new', 'New step');
+  const newBtn = _el('button', 'wb-tool wb-tool-new', word('newLabel'));
   newBtn.type = 'button';
-  newBtn.title = 'Make a new task and put it on the canvas';
+  if (word('newTitle')) newBtn.title = word('newTitle');
   const tidyBtn = _el('button', 'wb-tool', 'Tidy up');
   tidyBtn.type = 'button';
   tidyBtn.title = 'Forget where steps were moved and lay everything out again';
@@ -212,7 +247,8 @@ export function mountCanvas(root, opts = {}) {
   // `B1048`. The housekeeping tasks every install comes with are not the
   // person's, and on a fresh install they were the whole first view. Set
   // aside until asked for, by a switch that says what they are — the word the
-  // Tasks card puts on them, "built-in".
+  // Tasks card puts on them, "built-in". Drawn only for a source whose items
+  // say `builtin` (the tasks canvas's).
   const builtinsSwitch = _el('label', 'wb-tool-switch');
   builtinsSwitch.title = 'The housekeeping tasks Pantheon comes with, such as Memory Tidy and Email Tags. '
     + 'Hidden here so your own steps come first; a built-in task joined to one of yours is always shown.';
@@ -228,10 +264,8 @@ export function mountCanvas(root, opts = {}) {
   for (const n of [outBtn, zoomWord, inBtn, fitBtn]) zoomGroup.appendChild(n);
   for (const n of [newBtn, tidyBtn, builtinsSwitch, spacer, zoomGroup]) toolbar.appendChild(n);
 
-  const hint = _el('p', 'wb-hint',
-    'Drag from a step’s “' + EDGE_WORDS.success + '” or “' + EDGE_WORDS.error
-    + '” onto the step that should run next, or use its Connect… button. Click a step to edit it. '
-    + 'Keys: the arrows go from step to step and along the arrows, Enter opens a step, M moves it.');
+  const hint = _el('p', 'wb-hint', word('hint'));
+  hint.hidden = !word('hint');
 
   const sayBox = _el('div', 'wb-say');
   const sayText = _el('span', 'wb-say-text');
@@ -246,7 +280,7 @@ export function mountCanvas(root, opts = {}) {
   const stage = _el('div', 'wb-stage');
   const viewport = _el('div', 'wb-viewport');
   viewport.setAttribute('role', 'region');
-  viewport.setAttribute('aria-label', 'Your automations');
+  viewport.setAttribute('aria-label', word('region'));
   const world = _el('div', 'wb-world');
   const nodesLayer = _el('div', 'wb-nodes');
   const svgEl = _svg('svg', 'wb-edges');
@@ -263,15 +297,16 @@ export function mountCanvas(root, opts = {}) {
   viewport.appendChild(world);
 
   const empty = _el('div', 'wb-empty');
-  const emptyTitle = _el('p', 'wb-empty-title', 'No automations yet.');
+  const emptyTitle = _el('p', 'wb-empty-title', word('emptyTitle'));
   empty.appendChild(emptyTitle);
-  empty.appendChild(_el('p', 'wb-empty-text',
-    'A step is a task: a prompt, a research run or an action, started by a schedule, an event or a webhook. Make one, make another, then join them.'));
+  const emptyText = _el('p', 'wb-empty-text', word('emptyText'));
+  emptyText.hidden = !word('emptyText');
+  empty.appendChild(emptyText);
   const emptyBuiltins = _el('p', 'wb-empty-text wb-empty-builtins',
     'Pantheon’s built-in tasks are hidden here. “Show built-in tasks” above shows them.');
   emptyBuiltins.hidden = true;
   empty.appendChild(emptyBuiltins);
-  const emptyNew = _el('button', 'wb-tool wb-tool-new', 'New step');
+  const emptyNew = _el('button', 'wb-tool wb-tool-new', word('newLabel'));
   emptyNew.type = 'button';
   empty.appendChild(emptyNew);
   empty.hidden = true;
@@ -283,15 +318,23 @@ export function mountCanvas(root, opts = {}) {
   const panelHead = _el('div', 'wb-panel-head');
   const panelTitle = _el('h3', 'wb-panel-title');
   // `P22-04`. The question the Tasks card asks, on the step that is open — the
-  // same words, so a person who met it on the card knows it here.
+  // same words, so a person who met it on the card knows it here. A source
+  // that plans from a step (`dryRunFrom: 'item'`, the tasks canvas) has it; a
+  // workflow is planned whole, from the room's toolbar.
   const panelDry = _el('button', 'wb-panel-dry', DRY_LABEL);
   panelDry.type = 'button';
   panelDry.title = 'Plans a run of this step and every step after it, and shows the plan on the canvas. Nothing runs and nothing changes.';
   panelDry.hidden = true;
+  // A step a source can remove, from the panel too — the mouse's way to what
+  // Delete pressed twice does on the canvas.
+  const panelRemove = _el('button', 'wb-panel-remove', 'Remove step');
+  panelRemove.type = 'button';
+  panelRemove.hidden = true;
   const panelClose = _el('button', 'wb-panel-close', 'Close');
   panelClose.type = 'button';
   panelHead.appendChild(panelTitle);
   panelHead.appendChild(panelDry);
+  panelHead.appendChild(panelRemove);
   panelHead.appendChild(panelClose);
   const panelBody = _el('div', 'wb-panel-body');
   panel.appendChild(panelHead);
@@ -302,13 +345,19 @@ export function mountCanvas(root, opts = {}) {
   for (const n of [toolbar, hint, sayBox, stage]) root.appendChild(n);
 
   // ── words ────────────────────────────────────────────────────────────────
-  const taskName = (t) => String((t && t.name) || 'Untitled task');
   const nameOf = (id) => {
-    const t = S.byId.get(String(id));
-    return t ? taskName(t) : 'a task you cannot see';
+    const it = S.byId.get(String(id));
+    return it && !it.missing ? String(it.name) : word('unknownName');
   };
-  const edgeSentence = (from, when, to) =>
-    `After ${nameOf(from)}, ${EDGE_WORDS[when] || when}, ${nameOf(to)} runs.`;
+  const edgeOf = (from, when, to) => (S.graph.edges || []).find((e) => e.from === String(from)
+    && e.when === String(when) && e.to === String(to)) || null;
+  const edgeSentence = (from, when, to) => {
+    const e = edgeOf(from, when, to);
+    // A fixed arrow with words of its own is a workflow's start: it always
+    // leads to the step that goes first.
+    if (e && e.fixed && e.label) return `${nameOf(to)} runs first.`;
+    return `After ${nameOf(from)}, ${EDGE_WORDS[when] || when}, ${nameOf(to)} runs.`;
+  };
 
   function say(text, { refusal = false, action = null } = {}) {
     sayText.textContent = text || '';
@@ -354,73 +403,17 @@ export function mountCanvas(root, opts = {}) {
     return release;
   }
 
-  // ── the wire ─────────────────────────────────────────────────────────────
-  async function put(path, body) {
-    let res;
-    try {
-      res = await net(path, {
-        method: 'PUT',
-        credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-    } catch (_) {
-      return { ok: false, status: 0, sentence: 'Pantheon could not be reached, so nothing changed.' };
-    }
-    if (res.ok) {
-      let data = null;
-      try { data = await res.json(); } catch (_) { data = null; }
-      return { ok: true, status: res.status, data };
-    }
-    let detail = '';
-    try { detail = refusalText((await res.json()).detail); } catch (_) { detail = ''; }
-    return { ok: false, status: res.status, sentence: detail || `The change was refused (${res.status}).` };
-  }
-
-  async function fetchTasks() {
-    const res = await net(TASKS_URL, { credentials: 'same-origin' });
-    if (!res.ok) throw new Error('GET /api/tasks answered ' + res.status);
-    return res.json();
-  }
-
-  function readPositions(value) {
-    const out = new Map();
-    const tasks = value && typeof value === 'object' ? value.tasks : null;
-    if (!tasks || typeof tasks !== 'object') return out;
-    for (const [id, xy] of Object.entries(tasks)) {
-      const x = Number(Array.isArray(xy) ? xy[0] : NaN);
-      const y = Number(Array.isArray(xy) ? xy[1] : NaN);
-      if (Number.isFinite(x) && Number.isFinite(y)) out.set(String(id), { x, y });
-    }
-    return out;
-  }
-
-  async function loadPositions() {
-    try {
-      const res = await net('/api/prefs/' + POSITIONS_PREF, { credentials: 'same-origin' });
-      if (!res.ok) return new Map();
-      return readPositions((await res.json()).value);
-    } catch (_) {
-      // No saved positions is the first-run state, and the layout covers it.
-      return new Map();
-    }
-  }
-
+  // ── the source ───────────────────────────────────────────────────────────
   async function savePositions() {
     if (S.saveTimer) { clearTimeout(S.saveTimer); S.saveTimer = null; }
-    const tasks = {};
+    if (ro()) return;
+    const map = new Map();
     for (const [id, p] of S.pinned) {
-      if (S.byId.has(id)) tasks[id] = [Math.round(p.x), Math.round(p.y)];
+      if (S.byId.has(id)) map.set(id, { x: Math.round(p.x), y: Math.round(p.y) });
     }
-    try {
-      const res = await net('/api/prefs/' + POSITIONS_PREF, {
-        method: 'PUT',
-        credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ value: { v: 1, tasks } }),
-      });
-      if (!res.ok) say('Where the steps sit could not be saved; they will be laid out again next time.', { refusal: true });
-    } catch (_) {
+    let res;
+    try { res = await src.savePositions(map); } catch (_) { res = { ok: false }; }
+    if (res && res.ok === false) {
       say('Where the steps sit could not be saved; they will be laid out again next time.', { refusal: true });
     }
   }
@@ -431,24 +424,30 @@ export function mountCanvas(root, opts = {}) {
   }
 
   function take(data) {
-    S.tasks = Array.isArray(data && data.tasks) ? data.tasks : [];
-    S.byId = new Map(S.tasks.map((t) => [String(t.id), t]));
-    const g = data && data.graph;
-    S.graph = g && Array.isArray(g.nodes)
-      ? { nodes: g.nodes, edges: Array.isArray(g.edges) ? g.edges : [] }
-      : { nodes: S.tasks.map((t) => ({ id: t.id, name: t.name })), edges: [] };
+    S.items = (Array.isArray(data && data.items) ? data.items : [])
+      .filter((i) => i && i.id != null)
+      .map((i) => ({ ...i, id: String(i.id), name: String(i.name == null ? '' : i.name) }));
+    S.byId = new Map(S.items.map((i) => [i.id, i]));
+    S.graph = {
+      // An item a source says is missing is drawn as the far end of an arrow,
+      // the way a dangling edge's target always was: not a node of the graph.
+      nodes: S.items.filter((i) => !i.missing).map((i) => ({ id: i.id, name: i.name })),
+      edges: (Array.isArray(data && data.edges) ? data.edges : [])
+        .filter((e) => e && e.from != null && e.to != null)
+        .map((e) => ({ ...e, from: String(e.from), to: String(e.to), when: String(e.when || '') })),
+    };
   }
 
   async function reload() {
     let data;
     try {
-      data = await fetchTasks();
+      data = await src.load();
     } catch (_) {
-      say('The list of tasks could not be loaded. Close the Workbench and open it again to retry.', { refusal: true });
+      say(word('loadFailed'), { refusal: true });
       return false;
     }
     if (S.destroyed) return false;
-    // A plan was of the tasks as they were; after a change it may not be.
+    // A plan was of the steps as they were; after a change it may not be.
     dropPlan();
     take(data);
     render();
@@ -525,8 +524,16 @@ export function mountCanvas(root, opts = {}) {
     svgEl.style.top = y + 'px';
   }
 
+  /** The ports an item has: its own, or the two every task has. */
+  const portsOf = (it) => (it && Array.isArray(it.ports) ? it.ports.map(String) : PORTS);
+  /** Whether an arrow may land on an item. */
+  const accepts = (id) => {
+    const it = S.byId.get(id);
+    return !!it && !it.missing && it.accepts !== false;
+  };
+
   function hitList() {
-    return S.order.filter((id) => !S.missing.has(id)).map((id) => ({ id, ...S.pos.get(id) }));
+    return S.order.filter((id) => !S.missing.has(id) && accepts(id)).map((id) => ({ id, ...S.pos.get(id) }));
   }
 
   function markSelected() {
@@ -542,72 +549,75 @@ export function mountCanvas(root, opts = {}) {
     return node || null;
   }
 
-  function buildNode(item, targeted) {
-    const id = item.id;
-    const task = S.byId.get(id) || null;
+  function buildNode(lay) {
+    const id = lay.id;
+    const it = S.byId.get(id) || null;
     const node = _el('div', 'wb-node');
-    node.dataset.taskId = id;
+    node.dataset.itemId = id;
+    // The tasks canvas's ids are task ids, and are also written where every
+    // reader of `P22-02`'s canvas looks for them (`data-task-id`).
+    if (src.idKey) node.dataset[src.idKey] = id;
     node.style.width = NODE_W + 'px';
     node.style.height = NODE_H + 'px';
-    place(node, item);
+    place(node, lay);
     S.nodeEls.set(id, node);
 
-    if (item.missing || !task) {
+    if (lay.missing || !it || it.missing) {
       // The far end of an edge the server kept on purpose (`dangling`): a
       // chain to a task this person cannot see is a real fact about the
       // workflow, so it is drawn — and it is not something to drag or open.
       node.classList.add('wb-node-missing');
       node.setAttribute('aria-hidden', 'true');
-      node.appendChild(_el('div', 'wb-node-title', 'A task you cannot see'));
-      node.appendChild(_el('div', 'wb-node-sub', 'Not in your list of tasks'));
+      node.appendChild(_el('div', 'wb-node-title', (it && it.missing && it.name) || word('missingTitle')));
+      node.appendChild(_el('div', 'wb-node-sub', (it && it.missing && it.sub) || word('missingSub')));
       if (S.plan && !S.plan.partial && !S.plan.byId.has(id)) node.dataset.plan = 'aside';
       return node;
     }
 
-    const name = taskName(task);
-    const kind = task.task_type || 'llm';
-    // What starts it goes on the step nothing points at — `P8-34`'s rule: a
-    // step downstream is started by the arrow into it, and repeating its own
-    // schedule there would say something untrue about when it runs next.
-    const trigger = targeted.has(id) ? '' : describe(task);
-    const paused = task.status === 'paused';
-    const out = outcomeOf(task);
+    const name = it.name;
+    const out = it.outcome && typeof it.outcome === 'object' ? it.outcome : { tone: 'none', word: '' };
     // `P22-04`. While a dry run's plan is on the canvas, a step says what the
     // run would do there instead of how its last run went.
-    const plan = planFor(id, task);
-    const subText = plan ? plan.sub : [KIND_WORDS[kind] || KIND_WORDS.llm, trigger, paused ? 'paused' : '']
-      .filter(Boolean).join(' · ');
+    const plan = planFor(id, it);
+    const subText = plan ? plan.sub : String(it.sub || '');
 
     // `B1048`. One tab stop for the whole canvas (`applyRoving`): a step is
     // reached with the arrow keys, and the one that is the stop says so.
     node.setAttribute('tabindex', '-1');
     node.setAttribute('role', 'group');
-    node.setAttribute('aria-label', `${name}. ${subText}. ${(plan ? plan.line : out.word).replace(/\.$/, '')}.`);
-    node.dataset.kind = kind;
+    const tail = String(plan ? plan.line : (out.word || '')).replace(/\.$/, '');
+    node.setAttribute('aria-label', [name, subText, tail].filter(Boolean).join('. ') + '.');
+    node.dataset.kind = it.kind || 'llm';
     if (plan) node.dataset.plan = plan.state;
-    else node.dataset.outcome = out.tone;
-    if (paused) node.dataset.paused = 'true';
+    else node.dataset.outcome = out.tone || 'none';
+    if (it.paused) node.dataset.paused = 'true';
 
     const title = _el('div', 'wb-node-title', name);
     title.title = name;
     const sub = _el('div', 'wb-node-sub', subText);
     const last = _el('div', plan ? 'wb-node-plan' : 'wb-node-last');
+    // A step that has no outcome to tell (a workflow's step being edited:
+    // a draft has no last run) shows no mark — measured in Chromium, a lone
+    // "○" under every step of a document, saying nothing.
     const mark = _el('span', 'wb-node-mark', plan ? PLAN_MARKS[plan.state]
-      : (OUTCOME_MARKS[out.tone] || OUTCOME_MARKS.info));
+      : (out.word ? (OUTCOME_MARKS[out.tone] || OUTCOME_MARKS.info) : ''));
     mark.setAttribute('aria-hidden', 'true');
     last.appendChild(mark);
-    const word = _el('span', plan ? 'wb-node-plan-line' : 'wb-node-word', plan ? plan.line : out.word);
-    if (plan) word.title = plan.line;
-    last.appendChild(word);
-    const connectBtn = _el('button', 'wb-node-connect', 'Connect…');
-    connectBtn.type = 'button';
-    connectBtn.title = `Choose what runs after ${name}`;
-    connectBtn.addEventListener('click', (e) => {
-      if (e && e.stopPropagation) e.stopPropagation();
-      openConnect(id, connectBtn);
-    });
+    const said = _el('span', plan ? 'wb-node-plan-line' : 'wb-node-word', plan ? plan.line : (out.word || ''));
+    if (plan) said.title = plan.line;
+    last.appendChild(said);
     const actions = _el('div', 'wb-node-actions');
-    actions.appendChild(connectBtn);
+    const ports = ro() ? [] : portsOf(it);
+    if (ports.length) {
+      const connectBtn = _el('button', 'wb-node-connect', 'Connect…');
+      connectBtn.type = 'button';
+      connectBtn.title = `Choose what runs after ${name}`;
+      connectBtn.addEventListener('click', (e) => {
+        if (e && e.stopPropagation) e.stopPropagation();
+        openConnect(id, connectBtn);
+      });
+      actions.appendChild(connectBtn);
+    }
     if (plan && plan.entry) {
       // The whole plan, on demand: the short line is one of several.
       const planBtn = _el('button', 'wb-node-plan-btn', 'Plan');
@@ -620,9 +630,17 @@ export function mountCanvas(root, opts = {}) {
       });
       actions.appendChild(planBtn);
     }
+    // A source's marks — `P22-08`'s "Sample pinned" — are words on the step,
+    // never a colour or an icon alone.
+    const marks = (Array.isArray(it.marks) ? it.marks : []).map((m) => String(m || '')).filter(Boolean);
+    if (marks.length) {
+      const box = _el('span', 'wb-node-marks');
+      for (const m of marks) box.appendChild(_el('span', 'wb-node-badge', m));
+      actions.appendChild(box);
+    }
     for (const n of [title, sub, last, actions]) node.appendChild(n);
 
-    for (const when of PORTS) {
+    for (const when of ports) {
       const port = _el('span', 'wb-port');
       port.dataset.when = when;
       port.style.top = (portOffset(when) - 7) + 'px';
@@ -648,7 +666,10 @@ export function mountCanvas(root, opts = {}) {
     });
     node.addEventListener('keydown', (e) => onNodeKey(e, id));
     node.addEventListener('focus', () => setCurrent({ kind: 'node', id }));
-    node.addEventListener('blur', () => { if (S.moving && S.moving.id === id) putDown(); });
+    node.addEventListener('blur', () => {
+      if (S.moving && S.moving.id === id) putDown();
+      if (S.pending && S.pending.key === 'node\u0000' + id) clearPending();
+    });
     if (S.selected === id) node.classList.add('wb-node-selected');
     return node;
   }
@@ -661,7 +682,8 @@ export function mountCanvas(root, opts = {}) {
       const to = String(edge.to);
       const when = String(edge.when || '');
       if (!S.pos.has(from) || !S.pos.has(to)) continue;
-      const g = _svg('g', 'wb-edge wb-edge-' + (when === 'error' ? 'error' : 'success'));
+      const fixed = !!edge.fixed;
+      const g = _svg('g', 'wb-edge wb-edge-' + (when === 'error' ? 'error' : 'success') + (fixed ? ' wb-edge-fixed' : ''));
       g.setAttribute('data-from', from);
       g.setAttribute('data-to', to);
       g.setAttribute('data-when', when);
@@ -672,15 +694,16 @@ export function mountCanvas(root, opts = {}) {
       }
       g.setAttribute('tabindex', '-1');
       g.setAttribute('role', 'button');
-      g.setAttribute('aria-label', edgeSentence(from, when, to) + ' Press Delete to remove this arrow.');
+      const removable = !fixed && !ro();
+      g.setAttribute('aria-label', edgeSentence(from, when, to) + (removable ? ' Press Delete to remove this arrow.' : ''));
       const hit = _svg('path', 'wb-edge-hit');
       const line = _svg('path', 'wb-edge-line');
       const head = _svg('path', 'wb-edge-head');
       const label = _svg('text', 'wb-edge-label');
       label.setAttribute('text-anchor', 'middle');
-      label.textContent = EDGE_WORDS[when] || when;
+      label.textContent = edge.label ? String(edge.label) : (EDGE_WORDS[when] || when);
       for (const n of [hit, line, head, label]) g.appendChild(n);
-      const rec = { edge, from, to, when, key: `${from}\u0000${when}\u0000${to}`, g, hit, line, head, label };
+      const rec = { edge, from, to, when, fixed, key: `${from}\u0000${when}\u0000${to}`, g, hit, line, head, label };
       g.addEventListener('pointerdown', (e) => { if (e && e.stopPropagation) e.stopPropagation(); });
       g.addEventListener('click', () => { if (typeof g.focus === 'function') g.focus(); showEdge(rec); });
       g.addEventListener('focus', () => { setCurrent({ kind: 'edge', id: from, key: rec.key }); showEdge(rec); });
@@ -695,9 +718,14 @@ export function mountCanvas(root, opts = {}) {
 
   function updateEdges() {
     for (const r of S.edgeEls) {
+      // An item with no ports (a workflow's start) has no port to leave from;
+      // its arrow leaves where the first port would be, so `graphLayout.js`
+      // draws it unchanged.
+      const fromItem = S.byId.get(r.from);
+      const geom = fromItem && Array.isArray(fromItem.ports) && !fromItem.ports.length ? PORTS[0] : r.when;
       // `B1053`. Routed round both steps when the target is not to the right,
       // so an arrow to a step on the left reads the way it was saved.
-      const route = edgeRoute(S.pos.get(r.from), S.pos.get(r.to), r.when);
+      const route = edgeRoute(S.pos.get(r.from), S.pos.get(r.to), geom);
       r.hit.setAttribute('d', route.d);
       r.line.setAttribute('d', route.d);
       r.head.setAttribute('d', arrowPath(route.end));
@@ -733,12 +761,12 @@ export function mountCanvas(root, opts = {}) {
     const out = new Set();
     if (S.showBuiltins) return out;
     const seen = new Set();
-    for (const t of S.tasks) {
-      const id = String(t.id);
-      if (!t.is_builtin || seen.has(id)) continue;
+    for (const it of S.items) {
+      const id = it.id;
+      if (!it.builtin || seen.has(id)) continue;
       const ids = componentOf(S.graph, id).ids;
       ids.forEach((x) => seen.add(x));
-      const builtinsOnly = [...ids].every((x) => { const o = S.byId.get(x); return !!(o && o.is_builtin); });
+      const builtinsOnly = [...ids].every((x) => { const o = S.byId.get(x); return !!(o && o.builtin); });
       if (builtinsOnly && ![...ids].some((x) => S.reveal.has(x))) ids.forEach((x) => out.add(x));
     }
     return out;
@@ -762,19 +790,24 @@ export function mountCanvas(root, opts = {}) {
     S.pos = new Map(lay.nodes.map((n) => [n.id, { x: n.x, y: n.y }]));
     S.missing = new Set(lay.nodes.filter((n) => n.missing).map((n) => n.id));
     S.order = lay.nodes.map((n) => n.id);
-    const targeted = new Set((graph.edges || []).map((e) => String(e.to)));
     S.nodeEls = new Map();
-    nodesLayer.replaceChildren(...lay.nodes.map((n) => buildNode(n, targeted)));
+    nodesLayer.replaceChildren(...lay.nodes.map((n) => buildNode(n)));
     drawEdges(graph);
-    const builtins = S.tasks.filter((t) => t.is_builtin).length;
-    const own = S.tasks.length - S.tasks.filter((t) => S.hidden.has(String(t.id))).length;
+    const real = S.items.filter((i) => !i.missing);
+    const builtins = real.filter((i) => i.builtin).length;
+    const own = real.length - real.filter((i) => S.hidden.has(i.id)).length;
     builtinsSwitch.hidden = builtins === 0;
     builtinsBox.checked = S.showBuiltins;
     builtinsWord.textContent = `Show built-in tasks (${builtins})`;
     empty.hidden = own > 0;
-    emptyTitle.textContent = S.tasks.length ? 'No automations of your own yet.' : 'No automations yet.';
+    emptyTitle.textContent = real.length && word('emptyTitleOwn') ? word('emptyTitleOwn') : word('emptyTitle');
     emptyBuiltins.hidden = !S.hidden.size;
+    // A read-only source (a run, a version being looked at) makes nothing.
+    newBtn.hidden = ro();
+    emptyNew.hidden = ro();
+    tidyBtn.hidden = ro();
     root.classList.toggle('wb-room-empty', own === 0);
+    root.classList.toggle('wb-read-only', ro());
     if (S.moving && S.nodeEls.has(S.moving.id)) S.nodeEls.get(S.moving.id).classList.add('wb-node-moving');
     applyRoving();
     if (!S.viewed) { S.viewed = true; fitAll(); } else applyView();
@@ -806,6 +839,7 @@ export function mountCanvas(root, opts = {}) {
   // after a real drag is swallowed so it does not open the step that moved.
   function startDrag(e, id, node) {
     if (e.button != null && e.button !== 0) return;
+    if (ro()) return;
     const t = e.target;
     if (t && t !== node && typeof t.closest === 'function' && t.closest('button, .wb-port')) return;
     if (e.stopPropagation) e.stopPropagation();
@@ -926,7 +960,7 @@ export function mountCanvas(root, opts = {}) {
   // ── moving a step: keyboard ──────────────────────────────────────────────
   function pickUp(id) {
     const p = S.pos.get(id);
-    if (!p) return;
+    if (!p || ro()) return;
     putDown(true);
     S.moving = {
       id, x: p.x, y: p.y, pinned: S.pinned.has(id) ? { ...S.pinned.get(id) } : null,
@@ -985,9 +1019,14 @@ export function mountCanvas(root, opts = {}) {
       return;
     }
     if (roveKeys(e)) return;
-    if (plain && (e.key === 'm' || e.key === 'M')) {
+    if (plain && (e.key === 'm' || e.key === 'M') && !ro()) {
       e.preventDefault();
       pickUp(id);
+      return;
+    }
+    if (plain && (e.key === 'Delete' || e.key === 'Backspace') && typeof src.removeItem === 'function' && !ro()) {
+      e.preventDefault();
+      askRemove(id);
       return;
     }
     if (e.key === 'Enter' || e.key === ' ') {
@@ -1049,22 +1088,19 @@ export function mountCanvas(root, opts = {}) {
   }
 
   // ── the two writes ───────────────────────────────────────────────────────
+  // The source writes; the canvas says what happened and redraws from a fresh
+  // `load()`. A refusal is the source's (the server's) sentence, word for word.
   async function connect(from, when, to) {
-    const column = EDGE_COLUMNS[when];
-    if (!column) {
-      const sentence = `This canvas cannot write “${when}” yet.`;
+    const before = (S.graph.edges || []).find((e) => e.from === from && e.when === when);
+    let res;
+    try { res = await src.connect(from, when, to); } catch (err) { res = { ok: false, sentence: _thrown(err) }; }
+    if (!res || !res.ok) {
+      const sentence = (res && res.sentence) || 'The change was refused.';
       say('Not connected: ' + sentence, { refusal: true });
       return { ok: false, sentence };
     }
-    const before = (S.graph.edges || []).find((e) => String(e.from) === from && String(e.when) === when);
-    const res = await put('/api/tasks/' + encodeURIComponent(from), { [column]: String(to) });
-    if (!res.ok) {
-      // The server's own sentence (`P22-01`), word for word.
-      say('Not connected: ' + res.sentence, { refusal: true });
-      return res;
-    }
     const sentence = edgeSentence(from, when, to);
-    const was = before && String(before.to) !== String(to) ? ` It used to be ${nameOf(before.to)}.` : '';
+    const was = before && before.to !== String(to) ? ` It used to be ${nameOf(before.to)}.` : '';
     await reload();
     say(`Connected. ${sentence}${was}`);
     return res;
@@ -1072,12 +1108,12 @@ export function mountCanvas(root, opts = {}) {
 
   async function removeEdge(rec) {
     clearPending();
-    const column = EDGE_COLUMNS[rec.when];
-    if (!column) return { ok: false };
-    const res = await put('/api/tasks/' + encodeURIComponent(rec.from), { [column]: '' });
-    if (!res.ok) {
-      say('Not removed: ' + res.sentence, { refusal: true });
-      return res;
+    if (rec.fixed) return { ok: false };
+    let res;
+    try { res = await src.disconnect(rec.from, rec.when, rec.to); } catch (err) { res = { ok: false, sentence: _thrown(err) }; }
+    if (!res || !res.ok) {
+      say('Not removed: ' + ((res && res.sentence) || 'The change was refused.'), { refusal: true });
+      return res || { ok: false };
     }
     const sentence = `${nameOf(rec.to)} no longer runs after ${nameOf(rec.from)} ${EDGE_WORDS[rec.when] || rec.when}.`;
     await reload();
@@ -1089,6 +1125,7 @@ export function mountCanvas(root, opts = {}) {
   // ── an arrow, focused ────────────────────────────────────────────────────
   function showEdge(rec) {
     if (S.pending && S.pending.key === rec.key) return;
+    if (rec.fixed || ro()) { say(edgeSentence(rec.from, rec.when, rec.to)); return; }
     say(edgeSentence(rec.from, rec.when, rec.to), {
       action: { label: 'Remove this arrow', run: () => removeEdge(rec) },
     });
@@ -1104,6 +1141,11 @@ export function mountCanvas(root, opts = {}) {
   function onEdgeKey(e, rec) {
     if (e.key === 'Delete' || e.key === 'Backspace') {
       e.preventDefault();
+      if (ro()) return;
+      if (rec.fixed) {
+        say(`${edgeSentence(rec.from, rec.when, rec.to)} This arrow always leads to the first step, so it cannot be removed.`);
+        return;
+      }
       if (S.pending && S.pending.key === rec.key) { removeEdge(rec); return; }
       clearPending();
       // Said first, removed second: the arrow a key would take away is named
@@ -1118,6 +1160,34 @@ export function mountCanvas(root, opts = {}) {
     }
     if (roveKeys(e)) return;
     zoomKeys(e);
+  }
+
+  // ── removing a step: Delete twice, said first (a source with `removeItem`) ─
+  function askRemove(id) {
+    const it = S.byId.get(id);
+    if (!it || it.missing) return;
+    if (it.fixed) { say(`${it.name} cannot be removed.`); return; }
+    const key = 'node\u0000' + id;
+    if (S.pending && S.pending.key === key) { removeItem(id); return; }
+    clearPending();
+    S.pending = { key, unregister: holdEscape(() => { S.pending = null; say(`Kept ${it.name}.`); }) };
+    say(`Remove ${it.name}? Press Delete again to remove it, or Escape to keep it.`,
+      { action: { label: 'Remove this step', run: () => removeItem(id) } });
+  }
+
+  async function removeItem(id) {
+    clearPending();
+    const name = nameOf(id);
+    let res;
+    try { res = await src.removeItem(id); } catch (err) { res = { ok: false, sentence: _thrown(err) }; }
+    if (!res || res.ok === false) {
+      say('Not removed: ' + ((res && res.sentence) || 'The change was refused.'), { refusal: true });
+      return;
+    }
+    if (S.panel && S.panel.id === id) closePanel(false);
+    S.pinned.delete(id);
+    await reload();
+    say(`Removed ${name}.` + (res.sentence ? ' ' + res.sentence : ''));
   }
 
   // ── a box beside a step ──────────────────────────────────────────────────
@@ -1145,18 +1215,19 @@ export function mountCanvas(root, opts = {}) {
 
   function openConnect(from, opener) {
     closeConnect(false);
-    const task = S.byId.get(from);
-    if (!task) return;
-    const name = taskName(task);
+    const it = S.byId.get(from);
+    if (!it || it.missing) return;
+    const name = it.name;
     const box = _el('div', 'wb-connect');
     box.setAttribute('role', 'dialog');
     box.setAttribute('aria-label', `Connect ${name}`);
     box.appendChild(_el('p', 'wb-connect-head', `After ${name}…`));
 
+    const ports = portsOf(it);
     const whenLabel = _el('label', 'wb-connect-field');
     whenLabel.appendChild(_el('span', 'wb-connect-label', 'Outcome'));
     const whenSel = _el('select', 'wb-connect-when');
-    for (const w of PORTS) {
+    for (const w of ports) {
       const o = _el('option', null, EDGE_WORDS[w] || w);
       o.value = w;
       whenSel.appendChild(o);
@@ -1166,11 +1237,11 @@ export function mountCanvas(root, opts = {}) {
     const toLabel = _el('label', 'wb-connect-field');
     toLabel.appendChild(_el('span', 'wb-connect-label', 'Run next'));
     const toSel = _el('select', 'wb-connect-to');
-    const others = S.tasks.filter((t) => String(t.id) !== from)
-      .sort((a, b) => taskName(a).localeCompare(taskName(b)));
+    const others = S.items.filter((o) => o.id !== from && accepts(o.id))
+      .sort((a, b) => a.name.localeCompare(b.name));
     for (const t of others) {
-      const o = _el('option', null, taskName(t));
-      o.value = String(t.id);
+      const o = _el('option', null, t.name);
+      o.value = t.id;
       toSel.appendChild(o);
     }
     toLabel.appendChild(toSel);
@@ -1188,8 +1259,8 @@ export function mountCanvas(root, opts = {}) {
     for (const n of [whenLabel, toLabel, now, said, row]) box.appendChild(n);
 
     const current = (when) => {
-      const e = (S.graph.edges || []).find((x) => String(x.from) === from && String(x.when) === when);
-      return e ? String(e.to) : null;
+      const e = (S.graph.edges || []).find((x) => x.from === from && x.when === when);
+      return e ? e.to : null;
     };
     const syncNow = () => {
       const cur = current(whenSel.value);
@@ -1199,13 +1270,13 @@ export function mountCanvas(root, opts = {}) {
     };
     // Stated rather than left to the browser's default, so the first choice
     // is the same however the picker is driven.
-    whenSel.value = PORTS[0];
-    if (others.length) toSel.value = String(others[0].id);
+    whenSel.value = ports[0];
+    if (others.length) toSel.value = others[0].id;
     whenSel.addEventListener('change', syncNow);
     if (!others.length) {
       toSel.disabled = true;
       go.disabled = true;
-      now.textContent = 'There is no other step yet. Make one with New step, then connect them.';
+      now.textContent = `There is no other step yet. Make one with ${word('newLabel')}, then connect them.`;
     } else {
       syncNow();
     }
@@ -1235,7 +1306,7 @@ export function mountCanvas(root, opts = {}) {
     whenSel.focus();
   }
 
-  // ── the side panel: the task form, mounted ───────────────────────────────
+  // ── the side panel: the source's form, mounted ───────────────────────────
   function closePanel(restoreFocus) {
     const p = S.panel;
     if (!p) return;
@@ -1259,8 +1330,17 @@ export function mountCanvas(root, opts = {}) {
     closePanel(false);
     await reload();
     if (id) focusNode(id);
-    say(saved && saved.name ? `Saved ${saved.name}.` : 'Saved.');
+    // A source may say what happened in its own words. A source with a save
+    // of its own (a workflow, C3's `save()`) keeps a step's change in its
+    // draft until that save, so "Saved" would be untrue: it says the change
+    // is made and where it is kept.
+    const named = saved && (saved.name || saved.label) ? String(saved.name || saved.label) : (id ? nameOf(id) : '');
+    if (saved && saved.sentence) say(String(saved.sentence));
+    else if (typeof src.save === 'function') say(`Changed ${named || 'the step'}. Save keeps it in the workflow.`);
+    else say(saved && saved.name ? `Saved ${saved.name}.` : 'Saved.');
   }
+
+  const panelName = (p) => (p.id ? nameOf(p.id) : 'This new step');
 
   // `B1052`. Escape on a form with unsaved edits says so before it throws them
   // away, and a second Escape is the yes — the canvas's own rule for removing
@@ -1271,7 +1351,7 @@ export function mountCanvas(root, opts = {}) {
   function panelEscape() {
     const p = S.panel;
     if (!p) return;
-    const name = p.id ? nameOf(p.id) : 'This new step';
+    const name = panelName(p);
     if (p.dirty && !p.asked) {
       p.asked = true;
       p.unregister = holdEscape(() => panelEscape());
@@ -1282,54 +1362,121 @@ export function mountCanvas(root, opts = {}) {
     if (p.asked) say(`Closed ${p.id ? name : 'the new step'} without saving.`);
   }
 
-  function openPanel(task) {
+  // `B1067`. Opening another step — a click, Enter, *New step* — closed the
+  // open form with no word, so an edit was lost by a different door than the
+  // one `B1052` guarded. The same rule: said first, done second. The first
+  // request names what would be lost and is held; the same request again (or
+  // the sentence's button) is the yes. Typing in the form in between asks
+  // again; the open step itself, asked for again, keeps its form.
+  function mayLeavePanel(key, target) {
+    const p = S.panel;
+    if (!p || !p.dirty || p.pendingOpen === key) return true;
+    p.pendingOpen = key;
+    say(`${panelName(p)} has changes that are not saved. ${target.again} to close it without saving them, or Save first.`,
+      { action: { label: target.label, run: target.retry } });
+    return false;
+  }
+
+  /** The sentence for a form closed without saving, if the panel open now is
+   *  one the person agreed to drop; `''` otherwise. */
+  function droppedSentence() {
+    const p = S.panel;
+    return p && p.dirty ? `Closed ${p.id ? nameOf(p.id) : 'the new step'} without saving.` : '';
+  }
+
+  function openPanel(it, { force = false } = {}) {
+    // A step a source opens itself — on the tasks canvas, a workflow's own
+    // step opens its document — mounts nothing here.
+    if (it && typeof src.openItem === 'function' && src.openItem(it)) return;
+    const id = it ? it.id : null;
+    const p0 = S.panel;
+    // The open step asked for again keeps an edited form as it is.
+    if (p0 && p0.dirty && id && p0.id === id) return;
+    if (!force) {
+      const key = id || NEW_KEY;
+      const other = id ? nameOf(id) : '';
+      const ok = mayLeavePanel(key, {
+        again: id ? `Open ${other} again` : `Press ${word('newLabel')} again`,
+        label: id ? `Open ${other} without saving` : `${word('newLabel')} without saving`,
+        retry: () => openPanel(it, { force: true }),
+      });
+      if (!ok) return;
+    }
+    const dropped = droppedSentence();
     closeConnect(false);
     closePanel(false);
-    const id = task ? String(task.id) : null;
     S.selected = id;
     markSelected();
     panel.hidden = false;
     root.classList.add('wb-panel-open');
-    panelTitle.textContent = task ? taskName(task) : 'New step';
+    panelTitle.textContent = it ? it.name : word('newLabel');
     // A new step has nothing saved to plan yet.
-    panelDry.hidden = !id;
+    panelDry.hidden = !(id && src.dryRunFrom === 'item' && typeof src.dryRun === 'function');
+    panelRemove.hidden = !(id && typeof src.removeItem === 'function' && !ro() && !it.fixed);
     const host = _el('div', 'wb-panel-host');
     panelBody.replaceChildren(host);
-    S.panel = { id, host, handle: null, dirty: false, asked: false, unregister: holdEscape(() => panelEscape()) };
+    S.panel = {
+      id, host, handle: null, dirty: false, asked: false, pendingOpen: null,
+      unregister: holdEscape(() => panelEscape()),
+    };
     const edited = () => {
       const p = S.panel;
-      if (p && p.host === host) { p.dirty = true; p.asked = false; }
+      if (p && p.host === host) { p.dirty = true; p.asked = false; p.pendingOpen = null; }
     };
     host.addEventListener('input', edited);
     host.addEventListener('change', edited);
-    if (!mountPanel) {
-      host.textContent = 'The step editor did not load. Edit this task from the Tasks window.';
+    try {
+      S.panel.handle = src.openPanel(host, it, {
+        onSaved: (saved) => onSaved(saved),
+        onCancel: () => closePanel(true),
+      });
+    } catch (err) {
+      console.warn('Workbench: the step form did not open', err);
+      host.textContent = 'This step’s form did not open. Close the Workbench and open it again to retry.';
+    }
+    // `P22-06`. What the status bar offers for this step — on the tasks
+    // canvas, a chained step can become a workflow.
+    const offer = id && typeof src.offer === 'function' ? src.offer(id) : null;
+    if (dropped) say(dropped);
+    else if (offer) say(chainSentence(id), { action: offer });
+  }
+
+  function select(id, opts2) {
+    const it = S.byId.get(String(id));
+    if (it && !it.missing) openPanel(it, opts2);
+  }
+
+  async function newPressed(anchor) {
+    if (ro()) return;
+    if (!mayLeavePanel(NEW_KEY, {
+      again: `Press ${word('newLabel')} again`,
+      label: `${word('newLabel')} without saving`,
+      retry: () => { if (S.panel) S.panel.pendingOpen = NEW_KEY; newPressed(anchor); },
+    })) return;
+    if (typeof src.newItem !== 'function') { openPanel(null, { force: true }); return; }
+    // A source with a palette (a workflow): the new step is added to what is
+    // drawn, and opened.
+    let id = null;
+    try {
+      id = await src.newItem(anchor || newBtn);
+    } catch (err) {
+      say('Not added: ' + (_thrown(err) || 'the step could not be added.'), { refusal: true });
       return;
     }
-    S.panel.handle = mountPanel(host, {
-      task,
-      tasks: S.tasks,
-      onSaved: (saved) => onSaved(saved),
-      onCancel: () => closePanel(true),
-    });
+    if (id == null || S.destroyed) return;
+    await reload();
+    select(String(id), { force: true });
   }
 
-  function select(id) {
-    const task = S.byId.get(String(id));
-    if (task) openPanel(task);
-  }
-
-  // ── a dry run of a chain: every step says what it would do ───────────────
-  // `P22-04`. *Show me what this would do* on an open step asks the route the
-  // Tasks card asks — `POST /api/tasks/{id}/run?dry=true` — with `chain=true`,
-  // whose reply carries `chain`: every task the run could reach along either
-  // arrow, once each, breadth first, the head first, each with its plan
-  // (`steps`, in a run's shape), the arrow that leads to it (`when`) and, when
-  // the engine would not plan it, why (`declined`) — the contract in
-  // `/work/notes/P22-WAVE-B.md`. The server half plans and records nothing for
-  // the steps after the head; this half only draws. A dry run sends no mail
-  // and runs nothing, and that promise is the server's, not this function's,
-  // which only ever sends `dry=true`.
+  // ── a dry run: every step says what it would do ──────────────────────────
+  // `P22-04`. A source plans (`dryRun`), and this half only draws: `plans` is
+  // every item the run could reach, once each, in the order the plan reached
+  // it — the head first — each with its plan (`steps`, in a run's shape), the
+  // arrow that leads to it (`when`) and, when it would not be planned, why
+  // (`declined`). On the tasks canvas that is the chain dry run of
+  // `/work/notes/P22-WAVE-B.md`; the server half plans and records nothing for
+  // the steps after the head. A dry run sends no mail and runs nothing, and
+  // that promise is the server's, not this function's.
   //
   // On the canvas: each step the run would reach says, in one short line, what
   // it would do — the plan's own "Would …" line, or for the two actions a dry
@@ -1341,11 +1488,13 @@ export function mountCanvas(root, opts = {}) {
   // puts the steps back.
 
   /** What a step says while a plan is on the canvas, or `null` (no plan, or
-   *  the server planned the head only and says nothing of this step). */
-  function planFor(id, task) {
+   *  the source planned the head only and says nothing of this step). */
+  function planFor(id, it) {
     const P = S.plan;
     if (!P) return null;
-    const kindWord = KIND_WORDS[(task && task.task_type) || 'llm'] || KIND_WORDS.llm;
+    // A kind the diagram has no word for (a workflow's start) is given none,
+    // rather than the word for another: seen in Chromium, "Starts here · Prompt".
+    const kindWord = KIND_WORDS[(it && it.kind) || 'llm'] || '';
     const entry = P.byId.get(id);
     if (!entry) {
       return P.partial ? null : { state: 'aside', sub: kindWord, line: 'Not reached by this run', entry: null };
@@ -1353,7 +1502,7 @@ export function mountCanvas(root, opts = {}) {
     // A paused step is planned (`B1036`) and says it is paused, from its own
     // status — the server's half plans it with `declined: null`.
     const sub = [entry.depth === 0 ? 'Starts here' : entry.after, kindWord,
-      task && task.status === 'paused' ? 'paused' : ''].filter(Boolean).join(' · ');
+      it && it.paused ? 'paused' : ''].filter(Boolean).join(' · ');
     const lines = entry.steps.map((s) => String((s && s.detail) || '').trim()).filter(Boolean);
     if (!lines.length) {
       return { state: 'declined', sub, line: `Would not run: ${entry.declined || 'nothing was planned'}`, entry };
@@ -1382,45 +1531,39 @@ export function mountCanvas(root, opts = {}) {
     say('');
   }
 
-  function showPlan(headId, reply) {
+  function showPlan(headId, result, title) {
     dropPlan();
-    const chain = Array.isArray(reply && reply.chain) ? reply.chain : null;
-    // A reply with no `chain` is the head's plan alone (`run`): drawn, and
-    // nothing said of the rest — not "would not reach", which is not known.
-    const run = (reply && reply.run) || {};
-    const entries = chain || [{
-      task_id: headId, when: null, depth: 0, steps: run.steps,
-      declined: Array.isArray(run.steps) && run.steps.length ? null : (run.error || run.result || null),
-    }];
+    const partial = !!result.partial;
+    const raw = result.plans instanceof Map ? result.plans : new Map(Object.entries(result.plans || {}));
     const byId = new Map();
-    for (const e of entries) {
-      const id = e && e.task_id != null ? String(e.task_id) : '';
-      if (!id || byId.has(id)) continue;
+    for (const [key, e] of raw) {
+      const id = String(key);
+      if (!id || byId.has(id) || !e) continue;
       byId.set(id, {
         id, when: e.when ? String(e.when) : null, depth: Number(e.depth) || 0,
         steps: Array.isArray(e.steps) ? e.steps : [], declined: e.declined ? String(e.declined) : null, after: '',
       });
     }
-    // How each step is reached: from its first parent in the reply's order,
+    // How each step is reached: from its first parent in the plan's order,
     // which is where the contract takes `when` from.
     const order = [...byId.keys()];
     order.forEach((id, i) => {
       const e = byId.get(id);
       if (!e.depth || !e.when) return;
       const parent = order.slice(0, i).find((p) => (S.graph.edges || [])
-        .some((g) => String(g.from) === p && String(g.to) === id && String(g.when) === e.when));
+        .some((g) => g.from === p && g.to === id && g.when === e.when));
       const words = EDGE_WORDS[e.when] || e.when;
       e.after = parent ? `After ${nameOf(parent)}, ${words}` : _cap(words);
     });
-    const head = String(headId);
+    const head = String(result.head || headId || order[0] || '');
     const dirty = !!(S.panel && S.panel.dirty);
     if (S.panel && !dirty) closePanel(false);
-    S.plan = { head, byId, partial: !chain, unregister: holdEscape(() => clearPlan()) };
+    S.plan = { head, byId, partial, unregister: holdEscape(() => clearPlan()) };
     render();
     focusNode(head);
-    const name = nameOf(head);
+    const name = title || nameOf(head);
     let sentence = `Dry run of ${name}: nothing ran and nothing changed.`;
-    if (chain) {
+    if (!partial) {
       const reached = byId.size;
       const aside = S.order.filter((id) => !byId.has(id) && S.nodeEls.has(id)).length;
       sentence += ` ${reached} ${reached === 1 ? 'step says what it' : 'steps say what they'} would do`
@@ -1428,44 +1571,41 @@ export function mountCanvas(root, opts = {}) {
     } else {
       sentence += ` Only ${name} was planned: this Pantheon did not plan the steps after it.`;
     }
-    if (dirty) sentence += ` Your unsaved changes to ${name} are not in this plan.`;
+    if (dirty) sentence += ` Your unsaved changes to ${nameOf(S.panel.id || head)} are not in this plan.`;
+    if (result.sentence) sentence += ' ' + String(result.sentence);
     say(sentence, { action: { label: 'Clear the plan', run: () => clearPlan() } });
   }
 
-  async function dryRun(id) {
-    if (S.dryBusy || !id) return null;
+  /** Plan a run. `id` is the head on a source that plans from a step; a
+   *  workflow's source plans the whole document and is asked with none.
+   *  `opts.title` names what was planned when the head's name would not (a
+   *  workflow's start). */
+  async function dryRun(id, { title = '' } = {}) {
+    if (S.dryBusy || typeof src.dryRun !== 'function') return null;
     S.dryBusy = true;
     panelDry.disabled = true;
     panelDry.textContent = 'Working it out…';
-    const name = nameOf(id);
+    const name = title || nameOf(id);
     say(`Working out what a run of ${name} would do. Nothing is running.`);
-    let res = null;
-    let reply = null;
-    let sentence = '';
+    let result = null;
     try {
-      res = await net(`/api/tasks/${encodeURIComponent(id)}/run?dry=true&chain=true`,
-        { method: 'POST', credentials: 'same-origin' });
-      if (res.ok) reply = await res.json();
-      else {
-        try { sentence = refusalText((await res.json()).detail); } catch (_) { sentence = ''; }
-      }
-    } catch (_) {
-      sentence = 'Pantheon could not be reached';
+      result = await (id != null ? src.dryRun(id) : src.dryRun());
+    } catch (err) {
+      result = { ok: false, sentence: _thrown(err) };
     }
     S.dryBusy = false;
     panelDry.disabled = false;
     panelDry.textContent = DRY_LABEL;
     if (S.destroyed) return null;
-    if (!reply) {
-      // The route's own sentence: a loop (`P22-01`'s rule, as a save is
+    if (!result || !result.ok) {
+      // The source's own sentence: a loop (`P22-01`'s rule, as a save is
       // answered), "Task is already running", an admin-only action.
-      if (!sentence && res && res.status === 409) sentence = 'Task is already running';
-      say(`Nothing was planned: ${(sentence || `the server answered ${res ? res.status : 'nothing'}`).replace(/\.$/, '')}.`,
-        { refusal: true });
+      const sentence = (result && result.sentence) || 'nothing was planned';
+      say(`Nothing was planned: ${sentence.replace(/\.$/, '')}.`, { refusal: true });
       return null;
     }
-    showPlan(id, reply);
-    return reply;
+    showPlan(id, result, title);
+    return result;
   }
 
   // ── the whole plan, on demand ────────────────────────────────────────────
@@ -1513,6 +1653,13 @@ export function mountCanvas(root, opts = {}) {
   }
 
   // ── opening on one workflow ──────────────────────────────────────────────
+  function chainSentence(id) {
+    const steps = [...componentOf(S.graph, id).ids].filter((x) => S.pos.has(x));
+    return steps.length > 1
+      ? `${nameOf(id)} is one of ${steps.length} steps in this workflow.`
+      : `${nameOf(id)} runs on its own. Drag from “${EDGE_WORDS.success}” or “${EDGE_WORDS.error}” to chain a step to it.`;
+  }
+
   function applyFocusChain() {
     const id = S.focusId;
     if (!id || !S.loaded) return;
@@ -1532,9 +1679,7 @@ export function mountCanvas(root, opts = {}) {
     fitTo(boundsOf(steps.map((x) => S.pos.get(x))));
     for (const [nid, node] of S.nodeEls) node.classList.toggle('wb-node-chain', comp.ids.has(nid));
     focusNode(id);
-    say(steps.length > 1
-      ? `${nameOf(id)} is one of ${steps.length} steps in this workflow.`
-      : `${nameOf(id)} runs on its own. Drag from “${EDGE_WORDS.success}” or “${EDGE_WORDS.error}” to chain a step to it.`);
+    say(chainSentence(id), { action: typeof src.offer === 'function' ? src.offer(id) : null });
   }
 
   function focusChain(id) {
@@ -1572,10 +1717,11 @@ export function mountCanvas(root, opts = {}) {
   viewport.addEventListener('keydown', (e) => { if (e.target === viewport) zoomKeys(e); });
 
   // ── the toolbar ──────────────────────────────────────────────────────────
-  newBtn.addEventListener('click', () => openPanel(null));
-  emptyNew.addEventListener('click', () => openPanel(null));
+  newBtn.addEventListener('click', () => newPressed(newBtn));
+  emptyNew.addEventListener('click', () => newPressed(emptyNew));
   panelClose.addEventListener('click', () => closePanel(true));
   panelDry.addEventListener('click', () => { if (S.panel && S.panel.id) dryRun(S.panel.id); });
+  panelRemove.addEventListener('click', () => { if (S.panel && S.panel.id) askRemove(S.panel.id); });
   outBtn.addEventListener('click', () => zoomBy(1 / ZOOM_STEP));
   inBtn.addEventListener('click', () => zoomBy(ZOOM_STEP));
   fitBtn.addEventListener('click', () => fitAll());
@@ -1584,7 +1730,7 @@ export function mountCanvas(root, opts = {}) {
     if (!S.showBuiltins) S.reveal = new Set();
     render();
     fitAll();
-    const n = S.tasks.filter((t) => t.is_builtin).length;
+    const n = S.items.filter((i) => i.builtin).length;
     say(S.showBuiltins ? `Showing the ${n} built-in tasks Pantheon comes with.`
       : 'The built-in tasks are hidden. A built-in task joined to one of yours stays.');
   });
@@ -1598,20 +1744,22 @@ export function mountCanvas(root, opts = {}) {
   });
 
   // ── start ────────────────────────────────────────────────────────────────
-  const ready = Promise.all([loadPositions(), fetchTasks().then((d) => ({ d }), (err) => ({ err }))])
-    .then(([pins, got]) => {
-      if (S.destroyed) return false;
-      S.pinned = pins;
-      if (got.err) {
-        say('The list of tasks could not be loaded. Close the Workbench and open it again to retry.', { refusal: true });
-        return false;
-      }
-      take(got.d);
-      render();
-      S.loaded = true;
-      applyFocusChain();
-      return true;
-    });
+  const ready = Promise.all([
+    Promise.resolve().then(() => src.loadPositions()).then(_points, () => new Map()),
+    Promise.resolve().then(() => src.load()).then((d) => ({ d }), (err) => ({ err })),
+  ]).then(([pins, got]) => {
+    if (S.destroyed) return false;
+    S.pinned = pins;
+    if (got.err) {
+      say(word('loadFailed'), { refusal: true });
+      return false;
+    }
+    take(got.d);
+    render();
+    S.loaded = true;
+    applyFocusChain();
+    return true;
+  });
 
   function destroy() {
     if (S.destroyed) return;
@@ -1624,7 +1772,7 @@ export function mountCanvas(root, opts = {}) {
     dropPlan();
     closePanel(false);
     root.replaceChildren();
-    root.classList.remove('wb-room', 'wb-panel-open', 'wb-room-empty', 'wb-linking', 'wb-panning');
+    root.classList.remove('wb-room', 'wb-panel-open', 'wb-room-empty', 'wb-linking', 'wb-panning', 'wb-read-only');
     delete root.dataset.escLayer;
   }
 
@@ -1632,11 +1780,18 @@ export function mountCanvas(root, opts = {}) {
     ready,
     reload,
     focusChain,
-    select,
+    select: (id) => select(id),
     destroy,
     flush: () => savePositions(),
     say,
-    newStep: () => openPanel(null),
+    newStep: () => newPressed(newBtn),
+    dryRun: (id, o) => dryRun(id, o),
+    /** What is drawn, as the source last loaded it. */
+    items: () => S.items.map((i) => ({ ...i })),
+    /** The step or arrow that is the canvas's tab stop. */
+    current: () => (S.current ? { ...S.current } : null),
+    /** Whether the open panel has edits not yet saved (`B1052`'s "edited"). */
+    isDirty: () => !!(S.panel && S.panel.dirty),
   };
 }
 

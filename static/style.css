@@ -46904,3 +46904,406 @@ button.task-card-toggle {
    (`tests/test_portal_dropdown_z_js.py`). It takes no clicks but its own
    button, so it covers nothing it could block. */
 #toast.toast { z-index: 2147483000; }
+
+/* ===== wf-ui — `P22-05`…`P22-08`, `B1062` (P22 wave C, Slice B) =====
+   The Automations room's shelf (the tasks and chains, then every workflow), a
+   workflow's toolbar and its Edit | Runs, the unsaved-changes question, the
+   palette, *Test this step* and a run's step record. Tokens only, no
+   `--accent`, no focus ring of its own (the global one serves), and state
+   is a shape and a weight before a hue: the switch is filled when on, the
+   open entry has a bar and a weight, a failed run and step are bold with ✗. */
+.workbench-room.wf-room { position: relative; flex-direction: row; gap: 0; }
+.wf-room [hidden] { display: none !important; }
+.wf-shelf {
+  flex: 0 0 210px;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  overflow: auto;
+  border-right: 1px solid var(--border);
+  font-size: 12px;
+}
+.wf-shelf-head { margin: 0 0 2px; font-size: 11px; font-weight: 700; color: var(--color-muted-alt); }
+.wf-shelf-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 2px; }
+.wf-shelf-item {
+  width: 100%;
+  height: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 6px 8px;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  color: var(--fg);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.wf-shelf-item:hover { background: color-mix(in srgb, var(--fg) 7%, transparent); }
+.wf-shelf-selected { background: var(--panel); border-color: var(--border); box-shadow: inset 3px 0 0 var(--fg); }
+.wf-shelf-name { font-weight: 600; overflow-wrap: anywhere; }
+.wf-shelf-selected .wf-shelf-name { font-weight: 700; }
+.wf-shelf-sub { display: flex; flex-wrap: wrap; align-items: baseline; gap: 5px; font-size: 11px; color: var(--color-muted-alt); }
+.wf-shelf-state[data-on="true"] { font-weight: 700; color: var(--fg); }
+.wf-shelf-mark[data-tone="error"] { font-weight: 700; color: var(--red); }
+.wf-shelf-mark[data-tone="ok"] { color: var(--green); }
+.wf-shelf-pick { display: none; align-items: center; gap: 6px; }
+.wf-shelf-pick-word { font-size: 11px; color: var(--color-muted-alt); }
+.wf-shelf-note { margin: 0; font-size: 11px; color: var(--color-muted-alt); overflow-wrap: anywhere; }
+.wf-shelf-note:empty { display: none; }
+.wf-new { display: flex; flex-direction: column; gap: 6px; }
+.wf-new-field { display: flex; flex-direction: column; gap: 2px; }
+.wf-new-label { font-size: 11px; color: var(--color-muted-alt); }
+.wf-new-buttons { display: flex; gap: 6px; }
+.wf-name,
+.wf-new-name,
+.wf-shelf-select,
+.wf-test-source,
+.wf-test-input {
+  font: inherit;
+  font-size: 12px;
+  color: var(--fg);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 3px 8px;
+  height: auto;
+  box-sizing: border-box;
+  max-width: 100%;
+}
+/* Scoped by the bar: the sheet's `input[type="text"] { width: 100% }` outranks a bare class, and
+   measured in Chromium the name then took its group's width and pushed Save onto a row of its own. */
+.wf-bar .wf-name { width: 16em; font-weight: 600; }
+.wf-test-input { width: 100%; resize: vertical; font-family: var(--font-mono, monospace); }
+.wf-main,
+.wf-view,
+.wf-tasks,
+.wf-edit,
+.wf-run-canvas {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.wf-tasks,
+.wf-edit,
+.wf-run-canvas { gap: 6px; }
+.wf-shelf-new,
+.wf-new-go,
+.wf-new-cancel,
+.wf-save,
+.wf-versions,
+.wf-switch,
+.wf-chain-back,
+.wf-run-now,
+.wf-dry,
+.wf-tab,
+.wf-say-action,
+.wf-ask-save,
+.wf-ask-discard,
+.wf-ask-keep,
+.wf-viewing-restore,
+.wf-viewing-current,
+.wf-versions-look,
+.wf-versions-restore,
+.wf-versions-close,
+.wf-palette-cancel,
+.wf-test-go,
+.wf-test-pin,
+.wf-test-unpin,
+.wf-test-yes,
+.wf-test-no,
+.wb-panel-remove {
+  height: auto;
+  font: inherit;
+  font-size: 12px;
+  color: var(--fg);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 10px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.wf-shelf-new:hover, .wf-new-go:hover, .wf-new-cancel:hover, .wf-save:hover, .wf-versions:hover,
+.wf-switch:hover, .wf-chain-back:hover, .wf-run-now:hover, .wf-dry:hover, .wf-tab:hover, .wf-say-action:hover,
+.wf-ask-save:hover, .wf-ask-discard:hover, .wf-ask-keep:hover, .wf-viewing-restore:hover,
+.wf-viewing-current:hover, .wf-versions-look:hover, .wf-versions-restore:hover, .wf-versions-close:hover,
+.wf-palette-cancel:hover, .wf-test-go:hover, .wf-test-pin:hover, .wf-test-unpin:hover, .wf-test-yes:hover,
+.wf-test-no:hover, .wb-panel-remove:hover { background: color-mix(in srgb, var(--fg) 8%, var(--panel)); }
+.wf-room button:disabled { opacity: 0.55; cursor: default; }
+.wf-shelf-new,
+.wf-new-go,
+.wf-save,
+.wf-ask-save,
+.wf-test-go,
+.wf-test-yes { font-weight: 600; }
+.wf-shelf-new { align-self: flex-start; }
+.wf-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+  padding: 8px 10px 6px;
+  border-bottom: 1px solid var(--border);
+}
+.wf-bar-group { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
+.wf-dirty { font-size: 11px; color: var(--color-muted-alt); }
+.wf-dirty[data-dirty="true"] { font-weight: 700; color: var(--fg); }
+.wf-switch { min-width: 3.4em; border-radius: 999px; font-weight: 700; }
+.wf-switch[aria-checked="true"] { color: var(--bg); background: var(--fg); border-color: var(--fg); }
+.wf-switch[aria-checked="true"]:hover { background: color-mix(in srgb, var(--fg) 85%, var(--bg)); }
+.wf-switch-word { font-size: 11px; color: var(--color-muted-alt); }
+.wf-tabs { display: inline-flex; margin-left: auto; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.wf-tab { border: 0; border-radius: 0; }
+.wf-tab[aria-selected="true"] { font-weight: 700; background: color-mix(in srgb, var(--fg) 12%, var(--panel)); box-shadow: inset 0 -2px 0 var(--fg); }
+.wf-say,
+.wf-ask,
+.wf-viewing,
+.wf-versions-box { margin: 6px 10px 0; font-size: 12px; }
+.wf-say { display: flex; align-items: center; gap: 8px; padding-left: 8px; border-left: 3px solid transparent; }
+.wf-say-text { overflow-wrap: anywhere; }
+.wf-say-refusal { border-left-color: var(--red); font-weight: 600; }
+.wf-ask {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--panel);
+  border: 2px solid var(--fg);
+  border-radius: 8px;
+}
+.wf-ask-text { flex: 1 1 260px; margin: 0; font-weight: 600; overflow-wrap: anywhere; }
+.wf-ask-buttons { display: flex; flex-wrap: wrap; gap: 6px; }
+.wf-viewing {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 1px dashed var(--fg);
+  border-radius: 6px;
+}
+.wf-viewing-text { flex: 1 1 220px; font-weight: 600; }
+.wf-versions-box {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 45%;
+  overflow: auto;
+  padding: 10px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--fg) 18%, transparent);
+}
+.wf-versions-head { margin: 0; font-weight: 700; }
+.wf-versions-note { margin: 0; font-size: 11px; color: var(--color-muted-alt); }
+.wf-versions-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; }
+.wf-versions-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 4px 0; border-top: 1px solid var(--border); }
+.wf-versions-what { flex: 1 1 220px; overflow-wrap: anywhere; }
+.wf-versions-close { align-self: flex-end; }
+.wf-runs { flex: 1 1 auto; min-height: 0; display: flex; }
+.wf-run-list {
+  flex: 0 0 220px;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  overflow: auto;
+  border-right: 1px solid var(--border);
+  font-size: 12px;
+}
+.wf-run-empty { margin: 6px; color: var(--color-muted-alt); }
+.wf-run-item {
+  width: 100%;
+  height: auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 6px;
+  padding: 5px 8px;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  color: var(--fg);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.wf-run-item:hover { background: color-mix(in srgb, var(--fg) 7%, transparent); }
+.wf-run-item[aria-current="true"] { background: var(--panel); border-color: var(--border); box-shadow: inset 3px 0 0 var(--fg); }
+.wf-run-mark { font-weight: 700; }
+.wf-run-when { flex: 1 0 100%; font-size: 11px; color: var(--color-muted-alt); }
+.wf-run-item[data-tone="error"] .wf-run-word,
+.wf-run-item[data-tone="error"] .wf-run-mark { font-weight: 700; color: var(--red); }
+.wf-run-item[data-tone="ok"] .wf-run-mark { color: var(--green); }
+.wf-run-item[data-tone="plan"] .wf-run-word { font-style: italic; }
+/* The palette: which kind of step to add. */
+.wf-palette {
+  position: absolute;
+  z-index: 6;
+  box-sizing: border-box;
+  width: 290px;
+  max-width: calc(100% - 16px);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  font-size: 12px;
+  color: var(--fg);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--fg) 18%, transparent);
+}
+.wf-palette-head { margin: 0 0 2px; font-weight: 700; }
+.wf-palette-kind {
+  height: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  padding: 6px 8px;
+  font: inherit;
+  text-align: left;
+  color: var(--fg);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.wf-palette-kind:hover { background: color-mix(in srgb, var(--fg) 8%, var(--bg)); }
+.wf-palette-word { font-weight: 600; }
+.wf-palette-hint { font-size: 11px; color: var(--color-muted-alt); }
+.wf-palette-cancel { align-self: flex-end; }
+/* A step's panel: the task form, then Test this step. */
+.wf-test {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+}
+.wf-test-head { margin: 0; font-size: 13px; }
+.wf-test-lede,
+.wf-test-pin-note,
+.wf-test-alone,
+.wf-test-dropped { margin: 0; color: var(--color-muted-alt); overflow-wrap: anywhere; }
+.wf-test-pin-note { font-style: italic; }
+.wf-test-edits { margin: 0; font-weight: 600; }
+.wf-test-field { display: flex; flex-direction: column; gap: 2px; }
+.wf-test-label { font-size: 11px; color: var(--color-muted-alt); }
+.wf-test-buttons { display: flex; flex-wrap: wrap; gap: 6px; }
+.wf-test-say { margin: 0; overflow-wrap: anywhere; }
+.wf-test-say:empty { display: none; }
+.wf-test-refusal { padding-left: 6px; font-weight: 600; border-left: 3px solid var(--red); }
+.wf-test-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border: 2px dashed var(--fg);
+  border-radius: 6px;
+}
+.wf-test-confirm-head { margin: 0; font-weight: 700; }
+.wf-test-plan,
+.wf-test-effects { margin: 0; padding-left: 18px; overflow-wrap: anywhere; }
+.wf-test-result { display: flex; flex-direction: column; gap: 6px; }
+.wf-test-outcome,
+.wf-record-head { display: flex; align-items: baseline; gap: 6px; margin: 0; }
+.wf-test-outcome[data-tone="error"],
+.wf-record-head[data-tone="error"] { font-weight: 700; }
+.wf-test-outcome[data-tone="error"] .wf-test-mark,
+.wf-record-head[data-tone="error"] .wf-record-mark { color: var(--red); }
+.wf-test-outcome[data-tone="ok"] .wf-test-mark,
+.wf-record-head[data-tone="ok"] .wf-record-mark { color: var(--green); }
+.wf-test-mark,
+.wf-record-mark { font-weight: 700; }
+/* A run's step: what it was handed, what it made, what went wrong. */
+.wf-record { display: flex; flex-direction: column; gap: 6px; font-size: 12px; }
+.wf-record-kind { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
+.wf-record-times,
+.wf-record-model,
+.wf-record-note { margin: 0; font-size: 11px; color: var(--color-muted-alt); overflow-wrap: anywhere; }
+.wf-record-summary { margin: 4px 0 0; overflow-wrap: anywhere; }
+.wf-record-part > summary { cursor: pointer; font-weight: 600; }
+.wf-record-error { padding-left: 6px; border-left: 3px solid var(--red); }
+.wf-record-pre {
+  margin: 4px 0 0;
+  padding: 6px 8px;
+  max-height: 40vh;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 11.5px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.wf-record-lines { margin: 4px 0 0; padding-left: 18px; }
+/* What the canvas draws only for a document. */
+.wb-node-marks { display: inline-flex; gap: 4px; margin-left: auto; }
+.wb-node-badge {
+  padding: 0 6px;
+  font-size: 10px;
+  line-height: 16px;
+  white-space: nowrap;
+  border: 1px dashed var(--fg);
+  border-radius: 999px;
+}
+.wb-node[data-kind="workflow"],
+.wb-node[data-kind="run_task"] { box-shadow: inset 0 0 0 3px var(--panel), inset 0 0 0 4px var(--border); }
+.wb-node[data-kind="start"] { border-radius: 24px 6px 6px 24px; }
+.wb-edge-fixed .wb-edge-line { stroke-width: 2.5; stroke-dasharray: none; }
+.wb-read-only .wb-node { cursor: pointer; }
+.wb-panel-remove { font-size: 12px; }
+.task-form-toggle-locked .task-toggle-btn:disabled { opacity: 1; cursor: default; }
+/* `B1062`. A stopped run's row says why, in the head, as a skipped one does. */
+.task-log-stopped-reason {
+  flex: 0 1 auto;
+  min-width: 0;
+  margin-left: 6px;
+  font-size: 11px;
+  font-style: italic;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+@media (max-width: 768px) {
+  .workbench-room.wf-room { flex-direction: column; }
+  .wf-shelf {
+    flex: 0 0 auto;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    padding: 6px 10px;
+    overflow: visible;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .wf-shelf-head,
+  .wf-shelf-list { display: none; }
+  .wf-shelf-pick { display: inline-flex; flex: 1 1 180px; min-width: 0; }
+  .wf-shelf-select { flex: 1 1 auto; min-width: 0; }
+  .wf-shelf-note,
+  .wf-new { flex: 1 0 100%; }
+  .wf-bar { gap: 6px; padding: 6px 10px; }
+  .wf-bar .wf-name { width: 12em; }
+  .wf-tabs { margin-left: 0; }
+  .wf-runs { flex-direction: column; }
+  .wf-run-list { flex: 0 0 auto; max-height: 26vh; border-right: 0; border-bottom: 1px solid var(--border); }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .wf-shelf-item,
+  .wf-run-item { transition: background-color 0.12s ease; }
+}

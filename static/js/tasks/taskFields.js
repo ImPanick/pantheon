@@ -9,7 +9,7 @@
  * not the other, a validation message in one and not the other (`Law 7`). So it
  * moved here, once, with what it needs, and both places mount it:
  *
- *   export function mountTaskFields(host, { task, tasks, onSaved, onCancel }) → { destroy() }
+ *   export function mountTaskFields(host, { task, tasks, onSaved, onCancel, mode }) → { destroy() }
  *     host     an element; the form renders INTO it and owns its children
  *              until `destroy()`.
  *     task     a row exactly as `GET /api/tasks` serves it, or `null` for a new
@@ -19,6 +19,8 @@
  *     onSaved  called with the saved row — the POST/PUT response — after a
  *              successful save.
  *     onCancel called when the person cancels.
+ *     mode     `P22-05` (wf-ui): `'task'` (the default — the form above, byte
+ *              for byte), `'node'` or `'trigger'`; see `mountTaskFields`.
  *
  * **What changed in the move, and only this** (it is a move, not a rewrite —
  * the ids, `CHAIN_FIELDS`, the validation messages and the payload are the
@@ -44,7 +46,7 @@
 import uiModule from '../ui.js';
 import { sortModelIds } from '../modelSort.js';
 import { getSettings, invalidateSettings } from '../appConfig.js';
-import { EDGE_WORDS, EDGE_COLUMNS } from './workflowDiagram.js';
+import { EDGE_WORDS, EDGE_COLUMNS, KIND_WORDS } from './workflowDiagram.js';
 
 const API_BASE = window.location.origin;
 
@@ -375,6 +377,9 @@ async function _fetchEvents() {
  * selection the way the description does.
  */
 async function _populateEventPicker(selectedName, root = document) {
+  // `P22-05` (wf-ui). The sentence a workflow's start says differs from a
+  // task's; which form this host holds is the mount's (`_formModes`).
+  const mode = _formModes.get(root) || 'task';
   const events = await _fetchEvents();
   const sel = _byId(root, 'task-form-event');
   const desc = _byId(root, 'task-form-event-desc');
@@ -398,7 +403,7 @@ async function _populateEventPicker(selectedName, root = document) {
   const syncEventDesc = () => {
     const chosen = events.find(ev => ev.name === sel.value);
     if (carries) {
-      carries.textContent = chosen ? _eventPayloadSentence(chosen, _chosenTaskType(root)) : '';
+      carries.textContent = chosen ? _eventPayloadSentence(chosen, _chosenTaskType(root), mode) : '';
     }
     if (!desc) return;
     desc.textContent = chosen
@@ -423,9 +428,15 @@ async function _populateEventPicker(selectedName, root = document) {
  * engine does not keep (`Law 10`). An event that declares no payload gets no
  * sentence rather than an empty one.
  */
-function _eventPayloadSentence(ev, taskType) {
+function _eventPayloadSentence(ev, taskType, mode = 'task') {
   const what = String((ev && ev.payload_summary) || '').trim();
   if (!what) return '';
+  // `P22-05` (wf-ui). A workflow's start hands the event to its first step,
+  // and only a Prompt step reads it (`P22-07`'s record panel says the same of
+  // an Action or Research step), so the sentence says which step is handed it.
+  if (mode === 'trigger') {
+    return `When it fires, the workflow's first step is handed ${what}. A Prompt step can refer to it; other steps run with their own settings.`;
+  }
   if ((taskType || 'llm') === 'llm') {
     return `When it fires, your prompt can refer to ${what}.`;
   }
@@ -734,6 +745,8 @@ export function resetTaskFieldCaches() {
 /** The forms mounted right now, by host — so a second mount into the same host
  *  retires the first, and a retired form's late fetches find nothing. */
 const _mounted = new WeakMap();
+/** `P22-05` (wf-ui). Each host's form mode (`'task'`, `'node'`, `'trigger'`). */
+const _formModes = new WeakMap();
 
 // ---- Form ----
 
@@ -747,8 +760,13 @@ const _mounted = new WeakMap();
  * replaced by `$` (this form's own host) and the two tab switches replaced by
  * the owner's callbacks.
  */
-export function mountTaskFields(host, { task = null, tasks = [], onSaved = null, onCancel = null } = {}) {
+export function mountTaskFields(host, { task = null, tasks = [], onSaved = null, onCancel = null, mode = 'task' } = {}) {
   if (!host) return { destroy() {} };
+  // `P22-05` (wf-ui). Which form: see the sections below. Anything else is the
+  // task form, so a caller that passes nothing gets what it always got.
+  const isNode = mode === 'node';
+  const isTrigger = mode === 'trigger';
+  _formModes.set(host, isNode || isTrigger ? mode : 'task');
   const previous = _mounted.get(host);
   if (previous) previous.destroy();
   let alive = true;
@@ -762,16 +780,49 @@ export function mountTaskFields(host, { task = null, tasks = [], onSaved = null,
   const curTaskType = existing?.task_type || 'llm';
   const curTriggerType = existing?.trigger_type || 'schedule';
 
-  host.innerHTML = `
+  // `P22-05` (wf-ui). One form, three uses (`Law 7`): the 180 lines of a
+  // type's fields — prompt and persona, the action's parameter box drawn from
+  // its `params`, the e-mail accounts, the output targets — and their
+  // validation messages exist once, here, and a workflow's step panel is this
+  // form with a `mode` rather than a second form that would drift from it (the
+  // `P22-03` incident). The markup below is the form as it shipped, cut into
+  // its sections; `'task'` puts every section back, in order, so the Tasks
+  // window and the tasks canvas get the same string they always did.
+  //
+  //   'task'    — the form, unchanged.
+  //   'node'    — a workflow document's step: the kind is locked (chosen in the
+  //               palette); Trigger, Chain, Time limit and Notifications are
+  //               the workflow's, not a step's, and are not drawn; Output's
+  //               first choice is "Only hand it to the next step"; the button
+  //               is Done, and it calls `onSaved({ label, kind, config })`
+  //               WITHOUT a request — the step lives in the workflow's draft
+  //               until the workflow is saved. `task` is the step in the task
+  //               form's field names: `{ name: label, task_type: kind, ...config }`.
+  //   'trigger' — a workflow's start: the Trigger section, Time limit and
+  //               Notifications only, saved by `PUT /api/tasks/{id}` with none
+  //               of task_type, output, model, chain or prompt.
+  const heading = isNode ? 'Edit step' : isTrigger ? 'What starts it'
+    : (existing?.id ? 'Edit Task' : 'New Task');
+  const lede = isNode
+    ? 'What this step does. Done puts it on the canvas; Save above the canvas keeps the workflow.'
+    : isTrigger
+      ? 'When this workflow runs. Saved straight away when you press Save; the steps are saved with the workflow.'
+      : (existing?.id ? 'Update this task’s schedule, prompt, and output.' : 'Configure a prompt, research, or action to run automatically.');
+  const namePlaceholder = isNode ? _escHtml(KIND_WORDS[curTaskType] || 'Step') : (existing?.id ? '' : 'Auto-generated if blank');
+  const saveWord = isNode ? 'Done' : isTrigger ? 'Save' : (existing?.id ? 'Save' : 'Create');
+  const sections = {
+    head: `
     <div class="admin-card" style="flex:1;display:flex;flex-direction:column;overflow:hidden;">
       <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:2px;">
-        <h2 style="margin:0;padding:0;line-height:1;">${existing?.id ? 'Edit Task' : 'New Task'}</h2>
+        <h2 style="margin:0;padding:0;line-height:1;">${heading}</h2>
       </div>
-      <p class="memory-desc">${existing?.id ? 'Update this task’s schedule, prompt, and output.' : 'Configure a prompt, research, or action to run automatically.'}</p>
-    <div class="task-form" style="flex:1;overflow-y:auto;min-height:0;">
+      <p class="memory-desc">${lede}</p>
+    <div class="task-form" style="flex:1;overflow-y:auto;min-height:0;">`,
+    name: `
       <label class="task-form-label">Name</label>
-      <input type="text" id="task-form-name" class="task-form-input" value="${_escHtml(existing?.name || '')}" placeholder="${existing?.id ? '' : 'Auto-generated if blank'}" />
-
+      <input type="text" id="task-form-name" class="task-form-input" value="${_escHtml(existing?.name || '')}" placeholder="${namePlaceholder}" />
+`,
+    type: `
       <label class="task-form-label">Type</label>
       <div class="task-form-toggle" id="task-form-type-toggle">
         <button class="task-toggle-btn ${curTaskType === 'llm' ? 'active' : ''}" data-val="llm" style="position:relative;top:-4px;"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:4px;"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>Prompt</button>
@@ -780,7 +831,8 @@ export function mountTaskFields(host, { task = null, tasks = [], onSaved = null,
       </div>
 
       <div id="task-form-type-opts"></div>
-
+`,
+    trigger: `
       <label class="task-form-label">Trigger</label>
       <div class="task-form-toggle" id="task-form-trigger-toggle">
         <button class="task-toggle-btn ${curTriggerType === 'schedule' ? 'active' : ''}" data-val="schedule" style="position:relative;top:-4px;"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:4px;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>Schedule</button>
@@ -789,18 +841,21 @@ export function mountTaskFields(host, { task = null, tasks = [], onSaved = null,
       </div>
 
       <div id="task-form-trigger-opts"></div>
-
+`,
+    output: `
       <label class="task-form-label">Output</label>
       <select id="task-form-output" class="task-form-input">
         <option value="session">Session</option>
       </select>
       <div id="task-form-output-extra"></div>
-
+`,
+    model: `
       <label class="task-form-label">Model <span style="opacity:0.5;font-weight:normal;font-size:10px;">(optional — overrides session default)</span></label>
       <select id="task-form-model" class="task-form-input">
         <option value="">Use session default</option>
       </select>
-
+`,
+    timeout: `
       <label class="task-form-label" for="task-form-timeout">Time limit <span style="opacity:0.5;font-weight:normal;font-size:10px;">(optional — blank for none)</span></label>
       <div class="task-form-timeout-row">
         <input type="number" id="task-form-timeout" class="task-form-input" min="0" step="1" inputmode="numeric" placeholder="No limit" value="${_escHtml(_timeLimitParts(existing?.timeout_seconds).amount)}" />
@@ -811,7 +866,8 @@ export function mountTaskFields(host, { task = null, tasks = [], onSaved = null,
         </select>
       </div>
       <div class="task-form-hint">A run that takes longer than this is stopped and counts as failed.</div>
-
+`,
+    chain: `
       <label class="task-form-label">Chain <span style="opacity:0.5;font-weight:normal;font-size:10px;">(optional — what runs after this one)</span></label>
       <div class="task-form-chain">
         <label class="task-form-chain-row">
@@ -827,7 +883,8 @@ export function mountTaskFields(host, { task = null, tasks = [], onSaved = null,
           </select>
         </label>
       </div>
-
+`,
+    notif: `
       <label class="task-form-notif-toggle">
         <input type="checkbox" id="task-form-notif" ${existing && existing.notifications_enabled === false ? '' : 'checked'}>
         <span class="task-form-notif-switch" aria-hidden="true"></span>
@@ -836,14 +893,43 @@ export function mountTaskFields(host, { task = null, tasks = [], onSaved = null,
           <span>Silence completion alerts for chatty cron jobs.</span>
         </span>
       </label>
-
+`,
+    actions: `
       <div class="task-form-actions">
         <button id="task-form-cancel" class="memory-toolbar-btn"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" style="vertical-align:-1px;margin-right:4px;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>Cancel</button>
-        <button id="task-form-save" class="memory-toolbar-btn active"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:4px;"><polyline points="20 6 9 17 4 12"/></svg>${existing?.id ? 'Save' : 'Create'}</button>
+        <button id="task-form-save" class="memory-toolbar-btn active"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:4px;"><polyline points="20 6 9 17 4 12"/></svg>${saveWord}</button>
       </div>
     </div>
     </div>
-  `;
+  `,
+  };
+  if (isNode) {
+    // The kind, shown and not chosen: a step's kind is picked in the palette,
+    // and a Prompt step's prompt is not an Action's parameter.
+    sections.type = `
+      <label class="task-form-label">Type</label>
+      <div class="task-form-toggle task-form-toggle-locked" id="task-form-type-toggle">
+        <button type="button" class="task-toggle-btn active" data-val="${_escHtml(curTaskType)}" disabled aria-disabled="true" style="position:relative;top:-4px;">${_escHtml(KIND_WORDS[curTaskType] || curTaskType)}</button>
+      </div>
+      <div class="task-form-hint">A step’s kind is chosen when it is added.</div>
+
+      <div id="task-form-type-opts"></div>
+`;
+    sections.output = `
+      <label class="task-form-label" for="task-form-output">Output</label>
+      <select id="task-form-output" class="task-form-input">
+        <option value="">Only hand it to the next step</option>
+      </select>
+      <div id="task-form-output-extra"></div>
+`;
+  }
+  const order = isNode
+    ? ['head', 'name', 'type', ...(curTaskType === 'run_task' ? [] : ['output']),
+      ...(curTaskType === 'llm' || curTaskType === 'research' ? ['model'] : []), 'actions']
+    : isTrigger
+      ? ['head', 'trigger', 'timeout', 'notif', 'actions']
+      : ['head', 'name', 'type', 'trigger', 'output', 'model', 'timeout', 'chain', 'notif', 'actions'];
+  host.innerHTML = order.map((k) => sections[k]).join('');
 
   // --- Task type toggle ---
   let taskType = curTaskType;
@@ -851,7 +937,30 @@ export function mountTaskFields(host, { task = null, tasks = [], onSaved = null,
   const typeOpts = $('task-form-type-opts');
 
   function renderTypeOpts() {
+    if (!typeOpts) return;
     typeOpts.innerHTML = '';
+    if (taskType === 'run_task') {
+      // `P22-05` (wf-ui). A step that runs one of the person's tasks, as it
+      // would run on its own. A workflow is not offered: a step may not run a
+      // workflow (§ 8's default), and the server refuses one in words.
+      typeOpts.innerHTML = `
+        <label class="task-form-label" for="task-form-run-task">Task to run</label>
+        <select id="task-form-run-task" class="task-form-input"><option value="">Choose a task…</option></select>
+        <div class="task-form-hint">It runs with its own settings and keeps its own history, and what it makes is handed to the next step.</div>
+      `;
+      const sel = $('task-form-run-task');
+      const choices = (Array.isArray(tasks) ? tasks : [])
+        .filter((t) => t && t.id != null && t.task_type !== 'workflow')
+        .sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
+      for (const t of choices) {
+        const opt = document.createElement('option');
+        opt.value = String(t.id);
+        opt.textContent = String(t.name || 'Untitled task');
+        if (String(existing?.task_id || '') === String(t.id)) opt.selected = true;
+        sel.appendChild(opt);
+      }
+      return;
+    }
     if (taskType === 'llm' || taskType === 'research') {
       const placeholder = taskType === 'research' ? 'What should be researched?' : 'What should the AI do?';
       const _personaOpts = [
@@ -868,10 +977,13 @@ export function mountTaskFields(host, { task = null, tasks = [], onSaved = null,
       typeOpts.innerHTML = `
         <label class="task-form-label">${taskType === 'research' ? 'Research question' : 'Prompt'}</label>
         <textarea id="task-form-prompt" class="task-form-input task-form-textarea" rows="4" placeholder="${placeholder}">${_escHtml(existing?.prompt || '')}</textarea>
-
+${(isNode && taskType === 'research') ? '' : `
         <label class="task-form-label">Persona <span style="opacity:0.5;font-weight:normal;font-size:10px;">(optional — biases the output voice)</span></label>
-        <select id="task-form-persona" class="task-form-input">${_personaOptsHtml}</select>
+        <select id="task-form-persona" class="task-form-input">${_personaOptsHtml}</select>`}
       `;
+      // `P22-05`. A Research step takes no persona (its config has no
+      // `character_id`), so its step form does not offer one; every other
+      // use of this form draws the same text it always did.
     } else {
       typeOpts.innerHTML = `
         <label class="task-form-label">Action</label>
@@ -911,7 +1023,10 @@ export function mountTaskFields(host, { task = null, tasks = [], onSaved = null,
         }
         if (!_EMAIL_ACCOUNT_ACTIONS.has(action)) return;
         await _renderEmailActionOptions(action, existing, extra);
-        if (action === 'check_email_urgency') {
+        // `P22-05`. The triage rules are the instance's, saved by a request of
+        // their own; a step's form makes no request, so they stay where they
+        // are set — on the e-mail tagging task — and are not offered here.
+        if (action === 'check_email_urgency' && !isNode) {
           extra.insertAdjacentHTML('beforeend', `
             <label class="task-form-label">Email triage rules</label>
             <textarea id="task-form-urgent-email-prompt" class="task-form-input task-form-textarea" rows="4" placeholder="What should count as urgent? e.g. deadlines, blockers, people waiting outside."></textarea>
@@ -944,7 +1059,7 @@ export function mountTaskFields(host, { task = null, tasks = [], onSaved = null,
     }
   }
 
-  typeToggle.addEventListener('click', (e) => {
+  if (typeToggle && !isNode) typeToggle.addEventListener('click', (e) => {
     const btn = e.target.closest('.task-toggle-btn');
     if (!btn) return;
     taskType = btn.dataset.val;
@@ -962,6 +1077,7 @@ export function mountTaskFields(host, { task = null, tasks = [], onSaved = null,
   const triggerOpts = $('task-form-trigger-opts');
 
   function renderTriggerOpts() {
+    if (!triggerOpts) return;
     triggerOpts.innerHTML = '';
     if (triggerType === 'schedule') {
       triggerOpts.innerHTML = `
@@ -1196,7 +1312,7 @@ export function mountTaskFields(host, { task = null, tasks = [], onSaved = null,
     }
   }
 
-  triggerToggle.addEventListener('click', (e) => {
+  if (triggerToggle) triggerToggle.addEventListener('click', (e) => {
     const btn = e.target.closest('.task-toggle-btn');
     if (!btn) return;
     triggerType = btn.dataset.val;
@@ -1204,6 +1320,11 @@ export function mountTaskFields(host, { task = null, tasks = [], onSaved = null,
     renderTriggerOpts();
   });
   renderTriggerOpts();
+
+  // `P22-05`. Whether the served lists have arrived: a step's Done before they
+  // do keeps what the step had rather than reading the placeholder.
+  let _outputsLoaded = false;
+  let _modelsLoaded = false;
 
   // Populate output targets
   const renderOutputExtra = async () => {
@@ -1242,10 +1363,21 @@ export function mountTaskFields(host, { task = null, tasks = [], onSaved = null,
     `;
   };
 
-  _fetchOutputTargets().then(targets => {
+  if ($('task-form-output')) _fetchOutputTargets().then(targets => {
     const outputSel = $('task-form-output');
-    if (!outputSel || targets.length <= 1) return;
+    if (outputSel) _outputsLoaded = true;
+    if (!outputSel || (targets.length <= 1 && !isNode)) return;
     outputSel.innerHTML = '';
+    if (isNode) {
+      // `P22-05`. A step's result goes to the next step whatever this says;
+      // a target is somewhere it is ALSO delivered. Nothing is the default
+      // for a new step (§ 1.2: `output_target: null`).
+      const opt = document.createElement('option');
+      opt.value = '';
+      opt.textContent = 'Only hand it to the next step';
+      if (!existing?.output_target) opt.selected = true;
+      outputSel.appendChild(opt);
+    }
     const existingEmailOutput = _parseTaskEmailOutputTarget(existing?.output_target || '');
     let matchedOutput = false;
     for (const t of targets) {
@@ -1275,11 +1407,12 @@ export function mountTaskFields(host, { task = null, tasks = [], onSaved = null,
   // Populate model dropdown from /api/models. Value is "endpoint_url::model"
   // so a single field encodes both the model name and which endpoint to call.
   // Blank value (option 0) = inherit session default.
-  fetch(`${API_BASE}/api/models`, { credentials: 'same-origin' })
+  if ($('task-form-model')) fetch(`${API_BASE}/api/models`, { credentials: 'same-origin' })
     .then(r => r.json())
     .then(data => {
       const modelSel = $('task-form-model');
       if (!modelSel) return;
+      _modelsLoaded = true;
       const items = (data.items || []).filter(it => (it.model_type || 'llm') === 'llm');
       const curKey = existing?.endpoint_url && existing?.model
         ? `${existing.endpoint_url}::${existing.model}`
@@ -1339,10 +1472,183 @@ export function mountTaskFields(host, { task = null, tasks = [], onSaved = null,
     if (typeof onCancel === 'function') onCancel();
   });
 
+  // `P22-05` (wf-ui). A step's Done: what the form holds, as the step, and NO
+  // request — the step lives in the workflow's draft until the workflow's own
+  // Save. The config holds § 1.2's keys for the kind and nothing else, so the
+  // server's check reads exactly what a step may carry; a value the form draws
+  // no input for (a Prompt step's crew member and step limit) is kept as it
+  // came, and so is a model or output whose list has not arrived yet.
+  const _applyNode = () => {
+    const kind = curTaskType;
+    const label = String($('task-form-name')?.value || '').trim() || KIND_WORDS[kind] || 'Step';
+    const config = {};
+    const keep = (k, v) => { if (v != null && v !== '') config[k] = v; };
+    const refuse = (m) => { if (uiModule) uiModule.showError(m); };
+    if (kind === 'run_task') {
+      const target = $('task-form-run-task')?.value || '';
+      if (!target) { refuse('Choose the task this step runs'); return; }
+      config.task_id = target;
+      if (typeof onSaved === 'function') onSaved({ label, kind, config });
+      return;
+    }
+    if (kind === 'llm') {
+      keep('crew_member_id', existing?.crew_member_id);
+      keep('max_steps', existing?.max_steps);
+    }
+    const outSel = $('task-form-output');
+    if (outSel && _outputsLoaded) {
+      const v = outSel.value || '';
+      keep('output_target', v === 'email'
+        ? _buildTaskEmailOutputTarget($('task-form-output-email-to')?.value || '', $('task-form-output-email-account')?.value || '')
+        : v);
+    } else {
+      keep('output_target', existing?.output_target);
+    }
+    if (kind === 'llm' || kind === 'research') {
+      const prompt = $('task-form-prompt')?.value?.trim();
+      if (!prompt) { refuse('Prompt is required'); return; }
+      config.prompt = prompt;
+      if (kind === 'llm') keep('character_id', $('task-form-persona')?.value || '');
+      const modelVal = $('task-form-model')?.value || '';
+      const idx = modelVal.indexOf('::');
+      if (idx > 0) {
+        config.endpoint_url = modelVal.slice(0, idx);
+        config.model = modelVal.slice(idx + 2);
+      } else if (!_modelsLoaded) {
+        keep('endpoint_url', existing?.endpoint_url);
+        keep('model', existing?.model);
+      }
+    } else {
+      const action = $('task-form-action')?.value;
+      if (!action) { refuse('Select an action'); return; }
+      config.action = action;
+      const chosen = _actionPromptValue(action, host);
+      if (chosen) {
+        if (!chosen.value && chosen.param.required) {
+          refuse(`${chosen.param.label || chosen.param.name} is required for ${action}`);
+          return;
+        }
+        keep('prompt', chosen.value);
+      } else if (_EMAIL_ACCOUNT_ACTIONS.has(action)) {
+        const accountId = $('task-form-email-account')?.value || '';
+        if (accountId) config.prompt = JSON.stringify({ account_id: accountId });
+      }
+    }
+    if (typeof onSaved === 'function') onSaved({ label, kind, config });
+  };
+
+  // `P22-05` (wf-ui). A workflow's start: its trigger, time limit and
+  // notifications, written to its trigger task through the door every task
+  // is edited by — and nothing else, so a start's save cannot change what
+  // the task is (`task_type`), what it says (`prompt`), where it delivers,
+  // its model or a chain.
+  const _saveTrigger = async (readTrigger) => {
+    if (!existing || !existing.id) {
+      if (uiModule) uiModule.showError('This workflow has no start to save yet.');
+      return;
+    }
+    const payload = { trigger_type: triggerType };
+    if (!readTrigger(payload)) return;
+    const notifEl = $('task-form-notif');
+    if (notifEl) payload.notifications_enabled = !!notifEl.checked;
+    try {
+      const saved = await _updateTask(existing.id, payload);
+      if (uiModule) uiModule.showToast('Start saved');
+      if (typeof onSaved === 'function') await onSaved((saved && saved.task) || saved);
+    } catch (e) {
+      if (uiModule) uiModule.showError(e.message);
+    }
+  };
+
   // Save
   // Named rather than anonymous: 200 lines of payload assembly that no
   // stack trace and no test could refer to by anything but a line number.
   const _saveTaskForm = async () => {
+    // `P22-05` (wf-ui). The trigger's fields, read into `payload` — the task's
+    // save and a workflow start's save both call this, so the trigger is read
+    // one way (`Law 7`). `false` when the person has been told what to fix.
+    // It is here, inside the Save every mode goes through, so the save's own
+    // scope still holds the served trigger-count default it always did.
+    const _triggerInto = (payload) => {
+      // Trigger specifics
+      if (triggerType === 'schedule') {
+        const schedSelect = $('task-form-schedule');
+        payload.schedule = schedSelect?.value || 'daily';
+        // `P22-03`. The zone the time means; `''` clears one (the API reads an
+        // empty string as "no zone of its own").
+        const zone = $('task-form-tz')?.value || '';
+
+        if (payload.schedule === 'cron') {
+          const cronVal = $('task-form-cron')?.value?.trim();
+          if (!cronVal) {
+            if (uiModule) uiModule.showError('Cron expression is required');
+            return false;
+          }
+          payload.cron_expression = cronVal;
+        } else {
+          const timeVal = _getTimePickerValue('task-form-time-wrap', host);
+          // With a zone the server reads this as that zone's clock, so it goes
+          // out as typed; without one it is UTC, as it always was.
+          payload.scheduled_time = zone ? timeVal : _localTimeToUtc(timeVal);
+
+          const dayInput = $('task-form-day');
+          if (dayInput) payload.scheduled_day = parseInt(dayInput.value, 10);
+
+          if (payload.schedule === 'once' && $('task-form-date')) {
+            const pickedDate = _getDatePickerValue('task-form-date', host);
+            const [h, m] = timeVal.split(':').map(Number);
+            if (zone) {
+              if (!_zoneDrawable(zone)) {
+                if (uiModule) uiModule.showError(`This browser cannot place a date in ${zone}. Pick another time zone.`);
+                return false;
+              }
+              payload.scheduled_date = _instantOfWallClock(
+                zone, pickedDate.getFullYear(), pickedDate.getMonth(), pickedDate.getDate(), h, m,
+              ).toISOString();
+            } else {
+              pickedDate.setHours(h, m, 0, 0);
+              payload.scheduled_date = pickedDate.toISOString();
+            }
+          }
+        }
+        payload.tz_name = zone;
+        // Retries are a schedule's: a failed event or webhook task waits for its
+        // next trigger and is never re-run on a clock (`failure_next_run`), so the
+        // box is only drawn, and only sent, for a scheduled task.
+        const retries = _readRetries(host);
+        if (retries.error) {
+          if (uiModule) uiModule.showError(retries.error);
+          return false;
+        }
+        payload.max_retries = retries.value;
+      } else if (triggerType === 'event') {
+        const evSel = $('task-form-event');
+        const countInput = $('task-form-trigger-count');
+        if (!evSel?.value) {
+          if (uiModule) uiModule.showError('Select an event');
+          return false;
+        }
+        payload.trigger_event = evSel.value;
+        // `P8-31`. The second of the two fives. The served default is the answer
+        // when the field is blank; `DEFAULT_TRIGGER_COUNT` lives beside the bus
+        // that reads it and ships on `/meta/actions`.
+        payload.trigger_count = parseInt(countInput?.value || String(_defaultTriggerCount()), 10);
+      }
+      // webhook: no extra fields needed, token is auto-generated server-side
+
+      // `P22-03`. A ceiling on one run's wall clock, for every trigger. Blank is
+      // `0`, which the API stores as "no limit" — so clearing the box clears it.
+      const limit = _readTimeLimit(host);
+      if (limit.error) {
+        if (uiModule) uiModule.showError(limit.error);
+        return false;
+      }
+      payload.timeout_seconds = limit.value;
+      return true;
+    };
+
+    if (isNode) { _applyNode(); return; }
+    if (isTrigger) { await _saveTrigger(_triggerInto); return; }
     const nameEl = $('task-form-name');
     const outputSelValue = $('task-form-output')?.value || 'session';
     let outputTarget = outputSelValue;
@@ -1434,80 +1740,7 @@ export function mountTaskFields(host, { task = null, tasks = [], onSaved = null,
       }
     }
 
-    // Trigger specifics
-    if (triggerType === 'schedule') {
-      const schedSelect = $('task-form-schedule');
-      payload.schedule = schedSelect?.value || 'daily';
-      // `P22-03`. The zone the time means; `''` clears one (the API reads an
-      // empty string as "no zone of its own").
-      const zone = $('task-form-tz')?.value || '';
-
-      if (payload.schedule === 'cron') {
-        const cronVal = $('task-form-cron')?.value?.trim();
-        if (!cronVal) {
-          if (uiModule) uiModule.showError('Cron expression is required');
-          return;
-        }
-        payload.cron_expression = cronVal;
-      } else {
-        const timeVal = _getTimePickerValue('task-form-time-wrap', host);
-        // With a zone the server reads this as that zone's clock, so it goes
-        // out as typed; without one it is UTC, as it always was.
-        payload.scheduled_time = zone ? timeVal : _localTimeToUtc(timeVal);
-
-        const dayInput = $('task-form-day');
-        if (dayInput) payload.scheduled_day = parseInt(dayInput.value, 10);
-
-        if (payload.schedule === 'once' && $('task-form-date')) {
-          const pickedDate = _getDatePickerValue('task-form-date', host);
-          const [h, m] = timeVal.split(':').map(Number);
-          if (zone) {
-            if (!_zoneDrawable(zone)) {
-              if (uiModule) uiModule.showError(`This browser cannot place a date in ${zone}. Pick another time zone.`);
-              return;
-            }
-            payload.scheduled_date = _instantOfWallClock(
-              zone, pickedDate.getFullYear(), pickedDate.getMonth(), pickedDate.getDate(), h, m,
-            ).toISOString();
-          } else {
-            pickedDate.setHours(h, m, 0, 0);
-            payload.scheduled_date = pickedDate.toISOString();
-          }
-        }
-      }
-      payload.tz_name = zone;
-      // Retries are a schedule's: a failed event or webhook task waits for its
-      // next trigger and is never re-run on a clock (`failure_next_run`), so the
-      // box is only drawn, and only sent, for a scheduled task.
-      const retries = _readRetries(host);
-      if (retries.error) {
-        if (uiModule) uiModule.showError(retries.error);
-        return;
-      }
-      payload.max_retries = retries.value;
-    } else if (triggerType === 'event') {
-      const evSel = $('task-form-event');
-      const countInput = $('task-form-trigger-count');
-      if (!evSel?.value) {
-        if (uiModule) uiModule.showError('Select an event');
-        return;
-      }
-      payload.trigger_event = evSel.value;
-      // `P8-31`. The second of the two fives. The served default is the answer
-      // when the field is blank; `DEFAULT_TRIGGER_COUNT` lives beside the bus
-      // that reads it and ships on `/meta/actions`.
-      payload.trigger_count = parseInt(countInput?.value || String(_defaultTriggerCount()), 10);
-    }
-    // webhook: no extra fields needed, token is auto-generated server-side
-
-    // `P22-03`. A ceiling on one run's wall clock, for every trigger. Blank is
-    // `0`, which the API stores as "no limit" — so clearing the box clears it.
-    const limit = _readTimeLimit(host);
-    if (limit.error) {
-      if (uiModule) uiModule.showError(limit.error);
-      return;
-    }
-    payload.timeout_seconds = limit.value;
+    if (!_triggerInto(payload)) return;
 
     try {
       // Edit only when we have a real existing task (has an id). A draft

@@ -66,13 +66,22 @@ export const KIND_WORDS = Object.freeze({
   llm: 'Prompt',
   research: 'Research',
   action: 'Action',
+  // `P22-05` (wf-ui). A workflow document's fourth node kind, and the task
+  // that starts a workflow (`task_type="workflow"`) where a task is drawn.
+  run_task: 'Run task',
+  workflow: 'Workflow',
 });
 
-/** Node shape per `task_type`, as Mermaid spells it. */
+/** Node shape per `task_type`, as Mermaid spells it. `P22-05`: a workflow's
+ *  trigger task is a subroutine box — it stands for steps of its own — where
+ *  it fell back to the rectangle a prompt is drawn with. The legend
+ *  (`SHAPE_WORDS`) keeps its three: the box itself says "Workflow" in words
+ *  (`KIND_WORDS`, through `tasks.js:_workflowDetail`). */
 const SHAPES = Object.freeze({
   llm: ['["', '"]'],
   research: ['(["', '"])'],
   action: ['{{"', '"}}'],
+  workflow: ['[["', '"]]'],
 });
 
 export const SHAPE_WORDS = Object.freeze([
