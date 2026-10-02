@@ -19,7 +19,7 @@ import {
 } from './settings/mcpFields.js';
 import { createMcpPresetPicker } from './settings/mcpPresets.js';
 // `P22-22`: build a server in your workstation, and *Try* a tool.
-import { mountMcpBuild, mountMcpBuildDoor, mountToolTry } from './settings/mcpBuild.js';
+import { mountBuildsSent, mountMcpBuild, mountMcpBuildDoor, mountToolTry, sentNotice } from './settings/mcpBuild.js';
 import { bindSettingsSearch } from './settings/search.js';
 import { bindSettingsSidebar } from './settings/sidebar.js';
 import {
@@ -3932,6 +3932,18 @@ async function initUnifiedIntegrations() {
       e.stopPropagation();
       _openEmailSettings();
     });
+    // `B1130`. An admin is told, at the top of the list, when people have sent
+    // MCP servers for registration; Review opens Add MCP Server, where they are.
+    if (window._isAdmin) {
+      fetch('/api/mcp/builds-sent', { credentials: 'same-origin' })
+        .then((r) => (r.ok ? r.json() : { sent: [] }))
+        .then((d) => {
+          listEl.querySelector('.intg-sent-note')?.remove();
+          const note = sentNotice(d && d.sent, () => showForm('mcp', 'new'));
+          if (note) listEl.prepend(note);
+        })
+        .catch(() => {});
+    }
     // Wire edit clicks
     listEl.querySelectorAll('.intg-card').forEach(card => {
       card.addEventListener('click', (e) => {
@@ -5769,6 +5781,9 @@ async function initUnifiedIntegrations() {
         <div class="admin-card" style="margin-top:8px">
           <h2 style="font-size:13px">${editing ? `Edit ${esc(editing.name)}` : 'Add MCP Server'}</h2>
           <div class="settings-col">
+            <!-- B1130. An admin's list of builds people sent for registration
+                 (mcpBuild.js mountBuildsSent); empty for everyone else. -->
+            <div id="uf-mcp-sent-mount"></div>
             <!-- P22-22. "Build an MCP server" — greyed with the workstation's
                  own sentence when it cannot be used (mcpBuild.js) — and the
                  line a form filled from a workstation build carries. -->
@@ -5905,6 +5920,10 @@ async function initUnifiedIntegrations() {
         onClose: () => { formEl.style.display = 'none'; },
       });
       if (!prefill) mountMcpBuildDoor(el('uf-mcp-build-mount'), { onOpen: showMcpBuild });
+      // `B1130`. What people sent for registration, for an admin: Register is
+      // `registerBuilt`, the same fill as an admin's own build — this form, or
+      // the server's Edit when it was registered before — pin included.
+      if (!prefill && window._isAdmin) mountBuildsSent(el('uf-mcp-sent-mount'), { onRegister: registerBuilt });
       // `P8-45`. The picker fills THESE controls — the ones above, which the
       // save below reads — and says in place what the person must supply and
       // what this install makes of the command, asked of the server's own rule

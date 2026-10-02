@@ -74,18 +74,18 @@ The four tiers are `P11-02b`'s own question. A site is exactly one of them:
   ownership check or a privilege key that does not exist. The fix is a data model, not
   an auth change.
 
-derived: direct 103 · Depends 21 · total 124
+derived: direct 106 · Depends 21 · total 127
 
 ### tier summary
 
 | tier | sites |
 |---|---|
-| `superuser` | 45 |
+| `superuser` | 48 |
 | `operator` | 54 |
 | `power-user` | 4 |
 | `only-because-nothing-finer-existed` | 21 |
 
-### `superuser` — **45 superuser sites.** A credential, an execution surface, or the whole instance's data. These stay `is_admin` under any role model — `P11-02` says so in its own words: *"keep `is_admin` as the superuser role rather than replacing it"*.
+### `superuser` — **48 superuser sites.** A credential, an execution surface, or the whole instance's data. These stay `is_admin` under any role model — `P11-02` says so in its own words: *"keep `is_admin` as the superuser role rather than replacing it"*.
 
 | file | function | route | protects |
 |---|---|---|---|
@@ -121,6 +121,9 @@ derived: direct 103 · Depends 21 · total 124
 | `routes/mcp/mcp_routes.py` | `update_server` | `PUT /api/mcp/servers/{server_id}` | edits one in place — including the command line it executes, so this is `add_server`'s surface on an existing row. `P8-35` |
 | `routes/mcp/mcp_routes.py` | `call_server_tool` | `POST /api/mcp/servers/{server_id}/call` | invokes one tool on one server. The reach is whatever the operator connected, which is the same argument `MCP_NAMESPACE_BLOCK_REASON` makes for refusing the namespace to non-admins. `P8-36` |
 | `routes/mcp/mcp_routes.py` | `check_registration` | `POST /api/mcp/check` | says whether this machine has a stdio command's launcher and whether the agent path would register it, before a server is added. Reads the host's `PATH` and runs `_validate_mcp_command`; stores and starts nothing. `P8-45` |
+| `routes/mcp/mcp_routes.py` | `builds_sent` | `GET /api/mcp/builds-sent` | the MCP servers people built in their workstations and sent for registration — whose, what they offer, and the admin route's fields pinned to their code. A person's only, not the agent's loopback (`B1130`) |
+| `routes/mcp/mcp_routes.py` | `build_sent` | `GET /api/mcp/builds-sent/{sent_id}` | one of them as an admin reviews it: every code file as it was sent, and a fingerprint read in its author's workstation account — other people's code, read before it is registered to run for everyone (`B1130`) |
+| `routes/mcp/mcp_routes.py` | `build_sent_remove` | `DELETE /api/mcp/builds-sent/{sent_id}` | takes one off that list; its sender may too, so the gate decides which, it does not refuse (`B1130`) |
 | `routes/session_routes.py` | `delete_all_sessions` | `DELETE /api/sessions/all` | deletes every chat session and message on the instance, and their gallery images with them |
 | `routes/skills_routes.py` | `import_skill_from_url` | `POST /api/skills/import-from-url` | fetches a skill bundle over the network and installs it. A supply-chain decision; `FORBIDDEN.md` keeps the host allowlist and the IP-pinned transport under it |
 | `routes/skills_routes.py` | `update_package` | `POST /api/skills/packages/{package_id}/update` | fetches an installed skill package from GitHub again and rewrites its skills — `import_skill_from_url`'s surface on a package already here. `P8-49` |
@@ -483,7 +486,7 @@ this file's hand-rolled pattern, so the population that this map covers grew by 
 the number of admin decisions added — which is the behaviour the map was built to give.
 The paragraph above is about the 107 that predate roles; the counts below are live.
 
-- **45 superuser sites do not move.** They are already right.
+- **48 superuser sites do not move.** They are already right.
 - **54 operator sites are the phase's return.** Today the only way to let someone keep
   the instance up is to make them the owner. An `operator` overlay on
   `DEFAULT_PRIVILEGES` retires 48 gates without touching a single one of the 37.

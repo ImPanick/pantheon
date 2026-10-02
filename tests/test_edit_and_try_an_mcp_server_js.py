@@ -346,4 +346,6 @@ def test_the_build_panel_says_where_a_registration_stands(box):
     assert o["stateWord"] == "changed"
     assert o["state"] == ("Registered with other code: it was changed since, so its tools do not run until an "
                           "admin registers it again.")
-    assert o["lead"] == "Only an admin registers a server. Send them these fields:"
+    # `B1130` moved this sentence: a non-admin sends it to the admins.
+    assert o["lead"] == ("Only an admin registers a server. Send it to them: they read its code, "
+                         "and register exactly that code.")

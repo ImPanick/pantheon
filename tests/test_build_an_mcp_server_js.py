@@ -224,7 +224,11 @@ def test_register_hands_an_admin_the_registration_and_a_non_admin_the_fields(box
     """)
     assert o["handed"] == [REG]
     assert o["adminSaw"].startswith("Once it is registered, every assistant")
-    assert o["lead"] == "Only an admin registers a server. Send them these fields:"
+    # `B1130` moved this: a non-admin sends the build to the admins
+    # (`test_an_admin_registers_a_build_someone_sent_js.py`); the fields stay,
+    # folded under "Or copy the fields yourself".
+    assert o["lead"] == ("Only an admin registers a server. Send it to them: they read its code, "
+                         "and register exactly that code.")
     assert o["fields"] == (f"Name: weather\nTransport: stdio\nCommand: {REG['command']}\n"
                            f"Arguments (one box each):\n  {REG['args'][0]}\n  --owner\n"
                            f"  ann\n  --server\n  weather\n  --sha256\n  {PIN}\n"
