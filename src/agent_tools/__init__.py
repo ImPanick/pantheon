@@ -155,23 +155,41 @@ ToolBlock = namedtuple("ToolBlock", ["tool_type", "content"])
 # Re-exports from sub-modules
 # ---------------------------------------------------------------------------
 
-# Parsing
-from src.tool_parsing import (  # noqa: E402, F401
-    parse_tool_blocks,
-    strip_tool_blocks,
-    _TOOL_NAME_MAP,
-    _TOOL_BLOCK_RE,
-    _TOOL_CALL_RE,
-    _XML_TOOL_CALL_RE,
-    _XML_INVOKE_RE,
-    _XML_PARAM_RE,
-)
+# Parsing and schemas — re-exported LAZILY (`B1118`). Both modules import
+# `ToolBlock` and `TOOL_TAGS` back out of this facade at their top, so the
+# eager `from src.tool_parsing import …` / `from src.tool_schemas import …`
+# that stood here made a cycle that resolved only when this facade was
+# imported first. Entered through either module instead, the re-export asked a
+# half-built module for a name it had not reached yet — measured on `7a7f9b2`:
+# `import src.tool_schemas` and `import src.tool_parsing` each raised
+# `ImportError` in a fresh interpreter. It had cost an outage (`B131`, two MCP
+# servers that would not start) and a tool count that moved with import order
+# (`B830`, 83 cold / 85 warm). Resolved on first use, through the shape
+# `src/tool_implementations.py` already uses for its own facade cycle
+# (`Law 14`): the object handed out is the module's own (`Law 7`), and it is
+# cached here, so a second read is an ordinary attribute.
+_LAZY_REEXPORTS = {
+    "parse_tool_blocks": "src.tool_parsing",
+    "strip_tool_blocks": "src.tool_parsing",
+    "_TOOL_NAME_MAP": "src.tool_parsing",
+    "_TOOL_BLOCK_RE": "src.tool_parsing",
+    "_TOOL_CALL_RE": "src.tool_parsing",
+    "_XML_TOOL_CALL_RE": "src.tool_parsing",
+    "_XML_INVOKE_RE": "src.tool_parsing",
+    "_XML_PARAM_RE": "src.tool_parsing",
+    "FUNCTION_TOOL_SCHEMAS": "src.tool_schemas",
+    "function_call_to_tool_block": "src.tool_schemas",
+}
 
-# Schemas
-from src.tool_schemas import (  # noqa: E402, F401
-    FUNCTION_TOOL_SCHEMAS,
-    function_call_to_tool_block,
-)
+
+def __getattr__(name):
+    module = _LAZY_REEXPORTS.get(name)
+    if module is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    import importlib
+    value = getattr(importlib.import_module(module), name)
+    globals()[name] = value
+    return value
 
 # Execution
 from src.tool_execution import (  # noqa: E402, F401
