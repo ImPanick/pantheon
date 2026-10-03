@@ -230,6 +230,12 @@ class TaskUpdate(BaseModel):
     timeout_seconds: Optional[int] = None         # see TaskCreate.timeout_seconds
 
 
+class QuestionAnswer(BaseModel):
+    """`B1102`. A person's answer to a plain task's waiting question."""
+    approval_id: str = ""
+    decision: str = ""
+
+
 def _display_task_name(t: ScheduledTask) -> str:
     defs = HOUSEKEEPING_DEFAULTS.get(t.action) if t.action else None
     if defs and (t.name or "") in set(defs.get("legacy_names") or []):
@@ -905,6 +911,83 @@ def setup_task_routes(task_scheduler) -> APIRouter:
             return {"notifications": []}
         notes = task_scheduler.pop_notifications(owner=user)
         return {"notifications": notes}
+
+    @router.get("/waiting")
+    async def list_waiting_questions(request: Request):
+        """`B1102`. Every plain Prompt task of this person's whose run waits for
+        a yes now — re-offered on page load as a workflow's are
+        (`static/js/workflowApprovalNotice.js`), because the notification queue
+        says a thing once and a person may not have been looking."""
+        from src.task_scheduler import plain_waiting_list
+        db = SessionLocal()
+        try:
+            return {"waiting": plain_waiting_list(db, _owner(request))}
+        finally:
+            db.close()
+
+    @router.post("/{task_id}/runs/{run_id}/answer")
+    async def answer_task_question(request: Request, task_id: str, run_id: str,
+                                   body: QuestionAnswer):
+        """`B1102` — a plain Prompt task's parked run, answered by the person
+        whose task it is. The workflow door's order and its one core
+        (`TaskScheduler.answer_question`, `Law 14`):
+
+          1. `approve` (a chat's scope) is a 400 — there is no chat to remember
+             it in; anything but `approve_task` or `deny` is a 400;
+          2. owner-scoped: anyone else's task, or a workflow's, is a 404 and
+             nothing is consumed;
+          3. the run must be this task's and `waiting`, and its record must wait
+             on exactly this card (409 otherwise);
+          4. the core: the store's owner and session, the claim, `consume(...,
+             allow_continuation=False)` — Allow runs the sealed action ONCE.
+        """
+        from src.task_scheduler import (
+            PLAIN_TASK_NODE, QuestionRefused, _resolve_task_timezone,
+        )
+        from src.workflow_runs import WAITING_APPROVAL, waiting_of
+        from src.workflow_store import ANSWER_DECISIONS, NO_CHAT_TO_REMEMBER
+        from core.database import TaskRunNode
+
+        decision = (body.decision or "").strip().lower()
+        if decision == "approve":
+            raise HTTPException(400, NO_CHAT_TO_REMEMBER)
+        if decision not in ANSWER_DECISIONS:
+            raise HTTPException(400, "decision must be approve_task (Allow once) or deny.")
+        approval_id = (body.approval_id or "").strip()
+        user = _owner(request)
+        db = SessionLocal()
+        try:
+            task = db.query(ScheduledTask).filter(ScheduledTask.id == task_id).first()
+            if (task is None or (user and task.owner != user)
+                    or (task.task_type or "llm") != "llm"):
+                raise HTTPException(404, "No such question.")
+            run = db.query(TaskRun).filter(TaskRun.id == run_id,
+                                           TaskRun.task_id == task.id).first()
+            if run is None:
+                raise HTTPException(404, "No such run of this task.")
+            if run.status != "waiting":
+                raise HTTPException(409, "This run is not waiting for an answer any more.")
+            rec = (db.query(TaskRunNode)
+                   .filter(TaskRunNode.run_id == run.id, TaskRunNode.node_id == PLAIN_TASK_NODE,
+                           TaskRunNode.status == "waiting").first())
+            waiting = waiting_of(rec) if rec is not None else None
+            if (not waiting or waiting.get("kind") != WAITING_APPROVAL
+                    or waiting.get("approval_id") != approval_id):
+                raise HTTPException(409, "This run is not waiting on this question any more.")
+            owner, tz_name = task.owner, _resolve_task_timezone(db, task)
+            session = waiting.get("session_id") or ""
+            tool = waiting.get("tool") or "the action"
+        finally:
+            db.close()
+        try:
+            outcome, verdict = await task_scheduler.answer_question(
+                task_id=task_id, run_id=run_id, node_id=PLAIN_TASK_NODE, item=None,
+                approval_id=approval_id, decision=decision, owner=owner, session=session,
+                tool=tool, who=user or owner or "you", tz_name=tz_name,
+                busy="The task is busy for a moment. Answer again.")
+        except QuestionRefused as refused:
+            raise HTTPException(refused.status, refused.sentence)
+        return {"ok": True, "outcome": outcome, "sentence": verdict.sentence}
 
     @router.post("/{task_id}/clear-cache")
     async def clear_task_cache(request: Request, task_id: str):

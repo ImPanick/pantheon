@@ -316,9 +316,15 @@ async def test_a_reference_in_a_prompt_arms_the_gate_by_itself(world):
     assert rec["waiting"]["approval"]["gate"]["tainted"] is True
 
 
-async def test_a_plain_scheduled_prompt_task_still_pauses_safely(world):
-    """`Law 1`: parking is for workflow steps. A plain scheduled Prompt task
-    keeps today's "paused safely", and its card is retired on the spot."""
+async def test_a_plain_scheduled_prompt_task_parks_too(world):
+    """Moved deliberately by `B1102`: this case was the `Law 1` guard that
+    parking was for workflow steps only, and a plain scheduled Prompt task kept
+    "paused safely" with its card retired on the spot. That row brings plain
+    tasks to parity through this same path — the run parks on the card, which
+    stays in the store for the person to answer
+    (`tests/test_a_plain_task_waits_for_your_yes.py` holds the rest, and the
+    one place "paused safely" remains: a plain task a workflow's Run task step
+    awaits)."""
     w = world
     from core.database import ScheduledTask
     db = w.factory()
@@ -329,9 +335,9 @@ async def test_a_plain_scheduled_prompt_task_still_pauses_safely(world):
     w.script.append("```bash\nprintf plain\n```")
     await w.s._execute_task("plain", trigger=_webhook())
     [run] = runs_of(w.factory, "plain")
-    assert run["status"] == "success"
-    assert run["result"].startswith("Scheduled task paused safely: bash needs a person")
-    assert not tool_approval_store._pending, "the card was retired on the spot"
+    assert run["status"] == "waiting"
+    assert run["result"] == "Waiting for your yes on bash"
+    assert len(tool_approval_store._pending) == 1, "the card waits for the person"
     assert w.executed == []
 
 

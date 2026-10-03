@@ -3329,6 +3329,11 @@ async function _pollTaskNotifications() {
         _offerWorkflowApproval({ ...n.review, workflow: n.review.workflow || n.task_name });
         continue;
       }
+      // `B1102`. A plain task's question, the same way and by the same module.
+      if (n.review && n.review.kind === 'task_approval') {
+        _offerWorkflowApproval({ ...n.review, task: n.review.task || n.task_name });
+        continue;
+      }
       const ok = n.status === 'success';
       if (ok) {
         const completedOpen = _open && document.querySelector('.tasks-tab.active[data-tab="completed"]');

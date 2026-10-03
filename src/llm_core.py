@@ -2590,7 +2590,10 @@ async def llm_call_async(
     #
     # `B1089`, as `stream_llm`: at most what fits a server that
     # stated its window — before the receipt and the cache key, which both
-    # record the number sent.
+    # record the number sent. `B1106`: fitted from the length the payload will
+    # carry, the local profile's included, which also gives a profile-filled
+    # length its `_length_key` below, so a refusal of it is sent again.
+    max_tokens = _carried_max_tokens(url, model, max_tokens)
     max_tokens = fitted_max_tokens(url, model, messages, None, max_tokens, max_tokens_floor)
     _capture_run_config(temperature, max_tokens, session_id, url=url, model=model,
                         explicit_params=explicit_params)
@@ -2996,6 +2999,27 @@ def _sent_sampling(url, model, temperature, max_tokens, explicit_params=frozense
     return sent
 
 
+def _carried_max_tokens(url, model, max_tokens):
+    """`B1106`. The reply length a request to `url` will carry: what its caller
+    asked, or — where the caller asked for none and the local MiniMax profile
+    fills one (`B934`'s typed ceiling, or 2048) — the profile's.
+
+    Read through `_sent_sampling`, the receipt's one rule for what the profile
+    does to a payload (`Law 7`), and asked by `stream_llm` and `llm_call_async`
+    before they fit the length, write its receipt or build the payload — so the
+    resend (`B1029`), the fit (`B1089`) and the receipt see the number that is
+    sent. Both doors read the caller's number before, and the profile filled the
+    payload after: measured on `7a7f9b2` against a 32,768-window vLLM with
+    32,768 typed and no preset, a local MiniMax's chat sent 32,768, was refused,
+    and was never sent again (`servable_max_tokens(…, sent=0)` never fires;
+    `llm_call_async` had no `_length_key` to act on). The payload itself is
+    unchanged: the profile would have filled exactly this number."""
+    if max_tokens and max_tokens > 0:
+        return max_tokens
+    carried = _sent_sampling(url, model, LLMConfig.DEFAULT_TEMPERATURE, max_tokens).get("max_tokens")
+    return carried or max_tokens
+
+
 def _capture_run_config(temperature, max_tokens, session_id, *, tools=None,
                         url=None, model=None, explicit_params=frozenset(),
                         resent: bool = False) -> None:
@@ -3226,6 +3250,9 @@ async def stream_llm(url: str, model: str, messages: List[Dict], temperature: fl
     most what fits it, never below this number on that estimate
     (`fitted_max_tokens`, `B1089`)."""
     target_url = _stream_target_url(url)
+    # `B1106`. The length the payload will carry, the local profile's included,
+    # so the fit below and the resend inside judge the number that is sent.
+    max_tokens = _carried_max_tokens(url, model, max_tokens)
     # Before the receipt, so it records the number sent (`B933`).
     max_tokens = fitted_max_tokens(url, model, messages, tools, max_tokens, max_tokens_floor)
     _capture_run_config(temperature, max_tokens, session_id, tools=tools, url=url,
