@@ -264,7 +264,8 @@ def test_extract_memory_has_a_door_again():
     menu = SESSIONS.split("const dropdown = document.createElement('div');", 1)[1]
     menu = menu.split("\nfunction ", 1)[0]
     assert "dropdown.appendChild(memoryItem)" in menu, "built but never appended"
-    assert "<span>Memory</span>" in menu
+    # P23-05: the item says what it does — the window is the Brain, not "Memory".
+    assert "<span>Extract memories</span>" in menu
 
 
 def test_the_menu_item_survives_memory_js_not_being_ready():

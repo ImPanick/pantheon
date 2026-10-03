@@ -582,7 +582,7 @@ async function initAgentBudget() {
     try {
       await _postSettings(payload);
       if (msg) {
-        msg.textContent = mode.value === 'off' ? 'No trimming — the whole conversation is sent.'
+        msg.textContent = mode.value === 'off' ? 'No trimming — the whole chat is sent.'
           : mode.value === 'auto' ? 'Scaling to the model\u2019s window.'
           : 'Fixed at ' + payload.agent_input_token_budget + ' tokens.';
         msg.style.color = 'var(--fg)';
@@ -2264,7 +2264,7 @@ const SHORTCUT_LABELS = KEYBIND_LABELS;   // `H19` — one table, not three
 
 const SHORTCUT_CATEGORIES = [
   { name: 'Navigation', keys: ['search', 'toggle_sidebar', 'focus_input', 'settings'] },
-  { name: 'Sessions', keys: ['new_session', 'fav_session', 'delete_session'] },
+  { name: 'Chats', keys: ['new_session', 'fav_session', 'delete_session'] },
   { name: 'Tools', keys: ['plan_mode', 'incognito', 'tts', 'cancel'] },
   { name: 'Open Tools', keys: ['open_calendar', 'open_compare', 'open_cookbook', 'open_research', 'open_gallery', 'open_library', 'open_memory', 'open_notes', 'open_tasks', 'open_theme'] },
   // `H20`. Rebindable like the rest, and it genuinely works: the editor reads

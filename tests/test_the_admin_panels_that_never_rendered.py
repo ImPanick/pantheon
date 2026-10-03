@@ -349,7 +349,7 @@ def test_every_feature_the_module_names_gets_a_switch(admin_sandbox):
     body = out["toggles"]
     assert body is not None, "no #adm-featureToggles in the shipped markup"
     for key, label in (("web_search", "Web Search"), ("deep_research", "Deep Research"),
-                       ("memory", "Memory"), ("document_editor", "Document Editor"),
+                       ("memory", "Brain (memories)"), ("document_editor", "Document Editor"),  # P23-05
                        ("rag", "RAG Knowledge Base"),
                        ("sensitive_filter", "Sensitive Info Filter"),
                        ("gallery", "Gallery")):

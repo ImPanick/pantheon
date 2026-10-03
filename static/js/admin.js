@@ -36,7 +36,7 @@ const PRIV_LABELS = {
   can_use_documents: 'Document editor',
   can_use_research: 'Deep research',
   can_generate_images: 'Image generation',
-  can_manage_memory: 'Memory & skills',
+  can_manage_memory: 'Brain (memories & skills)',
 };
 
 // `B966`, the owner's call (`D-2026-10-01-01`). A privilege this panel no
@@ -1884,7 +1884,7 @@ const TOOL_META = {
   read_file:         { name: 'Read File',        desc: 'Read files from disk',            cat: 'Code',       ctx: '~150' },
   write_file:        { name: 'Write File',       desc: 'Write/create files',              cat: 'Code',       ctx: '~150' },
   web_search:        { name: 'Web Search',       desc: 'Search the web via SearXNG',      cat: 'Search',     ctx: '~300' },
-  search_chats:      { name: 'Search Chats',     desc: 'Search conversation history',     cat: 'Search',     ctx: '~150' },
+  search_chats:      { name: 'Search Chats',     desc: 'Search chat history',           cat: 'Search',     ctx: '~150' },
   create_document:   { name: 'Create Document',  desc: 'Create new documents',            cat: 'Documents',  ctx: '~200' },
   update_document:   { name: 'Update Document',  desc: 'Modify existing documents',       cat: 'Documents',  ctx: '~200' },
   edit_document:     { name: 'Edit Document',    desc: 'Find & replace in documents',     cat: 'Documents',  ctx: '~200' },
@@ -1897,10 +1897,10 @@ const TOOL_META = {
   chat_with_model:   { name: 'Chat with Model',  desc: 'Talk to another AI model',        cat: 'Multi-Agent', ctx: '~200' },
   pipeline:          { name: 'Pipeline',         desc: 'Multi-step AI workflows',         cat: 'Multi-Agent', ctx: '~200' },
   ask_teacher:       { name: 'Ask Teacher',      desc: 'Query a more capable model',      cat: 'Multi-Agent', ctx: '~150' },
-  send_to_session:   { name: 'Send to Session',  desc: 'Send message to another chat',    cat: 'Sessions',   ctx: '~100' },
-  create_session:    { name: 'Create Session',   desc: 'Start a new chat session',        cat: 'Sessions',   ctx: '~100' },
-  list_sessions:     { name: 'List Sessions',    desc: 'Browse existing sessions',        cat: 'Sessions',   ctx: '~100' },
-  manage_session:    { name: 'Manage Session',   desc: 'Rename, archive, configure',      cat: 'Sessions',   ctx: '~100' },
+  send_to_session:   { name: 'Send to Chat',     desc: 'Send message to another chat',    cat: 'Chats',      ctx: '~100' },
+  create_session:    { name: 'Create Chat',      desc: 'Start a new chat',                cat: 'Chats',      ctx: '~100' },
+  list_sessions:     { name: 'List Chats',       desc: 'Browse existing chats',           cat: 'Chats',      ctx: '~100' },
+  manage_session:    { name: 'Manage Chat',      desc: 'Rename, archive, configure',      cat: 'Chats',      ctx: '~100' },
   list_models:       { name: 'List Models',      desc: 'Show available models',           cat: 'System',     ctx: '~100' },
   ui_control:        { name: 'UI Control',       desc: 'Change theme, layout, settings',  cat: 'System',     ctx: '~150' },
   manage_tasks:      { name: 'Tasks',            desc: 'Schedule automated tasks',        cat: 'System',     ctx: '~150' },
@@ -1939,7 +1939,7 @@ async function loadBuiltinTools() {
     }
 
     // Category order
-    const catOrder = ['Code', 'Search', 'Documents', 'Media', 'Knowledge', 'Multi-Agent', 'Sessions', 'System', 'Other'];
+    const catOrder = ['Code', 'Search', 'Documents', 'Media', 'Knowledge', 'Multi-Agent', 'Chats', 'System', 'Other'];
     let html = '';
     for (const cat of catOrder) {
       const items = groups[cat];
@@ -2804,7 +2804,7 @@ function initWebhookForm() {
 /* ── Features ── */
 const featureLabels = {
   web_search: 'Web Search', deep_research: 'Deep Research',
-  memory: 'Memory', document_editor: 'Document Editor', rag: 'RAG Knowledge Base', sensitive_filter: 'Sensitive Info Filter',
+  memory: 'Brain (memories)', document_editor: 'Document Editor', rag: 'RAG Knowledge Base', sensitive_filter: 'Sensitive Info Filter',
   gallery: 'Gallery'
 };
 

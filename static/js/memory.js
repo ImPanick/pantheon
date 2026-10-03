@@ -73,7 +73,7 @@ export function memoryCountPills(memory) {
     pills.push({
       className: 'memory-item-mentions',
       text: `said in ${sessions}`,
-      title: `You have brought this up in ${sessions} separate conversations`
+      title: `You have brought this up in ${sessions} separate chats`
         + ` — which is why it ranks a little higher. Different from the ${uses}× above,`
         + ` which counts how often it was injected into a chat.`,
     });

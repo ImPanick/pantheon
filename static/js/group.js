@@ -839,7 +839,7 @@ async function _syncAllResponses(holders) {
 
 async function _streamToHolder(modelIdx, sessionId, msg, holderEl, abortCtrl) {
   if (!sessionId) {
-    holderEl.querySelector('.body').innerHTML = '<i style="opacity:0.5;">[Session creation failed]</i>';
+    holderEl.querySelector('.body').innerHTML = '<i style="opacity:0.5;">[Could not start a chat]</i>';
     return;
   }
 

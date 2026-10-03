@@ -655,7 +655,7 @@ async def action_tidy_sessions(owner: str, **kwargs) -> Tuple[str, bool]:
         return result, True
     except asyncio.TimeoutError:
         logger.error("tidy_sessions action timed out")
-        return "Chat session tidy timed out", False
+        return "Chat tidy timed out", False
     except Exception as e:
         logger.error(f"tidy_sessions action failed: {e}")
         return str(e), False
@@ -3794,12 +3794,12 @@ DRY_VERDICTS = (DRY_DESCRIBES, DRY_SHOWS_INPUT, DRY_CANNOT)
 # the order people have already learned, moved across unchanged.
 ACTION_CATEGORY_ORDER = (
     "Forge", "Other", "Calendar", "Email", "Chats", "Documents",
-    "Memory", "Research", "Skills", "Assistant", "System",
+    "Brain", "Research", "Skills", "Assistant", "System",
 )
 
 BUILTIN_ACTION_META = {
     "tidy_sessions": {
-        "description": "Clean up empty chat sessions and auto-sort into folders",
+        "description": "Clean up empty chats and sort the rest into folders",
         "category": "Chats", "icon": "chat", "model_backed": False,
         "effects": (EFFECT_DELETES,),
         "dry": DRY_DESCRIBES,
@@ -3814,13 +3814,13 @@ BUILTIN_ACTION_META = {
     },
     "consolidate_memory": {
         "description": "Remove duplicate memories",
-        "category": "Memory", "icon": "brain", "model_backed": True,
+        "category": "Brain", "icon": "brain", "model_backed": True,
         "effects": (EFFECT_DELETES, EFFECT_REWRITES, EFFECT_CALLS_MODEL),
         "dry": DRY_CANNOT,
         "params": [],
     },
     "tidy_research": {
-        "description": "Remove orphaned research files (sessions that were deleted)",
+        "description": "Remove research files whose chat was deleted",
         "category": "Research", "icon": "search", "model_backed": False,
         "effects": (EFFECT_DELETES,),
         "dry": DRY_DESCRIBES,

@@ -27,6 +27,10 @@ _FRESH_EMPTY_SESSION_GRACE = timedelta(minutes=10)
 _FRESH_SESSION_GRACE = _FRESH_EMPTY_SESSION_GRACE
 
 
+def _chats(n: int) -> str:
+    """`P23-05`: the result line a person reads in Tasks › Activity says chats, counted right."""
+    return f"{n} chat" if n == 1 else f"{n} chats"
+
 def _utcnow_naive() -> datetime:
     """Return naive UTC for existing session DateTime columns."""
     return datetime.now(timezone.utc).replace(tzinfo=None)
@@ -158,15 +162,15 @@ async def run_auto_sort(owner: str, skip_llm: bool = False, delete_throwaway: bo
             })
 
         if len(session_list) < 2:
-            return f"Cleaned {deleted_empty + deleted_throwaway} sessions. Too few remaining to sort."
+            return f"Cleaned {_chats(deleted_empty + deleted_throwaway)}. Too few left to sort."
 
         # Background built-in sweep skips folder-sort to stay pure infra.
         if skip_llm:
-            return f"Cleaned {deleted_empty + deleted_throwaway} sessions (folder sort skipped)."
+            return f"Cleaned {_chats(deleted_empty + deleted_throwaway)}. Folders not sorted."
 
         url, model, headers = resolve_task_endpoint(owner=owner or None)
         if not url:
-            return f"Cleaned {deleted_empty + deleted_throwaway} sessions. No model endpoint available for sorting."
+            return f"Cleaned {_chats(deleted_empty + deleted_throwaway)}. No model to sort them with."
 
         names_text = "\n".join(f'  "{s["id"][:8]}": "{s["name"]}"' for s in session_list)
         prompt = (
@@ -188,7 +192,7 @@ async def run_auto_sort(owner: str, skip_llm: bool = False, delete_throwaway: bo
                                        temperature=0.3, max_tokens=16384, headers=headers, timeout=120)
         except Exception as e:
             logger.warning(f"Auto-sort LLM call failed: {e}")
-            return f"Cleaned {deleted_empty + deleted_throwaway} sessions. Folder sort skipped (model unreachable)."
+            return f"Cleaned {_chats(deleted_empty + deleted_throwaway)}. Folders not sorted: the model did not answer."
 
         # Parse JSON from response
         text = raw.strip()
@@ -213,11 +217,11 @@ async def run_auto_sort(owner: str, skip_llm: bool = False, delete_throwaway: bo
                 except json.JSONDecodeError:
                     pass
         if result is None:
-            return f"Cleaned {deleted_empty + deleted_throwaway} sessions. AI returned unparseable response."
+            return f"Cleaned {_chats(deleted_empty + deleted_throwaway)}. Folders not sorted: the model's answer could not be read."
 
         folders = result.get("folders", {})
         if not folders:
-            return f"Cleaned {deleted_empty + deleted_throwaway} sessions. No folder groupings found."
+            return f"Cleaned {_chats(deleted_empty + deleted_throwaway)}. The model suggested no folders."
 
         # Apply assignments
         id_prefix_map = {s["id"][:8]: s["id"] for s in session_list}
@@ -245,7 +249,7 @@ async def run_auto_sort(owner: str, skip_llm: bool = False, delete_throwaway: bo
         db.commit()
 
         folder_summary = ", ".join(f"{k} ({len(v)})" for k, v in folders.items())
-        return f"Deleted {deleted_empty} empty + {deleted_throwaway} throwaway. Sorted {updated} sessions into: {folder_summary}"
+        return f"Deleted {deleted_empty} empty + {deleted_throwaway} throwaway. Sorted {_chats(updated)} into: {folder_summary}"
 
     finally:
         db.close()

@@ -258,7 +258,7 @@ async function _buildCompareUI() {
         fd.append('skip_validation', 'true');
       }
       const res = await fetch(`${state.API_BASE}/api/session`, { method: 'POST', body: fd });
-      if (!res.ok) throw new Error('Failed to create session for ' + modelShorts[i]);
+      if (!res.ok) throw new Error('Could not start a chat for ' + modelShorts[i]);
       const data = await res.json();
       sessionIds.push(data.id);
     }

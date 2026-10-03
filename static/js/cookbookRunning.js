@@ -1143,7 +1143,7 @@ function _tmuxAttachMenuItem(task, el) {
     group: 'copy',
     label: 'Copy tmux',
     action: 'copy-tmux',
-    tooltip: 'Copy the command that opens this session in your own terminal',
+    tooltip: 'Copy the command that opens this tmux session in your own terminal',
     custom: () => {
       const copied = copyTmuxAttach(attach);
       _showTaskAttach(el, attach);

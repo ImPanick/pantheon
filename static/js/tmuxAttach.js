@@ -122,7 +122,7 @@ function _fill(body, box, handle) {
  * the panel is for (`B913`: *Check whether it is still running*, for the list
  * command).
  */
-export function renderTmuxAttach(handle, { title: heading = 'Open this session in a terminal' } = {}) {
+export function renderTmuxAttach(handle, { title: heading = 'Open this tmux session in a terminal' } = {}) {
   const box = document.createElement('div');
   box.className = 'tmux-attach';
   box.setAttribute('role', 'group');

@@ -1036,8 +1036,8 @@ async function _cmdSessionNew(args, ctx) {
     await sessionModule.selectSession(data.id, { showLoading: false });
     _hideWelcomeScreen();
     const shortModel = (model || '').split('/').pop();
-    await typewriterReply(`New session — ${shortModel || 'ready'}.`);
-  } else { const err = await res.json().catch(() => null); slashReply('Failed to create session' + (err?.detail ? ': ' + ctx.esc(err.detail) : '')); }
+    await typewriterReply(shortModel ? `New chat — ${shortModel}.` : 'New chat.');
+  } else { const err = await res.json().catch(() => null); slashReply('Could not start a chat' + (err?.detail ? ': ' + ctx.esc(err.detail) : '')); }
   return true;
 }
 
@@ -1058,7 +1058,7 @@ async function _cmdSessionDelete(args, ctx) {
       if (res.ok) deleted++; else failed++;
     }
     await sessionModule.loadSessions();
-    let msg = `Deleted ${deleted} session${deleted !== 1 ? 's' : ''}`;
+    let msg = `Deleted ${deleted} chat${deleted !== 1 ? 's' : ''}`;
     if (skipped && !force) msg += `, kept ${skipped} starred`;
     if (failed) msg += `, ${failed} failed`;
     slashReply(msg);
@@ -1067,7 +1067,7 @@ async function _cmdSessionDelete(args, ctx) {
 
   // Single session delete
   const target = _resolveSession(cleanArg) || ctx.sid;
-  if (!target) { slashReply('No session to delete'); return true; }
+  if (!target) { slashReply('No chat to delete'); return true; }
   const sessions = sessionModule.getSessions();
   const sess = sessions.find(s => s.id === target);
   const label = sess ? `"${ctx.esc(sess.name || target.slice(0,8))}"` : target.slice(0,8);
@@ -1076,14 +1076,14 @@ async function _cmdSessionDelete(args, ctx) {
     await typewriterReply(`Deleted ${label}`);
     await sessionModule.loadSessions();
   } else if (res.status === 403) {
-    slashReply('Cannot delete a starred session — unstar it first, or use <code>/s rm -rf</code>');
+    slashReply('Cannot delete a starred chat — unstar it first, or use <code>/s rm -rf</code>');
   } else { const err = await res.json().catch(() => null); slashReply('Delete failed' + (err?.detail ? ': ' + ctx.esc(err.detail) : '')); }
   return true;
 }
 
 async function _cmdSessionArchive(args, ctx) {
   const target = _resolveSession(args[0]) || ctx.sid;
-  if (!target) { slashReply('No session to archive'); return true; }
+  if (!target) { slashReply('No chat to archive'); return true; }
   const sessions = sessionModule.getSessions();
   const sess = sessions.find(s => s.id === target);
   const label = sess ? `"${ctx.esc(sess.name || target.slice(0,8))}"` : target.slice(0,8);
@@ -1107,19 +1107,19 @@ async function _cmdSessionRename(args, ctx) {
 async function _cmdSessionImportant(args, ctx) {
   const fd = new FormData(); fd.append('important', 'true');
   await fetch(`${API_BASE}/api/session/${ctx.sid}/important`, { method: 'POST', body: fd, credentials: 'same-origin' });
-  await typewriterReply('Session marked as important');
+  await typewriterReply('Marked important');
   return true;
 }
 
 async function _cmdSessionUnimportant(args, ctx) {
   const fd = new FormData(); fd.append('important', 'false');
   await fetch(`${API_BASE}/api/session/${ctx.sid}/important`, { method: 'POST', body: fd, credentials: 'same-origin' });
-  await typewriterReply('Session unmarked');
+  await typewriterReply('Unmarked');
   return true;
 }
 
 async function _cmdSessionFork(args, ctx) {
-  if (!ctx.sid) { slashReply('No active session'); return true; }
+  if (!ctx.sid) { slashReply('No chat open'); return true; }
   const keepCount = parseInt(args[0]) || 0;
   const res = await fetch(`${API_BASE}/api/session/${ctx.sid}/fork`, {
     method: 'POST', credentials: 'same-origin',
@@ -1130,13 +1130,13 @@ async function _cmdSessionFork(args, ctx) {
     const data = await res.json();
     await sessionModule.loadSessions();
     await sessionModule.selectSession(data.id);
-    await typewriterReply(`Forked session (${data.kept || 0} messages)`);
+    await typewriterReply(`Forked (${data.kept || 0} messages)`);
   } else { slashReply('Fork failed'); }
   return true;
 }
 
 async function _cmdSessionTruncate(args, ctx) {
-  if (!ctx.sid) { slashReply('No active session'); return true; }
+  if (!ctx.sid) { slashReply('No chat open'); return true; }
   const keep = parseInt(args[0]);
   if (!keep || keep < 1) { slashReply('Usage: /truncate N — deletes older messages, keeps the last N'); return true; }
   const res = await fetch(`${API_BASE}/api/session/${ctx.sid}/truncate`, {
@@ -1152,7 +1152,7 @@ async function _cmdSessionTruncate(args, ctx) {
 async function _cmdSessionList(args, ctx) {
   const sessions = sessionModule.getSessions();
   const active = sessions.filter(s => !s.archived);
-  if (!active.length) { slashReply('No active sessions'); return true; }
+  if (!active.length) { slashReply('No chats'); return true; }
   const lines = active.slice(0, 40).map(s => {
     const current = s.id === ctx.sid ? ' <b>(current)</b>' : '';
     return `${ctx.esc(s.name || 'Untitled')} <span style="opacity:0.5">${s.id.slice(0,8)}</span>${current}`;
@@ -1172,7 +1172,7 @@ async function _cmdSessionSwitch(args, ctx) {
   if (match) {
     await sessionModule.selectSession(match.id);
     await typewriterReply(`Switched to "${ctx.esc(match.name)}"`);
-  } else { await typewriterReply(`No session matching "${ctx.esc(query)}"`); }
+  } else { await typewriterReply(`No chat matching "${ctx.esc(query)}"`); }
   return true;
 }
 
@@ -1183,14 +1183,14 @@ async function _cmdSessionSort(args, ctx) {
   // person is most likely to disagree with — were removed without appearing in
   // any number on any screen.
   if (!await sessionModule.confirmChatTidy()) { slashReply('Tidy cancelled'); return true; }
-  slashReply('Auto-sorting sessions...');
+  slashReply('Sorting chats…');
   const res = await fetch(`${API_BASE}/api/sessions/auto-sort`, { method: 'POST', credentials: 'same-origin' });
   if (res.ok) {
     const data = await res.json();
     await sessionModule.loadSessions();
     // Handle skipped status
     if (data.status === 'skipped') {
-      await typewriterReply(`Auto-sort skipped: ${data.reason || 'No sessions to sort'}`);
+      await typewriterReply(`Auto-sort skipped: ${data.reason || 'No chats to sort'}`);
     } else {
       await typewriterReply(sessionModule.describeChatTidy(data));
     }
@@ -1199,11 +1199,11 @@ async function _cmdSessionSort(args, ctx) {
 }
 
 async function _cmdSessionInfo(args, ctx) {
-  if (!ctx.sid) { slashReply('No active session'); return true; }
+  if (!ctx.sid) { slashReply('No chat open'); return true; }
   const sessions = sessionModule.getSessions();
   const s = sessions.find(ss => ss.id === ctx.sid);
-  if (!s) { slashReply('Session not found'); return true; }
-  slashReply(`<pre>Session: ${ctx.esc(s.name || 'Untitled')}
+  if (!s) { slashReply('Chat not found'); return true; }
+  slashReply(`<pre>Chat:    ${ctx.esc(s.name || 'Untitled')}
 ID:      ${s.id}
 Model:   ${ctx.esc(s.model || '?')}
 Folder:  ${ctx.esc(s.folder || '(none)')}
@@ -1219,7 +1219,7 @@ async function _cmdSessionClear(args, ctx) {
 }
 
 async function _cmdSessionExport(args, ctx) {
-  if (!ctx.sid) { slashReply('No active session'); return true; }
+  if (!ctx.sid) { slashReply('No chat open'); return true; }
   // Parse linux-style: cat > file.json, cat > notes.txt, cat > chat.html
   let filename = '';
   let fmt = 'md';
@@ -1250,7 +1250,7 @@ async function _cmdToggleIncognito(args, ctx) {
   const sessions = sessionModule.getSessions();
   const sess = ctx.sid ? sessions.find(s => s.id === ctx.sid) : null;
   if (sess && sess.message_count > 0) {
-    slashReply(`Can't toggle Nobody mode mid-conversation — start a new session first`);
+    slashReply(`Can't switch Nobody on mid-chat — start a new chat first`);
     return true;
   }
   const v = (args[0]||'').toLowerCase();
@@ -2023,7 +2023,7 @@ async function _cmdStats(args, ctx) {
   const res = await fetch(`${API_BASE}/api/db/stats`, { credentials: 'same-origin' });
   if (res.ok) {
     const d = await res.json();
-    slashReply(`<pre>Sessions:  ${d.sessions || '?'}
+    slashReply(`<pre>Chats:     ${d.sessions || '?'}
 Messages:  ${d.messages || '?'}
 Memories:  ${d.memories || '?'}
 Documents: ${d.documents || '?'}
@@ -2035,7 +2035,7 @@ Uploads:   ${d.uploads || '?'}</pre>`);
 async function _cmdUsage(args, ctx) {
   const sid = ctx.sid;
   if (!sid) {
-    slashReply('No active session.');
+    slashReply('No chat open.');
     return true;
   }
 
@@ -2068,7 +2068,7 @@ async function _cmdUsage(args, ctx) {
       : 'Estimated local cost: no billable usage recorded';
 
   slashReply(`<pre>${[
-    `Session: ${ctx.esc(session?.name || 'Current chat')}`,
+    `Chat: ${ctx.esc(session?.name || 'Current chat')}`,
     `Model: ${ctx.esc(model)}`,
     `Messages: ${messageCount.toLocaleString()}`,
     `Recorded tokens: ${totalTokens.toLocaleString()}`,
@@ -2100,7 +2100,7 @@ async function _cmdCompact(args, ctx) {
   compactSpinner.destroy();
   if (res.ok) {
     const d = await res.json();
-    slashReply(`Conversation compacted. Summarized ${d.summarized || 0} older messages, kept ${d.kept || 0} recent messages.`);
+    slashReply(`Compacted: ${d.summarized || 0} older messages summarised, ${d.kept || 0} kept.`);
     if (sessionModule?.selectSession) await sessionModule.selectSession(ctx.sid);
   } else {
     let detail = 'Compaction failed';
@@ -3537,7 +3537,7 @@ async function _cmdTourSettings(args, ctx) {
       text: '<b>Vision</b> — powers any image-recognition feature: drop a photo in chat, ask what\'s in it, OCR, etc.',
       before: () => _clickNav('ai') },
     { sel: '#settings-modal .settings-nav-item[data-settings-tab="integrations"]',
-      text: '<b>Integrations</b> — wire up email, calendar, contacts here (per-account).',
+      text: '<b>MCP &amp; Integrations</b> — mail, calendars, MCP servers and APIs.',
       before: () => _clickNav('integrations') },
     { sel: '#settings-modal .settings-nav-item[data-settings-tab="search"]',
       text: '<b>Search</b> — plug in your own search provider, or use the bundled <b>SearXNG</b> out of the box.',
@@ -5593,7 +5593,7 @@ async function _cmdUptime(args, ctx) {
   _eggRender(`<div style="display:flex;flex-direction:column;align-items:center;gap:6px;animation:egg-fade 0.3s ease-out">
     <div style="font-size:1.4em;font-weight:700;font-variant-numeric:tabular-nums">${parts.join(' ')}</div>
     <div style="width:120px;height:4px;border-radius:2px;background:var(--border);overflow:hidden"><div style="height:100%;width:${pct}%;background:var(--red);border-radius:2px;transition:width 0.5s"></div></div>
-    <div style="font-size:0.7em;opacity:0.35">session uptime</div>
+    <div style="font-size:0.7em;opacity:0.35">uptime</div>
   </div>`);
   if (!document.getElementById('egg-styles')) { const s2=document.createElement('style');s2.id='egg-styles';s2.textContent='@keyframes egg-spin{0%{transform:rotateY(0) scale(0.5);opacity:0}50%{transform:rotateY(540deg) scale(1.2)}100%{transform:rotateY(720deg) scale(1)}} @keyframes egg-shake{0%,100%{transform:rotate(0)}25%{transform:rotate(-8deg)}75%{transform:rotate(8deg)}} @keyframes egg-fade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}';document.head.appendChild(s2); }
   return true;
@@ -5771,7 +5771,7 @@ async function _cmdHelp(args, ctx) {
       categories[cat].push(`  ${usage.padEnd(21)}${desc}`);
     }
   }
-  const order = ['Getting started', 'Tours', 'Chats', 'Settings', 'Memory', 'Productivity', 'AI Tools'];
+  const order = ['Getting started', 'Tours', 'Chats', 'Settings', 'Brain', 'Productivity', 'AI Tools'];
   let lines = [];
   for (const cat of order) {
     if (categories[cat] && categories[cat].length) {
@@ -5815,7 +5815,7 @@ const COMMANDS = {
   chats: {
     alias: ['chat', 'session', 'sessions', 's'],
     category: 'Chats',
-    help: 'Manage chat sessions',
+    help: 'Manage chats',
     default: 'info',
     subs: {
       'new':         { handler: _cmdSessionNew,         alias: ['create','mkdir'], help: 'Create new chat',             usage: '/chats new [name]' },
@@ -5859,7 +5859,7 @@ const COMMANDS = {
   },
   memory: {
     alias: ['m'],
-    category: 'Memory',
+    category: 'Brain',
     help: 'Manage persistent memories',
     default: 'list',
     subs: {
@@ -5871,14 +5871,14 @@ const COMMANDS = {
   },
   skills: {
     alias: ['skill'],
-    category: 'Memory',
+    category: 'Brain',
     help: 'List, search, inspect, or run skills',
     handler: _cmdSkills,
     usage: '/skills list | search query | view name | use name request',
   },
   'reload-skills': {
     alias: ['reload_skills'],
-    category: 'Memory',
+    category: 'Brain',
     help: 'Refresh the slash skill catalog',
     handler: _cmdReloadSkills,
     usage: '/reload-skills',
@@ -6150,7 +6150,7 @@ const COMMANDS = {
     alias: ['search-history'],
     category: 'Utility',
     hidden: true,
-    help: 'Search all conversations',
+    help: 'Search all chats',
     handler: _cmdSearch,
     usage: '/find query'
   },
@@ -6199,7 +6199,7 @@ const COMMANDS = {
   },
   note: {
     alias: ['n'],
-    category: 'Memory',
+    category: 'Brain',
     help: 'Quick-save a note',
     handler: _cmdNote,
     usage: '/note text'

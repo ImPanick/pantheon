@@ -242,7 +242,7 @@ async function _runSynthForPane(modelToUse, synthPrompt, synthBody, spinner, his
     const createRes = await fetch(`${state.API_BASE}/api/session`, { method: 'POST', body: fd });
     if (!createRes.ok) {
       const errData = await createRes.json().catch(() => ({}));
-      throw new Error(errData.detail || 'Failed to create session');
+      throw new Error(errData.detail || 'Could not start a chat');
     }
     const createData = await createRes.json();
 

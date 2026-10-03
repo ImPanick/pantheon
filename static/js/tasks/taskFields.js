@@ -144,7 +144,7 @@ async function _fetchOutputTargets() {
     const data = await res.json();
     _outputTargets = data.targets || [];
   } catch (e) {
-    _outputTargets = [{ value: 'session', label: 'Session' }];
+    _outputTargets = [{ value: 'session', label: 'Chat' }];
   }
   return _outputTargets;
 }
@@ -865,14 +865,14 @@ export function mountTaskFields(host, {
     output: `
       <label class="task-form-label">Output</label>
       <select id="task-form-output" class="task-form-input">
-        <option value="session">Session</option>
+        <option value="session">Chat</option>
       </select>
       <div id="task-form-output-extra"></div>
 `,
     model: `
-      <label class="task-form-label">Model <span style="opacity:0.5;font-weight:normal;font-size:10px;">(optional — overrides session default)</span></label>
+      <label class="task-form-label">Model</label>
       <select id="task-form-model" class="task-form-input">
-        <option value="">Use session default</option>
+        <option value="">Default</option>
       </select>
 `,
     timeout: `

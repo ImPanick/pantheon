@@ -410,7 +410,7 @@ function initPersistentChat() {
         fd.append('skip_validation', 'true');
       }
       const res = await fetch(`${API_BASE}/api/session`, { method: 'POST', body: fd });
-      if (!res.ok) throw new Error('Failed to create session');
+      if (!res.ok) throw new Error('Could not start a chat');
       const data = await res.json();
       const sessionId = data.session_id || data.id;
 

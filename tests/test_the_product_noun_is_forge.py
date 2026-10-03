@@ -76,16 +76,14 @@ READABLE = {".py", ".js", ".mjs", ".css", ".html", ".md"}
 # that something is coming, not permission for it to stay — see
 # `test_the_register_holds_nothing_that_is_already_done`, which fails when one
 # of these is finally clean so the entry comes out with the work.
+#
+# `static/index.html` left this register with `P23-05` (2026-10-03): its six
+# labels — the route title map, the rail `title`, the sidebar label, the modal
+# `aria-label` and `<h4>`, and the visibility-toggle label — now say Forge, and
+# its element ids (`rail-cookbook`, `cookbook-modal`, `tool-cookbook-btn`) did
+# not move, which is `D-2026-09-18-04`'s line. `tests/test_dialog_aria.py`
+# changed in the same commit.
 RESIDUE = {
-    "static/index.html":
-        "Six user-visible strings — the route title map, the rail button "
-        "`title`, the sidebar label, the modal `aria-label` and `<h4>`, and the "
-        "visibility-toggle label. Another agent holds this file this wave "
-        "(`P3-20`), and its element ids are in `FORBIDDEN` Part 1, so the "
-        "labels and the ids have to move in one edit or not at all. Handed to "
-        "the integrator with the exact lines. "
-        "`tests/test_dialog_aria.py` asserts `aria-label=\"Cookbook\"` and has "
-        "to change in the same commit.",
     "services/hwfit/image_models.py":
         "`Pantheon-Cookbook/1.0` is an outbound User-Agent, not a label. "
         "Nothing renders it and `FORBIDDEN` Part 1 treats the user-agents as "
@@ -200,9 +198,10 @@ def test_no_user_visible_string_says_cookbook():
 def test_the_register_holds_nothing_that_is_already_done():
     """A hand-off that outlives its hand-off is an excuse.
 
-    When `static/index.html` is renamed by whoever holds it, this fails and the
-    entry comes out in the same commit — which is also the moment `P0-29` can
-    be ticked.
+    When `static/index.html` was renamed (`P23-05`) this failed and the entry
+    came out in the same commit — the moment `P0-29` could be ticked. The two
+    entries left are a wire header, not labels; this still fails the day
+    either is clean.
     """
     live = _offenders()
     settled = sorted(set(RESIDUE) - set(live))
@@ -217,7 +216,7 @@ def test_the_register_holds_nothing_that_is_already_done():
 def test_the_hand_off_is_exact_about_what_is_left():
     # The integrator is being asked to apply six lines in a file this wave does
     # not own. A number that has drifted is a hand-off nobody can act on.
-    assert _offenders() == {"static/index.html": 6, "services/hwfit/image_models.py": 1,
+    assert _offenders() == {"services/hwfit/image_models.py": 1,
                             "docs/release-notes/0.2.0.md": 2}
 
 

@@ -4896,7 +4896,7 @@ async function _runAgentSolveJob(job) {
     const csRes = await fetch(`${API_BASE}/api/session`, {
       method: 'POST', credentials: 'same-origin', body: csFd, signal: abort.signal,
     });
-    if (!csRes.ok) { uiModule.showError('Could not create agent session'); return; }
+    if (!csRes.ok) { uiModule.showError('Could not start an agent chat'); return; }
     const sess = await csRes.json();
     const sid = sess.id;
     run.sid = sid;

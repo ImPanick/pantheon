@@ -680,7 +680,7 @@ def _reason(vector_score, keyword, shared, boost, intent, healthy, days_old,
     if not healthy:
         parts.append("matched on wording alone — semantic search was unavailable")
     if sessions > 1:
-        parts.append(f"raised in {sessions} separate conversations, which counts for at most 5%")
+        parts.append(f"raised in {sessions} separate chats, which counts for at most 5%")
     elif days_old > 365:
         parts.append(f"{int(days_old // 365)}y old, which counts for at most 5%")
     return "; ".join(parts) or "scored above the floor on wording"

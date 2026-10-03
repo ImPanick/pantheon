@@ -275,7 +275,7 @@ def setup_memory_routes(memory_manager: MemoryManager, session_manager: SessionM
     from fastapi import Depends
     from src.feature_gate import require_feature
     router = APIRouter(prefix="/api/memory", tags=["memory"],
-                       dependencies=[Depends(require_feature("memory", label="Memory"))])
+                       dependencies=[Depends(require_feature("memory", label="Brain"))])
 
     def _owner(request: Request) -> Optional[str]:
         return get_current_user(request)
