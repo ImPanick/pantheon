@@ -18,6 +18,7 @@ a second one written here (`Law 14`).
 """
 
 import importlib.util
+import re
 from pathlib import Path
 
 from packaging.specifiers import SpecifierSet
@@ -25,6 +26,7 @@ from packaging.version import Version
 
 _REPO = Path(__file__).resolve().parents[1]
 REQUIREMENTS = _REPO / "requirements.txt"
+DEPENDABOT = _REPO / ".github" / "dependabot.yml"
 
 
 def _mcp_specifier() -> str:
@@ -58,3 +60,15 @@ def test_the_reason_for_the_ceiling_is_still_written_down():
     text = REQUIREMENTS.read_text(encoding="utf-8")
     assert "MCP SDK v2 is a" in text
     assert "servers are migrated together" in text
+
+
+def test_dependabot_does_not_group_an_mcp_major_with_safe_bumps():
+    """The exact pin protects installs; the bot also needs to respect it."""
+    text = DEPENDABOT.read_text(encoding="utf-8")
+    pip_block = re.search(
+        r"(?ms)^  - package-ecosystem: pip\n(.*?)(?=^  - package-ecosystem:|\Z)", text)
+    assert pip_block, "Dependabot no longer has a pip entry"
+    assert re.search(
+        r"(?m)^    ignore:\n      - dependency-name: [\"']?mcp[\"']?\n"
+        r"        update-types: \[[\"']version-update:semver-major[\"']\]$",
+        pip_block.group(1)), "MCP v2 must wait for a coordinated server/client migration"
