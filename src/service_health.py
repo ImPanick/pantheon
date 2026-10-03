@@ -209,7 +209,9 @@ def chromadb_health(rag_manager: Any, memory_vector: Any) -> Dict[str, Any]:
     if any(healthy):
         return _svc("chromadb", DEGRADED,
                     "One vector store is unavailable.", **meta)
-    return _svc("chromadb", DOWN, "Vector stores are unavailable.", **meta)
+    # `COPY-U-44` (P23-03): the card titles this row with the service's name;
+    # the detail says what a person loses, not the library's word for it.
+    return _svc("chromadb", DOWN, "Memory and document search are down.", **meta)
 
 
 # ── SearXNG ──

@@ -46,7 +46,7 @@ import settingsModule from './settings.js?v=20261003waveg';
 import { doorShown, isMinimized, listWindows, showWindow } from './modalManager.js?v=20261003waveg';
 import { openSkillsWindow } from './skills.js';
 import { slashCatalog, insertSlashToken, loadSkillEntries, mergeSkillEntries } from './slashAutocomplete.js';
-import { toolKeyFor, toolShown } from './ui_visibility.js';
+import { toolKeyFor, toolShown, viewerIsAdmin } from './ui_visibility.js';
 import { SETTINGS_GROUPS, searchSettingsPanels } from './settings/registry.js';
 import { controlTextFor } from './settings/search.js';
 import { topPortalZ } from './toolWindowZOrder.js';
@@ -329,13 +329,17 @@ function _settingsEntries(q) {
   let panels = [];
   try {
     panels = searchSettingsPanels(q, {
-      isAdmin: !!window._isAdmin,
+      isAdmin: viewerIsAdmin(),   // `P23-03`: auth off counts as the owner
       controlText: modal ? controlTextFor(modal) : {},
     });
   } catch (_) { panels = []; }
   return panels.map((panel) => ({
     kind: 'settings', key: 'settings:' + panel.id, label: panel.label,
-    detail: (SETTINGS_GROUPS.find((g) => g.id === panel.group) || {}).label || '',
+    // `SET-U-13`: a group the viewer's nav hides is not named to them.
+    detail: (() => {
+      const g = SETTINGS_GROUPS.find((x) => x.id === panel.group) || {};
+      return g.adminOnly && !viewerIsAdmin() ? '' : (g.label || '');
+    })(),
     run: () => settingsModule.open(panel.id),
   }));
 }

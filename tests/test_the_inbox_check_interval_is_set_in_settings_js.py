@@ -189,7 +189,8 @@ async def test_a_refused_save_leaves_the_field_as_it_was_and_says_so(served):
     page = await _settings_page(served, "await type('2');",
                                 cookie=f"{auth_routes.SESSION_COOKIE}=user-session")
     assert inbox_check_minutes() == 5
-    assert page["shown"][1] == {"value": "5", "said": "Failed to save — left unchanged.", "red": True}
+    # `SET-M-6` (P23-03): the server's own sentence, not a generic one.
+    assert page["shown"][1] == {"value": "5", "said": "Admin only. Left unchanged.", "red": True}
 
 
 def test_the_field_is_in_settings_email_for_admins_only():

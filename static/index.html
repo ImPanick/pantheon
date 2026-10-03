@@ -2009,7 +2009,6 @@
         <div data-settings-panel="ai" class="hidden">
           <div class="admin-card">
             <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Default Chat Model</h2>
-            <div class="admin-toggle-sub" style="margin-bottom:8px">The model used when creating a new chat session.</div>
             <div class="settings-col">
               <div class="settings-row">
                 <label class="settings-label">Endpoint</label>
@@ -2025,8 +2024,8 @@
             </div>
           </div>
           <div class="admin-card">
-            <h2 style="display:flex;align-items:center;gap:6px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:1px;opacity:0.6;flex-shrink:0"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>Utility Model <span style="font-size:0.72em;opacity:0.55;font-weight:normal;">(Recommended: Local Endpoint)</span></h2>
-            <div class="admin-toggle-sub" style="margin-bottom:8px">Runs background tasks (compaction, cleanup, auto-naming, retrieving memories from files) on a small/local model instead of your chat model. Leave blank to use the chat model.</div>
+            <h2 style="display:flex;align-items:center;gap:6px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:1px;opacity:0.6;flex-shrink:0"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>Utility model</h2>
+            <div class="admin-toggle-sub" style="margin-bottom:8px">Background jobs (naming, cleanup, memory extraction) on a small model. Blank = the chat model.</div>
             <div class="settings-col">
               <div class="settings-row">
                 <label class="settings-label">Endpoint</label>
@@ -2050,7 +2049,6 @@
           </div>
           <div class="admin-card">
             <h2 style="display:flex;align-items:center;gap:6px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:1px;opacity:0.6;flex-shrink:0"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>Vision<span style="flex:1"></span><label class="admin-switch" title="Analyze images with a vision-capable model"><input type="checkbox" id="set-visionEnabledToggle" checked><span class="admin-slider"></span></label></h2>
-            <div class="admin-toggle-sub" style="margin-bottom:8px">Analyze images with a vision-capable model.</div>
             <div style="display:flex;flex-direction:column;gap:0.5rem;">
               <div style="display:flex;align-items:center;gap:0.75rem;">
                 <label class="settings-label">Model</label>
@@ -2069,7 +2067,7 @@
           </div>
           <div class="admin-card">
             <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>Research Model</h2>
-            <div class="admin-toggle-sub" style="margin-bottom:8px">Model used for Deep Research, more settings under <a href="#" data-go-settings-tab="search" style="color:var(--accent, var(--red));text-decoration:underline;font-weight:600;">Search →</a></div>
+            <div class="admin-toggle-sub" style="margin-bottom:8px">More under <a href="#" data-go-settings-tab="search" style="color:var(--accent, var(--red));text-decoration:underline;font-weight:600;">Search →</a></div>
             <div class="settings-col">
               <div class="settings-row">
                 <label class="settings-label">Endpoint</label>
@@ -2090,7 +2088,6 @@
           <!-- Agent card moved to the Agent Tools tab. -->
           <div class="admin-card">
             <h2 style="display:flex;align-items:center;gap:6px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:1px;opacity:0.6;flex-shrink:0"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>Image Generation<span style="flex:1"></span><label class="admin-switch"><input type="checkbox" id="set-imgEnabledToggle"><span class="admin-slider"></span></label></h2>
-            <div class="admin-toggle-sub" style="margin-bottom:8px">Configure which model to use for image generation.</div>
             <div style="display:flex;flex-direction:column;gap:0.5rem;">
               <div style="display:flex;align-items:center;gap:0.75rem;">
                 <label class="settings-label">Model</label>
@@ -2112,7 +2109,7 @@
                throw on missing nodes; not visible to anyone. -->
           <div class="admin-card" hidden style="display:none">
             <h2 style="display:flex;align-items:center;gap:6px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>Text to Speech<span style="flex:1"></span><label class="admin-switch"><input type="checkbox" id="set-ttsEnabledToggle" checked><span class="admin-slider"></span></label></h2>
-            <div class="admin-toggle-sub" style="margin-bottom:8px">Configure TTS provider for assistant message read-aloud.</div>
+            <div class="admin-toggle-sub" style="margin-bottom:8px">Reads replies aloud.</div>
             <div style="display:flex;flex-direction:column;gap:0.5rem;">
               <div style="display:flex;align-items:center;gap:0.75rem;">
                 <label class="settings-label">Provider</label>
@@ -2251,12 +2248,7 @@
                 </select>
               </div>
               <div class="admin-toggle-sub" style="margin:-4px 0 4px;font-size:11px;opacity:0.6;line-height:1.4;">
-                Applied to SearXNG, Brave, DuckDuckGo, Google PSE and Serper.
-                Tavily has no such setting and filters at index time, and a
-                custom backend reached through the URL below keeps whatever it
-                decides for itself — so self-hosted instances stay in your
-                control. Strict also keeps a lot of low-quality spam out, which
-                is the main reason to leave it on.
+                Applies to SearXNG, Brave, DuckDuckGo, Google PSE and Serper; Tavily and custom backends keep their own. Strict also cuts spam.
               </div>
               <div id="set-searchUrlRow" class="settings-row">
                 <label class="settings-label">URL</label>
@@ -2320,7 +2312,7 @@
                 <label class="settings-label">Extract Timeout</label>
                 <div style="position:relative;width:382.5px;flex:0 0 auto;margin-left:auto;">
                   <input id="set-researchExtractTimeout" type="text" inputmode="numeric" placeholder="90 sec" class="settings-select" style="width:100%;padding-right:30px;">
-                  <span title="How long the researcher waits for a single URL to fetch and extract before giving up on it. Slow sites get skipped. Default 90 seconds." style="position:absolute;right:8px;top:50%;transform:translateY(-50%);width:16px;height:16px;border-radius:50%;border:1px solid var(--border);display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;opacity:0.55;cursor:help;user-select:none;">?</span>
+                  <span title="Per-page fetch limit; slow sites are skipped. Default 90 s." style="position:absolute;right:8px;top:50%;transform:translateY(-50%);width:16px;height:16px;border-radius:50%;border:1px solid var(--border);display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;opacity:0.55;cursor:help;user-select:none;">?</span>
                 </div>
               </div>
               <!-- H18. Two lightweight LLM calls happen BEFORE any search
@@ -2331,21 +2323,21 @@
                 <label class="settings-label">Plan Timeout</label>
                 <div style="position:relative;width:382.5px;flex:0 0 auto;margin-left:auto;">
                   <input id="set-researchPlanTimeout" type="text" inputmode="numeric" placeholder="90 sec" class="settings-select" style="width:100%;padding-right:30px;">
-                  <span title="How long to wait for the model to plan the research run, before any searching starts. Raise it if a slow local model times out here. Default 90 seconds." style="position:absolute;right:8px;top:50%;transform:translateY(-50%);width:16px;height:16px;border-radius:50%;border:1px solid var(--border);display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;opacity:0.55;cursor:help;user-select:none;">?</span>
+                  <span title="Time for the model to plan. Default 90 s." style="position:absolute;right:8px;top:50%;transform:translateY(-50%);width:16px;height:16px;border-radius:50%;border:1px solid var(--border);display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;opacity:0.55;cursor:help;user-select:none;">?</span>
                 </div>
               </div>
               <div class="settings-row">
                 <label class="settings-label">Query Timeout</label>
                 <div style="position:relative;width:382.5px;flex:0 0 auto;margin-left:auto;">
                   <input id="set-researchQueryTimeout" type="text" inputmode="numeric" placeholder="90 sec" class="settings-select" style="width:100%;padding-right:30px;">
-                  <span title="How long to wait for the model to write each set of search queries. Same reason as Plan Timeout: slow local backends need more than the old defaults. Default 90 seconds." style="position:absolute;right:8px;top:50%;transform:translateY(-50%);width:16px;height:16px;border-radius:50%;border:1px solid var(--border);display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;opacity:0.55;cursor:help;user-select:none;">?</span>
+                  <span title="Time for the model to write each query set. Default 90 s." style="position:absolute;right:8px;top:50%;transform:translateY(-50%);width:16px;height:16px;border-radius:50%;border:1px solid var(--border);display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;opacity:0.55;cursor:help;user-select:none;">?</span>
                 </div>
               </div>
               <div class="settings-row">
                 <label class="settings-label">Extract Parallel</label>
                 <div style="position:relative;width:382.5px;flex:0 0 auto;margin-left:auto;">
                   <input id="set-researchExtractConcurrency" type="text" inputmode="numeric" placeholder="3" class="settings-select" style="width:100%;padding-right:30px;">
-                  <span title="How many URLs the researcher fetches and extracts in parallel. Higher is faster but uses more memory/CPU. Default 3." style="position:absolute;right:8px;top:50%;transform:translateY(-50%);width:16px;height:16px;border-radius:50%;border:1px solid var(--border);display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;opacity:0.55;cursor:help;user-select:none;">?</span>
+                  <span title="Pages fetched at once. Default 3." style="position:absolute;right:8px;top:50%;transform:translateY(-50%);width:16px;height:16px;border-radius:50%;border:1px solid var(--border);display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;opacity:0.55;cursor:help;user-select:none;">?</span>
                 </div>
               </div>
               <div class="settings-row">
@@ -2358,6 +2350,16 @@
 
         <!-- ═══ APPEARANCE TAB ═══ -->
         <div data-settings-panel="appearance" class="settings-appearance-panel hidden">
+          <!-- `SET-U-5` / `SET-M-18` (P23-03). Colours, font, density and text
+               size live in the Theme window, and Settings search sent "font"
+               here, to a panel of show/hide switches. The door says where they
+               are; `data-search-text` lets "text size" and "larger" find it. -->
+          <div class="admin-card" style="padding-bottom:8px;" data-search-text="theme colours colors font text size larger smaller density palette">
+            <div class="settings-row" style="align-items:center;">
+              <div class="admin-toggle-sub" style="margin:0;flex:1;">Colours, font and text size are in Theme.</div>
+              <button type="button" class="admin-btn-add" id="set-open-theme">Open Theme</button>
+            </div>
+          </div>
           <div class="admin-card" style="padding-bottom:6px;">
             <h2 style="display:flex;align-items:center;gap:8px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>Sidebar<span style="flex:1"></span><button type="button" class="vis-reset-btn" data-vis-reset title="Reset this section to defaults" aria-label="Reset Sidebar to defaults" style="background:none;border:none;padding:2px 4px;cursor:pointer;color:inherit;opacity:0.55;display:inline-flex;align-items:center;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg></button></h2>
             <div class="vis-toggles">
@@ -2387,8 +2389,28 @@
                 <input type="checkbox" checked data-ui-key="email-section"><span class="vis-switch"></span>
               </label>
               <label class="vis-row">
+                <span class="vis-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span>
+                <span class="vis-label">User <span class="vis-hint">Avatar &amp; name</span></span>
+                <input type="checkbox" checked data-ui-key="user-bar"><span class="vis-switch"></span>
+              </label>
+              <label class="vis-row">
+                <span class="vis-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span>
+                <span class="vis-label">Settings cog <span class="vis-hint">Reopen with <code>/settings</code></span></span>
+                <input type="checkbox" checked data-ui-key="sidebar-settings-btn"><span class="vis-switch"></span>
+              </label>
+            </div>
+          </div>
+          <!-- `P23-03` (SET-U-1, SET-M-16). This browser's column of the one
+               table (`ui_visibility.js` `TOOL_VISIBILITY`). An admin's off
+               outranks it: a row the admin switched off is disabled and says
+               why (`settings.js` `_syncToolSwitchWhy`). -->
+          <div class="admin-card" style="padding-bottom:6px;" id="set-show-in-browser">
+            <h2 style="display:flex;align-items:center;gap:8px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>Show in this browser<span style="flex:1"></span><button type="button" class="vis-reset-btn" data-vis-reset title="Reset this section to defaults" aria-label="Reset Show in this browser to defaults" style="background:none;border:none;padding:2px 4px;cursor:pointer;color:inherit;opacity:0.55;display:inline-flex;align-items:center;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg></button></h2>
+            <div class="admin-toggle-sub" style="margin-bottom:6px">Applies to this browser. Off hides the tool from the sidebar, Ctrl+K and its commands.</div>
+            <div class="vis-toggles">
+              <label class="vis-row">
                 <span class="vis-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg></span>
-                <span class="vis-label">Tools <span class="vis-hint">Whole section (header + all tools)</span></span>
+                <span class="vis-label">Tools section</span>
                 <input type="checkbox" checked data-ui-key="tools-section"><span class="vis-switch"></span>
               </label>
               <!-- `B1044`. The key was in `UI_VIS_MAP` since `H02` with no switch. -->
@@ -2452,16 +2474,6 @@
                 <span class="vis-label">Workbench</span>
                 <input type="checkbox" checked data-ui-key="tool-workbench"><span class="vis-switch"></span>
               </label>
-              <label class="vis-row">
-                <span class="vis-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span>
-                <span class="vis-label">User <span class="vis-hint">Avatar &amp; name</span></span>
-                <input type="checkbox" checked data-ui-key="user-bar"><span class="vis-switch"></span>
-              </label>
-              <label class="vis-row">
-                <span class="vis-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span>
-                <span class="vis-label">Settings Button <span class="vis-hint">Cog next to user — re-open with <code>/settings</code></span></span>
-                <input type="checkbox" checked data-ui-key="sidebar-settings-btn"><span class="vis-switch"></span>
-              </label>
             </div>
           </div>
           <div class="admin-card" style="padding-bottom:6px;">
@@ -2484,13 +2496,13 @@
               </label>
               <label class="vis-row">
                 <span class="vis-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></span>
-                <span class="vis-label">Feature Walkthroughs <span class="vis-hint">Guided tour the first time you open a tool</span></span>
+                <span class="vis-label">First-run tours</span>
                 <input type="checkbox" checked data-ui-key="first-run-tours"><span class="vis-switch"></span>
               </label>
               <div class="vis-row vis-row-action">
                 <span class="vis-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg></span>
-                <span class="vis-label">Seen them all? <span class="vis-hint">Play every walkthrough again from the start</span></span>
-                <button type="button" id="set-replay-tours" class="vis-action-btn">Show again</button>
+                <span class="vis-label">Tours you have seen</span>
+                <button type="button" id="set-replay-tours" class="vis-action-btn">Replay</button>
               </div>
               <label class="vis-row">
                 <span class="vis-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></span>
@@ -2504,7 +2516,7 @@
               </label>
               <label class="vis-row">
                 <span class="vis-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2a7 7 0 0 0-7 7c0 3 2 5.5 4.5 7.5.7.6 1.2 1.3 1.5 2h2c.3-.7.8-1.4 1.5-2C17 14.5 19 12 19 9a7 7 0 0 0-7-7z"/><line x1="10" y1="22" x2="14" y2="22"/></svg></span>
-                <span class="vis-label">Thinking Process <span class="vis-hint">Show &lt;think&gt; collapsible bars</span></span>
+                <span class="vis-label">Thinking <span class="vis-hint">Show the model's thinking, folded</span></span>
                 <input type="checkbox" checked data-ui-key="show-thinking"><span class="vis-switch"></span>
               </label>
               <label class="vis-row">
@@ -2620,7 +2632,7 @@
           <div class="admin-card">
             <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6"><path d="M12 15.5A3.5 3.5 0 1 0 12 8a3.5 3.5 0 0 0 0 7.5Z"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06A2 2 0 1 1 7.04 4.3l.06.06A1.65 1.65 0 0 0 8.92 4a1.65 1.65 0 0 0 1-1.51V2a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82 1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>Email Settings</h2>
             <div class="settings-row" style="align-items:center;">
-              <div class="admin-toggle-sub" style="margin:0;flex:1;">Auto reply, newsletter unsubscribe, and writing style live in the Email window.</div>
+              <div class="admin-toggle-sub" style="margin:0;flex:1;">Auto-reply, unsubscribe and writing style: Email window.</div>
               <button class="admin-btn-add" id="set-email-open-library-settings" style="display:inline-flex;align-items:center;gap:6px;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="opacity:0.7"><path d="M9 18l6-6-6-6"/></svg>Open Email Settings</button>
             </div>
           </div>
@@ -2633,7 +2645,9 @@
                it exists to gate. `B42` takes that away from the agent; this is
                the control that has to exist for that to be a trade rather than
                a lockout. -->
-          <div class="admin-card">
+          <!-- `P23-03` (SET-M-6/8): admin-only, as the setting is — a non-admin's
+               switch answered 403 and said *Saved*. -->
+          <div class="admin-card admin-only">
             <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6"><path d="M20 6L9 17l-5-5"/></svg>Approving what the agent sends</h2>
             <div class="admin-toggle-sub" style="margin-bottom:8px">
               With this on, an email the agent writes waits for you. It appears
@@ -2646,10 +2660,7 @@
                 <label class="admin-switch"><input type="checkbox" id="set-emailConfirm" /><span class="admin-slider"></span></label>
               </div>
               <div class="admin-toggle-sub" style="margin:-4px 0 4px;font-size:11px;opacity:0.6;line-height:1.4;">
-                On by default, and the agent cannot turn it off — not even if
-                you ask it to in chat, because a message asking for that looks
-                the same whether it came from you or from something the agent
-                was reading. This switch is the place it can be changed.
+                On by default. The agent can't switch it off, even if asked in chat.
               </div>
               <div id="set-emailConfirmMsg" style="font-size:11px;color:color-mix(in srgb, var(--fg) 45%, transparent);"></div>
             </div>
@@ -2663,8 +2674,7 @@
           <div class="admin-card admin-only">
             <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>Checking for new mail</h2>
             <div class="admin-toggle-sub" style="margin-bottom:8px">
-              Pantheon looks in every inbox on this schedule, so a workflow that
-              starts when mail arrives runs without the Email window open.
+              How often inboxes are checked; "when mail arrives" workflows run from this.
             </div>
             <div class="settings-col">
               <div class="settings-row">
@@ -2697,7 +2707,6 @@
         <div data-settings-panel="reminders" class="hidden">
           <div class="admin-card">
             <h2 style="display:flex;align-items:center;gap:8px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>How you're reminded<span style="flex:1"></span><span id="set-reminder-test-msg" style="font-size:11px;font-weight:normal;"></span><button class="admin-btn-sm" id="set-reminder-test-btn" style="font-size:11px;font-weight:normal;display:inline-flex;align-items:center;gap:4px;"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>Test</button></h2>
-            <div class="admin-toggle-sub" style="margin-bottom:8px">Controls how fired note reminders are delivered.</div>
             <div class="settings-col">
               <div class="settings-row">
                 <label class="settings-label">Channel</label>
@@ -2734,7 +2743,7 @@
           </div>
           <div class="admin-card">
             <h2 style="display:flex;align-items:center;gap:6px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:1px;opacity:0.6;flex-shrink:0"><path d="M12 0L14.59 8.41L23 12L14.59 15.59L12 24L9.41 15.59L1 12L9.41 8.41Z"/></svg>AI Synthesis<span style="flex:1"></span><label class="admin-switch" title="Use the utility model to write reminder messages"><input type="checkbox" id="set-reminder-llm-toggle"><span class="admin-slider"></span></label></h2>
-            <div class="admin-toggle-sub" style="margin-bottom:8px">When on, the utility model writes a short, warm one-line reminder for browser, email, ntfy, and webhook reminders instead of just the raw note content.</div>
+            <div class="admin-toggle-sub" style="margin-bottom:8px">Rewrites each reminder as one friendly line.</div>
             <div class="settings-col">
               <div class="settings-row">
                 <label class="settings-label" title="Optional — write the reminder in the voice of a saved character">Persona</label>
@@ -2750,7 +2759,8 @@
           </div>
           <div class="admin-card">
             <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>Public App URL</h2>
-            <div class="admin-toggle-sub" style="margin-bottom:8px">Where this Pantheon is reachable from the outside (e.g. <code>https://chat.yourdomain.com</code>). Used to build clickable links back to Pantheon inside outgoing reminder / urgent-email emails, and — behind a reverse proxy — to build the OAuth redirect URI, which is otherwise derived from the request and comes out as <code>http://</code> on an HTTPS deployment. Overridden by the <code>OAUTH_REDIRECT_BASE_URL</code> or <code>APP_PUBLIC_URL</code> environment variables if either is set. Leave blank to omit links and derive the redirect from the request.</div>
+            <div class="admin-toggle-sub" style="margin-bottom:8px">Where this Pantheon is reachable from outside, e.g. <code>https://chat.example.com</code>. Used for links in reminder mail and, behind a proxy, the sign-in redirect. Blank: no links.</div>
+            <div class="admin-toggle-sub" style="margin:-4px 0 8px;font-size:10px;opacity:0.5;"><code>APP_PUBLIC_URL</code> or <code>OAUTH_REDIRECT_BASE_URL</code> overrides it.</div>
             <div class="settings-col">
               <div class="settings-row">
                 <label class="settings-label">URL</label>
@@ -2806,7 +2816,7 @@
 
           <!-- ── Local card ─────────────────────────────────────────── -->
           <div class="admin-card">
-            <h2 style="display:flex;align-items:center;gap:8px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6"><path d="M12 5v14"/><path d="M5 12h14"/></svg>Add Local Models <span style="opacity:0.45;font-weight:normal;font-size:0.82em">(Endpoint)</span>
+            <h2 style="display:flex;align-items:center;gap:8px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6"><path d="M12 5v14"/><path d="M5 12h14"/></svg>Add local models
               <span style="flex:1"></span>
               <button class="admin-btn-sm" id="adm-epLocalTestBtn" style="font-size:11px;font-weight:normal;display:inline-flex;align-items:center;gap:4px;">
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>Test
@@ -2851,7 +2861,7 @@
 
           <!-- ── API card ───────────────────────────────────────────── -->
           <div class="admin-card">
-            <h2 style="display:flex;align-items:center;gap:8px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6"><circle cx="11" cy="12" r="8"/><path d="M19 5v6"/><path d="M16 8h6"/><path d="M7 12h8"/></svg>Add API Models <span style="opacity:0.45;font-weight:normal;font-size:0.82em">(Endpoint)</span>
+            <h2 style="display:flex;align-items:center;gap:8px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6"><circle cx="11" cy="12" r="8"/><path d="M19 5v6"/><path d="M16 8h6"/><path d="M7 12h8"/></svg>Add API models
               <span style="flex:1"></span>
               <button class="admin-btn-sm" id="adm-epApiTestBtn" style="font-size:11px;font-weight:normal;display:inline-flex;align-items:center;gap:4px;">
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>Test
@@ -2934,7 +2944,7 @@
         <!-- ═══ ADDED MODELS TAB ═══ -->
         <div data-settings-panel="added-models" class="hidden">
           <div class="admin-card">
-            <h2 style="display:flex;align-items:center;gap:8px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6"><polyline points="20 6 9 17 4 12"/></svg>Added Models <span style="opacity:0.45;font-weight:normal;font-size:0.82em">(Endpoints)</span>
+            <h2 style="display:flex;align-items:center;gap:8px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6"><polyline points="20 6 9 17 4 12"/></svg>Added models
               <span style="flex:1"></span>
               <button class="admin-btn-sm" id="adm-epProbeAllBtn" title="Re-test every endpoint and refresh online status" style="font-size:11px;font-weight:normal;display:inline-flex;align-items:center;gap:4px;">
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>Probe
@@ -2943,7 +2953,6 @@
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>Clear offline <span id="adm-epOfflineCount" style="opacity:0.6;margin-left:2px;"></span>
               </button>
             </h2>
-            <div class="admin-toggle-sub" style="margin-bottom:12px">Endpoints you've connected. Probe re-tests them all; Clear offline removes the dead ones.</div>
             <div class="adm-ep-section">
               <div class="adm-ep-section-head" style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;opacity:0.7;margin-bottom:6px;display:inline-flex;align-items:center;gap:5px;">
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></svg>Local
@@ -2980,7 +2989,6 @@
         <div data-settings-panel="tools" class="hidden">
           <div class="admin-card" style="margin-bottom:12px;">
             <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>Agent</h2>
-            <div class="admin-toggle-sub" style="margin-bottom:8px">Controls for the agent tool loop.</div>
             <div class="settings-col">
               <div class="settings-row">
                 <label class="settings-label">Tool call limit</label>
@@ -2995,9 +3003,7 @@
                 <label class="admin-switch" title="Before accepting &quot;done&quot; on a turn that changed something, run a second pass with fresh context to check it actually happened."><input type="checkbox" id="set-agentVerifier" /><span class="admin-slider"></span></label>
               </div>
               <div class="admin-toggle-sub" style="margin:-4px 0 4px;font-size:11px;opacity:0.6;line-height:1.4;">
-                Off by default. A weak local model cannot judge its own work from
-                the action summary and will reject turns that were fine, costing
-                an extra round every time. Worth turning on for a strong model.
+                The model checks its own work. Costs a round; worth it only with a strong model.
               </div>
               <!-- H18. The trap here is that the DEFAULT VALUE IS A SENTINEL:
                    `agent_input_token_budget: 6000` means "scale the budget to
@@ -3023,10 +3029,7 @@
                 <input id="set-agentBudgetMax" type="text" inputmode="numeric" placeholder="200000" class="settings-select" style="width:200px;flex:0 0 auto;margin-left:auto;">
               </div>
               <div class="admin-toggle-sub" style="margin:-4px 0 4px;font-size:11px;opacity:0.6;line-height:1.4;">
-                The ceiling only limits the scaled budget — a fixed number you
-                type is honoured as typed. Raise it on a premium API with a very
-                large window you actually want to fill; lower it if you are
-                watching costs.
+                Caps the scaled budget. A fixed number above is used as typed.
               </div>
               <!-- P3-21 / D-2026-09-08-02. This number is the MACHINE's, not
                    the preset's. On local inference every preset's max_tokens
@@ -3043,10 +3046,7 @@
                 <input id="set-localMaxTokens" type="text" inputmode="numeric" placeholder="1000000" class="settings-select" style="width:200px;flex:0 0 auto;margin-left:auto;">
               </div>
               <div class="admin-toggle-sub" style="margin:-4px 0 4px;font-size:11px;opacity:0.6;line-height:1.4;">
-                Tokens this machine will generate for one reply when the model
-                runs locally. A preset asking for more still gets more — this
-                raises, it never truncates. Set 0 to turn the lift off and let
-                each preset use the number it ships with.
+                Most tokens a local model may write per reply. 0 = each preset's own limit.
               </div>
               <div id="set-agentMsg" style="font-size:11px;color:color-mix(in srgb, var(--fg) 45%, transparent);"></div>
             </div>
@@ -3080,10 +3080,7 @@
           <div class="admin-card" style="margin-bottom:12px;">
             <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6"><path d="M12 2a7 7 0 0 1 7 7c0 2.4-1.2 4.5-3 5.7V17a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2v-2.3C6.2 13.5 5 11.4 5 9a7 7 0 0 1 7-7z"/><line x1="10" y1="22" x2="14" y2="22"/></svg>Nightly skill audit</h2>
             <div class="admin-toggle-sub" style="margin-bottom:8px">
-              Overnight, Pantheon tests and judges a batch of the skills it has
-              checked least recently, fixing weak ones or flagging them for you.
-              It never deletes a skill. The library rotates, so each night covers
-              different ones.
+              Each night, tests the least-recently checked skills and fixes or flags the weak ones. Never deletes.
             </div>
             <div class="settings-col">
               <div class="settings-row">
@@ -3127,8 +3124,8 @@
             <div id="trust-ladder"></div>
           </div>
           <div class="admin-card" style="margin-bottom:12px;">
-            <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>Built-in Tools</h2>
-            <div class="admin-toggle-sub" style="margin-bottom:8px">Enable or disable tools available to the AI agent.</div>
+            <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>Agent tool calls</h2>
+            <div class="admin-toggle-sub" style="margin-bottom:8px">What the agent may call.</div>
             <div id="adm-builtin-tools-list" class="admin-user-list"></div>
           </div>
 
@@ -3140,11 +3137,13 @@
                instance do — at two different sizes: a feature is a whole
                surface, a tool is one call the agent can make. -->
           <div class="admin-card" style="margin-bottom:12px;">
-            <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6"><rect x="1" y="5" width="22" height="14" rx="7"/><circle cx="16" cy="12" r="3"/></svg>Features</h2>
+            <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6"><rect x="1" y="5" width="22" height="14" rx="7"/><circle cx="16" cy="12" r="3"/></svg>Switched on for everyone</h2>
+            <!-- `P23-03` (SET-U-1). The *everyone* column of the one table
+                 (`ui_visibility.js`); each row names what it hides
+                 (`admin.js` `_hidesLine`), and the card's sentence is true now
+                 (`SET-M-4/5`): Memory, RAG and Web Search hid nothing. -->
             <div class="admin-toggle-sub" style="margin-bottom:8px">
-              Whole surfaces, on or off for everyone on this instance. Turning
-              one off hides its controls and stops the agent reaching for it;
-              nothing already stored is deleted.
+              On or off for everyone. Off hides the tool and keeps its data. Others see it after their next reload.
             </div>
             <div id="adm-featureToggles"><div class="admin-empty">Loading...</div></div>
           </div>

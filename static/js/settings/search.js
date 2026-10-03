@@ -35,8 +35,12 @@ export function controlTextFor(modalEl) {
   return cached;
 }
 
-function groupLabelFor(panel) {
+/** `SET-U-13` (P23-03). A non-admin's result said "Workstation ·
+ *  Administration" — a group whose heading their nav hides. The group is named
+ *  only to someone who can see it. */
+function groupLabelFor(panel, isAdmin = true) {
   const group = SETTINGS_GROUPS.find(candidate => candidate.id === panel.group);
+  if (group?.adminOnly && !isAdmin) return '';
   return group?.label || '';
 }
 
@@ -143,7 +147,7 @@ export function bindSettingsSearch(modalEl, options = {}) {
 
       const group = document.createElement('span');
       group.className = 'settings-search-result-group';
-      group.textContent = groupLabelFor(panel);
+      group.textContent = groupLabelFor(panel, isAdmin());
 
       button.append(label, group);
       button.addEventListener('click', () => activateResult(button));

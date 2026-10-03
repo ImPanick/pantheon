@@ -6,9 +6,14 @@ import uiModule from './ui.js';
 import searchModule from './search.js';
 import { byId } from './settings/dom.js';
 import {
+  NON_ADMIN_SETTINGS_PANEL_ID,
   getSettingsRegistryIssues,
   isAdminManagedSettingsTab,
+  isAdminOnlySettingsTab,
 } from './settings/registry.js';
+// `P23-03`: the one table — who may see the admin's panels, and why a tool's
+// switch in Appearance cannot bring it back. Same specifier as `app.js`.
+import { TOOL_VISIBILITY, onToolVisibilityApplied, toolOff, toolRefusal, viewerIsAdmin } from './ui_visibility.js';
 import {
   collectMcpStdioFields,
   createMcpFieldEditor,
@@ -40,6 +45,8 @@ import { providerLogo } from './providers.js';
 import { isAltGrEvent } from './platform.js';
 import { bindMenuDismiss } from './escMenuStack.js';
 import { invalidateSettings } from './appConfig.js';
+// C-ERR: a refused response is read once, by the one reader.
+import { readRefusal } from './workbench/refusal.js';
 // H19: the Shortcuts panel reads the one registry instead of keeping a
 // second copy that disagreed with it about `toggle_sidebar`.
 import { KEYBIND_DEFAULTS, KEYBIND_LABELS } from './keyboard-shortcuts.js';
@@ -62,8 +69,9 @@ let _authPolicy = { password_min_length: 8 };
  * and edits what it reads, so it must see the authoritative state, not a cache.
  */
 async function _postSettings(body) {
+  let res;
   try {
-    return await fetch('/api/auth/settings', {
+    res = await fetch('/api/auth/settings', {
       method: 'POST',
       credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json' },
@@ -72,6 +80,28 @@ async function _postSettings(body) {
   } finally {
     invalidateSettings();
   }
+  // `SET-M-6` (P23-03). This returned the response unchecked, and 22 of its 25
+  // callers wrote *Saved* without looking: a non-admin's change answered 403
+  // "Admin only" and the panel said Saved (the email switch even flipped its
+  // status line). A refusal throws now, carrying the server's sentence — read
+  // once, by C-ERR's reader — so every caller's existing `catch` runs and
+  // `_notSaved(e)` says it.
+  if (!res.ok) {
+    const refusal = await readRefusal(res, 'Not saved.');
+    const err = new Error(refusal.sentence);
+    err.sentence = refusal.sentence;
+    err.status = refusal.status;
+    throw err;
+  }
+  return res;
+}
+
+/** What a failed save says: the server's sentence when it refused, else that
+ *  it did not answer. Never an exception's own text (C-ERR). */
+function _notSaved(e) {
+  const said = String((e && e.sentence) || '').trim();
+  if (!said) return 'Not saved: Pantheon did not answer.';
+  return /[.!?]$/.test(said) ? said : said + '.';
 }
 
 const el = byId;
@@ -348,7 +378,7 @@ function _bindFallbackWidget(opts) {
     body[settingKey] = clean;
     try {
       await _postSettings(body);
-    } catch (e) { console.warn('[fallback] save failed for ' + settingKey, e); }
+    } catch (e) { uiModule.showError(_notSaved(e)); }
   }
 
   function render() {
@@ -463,7 +493,7 @@ async function initDefaultChat() {
       });
       msg.textContent = 'Saved'; msg.style.color = 'var(--fg)';
       setTimeout(function() { msg.textContent = ''; }, 2000);
-    } catch (e) { msg.textContent = 'Failed to save'; msg.style.color = 'var(--red)'; }
+    } catch (e) { msg.textContent = _notSaved(e); msg.style.color = 'var(--red)'; }
   }
 
   _registerAiEndpointRefresh(function(endpoints) {
@@ -498,7 +528,7 @@ async function initDocStyle() {
       msg.textContent = box.value.trim() ? 'Saved.' : 'Cleared — the assistant will use its own judgement.';
       msg.style.color = 'var(--fg)';
     } catch (e) {
-      msg.textContent = 'Failed to save';
+      msg.textContent = _notSaved(e);
       msg.style.color = 'var(--red)';
     } finally { saveBtn.disabled = false; }
   });
@@ -520,7 +550,7 @@ async function initSafesearch() {
   } catch (e) { /* leaves the shipped default selected */ }
   sel.addEventListener('change', async function() {
     try { await _postSettings({ search_safesearch: sel.value }); }
-    catch (e) { console.warn('Failed to save safesearch', e); }
+    catch (e) { uiModule.showError(_notSaved(e)); }
   });
 }
 
@@ -587,7 +617,7 @@ async function initAgentBudget() {
           : 'Fixed at ' + payload.agent_input_token_budget + ' tokens.';
         msg.style.color = 'var(--fg)';
       }
-    } catch (e) { if (msg) { msg.textContent = 'Failed to save'; msg.style.color = 'var(--red)'; } }
+    } catch (e) { if (msg) { msg.textContent = _notSaved(e); msg.style.color = 'var(--red)'; } }
   }
 
   mode.addEventListener('change', save);
@@ -630,7 +660,7 @@ async function initTaskModel() {
           : 'Scheduled work uses the default chat model.';
         msg.style.color = 'var(--fg)';
       }
-    } catch (e) { if (msg) { msg.textContent = 'Failed to save'; msg.style.color = 'var(--red)'; } }
+    } catch (e) { if (msg) { msg.textContent = _notSaved(e); msg.style.color = 'var(--red)'; } }
   }
 
   epSel.addEventListener('change', function() { refreshModels(''); save(); });
@@ -685,7 +715,7 @@ async function initUtilityModel() {
       });
       msg.textContent = 'Saved'; msg.style.color = 'var(--fg)';
       setTimeout(function() { msg.textContent = ''; }, 1500);
-    } catch (e) { msg.textContent = 'Failed to save'; msg.style.color = 'var(--red)'; }
+    } catch (e) { msg.textContent = _notSaved(e); msg.style.color = 'var(--red)'; }
   }
 
   epSel.addEventListener('change', function() { refreshModels(''); saveUtility(); });
@@ -778,7 +808,7 @@ async function initTeacherModel() {
       msg.textContent = enabled ? (spec ? 'Saved' : 'Pick an endpoint + model') : 'Disabled';
       msg.style.color = enabled && !spec ? 'var(--red)' : 'var(--fg)';
       setTimeout(function() { msg.textContent = ''; }, 2000);
-    } catch (e) { msg.textContent = 'Failed to save'; msg.style.color = 'var(--red)'; }
+    } catch (e) { msg.textContent = _notSaved(e); msg.style.color = 'var(--red)'; }
   }
 
   if (enabledToggle) {
@@ -852,7 +882,7 @@ async function initImageSettings() {
       const res = await _postSettings({ image_gen_enabled: enabledToggle ? enabledToggle.checked : false, image_model: modelSel.value, image_quality: qualSel.value });
       if (!res.ok) throw new Error(await res.text().catch(() => `HTTP ${res.status}`));
       msg.textContent = 'Saved'; msg.style.color = 'var(--fg)'; setTimeout(() => { msg.textContent = ''; }, 2000);
-    } catch (e) { msg.textContent = 'Failed to save'; msg.style.color = 'var(--red)'; }
+    } catch (e) { msg.textContent = _notSaved(e); msg.style.color = 'var(--red)'; }
   }
   modelSel.addEventListener('change', saveSettings);
   qualSel.addEventListener('change', saveSettings);
@@ -925,7 +955,7 @@ async function initVisionSettings() {
     try {
       await _postSettings({ vision_enabled: enabledToggle ? enabledToggle.checked : true, vision_model: vlSel.value });
       msg.textContent = 'Saved'; msg.style.color = 'var(--fg)'; setTimeout(() => { msg.textContent = ''; }, 2000);
-    } catch (e) { msg.textContent = 'Failed to save'; msg.style.color = 'var(--red)'; }
+    } catch (e) { msg.textContent = _notSaved(e); msg.style.color = 'var(--red)'; }
   }
   vlSel.addEventListener('change', saveSettings);
   if (enabledToggle) enabledToggle.addEventListener('change', function() { syncVisionDisabled(); saveSettings(); });
@@ -1007,7 +1037,7 @@ async function initTtsSettings() {
       await _postSettings({ tts_enabled: ttsEnabledToggle ? ttsEnabledToggle.checked : true, tts_provider: provSel.value, tts_model: getModel() || 'tts-1', tts_voice: getVoice() || 'alloy', tts_speed: speedSelect.value || '1' });
       ttsMsg.textContent = 'Saved'; ttsMsg.style.color = 'var(--fg)'; setTimeout(() => { ttsMsg.textContent = ''; }, 2000);
       if (window.aiTTSManager) window.aiTTSManager.checkAvailability();
-    } catch (e) { ttsMsg.textContent = 'Failed to save'; ttsMsg.style.color = 'var(--red)'; }
+    } catch (e) { ttsMsg.textContent = _notSaved(e); ttsMsg.style.color = 'var(--red)'; }
   }
 
   async function saveAndClearCache() {
@@ -1170,7 +1200,7 @@ async function initSttSettings() {
       // Notify voiceRecorder of effective provider and update send button icon
       if (window.voiceRecorderModule) window.voiceRecorderModule._sttProvider = effectiveProvider();
       if (window._updateSendBtnIcon) window._updateSendBtnIcon();
-    } catch (e) { sttMsg.textContent = 'Failed to save'; sttMsg.style.color = 'var(--red)'; }
+    } catch (e) { sttMsg.textContent = _notSaved(e); sttMsg.style.color = 'var(--red)'; }
   }
 
   provSel.addEventListener('change', function() { updateVisibility(); saveSTT(); });
@@ -1325,7 +1355,7 @@ async function initSearchSettings() {
       msg.textContent = 'Saved'; msg.style.color = 'var(--fg)';
       setTimeout(refreshStatus, 2000);
       if (searchModule && searchModule.refresh) searchModule.refresh();
-    } catch (e) { msg.textContent = 'Failed to save'; msg.style.color = 'var(--red)'; }
+    } catch (e) { msg.textContent = _notSaved(e); msg.style.color = 'var(--red)'; }
   }
 
   provSel.addEventListener('change', function() { updateVisibility(); saveSearch(); _syncSearchPicker(); });
@@ -1476,7 +1506,7 @@ async function initSearchSettings() {
       await _postSettings({ search_fallback_chain: chain });
       msg.textContent = 'Saved'; msg.style.color = 'var(--fg)';
       setTimeout(refreshStatus, 2000);
-    } catch (e) { msg.textContent = 'Failed to save'; msg.style.color = 'var(--red)'; }
+    } catch (e) { msg.textContent = _notSaved(e); msg.style.color = 'var(--red)'; }
     _renderFallbackChain();
   }
   _renderFallbackChain();
@@ -1653,7 +1683,7 @@ async function initResearchSettings() {
       await _postSettings(payload);
       msg.textContent = 'Saved'; msg.style.color = 'var(--fg)';
       setTimeout(showStatus, 2000);
-    } catch (e) { msg.textContent = 'Failed to save'; msg.style.color = 'var(--red)'; }
+    } catch (e) { msg.textContent = _notSaved(e); msg.style.color = 'var(--red)'; }
   }
 
   epSel.addEventListener('change', async function() {
@@ -1719,7 +1749,7 @@ async function initResearchSearchSettings() {
       await _postSettings({ research_search_provider: searchSel.value });
       msg.textContent = 'Saved'; msg.style.color = 'var(--fg)';
       setTimeout(function() { msg.textContent = ''; }, 2000);
-    } catch (e) { msg.textContent = 'Failed to save'; msg.style.color = 'var(--red)'; }
+    } catch (e) { msg.textContent = _notSaved(e); msg.style.color = 'var(--red)'; }
   }
 
   searchSel.addEventListener('change', function() { updateSearchLogo(); saveResearchSearch(); });
@@ -1761,7 +1791,7 @@ async function initEmailConfirm() {
       // Put the switch back: a control that looks changed and did not save is
       // worse here than one that visibly refused.
       input.checked = !input.checked;
-      msg.textContent = 'Failed to save — left unchanged.';
+      msg.textContent = _notSaved(e) + ' Left unchanged.';
       msg.style.color = 'var(--red)';
     }
   });
@@ -1820,7 +1850,7 @@ async function initInboxCheckInterval() {
       if (stored !== asked) msg.textContent += ' (' + asked + ' is outside the range, so it was kept at ' + stored + '.)';
     } catch (e) {
       if (kept !== null) input.value = String(kept);
-      msg.textContent = 'Failed to save — left unchanged.';
+      msg.textContent = _notSaved(e) + ' Left unchanged.';
       msg.style.color = 'var(--red)';
     }
   });
@@ -1963,7 +1993,7 @@ async function initEnvBackedFlags() {
           // worse than one that visibly refused — and this group contains a
           // permission to reach a third party.
           sel.value = previous;
-          msg.textContent = 'Failed to save — left unchanged.';
+          msg.textContent = _notSaved(e) + ' Left unchanged.';
           msg.style.color = 'var(--red)';
         }
       });
@@ -2026,7 +2056,7 @@ async function initSkillAudit() {
       msg.textContent = describe(onInput.checked, hour, batch);
       msg.style.color = 'var(--fg)';
     } catch (e) {
-      msg.textContent = 'Failed to save';
+      msg.textContent = _notSaved(e);
       msg.style.color = 'var(--red)';
     }
   }
@@ -2107,7 +2137,7 @@ async function initAgentSettings() {
         (ceiling === 0 ? ' · local lift off'
           : ceiling != null ? ' · local ceiling ' + ceiling : '');
       msg.style.color = 'var(--fg)';
-    } catch (e) { msg.textContent = 'Failed to save'; msg.style.color = 'var(--red)'; }
+    } catch (e) { msg.textContent = _notSaved(e); msg.style.color = 'var(--red)'; }
   }
 
   toolsInput.addEventListener('change', save);
@@ -2150,17 +2180,17 @@ function initAppearance() {
         try {
           ok = await (uiModule && uiModule.styledConfirm
             ? uiModule.styledConfirm(
-                'Hide the Settings cog?\n\nYou can re-open this panel any time by typing /settings in the chat input.',
+                'Hide the Settings cog? Type /settings to get it back.',
                 { confirmText: 'Hide', cancelText: 'Cancel' }
               )
-            : Promise.resolve(window.confirm('Hide the Settings cog?\n\nYou can re-open this panel any time by typing /settings in the chat input.')));
+            : Promise.resolve(window.confirm('Hide the Settings cog? Type /settings to get it back.')));
         } catch (_) { ok = false; }
         if (!ok) {
           chk.checked = true;
           return;
         }
         if (uiModule && uiModule.showToast) {
-          uiModule.showToast('Settings cog hidden — type /settings to bring it back.', 5000);
+          uiModule.showToast('Hidden. /settings brings it back.', 5000);
         }
       }
 
@@ -2187,6 +2217,17 @@ function initAppearance() {
       }));
     });
   });
+
+  // `SET-U-5` (P23-03): the door to where colours, font and text size are.
+  // The Theme row's own press, so a Theme hidden in this browser says so
+  // (`ui_visibility.js`'s door guard) rather than opening.
+  var themeDoor = modalEl.querySelector('#set-open-theme');
+  if (themeDoor) {
+    themeDoor.addEventListener('click', function() {
+      var btn = document.getElementById('tool-theme-btn');
+      if (btn) btn.click();
+    });
+  }
 
   // Per-section reset buttons (arrow-circle-back icon in each card's h2).
   // Removes only the keys belonging to this section from the persisted
@@ -2215,7 +2256,43 @@ function syncAppearanceCheckboxes() {
   modalEl.querySelectorAll('[data-ui-key]').forEach(function(chk) {
     var key = chk.dataset.uiKey;
     chk.checked = key in s ? s[key] !== false : !defaultOff.has(key);
+    _syncToolSwitchWhy(chk, key);
   });
+}
+
+/* `P23-03`. A row in *Show in this browser* whose tool an admin switched off —
+   for everyone, for this person, or because it is for admins — cannot bring it
+   back (an admin's off outranks a browser's on). The switch says so instead of
+   flipping and changing nothing: it is disabled, and the row carries the
+   server's sentence. */
+var _UI_KEY_TOOL = Object.fromEntries(Object.entries(TOOL_VISIBILITY)
+  .filter(function(e) { return !!e[1].ui; })
+  .map(function(e) { return [e[1].ui, e[0]]; }));
+
+// A switch an admin flips applies on their own page at once (`SET-M-12`); the
+// rows above follow it while Settings is open.
+onToolVisibilityApplied(function() { if (modalEl) syncAppearanceCheckboxes(); });
+
+function _syncToolSwitchWhy(chk, key) {
+  var tool = _UI_KEY_TOOL[key];
+  if (!tool) return;
+  var off = toolOff(tool);
+  var locked = off === 'everyone' || off === 'admin' || off === 'person';
+  chk.disabled = locked;
+  var row = chk.closest ? chk.closest('.vis-row') : null;
+  if (!row) return;
+  var why = row.querySelector('.vis-why');
+  if (!locked) { if (why) why.remove(); row.removeAttribute('title'); return; }
+  var said = toolRefusal(tool);
+  if (!why) {
+    why = document.createElement('span');
+    why.className = 'vis-hint vis-why';
+    var label = row.querySelector('.vis-label');
+    if (label) label.appendChild(why);
+  }
+  why.textContent = off === 'everyone' ? 'Off for everyone'
+    : off === 'admin' ? 'Admins only' : 'Off for your account';
+  row.setAttribute('title', said);
 }
 
 function syncPrivacyCheckboxes() {
@@ -2487,7 +2564,7 @@ async function initShortcuts() {
       window._pantheonKeybinds = keybinds;
       if (uiModule && uiModule.showToast) uiModule.showToast('Shortcut saved');
     } catch (e) {
-      console.error('Failed to save keybinds:', e);
+      uiModule.showError(_notSaved(e));
     }
   }
 
@@ -2765,7 +2842,7 @@ function initAll() {
   });
 
   bindSettingsSearch(modalEl, {
-    isAdmin: () => !!window._isAdmin,
+    isAdmin: () => viewerIsAdmin(),
     openPanel(tab) {
       const button = modalEl.querySelector(`[data-settings-tab="${tab}"]`);
       if (button) button.click();
@@ -2870,8 +2947,8 @@ async function initReminderSettings() {
             pubUrlMsg.style.color = 'var(--green,#50fa7b)';
             setTimeout(() => { pubUrlMsg.textContent = ''; }, 2000);
           }
-        } catch (_) {
-          if (pubUrlMsg) { pubUrlMsg.textContent = 'Save failed'; pubUrlMsg.style.color = 'var(--red)'; }
+        } catch (e) {
+          if (pubUrlMsg) { pubUrlMsg.textContent = _notSaved(e); pubUrlMsg.style.color = 'var(--red)'; }
         }
       }, 600);
     });
@@ -3163,7 +3240,7 @@ async function initReminderSettings() {
   async function save(patch) {
     try {
       await _postSettings(patch);
-    } catch (e) { console.warn('Failed to save reminder settings', e); }
+    } catch (e) { uiModule.showError(_notSaved(e)); }
   }
 
   channelSel.addEventListener('change', () => {
@@ -6641,7 +6718,10 @@ async function initUnifiedIntegrations() {
 /* ── Admin visibility sync ── */
 function syncAdminVisibility() {
   if (!modalEl) return;
-  const isAdmin = !!window._isAdmin;
+  // `P23-03`. A signed-in non-admin, not "anyone `window._isAdmin` is not
+  // true for": with auth off that is the install's one operator, whom the
+  // server's `require_admin` lets in.
+  const isAdmin = viewerIsAdmin();
   modalEl.querySelectorAll('.admin-only').forEach(el => {
     el.style.display = isAdmin ? '' : 'none';
   });
@@ -6660,6 +6740,15 @@ export function open(tab) {
     if (!shown) return;
   }
   if (!initialized) initAll();
+
+  // `SET-U-2` (P23-03). A non-admin opened onto *Add Models* — two forms that
+  // answered "Admin only" — and every admin-only panel is out of their nav
+  // now; one they are sent to (a stale active tab, `/settings ai`) lands on
+  // Account instead.
+  if (!viewerIsAdmin()) {
+    const asked = tab || getActiveSettingsTab(modalEl);
+    if (isAdminOnlySettingsTab(asked)) tab = NON_ADMIN_SETTINGS_PANEL_ID;
+  }
 
   syncAppearanceCheckboxes();
   showSettingsModal(modalEl);

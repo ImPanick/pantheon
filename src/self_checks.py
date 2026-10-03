@@ -181,9 +181,11 @@ def embedding_availability() -> Dict[str, Any]:
                       action="Nothing to do — you have permitted the download.")
     return _check(
         "embedding_availability", "Memory and knowledge search", STUCK,
-        "Memory and knowledge search return nothing: there is no embedding lane.",
-        action="Point EMBEDDING_URL at a local embedding server (Ollama serves one), or "
-               "turn on allow_model_download to fetch the ~90MB model once.",
+        # `COPY-M-8` (P23-03). This named the two settings by their keys
+        # (`EMBEDDING_URL`, `allow_model_download`); a person looks for labels.
+        "Memory and document search find nothing: no embedding model.",
+        action="Set a Remote embedding endpoint (Settings → Embeddings) or allow "
+               "Download models from the internet (Settings → System).",
     )
 
 

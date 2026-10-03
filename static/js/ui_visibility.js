@@ -445,6 +445,13 @@ export function applyToolVisibility(patch = {}, doc = (typeof document !== 'unde
   return _hidden;
 }
 
+/** May the person signed in see the admin's Settings? `false` only for a
+ *  signed-in non-admin: unknown, and an install with auth off (where the
+ *  server's `require_admin` lets its one operator in), count as the owner. */
+export function viewerIsAdmin() {
+  return _state.isAdmin !== false;
+}
+
 /** A read-only view of what is known, for the Settings rows that explain a
  *  switch they cannot undo. */
 export function toolVisibilityState() {
