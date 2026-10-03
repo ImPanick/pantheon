@@ -4489,7 +4489,8 @@ export function addMessage(role, content, modelName, metadata) {
     if (metadata?.edited) {
       const editedIndicator = document.createElement('div');
       editedIndicator.className = 'edited-indicator';
-      editedIndicator.textContent = '[Message edited]';
+      // `P23-04` (§ 5): said as the stopped line is — a word, not a bracket.
+      editedIndicator.textContent = 'Edited';
       b.appendChild(editedIndicator);
     }
 

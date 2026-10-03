@@ -175,3 +175,23 @@ def test_the_worded_controls_are_drawn_at_their_lines_size():
     line at the page's body size, larger than the card it sits in."""
     assert "font-size: 1em;" in _rule(".stopped-indicator:not(.rounds-exhausted) > .continue-btn")
     assert "font-size: 10.5px;" in _rule(".ask-user-scope-note")
+
+
+def test_an_edited_reply_says_edited(card_sandbox):
+    """Found by this row: "[Message edited]" in brackets beside the stopped
+    line's plain words. The reload's marker is read here; the live edit's
+    (`chat.js`) is the same literal, read in its own function."""
+    out = _card("""
+        const shim = await import('./shim.js');
+        shim.history.childNodes = [];
+        addMessage('assistant', 'The answer.', 'm', { edited: true });
+        console.log(JSON.stringify(shim.history.querySelectorAll('.edited-indicator').map((n) => n.textContent)));
+    """, card_sandbox)
+    assert out == ["Edited"]
+    from pathlib import Path
+    from tests.helpers.js_source import js_definition
+    from tests.helpers.source_text import blank_text
+    src = (Path(__file__).resolve().parents[1] / "static" / "js" / "chat.js").read_text(encoding="utf-8")
+    code = blank_text(src, "js")
+    edit = js_definition(src, code.index("export async function editAIMessage("))
+    assert "indicator.textContent = 'Edited';" in edit and "[Message edited]" not in edit

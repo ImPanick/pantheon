@@ -8296,7 +8296,7 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
         if (!msgElement.querySelector('.edited-indicator')) {
           const indicator = document.createElement('div');
           indicator.className = 'edited-indicator';
-          indicator.textContent = '[Message edited]';
+          indicator.textContent = 'Edited';   // `P23-04` (§ 5): as a reload draws it
           body.parentNode.insertBefore(indicator, body.nextSibling);
         }
 
