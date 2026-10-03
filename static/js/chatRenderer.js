@@ -108,8 +108,12 @@ export function memoryPillParts(mems) {
   const pinned = list.filter(m => m && m.type === 'pinned').length;
   const recalled = list.filter(m => m && m.type === 'recalled').length;
   const parts = [];
-  if (pinned) parts.push(`${pinned} pinned`);
-  if (recalled) parts.push(`${recalled} recalled`);
+  // `P23-04` (CHAT-U-17): "1 memory", not "1 recalled". The pinned /
+  // recalled split is in the pill's tooltip and its popup. The keyword-only
+  // warning stays on the pill (`B61`: it is the one sign that semantic recall
+  // did not run, and a warning in a tooltip is a warning nobody reads).
+  const total = pinned + recalled;
+  if (total) parts.push(`${total} memor${total === 1 ? 'y' : 'ies'}`);
   if (memoryRecallDegraded(list)) parts.push('keyword only');
   return parts;
 }
@@ -2979,9 +2983,15 @@ export function displayMetrics(messageElement, metrics) {
 
   // Keep token counts in the Message Stats popup; the footer should stay slim.
   const costStr0 = cost !== null ? `$${cost < 0.01 ? cost.toFixed(4) : cost.toFixed(3)}` : null;
-  const hasTps = tps != null && tps !== 'undefined';
+  // `P23-04` (CHAT-U-17). A speed is said as a whole number ("615 tok/s",
+  // not "615.32"), and not at all for a reply too short to have one — a
+  // three-word placeholder read "1331.59 tok/s". The exact figure stays in
+  // the Message Stats popup.
+  const tpsNum = Number(tps);
+  const hasTps = tps != null && tps !== 'undefined' && Number.isFinite(tpsNum) && tpsNum > 0
+    && !(outputTokens && outputTokens < 20);
   const metricsLabel = hasTps
-    ? `${tps} tok/s`
+    ? `${Math.round(tpsNum).toLocaleString()} tok/s`
     : costStr0
       ? costStr0
       : responseTime != null
@@ -3126,7 +3136,9 @@ export function displayMetrics(messageElement, metrics) {
   // Context usage ring
   let ctxRing = null;
   const ctxLen = metrics.context_length || 0;
-  if (ctxPct !== undefined && ctxPct > 0) {
+  // `P23-04` (CHAT-U-17): no grey "0%" wheel under every short reply — the
+  // composer's wheel is the window; this one shows only when it says something.
+  if (ctxPct !== undefined && Math.round(ctxPct) >= 1) {
     const r = 6, stroke = 1.5;
     const circ = 2 * Math.PI * r;
     const fill = circ * (ctxPct / 100);
@@ -3546,6 +3558,9 @@ export function approvalExpiryLine(expiresAt) {
     line.textContent = mins > 0
       ? `Expires in ${mins}m ${String(secs).padStart(2, '0')}s`
       : `Expires in ${secs}s`;
+    // `P23-04` (CHAT-U-11): the clock shows in its last minute; a ten-minute
+    // countdown ticking on every card was one more line to read.
+    line.hidden = left >= 60;
     return true;
   };
   if (paint()) {
@@ -3554,6 +3569,26 @@ export function approvalExpiryLine(expiresAt) {
     }, 1000);
   }
   return line;
+}
+
+/**
+ * `P23-04` (CHAT-U-11). The approval card asks the question its action is
+ * about — *Let it read your private data?* — from the ranked lead effect the
+ * payload already carries (`effect_label`, `P7-06`), rather than the same
+ * "Allow this task to continue?" on every card. The payload's `question`
+ * stays what the model is shown and the fallback when no effect was named.
+ */
+export function approvalTitle(aq) {
+  const q = aq || {};
+  const lead = typeof q.effect_label === 'string' ? q.effect_label.trim() : '';
+  if (q.kind !== 'tool_approval' || !lead) return String(q.question || '');
+  const words = lead.split(/\s+/);
+  let verb = words[0];
+  if (/^can$/i.test(verb) && words.length > 1) { words.shift(); verb = words[0]; }
+  else if (/(?:ch|sh|x|ss)es$/i.test(verb)) verb = verb.slice(0, -2);
+  else if (/s$/i.test(verb) && !/ss$/i.test(verb)) verb = verb.slice(0, -1);
+  words[0] = verb.toLowerCase();
+  return `Let it ${words.join(' ')}?`;
 }
 
 export function renderAskUserCard(payload, options) {
@@ -3595,7 +3630,10 @@ export function renderAskUserCard(payload, options) {
   const question = document.createElement('div');
   question.className = 'ask-user-question';
   question.id = `ask-user-q-${Date.now()}-${Math.floor(Math.random() * 1e4)}`;
-  question.innerHTML = emojiText(aq.question);
+  // `P23-04` (CHAT-U-11): an approval asks about its action; the seal's
+  // fingerprint is the title's tooltip, not a line in the card.
+  question.innerHTML = emojiText(isToolApproval ? approvalTitle(aq) : aq.question);
+  if (isToolApproval && aq.action && aq.action.digest) question.title = `Approval fingerprint: ${aq.action.digest}`;
   card.appendChild(question);
   card.setAttribute('aria-labelledby', question.id);
 
@@ -3658,7 +3696,6 @@ export function renderAskUserCard(payload, options) {
       aq.action.document_version != null
         ? `Document version: ${aq.action.document_version}`
         : '',
-      aq.action.digest ? `Approval fingerprint: ${aq.action.digest}` : '',
     ].filter(Boolean).join('\n');
     action.style.whiteSpace = 'pre-wrap';
     card.appendChild(action);
@@ -3698,7 +3735,9 @@ export function renderAskUserCard(payload, options) {
   opts.forEach((opt) => {
     const label = (opt && opt.label) ? String(opt.label) : String(opt || '');
     if (!label) return;
-    const description = (opt && opt.description) ? String(opt.description) : '';
+    // `P23-04` (CHAT-U-11): an approval's buttons are their labels; what
+    // separates *this task* from *this chat* is said once, under them.
+    const description = (!isToolApproval && opt && opt.description) ? String(opt.description) : '';
     const row = document.createElement(multi ? 'label' : 'button');
     row.className = 'ask-user-option';
     if (multi) {
@@ -3771,6 +3810,13 @@ export function renderAskUserCard(payload, options) {
     list.appendChild(row);
   });
 
+  if (isToolApproval) {
+    const scope = document.createElement('div');
+    scope.className = 'ask-user-scope-note';
+    scope.textContent = 'This task stops at the end of this request; this chat stops asking here again.';
+    card.appendChild(scope);
+  }
+
   const other = document.createElement('div');
   other.className = 'ask-user-other';
   const otherInput = document.createElement('input');
@@ -3812,6 +3858,29 @@ export function renderAskUserCard(payload, options) {
     try { card.focus(); } catch (_) {}
   }
   return card;
+}
+
+/** `P23-04` (CHAT-U-18). The line under a reply the person stopped: one
+ *  link-button, *Stopped · Continue* — it was "[Message interrupted]" in
+ *  brackets beside a bare "▸" titled Continue. With no `onContinue` (a reply
+ *  stopped before it said anything) it says *Stopped* and offers nothing.
+ *  The live Stop, the reader's catch and a reload all draw it from here. */
+export function buildStoppedIndicator(doc, onContinue) {
+  const box = doc.createElement('div');
+  box.className = 'stopped-indicator';
+  if (typeof onContinue !== 'function') {
+    const label = doc.createElement('span');
+    label.textContent = 'Stopped';
+    box.appendChild(label);
+    return box;
+  }
+  const btn = doc.createElement('button');
+  btn.type = 'button';
+  btn.className = 'continue-btn';
+  btn.textContent = 'Stopped · Continue';
+  btn.addEventListener('click', () => { box.remove(); onContinue(); });
+  box.appendChild(btn);
+  return box;
 }
 
 /** `P23-04` (CHAT-M-8). Take away the row that asked for the approval with
@@ -4355,24 +4424,9 @@ export function addMessage(role, content, modelName, metadata) {
 
     // Add stopped indicator + continue button for messages that were stopped by user
     if (role === 'assistant' && metadata?.stopped) {
-      const stoppedIndicator = document.createElement('div');
-      stoppedIndicator.className = 'stopped-indicator';
-      const stoppedLabel = document.createElement('span');
       // Differentiate between "stopped mid-stream" (had content, can continue)
       // and "cancelled before any content" — the latter has no Continue affordance.
-      stoppedLabel.textContent = metadata.cancelled
-        ? '[Cancelled by user]'
-        : '[Message interrupted]';
-      stoppedIndicator.appendChild(stoppedLabel);
-      // Continue button only makes sense when there's partial content to
-      // resume from \u2014 skip it for fully-cancelled (empty) turns.
-      if (!metadata.cancelled) {
-        const continueBtn = document.createElement('button');
-        continueBtn.className = 'continue-btn';
-        continueBtn.title = 'Continue';
-        continueBtn.textContent = '\u25B8';
-        continueBtn.addEventListener('click', () => {
-          stoppedIndicator.remove();
+      const stoppedIndicator = buildStoppedIndicator(document, metadata.cancelled ? null : () => {
           if (window.chatModule) {
             window.chatModule.setHideUserBubble();
             window.chatModule.setPendingContinue(wrap);
@@ -4386,8 +4440,6 @@ export function addMessage(role, content, modelName, metadata) {
             }
           }
         });
-        stoppedIndicator.appendChild(continueBtn);
-      }
       b.appendChild(stoppedIndicator);
     }
 
@@ -4526,6 +4578,8 @@ export function addMessage(role, content, modelName, metadata) {
 }
 
 const chatRenderer = {
+  buildStoppedIndicator,   // `P23-04` (CHAT-U-18)
+  dropAskedTwin,           // `P23-04` (CHAT-M-8)
   shortModel,
   sameModelName,
   modelRouteLabel,

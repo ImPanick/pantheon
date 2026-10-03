@@ -453,7 +453,8 @@ def test_a_pinned_memory_never_raises_a_search_warning_whatever_engine_it_carrie
 def test_the_warning_actually_reaches_the_pill():
     # The recipe, not the ingredient. The helper can be perfect and the pill
     # still say nothing, which is exactly what the row is about.
-    assert _pill_parts([{"type": "recalled", "engine": "keyword"}]) == ["1 recalled", "keyword only"]
+    # `P23-04` (CHAT-U-17): the count is "1 memory"; the warning still reaches the pill.
+    assert _pill_parts([{"type": "recalled", "engine": "keyword"}]) == ["1 memory", "keyword only"]
 
 
 @_needs_node
@@ -462,9 +463,9 @@ def test_the_pill_counts_before_it_warns():
     # qualifier on it. "keyword only, 2 recalled" reads as a different claim.
     parts = _pill_parts([{"type": "pinned", "engine": "pinned"},
                          {"type": "recalled", "engine": "keyword"}])
-    assert parts == ["1 pinned", "1 recalled", "keyword only"]
+    assert parts == ["2 memories", "keyword only"]
 
 
 @_needs_node
 def test_a_healthy_run_says_nothing_extra():
-    assert _pill_parts([{"type": "recalled", "engine": "vector"}]) == ["1 recalled"]
+    assert _pill_parts([{"type": "recalled", "engine": "vector"}]) == ["1 memory"]

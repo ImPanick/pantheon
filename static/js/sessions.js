@@ -1948,6 +1948,14 @@ export async function selectSession(id, { keepSidebar = false, showLoading = tru
       if (presetsModule && presetsModule.onSessionSwitch) presetsModule.onSessionSwitch(id);
     } catch (e) {}
     const meta = sessions.find(s => s.id === id);
+    // `P23-04` (CHAT-M-19, CHAT-U-3). A chat opens in the mode it last ran in:
+    // an agent chat opened with Chat selected, because the toggle was one
+    // global preference. Only on a switch, so re-reading the open chat (after
+    // a reply) never undoes a toggle the person just made.
+    if (prevSessionId !== id && meta && (meta.mode === 'agent' || meta.mode === 'chat')
+        && typeof window.__pantheonSetChatMode === 'function') {
+      try { window.__pantheonSetChatMode(meta.mode); } catch (_) {}
+    }
 
     // Detach any in-flight stream to background instead of aborting
     try {

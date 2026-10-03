@@ -1134,11 +1134,10 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
       // and the user sees nothing fly out.
       setTimeout(() => {
         if (submitBtn.dataset.mode !== 'streaming') return;
-        const msgInput = uiModule.el('message');
-        const hasQueuedText = !!(msgInput && msgInput.value && msgInput.value.trim());
-        submitBtn.innerHTML = hasQueuedText && icons ? icons.send : _stopSvg;
-        submitBtn.dataset.phase = hasQueuedText ? 'queue' : 'processing';
-        submitBtn.title = hasQueuedText ? 'Queue message' : 'Stop generation';
+        // `P23-04` (CHAT-U-8): Stop while anything streams; Enter queues a draft.
+        submitBtn.innerHTML = _stopSvg;
+        submitBtn.dataset.phase = 'processing';
+        submitBtn.title = 'Stop generation';
         submitBtn.classList.remove('anim-launch');
         void submitBtn.offsetWidth;
         submitBtn.classList.add('anim-land');
@@ -2273,19 +2272,10 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
         });
       }
       
-      // Add the stopped indicator with continue button
-      const stoppedIndicator = document.createElement('div');
-      stoppedIndicator.className = 'stopped-indicator';
-      const stoppedLabel = document.createElement('span');
-      stoppedLabel.textContent = '[Message interrupted]';
-      stoppedIndicator.appendChild(stoppedLabel);
-      const continueBtn = document.createElement('button');
-      continueBtn.className = 'continue-btn';
-      continueBtn.title = 'Continue';
-      continueBtn.textContent = '\u25B8';
+      // Add the stopped indicator with continue button (`P23-04` CHAT-U-18:
+      // one "Stopped · Continue", from the builder a reload draws with too)
       const _stoppedHolder = _stoppedViewHolder; // capture before globals are cleared
-      continueBtn.addEventListener('click', () => {
-        stoppedIndicator.remove();
+      const stoppedIndicator = chatRenderer.buildStoppedIndicator(document, () => {
         _hideUserBubble = true;
         _pendingContinue = _stoppedHolder;
         _pendingContinueSteps = false;   // `B941`: a stopped reply's text
@@ -2297,7 +2287,6 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
           if (sb) sb.click();
         }
       });
-      stoppedIndicator.appendChild(continueBtn);
       _stoppedViewHolder.querySelector('.body').appendChild(stoppedIndicator);
 
       // Tell server to mark this message as stopped
@@ -5633,17 +5622,8 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
           // interruption controls here so each terminal path renders once.
           if (_catchViewHolder && accumulated && currentHolder) {
             _catchViewHolder.dataset.raw = accumulated;
-            const stoppedIndicator = document.createElement('div');
-            stoppedIndicator.className = 'stopped-indicator';
-            const stoppedLabel = document.createElement('span');
-            stoppedLabel.textContent = '[Message interrupted]';
-            stoppedIndicator.appendChild(stoppedLabel);
-            const continueBtn = document.createElement('button');
-            continueBtn.className = 'continue-btn';
-            continueBtn.title = 'Continue';
-            continueBtn.textContent = '\u25B8';
-            continueBtn.addEventListener('click', () => {
-              stoppedIndicator.remove();
+            // `P23-04` (CHAT-U-18): the one "Stopped · Continue" builder.
+            const stoppedIndicator = chatRenderer.buildStoppedIndicator(document, () => {
               _hideUserBubble = true;
               _pendingContinue = _catchViewHolder;
               _pendingContinueSteps = false;   // `B941`: a stopped reply's text
@@ -5655,7 +5635,6 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
                 if (sb) sb.click();
               }
             });
-            stoppedIndicator.appendChild(continueBtn);
             _catchViewHolder.querySelector('.body').appendChild(stoppedIndicator);
 
             // Tell server to mark this message as stopped
@@ -6060,14 +6039,9 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
     const body = holder.querySelector('.body');
     if (body) {
       body.innerHTML = '';
-      const indicator = document.createElement('div');
-      indicator.className = 'stopped-indicator';
-      const label = document.createElement('span');
-      label.style.fontStyle = 'italic';
-      label.style.opacity = '0.7';
-      label.textContent = '[Cancelled by user]';
-      indicator.appendChild(label);
-      body.appendChild(indicator);
+      // `P23-04` (CHAT-U-18): "Stopped", from the one builder; nothing to
+      // continue from a reply that never started.
+      body.appendChild(chatRenderer.buildStoppedIndicator(document, null));
     }
     if (typeof createMsgFooter === 'function' && !holder.querySelector('.msg-footer')) {
       holder.appendChild(createMsgFooter(holder));

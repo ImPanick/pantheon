@@ -4037,20 +4037,16 @@ function startPantheonApp() {
     return fileHandlerModule.getPendingCount && fileHandlerModule.getPendingCount() > 0;
   }
 
+  // `P23-04` (CHAT-U-8). While a reply streams the button is Stop, whatever
+  // is in the box: typing used to turn it into "Queue", so there was no Stop
+  // while you had a draft. Enter queues the draft (the composer's keydown).
   function _updateStreamingSubmitButton() {
     if (!sendBtn || sendBtn.dataset.mode !== 'streaming') return false;
-    const hasText = messageInput && messageInput.value.trim().length > 0;
-    const nextPhase = hasText ? 'queue' : 'processing';
-    if (sendBtn.dataset.phase === nextPhase) return true;
-    sendBtn.dataset.phase = nextPhase;
+    if (sendBtn.dataset.phase === 'processing' && sendBtn.title === 'Stop generation') return true;
+    sendBtn.dataset.phase = 'processing';
     sendBtn.classList.remove('mic-mode', 'newchat-mode', 'newchat-expanded', 'anim-spin', 'anim-launch', 'anim-land');
-    if (hasText) {
-      sendBtn.innerHTML = _sendIcon;
-      sendBtn.title = 'Queue message';
-    } else {
-      sendBtn.innerHTML = _stopIcon;
-      sendBtn.title = 'Stop generation';
-    }
+    sendBtn.innerHTML = _stopIcon;
+    sendBtn.title = 'Stop generation';
     return true;
   }
 
@@ -4082,28 +4078,16 @@ function startPantheonApp() {
         newMode = 'idle';
         sendBtn.classList.remove('mic-mode', 'newchat-mode', 'newchat-expanded');
       } else {
-      // Check if we're already on a fresh empty session (welcome screen visible)
-      const isEmptySession = document.getElementById('chat-container')?.classList.contains('welcome-active');
-      if (isEmptySession) {
-        // Already on new chat — show arrow in muted style (ready to type)
-        sendBtn.innerHTML = _sendIcon;
-        sendBtn.title = 'Send message';
-        newMode = 'idle';
-        sendBtn.classList.add('newchat-mode'); // muted gray style
-        sendBtn.classList.remove('mic-mode', 'newchat-expanded');
-        clearTimeout(sendBtn._expandTimer);
-      } else {
-        sendBtn.innerHTML = _newChatIcon + '<span class="send-btn-label">+ New</span>';
-        sendBtn.title = 'New chat';
-        newMode = 'newchat';
-        sendBtn.classList.add('newchat-mode');
-        sendBtn.classList.remove('mic-mode');
-        // The button stays a 32px compact icon (no auto-expand to label —
-        // the "+ New" label inside is for screen readers only; sighted users
-        // see the spinning + on hover + the title tooltip).
-        clearTimeout(sendBtn._expandTimer);
-        sendBtn.classList.remove('newchat-expanded');
-      }
+      // `P23-04` (CHAT-U-8). An empty box shows the send arrow, muted — on
+      // a fresh chat and on an open one alike. It used to be "+ New" on an
+      // open chat, so a mis-click while reading started a new chat, and it
+      // sat exactly where Stop had been. New chat lives in the sidebar.
+      sendBtn.innerHTML = _sendIcon;
+      sendBtn.title = 'Send message';
+      newMode = 'idle';
+      sendBtn.classList.add('newchat-mode'); // muted gray style
+      sendBtn.classList.remove('mic-mode', 'newchat-expanded');
+      clearTimeout(sendBtn._expandTimer);
       } // close group-else
     } else {
       newMode = 'send';
@@ -4158,25 +4142,8 @@ function startPantheonApp() {
       const hasFiles = _hasAttachments();
 
       if (sendBtn.dataset.mode === 'streaming') {
-        if (hasText) window.__pantheonQueueStreamingSubmit = Date.now();
+        // `P23-04` (CHAT-U-8): a click on Stop stops, draft or no draft.
         handleSubmit(e);
-        return;
-      }
-
-      // New chat mode — empty input, no attachments, no STT
-      if (!hasText && !hasFiles && sendBtn.dataset.mode === 'newchat') {
-        if (sessionModule) {
-          const sessions = sessionModule.getSessions();
-          const currentId = sessionModule.getCurrentSessionId();
-          const current = sessions.find(s => s.id === currentId);
-          if (current && current.endpoint_url && current.model) {
-            sessionModule.createDirectChat(current.endpoint_url, current.model, current.endpoint_id);
-          } else {
-            // Fallback to rail button
-            const railNew = el('rail-new-session');
-            if (railNew) railNew.click();
-          }
-        }
         return;
       }
 
@@ -4211,11 +4178,6 @@ function startPantheonApp() {
         // text state. Without this, a fast type-and-Enter would still see the
         // stale 'newchat' mode and open a new chat instead of sending.
         try { _updateSendBtnIcon(); } catch {}
-        if (sendBtn && sendBtn.dataset.mode === 'newchat') {
-          const railNew = el('rail-new-session');
-          if (railNew) railNew.click();
-          return;
-        }
         if (_isForegroundChatBusy() && messageInput.value && messageInput.value.trim()) {
           if (chatModule && chatModule.queueStreamingComposerRequest && chatModule.queueStreamingComposerRequest()) {
             return;
