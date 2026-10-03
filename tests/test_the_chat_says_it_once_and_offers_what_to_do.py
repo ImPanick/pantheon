@@ -289,3 +289,38 @@ def test_the_pickers_forge_door_never_writes_a_dead_address(sandbox):
         console.log(JSON.stringify({ hash: location.hash, clicked }));
     """ % fn)
     assert out == {"hash": "", "clicked": 1}
+
+
+def test_the_picker_dims_an_endpoint_that_did_not_answer_even_before_it_loaded(sandbox):
+    """CHAT-M-23, driven on the showcase: the reply failed before the picker
+    had loaded its list, so marking the list's entries marked nothing and the
+    dead endpoint was offered as up. The address is kept; the picker's own
+    `_getAllModels` dims every model on it, and a refresh's probe replaces it."""
+    src = (JS / "modelPicker.js").read_text(encoding="utf-8")
+    code = blank_text(src, "js")
+
+    def cut(anchor):
+        assert code.count(anchor) == 1, anchor
+        return js_definition(src, code.index(anchor))
+
+    listener = cut("(ev) => {\n      const base = String((ev && ev.detail && ev.detail.url)")
+    out = _run(sandbox, _PRE, """
+        let _localProbe = {}, _localProbeFetchedAt = 123;
+        const _unansweredBases = new Set();
+        const sortModelObjects = (x) => x;
+        let items = [];
+        globalThis.window.modelsModule = { getCachedItems: () => items };
+        %s
+        %s
+        const onUnanswered = %s;
+        onUnanswered({ detail: { url: 'http://127.0.0.1:9' } });   // the list is still empty
+        items = [{ endpoint_id: 'e1', url: 'http://127.0.0.1:9/v1', models: ['office-llm'], category: 'local' },
+                 { endpoint_id: 'e2', url: 'http://127.0.0.1:90/v1', models: ['other'], category: 'local' }];
+        const rows = _getAllModels().map((r) => [r.mid, r.stale, r.staleReason]);
+        _unansweredBases.clear();   // what the refresh's probe does
+        const after = _getAllModels().map((r) => [r.mid, r.stale]);
+        console.log(JSON.stringify({ rows, after, refetch: _localProbeFetchedAt }));
+    """ % (cut("function _unansweredFor("), cut("function _getAllModels("), listener))
+    assert out["rows"] == [["office-llm", True, "not answering"], ["other", False, ""]]
+    assert out["after"] == [["office-llm", False], ["other", False]]
+    assert out["refetch"] == 0, "the refresh button must ask again"

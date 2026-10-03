@@ -271,7 +271,7 @@ function _initModelPickerDropdown() {
     _localProbeFetchedAt = now;
     try {
       const r = await fetch('/api/model-endpoints/probe-local', { credentials: 'same-origin' });
-      if (r.ok) _localProbe = (await r.json()) || {};
+      if (r.ok) { _localProbe = (await r.json()) || {}; _unansweredBases.clear(); }
     } catch (_) { /* leave stale data; picker still works */ }
   }
 
@@ -280,17 +280,24 @@ function _initModelPickerDropdown() {
   // offline at once (the dimmed row and its tooltip, as a failed probe does),
   // and the refresh button asks again. It offered a dead endpoint as if up,
   // and picking it failed in 0.2 s.
+  // Kept by address, not by the picker's list: the reply can fail before the
+  // picker has ever loaded its models (driven: the list was empty then, so
+  // nothing was marked). The refresh button's probe is the answer that
+  // replaces it.
+  const _unansweredBases = new Set();
+  function _unansweredFor(url) {
+    const u = String(url || '').replace(/\/+$/, '');
+    if (!u) return false;
+    for (const base of _unansweredBases) {
+      if (u === base || u.startsWith(base + '/') || base.startsWith(u + '/')) return true;
+    }
+    return false;
+  }
   try {
     window.addEventListener('pantheon:endpoint-unanswered', (ev) => {
       const base = String((ev && ev.detail && ev.detail.url) || '').replace(/\/+$/, '');
       if (!base) return;
-      const items = (window.modelsModule && window.modelsModule.getCachedItems) ? window.modelsModule.getCachedItems() : [];
-      items.forEach((item) => {
-        const url = String(item.url || '');
-        if (item.endpoint_id && url && (url === base || url.startsWith(base + '/') || base.startsWith(url.replace(/\/+$/, '')))) {
-          _localProbe[item.endpoint_id] = { alive: false, error: 'not answering' };
-        }
-      });
+      _unansweredBases.add(base);
       _localProbeFetchedAt = 0;
     });
   } catch (_) {}
@@ -312,7 +319,8 @@ function _initModelPickerDropdown() {
       const allDisplay = (item.models_display || []).concat(item.models_extra_display || []);
       // Mark local endpoints whose live probe failed.
       const probeResult = item.endpoint_id ? _localProbe[item.endpoint_id] : null;
-      const isLocalDead = !!(probeResult && probeResult.alive === false);
+      const unanswered = _unansweredFor(item.url);   // `P23-04` (CHAT-M-23)
+      const isLocalDead = !!(probeResult && probeResult.alive === false) || unanswered;
       const isApiEndpoint = item.category && item.category !== 'local';
       allModels.forEach((mid, i) => {
         // Local/self-hosted servers often expose the same model through several
@@ -342,7 +350,8 @@ function _initModelPickerDropdown() {
           stale: isLocalDead || epOffline,
           staleReason: epOffline
             ? (item.ping_error || 'endpoint offline')
-            : (isLocalDead ? (probeResult.error || 'not responding') : ''),
+            : (isLocalDead ? ((probeResult && probeResult.alive === false && probeResult.error)
+              || (unanswered ? 'not answering' : 'not responding')) : ''),
           offline: epOffline,
         });
       });
