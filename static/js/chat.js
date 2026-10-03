@@ -440,6 +440,11 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
   function _bindContextHeaderPill() {
     if (_contextHeaderBound) return;
     _contextHeaderBound = true;
+    // `P23-04` (CHAT-M-4): switching Agent / Chat changes the window.
+    ['mode-agent-btn', 'mode-chat-btn'].forEach((id) => {
+      const b = document.getElementById(id);
+      if (b) b.addEventListener('click', () => setTimeout(() => refreshChatContextHeader('mode'), 0));
+    });
     const pill = document.getElementById('chat-context-pill');
     if (!pill) return;
     pill.addEventListener('click', (e) => {
@@ -490,7 +495,11 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
     pill.hidden = false;
     pill.classList.add('loading');
     try {
-      const res = await fetch(`/api/session/${encodeURIComponent(sid)}/context`, { credentials: 'same-origin' });
+      // `P23-04` (CHAT-M-4): the mode the next send will use decides the
+      // window (the agent's budget, or the model's), read off the toggle.
+      const agentBtn = document.getElementById('mode-agent-btn');
+      const mode = agentBtn && agentBtn.classList.contains('active') ? 'agent' : 'chat';
+      const res = await fetch(`/api/session/${encodeURIComponent(sid)}/context?mode=${mode}`, { credentials: 'same-origin' });
       if (!res.ok) throw new Error(await res.text());
       const data = await res.json();
       if (seq !== _contextHeaderSeq) return;

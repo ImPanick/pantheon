@@ -5834,12 +5834,7 @@ async def stream_agent_loop(
 
         try:
             from src.context_compactor import trim_for_context
-            from src.context_budget import (
-                compute_input_token_budget,
-                DEFAULT_BUDGET,
-                DEFAULT_HARD_MAX,
-                budget_is_explicit as _budget_is_explicit,
-            )
+            from src.context_budget import DEFAULT_BUDGET, agent_input_budget
             from src.model_context import budget_context_for_model
 
             candidate_context = budget_context_for_model(
@@ -5861,22 +5856,9 @@ async def stream_agent_loop(
             # from the tools.
             reserve_tokens += (tool_result_images.count_image_parts(route_messages)
                                * tool_result_images.IMAGE_TOKEN_RESERVE)
-            try:
-                hard_max = int(
-                    get_setting("agent_input_token_hard_max", DEFAULT_HARD_MAX)
-                    or DEFAULT_HARD_MAX
-                )
-            except (TypeError, ValueError):
-                hard_max = DEFAULT_HARD_MAX
-            if hard_max <= 0:
-                hard_max = DEFAULT_HARD_MAX
-            budget_is_explicit = _budget_is_explicit(soft_budget)
-            effective_budget = compute_input_token_budget(
-                soft_budget,
-                candidate_context,
-                budget_is_explicit,
-                hard_max=hard_max,
-            )
+            # `P23-04` (CHAT-M-4): the one computation the context wheel
+            # draws too (`src/context_budget.py`).
+            effective_budget = agent_input_budget(candidate_context, get_setting)
             trimmed_messages = trim_for_context(
                 route_messages,
                 effective_budget,

@@ -768,12 +768,35 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
             raise HTTPException(404, "Session not found")
 
         try:
-            from src.model_context import estimate_tokens, get_context_length
+            from src.model_context import estimate_tokens, get_context_length_known
 
             messages = session.get_context_messages()
             used = int(estimate_tokens(messages))
-            ctx_len = int(get_context_length(session.endpoint_url, session.model) or 0)
-            pct = round((used / ctx_len) * 100, 1) if ctx_len else 0.0
+            # `P23-04` (PERF-M-14): one lookup gives the window and whether it
+            # was proven; the agent's budget below reads the same answer
+            # rather than asking the endpoint again.
+            ctx_len, window_known = get_context_length_known(session.endpoint_url, session.model)
+            ctx_len = int(ctx_len or 0)
+            # `P23-04` (CHAT-M-4). The window the next request is held to. In
+            # Agent mode that is the loop's input budget — 6,000 tokens when
+            # the endpoint never said its window (#4122) — not the 128K
+            # fallback, which is what the wheel drew while the loop trimmed.
+            # The composer says which mode it is in; a caller that does not
+            # gets the chat's last mode.
+            mode = str(request.query_params.get("mode") or "").strip().lower()
+            if mode not in ("agent", "chat"):
+                try:
+                    from core.database import get_session_mode
+                    mode = "agent" if get_session_mode(session_id) == "agent" else "chat"
+                except Exception:
+                    mode = "chat"
+            agent_budget = 0
+            if mode == "agent":
+                from src.context_budget import agent_input_budget
+                from src.settings import get_setting
+                agent_budget = int(agent_input_budget(ctx_len if window_known else 0, get_setting) or 0)
+            window = min(ctx_len, agent_budget) if (agent_budget and ctx_len) else (agent_budget or ctx_len)
+            pct = round((used / window) * 100, 1) if window else 0.0
             pct = max(0.0, min(100.0, pct))
             visible_messages = sum(
                 1 for m in session.history
@@ -801,8 +824,8 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
             window_used = max(used, int(breakdown.get("total_tokens") or 0))
             breakdown["used_tokens"] = window_used
             breakdown["context_percent"] = (
-                max(0.0, min(100.0, round((window_used / ctx_len) * 100, 1)))
-                if ctx_len else 0.0
+                max(0.0, min(100.0, round((window_used / window) * 100, 1)))
+                if window else 0.0
             )
             return {
                 "session_id": session_id,
@@ -810,6 +833,11 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
                 "endpoint_url": session.endpoint_url,
                 "used_tokens": used,
                 "context_length": ctx_len,
+                # `P23-04` (CHAT-M-4): what the wheel is a share of, and why.
+                "window_tokens": window,
+                "window_known": bool(window_known),
+                "mode": mode,
+                "agent_budget": agent_budget,
                 "context_percent": pct,
                 "messages": visible_messages,
                 "context_messages": len(messages),

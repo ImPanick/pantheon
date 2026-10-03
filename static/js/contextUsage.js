@@ -118,7 +118,10 @@ function _share(tokens, total) {
 export function usageFigures(data) {
   const d = data || {};
   const b = d.breakdown && typeof d.breakdown === 'object' ? d.breakdown : null;
-  const total = Number(d.context_length || 0);
+  // `P23-04` (CHAT-M-4): the window the next request is held to — in Agent
+  // mode the loop's budget (`window_tokens`), not the model's window when the
+  // two differ. A server that predates the field sends the model's window.
+  const total = Number(d.window_tokens || d.context_length || 0);
   const used = Number((b && b.used_tokens) || d.used_tokens || 0);
   const pct = b && Number.isFinite(Number(b.context_percent))
     ? Number(b.context_percent)
@@ -130,7 +133,21 @@ export function usageFigures(data) {
     total, used, pct: Math.max(0, Math.min(100, pct)), categories,
     source: (b && b.source) || '',
     uncounted: (b && Array.isArray(b.uncounted)) ? b.uncounted : [],
+    budgetNote: budgetNote(d),
   };
+}
+
+/** `P23-04` (CHAT-M-4). One line when the agent is held to less than the
+ *  model's window — and always when the window is unknown, because then the
+ *  agent keeps 6K whatever the model could hold. `''` otherwise. */
+export function budgetNote(data) {
+  const d = data || {};
+  const budget = Number(d.agent_budget || 0);
+  if (d.mode !== 'agent' || !budget) return '';
+  if (d.window_known === false) return `The model's window is unknown, so the agent keeps ${formatTokens(budget)}.`;
+  const model = Number(d.context_length || 0);
+  if (model && budget < model) return `The agent keeps ${formatTokens(budget)} of the model's ${formatTokens(model)}.`;
+  return '';
 }
 
 /**
@@ -172,12 +189,13 @@ export function ringMarkup(data, { size = 16, stroke = 2 } = {}) {
 /** Draw the wheel into the composer's button, and say the same in words. */
 export function renderPill(pill, data, { pendingCount = 0 } = {}) {
   if (!pill) return;
-  const { total, used, pct } = usageFigures(data);
+  const { total, used, pct, budgetNote: note } = usageFigures(data);
   const label = data ? `${pct.toFixed(pct >= 10 || pct === 0 ? 0 : 1)}%` : '';
   pill.innerHTML = ringMarkup(data)
     + `<span class="ctx-ring-pct" id="chat-context-pill-label">${label}</span>`;
   const parts = [];
   if (data) parts.push(`Context window: ${label} full, ~${formatTokens(used)} of ${formatTokens(total)} tokens`);
+  if (note) parts.push(note);
   if (pendingCount) parts.push(`${pendingCount} attachment${pendingCount === 1 ? '' : 's'} waiting to be sent`);
   pill.title = parts.join(' · ') || 'Context window';
   pill.setAttribute('aria-label', pill.title);
@@ -295,7 +313,7 @@ export function buildUsagePanel(doc, data, { pending = [], meterHost = null } = 
   const panel = _el(doc, 'div', 'ctx-usage');
   panel.setAttribute('role', 'dialog');
   panel.setAttribute('aria-label', 'Context window');
-  const { total, used, pct, categories, source, uncounted } = usageFigures(data);
+  const { total, used, pct, categories, source, uncounted, budgetNote: note } = usageFigures(data);
 
   const head = _el(doc, 'div', 'ctx-usage-head');
   head.appendChild(_el(doc, 'span', 'ctx-usage-title', 'Context window'));
@@ -305,6 +323,7 @@ export function buildUsagePanel(doc, data, { pending = [], meterHost = null } = 
   if (data) {
     panel.appendChild(_el(doc, 'div', 'ctx-usage-sub',
       `~${formatTokens(used)} / ${formatTokens(total)} tokens`));
+    if (note) panel.appendChild(_el(doc, 'div', 'ctx-usage-note ctx-usage-budget', note));
 
     const bar = _el(doc, 'div', 'ctx-usage-bar');
     bar.setAttribute('role', 'img');
@@ -352,10 +371,11 @@ export function buildUsagePanel(doc, data, { pending = [], meterHost = null } = 
       if (clips) what.push(`${clips} audio clip${clips === 1 ? '' : 's'}`);
       notes.push(`${what.join(' and ')} not counted — the estimate reads text.`);
     }
+    // `P23-04` (CHAT-U-20): one short line each.
     if (source === 'history') {
-      notes.push('System prompt, tools, skills and memory are measured when this chat gets its next reply.');
+      notes.push('System prompt, tools, skills and memory: measured on the next reply.');
     } else if (source === 'last_request') {
-      notes.push('Estimated. System prompt, tools, skills, memory and retrieved context are as the last reply sent them.');
+      notes.push('Estimated from the last reply.');
     }
     notes.forEach((text) => panel.appendChild(_el(doc, 'div', 'ctx-usage-note', text)));
   } else {

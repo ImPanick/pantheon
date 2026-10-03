@@ -69,6 +69,33 @@ def compute_input_token_budget(
     return configured if configured > 0 else default
 
 
+def agent_input_budget(context_length: int, get_setting) -> int:
+    """The input-token budget the agent loop trims one request to; 0 = no trim.
+
+    `P23-04` (CHAT-M-4). One computation for the two places that need it: the
+    agent loop, which trims to it, and the context wheel, which says how full
+    it is. Measured on `9560d50`: on an endpoint that reports no window the
+    loop trimmed to 6,000 tokens (`Trimming messages: 5002 tokens > 4976
+    budget (ctx=6000)`) while the wheel drew the 128K fallback and "Free space
+    113K". The 6,000 floor is a reviewed decision (#4122, tracker H18) and
+    stays; what the wheel draws is this.
+
+    ``context_length`` is the *proven* window (0 when unknown — never the bare
+    fallback, the review's point on #4122); ``get_setting(key, default)`` reads
+    the two settings the loop reads.
+    """
+    soft = _int_or_zero(get_setting("agent_input_token_budget", DEFAULT_BUDGET))
+    if soft <= 0:
+        return 0
+    try:
+        hard_max = int(get_setting("agent_input_token_hard_max", DEFAULT_HARD_MAX) or DEFAULT_HARD_MAX)
+    except (TypeError, ValueError):
+        hard_max = DEFAULT_HARD_MAX
+    if hard_max <= 0:
+        hard_max = DEFAULT_HARD_MAX
+    return compute_input_token_budget(soft, context_length, budget_is_explicit(soft), hard_max=hard_max)
+
+
 def budget_is_explicit(configured: int, *, default: int = DEFAULT_BUDGET) -> bool:
     """Whether a configured agent_input_token_budget is a deliberate explicit cap.
 
