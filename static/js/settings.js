@@ -2280,6 +2280,10 @@ function _syncToolSwitchWhy(chk, key) {
   var off = toolOff(tool);
   var locked = off === 'everyone' || off === 'admin' || off === 'person';
   chk.disabled = locked;
+  // The switch is a drawn track beside the hidden checkbox; it says it is
+  // not this browser's to flip by fading, as a disabled control does.
+  var track = chk.nextElementSibling;
+  if (track && track.style) track.style.opacity = locked ? '0.4' : '';
   var row = chk.closest ? chk.closest('.vis-row') : null;
   if (!row) return;
   var why = row.querySelector('.vis-why');
