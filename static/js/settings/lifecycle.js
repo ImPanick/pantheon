@@ -3,10 +3,11 @@
 //
 // Panel-specific behavior belongs elsewhere. This module owns only the window
 // shell: dragging/docking reset, close semantics, visibility animation, and the
-// delegated link that leaves Settings for the Persona editor.
+// delegated link that opens the Persona editor over Settings.
 
 import { makeWindowDraggable } from '../windowDrag.js';
 import { clearDockSide } from '../modalSnap.js';
+import backStack from '../backStack.js';
 
 const _dragBound = new WeakSet();
 const _closeBound = new WeakSet();
@@ -65,13 +66,12 @@ export function bindOpenPromptModalLink({ getModal, closeSettings } = {}) {
     if (!link) return;
     event.preventDefault();
 
+    // `P23-01` (Doc 2's Settings map). This closed Settings first, so *Edit
+    // persona settings here →* left no way back. The persona editor opens over
+    // Settings with `← Settings` in its header, and Settings waits beneath.
     const settingsModal = typeof getModal === 'function' ? getModal() : null;
-    if (
-      settingsModal
-      && !settingsModal.classList.contains('hidden')
-      && typeof closeSettings === 'function'
-    ) {
-      closeSettings();
+    if (settingsModal && !settingsModal.classList.contains('hidden')) {
+      backStack.noteOpener('custom-preset-modal', 'settings-modal');
     }
 
     try {
@@ -110,30 +110,11 @@ export function bindSettingsClose(modalEl, options = {}) {
     }
   });
 
-  document.addEventListener('keydown', event => {
-    if (event.key !== 'Escape' || modalEl.classList.contains('hidden')) return;
-
-    // Esc should dismiss transient popovers before the Settings window.
-    const popoverOpen = modalEl.querySelector(
-      '#adm-epLocalMoreMenu, #adm-epApiMoreMenu, #adm-provider-menu, #search-provider-menu, [data-popover-open="1"]'
-    );
-    if (
-      popoverOpen
-      && popoverOpen.style.display !== 'none'
-      && !popoverOpen.classList.contains('hidden')
-    ) {
-      return;
-    }
-
-    // `B1125`. An integration/account editor used to open inside Settings, and
-    // this closed it before Settings. `P22-21` moved it into the Workbench's
-    // MCP & Integrations room, which closes it on Escape itself (its layer on
-    // the Escape stack), so the lookup here could only ever find nothing.
-
-    event.preventDefault();
-    event.stopPropagation();
-    if (typeof closeSettings === 'function') closeSettings();
-  });
+  // `P23-01` (NAV-M-6). Settings kept its own `document` Escape listener; the
+  // one arbiter in `ui.js` closes it now (through this close button), after the
+  // Escape stack and after the popovers this listener used to check for, which
+  // moved there (`peelInnerLayer`). With a text field focused this listener
+  // closed Settings at once — the key that left SET-M-7's stale listener behind.
 }
 
 export function showSettingsModal(modalEl) {
@@ -141,25 +122,41 @@ export function showSettingsModal(modalEl) {
   if (modalEl.classList.contains('hidden')) {
     resetSettingsWindowPlacement(modalEl);
   }
+  // Opened again while the close was still animating: it stays open.
+  modalEl.querySelector('.modal-content, .settings-modal-content')?.classList.remove('modal-closing');
   modalEl.classList.remove('hidden');
 }
 
+// `P23-01` (SET-M-7). The close used a `{ once: true }` `animationend`
+// listener and a 250 ms timer, and whichever ran second was meant to find
+// nothing to do. When the window was hidden without the exit animation playing
+// (Escape from a field, a minimise and restore), the listener stayed armed and
+// the NEXT open's `modal-enter` animation fired it: Settings opened and hid
+// itself a quarter-second later (measured `[5418 animationend modal-enter]
+// [5418 modal hidden]`). The listener answers only its own `modal-exit`, and
+// whichever of the two runs first takes the other down.
 export function hideSettingsModal(modalEl) {
   if (!modalEl) return;
 
   const content = modalEl.querySelector('.modal-content, .settings-modal-content');
   if (content && !content.classList.contains('modal-closing')) {
     content.classList.add('modal-closing');
-    content.addEventListener('animationend', () => {
+    let timer = null;
+    const finish = () => {
+      content.removeEventListener('animationend', onEnd);
+      clearTimeout(timer);
+      // Opened again while it was closing: leave it open.
+      if (!content.classList.contains('modal-closing')) return;
       modalEl.classList.add('hidden');
       content.classList.remove('modal-closing');
-    }, { once: true });
-    setTimeout(() => {
-      if (!modalEl.classList.contains('hidden')) {
-        modalEl.classList.add('hidden');
-        content.classList.remove('modal-closing');
-      }
-    }, 250);
+    };
+    const onEnd = (e) => {
+      if (e && e.target !== content) return;
+      if (e && e.animationName && e.animationName !== 'modal-exit') return;
+      finish();
+    };
+    content.addEventListener('animationend', onEnd);
+    timer = setTimeout(finish, 250);
     return;
   }
 

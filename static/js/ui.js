@@ -12,6 +12,7 @@ import { registerMenuDismiss, dismissTopMenu, dismissOrRemove } from './escMenuS
 import { nextToolWindowZ, topToolWindowZ, toolWindowZ } from './toolWindowZOrder.js';
 import { prefersReducedMotion } from './motion.js';
 import { esc } from './util/escapeHtml.js';
+import backStack from './backStack.js';
 
 let toastEl = null;
 let autoScrollEnabled = true;
@@ -82,71 +83,11 @@ function _spaceWindowId(win) {
   return null;
 }
 
-function _windowAtPointer() {
-  if (_lastPointerClientX == null || _lastPointerClientY == null) return null;
-  const x = _lastPointerClientX;
-  const y = _lastPointerClientY;
-  const candidates = [
-    ...document.querySelectorAll('.modal:not(.hidden):not(.modal-minimized) .modal-content'),
-    ...document.querySelectorAll('.doc-editor-pane'),
-  ].filter(el => {
-    if (!document.contains(el)) return false;
-    const r = el.getBoundingClientRect();
-    return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
-  });
-  if (!candidates.length) return null;
-  return candidates.reduce((top, el) => {
-    const mz = parseInt(getComputedStyle(el.closest('.modal') || el).zIndex, 10) || 0;
-    const tz = parseInt(getComputedStyle(top.closest('.modal') || top).zIndex, 10) || 0;
-    return mz >= tz ? el : top;
-  });
-}
-
 function _containsPointer(el) {
   if (!el || _lastPointerClientX == null || _lastPointerClientY == null) return false;
   const r = el.getBoundingClientRect();
   return _lastPointerClientX >= r.left && _lastPointerClientX <= r.right
     && _lastPointerClientY >= r.top && _lastPointerClientY <= r.bottom;
-}
-
-function _closeHoveredWindow() {
-  let win = _windowAtPointer();
-  if (!win) {
-    try {
-      const underPointer = document.elementFromPoint(_lastPointerClientX, _lastPointerClientY);
-      win = underPointer?.closest?.('.modal:not(.hidden):not(.modal-minimized) .modal-content, .doc-editor-pane') || null;
-    } catch {}
-  }
-  if (!win) win = hoveredToggleWindow;
-  if (!win || !document.contains(win)) return false;
-  // `B1052`. A window can hold layers of its own on the Escape stack — the
-  // Workbench's step panel and Connect… picker — and this branch runs before
-  // the stack is asked, so with the pointer on the window one Escape closed it
-  // and an unsaved form with it. A window that marks an open layer with
-  // `[data-esc-layer]` has the stack answer first: innermost thing, then the
-  // window. Only such a window changes; every other one closes as before.
-  if (win.querySelector?.('[data-esc-layer]') && dismissTopMenu()) return true;
-  const modalForWin = win.closest?.('.modal[id]');
-  if (modalForWin?.id === 'email-lib-modal') {
-    const closeBtn = document.getElementById('email-lib-close') || modalForWin.querySelector('.close-btn');
-    if (closeBtn) {
-      try { closeBtn.click(); return true; } catch {}
-    }
-    try { modalForWin.remove(); return true; } catch {}
-  }
-  const id = _spaceWindowId(win);
-  if (id && Modals.isRegistered(id)) {
-    Modals.close(id);
-    return true;
-  }
-  const modal = _visibleModalForSpace(win);
-  if (!modal) return false;
-  const closeBtn = modal.querySelector('.close-btn, .modal-close, .modal-close-btn, [data-action="close"]');
-  if (closeBtn) {
-    try { closeBtn.click(); return true; } catch {}
-  }
-  try { modal.classList.add('hidden'); return true; } catch {}
-  return false;
 }
 
 function _spaceIsBlocked(e, surface) {
@@ -1592,6 +1533,62 @@ if ('ontouchstart' in window || window.innerWidth <= 768) {
   });
 }
 
+/**
+ * `P23-01` — the inner layers of a window that are not on the Escape stack,
+ * peeled one per Escape (and per Back), innermost first. Returns whether one
+ * was. `win` is the top window, or null with no window open.
+ *
+ *   * a popover a window draws inside itself (Settings' kebabs and provider
+ *     pickers — the rule `settings/lifecycle.js` kept in its own listener);
+ *   * select mode: its visible `*-bulk-cancel` button, which already runs the
+ *     right teardown (the rule `keyboard-shortcuts.js` kept in a second
+ *     capture listener that ran after this arbiter and so never got the key);
+ *   * an inline memory edit, an expanded card.
+ */
+export function peelInnerLayer(win) {
+  const scope = win || document;
+  const shownEl = (n) => {
+    if (!n || n.disabled || (n.closest && n.closest('.hidden,[hidden]'))) return false;
+    if (n.style && n.style.display === 'none') return false;
+    try {
+      const cs = getComputedStyle(n);
+      if (cs.display === 'none' || cs.visibility === 'hidden') return false;
+    } catch {}
+    return true;
+  };
+  if (win) {
+    const pop = win.querySelector('#adm-epLocalMoreMenu, #adm-epApiMoreMenu, #adm-provider-menu, '
+      + '#search-provider-menu, [data-popover-open="1"]');
+    if (pop && shownEl(pop)) {
+      if (pop.id === 'search-provider-menu' || pop.id === 'adm-provider-menu') pop.classList.add('hidden');
+      else pop.style.display = 'none';
+      if (pop.dataset && pop.dataset.popoverOpen) delete pop.dataset.popoverOpen;
+      const btn = pop.id && document.getElementById(pop.id.replace(/Menu$/, 'Btn'));
+      if (btn) btn.setAttribute('aria-expanded', 'false');
+      return true;
+    }
+  }
+  const scoreboard = document.getElementById('scoreboard-overlay');
+  if (scoreboard && (!win || win.id === 'compare-model-overlay' || !win.contains(scoreboard))) {
+    scoreboard.remove();
+    return true;
+  }
+  for (const btn of scope.querySelectorAll('[id$="-bulk-cancel"]')) {
+    if (shownEl(btn) && (btn.offsetWidth > 0 || btn.offsetHeight > 0 || btn.getClientRects?.().length)) {
+      btn.click();
+      return true;
+    }
+  }
+  const editing = scope.querySelector('.memory-item-editing');
+  if (editing && window.memoryModule && typeof window.memoryModule.renderMemoryList === 'function') {
+    window.memoryModule.renderMemoryList();
+    return true;
+  }
+  const expanded = scope.querySelector('.doclib-card-expanded');
+  if (expanded) { try { expanded.click(); } catch {} return true; }
+  return false;
+}
+
 // ── Global Escape arbiter: close exactly one thing per press ──
 // Priority: expanded library card → open chat thinking block → topmost modal.
 // Runs capture-phase + stopImmediatePropagation so per-modal ESC listeners
@@ -1637,80 +1634,130 @@ if (!window._odyEscExpandGuard) {
   const pickTopModal = () => {
     const modals = [...document.querySelectorAll('.modal')].filter(_isVisible);
     if (!modals.length) return null;
-    return modals.reduce((top, m) =>
-      (parseInt(getComputedStyle(m).zIndex, 10) || 0) >= (parseInt(getComputedStyle(top).zIndex, 10) || 0)
-        ? m : top
-    );
+    // `B1068`: the z a window was given, not one a transition is leaving.
+    const zOf = (m) => toolWindowZ(m) || parseInt(getComputedStyle(m).zIndex, 10) || 0;
+    return modals.reduce((top, m) => (zOf(m) >= zOf(top) ? m : top));
+  };
+
+  // `P23-01` — the one Escape arbiter (`D-2026-10-03-01` §2). Escape = Back =
+  // `←`: one press peels the innermost layer. Measured on `9560d50` (NAV-M-2/3/
+  // 4/6, DOCS-U-1/2, BRAIN-U-4): four handlers owned Escape — this one, a
+  // second arbiter in `app.js` that closed a fixed list of windows whatever was
+  // on top and with no text-field guard, the stream stop, and ten per-window
+  // `document` listeners — and which layer closed depended on where the pointer
+  // was, where the focus was and which module loaded first. Escape typed in a
+  // field closed its window and destroyed a Tasks draft; with a ⋮ menu open and
+  // the pointer on the window it closed the window; with the focus in the
+  // composer it closed the window *behind*.
+  //
+  // The order now, the first hit wins:
+  //   1. a dialog that answers its own Escape (the palette, a confirm, a
+  //      prompt) — left to it;
+  //   2. the Escape stack (`escMenuStack.js`): a menu, a picker, a panel, a
+  //      form — every window's own layers, for every window (`B1052`'s rule,
+  //      no longer only for windows that mark one);
+  //   3. a text field inside a window keeps its Escape: the key goes on to the
+  //      field's own handler, and if none used it the field is left (blurred)
+  //      — the window stays, with the draft (NAV-M-2);
+  //   4. the top window's inner layers this arbiter knows (`peelInnerLayer`):
+  //      an open popover, select mode, an expanded card, an inline edit;
+  //   5. the top window, by z — through its own close path, so a window that
+  //      asks before it closes still asks; Back and `←` close it the same way.
+  //      Notes keeps its own layered Escape (`notes.js`).
+  //   6. nothing open: the phone drawer, then the document pane (to its chip),
+  //      then an open thinking block.
+  const _OWN_ESCAPE_DIALOGS = ['styled-confirm-overlay', 'styled-prompt-overlay'];
+  const _openById = (id) => {
+    const n = document.getElementById(id);
+    return !!(n && !n.classList.contains('hidden') && n.style.display !== 'none');
+  };
+  const _inWindow = (t) => !!(t && t.closest && t.closest('.modal, .doc-editor-pane, .notes-pane'));
+  // Windows in other modules whose own Escape listener peels layers the stack
+  // does not hold: Calendar's settings panel and event form, the Gallery's
+  // photo (its *← Back*) and editor, the Forge's highlighted row and open
+  // serve card. While one is open this arbiter leaves the key to that
+  // listener — which, before `P23-01`, it never reached, because this one
+  // closed the window first.
+  const _OWN_LAYERS = {
+    'calendar-modal': ['#cal-settings-panel', '.cal-form'],
+    'gallery-modal': ['#gallery-detail', '#gallery-editor-container'],
+    'cookbook-modal': ['.hwfit-row-active', '.memory-item.doclib-card-expanded'],
+  };
+  const _ownLayerOpen = (win) => {
+    const sels = _OWN_LAYERS[win.id];
+    if (!sels) return false;
+    return sels.some((sel) => {
+      const n = win.querySelector(sel) || (sel[0] === '#' ? document.getElementById(sel.slice(1)) : null);
+      if (!n || n.hidden || n.classList.contains('hidden')) return false;
+      if (n.id === 'gallery-editor-container' && !n.querySelector('.gallery-editor')) return false;
+      try { return getComputedStyle(n).display !== 'none'; } catch { return n.style.display !== 'none'; }
+    });
   };
 
   document.addEventListener('keydown', (e) => {
-    if (e.key !== 'Escape' || e.defaultPrevented) return;
+    if (e.key !== 'Escape' || e.defaultPrevented || e.isComposing) return;
+    if (_OWN_ESCAPE_DIALOGS.some(_openById)) return;
+    if (_openById('search-overlay')) return;      // the palette closes itself (`search-chat.js`)
+    const done = () => { e.stopImmediatePropagation(); e.preventDefault(); };
 
-    // Find the single thing to close, in priority order. The first hit wins.
-    // Important: if a thinking block is open we MUST handle it ourselves and
-    // not fall through to closing a modal — even if its header is missing
-    // (the live-stream chat rebuilds thinking DOM mid-stream so the header
-    // can briefly be absent). Toggling the `expanded` class directly is the
-    // fallback so ESC never bypasses the thinking block to hit a modal.
-    if (_closeHoveredWindow()) {
-      e.stopImmediatePropagation(); e.preventDefault();
+    if (dismissTopMenu()) { done(); return; }
+
+    const target = _targetEl(e.target);
+    if (_isTextEditingTarget(target) && _inWindow(target)) return;   // step 3, below
+
+    const picker = document.getElementById('model-picker-menu');
+    if (picker && picker.classList.contains('open')) { picker.classList.remove('open'); done(); return; }
+
+    const topModal = pickTopModal();
+    const stackTop = backStack.top();
+    // A window whose own listener peels an inner layer it has open keeps the
+    // key for that (`_OWN_LAYERS`); its next Escape comes back here.
+    if (topModal && _ownLayerOpen(topModal)) return;
+    if (peelInnerLayer(topModal)) { done(); return; }
+
+    if (topModal) {
+      done();
+      if (backStack.isTracked(topModal.id)) { Modals.closeWindow(topModal.id); return; }
+      const closeBtn = topModal.querySelector('.close-btn, .modal-close, .modal-close-btn, [data-action="close"]');
+      if (closeBtn) { try { closeBtn.click(); } catch {} }
+      else { try { topModal.classList.add('hidden'); } catch {} }
       return;
     }
-    // Transient ad-hoc menus (dropdowns / context popups) live outside the
-    // .modal system and register a dismiss callback in escMenuStack. Close the
-    // most-recently-opened one first — so a menu opened over a modal dismisses
-    // before the modal — and do it BEFORE the text-input guard below, since a
-    // menu may own the focused input (e.g. a search dropdown).
-    if (dismissTopMenu()) {
-      e.stopImmediatePropagation(); e.preventDefault();
+    if (stackTop === 'notes-panel') return;        // `notes.js` peels its own layers
+    if (stackTop === backStack.DRAWER) { done(); Modals.closeWindow(stackTop); return; }
+
+    const dm = window.documentModule;
+    if (dm && typeof dm.isPanelOpen === 'function' && dm.isPanelOpen()) {
+      // A selection in the editor is the field's to clear first.
+      const ta = document.getElementById('doc-editor-textarea');
+      if (ta && ta.selectionStart !== ta.selectionEnd) return;
+      done();
+      dm.closePanel('down');
       return;
     }
-    const t = e.target;
-    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
-    const expanded = document.querySelector('.doclib-card-expanded');
     const think = document.querySelector('.thinking-content.expanded');
-    if (expanded) {
-      e.stopImmediatePropagation(); e.preventDefault();
-      try { expanded.click(); } catch {}
-      return;
-    }
     if (think) {
-      e.stopImmediatePropagation(); e.preventDefault();
+      done();
       const thinkHeader = think.closest('.thinking-section')?.querySelector('.thinking-header[data-thinking-id]');
       if (thinkHeader) { try { thinkHeader.click(); } catch {} }
-      else {
-        // No header found — collapse the content directly.
-        try { think.classList.remove('expanded'); } catch {}
-      }
-      return;
+      else { try { think.classList.remove('expanded'); } catch {} }
     }
-    const galleryEditor = document.getElementById('gallery-editor-container');
-    const galleryModal = galleryEditor?.closest('.modal');
-    const galleryEditing = !!(
-      galleryEditor &&
-      galleryModal &&
-      !galleryModal.classList.contains('hidden') &&
-      getComputedStyle(galleryEditor).display !== 'none' &&
-      galleryEditor.querySelector('.gallery-editor')
-    );
-    if (galleryEditing) {
-      e.preventDefault();
-      e.stopImmediatePropagation();
-      return;
-    }
-    // `B1125`. A branch here closed Settings' integration form before Settings
-    // itself. `P22-21` moved that form, with its id, into the Workbench's MCP &
-    // Integrations room, which holds its own layer on the Escape stack while the
-    // form is open (`workbench.js`, `mountIntegrationsRoom`) — answered above by
-    // `dismissTopMenu()`. Settings holds no such form any more, so the branch
-    // matched nothing; it is gone rather than pointed at the room, which would
-    // be a second rule for one form (`Law 7`).
-    const topModal = pickTopModal();
-    if (!topModal) return;
-    const closeBtn = topModal.querySelector('.close-btn, .modal-close-btn, [data-action="close"]');
-    e.stopImmediatePropagation();
-    e.preventDefault();
-    if (closeBtn) { try { closeBtn.click(); } catch {} }
-    else { try { topModal.classList.add('hidden'); } catch {} }
   }, true);
+
+  // Step 3's second half. A text field in a window whose own handler did not
+  // use the Escape is left — the first Escape takes the person out of the
+  // field, the next one closes the window. `document`, bubble phase: after the
+  // field's own listeners, before `keyboard-shortcuts.js`'s stop on `window`.
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape' || e.defaultPrevented || e.isComposing) return;
+    const target = _targetEl(e.target);
+    if (!_isTextEditingTarget(target) || !_inWindow(target)) return;
+    e.preventDefault();
+    try { target.blur(); } catch {}
+  });
+
+  // Back (`backStack.js`) peels the same layers Escape does, first.
+  backStack.configure({
+    dismissTopMenu: () => dismissTopMenu() || peelInnerLayer(pickTopModal()),
+  });
 }
