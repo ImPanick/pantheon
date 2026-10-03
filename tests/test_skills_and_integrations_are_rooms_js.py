@@ -303,6 +303,10 @@ function activateSettingsPanel(m, tab) { seen.activated.push(tab); }
 function getActiveSettingsTab() { return 'integrations'; }
 function onSettingsPanelActivated() {}
 function isAdminManagedSettingsTab() { return false; }
+// `P23-03` (SET-U-2): `open` sends a non-admin away from admin-only panels;
+// this case is an admin's.
+const viewerIsAdmin = () => true, isAdminOnlySettingsTab = () => false;
+const NON_ADMIN_SETTINGS_PANEL_ID = 'account';
 %(cut)s
 open('integrations');
 await new Promise((r) => setTimeout(r, 20));

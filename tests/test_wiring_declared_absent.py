@@ -195,15 +195,29 @@ def test_losing_the_agent_privilege_hides_a_control_that_exists():
     was never a hole — it was a button the user could press and be refused,
     which is `Law 15`. The branch reached for `#mode-toggle` and
     `.chat-input-toggle`; the control is `#mode-agent-btn` inside a `.mode-toggle`
-    CLASS, and had been for long enough that nobody noticed."""
-    app = (ROOT / "static" / "app.js").read_text(errors="replace")
+    CLASS, and had been for long enough that nobody noticed.
+
+    `P23-03`: the branch is a row of the one visibility table now
+    (`static/js/ui_visibility.js`), and the same claim is made for every row —
+    each element the table hides is in the markup, read off the running module."""
+    import json
+    import shutil
+    import subprocess
+    if not shutil.which("node"):
+        pytest.skip("node binary not on PATH")
     html = (ROOT / "static" / "index.html").read_text(errors="replace")
-    branch = re.search(r"if \(!p\.can_use_agent\) \{(.*?)\n        \}", app, re.S)
-    assert branch, "the privilege branch moved"
-    targets = set(re.findall(r"getElementById\('([A-Za-z0-9_-]+)'\)", branch.group(1)))
-    assert targets, "the branch stopped looking anything up"
-    for t in targets:
-        assert f'id="{t}"' in html, f"privilege branch targets absent markup: {t}"
+    uri = (ROOT / "static" / "js" / "ui_visibility.js").as_uri()
+    proc = subprocess.run(["node", "--input-type=module", "-e",
+                           f"const V = await import({json.dumps(uri)});"
+                           "console.log(JSON.stringify(Object.fromEntries(Object.entries(V.TOOL_VISIBILITY)"
+                           ".map(([k, d]) => [k, [...d.doors, ...d.composer, ...d.quiet]]))));"],
+                          capture_output=True, text=True, timeout=60)
+    assert proc.returncode == 0, proc.stderr
+    table = json.loads(proc.stdout)
+    assert table["agent"] == ["mode-agent-btn"], table["agent"]
+    for tool, ids in table.items():
+        for t in ids:
+            assert f'id="{t}"' in html, f"the table hides absent markup: {tool} → {t}"
 
 
 def test_the_ratchet_matches_what_ci_asks_for():

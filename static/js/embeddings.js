@@ -134,8 +134,10 @@ async function _loadEndpoint() {
   if (!urlIn) return;
   try {
     const cfg = await _getJSON('/api/embeddings/endpoint');
-    urlIn.value = cfg.url || '';
-    if (modelIn) modelIn.value = cfg.model || '';
+    // `SET-M-13` (P23-03): a URL typed and not saved survives a tab change and
+    // a reopen — this re-read on every activation and emptied it silently.
+    if (urlIn.dataset.typed !== '1') urlIn.value = cfg.url || '';
+    if (modelIn && modelIn.dataset.typed !== '1') modelIn.value = cfg.model || '';
     if (clearBtn) clearBtn.hidden = !cfg.active;
   } catch (_) { /* the form still works; saving will report its own errors */ }
 }
@@ -145,6 +147,14 @@ function _wireEndpoint() {
   const clearBtn = el('emb-ep-clear');
   const msg = el('emb-ep-msg');
   if (!saveBtn || !clearBtn || !msg) return;
+
+  ['emb-ep-url', 'emb-ep-model'].forEach((id) => {
+    el(id)?.addEventListener('input', () => {
+      el(id).dataset.typed = '1';
+      msg.textContent = 'Not saved yet.';
+      msg.style.color = '';
+    });
+  });
 
   saveBtn.addEventListener('click', async () => {
     const url = (el('emb-ep-url')?.value || '').trim();
@@ -178,6 +188,7 @@ function _wireEndpoint() {
       }
       msg.textContent = 'Saved.';
       msg.style.color = 'var(--green)';
+      ['emb-ep-url', 'emb-ep-model'].forEach((id) => { if (el(id)) delete el(id).dataset.typed; });
       const keyIn = el('emb-ep-key');
       if (keyIn) keyIn.value = '';   // never leave a key sitting in the DOM
       await _loadEndpoint();

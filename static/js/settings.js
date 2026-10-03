@@ -115,7 +115,9 @@ function safeRasterDataUrl(raw) {
 function onSettingsPanelActivated(tab) {
   // Appearance keeps its existing transparent preview behavior.
   document.body.classList.toggle('settings-appearance-open', tab === 'appearance');
-  syncAppearanceOpacity(tab === 'appearance');
+  // `SET-U-11` (P23-03): *Peek* was on Appearance only, and it is as useful
+  // on every panel (a switch in Agent Tools changes the sidebar too, live).
+  syncAppearanceOpacity(true);
 
   // AI endpoints are intentionally refreshed only when entering the AI panel.
   if (tab === 'ai') refreshAiModelEndpoints();
@@ -190,7 +192,7 @@ function _applySettingsOpacity(on) {
   }
 }
 
-// Show/hide the Peek toggle for the Appearance tab and apply or clear the fade.
+// Show/hide the Peek toggle while Settings is open and apply or clear the fade.
 function syncAppearanceOpacity(active) {
   const toggle = el('settings-opacity-wrap');
   if (toggle) toggle.classList.toggle('hidden', !active);
