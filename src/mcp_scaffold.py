@@ -625,8 +625,11 @@ with what you type and shows what it answered.
 
 ## Register it
 
-An administrator presses **Register** beside it, which opens the *Add MCP
-Server* form already filled in, and saves it. These are the fields:
+Press **Register** beside it. An administrator gets the *Add MCP Server* form
+already filled in, and saves it. Anyone else sends it to the administrators
+(**Send it to an admin**): they see it in {ADD_MCP_SERVER_PATH}, read
+its code as you sent it, and register exactly that code. These are the fields
+it fills in:
 
 | Field | What to put in it |
 |---|---|
@@ -642,8 +645,8 @@ each time an assistant lists or calls this server's tools, the relay starts
 
 The last argument is a fingerprint of the code in this folder as it is now.
 The admin approves that code: after any change to it, the relay runs nothing
-until an administrator registers it again (**Register**, then Save), so an
-edit is never live before someone looked at it.
+until an administrator registers it again (**Register** again — sent again, if
+you are not one), so an edit is never live before someone looked at it.
 
 ## Why the assistant cannot register it
 

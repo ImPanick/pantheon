@@ -72,6 +72,10 @@ Public surface:
     ws_fingerprint(owner, name)         the fingerprint of its code, as the harness reads it
     ws_registration(owner, name, pin)   the admin route's fields — the relay, pinned to `pin`
     relay_target(command, args)         whose server a registration relays to, and its pin
+    ws_send(owner, name)                B1130: send it to the admins — its code and pin, one walk
+    sent_waiting(rows) / sent_mine(o)   what waits for an admin; this person's waiting sends
+    sent_for_admin(id)                  one, as an admin reviews it: code, fields, still as sent?
+    sent_remove(id, by=, is_admin=)     an admin dismisses it, or its sender withdraws it
     main(argv)                          the relay itself (run as a script)
 """
 from __future__ import annotations
@@ -91,7 +95,9 @@ if __name__ == "__main__":
 import json
 import logging
 import re
+import threading
 import time
+import uuid
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 logger = logging.getLogger(__name__)
@@ -145,13 +151,20 @@ MAX_TEXT = 200000
 # source) and extension modules. The fingerprint covers every one of them.
 CODE = (".py", ".pyc", ".pyo", ".so", ".pyd")
 MAX_FILE = 16 * 1024 * 1024
+# B1130: what an admin is shown of a build sent for registration. One source
+# file at most what the panel's editor opens (MAX_SOURCE_BYTES); all of them,
+# as JSON, well inside the exec's 1,000,000-byte output, which keeps the tail.
+SHOW_FILE = 256 * 1024
+SHOW_ENCODED = 640 * 1024
+SHOW_ENTRIES = 200
 
 
-def fingerprint(folder):
+def fingerprint(folder, keep=None):
     """sha256 over every file Python could load as code from the folder, and
     every symlink in it, by path. The registration pins this
     (`integrate-e`): a server whose code changed after an admin registered it
-    is not run."""
+    is not run. `keep` (B1130): a list each pinned entry is appended to, with
+    the very bytes hashed, so what an admin is shown is what this pins."""
     h = hashlib.sha256()
     for root, dirs, files in os.walk(folder):
         rel = os.path.relpath(root, folder)
@@ -160,8 +173,10 @@ def fingerprint(folder):
         for d in dirs:
             path = os.path.join(root, d)
             if os.path.islink(path):
-                h.update(("link\0%s\0%s\n" % (os.path.normpath(os.path.join(rel, d)),
-                                                os.readlink(path))).encode("utf-8", "replace"))
+                name, target = os.path.normpath(os.path.join(rel, d)), os.readlink(path)
+                h.update(("link\0%s\0%s\n" % (name, target)).encode("utf-8", "replace"))
+                if keep is not None:
+                    keep.append({"path": name, "kind": "link", "target": target})
             else:
                 walk.append(d)
         dirs[:] = walk
@@ -169,9 +184,13 @@ def fingerprint(folder):
             path = os.path.join(root, f)
             name = os.path.normpath(os.path.join(rel, f))
             if os.path.islink(path):
-                h.update(("link\0%s\0%s\n" % (name, os.readlink(path))).encode("utf-8", "replace"))
+                target = os.readlink(path)
+                h.update(("link\0%s\0%s\n" % (name, target)).encode("utf-8", "replace"))
+                if keep is not None:
+                    keep.append({"path": name, "kind": "link", "target": target})
             if not f.endswith(CODE):
                 continue
+            data = None
             try:
                 with open(path, "rb") as fh:
                     data = fh.read(MAX_FILE)
@@ -179,7 +198,44 @@ def fingerprint(folder):
             except OSError:
                 digest = "unreadable"
             h.update(("file\0%s\0%s\n" % (name, digest)).encode("utf-8", "replace"))
+            if keep is not None:
+                keep.append({"path": name, "kind": "source" if f.endswith(".py") else "compiled",
+                             "sha256": digest, "data": data})
     return h.hexdigest()
+
+
+def snapshot(folder):
+    """B1130. The fingerprint and, from the same bytes in the same walk, every
+    entry it covers: a source file's text when it can be shown whole, else why
+    not; a compiled file's size; a link's target."""
+    keep = []
+    digest = fingerprint(folder, keep)
+    if len(keep) > SHOW_ENTRIES:
+        return digest, None
+    files, shown = [], 0
+    for entry in keep:
+        data = entry.pop("data", None)
+        if data is not None:
+            entry["bytes"] = len(data)
+        if entry["kind"] == "source":
+            if data is None:
+                entry["unshown"] = "unreadable"
+            elif len(data) > SHOW_FILE:
+                entry["unshown"] = "too_large"
+            else:
+                try:
+                    text = data.decode("utf-8")
+                except UnicodeDecodeError:
+                    entry["unshown"] = "not_utf8"
+                else:
+                    size = len(json.dumps(text))
+                    if shown + size > SHOW_ENCODED:
+                        entry["unshown"] = "too_large"
+                    else:
+                        entry["text"] = text
+                        shown += size
+        files.append(entry)
+    return digest, files
 
 
 def say(answer):
@@ -205,7 +261,7 @@ def main():
     slug, action = job.get("slug"), job.get("action")
     if not isinstance(slug, str) or not SLUG.match(slug):
         return say({"started": False, "error": "That is not a server's folder name."})
-    if action not in ("list", "call", "digest"):
+    if action not in ("list", "call", "digest", "snapshot"):
         return say({"started": False, "error": "The check was asked to do something it does not do."})
     pin = job.get("pin")
     if pin is not None and (not isinstance(pin, str) or not PIN.match(pin)):
@@ -225,6 +281,11 @@ def main():
         return say({"started": False, "missing": True,
                     "error": "There is no server.py in ~/" + FOLDER + "/" + slug + "."})
     mtime = os.path.getmtime(source)
+    if action == "snapshot":
+        digest, files = snapshot(folder)
+        if files is None:
+            return say({"started": False, "digest": digest, "mtime": mtime, "too_many": True})
+        return say({"started": False, "digest": digest, "mtime": mtime, "files": files})
     digest = fingerprint(folder)
     if action == "digest":
         return say({"started": False, "digest": digest, "mtime": mtime})
@@ -578,7 +639,8 @@ def changed_since_registered(slug: str) -> str:
     registered it (`integrate-e`)."""
     return (f"“{slug}” was changed after an admin registered it, so it was not run: the admin "
             f"approved the code as it was then. An admin registers it again to run the new code "
-            f"(Register beside it under Build an MCP server, then Save).")
+            f"(its author presses Register under Build an MCP server — an admin's own fills the form, "
+            f"anyone else's is sent to the admins — then an admin saves it).")
 
 
 async def ws_verify(owner: Optional[str], name: Any, *, timeout: float = CHECK_TIMEOUT_S,
@@ -734,6 +796,275 @@ def agent_refusal(registration: Dict[str, Any]) -> str:
     return refusal_on_the_agent_path(registration)
 
 
+# ── sent for registration (B1130) ─────────────────────────────────────────────
+#
+# A person who is not an admin sends a build to the admins; an admin sees the
+# list, reads the code, and presses Register, which fills the existing Add MCP
+# Server form — `POST /api/mcp/servers`, `require_admin`, is still the only way
+# a server is registered, and the build stays in its author's workstation.
+#
+# **The adversary (`Law 17`):** the person's assistant — text it read steering
+# it — or the person, sending a build. Its aim: an admin registers something
+# other than what the admin was shown. Three ways, each closed here:
+#
+#   * *another account or another command.* A send carries the server's NAME
+#     and nothing else. Whose it is comes from the session (`require_user`),
+#     and the fields an admin's form is filled with are computed by Pantheon
+#     when the admin asks (`ws_registration`: this install's interpreter, this
+#     file, the stored owner and folder) — never stored as text someone sent.
+#   * *other code than was shown.* The code an admin reads and the fingerprint
+#     the form pins come out of ONE walk of the folder (`PROBE_HARNESS`'s
+#     `snapshot`: the same bytes hashed and returned), and are stored together;
+#     the admin is shown that stored copy, every file the fingerprint covers —
+#     sources whole, compiled files and links named as unreadable. Once
+#     registered, the relay runs those bytes or nothing (`PIN_FLAG`). A change
+#     since the send is said when the admin opens it.
+#   * *code that reads one way and runs another.* A source that cannot be shown
+#     whole and plain is not sent: larger than the panel opens, not UTF-8, a
+#     coding line naming another codec (Python would decode it otherwise than
+#     it is displayed), or a bidirectional control character (text that is
+#     drawn in an order other than the one Python reads — CVE-2021-42574).
+#
+# Only a person sends, and only a person reads the list or takes one off it
+# (`routes/mcp/mcp_routes.py`, `request_is_a_person`): the agent's loopback
+# carries a token `require_admin` accepts outright, so an assistant could
+# otherwise send in its person's name and read everyone's sends.
+#
+# Residue, said where it is decided: the harness runs in the author's own
+# account with that account's Python (`agentd.py` starts `python3 -u`), so
+# whatever loads before it there — the account's user site-packages — runs
+# first. The pin's own residue (`integrate-e`) is the same fact.
+
+SENT_FILE = "mcp_builds_sent.json"
+#: Builds one person may have waiting at once — one entry per server, a send
+#: replacing that server's last.
+MAX_SENT_PER_PERSON = 20
+#: The answer to "is the code there still what was sent?" (`Law 10`).
+NOW_AS_SENT, NOW_CHANGED, NOW_UNKNOWN = "as_sent", "changed", "unknown"
+
+_SENT_LOCK = threading.Lock()
+_CODING_RE = re.compile(r"^[ \t\f]*#.*?coding[:=][ \t]*([-\w.]+)")
+# Explicit embeddings and overrides, isolates, and the marks (U+200E/F, U+061C),
+# spelled as escapes: a literal one in this file is what it refuses.
+_BIDI = frozenset("\u202a\u202b\u202c\u202d\u202e\u2066\u2067\u2068\u2069\u200e\u200f\u061c")
+_UNSHOWN_WORDS = {
+    "too_large": "is larger than can be shown to an admin here",
+    "not_utf8": "is not UTF-8 text, so it cannot be shown as Python reads it",
+    "unreadable": "could not be read",
+}
+
+
+def _sent_path() -> str:
+    from src.constants import DATA_DIR
+    return os.path.join(DATA_DIR, SENT_FILE)
+
+
+def _sent_load() -> List[Dict[str, Any]]:
+    try:
+        with open(_sent_path(), encoding="utf-8") as fh:
+            entries = json.load(fh)
+    except FileNotFoundError:
+        return []
+    except (OSError, ValueError) as exc:
+        logger.warning("The builds sent for registration could not be read (%s); none are shown.", exc)
+        return []
+    return [e for e in entries if isinstance(e, dict)] if isinstance(entries, list) else []
+
+
+def _sent_save(entries: List[Dict[str, Any]]) -> None:
+    path = _sent_path()
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = f"{path}.{os.getpid()}.tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(entries, fh)
+    os.replace(tmp, path)
+
+
+def _shown_files(slug: str, answer: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """The snapshot's entries as an admin is shown them, or a refusal saying
+    which file cannot be shown and why — nothing is sent that an admin could
+    not read in full."""
+    if answer.get("too_many"):
+        raise BuildError(f"{slug!r} holds more code files and links than can be shown to an "
+                         "admin, so it was not sent.")
+    files = answer.get("files")
+    if not isinstance(files, list):
+        raise BuildError(answer.get("error") or "Its code could not be read, so it was not sent.")
+    out = []
+    for f in files:
+        if not isinstance(f, dict) or not isinstance(f.get("path"), str):
+            raise BuildError("Its code could not be read, so it was not sent.")
+        path, kind = f["path"], f.get("kind")
+        if kind == "source":
+            unshown = f.get("unshown")
+            if unshown or not isinstance(f.get("text"), str):
+                raise BuildError(f"{path} {_UNSHOWN_WORDS.get(unshown, 'could not be read')}, so "
+                                 "it was not sent: an admin is shown every line before registering it.")
+            text = f["text"]
+            for line in text.splitlines()[:2]:
+                found = _CODING_RE.match(line)
+                if found and found.group(1).lower().replace("_", "-") not in (
+                        "utf-8", "utf8", "utf-8-sig", "ascii", "us-ascii"):
+                    raise BuildError(f"{path} names its own encoding ({found.group(1)}), so Python "
+                                     "would not read it as it is shown. It was not sent; take the "
+                                     "coding line out.")
+            for number, line in enumerate(text.splitlines(), 1):
+                if any(ch in _BIDI for ch in line):
+                    raise BuildError(f"{path} line {number} holds a character that changes the "
+                                     "direction text is drawn in, so it would not read as it runs. "
+                                     "It was not sent; take it out.")
+            out.append({"path": path, "kind": "source", "bytes": f.get("bytes"),
+                        "sha256": f.get("sha256"), "text": text})
+        elif kind == "compiled":
+            out.append({"path": path, "kind": "compiled", "bytes": f.get("bytes"),
+                        "sha256": f.get("sha256")})
+        elif kind == "link":
+            out.append({"path": path, "kind": "link", "target": str(f.get("target") or "")})
+        else:
+            raise BuildError("Its code could not be read, so it was not sent.")
+    return out
+
+
+def _sent_summary(entry: Dict[str, Any], *, with_files: bool = False) -> Dict[str, Any]:
+    """A stored send as the routes hand it out. `registration` is the admin
+    route's fields pinned to the code that was sent, made here by
+    `ws_registration` from the stored owner, folder and fingerprint — the one
+    place they are made, never text someone sent. Raises `BuildError` for an
+    entry it cannot make them from."""
+    out = {k: entry.get(k) for k in ("id", "owner", "server", "sent_at", "tools")}
+    out["pin"] = entry.get("pin")
+    out["registration"] = ws_registration(entry.get("owner"), entry.get("server"), entry.get("pin"))
+    files = entry.get("files") or []
+    if with_files:
+        out["files"] = files
+    else:
+        out["files"] = [{k: f.get(k) for k in ("path", "kind", "bytes", "target") if k in f}
+                        for f in files]
+    return out
+
+
+async def ws_send(owner: Optional[str], name: Any, *, auth_manager: Any = None) -> Dict[str, Any]:
+    """Send this person's server to the admins: read its code and fingerprint
+    in one walk, start it once against that fingerprint (the tools an admin is
+    told about are that code's), and keep the copy. Replaces this server's
+    earlier send. Writes nothing in the workstation and registers nothing.
+    The route lets only a person call it."""
+    slug = _slug(name)
+    client, account = await _station(owner, auth_manager)
+    answer = await _probe(client, account, {"slug": slug, "action": "snapshot",
+                                            "timeout": CHECK_TIMEOUT_S}, CHECK_TIMEOUT_S)
+    if answer.get("missing"):
+        raise BuildError(f"There is no server called {slug!r} in your workstation.")
+    digest = answer.get("digest")
+    if not isinstance(digest, str) or not re.match(_PIN_RE_TEXT, digest):
+        raise BuildError(answer.get("error") or "Its code could not be read, so it was not sent.")
+    files = _shown_files(slug, answer)
+    check = await ws_verify(owner, slug, auth_manager=auth_manager, pin=digest)
+    if check.get("changed_since_registered"):
+        raise BuildError("It changed while it was being sent, so it was not sent. Send it again.")
+    if not check["started"]:
+        raise BuildError(f"It did not start, so it was not sent: {check['error']}")
+    word = _owner_word(owner)
+    entry = {"id": uuid.uuid4().hex, "owner": owner, "owner_word": word,
+             "server": slug, "pin": digest, "files": files,
+             "tools": [{"name": o["name"], "description": o["description"]} for o in check["offers"]],
+             "sent_at": time.time()}
+    with _SENT_LOCK:
+        entries = [e for e in _sent_load()
+                   if not (e.get("owner_word") == word and e.get("server") == slug)]
+        if sum(1 for e in entries if e.get("owner_word") == word) >= MAX_SENT_PER_PERSON:
+            raise BuildError(f"You have {MAX_SENT_PER_PERSON} servers waiting for an admin already. "
+                             "Withdraw one, or wait for them to be registered.")
+        entries.append(entry)
+        _sent_save(entries)
+    from src.workbench_rooms import ADD_MCP_SERVER_PATH
+    return {**_sent_summary(entry), "where": ADD_MCP_SERVER_PATH}
+
+
+def _registered_pins(rows: Sequence[Any]) -> Dict[Tuple[str, str], set]:
+    pins: Dict[Tuple[str, str], set] = {}
+    for row in rows:
+        try:
+            args = json.loads(getattr(row, "args", None) or "[]")
+        except ValueError:
+            continue
+        target = relay_target(getattr(row, "command", None), args)
+        if target:
+            pins.setdefault((target["owner"], target["server"]), set()).add(target["pin"])
+    return pins
+
+
+def sent_waiting(rows: Sequence[Any]) -> List[Dict[str, Any]]:
+    """The builds waiting for an admin, newest first. One registered with the
+    very code that was sent has been handled and leaves the list (and the
+    store); one registered before with other code says so (`registered_before`),
+    because Register then registers it again rather than adding a second row."""
+    pins = _registered_pins(rows)
+    with _SENT_LOCK:
+        entries = _sent_load()
+        kept = [e for e in entries
+                if e.get("pin") not in pins.get((e.get("owner_word"), e.get("server")), set())]
+        if len(kept) != len(entries):
+            _sent_save(kept)
+    out = []
+    for e in sorted(kept, key=lambda x: x.get("sent_at") or 0, reverse=True):
+        try:
+            summary = _sent_summary(e)
+        except BuildError as exc:
+            # Only `ws_send` writes the store; an entry that is not its shape
+            # was edited by hand, and is not offered for registration.
+            logger.warning("A build sent for registration is unreadable (%s); it is not listed.", exc)
+            continue
+        summary["registered_before"] = bool(pins.get((e.get("owner_word"), e.get("server"))))
+        out.append(summary)
+    return out
+
+
+def sent_mine(owner: Optional[str]) -> Dict[str, Dict[str, Any]]:
+    """This person's waiting sends, by server — what their own cards say."""
+    word = _owner_word(owner)
+    return {e["server"]: {"id": e.get("id"), "sent_at": e.get("sent_at"), "pin": e.get("pin")}
+            for e in _sent_load() if e.get("owner_word") == word and isinstance(e.get("server"), str)}
+
+
+def _sent_entry(sent_id: Any) -> Dict[str, Any]:
+    entry = next((e for e in _sent_load() if e.get("id") == sent_id), None) \
+        if isinstance(sent_id, str) else None
+    if entry is None:
+        raise BuildError("That build is not waiting for an admin any more — it was registered, "
+                         "withdrawn or sent again.")
+    return entry
+
+
+async def sent_for_admin(sent_id: Any, *, auth_manager: Any = None) -> Dict[str, Any]:
+    """One waiting build as an admin reviews it: the code as it was sent, the
+    admin route's fields pinned to exactly that code, and whether the code in
+    the author's workstation is still it (`now`)."""
+    from src.workstation_client import WorkstationError
+    entry = _sent_entry(sent_id)
+    out = _sent_summary(entry, with_files=True)
+    try:
+        current = await ws_fingerprint(entry.get("owner"), entry["server"], auth_manager=auth_manager)
+    except (WorkstationError, BuildError) as exc:
+        out["now"], out["now_why"] = NOW_UNKNOWN, getattr(exc, "message", None) or str(exc)
+    else:
+        out["now"] = NOW_AS_SENT if current == entry["pin"] else NOW_CHANGED
+        out["now_why"] = None
+    return out
+
+
+def sent_remove(sent_id: Any, *, by: Optional[str], is_admin: bool) -> Dict[str, Any]:
+    """Take a build off the list: an admin dismissing it, or its sender
+    withdrawing it. Nobody else."""
+    with _SENT_LOCK:
+        entries = _sent_load()
+        entry = _sent_entry(sent_id)
+        if not is_admin and _owner_word(by) != entry.get("owner_word"):
+            raise PermissionError("Only an admin, or the person who sent it, takes it off the list.")
+        _sent_save([e for e in entries if e.get("id") != sent_id])
+    return {"removed": True, "server": entry.get("server")}
+
+
 # ── the relay ─────────────────────────────────────────────────────────────────
 
 def _relay_args(argv: Sequence[str]):
@@ -836,6 +1167,9 @@ __all__ = [
     "changed_since_registered", "main", "registered_as", "relay_target", "workstation_why",
     "ws_create", "ws_fingerprint", "ws_list", "ws_read_source", "ws_registration", "ws_try",
     "ws_verify", "ws_write_source",
+    "MAX_SENT_PER_PERSON", "NOW_AS_SENT", "NOW_CHANGED", "NOW_UNKNOWN", "sent_for_admin",
+    "sent_mine", "sent_remove",
+    "sent_waiting", "ws_send",
 ]
 
 

@@ -20126,6 +20126,7 @@ body:not(.email-doc-split-active) #email-lib-modal.email-lib-fullscreen:not(.mod
   min-height: 46px;
   box-sizing: border-box;
   display: flex;
+  flex-wrap: wrap;  /* B1124: the pills take the next line before the name goes */
   align-items: center;
   gap: 6px;
 }
@@ -20136,9 +20137,17 @@ body:not(.email-doc-split-active) #email-lib-modal.email-lib-fullscreen:not(.mod
   flex-shrink: 0;
 }
 /* Name + description column. Name wraps to 2 lines (skill slugs are long —
-   use the space rather than truncating to "check-model-downl…"). */
+   use the space rather than truncating to "check-model-downl…").
+   `B1124`. It was `flex: 1 1 auto; min-width: 0` beside a pill cluster that
+   could neither shrink nor move: measured in Chromium, four pills made the
+   cluster 358px, and on a 370px card (the Workbench's Skills room at 440px) or
+   a 342px one (the window at 390px) every duplicate's name box was 0px wide.
+   The name's basis is now 10rem and the header wraps, so when the cluster
+   does not fit beside 10rem of name it moves under the name instead of over
+   it. 10rem, not more: a one-pill card still fits on one line at 390px
+   (measured: 12rem wrapped every card there). */
 .skill-card-textcol {
-  flex: 1 1 auto;
+  flex: 1 1 10rem;
   min-width: 0;
   overflow: hidden;
 }
@@ -20160,12 +20169,18 @@ body:not(.email-doc-split-active) #email-lib-modal.email-lib-fullscreen:not(.mod
   overflow: hidden;
   text-overflow: ellipsis;
 }
-/* Right cluster — pills (right-aligned), stats, then the menu/chevron. */
+/* Right cluster — pills (right-aligned), stats, then the menu/chevron.
+   `B1124`: on a line of its own it is no wider than the card, and its pills
+   wrap inside it, right-aligned. */
 .skill-card-right {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   align-items: center;
   gap: 6px;
-  flex-shrink: 0;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
   margin-left: auto;
 }
 .skill-card-right .memory-cat-badge { flex-shrink: 0; }
@@ -45532,6 +45547,15 @@ body.settings-sidebar-resize-active {
     overflow-y: hidden;
   }
 
+  /* `B1131`. The items live in `.settings-nav-list`, a column on the desktop,
+     and neither narrow block turned it into the rail they describe: measured
+     in Chromium at 390x844, 16 items in 16 rows, the tab list 555px tall and
+     the panel left 102px. */
+  .settings-nav-list {
+    flex-direction: row;
+    flex: 0 0 auto;
+  }
+
   .settings-nav-search-wrap,
   .settings-sidebar-resize-handle,
   .settings-sidebar-toggle {
@@ -45559,6 +45583,21 @@ body.settings-sidebar-resize-active {
     flex-direction: row;
     overflow-x: auto;
     overflow-y: hidden;
+  }
+
+  .settings-nav-list {  /* B1131, as in the container block above */
+    flex-direction: row;
+    flex: 0 0 auto;
+  }
+
+  /* B1131. A phone's Settings is a full-height sheet, and the layout kept the
+     centred window's cap (85vh - 60px): measured, the panel stopped 96px above
+     the bottom of an 844px sheet. It fills the sheet, as a docked window's
+     does (`.modal-right-docked .settings-layout`). */
+  .settings-layout {
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: none;
   }
 
   .settings-nav-search-wrap,

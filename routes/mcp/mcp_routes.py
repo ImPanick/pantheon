@@ -514,6 +514,11 @@ def setup_mcp_routes(mcp_manager: McpManager):
             servers = await wm.ws_list(owner, auth_manager=auth)
         except WorkstationError as exc:
             return {"servers": [], "workstation": {"available": False, "why": exc.message}}
+        # B1130: a server this person sent that waits for an admin says so.
+        sent = wm.sent_mine(owner)
+        for entry in servers:
+            mine = sent.get(entry["name"])
+            entry["sent"] = {"id": mine["id"], "at": mine["sent_at"]} if mine else None
         return {"servers": servers, "workstation": {"available": True, "why": None}}
 
     @router.post("/scaffold")
@@ -573,8 +578,14 @@ def setup_mcp_routes(mcp_manager: McpManager):
                 for r in rows}
         registered = (REGISTERED_NO if not rows else
                       REGISTERED_CURRENT if pin in pins else REGISTERED_CHANGED)
+        # B1130: a send of this server waiting for an admin, and whether the
+        # code here is still the code that was sent.
+        mine = wm.sent_mine(owner).get(registration["name"])
+        sent = ({"id": mine["id"], "at": mine["sent_at"], "as_sent": mine["pin"] == pin}
+                if mine else None)
         return {"name": registration["name"], "source": source, "registration": registration,
-                "agent_refusal": wm.agent_refusal(registration), "registered": registered}
+                "agent_refusal": wm.agent_refusal(registration), "registered": registered,
+                "sent": sent}
 
     @router.put("/scaffold/{name}")
     async def scaffold_write(name: str, request: Request):
@@ -615,6 +626,98 @@ def setup_mcp_routes(mcp_manager: McpManager):
             timeout = wm.CALL_TIMEOUT_S
         return await _scaffold_call(wm.ws_try(owner, name, body.get("tool"), body.get("arguments"),
                                               timeout=timeout, auth_manager=auth))
+
+    # ── B1130: a build sent to the admins ───────────────────────────────────
+    #
+    # A person sends their build; an admin reads the code as it was sent and
+    # presses Register, which fills the Add MCP Server form — `POST /servers`
+    # above, `require_admin`, stays the only way a server is registered, and
+    # the build stays in its author's workstation. The send carries the
+    # server's name and nothing else; what an admin is shown and what the form
+    # pins come from one walk of the folder (`workstation_mcp`, "sent for
+    # registration", which names the adversary). The admin's routes are not
+    # under `/scaffold/`: a person may call a server `sent`, and
+    # `/scaffold/{name}` would answer for it.
+    #
+    # All four are a person's, at the screen (`request_is_a_person`). The
+    # agent's loopback carries the internal-tool token, which `require_admin`
+    # accepts outright whoever's assistant it is — so without this, any
+    # person's assistant (`app_api`) could list everyone's sends, read their
+    # code, and take them off the list; and a send would be a request in the
+    # person's name that the person never made. A bearer token is refused
+    # before this (`require_user`).
+    ONLY_A_PERSON_SENDS = (
+        "Only you send a server to the admins, from Build an MCP server — not an API token and "
+        "not your assistant: an admin reads a send as your request to run your code for everyone.")
+    from src.workbench_rooms import INTEGRATIONS_PLACE
+    ONLY_A_PERSON_REVIEWS = (
+        "What people sent for registration is read, registered and taken off the list by a person, "
+        f"in {INTEGRATIONS_PLACE} — not by an API token or an assistant: it is other people's code.")
+
+    def _a_person_only(request: Request, sentence: str) -> None:
+        from src.auth_helpers import request_is_a_person
+        if not request_is_a_person(request):
+            raise HTTPException(403, sentence)
+
+    @router.post("/scaffold/{name}/send")
+    async def scaffold_send(name: str, request: Request):
+        """Send the caller's server to the admins → `{sent}`. A person's only;
+        registers nothing."""
+        from src import workstation_mcp as wm
+        owner, auth = _scaffold_owner(request)
+        _a_person_only(request, ONLY_A_PERSON_SENDS)
+        return {"sent": await _scaffold_call(wm.ws_send(owner, name, auth_manager=auth))}
+
+    @router.get("/builds-sent")
+    def builds_sent(request: Request):
+        """What waits for an admin, newest first — `{sent: [...]}`, each with
+        the admin route's fields pinned to the code that was sent
+        (`registration`); a build registered with the very code that was sent
+        has left the list."""
+        require_admin(request)
+        _a_person_only(request, ONLY_A_PERSON_REVIEWS)
+        from src import workstation_mcp as wm
+        db = SessionLocal()
+        try:
+            rows = db.query(McpServer).all()
+        finally:
+            db.close()
+        return {"sent": wm.sent_waiting(rows)}
+
+    @router.get("/builds-sent/{sent_id}")
+    async def build_sent(sent_id: str, request: Request):
+        """One, as an admin reviews it: every file as it was sent, the admin
+        route's fields pinned to exactly that code (`registration`), and
+        whether the author's copy is still it (`now`: `as_sent`, `changed`,
+        `unknown`)."""
+        require_admin(request)
+        _a_person_only(request, ONLY_A_PERSON_REVIEWS)
+        from src import workstation_mcp as wm
+        try:
+            return await wm.sent_for_admin(
+                sent_id, auth_manager=getattr(request.app.state, "auth_manager", None))
+        except wm.BuildError as exc:
+            raise HTTPException(404, str(exc))
+
+    @router.delete("/builds-sent/{sent_id}")
+    def build_sent_remove(sent_id: str, request: Request):
+        """Take one off the list: an admin dismissing it, or its sender
+        withdrawing it."""
+        from src import workstation_mcp as wm
+        from src.auth_helpers import require_user
+        user = require_user(request)
+        _a_person_only(request, ONLY_A_PERSON_REVIEWS)
+        try:
+            require_admin(request)
+            is_admin = True
+        except HTTPException:
+            is_admin = False
+        try:
+            return wm.sent_remove(sent_id, by=user, is_admin=is_admin)
+        except wm.BuildError as exc:
+            raise HTTPException(404, str(exc))
+        except PermissionError as exc:
+            raise HTTPException(403, str(exc))
 
     @router.put("/servers/{server_id}")
     async def update_server(

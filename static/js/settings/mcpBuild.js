@@ -24,18 +24,26 @@
 //       it to an admin. *Register* opens the existing *Add MCP Server* form
 //       filled in (`onRegister`) — `POST /api/mcp/servers`, `require_admin`,
 //       stays the only way a server is registered (`D-2026-09-27-01`). A
-//       non-admin is shown the fields to send instead.
+//       non-admin sends it to the admins instead (`B1130`); the fields as text
+//       stay behind a fold.
+//   mountBuildsSent(host, { onRegister })  `B1130`, an admin's: the builds
+//       people sent, each one's code as it was sent, and *Register* — the same
+//       `onRegister`, so the same form, pinned to exactly that code.
+//   sentNotice(sent, onReview)  the line the MCP & Integrations list carries
+//       for an admin while builds wait.
 //
 // The routes, spelled here as their callers (`B596`):
 //   GET  /api/mcp/scaffold                 POST /api/mcp/scaffold
 //   GET  /api/mcp/scaffold/${name}          PUT  /api/mcp/scaffold/${name}
 //   POST /api/mcp/scaffold/${name}/check    POST /api/mcp/scaffold/${name}/try
+//   POST /api/mcp/scaffold/${name}/send     GET  /api/mcp/builds-sent
+//   GET  /api/mcp/builds-sent/${id}         DELETE /api/mcp/builds-sent/${id}
 //
 // Nothing here checks arguments against a schema before sending them
 // (`D-2026-09-27-02`): the server enforces its own, and *Try* shows what it said.
 
 import { mountArgsForm } from '../workbench/argsForm.js';
-import { describeServerRefusal } from './mcpFields.js';
+import { describeServerRefusal, formatCommandLine } from './mcpFields.js';
 
 let _seq = 0;
 const _id = (stem) => `mcp-build-${stem}-${++_seq}`;
@@ -316,6 +324,55 @@ export const REGISTERED_WORDS = Object.freeze({
 export const SAVED_REGISTERED = 'Saved. It is registered, so its tools do not run this code until an admin '
   + 'registers it again (Register).';
 
+/** `B1130`. When something happened, in the reader's own clock. */
+function _when(at) {
+  const n = Number(at);
+  if (!Number.isFinite(n)) return '';
+  try {
+    return new Date(n * 1000).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
+  } catch (_) {
+    return new Date(n * 1000).toISOString();
+  }
+}
+
+/** `B1130`. What a person reads about a build of theirs that waits for an
+ *  admin; `sent` is the scaffold read's `{id, at, as_sent}`. */
+export function describeSentByMe(sent) {
+  if (!sent) return '';
+  return sent.as_sent === false
+    ? `You sent it to an admin on ${_when(sent.at)}, and it has changed since — they would see the code you `
+      + 'sent, not this. Send it again.'
+    : `Sent to an admin on ${_when(sent.at)}. It waits for them.`;
+}
+
+/** `B1130`. One waiting build, in words — `entry` is a `GET /api/mcp/builds-sent`
+ *  row. `runs` is the admin route's fields as the Add MCP Server form previews
+ *  them, fingerprint included: what Register fills in, from the server. */
+export function describeSent(entry) {
+  const e = entry && typeof entry === 'object' ? entry : {};
+  const meta = [`from ${e.owner || 'someone'}`, _when(e.sent_at)];
+  if (e.registered_before) meta.push('registered before, with other code');
+  const tools = Array.isArray(e.tools) ? e.tools.map((t) => String(t && t.name)) : [];
+  const files = Array.isArray(e.files) ? e.files.map((f) => String(f && f.path)) : [];
+  const reg = e.registration && typeof e.registration === 'object' ? e.registration : null;
+  return {
+    title: String(e.server || ''),
+    meta: meta.filter(Boolean).join(' · '),
+    tools: tools.length ? `Offers: ${tools.join(', ')}` : 'Offers no tools yet.',
+    files: `${files.length} ${files.length === 1 ? 'file' : 'files'}: ${files.join(', ')}`,
+    runs: reg ? `Pantheon will run: ${formatCommandLine(reg.command, reg.args)}` : '',
+  };
+}
+
+/** `B1130`. Whether the author's copy is still what was sent (`now`). */
+export const NOW_WORDS = Object.freeze({
+  as_sent: 'Still as sent: this is the code in their workstation now.',
+  changed: 'Changed since it was sent: the code shown here is no longer what is in their workstation, '
+    + 'so registering it would run nothing. Ask them to send it again.',
+  unknown: 'Their workstation did not answer, so whether it changed since it was sent is not known. '
+    + 'Registering pins the code shown here; it runs only while it is still this code.',
+});
+
 /**
  * The Build panel into `host`. `isAdmin` decides what *Register* does:
  * `onRegister(registration)` for an admin, the fields as text otherwise.
@@ -409,6 +466,11 @@ export async function mountMcpBuild(host, { isAdmin = false, onRegister, onClose
     state.style.cssText = 'font-size:11px;opacity:0.7;';
     head.appendChild(state);
     box.appendChild(head);
+    // `B1130`. A send of this server that waits for an admin.
+    const sentAt = _el('p', 'mcp-build-sent-at');
+    sentAt.style.cssText = _NOTE + 'opacity:0.8;';
+    sentAt.style.display = 'none';
+    box.appendChild(sentAt);
     const said = _el('p', 'mcp-build-check');
     said.setAttribute('role', 'status');
     said.style.cssText = _NOTE;
@@ -436,6 +498,10 @@ export async function mountMcpBuild(host, { isAdmin = false, onRegister, onClose
     const c = { name, box, state, said, printed, tools, source, register };
 
     c.paintState = (word) => { state.textContent = CHECKED_WORDS[word] || ''; };
+    c.paintSent = (sent) => {
+      sentAt.textContent = sent ? `Sent to an admin on ${_when(sent.at)}.` : '';
+      sentAt.style.display = sent ? 'block' : 'none';
+    };
     c.paintCheck = (check) => {
       said.textContent = describeCheck(check);
       said.setAttribute('data-tone', check && check.started ? 'ok' : 'bad');
@@ -572,17 +638,80 @@ export async function mountMcpBuild(host, { isAdmin = false, onRegister, onClose
         onRegister(got.registration);
         return;
       }
-      const lead = _el('p', 'mcp-build-admin-only', 'Only an admin registers a server. Send them these fields:');
+      // `B1130`. Not an admin: send it to the admins, who read its code and
+      // register exactly that — nobody types a fingerprint. What is sent is
+      // this server's name; its code and fingerprint are read in one go in
+      // your workstation, and the admin's form is filled by Pantheon.
+      const lead = _el('p', 'mcp-build-admin-only', 'Only an admin registers a server. Send it to them: '
+        + 'they read its code, and register exactly that code.');
       lead.style.cssText = _NOTE + 'font-weight:600;';
+      const sentLine = _el('p', 'mcp-build-sent');
+      sentLine.setAttribute('role', 'status');
+      sentLine.style.cssText = _NOTE;
+      const row = _el('div', 'mcp-build-send-row');
+      row.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;margin:4px 0;';
+      const send = _button('Send it to an admin', 'admin-btn-sm mcp-build-send');
+      const withdraw = _button('Withdraw', 'admin-btn-sm mcp-build-withdraw');
+      row.appendChild(send);
+      row.appendChild(withdraw);
+      let sent = got.sent || null;
+      const paint = (said2) => {
+        send.textContent = sent ? 'Send it again' : 'Send it to an admin';
+        withdraw.style.display = sent ? '' : 'none';
+        sentLine.textContent = said2 != null ? said2 : describeSentByMe(sent);
+        sentLine.style.display = sentLine.textContent ? 'block' : 'none';
+        c.paintSent(sent);
+      };
+      send.addEventListener('click', async (event) => {
+        if (event && event.preventDefault) event.preventDefault();
+        send.disabled = true;
+        sentLine.style.display = 'block';
+        sentLine.textContent = 'Reading its code in your workstation…';
+        try {
+          const answer = await _post(`/api/mcp/scaffold/${encodeURIComponent(name)}/send`);
+          const s = answer.sent || {};
+          sent = { id: s.id, at: s.sent_at, as_sent: true };
+          paint(`Sent. An admin sees its code in ${s.where || 'MCP & Integrations'}, and registers it `
+            + 'from there.');
+        } catch (err) {
+          paint(`Not sent — ${String((err && err.message) || err)}`);
+        } finally {
+          send.disabled = false;
+        }
+      });
+      withdraw.addEventListener('click', async (event) => {
+        if (event && event.preventDefault) event.preventDefault();
+        if (!sent) return;
+        withdraw.disabled = true;
+        try {
+          await _ask(`/api/mcp/builds-sent/${encodeURIComponent(sent.id)}`, { method: 'DELETE' });
+          sent = null;
+          paint('Withdrawn. No admin sees it now.');
+        } catch (err) {
+          paint(`Not withdrawn — ${String((err && err.message) || err)}`);
+        } finally {
+          withdraw.disabled = false;
+        }
+      });
+      // The fields as text stay (`Law 1`), folded: sending is the way.
+      const fold = document.createElement('details');
+      fold.className = 'mcp-build-fields-fold';
+      const summary = document.createElement('summary');
+      summary.textContent = 'Or copy the fields yourself';
+      summary.style.cssText = 'font-size:11px;opacity:0.75;cursor:pointer;';
       const pre = _el('pre', 'mcp-build-fields', registrationText(got.registration));
       pre.style.cssText = _PRE;
-      register.replaceChildren(...(state ? [state] : []), lead, pre, note);
+      fold.appendChild(summary);
+      fold.appendChild(pre);
+      register.replaceChildren(...(state ? [state] : []), lead, row, sentLine, note, fold);
+      paint();
     };
 
     checkBtn.addEventListener('click', (e) => { if (e && e.preventDefault) e.preventDefault(); c.check(); });
     editBtn.addEventListener('click', (e) => { if (e && e.preventDefault) e.preventDefault(); c.edit(); });
     regBtn.addEventListener('click', (e) => { if (e && e.preventDefault) e.preventDefault(); c.register(); });
     c.paintState(entry.checked);
+    c.paintSent(entry.sent || null);
     if (Array.isArray(entry.tools) && entry.tools.length && entry.checked !== 'broken') {
       said.textContent = `Last check: offers ${entry.tools.join(', ')}. Check again to try them.`;
     }
@@ -650,4 +779,191 @@ export async function mountMcpBuild(host, { isAdmin = false, onRegister, onClose
   return { element: panel, refresh, build, cards };
 }
 
-export default { mountToolTry, mountMcpBuildDoor, mountMcpBuild, describeTryResult, describeCheck, registrationText };
+// ── sent for registration (`B1130`), an admin's ─────────────────────────────
+
+/** One file of a build as an admin reads it: a source's whole text, or what a
+ *  compiled file or a link is — named, because it runs with the rest. */
+function _drawSentFile(file, owner, open) {
+  const f = file && typeof file === 'object' ? file : {};
+  const path = String(f.path || '');
+  if (f.kind === 'source') {
+    const fold = document.createElement('details');
+    fold.className = 'mcp-sent-file';
+    fold.setAttribute('data-mcp-sent-file', path);
+    if (open) fold.open = true;
+    const text = String(f.text || '');
+    const lines = text ? text.split('\n').length : 0;
+    const summary = document.createElement('summary');
+    summary.textContent = `${path} — ${lines} ${lines === 1 ? 'line' : 'lines'}`;
+    summary.style.cssText = 'font-size:11px;cursor:pointer;font-family:monospace;';
+    const pre = _el('pre', 'mcp-sent-code', text);
+    pre.style.cssText = _PRE + 'max-height:420px;';
+    fold.appendChild(summary);
+    fold.appendChild(pre);
+    return fold;
+  }
+  const said = f.kind === 'compiled'
+    ? `${path} is compiled code (${f.bytes} bytes) and cannot be read here. It is pinned with the rest `
+      + `and can run as part of this server — ask ${owner} why it is there.`
+    : `${path} is a link to ${f.target}. Where it leads cannot be read here, and can run as part of `
+      + 'this server.';
+  const p = _el('p', 'mcp-sent-unreadable', said);
+  p.setAttribute('data-mcp-sent-file', path);
+  p.setAttribute('data-tone', 'bad');
+  p.style.cssText = _NOTE + 'font-weight:600;color:var(--red);';
+  return p;
+}
+
+function _sentCard(entry, { onRegister, redraw }) {
+  const said = describeSent(entry);
+  const box = _el('div', 'mcp-sent');
+  box.setAttribute('data-mcp-sent', String(entry.id || ''));
+  box.style.cssText = 'border:1px solid var(--border);border-radius:6px;padding:6px 8px;margin:4px 0;';
+  const head = _el('div');
+  head.style.cssText = 'display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;';
+  head.appendChild(_el('strong', null, said.title));
+  const meta = _el('span', 'mcp-sent-meta', said.meta);
+  meta.style.cssText = 'font-size:11px;opacity:0.7;';
+  head.appendChild(meta);
+  box.appendChild(head);
+  for (const line of [said.tools, said.files]) {
+    const p = _el('p', null, line);
+    p.style.cssText = _NOTE + 'opacity:0.8;';
+    box.appendChild(p);
+  }
+  if (said.runs) {
+    const runs = _el('p', 'mcp-sent-runs', said.runs);
+    runs.style.cssText = _NOTE + 'opacity:0.8;font-family:monospace;word-break:break-all;';
+    box.appendChild(runs);
+  }
+  const actions = _el('div');
+  actions.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;margin:4px 0;';
+  const read = _button('Read the code', 'admin-btn-sm mcp-sent-read');
+  const dismiss = _button('Dismiss', 'admin-btn-sm mcp-sent-dismiss');
+  actions.appendChild(read);
+  actions.appendChild(dismiss);
+  box.appendChild(actions);
+  const review = _el('div', 'mcp-sent-review');
+  review.setAttribute('role', 'status');
+  box.appendChild(review);
+  const id = encodeURIComponent(String(entry.id || ''));
+
+  read.addEventListener('click', async (event) => {
+    if (event && event.preventDefault) event.preventDefault();
+    read.disabled = true;
+    review.replaceChildren(_el('p', null, 'Opening it, and asking their workstation whether it changed…'));
+    let got;
+    try {
+      got = await _ask(`/api/mcp/builds-sent/${id}`);
+    } catch (err) {
+      review.replaceChildren(_el('p', null, String((err && err.message) || err)));
+      read.disabled = false;
+      return;
+    }
+    read.disabled = false;
+    const owner = String(got.owner || 'them');
+    const now = _el('p', 'mcp-sent-now', NOW_WORDS[got.now] || NOW_WORDS.unknown);
+    now.setAttribute('data-now', String(got.now || 'unknown'));
+    now.style.cssText = _NOTE + (got.now === 'as_sent' ? '' : 'font-weight:600;');
+    const parts = [now];
+    if (got.now === 'unknown' && got.now_why) {
+      const why = _el('p', null, String(got.now_why));
+      why.style.cssText = _NOTE + 'opacity:0.7;';
+      parts.push(why);
+    }
+    const pin = String((got.registration && got.registration.args || []).slice(-1)[0] || '');
+    const pins = _el('p', 'mcp-sent-pins', `Register pins exactly the code below (fingerprint ${pin.slice(0, 12)}…): `
+      + `${owner}'s later changes do not run until they send it again and an admin registers that.`);
+    pins.style.cssText = _NOTE + 'opacity:0.8;';
+    parts.push(pins);
+    const files = Array.isArray(got.files) ? got.files : [];
+    for (const file of files) parts.push(_drawSentFile(file, owner, files.length === 1));
+    if (got.now !== 'changed' && typeof onRegister === 'function') {
+      const row = _el('div');
+      row.style.cssText = 'display:flex;gap:6px;margin-top:6px;';
+      const go = _button('Register this code', 'admin-btn-sm mcp-sent-register');
+      go.addEventListener('click', (e) => {
+        if (e && e.preventDefault) e.preventDefault();
+        onRegister(got.registration);
+      });
+      row.appendChild(go);
+      parts.push(row);
+    }
+    review.replaceChildren(...parts);
+  });
+
+  dismiss.addEventListener('click', async (event) => {
+    if (event && event.preventDefault) event.preventDefault();
+    dismiss.disabled = true;
+    try {
+      await _ask(`/api/mcp/builds-sent/${id}`, { method: 'DELETE' });
+      if (typeof redraw === 'function') await redraw();
+    } catch (err) {
+      review.replaceChildren(_el('p', null, String((err && err.message) || err)));
+      dismiss.disabled = false;
+    }
+  });
+  return box;
+}
+
+/**
+ * `B1130`. The builds people sent for registration, into `host` — an admin's.
+ * Draws nothing when none waits. `onRegister(registration)` is the Build
+ * panel's own (`settings.js`'s `registerBuilt`): the Add MCP Server form, or
+ * the server's Edit when it was registered before. Resolves to `{ count }`.
+ */
+export async function mountBuildsSent(host, { onRegister } = {}) {
+  let listed;
+  try {
+    listed = await _ask('/api/mcp/builds-sent');
+  } catch (err) {
+    host.replaceChildren();
+    return { count: 0, error: String((err && err.message) || err) };
+  }
+  const sent = Array.isArray(listed && listed.sent) ? listed.sent : [];
+  host.replaceChildren();
+  if (!sent.length) return { count: 0 };
+  const box = _el('div', 'mcp-builds-sent');
+  box.style.cssText = 'border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin:2px 0 10px;';
+  const title = _el('h3', null, `Sent for registration (${sent.length})`);
+  title.style.cssText = 'font-size:12px;margin:0 0 4px;';
+  const lead = _el('p', null, 'People built these in their workstations and asked an admin to register them. '
+    + 'Read the code; Register then fills this form with exactly that code, and Save registers it.');
+  lead.style.cssText = _NOTE + 'opacity:0.75;';
+  box.appendChild(title);
+  box.appendChild(lead);
+  const redraw = () => mountBuildsSent(host, { onRegister });
+  for (const entry of sent) box.appendChild(_sentCard(entry, { onRegister, redraw }));
+  host.appendChild(box);
+  return { count: sent.length };
+}
+
+/**
+ * `B1130`. The line the MCP & Integrations list carries for an admin while
+ * builds wait — `null` when none does. `onReview()` opens the Add MCP Server
+ * form, where the list is.
+ */
+export function sentNotice(sent, onReview) {
+  const list = Array.isArray(sent) ? sent : [];
+  if (!list.length) return null;
+  const box = _el('div', 'intg-sent-note');
+  box.style.cssText = 'display:flex;align-items:center;gap:8px;padding:8px 10px;margin-bottom:8px;'
+    + 'border:1px solid var(--border);border-radius:5px;font-size:11px;';
+  const names = list.map((e) => `${e.server} (from ${e.owner})`).join(', ');
+  const said = _el('span', null, `${list.length === 1 ? 'An MCP server was' : `${list.length} MCP servers were`} `
+    + `sent for registration: ${names}.`);
+  said.style.cssText = 'flex:1;line-height:1.35;';
+  const go = _button('Review', 'admin-btn-sm intg-sent-review');
+  go.style.whiteSpace = 'nowrap';
+  go.addEventListener('click', (event) => {
+    if (event && event.preventDefault) event.preventDefault();
+    if (event && event.stopPropagation) event.stopPropagation();
+    if (typeof onReview === 'function') onReview();
+  });
+  box.appendChild(said);
+  box.appendChild(go);
+  return box;
+}
+
+export default { mountToolTry, mountMcpBuildDoor, mountMcpBuild, mountBuildsSent, sentNotice, describeTryResult,
+  describeCheck, describeSent, describeSentByMe, registrationText };

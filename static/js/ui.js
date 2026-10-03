@@ -1698,17 +1698,13 @@ if (!window._odyEscExpandGuard) {
       e.stopImmediatePropagation();
       return;
     }
-    const settingsModal = document.getElementById('settings-modal');
-    if (settingsModal && _isVisible(settingsModal)) {
-      const innerForm = settingsModal.querySelector('#unified-intg-form');
-      if (innerForm && innerForm.style.display !== 'none' && innerForm.children.length > 0) {
-        e.preventDefault();
-        e.stopImmediatePropagation();
-        innerForm.style.display = 'none';
-        innerForm.innerHTML = '';
-        return;
-      }
-    }
+    // `B1125`. A branch here closed Settings' integration form before Settings
+    // itself. `P22-21` moved that form, with its id, into the Workbench's MCP &
+    // Integrations room, which holds its own layer on the Escape stack while the
+    // form is open (`workbench.js`, `mountIntegrationsRoom`) — answered above by
+    // `dismissTopMenu()`. Settings holds no such form any more, so the branch
+    // matched nothing; it is gone rather than pointed at the room, which would
+    // be a second rule for one form (`Law 7`).
     const topModal = pickTopModal();
     if (!topModal) return;
     const closeBtn = topModal.querySelector('.close-btn, .modal-close-btn, [data-action="close"]');
