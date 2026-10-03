@@ -943,7 +943,9 @@ function createSessionItem(s) {
       return;
     }
     dropdown.style.display = 'none';
-    if (!await uiModule.styledConfirm('Delete this session?', { confirmText: 'Delete', danger: true })) {
+    // `P23-04` (CHAT-U-22): the product's word is *chat*, and the title is
+    // the action, not "Confirm".
+    if (!await uiModule.styledConfirm('Delete this chat?', { title: 'Delete', confirmText: 'Delete', danger: true })) {
       _forceSidebarOpen();
       return;
     }
@@ -985,16 +987,27 @@ function createSessionItem(s) {
         headers: { 'Content-Type': 'application/json' }
       });
       if (response.ok) {
+        // `P23-04` (CHAT-M-6). Archiving the open chat leaves it: it stayed on
+        // screen, live, out of the list, and the next list refresh blanked
+        // its model label because it was no longer among the chats. A run
+        // still going keeps going (detached, as on any switch); the screen
+        // shows a new chat.
+        if (currentSessionId === s.id) {
+          try {
+            if (window.chatModule && window.chatModule.detachCurrentStream) window.chatModule.detachCurrentStream(s.id);
+          } catch (_) {}
+          _deselectCurrentSession(s.id);
+        }
         _forceSidebarOpen();
         await loadSessions();
         dropdown.style.display = 'none';
-        uiModule.showToast('Session archived');
+        uiModule.showToast('Chat archived');
       } else {
-        throw new Error('Failed to archive session');
+        throw new Error('Failed to archive chat');
       }
     } catch (error) {
       console.error('Error archiving session:', error);
-      uiModule.showError('Failed to archive session');
+      uiModule.showError('Could not archive that chat. Try again.');
     }
   });
 

@@ -8,6 +8,8 @@
 
 import Storage from './storage.js';
 import uiModule from './ui.js';
+// `P23-04` (C-ERR). A refused response is read once, by the one helper.
+import { readRefusal } from './workbench/refusal.js';
 import sessionModule from './sessions.js';
 import chatRenderer, { buildDiffHtml } from './chatRenderer.js?v=20261003waveg';
 import chatStream from './chatStream.js?v=20261003waveg';
@@ -2418,6 +2420,10 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
       const handled = await handleSlashCommand(msg.trim());
       if (handled) {
         el('message').value = '';
+        // `P23-04` (SET-M-22). Say the box is empty, so the command popup —
+        // whose own Enter listener runs after this one — closes rather than
+        // putting the command back ("/notes " stayed in the box).
+        el('message').dispatchEvent(new Event('input', { bubbles: true }));
         if (window._syncModelPickerAutohide) window._syncModelPickerAutohide();
         if (uiModule.autoResize) uiModule.autoResize(el('message'));
         _releaseSendFlag();
@@ -7310,6 +7316,21 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
   /**
    * Edit a user message: show an input, truncate to before it, resubmit the edited text.
    */
+  /** `P23-04` (CHAT-M-9). What sending an edit removes, in one line, or ''.
+   *  `later` is the chat's `.msg` bubbles after the edited one; a step's
+   *  continuation bubble is part of its reply, and a system line is not a
+   *  message. */
+  export function editRemovesNote(later) {
+    const counted = (later || []).filter((m) => m && m.classList
+      && !m.classList.contains('msg-continuation') && !m.classList.contains('msg-system'));
+    if (!counted.length) return '';
+    if (counted.length === 1) {
+      return counted[0].classList.contains('msg-ai')
+        ? 'Sending removes the reply below.' : 'Sending removes the message below.';
+    }
+    return `Sending removes the ${counted.length} messages below.`;
+  }
+
   export async function editUserMessage(userMsgElement) {
     const box = document.getElementById('chat-history');
     const allMsgs = Array.from(box.querySelectorAll('.msg'));
@@ -7337,6 +7358,18 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
     cancelBtn.textContent = 'Cancel';
     btnRow.appendChild(saveBtn);
     btnRow.appendChild(cancelBtn);
+    // `P23-04` (CHAT-M-9). Sending an edit starts the chat again from here,
+    // so everything after this message goes — and it went without a word.
+    // The editor says so before Send, and how much.
+    const removes = editRemovesNote(allMsgs.slice(msgIndex + 1));
+    if (removes) {
+      const note = document.createElement('span');
+      note.className = 'edit-removes-note';
+      note.style.cssText = 'align-self:center; font-size:12px; color:var(--color-muted-alt);';
+      note.textContent = removes;
+      btnRow.appendChild(note);
+      saveBtn.title = removes;
+    }
 
     const originalHTML = bodyEl.innerHTML;
     bodyEl.innerHTML = '';
@@ -7359,11 +7392,18 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
 
       const keepCount = msgIndex;
       try {
-        await fetch(`${API_BASE}/api/session/${sessionId}/truncate`, {
+        const truncated = await fetch(`${API_BASE}/api/session/${sessionId}/truncate`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ keep_count: keepCount })
         });
+        if (!truncated.ok) {
+          // `P23-04` (C-ERR): nothing was removed, so nothing is sent.
+          const refusal = await readRefusal(truncated, 'Could not edit that message. Try again.');
+          uiModule.showError(refusal.sentence);
+          bodyEl.innerHTML = originalHTML;
+          return;
+        }
 
         // Remove DOM elements from msgIndex onward
         for (let i = allMsgs.length - 1; i >= msgIndex; i--) {
@@ -7377,7 +7417,7 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
         if (submitBtn) submitBtn.click();
       } catch (err) {
         console.error('Edit failed:', err);
-        if (uiModule) uiModule.showError('Edit failed: ' + err.message);
+        if (uiModule) uiModule.showError('Could not reach Pantheon to edit that message. Try again.');
         bodyEl.innerHTML = originalHTML;
       }
     });
@@ -8008,15 +8048,6 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
    * Delete an AI message and its preceding user message from the conversation.
    */
   export async function deleteMessage(msgElement) {
-    if (uiModule && uiModule.styledConfirm) {
-      const ok = await uiModule.styledConfirm('Delete this message?', {
-        confirmText: 'Delete',
-        cancelText: 'Cancel',
-        danger: true,
-      });
-      if (!ok) return;
-    }
-
     const box = document.getElementById('chat-history');
     const allMsgs = Array.from(box.querySelectorAll('.msg'));
     const clickedIndex = allMsgs.indexOf(msgElement);
@@ -8062,6 +8093,22 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
           break;
         }
       }
+    }
+
+    // `P23-04` (CHAT-M-10, CHAT-U-22). The question says what goes: the
+    // pair is deleted together, so "Delete this message?" deleted the reply
+    // too, and asked under a title that said only "Confirm".
+    if (uiModule && uiModule.styledConfirm) {
+      const both = userIndex >= 0 && aiIndex >= 0;
+      const question = !both ? 'Delete this message?'
+        : (clickedIsUser ? 'Delete this message and its reply?' : 'Delete this reply and the message it answers?');
+      const ok = await uiModule.styledConfirm(question, {
+        title: 'Delete',
+        confirmText: 'Delete',
+        cancelText: 'Cancel',
+        danger: true,
+      });
+      if (!ok) return;
     }
 
     // Collect DB message IDs and DOM elements to remove
@@ -8117,12 +8164,19 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ msg_ids: msgIds })
       });
-      if (!res.ok) throw new Error('Server error ' + res.status);
+      if (!res.ok) {
+        // `P23-04` (C-ERR): the server's sentence, read once, never a raw body.
+        const refusal = await readRefusal(res, 'Could not delete that message. Try again.');
+        if (uiModule) uiModule.showError(refusal.sentence);
+        return;
+      }
       domToRemove.forEach(el => el.remove());
-      if (uiModule) uiModule.showToast('Message deleted');
+      if (uiModule) uiModule.showToast('Deleted');
+      // A chat with nothing left in it shows the empty chat, not a blank page.
+      if (!box.querySelector('.msg') && chatRenderer.showWelcomeScreen) chatRenderer.showWelcomeScreen();
     } catch (err) {
       console.error('Delete failed:', err);
-      if (uiModule) uiModule.showError('Delete failed: ' + err.message);
+      if (uiModule) uiModule.showError('Could not reach Pantheon to delete that message. Try again.');
     }
   }
 

@@ -6058,6 +6058,7 @@ const COMMANDS = {
     category: 'Tools',
     help: 'Open Forge; use "serve" to jump to model serving',
     handler: (args, ctx) => _cmdToolPanel('forge', args, ctx),
+    noUserBubble: true,   // `P23-04` (SET-M-22): opening the window is the answer
     usage: '/forge  ·  /forge serve qwen'
   },
   email: {
@@ -6065,6 +6066,7 @@ const COMMANDS = {
     category: 'Tools',
     help: 'Open Email',
     handler: (args, ctx) => _cmdToolPanel('email', args, ctx),
+    noUserBubble: true,   // `P23-04` (SET-M-22): opening the window is the answer
     usage: '/email'
   },
   notes: {
@@ -6072,6 +6074,7 @@ const COMMANDS = {
     category: 'Tools',
     help: 'Open Notes',
     handler: (args, ctx) => _cmdToolPanel('notes', args, ctx),
+    noUserBubble: true,   // `P23-04` (SET-M-22): opening the window is the answer
     usage: '/notes'
   },
   tasks: {
@@ -6079,6 +6082,7 @@ const COMMANDS = {
     category: 'Tools',
     help: 'Open Tasks',
     handler: (args, ctx) => _cmdToolPanel('tasks', args, ctx),
+    noUserBubble: true,   // `P23-04` (SET-M-22): opening the window is the answer
     usage: '/tasks'
   },
   brain: {
@@ -6086,6 +6090,7 @@ const COMMANDS = {
     category: 'Tools',
     help: 'Open Brain',
     handler: (args, ctx) => _cmdToolPanel('brain', args, ctx),
+    noUserBubble: true,   // `P23-04` (SET-M-22): opening the window is the answer
     usage: '/brain'
   },
   library: {
@@ -6093,6 +6098,7 @@ const COMMANDS = {
     category: 'Tools',
     help: 'Open Library',
     handler: (args, ctx) => _cmdToolPanel('library', args, ctx),
+    noUserBubble: true,   // `P23-04` (SET-M-22): opening the window is the answer
     usage: '/library'
   },
   gallery: {
@@ -6100,6 +6106,7 @@ const COMMANDS = {
     category: 'Tools',
     help: 'Open Gallery',
     handler: (args, ctx) => _cmdToolPanel('gallery', args, ctx),
+    noUserBubble: true,   // `P23-04` (SET-M-22): opening the window is the answer
     usage: '/gallery'
   },
   research: {
@@ -6107,6 +6114,7 @@ const COMMANDS = {
     category: 'Tools',
     help: 'Open Deep Research',
     handler: (args, ctx) => _cmdToolPanel('research', args, ctx),
+    noUserBubble: true,   // `P23-04` (SET-M-22): opening the window is the answer
     usage: '/research'
   },
   compare: {
@@ -6114,6 +6122,7 @@ const COMMANDS = {
     category: 'Tools',
     help: 'Open Compare',
     handler: (args, ctx) => _cmdToolPanel('compare', args, ctx),
+    noUserBubble: true,   // `P23-04` (SET-M-22): opening the window is the answer
     usage: '/compare'
   },
   mcp: {
