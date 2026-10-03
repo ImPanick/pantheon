@@ -1731,8 +1731,7 @@ def setup_skills_routes(skills_manager: SkillsManager) -> APIRouter:
         draft = await draft_skill_from_description(text, endpoint_url=url, model=model,
                                                    headers=headers)
         if not draft:
-            raise HTTPException(422, "The model could not draft a skill from that. Nothing was "
-                                     "saved. Say it differently, or write it by hand below.")
+            raise HTTPException(422, "The model gave no usable draft. Nothing was saved.")   # `D-32`
         return {"ok": True, "model": model, "draft": draft}
 
     @router.get("/slash-catalog")

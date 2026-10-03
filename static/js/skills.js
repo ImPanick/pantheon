@@ -704,7 +704,8 @@ function _buildBuiltinCards(rows) {
     // Warning banner — editing a built-in changes how the assistant uses a native tool.
     const warn = document.createElement('div');
     warn.className = 'skill-builtin-warn';
-    warn.innerHTML = '⚠ This is a built-in capability. Editing changes how the assistant is instructed to use this native tool — it can break or alter core behaviour. Use Revert to restore the shipped default.';
+    // `COPY-U-22` (P23-02): 30 words → one line.
+    warn.innerHTML = '⚠ Built in. Edits change how the model uses this tool; Revert restores the default.';
     preview.appendChild(warn);
     const pre = document.createElement('pre');
     pre.className = 'skill-md-pre';
@@ -3758,7 +3759,10 @@ async function _fixWithModel(m, name, btn) {
 }
 
 function _when(seconds) {
-  return seconds ? new Date(seconds * 1000).toLocaleString() : '';
+  // `D-30` (P23-02): "3 Oct, 03:33", not "10/3/2026, 3:33:40 AM".
+  return seconds ? new Date(seconds * 1000).toLocaleString(undefined, {
+    day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false,
+  }) : '';
 }
 
 /** *History*: a skill's earlier copies, newest first, each with *View* and
@@ -3780,7 +3784,7 @@ async function _showSkillHistory(card, name) {
   }
   const current = skills.find((s) => (s.name || s.id) === name) || {};
   wrap.appendChild(_el('div', 'skill-test-meta',
-    `Each is a copy an edit replaced. The skill now is version ${current.version || '—'}.`));
+    `Earlier copies. Now: ${current.version || '—'}.`));
   const list = _el('div', 'skill-history-list');
   wrap.appendChild(list);
   const text = _el('pre', 'skill-md-pre skill-history-text');
@@ -3808,8 +3812,7 @@ async function _showSkillHistory(card, name) {
     back.addEventListener('click', async (e) => {
       e.stopPropagation();
       const ok = await uiModule.styledConfirm(
-        `Put back the copy saved ${_when(v.saved_at)} (version ${v.version})? It replaces the skill as it `
-        + `is now (version ${current.version || '—'}), which is kept in History, so this can be undone.`,
+        `Put back ${v.version} (${_when(v.saved_at)})? The current copy (${current.version || '—'}) stays in History.`,
         { confirmText: 'Put this back' });
       if (!ok) return;
       try {
@@ -3818,7 +3821,7 @@ async function _showSkillHistory(card, name) {
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
         _mdCache.delete(name);
-        uiModule.showToast(`Put back the copy saved ${_when(v.saved_at)}. What it replaced is in History.`);
+        uiModule.showToast(`Restored ${v.version}. The old copy is in History.`);
         await loadSkills();
       } catch (err) {
         uiModule.showError(`Could not put it back: ${(err && err.message) || err}`);

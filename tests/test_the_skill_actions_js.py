@@ -214,10 +214,10 @@ def test_history_lists_views_as_text_and_puts_back_only_after_saying_what_it_rep
     assert o["viewed"]["text"].endswith("<script>alert(1)</script>") and o["viewed"]["nodes"] == 0
     assert o["viewed"]["hidden"] is False
     assert o["declined"] == 0, "No still put the copy back"
-    assert "version 1.0.0" in o["confirm"] and "It replaces the skill as it is now (version 1.0.0)" in o["confirm"]
-    assert "kept in History" in o["confirm"]
+    # `P23-02` (`D-30`): which copy, which it replaces, and that it is kept — in one line.
+    assert o["confirm"].startswith("Put back 1.0.0 (") and "The current copy (1.0.0) stays in History." in o["confirm"]
     assert o["restored"] == ["/api/skills/beta-print/versions/0001-1.0.0/restore"]
-    assert o["toast"].startswith("Put back the copy saved")
+    assert o["toast"] == "Restored 1.0.0. The old copy is in History."
 
 
 def test_download_saves_the_skill_as_a_file(box):

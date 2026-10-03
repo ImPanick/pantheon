@@ -1154,19 +1154,17 @@ export function renderMemoryList() {
       return;
     }
     const searchTerm = document.getElementById('memory-search')?.value?.trim() || '';
-    const _smiley = '<span style="vertical-align:-3px;margin-left:6px;">' + uiModule.emptyStateIcon('smiley') + '</span>';
     if (searchTerm || activeCategory !== 'all') {
       memoryList.innerHTML = `<div class="memory-empty">No matches.</div>`;
     } else {
-      memoryList.innerHTML = `<div class="memory-empty" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;">
-        <span>No memories yet${_smiley}</span>
-        <span style="opacity:0.7;font-size:11px;display:block;">
-          <a href="#" data-mem-goto-add style="color:var(--accent,var(--red));text-decoration:underline;">Import in Add tab</a>
-        </span>
+      // Doc 2 § 5, rule 8: one line, and the action beside it.
+      memoryList.innerHTML = `<div class="memory-empty" style="display:flex;align-items:center;justify-content:center;gap:8px;">
+        <span>No memories yet.</span>
+        <button type="button" class="memory-toolbar-btn" data-mem-goto-add>Add one</button>
       </div>`;
       memoryList.querySelector('[data-mem-goto-add]')?.addEventListener('click', (e) => {
         e.preventDefault();
-        document.querySelector('.memory-tab[data-memory-tab="add"]')?.click();
+        showBrainTab('add', { focus: true });
       });
     }
     return;
@@ -1695,7 +1693,7 @@ export async function extractMemory(sessionId) {
   if (memList) memList.classList.add('hidden');
 
   if (suggestions.length === 0) {
-    body.innerHTML = '<div class="memory-empty">No useful information detected.</div>';
+    body.innerHTML = '<div class="memory-empty">Nothing to keep from this chat.</div>';
   } else {
     const header = document.createElement('div');
     header.className = 'memory-suggestions-header';
