@@ -78,30 +78,71 @@ def is_cors_preflight(method: str, headers) -> bool:
     return method == "OPTIONS" and "access-control-request-method" in headers
 
 
-def require_admin(request: Request):
-    """Raise 403 if the current user isn't an admin.
-    Allows access when auth is explicitly disabled, or when the request carries
-    the in-process internal-tool token used by loopback agent tools.
+def _internal_request_person(request: Request):
+    """Whether `request` is Pantheon's own loopback, and the person it names.
+
+    Returns ``(internal, person)``. ``internal`` is the in-process tool
+    loopback's two signals: (a) the request carries the internal-tool token
+    (header-direct), or (b) the auth middleware already validated it and
+    stamped ``request.state.current_user``. ``person`` is who the loopback acts
+    for: the user the middleware attributed it to (`app.py`, from
+    `X-Pantheon-Owner`), else the header's own value — a name the middleware
+    did not find is still a person named, and is asked about, not dropped
+    (`B1175`). ``None`` when the loopback names nobody: Pantheon itself.
     """
-    # In-process bypass for tool-layer loopback calls. Two paths:
-    # (a) header-direct (caller set X-Pantheon-Internal-Token), or
-    # (b) the auth middleware already validated the token and stamped
-    #     request.state.current_user = "internal-tool".
+    internal = False
     try:
         hdr = request.headers.get(INTERNAL_TOOL_HEADER)
         if hdr and secrets.compare_digest(hdr, INTERNAL_TOOL_TOKEN):
-            return
-        if getattr(request.state, "current_user", None) == INTERNAL_TOOL_USER:
-            return
+            internal = True
+        stamped = getattr(request.state, "current_user", None)
+        if stamped == INTERNAL_TOOL_USER:
+            internal = True
+        if not internal:
+            return False, None
+        if stamped and stamped != INTERNAL_TOOL_USER:
+            return True, stamped
+        named = (request.headers.get("X-Pantheon-Owner") or "").strip()
+        return True, (named or None)
     except Exception:
-        pass
+        # Unreadable is not "nobody named": fall through to the session check,
+        # which a loopback cannot pass (fail closed).
+        return False, None
+
+
+def require_admin(request: Request):
+    """Raise 403 if the current user isn't an admin.
+    Allows access when auth is explicitly disabled, or when the request is the
+    in-process internal-tool loopback and names no person (Pantheon itself: the
+    scheduler, the Forge lifecycle loop).
+
+    `B1175`. **The assistant acts with its person's privileges, never more.**
+    A loopback that names a person (`X-Pantheon-Owner`, which `app_api`, the
+    image and research tools send) is asked the question that person's own
+    request is asked: are they an admin. Until 2026-10-03 the token returned
+    early whoever it named, so on every `require_admin` route the `app_api`
+    blocklists do not name a non-admin's loopback was an admin — measured
+    through the real `do_app_api` and the real app: bob, not an admin, got
+    **403** from `GET /api/mcp/servers` in person and **200** through his
+    loopback, with every server's `env` (where MCP servers keep their tokens).
+    The dispatcher's `_ADMIN_ONLY_TOOLS` refuses `app_api` to a non-admin
+    first, so the hole was one gate deep, not open; this is the route's own
+    control holding under it. The adversary (`Law 17`): text a non-admin's
+    assistant reads — a mail, a page, a document — steering it to an admin
+    route. An auth-off install passes (`auth_disabled`), and a single-user
+    install's owner is its admin. `FORBIDDEN.md` Part 2 lists this control:
+    tightened, never lifted.
+    """
+    internal, person = _internal_request_person(request)
+    if internal and person is None:
+        return
 
     auth_mgr = getattr(request.app.state, "auth_manager", None)
     if auth_disabled():
         return
     if not auth_mgr or not auth_mgr.is_configured:
         raise HTTPException(403, "Admin only")
-    user = getattr(request.state, "current_user", None)
+    user = person if internal else getattr(request.state, "current_user", None)
     if not user or not auth_mgr.is_admin(user):
         raise HTTPException(403, "Admin only")
 

@@ -80,8 +80,12 @@ RESULT = {{
 _EPILOGUE = '\nprint("RESULT=" + json.dumps(RESULT, sort_keys=True))\n'
 
 
-def gated_app_probe(tmp_path, body: str) -> dict:
-    """Boot the real app gated, run ``body`` with three callers, return ``RESULT``."""
+def gated_app_probe(tmp_path, body: str, env_overrides: dict | None = None) -> dict:
+    """Boot the real app gated, run ``body`` with three callers, return ``RESULT``.
+
+    ``env_overrides`` is applied last — `B1175` boots the same app with
+    ``AUTH_ENABLED=false`` to show a no-login install's owner keeps what it had;
+    ``RESULT["premise"]`` says which app was booted, so a case reads it."""
     env = os.environ.copy()
     env.update({
         "AUTH_ENABLED": "true",
@@ -98,6 +102,7 @@ def gated_app_probe(tmp_path, body: str) -> dict:
         "PYTHONPATH": str(_REPO),
         "PYTHON_DOTENV_DISABLED": "1",
     })
+    env.update(env_overrides or {})
     source = _PREAMBLE + textwrap.dedent(body) + _EPILOGUE
     result = subprocess.run([sys.executable, "-c", source], cwd=str(_REPO), env=env,
                             capture_output=True, text=True, timeout=600, check=False)
