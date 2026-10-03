@@ -219,10 +219,12 @@ def test_another_person_cannot_send_see_or_withdraw_anns_and_a_token_is_not_a_pe
 def test_the_assistant_cannot_send_read_withdraw_or_register_a_build(client, station, rows,
                                                                       sent_store, monkeypatch):
     """The agent's own doors, driven: ann's assistant sending her build, the
-    admin's and bob's reading the list and a send's code (the internal-tool
-    token passes `require_admin`, so the route's own refusal is what holds),
-    ann's withdrawing it, and the admin's registering it — through `app_api`
-    and through `manage_mcp`."""
+    admin's and bob's reading the list and a send's code, ann's withdrawing it,
+    and the admin's registering it — through `app_api` and through
+    `manage_mcp`. The admin's assistant passes `require_admin`, so the route's
+    own refusal (a person's only) is what holds for it; bob's is refused by
+    `require_admin` itself since `B1175` (moved at the merge, `integrate-g`:
+    the token used to pass whoever's assistant it was)."""
     import src.agent_tools.admin_tools as admin_tools
 
     _make(client)
@@ -234,11 +236,12 @@ def test_the_assistant_cannot_send_read_withdraw_or_register_a_build(client, sta
 
     sent = _send(client).json()["sent"]                       # ann herself sends it
     stored = sent_store.read_text()
-    for owner in ("admin", "bob"):
+    for owner, refusal in (("admin", "not by an API token or an assistant"),
+                           ("bob", "Admin only")):
         for path in ("/api/mcp/builds-sent", f"/api/mcp/builds-sent/{sent['id']}"):
             said, _ = _assistant(client, monkeypatch, owner, "GET", path)
             assert said["exit_code"] == 1 and said["status_code"] == 403, (owner, path, said)
-            assert "not by an API token or an assistant" in said["body"]
+            assert refusal in said["body"], (owner, path, said)
             assert "weather" not in said["body"] and sent["pin"] not in said["body"]
     for owner in ("admin", "ann"):
         said, _ = _assistant(client, monkeypatch, owner, "DELETE", f"/api/mcp/builds-sent/{sent['id']}")

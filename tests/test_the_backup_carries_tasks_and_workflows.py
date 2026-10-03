@@ -23,6 +23,7 @@ imports) through the real backup router:
 """
 
 import json
+from types import SimpleNamespace
 
 import pytest
 
@@ -77,6 +78,10 @@ def _backup_app(w):
         def save(self, *a, **k): return None
 
     app = FastAPI()
+    # `B1175`: `ADMIN`'s loopback names alice, and `require_admin` asks whether
+    # the person it names is an admin — she is, on this install.
+    app.state.auth_manager = SimpleNamespace(is_configured=True,
+                                             is_admin=lambda user: user == "alice")
 
     @app.middleware("http")
     async def _who(request, call_next):

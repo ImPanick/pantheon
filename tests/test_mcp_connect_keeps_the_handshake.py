@@ -350,7 +350,11 @@ def test_the_servers_route_carries_it_too(connect):
             from core.middleware import INTERNAL_TOOL_HEADER, INTERNAL_TOOL_TOKEN
             self.headers = {INTERNAL_TOOL_HEADER: INTERNAL_TOOL_TOKEN}
             self.state = SimpleNamespace(current_user="admin")
-            self.app = SimpleNamespace(state=SimpleNamespace(auth_manager=None))
+            # `B1175`: on the loopback `require_admin` asks about the person the
+            # request names, as their own request is asked — this one names the
+            # admin, so the app knows them as one.
+            self.app = SimpleNamespace(state=SimpleNamespace(auth_manager=SimpleNamespace(
+                is_configured=True, is_admin=lambda user: user == "admin")))
 
     router = setup_mcp_routes(manager)
     endpoint = [r.endpoint for r in router.routes
