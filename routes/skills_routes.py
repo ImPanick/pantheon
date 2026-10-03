@@ -49,6 +49,41 @@ _VERDICT_PROSE_RE = re.compile(
 )
 
 
+def _fetch_failure_sentence(e: Exception) -> Optional[str]:
+    """`BRAIN-M-12` (P23-02). A failed download in one sentence a person can
+    act on. The raw exception went out as the 502's `detail` and was printed
+    twice — toast and status line — as `[SSL: CERTIFICATE_VERIFY_FAILED]
+    certificate verify failed: self-signed certificate in certificate chain
+    (_ssl.c:1016)` (measured). The exception still goes to the log."""
+    import ssl
+    import urllib.error
+
+    host = "GitHub"
+    try:
+        req = getattr(e, "request", None)
+        if req is not None and getattr(req, "url", None) is not None:
+            h = str(req.url.host or "")
+            if h and "github" not in h:
+                host = h
+    except Exception:
+        pass
+    text = str(e)
+    if isinstance(e, ssl.SSLError) or "CERTIFICATE_VERIFY_FAILED" in text or "SSL" in text[:12]:
+        return f"Could not reach {host} (TLS certificate rejected)."
+    if isinstance(e, httpx.HTTPStatusError):
+        code = e.response.status_code if e.response is not None else 0
+        if code == 404:
+            return f"{host} has nothing at that link."
+        if code in (403, 429):
+            return f"{host} refused for now (rate limit). Try again later."
+        return f"Could not download from {host} (HTTP {code})."
+    if isinstance(e, httpx.TimeoutException):
+        return f"{host} did not answer in time."
+    if isinstance(e, (httpx.HTTPError, urllib.error.URLError, ConnectionError, OSError)):
+        return f"Could not reach {host}."
+    return None
+
+
 # `BRAIN-M-2` (P23-02): two states, refused otherwise (a 422 names the field).
 SkillStatus = Literal["draft", "published"]
 
@@ -1872,40 +1907,6 @@ def setup_skills_routes(skills_manager: SkillsManager) -> APIRouter:
                               "skills": list(sec.get("skills") or [])}
                              for sec in rec.get("sections") or []],
                 "skills": package_skills(rec)}
-
-    def _fetch_failure_sentence(e: Exception) -> Optional[str]:
-        """`BRAIN-M-12` (P23-02). A failed download in one sentence a person can
-        act on. The raw exception went out as the 502's `detail` and was printed
-        twice — toast and status line — as `[SSL: CERTIFICATE_VERIFY_FAILED]
-        certificate verify failed: self-signed certificate in certificate chain
-        (_ssl.c:1016)` (measured). The exception still goes to the log."""
-        import ssl
-        import urllib.error
-
-        host = "GitHub"
-        try:
-            req = getattr(e, "request", None)
-            if req is not None and getattr(req, "url", None) is not None:
-                h = str(req.url.host or "")
-                if h and "github" not in h:
-                    host = h
-        except Exception:
-            pass
-        text = str(e)
-        if isinstance(e, ssl.SSLError) or "CERTIFICATE_VERIFY_FAILED" in text or "SSL" in text[:12]:
-            return f"Could not reach {host} (TLS certificate rejected)."
-        if isinstance(e, httpx.HTTPStatusError):
-            code = e.response.status_code if e.response is not None else 0
-            if code == 404:
-                return f"{host} has nothing at that link."
-            if code in (403, 429):
-                return f"{host} refused for now (rate limit). Try again later."
-            return f"Could not download from {host} (HTTP {code})."
-        if isinstance(e, httpx.TimeoutException):
-            return f"{host} did not answer in time."
-        if isinstance(e, (httpx.HTTPError, urllib.error.URLError, ConnectionError, OSError)):
-            return f"Could not reach {host}."
-        return None
 
     def _import_errors(e: Exception):
         from services.memory.skill_importer import SkillImportError
