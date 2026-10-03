@@ -508,6 +508,71 @@ def _readme_problems() -> list:
     return problems
 
 
+def _ship_line():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("_ledger_ship_line",
+                                                  ROOT / ".pantheon" / "ship-line.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _readme_trend_problems() -> list:
+    """`B1148`. The README's *Status* paragraph restated the ship line's trend —
+    *"done went 49.7% → 63.0% and open went 192 → 229: 237 rows filed against
+    200 closed, a file-to-close ratio of 1.185"* — and said the figures were
+    recomputed by `ship-line.py --trend`; they were a copy, and `--trend` said
+    70.8% → 72.5%, 290 → 314, 149 against 125, 1.192. Its *On AI* section said
+    *"Twenty-three checkers run in CI"* against `ci.yml`'s 24. Each is held here
+    to the function that computes it, the way the badge and the tracked/done
+    line already are, so the integrator who adds a § Progress entry restates
+    them in the same commit or the gate says which one moved."""
+    if not README.exists() or not TRACKER.exists():
+        return []
+    readme = " ".join(README.read_text(encoding="utf-8").split())
+    sl = _ship_line()
+    text = TRACKER.read_text(encoding="utf-8")
+    t = sl.trend_summary(text)
+    problems = []
+    for want in (f"**{t['done_from']}% → {t['done_to']}%**",
+                 f"**{t['open_from']} → {t['open_to']}**",
+                 f"{t['filed']} rows filed against {t['closed']} closed",
+                 f"ratio of **{t['ratio']}**"):
+        if want not in readme:
+            problems.append(f"README's trend does not read {want!r} — "
+                            f"`ship-line.py --trend` moved")
+    recent, blocking = sl.composition(sl.parse_rows(text),
+                                      sl.parse_register(sl.PROPOSAL.read_text(encoding="utf-8")))
+    span = f"(`{recent[0].id}`–`{recent[-1].id}`), **{_count_word(len(blocking))}**"
+    if span not in readme:
+        problems.append(f"README's ship-line sentence does not read {span!r}")
+    try:
+        ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    except OSError:
+        return problems
+    live = len(re.findall(r"^\s*- name: check-[\w-]+\s*$", ci, re.M))
+    if live and f"{_count_word(live, capital=True)} checkers run in CI" not in readme:
+        problems.append(f"README does not say '{_count_word(live, capital=True)} "
+                        f"checkers run in CI' — `ci.yml` lists {live}")
+    return problems
+
+
+_TENS = ("", "", "twenty", "thirty", "forty")
+
+
+def _count_word(n: int, capital: bool = False) -> str:
+    """`0` → *none*, `24` → *twenty-four*: the README spells its counts."""
+    if n == 0:
+        word = "none"
+    elif n < len(_WORDS):
+        word = _WORDS[n].lower()
+    elif n < 50:
+        word = _TENS[n // 10] + (f"-{_WORDS[n % 10].lower()}" if n % 10 else "")
+    else:
+        word = str(n)
+    return word[:1].upper() + word[1:] if capital else word
+
+
 def verify() -> list:
     """Every way a claim can be wrong that a script can see. Returns problems."""
     problems = []
@@ -567,6 +632,7 @@ def verify() -> list:
             )
 
     problems.extend(_readme_problems())
+    problems.extend(_readme_trend_problems())
     problems.extend(_upstream_gap_problems())
     problems.extend(_checker_count_problems())
     problems.extend(_repro_problems()[0])
@@ -589,7 +655,42 @@ def _table(rows) -> str:
     return "\n".join(out)
 
 
+_WORDS = ("Zero", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight",
+          "Nine", "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen",
+          "Sixteen", "Seventeen", "Eighteen", "Nineteen", "Twenty")
+
+
+def _limitation_figures() -> dict:
+    """The figures *What this ledger does not prove* restates, read from the claims.
+
+    `B1147`. That section was the one part of the rendered file that was not a
+    claim, so `B348`'s rule never looked at it, and it carried three literals the
+    claims above it had already overtaken: *"8,819 passing"* while `tests` said
+    14,154, *"all 15 checkers"* while `checkers` said 24 (and `ci.yml` 24), and
+    *"Seven upstream commits are unmerged"* while `behind-upstream` said 8. Each is
+    now read from the claim that owns it (`Law 7`), so moving a claim moves the
+    sentence, and a claim that loses its shape fails here rather than rendering a
+    stale number.
+    """
+    by_id = {c.id: c for c in C.CLAIMS}
+    passing = by_id["tests"].after.split("·")[-1].strip().split()[0]
+    checkers = re.match(r"(\d+)", by_id["checkers"].after.strip())
+    behind = re.match(r"(\d+)\s+with no patch-equivalent here\s*(\(.*\))?\s*$",
+                      by_id["behind-upstream"].after.strip())
+    if not re.fullmatch(r"\d[\d,]*", passing) or checkers is None or behind is None:
+        raise ValueError("a claim the limitations section reads has changed shape: "
+                         "`tests`, `checkers` or `behind-upstream`")
+    n = int(behind.group(1))
+    return {
+        "passing": passing,
+        "checkers": checkers.group(1),
+        "behind": _WORDS[n] if n < len(_WORDS) else str(n),
+        "behind_detail": f" {behind.group(2)}" if behind.group(2) else "",
+    }
+
+
 def render() -> str:
+    f = _limitation_figures()
     p = []
     a = p.append
     a(BANNER)
@@ -668,10 +769,11 @@ def render() -> str:
     a("   a measurement of how well Pantheon remembers in daily use, and no number in")
     a("   this repository is. Building one takes an operator's own memories and probes")
     a("   they wrote themselves: `.pantheon/retrieval_eval.py --generate`.")
-    a("2. **Seven upstream commits are unmerged** — documentation restructuring and")
-    a("   dependency bumps, deliberately declined. The five real fixes were")
-    a("   cherry-picked on 2026-09-12 (`P19-06`) and the two that were a security")
-    a("   advisory were backported ahead of them (`B70`). Measuring this gap is what")
+    a(f"2. **{f['behind']} upstream commits have no patch-equivalent here**{f['behind_detail']}.")
+    a("   The documentation restructuring and dependency bumps were deliberately")
+    a("   declined. The real fixes were cherry-picked (`P19-06`), the two that were a")
+    a("   security advisory were backported ahead of them (`B70`), and one was taken")
+    a("   by hand (`P19-08`). Measuring this gap is what")
     a("   found them: a bearer API token had inherited its minting admin's tool")
     a("   authority, and an approval grant was readable out of caller-writable message")
     a("   metadata. **A fork that stops taking upstream's fixes does not merely go")
@@ -680,15 +782,15 @@ def render() -> str:
     a("   *every silent failure explained* are real and checkable; neither is a")
     a("   measurement of a person getting their work done faster.")
     a("4. **Most rows here are about this fork's own tree.** The suite is green —")
-    a("   8,819 passing, nothing red, after 14 standing failures were cleared on")
-    a("   2026-09-12 — but a green suite is evidence about the code under it, not")
+    a(f"   {f['passing']} passing, nothing red, after the standing failures it inherited")
+    a("   were cleared on 2026-09-12 — but a green suite is evidence about the code under it, not")
     a("   about a deployment. `P10-10`'s manual pass over every surface is still")
     a("   not done, and no automated check substitutes for it.")
     a("")
     a("## Reproducing all of it")
     a("")
     a("```")
-    a("python3 .pantheon/release-gate.py        # all 15 checkers plus the suite")
+    a(f"python3 .pantheon/release-gate.py        # all {f['checkers']} checkers plus the suite")
     a("python3 .pantheon/retrieval_eval.py      # the memory numbers, with their caveat")
     a("python3 .pantheon/check-ledger.py          # this file, verified")
     a("```")

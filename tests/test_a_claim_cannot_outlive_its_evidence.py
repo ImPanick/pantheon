@@ -244,6 +244,38 @@ def test_readme_drift_is_caught(checker, claims, tmp_path, monkeypatch):
     assert any("badge" in p for p in checker.verify())
 
 
+def test_the_readme_trend_is_the_ship_lines_own(checker):
+    """`B1148`. The README's trend sentence and checker count, held to the
+    functions that compute them. Fails on the README as it stood on 2026-10-02:
+    *49.7% → 63.0%*, *192 → 229*, *237 … 200*, *1.185* and *Twenty-three*."""
+    assert checker._readme_trend_problems() == []
+
+
+def test_a_copied_trend_and_a_stale_checker_count_are_caught(checker, tmp_path, monkeypatch):
+    # Whitespace flattened, as the checker reads it: the README wraps its prose.
+    readme = " ".join(README.read_text(encoding="utf-8").split())
+    t = checker._ship_line().trend_summary(checker.TRACKER.read_text(encoding="utf-8"))
+    stale = (readme.replace(f"**{t['done_from']}% → {t['done_to']}%**", "**49.7% → 63.0%**")
+                   .replace(f"ratio of **{t['ratio']}**", "ratio of **1.185**")
+                   .replace("Twenty-four checkers run in CI", "Twenty-three checkers run in CI"))
+    assert stale != readme
+    fake = tmp_path / "README.md"
+    fake.write_text(stale, encoding="utf-8")
+    monkeypatch.setattr(checker, "README", fake)
+    problems = checker._readme_trend_problems()
+    assert any("% →" in p for p in problems), problems
+    assert any("ratio of" in p for p in problems), problems
+    assert any("checkers run in CI" in p for p in problems), problems
+    assert any(p in checker.verify() for p in problems)
+
+
+@pytest.mark.parametrize("n,word", [(0, "none"), (3, "three"), (20, "twenty"),
+                                    (24, "twenty-four"), (31, "thirty-one")])
+def test_the_readme_spells_its_counts(checker, n, word):
+    assert checker._count_word(n) == word
+    assert checker._count_word(n, capital=True) == word[:1].upper() + word[1:]
+
+
 def test_tracker_total_drift_is_caught(checker, tmp_path, monkeypatch):
     """Derive the current figures rather than typing them.
 
@@ -312,25 +344,85 @@ def test_the_ledger_states_what_it_does_not_prove(checker):
     assert "unmerged" in rendered or "behind" in rendered
 
 
+def _limitations(rendered: str) -> str:
+    return rendered.split("## What this ledger does not prove", 1)[1].split("\n## ", 1)[0]
+
+
+def _reproducing(rendered: str) -> str:
+    return rendered.split("## Reproducing all of it", 1)[1].split("\n## ", 1)[0]
+
+
+def test_the_limitations_state_what_the_claims_say(checker, claims):
+    """`B1147`. The limitations restated three figures as literals — *8,819
+    passing*, *all 15 checkers*, *Seven upstream commits* — while the claims
+    above them said 14,154, 24 and 8. That section is not a claim, so `B348`'s
+    rule never looked at it. Each figure is now the owning claim's."""
+    by_id = {c.id: c for c in claims.CLAIMS}
+    rendered = checker.render()
+    passing = by_id["tests"].after.split("·")[-1].strip().split()[0]
+    checkers = re.match(r"(\d+)", by_id["checkers"].after).group(1)
+    behind = int(re.match(r"(\d+)", by_id["behind-upstream"].after).group(1))
+    assert f"{passing} passing" in _limitations(rendered)
+    assert f"all {checkers} checkers" in _reproducing(rendered)
+    assert f"**{checker._WORDS[behind]} upstream commits" in _limitations(rendered)
+    for stale in ("8,819", "all 15 checkers", "Seven upstream commits are unmerged"):
+        assert stale not in rendered, stale
+
+
+def test_moving_a_claim_moves_the_limitations(checker, claims, monkeypatch):
+    """The direction that matters: a claim changes and the sentence follows,
+    with no second edit anybody has to remember (`Law 7`)."""
+    moved = tuple(
+        c._replace(after="1200 test files · 15,001") if c.id == "tests"
+        else c._replace(after="31") if c.id == "checkers"
+        else c._replace(after="3 with no patch-equivalent here (3 docs/deps)")
+        if c.id == "behind-upstream" else c
+        for c in claims.CLAIMS
+    )
+    monkeypatch.setattr(claims, "CLAIMS", moved)
+    rendered = checker.render()
+    assert "15,001 passing" in _limitations(rendered)
+    assert "all 31 checkers" in _reproducing(rendered)
+    assert "**Three upstream commits have no patch-equivalent here** (3 docs/deps)." \
+        in _limitations(rendered)
+    assert "14,154" not in _limitations(rendered)
+
+
+def test_a_limitation_claim_that_changes_shape_fails_the_render(checker, claims,
+                                                                monkeypatch):
+    """A claim whose `after` no longer reads as the limitation expects stops
+    the render, rather than rendering the sentence around a wrong number."""
+    broken = tuple(c._replace(after="about eight") if c.id == "behind-upstream" else c
+                   for c in claims.CLAIMS)
+    monkeypatch.setattr(claims, "CLAIMS", broken)
+    with pytest.raises(ValueError, match="behind-upstream"):
+        checker.render()
+
+
 def test_the_ledger_names_every_deleted_file(claims):
     """*We add, never subtract* is a claim with counter-examples, so name them.
 
-    537 added against 5 removed is only evidence if the five are named. A row
+    537 added against 7 removed is only evidence if the seven are named. A row
     that states the ratio and not the exceptions has not earned the first
     number. The fifth arrived on 2026-09-12 and the claim's headline, its
     figure and its prose all had to move together — the headline said five
     while the sentence under it still said four, which no checker catches
-    because both are prose.
+    because both are prose. The sixth and seventh arrived on 2026-10-02
+    (`B71`, `P0-13`: upstream's two pictures under Pantheon's filenames).
     """
     by_id = {c.id: c for c in claims.CLAIMS}
-    text = by_id["add-never-subtract"].pantheon
-    assert "minus five files" in text, "the prose must agree with the headline"
+    claim = by_id["add-never-subtract"]
+    text = claim.pantheon
+    assert "minus seven files" in text, "the prose must agree with the headline"
+    assert "Seven removed" in claim.headline and "7 removed" in claim.after
     for deleted in (
         "ACKNOWLEDGMENTS.md",
         "odysseus.zsh",
         "GohuFont.ttf",
         "reminders.js",
         "pantheon-wordmark.png",
+        "pantheon.jpg",
+        "pantheon-browser.jpg",
     ):
         assert deleted in text, f"{deleted} is deleted in the tree and unnamed in the ledger"
 

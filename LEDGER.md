@@ -32,7 +32,7 @@ are the numbers most likely to be quoted and least able to carry the weight.
 | Measure | Odysseus | Pantheon | Provenance |
 | --- | --- | --- | --- |
 | 156 commits and 175,966 inserted lines past the fork point. | `0 commits` | **`156 commits, 1,964 files changed, 175,966 insertions, 6,625 deletions`** | `diffed` |
-| 537 files added. Five removed, and all five are argued. | `—` | **`537 added · 1,387 modified · 5 removed`** | `diffed` |
+| 537 files added. Seven removed, and all seven are argued. | `—` | **`537 added · 1,387 modified · 7 removed`** | `diffed` |
 | Twelve upstream commits are not merged, and five of them are real fixes. | `0 behind` | **`8 with no patch-equivalent here (5 docs/deps, 2 advisory merges and 1 fix landed by hand)`** | `measured` |
 | recall@5 on one corpus: 0.40 lexical, 0.77 hybrid, 1.00 semantic. | `recall@5 0.40` | **`recall@5 1.00`** | `fixture` |
 | MRR 0.319 -> 0.931. Rank matters because memory is injected under a slot limit. | `MRR 0.319` | **`MRR 0.931`** | `fixture` |
@@ -78,15 +78,15 @@ are the numbers most likely to be quoted and least able to carry the weight.
 git diff --shortstat b4d1293..HEAD && git rev-list --count b4d1293..HEAD
 ```
 
-### 537 files added. Five removed, and all five are argued.
+### 537 files added. Seven removed, and all seven are argued.
 
-**`—` → `537 added · 1,387 modified · 5 removed`**  ·  provenance **`diffed`**
+**`—` → `537 added · 1,387 modified · 7 removed`**  ·  provenance **`diffed`**
 
 **Odysseus:** Upstream's file set at the fork point.
 
-**Pantheon:** Everything upstream shipped is still here, minus five files, each deleted with a recorded argument: `ACKNOWLEDGMENTS.md` (superseded by `CREDITS.md`, 105 -> 483 lines), `scripts/_completion/odysseus.zsh` (a rename), `docs/pantheon-wordmark.png` (upstream's mark, **renamed and never repainted** — the filename said Pantheon and the pixels said Odysseus; `P0-13` says in as many words not to reuse it), `static/fonts/custom/GohuFont.ttf` (verified first: 1,468 bytes, 13 sfnt tables, **3 glyphs**, metadata reading *Untitled1 / Copyright (c) 2025, Unknown*), and `static/js/calendar/reminders.js` (a dead poller).
+**Pantheon:** Everything upstream shipped is still here, minus seven files, each deleted with a recorded argument: `ACKNOWLEDGMENTS.md` (superseded by `CREDITS.md`, 105 -> 483 lines), `scripts/_completion/odysseus.zsh` (a rename), `docs/pantheon-wordmark.png` (upstream's mark, **renamed and never repainted** — the filename said Pantheon and the pixels said Odysseus; `P0-13` says in as many words not to reuse it), `docs/pantheon.jpg` and `docs/pantheon-browser.jpg` (upstream's UI with Odysseus in the sidebar, and the macOS app icon's source — `B71`; the build now copies `docs/brand/pantheon.icns`), `static/fonts/custom/GohuFont.ttf` (verified first: 1,468 bytes, 13 sfnt tables, **3 glyphs**, metadata reading *Untitled1 / Copyright (c) 2025, Unknown*), and `static/js/calendar/reminders.js` (a dead poller).
 
-**How we got there.** This is the fork's first law as a measurement — *an elevation, not a rip and re-write; we add, never subtract*. A ratio of 537 to 5 is only evidence if all five are named, so they are. The font is the one worth reading: it was checked before deletion rather than taken on trust, and it turned out to be three glyphs under a copyright notice crediting nobody. **The fifth was found by a failing test nobody had looked at**: the orphan-image guard had been red for the whole fork, saying a doc image was referenced by nothing — and the reason nothing referenced it was that it was upstream's logo wearing our filename.
+**How we got there.** This is the fork's first law as a measurement — *an elevation, not a rip and re-write; we add, never subtract*. A ratio of 537 to 7 is only evidence if all seven are named, so they are. The font is the one worth reading: it was checked before deletion rather than taken on trust, and it turned out to be three glyphs under a copyright notice crediting nobody. **The fifth was found by a failing test nobody had looked at**: the orphan-image guard had been red for the whole fork, saying a doc image was referenced by nothing — and the reason nothing referenced it was that it was upstream's logo wearing our filename. **The sixth and seventh went on 2026-10-02 (`4c2ef8e`, `P0-13`)**, the day Pantheon got a mark of its own: the two pictures were upstream's under our filenames too. That deletion count was re-measured where the fork point is not reachable — this clone begins at a snapshot import — as `git diff --name-status` from its first commit to `HEAD`, which deletes exactly those two pictures of upstream's (and one test file Pantheon itself added after the fork, not upstream's); the added and modified figures are the deployment box's reading of 2026-09-12 and have not been re-taken.
 
 ```
 git diff --name-status b4d1293..HEAD | grep '^D'
@@ -550,10 +550,11 @@ limitations section reads as marketing.
    a measurement of how well Pantheon remembers in daily use, and no number in
    this repository is. Building one takes an operator's own memories and probes
    they wrote themselves: `.pantheon/retrieval_eval.py --generate`.
-2. **Seven upstream commits are unmerged** — documentation restructuring and
-   dependency bumps, deliberately declined. The five real fixes were
-   cherry-picked on 2026-09-12 (`P19-06`) and the two that were a security
-   advisory were backported ahead of them (`B70`). Measuring this gap is what
+2. **Eight upstream commits have no patch-equivalent here** (5 docs/deps, 2 advisory merges and 1 fix landed by hand).
+   The documentation restructuring and dependency bumps were deliberately
+   declined. The real fixes were cherry-picked (`P19-06`), the two that were a
+   security advisory were backported ahead of them (`B70`), and one was taken
+   by hand (`P19-08`). Measuring this gap is what
    found them: a bearer API token had inherited its minting admin's tool
    authority, and an approval grant was readable out of caller-writable message
    metadata. **A fork that stops taking upstream's fixes does not merely go
@@ -562,15 +563,15 @@ limitations section reads as marketing.
    *every silent failure explained* are real and checkable; neither is a
    measurement of a person getting their work done faster.
 4. **Most rows here are about this fork's own tree.** The suite is green —
-   8,819 passing, nothing red, after 14 standing failures were cleared on
-   2026-09-12 — but a green suite is evidence about the code under it, not
+   14,154 passing, nothing red, after the standing failures it inherited
+   were cleared on 2026-09-12 — but a green suite is evidence about the code under it, not
    about a deployment. `P10-10`'s manual pass over every surface is still
    not done, and no automated check substitutes for it.
 
 ## Reproducing all of it
 
 ```
-python3 .pantheon/release-gate.py        # all 15 checkers plus the suite
+python3 .pantheon/release-gate.py        # all 24 checkers plus the suite
 python3 .pantheon/retrieval_eval.py      # the memory numbers, with their caveat
 python3 .pantheon/check-ledger.py          # this file, verified
 ```

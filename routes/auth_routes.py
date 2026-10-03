@@ -1286,7 +1286,8 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
                         raise HTTPException(
                             400,
                             "source_url: must be an absolute http:// or https:// URL "
-                            "(empty means no source link is shown)")
+                            "(empty means PANTHEON_SOURCE_URL, or else this project's "
+                            "own repository)")
             current[key] = val
         _save_settings(current)
         return _settings_for_browser(current)

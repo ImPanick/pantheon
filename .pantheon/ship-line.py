@@ -243,6 +243,31 @@ def distinct_waves(series: list[tuple[int, int]], n: int) -> list[tuple[int, int
     return list(reversed(seen))
 
 
+def trend_summary(text: str, n: int = 10) -> dict:
+    """The figures the trend report prints, as numbers — one computation, read
+    by `report_trend` and by `check-ledger.py`, which holds the README's
+    restatement of them (`B1148`)."""
+    waves = distinct_waves(trend(text), n)
+    first, last = waves[0], waves[-1]
+    filed, closed = last[0] - first[0], last[1] - first[1]
+    return {
+        "waves": waves, "steps": len(waves) - 1, "filed": filed, "closed": closed,
+        "opened": (last[0] - last[1]) - (first[0] - first[1]),
+        "ratio": f"{filed / closed:.3f}" if closed else "",
+        "done_from": f"{100 * first[1] / first[0]:.1f}",
+        "done_to": f"{100 * last[1] / last[0]:.1f}",
+        "open_from": first[0] - first[1], "open_to": last[0] - last[1],
+    }
+
+
+def composition(rows: list[Row], register: dict[str, tuple[str, str]], n: int = 40):
+    """`(recent, blocking)`: the last `n` `B` rows by id — the filing order — and
+    those of them the register names blocking."""
+    recent = sorted((r for r in rows if r.id.startswith("B")),
+                    key=lambda r: int(r.id[1:]))[-n:]
+    return recent, [r for r in recent if register.get(r.id, ("", ""))[0] == "blocking"]
+
+
 def report_trend(rows: list[Row], text: str, n: int = 10) -> int:
     series = trend(text)
     waves = distinct_waves(series, n)
@@ -259,19 +284,16 @@ def report_trend(rows: list[Row], text: str, n: int = 10) -> int:
         print(f"  {tr:>7}  {dn:>5}  {op:>5}  {100 * dn / tr:5.1f}%{delta}")
         prev = (tr, dn)
 
-    first, last = waves[0], waves[-1]
-    filed = last[0] - first[0]
-    closed = last[1] - first[1]
-    opened = (last[0] - last[1]) - (first[0] - first[1])
-    steps = len(waves) - 1
+    t = trend_summary(text, n)
+    filed, closed, steps = t["filed"], t["closed"], t["steps"]
     print()
     print(f"  over {steps} interval(s): filed {filed:+d}, closed {closed:+d}, "
-          f"open {opened:+d}")
+          f"open {t['opened']:+d}")
     print(f"  per interval: {filed / steps:.1f} filed, {closed / steps:.1f} closed")
-    print(f"  file:close ratio {filed / closed:.3f}  "
+    print(f"  file:close ratio {t['ratio']}  "
           f"— the open count falls only below 1.000")
-    print(f"  done {100 * first[1] / first[0]:.1f}% → {100 * last[1] / last[0]:.1f}%"
-          f"  ·  open {first[0] - first[1]} → {last[0] - last[1]}")
+    print(f"  done {t['done_from']}% → {t['done_to']}%"
+          f"  ·  open {t['open_from']} → {t['open_to']}")
 
     live = [r for r in rows if r.open]
     print()
@@ -316,9 +338,7 @@ def report(rows: list[Row], register: dict[str, tuple[str, str]]) -> int:
     # Filing composition. The convergence argument is not "we will stop finding
     # things"; it is that almost nothing we find is a gate. Recent `B` rows are
     # the sweeps' output, and the id order is the filing order.
-    recent = sorted((r for r in rows if r.id.startswith("B")),
-                    key=lambda r: int(r.id[1:]))[-40:]
-    rb = [r for r in recent if register.get(r.id, ("", ""))[0] == "blocking"]
+    recent, rb = composition(rows, register)
     print()
     print(f"composition: of the last {len(recent)} `B` rows filed "
           f"({recent[0].id}–{recent[-1].id}), {len(rb)} are blocking"

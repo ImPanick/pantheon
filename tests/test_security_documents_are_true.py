@@ -437,3 +437,73 @@ def test_a_dated_note_about_the_private_days_is_left_alone():
             "repository was public, not after.)* That was written when the "
             "repository was private and it does not survive going public.")
     assert _still_private(note) == []
+
+
+# ── `B1145`, `B1146` — the places outside the front door ────────────────────
+
+# The front-door rule above, plus the two spellings the wider sweep found.
+_STILL_PRIVATE_ANYWHERE = re.compile(
+    _STILL_PRIVATE.pattern + r"|the fork itself is private|the public flip is gated", re.I)
+
+
+def _beyond_the_front_door() -> dict:
+    """Every other document, comment and docstring that told a reader what the
+    repository is, as `f-claims`' sweep of 2026-10-02 listed them. A released
+    changelog section is a record and is left out (`CHANGELOG.md` § Versions:
+    nothing is edited under a dated heading); the sections above the oldest
+    release are not."""
+    from src.constants import APP_VERSION
+    out = subprocess.run(["git", "ls-files", "CODE_OF_CONDUCT.md", "CONTRIBUTING.md",
+                          ".github/ISSUE_TEMPLATE/", ".pantheon/AGENTS.md",
+                          "src/constants.py", "src/source_link.py",
+                          "tests/test_agpl_source_link.py",
+                          "tests/test_a_changelog_is_read_by_a_stranger.py"],
+                         cwd=str(ROOT), capture_output=True, text=True, check=True).stdout
+    docs = {name: (ROOT / name).read_text(encoding="utf-8") for name in out.split()}
+    changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+    records = [m.start() for m in re.finditer(r"^## \[(\d+\.\d+\.\d+)\] — ", changelog, re.M)
+               if m.group(1) != APP_VERSION]
+    docs["CHANGELOG.md"] = changelog[:records[0]] if records else changelog
+    return docs
+
+
+def test_nothing_else_says_the_repository_is_private():
+    """`B1145`: `CODE_OF_CONDUCT.md` and the issue chooser said private reporting
+    was *"not enabled on this repository yet"*. `B1146`: `CHANGELOG.md`,
+    `src/constants.py` (*"the public flip is gated"*), `src/source_link.py`
+    (*"The repository is private today"*), `.pantheon/AGENTS.md` (*"The fork
+    itself is private"*) and two test docstrings still said private. The
+    fallbacks stay — anyone with admin can switch the setting off — and only
+    the present tense goes."""
+    documents = _beyond_the_front_door()
+    for required in ("CODE_OF_CONDUCT.md", ".github/ISSUE_TEMPLATE/config.yml",
+                     ".pantheon/AGENTS.md", "CHANGELOG.md", "src/source_link.py"):
+        assert required in documents, sorted(documents)
+    found = {}
+    for name, text in documents.items():
+        flat = " ".join(text.split())
+        hits = [flat[max(0, m.start() - 60):m.end() + 20]
+                for m in _STILL_PRIVATE_ANYWHERE.finditer(flat)]
+        if hits:
+            found[name] = hits
+    assert not found, found
+
+
+@pytest.mark.parametrize("sentence", [
+    "**If that page 404s**, private reporting is not enabled on this repository yet.",
+    "If that page 404s, private vulnerability reporting is not enabled on this repository yet:",
+    "SECURITY.md supports main and nothing else, and the public flip is gated",
+    "The repository is private today and the default bind is loopback",
+    "The fork itself is private, so you cannot clone it; hand back patches.",
+])
+def test_the_wider_rule_refuses_the_sentences_as_they_stood(sentence):
+    assert _STILL_PRIVATE_ANYWHERE.search(sentence), sentence
+
+
+def test_the_conduct_route_and_the_chooser_keep_their_fallback():
+    """What `B1145` must not lose: the 404 fallback, in both."""
+    coc = (ROOT / "CODE_OF_CONDUCT.md").read_text(encoding="utf-8")
+    enforcement = coc.split("\n## Enforcement\n", 1)[1].split("\n## ", 1)[0]
+    assert "404" in enforcement and "Do not file the report as a public issue" in enforcement
+    assert re.search(r"Private reporting is on for this repository \(checked \d{4}-\d{2}-\d{2}\)",
+                     enforcement), enforcement[:600]

@@ -30,6 +30,7 @@ enumerated from the directory the mount serves, so the assertions are about
 every page under it and not three names.
 """
 import hashlib
+import re
 import sys
 from pathlib import Path
 
@@ -51,9 +52,15 @@ _SANDBOXES = {
 }
 
 _PROBE = r'''
-import hashlib, mimetypes, pathlib
+import hashlib, mimetypes, pathlib, re
 from urllib.parse import urlparse
 from src.constants import STATIC_DIR
+
+# The AGPL §13 offer rides on every route-served page and, since
+# `D-2026-10-02-04` §2, it is drawn by default — so "the page's bytes" are the
+# served bytes with that one injected control taken out, and whether it was
+# there is recorded beside them.
+_OFFER = re.compile(rb'<div class="pan-source-offer"[^>]*>.*?</a></div>', re.S)
 
 # Every page under the mount, from the directory it serves — not a list.
 # `mimetypes` is the table `StaticFiles` answers with.
@@ -76,7 +83,8 @@ def followed(c, url):
     html = "text/html" in res.headers.get("content-type", "")
     return {"status": res.status_code, "path": urlparse(str(res.url)).path,
             "hops": [urlparse(str(h.url)).path for h in res.history],
-            "sha": hashlib.sha256(res.content).hexdigest(),
+            "sha": hashlib.sha256(_OFFER.sub(b"", res.content, count=1)).hexdigest(),
+            "offer": bool(_OFFER.search(res.content)),
             "csp": res.headers.get("content-security-policy", ""),
             "body": res.text if html else ""}
 
@@ -164,6 +172,8 @@ def test_anyone_signed_in_still_opens_every_page_at_the_url_it_gives(probe, who)
         end = probe[who][doc]["followed"]
         assert end["status"] == 200, (who, doc, end["path"])
         assert end["sha"] == probe["file_sha"][doc], (who, doc, end["path"])
+        # And the §13 source offer rides on it, as on every route-served page.
+        assert end["offer"], (who, doc, end["path"])
     for doc, route in _SANDBOXES.items():
         assert probe[who][doc]["followed"]["path"] == route, (who, doc)
 
@@ -211,5 +221,10 @@ def test_with_auth_off_the_sandboxes_are_pages_the_surface_scans(surface):
         assert pages["/static/" + doc]["status"] == 302, doc
         assert pages["/static/" + doc]["location"] == route, doc
         on_disk = (ROOT / "static" / doc).read_bytes()
-        assert hashlib.sha256(pages[route]["body"].encode("utf-8")).digest() == \
+        # The page as the file has it, the §13 offer aside (drawn by default
+        # since `D-2026-10-02-04` §2 — and asserted to be there).
+        body, offers = re.subn(r'<div class="pan-source-offer"[^>]*>.*?</a></div>', "",
+                               pages[route]["body"], count=1, flags=re.S)
+        assert offers == 1, route
+        assert hashlib.sha256(body.encode("utf-8")).digest() == \
             hashlib.sha256(on_disk).digest(), route

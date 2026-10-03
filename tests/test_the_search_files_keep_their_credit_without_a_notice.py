@@ -95,3 +95,53 @@ def test_the_eight_derived_files_keep_their_notice():
         # The file's own licence is stated as ours, not as Apache-2.0 — the
         # defect the first attempt at these notices had.
         assert "AGPL-3.0-or-later" in head, rel
+
+
+
+_ROW = re.compile(r"`((?:P\d+-\d+[a-z]?|B\d{1,4}))`")
+
+
+def _notice_problems(path: Path) -> list:
+    """What is wrong with one file's §4(b) notice, read against the file."""
+    lines = path.read_text(encoding="utf-8").splitlines()
+    end = next(i for i, ln in enumerate(lines) if ln.startswith("# This file as distributed"))
+    notice, body = "\n".join(lines[:end + 1]), "\n".join(lines[end + 1:])
+    problems = []
+    if "unmodified" in notice:
+        problems.append("says unmodified")
+    missing = set(_ROW.findall(body)) - set(_ROW.findall(notice))
+    if missing:
+        problems.append(f"does not name {sorted(missing)}")
+    if not _ROW.findall(body) and "further by Pantheon" not in notice and not (
+            "changed nothing else" in notice and "`P0-18`" in notice):
+        problems.append("does not say what Pantheon added")
+    return problems
+
+
+def test_no_notice_says_pantheon_left_a_file_it_changed_unmodified():
+    """`B1144`. Two notices said *"Changed by Odysseus. Pantheon redistributes
+    it unmodified."* about files Pantheon had changed — `src/deep_research.py`
+    (`P15-06`) and `src/research_handler.py` (`P3-17`, `P8-23`) — a §4(b)
+    notice saying the opposite of what §4(b) asks it to say. Each notice now
+    names every Pantheon row the file's own code cites, read from the file
+    below the notice rather than from a list here; a file that cites none says
+    Pantheon added only the notice and the SPDX line."""
+    found = {rel: p for rel in STAMPED if (p := _notice_problems(ROOT / rel))}
+    assert not found, found
+
+
+def test_the_notice_rule_catches_what_it_is_for(tmp_path):
+    """Driven on planted copies: the two notices exactly as they stood, and a
+    change cited in the code that the notice does not name."""
+    src = (ROOT / "src" / "deep_research.py").read_text(encoding="utf-8")
+    old = src.replace(
+        "# Changed by Odysseus, and further by Pantheon: the bound on concurrent\n"
+        "# searches (`P15-06`) and the SPDX line above (`P0-18`).",
+        "# Changed by Odysseus. Pantheon redistributes it unmodified.")
+    assert old != src
+    (tmp_path / "as_it_stood.py").write_text(old, encoding="utf-8")
+    problems = _notice_problems(tmp_path / "as_it_stood.py")
+    assert "says unmodified" in problems and any("P15-06" in p for p in problems), problems
+    (tmp_path / "unnamed.py").write_text(src + "\n# `P99-1`: a change nobody named.\n",
+                                         encoding="utf-8")
+    assert any("P99-1" in p for p in _notice_problems(tmp_path / "unnamed.py"))

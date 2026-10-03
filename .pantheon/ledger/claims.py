@@ -209,35 +209,46 @@ CLAIMS: Tuple[Claim, ...] = (
     Claim(
         id="add-never-subtract",
         area="Scale of the fork",
-        headline="537 files added. Five removed, and all five are argued.",
+        headline="537 files added. Seven removed, and all seven are argued.",
         stock="Upstream's file set at the fork point.",
         pantheon=(
-            "Everything upstream shipped is still here, minus five files, each deleted "
+            "Everything upstream shipped is still here, minus seven files, each deleted "
             "with a recorded argument: `ACKNOWLEDGMENTS.md` (superseded by `CREDITS.md`, "
             "105 -> 483 lines), `scripts/_completion/odysseus.zsh` (a rename), "
             "`docs/pantheon-wordmark.png` (upstream's mark, **renamed and never "
             "repainted** — the filename said Pantheon and the pixels said Odysseus; "
             "`P0-13` says in as many words not to reuse it), "
+            "`docs/pantheon.jpg` and `docs/pantheon-browser.jpg` (upstream's UI with "
+            "Odysseus in the sidebar, and the macOS app icon's source — `B71`; the build "
+            "now copies `docs/brand/pantheon.icns`), "
             "`static/fonts/custom/GohuFont.ttf` (verified first: 1,468 bytes, 13 sfnt "
             "tables, **3 glyphs**, metadata reading *Untitled1 / Copyright (c) 2025, "
             "Unknown*), and `static/js/calendar/reminders.js` (a dead poller)."
         ),
         before="—",
-        after="537 added · 1,387 modified · 5 removed",
+        after="537 added · 1,387 modified · 7 removed",
         provenance="diffed",
         repro=f"git diff --name-status {FORK_POINT}..HEAD | grep '^D'",
         evidence=("CREDITS.md", ".pantheon/DECISIONS.md"),
         rows=("P0-19", "P0-23", "P3-10", "P0-13", "B71", "D-2026-08-27-01"),
         how=(
             "This is the fork's first law as a measurement — *an elevation, not a rip "
-            "and re-write; we add, never subtract*. A ratio of 537 to 5 is only "
-            "evidence if all five are named, so they are. The font is the one worth "
+            "and re-write; we add, never subtract*. A ratio of 537 to 7 is only "
+            "evidence if all seven are named, so they are. The font is the one worth "
             "reading: it was checked before deletion rather than taken on trust, and "
             "it turned out to be three glyphs under a copyright notice crediting nobody. "
             "**The fifth was found by a failing test nobody had looked at**: the "
             "orphan-image guard had been red for the whole fork, saying a doc image "
             "was referenced by nothing — and the reason nothing referenced it was "
-            "that it was upstream's logo wearing our filename."
+            "that it was upstream's logo wearing our filename. **The sixth and "
+            "seventh went on 2026-10-02 (`4c2ef8e`, `P0-13`)**, the day Pantheon got a "
+            "mark of its own: the two pictures were upstream's under our filenames too. "
+            "That deletion count was re-measured where the fork point is not reachable — "
+            "this clone begins at a snapshot import — as `git diff --name-status` from "
+            "its first commit to `HEAD`, which deletes exactly those two pictures of "
+            "upstream's (and one test file Pantheon itself added after the fork, not "
+            "upstream's); the added and modified figures are the deployment box's "
+            "reading of 2026-09-12 and have not been re-taken."
         ),
     ),
 

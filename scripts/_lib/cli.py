@@ -79,7 +79,7 @@ def fail(msg: str, code: int = 1) -> "None":
     sys.exit(code)
 
 
-VERSION = "0.1.0"  # bumped centrally; every pantheon-* CLI reports this
+VERSION = "0.2.0"  # bumped centrally; every pantheon-* CLI reports this
 
 
 def common_parser(prog: str, description: str = "") -> argparse.ArgumentParser:

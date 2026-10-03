@@ -127,7 +127,7 @@ rows are marked `second-line` in the register.
 
 ---
 
-## 3. The blocking set — nineteen rows, of which eight are now met
+## 3. The blocking set — twenty-one rows, and all of them are met
 
 Fifteen of 234 open rows when this was written; **seven have since been met and three
 have been added, and the met ones are marked `landed` in the register rather than deleted,
@@ -158,9 +158,21 @@ doing something they cannot undo, returned a hundred false lines.
 **`B896` was added on 2026-09-27**, by the agent working `P7-02`: the assistant's own `app_api` bridge
 was the owner on `POST /api/import`, a door the blocklists did not name. **It was met the same day**:
 the bridge lost the owner's whole trust surface, audited route by route on its row.
-Eleven stand. One line of reasoning each; the row carries the measurement. Four are security,
-three are a false documented claim, two are a licence obligation, two are an action rather than
-a commit, one is a defect a first-time user hits, and one is the release artefact.
+**None stands (2026-10-02).** Eleven stood that morning — three security (`B370`, `B540`,
+`B541`), three a false documented claim (`B71`, `B411`, `B452`), two a licence obligation
+(`P0-16`, `B349`), one an action rather than a commit (`B357`), one a defect a first-time user
+hits (`B400`) and one the release artefact (`P10-12`) — and wave F met all eleven; each is
+`landed` in the register with one line saying how. **Two more were added and met at the same
+merge**, adjudicated blocking on the day they were filed: `B1144`, two Apache-2.0 §4(b) notices
+saying Pantheon redistributes *unmodified* files it had changed (licence), and `B1147`, the
+published `LEDGER.md` stating three numbers its own claims contradicted (claim). So the set is
+twenty-one rows, all met, and `ship-line.py` lists no open blocking row. That is a statement
+about the adjudicated set: 267 open rows are *clear by rule, not read*, the weakest
+classification in this document, and the line stays measured — `--check` names a new row the
+rule reads a signal in the day it is filed. *(The sentence that stood here until 2026-10-02 said
+"Four are security … two are an action rather than a commit", which summed to thirteen against
+eleven; the register then had three security rows and one pre-flip row standing. `f-sec` found
+it.)* One line of reasoning each below; the row carries the measurement.
 
 ### Security — the control does not hold (4)
 
@@ -169,7 +181,11 @@ a commit, one is a defect a first-time user hits, and one is the release artefac
   `/docs` and `/backgrounds` all `302 → /login`. The exposure is small and the row
   says so; what is not acceptable at publication is an auth boundary with a hole
   and no written exemption beside `AUTH_EXEMPT_PREFIXES`. Either half of its
-  `Verify:` closes this.
+  `Verify:` closes this. **Met 2026-10-02** — three pages, measured; each has a route
+  behind a session, the exemption is written beside the prefix, and `check-auth-map`
+  rule F fails a page under `static/` with no route. `B540` and `B541`, added above,
+  were met the same day (`require_admin`; rule E holds every route to a caller-named
+  host to it).
 - **`P11-01`** — `src/auth_helpers.py:216` reads `privs.get(key, True)`: a
   privilege absent from a user's record is **granted**. Non-admin accounts are
   reachable today — `routes/auth_routes.py:319` (`admin_create_user`) and `:155`
@@ -198,6 +214,8 @@ a commit, one is a defect a first-time user hits, and one is the release artefac
   this"* on nine byte-identical files would be false in the other direction. The
   row is right that overriding the upstream copyright holder's own attribution
   **needs a human**, and the moment to have that ruling is before publication.
+  **Met 2026-10-02** on the owner's ruling (`D-2026-10-02-03` §3): credit only, no
+  notice, on the reason that still holds — the nine files contain nothing of Tongyi's.
 - **`B349`** — the fork date is `2026-08-24` in `NOTICE` (*"Date of fork"*),
   `CREDITS.md`, `CHANGELOG.md` and `README.md`, and `2026-08-20` in
   `.pantheon/ledger/claims.py` — which renders into the published `LEDGER.md`
@@ -214,6 +232,9 @@ a commit, one is a defect a first-time user hits, and one is the release artefac
   the §5(a) wording — *cloned* versus *forked* on `NOTICE`, `CREDITS.md` and
   `CHANGELOG.md`, and whether the commit date belongs on that surface at all.
   Cheaper than it was: a wording decision, not a choice between two numbers.
+  **Met 2026-10-02**: *forked*, with both events labelled on every surface — the fork
+  point committed 2026-08-20, the fork begun 2026-08-24 (UTC) — and `check-ledger.py`
+  holds `NOTICE` to both.
 
 ### A documented claim is false (3)
 
@@ -221,11 +242,13 @@ a commit, one is a defect a first-time user hits, and one is the release artefac
   `docs/pantheon-browser.jpg` are upstream's artwork under this fork's filenames,
   and `build-macos-app.sh:31-37` ships `docs/pantheon.jpg` **as the macOS app
   icon**. A published repository whose desktop icon is a picture of the other
-  product is a false claim in the loudest available place.
+  product is a false claim in the loudest available place. **Met 2026-10-02** with
+  `P0-13`: the two pictures are deleted, the macOS build copies Pantheon's own icon,
+  and `check-fork-names.py` now looks at pixels as well as names.
 - **`B411`** — four claims in the generated, published `LEDGER.md` state a number
   their own `repro` command does not print: `tracker` 370 vs 376, `spdx` 1,541 vs
   1,653, `credits` 13 vs 43, and `fan-out`'s 40. The ledger's own preamble sets
-  the standard they fail.
+  the standard they fail. **Met 2026-10-02**: `check-ledger.py` prints no NOTEs.
 - **`P6-08`** — `.env.example:335-338` documents `PANTHEON_TASK_CONCURRENCY_CAP`
   as *"this env var overrides the built-in default"*, and all three compose files
   pass it through. The row proves the env leg is **unreachable code on every
@@ -237,7 +260,8 @@ a commit, one is a defect a first-time user hits, and one is the release artefac
   so it is false in a second way. **It is here for the same reason `P6-08` and
   `B411` are**: a published document stating something untrue about this
   software, in the file a security reporter reads first. One sentence, in a file
-  this worktree does not own.
+  this worktree does not own. **Met 2026-10-02**: `SECURITY.md` prints what
+  `GET /api/version` returns — a test calls the route — and says no release is tagged.
 
 ### A first-time user hits it (1)
 
@@ -248,8 +272,15 @@ a commit, one is a defect a first-time user hits, and one is the release artefac
   like `B401`, which is registered as tracked. It is here because `.docx` is the
   single most likely file a stranger opens this product with, and because the
   failure is silent.
+  **Landed 2026-10-02.** Worse than registered: the menu item opened no file picker at all
+  while the Documents panel showed anything but an email — a hidden Send button's 0×0 rect "contained"
+  every `element.click()`, so the click was cancelled and the page said *"To and body are required"*
+  (the Library's Import and the composer's Attach files failed the same way with the panel open). Behind
+  the picker, a `.docx` was stored as its zip bytes. It now imports through the Library's own per-file
+  function, so a `.docx`, `.pdf` or `.xlsx` opens readable and named as the file was, and what it cannot
+  read is said in words.
 
-### Must happen before the flip, and is not a commit (2)
+### Had to happen before the flip, and was not a commit (2) — both met
 
 - **`P10-11`** — run the `SECURITY.md` fork checklist: `git status --short`, the
   ignore check, the secret grep. A secret pushed to a public repository is not
@@ -258,9 +289,10 @@ a commit, one is a defect a first-time user hits, and one is the release artefac
   `…/security/advisories/new`, which 404s unless **Private vulnerability
   reporting** is switched on. The row could not verify it and says so. It is a
   repository setting, and `docs/security-ci.md` already lists it under
-  *"One-time settings to turn on"*.
+  *"One-time settings to turn on"*. **Met 2026-10-02**: read from the owner's
+  machine, `{"enabled": true}`; every fallback stays.
 
-### The release artefact (1)
+### The release artefact (1) — met
 
 - **`P10-12`** — release notes leading with the Odysseus credit and enumerating
   the breaking renames. **The version half of this landed today** (`B450`):
@@ -268,7 +300,12 @@ a commit, one is a defect a first-time user hits, and one is the release artefac
   is Pantheon's, and § *Versions* says how the three agree. What is left is the
   rename enumeration and the credit paragraph. It is in the set because a
   stranger's first question about a public repository is *which version is this*,
-  and until today the answer was another project's number.
+  and until today the answer was another project's number. **Met 2026-10-02**:
+  `docs/release-notes/0.2.0.md` leads with the Odysseus credit, measured, and
+  enumerates every rename an Odysseus install has to follow — derived from the lists
+  that own the names and checked against `b4d1293` by
+  `tests/test_the_release_notes_name_every_rename.py`. Written as `0.1.0.md`; the owner
+  called the release `0.2.0` (`D-2026-10-02-04` §1).
 
 ---
 
@@ -395,14 +432,14 @@ weakest one in this document: it means nobody adjudicated them individually.
 
 | row | verdict | class | why |
 |---|---|---|---|
-| `P0-16` | blocking | licence | Apache-2.0 §4(b): the `services/search/` point needs the copyright holder's call, before publication |
-| `P0-17` | landed | licence | AGPL §13 source link — attaches at network offer; built and dark |
-| `B349` | blocking | licence | `NOTICE` and the published `LEDGER.md` give two dates for one fork |
-| `B370` | blocking | security | two `/static` pages answer 200 with no cookie; no exemption written down |
+| `P0-16` | landed | licence | ruled 2026-10-02 (`D-2026-10-02-03`): credit only, no notice; `CREDITS.md` records it, and that the nine files are no longer byte-identical |
+| `P0-17` | landed | licence | AGPL §13 source link — attaches at network offer; built dark 2026-09-18, and since 2026-10-02 it offers this repository by default (`D-2026-10-02-04` §2, `B1165`) |
+| `B349` | landed | licence | the fork point (committed 2026-08-20) and the fork's start (2026-08-24 UTC) are labelled on every surface; `check-ledger.py` holds `NOTICE` to both |
+| `B370` | landed | security | three `/static` pages answered 200 with no cookie; met 2026-10-02 — every page under the mount has a route and the sandboxes need a session, the exemption is written beside `AUTH_EXEMPT_PREFIXES`, and `check-auth-map` rule F fails a page without a route |
 | `P11-01` | landed | security | `privs.get(key, True)` fails open and non-admin accounts are reachable today |
 | `P2-21` | landed | security | two `builtin` GETs make no auth call beside a `require_admin` PUT and DELETE |
-| `B540` | blocking | security | any signed-in account clears the instance-wide TTS cache; the same act on uploads is `require_admin` |
-| `B541` | blocking | security | four `/api/hwfit/*` routes SSH to a host the caller names, for any signed-in account |
+| `B540` | landed | security | any signed-in account cleared the instance-wide TTS cache; met 2026-10-02 — `require_admin`, the height of the upload cleanup, with a no-login install unchanged |
+| `B541` | landed | security | four `/api/hwfit/*` routes opened SSH to a host any signed-in account named; met 2026-10-02 — the router is `require_admin`, and `check-auth-map` rule E holds every route to a caller-named host to it |
 | `B542` | tracked | security | two admin writes are middleware-exempt on path alone; their in-handler `is_admin` still stands |
 | `B543` | tracked | claim | the admin gate is written four times; a consistency defect on a surface no stranger reaches first |
 | `B530` | tracked | second-line | the resolution rule longhand at eight sites; fail-open only once roles exist, and roles do not |
@@ -439,16 +476,16 @@ weakest one in this document: it means nobody adjudicated them individually.
 | `B981` | tracked | claim | on the VM backend the sudo sentence over-warns: each person has their own machine there, so it says homes are readable when they are not — safe in direction, false in words |
 | `P8-48` | tracked | security | the read-only verdict shipped and is read by the panel and the plan-mode gate alike; the schema editor did not, on a recommendation the owner has to rule on |
 | `P11-02d` | landed | security | six route files whose gating is unreconciled — an unknown on an auth surface |
-| `B71` | blocking | claim | upstream's artwork under this fork's filenames, and it is the macOS app icon |
-| `B411` | blocking | claim | four numbers in the published ledger do not print from their own repro |
+| `B71` | landed | claim | upstream's artwork under this fork's filenames, and the macOS app icon; met 2026-10-02 — Pantheon's own mark wherever upstream's shipped, and `check-fork-names.py` fails on upstream's images by hash, by look-alike and by the boat's path data |
+| `B411` | landed | claim | `check-ledger.py` prints no NOTEs: two claims state their checker's rule, `credits` the checker's count, `fan-out` prints its 40 |
 | `P6-08` | landed | claim | `.env.example` and three compose files document an env override that is dead code |
-| `B400` | blocking | first-ten | a `.docx` imported from the Documents panel is stored as zip bytes, silently |
+| `B400` | landed | first-ten | *Import from device* opened no file picker while the panel showed a non-email document, and behind it stored a `.docx` as zip bytes; it now imports through the Library's own per-file function |
 | `P10-11` | landed | pre-flip | the secret grep has not been run and a pushed secret is unrecoverable |
-| `B357` | blocking | pre-flip | five links route reporters to an advisory form nobody has confirmed is on |
-| `P10-12` | blocking | artefact | release notes; the version half landed under `B450`, the renames have not |
+| `B357` | landed | pre-flip | `{"enabled": true}` read 2026-10-02 from the owner's machine; every fallback kept |
+| `P10-12` | landed | artefact | release notes at `docs/release-notes/0.2.0.md` (written as `0.1.0.md`, renamed with the version, `D-2026-10-02-04` §1) — the Odysseus credit first, every rename derived from its owning list and checked against the fork point; met 2026-10-02 |
 | `B492` | tracked | second-line | every throttled host but the mailbox is admin-only; an operator surface, not a stranger's first ten minutes |
 | `B505` | tracked | coverage | the tool eval is not in CI — a gap in enforcement, not a defect a user meets |
-| `P0-13` | tracked | identity | a missing mark is not a gate — shipping upstream's is, and that is `B71` |
+| `P0-13` | tracked | identity | a missing mark is not a gate — shipping upstream's is, and that is `B71`; done with it 2026-10-02 |
 | `B437` | tracked | fail-open | a workflow that reports and always exits 0 — written down, and it cannot run at all until Actions does |
 | `B441` | tracked | claim | `/api/ready` answers 401 against its own docstring; the reader is an orchestrator, not a stranger in the first ten minutes |
 | `P2-05` | tracked | decision | decided; content is decoded to text for a model and never served back |
@@ -480,7 +517,7 @@ weakest one in this document: it means nobody adjudicated them individually.
 | `B424` | tracked | future-cost | the cost of a bump not taken, not something shipped |
 | `B425` | tracked | future-cost | currency across a documented breaking change; zero advisories either side |
 | `P15-07` | tracked | owner | meets none of the four tests — see § 5; registered so it is on the record |
-| `B452` | blocking | claim | `SECURITY.md` says the sha is the only version identifier; two existed |
+| `B452` | landed | claim | `SECURITY.md` names what `GET /api/version` returns and that no release is tagged |
 | `B451` | tracked | owner | this proposal; the line is the owner's to draw and they have not |
 | `B453` | tracked | build-ref | *which commit* needs a build stamp, and that needs files this row cannot touch |
 | `B454` | tracked | registry | the image tag moves backwards; probably academic and nobody has looked |
@@ -490,6 +527,15 @@ weakest one in this document: it means nobody adjudicated them individually.
 | `B1038` | tracked | defect | the engine refuses and pauses the admin-only task, so nothing runs; the tool misreports a refusal as success |
 | `B1070` | tracked | defect | a loading state drawn as an empty one for seconds; the memories arrive and nothing is lost |
 | `P22-08` | tracked | feature | the rule flagged it on *plain text*, which is the sample a person types to test a step, not a secret at rest; a feature row held open on `B1080` |
+| `B1144` | landed | licence | two Apache-2.0 §4(b) notices said Pantheon redistributes unmodified files it had changed; adjudicated blocking and met at the merge that found it (2026-10-02) — each notice names what Pantheon changed |
+| `B1147` | landed | claim | the published `LEDGER.md` stated 8,819 tests, 15 checkers and seven upstream commits against its own claims; adjudicated blocking and met at the merge (2026-10-02) — read from the claims |
+| `B1145` | tracked | claim | two documents said private reporting was "not enabled yet"; both kept a correct fallback; corrected 2026-10-02 |
+| `B1146` | tracked | decision | eight places said the repository is private; one was the §13 link's premise, answered by `D-2026-10-02-04` §2; corrected 2026-10-02 |
+| `B1148` | tracked | claim | README trend figures and checker count were copies; held to `ship-line.py` and `ci.yml` by `check-ledger.py` since 2026-10-02 |
+| `B1143` | tracked | claim | `P11-AUTH-MAP.md` § C argues from two tier counts that have drifted; a design note's arithmetic, while § A's checked summary is right and every gate is mapped |
+| `B1157` | tracked | first-ten | an imported PDF's page view needs PyMuPDF on a default install; the text is stored and the view says in words what it needs, so it is not silent |
+| `B1166` | tracked | identity | the tour's last line uses upstream's voyage motif; copy in the product, not a claim about the software |
+| `B1168` | tracked | defect | at phone width the §13 tag sits on the composer's corner; nothing interactive is under it (measured) and the offer itself is right |
 
 ---
 
@@ -518,12 +564,16 @@ matters here:
   `tests/test_one_version_string.py` pins the two declarations to each other and
   fails on a third; `pyproject.toml` carries a comment saying why it is not one.
 - **`0.x` is a claim, not modesty.** `SECURITY.md` supports `main` and nothing
-  else, and the public flip is gated on the fifteen rows above. `1.0.0` is the
-  first release that is public, tagged and supported, and this is not that.
+  else, and the rows in § 3 are what stood between this public repository and a
+  stranger relying on it *(until 2026-10-02 this said "the public flip is gated on
+  the fifteen rows above"; the repository is public, `D-2026-10-02-03`)*. `1.0.0` is
+  the first release that is public, tagged and supported, and this is not that.
 - **A tag per released version**, and `CHANGELOG.md` heads each section with the
-  same string. Tag, heading and `APP_VERSION` agree or the tests fail. `0.1.0` is
-  not tagged in this tree: a release tag points at the commit that is released,
-  and this is a worktree tip awaiting a merge, so the tag is cut on the merge.
+  same string. Tag, heading and `APP_VERSION` agree or the tests fail. **`0.1.0`
+  was never tagged** — this said, on 2026-09-17, that the tag would be cut on the
+  merge, and it was not — so the release that carries `P20`–`P22` is **`0.2.0`**
+  (`D-2026-10-02-04` §1), and its tag waits for the owner's word. Each version's
+  release notes are `docs/release-notes/x.y.z.md` (`P10-12`).
 - **Two things it does not answer, both filed rather than half-done.** `B453` —
   the version says which release line, not which commit, and everyone on `main`
   sits between tags; stamping a build ref needs the `Dockerfile` and the

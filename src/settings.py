@@ -314,17 +314,17 @@ DEFAULT_SETTINGS = {
     "otlp_endpoint": "",
     # Where this instance's Corresponding Source lives (`P0-17`, AGPL-3.0 §13).
     #
-    # SHIPS EMPTY, AND EMPTY MEANS THE CONTROL DOES NOT RENDER. §13's
-    # obligation attaches to whoever *offers* a modified version over a
-    # network; until an operator does that there is nothing to offer, and a
-    # link to a repository a stranger 404s on is an offer that cannot be
-    # honoured — worse than no link, which is what `B25` cost once already.
+    # SHIPS EMPTY, AND EMPTY MEANS "NOT SET HERE": `src/source_link.source_url`
+    # then reads PANTHEON_SOURCE_URL, and beneath that `DEFAULT_SOURCE_URL` —
+    # this repository (`D-2026-10-02-04` §2; until 2026-10-02 empty meant no link
+    # at all, `D-2026-09-08-06`, while the repository was private). §13 obliges
+    # whoever offers a *modified* version over a network, so a modified copy
+    # sets this (or the variable) to its own source.
     #
-    # The address is the switch and there is no boolean beside it
-    # (`D-2026-09-05-01`, `D-2026-09-08-06`). Not a destination in the
-    # `Law 16` sense — nothing here is fetched, it is an href the user's own
-    # browser follows — but it is `*_url`-shaped, so
-    # `.pantheon/check-destinations.py` holds the empty default for us.
+    # The address is the only control (`D-2026-09-05-01`). Not a destination in
+    # the `Law 16` sense — nothing here is fetched, it is an href the user's own
+    # browser follows — and `.pantheon/check-destinations.py` names the one
+    # default it allows, under this key and the variable, and reads it there.
     #
     # Falsy, so PANTHEON_SOURCE_URL beneath it is genuinely reachable (H06, B20).
     "source_url": "",

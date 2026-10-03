@@ -260,8 +260,10 @@ differed from the fork point — and their notices say so: *"Changed by Odysseus
 Pantheon redistributes it unmodified."* Two of them have been changed by
 Pantheon since and still say *unmodified*: `src/deep_research.py` (`P15-06`) and
 `src/research_handler.py` (`P3-17`, `P8-23`). That is a defect in those two
-headers, filed in the tracker on 2026-10-02. (All eight also gained an SPDX
-line in `P0-18`, which is a comment.) §4(b) still applies to all eight: they are
+headers, filed in the tracker on 2026-10-02 (`B1144`) and fixed the same day:
+each of the eight notices now says what Pantheon changed — those two name their
+rows, and the other five say Pantheon added the notice and the SPDX line and
+nothing else. (All eight gained an SPDX line in `P0-18`, which is a comment.) §4(b) still applies to all eight: they are
 modified files relative to Tongyi's original, and Pantheon redistributes them.
 
 *Paths updated for this tree: the llmfit CLI is now `scripts/pantheon-cookbook`,

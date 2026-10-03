@@ -317,6 +317,12 @@ jobs:
       # `require_admin` — there are three other ways to ask, `routes/auth_routes.py`
       # holds 22 of them, and only `require_admin` honours `auth_disabled()`
       # (`B543`). It may fall as they move onto P11-02's roles; it may not rise.
+      # Rule E (`B541`): every route in the tree whose handler reaches
+      # `validate_remote_host`, `validate_ssh_port` or `run_ssh_command` — a host
+      # its caller names — reaches `require_admin` too; no ceiling, none ungated.
+      # Rule F (`B370`): `/static` is auth-exempt for the login page's assets, so
+      # every tracked file under `static/` the mount would answer as a page must
+      # be a key of `ROUTE_OWNED_STATIC_PAGES`, whose route stands behind a session.
       - name: check-auth-map
         run: python3 .pantheon/check-auth-map.py --max 43
       # P19. The ledger is the copy shown to strangers, which makes it the worst
