@@ -35,6 +35,43 @@ def _validate_cookbook_ssh_target(remote_host: Any, ssh_port: Any = "") -> tuple
     return remote, sport
 
 
+def _forge_refusal(resp: Any) -> Optional[Dict[str, Any]]:
+    """The route's refusal, said as a refusal — or None when it answered.
+
+    `B1179`. Every Forge route but the HuggingFace search is `require_admin`,
+    and since the dispatcher names the person a tool acts for, a non-admin's
+    assistant meets the 403 the person meets. These tools read a refused
+    loopback's body as an empty state, so the refusal came back as "No serve
+    presets saved", "No downloads in progress", "No cached models found" — a
+    wrong answer, not a refusal (`Law 10`) — and `list_served_models` went on
+    to scan this machine's processes, which no route shows a non-admin. The
+    sentence is the dispatcher's own for an admin-only tool.
+    """
+    status = getattr(resp, "status_code", None)
+    if status not in (401, 403):
+        return None
+    detail = ""
+    try:
+        body = resp.json()
+        if isinstance(body, dict):
+            detail = str(body.get("detail") or body.get("error") or "")
+    except Exception:
+        detail = ""
+    try:
+        where = f"{resp.request.method} {resp.request.url.path}"
+    except Exception:  # a response built without its request
+        where = "its route"
+    return {
+        "error": (
+            f"The Forge is restricted to admin users on this deployment: {where} "
+            f"answered {status}{f' ({detail})' if detail else ''}. "
+            "Ask an admin to perform this action or grant the needed permission."
+        ),
+        "exit_code": 1,
+        "status_code": status,
+    }
+
+
 def _cookbook_label_key(value: Any) -> str:
     return re.sub(r"[^a-z0-9]+", "", str(value or "").lower())
 
@@ -99,6 +136,10 @@ async def _cookbook_servers() -> Dict[str, Any]:
             state = r.json() if r.headers.get("content-type", "").startswith("application/json") else {}
     except Exception:
         return {"default_host": "", "hosts": []}
+    refused = _forge_refusal(r)
+    if refused:
+        # `B1179`: "no servers" and "not yours to see" are different answers.
+        return {"default_host": "", "hosts": [], "refused": refused}
     env = (state or {}).get("env") or {}
     if not isinstance(env, dict):
         return {"default_host": "", "hosts": []}
@@ -805,6 +846,13 @@ async def do_list_served_models(content: str, owner: Optional[str] = None) -> Di
         async with httpx.AsyncClient(timeout=15, mounts=paced_http.direct_mounts(_INTERNAL_BASE)) as client:
             resp = await client.get(f"{_INTERNAL_BASE}/api/cookbook/tasks/status",
                                     headers=_internal_headers())
+            # `B1179`. A refusal ends the call here, before the process scan
+            # below: the route is the one that decides who may see what is
+            # serving on this machine, and no route shows a non-admin the
+            # command lines of its processes.
+            refused = _forge_refusal(resp)
+            if refused:
+                return refused
             cookbook_tasks = (resp.json() or {}).get("tasks") or []
     except Exception as e:
         logger.debug(f"cookbook tasks/status fetch failed: {e}")
@@ -1047,6 +1095,9 @@ async def do_tail_serve_output(content: str, owner: Optional[str] = None) -> Dic
             async with httpx.AsyncClient(timeout=10, mounts=paced_http.direct_mounts(_INTERNAL_BASE)) as client:
                 resp = await client.get(f"{_INTERNAL_BASE}/api/cookbook/state", headers=headers)
                 state = resp.json() or {}
+            refused = _forge_refusal(resp)  # `B1179`
+            if refused:
+                return refused
         except Exception as e:
             logger.debug(f"cookbook state lookup failed for {session_id}: {e}")
         if isinstance(state, dict):
@@ -1157,6 +1208,9 @@ async def do_list_downloads(content: str, owner: Optional[str] = None) -> Dict:
             resp = await client.get(f"{_INTERNAL_BASE}/api/cookbook/tasks/status",
                                     headers=_internal_headers())
             data = resp.json()
+        refused = _forge_refusal(resp)  # `B1179`
+        if refused:
+            return refused
         tasks = [t for t in data.get("tasks", []) if (t.get("type") or "").lower() == "download"]
         if not tasks:
             return {"output": "No downloads in progress.", "exit_code": 0}
@@ -1396,6 +1450,8 @@ async def do_list_cookbook_servers(content: str, owner: Optional[str] = None) ->
     model, or to show the user options when the target host is
     ambiguous."""
     servers = await _cookbook_servers()
+    if servers.get("refused"):
+        return servers["refused"]
     hosts = servers.get("hosts") or []
     default = servers.get("default_host") or ""
     if not hosts:
@@ -1428,6 +1484,9 @@ async def do_list_serve_presets(content: str, owner: Optional[str] = None) -> Di
             state = resp.json() or {}
     except Exception as e:
         return {"error": f"Failed to fetch cookbook state: {e}", "exit_code": 1}
+    refused = _forge_refusal(resp)  # `B1179`
+    if refused:
+        return refused
 
     presets = state.get("presets") or []
     if not presets:
@@ -1600,6 +1659,12 @@ async def do_list_cached_models(content: str, owner: Optional[str] = None) -> Di
             async with httpx.AsyncClient(timeout=10, mounts=paced_http.direct_mounts(_INTERNAL_BASE)) as client:
                 st = await client.get(f"{_INTERNAL_BASE}/api/cookbook/state", headers=headers)
                 st_data = st.json() if st.headers.get("content-type", "").startswith("application/json") else {}
+            # `B1179`. Refused here, the scan of a host the caller names
+            # (`/api/model/cached?host=`, an SSH probe) is refused too: say so
+            # once, rather than "No cached models found" after asking it.
+            refused = _forge_refusal(st)
+            if refused:
+                return refused
             servers = (st_data.get("env", {}) or {}).get("servers") or []
         except Exception as e:
             logger.debug(f"server list fetch failed: {e}")

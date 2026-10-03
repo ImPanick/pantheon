@@ -42,18 +42,23 @@ def _advertised_actions():
 
 # ── the row itself ──────────────────────────────────────────────────────────
 
-def test_every_advertised_action_posts_to_a_route_that_exists():
+def test_every_advertised_action_posts_to_a_route_that_exists(monkeypatch):
     """The whole row, resolved against the real mounted app.
 
     A map of plausible-looking paths is exactly what was there before — four of
     them, none real — so this asserts against what the application actually
     serves rather than against a second list somebody wrote.
+
+    `B1180`: the app is imported for this test and put back after it — a plain
+    `import app` here left its MCP manager running for every file after this
+    one (`tests/helpers/fresh_import.import_app_in_this_test`).
     """
     import logging
     logging.disable(logging.CRITICAL)
     import sys
     sys.path.insert(0, str(ROOT))
-    import app as app_module
+    from tests.helpers.fresh_import import import_app_in_this_test
+    app_module = import_app_in_this_test(monkeypatch)
 
     mounted = set()
 

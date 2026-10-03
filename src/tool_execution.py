@@ -33,6 +33,7 @@ from src.tool_capabilities import ToolRunSecurityContext, blocked_tool_result
 from src.tool_approvals import ExactToolApproval
 from src.tool_policy import ToolPolicy
 from src.constants import MAX_OUTPUT_CHARS, MAX_READ_CHARS, MAX_DIFF_LINES, DATA_DIR
+from src.owner_identity import normalize_owner
 from src.tool_utils import _truncate, get_mcp_manager
 
 
@@ -262,6 +263,34 @@ _active_workspace: contextvars.ContextVar = contextvars.ContextVar(
 def get_active_workspace() -> Optional[str]:
     """The folder the agent is confined to this turn, or None."""
     return _active_workspace.get()
+
+
+# ---------------------------------------------------------------------------
+# The person a tool call acts for (per-call, context-local)
+# ---------------------------------------------------------------------------
+# `B1179`. Set in execute_tool_block beside the workspace, from the same
+# `owner` every gate above the tool asks about, and reset on the way out.
+# `src.tools._common._internal_headers` reads it when its caller names nobody,
+# so every tool loopback carries `X-Pantheon-Owner` and `B1175`'s
+# `require_admin` asks about that person. Until 2026-10-03 Forge's tools called
+# `_internal_headers()` with no owner at sixteen sites — two of them in helpers
+# that are never handed one (`_cookbook_servers`, `_cookbook_env_for_host`) —
+# so their loopback named nobody, which `require_admin` answers as Pantheon
+# itself. Measured on the real app with `AUTH_ENABLED=true`: bob, not an admin,
+# 403 on `GET /api/cookbook/state` in person and 200 through his assistant's
+# `list_serve_presets`. One binding here rather than an `owner=` at every call
+# site, for the reason the workspace has one: a site added later is covered
+# without anyone remembering to pass it. Unbound — the scheduler's actions,
+# the Forge lifecycle loop, anything not inside a tool call — it is None and
+# the loopback names nobody, as before.
+_tool_person: contextvars.ContextVar = contextvars.ContextVar(
+    "agent_tool_person", default=None
+)
+
+
+def get_tool_person() -> Optional[str]:
+    """The person the running tool call acts for, or None outside one."""
+    return _tool_person.get()
 
 
 def vet_workspace(raw: str) -> Optional[str]:
@@ -989,6 +1018,8 @@ async def execute_tool_block(
     # this machine does not have.
     station_workspace = workspace if (workspace and _works_in_workstation(owner)) else None
     token = _active_workspace.set(None if station_workspace else (workspace or None))
+    # `B1179`. Who this call acts for, for every loopback the tool makes.
+    person_token = _tool_person.set(normalize_owner(owner))
     _t0 = time.monotonic()
     _tool_name = getattr(block, "tool_type", None)
     _tool_outcome = "ok"
@@ -1049,6 +1080,7 @@ async def execute_tool_block(
         raise
     finally:
         _active_workspace.reset(token)
+        _tool_person.reset(person_token)
         # P14-02. Guarded and last: instrumentation never changes whether a tool
         # call succeeded, and never delays its result.
         try:
