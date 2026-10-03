@@ -31,6 +31,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.helpers.source_text import blank_text
+
 ROOT = Path(__file__).resolve().parent.parent
 CHANGELOG = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
 _RELEASE = re.compile(r"^## \[(\d+\.\d+\.\d+)\](?: — \d{4}-\d{2}-\d{2})?\s*$", re.M)
@@ -50,7 +52,9 @@ def _listed_added(body: str) -> list:
     """What a release's `#### Added` LISTS — bullets, not the withdrawal note
     (a record of what was claimed is the point of a withdrawal note)."""
     added = body.split("#### Added", 1)[1].split("\n####", 1)[0]
-    added = re.sub(r"<!--.*?-->", "", added, flags=re.S)
+    # The repository's one comment blanker (`B290`), not a hand-written
+    # pattern: `tests/test_one_comment_blanker.py` holds every test to it.
+    added = blank_text(added, "html", embedded=False)
     items, current = [], None
     for ln in added.splitlines():
         if ln.startswith("- "):
