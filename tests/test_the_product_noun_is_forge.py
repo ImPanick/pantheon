@@ -91,6 +91,14 @@ RESIDUE = {
         "Nothing renders it and `FORBIDDEN` Part 1 treats the user-agents as "
         "already swept; changing a wire header to tidy a word is the wrong "
         "trade.",
+    "docs/release-notes/0.2.0.md":
+        "Two hits, one table row: the rename table quotes that same outbound "
+        "User-Agent, `Odysseus-Cookbook/1.0` -> `Pantheon-Cookbook/1.0`, "
+        "exactly as the wire carries it, and "
+        "`tests/test_the_release_notes_name_every_rename.py` derives the table "
+        "from the tree and the fork point, so the words cannot move while the "
+        "header does not. Its prose says Forge: four more uses of the noun in "
+        "it reddened this file on wave F's merged tree (`B1176`).",
 }
 
 
@@ -209,7 +217,8 @@ def test_the_register_holds_nothing_that_is_already_done():
 def test_the_hand_off_is_exact_about_what_is_left():
     # The integrator is being asked to apply six lines in a file this wave does
     # not own. A number that has drifted is a hand-off nobody can act on.
-    assert _offenders() == {"static/index.html": 6, "services/hwfit/image_models.py": 1}
+    assert _offenders() == {"static/index.html": 6, "services/hwfit/image_models.py": 1,
+                            "docs/release-notes/0.2.0.md": 2}
 
 
 # ── what the rename must NOT have done ────────────────────────────────────────
