@@ -238,15 +238,15 @@ proved it dead.
 
 ## Status
 
-**1183 tracked tasks, 889 done.** The tracker is [`.pantheon/ROADMAP.md`](.pantheon/ROADMAP.md) and
+**1192 tracked tasks, 889 done.** The tracker is [`.pantheon/ROADMAP.md`](.pantheon/ROADMAP.md) and
 it is the only place work is tracked — one list, one progress area, validated by a script that
 recounts every phase row against its own ticks. It exists because the summary line was once wrong
 by nineteen and carried forward unread from entry to entry, because each author copied the line
 above.
 
 **Read that number with the trend beside it.** Over the last ten waves, *done* went
-**71.1% → 75.1%** and *open* went **299 → 294**: 147 rows filed against 152 closed, a
-file-to-close ratio of **0.967**. The open count falls only when closing outruns filing, and in
+**70.8% → 74.6%** and *open* went **309 → 303**: 133 rows filed against 139 closed, a
+file-to-close ratio of **0.957** — the last wave filed nine rows and closed none: `P23`, the audits' fixes. The open count falls only when closing outruns filing, and in
 most waves it does not — most rows are defects found by sweeps over code that was already here,
 not new work invented — so this reading is a good stretch, not a promise. What matters more is a different number: of the last 40 backlog rows filed (`B1143`–`B1182`), **none** is
 on the ship line's open list — the short list of rows that stop a stranger relying on this
@@ -295,7 +295,7 @@ sixth and seventh were upstream's pictures under our filenames too, gone the day
 - **More themes** — new palettes, and subtle ASCII-art backgrounds as a ninth pattern, picked
   the same way the seven animated ones already are: independently of the palette.
 
-Twenty-three phases, every task written down: [`.pantheon/ROADMAP.md`](.pantheon/ROADMAP.md).
+Twenty-four phases, every task written down: [`.pantheon/ROADMAP.md`](.pantheon/ROADMAP.md).
 
 ---
 

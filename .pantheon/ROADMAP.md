@@ -83,8 +83,9 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P20 | The workstation | 7 | 0 | 0 | **7** |
 | P21 | Documents, kept in order | 4 | 0 | 0 | **4** |
 | P22 | The Workbench | 25 | 0 | 0 | **25** |
+| P23 | Alignment — the audits, fixed | 9 | 9 | 0 | **0** |
 | Backlog | Bugs and hardening found in flight | 761 | 242 | 0 | **519** |
-| **Total** | | **1183** | **288** | **6** | **889** |
+| **Total** | | **1192** | **297** | **6** | **889** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -246,6 +247,13 @@ they are for.*
 > `check-tracker.py` now validates the newest entry against the table and fails on drift.
 > Entries below the `P0-31` one keep the figure they were written with: a record of what
 > was claimed at the time is worth more than a quietly corrected one (`B44`).
+
+### The audits become a phase: P23 opened
+`e363b81..HEAD`. **1192 tracked, 889 done. 9 new phase rows, 0 regressions. `P23-00` … `P23-08` filed.**
+The owner: *"Some functions are extremely wonky."* Eight auditors drove the product and wrote two documents — 134
+mechanism findings (none P0) and a UI/UX audit of every window's way in and way out. `D-2026-10-03-01` makes them
+eight lanes of work, run at once, each owning its files: one back stack, the Brain and Skills, one visibility table
+for the Tools, the chat, the words, display and motion, load and ops, and the Library and Mail.
 
 ### Every tool loopback names its person: the ship line's last open gate, met the day it was filed
 `3e4888b..HEAD`. **1183 tracked, 889 done. 0 new phase rows, 0 regressions. `B1179` and `B1180` closed; `B1181` and `B1182` filed.**
@@ -10590,6 +10598,90 @@ functions. Mermaid stays as *Read as a diagram*.
   **The server half — done 2026-10-02 (wb-assist, `771546b` `999baa7` `e3cd9af`).** `GET /api/workflows/{id}/export` (attachment, `pantheon_workflow: 1`, `src/workflow_share.py`): the start's `TRIGGER_FIELDS` (no token, no status), `version_graph` less every `endpoint_url`/`model`/`character_id`/`crew_member_id`, header values blanked, and `requires` (Integrations by id with name and preset, MCP tools by server and tool with their schema, skills, tasks, the workstation); a last scan for `diagnostic_bundle._KNOWN_PREFIX` and `Bearer …` refuses the export naming the step and field (mistake prevention, `Law 17`). `POST /api/workflows {file}`: over 1 MiB, another file version, or a graph `parse_graph` refuses is refused whole; an Integration is rebound by preset then name, an MCP tool by server and tool name, a skill and a task by name; what is still missing is checked against a stand-in (a file's schema cannot widen a slot — `classify_argument` decides by name) and said, *"“Fetch unread” uses an Integration called “Miniflux” (miniflux). Add it in Integrations, then pick it on the step."*, in `missing` and in the step's `unchecked.needs`; every other refusal refuses the file; then `create_from_document(imported)` — off, every step marked, a fresh token, `destinations`. Every workflow route reads its body under 1 MiB (`_body` read with no ceiling before). The backup (`routes/backup_routes.py`) now carries the owner's `tasks` (webhook tokens included, `B958`'s logic) and `workflows` (current document without pins, **marks kept**, so a draft nobody checked comes back still waiting), says what it does not carry (versions, runs, step records), and an unreadable task table leaves them out and says so; the import restores tasks then workflows by their own ids, skips ids that exist, never links a workflow to a task that is not the importer's own start, and restores a workflow this install refuses — or one still marked — with its trigger switched OFF, named with the rule's sentence. `Verify (this half):` `tests/test_a_workflow_is_a_file.py` (9 — the exported bytes contain none of the webhook token, the key, the base URL, a header value, a pinned sample, an endpoint URL or a model; § 5.3's hostile file refused whole, then imported off and marked with a fresh token and `email:x@evil` in `destinations`; a file's schema cannot open `channel`, refused exactly as a person's save; version 2 and 1 MiB refused on `POST` and on `PUT`) and `tests/test_the_backup_carries_tasks_and_workflows.py` (5 — two SQLite files; the same webhook URL answers on install 2). **14 of 14 fail on `4cfb297`** (9 at collection). **Mutation, on a scratch copy, all caught:** install fields kept in the file reddens 2 of 9; header values kept 3 of 9; the secret scan removed 1 of 9; the file version unchecked 1 of 9; the export without `version_graph` 1 of 9; no Integration rebinding 1 of 9; no MCP rebinding 3 of 9; the body cap lifted 1 of 9; the backup stripping marks 2 of 5; a refused workflow not paused 1 of 5; a workflow linked to another owner's task 1 of 5. The *Start from* list is `D-2026-10-02-02` §1's example sentences (`EXAMPLE_SENTENCES`, served as `examples` on the palette) — B draws them.
   **The UI half — done 2026-10-02 (wb-canvas-e), to contract C-A.** *Export* in the workflow bar downloads the saved workflow as the server's file (its bytes, its `Content-Disposition` name) and says what it holds. *Or open a file…* in the New workflow form reads a file and posts its JSON as `{file}` (not JSON → said, nothing sent). The import opens on what arrived — "Imported from a file", where it sends things, "What this Pantheon is missing:" with each line the server wrote and the door its need opens (*Open MCP & Integrations* → `openWorkbench({room: 'integrations'})`, *Open Skills* → `{room: 'skills'}`, C-R) and *Show the step* — and each step's `needs` are said on its banner and on the field they are about, with the door; every need kind `import_file` writes is read (Integration, MCP tool, skill, task, a header's value, an AI step's tool, the workstation, a For-each's inner step); a step that cannot be planned yet says the engine's reason. Versions say "drafted by the model", "imported from a file", "a fix you applied". `Verify (this half)`, **driven end to end in Chromium on a merge with wb-assist** at 1400×860 and 390×844, dark and light: *Feed digest* (Miniflux → a prompt) exported as `feed-digest-….workflow.json` — the file holds no key, no base URL, no webhook token, and `requires` names Miniflux (miniflux); the install then lost Miniflux; *Or open a file…* → Off, both steps "Imported — check me", "“Fetch unread” uses an Integration called “Miniflux” (miniflux). Add it in Integrations, then pick it on the step." with *Open MCP & Integrations* and *Show the step*; the banner and the Integration field said the same with the door, and "It cannot be planned yet: A step uses an Integration that is not set up, or is switched off: “Fetch unread”."; Miniflux added again, picked on the step, saved — that step's mark gone (it is the person's) — *Switch on* → "A file brought in 1 step nobody has checked yet: “Name them”." → *Check them now* → *All look right* → *Switch on* → *Run now* → **success**, the fixture saw `GET /v1/entries?status=unread`. The door's room switch is wb-rooms' (not in that merge: the door called `openWorkbench({room})`, no error). `tests/test_a_workflow_file_js.py` (8) — the file EXPORTED on a real install with Miniflux and the skill and IMPORTED on one with neither, recorded from wb-assist's routes where its share is in the tree. The *Start from* list is P22-19's example sentences (`D-2026-10-02-02` §1).
   — **done 2026-10-02 — driven on the merged tree (`integrate-e`, merged as `37fbf97`) at dark 1400 and dark 390: the `Verify:` passes.** *Export* → "Downloaded “feed-digest-dark-1400.workflow.json”. It holds the saved steps and the names of what they use; keys, tokens, addresses and pinned samples are left out." — no key, base URL or token in the file. Miniflux removed; *Or open a file…* → "Imported from a file … Where it sends things: “Fetch unread” sends GET /v1/entries to Miniflux. What this Pantheon is missing: “Fetch unread” uses an Integration called “Miniflux” (miniflux). Add it in MCP & Integrations, then pick it on the step." — the line names the room its door opens (`de2a9db`, `B1135`). The door *Open MCP & Integrations* opened the room and Miniflux was added there; back in Automations the imported draft was where it was, but the new Integration was not offered on the step until the Workbench was reopened (`B1136`). Picked, saved, refused ("A file brought in 1 step nobody has checked yet: “Name them”"), checked, On, *Run now* → `success`, and the fixture saw `GET /v1/entries?status=unread` (at 1400 the drive's poll first read the check's dry run, `B1132`; the shelf then read "Last run: Success").
+
+# P23 · Alignment — the audits, fixed
+
+*Area: `navigation`, `ui`, `copy`, `ops` · Depends: P22 · Opened 2026-10-03 from the owner: **"Some functions are
+extremely wonky."** Direction: `D-2026-10-03-01` (six fix waves; one back stack; one name per thing).*
+
+**Two audits, measured on `9560d50` by eight auditors driving the real product** — a throwaway install, a fictional
+world, a scripted model, Chromium at 1440×900 and 390×844, dark and light, keyboard and mouse: the *Mechanism report*
+(134 findings, none P0, thirteen root causes) and the *UI/UX audit* (a navigation map of every window, the Tools
+visibility model, a de-slop voice guide). They are the owner's temporary documents and live outside the tree; each row
+below names the findings it closes by their ids (`NAV-M-1`, `COPY-U-15`, …) and says enough to stand without them.
+The worst of it, a line each: Back leaves the app (no `pushState` anywhere in `static/`); Escape in a text field closes
+the window and drops the draft; a tool switched off still opens from four doors; a denied tool call is drawn as done;
+SQLite without WAL lets one held lock stall every request for 5 s; the Brain adds a `document` listener per memory
+per render; one window has three names.
+
+- [ ] **P23-00** **Acceptance: the owner's own walk.** Brain → RAG → Skills shows `← Brain`; pressing it, Escape or
+  the browser's Back lands on the Brain's RAG tab, and one more Back closes the Brain. An admin switches Gallery off
+  for everyone and it is gone from the sidebar, the rail, the palette, `/gallery` and its URL — at once on the admin's
+  page, after a reload for everyone else; a person's own *Show in this browser* hides it the same way. Two chats
+  opened in turn: Back returns to the first. No screen says the same thing twice. `Depends:` `P23-01` … `P23-08`.
+  `Verify:` driven on the merged tree at 1440×900 and 390×844, dark and light, keyboard and mouse.
+- [ ] **P23-01** **One back stack.** Everything that opens pushes one entry and one `history.pushState`; Back =
+  Escape = `←`; Escape in a text field clears or blurs it first, and a form with edits asks once (`B1052`'s three
+  choices); a window opened from another shows `← <opener>` and closing it re-raises the opener on the tab it was on;
+  the URL names the top window and a reload restores it; a door raises, never closes; Compare opens over the chat and
+  cancel returns to it; a restored chip takes the focus. Closes `NAV-M-1`…`12`, `NAV-M-19`, `NAV-U-2` (Back half),
+  `NAV-U-3/4/7/8/9`, `CHAT-U-1/2`, `CHAT-M-7/11/12/17`, `BRAIN-U-4/13`, `BRAIN-M-7`, `SET-M-7/23/24`, `SET-U-3/10`,
+  `DOCS-U-1`…`4`, `DOCS-M-8`, `WB-U-6`, `WB-M-1`. `Verify:` the first sentence of `P23-00`, and every window in the
+  audit's navigation map has a way out that lands where the map says.
+- [ ] **P23-02** **The Brain and Skills.** Skills opened from the Brain is a door with `← Brain` (the owner's
+  example); the Brain keeps one height across its tabs and reopens on the tab it was left on; RAG is reachable at every
+  width; real tabs and keyboard menus; a skill's status word is true (`BRAIN-M-2`); the per-memory `document` listener
+  (`PERF-M-3`: 2,485 listeners and 92 k retained nodes after six opens) and seven serial pref reads (`PERF-M-8`) are
+  gone. Closes `NAV-U-1/13`, `NAV-M-14`, the `BRAIN-U` and `BRAIN-M` findings not in `P23-01`, `PERF-M-3/8`,
+  `PERF-U-4/5`, `COPY-U-15`…`22/31`. `Verify:` Brain → RAG → Skills → `← Brain` lands on RAG; six Brain opens add
+  no `document` listener.
+- [ ] **P23-03** **One visibility table for the Tools.** One `TOOL_VISIBILITY` map in `ui_visibility.js` and one
+  applier: a tool is shown when *everyone* ∧ *this person* ∧ *this browser* are on, and hidden means hidden at every
+  door — sidebar, rail, palette, slash, URL, shortcut and the cross-window doors; a switch applies live on the
+  switcher's own page; a hidden window reached anyway shows the server's sentence. A non-admin's Settings save is not
+  reported as saved after a 403 (`SET-M-6`); switches say what they did; the three headings say what they switch
+  (*Switched on for everyone*, *Can use*, *Show in this browser*). Closes `SET-M-1`…`6`, `SET-M-8`…`16`, `SET-M-18`,
+  `SET-M-20`, `SET-U-1/2/4/5/7`…`16`, `NAV-M-20`, `NAV-U-14`, `CHAT-M-2`, `COPY-U-33`…`44`, `COPY-M-8`; `SET-M-17`
+  stays `P11-11`'s; `B480` is re-measured (stale). `Verify:` Gallery switched off for everyone, for one person, and
+  in one browser — each time gone from all seven doors, and back on, live.
+- [ ] **P23-04** **The chat tells the truth.** Escape cancels what it says it cancels (`CHAT-M-1`); a denied tool
+  call is drawn denied, not done (`CHAT-M-3`); a resumed stream sets the send button; a partial save keeps the
+  thinking and the name; editing a message says what it removes; archiving the open chat leaves it; the context wheel
+  says the window the agent actually uses (`CHAT-M-4`); the two probes a chat switch makes answer 200 (`PERF-M-7`);
+  `/notes` + Enter leaves no `/notes` bubble (`SET-M-22`); an error carries *Retry*; the no-model state says what to
+  do. Closes the `CHAT-U` findings 3–26 but 9 and 19, `CHAT-M-1/3/4/5/6/8/9/10/13/14/16/18`…`23`, `SET-M-22`,
+  `PERF-U-2/3/6/10`, `PERF-M-7/14`, `COPY-U-8/10`…`14`, `COPY-M-3`…`5`. `Verify:` a denied tool call says denied after
+  a reload; a chat switch with the console open logs no 404.
+- [ ] **P23-05** **One name per thing, and fewer words.** Brain (not Memory), chat (not session or conversation), MCP
+  & Integrations, Forge (`P0-29`) — on every label a person reads, while ids, keys, routes and classes keep theirs
+  (`FORBIDDEN.md` Part 1, as `D-2026-09-18-04` did for the Forge); Library and Documents unchanged. A count is said
+  once; a header stops describing what a person can see; every string in the UI/UX audit's § 5 takes its replacement,
+  by its voice guide's ten rules. Closes the `COPY-U` and `COPY-M` findings not named in another row, `NAV-U-5/11/12/15`,
+  `WB-U-2/3/7/10/11/12/14/15`, `WB-M-9/11/12`, `DOCS-U-5/11/12/17`…`22`, `PERF-U-12`. `Verify:`
+  `tests/test_the_product_noun_is_forge.py`, a sweep of the served strings for the retired names, and § 5 row by row.
+- [ ] **P23-06** **Display and motion.** × and `_` on every phone sheet and swipe-down = Back; one 250 ms entrance
+  for every window; nothing behind a window moves (Calendar no longer folds the sidebar); reduced motion also stops the
+  dock's whirl; a window keeps its height across tabs and after a right-dock; the Workbench's Runs strip, zoom floors,
+  picker anchor and phone toolbar; month grid, Tidy dialog, image editor and attachment chips at 390 px; Gallery and
+  Calendar stop retaining DOM per open (`PERF-M-4`). Closes `NAV-U-2` (× half), `NAV-U-10`, `NAV-M-13/15/16/17/18`,
+  `DOCS-U-6`…`16`, `DOCS-M-4/7`, `WB-U-1/4/5/9/13/16`, `WB-M-2`…`8/10/13/14`, `SET-M-21`, `PERF-U-1`, `PERF-M-4`,
+  `CHAT-U-9`. `Verify:` every window opened and closed at 390×844 with × and with a swipe; six Gallery opens add no
+  listener.
+- [ ] **P23-07** **Load, idle and ops.** SQLite in WAL, and a held lock answered 503 with a sentence instead of a 5 s
+  stall and a bare 500 (`PERF-M-2`); the service worker controls `/` (`PERF-M-1`: registered at `/static/`, so 0 of
+  188 responses were ever served from it); a visible idle tab no longer holds the inbox check and scheduled runs back
+  for ever (`PERF-M-11`); a hidden tab stops polling (`PERF-M-12`); the sidebar lists the person's own chats, not the
+  newest 100 of everyone's (`PERF-M-5`); a down dependency is reported in seconds (`PERF-M-10`); the Forge opens on
+  cached rows (`PERF-M-6`); one `AuthManager`; housekeeping seeded at start, not on a read; log noise once per
+  process. Closes `PERF-M-1/2/5/6/10`…`13/15`…`18`, `PERF-U-7/8/11`, `SET-M-19`, `DOCS-M-9`; `PERF-M-9`'s bundling is
+  filed, its early fetch is in. `Verify:` a held write lock → 503 in under a second while other requests answer; a tab
+  left open and idle does not stop an 08:00 run; an offline reload draws the app.
+- [ ] **P23-08** **The Library and Mail do what they say.** Reply and Compose no longer leave an empty "Email: …"
+  chat behind and Create no longer writes an empty "Untitled" (made on first content); the scheduled Tidy never
+  proposes deleting an unsent draft (`DOCS-M-3`); a failed send names the server it could not reach, not
+  `[Errno 111]`; a PDF attachment that cannot be rendered says so once; an 8-bit subject decodes; a size under 1 KB
+  reads in bytes; a `.txt` imports as text. Closes `DOCS-M-1/2/3/5/6/10`…`13`. `Verify:` Reply, then close without
+  sending — no new chat; the Tidy on a world with a draft does not propose it.
 
 - [x] **B69** **There are two complete email-account forms and one of them is mounted nowhere.**
   Found by `P18-07` 2026-09-11, after `P18-01` and the first pass of `P18-07` were both written
