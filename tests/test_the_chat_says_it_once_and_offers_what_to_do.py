@@ -267,3 +267,25 @@ def test_an_address_that_names_a_chat_skips_the_welcome_hero(tmp_path, hash, hid
     assert proc.returncode == 0, proc.stderr
     out = json.loads(proc.stdout.strip().splitlines()[-1])
     assert out == {"hidden": hidden, "welcome": not hidden, "flag": hidden}
+
+
+def test_the_pickers_forge_door_never_writes_a_dead_address(sandbox):
+    """fx-back's `B-NEW-1` (P23-01, NAV-M-9's second half), in this lane's
+    file: with neither Forge door on the page the picker wrote `#cookbook`,
+    which nothing reads — it stuck in the address and opened nothing."""
+    src = (JS / "modelPicker.js").read_text(encoding="utf-8")
+    code = blank_text(src, "js")
+    fn = js_definition(src, code.index("function _openPickerShortcut("))
+    out = _run(sandbox, _PRE, """
+        globalThis.location = { hash: '' };
+        globalThis.window.cookbookModule = undefined;
+        const _close = () => {};
+        const settingsModule = null;
+        %s
+        _openPickerShortcut('cookbook');
+        const btn = document.createElement('button'); btn.id = 'tool-cookbook-btn'; document.body.appendChild(btn);
+        let clicked = 0; btn.click = () => { clicked += 1; };
+        _openPickerShortcut('cookbook');
+        console.log(JSON.stringify({ hash: location.hash, clicked }));
+    """ % fn)
+    assert out == {"hash": "", "clicked": 1}

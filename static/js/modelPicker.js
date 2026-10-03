@@ -237,9 +237,10 @@ function _initModelPickerDropdown() {
         if (window.cookbookModule && typeof window.cookbookModule.open === 'function') {
           window.cookbookModule.open();
         } else {
+          // `P23-04` (fx-back's B-NEW-1): no `#cookbook` fallback — nothing
+          // reads that hash, so it stuck in the address and opened nothing.
           const btn = document.getElementById('tool-cookbook-btn') || document.getElementById('rail-cookbook');
           if (btn) btn.click();
-          else location.hash = '#cookbook';
         }
       } else if (kind === 'settings') {
         if (settingsModule && typeof settingsModule.open === 'function') settingsModule.open();
