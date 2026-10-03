@@ -83,6 +83,6 @@ def rag_unavailable_reason() -> str:
             return ("RAG is off: the embedding model is not downloaded — "
                     "Settings › System › Download models from the internet.")
     except Exception:
-        pass
+        pass   # the lane probe failing is itself "did not start"; the sentence below says so
     return "RAG is off: the document index did not start. The server log says why."
 

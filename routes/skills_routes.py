@@ -66,7 +66,7 @@ def _fetch_failure_sentence(e: Exception) -> Optional[str]:
             if h and "github" not in h:
                 host = h
     except Exception:
-        pass
+        pass   # httpx raises reading `.request` on an error made without one; "GitHub" stands
     text = str(e)
     if isinstance(e, ssl.SSLError) or "CERTIFICATE_VERIFY_FAILED" in text or "SSL" in text[:12]:
         return f"Could not reach {host} (TLS certificate rejected)."
