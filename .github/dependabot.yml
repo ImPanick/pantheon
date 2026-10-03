@@ -32,6 +32,11 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    # The built-in servers still use the MCP v1 Server decorator API. Keep
+    # Dependabot on that line until the servers and client migrate together.
+    ignore:
+      - dependency-name: mcp
+        update-types: ["version-update:semver-major"]
     groups:
       python:
         patterns: ["*"]

@@ -14,8 +14,9 @@
 # stopwords went with it, the hand-copied regex became a second copy of
 # something upstream maintains, and the run came back with a finding the
 # original four had never included. The allowlist is global now: every default
-# rule is exactly what gitleaks ships, and these five literals are excused on
-# top of all of them.
+# rule is exactly what gitleaks ships, and the five original literals are
+# excused on top of all of them. The later redaction fixtures below are handled
+# with the same exact-literal rule.
 #
 # The rule for this file, and it is the only rule: **an entry names one exact
 # literal and says why that literal is not a credential.** No path allowlists —
@@ -54,4 +55,27 @@ regexes = [
   # of an API-key header, inside a fenced code block, teaching the reader what
   # the header looks like. `sk_live_abc123` is six characters of `abc123`.
   '''sk_live_abc123''',
+  # `tests/test_a_stopped_agent_says_what_it_was_doing.py` feeds a fake
+  # Stripe-shaped token into safe_arguments and asserts it is withheld. Its
+  # hex-looking suffix is fixed test data, never an issued credential.
+  '''sk-live-4f9a8b7c6d5e4f3a\b''',
+  # The same test drives a repeated-call stop and asserts that its fake token
+  # appears neither in the stop event nor in saved metrics. Distinct literal
+  # from the shorter fixture above; both must remain independently exact.
+  '''sk-live-4f9a8b7c6d5e4f3a2b1c\b''',
+  # The command-withholding table also uses an AWS-shaped sample key with the
+  # alphabet in order after AKIA; it is an impossible issued key by design.
+  '''AKIAABCDEFGHIJKLMNOP\b''',
+  # `tests/test_the_palette_offers_what_the_agent_reaches.py` and
+  # `tests/test_an_http_step_goes_through_an_integration.py` use this same
+  # deliberately misspelled sample key to assert an Integration's credential
+  # never appears in the workflow palette and reaches only its HTTP request.
+  '''sekret-api-key-123\b''',
+  # `tests/test_a_mail_attachment_keeps_its_name_on_the_way_out.py` tests a
+  # legacy staged filename: a repeated ascending hex sequence plus a human
+  # title. The scanner's match ends after `_Q3`, before the first space.
+  '''0123456789abcdef0123456789abcdef_Q3\b''',
+  # The same test uses the sequence by itself as a synthetic staging key and
+  # checks the path lookup. The boundary keeps it distinct from `_Q3` above.
+  '''0123456789abcdef0123456789abcdef\b''',
 ]

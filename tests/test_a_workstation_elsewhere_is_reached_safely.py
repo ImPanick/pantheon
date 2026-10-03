@@ -329,6 +329,7 @@ def test_a_token_file_is_read_and_never_written(tmp_path):
         assert not (tmp_path / "pairing").exists(), "a pairing token was minted beside the file"
     finally:
         server.server_close()
+    os.chmod(path, 0o600)  # The test owner can now replace its read-only fixture.
     path.write_text("")
     with pytest.raises(cli.WorkstationError) as e:
         cli.build(cli.parse_args(["--token-file", str(path), "--port", "0",
