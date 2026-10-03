@@ -248,7 +248,7 @@ they are for.*
 > was claimed at the time is worth more than a quietly corrected one (`B44`).
 
 ### Dependency blockers — draft PR #12
-`f2cf0c7..f1658a5`. **1118 tracked, 806 done. 0 new phase rows, 0 regressions. `B1116` and `B1117` filed.**
+`f2cf0c7..f1658a5`. **1118 tracked, 806 done. 0 new phase rows, 0 regressions. 0 rows closed; `B1116` and `B1117` filed.**
 MCP v2 is excluded from routine Dependabot bumps until migration; five eligible core bumps and the narrow fixture allowlist are in draft review.
 
 ### Workbench, wave D: Slices C and D — fields picked from a list, logic with no language, steps side by side, and steps that reach out
