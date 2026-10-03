@@ -301,6 +301,7 @@ _MODULE_LEVEL = (
     "_headWithTeacher",      # `B922`
     "_threadOrBare", "_removeViewFrom",
     "checkBackgroundStream", "_showBackgroundStreamSpinner",
+    "_releaseResumeButton",  # `P23-04` (CHAT-M-5)
 )
 
 
@@ -381,6 +382,20 @@ const _streamRunIds = new Map();
 const _researchingStreamIds = new Set();
 let _streamSessionId = null;
 let isStreaming = true;
+// `P23-04` (CHAT-M-5): the send button a resumed view now drives, through a
+// stand-in for chat.js's one state machine that records each state it is set to.
+const sendBtn = document.body.appendChild(new Node('button'));
+sendBtn.className = 'send-btn';
+const buttonStates = [];
+function updateSubmitButton(state, btn) {
+  buttonStates.push(state);
+  if (btn) btn.dataset.mode = state === 'streaming' ? 'streaming' : '';
+}
+const _resumeHoldsButton = new Set();
+const _resumeStopRequested = new Set();
+let _sendInFlight = false;
+function _currentSessionIdSafe() { return sessionModule.getCurrentSessionId() || ''; }
+function _getForegroundStreamState() { return _activeStreams.get(sessionModule.getCurrentSessionId()) || null; }
 /** Empty the history the way a reload does: every node leaves the page. */
 function clear() { for (const c of history.childNodes.slice()) c.remove(); }
 """
@@ -1201,7 +1216,6 @@ def test_leaving_again_keeps_the_replay_in_charge(sandbox):
         const _terminalSavedStreams = new Set();
         function abortCurrentRequest() {}
         function _syncForegroundStreamGlobals() {}
-        function updateSubmitButton() {}
         %s
         detachCurrentStream('s1');
         const kept = _backgroundStreams.get('s1').resumedView;

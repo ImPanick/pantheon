@@ -139,7 +139,7 @@ import * as KS from './keyboard-shortcuts.js';
 let stops = 0;
 KS.initKeyboardShortcuts({
   el: (id) => document.getElementById(id), Storage: {}, sessionModule: null, uiModule: {},
-  chatModule: { abortCurrentRequest() { stops += 1; } },
+  chatModule: { stopCurrentReply() { stops += 1; return true; } },  // `P23-04`: Escape's stop
   adminModule: null, settingsModule: null, searchChatModule: null,
   _closeCompareIfActive: () => false, _deactivateIncognito: () => {}, API_BASE: '',
 });

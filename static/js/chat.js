@@ -862,6 +862,10 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
   const _backgroundStreams = new Map(); // sessionId -> { status, accumulated, sourcesHtml, abortCtrl, query, metrics }
   const _activeStreams = new Map();     // sessionId -> { abortCtrl, holder, query, startedAt, cancelViewWork, finalizeView }
   const _resumingStreams = new Set();   // sessionId -> a resumeStream() reader is live (re-attach lock)
+  // `P23-04` (CHAT-M-5). A resumed view that set the send button to Stop, and
+  // the ones the person stopped (their end reloads the saved, stopped reply).
+  const _resumeHoldsButton = new Set();
+  const _resumeStopRequested = new Set();
   const _terminalSavedStreams = new Set(); // sessionId -> canonical terminal event seen by active reader
   const _streamRunIds = new Map();      // sessionId -> opaque identity of the current send's detached run
   const _streamGenerations = new Map(); // sessionId -> generation of the current (latest) send
@@ -890,7 +894,8 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
 
   function _syncForegroundStreamGlobals() {
     const active = _getForegroundStreamState();
-    isStreaming = !!active;
+    // `P23-04` (CHAT-M-5): a resumed view on screen streams too.
+    isStreaming = !!active || _resumeHoldsButton.has(_currentSessionIdSafe());
     currentAbort = active ? active.abortCtrl : null;
     currentHolder = active ? active.holder : null;
     _setForegroundChatBusy(!!active || !!_sendInFlight);
@@ -2160,6 +2165,161 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
 
 
   /**
+   * `P23-04` (CHAT-M-1). The explicit Stop: what the send button does while a
+   * reply streams, lifted out of `handleChatSubmit` so Escape can do the same
+   * thing rather than a lesser one. Cancels the detached server run
+   * (`abortCurrentRequest(true)`), research too, and draws the stopped reply.
+   */
+  function _stopForegroundReply(sessionId, submitBtn) {
+    if (fileHandlerModule.isUploading && fileHandlerModule.isUploading()) {
+      fileHandlerModule.cancelUpload && fileHandlerModule.cancelUpload();
+    }
+    // Cancel server-side research if in progress
+    const _cancelSid = sessionModule.getCurrentSessionId();
+    if (_cancelSid && _researchingStreamIds.has(_cancelSid)) {
+      fetch(`${API_BASE}/api/research/cancel/${_cancelSid}`, { method: 'POST' }).catch(e => console.warn('Research cancel failed:', e));
+      _researchingStreamIds.delete(_cancelSid);
+      _clearResearchTimer();
+    }
+    // A resumed view keeps reading until the server's run ends, so the reply
+    // it saved on the way out is what the view's reload draws (CHAT-M-5).
+    if (_cancelSid && _resumingStreams.has(_cancelSid)) {
+      _resumeStopRequested.add(_cancelSid);
+      _resumeHoldsButton.delete(_cancelSid);   // the idle below is the hand-back
+    }
+    abortCurrentRequest(true);  // explicit user Stop → also cancel the detached server run
+
+    // Clean up any running agent thread nodes (stop wave animation, remove "running" state)
+    document.querySelectorAll('.agent-thread-node.running').forEach(node => {
+      if (node._waveInterval) { clearInterval(node._waveInterval); node._waveInterval = null; }
+      if (node._elapsedTicker) { clearInterval(node._elapsedTicker); node._elapsedTicker = null; }
+      node.classList.remove('running');
+      const wave = node.querySelector('.agent-thread-wave');
+      if (wave) wave.textContent = '';
+      const icon = node.querySelector('.agent-thread-icon');
+      if (icon) icon.textContent = '\u25A0'; // stop square
+      const statusEl = node.querySelector('.agent-thread-status');
+      if (!statusEl) {
+        const header = node.querySelector('.agent-thread-header');
+        if (header) {
+          const s = document.createElement('span');
+          s.className = 'agent-thread-status';
+          s.textContent = 'stopped';
+          header.appendChild(s);
+        }
+      }
+    });
+    document.querySelectorAll('.agent-thread.streaming').forEach(t => t.classList.remove('streaming'));
+
+    // Clean up any thinking spinners
+    document.querySelectorAll('.agent-thinking-dots').forEach(el => {
+      if (el._spinner) el._spinner.destroy();
+      el.remove();
+    });
+    // No text accumulated — remove the empty holder with spinner
+    if (currentHolder && !currentAccumulated) {
+      if (currentSpinner) { currentSpinner.destroy(); currentSpinner = null; }
+      // Empty cancel — keep the assistant bubble around with a "Cancelled
+      // by user" indicator and persist a placeholder server-side so the
+      // turn survives a refresh instead of vanishing without a trace.
+      _renderCancelledBubble(currentHolder);
+      currentHolder = null;
+      updateSubmitButton('idle', submitBtn);
+      const messageInput = uiModule.el('message');
+      if (messageInput) messageInput.disabled = false;
+      currentAccumulated = '';
+      _drainQueuedAgentRequests(sessionId);
+      return;
+    }
+    // Render whatever was accumulated so far
+    if (currentHolder && currentAccumulated) {
+      const _activeStopStream = _getForegroundStreamState();
+      const _terminalView = _activeStopStream?.finalizeView?.() || null;
+      const _stoppedViewHolder = _terminalView?.holder || currentHolder;
+      const _viewPreparedByStream = !!_terminalView;
+      // The stream finalizer may close a synthetic reasoning tag. Capture the
+      // durable raw value only after that canonical terminal preparation.
+      const stoppedContent = _terminalView?.raw || currentAccumulated;
+      _stoppedViewHolder.dataset.raw = stoppedContent;
+      if (!_viewPreparedByStream) {
+        _stoppedViewHolder.querySelector('.body').innerHTML = markdownModule.processWithThinking(
+          markdownModule.squashOutsideCode(stoppedContent)
+        );
+      }
+      
+      // Highlight code blocks
+      if (window.hljs) {
+        _stoppedViewHolder.querySelectorAll('pre code').forEach((block) => {
+          window.hljs.highlightElement(block);
+        });
+      }
+      
+      // Add the stopped indicator with continue button
+      const stoppedIndicator = document.createElement('div');
+      stoppedIndicator.className = 'stopped-indicator';
+      const stoppedLabel = document.createElement('span');
+      stoppedLabel.textContent = '[Message interrupted]';
+      stoppedIndicator.appendChild(stoppedLabel);
+      const continueBtn = document.createElement('button');
+      continueBtn.className = 'continue-btn';
+      continueBtn.title = 'Continue';
+      continueBtn.textContent = '\u25B8';
+      const _stoppedHolder = _stoppedViewHolder; // capture before globals are cleared
+      continueBtn.addEventListener('click', () => {
+        stoppedIndicator.remove();
+        _hideUserBubble = true;
+        _pendingContinue = _stoppedHolder;
+        _pendingContinueSteps = false;   // `B941`: a stopped reply's text
+        const cutoff = stoppedContent;
+        const msgInput = uiModule.el('message');
+        if (msgInput) {
+          msgInput.value = 'Your previous response was interrupted. It ended with:\n\n' + cutoff.slice(-500) + '\n\nDo NOT repeat what you already said. Continue exactly from where you were cut off.';
+          const sb = document.querySelector('.send-btn');
+          if (sb) sb.click();
+        }
+      });
+      stoppedIndicator.appendChild(continueBtn);
+      _stoppedViewHolder.querySelector('.body').appendChild(stoppedIndicator);
+
+      // Tell server to mark this message as stopped
+      const _sid = sessionModule.getCurrentSessionId();
+      if (_sid) fetch(`${API_BASE}/api/session/${_sid}/mark-stopped`, { method: 'POST' }).catch(e => console.warn('mark-stopped failed:', e));
+
+      // Add footer with copy/regen if not already present
+      if (!_stoppedViewHolder.querySelector('.msg-footer')) {
+        _stoppedViewHolder.dataset.raw = stoppedContent;
+        // `B920`: the reply may end in a later step's bubble than the one the pills are on.
+        _stoppedViewHolder.appendChild(createMsgFooter(_withTurnPills(_stoppedViewHolder, currentHolder)));
+      }
+
+      uiModule.scrollHistory();
+    }
+    
+    // Reset button state
+    updateSubmitButton('idle', submitBtn);
+    
+    // Re-enable message input
+    const messageInput = uiModule.el('message');
+    if (messageInput) messageInput.disabled = false;
+    
+    // Clear tracking variables
+    currentAccumulated = '';
+    currentHolder = null;
+  }
+
+  /**
+   * `P23-04` (CHAT-M-1, CHAT-M-5). Stop the reply on screen, as the Stop
+   * button does — the one call Escape makes. Returns false when nothing is
+   * streaming into the open chat, so Escape then does nothing at all.
+   */
+  export function stopCurrentReply() {
+    if (!isStreaming && !_sendInFlight) return false;
+    const sid = sessionModule.getCurrentSessionId && sessionModule.getCurrentSessionId();
+    _stopForegroundReply(sid, document.querySelector('.send-btn'));
+    return true;
+  }
+
+  /**
    * Handle chat form submission
    */
   export async function handleChatSubmit(e) {
@@ -2190,135 +2350,10 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
       if (shouldQueueStreamingSubmit && queueStreamingComposerRequest()) {
         return;
       }
-      if (fileHandlerModule.isUploading && fileHandlerModule.isUploading()) {
-        fileHandlerModule.cancelUpload && fileHandlerModule.cancelUpload();
-      }
-      // Cancel server-side research if in progress
-      const _cancelSid = sessionModule.getCurrentSessionId();
-      if (_cancelSid && _researchingStreamIds.has(_cancelSid)) {
-        fetch(`${API_BASE}/api/research/cancel/${_cancelSid}`, { method: 'POST' }).catch(e => console.warn('Research cancel failed:', e));
-        _researchingStreamIds.delete(_cancelSid);
-        _clearResearchTimer();
-      }
-      abortCurrentRequest(true);  // explicit user Stop → also cancel the detached server run
-
-      // Clean up any running agent thread nodes (stop wave animation, remove "running" state)
-      document.querySelectorAll('.agent-thread-node.running').forEach(node => {
-        if (node._waveInterval) { clearInterval(node._waveInterval); node._waveInterval = null; }
-        if (node._elapsedTicker) { clearInterval(node._elapsedTicker); node._elapsedTicker = null; }
-        node.classList.remove('running');
-        const wave = node.querySelector('.agent-thread-wave');
-        if (wave) wave.textContent = '';
-        const icon = node.querySelector('.agent-thread-icon');
-        if (icon) icon.textContent = '\u25A0'; // stop square
-        const statusEl = node.querySelector('.agent-thread-status');
-        if (!statusEl) {
-          const header = node.querySelector('.agent-thread-header');
-          if (header) {
-            const s = document.createElement('span');
-            s.className = 'agent-thread-status';
-            s.textContent = 'stopped';
-            header.appendChild(s);
-          }
-        }
-      });
-      document.querySelectorAll('.agent-thread.streaming').forEach(t => t.classList.remove('streaming'));
-
-      // Clean up any thinking spinners
-      document.querySelectorAll('.agent-thinking-dots').forEach(el => {
-        if (el._spinner) el._spinner.destroy();
-        el.remove();
-      });
-      // No text accumulated — remove the empty holder with spinner
-      if (currentHolder && !currentAccumulated) {
-        if (currentSpinner) { currentSpinner.destroy(); currentSpinner = null; }
-        // Empty cancel — keep the assistant bubble around with a "Cancelled
-        // by user" indicator and persist a placeholder server-side so the
-        // turn survives a refresh instead of vanishing without a trace.
-        _renderCancelledBubble(currentHolder);
-        currentHolder = null;
-        updateSubmitButton('idle', submitBtn);
-        const messageInput = uiModule.el('message');
-        if (messageInput) messageInput.disabled = false;
-        currentAccumulated = '';
-        _drainQueuedAgentRequests(sessionId);
-        return;
-      }
-      // Render whatever was accumulated so far
-      if (currentHolder && currentAccumulated) {
-        const _activeStopStream = _getForegroundStreamState();
-        const _terminalView = _activeStopStream?.finalizeView?.() || null;
-        const _stoppedViewHolder = _terminalView?.holder || currentHolder;
-        const _viewPreparedByStream = !!_terminalView;
-        // The stream finalizer may close a synthetic reasoning tag. Capture the
-        // durable raw value only after that canonical terminal preparation.
-        const stoppedContent = _terminalView?.raw || currentAccumulated;
-        _stoppedViewHolder.dataset.raw = stoppedContent;
-        if (!_viewPreparedByStream) {
-          _stoppedViewHolder.querySelector('.body').innerHTML = markdownModule.processWithThinking(
-            markdownModule.squashOutsideCode(stoppedContent)
-          );
-        }
-        
-        // Highlight code blocks
-        if (window.hljs) {
-          _stoppedViewHolder.querySelectorAll('pre code').forEach((block) => {
-            window.hljs.highlightElement(block);
-          });
-        }
-        
-        // Add the stopped indicator with continue button
-        const stoppedIndicator = document.createElement('div');
-        stoppedIndicator.className = 'stopped-indicator';
-        const stoppedLabel = document.createElement('span');
-        stoppedLabel.textContent = '[Message interrupted]';
-        stoppedIndicator.appendChild(stoppedLabel);
-        const continueBtn = document.createElement('button');
-        continueBtn.className = 'continue-btn';
-        continueBtn.title = 'Continue';
-        continueBtn.textContent = '\u25B8';
-        const _stoppedHolder = _stoppedViewHolder; // capture before globals are cleared
-        continueBtn.addEventListener('click', () => {
-          stoppedIndicator.remove();
-          _hideUserBubble = true;
-          _pendingContinue = _stoppedHolder;
-          _pendingContinueSteps = false;   // `B941`: a stopped reply's text
-          const cutoff = stoppedContent;
-          const msgInput = uiModule.el('message');
-          if (msgInput) {
-            msgInput.value = 'Your previous response was interrupted. It ended with:\n\n' + cutoff.slice(-500) + '\n\nDo NOT repeat what you already said. Continue exactly from where you were cut off.';
-            const sb = document.querySelector('.send-btn');
-            if (sb) sb.click();
-          }
-        });
-        stoppedIndicator.appendChild(continueBtn);
-        _stoppedViewHolder.querySelector('.body').appendChild(stoppedIndicator);
-
-        // Tell server to mark this message as stopped
-        const _sid = sessionModule.getCurrentSessionId();
-        if (_sid) fetch(`${API_BASE}/api/session/${_sid}/mark-stopped`, { method: 'POST' }).catch(e => console.warn('mark-stopped failed:', e));
-
-        // Add footer with copy/regen if not already present
-        if (!_stoppedViewHolder.querySelector('.msg-footer')) {
-          _stoppedViewHolder.dataset.raw = stoppedContent;
-          // `B920`: the reply may end in a later step's bubble than the one the pills are on.
-          _stoppedViewHolder.appendChild(createMsgFooter(_withTurnPills(_stoppedViewHolder, currentHolder)));
-        }
-
-        uiModule.scrollHistory();
-      }
-      
-      // Reset button state
-      updateSubmitButton('idle', submitBtn);
-      
-      // Re-enable message input
-      const messageInput = uiModule.el('message');
-      if (messageInput) messageInput.disabled = false;
-      
-      // Clear tracking variables
-      currentAccumulated = '';
-      currentHolder = null;
-
+      // `P23-04` (CHAT-M-1). The Stop is one function now, so Escape stops a
+      // reply exactly as this button does (it used to abort the reader only,
+      // and the server finished the run and saved all of it).
+      _stopForegroundReply(sessionId, submitBtn);
       return;
     }
 
@@ -6017,6 +6052,9 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
     if (!active || !active.abortCtrl) {
       // Not streaming — fall through to abort
       abortCurrentRequest();
+      // `P23-04` (CHAT-M-5): a resumed view's Stop does not follow the person
+      // into the chat they move to.
+      _releaseResumeButton(sessionId);
       return;
     }
     // Detachment deliberately keeps the network stream alive, but the outgoing
@@ -6386,6 +6424,18 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
     }
   }
 
+  /** `P23-04` (CHAT-M-5). A resumed view hands the send button back when it
+   *  ends or the person leaves the chat — unless what is on screen now is
+   *  streaming in its own right. */
+  function _releaseResumeButton(sessionId) {
+    if (!_resumeHoldsButton.delete(sessionId)) return;
+    const btn = document.querySelector('.send-btn');
+    if (!btn || btn.dataset.mode !== 'streaming') return;
+    if (_getForegroundStreamState() || _sendInFlight) return;
+    if (_resumeHoldsButton.has(_currentSessionIdSafe())) return;
+    updateSubmitButton('idle', btn);
+  }
+
   /**
    * Live-resume a chat run still streaming detached on the server (#2539).
    *
@@ -6467,6 +6517,18 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
     spinner.start();
     uiModule.scrollHistory();
 
+    // `P23-04` (CHAT-M-5). Something is streaming into the open chat, so the
+    // send button is Stop — through the one state machine the live send uses
+    // (`updateSubmitButton`), never a second copy. It stayed "+ New" for the
+    // whole of a resumed reply, and nothing could stop it.
+    if (_currentSessionIdSafe() === sessionId) {
+      const _resumeBtn = document.querySelector('.send-btn');
+      if (_resumeBtn && _resumeBtn.dataset.mode !== 'streaming') {
+        _resumeHoldsButton.add(sessionId);
+        updateSubmitButton('streaming', _resumeBtn);
+      }
+    }
+
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
@@ -6515,6 +6577,7 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
       });
       meter.dispose();
       _resumingStreams.delete(sessionId);
+      _releaseResumeButton(sessionId);
     };
 
     const renderDelta = () => {
@@ -6813,6 +6876,9 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
     if (thinkOpen) { roundText += '</think>'; thinkOpen = false; }
     cleanup();
     if (docRound) _finishDocumentWritingStatus(docRound, true);
+    // Stopped by the person: the server saved the partial reply, marked
+    // stopped; the reload draws that record (and its Continue), not this view.
+    if (_resumeStopRequested.delete(sessionId)) rich = true;
     if (leftSession) { _removeViewFrom(holder); return true; }
 
     const onThisSession = sessionModule.getCurrentSessionId &&
@@ -8478,6 +8544,7 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
     // undefined and fell through — Law 13, a handler with no reachable caller.
     queueStreamingComposerRequest,
     abortCurrentRequest,
+    stopCurrentReply,
     detachCurrentStream,
     checkBackgroundStream,
     resumeStream,
