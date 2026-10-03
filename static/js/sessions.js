@@ -2202,10 +2202,15 @@ export async function selectSession(id, { keepSidebar = false, showLoading = tru
     }
     uiModule.showError('Failed to load session: ' + error.message);
   } finally {
-    // Memory warmup must not block chat switching. The memories panel can load
-    // on demand; this is only a delayed cache refresh when the foreground chat
-    // is idle.
-    if (window.memoryModule && window.memoryModule.loadMemories) {
+    // Memory warmup must not block chat switching. `PERF-M-7`/`PERF-M-3`
+    // (P23-02): the Brain re-reads its list only when it is open — a closed
+    // one is marked stale and asks when it next opens. Every switch used to
+    // re-read and redraw it 2.5 s later, open or not (1 + 7 requests a switch,
+    // measured on `32df791`), which is what fed the per-memory listener leak.
+    const _mem = window.memoryModule;
+    if (_mem && _mem.markMemoriesStale) _mem.markMemoriesStale();
+    const _brain = document.getElementById('memory-modal');
+    if (_mem && _mem.loadMemories && _brain && !_brain.classList.contains('hidden')) {
       setTimeout(() => {
         const busy = !!window.__pantheonChatBusy
           || Date.now() < (window.__pantheonChatBusyUntil || 0)
