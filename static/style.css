@@ -13467,12 +13467,27 @@ details a:hover {
   background: color-mix(in srgb, var(--fg) 5%, transparent);
 }
 @media (max-width: 768px) {
-  /* `BRAIN-U-9`: wrap rather than clip Settings with no cue. */
-  #memory-modal .memory-tabs,
-  #memory-modal .memory-tablist,
+  /* `BRAIN-U-9`: the Skills toolbar wraps rather than cutting *Prompt preview*
+     and *Select* at the card's edge (414 > 344 px measured). */
   .skills-modal-content .memory-toolbar-row,
   #skills-room .memory-toolbar-row {
     flex-wrap: wrap;
+  }
+}
+@media (max-width: 480px) {
+  /* `BRAIN-U-9`: tab strips stay on one row by the rule further down
+     ("narrow modal tab strips should stay on one row"), so the Brain's five
+     are made to fit instead of clipping the last: no glyph before each label,
+     less padding — 438 px → about 315 at 390 wide (measured: the door ended at
+     x 448). The door keeps its ↗. */
+  #memory-modal .memory-tab > svg:first-child,
+  #memory-modal .memory-skills-door > svg:first-child {
+    display: none;
+  }
+  #memory-modal .memory-tab,
+  #memory-modal .memory-skills-door {
+    padding-left: 10px;
+    padding-right: 10px;
   }
 }
 /* `BRAIN-U-6`: the ⋮ menu's items are buttons now. */
