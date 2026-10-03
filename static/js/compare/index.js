@@ -129,8 +129,15 @@ function closeCompare() {
 // ── toggleMode ──
 // ────────────────────────────────────────────────────────────────────────────
 
-/** Toggle compare mode — shows model selector, then builds UI. */
-async function toggleMode() {
+/**
+ * Toggle compare mode — shows model selector, then builds UI.
+ *
+ * `P23-01` (NAV-M-5, CHAT-M-12). `opts.beforeBuild` runs once the picker's
+ * *Start* is pressed and not before — the sidebar's door empties the chat
+ * there — so a cancelled picker leaves the chat exactly as it was.
+ * `opts.returnTo` is the chat leaving Compare goes back to.
+ */
+async function toggleMode(opts = {}) {
   if (state.isActive) {
     deactivate(true);
     return false;
@@ -142,6 +149,10 @@ async function toggleMode() {
     const confirmed = await showModelSelector();
     if (!confirmed) return false;
 
+    state._returnTo = opts && opts.returnTo ? opts.returnTo : null;
+    if (opts && typeof opts.beforeBuild === 'function') {
+      try { opts.beforeBuild(); } catch (e) { console.warn('compare beforeBuild:', e); }
+    }
     state.isActive = true;
     _syncToolbarIndicator(true);
     await _buildCompareUI();
@@ -158,7 +169,9 @@ async function toggleMode() {
 // ── deactivate ──
 // ────────────────────────────────────────────────────────────────────────────
 
-async function deactivate(teardown) {
+async function deactivate(teardown, opts = {}) {
+  // `P23-01`: a chat picked while comparing is the chat Compare returns to.
+  if (opts && opts.returnTo) state._returnTo = opts.returnTo;
   // Abort any in-flight streams
   state._abortControllers.forEach(ac => { if (ac) ac.abort(); });
   state._abortControllers = [];
@@ -215,15 +228,41 @@ async function deactivate(teardown) {
   // Restore agent/chat mode to what it was before compare
   _setToolbarMode(state._savedMode, true);
 
-  // Delete unsaved sessions, then reload
+  // Delete unsaved sessions, then go back to the chat.
+  //
+  // `P23-01` (NAV-M-5, CHAT-M-12, CHAT-M-11). This reloaded the page onto the
+  // bare path (`location.href = location.pathname`), which dropped the chat you
+  // had been in — the fresh-root rule forgets `lastSessionId` — and showed an
+  // empty new chat after a full boot. Compare is taken down in place now and
+  // the chat it was opened from comes back; the list is reloaded once the
+  // unsaved `[CMP]` chats are deleted, so none is left in it.
   if (teardown) {
+    const returnTo = state._returnTo;
+    state._returnTo = null;
     if (sessionIdsToDelete.length > 0) {
       // keepalive ensures requests complete even during page navigation
       await Promise.all(sessionIdsToDelete.map(sid =>
         fetch(`${state.API_BASE}/api/session/${sid}`, { method: 'DELETE', keepalive: true }).catch(() => {})
       ));
     }
-    location.href = location.pathname;
+    _restoreChatView();
+    const sm = window.sessionModule;
+    let back = null;
+    try {
+      if (sm && typeof sm.loadSessions === 'function') await sm.loadSessions();
+      back = returnTo && sm && typeof sm.getSessions === 'function'
+        && sm.getSessions().some((x) => x.id === returnTo && !x.archived) ? returnTo : null;
+      if (back) await sm.selectSession(back);
+      else if (window.chatModule && typeof window.chatModule.showWelcomeScreen === 'function') {
+        window.chatModule.showWelcomeScreen();
+      }
+    } catch (e) {
+      // The chat could not be drawn back in place: a reload onto it still
+      // lands where the person was (the old exit, minus the lost chat).
+      console.warn('compare exit:', e);
+      try { history.replaceState(history.state, '', location.pathname + (back ? '#' + back : '')); } catch (_) {}
+      location.reload();
+    }
   }
 }
 
@@ -335,6 +374,7 @@ async function _buildCompareUI() {
   Array.from(container.children).forEach(child => {
     if (child.style.display === 'none') return;
     child.dataset.cmpHidden = '1';
+    child.dataset.cmpPrevDisplay = child.style.display || '';
     child.style.display = 'none';
   });
   container.classList.add('compare-active');
@@ -527,10 +567,13 @@ async function _buildCompareUI() {
   // so hide it and restore on deactivate via the wrap's _cleanup.
   _setupEvalPicker();
 
-  // 11. Hide tool buttons that don't apply during compare
+  // 11. Hide tool buttons that don't apply during compare. `P23-01`: each
+  // one's display is kept, so leaving Compare in place puts them back.
   ['overflow-tts-btn', 'overflow-attach-btn', 'overflow-rag-btn', 'overflow-research-btn', 'overflow-doc-btn', 'rag-indicator-btn', 'web-toggle-btn', 'bash-toggle-btn', 'overflow-plus-btn'].forEach(id => {
     const el = document.getElementById(id);
-    if (el) { el.style.display = 'none'; el.style.pointerEvents = 'none'; }
+    if (!el) return;
+    if (!(id in state._savedIndicatorDisplay)) state._savedIndicatorDisplay[id] = el.style.display;
+    el.style.display = 'none'; el.style.pointerEvents = 'none';
   });
   if (state._compareMode !== 'research') {
     const resBtn = document.getElementById('research-toggle-btn');
@@ -1381,29 +1424,51 @@ function _setupEvalPicker() {
   state._compareElements.push(wrap);
 }
 
-/** Remove compare UI elements and restore original view. */
-function cleanupResults() {
-  // Remove all compare elements
+/**
+ * `P23-01`. Take the compare view down and put the chat view back, in place:
+ * what `_buildCompareUI` added goes, what it hid comes back with the display
+ * it had, the composer returns to its place, the tool toggles to what they
+ * were. Both ways out of Compare use it — the header's × (`deactivate`) and a
+ * chat picked while results were still on screen (`cleanupResults`) — and
+ * neither reloads the page any more.
+ */
+function _restoreChatView() {
   state._compareElements.forEach(el => {
     if (el._cleanup) el._cleanup();
     if (el._cleanupInput) el._cleanupInput();
     if (el.parentNode) el.remove();
   });
   state._compareElements = [];
-
-  // Remove any stray compare/probe overlays
-  document.querySelectorAll('.compare-probe-overlay').forEach(el => el.remove());
-
-  // Restore sidebar
+  document.querySelectorAll('.compare-probe-overlay, .compare-export-menu').forEach(el => el.remove());
+  const container = document.getElementById('chat-container');
+  if (container) {
+    Array.from(container.children).forEach(child => {
+      if (!child.dataset || !child.dataset.cmpHidden) return;
+      child.style.display = child.dataset.cmpPrevDisplay || '';
+      delete child.dataset.cmpHidden;
+      delete child.dataset.cmpPrevDisplay;
+    });
+    container.classList.remove('compare-active');
+    // The composer was moved to the bottom of the container, under the panes.
+    const inputBar = container.querySelector('.chat-input-bar');
+    const form = document.getElementById('chat-form');
+    if (inputBar && form && form.parentNode === container) container.insertBefore(inputBar, form);
+  }
+  restoreToolToggles();
   if (state._sidebarWasHidden) {
     const sidebar = document.getElementById('sidebar');
     if (sidebar) sidebar.classList.remove('hidden');
     state._sidebarWasHidden = false;
+    if (typeof window.syncRailSide === 'function') window.syncRailSide();
   }
   state._hasVisibleResults = false;
+  if (typeof window._updateSendBtnIcon === 'function') window._updateSendBtnIcon();
+}
 
-  // Hard reload the page to cleanly restore all UI state
-  window.location.reload();
+/** Remove compare UI elements and restore original view. The caller (a chat
+ *  being picked) draws the chat itself. */
+function cleanupResults() {
+  _restoreChatView();
 }
 
 function removeOverlays() {

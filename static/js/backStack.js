@@ -261,6 +261,7 @@ function _write(kind, state) {
     if (kind === 'push') h.pushState(state, '', url);
     else h.replaceState(state, '', url);
   } catch (_) { /* a sandboxed frame without history keeps the old URL */ }
+  _remember();
 }
 
 const _ids = (wins) => (wins || []).map((w) => w.id);
@@ -372,6 +373,7 @@ export function onPopState(ev) {
         return;
       }
       _closing.set(e.id, _now());
+      setTimeout(_queueSync, 650);
     }
   } else {
     _restore(landing.wins.filter((w) => !isOpenNow(w.id)));
@@ -420,6 +422,10 @@ async function _restore(wins) {
     _queueSync();
   }
 }
+
+/** Open these windows, in order, each on its tab and with its opener — a link
+ *  to `/brain/rag` or `/settings/shortcuts`, a reload, Forward. */
+export function openWindows(wins) { return _restore((wins || []).filter((w) => w && !isOpenNow(w.id))); }
 
 /**
  * Called once the app has wired its modules (`app.js`, through the startup
@@ -529,6 +535,6 @@ export const _DOC = DOC;
 
 const backStack = {
   ROUTES, ROUTE_ALIASES, TRACKED, DRAWER, windowForPath, pathFor, configure, setOpeners, stack, top,
-  isTracked, isOpenNow, noteOpener, sync, onPopState, restoreFromHistory, chatSwitched, init, ready,
+  isTracked, isOpenNow, noteOpener, sync, onPopState, restoreFromHistory, openWindows, chatSwitched, init, ready,
 };
 export default backStack;
