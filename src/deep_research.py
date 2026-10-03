@@ -259,6 +259,14 @@ class DeepResearcher:
         self.findings: List[Dict] = []
         self.evolving_report: str = ""
         self.research_plan: str = ""
+        # `BRAIN-M-6` (P23-02). Why a run that found nothing stopped:
+        # `no_queries` (the model planned no search), `no_search_provider`
+        # (search is switched off), `no_results` (the searches came back
+        # empty) — "" for a run that found something. A scripted model's "OK"
+        # gave zero queries and the run "completed successfully" in 0.0 s, and
+        # the card blamed the question or the search engine (measured).
+        self.stopped: str = ""
+        self._search_disabled = False
 
     def cancel(self):
         """Request cooperative cancellation of the research loop."""
@@ -322,6 +330,8 @@ class DeepResearcher:
             queries = await self._generate_queries(question, report, round_num)
             if not queries:
                 logger.warning(f"Round {round_num}: no queries generated, stopping")
+                if not findings and not self.stopped:
+                    self.stopped = "no_queries"
                 break
 
             self._emit(phase="searching", round=round_num, queries=len(queries),
@@ -343,6 +353,8 @@ class DeepResearcher:
                 logger.info(f"Round {round_num}: no new findings ({consecutive_empty_rounds} consecutive empty)")
                 if consecutive_empty_rounds >= self.max_empty_rounds:
                     logger.warning(f"Search appears to be down — {self.max_empty_rounds} consecutive rounds with no results")
+                    if not findings:
+                        self.stopped = "no_search_provider" if self._search_disabled else "no_results"
                     err_detail = getattr(self, '_last_search_error', 'unknown error')
                     self._emit(phase="error", message=f"Search engine unavailable: {err_detail}")
                     if not findings:
@@ -381,6 +393,8 @@ class DeepResearcher:
                     "finding(s) as a fallback", len(findings)
                 )
                 return self._fallback_report(question, findings)
+            if not self.stopped:
+                self.stopped = "no_search_provider" if self._search_disabled else "no_results"
             return "No information could be gathered for this question."
 
         self.evolving_report = report  # preserve pre-synthesis report
@@ -603,6 +617,7 @@ class DeepResearcher:
 
             if provider == "disabled":
                 logger.info("Search is disabled for research")
+                self._search_disabled = True
                 return []
 
             # Try primary provider, then fallbacks

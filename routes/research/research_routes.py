@@ -646,11 +646,13 @@ def setup_research_routes(research_handler, session_manager=None) -> APIRouter:
                     "sources": d.get("sources", []),
                     "raw_findings": d.get("raw_findings", []),
                     "category": d.get("category") or "",
+                    "stopped": d.get("stopped") or "",      # `BRAIN-M-6`
                 }
             raise HTTPException(404, "No research result available")
         sources = research_handler.get_sources(session_id) or []
         raw_findings = research_handler.get_raw_findings(session_id) or []
-        return {"result": result, "sources": sources, "raw_findings": raw_findings, "category": ""}
+        return {"result": result, "sources": sources, "raw_findings": raw_findings, "category": "",
+                "stopped": research_handler.get_stopped(session_id)}   # `BRAIN-M-6`
 
     @router.post("/api/research/spinoff/{session_id}")
     async def research_spinoff(session_id: str, request: Request):

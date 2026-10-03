@@ -376,6 +376,7 @@ async function _fetchResult(job) {
     job.result = d.result;
     job.sources = d.sources;
     job.findings = d.raw_findings;
+    job.stopped = d.stopped || '';   // `BRAIN-M-6` (P23-02, fx-brain merge point)
     if (d.category && !job.category) job.category = d.category;
     _notify();
   } catch {}
