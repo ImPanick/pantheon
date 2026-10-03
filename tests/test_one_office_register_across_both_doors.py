@@ -74,9 +74,20 @@ needs_markitdown = pytest.mark.skipif(not HAVE_MARKITDOWN, reason=MARKITDOWN_REA
 needs_docx = pytest.mark.skipif(not HAVE_DOCX, reason=DOCX_REASON)
 
 
+# What a default install reads with markitdown absent, spelled out for the
+# reason `REFUSED_BEFORE` is: `.doc` and `.odt` (`B102`), and since `B1156`
+# `.docx` and `.xlsx` (`src/ooxml_native.py`). The sweeps below skipped those
+# two until then although they opened.
+READ_WITHOUT_MARKITDOWN = (".doc", ".docx", ".odt", ".xlsx")
+
+
+def _needs_an_absent_extractor(ext: str) -> bool:
+    return ext in MARKITDOWN_EXTS and ext not in READ_WITHOUT_MARKITDOWN and not HAVE_MARKITDOWN
+
+
 def _skip_if_that_format_needs_an_absent_extractor(ext: str) -> None:
-    """Skip one parameter, not the sweep: `.doc` and `.odt` read without it."""
-    if ext in MARKITDOWN_EXTS and not HAVE_MARKITDOWN:
+    """Skip one parameter, not the sweep: `READ_WITHOUT_MARKITDOWN` reads without it."""
+    if _needs_an_absent_extractor(ext):
         pytest.skip(f"{ext}: {MARKITDOWN_REASON}")
 
 
@@ -402,7 +413,7 @@ def test_no_extractor_opens_a_socket_to_read_a_local_file(tmp_path, monkeypatch)
 
     driven = []
     for ext in sorted(OFFICE_FIXTURE_EXTS):
-        if ext in MARKITDOWN_EXTS and not HAVE_MARKITDOWN:
+        if _needs_an_absent_extractor(ext):
             continue  # `B858`: the format is skipped, the law is not
         result = _drive_mailbox(tmp_path / ext.lstrip("."), monkeypatch,
                                 "report" + ext, office_fixture(ext))
