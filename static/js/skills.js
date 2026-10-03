@@ -341,21 +341,24 @@ function _matches(sk, query) {
 // frontmatter, it is compared server-side, and `data-status` is the hook the
 // styling and the select-mode code use — `Law 2`. Only the word moves.
 //
-// It moves because "draft" says unfinished and the state is not that. A draft
-// is left OUT of the catalogue the model browses (`index_for`,
-// services/memory/skills.py:655) and is STILL matched and injected by keyword
-// (`get_relevant_skills`, :725) whenever it clears the minimum confidence.
-// "Inactive" would have been the same wrong idea in a different word: the
-// skill is not switched off, it is unlisted.
+// A draft is left OUT of the catalogue the model browses (`index_for`) and is
+// STILL matched and injected by keyword (`get_relevant_skills`) whenever it
+// clears the minimum confidence — not switched off, unlisted. `P8-03` said so
+// with the word "uncatalogued"; `BRAIN-U-17` (P23-02, Doc 2 § 5) counted six
+// words for these two states (*uncatalogued / published / active*,
+// *Uncatalogue / Publish*, *Unpublish*, *Approve*, *Auto-approve*) and settles
+// on two, **Draft** and **Published**, with the verbs **Publish** /
+// **Unpublish** — and the rule P8-03 cared about carried by the hover, so the
+// word can be short and the state still told truly.
 const _STATUS_PILL_TITLE = {
-  published: 'Catalogued: the AI is given its name and description on every request, and the full procedure when your message matches it.',
-  draft: 'Uncatalogued: the AI is not shown it in the list it browses — but it is still injected when your message matches it and its confidence clears the minimum. Publish it to add it to the list.',
+  published: 'Published: listed for the model on every request.',
+  draft: 'Draft: not listed; used only when a message matches it and it clears the confidence bar in Settings.',
 };
 
 function _statusPill(sk) {
   const s = sk.status || (sk._legacy ? 'legacy' : 'draft');
   if (s === 'published') return `<span class="memory-cat-badge skill-status-pill" data-status="published" title="${esc(_STATUS_PILL_TITLE.published)}" style="background:color-mix(in srgb, var(--accent, #4ade80) 30%, transparent)">published</span>`;
-  if (s === 'draft')     return `<span class="memory-cat-badge skill-status-pill" data-status="draft" title="${esc(_STATUS_PILL_TITLE.draft)}" style="background:color-mix(in srgb, var(--fg) 14%, transparent)">uncatalogued</span>`;
+  if (s === 'draft')     return `<span class="memory-cat-badge skill-status-pill" data-status="draft" title="${esc(_STATUS_PILL_TITLE.draft)}" style="background:color-mix(in srgb, var(--fg) 14%, transparent)">draft</span>`;
   return `<span class="memory-cat-badge skill-status-pill" data-status="${esc(s)}" style="opacity:0.6">${esc(s)}</span>`;
 }
 
@@ -365,7 +368,7 @@ function _statusPill(sk) {
 function _offPill(sk) {
   const why = (_collections.off || {})[sk.name || sk.id];
   if (!Array.isArray(why) || !why.length) return '';
-  const title = `Not shown to the AI — switched off with ${why.join(' and ')}. Switch that back on in the sidebar to use it again.`;
+  const title = `Off with ${why.join(' and ')} (sidebar).`;
   return `<span class="memory-cat-badge skill-off-pill" title="${esc(title)}">off</span>`;
 }
 
@@ -571,7 +574,7 @@ function _openSkillMenu(m, btn, card, sk, name, isPublished) {
     item.addEventListener('click', (e) => { e.stopPropagation(); close(); onClick(); });
     menu.appendChild(item);
   };
-  if (isPublished) mk(_ICON.unpublish, 'Uncatalogue', {}, () => _setSkillStatus(name, 'draft'));
+  if (isPublished) mk(_ICON.unpublish, 'Unpublish', {}, () => _setSkillStatus(name, 'draft'));
   else mk(_ICON.approve, 'Publish', {}, () => _setSkillStatus(name, 'published'));
   // Select — moved up to 2nd so it sits next to Publish/Unpublish
   // (bulk actions cluster at the top of the menu).
@@ -973,7 +976,7 @@ function renderSkillsList(m) {
         ${_auditModelPills(sk)}
         ${_necessityPill(sk)}
         ${_duplicatePriorityPill(sk)}
-        <span class="skill-stats">${_auditMarks(sk)}<span class="skill-conf" style="color:${confColor};">${conf}%</span> · ${uses}u</span>
+        <span class="skill-stats">${_auditMarks(sk)}<span class="skill-conf" style="color:${confColor};">${conf}%</span> · used ${uses}×</span>
         <span class="skill-chevron-up" title="Collapse">${chevronIcon({ direction: 'up', size: 14 })}</span>
         <button class="skill-kebab-btn" title="Actions" aria-label="Actions"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg></button>
       </div>
@@ -1013,11 +1016,9 @@ function renderSkillsList(m) {
     pubBtn.className = 'doclib-card-text-btn doclib-card-action-btn';
     if (isPublished) {
       pubBtn.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12l5 5L20 7"/></svg>Unpublish';
-      pubBtn.title = 'Take it out of the catalogue — it stays here, and is still injected when a message matches it';
       pubBtn.addEventListener('click', (e) => { e.stopPropagation(); _setSkillStatus(name, 'draft'); });
     } else {
       pubBtn.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>Publish';
-      pubBtn.title = 'Publish — adds it to the catalogue the AI browses';
       pubBtn.style.color = 'var(--color-success, #4caf50)';
       pubBtn.addEventListener('click', (e) => { e.stopPropagation(); _setSkillStatus(name, 'published'); });
     }
@@ -1412,7 +1413,7 @@ async function _setSkillStatus(name, status) {
       body: JSON.stringify({ status }),
     });
     await loadSkills();
-    uiModule.showToast(status === 'published' ? 'Skill published — now in the catalogue' : 'Skill uncatalogued — still injected on a match');
+    uiModule.showToast(status === 'published' ? `Published ${name}` : `${name} is a draft again`);
   } catch (e) { uiModule.showError('Update failed: ' + e.message); }
 }
 
@@ -1468,7 +1469,9 @@ function _renderTestLog(logEl, verdictEl, job, card, name) {
     else if (ev.type === 'tool_output') add(String(ev.output || '').slice(0, 500), 'skill-test-out');
     else if (ev.type === 'approval_granted' || ev.type === 'approval_denied') add(ev.text || '', 'skill-test-meta');
     else if (ev.type === 'say') add(ev.text || '', 'skill-test-say');
-    else if (ev.type === 'evaluating') add('Evaluating run…', 'skill-test-meta');
+    // `BRAIN-M-13` (P23-02): "Evaluating run…" stayed above the verdict it
+    // led to, 30 s after it came; once the run is done it is not drawn.
+    else if (ev.type === 'evaluating') { if (job.status !== 'done') add('Evaluating run…', 'skill-test-meta'); }
     else if (ev.type === 'error') add('Error: ' + (ev.error || 'run failed'), 'skill-test-err');
   }
   if (job.status === 'awaiting_approval' && job.approval) {
@@ -1498,7 +1501,7 @@ async function _testSkill(card, name, force = false) {
     '<div class="skill-test">' +
       '<div class="skill-test-ask hidden">' +
         '<label class="skill-test-ask-label">What should it try?' +
-          '<textarea class="skill-test-task-input" rows="2" spellcheck="false" placeholder="Leave blank and the AI invents a realistic example to apply the skill to."></textarea>' +
+          '<textarea class="skill-test-task-input" rows="2" spellcheck="false" placeholder="Blank: the model invents an example."></textarea>' +
         '</label>' +
         '<div class="skill-test-gate-note">' + SKILL_GATE_NOTE + '</div>' +
         '<div class="skill-test-ask-actions">' +
@@ -1806,7 +1809,7 @@ async function _compareSkill(card, name, presetTask = '') {
   ta.className = 'skill-test-task-input';
   ta.rows = 2;
   ta.spellcheck = false;
-  ta.placeholder = 'Leave blank and the AI invents a realistic example — both halves get the same one.';
+  ta.placeholder = 'Blank: the model invents an example — both halves get the same one.';
   ta.value = presetTask || '';
   ta.addEventListener('click', (e) => e.stopPropagation());
   label.appendChild(ta);
@@ -1993,18 +1996,19 @@ function _renderTestVerdict(el, v, card, name) {
   const label = { pass: 'PASS', needs_work: 'NEEDS WORK', fail: 'FAIL', inconclusive: 'INCONCLUSIVE', unknown: 'UNCLEAR' }[verdict] || 'UNCLEAR';
   const conf = v && typeof v.confidence === 'number' ? Math.round(v.confidence * 100) + '%' : '';
   const issues = Array.isArray(v && v.issues) ? v.issues : [];
-  // Reflect the skill's current state: if it's already published, the button
-  // confirms "Approved" (click to unpublish) rather than offering to approve.
+  // Reflect the skill's current state: a published skill offers Unpublish; a
+  // draft offers Publish only on a pass — `BRAIN-M-13` (P23-02): it was
+  // offered on UNCLEAR and FAIL too. The verbs are the two of `BRAIN-U-17`.
   const isPub = card && card.dataset && card.dataset.skillStatus === 'published';
-  const approveLabel = isPub ? 'Approved' : 'Approve';
+  const offerPublish = isPub || verdict === 'pass';
+  const approveLabel = isPub ? 'Unpublish' : 'Publish';
   const approveCls = 'skill-eval-approve' + (isPub ? ' is-approved' : (verdict === 'pass' ? ' suggested' : ''));
-  const approveTitle = isPub ? 'Already approved — click to unpublish' : 'Publish — appears in the skills index';
   el.innerHTML =
     '<div class="skill-eval-head"><span class="skill-eval-badge skill-eval-' + cls + '">' + label + (conf ? ' · ' + conf : '') + '</span>' +
     '<span class="skill-eval-summary">' + esc((v && v.summary) || '') + '</span></div>' +
     (issues.length ? '<ul class="skill-eval-issues">' + issues.map(i => '<li>' + esc(i) + '</li>').join('') + '</ul>' : '') +
     '<div class="doclib-card-expanded-actions skill-eval-actions-wrap">' +
-      '<button class="doclib-card-text-btn doclib-card-action-btn ' + approveCls + '" data-act="approve" title="' + approveTitle + '">' + approveLabel + '</button>' +
+      (offerPublish ? '<button class="doclib-card-text-btn doclib-card-action-btn ' + approveCls + '" data-act="approve">' + approveLabel + '</button>' : '') +
       '<div class="doclib-action-group"><div class="doclib-action-btn-row">' +
         '<button class="doclib-card-text-btn doclib-card-action-btn" data-act="retry" title="Run the test again">Retry</button>' +
         '<button class="doclib-card-text-btn doclib-card-action-btn" data-act="copy" title="Copy the run output + verdict">Copy</button>' +
@@ -2022,8 +2026,7 @@ function _renderTestVerdict(el, v, card, name) {
     const btn = el.querySelector('[data-act="approve"]');
     if (btn) {
       const pub = card.dataset.skillStatus === 'published';
-      btn.textContent = pub ? 'Approved' : 'Approve';
-      btn.title = pub ? 'Already approved — click to unpublish' : 'Publish — appears in the skills index';
+      btn.textContent = pub ? 'Unpublish' : 'Publish';
       btn.classList.toggle('is-approved', pub);
       btn.classList.toggle('suggested', !pub && verdict === 'pass');
     }
@@ -2077,7 +2080,7 @@ function _confirmAuditSkills(label) {
     const skip = overlay.querySelector('#skills-audit-skip-audited');
     const okBtn = overlay.querySelector('#skills-audit-confirm-ok');
     const cancelBtn = overlay.querySelector('#skills-audit-confirm-cancel');
-    msg.textContent = `Audit ${label}? Each is tested from top to bottom, then published or moved to draft using your auto-approve confidence threshold.`;
+    msg.textContent = `Test ${label}? Each is published or kept as a draft by the confidence bar in Settings.`;
     skip.checked = true;
     overlay.classList.remove('hidden');
     overlay.style.display = '';
@@ -2758,12 +2761,11 @@ async function _bulkAudit(m) {
 const _PROMPT_PREVIEW_FACTS = [
   ['In the block above', 'each skill’s name and description, filed under its category.'],
   ['Added when your message matches one', 'its when-to-use, its numbered procedure, and its pitfalls.'],
-  ['Never sent', 'its verification steps, and everything below the frontmatter in SKILL.md. Open a skill here to read them — the AI can ask for the whole file itself, one skill at a time.'],
+  ['Never sent', 'its verification steps, and everything below the frontmatter in SKILL.md. Open a skill here to read them — the model can ask for the whole file, one skill at a time.'],
 ];
 
-const _PROMPT_PREVIEW_GATE =
-  'All of it arrives as untrusted text, because you or a teacher model wrote it and it can say anything. '
-  + 'So a reply that gets a skill asks you before anything that writes, runs, sends or deletes.';
+// `D-11` (P23-02): the untrusted-text sentence is said once, in Skills ›
+// Settings (beside *Skills per request*); this panel said it a second time.
 
 function _closePromptPreview(m) {
   const panel = m.el('skills-prompt-panel');
@@ -2783,7 +2785,7 @@ function _el(tag, cls, text) {
 // because when it was written the endpoint had no `prompt` to render. It has
 // one now, the panel leads with it, and a title promising a catalogue in front
 // of a block of prompt text would be the preview lying about itself.
-const _PROMPT_PREVIEW_TITLE = 'What the AI is given';
+const _PROMPT_PREVIEW_TITLE = 'What the model is shown';
 
 function _formatChars(n) {
   const v = Number(n);
@@ -2858,7 +2860,7 @@ async function _renderPromptPreview(m) {
   }
   if (!index.length) {
     body.appendChild(_el('div', 'skill-prompt-empty',
-      'Empty. The AI is told about no skills at all — publish one and it appears here.'));
+      'Empty. The model is shown no skills — publish one and it appears here.'));
   } else {
     const byCat = new Map();
     for (const entry of index) {
@@ -2874,7 +2876,7 @@ async function _renderPromptPreview(m) {
         row.appendChild(_el('span', 'skill-prompt-desc', (entry && entry.description) || ''));
         if (entry && entry.status === 'draft') {
           row.appendChild(_el('span', 'skill-prompt-tag',
-            'uncatalogued — the teacher wrote it, so it is listed anyway'));
+            'draft — listed because the teacher wrote it'));
         }
         body.appendChild(row);
       }
@@ -2899,7 +2901,6 @@ async function _renderPromptPreview(m) {
     row.appendChild(_el('code', 'skill-prompt-fact-v skill-prompt-withheld', withheld.join(', ')));
     facts.appendChild(row);
   }
-  facts.appendChild(_el('div', 'skill-prompt-note', _PROMPT_PREVIEW_GATE));
 
   panel.replaceChildren(head, exact, body, facts);
 }
@@ -3317,9 +3318,7 @@ function _sideRow(m, { title, count, scope, hint = '', sub = false, toggle = nul
   if (toggle) {
     const label = document.createElement('label');
     label.className = 'admin-switch skills-side-switch';
-    label.title = toggle.on
-      ? `On — the AI can be shown the skills in ${title}. Switch off to leave them out.`
-      : `Off — the skills in ${title} are left out of what the AI is shown.`;
+    label.title = toggle.on ? 'On' : 'Off';
     const input = document.createElement('input');
     input.type = 'checkbox';
     input.checked = !!toggle.on;
@@ -3357,7 +3356,7 @@ function _renderSkillsSide(m) {
   side.appendChild(_sideRow(m, { title: 'All skills', count: skills.length, scope: { kind: 'all' } }));
   side.appendChild(_sideRow(m, {
     title: 'Yours', count: mine, scope: { kind: 'mine' },
-    hint: 'Skills you wrote and skills the AI learned — not built in, not from a package',
+    hint: 'Skills you wrote and skills Pantheon learned',
   }));
   if (bundled) {
     side.appendChild(_sideRow(m, {
@@ -3491,7 +3490,7 @@ async function _refreshAfterCollections() {
 async function _switchPackage(p, on, input) {
   try {
     await _skillsApi('PATCH', `/api/skills/packages/${encodeURIComponent(p.id)}`, { enabled: on });
-    uiModule.showToast(on ? `${p.title}: its skills can be used again` : `${p.title}: switched off — its skills are left out of what the AI is shown`);
+    uiModule.showToast(on ? `${p.title}: on` : `${p.title}: off — its skills are left out`);
   } catch (e) {
     if (input) input.checked = !on;
     uiModule.showError('Could not switch the package: ' + e.message);
@@ -3503,7 +3502,7 @@ async function _switchPackage(p, on, input) {
 async function _switchGroup(g, on, input) {
   try {
     await _skillsApi('PATCH', `/api/skills/groups/${encodeURIComponent(g.id)}`, { enabled: on });
-    uiModule.showToast(on ? `${g.title}: switched on` : `${g.title}: switched off — its skills are left out of what the AI is shown`);
+    uiModule.showToast(on ? `${g.title}: on` : `${g.title}: off — its skills are left out`);
   } catch (e) {
     if (input) input.checked = !on;
     uiModule.showError('Could not switch the group: ' + e.message);

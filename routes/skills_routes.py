@@ -10,7 +10,7 @@ The on-disk format is SKILL.md (frontmatter + structured body) under
 
 import logging
 import re
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 import httpx
 
@@ -49,6 +49,10 @@ _VERDICT_PROSE_RE = re.compile(
 )
 
 
+# `BRAIN-M-2` (P23-02): two states, refused otherwise (a 422 names the field).
+SkillStatus = Literal["draft", "published"]
+
+
 class SkillAddRequest(BaseModel):
     # New schema (preferred)
     name: Optional[str] = Field(None, max_length=80)
@@ -62,7 +66,7 @@ class SkillAddRequest(BaseModel):
     procedure: List[str] = Field(default_factory=list)
     pitfalls: List[str] = Field(default_factory=list)
     verification: List[str] = Field(default_factory=list)
-    status: str = "draft"
+    status: SkillStatus = "draft"
     version: str = "1.0.0"
     confidence: float = 0.8
     # Manual adds via this endpoint are human-authored → "user", which exempts
@@ -148,7 +152,7 @@ class SkillUpdateRequest(BaseModel):
     procedure: Optional[List[str]] = None
     pitfalls: Optional[List[str]] = None
     verification: Optional[List[str]] = None
-    status: Optional[str] = None
+    status: Optional[SkillStatus] = None
     version: Optional[str] = None
     confidence: Optional[float] = None
     body_extra: Optional[str] = None
@@ -344,7 +348,9 @@ async def _eval_skill_run(skill_md: str, task: str, transcript: str,
     if last_err is not None and not last_text:
         return {"verdict": "unknown", "confidence": 0, "summary": f"Evaluator call failed: {last_err}", "issues": []}
     return {"verdict": "unknown", "confidence": 0,
-            "summary": "Evaluator returned unparseable output.", "issues": [], "raw": last_text[:300]}
+            # `BRAIN-M-13` (P23-02): a sentence a person can act on, not the
+            # code's ("Evaluator returned unparseable output.").
+            "summary": "The judge's answer could not be read — try again.", "issues": [], "raw": last_text[:300]}
 
 
 async def _eval_skill_necessity(skill_md: str, others: list, url: str, model: str,
