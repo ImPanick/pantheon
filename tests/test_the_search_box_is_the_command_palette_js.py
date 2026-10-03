@@ -747,7 +747,8 @@ def test_the_status_line_says_what_was_found(box):
                                      live: $('search-status').getAttribute('aria-live') }));
     """)
     assert out["role"] == "status" and out["live"] == "polite"
-    assert re.match(r"^\d+ results\. ", out["some"]) and "Esc to close" in out["some"]
+    # `P23-04` (§ 5): the count, once — the keys are the listbox's own.
+    assert re.match(r"^\d+ results$", out["some"]), out["some"]
     assert out["pending"] == ""
     assert out["none"] == "Nothing matches “zzqx”."
 

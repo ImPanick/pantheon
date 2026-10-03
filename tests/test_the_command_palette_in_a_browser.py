@@ -25,6 +25,7 @@ is not installed.
 """
 
 import json
+import re
 import os
 import shutil
 import signal
@@ -307,7 +308,8 @@ def test_the_keyboard_alone_finds_moves_and_is_told_what_it_found(run):
     assert typed["groups"][0] == "Tools"
     assert typed["active"] == "Calendar"
     assert typed["expanded"] == "true"
-    assert typed["status"].split(" ", 1)[0].isdigit() and "Esc to close" in typed["status"]
+    # `P23-04` (§ 5): the count, once — the keys are the listbox's own.
+    assert re.match(r"^\d+ results?$", typed["status"]), typed["status"]
     assert run["down"]["active"] != "Calendar"
     assert run["up"]["active"] == "Calendar"
 

@@ -811,6 +811,9 @@ export function ensureThreadToggleAll(thread) {
     if (!doc) return null;
     bar = doc.createElement('div');
     bar.className = 'agent-thread-toolbar';
+    // `P23-04` (CHAT-U-6): at the thread's start, where its rows begin — it
+    // floated right, between the first row and the rest.
+    if (bar.style) bar.style.justifyContent = 'flex-start';
     const btn = doc.createElement('button');
     btn.type = 'button';
     btn.className = 'agent-thread-expand-all';

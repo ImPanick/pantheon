@@ -188,6 +188,7 @@ def test_the_welcome_says_one_true_line(tmp_path, phone, line):
         globalThis.window = { matchMedia: () => ({ matches: %s }) };
         globalThis.document = { getElementById: (id) => (id === 'welcome-tip' ? tip : null) };
         globalThis.fetch = () => Promise.resolve({ json: () => ({}) });
+        globalThis.location = { hash: '' };
         const seen = new Set();
         for (let i = 0; i < 40; i++) { (function () { %s }).call(globalThis); seen.add(tip.textContent); }
         console.log(JSON.stringify([...seen]));
@@ -240,3 +241,29 @@ def test_no_tool_switch_writes_into_the_transcript():
     code = blank_text(app, "js")
     assert "_showToolSplash" not in code
     assert "tool-splash" not in code
+
+
+@pytest.mark.parametrize("hash, hidden", [
+    ("#7cf2a1b0-1c2d-4e5f-8a9b-0c1d2e3f4a5b", True),
+    ("", False),
+    ("#document-12", False),
+])
+def test_an_address_that_names_a_chat_skips_the_welcome_hero(tmp_path, hash, hidden):
+    """`P23-04` (PERF-U-2): measured on `9560d50`, `/#<id>` painted the welcome
+    hero for 1.7 s (5.9 s at 4x CPU) under a header already naming the chat."""
+    script = """
+        const cls = (start) => { const s = new Set(start); return { add: (c) => s.add(c), remove: (c) => s.delete(c), has: (c) => s.has(c) }; };
+        const ws = { classList: cls([]) }, cc = { classList: cls(['welcome-active']) }, tip = { textContent: '' };
+        globalThis.window = { matchMedia: () => ({ matches: false }) };
+        globalThis.location = { hash: %s };
+        globalThis.document = { getElementById: (id) => ({ 'welcome-screen': ws, 'chat-container': cc, 'welcome-tip': tip })[id] || null };
+        globalThis.fetch = () => Promise.resolve({ json: () => ({}) });
+        (function () { %s }).call(globalThis);
+        console.log(JSON.stringify({ hidden: ws.classList.has('hidden'), welcome: cc.classList.has('welcome-active'),
+          flag: !!globalThis.window.__pantheonDeepLinkHidWelcome }));
+    """ % (json.dumps(hash), _welcome_script().replace("window.", "globalThis.window."))
+    (tmp_path / "case.mjs").write_text(script, encoding="utf-8")
+    proc = subprocess.run(["node", "case.mjs"], cwd=tmp_path, capture_output=True, text=True, timeout=30)
+    assert proc.returncode == 0, proc.stderr
+    out = json.loads(proc.stdout.strip().splitlines()[-1])
+    assert out == {"hidden": hidden, "welcome": not hidden, "flag": hidden}

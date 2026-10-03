@@ -546,7 +546,10 @@ function createSessionItem(s) {
   handle.title = 'Drag to reorder';
   div.appendChild(handle);
 
-  // Provider dot indicator
+  // Provider dot indicator. `P23-04` (CHAT-U-7): a model with no logo drew a
+  // hollow "○" that said nothing. The dot stays (it is also where a running
+  // or finished reply pulses — `_updateResearchDots`), unseen until it has
+  // that to say.
   if (!isOpenClaw) {
     const star = document.createElement('span');
     const _logo = providerLogo(s.model);
@@ -556,6 +559,8 @@ function createSessionItem(s) {
       star.style.opacity = '0.4';
     } else {
       star.className = 'session-star';
+      star.dataset.noLogo = '1';
+      star.style.opacity = '0';
     }
     div.appendChild(star);
   }
@@ -603,8 +608,9 @@ function createSessionItem(s) {
   let chatTitle = s.name || '';
   if (_isFork) chatTitle = chatTitle.replace(/^Fork:\s*/, '').replace(/^\u2ADD\s*/, '');
   if (_isGroup) chatTitle = chatTitle.replace(/^\[GRP\]\s*/, '');
+  // `P23-04` (CHAT-U-7): the row is the chat's title; its model (the same on
+  // every row, cut to "scr…") is in the tooltip below.
   let label = chatTitle;
-  if (s.model) label += ' · ' + s.model.split('/').pop();
   if (s.archived) label += ' [archived]';
   span.textContent = label;
   span.title = (s.model ? s.model.split('/').pop() + ' · ' : '') + chatTitle;
@@ -1867,6 +1873,14 @@ export async function loadSessions() {
       if (metaEl && s) metaEl.textContent = s.name;
     }
 
+    // `P23-04` (PERF-U-2). The page hid the welcome screen before first paint
+    // because the address named a chat (`index.html`, the welcome block); a
+    // chat that turned out not to be there gets the welcome screen back.
+    if (window.__pantheonDeepLinkHidWelcome && targetId !== hashId) {
+      window.__pantheonDeepLinkHidWelcome = false;
+      if (!targetId && chatRenderer.showWelcomeScreen) chatRenderer.showWelcomeScreen();
+    }
+
     // No session selected — still enable input so slash commands (e.g. /setup) work
     if (!targetId && !hasPendingChat) {
       const msgInput = document.getElementById('message');
@@ -2659,7 +2673,7 @@ function _updateResearchDots() {
     if (isRunning || isCompleted) {
       star.style.opacity = '1';
     } else {
-      star.style.opacity = '';
+      star.style.opacity = star.dataset.noLogo ? '0' : '';   // `P23-04` (CHAT-U-7)
     }
   });
 }

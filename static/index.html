@@ -1372,6 +1372,18 @@
       // controls that are not there (a right-click menu, a "+" that is a
       // chevron, Web "only in Agent mode").
       var mobile = window.matchMedia('(max-width: 768px)').matches;
+      // `P23-04` (PERF-U-2). An address that names a chat (`/#<id>`) shows that
+      // chat, not the welcome hero for the 1.7–5.9 s the chat takes to load
+      // (measured); `sessions.js` paints its loading skeleton, and puts the
+      // welcome back if no such chat is found.
+      var hash = (location.hash || '').slice(1);
+      if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(hash)) {
+        var ws = document.getElementById('welcome-screen');
+        var cc = document.getElementById('chat-container');
+        if (ws) ws.classList.add('hidden');
+        if (cc) cc.classList.remove('welcome-active');
+        window.__pantheonDeepLinkHidWelcome = true;
+      }
       var el = document.getElementById('welcome-tip');
       if (el) {
         el.textContent = mobile ? 'Tap ^ beside the message box to attach files.' : 'Drop files here to attach them.';

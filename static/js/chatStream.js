@@ -246,17 +246,18 @@ function _ensureSteerBar() {
 
   const title = _steerEl('span', 'steer-bar-title');
   title.appendChild(_steerEl('span', 'steer-bar-dot'));
-  title.appendChild(_steerEl('span', null, 'Agent is working'));
+  title.appendChild(_steerEl('span', null, 'Working…'));
   bar.appendChild(title);
 
   // Both verbs, both keys, in the one place a person is already looking while
-  // the agent works. This sentence IS the Law 15 answer for this feature.
+  // the agent works. This sentence IS the Law 15 answer for this feature —
+  // `P23-04` (§ 5): in a few words, not thirty, and still the honest promise
+  // (a steer lands at the agent's next step, not "now").
   const hint = _steerEl('span', 'steer-bar-hint');
-  hint.appendChild(_steerEl('span', null, 'Change course: type it and press '));
   hint.appendChild(_steerEl('kbd', null, STEER_KEY_LABEL));
-  hint.appendChild(_steerEl('span', null, ' — it reaches the agent at its next step. '));
+  hint.appendChild(_steerEl('span', null, ' steers at the next step, '));
   hint.appendChild(_steerEl('kbd', null, '⏎'));
-  hint.appendChild(_steerEl('span', null, ' queues it for after this response instead.'));
+  hint.appendChild(_steerEl('span', null, ' queues.'));
   bar.appendChild(hint);
 
   const btn = _steerEl('button', 'steer-bar-btn', 'Steer now');

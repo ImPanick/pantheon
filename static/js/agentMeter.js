@@ -308,7 +308,9 @@ export function prepLineText(state, nowMs = Date.now()) {
 
 /** How long after sending, with nothing back from the model, before the reply's
  *  spinner starts saying the wait is long. */
-export const FIRST_TOKEN_WAIT_FROM_MS = 20000;
+// `P23-04` (PERF-U-3): from 5 s, not 20 — "Processing request ▂▃" sat for a
+// 12 s first byte with no clock (measured, `ux-perf.md`).
+export const FIRST_TOKEN_WAIT_FROM_MS = 5000;
 
 /** Events that end the wait for a first token: the model's own output — a token,
  *  thinking included, or a tool call and what only follows one — plus the two
@@ -361,9 +363,11 @@ export function firstTokenWaitText(state, waitedMs, nowMs = Date.now()) {
   }
   const w = Number(waitedMs);
   if (!(w >= FIRST_TOKEN_WAIT_FROM_MS)) return '';
-  if (w >= 120000) return 'Still working - no tokens yet from the model';
-  if (w >= 60000) return 'Still waiting for first token - over a minute';
-  return 'Still waiting for first token';
+  // `P23-04` (PERF-U-3). The same words as after preparation, counted from
+  // the send — one line that says what is happening and for how long, where
+  // three fixed sentences said only that nothing had come yet. The composer's
+  // button is Stop all the while (CHAT-U-8).
+  return `${WAITING_FOR_MODEL} · ~${countText(Math.floor(w / 1000))}`;
 }
 
 function nearThreshold(limit) {
