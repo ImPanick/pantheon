@@ -238,20 +238,20 @@ proved it dead.
 
 ## Status
 
-**1180 tracked tasks, 887 done.** The tracker is [`.pantheon/ROADMAP.md`](.pantheon/ROADMAP.md) and
+**1181 tracked tasks, 887 done.** The tracker is [`.pantheon/ROADMAP.md`](.pantheon/ROADMAP.md) and
 it is the only place work is tracked — one list, one progress area, validated by a script that
 recounts every phase row against its own ticks. It exists because the summary line was once wrong
 by nineteen and carried forward unread from entry to entry, because each author copied the line
 above.
 
 **Read that number with the trend beside it, because one line of it is misleading on its own.**
-Over the last ten waves, *done* went **72.9% → 75.2%** and *open* went **274 → 293**: 169 rows
-filed against 150 closed, a file-to-close ratio of **1.127**. Both movements are real and neither
+Over the last ten waves, *done* went **72.9% → 75.1%** and *open* went **274 → 294**: 170 rows
+filed against 150 closed, a file-to-close ratio of **1.133**. Both movements are real and neither
 is a counting error — the fraction converges because closure outruns filing as a share of the
 total, and the open count grows because it does not outrun filing in absolute terms. **The open
 count falls only when we stop looking**, since most of those rows are defects found by sweeps
 over code that was already here, not new work invented. What makes that survivable rather than
-hopeless is a different number: of the last 40 backlog rows filed (`B1140`–`B1179`), **one** is
+hopeless is a different number: of the last 40 backlog rows filed (`B1141`–`B1180`), **one** is
 on the ship line — the short list of rows that stop a stranger relying on this repository now
 that it is public (measured 2026-10-02) — and it is the short list's one open row: `B1179`, found
 at wave G's merge, where a non-admin's assistant reads the admin's Forge state through a loopback

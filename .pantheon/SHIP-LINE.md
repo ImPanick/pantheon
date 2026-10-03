@@ -181,7 +181,7 @@ assistant reads `GET /api/cookbook/state` (200) where the person gets 403. It is
 `B541`'s class — a signed-in non-admin reaching what is the operator's — through the assistant,
 so it is on this line for the reason they were. `B1175` itself is registered `tracked`: it was one
 gate deep (the dispatcher refused `app_api` to a non-admin) and was closed the day it was filed.
-So the set is twenty-two rows, twenty-one met and one open, and 244 open rows are *clear by rule,
+So the set is twenty-two rows, twenty-one met and one open, and 245 open rows are *clear by rule,
 not read*. One line of reasoning each below; the row carries the measurement.
 
 ### Security — the control does not hold (5)
