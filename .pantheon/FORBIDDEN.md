@@ -45,7 +45,9 @@ Style them freely. Do not rename them.
 | Mapping words (`src/workflow_slots.py`): `value` · `never` | Declared on every built-in action parameter (`_prompt_param`'s `mapping`) and shipped to the palette; `action_param_slots` reads anything else as `never`, so a rename silently closes every `value` slot. |
 | Run status `waiting` (`core/database.TASK_RUN_PARKED_STATUSES`, `static/js/runStatus.js` `RUN_PARKED_STATUSES`) | Stored in `task_runs.status` and `task_run_nodes.status` for a parked workflow run and its waiting step. In flight, held by no coroutine: the restart sweep leaves it, B674 counts it, Stop ends it. A rename leaves every parked run unreadable and unresumable. `.pantheon/check-run-statuses.py` holds the two languages equal. |
 | Waiting kinds `approval` · `time` · `idle` (`workflow_runs.WAITING_KINDS`; `builtin_actions.WAIT_KINDS` is the same tuple, imported) | Stored as `kind` in `task_run_nodes.waiting` (JSON). The sweeper resumes on them; a rename strands every parked run on its old word. |
-| The approval cache-buster string | **Must be bumped across all six approval-path modules together**, or a browser pairs new code with a cached interceptor and the approval click lands on the New-chat branch. |
+| The waiting record's `tool_label` (`B1111`; written by `task_scheduler.named_question`, read by the waiting list, the notification's `review`, the answer's sentence and `static/js/workflowApprovalNotice.js` for a workflow's question and a task's alike) | Stored in `task_run_nodes.waiting` beside the sealed `tool` while a step or a plain task (`B1102`) waits for a yes. Every reader falls back to `tool`, so a rename is a degradation, not a break: every question already parked is shown by its qualified name (`mcp__chat__send_message`) until it is answered. Listed because it is stored. |
+| The builds-sent store `mcp_builds_sent.json` (`src/workstation_mcp.py` `SENT_FILE`, in `DATA_DIR`; `B1130`) | Holds every MCP server a person built and sent for an admin to register, with the code as it was sent and its fingerprint. Renaming the file drops every waiting send, with nothing said to anyone: the admin's notice and list go empty, and each person has to press *Send it to an admin* again. Not in the backup export, by design (a send is re-made by sending again). |
+| The approval cache-buster string | **Must be bumped across every approval-path module together** — the modules are `APPROVAL_PATH_MODULES` in `tests/test_tool_approval_frontend_routing.py`, the one list (six since `B1104`: `app.js` was the one the test missed), which fails naming any reference out of step — or a browser pairs new code with a cached interceptor and the approval click lands on the New-chat branch. |
 | `static/lib/**` | `.gitattributes` requires byte-identical bundles so upstream licence banners survive. Never reformat. |
 
 ### The theme system — protected by decision, not by fragility
@@ -208,7 +210,7 @@ stop — the only way to stay banned is to keep asking while it is telling you.
 | The untrusted-context wrapper + guard-marker escaping | Prompt injection. |
 | `WEB_FETCH_HARD_MAX_BYTES` | Resource exhaustion via a model-chosen byte count. |
 | Auth rate limiters | Credential stuffing. |
-| `require_admin` | Privilege escalation. |
+| `require_admin` | Privilege escalation. On the agent's loopback it asks about the person the request names (`X-Pantheon-Owner`), as that person's own request is asked; only a loopback naming nobody is Pantheon itself (`B1175`, 2026-10-03 — tightened, never lifted). |
 | Host-Docker flag off · localhost bypass off | Host root-equivalence; auth bypass. |
 | Outbound-email confirmation on by default | Prompt injection → real sent mail. |
 | The plan-mode read-only allowlist (25 tools) | Fail-safe by construction — a newly added tool is blocked by default. Shell is excluded deliberately, with a written rationale. |

@@ -127,7 +127,7 @@ rows are marked `second-line` in the register.
 
 ---
 
-## 3. The blocking set — twenty-one rows, and all of them are met
+## 3. The blocking set — twenty-two rows, and one of them stands
 
 Fifteen of 234 open rows when this was written; **seven have since been met and three
 have been added, and the met ones are marked `landed` in the register rather than deleted,
@@ -172,9 +172,19 @@ classification in this document, and the line stays measured — `--check` names
 rule reads a signal in the day it is filed. *(The sentence that stood here until 2026-10-02 said
 "Four are security … two are an action rather than a commit", which summed to thirteen against
 eleven; the register then had three security rows and one pre-flip row standing. `f-sec` found
-it.)* One line of reasoning each below; the row carries the measurement.
+it.)*
+**One stands again (2026-10-03): `B1179`**, filed and adjudicated blocking at wave G's merge.
+Closing `B1175` — on the agent's loopback `require_admin` now asks whether the person the request
+names is an admin — measured the door that change does not reach: Forge's read tools call the
+loopback naming nobody, so `require_admin` answers them as Pantheon itself, and a non-admin's
+assistant reads `GET /api/cookbook/state` (200) where the person gets 403. It is `B540`'s and
+`B541`'s class — a signed-in non-admin reaching what is the operator's — through the assistant,
+so it is on this line for the reason they were. `B1175` itself is registered `tracked`: it was one
+gate deep (the dispatcher refused `app_api` to a non-admin) and was closed the day it was filed.
+So the set is twenty-two rows, twenty-one met and one open, and 244 open rows are *clear by rule,
+not read*. One line of reasoning each below; the row carries the measurement.
 
-### Security — the control does not hold (4)
+### Security — the control does not hold (5)
 
 - **`B370`** — `/static/wave-variants.html` and `/static/whirlpool-variants.html`
   answer **200 to a client with no cookie** under `AUTH_ENABLED=true`, while `/`,
@@ -202,6 +212,13 @@ it.)* One line of reasoning each below; the row carries the measurement.
   is here on that basis: an auth surface nobody has mapped is a bet, the row is
   bounded (six files and a table), and the deliverable is a reconciliation rather
   than a change.
+- **`B1179`** — added 2026-10-03, **open**. `require_admin` on `GET /api/cookbook/state`
+  refuses bob, a signed-in non-admin, in person (403) and lets his assistant's
+  `list_serve_presets` read it (200), because Forge's read tools loop back with no
+  person named (`_internal_headers()` at sixteen sites in `src/tools/cookbook.py`).
+  Read in the source, not driven: `tail_serve_output` and `list_cached_models` reach
+  SSH to a host the caller names the same way — `B541`'s class. Met when every tool
+  loopback names its person, or those tools are refused to a non-admin.
 
 ### Licence — the obligation is unmet (3)
 
@@ -536,6 +553,8 @@ weakest one in this document: it means nobody adjudicated them individually.
 | `B1157` | tracked | first-ten | an imported PDF's page view needs PyMuPDF on a default install; the text is stored and the view says in words what it needs, so it is not silent |
 | `B1166` | tracked | identity | the tour's last line uses upstream's voyage motif; copy in the product, not a claim about the software |
 | `B1168` | tracked | defect | at phone width the §13 tag sits on the composer's corner; nothing interactive is under it (measured) and the offer itself is right |
+| `B1175` | tracked | security | a non-admin's loopback passed `require_admin`; one gate deep — the dispatcher refused `app_api` to a non-admin, so no person's assistant reached it — and closed the day it was filed (2026-10-03): the gate asks about the person named |
+| `B1179` | blocking | security | Forge's read tools loop back naming nobody, so a non-admin's assistant reads the admin's Forge state that the person is refused (measured, 200 against 403) — `B540`/`B541`'s class through the assistant |
 
 ---
 

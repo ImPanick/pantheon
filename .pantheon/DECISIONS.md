@@ -2692,6 +2692,8 @@ short *Start from* list against `DEFERRED.md` D-07 (`P22-24`).
    never asks for more than was sent, so a typed ceiling still bounds it. Not chosen: keeping the preset as a floor
    and trimming the conversation harder so it always fits.
 
+**Addendum to `D-2026-10-02-01` §1** (from `B1102`, 2026-10-02; recorded at `integrate-g`): a plain scheduled Prompt task's run now parks on its card as a workflow step's does, so its card waits `workflow_approval_timeout_seconds` (12 h) too; chat cards keep their ten minutes. The seal, single use, owner binding and the post-external gate are unchanged.
+
 ## D-2026-10-02-02 — the Workbench's last slices: example sentences to start from, the Skills window kept beside a Skills room, and a workstation-built MCP server runs in its author's workstation
 
 **Asked**, 2026-10-02, from the Slice E/F design (`/work/notes/SLICE-EF-DESIGN.md` § 6) for `P22-19` … `P22-24`.
