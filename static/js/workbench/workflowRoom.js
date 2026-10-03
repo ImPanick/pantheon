@@ -27,7 +27,10 @@
 // **Nothing unsaved is lost by a door (`B1052`, `B1067`'s rule, room-wide).**
 // Leaving a workflow with unsaved changes — another workflow, the tasks, *New
 // workflow*, a chain made a workflow, closing the window — asks *Save /
-// Discard / Keep editing* first; Escape is *Keep editing*.
+// Discard / Keep editing* first; Escape is *Keep editing*. `P23-01` (WB-M-1):
+// so does leaving the page — a reload, or a Back past the app — through the
+// browser's own question (`beforeunload`), while anything is unsaved; Back
+// inside the app closes the window, which asks as × does.
 //
 // **Every word that came from a person is text**: names, notes, sentences and
 // run records reach the page through `textContent` and attribute values.
@@ -1938,9 +1941,22 @@ export function mountAutomations(host, opts = {}) {
     return false;
   }
 
+  // `P23-01` (WB-M-1). Measured on `9560d50`: an edited prompt, *Unsaved
+  // changes* on the toolbar, then a reload — no question, and the stored
+  // document kept the old prompt. The browser asks now, only while something
+  // would be lost, and the listener goes with the room.
+  const onBeforeUnload = (e) => {
+    if (R.destroyed || !unsaved()) return;
+    e.preventDefault();
+    e.returnValue = '';
+  };
+  const _win = typeof window !== 'undefined' && typeof window.addEventListener === 'function' ? window : null;
+  if (_win) _win.addEventListener('beforeunload', onBeforeUnload);
+
   function destroy() {
     if (R.destroyed) return;
     R.destroyed = true;
+    if (_win) _win.removeEventListener('beforeunload', onBeforeUnload);
     stopWatchingShelf();
     closeNewForm();
     closeCheck();

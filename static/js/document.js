@@ -17,7 +17,7 @@ import spinnerModule from './spinner.js';
 import { openLibrary, closeLibrary, isLibraryOpen, initLibrary, importFileAsDocuments } from './documentLibrary.js';
 import signatureModule from './signature.js';
 import * as Modals from './modalManager.js?v=20261003waveg';
-import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
+import { bindMenuDismiss, dismissOrRemove, registerMenuDismiss } from './escMenuStack.js';
 import { _matchesCombo } from './keyboard-shortcuts.js';   // H20: Find reads the registry
 import { topPortalZ } from './toolWindowZOrder.js';
 import { chevronIcon, playIcon } from './icons.js';
@@ -10872,6 +10872,7 @@ import { chevronIcon, playIcon } from './icons.js';
 
   /** Toggle version history panel */
   let _versionClickOutside = null;
+  let _versionEscRelease = null;    // `P23-01`: the drawer's place on the Escape stack
   let _versionSavedContent = null;  // stash current content for preview/revert
   async function toggleVersionHistory() {
     const panel = document.getElementById('doc-version-panel');
@@ -10909,6 +10910,21 @@ import { chevronIcon, playIcon } from './icons.js';
       }
 
       panel.classList.remove('hidden');
+      // `P23-01` (DOCS-U-2). The drawer opened at the sidebar's edge — the far
+      // left — while the badge that opens it is on the editor, on the right.
+      // On a desktop it sits against the editor's left edge when there is room.
+      if (!isMobile) {
+        const pane = document.getElementById('doc-editor-pane');
+        const w = panel.offsetWidth;
+        const left = pane ? pane.getBoundingClientRect().left - w : -1;
+        if (w && left >= 0) panel.style.left = Math.round(left) + 'px';
+      }
+      // `P23-01` (DOCS-U-2, DOCS-M-8, NAV-M-4). The drawer was not on the
+      // Escape stack: Escape over the editor collapsed the editor to its chip
+      // and left the drawer open over the sidebar, and a second Escape did
+      // nothing. It is a layer now — Escape and Back close it first.
+      if (_versionEscRelease) _versionEscRelease();
+      _versionEscRelease = registerMenuDismiss(() => { _versionEscRelease = null; _closeVersionPanel(); });
       await loadVersionHistory();
       // Close on click outside
       setTimeout(() => {
@@ -10925,6 +10941,7 @@ import { chevronIcon, playIcon } from './icons.js';
   }
 
   function _closeVersionPanel() {
+    if (_versionEscRelease) { _versionEscRelease(); _versionEscRelease = null; }
     const panel = document.getElementById('doc-version-panel');
     if (panel) panel.classList.add('hidden');
     // Restore to latest (stashed) content

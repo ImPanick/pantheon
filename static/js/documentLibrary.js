@@ -1377,7 +1377,14 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
   }
 
   async function libraryOpenDocument(doc) {
-    closeLibrary();
+    // `P23-01` (NAV-M-19, NAV-U-4). Open closed the Library, so the editor had
+    // no way back to it. The Library goes to its dock chip instead — out of
+    // the editor's way, one press from coming back with its folder, search
+    // and scroll as they were.
+    try {
+      const Modals = await import('./modalManager.js?v=20261003waveg');
+      if (!Modals.minimize('doclib-modal')) closeLibrary();
+    } catch (_) { closeLibrary(); }
     // Orphaned doc (session deleted) — just open in editor without switching session
     if (!doc.session_id) {
       _loadDocument(doc.id);
@@ -4124,19 +4131,12 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
       if (e.target === modal) closeLibrary();
     });
 
-    // Escape key
-    _libraryEscHandler = (e) => {
-      if (e.key === 'Escape') {
-        // Collapse expanded card first, then close modal on second Escape
-        const expanded = document.querySelector('#doclib-grid .doclib-card-expanded');
-        if (expanded) {
-          _collapseExpandedCard(expanded);
-        } else {
-          closeLibrary();
-        }
-      }
-    };
-    document.addEventListener('keydown', _libraryEscHandler);
+    // `P23-01` (NAV-M-6, DOCS-U-1). The Library's own `document` Escape
+    // listener is gone: the one arbiter in `ui.js` collapses an expanded card
+    // first, a menu or Select mode before that (the Escape stack, the
+    // `doclib-bulk-cancel` button), and only then closes the window — with
+    // the pointer anywhere. This listener closed the window from inside a
+    // text field and, run after the arbiter, never saw a menu.
 
     // Toggle active on tool button. The sidebar row that opens this modal is
     // #tool-library-btn (app.js wires it → sessionModule.openLibrary(), which
