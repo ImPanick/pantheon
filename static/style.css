@@ -11552,6 +11552,20 @@ body.fullwidth-chat .chat-history {
   line-height: 1.35;
   color: color-mix(in srgb, var(--fg) 60%, transparent);
 }
+/* `P23-04` (CHAT-U-18). "Stopped · Continue" is one control in the stopped
+   line's own size and colour; `.continue-btn` is sized for the bare ▸ it
+   replaces (2.6em). The round-cap pill keeps its own button. */
+.stopped-indicator:not(.rounds-exhausted) > .continue-btn {
+  font-size: 1em;
+  line-height: 1.3;
+  padding: 0;
+  color: inherit;
+  opacity: 1;
+}
+.stopped-indicator:not(.rounds-exhausted) > .continue-btn:hover,
+.stopped-indicator:not(.rounds-exhausted) > .continue-btn:focus-visible {
+  text-decoration: underline;
+}
 /* `P4-12`. The action you personally stopped and allowed. Louder than the round
    badge on purpose — the round is where a card sits, this is by whose authority
    it ran, and it is rare enough that it can afford to be seen. Uses

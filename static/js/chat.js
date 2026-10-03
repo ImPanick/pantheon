@@ -5218,14 +5218,13 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
           if (_usedTools && _proseLen < 24 && !holder.querySelector('.agent-continue-btn')) {
             const _stall = document.createElement('div');
             _stall.className = 'stopped-indicator';
-            const _lbl = document.createElement('span');
-            _lbl.style.cssText = 'font-style:italic;opacity:0.7;';
-            _lbl.textContent = 'Paused mid-task';
-            _stall.appendChild(_lbl);
+            // `P23-04` (CHAT-U-18): one control that says what it is, as a
+            // stopped reply's "Stopped · Continue" — not a label and a bare ▸.
             const _cont = document.createElement('button');
+            _cont.type = 'button';
             _cont.className = 'continue-btn agent-continue-btn';
-            _cont.title = 'Continue — pick up where it left off';
-            _cont.textContent = '▸';
+            _cont.title = 'Pick up where it left off';
+            _cont.textContent = 'Paused · Continue';
             _cont.addEventListener('click', () => {
               _stall.remove();
               const mi = uiModule.el('message');

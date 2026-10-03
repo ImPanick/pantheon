@@ -159,3 +159,19 @@ def test_a_reload_of_a_stopped_reply_draws_the_same_line(card_sandbox):
        .replace("history.querySelectorAll", "(await import('./shim.js')).history.querySelectorAll"),
         card_sandbox)
     assert out == ["Stopped · Continue", "Stopped"]
+
+
+def _rule(selector: str) -> str:
+    from pathlib import Path
+    css = (Path(__file__).resolve().parents[1] / "static" / "style.css").read_text(encoding="utf-8")
+    assert css.count(selector + " {") == 1, selector
+    at = css.index(selector + " {")
+    return css[at:css.index("}", at)]
+
+
+def test_the_worded_controls_are_drawn_at_their_lines_size():
+    """Driven on the showcase: "Stopped · Continue" came out at 2.6em, the
+    size `.continue-btn` gives the bare ▸ it replaced, and the card's scope
+    line at the page's body size, larger than the card it sits in."""
+    assert "font-size: 1em;" in _rule(".stopped-indicator:not(.rounds-exhausted) > .continue-btn")
+    assert "font-size: 10.5px;" in _rule(".ask-user-scope-note")
