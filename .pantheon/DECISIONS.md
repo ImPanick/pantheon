@@ -2758,3 +2758,20 @@ holds — Pantheon added SPDX lines to all nine `services/search/` files and cha
 files *of the licensed Work*; files containing none of it are not that Work, so the ruling stands on the second reason
 alone. Recorded so the ruling is not read as resting on a fact that has since changed.
 
+## D-2026-10-03-01 — the audits become fix waves: one back stack, one name per thing
+
+**Asked**, 2026-10-03, after the owner's audits (*"Some functions are extremely wonky"*): eight auditors produced
+`Doc1-Mechanism-report.md` (134 findings, 0 P0) and `Doc2-UIUX-audit.md` (≈130 distinct, plus 62 text rewrites).
+
+1. **Start the fix waves now** — all six of Doc 2 § 6 in parallel, with Doc 1's mechanism findings riding the wave
+   that owns their files, and a seventh lane for server-side operations (database, service worker, idle detection,
+   log noise). Back/navigation merges first; every other wave's "way back" assumes its stack.
+2. **One back stack.** Everything that opens pushes one entry and one browser history entry; the browser's or
+   phone's Back, Escape and a `←` in the window header all pop the innermost layer (menu, then panel, then window),
+   returning to the screen and tab you came from (Skills → `← Brain` on the RAG tab). Escape in a text field first
+   leaves the field. Each top window has its own URL, so reload brings you back. Back never leaves the app while a
+   window is open.
+3. **One name per thing:** **Brain** (not Memory), **chat** (not session or conversation), **MCP & Integrations**
+   (never just "Integrations" for that room), and **Forge** (already `D-2026-09-18-04`). Library vs Documents was not
+   chosen: unchanged. Names change where a person reads them; stored identifiers stay (`D-2026-09-18-04`'s rule).
+
