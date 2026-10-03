@@ -3586,9 +3586,13 @@ def setup_chat_routes(
         rec = _active_streams.get(session_id)
         if rec is None:
             if agent_runs.is_active(session_id):
-                return {"status": "streaming", "detached": True}
-            raise HTTPException(404, "No active stream for this session")
-        return rec
+                return {"status": "streaming", "detached": True, "active": True}
+            # `P23-04` (PERF-M-7). The probe every chat switch makes: "nothing
+            # is streaming" is the ordinary answer, not a missing resource. It
+            # was a 404, so every chat open printed a console error; measured
+            # on `9560d50`, two per switch (this one and research's status).
+            return {"status": "idle", "active": False}
+        return {**rec, "active": True}
 
     # ------------------------------------------------------------------ #
     # POST /api/inject_context

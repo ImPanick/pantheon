@@ -299,11 +299,17 @@ def setup_research_routes(research_handler, session_manager=None) -> APIRouter:
     async def research_status(session_id: str, request: Request):
         user = _require_user(request)
         _validate_session_id(session_id)
+        # `P23-04` (PERF-M-7). Asked on every chat switch; a chat with no
+        # research is the ordinary answer, so it is a 200, not a 404 and a
+        # console error per open. Another person's research answers exactly
+        # as no research does, so the reply still says nothing about a chat
+        # this person does not own.
+        none = {"status": "none", "active": False}
         if not _owns_in_memory(session_id, user):
-            raise HTTPException(404, "No research found for this session")
+            return none
         status = research_handler.get_status(session_id)
         if status is None:
-            raise HTTPException(404, "No research found for this session")
+            return none
         return status
 
     @router.post("/api/research/cancel/{session_id}")

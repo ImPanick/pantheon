@@ -5910,7 +5910,14 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
         cache: 'no-store',
       });
       if (!_getForegroundStreamState() || _backgroundStreams.has(sid)) return;
-      if (res.status !== 404) return;
+      // `P23-04` (PERF-M-7): "nothing streaming" is a 200 `{active: false}`
+      // now; a 404 still means the same from a server that predates it.
+      let _serverIdle = res.status === 404;
+      if (res.ok) {
+        const info = await res.json().catch(() => null);
+        _serverIdle = !!(info && info.active === false);
+      }
+      if (!_serverIdle) return;
 
       console.warn('[stream-watchdog] Local stream was stale and server has no active stream. Unlocking composer.');
       if (active.abortCtrl && !active.abortCtrl.signal.aborted) {
@@ -7679,11 +7686,13 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
     if (!sessionId) return;
     try {
       const res = await fetch(`${API_BASE}/api/research/status/${sessionId}`);
-      if (!res.ok) {
+      // `P23-04` (PERF-M-7): no research is a 200 `{active: false}`; a 404
+      // from an older server means the same.
+      const data = res.ok ? await res.json().catch(() => null) : null;
+      if (!data || data.active === false) {
         if (sessionModule && sessionModule.clearResearching) sessionModule.clearResearching(sessionId);
-        return; // 404 = no research for this session
+        return;
       }
-      const data = await res.json();
 
       if (data.status === 'done') {
         // Fetch and render the completed result
@@ -7838,7 +7847,9 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
         }
         try {
           const pollRes = await fetch(`${API_BASE}/api/research/status/${sessionId}`);
-          if (!pollRes.ok) {
+          // `P23-04` (PERF-M-7): "no research" is a 200 `{active: false}`.
+          const pollData = pollRes.ok ? await pollRes.json().catch(() => null) : null;
+          if (!pollData || pollData.active === false) {
             clearInterval(pollInterval);
             spinner.destroy();
             _clearResearchTimer();
@@ -7846,7 +7857,6 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
             if (sessionModule && sessionModule.clearResearching) sessionModule.clearResearching(sessionId);
             return;
           }
-          const pollData = await pollRes.json();
           updateSpinnerFromProgress(pollData.progress);
           if (_researchSynapse && pollData.progress) {
             _researchSynapse.setPhase(pollData.progress.phase, pollData.progress);
