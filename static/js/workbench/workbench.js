@@ -358,9 +358,15 @@ function _land(roomId, handle, { focusId, workflowId, runId, view, skill, server
  * the schedule wording (`tasks.js:_scheduleLabel`), handed in by the door so
  * the words exist once.
  */
+// `BRAIN-M-16` (P23-02). The room the window was closed on; `closeWorkbench`
+// clears `_current`, so this is what a plain reopen lands on. It reopened on
+// Automations whatever room was left (measured: closed on Skills).
+let _lastRoom = null;
+
 export function openWorkbench({
   room = null, view = null, skill = null, serverId = null,
   focusId = null, workflowId = null, runId = null, describeTrigger = null,
+  from = null, tab = null,
 } = {}) {
   if (typeof describeTrigger === 'function') _describe = describeTrigger;
   const modal = _modal();
@@ -377,7 +383,8 @@ export function openWorkbench({
   const automations = focusId != null || workflowId != null || runId != null;
   const target = (room && _room(room)) ? room
     : automations ? 'automations'
-    : (_open && _current) ? _current : ROOMS[0].id;
+    : (_open && _current) ? _current
+    : (_lastRoom && _room(_lastRoom)) ? _lastRoom : ROOMS[0].id;
   if (!_open) {
     _open = true;
     _current = null;
@@ -385,6 +392,15 @@ export function openWorkbench({
   const fresh = !_handles.has(target);
   const handle = _current === target ? _handles.get(target) : _showRoom(target, asked);
   if (!fresh) _land(target, handle, asked);
+  // C-NAV (`P23-01` provides it): with an opener, the window manager records
+  // it — `← <opener>` in the header, the opener re-raised on its tab at close.
+  // Asked once the window is up, so `showWindow` takes its "raise" case and
+  // never presses this window's own door (which would come back here).
+  if (from && typeof Modals.showWindow === 'function') {
+    const nav = { from };
+    if (tab != null) nav.tab = tab;
+    try { Modals.showWindow(WORKBENCH_ID, nav); } catch (_) { /* the other half is absent */ }
+  }
   return true;
 }
 
@@ -410,6 +426,7 @@ export function closeWorkbench() {
   _handles.delete('automations');
   const intg = _handles.get('integrations');
   if (intg && typeof intg.releaseEscape === 'function') intg.releaseEscape();
+  _lastRoom = _current;   // `BRAIN-M-16` (P23-02, fx-brain)
   _current = null;
   const modal = _modal();
   if (!modal) return;

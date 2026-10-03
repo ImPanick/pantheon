@@ -12,6 +12,8 @@ import { setBackgroundWork } from './modalManager.js?v=20261003waveg';
 import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
 // C-NAV (`P23-01` builds it): `register(id, { getTab, setTab })`.
 import * as Modals from './modalManager.js?v=20261003waveg';
+// C-ERR: a refused response is read once, by the one reader.
+import { readRefusal } from './workbench/refusal.js';
 
 var escapeHtml = uiModule.esc;
 
@@ -31,6 +33,8 @@ let memoriesKnown = false;
 let memoriesError = '';
 // `PERF-M-7` (P23-02): set by a chat switch, cleared by a load.
 let memoriesStale = false;
+// `SET-U-15` (P23-02): the server's sentence when it refused the list.
+let memoriesRefused = '';
 
 
 const MEMORY_CATEGORIES = ['fact', 'identity', 'preference', 'contact', 'project', 'goal', 'task'];
@@ -611,7 +615,12 @@ export async function loadMemories() {
   let data = null;
   try {
     const response = await fetch(`${window.location.origin}/api/memory`);
-    if (!response.ok) {
+    if (response.status === 403) {
+      // `SET-U-15` (P23-02): a person not allowed the Brain reads the server's
+      // own sentence, not "No memories yet" over a refusal.
+      memoriesRefused = (await readRefusal(response, 'Your account is not allowed to manage memory.')).sentence;
+      memoriesError = memoriesRefused;
+    } else if (!response.ok) {
       console.error('Memory fetch failed with status:', response.status);
       memoriesError = `the server answered ${response.status}`;
     } else {
@@ -632,6 +641,7 @@ export async function loadMemories() {
     memoriesKnown = true;
     memoriesStale = false;
     memoriesError = '';
+    memoriesRefused = '';
   } else {
     memories = [];
     memoriesKnown = false;
@@ -1138,7 +1148,8 @@ export function renderMemoryList() {
       // `B1070`. A failed load is not an empty store either.
       const row = document.createElement('div');
       row.className = 'memory-empty';
-      row.textContent = `Could not load memories — ${memoriesError}. Reopen the Brain to try again.`;
+      row.textContent = memoriesRefused
+        || `Could not load memories — ${memoriesError}. Reopen the Brain to try again.`;
       memoryList.replaceChildren(row);
       return;
     }
@@ -1597,13 +1608,11 @@ export async function addNewMemory() {
       await loadMemories();
       showToast('Memory added');
     } else {
-      const errorData = await response.json();
-      console.error('Server error details:', errorData);
-      throw new Error(errorData.detail || 'Failed to add memory');
+      throw new Error((await readRefusal(response, 'Could not add the memory.')).sentence);
     }
   } catch (error) {
     console.error('Error adding memory:', error);
-    showError('Failed to add memory');
+    showError((error && error.message) || 'Could not add the memory.');
   }
 }
 
