@@ -174,6 +174,41 @@ export function initSidebarLayout(Storage, opts) {
     syncRailSide();
   };
 
+  // `P23-01` (NAV-U-7). The phone drawer had no way out on it: ☰ was under it,
+  // its two buttons fold sections, and Back left the app. It closes the way
+  // the hamburger closes it — from its own × (below), from Escape and from
+  // Back (`backStack.js` holds it as a layer, `modalManager.closeWindow`).
+  window._odyCloseSidebar = function() {
+    const sidebar = document.getElementById('sidebar');
+    if (!sidebar || sidebar.classList.contains('hidden')) return;
+    sidebar.classList.add('hidden');
+    if (window.innerWidth < 768) _saveSidebarMode('off');
+    const backdrop = document.getElementById('sidebar-backdrop');
+    if (backdrop) backdrop.classList.remove('visible');
+    syncRailSide();
+  };
+  {
+    const header = document.querySelector('#sidebar .sidebar-header');
+    if (header && !document.getElementById('sidebar-drawer-close')) {
+      const x = document.createElement('button');
+      x.type = 'button';
+      x.id = 'sidebar-drawer-close';
+      x.className = 'sidebar-drawer-close';
+      x.title = 'Close';
+      x.setAttribute('aria-label', 'Close');
+      x.textContent = '\u00d7';
+      // Tokens only; a 40px target, at the drawer's top edge.
+      x.style.cssText = 'margin-left:auto;width:40px;height:40px;flex-shrink:0;'
+        + 'align-items:center;justify-content:center;background:none;border:0;color:var(--fg);'
+        + 'font:inherit;font-size:22px;line-height:1;cursor:pointer;';
+      const phone = () => { x.style.display = window.innerWidth < 768 ? 'inline-flex' : 'none'; };
+      phone();
+      window.addEventListener('resize', phone);
+      x.addEventListener('click', (e) => { e.stopPropagation(); window._odyCloseSidebar(); });
+      header.appendChild(x);
+    }
+  }
+
   if (hamburgerBtn) {
     hamburgerBtn.addEventListener('click', (e) => {
       e.stopPropagation();

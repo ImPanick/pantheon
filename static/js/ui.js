@@ -1200,7 +1200,8 @@ const uiModule = {
   isTouchInsideModal,
   emptyStateIcon,
   renderEmptyState,
-  registerMenuDismiss
+  registerMenuDismiss,
+  askBeforeLeaving,   // `P23-01`
 };
 
 export default uiModule;
