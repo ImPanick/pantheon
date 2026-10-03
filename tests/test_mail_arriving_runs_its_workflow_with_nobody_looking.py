@@ -365,15 +365,17 @@ async def test_starting_the_pollers_twice_starts_one_check(world):
     assert pollers._inbox_task is first
 
 
-async def test_the_app_starts_the_email_pollers_where_a_loop_is_running():
+async def test_the_app_starts_the_email_pollers_where_a_loop_is_running(monkeypatch):
     """`launcher.py` imports the app before uvicorn's loop exists, so the
     import-time start is deferred to the first inbox listing — the app's own
     startup starts them. Scoped to `_startup_event` (`Law 20` § 2): entering
-    the whole lifespan here would start every other service with it."""
+    the whole lifespan here would start every other service with it. The app
+    is imported for this test and put back after it (`B1180`)."""
     import ast
     import inspect
 
-    import app as app_module
+    from tests.helpers.fresh_import import import_app_in_this_test
+    app_module = import_app_in_this_test(monkeypatch)
 
     tree = ast.parse(inspect.getsource(app_module._startup_event))
     imported = {(n.module, a.name, a.asname) for n in ast.walk(tree) if isinstance(n, ast.ImportFrom)

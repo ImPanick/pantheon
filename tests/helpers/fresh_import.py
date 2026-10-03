@@ -64,6 +64,59 @@ def drop_for_fresh_import(monkeypatch, *names):
         sys.modules.pop(name, None)
 
 
+# `B1180`. What `app.py`'s body installs in other modules as it runs, through
+# its seven module-level `set_*` calls: `(module, global)` pairs, each put back
+# by `import_app_in_this_test`. Held equal to those calls by
+# `tests/test_importing_the_app_in_a_test_leaves_nothing_behind.py`, so an
+# eighth setter is a red test rather than a new leak.
+APP_INSTALLS = {
+    "_set_asst_sm": (("src.assistant_log", "_session_manager"),),
+    "set_session_manager_instance": (("core.models", "_SESSION_MANAGER_INSTANCE"),),
+    "set_task_scheduler": (("src.event_bus", "_task_scheduler"),),
+    "set_mcp_manager": (("src.tool_utils", "_mcp_manager"),),
+    "set_ai_session_manager": (("src.ai_interaction", "_session_manager"),
+                               ("core.models", "_SESSION_MANAGER_INSTANCE")),
+    "set_ai_memory_manager": (("src.ai_interaction", "_memory_manager"),
+                              ("src.ai_interaction", "_memory_vector")),
+    "set_ai_rag_manager": (("src.ai_interaction", "_rag_manager"),
+                           ("src.ai_interaction", "_personal_docs_manager")),
+}
+
+
+def import_app_in_this_test(monkeypatch):
+    """`import app` inside one test, and the process given back as it was.
+
+    `B1180`. Two files imported the app in process and left two things behind
+    for every file after them: the module in `sys.modules`, and the singletons
+    its body installs — `set_mcp_manager(McpManager())` among them. With that
+    manager left running, `workflow_effects._mcp_tools` (which expects none in
+    a test, as its docstring says) read every server's tool overrides on the
+    process's `sqlite:///:memory:` engine from each TestClient's portal thread;
+    past five threads SQLAlchemy's `SingletonThreadPool` closes connections,
+    the main thread's among them, and the in-memory database that held the
+    tables went with it. Measured 2026-10-03 on `3e4888b`:
+    `test_edit_image_routes.py` then `test_testing_one_step_runs_nothing_else.py`
+    then `test_the_halves_are_one_product.py::test_the_two_limits_and_the_waiting_words_have_one_home`
+    fails `no such table: mcp_servers`, each file alone passes, and
+    `test_mail_arriving_runs_its_workflow_with_nobody_looking.py` in the first
+    place does the same.
+
+    So the import runs here, under the caller's `monkeypatch` (dropped first
+    with `drop_for_fresh_import`, so it is this test's import whatever ran
+    before), and at teardown `sys.modules` and every global in `APP_INSTALLS`
+    are what they were. The app's other import-time effects — a root log
+    handler, MIME types, `install_role_layer`, `load_dotenv` — are not put back.
+    """
+    import importlib
+
+    for pairs in APP_INSTALLS.values():
+        for module_name, name in pairs:
+            module = importlib.import_module(module_name)
+            monkeypatch.setattr(module, name, getattr(module, name))
+    drop_for_fresh_import(monkeypatch, "app")
+    return importlib.import_module("app")
+
+
 class reimported_under_stubs:
     """A module-level re-import that leaves `sys.modules` as it found it.
 
