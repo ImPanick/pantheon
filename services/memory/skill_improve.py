@@ -86,6 +86,48 @@ class ImproveResult:
         return (self.after or {}).get("counts") or {}
 
 
+# `BRAIN-M-3`. Why a rewrite was not written — `ImproveResult.why` for
+# `NO_REWRITE`, so each door can say which.
+WHY_UNCHANGED = "unchanged"
+WHY_NOT_A_SKILL = "not_a_skill"
+WHY_NOT_BETTER = "not_better"
+
+
+def _counts(lint: Optional[dict]) -> tuple:
+    c = (lint or {}).get("counts") or {}
+    return (int(c.get("problem", 0) or 0), int(c.get("advisory", 0) or 0))
+
+
+def rewrite_refusal(text: str, name: str, current: dict, library: list,
+                    before: dict) -> str:
+    """`""` when `text` is a SKILL.md worth writing over `current`; else why not.
+
+    Read with `Skill.from_markdown` — what `_apply_skill_md` reads — and linted
+    with the live skill's pinned fields, against the same siblings the
+    `before` lint saw, so the two counts measure the same thing. "Better" is
+    fewer problems, or as many problems and fewer suggestions.
+    """
+    from services.memory.skill_format import Skill, parse_frontmatter
+    from services.memory.skill_lint import lint_skill
+
+    try:
+        fm, _body = parse_frontmatter(text)
+        cand = Skill.from_markdown(text)
+    except Exception:
+        return WHY_NOT_A_SKILL
+    if not fm or not (cand.description or "").strip():
+        return WHY_NOT_A_SKILL
+    if not ((cand.when_to_use or "").strip() or cand.procedure):
+        return WHY_NOT_A_SKILL
+    cand.name = name
+    d = cand.to_dict()
+    d.update(pinned_of(current))
+    after = lint_skill(d, [x for x in library if x.get("name") != name])
+    if _counts(after) >= _counts(before):
+        return WHY_NOT_BETTER
+    return ""
+
+
 def lint_issues(findings) -> list:
     """The lint's findings as the reviewer issues `_improve_skill_md` reads."""
     issues = []
@@ -150,7 +192,19 @@ async def improve_from_lint(sm, name: str, owner: Optional[str], *, models=None)
     # mutation-testing the handler this came from, by parametrising the empty
     # reply (`P8-13`).
     if not (fixed or "").strip() or fixed.strip() == md.strip():
-        return ImproveResult(ImproveOutcome.NO_REWRITE, name, findings, before)
+        return ImproveResult(ImproveOutcome.NO_REWRITE, name, findings, before, why=WHY_UNCHANGED)
+    # `BRAIN-M-3` (P23-02). Only a better SKILL.md is written. The check above
+    # took any non-empty reply that differed from the file: a scripted model
+    # answering "OK" was written as the skill — frontmatter, then `OK`, the
+    # description gone, the version bumped — and the panel said "Fixed"
+    # (measured on `32df791`, and a real model that answers "Here is the
+    # improved skill: …" takes the same path). The reply is read with the
+    # reader the write uses, and linted as it would be stored, BEFORE anything
+    # is written: no description or no body is not a skill, and a rewrite the
+    # lint does not score better than the original fixed nothing.
+    why = rewrite_refusal(fixed, name, current, library, before)
+    if why:
+        return ImproveResult(ImproveOutcome.NO_REWRITE, name, findings, before, why=why)
     if not _routes._apply_skill_md(sm, name, fixed, owner, keep=pinned_of(current)):
         return ImproveResult(ImproveOutcome.NOT_SAVED, name, findings, before)
 

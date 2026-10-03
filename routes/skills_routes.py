@@ -2277,7 +2277,14 @@ def setup_skills_routes(skills_manager: SkillsManager) -> APIRouter:
             raise HTTPException(503, "No model is set up to fix a skill. Fix the findings by hand, "
                                      "or set a Default or Utility model in Settings.")
         if done.outcome is ImproveOutcome.NO_REWRITE:
-            raise HTTPException(422, "The model returned no usable rewrite. Nothing was written.")
+            # `BRAIN-M-3` (P23-02): which way it failed, in one sentence.
+            from services.memory.skill_improve import WHY_NOT_A_SKILL, WHY_NOT_BETTER
+            if done.why == WHY_NOT_A_SKILL:
+                raise HTTPException(422, "The model's answer was not a skill (no description or steps). "
+                                         "Nothing was written.")
+            if done.why == WHY_NOT_BETTER:
+                raise HTTPException(422, "The model's rewrite fixed none of the findings. Nothing was written.")
+            raise HTTPException(422, "The model changed nothing. Nothing was written.")
         if done.outcome is ImproveOutcome.NOT_SAVED:
             raise HTTPException(500, "The rewrite could not be saved. Nothing changed.")
         return {"ok": True, "name": name, "outcome": done.outcome.value,

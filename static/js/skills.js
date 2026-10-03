@@ -3703,12 +3703,6 @@ async function _draftFromDescription(m) {
   }
 }
 
-function _countWords(c) {
-  const p = Number(c && c.problem) || 0;
-  const a = Number(c && c.advisory) || 0;
-  return `${p} ${p === 1 ? 'problem' : 'problems'}, ${a} ${a === 1 ? 'suggestion' : 'suggestions'}`;
-}
-
 /** *Fix these with the model*: `POST /api/skills/{name}/improve`, and the
  *  lint's counts before and after, in the panel the findings were in. */
 async function _fixWithModel(m, name, btn) {
@@ -3718,10 +3712,13 @@ async function _fixWithModel(m, name, btn) {
     const res = await fetch(`${API}/api/skills/${encodeURIComponent(name)}/improve`, { method: 'POST' });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
+    // `D-31` (P23-02). The server writes a rewrite only when it scores better
+    // (`BRAIN-M-3`), so this line is only ever said of a real fix.
+    const n = (c, k) => Number(c && c[k]) || 0;
     const line = data.outcome === 'nothing_to_fix'
       ? `Nothing left to fix in ${name}.`
-      : `Fixed ${name} with the model. Before: ${_countWords(data.before)}. `
-        + `After: ${_countWords(data.after)}. The earlier text is kept — History on its card puts it back.`;
+      : `Fixed ${name}: problems ${n(data.before, 'problem')} → ${n(data.after, 'problem')}, `
+        + `suggestions ${n(data.before, 'advisory')} → ${n(data.after, 'advisory')}. Undo in History.`;
     if (panel) {
       panel.classList.remove('hidden');
       panel.replaceChildren(_el('div', 'skill-lint-head skill-lint-fixed', line));
