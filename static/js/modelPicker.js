@@ -274,6 +274,26 @@ function _initModelPickerDropdown() {
     } catch (_) { /* leave stale data; picker still works */ }
   }
 
+  // `P23-04` (CHAT-M-23). A send that could not reach its endpoint is fresher
+  // evidence than the last probe: the picker marks that endpoint's models
+  // offline at once (the dimmed row and its tooltip, as a failed probe does),
+  // and the refresh button asks again. It offered a dead endpoint as if up,
+  // and picking it failed in 0.2 s.
+  try {
+    window.addEventListener('pantheon:endpoint-unanswered', (ev) => {
+      const base = String((ev && ev.detail && ev.detail.url) || '').replace(/\/+$/, '');
+      if (!base) return;
+      const items = (window.modelsModule && window.modelsModule.getCachedItems) ? window.modelsModule.getCachedItems() : [];
+      items.forEach((item) => {
+        const url = String(item.url || '');
+        if (item.endpoint_id && url && (url === base || url.startsWith(base + '/') || base.startsWith(url.replace(/\/+$/, '')))) {
+          _localProbe[item.endpoint_id] = { alive: false, error: 'not answering' };
+        }
+      });
+      _localProbeFetchedAt = 0;
+    });
+  } catch (_) {}
+
   function _getAllModels() {
     const items = (window.modelsModule && window.modelsModule.getCachedItems) ? window.modelsModule.getCachedItems() : [];
     const result = [];
@@ -438,13 +458,23 @@ function _initModelPickerDropdown() {
     listEl.classList.toggle('is-empty', !hasAnyModel);
     menu.classList.toggle('no-models', !hasAnyModel);
     if (search) {
-      search.placeholder = hasAnyModel ? 'Search models…' : 'No models connected';
+      // `P23-04` (CHAT-M-14, COPY): the empty picker says it once and offers
+      // the one door, as a button a person can find — not a 12-px "+" alone.
+      search.placeholder = hasAnyModel ? 'Search models…' : 'No models yet';
     }
     if (searchRow) {
       searchRow.classList.toggle('searching', !!q);
     }
 
-    if (!hasAnyModel) return; // collapsed empty list — nothing to render
+    if (!hasAnyModel) {
+      const add = document.createElement('button');
+      add.type = 'button';
+      add.className = 'model-picker-empty-add';
+      add.textContent = 'Add a model';
+      add.addEventListener('click', (e) => { e.stopPropagation(); _openPickerShortcut('models'); });
+      listEl.appendChild(add);
+      return;
+    }
 
     // Unique lookup so Recent/Favorites (stored as bare model IDs) can be
     // resolved back to full model objects; drops anything no longer offered.

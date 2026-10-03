@@ -326,7 +326,7 @@ import { startToolCard as _startToolCard, drawToolProgress as _drawToolProgress,
 import spinnerModule from './spinner.js';
 import uiModule from './ui.js';
 import { inheritModelRouteState, applyModelRouteEventState } from './chatModelProvenance.js';
-import { createTerminalStreamError } from './chatStreamErrors.js';
+import { createTerminalStreamError, buildReplyError } from './chatStreamErrors.js';
 
 const history = document.body.appendChild(new Node('div'));
 history.setAttribute('id', 'chat-history');
@@ -1001,7 +1001,9 @@ def test_a_replay_that_ends_on_an_error_leaves_no_card_running(sandbox):
           running: node.classList.contains('running') }));
     """ % json.dumps(events))
     assert out["reloads"] == []
-    assert out["left"][0]["text"] == "Let me look at the logs.[Error: upstream went away]"
+    # `P23-04` (CHAT-M-13): one sentence, Retry, and the provider's words behind Details.
+    assert out["left"][0]["text"] == (
+        "Let me look at the logs.The model didn't answer (HTTP 502).RetryDetailsupstream went away")
     assert out["left"][1]["thread"][0]["tool"] == "Running"
     assert not out["ticking"], "the orphaned card's clock is still going"
     assert not out["running"], "the orphaned card still says it is running"

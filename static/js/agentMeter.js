@@ -532,12 +532,16 @@ export function limitsPreview(payload) {
   const b = limitsFrom(payload);
   if (!b.roundLimit) return null;
   const lifted = isLifted(b);
-  const liftedWhere = b.source === 'local_lift' ? 'local model' : 'this server';
-  const steps = lifted ? `Step limit lifted (${liftedWhere})` : `Up to ${num(b.roundLimit)} steps`;
+  // `P23-04` (CHAT-U-16, COPY-U-12). A limit is said; no limit is not — the
+  // composer said "Step limit lifted (local model)" in grey for as long as
+  // Agent mode was on. Why there is none stays in the tooltip.
+  const steps = lifted ? '' : `Up to ${num(b.roundLimit)} steps`;
   const tools = b.toolLimit ? `${num(b.toolLimit)} tool call${b.toolLimit === 1 ? '' : 's'}` : '';
+  const text = [steps, tools].filter(Boolean).join(' · ');
+  if (!text) return null;
   const raise = raiseRules(b, payload);
   return {
-    text: tools ? `${steps} · ${tools}` : steps,
+    text,
     title: `${stepRuleText(b, 'Each message in Agent mode')}${raise.steps} `
       + `${toolRuleText(b)}${raise.tools} Both are set in ${SETTINGS_PATH}.`,
     source: b.source,

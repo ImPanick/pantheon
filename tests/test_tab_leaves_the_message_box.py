@@ -297,7 +297,8 @@ def test_the_chord_is_the_plan_buttons_own_click(box):
     assert out["stillOn"]["pressed"] == "true", "a held chord flipped Plan mode back"
     assert out["off"]["pressed"] == "false" and out["off"]["saved"] is False
     assert out["clicks"] == 2, "the key did not go through the Plan button"
-    assert out["toasts"] == ["Plan mode on", "Plan mode off"]
+    # `P23-04` (CHAT-U-15): the lit chip says it; there is no toast.
+    assert out["toasts"] == []
 
 
 @needs_node
@@ -308,9 +309,10 @@ def test_the_button_names_its_key(box):
         el('plan-toggle-btn').click();
         console.log(JSON.stringify({ off, on: plan() }));
     """)
-    assert out["off"]["title"] == "Plan mode (Ctrl+Alt+P)"
+    # `P23-04` (CHAT-U-15): the control's name is its tooltip, on or off.
+    assert out["off"]["title"] == "Plan (Ctrl+Alt+P)"
     assert out["off"]["keys"] == "Control+Alt+P"
-    assert out["on"]["title"] == "Plan mode on - next message proposes a plan only (Ctrl+Alt+P)"
+    assert out["on"]["title"] == "Plan (Ctrl+Alt+P)"
     assert out["on"]["keys"] == "Control+Alt+P"
 
 
@@ -334,11 +336,11 @@ def test_a_rebound_key_is_the_one_that_works_and_the_one_the_button_names(box):
         const unbound = plan();
         console.log(JSON.stringify({ named, old, afterOld, neu, afterNew, unbound }));
     """)
-    assert out["named"]["title"] == "Plan mode (Ctrl+Alt+L)"
+    assert out["named"]["title"] == "Plan (Ctrl+Alt+L)"
     assert out["named"]["keys"] == "Control+Alt+L"
     assert out["old"]["prevented"] is False and out["afterOld"] == "false"
     assert out["neu"]["prevented"] is True and out["afterNew"] == "true"
-    assert out["unbound"]["title"] == "Plan mode on - next message proposes a plan only"
+    assert out["unbound"]["title"] == "Plan"
     assert out["unbound"]["keys"] is None
 
 
@@ -581,7 +583,7 @@ def test_in_a_browser_tab_from_the_message_box_lands_on_the_next_control(run):
 
 @needs_browser
 def test_in_a_browser_ctrl_alt_p_toggles_the_plan_button(run):
-    assert run["button"] == {"title": "Plan mode (Ctrl+Alt+P)", "keys": "Control+Alt+P"}
+    assert run["button"] == {"title": "Plan (Ctrl+Alt+P)", "keys": "Control+Alt+P"}
     assert run["chordOn"] == {"pressed": "true", "focus": "message"}
     assert run["chordOff"] == {"pressed": "false", "focus": "message"}
 

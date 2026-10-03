@@ -50,7 +50,7 @@ import {
   applyModelRouteEventState,
   inheritModelRouteState,
 } from './chatModelProvenance.js';
-import { createTerminalStreamError, isRecoverableStreamError } from './chatStreamErrors.js';
+import { createTerminalStreamError, isRecoverableStreamError, buildReplyError } from './chatStreamErrors.js';
 import { createAgentMeter, presentMeterEvent, METER_EVENT_TYPES, renderLimitsHint } from './agentMeter.js';   // P4-08 / P4-23 / P4-24 / P7-10
 import { loadPanel } from './panels.js';
 import planWindow from './planWindow.js';
@@ -463,14 +463,20 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
     }
     try {
       const res = await fetch(`/api/session/${encodeURIComponent(sid)}/compact`, { method: 'POST' });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) {
+        // `P23-04` (CHAT-M-20, C-ERR): the server's sentence, read once — it
+        // was "Compact failed: {"detail":"Not enough messages to compact"}".
+        const refusal = await readRefusal(res, 'Could not compact this chat. Try again.');
+        uiModule.showError(refusal.sentence);
+        return false;
+      }
       uiModule.showToast('Context compacted');
       _closeContextHeaderPopup();
       if (sm && sm.selectSession) await sm.selectSession(sid, { keepSidebar: true, showLoading: false });
       refreshChatContextHeader('compact');
       return true;
     } catch (err) {
-      uiModule.showError(`Compact failed: ${err.message || err}`);
+      uiModule.showError('Could not reach Pantheon to compact this chat. Try again.');
       return false;
     }
   }
@@ -2333,6 +2339,40 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
   }
 
   /**
+   * `P23-04` (CHAT-M-14, CHAT-U-13). With no model to send to, say so once
+   * and offer the one thing to do — and keep what was typed. It was a reply
+   * from a sender called "…" listing three options, and the message was
+   * thrown away.
+   */
+  export function _sayNoModel(doc = document) {
+    const box = doc.getElementById('chat-history');
+    if (!box) return null;
+    const prior = box.querySelector('.no-model-note');
+    if (prior) prior.remove();
+    try { hideWelcomeScreen(); } catch (_) {}
+    const note = doc.createElement('div');
+    note.className = 'no-model-note';
+    note.setAttribute('role', 'status');
+    note.style.cssText = 'display:flex; align-items:center; gap:10px; padding:10px 0;';
+    const text = doc.createElement('span');
+    text.textContent = 'No model yet.';
+    const add = doc.createElement('button');
+    add.type = 'button';
+    add.className = 'no-model-add';
+    add.textContent = 'Add a model';
+    add.addEventListener('click', () => {
+      note.remove();
+      const door = doc.getElementById('model-picker-add-models-btn');
+      if (door) door.click();
+    });
+    note.appendChild(text);
+    note.appendChild(add);
+    box.appendChild(note);
+    try { uiModule.scrollHistory(); } catch (_) {}
+    return note;
+  }
+
+  /**
    * Handle chat form submission
    */
   export async function handleChatSubmit(e) {
@@ -2503,24 +2543,12 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
           _sendPerf.mark('direct_chat_materialize_done');
           if (!ok || !sessionModule.getCurrentSessionId()) { _releaseSendFlag(); return; }
         } else {
-          el('message').value = '';
-          if (uiModule.autoResize) uiModule.autoResize(el('message'));
-          addMessage('assistant',
-            'No chat session active. You can:\n\n' +
-            '- Open the model picker in the chat box and pick a model\n' +
-            '- Use the `+` button in the model picker to add a model endpoint\n' +
-            '- Use `/help` to see all available commands');
+          _sayNoModel();
           _releaseSendFlag();
           return;
         }
       } catch (e) {
-        el('message').value = '';
-        if (uiModule.autoResize) uiModule.autoResize(el('message'));
-        addMessage('assistant',
-          'No chat session active. You can:\n\n' +
-          '- Open the model picker in the chat box and pick a model\n' +
-          '- Use the `+` button in the model picker to add a model endpoint\n' +
-          '- Use `/help` to see all available commands');
+        _sayNoModel();
         _releaseSendFlag();
         return;
       }
@@ -5111,10 +5139,9 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
                 console.error('Stream error from backend:', json.error);
                 if (_isBg) continue;
                 if (spinner && spinner.element) spinner.destroy();
-                const errDiv = document.createElement('div');
-                errDiv.style.cssText = 'color: var(--color-error); font-style: italic; padding: 4px 0;';
-                errDiv.textContent = `[Error: ${json.error}]`;
-                roundHolder.querySelector('.body').appendChild(errDiv);
+                // `P23-04` (CHAT-M-13): a sentence, Retry and Details.
+                roundHolder.querySelector('.body').appendChild(buildReplyError(document,
+                  { message: String(json.error) }, { model: modelName, onRetry: _retryLastTurn }));
                 uiModule.scrollHistory();
               }
             } catch (e) {
@@ -5682,10 +5709,12 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
                   || roundHolder?.querySelector('.body')
                   || document.querySelector('.msg-ai:last-of-type .body');
                 if (terminalBody) {
-                  const terminalNote = document.createElement('div');
-                  terminalNote.style.cssText = 'color: var(--color-error); font-style: italic; padding: 4px 0;';
-                  terminalNote.textContent = `[Error: ${err.message}]`;
-                  terminalBody.appendChild(terminalNote);
+                  // `P23-04` (CHAT-M-13, PERF-U-6): one sentence a person
+                  // reads, the model's own words behind Details, and Retry.
+                  const _failedModel = (_catchViewHolder && (_catchViewHolder._actualModel
+                    || _catchViewHolder._requestedModel)) || '';
+                  terminalBody.appendChild(buildReplyError(document, err,
+                    { model: _failedModel, onRetry: _retryLastTurn }));
                 }
               }
               return;
@@ -6918,9 +6947,9 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
     // recover through a canonical reload. Keep its sanitized provider/request
     // error visible in the replay holder instead of deleting the only evidence.
     if (onThisSession && replayError && !canonicalTerminalSeen) {
-      const errorDiv = document.createElement('div');
-      errorDiv.style.cssText = 'color: var(--color-error); font-style: italic; padding: 4px 0;';
-      errorDiv.textContent = `[Error: ${replayError.message}]`;
+      // `P23-04` (CHAT-M-13): the live path's line, from the same builder.
+      const errorDiv = buildReplyError(document, replayError,
+        { model: meta && meta.model, onRetry: () => _retryLastTurn() });
       roundHolder.style.display = '';
       contentDiv.appendChild(errorDiv);
       uiModule.scrollHistory();
@@ -7338,6 +7367,16 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
         ? 'Sending removes the reply below.' : 'Sending removes the message below.';
     }
     return `Sending removes the ${counted.length} messages below.`;
+  }
+
+  /** `P23-04` (CHAT-M-13). *Retry* on a failed reply: the chat's last
+   *  message is sent again in its place — the Regenerate path, which trims the
+   *  chat to it first, so it is not asked twice. */
+  function _retryLastTurn() {
+    const box = document.getElementById('chat-history');
+    const users = box ? Array.from(box.querySelectorAll('.msg-user')) : [];
+    const last = users[users.length - 1];
+    if (last) resendUserMessage(last, { replaceFromHere: true });
   }
 
   export async function editUserMessage(userMsgElement) {
