@@ -60,4 +60,4 @@ PyMuPDF==1.28.2
 # test_one_office_register_across_both_doors, test_personal_docs_office_index
 # and test_attachment_extension_registers — give 195 passed on 0.1.7 and 195
 # passed on 0.1.6. Same files, same count, no new failure.
-markitdown[docx,pptx,xlsx,xls]==0.1.8
+markitdown[docx,pptx,xlsx,xls]==0.1.7

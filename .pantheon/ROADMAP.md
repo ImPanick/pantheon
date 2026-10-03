@@ -83,8 +83,8 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P20 | The workstation | 7 | 0 | 0 | **7** |
 | P21 | Documents, kept in order | 4 | 0 | 0 | **4** |
 | P22 | The Workbench | 25 | 7 | 0 | **18** |
-| Backlog | Bugs and hardening found in flight | 694 | 248 | 0 | **446** |
-| **Total** | | **1116** | **303** | **7** | **806** |
+| Backlog | Bugs and hardening found in flight | 696 | 248 | 0 | **446** |
+| **Total** | | **1118** | **303** | **7** | **806** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -21403,8 +21403,8 @@ this is the same thing happening to the row that corrected the store.
 
 - [ ] **B1114** **The workflow's chat is named after the step that made it, and holds a later step's write-up.** MEASURED (P22-05): the chat "[Task] Morning inbox brief · Summarise my inbox" holds only step 2's ("Write the summary up as a short message to me.") exchange. INFERRED from the code: step 1 (no delivery) made the chat in `_execute_llm_task`'s "Ensure a session exists", under its own stand-in name, and `_keep_workflow_chat` (Slice B) left it on the trigger for step 2. `Verify:` the chat a workflow writes into is named for the workflow. — found by `integrate-d`
 
-- [ ] **B1115** **The Brain picture moves 4 px between captures, so a release-day capture rewrites `brain-*.png` with nothing changed.** MEASURED: three captures on one tree - dark rewritten 2 of 2 (2.5 %, content shifted 4 px), light 1 of 2, the shift's direction differing; best-shift residue 0.27-0.54 vs 5-6 unshifted. INFERRED: the Brain body's horizontal position at capture time is not settled. `Verify:` two captures in a row keep `brain-*.png`. - found by `integrate-d`
+- [ ] **B1115** **The Brain picture moves 4 px between captures, so a release-day capture rewrites `brain-*.png` with nothing changed.** MEASURED: three captures on one tree — dark rewritten 2 of 2 (2.5 %, content shifted 4 px), light 1 of 2, the shift's direction differing; best-shift residue 0.27–0.54 vs 5–6 unshifted. INFERRED: the Brain body's horizontal position at capture time is not settled. `Verify:` two captures in a row keep `brain-*.png`. — found by `integrate-d`
 
-- [·] **B1116** **Dependabot grouped MCP 2.2.0 with six unrelated Python bumps despite the v1-only server contract.** PR #9's CI fails at `Server.list_tools` during schema checking and five test collections. Keep major MCP updates out of the pip group until a coordinated migration, and carry the other bumps separately. `Verify:` the MCP compatibility tests, full pytest CI, and Dependabot's pip policy agree. - found in PR #9 - agent:`codex-deps`
+- [·] **B1116** **Dependabot grouped MCP 2.2.0 with six unrelated Python bumps despite the v1-only server contract.** PR #9's CI fails at `Server.list_tools` during schema checking and five test collections. Keep major MCP updates out of the pip group until a coordinated migration, and carry eligible bumps separately. `Verify:` the MCP compatibility tests, full pytest CI, and Dependabot's pip policy agree. - found in PR #9 - agent:`codex-deps`
 
 - [·] **B1117** **The secret scan rejects fake credentials used by regression tests.** PRs #8-#10 report three redaction fixtures; a new scan on the current main history reports four more findings in Integration and staged-file tests. Excuse only the six proven fixture literals, retaining default scanner rules and coverage for longer tokens. `Verify:` the allowlist honesty tests and full-history gitleaks job pass. - found in PR #9's Secret scan and PR #12's first run - agent:`codex-deps`
