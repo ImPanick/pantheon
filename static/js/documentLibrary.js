@@ -2097,6 +2097,7 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
   }
 
   export function openLibrary(opts) {
+    if (window.pantheonToolDoor && !window.pantheonToolDoor('library')) return;   // `P23-03`: the Library's door
     if (_libraryOpen) {
       // Recover from stuck state: the swipe-to-dismiss in ui.js adds .hidden
       // to the modal without calling closeLibrary, so _libraryOpen can stay

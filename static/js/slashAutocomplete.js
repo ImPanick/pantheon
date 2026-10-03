@@ -5,6 +5,9 @@
 
 import { COMMANDS, LEGACY_ALIASES } from './slashCommands.js?v=20260815approvalsave1';
 import { topPortalZ } from './toolWindowZOrder.js';
+// `P23-03`. Same specifier `app.js` imports it by (no query), so this is the
+// page's one instance of the table and its state.
+import { toolKeyFor, toolShown } from './ui_visibility.js';
 
 const POPUP_ID = 'slash-autocomplete';
 const MAX_VISIBLE = 14;
@@ -80,7 +83,7 @@ function _flatten() {
     }
   }
 
-  return out;
+  return out.filter(_offered);
 }
 
 /**
@@ -91,6 +94,17 @@ function _flatten() {
  */
 export function slashCatalog() {
   return _flatten();
+}
+
+/** `P23-03` (SET-M-2). A command for a tool switched off — for everyone, for
+ *  this person or in this browser — is not offered: `/brain` and
+ *  `/tour-brain` were listed (and opened the Brain) for a person whose admin
+ *  had taken the Brain away. The token's command word is looked up in the one
+ *  table (`ui_visibility.js`). */
+function _offered(entry) {
+  const word = String(entry.token || '').replace(/^\//, '').split(' ')[0];
+  const key = toolKeyFor({ slash: word });
+  return !key || toolShown(key);
 }
 
 /**

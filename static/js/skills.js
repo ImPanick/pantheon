@@ -3851,6 +3851,7 @@ function _wireSkillsWindow() {
 
 /** Open the Skills window on `view` ('browse' | 'add'), or bring it forward. */
 export async function openSkillsWindow(view) {
+  if (window.pantheonToolDoor && !window.pantheonToolDoor('brain')) return false;   // `P23-03`: the Brain's door
   const modal = document.getElementById('skills-modal');
   if (!modal) return false;
   _wireSkillsWindow();

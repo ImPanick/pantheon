@@ -46,6 +46,7 @@ import settingsModule from './settings.js?v=20261003waveg';
 import { doorShown, isMinimized, listWindows, showWindow } from './modalManager.js?v=20261003waveg';
 import { openSkillsWindow } from './skills.js';
 import { slashCatalog, insertSlashToken, loadSkillEntries, mergeSkillEntries } from './slashAutocomplete.js';
+import { toolKeyFor, toolShown } from './ui_visibility.js';
 import { SETTINGS_GROUPS, searchSettingsPanels } from './settings/registry.js';
 import { controlTextFor } from './settings/search.js';
 import { topPortalZ } from './toolWindowZOrder.js';
@@ -284,6 +285,11 @@ function _toolEntries(terms) {
   for (const w of listWindows()) {
     const door = _DOOR_FUNCTIONS[w.id];
     if (!w.door && !door) continue;
+    // `P23-03`. A window whose tool is switched off is not offered — Skills
+    // with the Brain taken away, Email hidden in this browser — whatever its
+    // door function would do (`ui_visibility.js`, the one table).
+    const tool = toolKeyFor({ window: w.id });
+    if (tool && !toolShown(tool)) continue;
     if (!w.door && _DOOR_SHOWN[w.id] && !_DOOR_SHOWN[w.id]()) continue;
     // The id's first word as well as the label, so the names people learned
     // still find the tool: "cookbook" finds Forge, "memory" finds Brain.
