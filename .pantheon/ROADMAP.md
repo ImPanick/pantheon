@@ -250,6 +250,7 @@ they are for.*
 ### Dependency blockers — draft PR #12
 `f2cf0c7..f1658a5`. **1118 tracked, 806 done. 0 new phase rows, 0 regressions. 0 rows closed; `B1116` and `B1117` filed.**
 MCP v2 is excluded from routine Dependabot bumps until migration; five eligible core bumps and the narrow fixture allowlist are in draft review.
+CI also exposed two pre-existing workstation test failures on non-root runners: the token test rewrote its own read-only fixture, and a second install overwrote read-only files copied from `/etc/skel`. Their scoped repair preserves token and skeleton modes; exact-head CI will verify the outcome.
 
 ### Workbench, wave D: Slices C and D — fields picked from a list, logic with no language, steps side by side, and steps that reach out
 `0e64d2b..c060c59`. **1116 tracked, 806 done. 0 new phase rows, 0 regressions. `P22-08`, `P22-09`, `P22-10`, `P22-11`, `P22-12`, `P22-13`, `P22-14`, `P22-15`, `P22-16`, `P22-17`, `P22-18`, `B674`, `B806`, `B1080`, `B1087`, `B1088`, `B1089`, `B1090`, `B1091`, `B1097` and `B1105` closed; `B1097` … `B1115` filed.**

@@ -116,7 +116,10 @@ files() {
         # A skeleton of the workstation's own on a machine whose /etc/skel is
         # not ours to change: the system's files first (.bashrc, .profile), so
         # a home made from it is the home the container image makes.
-        cp -a /etc/skel/. "$skel/"
+        # Replace even read-only files on a re-run. cp -a alone tries to open
+        # the old file for writing; --remove-destination unlinks it first and
+        # still preserves the source file's mode and contents.
+        cp -a --remove-destination /etc/skel/. "$skel/"
     fi
     cp -a "$HERE/skel/." "$skel/"
     if [ -n "$code" ]; then
