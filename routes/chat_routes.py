@@ -89,6 +89,9 @@ from routes.chat_helpers import (
     build_chat_context,
     save_assistant_response,
     run_post_response_tasks,
+    needs_auto_name,
+    auto_name_session,
+    _spawn_bg,
     accumulate_token_usage,
     clean_thinking_for_save,
     shaping_stats,
@@ -242,6 +245,23 @@ def _reject_delegated_tool_approval(request: Request) -> None:
             "Tool approvals require an interactive session. "
             "API tokens cannot authorize a gated action.",
         )
+
+
+def _thinking_record(thinking_response: str, round_thinking: Optional[list] = None) -> dict:
+    """`P23-04` (CHAT-M-21, CHAT-M-16). What a reply keeps of its reasoning.
+
+    Each agent round's reasoning, in order (``round_thinking``), so a reload
+    draws a thinking block per round as the live stream did; and the whole as
+    one string (``thinking``), the rounds joined by a blank line. Measured on
+    `9560d50`: the rounds were concatenated with no separator ("…the rows.Reminders:
+    41 agree…") and a reload drew none of it. A reply with no rounds (Chat
+    mode) keeps the one string, as before. Empty when there was no reasoning.
+    """
+    rounds = [str(t or "").strip() for t in (round_thinking or [])]
+    if any(rounds):
+        return {"thinking": "\n\n".join(t for t in rounds if t), "round_thinking": rounds}
+    whole = str(thinking_response or "").strip()
+    return {"thinking": whole} if whole else {}
 
 
 def _mark_tool_approval_resolved(sess, approval_id: Any, decision: Any) -> bool:
@@ -2449,6 +2469,7 @@ def setup_chat_routes(
 
             full_response = ""
             thinking_response = ""
+            _round_thinking: list = []   # `P23-04` (CHAT-M-21): per agent round
             last_metrics = None
 
             # Foreground Chat and Agent requests share one explicit owner-aware
@@ -2958,8 +2979,8 @@ def setup_chat_routes(
                             if full_response:
                                 _commit_chat_compaction(_actual_candidate_index)
                                 _metrics_to_save = dict(last_metrics or {})
-                                if thinking_response.strip() and not _metrics_to_save.get("thinking"):
-                                    _metrics_to_save["thinking"] = thinking_response.strip()
+                                if not _metrics_to_save.get("thinking"):
+                                    _metrics_to_save.update(_thinking_record(thinking_response))
                                 _saved_id = save_assistant_response(
                                     sess, session_manager, session, full_response, _metrics_to_save,
                                     character_name=ctx.preset.character_name,
@@ -3002,8 +3023,16 @@ def setup_chat_routes(
                                 "requested_endpoint_label": _requested_route.get("endpoint_label"),
                             },
                         )
+                        # `P23-04` (CHAT-M-16). A stopped reply keeps the
+                        # reasoning it showed, and the chat still gets a name:
+                        # naming ran only on `[DONE]`, so a chat stopped on its
+                        # first turn was "scripted-demo 3:29:34 AM" for ever.
+                        if not _stopped_md.get("thinking"):
+                            _stopped_md.update(_thinking_record(thinking_response))
                         sess.add_message(ChatMessage("assistant", _stopped_content, metadata=_stopped_md))
                         session_manager.save_sessions()
+                        if not compare_mode and needs_auto_name(getattr(sess, "name", "")):
+                            _spawn_bg(auto_name_session(session_manager, sess))
                     raise
                 finally:
                     _active_streams.pop(session, None)
@@ -3135,6 +3164,11 @@ def setup_chat_routes(
                                     # them out of the saved reply (same as chat mode).
                                     if data.get("thinking"):
                                         thinking_response += data["delta"]
+                                        # `P23-04` (CHAT-M-21): kept per round.
+                                        _rt = max(int(_agent_rounds or 0), 1)
+                                        while len(_round_thinking) < _rt:
+                                            _round_thinking.append("")
+                                        _round_thinking[_rt - 1] += data["delta"]
                                     else:
                                         full_response += data["delta"]
                                         _stream_set(session, partial=full_response)
@@ -3319,8 +3353,8 @@ def setup_chat_routes(
                                 # The reply's figures are the last run's, so the
                                 # totals below count what they counted before.
                                 _metrics_to_save = dict(_reply)
-                                if thinking_response.strip() and not _metrics_to_save.get("thinking"):
-                                    _metrics_to_save["thinking"] = thinking_response.strip()
+                                if not _metrics_to_save.get("thinking"):
+                                    _metrics_to_save.update(_thinking_record(thinking_response, _round_thinking))
                                 _saved_id = save_assistant_response(
                                     sess, session_manager, session, _response_to_save, _metrics_to_save,
                                     character_name=ctx.preset.character_name,
@@ -3388,8 +3422,14 @@ def setup_chat_routes(
                                     ],
                                 },
                             )
+                            # `P23-04` (CHAT-M-16): the reasoning and the name,
+                            # as the chat-mode branch above keeps them.
+                            if not _stopped_md2.get("thinking"):
+                                _stopped_md2.update(_thinking_record(thinking_response, _round_thinking))
                             sess.add_message(ChatMessage("assistant", _stopped_content2, metadata=_stopped_md2))
                             session_manager.save_sessions()
+                            if not compare_mode and needs_auto_name(getattr(sess, "name", "")):
+                                _spawn_bg(auto_name_session(session_manager, sess))
                     except Exception:
                         logger.exception("Failed to save partial response on disconnect (session %s)", session)
                     raise

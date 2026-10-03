@@ -2353,8 +2353,11 @@ export async function materializePendingSession() {
 
     const incognitoChk = document.getElementById('incognito-toggle');
     const isIncognito = incognitoChk && incognitoChk.checked;
-    const base = (pending.modelId || 'model').split('/').pop();
-    const name = isIncognito ? 'Nobody' : `${base} ${new Date().toLocaleTimeString()}`;
+    // `P23-04` (CHAT-U-24). "New chat" until it is named (the server names it
+    // after its first reply, or its first stopped one — `needs_auto_name`).
+    // It was "scripted-demo 3:29:34 AM": a model and a clock, for ever on a
+    // turn that never finished. The model is in the row's tooltip.
+    const name = isIncognito ? 'Nobody' : 'New chat';
 
     const fd = new FormData();
     fd.append('name', name);

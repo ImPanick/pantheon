@@ -895,7 +895,9 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
   function _syncForegroundStreamGlobals() {
     const active = _getForegroundStreamState();
     // `P23-04` (CHAT-M-5): a resumed view on screen streams too.
-    isStreaming = !!active || _resumeHoldsButton.has(_currentSessionIdSafe());
+    let _sidNow = null;
+    try { _sidNow = sessionModule && sessionModule.getCurrentSessionId && sessionModule.getCurrentSessionId(); } catch (_) {}
+    isStreaming = !!active || !!(_sidNow && _resumeHoldsButton.has(_sidNow));
     currentAbort = active ? active.abortCtrl : null;
     currentHolder = active ? active.holder : null;
     _setForegroundChatBusy(!!active || !!_sendInFlight);
@@ -2362,6 +2364,8 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
     const _sendPerf = _createChatSendPerf();
     _sendInFlight = true;
     const approvalForSend = _pendingToolApproval;
+    // `P23-04` (CHAT-M-3): set when this send was a refusal the server took.
+    let _deniedApprovalRedraw = false;
     // `B81`. The verdict travels with the edge that raises the bar, so the bar
     // is never painted for a turn the composer already knows cannot take a
     // steer — instead of being painted here and withdrawn ~880 lines and one
@@ -4071,6 +4075,7 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
                 if (spinner && spinner.element) spinner.destroy();
                 if (!_isBg && roundHolder && roundHolder !== holder) roundHolder.remove();
                 if (!_isBg && holder) holder.remove();
+                if (String(json.decision || '').toLowerCase() === 'deny') _deniedApprovalRedraw = true;
                 continue;
               }
               if (json.delta) {
@@ -5816,6 +5821,15 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
           sessionModule.loadSessions();
         }
       }, 3000);
+      // `P23-04` (CHAT-M-3). A refusal is drawn from the record the server
+      // wrote before it answered: the call's row says *denied*, and the card's
+      // question, which stood where the reply would be, is not drawn as a
+      // reply. On screen it used to stay "Allow this task to continue?" with
+      // a tok/s footer, and the reload said "✓ done" for a call that never ran.
+      if (_deniedApprovalRedraw && sessionModule.getCurrentSessionId
+          && sessionModule.getCurrentSessionId() === streamSessionId) {
+        try { sessionModule.selectSession(streamSessionId, { keepSidebar: true, showLoading: false }); } catch (_) {}
+      }
       // Name the session whose stream just ended: the drain fires only items
       // queued from it, never whichever chat happens to be open now (P6-01).
       _drainQueuedAgentRequests(streamSessionId);
@@ -6521,12 +6535,13 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
     // send button is Stop — through the one state machine the live send uses
     // (`updateSubmitButton`), never a second copy. It stayed "+ New" for the
     // whole of a resumed reply, and nothing could stop it.
-    if (_currentSessionIdSafe() === sessionId) {
-      const _resumeBtn = document.querySelector('.send-btn');
-      if (_resumeBtn && _resumeBtn.dataset.mode !== 'streaming') {
-        _resumeHoldsButton.add(sessionId);
-        updateSubmitButton('streaming', _resumeBtn);
-      }
+    let _resumeTookButton = false;
+    const _resumeBtn = document.querySelector('.send-btn');
+    if (_resumeBtn && _resumeBtn.dataset.mode !== 'streaming'
+        && sessionModule.getCurrentSessionId && sessionModule.getCurrentSessionId() === sessionId) {
+      _resumeHoldsButton.add(sessionId);
+      updateSubmitButton('streaming', _resumeBtn);
+      _resumeTookButton = true;
     }
 
     const reader = res.body.getReader();
@@ -6577,7 +6592,7 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
       });
       meter.dispose();
       _resumingStreams.delete(sessionId);
-      _releaseResumeButton(sessionId);
+      if (_resumeTookButton) _releaseResumeButton(sessionId);
     };
 
     const renderDelta = () => {
@@ -6878,7 +6893,7 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
     if (docRound) _finishDocumentWritingStatus(docRound, true);
     // Stopped by the person: the server saved the partial reply, marked
     // stopped; the reload draws that record (and its Continue), not this view.
-    if (_resumeStopRequested.delete(sessionId)) rich = true;
+    if (_resumeTookButton && _resumeStopRequested.delete(sessionId)) rich = true;
     if (leftSession) { _removeViewFrom(holder); return true; }
 
     const onThisSession = sessionModule.getCurrentSessionId &&
@@ -8629,12 +8644,26 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
   // per-node listeners on every innerHTML rewrite was the source of the
   // "needs many clicks" bug.
   if (!window.__pantheon_thread_click_bound) {
+    // `P23-04` (CHAT-U-4). The header is a `role="button"` with a tab stop
+    // (`agentThread.js`), so Enter and Space open it as a click does — through
+    // this one handler, not a listener per row (`B56`).
+    document.body.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      const header = e.target && e.target.classList && e.target.classList.contains('agent-thread-header')
+        ? e.target : null;
+      if (!header) return;
+      e.preventDefault();
+      header.click();
+    });
     document.body.addEventListener('click', (e) => {
       const header = e.target.closest('.agent-thread-header');
       if (!header) return;
+      // A button inside the header (View screen) is its own action.
+      if (e.target.closest('button') && header.contains(e.target.closest('button'))) return;
       const node = header.closest('.agent-thread-node');
       if (!node) return;
       const opened = node.classList.toggle('open');
+      header.setAttribute('aria-expanded', opened ? 'true' : 'false');
       // `P5-08`: the thread's own control says "Expand all" or "Collapse all",
       // and opening the last shut card by hand is exactly when it goes stale.
       syncThreadToggleAll(node.closest('.agent-thread'));

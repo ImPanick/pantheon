@@ -11540,8 +11540,8 @@ body.fullwidth-chat .chat-history {
 .agent-thread-tool {
   font-weight: 600;
   color: var(--red);
-  text-transform: uppercase;
-  letter-spacing: 0.3px;
+  /* `P23-04` (COPY-U-8): the row says the tool's name — *Tasks · list* —
+     not its code name upper-cased (*MANAGE_TASKS*). */
   font-size: 0.9em;
 }
 /* `P4-12`. The action you personally stopped and allowed. Louder than the round

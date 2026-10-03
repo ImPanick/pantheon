@@ -293,6 +293,9 @@ def needs_auto_name(name: str) -> bool:
         return True
     if name.startswith("Chat:") or name == "Chat":
         return True
+    # `P23-04` (CHAT-U-24): what a chat is called until it is named.
+    if name == "New chat":
+        return True
     # Default frontend name: "modelname HH:MM:SS AM/PM"
     if re.match(r"^.+ \d{1,2}:\d{2}:\d{2}(\s*(AM|PM))?$", name, re.IGNORECASE):
         return True

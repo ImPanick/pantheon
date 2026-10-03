@@ -22,7 +22,7 @@ import { CHECKLIST_SURFACES, checklistProgress, stepChipClass } from './checklis
 import { buildAllowRuleChooser } from './trustLadder.js';
 // `P4-10`. Why the agent stopped itself — the same line the live stream draws.
 import { renderAgentStop, renderAgentNote, withdrawContinueOffers, compactionFromRecord } from './agentStops.js';
-import { applyAgentThreadNode, verifierCardOptions,
+import { applyAgentThreadNode, verifierCardOptions, approvalOutcome,
          blockedCardOptions, toolOutputPanesHtml, screenshotSummary } from './agentThread.js';
 import { prepBreakdownRows } from './agentMeter.js';   // P4-08
 
@@ -3814,6 +3814,25 @@ export function renderAskUserCard(payload, options) {
   return card;
 }
 
+/** `P23-04` (CHAT-M-8). Take away the row that asked for the approval with
+ *  this fingerprint, now that the call it asked about is drawn — and its thread
+ *  with it, when that row was all the thread held. */
+export function dropAskedTwin(box, digest) {
+  if (!box || !digest) return 0;
+  let dropped = 0;
+  box.querySelectorAll('.agent-thread-node').forEach((node) => {
+    if (!node.dataset || node.dataset.approvalDigest !== String(digest)) return;
+    const thread = node.parentNode;
+    node.remove();
+    dropped += 1;
+    if (thread && thread.classList && thread.classList.contains('agent-thread')
+        && !thread.querySelectorAll('.agent-thread-node').length) {
+      thread.remove();
+    }
+  });
+  return dropped;
+}
+
 /**
  * Add a message to the chat history.
  */
@@ -3897,12 +3916,29 @@ export function addMessage(role, content, modelName, metadata) {
       let firstMsgAi = null;
       let lastMsgAi = null;
 
+      // `P23-04` (CHAT-M-8). The call an approval let through is the first
+      // thing its continuation did, so it opens the turn's first round. It
+      // carries the round it was *asked* in, a round of the reply before, and
+      // grouped by that it was drawn after the answer that reports it.
+      const ownRounds = toolEvents.filter((ev) => ev && !ev.approval_digest)
+        .map((ev) => Number(ev.round ?? 1)).filter((n) => Number.isInteger(n));
+      const openingRound = ownRounds.length ? Math.min(...ownRounds) : 1;
       const toolsByRound = {};
       for (const ev of toolEvents) {
         const r = ev.round ?? 1;
-        if (!toolsByRound[r]) toolsByRound[r] = [];
-        toolsByRound[r].push(ev);
+        const bucket = ev.approval_digest ? openingRound : r;
+        if (!toolsByRound[bucket]) toolsByRound[bucket] = [];
+        toolsByRound[bucket].push(ev);
       }
+      // `P23-04` (CHAT-M-21). Each round's own reasoning, where the reply
+      // kept it per round; a record from before keeps one string for the
+      // turn, and it is drawn once, with the first round.
+      const roundThinking = Array.isArray(metadata.round_thinking) ? metadata.round_thinking : null;
+      const thinkingFor = (r) => {
+        if (r < 0) return '';
+        if (roundThinking) return String(roundThinking[r] || '').trim();
+        return r === 0 ? String(metadata.thinking || '').trim() : '';
+      };
 
       const toolRounds = Object.keys(toolsByRound).map(Number);
       const maxRound = Math.max(toolRounds.length ? Math.max(...toolRounds) : 0, roundTexts.length);
@@ -3928,8 +3964,9 @@ export function addMessage(role, content, modelName, metadata) {
         const txt = r >= 0
           ? resolveDocumentPlaceholderLinks((roundTexts[r] || '').trim(), metadata)
           : '';
+        const think = /<think\b/i.test(txt) ? '' : thinkingFor(r);
 
-        if (txt) {
+        if (txt || think) {
           const wrap = document.createElement('div');
           wrap.className = 'msg msg-ai' + (r > 0 ? ' msg-continuation' : '');
           const roleEl = document.createElement('div');
@@ -3985,7 +4022,10 @@ export function addMessage(role, content, modelName, metadata) {
           if (isLastTextRound && metadata?.rag_sources?.length) {
             agentFindingsSuffix += buildRagSourcesBox(metadata.rag_sources);
           }
-          body.innerHTML = agentSourcesPrefix + markdownModule.processWithThinking(markdownModule.squashOutsideCode(txt)) + agentFindingsSuffix;
+          // `P23-04` (CHAT-M-21): the round's reasoning, drawn as the live
+          // stream drew it — a thinking block above the round's words.
+          const shownTxt = think ? '<think>' + think + '</think>\n\n' + txt : txt;
+          body.innerHTML = agentSourcesPrefix + markdownModule.processWithThinking(markdownModule.squashOutsideCode(shownTxt)) + agentFindingsSuffix;
           wrap.appendChild(body);
           wrap.dataset.raw = txt;
           if (metadata?._db_id) wrap.dataset.dbId = metadata._db_id;
@@ -4012,7 +4052,16 @@ export function addMessage(role, content, modelName, metadata) {
             if (ev.ask_user && !ev.ask_user.resolved) {
               pendingAskUser = askUserWithEffects(ev);
             }
+            // `P23-04` (CHAT-M-8). The approved call takes the place of the
+            // row that asked for it: one row per call, not the same call twice.
+            if (ev.approval_digest) dropAskedTwin(box, ev.approval_digest);
             const ok = (ev.exit_code === 0 || ev.exit_code == null);
+            // `P23-04` (CHAT-M-3, CHAT-M-24). A call that asked for approval
+            // never ran, so its `ok` says nothing: it is *waiting* until
+            // answered and *denied* when refused — read from the event's own
+            // `ask_user.resolved`, which the server writes when it is answered.
+            const outcome = approvalOutcome(ev);
+            const asked = outcome && ev.ask_user && ev.ask_user.action ? ev.ask_user.action : null;
             // `P4-19`: the same builder the live path uses. This was the
             // second copy of the merged-pane markup.
             let outHtml = toolOutputPanesHtml(ev);
@@ -4048,7 +4097,12 @@ export function addMessage(role, content, modelName, metadata) {
                 // `P20-03`: persisted with the event, so a reload says where it ran.
                 ranIn: ev.ran_in, ranAs: ev.ran_as,
                 command: ev.command, fullCommand: ev.full_command,
-                output: outHtml, diff: evDiffHtml, todo: evTodoHtml,
+                // A call that never ran has no output to show; the gate's own
+                // "Waiting for an exact user approval." is not one.
+                output: outcome ? '' : outHtml, diff: evDiffHtml, todo: evTodoHtml,
+                outcome: outcome || undefined,
+                approvalDigest: asked ? asked.digest : undefined,
+                approvalId: outcome && ev.ask_user ? ev.ask_user.approval_id : undefined,
               });
             // Click handling is delegated globally \u2014 see chat.js init.
             threadWrap.appendChild(node);
@@ -4110,9 +4164,15 @@ export function addMessage(role, content, modelName, metadata) {
       }
 
       const firstWrap = lastMsgAi || lastWrap;
+      // `P23-04` (CHAT-M-3). A turn that paused at an approval card and wrote
+      // nothing is not a reply: the card's question was saved in its place
+      // (so the model sees it was asked), and drawing a reply's footer under
+      // it — tokens per second, copy, regenerate — made it read as one.
+      const pausedAtApproval = toolEvents.some((ev) => approvalOutcome(ev))
+        && !roundTexts.some((t) => String(t || '').trim());
       // Not on a bubble an earlier run's footer is already under (a last run
       // that wrote nothing): one bubble, one footer.
-      if (firstWrap && firstWrap.classList.contains('msg-ai') && !firstWrap.querySelector('.msg-footer')) {
+      if (!pausedAtApproval && firstWrap && firstWrap.classList.contains('msg-ai') && !firstWrap.querySelector('.msg-footer')) {
         footWith(firstWrap, metadata);
       }
 
