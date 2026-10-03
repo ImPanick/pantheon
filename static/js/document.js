@@ -16,7 +16,7 @@ import { langIcon } from './langIcons.js';
 import spinnerModule from './spinner.js';
 import { openLibrary, closeLibrary, isLibraryOpen, initLibrary, importFileAsDocuments } from './documentLibrary.js';
 import signatureModule from './signature.js';
-import * as Modals from './modalManager.js?v=20261002workbenchef';
+import * as Modals from './modalManager.js?v=20261003waveg';
 import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
 import { _matchesCombo } from './keyboard-shortcuts.js';   // H20: Find reads the registry
 import { topPortalZ } from './toolWindowZOrder.js';

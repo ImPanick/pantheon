@@ -8,7 +8,7 @@ import spinnerModule from './spinner.js';
 import { makeWindowDraggable } from './windowDrag.js';
 import { snapModalToZone } from './tileManager.js';
 import { topPortalZ } from './toolWindowZOrder.js';
-import { setBackgroundWork } from './modalManager.js?v=20261002workbenchef';
+import { setBackgroundWork } from './modalManager.js?v=20261003waveg';
 
 var escapeHtml = uiModule.esc;
 

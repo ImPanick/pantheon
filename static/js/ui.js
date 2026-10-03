@@ -6,7 +6,7 @@
  */
 
 import themeModule from './theme.js';
-import * as Modals from './modalManager.js?v=20261002workbenchef';
+import * as Modals from './modalManager.js?v=20261003waveg';
 import spinnerModule from './spinner.js';
 import { registerMenuDismiss, dismissTopMenu, dismissOrRemove } from './escMenuStack.js';
 import { nextToolWindowZ, topToolWindowZ, toolWindowZ } from './toolWindowZOrder.js';

@@ -21,7 +21,7 @@ import uiModule from './ui.js';
 import * as spinnerModule from './spinner.js';
 import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
 import { topPortalZ } from './toolWindowZOrder.js';
-import { setBackgroundWork } from './modalManager.js?v=20261002workbenchef';
+import { setBackgroundWork } from './modalManager.js?v=20261003waveg';
 import { PLAY_GLYPH, chevronIcon } from './icons.js';
 // `P22-17` / `P22-15` (wf-canvas). The gate card and `P8-18`'s sentence, shared
 // with the Workbench's workflow steps (one card, one sentence — `Law 14`).
@@ -3856,7 +3856,7 @@ export async function openSkillsWindow(view) {
   _wireSkillsWindow();
   if (view) _showSkillsView(_windowMount(), view);
   try {
-    const Modals = await import('./modalManager.js?v=20261002workbenchef');
+    const Modals = await import('./modalManager.js?v=20261003waveg');
     if (Modals.isMinimized('skills-modal')) Modals.restore('skills-modal');
     else Modals.openClosedWindow('skills-modal');
   } catch (_) {
