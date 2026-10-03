@@ -40,7 +40,7 @@
 # beside the pin. They are the reason the pin may not move past a boundary, and
 # deleting them would lose that reason.
 
-fastapi==0.141.1
+fastapi==0.142.2
 uvicorn==0.54.0
 python-multipart==0.0.32
 python-dotenv==1.2.3
@@ -56,7 +56,7 @@ pydantic-settings==2.15.0
 SQLAlchemy==2.1.1
 pypdf==6.19.0
 beautifulsoup4==4.15.0
-charset-normalizer==3.5.1
+charset-normalizer==3.5.2
 numpy==2.4.6
 # Vector store + local embeddings for RAG, semantic memory, and tool
 # selection. Used on core agent paths, so installed by default — the app
@@ -83,7 +83,7 @@ python-dateutil==2.9.0.post0
 # fetch across Radicale, Nextcloud, Apple, Fastmail; we'd be reinventing
 # the protocol without it.
 caldav==3.3.1
-cryptography==50.0.1
+cryptography==50.0.2
 bcrypt==5.0.0
 # Built-in servers use the v1 low-level Server decorator API. MCP SDK v2 is a
 # breaking rewrite, so keep fresh installs on the maintained v1 line until the
