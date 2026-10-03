@@ -10,6 +10,8 @@ import { snapModalToZone } from './tileManager.js';
 import { topPortalZ } from './toolWindowZOrder.js';
 import { setBackgroundWork } from './modalManager.js?v=20261003waveg';
 import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
+// C-NAV (`P23-01` builds it): `register(id, { getTab, setTab })`.
+import * as Modals from './modalManager.js?v=20261003waveg';
 
 var escapeHtml = uiModule.esc;
 
@@ -307,26 +309,35 @@ async function syncToggles({ fresh = false } = {}) {
   }
   refreshSkillGateHints();
 
-  // Reflect the header toggle into the sidebar dim + modal body opacity.
+  // Reflect the header toggle into the sidebar dim + the list's opacity.
+  // `BRAIN-U-11` (P23-02): the list only. It dimmed the whole `.memory-modal-
+  // body` — the tab strip, RAG, Add and Settings with it, none of which the
+  // switch touches — while the list itself stayed at full strength (measured).
   const headerToggle = document.getElementById('memory-enabled-header-toggle');
   if (headerToggle) {
-    const modalBody = document.querySelector('.memory-modal-body');
-    if (modalBody) modalBody.style.opacity = headerToggle.checked ? '' : '0.3';
+    const dimList = () => {
+      const list = document.getElementById('memory-list');
+      if (list) list.style.opacity = headerToggle.checked ? '' : '0.4';
+    };
+    dimList();
     reflectMemoryToggleInSidebar(headerToggle.checked);
     if (!headerToggle.dataset.boundUx) {
       headerToggle.dataset.boundUx = '1';
       headerToggle.addEventListener('change', () => {
-        if (modalBody) modalBody.style.opacity = headerToggle.checked ? '' : '0.3';
+        dimList();
         reflectMemoryToggleInSidebar(headerToggle.checked);
       });
     }
   }
 
-  // Same dim treatment for the Skills toggle — dims the skills panel when off.
+  // Same dim treatment for the Skills toggle — the list, not its toolbar
+  // (`BRAIN-U-11`).
   const skillsToggle = document.getElementById('skills-enabled-header-toggle');
   if (skillsToggle) {
-    const skillsPanel = document.querySelector('#skills-modal [data-skills-view-panel="browse"]');
-    const applyDim = () => { if (skillsPanel) skillsPanel.style.opacity = skillsToggle.checked ? '' : '0.3'; };
+    const applyDim = () => {
+      const list = document.getElementById('skills-list');
+      if (list) list.style.opacity = skillsToggle.checked ? '' : '0.4';
+    };
     applyDim();
     if (!skillsToggle.dataset.boundUx) {
       skillsToggle.dataset.boundUx = '1';
@@ -1534,7 +1545,7 @@ export function updateMemoryCount() {
   if (!h2Count && !tabCount) return;
   if (memoriesLoading || !memoriesKnown) {
     // `B1070`: "0 memories" before the store has answered is a guess.
-    if (h2Count) h2Count.textContent = memoriesError ? '' : 'loading...';
+    if (h2Count) h2Count.textContent = '';
     if (tabCount) tabCount.textContent = memoriesError ? '' : '...';
     return;
   }
@@ -1551,11 +1562,12 @@ export function updateMemoryCount() {
     visible = visible.filter(m => (m.category || 'fact') === activeCategory);
   }
 
-  const num = visible.length === scopeTotal ? `${scopeTotal}` : `${visible.length}/${scopeTotal}`;
-  // Header (next to the "Memories" title) reads "N memories", like the
-  // Documents header. The bare number still feeds any tab badge if present.
-  if (h2Count) h2Count.textContent = `${num} ${scopeTotal === 1 && visible.length === scopeTotal ? 'memory' : 'memories'}`;
-  if (tabCount) tabCount.textContent = num;
+  // `COPY-U-15` (P23-02). A count is said once: the tab carries it, and the
+  // header under it is bare — "Memories 7 memories" under a tab reading
+  // "Memories 7" was the same number twice. The header speaks only when a
+  // search or a category hides some, and then says how many of how many.
+  if (h2Count) h2Count.textContent = visible.length === scopeTotal ? '' : `${visible.length} of ${scopeTotal}`;
+  if (tabCount) tabCount.textContent = String(scopeTotal);
 }
 
 export async function addNewMemory() {
@@ -1914,6 +1926,94 @@ async function handleImportFile(file) {
   }
 }
 
+// ---- The Brain's tabs, and its door to Skills — `P23-02` ----
+
+const BRAIN_ID = 'memory-modal';
+
+/** The four tabs, in strip order. Scoped to the Brain: `.memory-tab` is also
+ *  the class of the Tasks, Skills and Workbench tabs. */
+function _brainTabs() {
+  const modal = document.getElementById(BRAIN_ID);
+  return modal ? Array.from(modal.querySelectorAll('.memory-tab[data-memory-tab]')) : [];
+}
+
+/** The tab on show: `browse` · `rag` · `add` · `settings` (C-NAV `getTab`). */
+export function getBrainTab() {
+  const on = _brainTabs().find((t) => t.classList.contains('active'));
+  return on ? on.dataset.memoryTab : 'browse';
+}
+
+/** Show one tab (C-NAV `setTab`). An unknown name is ignored rather than
+ *  emptying the window. Returns whether it is now on show. */
+export function showBrainTab(name, { focus = false } = {}) {
+  const tabs = _brainTabs();
+  const tab = tabs.find((t) => t.dataset.memoryTab === name);
+  if (!tab) return false;
+  for (const t of tabs) {
+    const on = t === tab;
+    t.classList.toggle('active', on);
+    t.setAttribute('aria-selected', on ? 'true' : 'false');
+    t.tabIndex = on ? 0 : -1;
+  }
+  const modal = document.getElementById(BRAIN_ID);
+  (modal ? Array.from(modal.querySelectorAll('.memory-tab-panel[data-memory-panel]')) : []).forEach((p) => {
+    p.classList.toggle('hidden', p.dataset.memoryPanel !== name);
+  });
+  if (focus) { try { tab.focus(); } catch (_) {} }
+  return true;
+}
+
+/** Left/Right walk the tabs (and wrap), Home/End jump to the ends; the panel
+ *  follows the focus — the Workbench's rooms do the same (`workbench.js`). */
+function _onBrainTabKey(e) {
+  const keys = { ArrowLeft: -1, ArrowRight: 1, Home: 'first', End: 'last' };
+  if (!(e.key in keys)) return;
+  const tabs = _brainTabs();
+  if (!tabs.length) return;
+  const i = Math.max(0, tabs.findIndex((t) => t.dataset.memoryTab === getBrainTab()));
+  const step = keys[e.key];
+  const next = step === 'first' ? 0 : step === 'last' ? tabs.length - 1
+    : (i + step + tabs.length) % tabs.length;
+  if (e.preventDefault) e.preventDefault();
+  showBrainTab(tabs[next].dataset.memoryTab, { focus: true });
+}
+
+/**
+ * `NAV-U-1` / `BRAIN-U-1` (P23-02) — the owner's example: Brain → RAG →
+ * Skills, then back. The Skills door opens the Skills window *from* the Brain
+ * (C-NAV: `from` is the opener's window id, `tab` its tab at that moment), so
+ * the window can say `← Brain` and closing it re-raises the Brain on that tab.
+ * The Brain's own tab is not touched: it used to switch to a Skills launcher
+ * card first, and the window then covered it — closing Skills landed on that
+ * card, and the Brain reopened on it next time (`NAV-M-14`).
+ */
+export async function openSkillsFromBrain(view = 'browse') {
+  const opts = { from: BRAIN_ID, tab: getBrainTab() };
+  const m = await import('./skills.js');
+  const mod = m.openSkillsWindow ? m : (m.default || {});
+  // The Brain tour points at the door without pressing it.
+  if (document.body.classList.contains('tour-active')) { mod.loadSkills?.(); return false; }
+  return mod.openSkillsWindow ? mod.openSkillsWindow(view, opts) : false;
+}
+
+/** C-NAV: the Brain is a window with tabs, so it gives `getTab` and `setTab`.
+ *  The rest is what `_AUTO_WIRE` registers it with on a minimize, so a
+ *  registration made here changes nothing else about the window. */
+function _registerBrainWindow() {
+  if (typeof Modals.register !== 'function') return;
+  if (typeof Modals.isRegistered === 'function' && Modals.isRegistered(BRAIN_ID)) return;
+  Modals.register(BRAIN_ID, {
+    sidebarBtnId: 'tool-memory-btn',
+    closeFn: () => {
+      const btn = document.getElementById('close-memory-modal');
+      if (btn) btn.click();
+    },
+    restoreFn: () => {},
+    getTab: getBrainTab,
+    setTab: (tab) => { showBrainTab(tab); },
+  });
+}
+
 // Utility aliases (canonical implementations live in uiModule)
 var showToast = uiModule.showToast;
 var showError = uiModule.showError;
@@ -1928,36 +2028,26 @@ document.addEventListener('DOMContentLoaded', () => {
   const memModal = document.getElementById('memory-modal');
   if (memModal && typeof MutationObserver === 'function') {
     new MutationObserver(() => {
-      if (!memModal.classList.contains('hidden')) loadMemoriesIfUnknown();
+      if (memModal.classList.contains('hidden')) return;
+      loadMemoriesIfUnknown();
+      // A dock chip's × forgets the window (`Modals.close`); the next open
+      // registers it again, so `getTab`/`setTab` are always there to read.
+      _registerBrainWindow();
     }).observe(memModal, { attributes: true, attributeFilter: ['class'] });
   }
 
-  // Memory modal tabs
-  document.querySelectorAll('.memory-tab[data-memory-tab]').forEach(tab => {
-    tab.addEventListener('click', () => {
-      const target = tab.dataset.memoryTab;
-      // Scoped to this tab strip: `.memory-tab` is also the class of the
-      // Tasks window's tabs and the Skills window's, and a document-wide
-      // toggle switched those off whenever a Brain tab was pressed.
-      const strip = tab.closest('.memory-tabs') || document;
-      strip.querySelectorAll('.memory-tab').forEach(t => t.classList.toggle('active', t === tab));
-      const brain = tab.closest('.memory-modal-body') || document;
-      brain.querySelectorAll('.memory-tab-panel[data-memory-panel]').forEach(p => {
-        p.classList.toggle('hidden', p.dataset.memoryPanel !== target);
-      });
-      // `P9-06`. Skills have their own window; this tab opens it. The tab
-      // still shows its card behind the window, and the Brain tour — which
-      // walks the tabs by clicking them — shows that card without opening
-      // the window over its own tooltip.
-      if (target === 'skills') {
-        import('./skills.js').then(m => {
-          const mod = m.openSkillsWindow ? m : (m.default || {});
-          if (document.body.classList.contains('tour-active')) mod.loadSkills?.();
-          else mod.openSkillsWindow?.('browse');
-        });
-      }
-    });
+  // Memory modal tabs — `BRAIN-U-8` (P23-02): a WAI-ARIA tablist, the same
+  // keys as the Skills window's and the Workbench's.
+  _brainTabs().forEach(tab => {
+    tab.addEventListener('click', () => showBrainTab(tab.dataset.memoryTab));
+    tab.addEventListener('keydown', _onBrainTabKey);
   });
+  // `NAV-U-1` (P23-02). The Brain's doors to Skills — beside the tabs, and on
+  // the Add tab — open the window with the Brain as its opener (C-NAV).
+  document.querySelectorAll('[data-brain-skills]').forEach(door => {
+    door.addEventListener('click', () => openSkillsFromBrain(door.getAttribute('data-brain-skills') || 'browse'));
+  });
+  _registerBrainWindow();
 
   const sortSelect = document.getElementById('memory-sort');
   if (sortSelect) {
@@ -2014,6 +2104,9 @@ const memoryModule = {
   loadMemories,
   loadMemoriesIfUnknown,
   markMemoriesStale,
+  getBrainTab,
+  showBrainTab,
+  openSkillsFromBrain,
   renderMemoryList,
   updateMemoryCount,
   addNewMemory,

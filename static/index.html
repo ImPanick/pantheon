@@ -405,26 +405,33 @@
     <div class="modal-content memory-modal-content" role="dialog" aria-label="Brain" style="background:var(--bg)">
       <div class="modal-header">
         <h4><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px"><path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"/><path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z"/><path d="M15 13a4.5 4.5 0 0 1-3-4 4.5 4.5 0 0 1-3 4"/></svg>Brain</h4>
-        <button class="close-btn" id="close-memory-modal" aria-label="Close memory modal">✖</button>
+        <button class="close-btn" id="close-memory-modal" aria-label="Close">✖</button>
       </div>
       <div class="modal-body memory-modal-body">
+        <!-- `P23-02` (`NAV-U-1`, `BRAIN-U-8`). Four real tabs, and Skills as a door
+             beside them: it opens the Skills window over the Brain, which stays
+             on the tab it was on (it used to switch to a launcher card that
+             the window then covered, so closing Skills landed there, not on
+             RAG). -->
         <div class="memory-tabs">
-          <button class="memory-tab active" data-memory-tab="browse"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px"><path d="M12 2a7 7 0 0 1 7 7c0 2.4-1.2 4.5-3 5.7V17a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2v-2.3C6.2 13.5 5 11.4 5 9a7 7 0 0 1 7-7z"/><line x1="10" y1="22" x2="14" y2="22"/></svg>Memories <span id="memory-count" class="memory-count" style="font-size:0.8em;opacity:0.6;font-weight:normal;margin-left:4px">0</span></button>
-          <button class="memory-tab" data-memory-tab="skills"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>Skills <span id="skills-count" class="memory-count" style="font-size:0.8em;opacity:0.6;font-weight:normal;margin-left:4px">0</span></button>
-          <button class="memory-tab" data-memory-tab="rag"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>RAG</button>
-          <button class="memory-tab" data-memory-tab="add"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>Add</button>
-          <button class="memory-tab" data-memory-tab="settings"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>Settings</button>
+          <div class="memory-tablist" role="tablist" aria-label="Brain">
+            <button type="button" class="memory-tab active" data-memory-tab="browse" id="memory-tab-browse" role="tab" aria-selected="true" aria-controls="memory-panel-browse" tabindex="0"><svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px"><path d="M12 2a7 7 0 0 1 7 7c0 2.4-1.2 4.5-3 5.7V17a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2v-2.3C6.2 13.5 5 11.4 5 9a7 7 0 0 1 7-7z"/><line x1="10" y1="22" x2="14" y2="22"/></svg>Memories <span id="memory-count" class="memory-count" style="font-size:0.8em;opacity:0.6;font-weight:normal;margin-left:4px">0</span></button>
+            <button type="button" class="memory-tab" data-memory-tab="rag" id="memory-tab-rag" role="tab" aria-selected="false" aria-controls="memory-panel-rag" tabindex="-1"><svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>RAG</button>
+            <button type="button" class="memory-tab" data-memory-tab="add" id="memory-tab-add" role="tab" aria-selected="false" aria-controls="memory-panel-add" tabindex="-1"><svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>Add</button>
+            <button type="button" class="memory-tab" data-memory-tab="settings" id="memory-tab-settings" role="tab" aria-selected="false" aria-controls="memory-panel-settings" tabindex="-1"><svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>Settings</button>
+          </div>
+          <button type="button" class="memory-skills-door" id="memory-skills-door" data-brain-skills="browse" aria-haspopup="dialog"><svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>Skills <span id="skills-count" class="memory-count" style="font-size:0.8em;opacity:0.6;font-weight:normal;margin-left:4px">0</span><svg aria-hidden="true" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-left:4px;opacity:0.7"><path d="M7 17 17 7"/><polyline points="8 7 17 7 17 16"/></svg></button>
         </div>
         <!-- ── Browse tab ── -->
-        <div class="memory-tab-panel" data-memory-panel="browse">
+        <div class="memory-tab-panel" data-memory-panel="browse" id="memory-panel-browse" role="tabpanel" aria-labelledby="memory-tab-browse">
           <div class="admin-card" style="display:flex;flex-direction:column;overflow:hidden;flex:1;min-height:0;">
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px;">
               <h2 style="display:flex;align-items:center;gap:6px;margin:0;padding:0;line-height:1;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--accent, var(--red));flex-shrink:0;"><path d="M12 2a7 7 0 0 1 7 7c0 2.4-1.2 4.5-3 5.7V17a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2v-2.3C6.2 13.5 5 11.4 5 9a7 7 0 0 1 7-7z"/><line x1="10" y1="22" x2="14" y2="22"/></svg>Memories <span id="memory-count-h2" class="memory-count" style="font-size:0.6em;opacity:0.6;font-weight:normal"></span></h2>
               <span style="flex:1"></span>
               <span class="admin-toggle-state"></span>
-              <label class="admin-switch" title="Include memories in chat context"><input type="checkbox" id="memory-enabled-header-toggle" checked /><span class="admin-slider"></span></label>
+              <label class="admin-switch" title="Use memories in chats"><input type="checkbox" id="memory-enabled-header-toggle" aria-label="Use memories in chats" checked /><span class="admin-slider"></span></label>
             </div>
-            <p class="memory-desc doclib-desc" style="margin-top:6px;">Long-term facts the AI remembers across chats — recall, edit, or curate.</p>
+            <p class="memory-desc doclib-desc" style="margin-top:6px;">What Pantheon remembers between chats.</p>
             <div class="memory-toolbar">
               <div class="memory-toolbar-row">
                 <div class="memory-sort-picker" id="memory-sort-picker" style="position:relative;">
@@ -441,8 +448,8 @@
                   </button>
                   <div class="memory-sort-menu" id="memory-sort-menu" role="listbox" hidden></div>
                 </div>
-                <button id="memory-tidy-btn" class="memory-toolbar-btn" title="AI tidy: deduplicate and clean up memories"><svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:-1px;margin-right:2px;color:var(--accent, var(--red));"><path d="M12 0L14.59 8.41L23 12L14.59 15.59L12 24L9.41 15.59L1 12L9.41 8.41Z"/></svg> Tidy</button>
-                <button id="memory-select-btn" class="memory-toolbar-btn" title="Select multiple memories" style="position:relative;left:-2px;"><svg class="memory-select-btn-icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:3px;"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"/></svg>Select</button>
+                <button id="memory-tidy-btn" class="memory-toolbar-btn" title="Merge duplicates, drop stale ones"><svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:-1px;margin-right:2px;color:var(--accent, var(--red));"><path d="M12 0L14.59 8.41L23 12L14.59 15.59L12 24L9.41 15.59L1 12L9.41 8.41Z"/></svg> Tidy</button>
+                <button id="memory-select-btn" class="memory-toolbar-btn" title="Select" style="position:relative;left:-2px;"><svg class="memory-select-btn-icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:3px;"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"/></svg>Select</button>
               </div>
               <!-- H11. Two questions, one box. "Contains" is the substring
                    filter this has always been. "Would fire" runs the real
@@ -452,7 +459,7 @@
                    (`POST /api/memory/debug`) and no caller anywhere. -->
               <div class="memory-search-row" style="display:flex;gap:6px;align-items:center;">
                 <input type="text" id="memory-search" placeholder="Search memories…" class="memory-search-input" aria-label="Search memories" style="flex:1;min-width:0;" />
-                <select id="memory-search-mode" class="memory-sort-select" aria-label="What the search box does" style="flex-shrink:0;">
+                <select id="memory-search-mode" class="memory-sort-select" aria-label="Search mode" style="flex-shrink:0;">
                   <option value="contains" selected>Contains</option>
                   <option value="fire">Would fire</option>
                 </select>
@@ -473,7 +480,7 @@
           </div>
         </div>
         <!-- ── Add tab ── -->
-        <div class="memory-tab-panel hidden" data-memory-panel="add">
+        <div class="memory-tab-panel hidden" data-memory-panel="add" id="memory-panel-add" role="tabpanel" aria-labelledby="memory-tab-add">
           <div class="admin-card">
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px;">
               <h2 style="margin:0;padding:0;line-height:1;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px;color:var(--accent, var(--red));"><path d="M12 2a7 7 0 0 1 7 7c0 2.4-1.2 4.5-3 5.7V17a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2v-2.3C6.2 13.5 5 11.4 5 9a7 7 0 0 1 7-7z"/><line x1="10" y1="22" x2="14" y2="22"/></svg>Add Memory</h2>
@@ -483,7 +490,7 @@
               <input type="file" id="memory-import-file" hidden />
             </div>
             <p class="memory-desc doclib-desc" style="margin:4px 0 6px;">
-              Import any text file, a PDF or a Word document &mdash; the AI reads it and suggests candidate memories you can approve.
+              Drop in a text, PDF or Word file and approve the memories it finds.
             </p>
             <div class="memory-add-row" style="margin-top:8px;">
               <div class="skill-ph-wrap" style="flex:1;min-width:0;">
@@ -494,89 +501,36 @@
               <button type="button" id="new-memory-add-btn" class="theme-io-btn" title="Save this memory" style="flex:none;height:28px;font-size:12px;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Add</button>
             </div>
           </div>
-          <!-- `P9-06`. Skills are added in their own window now; this card is
-               the door to it from where people have always looked. -->
+          <!-- `P9-06`, `NAV-U-13` (P23-02). The door to Skills › Add from where
+               people have always looked; what to paste is said beside the box. -->
           <div class="admin-card">
-            <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:2px;">
-              <h2 style="margin:0;padding:0;line-height:1;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px;color:var(--accent, var(--red));"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>Add Skill</h2>
-            </div>
-            <p class="memory-desc doclib-desc" style="margin-top:6px;">Skills are imported and written in the Skills window. Paste a skills.sh page, an <code>npx skills add …</code> line or a GitHub link there — a whole package comes in together — or write one by hand.</p>
-            <div style="display:flex;margin-top:8px;">
-              <button type="button" class="theme-io-btn" data-open-skills="add" style="height:28px;font-size:12px;">Open Skills — Add</button>
-            </div>
-          </div>
-        </div>
-        <!-- ── Skills tab ── -->
-        <div class="memory-tab-panel hidden" data-memory-panel="skills">
-          <!-- `P9-06`. The Brain's Skills tab opens the Skills window
-               (`#skills-modal`), which is where the list, its packages and
-               its groups live now. This card is what the tab shows behind it. -->
-          <div class="admin-card skills-launcher">
-            <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px;">
-              <h2 style="margin:0;padding:0;line-height:1;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px;color:var(--accent, var(--red));"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>Skills</h2>
-            </div>
-            <p class="memory-desc doclib-desc" style="margin-top:6px;">Skills have their own window, with the packages you import and the groups you make. <span id="skills-launcher-summary"></span></p>
-            <div style="display:flex;margin-top:8px;">
-              <button type="button" class="confirm-btn confirm-btn-primary" data-open-skills="browse">Open Skills</button>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <h2 style="margin:0;padding:0;line-height:1;"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px;color:var(--accent, var(--red));"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>Add a skill</h2>
+              <span style="flex:1"></span>
+              <button type="button" class="theme-io-btn" data-brain-skills="add" aria-haspopup="dialog" style="height:28px;font-size:12px;">Open Skills › Add</button>
             </div>
           </div>
         </div>
         <!-- ── RAG tab ── -->
-        <div class="memory-tab-panel hidden" data-memory-panel="rag">
+        <div class="memory-tab-panel hidden" data-memory-panel="rag" id="memory-panel-rag" role="tabpanel" aria-labelledby="memory-tab-rag">
           <div class="admin-card" style="display:flex;flex-direction:column;overflow:hidden;flex:1 1 0;min-height:0;">
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px;flex:0 0 auto;">
               <h2 style="display:flex;align-items:center;gap:6px;margin:0;padding:0;line-height:1;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--accent, var(--red));flex-shrink:0;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>RAG documents</h2>
             </div>
-            <p class="memory-desc doclib-desc" style="margin-top:6px;flex:0 0 auto;">Files the AI can search and quote from. Drop them here, then switch RAG on in the chat toolbar to use them in a reply.</p>
+            <p class="memory-desc doclib-desc" style="margin-top:6px;flex:0 0 auto;">Files Pantheon can quote. Turn on RAG in the chat bar to use them.</p>
+            <p id="rag-health" class="memory-desc rag-health" role="status" hidden style="flex:0 0 auto;margin-top:4px;color:var(--warn, var(--red));"></p>
             <button type="button" id="rag-upload-zone" class="rag-upload-zone" style="width:100%;display:block;flex:0 0 auto;background:none;font-family:inherit;line-height:1.4;">Drop files here or click to upload</button>
             <input type="file" id="rag-file-input" multiple hidden />
             <div id="docs-view" class="memory-list" style="margin-top:8px;"></div>
           </div>
         </div>
         <!-- ── Settings tab ── -->
-        <div class="memory-tab-panel hidden" data-memory-panel="settings">
+        <div class="memory-tab-panel hidden" data-memory-panel="settings" id="memory-panel-settings" role="tabpanel" aria-labelledby="memory-tab-settings">
           <div class="admin-card">
             <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:32px">
               <h2 style="margin:0;display:inline-flex;align-items:center;gap:6px"><svg width="13" height="13" viewBox="0 0 24 24" fill="var(--accent, var(--red))" aria-hidden="true"><path d="M12 0L14.59 8.41L23 12L14.59 15.59L12 24L9.41 15.59L1 12L9.41 8.41Z"/></svg>Auto-extract memories</h2>
-              <label class="admin-switch" style="flex-shrink:0"><input type="checkbox" id="auto-memory-toggle" checked /><span class="admin-slider"></span></label>
+              <label class="admin-switch" style="flex-shrink:0"><input type="checkbox" id="auto-memory-toggle" aria-label="Auto-extract memories" checked /><span class="admin-slider"></span></label>
             </div>
-            <span class="admin-toggle-sub" style="display:block;margin-top:6px">Automatically extract memories from conversations.</span>
-          </div>
-          <div class="admin-card">
-            <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:32px">
-              <h2 style="margin:0;display:inline-flex;align-items:center;gap:6px"><svg width="13" height="13" viewBox="0 0 24 24" fill="var(--accent, var(--red))" aria-hidden="true"><path d="M12 0L14.59 8.41L23 12L14.59 15.59L12 24L9.41 15.59L1 12L9.41 8.41Z"/></svg>Auto-extract skills</h2>
-              <label class="admin-switch" style="flex-shrink:0"><input type="checkbox" id="auto-skills-toggle" /><span class="admin-slider"></span></label>
-            </div>
-            <span class="admin-toggle-sub" style="display:block;margin-top:6px;opacity:0.6">Automatically draft reusable skills from your workflows. Audit all can publish passing skills using the threshold below.</span>
-            <span class="admin-toggle-sub" style="display:block;margin-top:6px;opacity:0.6">The library can grow; cleanup retires weak/duplicate skills only after review.</span>
-          </div>
-          <div class="admin-card">
-            <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:32px">
-              <h2 style="margin:0;display:inline-flex;align-items:center;gap:6px"><svg width="13" height="13" viewBox="0 0 24 24" fill="var(--accent, var(--red))" aria-hidden="true"><path d="M12 0L14.59 8.41L23 12L14.59 15.59L12 24L9.41 15.59L1 12L9.41 8.41Z"/></svg>Auto-approve skills</h2>
-              <label class="admin-switch" style="flex-shrink:0"><input type="checkbox" id="auto-approve-skills-toggle" checked /><span class="admin-slider"></span></label>
-            </div>
-            <span class="admin-toggle-sub" style="display:block;margin-top:6px;opacity:0.6">Audit all publishes passing, necessary skills at or above this confidence. Off = keep audit results as drafts unless manually approved.</span>
-            <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:6px">
-              <span class="admin-toggle-sub" style="margin:0">Minimum confidence</span>
-              <span style="display:flex;align-items:center;gap:8px;flex-shrink:0">
-                <span id="skill-confidence-label" class="admin-toggle-sub" style="margin:0;min-width:42px;text-align:right;font-variant-numeric:tabular-nums">&ge; 85%</span>
-                <input type="range" id="skill-confidence-slider" class="preset-range" min="45" max="100" step="5" value="85" aria-describedby="skill-confidence-hint" style="width:120px;margin:0" />
-              </span>
-            </div>
-            <span class="admin-toggle-sub" id="skill-confidence-hint" style="display:block;margin-top:6px;opacity:0.6"></span>
-            <span class="admin-toggle-sub" id="skill-approve-coupling" style="display:block;margin-top:6px;opacity:0.6"></span>
-          </div>
-          <div class="admin-card">
-            <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:32px">
-              <h2 style="margin:0;display:inline-flex;align-items:center;gap:6px"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="opacity:0.7"><path d="M12 5v14"/><polyline points="6 11 12 17 18 11"/><path d="M5 20h14"/></svg>Inject Skills</h2>
-            </div>
-            <span class="admin-toggle-sub" style="display:block;margin-top:6px;opacity:0.6">Controls how many relevant published or approved skills are added to each agent request.</span>
-            <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:8px">
-              <span class="admin-toggle-sub" style="margin:0">Max skills per request</span>
-              <input type="number" id="skill-max-input" min="0" max="12" step="1" value="3" aria-label="Max skills to inject" style="flex-shrink:0;width:72px;background:var(--input-bg,var(--panel));color:var(--fg);border:1px solid var(--border);border-radius:6px;padding:4px 6px;font-size:12px;text-align:right;font-variant-numeric:tabular-nums" />
-            </div>
-            <span class="admin-toggle-sub" style="display:block;margin-top:6px;opacity:0.5">Set to 0 to disable skill injection.</span>
-            <span class="admin-toggle-sub skill-gate-note" style="display:block;margin-top:8px;opacity:0.6">A skill reaches the AI as untrusted text, the same as a web page or an email does &mdash; because you, or a teacher model, wrote it and it can say anything. So any reply a skill is injected into asks you first before anything that writes, runs, sends or deletes. That is also why testing a skill can stop halfway and wait for you.</span>
           </div>
         </div>
       </div>
@@ -601,6 +555,7 @@
           <div class="memory-tabs skills-view-tabs" role="tablist">
             <button type="button" class="memory-tab active" data-skills-view="browse" role="tab" aria-selected="true"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>Skills</button>
             <button type="button" class="memory-tab" data-skills-view="add" role="tab" aria-selected="false"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>Add</button>
+            <button type="button" class="memory-tab" data-skills-view="settings" role="tab" aria-selected="false"><svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.2 4.2l2.8 2.8M17 17l2.8 2.8M1 12h4M19 12h4M4.2 19.8 7 17M17 7l2.8-2.8"/></svg>Settings</button>
           </div>
           <div class="memory-tab-panel skills-view" data-skills-view-panel="browse">
               <div class="admin-card" style="display:flex;flex-direction:column;overflow:hidden;flex:1;min-height:0;">
@@ -608,33 +563,34 @@
                   <h2 style="display:flex;align-items:center;gap:6px;margin:0;padding:0;line-height:1;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--accent, var(--red));flex-shrink:0;"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>Skills <span id="skills-count-h2" class="memory-count" style="font-size:0.6em;opacity:0.6;font-weight:normal"></span></h2>
                   <span style="flex:1"></span>
                   <span class="admin-toggle-state"></span>
-                  <label class="admin-switch" title="Inject relevant skills into chat context"><input type="checkbox" id="skills-enabled-header-toggle" checked /><span class="admin-slider"></span></label>
+                  <label class="admin-switch" title="Use skills in chats"><input type="checkbox" id="skills-enabled-header-toggle" aria-label="Use skills in chats" checked /><span class="admin-slider"></span></label>
                 </div>
-                <p class="memory-desc doclib-desc" style="margin-top:6px;">Reusable procedures the AI can call via /skill — sort by confidence to surface the proven ones.</p>
+                <p class="memory-desc doclib-desc" style="margin-top:6px;">Procedures Pantheon can follow.</p>
                 <div class="memory-toolbar">
                   <div class="memory-toolbar-row">
-                    <select id="skills-sort" class="memory-sort-select">
-                      <optgroup label="Sort">
-                        <option value="sort:confidence">Confidence</option>
-                        <option value="sort:uses">Most used</option>
-                        <option value="sort:mentions">Most said</option>
-                        <option value="sort:alpha">A-Z</option>
-                        <option value="sort:recent">Recent</option>
-                      </optgroup>
-                      <optgroup label="Filter">
-                        <option value="filter:all">All skills</option>
-                        <option value="filter:drafts">Uncatalogued only</option>
-                        <option value="filter:published">Published only</option>
-                        <option value="filter:conf95">Confidence ≤ 95%</option>
-                        <option value="filter:conf90">Confidence ≤ 90%</option>
-                        <option value="filter:conf85">Confidence ≤ 85%</option>
-                        <option value="filter:conf80">Confidence ≤ 80%</option>
-                        <option value="filter:conf75">Confidence ≤ 75%</option>
-                        <option value="filter:conf70">Confidence ≤ 70%</option>
-                      </optgroup>
+                    <!-- `BRAIN-U-5` (P23-02). Sort and filter are two controls: in one
+                         dropdown, picking a sort hid the filter that was still
+                         applied, and an emptied list said "No skills yet". -->
+                    <select id="skills-sort" class="memory-sort-select" aria-label="Sort skills">
+                      <option value="sort:confidence">Confidence</option>
+                      <option value="sort:uses">Most used</option>
+                      <option value="sort:mentions">Most said</option>
+                      <option value="sort:alpha">A-Z</option>
+                      <option value="sort:recent">Recent</option>
                     </select>
-                    <button id="skills-audit-btn" class="memory-toolbar-btn" title="Test every skill, auto-fix the weak ones, flag what still fails"><svg width="11" height="11" viewBox="0 0 24 24" fill="var(--accent, var(--red))" style="vertical-align:-1px;margin-right:3px;"><path d="M12 0L14.59 8.41L23 12L14.59 15.59L12 24L9.41 15.59L1 12L9.41 8.41Z"/></svg>Audit</button>
-                    <button id="skills-preview-btn" class="memory-toolbar-btn" title="Show the catalogue of skills exactly as the AI is handed it"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px;"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg>Prompt preview</button>
+                    <select id="skills-filter" class="memory-sort-select" aria-label="Filter skills">
+                      <option value="filter:all">All skills</option>
+                      <option value="filter:drafts">Drafts only</option>
+                      <option value="filter:published">Published only</option>
+                      <option value="filter:conf95">Confidence ≤ 95%</option>
+                      <option value="filter:conf90">Confidence ≤ 90%</option>
+                      <option value="filter:conf85">Confidence ≤ 85%</option>
+                      <option value="filter:conf80">Confidence ≤ 80%</option>
+                      <option value="filter:conf75">Confidence ≤ 75%</option>
+                      <option value="filter:conf70">Confidence ≤ 70%</option>
+                    </select>
+                    <button id="skills-audit-btn" class="memory-toolbar-btn" title="Test every skill; fix or flag the weak ones"><svg width="11" height="11" viewBox="0 0 24 24" fill="var(--accent, var(--red))" style="vertical-align:-1px;margin-right:3px;"><path d="M12 0L14.59 8.41L23 12L14.59 15.59L12 24L9.41 15.59L1 12L9.41 8.41Z"/></svg>Audit</button>
+                    <button id="skills-preview-btn" class="memory-toolbar-btn" title="What the model is shown"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px;"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg>Prompt preview</button>
                     <button id="skills-select-btn" class="memory-toolbar-btn" title="Select multiple skills"><svg class="memory-select-btn-icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:3px;"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"/></svg>Select</button>
                   </div>
                   <input type="text" id="skills-search" placeholder="Search skills…" class="memory-search-input" aria-label="Search skills" />
@@ -644,10 +600,10 @@
                 <div id="skills-bulk-bar" class="memory-bulk-bar hidden">
                   <label class="memory-bulk-check-all" style="position:relative;top:0px;"><input type="checkbox" id="skills-select-all" /> All</label>
                   <span id="skills-selected-count">0 Selected</span>
-                  <button id="skills-bulk-publish" class="memory-toolbar-btn" disabled title="Publish selected drafts" style="margin-left:auto;"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px;"><polyline points="20 6 9 17 4 12"/></svg>Approve</button>
+                  <button id="skills-bulk-publish" class="memory-toolbar-btn" disabled style="margin-left:auto;"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px;"><polyline points="20 6 9 17 4 12"/></svg>Publish</button>
                   <button id="skills-bulk-audit" class="memory-toolbar-btn" disabled title="Audit selected draft skills"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px;"><polygon points="5 3 19 12 5 21 5 3"/></svg>Audit</button>
                   <button id="skills-bulk-group" class="memory-toolbar-btn" disabled title="Add the selected skills to a group"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px;"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>Group</button>
-                  <button id="skills-bulk-delete-nonpassing" class="memory-toolbar-btn danger" disabled title="Delete the selected skills that are duplicates, generic or irrelevant, or that failed an audit. Skills that have not been audited yet are never included. You can undo it."><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px;"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11l4 4"/><path d="M14 11l-4 4"/></svg>Delete non passing</button>
+                  <button id="skills-bulk-delete-nonpassing" class="memory-toolbar-btn danger" disabled title="Delete the selected skills that failed their audit. Undo available."><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px;"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11l4 4"/><path d="M14 11l-4 4"/></svg>Delete non passing</button>
                   <button id="skills-bulk-delete" class="memory-toolbar-btn danger" disabled><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px;"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>Delete</button>
                   <button id="skills-bulk-cancel" class="memory-toolbar-btn" title="Cancel (Esc)" style="padding:3px 6px;"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
                 </div>
@@ -659,7 +615,7 @@
                 <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:2px;">
                   <h2 style="margin:0;padding:0;line-height:1;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px;color:var(--accent, var(--red));"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>Add Skill</h2>
                 </div>
-                <p class="memory-desc doclib-desc" style="margin-top:6px;">Import skills from <a href="https://skills.sh" target="_blank" rel="noopener noreferrer">skills.sh</a> or GitHub. A skills.sh page, the <code>npx skills add …</code> line it shows, or a repository link brings the <b>whole package</b> — every skill in it, filed together under its sections. A link to one skill's folder brings just that skill.</p>
+                <p class="memory-desc doclib-desc" style="margin-top:6px;">Paste a <a href="https://skills.sh" target="_blank" rel="noopener noreferrer">skills.sh</a> page, an <code>npx skills add …</code> line or a GitHub link. A repository brings the whole package; a folder brings one skill.</p>
                 <div class="memory-add-row" style="margin-top:6px;margin-bottom:10px;">
                   <div class="skill-ph-wrap" style="flex:1;min-width:0;">
                     <input type="text" inputmode="url" autocomplete="off" spellcheck="false" id="skill-import-url" placeholder=" " class="memory-add-input skill-hint-input" aria-label="Skill link or install line" />
@@ -674,7 +630,7 @@
                 <!-- `P22-23`. Draft from a description: the model fills the form
                      below from a sentence (`POST /api/skills/draft`), and nothing
                      is saved until Add Skill. -->
-                <p class="memory-desc doclib-desc" style="margin-top:0;">Or describe it in a sentence, and the model fills in the form below for you to check.</p>
+                <p class="memory-desc doclib-desc" style="margin-top:0;">Or describe it; Pantheon drafts the form.</p>
                 <div class="memory-add-row skill-draft-row" style="margin-top:4px;margin-bottom:6px;">
                   <div class="skill-ph-wrap" style="flex:1;min-width:0;">
                     <textarea id="skill-draft-text" placeholder=" " rows="2" maxlength="2000" class="memory-add-input skill-hint-input" style="resize:vertical;" aria-label="Describe the skill in a sentence"></textarea>
@@ -683,14 +639,14 @@
                   <button type="button" id="skill-draft-btn" class="theme-io-btn" title="The model drafts the fields below. Nothing is saved until you press Add Skill." style="flex:none;height:28px;font-size:12px;">Draft from a description</button>
                 </div>
                 <p id="skill-draft-status" class="memory-desc skill-import-status" role="status" aria-live="polite" hidden></p>
-                <p class="memory-desc doclib-desc" style="margin-top:0;">Or create a skill by hand — name, description, when to use it, and the procedure.</p>
+                <p class="memory-desc doclib-desc" style="margin-top:0;">Or write it by hand.</p>
                 <div class="skill-ph-wrap" style="margin-top:4px;margin-bottom:6px;">
                   <input type="text" id="new-skill-name" placeholder=" " maxlength="80" class="memory-add-input skill-hint-input" aria-label="Skill name" />
                   <span class="skill-rich-ph"><span class="k">Name</span> — what /skill calls it, e.g. “build-vllm-wheel”</span>
                 </div>
                 <div class="skill-ph-wrap" style="margin-bottom:6px;">
                   <input type="text" id="new-skill-description" placeholder=" " maxlength="200" class="memory-add-input skill-hint-input" aria-label="Skill description" />
-                  <span class="skill-rich-ph"><span class="k">Description</span> — one line the AI reads when deciding to use it</span>
+                  <span class="skill-rich-ph"><span class="k">Description</span> — one line the model reads to decide when to use it</span>
                 </div>
                 <div class="skill-ph-wrap" style="margin-bottom:6px;">
                   <input type="text" id="new-skill-when" placeholder=" " class="memory-add-input skill-hint-input" aria-label="When to use this skill" />
@@ -722,7 +678,6 @@
                 </div>
                 <details class="skill-more">
                   <summary>More fields &mdash; pitfalls, verification, platforms, required tools</summary>
-                  <p class="memory-desc doclib-desc" style="margin:4px 0 8px;">All four are optional, and all four change what happens. <b>Pitfalls</b> go to the AI with the procedure. <b>Verification</b> is kept in the file and never sent &mdash; it is there for you and for the skill test to check against. <b>Platforms</b> and <b>required tools</b> hide the skill when they do not match.</p>
                   <div class="skill-ph-wrap" style="margin-bottom:6px;">
                     <textarea id="new-skill-pitfalls" placeholder=" " class="memory-add-input skill-hint-input" rows="2" style="resize:vertical;" aria-label="Pitfalls &mdash; one per line"></textarea>
                     <span class="skill-rich-ph skill-rich-ph-top"><span class="k">Pitfalls</span> &mdash; one per line; what usually goes wrong</span>
@@ -748,6 +703,47 @@
                 <div style="display:flex;justify-content:flex-end;">
                   <button id="add-skill-btn" class="confirm-btn confirm-btn-primary">Add Skill</button>
                 </div>
+              </div>
+          </div>
+          <!-- `BRAIN-U-10` (P23-02). The skill settings, where the skills are: they
+               stayed in the Brain's Settings when Skills moved out (`P9-06`), so
+               "why is my draft not used" was answered in another window. Same ids,
+               so `memory.js` reads and writes them as before; the Workbench's
+               Skills room stamps a copy that `skills.js` mirrors. -->
+          <div class="memory-tab-panel skills-view hidden" data-skills-view-panel="settings">
+              <div class="admin-card">
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:32px">
+                  <h2 style="margin:0;display:inline-flex;align-items:center;gap:6px"><svg width="13" height="13" viewBox="0 0 24 24" fill="var(--accent, var(--red))" aria-hidden="true"><path d="M12 0L14.59 8.41L23 12L14.59 15.59L12 24L9.41 15.59L1 12L9.41 8.41Z"/></svg>Auto-extract skills</h2>
+                  <label class="admin-switch" style="flex-shrink:0"><input type="checkbox" id="auto-skills-toggle" aria-label="Auto-extract skills" /><span class="admin-slider"></span></label>
+                </div>
+                <span class="admin-toggle-sub" style="display:block;margin-top:6px;opacity:0.6">Draft skills from what you do. Audit publishes the ones that pass.</span>
+              </div>
+              <div class="admin-card">
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:32px">
+                  <h2 style="margin:0;display:inline-flex;align-items:center;gap:6px"><svg width="13" height="13" viewBox="0 0 24 24" fill="var(--accent, var(--red))" aria-hidden="true"><path d="M12 0L14.59 8.41L23 12L14.59 15.59L12 24L9.41 15.59L1 12L9.41 8.41Z"/></svg>Auto-publish audited skills</h2>
+                  <label class="admin-switch" style="flex-shrink:0"><input type="checkbox" id="auto-approve-skills-toggle" aria-label="Auto-publish audited skills" checked /><span class="admin-slider"></span></label>
+                </div>
+                <span class="admin-toggle-sub" style="display:block;margin-top:6px;opacity:0.6">Publish audited skills at or above this confidence. Off keeps them drafts.</span>
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:6px">
+                  <span class="admin-toggle-sub" style="margin:0">Minimum confidence</span>
+                  <span style="display:flex;align-items:center;gap:8px;flex-shrink:0">
+                    <span id="skill-confidence-label" class="admin-toggle-sub" style="margin:0;min-width:42px;text-align:right;font-variant-numeric:tabular-nums">&ge; 85%</span>
+                    <input type="range" id="skill-confidence-slider" class="preset-range" min="45" max="100" step="5" value="85" aria-describedby="skill-confidence-hint" style="width:120px;margin:0" />
+                  </span>
+                </div>
+                <span class="admin-toggle-sub" id="skill-confidence-hint" style="display:block;margin-top:6px;opacity:0.6"></span>
+                <span class="admin-toggle-sub" id="skill-approve-coupling" style="display:block;margin-top:6px;opacity:0.6"></span>
+              </div>
+              <div class="admin-card">
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:32px">
+                  <h2 style="margin:0;display:inline-flex;align-items:center;gap:6px"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="opacity:0.7"><path d="M12 5v14"/><polyline points="6 11 12 17 18 11"/><path d="M5 20h14"/></svg>Skills per request</h2>
+                </div>
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:8px">
+                  <span class="admin-toggle-sub" style="margin:0">Max skills per request</span>
+                  <input type="number" id="skill-max-input" min="0" max="12" step="1" value="3" aria-label="Max skills per request" style="flex-shrink:0;width:72px;background:var(--input-bg,var(--panel));color:var(--fg);border:1px solid var(--border);border-radius:6px;padding:4px 6px;font-size:12px;text-align:right;font-variant-numeric:tabular-nums" />
+                </div>
+                <span class="admin-toggle-sub" style="display:block;margin-top:6px;opacity:0.5">0 turns it off.</span>
+                <span class="admin-toggle-sub skill-gate-note" style="display:block;margin-top:8px;opacity:0.6">Skills are untrusted text, so a reply that uses one asks before it writes, runs, sends or deletes.</span>
               </div>
           </div>
         </div>

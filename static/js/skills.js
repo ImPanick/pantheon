@@ -306,19 +306,10 @@ export function openSkill(name, opts = {}, m = null) {
 let _skillApprovalThreshold = 0.85;
 
 function updateCount() {
+  // The Brain's door to this window carries the total (`P23-02`).
   const el = document.getElementById('skills-count');
   if (el) el.textContent = skills.length || '0';
-  for (const m of _allMounts()) {
-    const elH = m.el('skills-count-h2');
-    if (elH) elH.textContent = skills.length + ' skill' + (skills.length === 1 ? '' : 's');
-  }
-  const summary = document.getElementById('skills-launcher-summary');
-  if (summary) {
-    const n = (k, one, many) => `${k} ${k === 1 ? one : many}`;
-    summary.textContent = `${n(skills.length, 'skill', 'skills')} · `
-      + `${n(_collections.packages.length, 'package', 'packages')} · `
-      + `${n(_collections.groups.length, 'group', 'groups')}.`;
-  }
+  for (const m of _allMounts()) _writeShownCount(m);
 }
 
 function _sortSkills(m, list) {
@@ -863,9 +854,34 @@ function _getFilteredSkills(m) {
   return _sortSkills(m, filtered);
 }
 
+/** `BRAIN-M-10` / `COPY-U-15` (P23-02). The header beside "Skills" counts what
+ *  is on screen, and only when that is not everything: "5 of 8" under a scope,
+ *  a search or a filter; nothing otherwise — the total is on the door. It wrote
+ *  `skills.length` whatever was shown ("8 skills" over five cards, and over
+ *  none). */
+function _writeShownCount(m) {
+  const elH = m.el('skills-count-h2');
+  if (!elH) return;
+  const shown = loaded ? _getFilteredSkills(m).length : skills.length;
+  elH.textContent = shown === skills.length ? '' : `${shown} of ${skills.length}`;
+}
+
+/** Whether a filter (not the scope or the search) is narrowing the list. */
+function _filtering(m) {
+  return !!(m.draftsOnly || m.publishedOnly || m.confMax != null);
+}
+
+function _clearFilter(m) {
+  m.draftsOnly = false; m.publishedOnly = false; m.confMax = null;
+  const sel = m.el('skills-filter');
+  if (sel) sel.value = 'filter:all';
+  renderSkillsList(m);
+}
+
 function renderSkillsList(m) {
   const container = m.el('skills-list');
   if (!container) return;
+  _writeShownCount(m);
   // Re-render rebuilds the cards (none expanded), so clear the expand flag
   // on the admin-card or it would keep the toolbar hidden with nothing open.
   container.closest('.admin-card')?.classList.remove('skills-has-expanded');
@@ -886,7 +902,11 @@ function renderSkillsList(m) {
     const selectBtn = m.el('skills-select-btn');
     if (selectBtn) selectBtn.disabled = true;
     if (m.selectMode) _exitSelectMode(m);
-    container.innerHTML = `<div style="text-align:center;opacity:0.4;padding:24px 0;font-size:11px;">${loaded ? esc(_emptyListText(m)) : 'Loading…'}</div>`;
+    // `BRAIN-U-5` (P23-02). A filter that hides everything says so, with the
+    // way out beside it; it used to say "No skills yet" over a full library.
+    const clear = loaded && _filtering(m)
+      ? ' <button type="button" class="memory-toolbar-btn" data-skills-clear-filter>Clear</button>' : '';
+    container.innerHTML = `<div style="text-align:center;opacity:0.4;padding:24px 0;font-size:11px;">${loaded ? esc(_emptyListText(m)) : 'Loading…'}${clear}</div>`;
     return;
   }
 
@@ -3248,14 +3268,14 @@ function _scopeTitle(m) {
 
 function _emptyListText(m) {
   const sc = m.scope;
-  if (sc.kind === 'group') {
-    return `No skills in “${_scopeTitle(m)}” yet. Press Select and then Group, or open a skill's ⋯ menu and choose Groups, to add some.`;
-  }
+  // `BRAIN-U-5`: a filter is said first — it is the reason, whatever the scope.
+  if (_filtering(m) && skills.length) return 'No skills match this filter.';
+  if (sc.kind === 'group') return `Nothing in “${_scopeTitle(m)}” yet. Add skills from a card's ⋯ → Groups.`;
   if (sc.kind === 'package' || sc.kind === 'section') return 'This package has no skills left here.';
-  if (sc.kind === 'mine') return 'None yet. Skills you write under Add, and the ones the AI learns, appear here.';
+  if (sc.kind === 'mine') return 'None yet. Skills you write, and the ones Pantheon drafts, appear here.';
   if (sc.kind === 'bundled') return 'No built-in skills on this install.';
   if ((m.el('skills-search')?.value || '').trim()) return 'No skill matches that search.';
-  return 'No skills yet. Import a package under Add, write one, or let the agent learn them.';
+  return 'No skills yet.';
 }
 
 // ── the sidebar — `P9-06` ────────────────────────────────────────────────────
@@ -3819,13 +3839,17 @@ async function _downloadSkill(name) {
 
 let _windowWired = false;
 
+const _SKILLS_VIEWS = ['browse', 'add', 'settings'];
+
 function _showSkillsView(m, view) {
   if (!m || !m.host || m.host === document.body) return;
-  const want = view === 'add' ? 'add' : 'browse';
+  // `BRAIN-U-10` (P23-02): a third view, the skill settings.
+  const want = _SKILLS_VIEWS.includes(view) ? view : 'browse';
   m.host.querySelectorAll('[data-skills-view]').forEach(tab => {
     const on = tab.getAttribute('data-skills-view') === want;
     tab.classList.toggle('active', on);
     tab.setAttribute('aria-selected', on ? 'true' : 'false');
+    tab.tabIndex = on ? 0 : -1;
   });
   m.host.querySelectorAll('[data-skills-view-panel]').forEach(panel => {
     panel.classList.toggle('hidden', panel.getAttribute('data-skills-view-panel') !== want);
@@ -3849,16 +3873,27 @@ function _wireSkillsWindow() {
   }
 }
 
-/** Open the Skills window on `view` ('browse' | 'add'), or bring it forward. */
-export async function openSkillsWindow(view) {
+/** Open the Skills window on `view` ('browse' | 'add' | 'settings'), or bring
+ *  it forward.
+ *
+ *  C-NAV (`P23-01` provides it; `P23-02` consumes it): `from` is the opener's
+ *  window id and `tab` the opener's tab at that moment, both passed through to
+ *  `Modals.showWindow`, which draws `← <opener>` in this window's header and
+ *  re-raises the opener on that tab when this one closes. `showWindow` is the
+ *  three cases this function used to spell out — minimized → restore, open →
+ *  raise, closed → `openClosedWindow` — so without the other half (`from`
+ *  ignored) nothing here behaves differently. */
+export async function openSkillsWindow(view, { from = null, tab = null } = {}) {
   const modal = document.getElementById('skills-modal');
   if (!modal) return false;
   _wireSkillsWindow();
   if (view) _showSkillsView(_windowMount(), view);
   try {
     const Modals = await import('./modalManager.js?v=20261003waveg');
-    if (Modals.isMinimized('skills-modal')) Modals.restore('skills-modal');
-    else Modals.openClosedWindow('skills-modal');
+    const nav = {};
+    if (from) nav.from = from;
+    if (from && tab != null) nav.tab = tab;
+    Modals.showWindow('skills-modal', nav);
   } catch (_) {
     modal.classList.remove('hidden');
     modal.style.display = '';
@@ -3897,9 +3932,9 @@ function _wireMount(m) {
   });
   on('add-skill-btn', 'click', () => addSkill(m));
   on('skills-search', 'input', () => renderSkillsList(m));
-  on('skills-sort', 'change', (e) => {
-    // Dropdown holds two optgroups: Sort (sort:<key>) and Filter (filter:<key>).
-    // Picking a sort option leaves the filter alone, and vice-versa.
+  // `BRAIN-U-5` (P23-02). Sort and filter are two selects now; one handler
+  // reads either, by the prefix each option carries.
+  const onSortOrFilter = (e) => {
     const v = e.target.value || '';
     if (v.startsWith('sort:')) {
       m.sort = v.slice(5);
@@ -3911,6 +3946,11 @@ function _wireMount(m) {
       else if (f.startsWith('conf')) { m.draftsOnly = false; m.publishedOnly = false; m.confMax = parseInt(f.slice(4), 10) || null; }
     }
     renderSkillsList(m);
+  };
+  on('skills-sort', 'change', onSortOrFilter);
+  on('skills-filter', 'change', onSortOrFilter);
+  on('skills-list', 'click', (e) => {
+    if (e.target && e.target.closest && e.target.closest('[data-skills-clear-filter]')) _clearFilter(m);
   });
   on('skills-select-btn', 'click', () => {
     if (m.selectMode) _exitSelectMode(m); else _enterSelectMode(m);
@@ -3946,8 +3986,22 @@ function _wireMount(m) {
   }
   // The view tabs (Skills · Add) are this mount's own.
   if (m.host && m.host !== document.body) {
-    m.host.querySelectorAll('[data-skills-view]').forEach(tab => {
+    const viewTabs = Array.from(m.host.querySelectorAll('[data-skills-view]'));
+    viewTabs.forEach(tab => {
       tab.addEventListener('click', () => _showSkillsView(m, tab.getAttribute('data-skills-view')));
+      // `BRAIN-U-8` (P23-02): one tab-strip behaviour in the three windows —
+      // Left/Right (wrapping), Home/End; the view follows the focus.
+      tab.addEventListener('keydown', (e) => {
+        const keys = { ArrowLeft: -1, ArrowRight: 1, Home: 'first', End: 'last' };
+        if (!(e.key in keys)) return;
+        const i = viewTabs.indexOf(tab);
+        const step = keys[e.key];
+        const next = viewTabs[step === 'first' ? 0 : step === 'last' ? viewTabs.length - 1
+          : (i + step + viewTabs.length) % viewTabs.length];
+        e.preventDefault();
+        _showSkillsView(m, next.getAttribute('data-skills-view'));
+        try { next.focus(); } catch (_) {}
+      });
     });
     m.host.addEventListener('focusin', () => { _lastMount = m; });
     m.host.addEventListener('pointerdown', () => { _lastMount = m; });
@@ -3992,23 +4046,55 @@ function _stampRoom(host) {
 // switch, not a second writer (`Law 14`): pressing it presses the window's, the
 // window's moving moves it, and it dims the room's list the way `memory.js`
 // dims the window's.
-function _mirrorSkillsSwitch(m) {
-  const mine = m.el('skills-enabled-header-toggle');
-  const theirs = document.getElementById('skills-enabled-header-toggle');
-  if (!mine || !theirs || mine === theirs) return () => {};
-  const panel = m.host.querySelector('[data-skills-view-panel="browse"]');
+//
+// `BRAIN-U-10` (P23-02). The skill settings moved into this window (a third
+// view), so the room's stamp carries copies of them too, and they are mirrored
+// the same way: each is pressed through the window's control, which
+// `memory.js` owns, and the sentences it writes beside them are copied back.
+const _MIRRORED = [
+  ['skills-enabled-header-toggle', 'check'],
+  ['auto-skills-toggle', 'check'],
+  ['auto-approve-skills-toggle', 'check'],
+  ['skill-confidence-slider', 'value'],
+  ['skill-max-input', 'value'],
+];
+const _MIRRORED_TEXT = ['skill-confidence-label', 'skill-confidence-hint', 'skill-approve-coupling'];
+
+function _mirrorSkillControls(m) {
+  const pairs = _MIRRORED
+    .map(([id, kind]) => ({ id, kind, mine: m.el(id), theirs: document.getElementById(id) }))
+    .filter((p) => p.mine && p.theirs && p.mine !== p.theirs);
+  if (!pairs.length) return () => {};
   const sync = () => {
-    mine.checked = !!theirs.checked;
-    if (panel) panel.style.opacity = theirs.checked ? '' : '0.3';
-  };
-  mine.addEventListener('change', () => {
-    if (theirs.checked !== mine.checked) {
-      theirs.checked = mine.checked;
-      theirs.dispatchEvent(new Event('change'));
+    for (const p of pairs) {
+      if (p.kind === 'check') p.mine.checked = !!p.theirs.checked;
+      else p.mine.value = p.theirs.value;
     }
-    sync();
-  });
-  theirs.addEventListener('change', sync);
+    for (const id of _MIRRORED_TEXT) {
+      const mine = m.el(id), theirs = document.getElementById(id);
+      if (mine && theirs && mine !== theirs) mine.textContent = theirs.textContent;
+    }
+    const sw = document.getElementById('skills-enabled-header-toggle');
+    const list = m.el('skills-list');
+    if (sw && list) list.style.opacity = sw.checked ? '' : '0.4';
+  };
+  for (const p of pairs) {
+    for (const type of (p.kind === 'check' ? ['change'] : ['input', 'change'])) {
+      p.mine.addEventListener(type, () => {
+        if (p.kind === 'check') {
+          if (p.theirs.checked !== p.mine.checked) {
+            p.theirs.checked = p.mine.checked;
+            p.theirs.dispatchEvent(new Event(type));
+          }
+        } else {
+          p.theirs.value = p.mine.value;
+          p.theirs.dispatchEvent(new Event(type));
+        }
+        sync();
+      });
+      p.theirs.addEventListener(type, sync);
+    }
+  }
   sync();
   return sync;
 }
@@ -4031,7 +4117,7 @@ export function mountSkills(host, { view = null, skill = null } = {}) {
     m = _makeMount(host, { prefix: ROOM_PREFIX, scopeKey: _ROOM_SCOPE_KEY });
     _mounts.push(m);
     _wireMount(m);
-    m.syncSwitch = _mirrorSkillsSwitch(m);
+    m.syncSwitch = _mirrorSkillControls(m);
   }
   const handle = {
     mount: m,
@@ -4049,9 +4135,12 @@ document.addEventListener('DOMContentLoaded', () => {
   _wireMount(_windowMount());
   // `P9-06`. Every "Open Skills" door — the Brain's launcher card and its Add
   // tab — is one delegated listener, so a door added later needs no wiring.
+  // `P23-02`: a door inside another window opens Skills *from* it (C-NAV).
   document.addEventListener('click', (e) => {
     const door = e.target && e.target.closest && e.target.closest('[data-open-skills]');
-    if (door) openSkillsWindow(door.getAttribute('data-open-skills') || 'browse');
+    if (!door) return;
+    const host = door.closest('.modal[id]');
+    openSkillsWindow(door.getAttribute('data-open-skills') || 'browse', host ? { from: host.id } : {});
   });
 });
 

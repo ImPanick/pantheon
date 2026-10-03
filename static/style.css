@@ -13400,6 +13400,93 @@ details a:hover {
 #memory-modal .memory-tab-panel[data-memory-panel].hidden {
   display: none;
 }
+/* ── P23-02 (fx-brain): the Brain keeps one height, Skills is a door ──
+   `BRAIN-U-3` / `BRAIN-M-1`. The window had a height only while Memories was
+   on show (the `:has(browse)` rule above), so every other tab sized it to its
+   content: 690 → 133 → 384 → 702 px at 1440×900, the top edge moving under the
+   pointer, and RAG so short its drop zone sat under the chat composer. Any tab
+   on show now gives the same height; each panel scrolls inside it. Same
+   specificity as the browse rule and later, so it wins; the phone sheet's
+   `!important` 100dvh still wins over both. */
+#memory-modal .memory-modal-content:has(.memory-tab-panel[data-memory-panel]:not(.hidden)) {
+  display: flex;
+  flex-direction: column;
+  height: min(78vh, 720px);
+  max-height: 78vh;
+  overflow: hidden;
+}
+:root.ui-scale-125 #memory-modal .memory-modal-content:has(.memory-tab-panel[data-memory-panel]:not(.hidden)) {
+  height: min(calc(78vh / 1.25), 720px);
+  max-height: calc(78vh / 1.25);
+}
+#memory-modal .memory-modal-content:has(.memory-tab-panel[data-memory-panel]:not(.hidden)) .modal-header,
+#memory-modal .memory-modal-content:has(.memory-tab-panel[data-memory-panel]:not(.hidden)) .memory-tabs {
+  flex: 0 0 auto;
+}
+#memory-modal .memory-modal-content:has(.memory-tab-panel[data-memory-panel]:not(.hidden)) .memory-modal-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+#memory-modal .memory-tab-panel[data-memory-panel="rag"] > .admin-card {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+#memory-modal .memory-tab-panel[data-memory-panel="rag"] #docs-view {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+/* `NAV-U-1`: four tabs in a tablist, the Skills door beside them. */
+#memory-modal .memory-tablist {
+  display: flex;
+  min-width: 0;
+}
+#memory-modal .memory-skills-door {
+  margin-left: auto;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--fg);
+  opacity: 0.6;
+  font-family: inherit;
+  font-size: 12px;
+  padding: 8px 14px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+}
+#memory-modal .memory-skills-door:hover {
+  opacity: 0.9;
+  background: color-mix(in srgb, var(--fg) 5%, transparent);
+}
+@media (max-width: 768px) {
+  /* `BRAIN-U-9`: wrap rather than clip Settings with no cue. */
+  #memory-modal .memory-tabs,
+  #memory-modal .memory-tablist,
+  .skills-modal-content .memory-toolbar-row,
+  #skills-room .memory-toolbar-row {
+    flex-wrap: wrap;
+  }
+}
+/* `BRAIN-U-6`: the ⋮ menu's items are buttons now. */
+.memory-item-dropdown button.dropdown-item-compact {
+  background: none;
+  border: none;
+  width: 100%;
+  text-align: left;
+  font-family: inherit;
+  color: inherit;
+}
+/* `BRAIN-U-10`: the skill settings in the Skills window dim like they did in
+   the Brain when their switch is off. */
+#skills-modal [data-skills-view-panel="settings"] .admin-card:has(.admin-switch input:not(:checked)),
+#skills-room [data-skills-view-panel="settings"] .admin-card:has(.admin-switch input:not(:checked)) {
+  opacity: 0.55;
+}
 /* Settings cards dim + mute when their toggle is OFF (matches the
    .memory-toolbar-toggle "off" treatment elsewhere). */
 #memory-modal .memory-tab-panel[data-memory-panel="settings"] .admin-card {

@@ -4169,9 +4169,12 @@ async function _cmdTourBrain(args, ctx) {
     { sel: '#memory-tidy-btn',
       text: '<b>Tidy</b> runs your model to clear out irrelevant memories and duplicates. It also triggers automatically from Tasks.',
       before: () => _tab('browse') },
-    { sel: '.memory-tab-panel[data-memory-panel="skills"]',
+    // `P23-02` (fx-brain merge point): Skills is a door beside the tabs now,
+    // not a tab with a launcher card; a step whose target is missing ends the
+    // tour, so the step points at the door.
+    { sel: '#memory-skills-door',
       text: '<b>Skills</b> are basically your AI’s memory for improving its abilities.',
-      before: () => _tab('skills') },
+      before: () => _tab('browse') },
     { sel: '.memory-tab-panel[data-memory-panel="settings"]',
       text: '<b>Settings</b> lets you turn off auto extraction and set how strong skills need to be before they are tagged.',
       before: () => _tab('settings') },
