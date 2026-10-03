@@ -253,3 +253,69 @@ def test_publish_is_offered_on_a_pass_and_unpublish_on_a_published_skill(tmp_pat
     got = json.loads(proc.stdout.strip().splitlines()[-1])
     assert got == {"pass/draft": "Publish", "inconclusive/draft": None, "fail/draft": None,
                    "unknown/draft": None, "fail/published": "Unpublish"}
+
+
+# ── BRAIN-M-16 · the Workbench reopens on its room; `openWorkbench({ from })` ─
+
+from test_the_workbench_window_js import (  # noqa: E402
+    _GLUE_SHIM, _GLUE_STUBS, _UP, _window_tree, JS as _JS, WORKBENCH_JS,
+)
+
+
+@pytest.fixture(scope="module")
+def wbglue(tmp_path_factory):
+    """`tests/test_the_workbench_window_js.py`'s glue sandbox, with its window
+    manager stub given C-NAV's `showWindow` as a recorder."""
+    root = tmp_path_factory.mktemp("wbopener")
+    (root / "workbench").mkdir()
+    shim = _GLUE_SHIM.replace("__TREE__", json.dumps(_window_tree()))
+    sandbox = _make_sandbox(root / "workbench", WORKBENCH_JS, shim, {})
+    for rel in _UP:
+        (root / rel).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy(_JS / rel, root / rel)
+    stubs = dict(_GLUE_STUBS)
+    stubs["modalManager.js"] = stubs["modalManager.js"] + (
+        "globalThis.__shown = [];\n"
+        "export function showWindow(id, opts) { globalThis.__shown.push({ id, ...(opts || {}) }); return 'raised'; }\n")
+    for rel, src in stubs.items():
+        (root / rel).parent.mkdir(parents=True, exist_ok=True)
+        (root / rel).write_text(src, encoding="utf-8")
+    return sandbox
+
+
+_WB_PREAMBLE = (
+    "import { document, modal, fire, settle, $ } from './shim.js';\n"
+    "const wb = await import('./workbench.js');\n"
+    "const out = (o) => { console.log(JSON.stringify(o)); process.exit(0); };\n"
+)
+
+
+def test_the_workbench_reopens_on_the_room_it_was_closed_on(wbglue):
+    """`BRAIN-M-16`. Measured on `32df791`: closed on Skills, reopened on
+    Automations (`_open && _current` was cleared by the close). A door that
+    names a room still wins."""
+    o = _run(wbglue, _WB_PREAMBLE, """
+        wb.openWorkbench({}); await settle(5);
+        fire($('workbench-room-tab-integrations'), 'click'); await settle(5);
+        const before = wb.currentRoom();
+        wb.closeWorkbench(); await settle(300);
+        wb.openWorkbench({}); await settle(5);
+        const reopened = wb.currentRoom();
+        wb.closeWorkbench(); await settle(300);
+        wb.openWorkbench({ room: 'automations' }); await settle(5);
+        out({ before, reopened, asked: wb.currentRoom() });
+    """)
+    assert o == {"before": "integrations", "reopened": "integrations", "asked": "automations"}
+
+
+def test_open_workbench_passes_its_opener_once_the_window_is_up(wbglue):
+    """C-NAV: `openWorkbench({ room, from })` passes `from` (and `tab`) to
+    `showWindow` — after the window is shown, so the manager's "raise" case is
+    the one taken and the window's own door is never pressed back into here."""
+    o = _run(wbglue, _WB_PREAMBLE, """
+        wb.openWorkbench({ from: 'settings-modal', tab: 'integrations' }); await settle(5);
+        wb.openWorkbench({}); await settle(5);
+        out({ shown: globalThis.__shown, hidden: modal._classes().includes('hidden') });
+    """)
+    assert o["shown"] == [{"id": "workbench-modal", "from": "settings-modal", "tab": "integrations"}]
+    assert o["hidden"] is False
