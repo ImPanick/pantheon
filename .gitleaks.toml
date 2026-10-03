@@ -66,4 +66,16 @@ regexes = [
   # The command-withholding table also uses an AWS-shaped sample key with the
   # alphabet in order after AKIA; it is an impossible issued key by design.
   '''AKIAABCDEFGHIJKLMNOP\b''',
+  # `tests/test_the_palette_offers_what_the_agent_reaches.py` and
+  # `tests/test_an_http_step_goes_through_an_integration.py` use this same
+  # deliberately misspelled sample key to assert an Integration's credential
+  # never appears in the workflow palette and reaches only its HTTP request.
+  '''sekret-api-key-123\b''',
+  # `tests/test_a_mail_attachment_keeps_its_name_on_the_way_out.py` tests a
+  # legacy staged filename: a repeated ascending hex sequence plus a human
+  # title. The scanner's match ends after `_Q3`, before the first space.
+  '''0123456789abcdef0123456789abcdef_Q3\b''',
+  # The same test uses the sequence by itself as a synthetic staging key and
+  # checks the path lookup. The boundary keeps it distinct from `_Q3` above.
+  '''0123456789abcdef0123456789abcdef\b''',
 ]

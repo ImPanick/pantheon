@@ -119,6 +119,8 @@ def test_no_allowlisted_literal_looks_like_a_real_credential(literal):
         "abc123",             # the universal placeholder
         "sk-live-4f9a8b7c6d5e4f3a",  # fixed redaction-test token
         "AKIAABCDEFGHIJKLMNOP",  # sequential sample AWS key
+        "sekret-api-key-123",   # deliberately misspelled test key
+        "0123456789abcdef0123456789abcdef",  # repeated ascending hex
     )
     assert any(m in literal for m in fake_markers), (
         f"{literal!r} does not carry any of the markers that make the existing "
@@ -183,7 +185,10 @@ def test_the_new_token_exceptions_do_not_cover_longer_credentials():
     text = _config()
     for literal in ("sk-live-4f9a8b7c6d5e4f3a",
                     "sk-live-4f9a8b7c6d5e4f3a2b1c",
-                    "AKIAABCDEFGHIJKLMNOP"):
+                    "AKIAABCDEFGHIJKLMNOP",
+                    "sekret-api-key-123",
+                    "0123456789abcdef0123456789abcdef_Q3",
+                    "0123456789abcdef0123456789abcdef"):
         pattern = literal + r"\b"
         assert f"'''{pattern}'''" in text
         assert re.search(pattern, literal)
