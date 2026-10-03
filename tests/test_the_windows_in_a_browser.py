@@ -71,11 +71,13 @@ const BASE = process.argv[2];
   };
 
   // ── B945 ────────────────────────────────────────────────────────────────
-  // The reply's stop, counted. `abortCurrentRequest` is what the key calls.
+  // The reply's stop, counted. `stopCurrentReply` is what the key calls
+  // (`P23-04`, CHAT-M-1: the Stop button's own path; it was
+  // `abortCurrentRequest`, which left the server finishing the reply).
   await page.evaluate(() => {
     window.__stops = 0;
-    const real = window.chatModule.abortCurrentRequest;
-    window.chatModule.abortCurrentRequest = function (...a) { window.__stops += 1; return real.apply(this, a); };
+    const real = window.chatModule.stopCurrentReply;
+    window.chatModule.stopCurrentReply = function (...a) { window.__stops += 1; return real.apply(this, a); };
   });
   const stops = () => page.evaluate(() => { const n = window.__stops; window.__stops = 0; return n; });
   await page.focus('#message'); await stops();
@@ -106,8 +108,8 @@ const BASE = process.argv[2];
     await settle(1500);
     await page.evaluate(() => {
       window.__stops = 0;
-      const real = window.chatModule.abortCurrentRequest;
-      window.chatModule.abortCurrentRequest = function (...a) { window.__stops += 1; return real.apply(this, a); };
+      const real = window.chatModule.stopCurrentReply;
+      window.chatModule.stopCurrentReply = function (...a) { window.__stops += 1; return real.apply(this, a); };
     });
   };
 
