@@ -155,6 +155,8 @@ async function toggleMode(opts = {}) {
     }
     state.isActive = true;
     _syncToolbarIndicator(true);
+    // `P23-01` (CHAT-U-2): the sidebar says where the person is.
+    document.getElementById('tool-compare-btn')?.classList.add('active');
     await _buildCompareUI();
     return true;
   } catch (err) {
@@ -193,6 +195,7 @@ async function deactivate(teardown, opts = {}) {
 
   removeOverlays();
   state.isActive = false;
+  document.getElementById('tool-compare-btn')?.classList.remove('active');
   state._streaming = false;
   state._paneSessionIds = [];
   state._paneMetrics = [];
@@ -1462,6 +1465,12 @@ function _restoreChatView() {
     if (typeof window.syncRailSide === 'function') window.syncRailSide();
   }
   state._hasVisibleResults = false;
+  // The composer's mode tools (Web, Shell) as the chat's own mode draws them —
+  // `_setToolbarMode` above is Compare's approximation, which a reload used to
+  // paper over.
+  if (typeof window.__pantheonSetChatMode === 'function') {
+    try { window.__pantheonSetChatMode(state._savedMode === 'agent' ? 'agent' : 'chat'); } catch (_) {}
+  }
   if (typeof window._updateSendBtnIcon === 'function') window._updateSendBtnIcon();
 }
 

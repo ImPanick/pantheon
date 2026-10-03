@@ -14,6 +14,7 @@ import markdownModule from './markdown.js';
 import { makeWindowDraggable } from './windowDrag.js';
 import { langIcon } from './langIcons.js';
 import { registerMenuDismiss, dismissOrRemove } from './escMenuStack.js';
+import backStack from './backStack.js';   // `P23-01`
 import { chevronIcon } from './icons.js';
 import {
   folderApi, renderFolderBar, showFolderPicker, showFolderMenu, removeFolderFlow,
@@ -2104,6 +2105,9 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
   }
 
   export function openLibrary(opts) {
+    // `P23-01` (C-NAV): opened from another window — Deep Research's *Library*
+    // — the Library says `← Research`, and closing it re-raises Research.
+    if (opts && opts.from) backStack.noteOpener('doclib-modal', opts.from, opts.fromTab);
     if (_libraryOpen) {
       // Recover from stuck state: the swipe-to-dismiss in ui.js adds .hidden
       // to the modal without calling closeLibrary, so _libraryOpen can stay

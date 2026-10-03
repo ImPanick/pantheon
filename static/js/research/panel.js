@@ -704,7 +704,7 @@ function _renderJobs() {
           e.stopPropagation();
           closePanel();
           if (window.documentModule && window.documentModule.openLibrary) {
-            window.documentModule.openLibrary({ tab: 'research' });
+            window.documentModule.openLibrary({ tab: 'research', from: 'research-overlay' });   // `P23-01`
           }
         });
       }
@@ -752,7 +752,7 @@ function _renderJobs() {
         e.stopPropagation();
         closePanel();
         if (window.documentModule && window.documentModule.openLibrary) {
-          window.documentModule.openLibrary({ tab: 'research' });
+          window.documentModule.openLibrary({ tab: 'research', from: 'research-overlay' });   // `P23-01`
         }
       });
     }
@@ -812,7 +812,7 @@ function _renderJobs() {
         // (otherwise it stacks under the full-screen panel).
         closePanel();
         if (window.documentModule && window.documentModule.openLibrary) {
-          window.documentModule.openLibrary({ tab: 'research' });
+          window.documentModule.openLibrary({ tab: 'research', from: 'research-overlay' });   // `P23-01`
         }
       });
       header.appendChild(hint);

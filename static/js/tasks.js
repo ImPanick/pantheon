@@ -27,6 +27,7 @@ import {
   DAYS_OF_WEEK,
 } from './tasks/taskFields.js';
 import { bindMenuDismiss, dismissOrRemove, registerMenuDismiss } from './escMenuStack.js';
+import backStack from './backStack.js';   // `P23-01`
 import { PLAY_GLYPH, playIcon, stopIcon, WORKFLOW_GLYPH } from './icons.js';
 import {
   runStatusLabel, runStaleLabel, runStatusTone, runStatusDotClass, isRunFinished,
@@ -245,8 +246,11 @@ function _openInWorkbench(task) {
   // `GET /api/tasks` puts on the row (`workflow_id`); the room finds it from
   // the task's id when a row does not carry one.
   const workflowId = task && task.task_type === 'workflow' && task.workflow_id != null ? task.workflow_id : null;
+  // `P23-01` (NAV-U-4, C-NAV): opened from Tasks, the Workbench says `← Tasks`.
+  const from = _open ? 'tasks-modal' : undefined;
+  if (from) backStack.noteOpener('workbench-modal', from);
   return import('./workbench/workbench.js')
-    .then((wb) => wb.openWorkbench({ focusId: task.id, workflowId, describeTrigger: _scheduleLabel }))
+    .then((wb) => wb.openWorkbench({ focusId: task.id, workflowId, describeTrigger: _scheduleLabel, from }))
     .catch(() => uiModule.showError('The Workbench did not load. Reload the page and try again.'));
 }
 

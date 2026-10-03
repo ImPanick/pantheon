@@ -3584,7 +3584,13 @@ export function renderAskUserCard(payload, options) {
   closeBtn.type = 'button';
   closeBtn.className = 'modal-close ask-user-close';
   closeBtn.setAttribute('aria-label', 'Dismiss question');
+  if (isToolApproval) closeBtn.setAttribute('aria-label', 'Deny');   // `P23-01` (CHAT-M-17), below
   closeBtn.addEventListener('click', () => {
+    // `P23-01` (CHAT-M-17). × on an approval took the card away and left the
+    // run parked server-side (10-minute expiry) with nothing on screen saying
+    // a decision was owed. On an approval × is the card's own Deny.
+    const deny = isToolApproval && card.querySelector('.ask-user-option[data-decision="deny"]');
+    if (deny) { deny.click(); return; }
     card.remove();
     const input = uiModule.el('message');
     if (input) input.focus();
@@ -3719,6 +3725,7 @@ export function renderAskUserCard(payload, options) {
     }
     if (!multi) {
       row.type = 'button';
+      if (isToolApproval) row.dataset.decision = String((opt && opt.value) || '').toLowerCase();
       row.addEventListener('click', () => {
         if (isToolApproval) {
           const detail = {
