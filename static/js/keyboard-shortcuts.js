@@ -5,7 +5,6 @@
 
 import { IS_MAC, isAltGrEvent } from './platform.js';
 import { getSettings } from './appConfig.js';
-import * as Modals from './modalManager.js?v=20261003waveg';
 
 /**
  * The keybind registry. `H19`.
@@ -272,9 +271,15 @@ export function initKeyboardShortcuts(modules) {
     } catch (_) { /* the window still opens */ }
   };
 
-  const _openSettings = () => {
+  // The window manager is fetched when the key is pressed, not imported: this
+  // module is loaded into small sandboxes by a dozen tests for its key table,
+  // and the window manager wires the whole page when it loads.
+  const _openSettings = async () => {
     _launchFromKeyboard();
-    if (Modals.windowState('settings-modal') !== 'closed') { Modals.showWindow('settings-modal'); return; }
+    try {
+      const Modals = await import('./modalManager.js?v=20261003waveg');
+      if (Modals.windowState('settings-modal') !== 'closed') { Modals.showWindow('settings-modal'); return; }
+    } catch (_) { /* opened below */ }
     if (settingsModule) settingsModule.open();
   };
 

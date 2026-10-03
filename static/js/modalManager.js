@@ -1700,7 +1700,7 @@ export function close(id) {
 /** The element a window id draws (Notes registers `notes-panel` and draws
  *  `#notes-pane`). */
 function _windowEl(id) {
-  return document.getElementById(id === 'notes-panel' ? 'notes-pane' : id);
+  return document.getElementById(backStack.elementIdOf(id));
 }
 
 /** Bring an open window to the top of the windows. */

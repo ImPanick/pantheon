@@ -200,7 +200,8 @@ const BASE = process.argv[2];
   await page.evaluate(() => document.getElementById('tool-research-btn').click()); await settle(1200);
   await fill('#research-pane'); await settle(300);
   out.zoomResearch = await measure('#research-pane', CLOSE);
-  await page.evaluate(() => document.getElementById('tool-research-btn').click()); await settle(800);
+  // `P23-01` (NAV-M-7): a door raises, it no longer closes — the window's ×.
+  await page.evaluate(() => document.getElementById('research-panel-close').click()); await settle(800);
   await page.evaluate(() => document.getElementById('tool-memory-btn').click()); await settle(1200);
   await page.evaluate(() => { const t = document.querySelector('[data-memory-tab="browse"]'); if (t) t.click(); });
   await settle(400);
@@ -254,7 +255,8 @@ const BASE = process.argv[2];
   // A left dock: the separator sits on the window's right edge, so there
   // ArrowRight widens it. Notes is put away first, so the chat beside the
   // dock has the room a wider window needs (the clamp keeps 380px for it).
-  await page.evaluate(() => document.getElementById('tool-notes-btn').click()); await settle(800);
+  // `P23-01` (NAV-U-8): Notes has a × of its own now; its door raises.
+  await page.evaluate(() => document.getElementById('notes-close-btn').click()); await settle(800);
   await page.evaluate(() => document.getElementById('tool-tasks-btn').click()); await settle(1500);
   await page.evaluate(async () => {
     const snap = await import('/static/js/modalSnap.js');

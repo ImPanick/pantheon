@@ -113,7 +113,10 @@ def test_minimising_the_workbench_leaves_a_chip_with_its_name_and_the_tables_gly
         header.className = 'modal-header';
         Modals.minimize('workbench-modal');
         const chip = document.getElementById('minimized-dock').querySelectorAll('.minimized-dock-chip')[0];
-        console.log(JSON.stringify({ dock: readDock(), html: chip._writtenHtml,
+        // `P23-01` (NAV-M-12): the icon and the name are the chip's Restore
+        // button now; the chip is the group around it and its Close button.
+        const restore = chip.querySelector('.minimized-dock-restore');
+        console.log(JSON.stringify({ dock: readDock(), html: restore._writtenHtml,
           badge: rail._classes().includes('rail-minimized'), state: Modals.windowState('workbench-modal') }));
     """)
     assert o["dock"][0]["id"] == "workbench-modal"

@@ -72,9 +72,9 @@ export const TRACKED = [...Object.keys(ROUTES), ...UNROUTED];
 const _TRACKED = new Set(TRACKED);
 
 /** The element a window id draws: Notes registers `notes-panel` and draws
- *  `#notes-pane` (`notes.js`). */
-const ELEMENT_OF = { 'notes-panel': 'notes-pane' };
-const _ELEMENT_IDS = new Set(TRACKED.map((id) => ELEMENT_OF[id] || id).concat(['sidebar', 'sidebar-backdrop']));
+ *  `#notes-pane` (`notes.js`); every other window is its own id. */
+export function elementIdOf(id) { return id === 'notes-panel' ? 'notes-pane' : id; }
+const _ELEMENT_IDS = new Set(TRACKED.map(elementIdOf).concat(['sidebar', 'sidebar-backdrop']));
 
 /** `/brain/rag` → `{ id: 'memory-modal', tab: 'rag' }`; `/` or an unknown path → null. */
 export function windowForPath(pathname) {
@@ -132,7 +132,7 @@ export function isTracked(id) { return _TRACKED.has(id); }
 
 function _el(id) {
   if (typeof document === 'undefined') return null;
-  return document.getElementById(ELEMENT_OF[id] || id);
+  return document.getElementById(elementIdOf(id));
 }
 
 /** Is this window on screen now? A window animating shut, minimized to a chip,
@@ -535,7 +535,7 @@ export function _reset() {
 export const _DOC = DOC;
 
 const backStack = {
-  ROUTES, ROUTE_ALIASES, TRACKED, DRAWER, windowForPath, pathFor, configure, setOpeners, stack, top,
+  ROUTES, ROUTE_ALIASES, TRACKED, DRAWER, elementIdOf, windowForPath, pathFor, configure, setOpeners, stack, top,
   isTracked, isOpenNow, noteOpener, sync, onPopState, restoreFromHistory, openWindows, chatSwitched, init, ready,
 };
 export default backStack;

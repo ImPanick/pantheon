@@ -117,7 +117,9 @@ export default { createWhirlpool: () => ({ element: { style: {} }, destroy(){} }
 """,
     "windowDrag.js": "export function makeWindowDraggable(){}\n",
     "toolWindowZOrder.js": "export function topPortalZ(){ return 1; }\n",
-    "escMenuStack.js": "export function bindMenuDismiss(){ return () => {}; }\nexport function dismissOrRemove(){}\n",
+    # `P23-01`: the Tasks form and run history are layers on the Escape stack.
+    "escMenuStack.js": "export function bindMenuDismiss(){ return () => {}; }\nexport function dismissOrRemove(){}\n"
+                       "export function registerMenuDismiss(){ return () => {}; }\n",
     "appConfig.js": "export async function getSettings(){ return {}; }\nexport function invalidateSettings(){}\n",
 }
 
