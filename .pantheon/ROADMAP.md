@@ -247,6 +247,10 @@ they are for.*
 > Entries below the `P0-31` one keep the figure they were written with: a record of what
 > was claimed at the time is worth more than a quietly corrected one (`B44`).
 
+### Dependency blockers — draft PR #12
+`f2cf0c7..f1658a5`. **1118 tracked, 806 done. 0 new phase rows, 0 regressions. `B1116` and `B1117` filed.**
+MCP v2 is excluded from routine Dependabot bumps until migration; five eligible core bumps and the narrow fixture allowlist are in draft review.
+
 ### Workbench, wave D: Slices C and D — fields picked from a list, logic with no language, steps side by side, and steps that reach out
 `0e64d2b..c060c59`. **1116 tracked, 806 done. 0 new phase rows, 0 regressions. `P22-08`, `P22-09`, `P22-10`, `P22-11`, `P22-12`, `P22-13`, `P22-14`, `P22-15`, `P22-16`, `P22-17`, `P22-18`, `B674`, `B806`, `B1080`, `B1087`, `B1088`, `B1089`, `B1090`, `B1091`, `B1097` and `B1105` closed; `B1097` … `B1115` filed.**
 Five branches, one merge pass, and every row's `Verify:` driven in Chromium on the merged tree. A step picks a field from what earlier steps made, and a setting that decides what runs, where it goes or who it reaches never takes one (`P22-09`); If, Switch and Set decide and reshape with no language (`P22-10`); branches run side by side, meet at a Merge, and a Wait parks the run across a restart (`P22-11`); For each item gives every item its own record (`P22-12`); an Integration, an MCP tool, a skill and code in the person's own workstation are steps (`P22-13`, `P22-14`, `P22-15`, `P22-18`); an AI step is held to the tools it names and answers in the shape asked (`P22-16`); and a step a model drives waits overnight for a person's yes while a step the author configured runs (`P22-17`). `P22-08` closes because a person's own run now reaches a local model (`B1080`), and `B1029`'s five follow-ups are fixed (`B1087` … `B1091`). `P22` is 18 of 25; Slices E and F are what is left.
