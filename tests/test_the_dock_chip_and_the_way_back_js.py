@@ -169,6 +169,9 @@ def test_close_window_takes_the_path_the_x_takes(mm):
     close button when it has one, so a window that asks first still asks."""
     o = _case(mm, """
         const w = makeWindow('calendar-modal', 'Calendar');
+        // Registered for the dock, as Calendar is: its × still comes first —
+        // `Modals.close` would hide it whatever its own close decided.
+        Modals.register('calendar-modal', { closeFn: () => {} });
         let asked = 0;
         w.close.listeners.click = [() => { asked += 1; }];    // a window that asks and stays
         Modals.closeWindow('calendar-modal');

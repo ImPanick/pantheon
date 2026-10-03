@@ -285,10 +285,12 @@ def test_with_no_window_the_drawer_then_the_document_pane(box):
         window.documentModule = { isPanelOpen: () => true, closePanel: (d) => calls.push(d) };
         escape();
         stackTop.id = 'notes-panel';
-        window.documentModule = null;
+        const under = [];
+        window.documentModule = { isPanelOpen: () => true, closePanel: (d) => under.push(d) };
         const notes = escape();
-        out({ drawer, calls, notes });
+        out({ drawer, calls, notes, under });
     """)
     assert o["drawer"] == ["sidebar-drawer"]
     assert o["calls"] == ["down"], "the document pane goes to its chip, as it did"
     assert o["notes"] == {"stopped": False, "prevented": False}, "Notes peels its own layers"
+    assert o["under"] == [], "the document pane under Notes went first"
