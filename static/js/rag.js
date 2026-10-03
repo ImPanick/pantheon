@@ -7,6 +7,8 @@
 
 import uiModule from './ui.js';
 import spinnerModule from './spinner.js';
+// C-ERR: a refused response is read once, by the one reader (`Law 14`).
+import { readRefusal } from './workbench/refusal.js';
 
 let API_BASE = '';
 
@@ -36,14 +38,18 @@ export async function loadPersonalDocs() {
 
   try {
     const res = await fetch(`${API_BASE}/api/personal`, { credentials: 'same-origin' });
+    if (!res.ok) throw new Error((await readRefusal(res, 'Could not load the files.')).sentence);
     const data = await res.json();
     const files = data.files || [];
 
     box.innerHTML = '';
+    // `BRAIN-M-5` (P23-02). A dead index says so, with what to do; it used to
+    // say "Drop files above to add to RAG" and let the upload find out.
+    _showHealth(data);
 
     if (files.length === 0) {
       const placeholder = document.createElement('div');
-      placeholder.textContent = 'Drop files above to add to RAG';
+      placeholder.textContent = 'No files yet.';
       placeholder.style.cssText = 'color:var(--color-muted);font-size:12px;padding:4px 0;';
       box.appendChild(placeholder);
       return;
@@ -83,7 +89,7 @@ export async function loadPersonalDocs() {
     console.error(e);
     box.innerHTML = '';
     const error = document.createElement('div');
-    error.textContent = 'Failed to load files';
+    error.textContent = (e && e.message) || 'Could not load the files.';
     error.style.color = 'var(--color-error)';
     box.appendChild(error);
   }
@@ -96,11 +102,13 @@ async function _deleteFile(filepath, displayName) {
       method: 'DELETE',
       credentials: 'same-origin'
     });
-    if (!res.ok) throw new Error(await res.text());
+    if (!res.ok) throw new Error((await readRefusal(res, `Could not remove ${displayName}.`)).sentence);
     await loadPersonalDocs();
   } catch (e) {
+    // `BRAIN-M-4` (P23-02): the app's own error toast with the server's
+    // sentence — never a native alert dialog of the raw response body.
     console.error('Delete failed:', e);
-    alert('Failed to delete file: ' + e.message);
+    uiModule.showError((e && e.message) || `Could not remove ${displayName}.`);
   }
 }
 
@@ -125,7 +133,7 @@ export async function uploadRagFiles(fileList) {
       body: fd
     });
 
-    if (!res.ok) throw new Error(await res.text());
+    if (!res.ok) throw new Error((await readRefusal(res, 'The upload failed.')).sentence);
 
     const data = await res.json();
     if (zone) zone.textContent = 'Drop files here or click to upload';
@@ -134,8 +142,21 @@ export async function uploadRagFiles(fileList) {
   } catch (e) {
     console.error('Upload failed:', e);
     if (zone) zone.textContent = 'Drop files here or click to upload';
-    alert('Upload failed: ' + e.message);
+    // `BRAIN-M-4` (P23-02). Was a native alert dialog reading `Upload failed:
+    // {"detail":"RAG system is not available — is the embedding service
+    // running?"}` — raw JSON, naming a cause the server knew was wrong
+    // (measured on `32df791`).
+    uiModule.showError((e && e.message) || 'The upload failed.');
   }
+}
+
+/** The one line under the RAG heading saying the index is down, and why. */
+function _showHealth(data) {
+  const line = document.getElementById('rag-health');
+  if (!line) return;
+  const down = data && data.healthy === false;
+  line.hidden = !down;
+  line.textContent = down ? String(data.reason || 'RAG is off.') : '';
 }
 
 function _setupUploadZone() {

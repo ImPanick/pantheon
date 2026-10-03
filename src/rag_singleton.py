@@ -62,3 +62,27 @@ def get_rag_manager():
         rag_instance = None
 
     return rag_instance
+
+
+def rag_unavailable_reason() -> str:
+    """`BRAIN-M-4` / `BRAIN-M-5` (P23-02). Why RAG is off, as the sentence a
+    person reads — `""` while it is up. The upload's refusal said "is the
+    embedding service running?" while the log at the same moment said the
+    embedding model was not downloaded, and the list said nothing at all: the
+    Brain's RAG tab read "Drop files above to add to RAG" over a dead index,
+    and Settings' *Reload Index* reported "0 documents" (measured on
+    `32df791`). Asks `get_rag_manager()` — throttled, so at most one init
+    attempt per `_RETRY_INTERVAL`.
+    """
+    if get_rag_manager() is not None:
+        return ""
+    try:
+        from src.embedding_lanes import fastembed_model_is_cached, model_download_allowed
+        if not fastembed_model_is_cached() and not model_download_allowed() \
+                and not (os.environ.get("EMBEDDING_URL") or "").strip():
+            return ("RAG is off: the embedding model is not downloaded — "
+                    "Settings › System › Download models from the internet.")
+    except Exception:
+        pass
+    return "RAG is off: the document index did not start. The server log says why."
+
