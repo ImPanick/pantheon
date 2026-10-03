@@ -458,17 +458,20 @@ export async function syncPrefSlider(elementId, prefKey, labelId, defaultVal, pr
 export function skillGateHints({ autoApprove = true, minConfidence = 0.85 } = {}) {
   const value = Number(minConfidence) || 0;
   const pct = Math.round(value * 100);
+  // `D-9` (P23-02, Doc 2 § 5): one line each, the words of `BRAIN-U-17`
+  // (draft / published, auto-publish). The coupling `P8-05` made visible is
+  // kept where it bites — auto-publish off — and is silent when it does not.
   if (!autoApprove) {
     return {
-      confidence: 'Not in use for injection while auto-approve is off — it still decides what Audit all publishes.',
-      coupling: 'Auto-approve is off, so only published skills are injected. An uncatalogued skill stays out of every request until you publish it.',
+      confidence: 'Not used for injection while auto-publish is off — it still decides what Audit publishes.',
+      coupling: 'Auto-publish is off, so only published skills are used. A draft waits until you publish it.',
     };
   }
   return {
     confidence: value <= 0
-      ? 'No minimum: every uncatalogued skill is injected whenever your message matches it, however little the audit trusted it. This is the loosest setting on this control, not the strictest.'
-      : `An uncatalogued skill is injected only at ${pct}% confidence or more; a published one always is. A skill you write here starts at 80%, so at ${pct}% it waits until an audit raises it or you publish it. Audit all publishes at this bar too.`,
-    coupling: 'Auto-approve is on, so uncatalogued skills can be injected — the minimum above is what holds them back.',
+      ? 'No minimum: every draft is used when a message matches it — the loosest setting.'
+      : `Drafts are used from ${pct}%; published skills always. A new skill starts at 80%.`,
+    coupling: '',
   };
 }
 
@@ -795,7 +798,7 @@ export function describeMemoryTidy(data) {
  */
 export async function tidyMemories() {
   const ok = await uiModule.styledConfirm(
-    'Tidy sends your memories to your model and rewrites the list it sends back.',
+    'Your model merges duplicates and rewrites the survivors.',
     {
       title: 'Tidy memories',
       confirmText: 'Tidy memories',
@@ -808,10 +811,8 @@ export async function tidyMemories() {
           { label: 'Stops the merged ones surfacing', note: 'mostly recoverable' },
           { label: 'Records conflicts it could not settle', note: 'nothing deleted' },
         ],
-        footnote: 'Most of what disappears is superseded rather than destroyed \u2014 it '
-                + 'stays on the record pointing at the entry that replaced it, and the '
-                + 'count afterwards says how many. There is no preview of the rewrite '
-                + 'before it happens.',
+        // `D-14` (P23-02, Doc 2 § 5): the four rows stay; two paragraphs go.
+        footnote: 'Merged entries are kept, not deleted. No preview.',
       },
     },
   );
@@ -1036,10 +1037,9 @@ async function _runFireQuery(query) {
       const n = _fireResult.order.length;
       // The query type is the single most surprising thing a person learns
       // here, so it is stated plainly rather than hidden in a tooltip.
-      note.textContent = `${n} memor${n === 1 ? 'y' : 'ies'} would be retrieved. `
-        + (_fireResult.queryType
-            ? `The retriever reads this as a ${_fireResult.queryType} question.`
-            : 'The retriever does not recognise this as any particular kind of question.');
+      // `D-12` (P23-02): one line; the question type only when there is one.
+      note.textContent = `${n} memor${n === 1 ? 'y' : 'ies'} would be used`
+        + (_fireResult.queryType ? ` (read as a ${_fireResult.queryType} question).` : '.');
       note.hidden = false;
     }
   } catch (e) {
@@ -1479,12 +1479,12 @@ function startInlineEdit(item, memory) {
 
   const saveBtn = document.createElement('button');
   saveBtn.className = 'memory-item-btn save';
-  saveBtn.textContent = 'save';
+  saveBtn.textContent = 'Save';
   saveBtn.addEventListener('click', () => saveInlineEdit(memory.id, input.value, catSelect.value));
 
   const cancelBtn = document.createElement('button');
   cancelBtn.className = 'memory-item-btn';
-  cancelBtn.textContent = 'cancel';
+  cancelBtn.textContent = 'Cancel';
   cancelBtn.addEventListener('click', () => renderMemoryList());
 
   actions.appendChild(saveBtn);
@@ -1627,7 +1627,9 @@ async function togglePin(id, pinned) {
       const mem = memories.find(m => m.id === id);
       if (mem) mem.pinned = pinned;
       renderMemoryList();
-      showToast(pinned ? 'Pinned — always in context' : 'Unpinned — RAG only');
+      // `D-13` (P23-02): "RAG" was the wrong system — an unpinned memory is
+      // used when it is relevant, by the memory retriever.
+      showToast(pinned ? 'Pinned: always included' : 'Unpinned: included when relevant');
     }
   } catch (e) {
     console.error('Failed to toggle pin:', e);
@@ -1691,7 +1693,7 @@ export async function extractMemory(sessionId) {
     header.innerHTML = '<span>Suggested memories</span>';
     const backBtn = document.createElement('button');
     backBtn.className = 'memory-item-btn';
-    backBtn.textContent = 'back';
+    backBtn.textContent = 'Back';
     backBtn.addEventListener('click', () => {
       body.classList.add('hidden');
       body.innerHTML = '';
@@ -1708,7 +1710,7 @@ export async function extractMemory(sessionId) {
       txt.textContent = s;
       const btn = document.createElement('button');
       btn.className = 'memory-item-btn save';
-      btn.textContent = 'save';
+      btn.textContent = 'Save';
       btn.addEventListener('click', async () => {
         await fetch(`${window.location.origin}/api/memory/add`, {
           method: 'POST',
@@ -1716,7 +1718,7 @@ export async function extractMemory(sessionId) {
           body: JSON.stringify({ text: s })
         });
         btn.disabled = true;
-        btn.textContent = 'saved';
+        btn.textContent = 'Saved';
         showToast('Saved to memory');
       });
       div.appendChild(txt);
@@ -1803,7 +1805,16 @@ async function handleImportFile(file) {
     if (memList) memList.classList.add('hidden');
 
     if (suggestions.length === 0) {
-      body.innerHTML = '<div class="memory-empty">No useful information found in file.</div>';
+      // `BRAIN-M-14` (P23-02): the server says which empty answer this is.
+      const why = {
+        empty: 'Nothing readable in that file.',
+        model_unparsed: 'The model gave no suggestions.',
+      }[data.reason] || 'Nothing to keep from that file.';
+      body.innerHTML = '';
+      const row = document.createElement('div');
+      row.className = 'memory-empty';
+      row.textContent = data.message && data.provider ? String(data.message) : why;
+      body.appendChild(row);
     } else {
       const reviewItems = suggestions
         .map((s) => ({
@@ -1824,7 +1835,7 @@ async function handleImportFile(file) {
       headerActions.className = 'memory-suggestions-actions';
       const backBtn = document.createElement('button');
       backBtn.className = 'memory-item-btn';
-      backBtn.textContent = 'back';
+      backBtn.textContent = 'Back';
       backBtn.addEventListener('click', () => {
         body.classList.add('hidden');
         body.innerHTML = '';
@@ -1832,7 +1843,7 @@ async function handleImportFile(file) {
       });
       const saveAllBtn = document.createElement('button');
       saveAllBtn.className = 'memory-item-btn save';
-      saveAllBtn.textContent = 'save all';
+      saveAllBtn.textContent = 'Save all';
       saveAllBtn.addEventListener('click', async () => {
         let saved = 0;
         for (const s of reviewItems) {
@@ -1878,7 +1889,7 @@ async function handleImportFile(file) {
         actionWrap.className = 'memory-suggestion-actions';
         const btn = document.createElement('button');
         btn.className = 'memory-item-btn save';
-        btn.textContent = 'save';
+        btn.textContent = 'Save';
         btn.addEventListener('click', async () => {
           await fetch(`${window.location.origin}/api/memory/add`, {
             method: 'POST',
@@ -1889,12 +1900,12 @@ async function handleImportFile(file) {
           div.remove();
           updateHeaderTitle();
           btn.disabled = true;
-          btn.textContent = 'saved';
+          btn.textContent = 'Saved';
           showToast('Saved to memory');
         });
         const deleteBtn = document.createElement('button');
         deleteBtn.className = 'memory-item-btn delete';
-        deleteBtn.textContent = 'delete';
+        deleteBtn.textContent = 'Delete';
         deleteBtn.addEventListener('click', () => {
           item.active = false;
           div.remove();
