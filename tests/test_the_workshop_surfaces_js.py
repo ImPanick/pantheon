@@ -399,7 +399,7 @@ def test_the_preview_says_a_skill_arms_the_approval_gate(skills_sandbox):
     """)
     text = out["text"].lower()
     assert "untrusted" in text
-    assert "asks you" in text
+    assert "asks before" in text   # `P23-02` (`D-11`): the short form
 
 
 def test_skill_text_reaches_the_preview_as_text_and_never_as_markup(skills_sandbox):
@@ -547,8 +547,9 @@ def test_turning_auto_approve_off_says_what_it_did_to_injection(memory_sandbox):
           on: mem.skillGateHints({ autoApprove: true, minConfidence: 0.85 }),
         }));
     """)
-    assert "only published skills are injected" in out["off"]["coupling"]
-    assert "Audit all" in out["off"]["confidence"]
+    # `P23-02` (`D-9`): the two state words; the consequence is the same.
+    assert "only published skills are used" in out["off"]["coupling"]
+    assert "Audit publishes" in out["off"]["confidence"]
     assert out["on"]["coupling"] != out["off"]["coupling"]
 
 
@@ -573,7 +574,7 @@ def test_the_two_sentences_redraw_when_either_control_moves(memory_sandbox):
         }));
     """ % SLIDER)
     assert out["on"] != out["off"]
-    assert "only published skills are injected" in out["off"]
+    assert "only published skills are used" in out["off"]
     assert "loosest" in out["loose"]
 
 
@@ -599,7 +600,7 @@ def test_the_task_comes_from_a_box_the_user_can_type_in():
     assert "_startSkillTest(card, name, (taskEl && taskEl.value.trim()) || ''" in body
     # Blank is a real choice and the box has to say what it costs, or the
     # server's invented scenario looks like the product ignoring the field.
-    assert "Leave blank" in body
+    assert "Blank: the model invents an example" in body   # `P23-02` (`D-26`)
     # `P8-18` where a person will actually meet it. Since `P22-15` (wf-canvas)
     # the sentence is one constant (`skillGateNote.js`) that a workflow's Skill
     # step says too: the panel draws it, and the constant still says it.
@@ -611,7 +612,7 @@ def test_the_task_comes_from_a_box_the_user_can_type_in():
          f"const m = await import({json.dumps(note.as_uri())}); process.stdout.write(m.SKILL_GATE_NOTE);"],
         capture_output=True, text=True, timeout=30)
     assert said.returncode == 0, said.stderr
-    assert "stop halfway" in said.stdout
+    assert "asks before it writes, runs, sends or deletes" in said.stdout   # `P23-02` (`D-26`)
 
 
 def test_retry_starts_from_the_task_the_last_run_used():
@@ -789,7 +790,9 @@ def test_the_panel_no_longer_titles_itself_after_the_list(skills_sandbox):
     """It called itself "The catalogue the AI browses" — accurate when the list
     was all it had, and a promise the prompt block in front of it does not keep."""
     out = _preview(skills_sandbox, _index_payload())
-    assert "what the ai is given" in out["text"].lower()
+    # `P23-02`: the model, not "the AI" (Doc 2 § 5, rule 10); the same words
+    # as the button that opens it.
+    assert "what the model is shown" in out["text"].lower()
 
 
 # ── P8-12 · the lint, on the surface where a person is typing ───────────────

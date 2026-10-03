@@ -988,6 +988,7 @@ function renderSkillsList(m) {
         ${_duplicatePriorityPill(sk)}
         <span class="skill-stats">${_auditMarks(sk)}<span class="skill-conf" style="color:${confColor};">${conf}%</span> · used ${uses}×</span>
         <button type="button" class="skill-chevron-up skill-back-to-list" aria-label="Back to the list">← Skills</button>
+        <span class="skill-chevron-up" title="Collapse">${chevronIcon({ direction: 'up', size: 14 })}</span>
         <button class="skill-kebab-btn" title="Actions" aria-label="Actions"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg></button>
       </div>
     `;
@@ -1076,13 +1077,16 @@ function renderSkillsList(m) {
     preview.appendChild(actions);
     card.appendChild(preview);
 
-    // Click to expand/collapse (unless in select mode → toggle checkbox).
     // `BRAIN-U-12` (P23-02). An open card hides the toolbar and every other
     // card (Fork and Import land here), and the way back was an unlabelled ˄.
+    // Not while editing: as for the card itself (#4002), Save or Cancel leave
+    // the editor, so an edit is never dropped by a way out (the CSS hides it).
     header.querySelector('.skill-back-to-list')?.addEventListener('click', (e) => {
       e.stopPropagation();
+      if (card.querySelector('.skill-md-editor')) return;
       if (card.classList.contains('doclib-card-expanded')) _expandSkillCard(card, name);
     });
+    // Click to expand/collapse (unless in select mode → toggle checkbox).
     card.addEventListener('click', (e) => {
       if (card._suppressNextClick) { card._suppressNextClick = false; return; }
       // `P10-06`: not the name button — pressing it is a click on the card.
@@ -2780,8 +2784,10 @@ const _PROMPT_PREVIEW_FACTS = [
   ['Never sent', 'its verification steps, and everything below the frontmatter in SKILL.md. Open a skill here to read them — the model can ask for the whole file, one skill at a time.'],
 ];
 
-// `D-11` (P23-02): the untrusted-text sentence is said once, in Skills ›
-// Settings (beside *Skills per request*); this panel said it a second time.
+// `P8-18` on the surface that shows the injected text; `D-11` (P23-02)
+// shortened it to the one sentence Skills › Settings says too.
+const _PROMPT_PREVIEW_GATE =
+  'Skills are untrusted text, so a reply that uses one asks before it writes, runs, sends or deletes.';
 
 function _closePromptPreview(m) {
   const panel = m.el('skills-prompt-panel');
@@ -2917,6 +2923,7 @@ async function _renderPromptPreview(m) {
     row.appendChild(_el('code', 'skill-prompt-fact-v skill-prompt-withheld', withheld.join(', ')));
     facts.appendChild(row);
   }
+  facts.appendChild(_el('div', 'skill-prompt-note', _PROMPT_PREVIEW_GATE));
 
   panel.replaceChildren(head, exact, body, facts);
 }

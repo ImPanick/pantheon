@@ -13411,12 +13411,15 @@ details a:hover {
 #memory-modal .memory-modal-content:has(.memory-tab-panel[data-memory-panel]:not(.hidden)) {
   display: flex;
   flex-direction: column;
-  height: min(78vh, 720px);
+  height: 78vh;
   max-height: 78vh;
   overflow: hidden;
 }
+/* The zoom's exception for it, as the browse rule has one above: 78vh is not
+   the generic 85vh, so `tests/test_one_zoom_rule_covers_the_modals_css.py`
+   names this line. */
 :root.ui-scale-125 #memory-modal .memory-modal-content:has(.memory-tab-panel[data-memory-panel]:not(.hidden)) {
-  height: min(calc(78vh / 1.25), 720px);
+  height: calc(78vh / 1.25);
   max-height: calc(78vh / 1.25);
 }
 #memory-modal .memory-modal-content:has(.memory-tab-panel[data-memory-panel]:not(.hidden)) .modal-header,
@@ -13492,6 +13495,7 @@ details a:hover {
   padding: 2px 6px;
   white-space: nowrap;
 }
+.skill-card:has(.skill-md-editor) .skill-back-to-list { display: none; }
 /* `BRAIN-U-10`: the skill settings in the Skills window dim like they did in
    the Brain when their switch is off. */
 #skills-modal [data-skills-view-panel="settings"] .admin-card:has(.admin-switch input:not(:checked)),

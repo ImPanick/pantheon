@@ -178,8 +178,8 @@ def test_fix_these_with_the_model_appears_once_saved_and_says_the_counts(box):
     assert o["label"] == "Fix these with the model"
     assert "fix them with the model below" in o["head"], "the line sent the person to the card instead"
     assert o["improve"] == ["/api/skills/gamma-spooler/improve"]
-    assert ("Fixed gamma-spooler with the model. Before: 2 problems, 1 suggestion. "
-            "After: 0 problems, 1 suggestion.") in o["said"]
+    # `P23-02` (`D-31`): the counts before → after, in one line.
+    assert "Fixed gamma-spooler: problems 2 → 0, suggestions 1 → 1." in o["said"]
     assert "History" in o["said"]
 
 

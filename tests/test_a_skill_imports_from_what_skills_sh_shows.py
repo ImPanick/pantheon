@@ -413,7 +413,9 @@ def test_a_failure_is_said_beside_the_box_too(tmp_path):
     out = _drive_import(tmp_path, {"detail": "Couldn't find a skill called “s” in o/r."}, status=400)
     assert out["status"] == "Import failed: Couldn't find a skill called “s” in o/r."
     assert "is-error" in out["statusClass"]
-    assert out["errors"] == ["Import failed: Couldn't find a skill called “s” in o/r."]
+    # `P23-02` (`BRAIN-M-12`): said once, beside the box — the status line
+    # exists for this (`B926`); a toast repeating it was the second copy.
+    assert out["errors"] == []
     assert out["btnDisabled"] is False
 
 

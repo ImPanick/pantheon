@@ -65,6 +65,9 @@ _EXPECTED = {
     ".pdf-export-overlay .modal-content",
     "#compare-model-overlay .modal-content",
     '#memory-modal .memory-modal-content:has( .memory-tab-panel[data-memory-panel="browse"]:not(.hidden) )',
+    # `P23-02` (`BRAIN-U-3`): the Brain keeps one height on every tab — 78vh, not
+    # the generic 85vh, so it divides its own (height and cap).
+    '#memory-modal .memory-modal-content:has(.memory-tab-panel[data-memory-panel]:not(.hidden))',
 }
 
 

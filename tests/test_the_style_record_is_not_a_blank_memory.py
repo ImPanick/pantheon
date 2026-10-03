@@ -68,7 +68,7 @@ def test_before_a_profile_forms_the_record_is_not_a_card(brain):
     assert all((t or "").strip() for t in texts), f"a blank card was drawn: {out['cards']}"
     assert sorted(texts) == sorted(["Rowan prefers tea to coffee", "The launch is on the 14th"])
     # Counted as what it is drawn as: two memories, not three.
-    assert out["count"] == "2 memories"
+    assert out["count"] == "2"
     assert out["tab"] == "2"
     assert "style" not in out["chips"]
 
@@ -84,7 +84,7 @@ def test_a_store_holding_only_the_record_is_empty(brain):
     """)
     assert out["cards"] == []
     assert "No memories yet" in out["list"]
-    assert out["count"] == "0 memories"
+    assert out["count"] == "0"
 
 
 def test_once_a_profile_forms_its_text_is_still_drawn(brain):
@@ -98,7 +98,7 @@ def test_once_a_profile_forms_its_text_is_still_drawn(brain):
     """)
     texts = [c["text"] for c in out["cards"]]
     assert "You write in short sentences and rarely use exclamation marks." in texts
-    assert out["count"] == "3 memories"
+    assert out["count"] == "3"
 
 
 def test_after_a_tidy_the_redrawn_list_has_no_blank_card(brain):
@@ -120,4 +120,4 @@ def test_after_a_tidy_the_redrawn_list_has_no_blank_card(brain):
         console.log(JSON.stringify({ cards: cards(), count: count() }));
     """)
     assert [c["text"] for c in out["cards"]] == ["Rowan prefers tea to coffee"]
-    assert out["count"] == "1 memory"
+    assert out["count"] == "1"
