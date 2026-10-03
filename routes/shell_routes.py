@@ -16,7 +16,7 @@ from collections import namedtuple
 from pathlib import Path
 from typing import Dict, Any
 from core.platform_compat import IS_APPLE_SILICON, which_tool
-from core.middleware import INTERNAL_TOOL_USER, require_admin
+from core.middleware import INTERNAL_TOOL_USER, _internal_request_person, require_admin
 from src.tmux_attach import attach_command, list_command
 from src.host_docker_access import (
     HOST_DOCKER_ACCESS_HINT,
@@ -61,10 +61,18 @@ def _require_admin(request: Request):
         return
     user = getattr(request.state, "current_user", None)
     # In-process tool loopback. The AuthMiddleware already validated the
-    # internal token + loopback client before setting this marker, so
-    # honour it here as admin-equivalent.
+    # internal token + loopback client before setting this marker. Naming
+    # nobody, it is Pantheon itself (the Forge lifecycle loop's kill) and
+    # passes. Naming a person the middleware found no account for, it is that
+    # person's request and is asked about them — `B1175`'s question, asked of
+    # the shell too (`B1179`): until 2026-10-03 the marker passed here whoever
+    # the loopback named. A named account is already stamped as itself and
+    # meets the admin check below like its own request.
     if user == INTERNAL_TOOL_USER:
-        return
+        _internal, person = _internal_request_person(request)
+        if person is None:
+            return
+        user = person
     if not user or user == "api":
         raise HTTPException(403, "Admin only")
     if not auth_manager.is_admin(user):

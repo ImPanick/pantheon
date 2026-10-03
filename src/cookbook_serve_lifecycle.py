@@ -28,6 +28,11 @@ logger = logging.getLogger(__name__)
 
 
 def _internal_headers() -> dict:
+    """The token and no person: this loop acts for nobody, so `require_admin`
+    and the shell's gate answer it as Pantheon itself (`B1175`). Not
+    `src.tools._common._internal_headers`, which names the person a tool call
+    acts for (`B1179`) — the stop at window-end must not depend on whose
+    context happened to be bound."""
     from core.middleware import INTERNAL_TOOL_HEADER, INTERNAL_TOOL_TOKEN
     return {INTERNAL_TOOL_HEADER: INTERNAL_TOOL_TOKEN}
 
