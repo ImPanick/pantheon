@@ -307,6 +307,24 @@ class ToolPolicy:
             return "Tool use is disabled for this guide-only turn."
         return "Tool use is disabled for this turn."
 
+    def refusal_for(self, names, *, called: Optional[str] = None) -> Optional[str]:
+        """`B1101`. The sentence a refused call is answered with, asked of
+        every policy-equivalent spelling (`email_tool_policy_names`): the
+        spelling the model called first, then the others in a fixed order —
+        so the loop's refusal and the dispatcher's backstop name the same
+        spelling and say the same sentence. `None` when nothing blocks.
+
+        Before it the dispatcher answered every `blocks` refusal with "…is
+        forbade by the active guide-only policy" — for a step's allowlist and
+        an ordinary turn's denylist alike — while the loop said this policy's
+        own reason."""
+        spelled = [str(n) for n in (names or ()) if n]
+        order = ([called] if called in spelled else []) + sorted(n for n in spelled if n != called)
+        for name in order:
+            if self.blocks(name):
+                return self.reason_for(name)
+        return None
+
     def confirms(self) -> bool:
         """Whether this turn asks for an approval card on every action."""
         return bool(self.require_tool_confirmation)

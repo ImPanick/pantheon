@@ -1156,8 +1156,11 @@ async def _execute_tool_block_impl(
 
     if tool_policy and any(tool_policy.blocks(name) for name in policy_names):
         desc = f"{tool}: BLOCKED"
+        # `B1101`. The policy's own sentence, the one the loop's refusal says
+        # (`ToolPolicy.refusal_for`) — this said "forbade by the active
+        # guide-only policy" for a step's allowlist and a denylist alike.
         result = {
-            "error": f"Execution of tool '{tool}' is forbade by the active guide-only policy.",
+            "error": tool_policy.refusal_for(policy_names, called=tool),
             "exit_code": 1,
         }
         logger.warning("Tool policy blocked tool=%s", tool)

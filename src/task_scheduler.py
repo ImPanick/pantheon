@@ -1410,6 +1410,15 @@ NOTIFY_ON_SUCCESS_TASK_TYPES = ("llm", "research", "workflow")
 NODE_SLOT_SEPARATOR = ":"
 TEST_SLOT_PREFIX = "test"
 
+
+def task_chat_name(task) -> str:
+    """The name of the chat a task's run makes when it has none: "[Task]"
+    and the task's name — or, for a workflow step (`B1114`), the workflow's
+    (`WorkflowNodeTask.chat_name`), since the walker keeps the chat the first
+    step makes on the trigger and every later step writes into it. A task row
+    has no `chat_name`, so a Prompt task's chat is named as before."""
+    return f"[Task] {getattr(task, 'chat_name', None) or task.name}"
+
 # `P22-05`. What the walker says when a trigger has no document to run.
 WORKFLOW_DOCUMENT_MISSING = ("This workflow’s steps are missing, so there was "
                              "nothing to run.")
@@ -1437,9 +1446,11 @@ ANSWER_ALLOW = "allow"
 ANSWER_DENY = "deny"
 ANSWER_LAPSED = "lapsed"
 ANSWER_RESTARTED = "restarted"
-# The card left the store before its deadline in the process that minted it:
-# an ordinary message typed into its chat retires a waiting card
-# (`tool_approvals.retire_for_session`), the residual risk § 5 names.
+# The card left the store before its deadline in the process that minted it.
+# Until `B1103` an ordinary message typed into its chat retired a waiting card
+# (`tool_approvals.retire_for_session`, the residual risk § 5 named); a run's
+# question is now `held_by_run`, so what is left is the store's size cap
+# (`DEFAULT_MAX_PENDING_APPROVALS`), which drops the oldest card when full.
 ANSWER_WITHDRAWN = "withdrawn"
 
 
@@ -1462,6 +1473,28 @@ class StepAnswer(NamedTuple):
     decision: str
     sentence: str = ""
     exact_approval: Any = None
+
+
+def named_question(parked):
+    """`B1111`. A step that parks on a card, its tool named as the step's panel
+    names it (`workflow_effects.tool_words`: "Chat: send_message", not
+    `mcp__0e311a43__send_message`). The words go in the waiting record as
+    `tool_label` — read by the run's log line, the question's notification,
+    the waiting list and the answer's sentence — and `tool` keeps the name
+    the card seals. Asked once per card, where the walker first catches it
+    (`_park_record`, a For-each's item); a question already named passes."""
+    from src import workflow_runs as wr
+    from src.builtin_actions import TaskWaiting
+
+    if parked.kind != wr.WAITING_APPROVAL or parked.detail.get("tool_label"):
+        return parked
+    tool = parked.detail.get("tool")
+    if not tool:
+        return parked
+    from src.workflow_effects import tool_words
+    label = tool_words(tool) or str(tool)
+    return TaskWaiting(f"Waiting for your yes on {label}", kind=parked.kind,
+                       **dict(parked.detail, tool_label=label))
 
 
 class _Walk:
@@ -3035,8 +3068,14 @@ class TaskScheduler:
                 slot["steps"] = list(kept) if isinstance(kept, list) else []
                 slot["resuming"] = True
                 slot["answer"] = answer
+                # `B1110`. The answer is said here only when it lets the step
+                # run again (Allow): a denial, a lapse or a withdrawn question
+                # ends the step, and the step's own end line in this log says
+                # it — said here too, and once more by `_apply_resume`, a
+                # denied step's run log read the same sentence three times.
                 self._record_run_step(run_id, kind="progress", detail=(
-                    f"Resumed: {answer.sentence}" if answer is not None and answer.sentence
+                    f"Resumed: {answer.sentence}"
+                    if answer is not None and answer.sentence and answer.decision == ANSWER_ALLOW
                     else "Resumed"))
             elif run:
                 run.status = "running"
@@ -4308,7 +4347,7 @@ class TaskScheduler:
             session_id = str(uuid.uuid4())
             sess = DbSession(
                 id=session_id,
-                name=f"[Task] {task.name}",
+                name=task_chat_name(task),
                 endpoint_url=endpoint_url,
                 model=model,
                 owner=task.owner,
@@ -4322,7 +4361,7 @@ class TaskScheduler:
             if self._session_manager:
                 try:
                     self._session_manager.ensure_task_session(
-                        session_id, f"[Task] {task.name}", endpoint_url, model,
+                        session_id, task_chat_name(task), endpoint_url, model,
                         owner=task.owner, task=task
                     )
                 except Exception:
@@ -4520,7 +4559,7 @@ class TaskScheduler:
             session_id = str(uuid.uuid4())
             sess = DbSession(
                 id=session_id,
-                name=f"[Task] {task.name}",
+                name=task_chat_name(task),
                 endpoint_url=endpoint_url or "",
                 model=model_name or "",
                 owner=task.owner,
@@ -4534,7 +4573,7 @@ class TaskScheduler:
             if self._session_manager:
                 try:
                     self._session_manager.ensure_task_session(
-                        session_id, f"[Task] {task.name}", endpoint_url, model_name,
+                        session_id, task_chat_name(task), endpoint_url, model_name,
                         owner=task.owner, task=task
                     )
                 except Exception:
@@ -4705,6 +4744,9 @@ class TaskScheduler:
         if _may_wait:
             from src.workflow_runs import workflow_approval_ttl_seconds
             _loop_extra["approval_ttl_seconds"] = workflow_approval_ttl_seconds(task.owner)
+            # `B1103`. The card is the run's question: typing into the chat
+            # this step writes into does not withdraw it.
+            _loop_extra["approval_held_by_run"] = True
         if _slot.get("allowed_tools") is not None:
             # `P22-16`. An AI step limited to its own tools (`wf-effects`' policy).
             from src.tool_policy import ToolPolicy
@@ -5243,8 +5285,10 @@ class TaskScheduler:
             at most `WORKFLOW_PARALLEL_STEPS` at once. The run holds one
             model-slot permit, so the concurrency cap still applies.
           * One question at a time per run: while a step waits for a yes, the
-            run's other model steps do not start (a session's newer card would
-            supersede it, `tool_approvals.create`), though other branches go on.
+            run's other model steps do not start, though other branches go on
+            (`SLICE-CD-DESIGN` § 6's default; it was also because a session's
+            newer card superseded it, `tool_approvals.create`, which a run's
+            question — `held_by_run`, `B1103` — no longer is).
           * When nothing can go on and something waits, the run parks: records
             written, `TaskWaiting` raised, and `_execute_task_locked` lets go of
             the model slot, the time limit and the claim.
@@ -5508,6 +5552,7 @@ class TaskScheduler:
         question is not a report on an outcome (`SLICE-CD-DESIGN` § 1.5)."""
         from src import workflow_runs as wr
 
+        parked = named_question(parked)
         detail = dict(parked.detail)
         waiting = {"kind": parked.kind, **detail}
         until = detail.get("until")
@@ -5531,7 +5576,8 @@ class TaskScheduler:
         """`P22-17`. The card, in a notification with `review` (`B1006`'s
         key): which workflow, run, step and item, and the card itself."""
         card = waiting.get("card") if isinstance(waiting.get("card"), dict) else {}
-        tool = waiting.get("tool") or (card.get("action") or {}).get("tool") or "an action"
+        tool = (waiting.get("tool_label") or waiting.get("tool")
+                or (card.get("action") or {}).get("tool") or "an action")
         label = node.get("label") or node["id"]
         item = waiting.get("item")
         where = f"“{label}”" + (f", item {int(item) + 1}," if isinstance(item, int) else "")
@@ -5549,6 +5595,7 @@ class TaskScheduler:
             review={"kind": "workflow_approval", "workflow_id": w.wf.id,
                     "workflow": w.name, "run_id": w.run_id, "node_id": node["id"],
                     "item": item, "label": label, "since": since,
+                    "tool_label": waiting.get("tool_label") or None,
                     "approval": card or None})
 
     def _start_wait(self, w, node: dict) -> None:
@@ -5725,7 +5772,8 @@ class TaskScheduler:
                 elif verdict.decision == ANSWER_ALLOW or node.get("kind") == wd.NODE_KIND_FOREACH:
                     reruns.append((node, rec, verdict))
                 else:
-                    self._record_run_step(w.run_id, kind="progress", detail=verdict.sentence)
+                    # `B1110`. Said once on the run — by `_end_record`'s line
+                    # for this step — and once in the step's own log, here.
                     steps = list(json.loads(rec.steps)) if rec.steps else []
                     steps.append(shape_run_step({"kind": "progress", "detail": verdict.sentence}))
                     self._end_record(w, node, rec, status=NODE_STATUS_ERROR,
@@ -5747,7 +5795,7 @@ class TaskScheduler:
             return None
         from src import workflow_runs as wr
         until = wr._parse_iso(waiting.get("until"))
-        tool = waiting.get("tool") or "the action"
+        tool = waiting.get("tool_label") or waiting.get("tool") or "the action"
         if until is not None and (now or _utcnow()) >= until:
             sentence = (f"Nobody answered by {self._clock_words(w, until)} — {tool} was "
                         f"not done.")
@@ -5756,10 +5804,14 @@ class TaskScheduler:
         started = getattr(self, "_started_at", None)
         if since is not None and started is not None and since >= started:
             # Gone early, in this process: not a restart, and not a lapse
-            # (`Law 10` — the sentence says which).
+            # (`Law 10` — the sentence says which). `B1103`: a message typed
+            # into the step's chat no longer does this (the card is
+            # `held_by_run`); what still can is the store's size cap, which
+            # drops its oldest card when it is full. The sentence says what
+            # is known — it left early — and no reason it cannot be sure of.
             return StepAnswer(rec.node_id, item, ANSWER_WITHDRAWN, (
-                f"The question was withdrawn before anyone answered — a new message in "
-                f"its chat replaces a waiting question — so {tool} was not done."))
+                f"The question was withdrawn before anyone answered, so {tool} was "
+                f"not done."))
         return StepAnswer(rec.node_id, item, ANSWER_RESTARTED,
                           f"Pantheon restarted before you answered — {tool} was not done.")
 
@@ -6072,7 +6124,8 @@ class TaskScheduler:
                 if answer is not None and answer.item == index:
                     item_answer = answer
                     if answer.decision != ANSWER_ALLOW:
-                        self._record_run_step(slot, kind="progress", detail=answer.sentence)
+                        # `B1110`. The step's log already says the answer: the
+                        # resumed step's first line is it (`_start_step`).
                         wr.record_node_end(walk.db if walk is not None else db, rec,
                                            status=NODE_STATUS_ERROR, text=answer.sentence,
                                            error=answer.sentence, port=EDGE_WHEN_ERROR,
@@ -6104,6 +6157,7 @@ class TaskScheduler:
                     ctx=item_ctx, answer=item_answer, walk=None, may_wait=may_wait)
                 res = done.result
             except TaskWaiting as parked:
+                parked = named_question(parked)
                 steps, model = self.run_steps(item_slot), self.run_model(item_slot)
                 self._clear_run_state(item_slot)
                 if rec is not None and walk is not None:
@@ -6280,7 +6334,7 @@ class TaskScheduler:
             external_untrusted_context_seen=False,
             capabilities=capabilities_for_action(call.tool, call.content),
             gate_decision=decision, taint_trail=context.taint_trail,
-            ttl_seconds=wr.workflow_approval_ttl_seconds(task.owner))
+            ttl_seconds=wr.workflow_approval_ttl_seconds(task.owner), held_by_run=True)
         card = pending.public_payload(reason=decision.reason)
         return TaskWaiting(
             f"Waiting for your yes on {call.tool}", kind=wr.WAITING_APPROVAL,

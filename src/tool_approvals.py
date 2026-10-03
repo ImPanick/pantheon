@@ -360,6 +360,18 @@ class PendingToolApproval:
     # and no longer: one per chat (a new card supersedes it), dropped on
     # consume, expiry or the next ordinary message — it is what the run held.
     continuation_turn: Any = None
+    # `B1103`. A workflow run's question (`P22-17`): the card belongs to the
+    # run, which waits on it, and is answered from the run's own surfaces
+    # (the notification, the waiting list, the Runs view — the workflow's
+    # answer route), not from the chat it is bound to. So an ordinary message
+    # typed into that chat does not withdraw it (`retire_for_session`) and a
+    # newer card minted in that chat does not supersede it (`create`); it
+    # still ends by its answer, its deadline, Stop or switch-off (the walker's
+    # `_retire_cards`) and the store's size cap. Its taint is still carried
+    # into that next chat turn — the security half of retiring a card stays.
+    # Outside `_binding_payload` like the fields above: it decides the card's
+    # life in this store, never what runs or who may answer.
+    held_by_run: bool = False
 
     def default_reason(self) -> str:
         """`P4-04`. The card's own sentence when its producer wrote none.
@@ -733,6 +745,7 @@ class ToolApprovalStore:
         runs_in: Any = None,
         continuation_turn: Any = None,
         ttl_seconds: Any = None,
+        held_by_run: bool = False,
     ) -> PendingToolApproval:
         """`gate_decision` and `taint_trail` are display-only (`P7-07`,
         `P7-08`). Both default to nothing so the producers that have no run
@@ -806,6 +819,7 @@ class ToolApprovalStore:
             ),
             runs_in=runs_in if isinstance(runs_in, str) else "",
             continuation_turn=continuation_turn,
+            held_by_run=held_by_run is True,
         )
         with self._lock:
             expired = self._purge_expired_locked(now)
@@ -823,6 +837,8 @@ class ToolApprovalStore:
                         bool(pending.session_id)
                         or existing.origin_run_id == pending.origin_run_id
                     )
+                    # `B1103`: a workflow run's question is the run's.
+                    and not existing.held_by_run
                 )
             ]
             for approval_id in superseded:
@@ -950,6 +966,11 @@ class ToolApprovalStore:
         Returns whether any retired action carried external provenance, so the
         caller can preserve that security state without treating the new user
         message as an approval continuation.
+
+        `B1103`. A card a workflow run holds (`held_by_run`) is not retired:
+        it is the run's question, answered from the run, and the message was
+        typed into the chat its step writes into. Its taint is still answered
+        here, so the new turn carries it exactly as it would have.
         """
         now = time.time()
         normalized_owner = _normalized_owner(owner)
@@ -958,7 +979,7 @@ class ToolApprovalStore:
             return False
         with self._lock:
             expired = self._purge_expired_locked(now)
-            retired_ids = [
+            in_session = [
                 approval_id
                 for approval_id, pending in self._pending.items()
                 if (
@@ -968,10 +989,11 @@ class ToolApprovalStore:
             ]
             carried_taint = any(
                 self._pending[approval_id].external_untrusted_context_seen
-                for approval_id in retired_ids
+                for approval_id in in_session
             )
-            for approval_id in retired_ids:
-                self._pending.pop(approval_id, None)
+            for approval_id in in_session:
+                if not self._pending[approval_id].held_by_run:
+                    self._pending.pop(approval_id, None)
         self._announce_expired(expired)
         return carried_taint
 

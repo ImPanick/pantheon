@@ -96,8 +96,10 @@ _DRAFT_AND_OPEN = (
     "  const made = replyTo('POST', (u) => u === '/api/workflows');\n"
     "  return { r, handle, made, WID: made && made.reply && made.reply.workflow ? made.reply.workflow.id : null };\n"
     "};\n"
-    "const planOf = (dry) => Object.fromEntries((dry.reply.nodes || []).map((n) => [n.node_id,\n"
-    "  (n.steps || []).map((s) => s.detail)]));\n"
+    "// `B1132`: what a marked step would do is the Doc's `plans` (the dry run's\n"
+    "// planner, nothing recorded) — the reply that made the draft carries them.\n"
+    "const planOf = (made) => (made && made.reply && made.reply.workflow && made.reply.workflow.plans) || {};\n"
+    "const dryRunsAsked = () => calls('POST', (u) => u.includes('/run?dry=true')).length;\n"
 )
 
 
@@ -159,7 +161,7 @@ def test_the_describe_box_posts_describe_and_tz_and_the_draft_opens_marked_and_o
 def test_a_marked_steps_panel_opens_on_its_banner_and_looks_right_checks_it_and_writes_no_version(box, live):
     live.script(_answer())
     o = _case(box, live, """
-        const { r, WID } = await draftAndOpen();
+        const { r, WID, made } = await draftAndOpen();
         fire(nodeEl(r, 'summarise'), 'click'); await quiet();
         const b = by(r, 'wf-step-check');
         const banner = { origin: b.dataset.origin, head: by(b, 'wf-step-check-head').textContent,
@@ -171,12 +173,13 @@ def test_a_marked_steps_panel_opens_on_its_banner_and_looks_right_checks_it_and_
           marks: steps(r).map((n) => [n.dataset.itemId, n.dataset.unchecked || null]) };
         fire(nodeEl(r, 'post'), 'click'); await quiet();
         const postPlan = by(r, 'wf-step-check').querySelector('.wf-step-check-plan').querySelectorAll('li').map((li) => li.textContent);
-        const plans = planOf(replyTo('POST', (u) => u.endsWith('/run?dry=true')));
-        const dryRuns = calls('POST', (u) => u.endsWith('/run?dry=true')).length;
+        const plans = planOf(made);
+        const dryRuns = dryRunsAsked();
+        const runs = (await ask('/api/tasks/' + made.reply.workflow.task_id + '/runs')).runs;
         const puts = calls('PUT', (u) => u === '/api/workflows/' + WID);
         const stored = (await ask('/api/workflows/' + WID)).workflow;
         const versions = (await ask('/api/workflows/' + WID + '/versions')).versions;
-        out({ banner, checked, postPlan, plans, puts, dryRuns, WID,
+        out({ banner, checked, postPlan, plans, puts, dryRuns, runs, WID,
               versions: versions.map((v) => v.source), version: stored.version,
               storedMarks: stored.graph.nodes.map((n) => [n.id, n.unchecked ? n.unchecked.origin : null]),
               dirty: by(r, 'wf-dirty').textContent });
@@ -193,7 +196,8 @@ def test_a_marked_steps_panel_opens_on_its_banner_and_looks_right_checks_it_and_
         "the canvas is drawn again: the checked step's mark is gone, the others keep theirs"
     assert o["storedMarks"] == o["checked"]["marks"], "…as the server stored it"
     assert o["postPlan"] == o["plans"]["post"]
-    assert o["dryRuns"] == 1, "the saved version is planned once, however many panels open"
+    # `B1132`: checking reads the Doc's plans; it asks no dry run and records none.
+    assert o["dryRuns"] == 0 and o["runs"] == [], "checking a step leaves its Runs list empty"
     assert o["versions"] == ["drafted"] and o["version"] == 1, "a check writes no version"
     assert o["dirty"] == "", "and leaves the draft clean"
 
@@ -218,7 +222,7 @@ def test_switching_on_with_unchecked_steps_offers_check_them_now_and_all_look_ri
           foot: by(layer, 'wf-check-foot').querySelectorAll('button').map((x) => x.textContent),
           marks: steps(r).filter((n) => n.dataset.unchecked).length };
         fire(by(layer, 'wf-check-switch'), 'click'); await quiet();
-        const plans = planOf(replyTo('POST', (u) => u.endsWith('/run?dry=true')));
+        const plans = planOf(replyTo('POST', (u) => u === '/api/workflows'));
         const stored = (await ask('/api/workflows/' + WID)).workflow;
         out({ refused, listed, after, plans, WID, labels: stored.graph.nodes.map((n) => n.label),
               switches: calls('POST', (u) => u.endsWith('/switch')),

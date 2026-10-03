@@ -163,7 +163,44 @@ def setup_workflow_routes(task_scheduler) -> APIRouter:
         out["graph"] = store.stored_graph(wf)
         out["trigger_task"] = _task_to_dict(trigger, workflow_id=wf.id) if trigger is not None else None
         out["versions_kept"] = store.versions_kept(db, wf)
+        checking = check_plans(db, trigger, out["graph"])
+        if checking is not None:
+            out["plans"], out["plans_declined"] = checking
         return out
+
+    def check_plans(db, trigger, graph):
+        """`B1132`. While a step is marked "check me", what each marked step
+        would do: `{node_id: [line]}` — the workflow dry run's own plan of it
+        (`TaskScheduler._plan_workflow_node`, one planner, `Law 7`; a step it
+        would not run says why first) — and, when the engine would not run the
+        document at all (an import whose Integration is missing, say), no
+        plans and its sentence (`plans_declined`), as the dry run records.
+        `None` when no step is marked.
+
+        Before this row the banner and *Check them now* asked the existing
+        dry-run door (`POST /api/tasks/{id}/run?dry=true`) once per saved
+        version, and each asking recorded a `skipped` "Dry run" in the Runs —
+        checking a draft read as having run it, and a drive's run-wait picked
+        the check's dry run up as the newest run. Checking is reading: it
+        records nothing. A dry run a person asks for (*Show me what this would
+        do*) is still recorded (`Law 1`)."""
+        if trigger is None:
+            return None
+        marked = [n for n in store.nodes_of(graph)
+                  if isinstance(n, dict) and isinstance(n.get("unchecked"), dict)]
+        if not marked:
+            return None
+        _wf, parsed, refused = task_scheduler._load_workflow(db, trigger)
+        if refused or parsed is None:
+            return {}, refused or "Nothing was planned."
+        by_id = {str(n.get("id")): n for n in store.nodes_of(parsed)}
+        plans = {}
+        for mark in marked:
+            node_id = str(mark.get("id"))
+            steps, declined = task_scheduler._plan_workflow_node(db, trigger, by_id.get(node_id, mark))
+            lines = [str(s.get("detail")) for s in steps if isinstance(s, dict) and s.get("detail")]
+            plans[node_id] = ([f"Would not run: {declined}"] if declined else []) + lines
+        return plans, None
 
     # ── 1, 2: the list, and a new one ────────────────────────────────────────
 
@@ -546,10 +583,12 @@ def setup_workflow_routes(task_scheduler) -> APIRouter:
             # and the plan of an HTTP, MCP or Code step is the document's own.
             resources = workflow_resources(wf.owner)
             if needs_test_confirmation(checked, tasks_by_id, resources) and not body.get("confirm"):
+                plan = _node_plan(checked, wf.owner, tasks_by_id, resources)
                 return {
                     "outcome": TEST_NEEDS_CONFIRMATION,
-                    "plan": _node_plan(checked, wf.owner, tasks_by_id, resources),
-                    "effects": _node_effect_sentences(checked, tasks_by_id, resources),
+                    "plan": plan,
+                    "effects": _effects_not_in(plan, _node_effect_sentences(
+                        checked, tasks_by_id, resources)),
                     "input_used": envelope, "dropped": dropped, "source": source,
                 }
             name = wf.name
@@ -640,7 +679,8 @@ def setup_workflow_routes(task_scheduler) -> APIRouter:
             trigger = store.trigger_of(db, wf)
             owner = wf.owner
             session = waiting.get("session_id") or ""
-            tool = waiting.get("tool") or "the action"
+            # `B1111`: the tool as the step's panel names it.
+            tool = waiting.get("tool_label") or waiting.get("tool") or "the action"
             label = rec.label or rec.node_id
             tz_name = _resolve_task_timezone(db, trigger) if trigger is not None else None
             task_id = run.task_id
@@ -984,6 +1024,26 @@ def _node_plan(node, owner, tasks_by_id, resources=None) -> list:
     return dry_run_plan(task_type=kind, action=config.get("action"), prompt=config.get("prompt"),
                         owner=owner, model=config.get("model"),
                         endpoint_url=config.get("endpoint_url"))
+
+
+# What a planner's line says an effect with (`dry_run_plan`, `plan_lines`):
+# "It would: runs your code in your own workstation account, …".
+PLAN_EFFECT_LEAD = "It would: "
+
+
+def _effects_not_in(plan, sentences) -> list:
+    """`B1112`. The effect sentences the plan's own "It would: …" lines do not
+    already say. Both are written from one set of sentences
+    (`EFFECT_SENTENCES`, `CODE_EFFECT_SENTENCE`), and *Test this step* drew
+    the plan and then the effects beside it — so a Code step said "runs your
+    code in your own workstation account" twice, an Action step each of its
+    effects twice (measured by `integrate-d`, P22-18; the pattern predates
+    wave D). An effect the plan does not say (a Run task step's "calls a
+    model", say) is still listed. Only the plan's effect lines are read, so
+    a prompt that happens to contain the words does not hide one."""
+    said = [str(line)[len(PLAN_EFFECT_LEAD):] for line in plan or ()
+            if str(line).startswith(PLAN_EFFECT_LEAD)]
+    return [s for s in sentences if not any(s in line for line in said)]
 
 
 def _node_effect_sentences(node, tasks_by_id, resources=None) -> list:

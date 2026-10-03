@@ -1459,7 +1459,7 @@ def waiting_list(db, owner: str | None) -> list:
     """`GET /api/workflows/waiting` (`C-W`): every step of the owner's
     workflows that waits right now, oldest first —
     `{workflow_id, workflow, run_id, node_id, item, label, kind, since, until,
-    approval}`. `approval` is the card while the store still holds it (so the
+    approval, tool_label}`. `approval` is the card while the store still holds it (so the
     page re-offers only a question that can still be answered), else null."""
     from core.database import TaskRunNode
     from src.tool_approvals import tool_approval_store
@@ -1485,6 +1485,8 @@ def waiting_list(db, owner: str | None) -> list:
             "item": waiting.get("item") if isinstance(waiting.get("item"), int) else None,
             "label": rec.label, "kind": kind, "since": waiting.get("since"),
             "until": waiting.get("until"), "approval": approval,
+            # `B1111`: the tool as the step's panel names it, for the notice.
+            "tool_label": waiting.get("tool_label") or None,
         })
     return out
 

@@ -69,7 +69,11 @@ export function workflowApprovalWords(review) {
   const wf = String(r.workflow || r.workflow_name || '').trim();
   const step = String(r.label || r.node_label || '').trim();
   const item = r.item == null ? '' : ` (item ${Number(r.item) + 1})`;
-  const tool = r.approval && r.approval.action && r.approval.action.tool ? String(r.approval.action.tool) : '';
+  // `B1111`. The tool as the step's panel names it ("Chat: send_message"),
+  // which the server sends beside the card (`tool_label`); the card's sealed
+  // name (`mcp__0e311a43__send_message`) only when there are no such words.
+  const sealed = r.approval && r.approval.action && r.approval.action.tool ? String(r.approval.action.tool) : '';
+  const tool = String(r.tool_label || '').trim() || sealed;
   return {
     title: wf ? `“${wf}” is waiting for your yes` : 'A workflow is waiting for your yes',
     summary: `${step ? `“${step}”${item}` : 'A step'} wants to ${tool ? `use ${tool}` : 'do something that needs your yes'}.`,
@@ -222,7 +226,7 @@ export async function offerWaitingWorkflowApprovals() {
     const review = {
       kind: 'workflow_approval', workflow_id: w.workflow_id, run_id: w.run_id, node_id: w.node_id,
       item: w.item == null ? null : w.item, approval: w.approval, workflow: w.workflow, label: w.label,
-      since: w.since, until: w.until,
+      since: w.since, until: w.until, tool_label: w.tool_label || null,
     };
     if (offerWorkflowApproval(review)) shown += 1;
   }

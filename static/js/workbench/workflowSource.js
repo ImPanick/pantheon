@@ -74,8 +74,9 @@
 // and handed to its panel (`check`) with its `needs`, what it would do and
 // *Looks right* (`checkSteps`, C-A's `PUT {checked}`, which writes no version).
 // What a step would do is the dry run's plan of the saved version — the one
-// planner (`plan_lines`), the existing door, which plans a marked step
-// (design § 1.1) — asked once per saved version (`planLines`). A run's failed
+// planner (`plan_lines`), which plans a marked step (design § 1.1) — carried
+// by the Doc while a step is marked (`plans`, `B1132`: asking the dry-run door
+// recorded a "Dry run" each time a draft was checked). A run's failed
 // step can be explained (`explain`, C-A's explain route) and a proposed change
 // applied as a new version (`fix`, source `fixed`) and undone with
 // `restoreVersion`. The saved workflow is a file (`exportFile`).
@@ -314,9 +315,6 @@ export function createWorkflowSource({
     // none to serve (the panels then offer Slice B's four kinds); and the
     // steps added in this draft whose id still follows their first label.
     palette: null, paletteError: null, fresh: new Set(),
-    // `P22-19`. What each step of the saved version would do, from its dry
-    // run: `{ version, promise }`, asked once per saved version.
-    plans: null,
     // `B1136`. The step panel open now, so a palette read again reaches it.
     openStep: null,
   };
@@ -1384,40 +1382,28 @@ export function createWorkflowSource({
     }
   }
 
-  /** `P22-19`. What each step of the SAVED version would do: the dry run's
-   *  plan (`POST /api/tasks/{start}/run?dry=true`, `nodes[].steps`), one
-   *  planner (`plan_lines`) and the existing door — nothing runs, and the
-   *  dry run plans a step nobody has checked (design § 1.1). Asked once per
-   *  saved version; a refusal is not kept. → `{ ok, plans: Map<id, [line]> }` */
+  /** `P22-19`. What each marked step of the SAVED version would do: the
+   *  Doc's `plans` (`{node_id: [line]}`), which the server sends while a step
+   *  is marked — the workflow dry run's own planner, nothing run, and the
+   *  dry run plans a step nobody has checked (design § 1.1). `B1132`: this
+   *  asked the dry-run door (`POST /api/tasks/{start}/run?dry=true`) once per
+   *  saved version, and each asking recorded a "Dry run" in the Runs; reading
+   *  what a step would do records nothing now. → `{ ok, plans: Map<id,
+   *  [line]>, declined }` — `declined` the engine's sentence when it would not
+   *  run the document at all (so no step is planned). */
   function planLines() {
     if (isRun || !S.doc) return Promise.resolve({ ok: false, sentence: READ_ONLY });
-    const version = S.doc.version;
-    if (S.plans && S.plans.version === version) return S.plans.promise;
-    const promise = (async () => {
-      try {
-        const reply = await api.runWorkflow(S.doc.task_id, { dry: true });
-        const plans = new Map();
-        for (const e of (Array.isArray(reply && reply.nodes) ? reply.nodes : [])) {
-          if (!e || e.node_id == null) continue;
-          const lines = (Array.isArray(e.steps) ? e.steps : [])
-            .map((s) => String((s && typeof s === 'object' ? s.detail : s) || '').trim()).filter(Boolean);
-          plans.set(String(e.node_id), e.declined ? [`Would not run: ${e.declined}`, ...lines] : lines);
-        }
-        // A document the engine would not run (a step that needs what this
-        // Pantheon lacks, say) is planned not at all: no step has an entry,
-        // and the run says why (measured in Chromium on an import whose
-        // Integration was missing — every step read "did not reach").
-        const run = reply && reply.run ? reply.run : null;
-        const declined = plans.size ? null
-          : String((run && (run.error || run.result)) || 'Nothing was planned.').split('\n')[0].trim();
-        return { ok: true, plans, declined };
-      } catch (err) {
-        return answer(err);
-      }
-    })();
-    S.plans = { version, promise };
-    promise.then((r) => { if (!r.ok && S.plans && S.plans.promise === promise) S.plans = null; });
-    return promise;
+    const listed = S.doc.plans && typeof S.doc.plans === 'object' && !Array.isArray(S.doc.plans) ? S.doc.plans : {};
+    const plans = new Map();
+    for (const [id, lines] of Object.entries(listed)) {
+      plans.set(String(id), (Array.isArray(lines) ? lines : []).map((l) => String(l == null ? '' : l).trim()).filter(Boolean));
+    }
+    // A document the engine would not run (a step that needs what this
+    // Pantheon lacks, say) is planned not at all, and the server says why
+    // (measured in Chromium on an import whose Integration was missing).
+    const declined = plans.size ? null
+      : String(S.doc.plans_declined || 'Nothing was planned.').split('\n')[0].trim();
+    return Promise.resolve({ ok: true, plans, declined });
   }
 
   /** `P22-20`. Apply a proposed change to step `nodeId` (C-A's fix route, a

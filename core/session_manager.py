@@ -720,7 +720,23 @@ class SessionManager:
         if session_id in self.sessions:
             return self.sessions[session_id]
 
-        session = self.create_session(session_id, name, endpoint_url, model, owner=owner)
+        # `B1140`. "If it doesn't exist" asked the cache only. The scheduler
+        # writes a task's chat row itself (in the Tasks folder, which
+        # `create_session` does not set) and then asks here, so the row was
+        # inserted a second time: every first run of a Prompt task or step
+        # logged "Error creating session: … UNIQUE constraint failed:
+        # sessions.id" at ERROR, raised into a bare `except`, and left the
+        # cache empty. A row already stored is loaded, not made again.
+        db = SessionLocal()
+        try:
+            stored = db.query(DbSession.id).filter(DbSession.id == session_id).first() is not None
+        finally:
+            db.close()
+        if stored:
+            self._load_session_from_db(session_id)
+            session = self.sessions[session_id]
+        else:
+            session = self.create_session(session_id, name, endpoint_url, model, owner=owner)
         if task is not None:
             task.session_id = session_id
         return session

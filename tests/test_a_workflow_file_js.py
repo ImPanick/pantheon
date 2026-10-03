@@ -484,16 +484,19 @@ def test_every_kind_of_need_an_import_writes_is_said_in_words_with_a_door_only_w
 
 def test_a_step_that_cannot_be_planned_yet_says_why_not_that_the_plan_missed_it(box, two):
     """Measured in Chromium (wb-canvas-e): an imported workflow whose
-    Integration is missing is not planned at all — the real dry run records no
-    step and its run carries the engine's reason — and the banner said "The
-    plan did not reach this step". It says the reason."""
+    Integration is missing is not planned at all — the engine plans no step
+    and says why — and the banner said "The plan did not reach this step". It
+    says the reason. (`B1132`: the reason is the Doc's `plans_declined`, the
+    same sentence the dry run recorded; no dry run is asked.)"""
     o = _case(box, two, """
         const { r } = await openFile(TEXT);
         fire(nodeEl(r, 'fetch-unread'), 'click'); await quiet();
-        const dry = replyTo('POST', (u) => u.endsWith('/run?dry=true'));
+        const doc = replyTo('POST', (u) => u === '/api/workflows').reply.workflow;
         out({ plan: by(r, 'wf-step-check').querySelector('.wf-step-check-plan').querySelectorAll('li').map((x) => x.textContent),
-              nodes: dry.reply.nodes, reason: dry.reply.run && (dry.reply.run.error || dry.reply.run.result) });
+              plans: doc.plans, reason: doc.plans_declined,
+              dryRuns: calls('POST', (u) => u.includes('/run?dry=true')).length });
     """, TEXT=two.export_text)
-    assert o["nodes"] == [], "the engine planned nothing"
+    assert o["plans"] == {}, "the engine planned nothing"
     assert o["reason"], o
     assert o["plan"] == [f"It cannot be planned yet: {o['reason']}"]
+    assert o["dryRuns"] == 0

@@ -247,10 +247,16 @@ NODE_CONFIG_FIELDS = {
 # `_execute_checkin`, `_run_agent_loop`, `_execute_research_task`,
 # `_deliver_task_result` and its two deliverers, `_resolve_task_timezone`, and
 # `SessionManager.ensure_task_session` (which writes `session_id`).
+#
+# `chat_name` (`B1114`) is the one field that is not a `ScheduledTask` column:
+# the name of the chat a step makes when the workflow has none yet — the
+# workflow's, so every step writes into a chat named for it
+# (`task_scheduler.task_chat_name`; a task row has no such attribute and keeps
+# its own name).
 STAND_IN_FIELDS = (
     "id", "owner", "name", "prompt", "task_type", "action", "model",
     "endpoint_url", "session_id", "crew_member_id", "character_id", "tz_name",
-    "max_steps", "output_target",
+    "max_steps", "output_target", "chat_name",
 )
 
 # ── Caps (mistake prevention, not a control — `Law 17`) ─────────────────────
@@ -449,6 +455,18 @@ EMPTY_RESOURCES = WorkflowResources()
 def _mcp_info(resources: WorkflowResources, tool) -> dict | None:
     info = (resources.mcp_tools or {}).get(tool) if isinstance(tool, str) else None
     return info if isinstance(info, dict) else None
+
+
+def mcp_tool_words(info, tool) -> str:
+    """`B1111`. An MCP tool as a person reads it: "Chat: send_message" — its
+    server's name and the tool's own, as the step's panel names it
+    (`stepFields.js`) — or the qualified name when the server is not known
+    here. The qualified name stays what is stored, sealed and called; these
+    are the words beside it."""
+    info = info if isinstance(info, dict) else {}
+    if info.get("server_name") and info.get("name"):
+        return f"{info['server_name']}: {info['name']}"
+    return str(tool)
 
 
 def _mcp_schema(node: dict, resources: WorkflowResources):
@@ -1995,7 +2013,9 @@ def plan_lines(node: dict, resources: WorkflowResources | None = None) -> list:
         if (config.get("method") or "GET") != "GET":
             lines.append(f"It would: {EFFECT_SENTENCES[EFFECT_TOUCHES_REMOTE]}")
     elif kind == NODE_KIND_MCP:
-        lines.append(f"Would call the tool {config.get('tool')}")
+        # `B1111`: named as the panel names it, where its server is known.
+        lines.append(f"Would call the tool "
+                     f"{mcp_tool_words(_mcp_info(resources, config.get('tool')), config.get('tool'))}")
         for name, value in (config.get("args") or {}).items():
             lines.append(f"{name}: {_shown(value)}")
         if node_effects(node, None, resources):
@@ -2039,8 +2059,7 @@ def _sends(node: dict, resources: WorkflowResources) -> list:
     elif kind == NODE_KIND_MCP:
         tool = config.get("tool")
         info = _mcp_info(resources, tool) or {}
-        said = (f"{info['server_name']}: {info['name']}" if info.get("server_name") and info.get("name")
-                else str(tool))
+        said = mcp_tool_words(info, tool)
         schema = info.get("input_schema") if isinstance(info.get("input_schema"), dict) else None
         # The arguments that decide where it goes — the ones only a person
         # types (`never`); what it says (`value`) is left to the plan.
@@ -2126,6 +2145,12 @@ def node_stand_in(trigger, workflow_name: str, node: dict) -> WorkflowNodeTask:
     or Action step shares the trigger's chat (`session_id`); a Research step
     starts with none, because a report is keyed by its session and two
     Research steps sharing one would overwrite each other.
+
+    `B1114`. The step that makes the workflow's chat names it for the
+    workflow (`chat_name`), not "workflow · step": the walker keeps that chat
+    on the trigger (`_keep_workflow_chat`) and every later step writes into
+    it — measured before this row, a later step's write-up sat in a chat
+    named after the first step.
     """
     kind = node.get("kind")
     if kind not in STAND_IN_KINDS:
@@ -2154,6 +2179,7 @@ def node_stand_in(trigger, workflow_name: str, node: dict) -> WorkflowNodeTask:
         output_target=cfg("output_target"),
         tz_name=getattr(trigger, "tz_name", None),
         session_id=None if kind == NODE_KIND_RESEARCH else getattr(trigger, "session_id", None),
+        chat_name=None if kind == NODE_KIND_RESEARCH else workflow_name,
     )
 
 

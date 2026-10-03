@@ -4872,6 +4872,7 @@ async def stream_agent_loop(
     loop_caps_source: str = CAPS_FROM_CALLER,
     explicit_params=frozenset(),
     approval_ttl_seconds: Optional[int] = None,
+    approval_held_by_run: bool = False,
 ) -> AsyncGenerator[str, None]:
     """Streaming agent loop generator.
 
@@ -4879,6 +4880,11 @@ async def stream_agent_loop(
     run mints waits — a workflow step's question waits
     ``workflow_approval_timeout_seconds``. ``None`` is the store's own deadline,
     which every chat run keeps; the store clamps any number to its bounds.
+
+    ``approval_held_by_run`` (`B1103`): a card this run mints is a workflow
+    run's question (`PendingToolApproval.held_by_run`) — a message typed into
+    the chat it is bound to neither withdraws nor supersedes it. ``False`` for
+    every chat run, exactly as before.
 
     ``explicit_params`` names the sampling parameters the person chose
     (`P2-13`); the chat route passes its preset's. With ``"temperature"`` in it
@@ -5150,7 +5156,10 @@ async def stream_agent_loop(
                 messages,
                 include_memory=True,
             )
+            # `B1100`: not for a step that names its tools — that prompt
+            # names `manage_memory` and the email tools.
             if _pan_qwen_finetune_model
+            and (tool_policy is None or tool_policy.allowed_tools is None)
             else [{"role": "user", "content": _last_user}]
         )
         direct_response = ""
@@ -5667,8 +5676,16 @@ async def stream_agent_loop(
 
     def _route_finetune_modes(candidate_model: str):
         is_ody = _is_pantheon_qwen_model(candidate_model)
+        # `B1100`. A workflow AI step that names its tools (`P22-16`) gets
+        # none of the three `pantheon-qwen3` modes: each sends a fixed prompt
+        # naming its own tools (`manage_notes`, `manage_calendar`,
+        # `manage_tasks`, the document tools, `manage_memory` and the email
+        # tools) and clamps the selection to them — the notes mode even lifts
+        # its three managers out of the denylist the step's list built. The
+        # step's own list is the selection; the full prompt names only it.
+        finetune_modes = is_ody and _allowed_tools is None
         doc_mode = (
-            is_ody
+            finetune_modes
             and not _runtime_skill_tools
             and (
                 "documents" in _intent_domains
@@ -5679,7 +5696,7 @@ async def stream_agent_loop(
             and not guide_only
         )
         notes_mode = (
-            is_ody
+            finetune_modes
             and not _runtime_skill_tools
             and not doc_mode
             and (
@@ -5694,7 +5711,7 @@ async def stream_agent_loop(
             and not guide_only
         )
         general_no_tool_mode = (
-            is_ody
+            finetune_modes
             and not _runtime_skill_tools
             and not doc_mode
             and not notes_mode
@@ -5991,6 +6008,7 @@ async def stream_agent_loop(
             route_mcp_schemas = []
         elif (
             is_ody
+            and _allowed_tools is None   # `B1100`: a step's list stands it down
             and not _runtime_skill_tools
             and not plan_mode
             and not approved_plan
@@ -7864,10 +7882,10 @@ async def stream_agent_loop(
                 and not _pan_clamped_tool_allowed
             ):
                 if blocked_by_tool_policy:
-                    blocked_name = next(
-                        name for name in policy_names if tool_policy.blocks(name)
-                    )
-                    reason = tool_policy.reason_for(blocked_name)
+                    # `B1101`. One rule with the dispatcher's backstop: the
+                    # called spelling first, so both name the same one.
+                    reason = tool_policy.refusal_for(
+                        policy_names, called=block.tool_type)
                 else:
                     reason = (
                         f"Tool '{block.tool_type}' is disabled by the current "
@@ -8012,6 +8030,8 @@ async def stream_agent_loop(
                         # card (a workflow step's), clamped by the store; None
                         # is the store's own, as for every chat card.
                         ttl_seconds=approval_ttl_seconds,
+                        # `B1103`. A workflow step's question is its run's.
+                        held_by_run=approval_held_by_run,
                     )
                     desc = f"{block.tool_type}: APPROVAL REQUIRED"
                     result = {
