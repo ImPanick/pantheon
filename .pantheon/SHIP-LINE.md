@@ -87,6 +87,12 @@ room that did not exist, not because closing slowed.
 
 **Direction as of 2026-10-01, after `P22` was filed: the open count is rising.**
 
+Re-measured 2026-10-03, after waves F and G and `g-sec`: the ten distinct headlines read 147 filed, 152 closed —
+**a ratio of 0.967**, open 299 → 294. The Workbench phase closed its twenty-five rows and the ship line's blocking set
+closed with it; the sweeps kept filing, and closing outran them.
+
+**Direction as of 2026-10-03: the open count is falling.**
+
 ### A second number, which is the one that moves
 
 Of the last 40 `B` rows filed — `B360` through `B455`, four waves of sweeps plus
@@ -127,7 +133,7 @@ rows are marked `second-line` in the register.
 
 ---
 
-## 3. The blocking set — twenty-two rows, and one of them stands
+## 3. The blocking set — twenty-two rows, all met
 
 Fifteen of 234 open rows when this was written; **seven have since been met and three
 have been added, and the met ones are marked `landed` in the register rather than deleted,
@@ -181,7 +187,11 @@ assistant reads `GET /api/cookbook/state` (200) where the person gets 403. It is
 `B541`'s class — a signed-in non-admin reaching what is the operator's — through the assistant,
 so it is on this line for the reason they were. `B1175` itself is registered `tracked`: it was one
 gate deep (the dispatcher refused `app_api` to a non-admin) and was closed the day it was filed.
-So the set is twenty-two rows, twenty-one met and one open, and 245 open rows are *clear by rule,
+**It was met the same day (`g-sec`):** the dispatcher binds the person a tool call acts for and `_internal_headers`
+names them whenever its caller names nobody, so every tool loopback is asked what its person's own request is asked;
+the shell's own admin gate asks the same of a named person; and measured on the real app, bob's assistant is refused
+each Forge read where bob is, and starts no `ssh` to a host it names.
+So the set is twenty-two rows, all met, and 245 open rows are *clear by rule,
 not read*. One line of reasoning each below; the row carries the measurement.
 
 ### Security — the control does not hold (5)
@@ -212,13 +222,14 @@ not read*. One line of reasoning each below; the row carries the measurement.
   is here on that basis: an auth surface nobody has mapped is a bet, the row is
   bounded (six files and a table), and the deliverable is a reconciliation rather
   than a change.
-- **`B1179`** — added 2026-10-03, **open**. `require_admin` on `GET /api/cookbook/state`
+- **`B1179`** — added 2026-10-03, **met 2026-10-03**. `require_admin` on `GET /api/cookbook/state`
   refuses bob, a signed-in non-admin, in person (403) and lets his assistant's
   `list_serve_presets` read it (200), because Forge's read tools loop back with no
   person named (`_internal_headers()` at sixteen sites in `src/tools/cookbook.py`).
   Read in the source, not driven: `tail_serve_output` and `list_cached_models` reach
-  SSH to a host the caller names the same way — `B541`'s class. Met when every tool
-  loopback names its person, or those tools are refused to a non-admin.
+  SSH to a host the caller names the same way — `B541`'s class. Met by the first: every
+  tool loopback names its person (`g-sec`); measured, not read — `tail_serve_output` and
+  `list_cached_models` did reach SSH to a named host on `3e4888b`, and do not now.
 
 ### Licence — the obligation is unmet (3)
 
@@ -554,7 +565,8 @@ weakest one in this document: it means nobody adjudicated them individually.
 | `B1166` | tracked | identity | the tour's last line uses upstream's voyage motif; copy in the product, not a claim about the software |
 | `B1168` | tracked | defect | at phone width the §13 tag sits on the composer's corner; nothing interactive is under it (measured) and the offer itself is right |
 | `B1175` | tracked | security | a non-admin's loopback passed `require_admin`; one gate deep — the dispatcher refused `app_api` to a non-admin, so no person's assistant reached it — and closed the day it was filed (2026-10-03): the gate asks about the person named |
-| `B1179` | blocking | security | Forge's read tools loop back naming nobody, so a non-admin's assistant reads the admin's Forge state that the person is refused (measured, 200 against 403) — `B540`/`B541`'s class through the assistant |
+| `B1179` | landed | security | Forge's read tools looped back naming nobody, so a non-admin's assistant read the admin's Forge state the person is refused and ran `ssh` to a host it named; met 2026-10-03 — the dispatcher binds the person a tool call acts for and every tool loopback names them, the shell's own gate asks about a named person, and the read tools say a refusal |
+| `B1181` | tracked | defect | fails closed: on a no-login install the shell's own gate refuses everyone, so the Forge cannot stop a scheduled serve — a cost, not a hole; opening that gate is the owner's call |
 
 ---
 
