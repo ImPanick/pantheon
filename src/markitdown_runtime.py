@@ -38,6 +38,28 @@ NATIVE_OFFICE_EXTS = frozenset({".odt", ".doc"})
 OFFICE_EXTS = MARKITDOWN_EXTS | NATIVE_OFFICE_EXTS
 
 
+class ExtractedText(str):
+    """Extracted text that knows what language its document is.
+
+    `B1156` (f-import). Every door stored an Office extraction as `markdown`,
+    which was true while markitdown was the only reader of a spreadsheet; the
+    bundled `.xlsx` reader (`src/ooxml_native.py`) gives one sheet as CSV, the
+    document the Library makes of it, and a `csv` document is what opens in the
+    table view. A `str`, so every caller that only wants the text is unchanged;
+    `extracted_language` reads the language, `markdown` for anything else.
+    """
+
+    def __new__(cls, text: str, language: str = "markdown"):
+        obj = super().__new__(cls, text)
+        obj.language = language
+        return obj
+
+
+def extracted_language(text) -> str:
+    """The language a document holding *text* (a `convert_to_markdown` answer) is."""
+    return getattr(text, "language", None) or "markdown"
+
+
 def is_markitdown_format(path: str) -> bool:
     """True if the file extension is one markitdown itself converts."""
     if not isinstance(path, str):
@@ -516,8 +538,33 @@ def _run_native(extractor, path: str) -> str | None:
 # (`Law 1`). So it becomes the first rung and the dependency-free `<w:t>` walk
 # stays as the second. Every entry answers ``None`` for "I cannot read this",
 # which is what makes the chain a chain.
+def _extract_docx_structured(path: str) -> str | None:
+    """`B1156` (f-import). The `.docx` as the Library's import writes it —
+    headings, lists, tables in place, bold, italic, links — with the standard
+    library (`src/ooxml_native.py` says what was measured against mammoth)."""
+    from src.ooxml_native import docx_markdown
+    return docx_markdown(path)
+
+
+def _extract_xlsx_native(path: str) -> str | None:
+    """`B1156` (f-import). The `.xlsx` as SheetJS's CSV — the Library's — with
+    the standard library; one sheet is a `csv` document (`ExtractedText`)."""
+    from src.ooxml_native import xlsx_text
+    return xlsx_text(path)
+
+
+# `B1156` (f-import): the structured `.docx` reader is the first rung and
+# `.xlsx` has one. On a default install the server doors used the bare `<w:t>`
+# walk — paragraphs, no headings — and refused a spreadsheet, while the Library
+# made markdown and CSV in the browser; these give the same document. The
+# `python-docx` rung stays (`Law 1`) behind the structured one: it puts every
+# table after the prose and numbers every list item `1.`, so as the first rung
+# it would make one `.docx` a third document wherever `python-docx` happens to
+# be installed. The `<w:t>` walk is still the last word on a file the others
+# cannot open.
 _NATIVE_EXTRACTORS = {
-    ".docx": (_extract_docx_python_docx, _extract_docx_native),
+    ".docx": (_extract_docx_structured, _extract_docx_python_docx, _extract_docx_native),
+    ".xlsx": (_extract_xlsx_native,),
     ".odt": (_extract_odf_native,),
     ".doc": (_extract_doc_native,),
 }
@@ -559,7 +606,11 @@ def office_extraction_gap(path: str) -> str:
     """
     if not is_office_format(path):
         return NO_OFFICE_EXTRACTOR
-    if is_markitdown_format(path):
+    ext = os.path.splitext(path)[1].lower() if isinstance(path, str) else ""
+    if is_markitdown_format(path) and ext not in _NATIVE_EXTRACTORS:
+        # `B1156` (f-import): only a format NO bundled reader covers is a
+        # missing dependency; a `.docx` or `.xlsx` a bundled reader found
+        # nothing in is empty, as `.doc`/`.odt` always were.
         try:
             load_markitdown()
         except RuntimeError as exc:
@@ -573,10 +624,11 @@ def convert_to_markdown(path: str) -> str | None:
     Returns the extracted Markdown, or ``None`` if markitdown is unavailable or
     the conversion fails — callers degrade gracefully rather than erroring.
 
-    Three shapes, one entry point: `.docx` prefers markitdown and falls back to
-    the bundled ``<w:t>`` reader, `.odt`/`.doc` go straight to their bundled
-    readers (markitdown refuses both — `B102`), and `.pptx`/`.xlsx`/`.xls`/
-    `.epub` still need markitdown installed.
+    Three shapes, one entry point: `.docx` and `.xlsx` prefer markitdown and
+    fall back to the bundled readers (`_NATIVE_EXTRACTORS`), `.odt`/`.doc` go
+    straight to theirs (markitdown refuses both — `B102`), and `.pptx`/`.xls`/
+    `.epub` still need markitdown installed. A bundled reader's answer may be an
+    `ExtractedText` naming its document's language (`extracted_language`).
     """
     ext = os.path.splitext(path)[1].lower() if isinstance(path, str) else ""
     native = _NATIVE_EXTRACTORS.get(ext)

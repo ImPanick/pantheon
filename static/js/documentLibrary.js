@@ -1915,9 +1915,11 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
    * The routing is the one this module already had, moved here unchanged:
    * `.pdf` is posted to `import-pdf`; the formats only the server extracts are
    * posted to `import-office`; `.docx` (mammoth) and `.xls`/`.xlsx`/`.ods`
-   * (SheetJS) are converted here, and on an install without the optional
-   * markitdown those two converters are the only ones that can — the server
-   * answers a `.xlsx` with a 422 there; everything else is read as text. The
+   * (SheetJS) are converted here. On an install without the optional
+   * markitdown the server reads `.docx` and `.xlsx` too, with bundled readers
+   * that give the document these converters give (`src/ooxml_native.py`,
+   * `B1156` from f-import; it answered a `.xlsx` with a 422 before); `.xls` and
+   * `.ods` only these read. Everything else is read as text. The
    * server titles every one from the file's name (`P21-03`).
    *
    * `folder` files it (`B997`); `sessionId` attaches it to that chat, as

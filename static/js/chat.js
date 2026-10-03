@@ -8341,7 +8341,8 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
   /**
    * `B232`. What the server says this upload is, asked rather than guessed.
    *
-   * A `HEAD` — the route registers GET and Starlette adds HEAD to it, and
+   * A `HEAD` — the route registers HEAD beside GET (`B1155`: FastAPI does not
+   * add it to a GET route, and until it was registered this was a 405), and
    * `FileResponse` sends the headers without the body — so asking costs one
    * round trip and zero bytes, where the two regexes this replaces cost a
    * wrong answer for `.kt`, `.toml`, `.markdown`, `.rst`, `.swift` and every

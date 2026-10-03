@@ -43242,6 +43242,35 @@ input.cp-swatch-input::selection { background: transparent; }
   border-color: var(--fg);
 }
 
+/* `B1157` (f-import): the PDF pane when its pages cannot be drawn (PyMuPDF,
+   the page renderer, is optional and the default image has none): the text
+   the import read, on a white sheet like the pages it stands in for, under one
+   line saying why. The pane's grey and the sheet's white are fixed, as the
+   page view's are, so every palette reads it the same. */
+#doc-pdf-view .doc-pdf-text-fallback {
+  max-width: min(780px, calc(100% - 24px));
+  margin: 0 auto;
+}
+#doc-pdf-view .doc-pdf-text-note {
+  margin: 0 0 12px;
+  color: #ececec;
+  font-size: 12px;
+  line-height: 1.45;
+}
+#doc-pdf-view .doc-pdf-text-page {
+  background: #fff;
+  color: #1a1a1a;
+  padding: 28px 32px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 14px;
+  line-height: 1.55;
+}
+@media (max-width: 600px) {
+  #doc-pdf-view .doc-pdf-text-page { padding: 18px 16px; }
+}
+
 /* Form checkboxes — render as a circular dot, theme-aware. Used in the
    Export PDF modal and the inline PDF view overlay. */
 .pdf-export-overlay input[type="checkbox"],

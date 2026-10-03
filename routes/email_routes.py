@@ -560,6 +560,66 @@ def _event_account_keys(account_id: str | None, owner: str) -> tuple[str, tuple[
     return key, (("default",) if key != "default" and key == default_id else ())
 
 
+# `B1151` (f-mail: more than fifty arrivals between two looks). When a listing
+# shows no message already seen, nothing in it marks where the arrivals end — a
+# burst bigger than the window, or the mail seen last time deleted — so at most
+# this many are announced and the rest are recorded, and the log says how many.
+# Fifty is the cap every listing had before (`new_keys[:50]`); a listing that
+# does show seen mail now announces every arrival above it.
+EMAIL_RECEIVED_UNSURE_LIMIT = 50
+
+
+def _event_message_key(email: dict) -> str:
+    """What identifies one listed message in `email_event_seen` — the RFC
+    `Message-ID` where the server gave one, the UID otherwise."""
+    return str(email.get("message_id") or email.get("uid") or "").strip()
+
+
+def _event_rows_seen(conn, owner: str, folder: str, known: tuple, keys: list) -> tuple[int, set]:
+    """`(rows kept for this mailbox, which of *keys* are among them)`.
+
+    One query for both readers: the producer below, inside its transaction, and
+    the background check's paging (`email_events_seen`)."""
+    known_ph = ",".join("?" * len(known))
+    count = conn.execute(
+        f"SELECT COUNT(*) FROM email_event_seen WHERE owner=? AND folder=? "
+        f"AND account_key IN ({known_ph})",
+        (owner, folder, *known),
+    ).fetchone()[0]
+    seen = set()
+    if count and keys:
+        placeholders = ",".join("?" * len(keys))
+        rows = conn.execute(
+            f"SELECT message_key FROM email_event_seen "
+            f"WHERE owner=? AND folder=? AND account_key IN ({known_ph}) "
+            f"AND message_key IN ({placeholders})",
+            (owner, folder, *known, *keys),
+        ).fetchall()
+        seen = {r[0] for r in rows}
+    return count, seen
+
+
+def email_events_seen(owner: str, account_id: str | None, folder: str,
+                      emails: list[dict]) -> tuple[int, set]:
+    """`B1151` (f-mail). Read-only: has this mailbox a baseline yet, and which
+    of these listed messages were already seen. The background check asks it
+    page by page to know whether its reading has reached mail it saw before."""
+    keys = []
+    for e in emails or []:
+        k = _event_message_key(e)
+        if k and k not in keys:
+            keys.append(k)
+    account_key, older_keys = _event_account_keys(account_id, owner)
+    try:
+        conn = _sql3.connect(SCHEDULED_DB, timeout=10)
+        try:
+            return _event_rows_seen(conn, owner, folder, (account_key, *older_keys), keys)
+        finally:
+            conn.close()
+    except _sql3.OperationalError:
+        return 0, set()       # no table yet: nothing was ever seen
+
+
 def _record_email_received_events(owner: str, account_id: str | None, folder: str, emails: list[dict]):
     """Baseline inbox messages, then fire `email_received` for new arrivals.
 
@@ -569,9 +629,12 @@ def _record_email_received_events(owner: str, account_id: str | None, folder: st
     once, whichever of them sees it first, across restarts (the seen keys are
     rows in `email_event_seen`, claimed one by one: a key whose `INSERT OR
     IGNORE` added no row was already claimed, by this process or another).
+
+    Answers `(announced, not_announced)` — how many new arrivals fired, and
+    how many were recorded without an event (`EMAIL_RECEIVED_UNSURE_LIMIT`).
     """
     if not owner or (folder or "INBOX").upper() != "INBOX" or not emails:
-        return
+        return 0, 0
     try:
         from src.event_bus import fire_event
         account_key, older_keys = _event_account_keys(account_id, owner)
@@ -584,7 +647,7 @@ def _record_email_received_events(owner: str, account_id: str | None, folder: st
         about = {}
         uid_of = {}
         for e in emails:
-            key = str(e.get("message_id") or e.get("uid") or "").strip()
+            key = _event_message_key(e)
             if key and key not in keys:
                 keys.append(key)
                 about[key] = {"from_address": e.get("from_address") or "",
@@ -593,10 +656,9 @@ def _record_email_received_events(owner: str, account_id: str | None, folder: st
                 if uid.isdigit():
                     uid_of[key] = int(uid)
         if not keys:
-            return
+            return 0, 0
 
         known = (account_key, *older_keys)
-        known_ph = ",".join("?" * len(known))
         conn = _sql3.connect(SCHEDULED_DB, timeout=10)
         try:
             conn.execute(
@@ -609,21 +671,7 @@ def _record_email_received_events(owner: str, account_id: str | None, folder: st
             # count, what was seen and what is claimed are one decision — two
             # listings (or two processes) cannot both find a message new.
             conn.execute("BEGIN IMMEDIATE")
-            count = conn.execute(
-                f"SELECT COUNT(*) FROM email_event_seen WHERE owner=? AND folder=? "
-                f"AND account_key IN ({known_ph})",
-                (owner, folder, *known),
-            ).fetchone()[0]
-            seen = set()
-            if count:
-                placeholders = ",".join("?" * len(keys))
-                rows = conn.execute(
-                    f"SELECT message_key FROM email_event_seen "
-                    f"WHERE owner=? AND folder=? AND account_key IN ({known_ph}) "
-                    f"AND message_key IN ({placeholders})",
-                    (owner, folder, *known, *keys),
-                ).fetchall()
-                seen = {r[0] for r in rows}
+            count, seen = _event_rows_seen(conn, owner, folder, known, keys)
             claimed = []
             for k in keys:
                 cur = conn.execute(
@@ -649,8 +697,18 @@ def _record_email_received_events(owner: str, account_id: str | None, folder: st
         new_keys = [k for k in claimed if k not in seen
                     and not (seen_top is not None and k in uid_of and uid_of[k] < seen_top)]
 
+        announced = new_keys
+        if count and not seen:
+            # `B1151` (f-mail). Nothing in this listing was seen before, so
+            # nothing in it says where the arrivals stop: announce the newest
+            # few, record the rest, and say so. With seen mail in view, every
+            # claimed key above it arrived since — `new_keys[:50]` used to drop
+            # all but fifty of those too, and the background check reads back
+            # page by page until it meets seen mail (`_check_inbox`).
+            announced = new_keys[:EMAIL_RECEIVED_UNSURE_LIMIT]
+        not_announced = len(new_keys) - len(announced) if count else 0
         if count and new_keys:
-            for _key in new_keys[:50]:
+            for _key in announced:
                 # `P8-23` / `B602`. One event per new message, so each one names
                 # its message. The key is whatever identified it above — the
                 # RFC `Message-ID` where the server gave one, the UID otherwise
@@ -658,7 +716,12 @@ def _record_email_received_events(owner: str, account_id: str | None, folder: st
                 fire_event("email_received", owner,
                            {"account": account_key, "folder": folder,
                             "message_key": _key, **about.get(_key, {})})
-            logger.info("Fired email_received for %d new message(s)", min(len(new_keys), 50))
+            logger.info("Fired email_received for %d new message(s)", len(announced))
+            if not_announced:
+                logger.warning(
+                    "email_received: %d more new message(s) in %s for %s were recorded without "
+                    "an event — none of the %d listed had been seen before, so they cannot be told "
+                    "from older mail", not_announced, folder, account_key, len(keys))
             try:
                 loop = asyncio.get_running_loop()
 
@@ -678,8 +741,10 @@ def _record_email_received_events(owner: str, account_id: str | None, folder: st
                 loop.create_task(_run_away_reply_check())
             except RuntimeError:
                 logger.debug("No running event loop for immediate away-reply check")
+        return (len(announced), not_announced) if count else (0, 0)
     except Exception:
         logger.debug("email_received event detection skipped", exc_info=True)
+        return 0, 0
 
 
 def _folder_name_from_list_line(line) -> str | None:
@@ -3851,6 +3916,7 @@ def setup_email_routes():
             from src.markitdown_runtime import (
                 OFFICE_EXTS,
                 convert_to_markdown,
+                extracted_language,
                 office_extraction_gap,
             )
 
@@ -3900,7 +3966,7 @@ def setup_email_routes():
                     return None
             doc_session_id = _resolve_doc_session()
 
-            def _create_markdown_doc(content: str, summary: str):
+            def _create_markdown_doc(content: str, summary: str, language: str = "markdown"):
                 from src.database import SessionLocal as _SL, Document as _Doc, DocumentVersion as _DV
                 doc_id = str(uuid.uuid4())
                 ver_id = str(uuid.uuid4())
@@ -3923,7 +3989,7 @@ def setup_email_routes():
                     # who had just opened it until a restart backfilled one.
                     _db.add(_Doc(
                         id=doc_id, session_id=doc_session_id, title=title,
-                        language="markdown", current_content=content,
+                        language=language, current_content=content,
                         version_count=1, is_active=True,
                         owner=_doc_user or owner or None,
                         source_name=source_name,
@@ -4088,8 +4154,11 @@ def setup_email_routes():
             if ext in OFFICE_EXTS:
                 content = convert_to_markdown(str(filepath))
                 if content and content.strip():
+                    # `B1156` (f-import): the language the reader says — a
+                    # one-sheet workbook is a `csv` document, as at the Library.
                     doc_id = _create_markdown_doc(
-                        content, f"Imported from {ext.lstrip('.').upper()}"
+                        content, f"Imported from {ext.lstrip('.').upper()}",
+                        extracted_language(content),
                     )
                     return {"doc_id": doc_id, "filename": filepath.name}
                 # A refusal that names why. `office_extraction_gap` is the same

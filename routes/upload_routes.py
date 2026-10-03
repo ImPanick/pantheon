@@ -763,6 +763,22 @@ def setup_upload_routes(upload_handler):
                      UPLOAD_KIND_HEADER: _upload_kind(path, original_name)},
         )
 
+    # `B1155` (f-import: the chat's HEAD for an upload's kind always got 405).
+    # `chat.js` `_uploadKind` asks `HEAD /api/upload/{id}` for `X-Upload-Kind`,
+    # and its comment said Starlette adds HEAD to a GET route. FastAPI's
+    # `APIRoute` does not (FastAPI 0.141.1): measured `405`, `Allow: GET`, so
+    # every *open as document* fell back to the name-only half and the server's
+    # verdict on the bytes never arrived. Registered here, as its own route, so
+    # the answer is the GET handler's own — one owner check, one
+    # `Content-Disposition: attachment`, one nosniff, one kind probe — and the
+    # OpenAPI document keeps one operation id per method (`api_route` with both
+    # methods gives the two the same id and FastAPI warns). `FileResponse` sends
+    # the headers and no body when the method is HEAD.
+    @router.head("/{file_id}")
+    async def download_file_head(request: Request, file_id: str, thumb: int = 0):
+        """The headers `GET /api/upload/{file_id}` would answer with, no body."""
+        return await download_file(request, file_id, thumb)
+
     def _load_upload_info(file_id: str):
         """Look up the uploads.json record for a file_id, with owner/auth checks."""
         # Corruption-tolerant load (see download_file): a bad uploads.json yields

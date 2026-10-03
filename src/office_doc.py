@@ -20,8 +20,13 @@ def create_office_document(
     title: str,
     body_text: Optional[str] = None,
     source_name: Optional[str] = None,
+    language: str = "markdown",
 ) -> Optional[str]:
     """Create a markdown Document for an Office attachment and set it active.
+
+    `language` is the extraction's own (`markitdown_runtime.extracted_language`):
+    a one-sheet workbook read by the bundled reader is a `csv` document, the
+    one the Library makes of it (`B1156`, f-import).
 
     Returns the new doc_id, or None on failure / empty body. The full
     extracted body lives in `current_content`, so the agent can fetch
@@ -48,7 +53,7 @@ def create_office_document(
             id=doc_id,
             session_id=session_id,
             title=title,
-            language="markdown",
+            language=language or "markdown",
             current_content=body_text,
             version_count=1,
             is_active=True,

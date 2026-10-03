@@ -1150,6 +1150,34 @@ import { chevronIcon, playIcon } from './icons.js';
     return text || res.statusText || `HTTP ${res.status}`;
   }
 
+  /**
+   * `B1157` (f-import). The PDF pane when pages cannot be drawn: the text the
+   * import read (the document's own markdown, its hidden `pdf_source` /
+   * field / annotation markers taken out), on a page, under one line saying
+   * why — the server's words. Text, never markup: it is whatever the PDF held.
+   */
+  function _showPdfTextInstead(pane, docId, why) {
+    const doc = docs.get(docId);
+    const text = String((doc && doc.content) || '')
+      .replace(/<!--[\s\S]*?-->/g, '')
+      .replace(/[ \t]+$/gm, '')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+    pane.replaceChildren();
+    const box = document.createElement('div');
+    box.className = 'doc-pdf-text-fallback';
+    const note = document.createElement('p');
+    note.className = 'doc-pdf-text-note';
+    note.setAttribute('role', 'note');
+    note.textContent = `Showing the text read from this PDF. ${why || 'The page view is not available here.'}`;
+    const page = document.createElement('div');
+    page.className = 'doc-pdf-text-page';
+    page.textContent = text || 'No text could be read from this PDF.';
+    box.appendChild(note);
+    box.appendChild(page);
+    pane.appendChild(box);
+  }
+
   async function _renderPdfPane() {
     const pane = document.getElementById('doc-pdf-view');
     if (!pane || !activeDocId) return;
@@ -1162,6 +1190,21 @@ import { chevronIcon, playIcon } from './icons.js';
     let data;
     try {
       const res = await fetch(`${API_BASE}/api/document/${docId}/render-pages`);
+      if (res.status === 503) {
+        // `B1157` (f-import: on a default install an imported PDF opened to
+        // an error). 503 is the server saying it cannot draw pages here — the
+        // page renderer, PyMuPDF, is optional and the default image has none
+        // (`_load_pdf_viewer_fitz`). Measured in Chromium before this: the
+        // pane said "Failed to load PDF view: PDF viewer requires PyMuPDF…"
+        // in red where the PDF should be, while the text the import read was
+        // in the document all along. So the text is shown, with the server's
+        // own sentence above it as the one line saying why.
+        const why = await _pdfResponseErrorMessage(res);
+        if (docId !== activeDocId) return;
+        _showPdfTextInstead(pane, docId, why);
+        if (savedPill) pane.appendChild(savedPill);
+        return;
+      }
       if (!res.ok) throw new Error(await _pdfResponseErrorMessage(res));
       data = await res.json();
     } catch (e) {
@@ -3897,7 +3940,28 @@ import { chevronIcon, playIcon } from './icons.js';
     });
   }
 
+  /**
+   * `B1158` (f-import: `_sendEmail` did not ask whether the open document is
+   * an email). The footer's Send button lives in the panel for every document
+   * and is only hidden for the others, and `_hideEmailFields` hides the To,
+   * Cc and Subject inputs without emptying them — measured: after an email
+   * draft, the next document opened keeps the draft's `To`. So anything that
+   * reached `_sendEmail()` with another document open (a programmatic click
+   * on the hidden button, `B400`'s stray click before it was closed) sent THAT
+   * document's text to the old recipient. The same question Ctrl+Enter asks,
+   * plus the type picker's value: a document switched to Email this moment
+   * shows its Send button before `updateLanguage`'s PATCH has answered.
+   */
+  function _activeDocIsEmail() {
+    const doc = activeDocId && docs.get(activeDocId);
+    if (!doc) return false;
+    const picked = document.getElementById('doc-language-select')?.value;
+    return doc.language === 'email' || picked === 'email';
+  }
+
   async function _sendEmail() {
+    // Says nothing: nothing was asked of an email.
+    if (!_activeDocIsEmail()) return;
     if (_emailSendInFlight) {
       if (uiModule) uiModule.showToast('Already sending');
       return;
@@ -5530,19 +5594,28 @@ import { chevronIcon, playIcon } from './icons.js';
     const handleCaretIntent = (e) => {
       if (e && e.__pantheonEmailCaretHandled) return;
       const now = Date.now();
-      if (e && e.type === 'click' && now - lastCaretToggleAt < 350) {
-        e.preventDefault();
-        e.stopPropagation();
-        e.__pantheonEmailCaretHandled = true;
-        return;
-      }
       const rawTarget = e && e.target;
       const target = rawTarget && rawTarget.nodeType === Node.TEXT_NODE ? rawTarget.parentElement : rawTarget;
       const carets = Array.from(document.querySelectorAll('#doc-email-send-caret'));
       const targetCaret = target && target.closest ? target.closest('#doc-email-send-caret') : null;
       const rectCaret = carets.find((candidate) => _eventInsideElement(e, candidate));
       const caret = targetCaret || rectCaret || null;
+      // `B1159` (f-import: the caret cancelled any click for 350 ms). The
+      // window below swallows the caret's OWN trailing `click` — `pointerdown`
+      // already toggled the menu, and a cancelled `pointerdown` suppresses
+      // `mousedown` but not `click`. It used to run before this question, by
+      // time alone, so a click anywhere in the page within 350 ms of a toggle
+      // — the menu item just opened, among others — was cancelled too
+      // (driven under node with the shipped handler: a click at (10, 10)
+      // came back cancelled). A click that is not on the caret is not this
+      // handler's.
       if (!caret) return;
+      if (e && e.type === 'click' && now - lastCaretToggleAt < 350) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.__pantheonEmailCaretHandled = true;
+        return;
+      }
       if (e) {
         e.preventDefault();
         e.stopPropagation();
