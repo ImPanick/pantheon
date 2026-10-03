@@ -750,3 +750,23 @@ def test_an_embedding_model_row_reads_language_tokens_year(tmp_path):
           _shortDescription('a model'), _shortDescription(null)]));
     """)
     assert out == ["English · 512 tokens · 2023", "Multilingual · 8192 tokens · 2024", "", ""]
+
+
+def test_the_forges_own_opener_refuses_a_non_admin(tmp_path):
+    """The model picker's *Open Forge* calls `cookbookModule.open()` directly —
+    no button to guard — so the opener asks the table itself (SET-M-9)."""
+    src = (ROOT / "static" / "js" / "cookbook.js").read_text(encoding="utf-8")
+    body = js_function(src, "export async function open")
+    out = _node(tmp_path, """
+        window.pantheonToolDoor = (spec) => V.toolDoor(spec, { say: (t) => said.push(t) });
+        const said = [], asked = [];
+        document.getElementById = (id) => { asked.push(id); return null; };
+        async function open(opts) %s
+        V.applyToolVisibility({ isAdmin: false, auth: true }, null);
+        await open();
+        const guest = asked.slice();
+        V.applyToolVisibility({ isAdmin: true }, null);
+        await open();
+        console.log(JSON.stringify({ guest, admin: asked.slice(guest.length), said }));
+    """ % body)
+    assert out == {"guest": [], "admin": ["cookbook-modal"], "said": ["Forge is for admins."]}

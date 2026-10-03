@@ -3262,6 +3262,7 @@ if (typeof window !== 'undefined' && !window._cookbookServeEscBound) {
 }
 
 export async function open(opts) {
+  if (window.pantheonToolDoor && !window.pantheonToolDoor('forge')) return;   // `P23-03`: the model picker's *Open Forge*, `/forge`
   const modal = document.getElementById('cookbook-modal');
   if (!modal) return;
   // Run any post-open intent (switch tab, prefill search, etc) after the
