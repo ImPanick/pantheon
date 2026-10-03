@@ -1534,6 +1534,26 @@ if ('ontouchstart' in window || window.innerWidth <= 768) {
 }
 
 /**
+ * `P23-01` — `B1052`'s question, for any form: leaving one with changes asks
+ * once, *Save* / *Discard* / *Keep editing*, and Escape is *Keep editing*.
+ * The Workbench asks inside its room; a window without a place of its own for
+ * the question (the Tasks form) asks here. Resolves `'save'`, `'discard'` or
+ * `'keep'`.
+ */
+export async function askBeforeLeaving(name, { canSave = true } = {}) {
+  const what = name ? `“${name}”` : 'This form';
+  const answer = await styledConfirm(`${what} has changes that are not saved.`, {
+    title: 'Unsaved changes',
+    confirmText: canSave ? 'Save' : 'Discard',
+    alternateText: canSave ? 'Discard' : '',
+    cancelText: 'Keep editing',
+  });
+  if (answer === 'alternate') return 'discard';
+  if (answer === true) return canSave ? 'save' : 'discard';
+  return 'keep';
+}
+
+/**
  * `P23-01` — the inner layers of a window that are not on the Escape stack,
  * peeled one per Escape (and per Back), innermost first. Returns whether one
  * was. `win` is the top window, or null with no window open.
