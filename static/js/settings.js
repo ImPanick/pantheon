@@ -13,7 +13,7 @@ import {
 } from './settings/registry.js';
 // `P23-03`: the one table — who may see the admin's panels, and why a tool's
 // switch in Appearance cannot bring it back. Same specifier as `app.js`.
-import { TOOL_VISIBILITY, onToolVisibilityApplied, toolOff, toolRefusal, viewerIsAdmin } from './ui_visibility.js';
+import { TOOL_VISIBILITY, onToolVisibilityApplied, toolOff, toolRefusal, toolVisibilityState, viewerIsAdmin } from './ui_visibility.js';
 import {
   collectMcpStdioFields,
   createMcpFieldEditor,
@@ -2880,32 +2880,38 @@ function initAll() {
 
   initOpacityToggle();
   initialized = true;
-  initDefaultChat();
-  initTeacherModel();
-  initUtilityModel();
-  initImageSettings();
-  initVisionSettings();
-  initTtsSettings();
-  initSttSettings();
-  initSearchSettings();
-  initResearchSettings();
-  initResearchSearchSettings();
-  initAgentSettings();
-  initSkillAudit();   // H16
-  initEmailConfirm();   // H18 / B42
-  initInboxCheckInterval();   // `B1152` (f-mail)
-  initEnvBackedFlags();   // B95
-  initAgentBudget();   // H18
-  initTaskModel();     // H18
-  initDocStyle();      // H18
-  initSafesearch();    // H18
+  // `SET-M-8` (P23-03). Every one of these reads or writes an admin-only
+  // route; for a signed-in non-admin they were sixteen 403s on every Settings
+  // open, behind panels the nav no longer offers them. Unknown (the status has
+  // not answered) runs them, as before.
+  if (toolVisibilityState().isAdmin !== false) {
+    initDefaultChat();
+    initTeacherModel();
+    initUtilityModel();
+    initImageSettings();
+    initVisionSettings();
+    initTtsSettings();
+    initSttSettings();
+    initSearchSettings();
+    initResearchSettings();
+    initResearchSearchSettings();
+    initAgentSettings();
+    initSkillAudit();   // H16
+    initEmailConfirm();   // H18 / B42
+    initInboxCheckInterval();   // `B1152` (f-mail)
+    initEnvBackedFlags();   // B95
+    initAgentBudget();   // H18
+    initTaskModel();     // H18
+    initDocStyle();      // H18
+    initSafesearch();    // H18
+    initReminderSettings();
+  }
   initAppearance();
   initShortcuts();
   initAccount();
   initIntegrations();
   initEmailSettings();
   initEmailAccountsSettings();
-  initReminderSettings();
   initUnifiedIntegrations();
   // `P22-21`. The Integrations panel's door to the room it moved to.
   const door = el('settings-open-integrations-room');

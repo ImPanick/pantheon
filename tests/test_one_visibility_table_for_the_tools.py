@@ -367,6 +367,29 @@ def test_the_palette_does_not_offer_a_hidden_tools_window(tmp_path):
     assert out["after"] == ["Calendar"]
 
 
+def test_the_palettes_commands_follow_a_switch_made_after_they_were_read(tmp_path):
+    """Driven in Chromium: Ctrl+K kept offering `/gallery` and `/tour-gallery`
+    after the admin switched Gallery off, because the palette reads the
+    catalogue once. The rows are asked again on every query."""
+    src = PALETTE_JS.read_text(encoding="utf-8")
+    body = js_function(src, "function _commandEntries")
+    out = _node(tmp_path, """
+        const { toolKeyFor, toolShown } = V;
+        let reads = 0;
+        const slashCatalog = () => { reads += 1; return [
+          { token: '/gallery', help: 'Open Gallery' }, { token: '/tour-gallery', help: 'Tour' },
+          { token: '/notes', help: 'Open Notes' }]; };
+        let _catalog = null;
+        const _wordsMatch = () => true;
+        function _commandEntries(terms) %s
+        const before = _commandEntries([]).map((e) => e.label);
+        window.applyFeatureFlags({ gallery: false });
+        const after = _commandEntries([]).map((e) => e.label);
+        console.log(JSON.stringify({ before, after, reads }));
+    """ % body)
+    assert out == {"before": ["/gallery", "/tour-gallery", "/notes"], "after": ["/notes"], "reads": 1}
+
+
 def test_a_chip_the_table_hides_stays_hidden_through_a_mode_change(tmp_path):
     """SET-M-4: `applyModeToToggles` wrote `display = ''` on every chip half a
     second after every mode change, and the guard after it could never be

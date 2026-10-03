@@ -65,7 +65,7 @@ let _chat = { query: '', state: 'idle', results: [], error: '' };
 let _options = [];      // [{ el, entry }] in listbox order
 let _active = -1;       // index into _options, mirrored by aria-activedescendant
 let _returnFocus = null; // what had focus before the overlay opened
-let _catalog = null;    // the slash catalogue; static, so read once
+let _catalog = null;    // the slash catalogue, read once; filtered per query (`P23-03`)
 let _seq = 0;           // ids for options and group headings
 
 // Per-group caps, so commands never crowd the chat hits off the screen. The
@@ -349,6 +349,12 @@ function _commandEntries(terms) {
     try { _catalog = slashCatalog(); } catch (_) { _catalog = []; }
   }
   return _catalog
+    // `P23-03`. The catalogue is read once, and a tool can be switched off
+    // after that (live, on an admin's page): its commands are asked again here.
+    .filter((c) => {
+      const tool = toolKeyFor({ slash: String(c.token || '').replace(/^\//, '').split(' ')[0] });
+      return !tool || toolShown(tool);
+    })
     .filter((c) => _wordsMatch(terms, [c.token, ...(c.aliases || []), c.help, c.category].join(' ')))
     .map((c) => ({
       kind: 'command', key: 'command:' + c.token, label: c.token, detail: c.help || '',
