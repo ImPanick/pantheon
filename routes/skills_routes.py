@@ -1873,14 +1873,49 @@ def setup_skills_routes(skills_manager: SkillsManager) -> APIRouter:
                              for sec in rec.get("sections") or []],
                 "skills": package_skills(rec)}
 
+    def _fetch_failure_sentence(e: Exception) -> Optional[str]:
+        """`BRAIN-M-12` (P23-02). A failed download in one sentence a person can
+        act on. The raw exception went out as the 502's `detail` and was printed
+        twice — toast and status line — as `[SSL: CERTIFICATE_VERIFY_FAILED]
+        certificate verify failed: self-signed certificate in certificate chain
+        (_ssl.c:1016)` (measured). The exception still goes to the log."""
+        import ssl
+        import urllib.error
+
+        host = "GitHub"
+        try:
+            req = getattr(e, "request", None)
+            if req is not None and getattr(req, "url", None) is not None:
+                h = str(req.url.host or "")
+                if h and "github" not in h:
+                    host = h
+        except Exception:
+            pass
+        text = str(e)
+        if isinstance(e, ssl.SSLError) or "CERTIFICATE_VERIFY_FAILED" in text or "SSL" in text[:12]:
+            return f"Could not reach {host} (TLS certificate rejected)."
+        if isinstance(e, httpx.HTTPStatusError):
+            code = e.response.status_code if e.response is not None else 0
+            if code == 404:
+                return f"{host} has nothing at that link."
+            if code in (403, 429):
+                return f"{host} refused for now (rate limit). Try again later."
+            return f"Could not download from {host} (HTTP {code})."
+        if isinstance(e, httpx.TimeoutException):
+            return f"{host} did not answer in time."
+        if isinstance(e, (httpx.HTTPError, urllib.error.URLError, ConnectionError, OSError)):
+            return f"Could not reach {host}."
+        return None
+
     def _import_errors(e: Exception):
         from services.memory.skill_importer import SkillImportError
 
         if isinstance(e, SkillImportError):
             return HTTPException(400, str(e))
-        if isinstance(e, httpx.HTTPError):
+        said = _fetch_failure_sentence(e)
+        if said:
             logger.warning("skill import fetch failed: %s", e)
-            return HTTPException(502, str(e).strip() or "Could not download skill from URL")
+            return HTTPException(502, said)
         logger.error("skill import failed: %s", e, exc_info=True)
         # `B926`: say what failed. "Skill import failed" with nothing after
         # it is the sentence the owner could not act on.
@@ -1985,9 +2020,26 @@ def setup_skills_routes(skills_manager: SkillsManager) -> APIRouter:
             raise HTTPException(400, "No skill called " + ", ".join(missing[:5]))
         return list(names)
 
+    def _title_taken(user, title, *, except_id=None) -> Optional[str]:
+        """`BRAIN-M-8` (P23-02). The title of this person's group that `title`
+        names already (case and spacing aside), if any. Group names were not
+        unique: "Audit set" made six times gave six sidebar rows that read the
+        same (`audit-set` … `audit-set-6`, measured on `32df791`)."""
+        from services.memory.skill_collections import clean_title
+        want = (clean_title(title or "") or "").casefold()
+        if not want:
+            return None
+        for g in skills_manager.collections.groups(user):
+            if g.get("id") != except_id and (clean_title(g.get("title") or "") or "").casefold() == want:
+                return g.get("title") or ""
+        return None
+
     @router.post("/groups")
     async def create_group(request: Request, body: SkillGroupCreateRequest):
         user = _owner(request)
+        taken = _title_taken(user, body.title)
+        if taken is not None:
+            raise HTTPException(409, f"You already have a group called {taken}.")
         try:
             rec = skills_manager.collections.create_group(
                 user, body.title, _known_names(user, body.skills))
@@ -1998,6 +2050,10 @@ def setup_skills_routes(skills_manager: SkillsManager) -> APIRouter:
     @router.patch("/groups/{group_id}")
     async def patch_group(request: Request, group_id: str, body: SkillGroupUpdateRequest):
         user = _owner(request)
+        if body.title is not None:
+            taken = _title_taken(user, body.title, except_id=group_id)
+            if taken is not None:
+                raise HTTPException(409, f"You already have a group called {taken}.")
         try:
             rec = skills_manager.collections.update_group(
                 user, group_id, title=body.title, enabled=body.enabled,

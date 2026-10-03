@@ -416,6 +416,11 @@ function _scoreDuplicateKeeper(sk) {
   ].reduce((a, b) => a + b, 0);
 }
 
+function _forkedFrom(sk, origin) {
+  const body = String((sk && (sk.body_extra || sk.solution)) || '');
+  return !!origin && body.includes('Forked from `' + origin + '`');
+}
+
 function _duplicateMeta(list) {
   const parent = new Map();
   const names = list.map(s => s.name || s.id).filter(Boolean);
@@ -434,6 +439,11 @@ function _duplicateMeta(list) {
       const a = list[i], b = list[j];
       const an = a.name || a.id, bn = b.name || b.id;
       if (!an || !bn) continue;
+      // `BRAIN-M-9` (P23-02). A fork is the one deliberate copy: it is not a
+      // duplicate of the skill it was forked from (`fork_skill` writes
+      // "Forked from `<name>`." into its body). A fresh fork opened branded
+      // "duplicate #1 · lower-priority" of its own origin (measured).
+      if (_forkedFrom(a, bn) || _forkedFrom(b, an)) continue;
       if (_baseSkillName(an) === _baseSkillName(bn) || _skillSimilarity(a, b) >= 0.38) {
         unite(an, bn);
       }
@@ -977,7 +987,7 @@ function renderSkillsList(m) {
         ${_necessityPill(sk)}
         ${_duplicatePriorityPill(sk)}
         <span class="skill-stats">${_auditMarks(sk)}<span class="skill-conf" style="color:${confColor};">${conf}%</span> · used ${uses}×</span>
-        <span class="skill-chevron-up" title="Collapse">${chevronIcon({ direction: 'up', size: 14 })}</span>
+        <button type="button" class="skill-chevron-up skill-back-to-list" aria-label="Back to the list">← Skills</button>
         <button class="skill-kebab-btn" title="Actions" aria-label="Actions"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg></button>
       </div>
     `;
@@ -1067,6 +1077,12 @@ function renderSkillsList(m) {
     card.appendChild(preview);
 
     // Click to expand/collapse (unless in select mode → toggle checkbox).
+    // `BRAIN-U-12` (P23-02). An open card hides the toolbar and every other
+    // card (Fork and Import land here), and the way back was an unlabelled ˄.
+    header.querySelector('.skill-back-to-list')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (card.classList.contains('doclib-card-expanded')) _expandSkillCard(card, name);
+    });
     card.addEventListener('click', (e) => {
       if (card._suppressNextClick) { card._suppressNextClick = false; return; }
       // `P10-06`: not the name button — pressing it is a click on the card.
@@ -2992,8 +3008,9 @@ async function importSkillFromUrl(m) {
   } catch (err) {
     clearInterval(timer);
     const msg = (err && err.message) || String(err);
+    // `BRAIN-M-12` (P23-02): said once, beside the box it was started from —
+    // the status line exists for this (`B926`); a toast repeated it.
     _importStatus(m, 'error', `Import failed: ${msg}`);
-    uiModule.showError('Import failed: ' + msg);
   } finally {
     clearInterval(timer);
     _importInFlight = false;
@@ -3556,7 +3573,7 @@ async function _newGroup(m, names) {
     uiModule.showToast(names.length ? `Made ${data.group.title} with ${names.length} ${names.length === 1 ? 'skill' : 'skills'}` : `Made ${data.group.title}`);
     if (!names.length) m.scope = { kind: 'group', id: data.group.id };
   } catch (e) {
-    uiModule.showError('Could not make the group: ' + e.message);
+    uiModule.showError(e.message);   // `BRAIN-M-8`: the server's sentence
     return;
   }
   if (m.selectMode && names.length) _exitSelectMode(m);
@@ -3621,14 +3638,14 @@ async function _deleteGroup(g) {
 
 async function _forkSkill(m, name) {
   const title = await uiModule.styledPrompt(
-    `A fork is a separate skill you can change without touching “${name}”. Name the copy.`,
+    'Name the copy.',
     { title: 'Fork skill', defaultValue: `${name}-fork`, confirmText: 'Fork', maxLength: 80 });
   if (!title || !String(title).trim()) return;
   let made;
   try {
     made = (await _skillsApi('POST', `/api/skills/${encodeURIComponent(name)}/fork`, { name: String(title).trim() })).skill;
   } catch (e) {
-    uiModule.showError('Could not fork the skill: ' + e.message);
+    uiModule.showError(e.message);
     return;
   }
   uiModule.showToast(`Forked ${name} as ${made.name}`);

@@ -13481,6 +13481,17 @@ details a:hover {
   font-family: inherit;
   color: inherit;
 }
+/* `BRAIN-U-12`: an open skill card's way back, labelled. */
+.skill-card .skill-back-to-list {
+  background: none;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  padding: 2px 6px;
+  white-space: nowrap;
+}
 /* `BRAIN-U-10`: the skill settings in the Skills window dim like they did in
    the Brain when their switch is off. */
 #skills-modal [data-skills-view-panel="settings"] .admin-card:has(.admin-switch input:not(:checked)),
