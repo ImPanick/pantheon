@@ -72,8 +72,9 @@ def test_the_http_gate_passes_on_the_shipped_defaults_and_refuses_when_off(monke
     with pytest.raises(HTTPException) as exc:
         guard()
     assert exc.value.status_code == 403
-    # Names who can undo it — off must not read as broken.
-    assert "administrator" in exc.value.detail.lower()
+    # Names who can undo it — off must not read as broken — and, since
+    # `P23-03`, where (Doc 2 § 5 rule 7).
+    assert "an admin can turn it back on in settings → agent tools" in exc.value.detail.lower()
 
 
 def test_the_research_router_carries_the_gate_for_every_route_it_has():
@@ -92,21 +93,28 @@ def test_the_research_router_carries_the_gate_for_every_route_it_has():
 
 
 def test_the_frontend_names_four_ids_and_one_of_them_does_not_exist():
-    """*"The frontend hides four buttons"* re-measured against the shipped
-    files. It names four; three are in the markup and `overflow-research-btn`
-    is in none of it — the refutation `P2-CORRECTED` recorded still holds, and
-    it holds because the id is referenced only from JavaScript.
-
-    Measured rather than quoted, so it corrects itself when somebody adds the
-    missing markup."""
-    app_js = (ROOT / "static" / "app.js").read_text(encoding="utf-8")
-    line = re.search(r"deep_research:\s*\[([^\]]*)\]", app_js)
-    assert line, "the feature→element map moved; re-measure this row"
-    ids = re.findall(r"'([^']+)'", line.group(1))
-    assert len(ids) == 4, ids
+    """*"The frontend hides four buttons"*, re-measured. Until `P23-03` it named
+    four, and `overflow-research-btn` was in none of the markup — the
+    refutation `P2-CORRECTED` recorded. The one visibility table
+    (`static/js/ui_visibility.js` `TOOL_VISIBILITY`) names the doors it hides
+    now, read off the running module; every one of them is in the page, and
+    the rail twin the old map missed for the person's column is among them."""
+    import json as _json
+    import shutil as _shutil
+    import subprocess as _sp
+    if not _shutil.which("node"):
+        pytest.skip("node binary not on PATH")
+    uri = (ROOT / "static" / "js" / "ui_visibility.js").as_uri()
+    proc = _sp.run(["node", "--input-type=module", "-e",
+                    f"const V = await import({_json.dumps(uri)});"
+                    "const d = V.TOOL_VISIBILITY.research;"
+                    "console.log(JSON.stringify([...d.doors, ...d.composer, ...d.quiet]));"],
+                   capture_output=True, text=True, timeout=60)
+    assert proc.returncode == 0, proc.stderr
+    ids = _json.loads(proc.stdout)
+    assert set(ids) == {"tool-research-btn", "rail-research", "research-toggle-btn"}, ids
 
     html = "\n".join(p.read_text(encoding="utf-8")
                      for p in sorted((ROOT / "static").glob("*.html")))
-    present = [i for i in ids if f'id="{i}"' in html]
-    missing = [i for i in ids if i not in present]
-    assert missing == ["overflow-research-btn"], (present, missing)
+    missing = [i for i in ids if f'id="{i}"' not in html]
+    assert missing == [], missing

@@ -445,11 +445,15 @@ export function applyToolVisibility(patch = {}, doc = (typeof document !== 'unde
   return _hidden;
 }
 
-/** May the person signed in see the admin's Settings? `false` only for a
- *  signed-in non-admin: unknown, and an install with auth off (where the
- *  server's `require_admin` lets its one operator in), count as the owner. */
+/** May the person signed in see the admin's Settings? The status's answer
+ *  when someone is signed in. Nobody signed in once `/api/auth/status` has
+ *  answered (`window._isAdmin` set, to `false`) is an install with auth off,
+ *  whose one operator the server's `require_admin` lets in — the owner. Not
+ *  answered yet: not shown, until it says. */
 export function viewerIsAdmin() {
-  return _state.isAdmin !== false;
+  if (_state.isAdmin !== null) return _state.isAdmin;
+  const said = typeof window !== 'undefined' ? window._isAdmin : undefined;
+  return said !== undefined;
 }
 
 /** A read-only view of what is known, for the Settings rows that explain a

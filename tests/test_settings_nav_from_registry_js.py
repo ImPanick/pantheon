@@ -255,7 +255,10 @@ def test_the_admin_tabs_still_carry_the_class_that_hides_them(sandbox):
         console.log(JSON.stringify({ nav: readNav(list), panels: SETTINGS_PANELS.map(p => ({ id: p.id, adminOnly: p.adminOnly })) }));
     """ % json.dumps(_index_panel_ids()))
     admin_only = {p["id"] for p in out["panels"] if p["adminOnly"]}
-    assert admin_only == {"tools", "users", "embeddings", "networks", "system"}
+    # `P23-03` (SET-M-8, SET-U-2): the five panels whose every control saves
+    # to an admin-only route joined them.
+    assert admin_only == {"tools", "users", "embeddings", "networks", "system",
+                          "services", "added-models", "ai", "search", "reminders"}
     for row in out["nav"]:
         if row.get("tab"):
             assert ("admin-only" in row["classes"]) == (row["tab"] in admin_only), row
@@ -267,6 +270,24 @@ def test_the_admin_tabs_still_carry_the_class_that_hides_them(sandbox):
     rules = [row for row in out["nav"] if row.get("rule")]
     assert len(rules) == 4, "the four group rules the markup drew by hand"
     assert rules[-1]["adminOnly"] is True
+
+
+def test_a_non_admin_sees_no_rule_with_nothing_above_it(sandbox):
+    """`P23-03` (SET-U-2). *Models & AI* is all admin-only now, so a non-admin's
+    nav would have opened on a rule over *Email*. What a non-admin sees —
+    every row without `admin-only` — starts on a panel and never stacks two
+    rules. Fails with the divider rule as it was (one class, `group.adminOnly`)."""
+    out = _nav(sandbox, """
+        const { root, list } = modal(%s);
+        renderSettingsNav(root);
+        console.log(JSON.stringify({ nav: readNav(list) }));
+    """ % json.dumps(_index_panel_ids()))
+    seen = [row for row in out["nav"]
+            if not (row.get("adminOnly") or "admin-only" in (row.get("classes") or []))]
+    assert seen and not seen[0].get("rule"), seen[:2]
+    assert seen[0].get("tab"), seen[0]
+    for a, b in zip(seen, seen[1:]):
+        assert not (a.get("rule") and b.get("rule")), seen
 
 
 def test_no_rule_is_drawn_above_the_first_group(sandbox):

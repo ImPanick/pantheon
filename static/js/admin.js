@@ -55,6 +55,43 @@ const NON_ADMIN_RETIRED_PRIVS = {
   can_use_bash: "Pantheon's own shell is for admins only — turn on Workstation below to give this person a shell in the workstation.",
 };
 
+/**
+ * One privilege switch (or the daily limit) for one person.
+ *
+ * `SET-M-10` (P23-03). No word when it worked, and a refused PUT left the
+ * switch where it was flipped to. Now: *Saved* and when it takes effect, or the
+ * switch goes back and the server's sentence is shown.
+ */
+async function _savePrivilege(input) {
+  const username = input.dataset.user;
+  const key = input.dataset.priv;
+  let value;
+  if (input.type === 'checkbox') value = input.checked;
+  else if (input.type === 'number') value = parseInt(input.value) || 0;
+  else value = input.value;
+  const revert = () => {
+    if (input.type === 'checkbox') input.checked = !input.checked;
+  };
+  try {
+    const res = await fetch(`/api/auth/users/${encodeURIComponent(username)}/privileges`, {
+      method: 'PUT', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ [key]: value }),
+    });
+    if (!res.ok) {
+      revert();
+      uiModule.showError((await readRefusal(res, 'Not saved.')).sentence);
+      return false;
+    }
+    uiModule.showToast(`Saved. ${username} sees it after their next reload.`);
+    return true;
+  } catch (e) {
+    revert();
+    uiModule.showError('Not saved: Pantheon did not answer.');
+    return false;
+  }
+}
+
 async function loadUsers() {
   const list = el('adm-userList');
   try {
@@ -87,7 +124,7 @@ async function loadUsers() {
           ${u.is_admin && adminCount <= 1 ? '' : `<button type="button" class="admin-btn-sm" data-adm-toggle-admin="${esc(u.username)}" data-make-admin="${u.is_admin ? '0' : '1'}" style="font-size:11px;">${u.is_admin ? 'Revoke admin' : 'Make admin'}</button>`}
           <button type="button" class="admin-btn-sm" data-adm-rename-user="${esc(u.username)}" style="font-size:11px;">Rename</button>
           ${u.is_admin ? '' : `<button type="button" class="admin-btn-delete" data-adm-del-user="${esc(u.username)}" style="font-size:11px;">Remove</button>`}
-          ${u.is_admin ? '' : chevronIcon({ size: 12, className: 'admin-user-chevron', style: 'opacity:0.6;transition:transform 0.2s,opacity 0.2s;' })}
+          ${u.is_admin ? '' : chevronIcon({ size: 12, className: 'admin-user-chevron', style: 'opacity:0.3;transition:transform 0.2s,opacity 0.2s;' })}
         </div>
       `;
       row.appendChild(header);
@@ -157,7 +194,7 @@ async function loadUsers() {
           const chevron = header.querySelector('.admin-user-chevron');
           if (chevron) {
             chevron.style.transform = isOpen ? 'rotate(180deg)' : '';
-            chevron.style.opacity = isOpen ? '0.9' : '0.6';
+            chevron.style.opacity = isOpen ? '0.7' : '0.3';
           }
           // `SET-U-7` (P23-03): the row's hint said "Click to manage
           // privileges" open or shut; the button says what pressing it does.
@@ -175,39 +212,7 @@ async function loadUsers() {
 
         // Wire privilege changes (boolean + number inputs, not model checkboxes)
         privPanel.querySelectorAll('[data-priv]').forEach(input => {
-          const handler = async () => {
-            const username = input.dataset.user;
-            const key = input.dataset.priv;
-            let value;
-            if (input.type === 'checkbox') value = input.checked;
-            else if (input.type === 'number') value = parseInt(input.value) || 0;
-            else value = input.value;
-            // `SET-M-10` (P23-03). No word when it worked, and a refused PUT
-            // left the switch where it was flipped to. Now: *Saved* and when
-            // it takes effect, or the switch goes back and the server's
-            // sentence is shown.
-            const revert = () => {
-              if (input.type === 'checkbox') input.checked = !input.checked;
-            };
-            try {
-              const res = await fetch(`/api/auth/users/${encodeURIComponent(username)}/privileges`, {
-                method: 'PUT', credentials: 'same-origin',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ [key]: value }),
-              });
-              if (!res.ok) {
-                revert();
-                uiModule.showError((await readRefusal(res, 'Not saved.')).sentence);
-                return;
-              }
-              uiModule.showToast(`Saved. ${username} sees it after their next reload.`);
-            } catch (e) {
-              revert();
-              uiModule.showError('Not saved: Pantheon did not answer.');
-            }
-          };
-          if (input.type === 'checkbox') input.addEventListener('change', handler);
-          else input.addEventListener('change', handler);
+          input.addEventListener('change', () => _savePrivilege(input));
         });
       }
 
@@ -2873,6 +2878,35 @@ function _hidesLine(which) {
   return `Off hides ${list}.`;
 }
 
+/**
+ * One *Switched on for everyone* switch.
+ *
+ * `SET-M-10` / `SET-M-12` (P23-03). It posted and said nothing, kept a refused
+ * switch flipped, and changed nothing on the admin's own page until a reload.
+ * Now the page applies the answer at once (`window.applyFeatureFlags`, the
+ * load path's applier) and says so, and a refusal puts the switch back.
+ */
+async function _saveFeature(toggle) {
+  const key = toggle.dataset.admFeature;
+  const body = {}; body[key] = toggle.checked;
+  try {
+    const r = await fetch('/api/auth/features', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    if (!r.ok) {
+      toggle.checked = !toggle.checked;
+      uiModule.showError((await readRefusal(r, 'Not saved.')).sentence);
+      return false;
+    }
+    const now = await r.json().catch(() => null);
+    if (typeof window.applyFeatureFlags === 'function') window.applyFeatureFlags(now || { [key]: toggle.checked });
+    uiModule.showToast(`${featureLabels[key] || key} ${toggle.checked ? 'on' : 'off'} for everyone. Others see it after their next reload.`);
+    return true;
+  } catch (e) {
+    toggle.checked = !toggle.checked;
+    uiModule.showError('Not saved: Pantheon did not answer.');
+    return false;
+  }
+}
+
 async function loadFeatures() {
   const container = el('adm-featureToggles');
   if (!container) return;
@@ -2888,28 +2922,7 @@ async function loadFeatures() {
       </div>`;
     }).join('');
     container.querySelectorAll('input[data-adm-feature]').forEach(toggle => {
-      toggle.addEventListener('change', async () => {
-        const key = toggle.dataset.admFeature;
-        const body = {}; body[key] = toggle.checked;
-        // `SET-M-10` / `SET-M-12` (P23-03). It posted and said nothing, kept a
-        // refused switch flipped, and changed nothing on the admin's own page
-        // until a reload. Now the page applies the answer at once
-        // (`window.applyFeatureFlags`, the load path's applier) and says so.
-        try {
-          const r = await fetch('/api/auth/features', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-          if (!r.ok) {
-            toggle.checked = !toggle.checked;
-            uiModule.showError((await readRefusal(r, 'Not saved.')).sentence);
-            return;
-          }
-          const now = await r.json().catch(() => null);
-          if (typeof window.applyFeatureFlags === 'function') window.applyFeatureFlags(now || { [key]: toggle.checked });
-          uiModule.showToast(`${featureLabels[key] || key} ${toggle.checked ? 'on' : 'off'} for everyone. Others see it after their next reload.`);
-        } catch (e) {
-          toggle.checked = !toggle.checked;
-          uiModule.showError('Not saved: Pantheon did not answer.');
-        }
-      });
+      toggle.addEventListener('change', () => _saveFeature(toggle));
     });
   } catch (e) { container.innerHTML = '<div class="admin-error">Failed to load features</div>'; }
 }
