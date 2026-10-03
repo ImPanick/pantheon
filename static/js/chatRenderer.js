@@ -3902,6 +3902,49 @@ export function dropAskedTwin(box, digest) {
   return dropped;
 }
 
+/** A reply bubble's reasoning and its words, apart. */
+function _bubbleParts(bubble) {
+  const body = bubble && bubble.querySelector ? bubble.querySelector('.body') : null;
+  const isThinking = (n) => !!(n.classList && n.classList.contains('thinking-section'));
+  const holdsThinking = (n) => !!(isThinking(n) || (n.querySelector && n.querySelector('.thinking-section')));
+  // The live stream writes into a wrapper (`.stream-content`) that holds the
+  // reasoning and the reply side by side: look inside it.
+  let box = body;
+  while (box && box.children && box.children.length === 1 && !isThinking(box.children[0])
+         && holdsThinking(box.children[0])) {
+    box = box.children[0];
+  }
+  const kept = [];
+  const reply = [];
+  for (const child of Array.from((box && box.childNodes) || [])) (holdsThinking(child) ? kept : reply).push(child);
+  const said = reply.map((n) => n.textContent || '').join('').replace(/\s+/g, ' ').trim();
+  return { body, kept, reply, said };
+}
+
+/** What a reply bubble says, its reasoning left out; '' for a hidden one. */
+export function bubbleReplyText(bubble) {
+  if (!bubble || (bubble.style && bubble.style.display === 'none')) return '';
+  return _bubbleParts(bubble).said;
+}
+
+/** `P23-04` (CHAT-M-3). The stand-in reply a turn paused at an approval card
+ *  saved — the card's own question, "Allow this task to continue?" — taken off
+ *  the live bubble, as the history renderer never draws it. The round's
+ *  reasoning stays; a bubble left with nothing is hidden. Returns whether
+ *  anything went. Reply text other than the question is left alone. */
+export function dropApprovalPlaceholder(bubble, question) {
+  const q = String(question || '').replace(/\s+/g, ' ').trim();
+  const { body, kept, reply, said } = _bubbleParts(bubble);
+  if (!q || !body || said !== q) return false;
+  reply.forEach((n) => n.remove());
+  if (!kept.length) {
+    bubble.style.display = 'none';
+    const above = bubble.previousElementSibling;
+    if (above && above.classList && above.classList.contains('agent-thread')) above.classList.remove('has-bottom');
+  }
+  return true;
+}
+
 /**
  * Add a message to the chat history.
  */
@@ -4580,6 +4623,8 @@ export function addMessage(role, content, modelName, metadata) {
 const chatRenderer = {
   buildStoppedIndicator,   // `P23-04` (CHAT-U-18)
   dropAskedTwin,           // `P23-04` (CHAT-M-8)
+  dropApprovalPlaceholder, // `P23-04` (CHAT-M-3)
+  bubbleReplyText,         // `P23-04` (CHAT-M-3)
   shortModel,
   sameModelName,
   modelRouteLabel,

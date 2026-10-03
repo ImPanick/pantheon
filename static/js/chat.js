@@ -3413,6 +3413,8 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
       }
       // _keepResearchOn removed — clarification state now persisted server-side via DB mode
       function _metricsTargetForTurn() {
+        // `P23-04` (CHAT-M-3): a turn paused at an approval card has no footer.
+        if (holder && holder.dataset?.approvalPaused) return null;
         const visibleRound = (roundHolder && roundHolder.style.display !== 'none') ? roundHolder : null;
         const visibleText = visibleRound ? (visibleRound.querySelector('.body')?.textContent || '').trim() : '';
         // `B920`: the footer made here carries the turn's pills.
@@ -4995,6 +4997,14 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
                 // versions have identical behavior.
                 _cancelThinkingTimer();
                 _removeThinkingSpinner();
+                // `P23-04` (CHAT-M-3). An approval card ends the turn on the
+                // server's stand-in reply ("Allow this task to continue?"),
+                // which is saved so the model sees it asked. It is not a
+                // reply: the end of the stream takes it off the screen and
+                // keeps the footer off the turn, as a reload draws it.
+                if (holder && json.data && json.data.kind === 'tool_approval') {
+                  holder.dataset.approvalPaused = String(json.data.question || '').trim() || '1';
+                }
                 chatRenderer.renderAskUserCard(json.data || {});
 
               } else if (json.type === 'plan_update') {
@@ -5352,6 +5362,11 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
           const _hText = _hBody ? _hBody.textContent.trim() : '';
           if (!_hText) holder.style.display = 'none';
         }
+        // `P23-04` (CHAT-M-3): the stand-in reply under an approval card goes;
+        // the round's reasoning, if it wrote any, stays.
+        if (holder.dataset?.approvalPaused) {
+          chatRenderer.dropApprovalPlaceholder(roundHolder, holder.dataset.approvalPaused);
+        }
 
         // Attach footer to the last visible bubble (roundHolder for multi-round agent, holder for single),
         // with the turn's pills handed to it (`B920`).
@@ -5411,6 +5426,13 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
         }
         if (metrics) {
           displayMetrics(_metricsTargetForTurn() || footerTarget, metrics);
+        }
+        // `P23-04` (CHAT-M-3): built (the cost is counted, the id is wired)
+        // and not shown — a reload draws no footer under a paused turn that
+        // wrote nothing of its own.
+        if (holder.dataset?.approvalPaused && !chatRenderer.bubbleReplyText(footerTarget)) {
+          const _pausedFooter = footerTarget.querySelector('.msg-footer');
+          if (_pausedFooter) _pausedFooter.style.display = 'none';
         }
         // Attach variant navigation if this was a regeneration
         _attachVariantNav(footerTarget);

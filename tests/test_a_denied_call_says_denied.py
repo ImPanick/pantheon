@@ -191,3 +191,106 @@ def test_approval_outcome_reads_the_event_not_ok(thread_sandbox):
         ]));
     """)
     assert out == ["waiting", "denied", "allowed", "allowed", None, None]
+
+
+# ── the live screen while the card waits ────────────────────────────────────
+#
+# Driven on the showcase (`drive-card.png`): the reply bubble under the waiting
+# card said "Allow this task to continue?" under the round's reasoning, with
+# "1 memory, keyword only · 809 tok/s", copy and delete — a reply's footer on
+# the server's stand-in, which a reload (above) does not draw.
+
+from test_tool_effect_surfaces_js import _card, card_sandbox  # noqa: E402,F401
+from test_a_turns_pills_reach_its_footer_live import _between, _handler, _metrics_target  # noqa: E402
+from tests.helpers.js_source import js_definition  # noqa: E402
+
+# The live shape, read off the showcase's DOM under a waiting card:
+# `.body > .stream-content > [.thinking-section, div > p]`.
+_LIVE_BUBBLE = r"""
+const bubble = (thinkingText, replyText) => {
+  const n = document.createElement('div');
+  n.className = 'msg msg-ai';
+  const body = n.appendChild(document.createElement('div'));
+  body.className = 'body';
+  const box = body.appendChild(document.createElement('div'));
+  box.className = 'stream-content';
+  if (thinkingText) {
+    const t = box.appendChild(document.createElement('div'));
+    t.className = 'thinking-section';
+    t.textContent = thinkingText;
+  }
+  const reply = box.appendChild(document.createElement('div'));
+  const p = reply.appendChild(document.createElement('p'));
+  p.textContent = replyText;
+  return n;
+};
+"""
+
+
+def test_the_stand_in_reply_leaves_the_live_bubble_and_the_reasoning_stays(card_sandbox):
+    out = _card(_LIVE_BUBBLE + """
+        const m = await import('./chatRenderer.js');
+        const withThinking = bubble('The survey is a CSV.', %(q)s);
+        const bare = bubble('', %(q)s);
+        const said = bubble('', 'I found it. ' + %(q)s);
+        const r = [m.dropApprovalPlaceholder(withThinking, %(q)s), m.dropApprovalPlaceholder(bare, %(q)s),
+                   m.dropApprovalPlaceholder(said, %(q)s)];
+        console.log(JSON.stringify({ dropped: r,
+          thinkingKept: withThinking.querySelector('.thinking-section').textContent,
+          thinkingReply: m.bubbleReplyText(withThinking), thinkingHidden: withThinking.style.display === 'none',
+          bareHidden: bare.style.display === 'none', bareReply: m.bubbleReplyText(bare),
+          saidReply: m.bubbleReplyText(said) }));
+    """ % {"q": json.dumps(QUESTION)}, card_sandbox)
+    assert out["dropped"] == [True, True, False], "only the stand-in alone is taken; a reply that said more stays"
+    assert out["thinkingKept"] == "The survey is a CSV."
+    assert out["thinkingReply"] == "" and out["thinkingHidden"] is False
+    assert out["bareHidden"] is True and out["bareReply"] == ""
+    assert out["saidReply"] == "I found it. " + QUESTION
+
+
+def _end_blocks() -> str:
+    code = _handler()
+    blocks = []
+    for anchor in ("if (holder.dataset?.approvalPaused) {",
+                   "if (holder.dataset?.approvalPaused && !chatRenderer.bubbleReplyText(footerTarget)) {"):
+        assert code.count(anchor) == 1, f"{anchor!r} is not the end of the stream's one block"
+        blocks.append(js_definition(code, code.index(anchor)))
+    return blocks
+
+
+@pytest.mark.parametrize("kind", ["tool_approval", None], ids=["approval-card", "question-card"])
+def test_a_turn_paused_at_the_card_draws_no_reply_and_no_footer_live(card_sandbox, kind):
+    """The live stream's own pieces, cut out of `handleChatSubmit` (`Law 20`):
+    the `ask_user` arm, `_metricsTargetForTurn`, and the two places the end of
+    the stream reads what the arm marked. A question card (`ask_user` the tool,
+    no approval) is the agent's own words and keeps its footer."""
+    arm = _between("} else if (json.type === 'ask_user') {", "} else if (json.type === 'plan_update') {")
+    drop, hide = _end_blocks()
+    payload = {"question": QUESTION, "options": []}
+    if kind:
+        payload.update(kind=kind, approval_id="ap-1")
+    out = _card(_LIVE_BUBBLE + """
+        const chatRenderer = await import('./chatRenderer.js');
+        const _isBg = false, _cancelThinkingTimer = () => {}, _removeThinkingSpinner = () => {};
+        const json = { type: 'ask_user', data: %(payload)s };
+        const holder = bubble('The survey is a CSV.', %(q)s);
+        holder.dataset = {};
+        let roundHolder = holder, lastToolThread = null;
+        const _withTurnPills = (n) => n;
+        %(target)s
+        for (const _ of [0]) { %(arm)s }
+        const targetDuring = _metricsTargetForTurn();
+        %(drop)s
+        const footerTarget = holder;
+        const footer = footerTarget.appendChild(document.createElement('div'));
+        footer.className = 'msg-footer';
+        %(hide)s
+        console.log(JSON.stringify({ marked: holder.dataset.approvalPaused || null,
+          metricsTarget: targetDuring ? 'bubble' : null,
+          reply: chatRenderer.bubbleReplyText(holder), footerShown: footer.style.display !== 'none' }));
+    """ % {"payload": json.dumps(payload), "q": json.dumps(QUESTION), "target": _metrics_target(),
+           "arm": arm, "drop": drop, "hide": hide}, card_sandbox)
+    if kind:
+        assert out == {"marked": QUESTION, "metricsTarget": None, "reply": "", "footerShown": False}, out
+    else:
+        assert out == {"marked": None, "metricsTarget": "bubble", "reply": QUESTION, "footerShown": True}, out

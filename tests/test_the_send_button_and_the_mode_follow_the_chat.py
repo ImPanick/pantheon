@@ -135,3 +135,17 @@ def test_a_chat_opens_in_the_mode_it_last_ran_in(tmp_path, prev, mode, expect):
         console.log(JSON.stringify(set));
     """ % (json.dumps(prev), json.dumps(mode), block))
     assert out == expect
+
+
+def test_the_buttons_name_is_what_it_shows():
+    """Found driving this row: the markup named the button "New chat"
+    (`aria-label`) and no state ever renamed it, so a screen reader heard "New
+    chat" on Send and on Stop. Without the label the name is the `title` each
+    state above sets; the first paint is the idle state, not "+ New"."""
+    import re
+    html = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
+    [tag] = re.findall(r'<button\b[^>]*\bclass="send-btn\b[^"]*"[^>]*>', html)
+    assert "aria-label" not in tag
+    assert 'data-mode="idle"' in tag and 'title="Send message"' in tag
+    body = html[html.index(tag) + len(tag):html.index("</button>", html.index(tag))]
+    assert "+ New" not in body

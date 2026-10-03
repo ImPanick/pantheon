@@ -11544,6 +11544,14 @@ body.fullwidth-chat .chat-history {
      not its code name upper-cased (*MANAGE_TASKS*). */
   font-size: 0.9em;
 }
+/* `P23-04` (CHAT-U-11). The one line under an approval card's buttons that
+   says what each allow covers — quiet, the size of the card's own small print. */
+.ask-user-scope-note {
+  margin: 6px 0 2px;
+  font-size: 10.5px;
+  line-height: 1.35;
+  color: color-mix(in srgb, var(--fg) 60%, transparent);
+}
 /* `P4-12`. The action you personally stopped and allowed. Louder than the round
    badge on purpose — the round is where a card sits, this is by whose authority
    it ran, and it is rare enough that it can afford to be seen. Uses
