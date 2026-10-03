@@ -1718,8 +1718,18 @@ if (!window._odyEscExpandGuard) {
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape' || e.defaultPrevented || e.isComposing) return;
     if (_OWN_ESCAPE_DIALOGS.some(_openById)) return;
-    if (_openById('search-overlay')) return;      // the palette closes itself (`search-chat.js`)
     const done = () => { e.stopImmediatePropagation(); e.preventDefault(); };
+    // The palette answers Escape typed in its box itself (`search-chat.js`);
+    // with the caret moved off the box, it is closed the way a click on its
+    // backdrop closes it — the rule `app.js`'s second arbiter kept.
+    if (_openById('search-overlay')) {
+      const pal = document.getElementById('search-overlay');
+      const t0 = _targetEl(e.target);
+      if (t0 && pal.contains(t0)) return;
+      done();
+      try { pal.click(); } catch {}
+      return;
+    }
 
     if (dismissTopMenu()) { done(); return; }
 

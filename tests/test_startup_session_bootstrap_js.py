@@ -68,6 +68,10 @@ _IMPORT_REWRITES = {
     "import { STEP_LIMIT_CONTINUE_PROMPT, withdrawContinueOffers } from './agentStops.js';": (
         "import { STEP_LIMIT_CONTINUE_PROMPT, withdrawContinueOffers } from './agentStops.mjs';"
     ),
+    # `P23-01`: a chat switch writes its history entry through the back stack.
+    "import backStack from './backStack.js';   // `P23-01`": (
+        "import backStack from './backStack.mjs';   // `P23-01`"
+    ),
 }
 
 # Modules with no dependencies of their own, copied into the sandbox whole
@@ -81,6 +85,8 @@ _VERBATIM = {
     "icons.mjs": _REPO / "static" / "js" / "icons.js",
     # No imports of its own, on purpose (its header says so), so it runs real.
     "agentStops.mjs": _REPO / "static" / "js" / "agentStops.js",
+    # `P23-01`. No imports of its own either; the real one.
+    "backStack.mjs": _REPO / "static" / "js" / "backStack.js",
 }
 
 _STUBS = {

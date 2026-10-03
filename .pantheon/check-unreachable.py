@@ -247,6 +247,13 @@ def unreachable():
         routes, source = routes_from_source(), "source"
 
     called = frontend_paths()
+    # `P23-01`. A window's URL (`/brain`, `/settings/shortcuts`, …) is the app
+    # shell at an address the browser writes itself — `static/js/backStack.js`
+    # puts the top window's path in the history entry, and a reload or a link
+    # navigates there — so no fetch in the frontend names it. The set is
+    # `app.py`'s own `PAGE_ROUTES` (and only when the app was imported: the
+    # source-scan fallback still counts them, the safe direction).
+    pages = set(getattr(sys.modules.get("app"), "PAGE_ROUTES", ()) or ())
     findings = []
     seen_paths = set()
     for path, methods in routes:
@@ -254,6 +261,8 @@ def unreachable():
             continue
         seen_paths.add(path)
         if any(path.startswith(prefix) for prefix in ALLOWED):
+            continue
+        if pages and path.strip("/").split("/")[0] in pages and "GET" in methods:
             continue
         pattern = normalise(path)
         if pattern in called:

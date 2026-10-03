@@ -141,10 +141,11 @@ export function hideSettingsModal(modalEl) {
   const content = modalEl.querySelector('.modal-content, .settings-modal-content');
   if (content && !content.classList.contains('modal-closing')) {
     content.classList.add('modal-closing');
-    let timer = null;
+    let finished = false;
     const finish = () => {
+      if (finished) return;
+      finished = true;
       content.removeEventListener('animationend', onEnd);
-      clearTimeout(timer);
       // Opened again while it was closing: leave it open.
       if (!content.classList.contains('modal-closing')) return;
       modalEl.classList.add('hidden');
@@ -156,7 +157,7 @@ export function hideSettingsModal(modalEl) {
       finish();
     };
     content.addEventListener('animationend', onEnd);
-    timer = setTimeout(finish, 250);
+    setTimeout(finish, 250);
     return;
   }
 

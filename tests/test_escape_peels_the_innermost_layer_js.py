@@ -258,21 +258,28 @@ def test_a_window_that_peels_its_own_layer_keeps_the_key_for_it(box):
 
 
 def test_a_dialog_that_answers_its_own_escape_keeps_it(box):
-    """The palette (`search-chat.js`) and the confirm dialog close themselves;
-    the window under them stays."""
+    """The palette answers Escape typed in its box (`search-chat.js`); with
+    the caret moved off the box the arbiter closes it the way its backdrop's
+    click does (`app.js`'s rule, moved). The confirm dialog closes itself. The
+    window under either stays."""
     o = _case(box, """
         makeWindow('memory-modal', 1001);
         const pal = document.body.appendChild(new Node('div'));
         pal.setAttribute('id', 'search-overlay');
-        const r1 = escape();
-        pal.classList.add('hidden');
+        const input = field(pal);
+        let backdrop = 0;
+        pal.addEventListener('click', (e) => { if (e.target === pal) { backdrop += 1; pal.classList.add('hidden'); } });
+        const inBox = escape(input);
+        const offBox = escape(null);
         const conf = document.body.appendChild(new Node('div'));
         conf.setAttribute('id', 'styled-confirm-overlay');
         const r2 = escape();
-        out({ r1, r2, brain: isOpen('memory-modal'), closed });
+        out({ inBox, offBox, backdrop, r2, brain: isOpen('memory-modal'), closed });
     """)
-    assert o == {"r1": {"stopped": False, "prevented": False}, "r2": {"stopped": False, "prevented": False},
-                 "brain": True, "closed": []}
+    assert o["inBox"] == {"stopped": False, "prevented": False}
+    assert o["offBox"] == {"stopped": True, "prevented": True} and o["backdrop"] == 1
+    assert o["r2"] == {"stopped": False, "prevented": False}
+    assert o["brain"] is True and o["closed"] == []
 
 
 def test_with_no_window_the_drawer_then_the_document_pane(box):
