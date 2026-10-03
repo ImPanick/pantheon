@@ -976,7 +976,8 @@ def setup_task_routes(task_scheduler) -> APIRouter:
                 raise HTTPException(409, "This run is not waiting on this question any more.")
             owner, tz_name = task.owner, _resolve_task_timezone(db, task)
             session = waiting.get("session_id") or ""
-            tool = waiting.get("tool") or "the action"
+            # `B1111`, as the workflow's door reads it (`integrate-g`).
+            tool = waiting.get("tool_label") or waiting.get("tool") or "the action"
         finally:
             db.close()
         try:

@@ -1169,7 +1169,7 @@ class LastRun(NamedTuple):
 def plain_waiting_list(db, owner: str | None) -> list:
     """`B1102`. `GET /api/tasks/waiting`: every plain Prompt task of `owner`'s
     whose run waits for a yes right now, oldest first — `{task_id, task, run_id,
-    node_id, item, label, kind, since, until, approval}`, the workflow waiting
+    node_id, item, label, kind, since, until, tool_label, approval}`, the workflow waiting
     list's shape with the task in the workflow's place. `approval` is the card
     while the store still holds it (so the page re-offers only a question that
     can still be answered), else null. Never the session the card is bound to."""
@@ -1194,6 +1194,7 @@ def plain_waiting_list(db, owner: str | None) -> list:
         out.append({"task_id": task.id, "task": task.name, "run_id": run.id,
                     "node_id": rec.node_id, "item": None, "label": rec.label, "kind": kind,
                     "since": waiting.get("since"), "until": waiting.get("until"),
+                    "tool_label": waiting.get("tool_label") or None,
                     "approval": approval})
     return out
 
@@ -4465,7 +4466,8 @@ class TaskScheduler:
             if verdict is None:
                 # Still open — no answer for it, and the store still holds it:
                 # it waits on, and the person was already asked.
-                raise TaskWaiting(f"Waiting for your yes on {waiting.get('tool') or 'an action'}",
+                raise TaskWaiting("Waiting for your yes on "
+                                  f"{waiting.get('tool_label') or waiting.get('tool') or 'an action'}",
                                   kind=wr.WAITING_APPROVAL)
             if verdict.decision != ANSWER_ALLOW:
                 if answer is None:
@@ -4482,8 +4484,14 @@ class TaskScheduler:
         try:
             result = await self._execute_llm_task(task, db, run_id=run_id)
         except TaskWaiting as parked:
-            self._park_plain_run(db, task, run_id, parked, rec)
-            raise
+            # `B1111` on `B1102`'s path (`integrate-g`): a plain task's question
+            # names its tool as a workflow step's does — in its record, the
+            # run's line, the notification and the answer's sentence.
+            named = named_question(parked)
+            self._park_plain_run(db, task, run_id, named, rec)
+            if named is parked:
+                raise
+            raise named from None
         except BaseException as exc:
             if rec is not None:
                 stopped = isinstance(exc, asyncio.CancelledError)
@@ -4537,13 +4545,15 @@ class TaskScheduler:
         if parked.kind != wr.WAITING_APPROVAL:
             return
         card = waiting.get("card") if isinstance(waiting.get("card"), dict) else {}
-        tool = waiting.get("tool") or (card.get("action") or {}).get("tool") or "an action"
+        tool = (waiting.get("tool_label") or waiting.get("tool")
+                or (card.get("action") or {}).get("tool") or "an action")
         self.add_notification(
             task.name, "waiting", task.id, owner=task.owner,
             body=f"“{task.name}” is waiting for your yes: {tool}.",
             review={"kind": "task_approval", "task_id": task.id, "task": task.name,
                     "run_id": run_id, "node_id": PLAIN_TASK_NODE, "item": None,
                     "label": task.name, "since": (wr.waiting_of(rec) or {}).get("since"),
+                    "tool_label": waiting.get("tool_label") or None,
                     "approval": card or None})
 
     async def _execute_llm_task(self, task, db, run_id: str | None = None) -> str:

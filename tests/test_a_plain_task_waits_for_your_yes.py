@@ -137,11 +137,14 @@ async def test_a_plain_task_parks_and_an_allow_from_the_notification_runs_it_onc
     assert pending is not None, "the card waits rather than being retired on the spot"
     assert round(pending.expires_at - pending.created_at) == 12 * 60 * 60
     [note] = [n for n in w.s.pop_notifications() if n["status"] == "waiting"]
+    # `tool_label` moved in at the merge with `B1111` (`integrate-g`): a plain
+    # task's question names its tool as a workflow step's does — `bash` is its
+    # own name, an MCP tool its panel's words.
     assert note["review"] == {"kind": "task_approval", "task_id": "plain",
                               "task": "Morning replies", "run_id": run["id"],
                               "node_id": rec["node_id"], "item": None,
                               "label": "Morning replies", "since": rec["waiting"]["since"],
-                              "approval": card}
+                              "tool_label": "bash", "approval": card}
     assert w.seen[0]["workload"] == "background"
 
     async with client_for(w.app) as client:
@@ -387,3 +390,41 @@ async def test_a_message_typed_into_the_tasks_chat_leaves_its_question_waiting(w
         await settle(w.s)
     assert w.executed == [("bash", "printf reply-sent")]
     assert runs_of(w.factory, "plain")[-1]["status"] == "success"
+
+
+async def test_a_plain_tasks_question_names_its_tool_as_a_steps_does(world, monkeypatch):
+    """The merged tree (`integrate-g`): `B1111` named a workflow step's tool in
+    the panel's words (`named_question` → `workflow_effects.tool_words`, read off
+    the MCP servers connected now) and `B1102` parked a plain task beside it
+    with the sealed name in every sentence. The plain path now asks the same
+    function, and every reader reads its words: the record (the sealed name
+    kept beside them), the run's line, the notification's body and `review`,
+    the waiting list and the answer's sentence. The naming source is the one
+    seam here — what `tool_words` says of a connected MCP tool is
+    `test_a_question_names_its_tool_as_the_panel_does.py`'s."""
+    import src.workflow_effects as workflow_effects
+    monkeypatch.setattr(workflow_effects, "tool_words",
+                        lambda tool: "Shell: bash" if tool == "bash" else None)
+    w = world
+    _plain_task(w)
+    run, rec = await _park(w)
+    assert run["result"] == "Waiting for your yes on Shell: bash", run
+    from core.database import TaskRunNode
+    db = w.factory()
+    stored = json.loads(db.query(TaskRunNode).filter(TaskRunNode.id == rec["id"]).first().waiting)
+    db.close()
+    assert stored["tool"] == "bash" and stored["tool_label"] == "Shell: bash", stored
+    assert rec["waiting"]["approval"]["action"]["tool"] == "bash", "the card keeps the sealed name"
+    [note] = [n for n in w.s.pop_notifications() if n["status"] == "waiting"]
+    assert note["body"] == "“Morning replies” is waiting for your yes: Shell: bash."
+    assert note["review"]["tool_label"] == "Shell: bash"
+    async with client_for(w.app) as client:
+        listed = (await client.get("/api/tasks/waiting", headers=ALICE)).json()["waiting"]
+        assert [x["tool_label"] for x in listed] == ["Shell: bash"]
+        res = await client.post(_answer_url(run), headers=ALICE,
+                                json={"approval_id": rec["waiting"]["approval"]["approval_id"],
+                                      "decision": "deny"})
+        assert res.status_code == 200, res.text
+        assert res.json()["sentence"].endswith(": Shell: bash — it was not done.")
+        await settle(w.s)
+    assert w.executed == []
