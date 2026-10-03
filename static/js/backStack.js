@@ -243,7 +243,10 @@ function _focusHandle(id) {
 function _stateFor(opened) {
   return {
     pn: 1, doc: DOC, idx: _idx,
-    wins: _stack.map((e) => ({ id: e.id, from: e.from || null, tab: _tabOf(e.id) })),
+    // `tab` is the window's own tab (the URL's `/settings/<tab>`); `fromTab`
+    // the opener's at the moment it opened this one, which closing re-raises.
+    wins: _stack.map((e) => ({ id: e.id, from: e.from || null, tab: _tabOf(e.id),
+      fromTab: e.from ? (e.tab == null ? null : e.tab) : null })),
     opened: opened || null,
   };
 }
@@ -267,7 +270,8 @@ function _write(kind, state) {
 const _ids = (wins) => (wins || []).map((w) => w.id);
 const _prefix = (a, b) => a.every((x, i) => b[i] === x);
 const _sameWins = (a, b) => a.length === b.length && a.every((w, i) => w.id === b[i].id
-  && (w.from || null) === (b[i].from || null) && (w.tab || null) === (b[i].tab || null));
+  && (w.from || null) === (b[i].from || null) && (w.tab || null) === (b[i].tab || null)
+  && (w.fromTab || null) === (b[i].fromTab || null));
 
 function _current() {
   const h = _hist();
@@ -402,20 +406,17 @@ async function _restore(wins) {
     for (const w of wins) {
       const open = _openers[w.id];
       if (typeof open !== 'function') continue;
-      if (w.from) noteOpener(w.id, w.from, null);
+      const fromTab = w.fromTab == null ? null : w.fromTab;
+      if (w.from) noteOpener(w.id, w.from, fromTab);
       try { await open(w.tab || null); } catch (e) { console.warn('could not reopen', w.id, e); continue; }
       if (await _waitOpen(w.id)) {
         _readPage();
         const e = _stack.find((x) => x.id === w.id);
-        if (e && w.from && isOpenNow(w.from)) { e.from = w.from; e.tab = w.tab; _drawBack(e); }
-        // The window's own tab, and the opener's remembered one.
+        // Its opener and the opener's tab, as they were when it was opened.
+        if (e && w.from && isOpenNow(w.from)) { e.from = w.from; e.tab = fromTab; _drawBack(e); }
+        // Its own tab.
         if (w.tab) _setTab(w.id, w.tab);
       }
-    }
-    // Each window's remembered opener-tab, written back once all are up.
-    for (const w of wins) {
-      const e = _stack.find((x) => x.id === w.id);
-      if (e && w.from && e.from === w.from) e.tab = w.tab;
     }
   } finally {
     _restoring = false;
