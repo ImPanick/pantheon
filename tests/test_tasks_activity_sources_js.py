@@ -62,6 +62,9 @@ _STUBS = {
                        "export function registerMenuDismiss(){return()=>{};}\n",
     "appConfig.js": "export function getSettings(){return{};}\nexport function invalidateSettings(){}\n",
     "util/ordinal.js": "export function ordinalSuffix(n){return String(n);}\n",
+    # `P23-01`: the real back stack (no imports, no work at load) — Tasks notes
+    # itself as the Workbench's opener through it.
+    "backStack.js": (ROOT / "static" / "js" / "backStack.js").read_text(encoding="utf-8"),
 }
 
 _SHIM = r"""
