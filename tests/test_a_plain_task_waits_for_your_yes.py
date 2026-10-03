@@ -358,3 +358,32 @@ async def test_a_plain_task_run_by_a_workflow_step_still_pauses_safely(world):
     assert records_of(w.factory, inner["id"]) == []
     assert not tool_approval_store._pending and w.executed == []
     assert runs_of(w.factory, "wf")[0]["status"] == "success"
+
+
+async def test_a_message_typed_into_the_tasks_chat_leaves_its_question_waiting(world):
+    """The merged tree (`integrate-g`): `B1103`'s rule reaches a plain task too.
+    `B1102` was written beside `B1103` and named a residual — typing into the
+    task's own chat withdrew its waiting question. Merged, a plain run parks
+    through the same `may_wait` slot `_run_agent_loop` reads, so its card is
+    minted held by the run: an ordinary message there
+    (`retire_for_session`, which the chat route calls for one) still answers
+    the card's taint and leaves the question answerable; Allow then runs the
+    sealed action once."""
+    w = world
+    _plain_task(w)
+    run, rec = await _park(w)
+    approval_id = rec["waiting"]["approval"]["approval_id"]
+    pending = tool_approval_store.peek(approval_id)
+    assert pending is not None and pending.held_by_run is True
+    carried = tool_approval_store.retire_for_session(owner="alice",
+                                                     session_id=pending.session_id)
+    assert carried is True, "the next chat turn still carries the card's taint"
+    assert tool_approval_store.peek(approval_id) is not None, "the question still waits"
+    async with client_for(w.app) as client:
+        res = await client.post(_answer_url(run), headers=ALICE,
+                                json={"approval_id": approval_id, "decision": "approve_task"})
+        assert res.status_code == 200, res.text
+        assert res.json()["outcome"] == "resumed"
+        await settle(w.s)
+    assert w.executed == [("bash", "printf reply-sent")]
+    assert runs_of(w.factory, "plain")[-1]["status"] == "success"
