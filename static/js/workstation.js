@@ -112,9 +112,9 @@ const TOKEN_SOURCE_WORDS = {
   setting: 'Present — set here.',
   environment: 'Present — from PANTHEON_WORKSTATION_TOKEN.',
   pairing: 'Present — read from the pairing volume the workstation shares with Pantheon.',
-  none: 'None yet. Pantheon reads it from the pairing volume once the workstation has '
-    + 'started. For a workstation somewhere else, set PANTHEON_WORKSTATION_TOKEN on both '
-    + 'sides, or paste it here.',
+  // `COPY-U-43` (P23-03): one line each, the same facts.
+  none: 'None yet. Read from the pairing volume when the workstation starts. For a remote '
+    + 'one, set PANTHEON_WORKSTATION_TOKEN on both sides or paste it.',
 };
 
 // `B980`. Where the pinned certificate came from, said beside its fingerprint.
@@ -311,8 +311,7 @@ function renderEffects(settings, daemon, network) {
     const where = URL_SOURCE_WORDS[settings.url_source];
     url.textContent = settings.url
       ? `In effect: ${settings.url} — ${where || settings.url_source}.`
-      : 'No address yet. Start the workstation overlay, or type the address of a machine '
-        + 'running the workstation daemon.';
+      : 'No address yet. Filled in by the workstation overlay, or type one.';
   }
   const token = $('ws-token-effect');
   if (token) {

@@ -3155,10 +3155,7 @@
           <div class="admin-card">
             <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6"><circle cx="12" cy="12" r="3"/><circle cx="5" cy="6" r="2"/><circle cx="19" cy="6" r="2"/><circle cx="5" cy="18" r="2"/><circle cx="19" cy="18" r="2"/></svg>What your Brain and documents are searched with</h2>
             <div class="admin-toggle-sub" style="margin-bottom:8px">
-              Embeddings turn text into vectors so a search can find things that
-              mean the same without sharing a word. Memory and document search
-              use them when they are available and fall back to keyword matching
-              when they are not — which works, but finds much less.
+              Embeddings let search match meaning, not just words. Without one, memory and document search fall back to keywords.
             </div>
             <div id="emb-status" class="settings-col" style="font-size:12px;line-height:1.6;">
               <div style="opacity:0.5;">Checking…</div>
@@ -3168,9 +3165,7 @@
           <div class="admin-card">
             <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6"><path d="M5 12h14"/><path d="M12 5v14"/></svg>Remote embedding endpoint</h2>
             <div class="admin-toggle-sub" style="margin-bottom:8px">
-              Optional. Point Pantheon at a server that does the embedding for
-              it — your own, or one on your network. Leave this empty to use a
-              model on this machine instead.
+              Optional. A server that embeds for Pantheon; blank uses a model on this machine.
             </div>
             <div class="settings-col">
               <div class="settings-row"><label class="settings-label" for="emb-ep-url">URL</label><input type="text" id="emb-ep-url" class="settings-input" placeholder="http://localhost:8080/v1/embeddings"></div>
@@ -3187,8 +3182,7 @@
           <div class="admin-card">
             <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Models on this machine</h2>
             <div class="admin-toggle-sub" style="margin-bottom:8px">
-              Downloaded once and then used offline. Bigger models are usually
-              better at finding things and slower to run.
+              Downloaded once, then offline. Bigger finds more, slower.
             </div>
             <div id="emb-models"><div style="opacity:0.5;font-size:12px;">Loading…</div></div>
           </div>
@@ -3199,10 +3193,7 @@
           <div class="admin-card">
             <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6"><rect x="9" y="2" width="6" height="6" rx="1"/><rect x="2" y="16" width="6" height="6" rx="1"/><rect x="16" y="16" width="6" height="6" rx="1"/><path d="M12 8v4"/><path d="M5 16v-2h14v2"/></svg>Named networks</h2>
             <div class="admin-toggle-sub" style="margin-bottom:10px;line-height:1.5;">
-              Name the segments you own, so a run can be told which of them it may reach.
-              Nothing is declared out of the box and nothing changes until you add one.
-              A run scoped to a network refuses every address outside it &mdash; including
-              addresses in no declared network at all.
+              Name the networks a run may reach. A run scoped to one refuses every address outside it. Nothing changes until you add one.
             </div>
             <div id="networks-list" class="settings-col"></div>
             <div class="settings-row" style="margin-top:10px;gap:8px;">
@@ -3216,15 +3207,7 @@
           <div class="admin-card" style="margin-top:12px;">
             <h2>Network agent</h2>
             <div class="admin-toggle-sub" style="margin-bottom:10px;line-height:1.5;">
-              The agent is a small read-only process you run on the host. It sees your
-              network the way the host does &mdash; the host&rsquo;s own addresses and the devices
-              it has talked to &mdash; which Pantheon&rsquo;s container cannot see from inside
-              Docker. Pantheon holds a credential for it rather than the reach itself.
-              Leave both blank and nothing is called.
-              <br><br>
-              Start it with <code>python -m netagent.server</code> on the machine that has the
-              network. It prints a token once; paste it below. See <code>netagent/README.md</code>
-              for running it at logon.
+              A small read-only process on the host that sees the network Docker cannot. Start <code>python -m netagent.server</code> and paste the token it prints. Blank: nothing is called.
             </div>
             <div class="settings-col">
               <div class="settings-row">
@@ -3246,20 +3229,7 @@
           <div class="admin-card" style="margin-top:12px;">
             <h2>Host commands</h2>
             <div class="admin-toggle-sub" style="margin-bottom:10px;line-height:1.5;">
-              <b>Two lists, and only one of them is a boundary.</b>
-              <br><br>
-              The agent's own list is compiled into it, on your machine, and nothing here
-              can widen it &mdash; not this page, not a setting, not a flag. That is what
-              refuses <code>format C:</code> and the rest.
-              <br><br>
-              The lists below are <b>yours</b>, and they are checked <i>here</i>, before a
-              command is sent. They narrow what Pantheon will ask for. They are a
-              preference, not a wall &mdash; a Pantheon that has stopped behaving skips
-              them, which is exactly why the agent keeps its own.
-              <br><br>
-              One pattern per line, matched as plain text against the command. Not regular
-              expressions: a typo in a regex widens a rule silently, and <code>.*</code> is
-              a very easy typo.
+              Your lists narrow what Pantheon asks the agent to run; the agent's own refusals stay, and nothing here widens them. One plain-text pattern per line, not regex.
             </div>
             <div class="settings-col">
               <label class="settings-label" for="host-exec-allowlist" style="margin-bottom:4px;">
@@ -3286,10 +3256,7 @@
           <div class="admin-card" style="margin-top:12px;">
             <h2>Devices</h2>
             <div class="admin-toggle-sub" style="margin-bottom:10px;line-height:1.5;">
-              What the agent has seen, remembered. A device is identified by its MAC, so a
-              name you give it survives a DHCP reshuffle &mdash; and something that appears
-              for the first time shows as <b>new</b>. This is the machine's own cache, not a
-              scan: a device that has been quiet will not appear until it speaks.
+              Devices the agent has seen, by MAC. New ones are marked new; a quiet one appears when it next speaks.
             </div>
             <div class="settings-row" style="gap:8px;margin-bottom:10px;">
               <button type="button" id="devices-refresh" class="memory-toolbar-btn">Refresh from the agent</button>
@@ -3301,8 +3268,7 @@
           <div class="admin-card" style="margin-top:12px;">
             <h2>Which network claims an address?</h2>
             <div class="admin-toggle-sub" style="margin-bottom:8px;line-height:1.5;">
-              Checked against what is on screen, not what is saved &mdash; so you can see
-              where an address lands before you commit to it.
+              Checked against the lists on screen, not what is saved.
             </div>
             <div class="settings-row" style="gap:8px;">
               <input type="text" id="networks-probe" class="settings-select" placeholder="192.168.1.71" style="flex:1 1 auto;">
@@ -3350,14 +3316,13 @@
           <div class="admin-card" id="ws-admin" style="margin-top:12px;" hidden>
             <h2>Settings</h2>
             <div class="admin-toggle-sub" style="margin-bottom:10px;line-height:1.5;">
-              Only admins see this card. Who else may use the workstation is a switch on
-              each person in Settings &rarr; Users.
+              Who may use it: Settings &rarr; Users.
             </div>
             <div class="settings-col ws-settings">
               <div class="admin-toggle-row ws-toggle">
                 <div>
                   <label class="admin-toggle-label" for="ws-enabled">Workstation on</label>
-                  <div class="admin-toggle-sub" id="ws-enabled-why">Off: nothing calls it, and the agent&rsquo;s shell, Python and file tools run inside Pantheon as they always have.</div>
+                  <div class="admin-toggle-sub" id="ws-enabled-why">Off: the agent&rsquo;s shell, Python and files run inside Pantheon.</div>
                 </div>
                 <label class="admin-switch"><input type="checkbox" id="ws-enabled" aria-describedby="ws-enabled-why"><span class="admin-slider"></span></label>
               </div>
@@ -3423,7 +3388,7 @@
               <div class="admin-toggle-row ws-toggle">
                 <div>
                   <label class="admin-toggle-label" for="ws-route-tools">Agent shell, Python and file tools run in the workstation</label>
-                  <div class="admin-toggle-sub" id="ws-route-tools-why">Off: they run inside Pantheon, where they ran before there was a workstation.</div>
+                  <div class="admin-toggle-sub" id="ws-route-tools-why">Off: they run inside Pantheon.</div>
                 </div>
                 <label class="admin-switch"><input type="checkbox" id="ws-route-tools" aria-describedby="ws-route-tools-why"><span class="admin-slider"></span></label>
               </div>
@@ -3451,11 +3416,7 @@
           <div class="admin-card">
             <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>Switches a deploy can also set</h2>
             <div class="admin-toggle-sub" style="margin-bottom:10px">
-              Each of these can be answered here, or left to an environment
-              variable your deployment sets, or left to the shipped default.
-              Choosing Yes or No here wins over the variable; choosing
-              &ldquo;Use the environment or the default&rdquo; hands the answer
-              back. The line under each one says which layer is answering now.
+              Yes or No here wins over the environment variable; &ldquo;Use the environment or the default&rdquo; hands it back.
             </div>
             <div class="settings-col" id="settings-envflags-rows"></div>
             <div class="admin-toggle-sub" id="set-envflagsMsg" style="margin-top:8px;font-size:11px;opacity:0.75;min-height:14px"></div>
@@ -3473,12 +3434,7 @@
           <div class="admin-card">
             <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>Webhooks</h2>
             <div class="admin-toggle-sub" style="margin-bottom:8px">
-              Pantheon POSTs a small JSON body to a URL you own when one of
-              these things happens. The destination has to be reachable from
-              outside this machine &mdash; a private or loopback address is
-              refused when you add it, so point this at a public URL or at a
-              relay you run. A secret is optional; supply one and each delivery
-              is signed so the receiver can tell it came from here.
+              POSTs a small JSON body to your URL when one of these happens. The URL must be reachable from outside this machine; a private or loopback address is refused. A secret signs each delivery.
             </div>
             <div id="adm-whList"><div class="admin-empty">Loading...</div></div>
             <div class="admin-rag-section-label">Add a webhook</div>
@@ -3510,10 +3466,7 @@
           <div class="admin-card">
             <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>Knowledge index</h2>
             <div class="admin-toggle-sub" style="margin-bottom:8px">
-              What the assistant can search when it answers. Drop files here, or
-              point it at a directory on this machine and everything under that
-              directory is indexed. Removing an entry takes it out of the index;
-              the file itself is left where it is.
+              What the assistant can search. Drop files, or add a directory. Removing an entry leaves the file on disk.
             </div>
             <div class="admin-rag-upload-zone" id="adm-ragDropZone">
               <div class="admin-rag-icon" aria-hidden="true">&#8681;</div>
@@ -3543,7 +3496,6 @@
               </svg>
               Terminal Logs
             </h2>
-            <div class="admin-toggle-sub settings-system-logs-toggle-sub">Live diagnostic logs and system output from the Pantheon process.</div>
 
             <div class="settings-col settings-system-logs-col">
               <!-- Controls row -->
@@ -3613,11 +3565,7 @@
               <details id="bug-report" class="bug-report">
                 <summary class="bug-report-summary">Report a bug</summary>
                 <p class="bug-report-intro">
-                  Pantheon will assemble a report from this machine and redact it
-                  — your username, endpoint URLs, email addresses, LAN addresses
-                  and anything that looks like a credential. <strong>It is shown
-                  to you first and sent nowhere.</strong> Read it, edit anything
-                  you would rather not share, then copy it.
+                  Assembles a report from this machine, redacts names, addresses and keys, and shows it to you first. <strong>Nothing is sent.</strong>
                 </p>
                 <label class="bug-report-label" for="bug-report-note">What happened?</label>
                 <textarea id="bug-report-note" class="bug-report-note" rows="3"
@@ -3640,7 +3588,7 @@
           </div>
           <div class="admin-card">
             <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>Data Backup</h2>
-            <div class="admin-toggle-sub" style="margin-bottom:8px">Export or import your user data (memories, presets, settings, skills, preferences) as a JSON file. The file includes the API keys saved in your settings, unencrypted — keep it private. The workstation's pairing key is left out; it pairs again on its own.</div>
+            <div class="admin-toggle-sub" style="margin-bottom:8px">Memories, presets, settings and skills as JSON. API keys are included unencrypted — keep it private. The workstation's pairing key is left out; it pairs again on its own.</div>
             <div style="display:flex;gap:8px;flex-wrap:wrap;">
               <button class="admin-btn-add" id="adm-exportDataBtn">Export Data</button>
               <button class="admin-btn-add" id="adm-importDataBtn">Import Data</button>
@@ -3658,12 +3606,7 @@
           <div class="admin-card">
             <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>Storage cleanup</h2>
             <div class="admin-toggle-sub" style="margin-bottom:8px">
-              Archives chats untouched for 7 days, then deletes the archived ones
-              after 14 more if they are not marked important, have fewer than 20
-              messages, and are not among your 10 most recent. Chats whose name
-              contains <em>important</em>, <em>remember</em>, <em>save this</em>,
-              <em>keep</em> or <em>bookmark</em> are always kept. Nothing is
-              touched until you have seen the list.
+              Archives chats untouched for 7 days and deletes them after 14 more &mdash; only those with fewer than 20 messages, not starred and not among your 10 most recent. A name with <em>important</em>, <em>remember</em>, <em>save this</em>, <em>keep</em> or <em>bookmark</em> is always kept. Nothing happens until you preview.
             </div>
             <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
               <button class="admin-btn-add" id="adm-cleanupPreviewBtn">Preview cleanup</button>
@@ -3674,7 +3617,7 @@
           </div>
           <div class="admin-card admin-danger-card">
             <h2 style="color:#e55;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.75"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>Danger Zone</h2>
-            <div class="admin-toggle-sub" style="margin-bottom:8px">Irreversible. Each wipe targets one category — pick exactly what you want gone.</div>
+            <div class="admin-toggle-sub" style="margin-bottom:8px">Cannot be undone.</div>
 
             <div style="display:flex;justify-content:space-between;align-items:center;">
               <div>
@@ -3687,7 +3630,7 @@
             <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;">
               <div>
                 <div class="admin-toggle-label">Delete all memory</div>
-                <div class="admin-toggle-sub">Clears `memory.json`, the Memory table, and the vector store. Skills not affected.</div>
+                <div class="admin-toggle-sub">Every memory. Skills stay.</div>
               </div>
               <button class="admin-btn-delete" data-wipe-kind="memory" title="Delete all memory" aria-label="Delete all memory" style="display:inline-flex;align-items:center;gap:5px;white-space:nowrap;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>Delete</button>
             </div>
@@ -3695,7 +3638,7 @@
             <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;">
               <div>
                 <div class="admin-toggle-label">Delete all skills</div>
-                <div class="admin-toggle-sub">Drops `data/skills/` (all SKILL.md files). Memory not affected.</div>
+                <div class="admin-toggle-sub">Every skill. Memories stay.</div>
               </div>
               <button class="admin-btn-delete" data-wipe-kind="skills" title="Delete all skills" aria-label="Delete all skills" style="display:inline-flex;align-items:center;gap:5px;white-space:nowrap;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>Delete</button>
             </div>

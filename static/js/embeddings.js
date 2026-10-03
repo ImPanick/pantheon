@@ -21,6 +21,25 @@ const el = (id) => document.getElementById(id);
 let _loaded = false;
 let _pollTimers = new Map();
 
+/**
+ * `COPY-U-41` (P23-03). Each row printed the embedding library's own catalogue
+ * string — "Text embeddings, Unimodal (text), English, 512 input tokens
+ * truncation, Prefixes for queries/documents: not so necessary, 2023 year." —
+ * where a person wants three facts: language, how much text, how recent.
+ * Empty when the string carries none of them.
+ */
+function _shortDescription(text) {
+  const t = String(text || '');
+  const parts = [];
+  const lang = t.match(/\b(English|Multilingual|Chinese|Japanese|Korean|German|French|Spanish)\b/i);
+  if (lang) parts.push(lang[1].charAt(0).toUpperCase() + lang[1].slice(1).toLowerCase());
+  const tokens = t.match(/(\d[\d,]*)\s+input tokens/i);
+  if (tokens) parts.push(`${tokens[1]} tokens`);
+  const year = t.match(/\b((?:19|20)\d{2})\s+year\b/i);
+  if (year) parts.push(year[1]);
+  return parts.join(' · ');
+}
+
 function _text(tag, text, css) {
   const node = document.createElement(tag);
   node.textContent = text;
@@ -231,8 +250,9 @@ function _modelRow(model) {
   if (model.dim) badges.appendChild(_text('span', `${model.dim} dims`, 'opacity:0.5;'));
   left.appendChild(badges);
 
-  if (model.description) {
-    left.appendChild(_text('div', model.description,
+  const about = _shortDescription(model.description);
+  if (about) {
+    left.appendChild(_text('div', about,
       'opacity:0.5;font-size:11px;margin-top:2px;line-height:1.4;'));
   }
   row.appendChild(left);
