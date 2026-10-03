@@ -155,3 +155,36 @@ def test_a_stopped_resumed_reply_ends_on_the_saved_record(sandbox):
         console.log(JSON.stringify({ reloads: reloads.map((r) => r.id), added: added.length }));
     """ % json.dumps(plain))
     assert out == {"reloads": ["s1"], "added": 0}
+
+
+def test_the_key_calls_the_buttons_stop(tmp_path):
+    """The `cancel` keydown listener itself, cut out of `keyboard-shortcuts.js`
+    and driven: with nothing on the page claiming the key, it calls
+    `stopCurrentReply` — never `abortCurrentRequest()`, which dropped only the
+    browser's reader and let the server finish the reply."""
+    path = ROOT / "static" / "js" / "keyboard-shortcuts.js"
+    src = path.read_text(encoding="utf-8")
+    code = blank_text(src, "js")
+    anchor = "if (!_matchesCombo(e, window._pantheonKeybinds.cancel)) return;\n    const before"
+    assert code.count(anchor) == 1, "the cancel listener moved"
+    start = code.rindex("(e) => {", 0, code.index(anchor))
+    listener = js_definition(src, start)
+    (tmp_path / "case.mjs").write_text("""
+        const calls = [];
+        globalThis.window = { _pantheonKeybinds: { cancel: 'Escape' } };
+        const _matchesCombo = (e, combo) => e.key === combo;
+        let _cancelBefore = null;
+        let claimed = false;
+        const escapeClaim = () => claimed;
+        const chatModule = { stopCurrentReply: () => calls.push('stop'),
+                             abortCurrentRequest: (s) => calls.push('abort:' + s) };
+        const handler = %s;
+        handler({ key: 'Escape' });
+        claimed = true;
+        handler({ key: 'Escape' });
+        handler({ key: 'a' });
+        console.log(JSON.stringify(calls));
+    """ % listener, encoding="utf-8")
+    out = subprocess.run(["node", "case.mjs"], cwd=tmp_path, capture_output=True, text=True, timeout=30)
+    assert out.returncode == 0, out.stderr
+    assert json.loads(out.stdout.strip().splitlines()[-1]) == ["stop"]
