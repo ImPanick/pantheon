@@ -201,7 +201,7 @@ def mermaid_schemes(mermaid_report):
 @pytest.fixture(scope="module")
 def palettes():
     colours = _palette_colours()
-    assert len(colours) == 20, sorted(colours)
+    assert len(colours) == 23, sorted(colours)
     return colours
 
 
@@ -224,7 +224,7 @@ def test_the_measurement_still_has_all_sixteen_palettes_and_both_schemes(palette
     schemes = {_scheme_for(c["bg"]) for c in palettes.values()}
     assert schemes == {"light", "dark"}, schemes
     light = {n for n, c in palettes.items() if _scheme_for(c["bg"]) == "light"}
-    assert light == {"light", "paper", "lavender", "cute", "notebook", "codehost"}, sorted(light)
+    assert light == {"light", "paper", "lavender", "cute", "notebook", "codehost", "video", "mintchat"}, sorted(light)
     assert set(mermaid_schemes) >= {"light", "dark", "unset"}, sorted(mermaid_schemes)
     for name, got in mermaid_schemes.items():
         assert got["ink"]["lineColor"], (name, got["ink"])
@@ -312,7 +312,7 @@ def test_the_old_pin_would_still_fail_this(palettes, mermaid_schemes):
         worst = min(contrast(dark_ink[k], panel) for k in ("lineColor", "nodeBorder"))
         if worst < GRAPHIC_MIN:
             failures[name] = round(worst, 2)
-    assert set(failures) == {"light", "paper", "lavender", "cute", "notebook", "codehost"}, failures
+    assert set(failures) == {"light", "paper", "lavender", "cute", "notebook", "codehost", "video", "mintchat"}, failures
     # Not marginal: every one of the four is at or near 1:1 — the same colour.
     assert max(failures.values()) < 1.5, failures
 
@@ -339,8 +339,8 @@ def test_the_unoverridden_edge_label_would_still_fail_this(palettes, mermaid_rep
         ink = raw[_scheme_for(colours["bg"])]
         measured[name] = contrast(ink["textColor"], ink["edgeLabelBackground"])
     failing = {n: round(v, 2) for n, v in measured.items() if v < TEXT_MIN}
-    assert set(failing) == set(palettes) - {"light", "paper", "lavender", "cute", "notebook", "codehost"}, failing
-    assert len(failing) == 14, failing
+    assert set(failing) == set(palettes) - {"light", "paper", "lavender", "cute", "notebook", "codehost", "video", "mintchat"}, failing
+    assert len(failing) == 15, failing
     # Not a rounding argument in either direction: 4.43 under, 21.00 over.
     assert set(failing.values()) == {4.43}, failing
     passing = {n: round(v, 2) for n, v in measured.items() if n not in failing}
@@ -393,16 +393,16 @@ def test_a_diagram_left_in_the_other_scheme_would_still_fail_this(palettes, merm
         strokes[name] = min(contrast(stale[k], panel) for k in ("lineColor", "nodeBorder"))
 
     light = {n: round(v, 2) for n, v in strokes.items()
-             if n in {"light", "paper", "lavender", "cute", "notebook", "codehost"}}
-    assert set(light.values()) == {1.17, 1.21, 1.23, 1.25, 1.29}, light
+                         if n in {"light", "paper", "lavender", "cute", "notebook", "codehost", "video", "mintchat"}}
+    assert set(light.values()) == {1.17, 1.21, 1.23, 1.25, 1.27, 1.29}, light
     assert max(light.values()) < 1.5, light
 
     dark = {n: round(v, 2) for n, v in strokes.items() if n not in light}
-    assert len(dark) == 14, dark
+    assert len(dark) == 15, dark
     assert 2.16 <= min(dark.values()) and max(dark.values()) <= 3.45, dark
     under = {n: v for n, v in dark.items() if v < GRAPHIC_MIN}
     assert set(under) == {"claude", "copper", "dark", "forest", "gpt", "ocean",
-                          "retrowave", "ume", "grove", "guild"}, under
+                          "retrowave", "ume", "grove", "guild", "channel"}, under
 
     # And the text is fine in both directions, which is why the fix is to draw
     # the strokes again rather than to repaint the panel under them.

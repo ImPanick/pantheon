@@ -76,7 +76,7 @@
 </tr>
 <tr>
 <td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/media/palette-dark.png"><img src="docs/media/palette-light.png" alt="The command palette after typing work, offering the Workstation screen, the Workbench, settings pages, a slash command and a matching chat" width="100%"></picture><br><sub><b>Command palette</b> — <kbd>Ctrl</kbd>+<kbd>K</kbd>: one box for windows, settings, commands and chats.</sub></td>
-<td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/media/themes-dark.png"><img src="docs/media/themes-light.png" alt="The Theme window with palette swatches over a chat" width="100%"></picture><br><sub><b>Themes</b> - twenty palettes, and background patterns chosen separately.</sub></td>
+<td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/media/themes-dark.png"><img src="docs/media/themes-light.png" alt="The Theme window with palette swatches over a chat" width="100%"></picture><br><sub><b>Themes</b> - twenty-three palettes, and background patterns chosen separately.</sub></td>
 </tr>
 <tr>
 <td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/media/brain-dark.png"><img src="docs/media/brain-light.png" alt="The Brain window listing memories tagged preference, project, contact, fact and identity" width="100%"></picture><br><sub><b>Brain</b> — what the assistant remembers about you — each memory with its kind, where it came from and how often it was used.</sub></td>
@@ -94,9 +94,27 @@
 - **Documents** — writing-first editor with AI edits, suggestions, Markdown, HTML, CSV, and folders the agent can file into
 - **Email** — IMAP/SMTP with triage, tags, summaries, reminders and reply drafts
 - **Notes, tasks, calendar** — reminders, todos, scheduled agent tasks, CalDAV sync
-- **Extras** - gallery and image editor, twenty themes, eight background patterns, and opt-in Pip ASCII companion
-  (seven of them animated) chosen independently of each other, web search,
-  presets, sessions, 2FA
+- **Extras** - gallery and image editor, twenty-three themes, eight background patterns
+  (seven animated) chosen independently of the palette, an opt-in Pip ASCII companion,
+  web search, presets, sessions, 2FA
+
+### Themes and Pip
+
+Seven new palettes draw on familiar platform color families while keeping Pantheon's own
+names and design: Guild, Codehost, Grove, Notebook, Channel, Video, and Mintchat.
+The [desktop palette picker](docs/review/palette-picker-1400.png) and
+[phone palette picker](docs/review/palette-picker-390.png) show all twenty-three choices.
+
+Pip is an optional ASCII companion in Theme settings. It responds to a click or one of four
+fixed, validated model actions, and otherwise makes no model requests. It can also record
+**Helpful** or **Off track** on the latest saved assistant reply. An optional correction is
+saved with that reply; **Use correction in chat** fills an empty composer so you can decide
+whether to send it. Pip has an off switch and respects reduced motion.
+
+<table><tr><td><img src="docs/review/companion-channel-1400.png" alt="Channel palette with Pip's helpful feedback card" width="100%"></td><td><img src="docs/review/feedback-correction-1400.png" alt="Correction editor on the latest assistant reply" width="100%"></td></tr></table>
+
+At phone width: [Mintchat with Pip](docs/review/companion-mintchat-390.png) and
+[the correction editor](docs/review/feedback-correction-390.png).
 
 **What this fork has added, and what proves it, is in the [proof ledger](LEDGER.md)** — 26 claims,
 each with where its number came from and a command you can run to check it. The short version:
@@ -160,7 +178,7 @@ Then we tried to change something small and ended up reading all 42,739 lines of
 times and defined nowhere. 206 style rules resolved to nothing. Nothing errored; the rules simply
 never applied. It is defined now, and deliberately **not** in `:root`: a `:root` definition would
 retire the `var(--accent, var(--red))` fallback the rest of the stylesheet leans on and hand all
-twenty themes the same accent. Each theme carries its own instead (`P1-01`).
+twenty-three themes the same accent. Each theme carries its own instead (`P1-01`).
 
 Most of what we found after that was finished work that had never been connected:
 

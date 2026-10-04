@@ -36,13 +36,19 @@ export const THEMES = {
   codehost:   { bg:'#f1f5fb', fg:'#22344a', panel:'#f9fbff', border:'#a4b7cd', red:'#4a5fb2' },
   grove:      { bg:'#121b17', fg:'#e1ede4', panel:'#1c2921', border:'#405347', red:'#79d39d' },
   notebook:   { bg:'#f5f3ef', fg:'#292724', panel:'#fffefa', border:'#c6c1b9', red:'#80533f' },
+  channel:    { bg:'#261a2b', fg:'#f4eaf4', panel:'#34243a', border:'#654c68', red:'#d8bb78' },
+  video:      { bg:'#f5f6f8', fg:'#24262b', panel:'#ffffff', border:'#bfc5ce', red:'#ad2531' },
+  mintchat:   { bg:'#f2faf5', fg:'#213b32', panel:'#ffffff', border:'#a6c5b5', red:'#226f55' },
 };
 
 const THEME_DESCRIPTIONS = {
   guild: 'Guild — inspired by Discord chat spaces',
   codehost: 'Codehost — inspired by GitHub editor colours',
   grove: 'Grove — inspired by Spotify music greens',
-  notebook: 'Notebook — inspired by Notion paper surfaces',
+  notebook: 'Notebook - inspired by Notion paper surfaces',
+  channel: 'Channel - inspired by Slack aubergine spaces',
+  video: 'Video - inspired by YouTube red on white',
+  mintchat: 'Mintchat - inspired by WhatsApp conversation greens',
 };
 
 const DEFAULT_THEME = 'dark';

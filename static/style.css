@@ -47551,43 +47551,59 @@ button.task-card-toggle {
 .wf-approval-buttons { display: flex; justify-content: flex-end; gap: 6px; }
 .approval-box .skill-test-out { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 30vh; overflow: auto; }
 
-/* Pip sits at the edge of the workspace and never covers the composer. */
+/* Pip's feedback card follows the composer only when their columns overlap. */
 .companion-setting p { color: var(--fg); opacity: .8; line-height: 1.45; }
 .companion-setting label { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
 .companion-stage {
   position: fixed; right: 18px; bottom: 106px; z-index: 220;
-  display: grid; justify-items: center; gap: 4px;
-  width: 156px; padding: 10px 8px;
+  width: 252px; max-height: min(65vh, 480px); overflow-y: auto;
   color: light-dark(#292724, #eef3f7); background: var(--panel); border: 1px solid var(--border);
-  border-radius: 12px; box-shadow: 0 8px 24px color-mix(in srgb, var(--fg) 12%, transparent);
-  font: 12px/1.3 var(--font-family, monospace); text-align: center;
+  border-radius: 14px; box-shadow: 0 12px 30px color-mix(in srgb, var(--fg) 16%, transparent);
+  font: 12px/1.4 var(--font-family, monospace);
 }
-.companion-stage[hidden] { display: none; }
-.companion-hide { position: absolute; top: 3px; right: 5px; padding: 2px 5px;
-  color: inherit; background: transparent; border: 0; cursor: pointer; font-size: 16px; }
-.companion-character { display: grid; justify-items: center; align-content: center;
-  grid-template-rows: 13px 22px 16px; width: 90px; min-height: 56px; padding: 3px;
-  color: inherit; background: transparent; border: 0; cursor: pointer;
-  font: 700 15px/1.1 monospace; }
-.companion-character:hover { transform: translateY(-2px); }
-.companion-character:focus-visible, .companion-actions button:focus-visible, .companion-hide:focus-visible,
-.companion-setting input:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
-.companion-spark { font-size: 11px; }
-.companion-face { white-space: pre; }
-.companion-feet { opacity: .8; }
-.companion-line { min-height: 2.5em; display: flex; align-items: center; }
-.companion-actions { display: flex; gap: 7px; }
-.companion-actions button { color: inherit; background: var(--bg); border: 1px solid var(--border);
-  border-radius: 6px; padding: 3px 7px; cursor: pointer; }
-.companion-stage:not([data-pose="rest"]) .companion-character { animation: companion-bob .45s ease-in-out 2; }
-@keyframes companion-bob { 50% { transform: translateY(-4px); } }
-@media (prefers-reduced-motion: reduce) {
-  .companion-stage .companion-character { animation: none !important; transition: none !important; }
-  .companion-character:hover { transform: none; }
-}
-@media (max-width: 768px) {
-  .companion-stage { right: 8px; bottom: 146px; width: 126px; padding: 6px; }
-}
+.companion-stage[hidden], .companion-stage [hidden] { display: none !important; }
+.companion-head { display: flex; justify-content: space-between; align-items: center; padding: 8px 11px;
+  border-bottom: 1px solid var(--border); background: color-mix(in srgb, var(--red) 9%, var(--panel)); }
+.companion-head strong { display: block; font-size: 13px; letter-spacing: .04em; }
+.companion-head small { display: block; font-size: 9px; letter-spacing: .08em; text-transform: uppercase; opacity: .7; }
+.companion-hide { color: inherit; background: transparent; border: 1px solid var(--border);
+  border-radius: 6px; padding: 4px 7px; cursor: pointer; font: inherit; }
+.companion-main { display: flex; align-items: center; gap: 10px; padding: 10px 11px; }
+.companion-character { display: grid; place-items: center; flex: none; width: 94px; min-height: 88px;
+  color: inherit; background: color-mix(in srgb, var(--red) 10%, var(--bg));
+  border: 1px solid color-mix(in srgb, var(--red) 28%, var(--border)); border-radius: 10px;
+  cursor: pointer; }
+.companion-art { margin: 0; color: inherit; font: 700 12px/1.15 monospace; white-space: pre; }
+.companion-voice { display: grid; gap: 8px; min-width: 0; }
+.companion-line { display: block; min-height: 2.8em; font-size: 11px; font-weight: 600; }
+.companion-actions { display: flex; gap: 5px; }
+.companion-actions button, .companion-feedback button { color: inherit; background: var(--bg);
+  border: 1px solid var(--border); border-radius: 6px; padding: 5px 7px; cursor: pointer; font: inherit; }
+.companion-actions button { padding: 3px 5px; font-size: 10px; }
+.companion-feedback { padding: 10px 11px 11px; border-top: 1px solid var(--border); }
+.companion-feedback-heading { font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; opacity: .78; }
+.companion-feedback-hint { margin: 5px 0 8px; font-size: 11px; line-height: 1.4; overflow-wrap: anywhere; }
+.companion-feedback-actions, .companion-feedback-form-actions { display: flex; gap: 6px; }
+.companion-feedback-actions button { flex: 1; }
+.companion-feedback button[aria-pressed="true"] { border-color: var(--red); background: color-mix(in srgb, var(--red) 16%, var(--bg)); }
+.companion-feedback button:disabled { cursor: wait; opacity: .6; }
+.companion-feedback-form label { display: block; margin-bottom: 5px; font-size: 11px; }
+.companion-feedback-form label span { opacity: .7; }
+.companion-feedback-form textarea { box-sizing: border-box; width: 100%; min-height: 55px; resize: vertical;
+  color: inherit; background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+  padding: 6px; font: inherit; }
+.companion-feedback-form-actions { margin-top: 6px; }
+.companion-feedback-form-actions .companion-save-feedback { border-color: var(--red); }
+.companion-feedback-status { margin: 7px 0 0; font-size: 10px; line-height: 1.4; overflow-wrap: anywhere; }
+.companion-feedback-status:empty { display: none; }
+.companion-use-in-chat, .companion-feedback-retry { margin-top: 7px; }
+.companion-stage button:hover { border-color: var(--red); }
+.companion-art { transition: transform .24s ease-out; }
+.companion-stage[data-pose="cheer"] .companion-art { transform: translateY(-3px); }
+.companion-stage[data-pose="ponder"] .companion-art { transform: rotate(-3deg); }
+.companion-stage[data-pose="greet"] .companion-art { transform: rotate(3deg); }
+@media (prefers-reduced-motion: reduce) { .companion-art { transition-duration: 0.01ms; } }
+@media (max-width: 768px) { .companion-stage { right: 8px; bottom: 146px; width: 226px; max-height: min(56vh, 370px); } }
 @media (max-width: 768px) {
   .wf-picker { left: 8px; right: 8px; width: auto; }
   .wf-approval-dialog { right: 8px; left: 8px; bottom: 8px; width: auto; }

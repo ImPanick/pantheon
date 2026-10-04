@@ -798,7 +798,7 @@
       </div>
       <div class="admin-card companion-setting">
         <h2>Meet Pip</h2>
-        <p>A small ASCII friend for your workspace. Pip responds to a tap, or to a model when you ask it to interact.</p>
+        <p>An optional ASCII companion. Pip reacts to you and can collect feedback on the latest assistant reply in this chat.</p>
         <label><input id="companion-toggle" type="checkbox"> Show Pip</label>
       </div>
     </div>
@@ -3727,17 +3727,26 @@
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
   <aside id="companion-stage" class="companion-stage" aria-label="Pip, your ASCII companion" hidden>
-    <button type="button" class="companion-hide" aria-label="Hide Pip">&times;</button>
-    <button type="button" class="companion-character" aria-label="Greet Pip">
-      <span class="companion-spark" aria-hidden="true">*</span>
-      <span class="companion-face" aria-hidden="true">( -&gt;- )</span>
-      <span class="companion-feet" aria-hidden="true">/| |\</span>
-    </button>
-    <span class="companion-line" role="status" aria-live="polite">Pip is taking a tiny break.</span>
-    <span class="companion-actions">
-      <button type="button" class="companion-cheer" aria-label="Cheer with Pip">Cheer</button>
-      <button type="button" class="companion-rest" aria-label="Let Pip rest">Rest</button>
-    </span>
+    <div class="companion-head"><span><strong>Pip</strong><small>ASCII companion</small></span><button type="button" class="companion-hide" aria-label="Hide Pip">Hide</button></div>
+    <div class="companion-main">
+      <button type="button" class="companion-character" aria-label="Greet Pip"><pre class="companion-art" aria-hidden="true">  .---.
+ / o o \
+|  \_/  |
+ \_____/
+   / \</pre></button>
+      <div class="companion-voice"><span class="companion-line" role="status" aria-live="polite">Here for your next idea.</span>
+        <span class="companion-actions"><button type="button" class="companion-cheer" aria-label="Cheer with Pip">Cheer</button><button type="button" class="companion-rest" aria-label="Let Pip rest">Rest</button></span>
+      </div>
+    </div>
+    <section class="companion-feedback" aria-label="Feedback on the latest assistant reply">
+      <div class="companion-feedback-heading">Latest reply</div>
+      <p class="companion-feedback-hint">No assistant reply to rate in this chat yet.</p>
+      <div class="companion-feedback-actions" hidden><button type="button" class="companion-helpful">Helpful</button><button type="button" class="companion-off-track">Off track</button></div>
+      <form class="companion-feedback-form" hidden><label for="companion-correction">What should it do instead? <span>(optional)</span></label><textarea id="companion-correction" maxlength="280" rows="2" placeholder="A short correction for this reply"></textarea><div class="companion-feedback-form-actions"><button type="submit" class="companion-save-feedback">Save feedback</button><button type="button" class="companion-cancel-feedback">Cancel</button></div></form>
+      <p class="companion-feedback-status" role="status" aria-live="polite"></p>
+      <button type="button" class="companion-feedback-retry" hidden>Retry</button>
+      <button type="button" class="companion-use-in-chat" hidden>Use correction in chat</button>
+    </section>
   </aside>
 
 

@@ -204,7 +204,7 @@ def palettes(tmp_path_factory) -> dict:
     painted = json.loads([l for l in proc.stdout.splitlines() if l.strip()][-1])
 
     assert sorted(painted) == sorted(THEME_NAMES), sorted(painted)
-    assert len(painted) == 20, sorted(painted)
+    assert len(painted) == 23, sorted(painted)
 
     out = {}
     for name, props in painted.items():
@@ -408,7 +408,7 @@ def test_scoping_a_token_did_not_move_it_on_the_surface_it_was_tuned_for(palette
     assert scoped == set(dark_tuned) | set(light_tuned), sorted(scoped)
 
     light = set(_light(palettes))
-    assert light == {"cute", "lavender", "light", "paper", "notebook", "codehost"}, sorted(light)
+    assert light == {"cute", "lavender", "light", "paper", "notebook", "codehost", "video", "mintchat"}, sorted(light)
 
     for token, literal in dark_tuned.items():
         for name, theme in palettes.items():

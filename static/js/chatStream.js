@@ -6,7 +6,6 @@
 import uiModule from './ui.js';
 import Storage from './storage.js';
 import themeModule from './theme.js';
-import { companionAction } from './companion.js';
 import markdownModule from './markdown.js';
 import sessionModule from './sessions.js';
 import documentModule from './document.js?v=20260815approvalsave1';
@@ -658,7 +657,9 @@ export function handleUIControl(uiData) {
       if (modelDisplay) modelDisplay.textContent = uiData.model;
 
     } else if (uiEvent === 'companion' || uiData.ui_event === 'companion') {
-      companionAction(uiData.pose);
+      // Load Pip only for an explicit companion action. Stream harnesses that
+      // exercise unrelated events do not need the optional companion module.
+      import('./companion.js').then(({ companionAction }) => companionAction(uiData.pose));
 
     } else if (uiEvent === 'set_theme' || uiData.ui_event === 'set_theme') {
       var tm = themeModule;

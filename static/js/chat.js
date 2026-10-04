@@ -4721,6 +4721,9 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
                 // can be edited/deleted immediately, without reloading the chat.
                 if (_isBg) continue;
                 if (holder && json.id) holder.dataset.dbId = json.id;
+                if (json.id) document.dispatchEvent(new CustomEvent('pantheon:message-saved', {
+                  detail: { sessionId: streamSessionId, messageId: json.id },
+                }));
                 // `B892`. The reply is stored now, and with it what its
                 // request was spent on — the wheel reads that back.
                 refreshChatContextHeader('saved');
@@ -7492,6 +7495,7 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
       _pendingVariants = variants;
       _pendingVariantLabel = 'regen';
       aiMsgElement.remove();
+      document.dispatchEvent(new Event('pantheon:reply-list-changed'));
 
       _hideUserBubble = true;
       const messageInput = uiModule.el('message');
@@ -8016,6 +8020,7 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
       // error output shown before a model was selected, #1428). Just remove the
       // DOM so the "x" works regardless.
       domToRemove.forEach(el => el.remove());
+      document.dispatchEvent(new Event('pantheon:reply-list-changed'));
       if (uiModule) uiModule.showToast('Message deleted');
       return;
     }
@@ -8028,6 +8033,7 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
       });
       if (!res.ok) throw new Error('Server error ' + res.status);
       domToRemove.forEach(el => el.remove());
+      document.dispatchEvent(new Event('pantheon:reply-list-changed'));
       if (uiModule) uiModule.showToast('Message deleted');
     } catch (err) {
       console.error('Delete failed:', err);

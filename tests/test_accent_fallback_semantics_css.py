@@ -316,7 +316,7 @@ def _themes() -> dict:
             "light" if _luminance(_rgb(resolved["bg"])) > 0.5 else "dark"
         )
         out[match.group(1)] = resolved
-    assert len(out) == 20, f"expected the twenty shipped palettes, found {sorted(out)}"
+    assert len(out) == 23, f"expected the twenty-three shipped palettes, found {sorted(out)}"
     return out
 
 
@@ -601,7 +601,7 @@ def test_full_strength_accent_text_clears_the_floor_on_nine_palettes():
         "a palette leaving it means P1-08 has work it can retire."
     )
     clears = {n: r for n, r in measured.items() if n not in under}
-    assert len(clears) == 13, f"expected thirteen palettes above the floor, got {sorted(clears)}"
+    assert len(clears) == 16, f"expected sixteen palettes above the floor, got {sorted(clears)}"
 
 
 def test_the_population_under_the_contrast_exception_cannot_grow():

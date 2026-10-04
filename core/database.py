@@ -286,6 +286,17 @@ class ChatMessage(Base):
         Index('ix_messages_session_time', 'session_id', 'timestamp'),  # Composite for efficient message retrieval
     )
 
+
+class AssistantFeedback(Base):
+    """Explicit reply feedback, separate from model-visible chat metadata."""
+    __tablename__ = "assistant_feedback"
+
+    message_id = Column(String, ForeignKey("chat_messages.id", ondelete="CASCADE"), primary_key=True)
+    session_id = Column(String, ForeignKey("sessions.id", ondelete="CASCADE"), nullable=False, index=True)
+    rating = Column(String(12), nullable=False)
+    correction = Column(Text, nullable=False, default="")
+    updated_at = Column(DateTime, default=utcnow_naive, onupdate=utcnow_naive, nullable=False)
+
 class Document(TimestampMixin, Base):
     """Living document that the AI can create and edit in-place."""
     __tablename__ = "documents"

@@ -10,7 +10,7 @@ from typing import Dict, Any, Optional
 from fastapi import APIRouter, Request, HTTPException
 
 from core.models import ChatMessage
-from core.database import SessionLocal, ChatMessage as DbChatMessage, Session as DbSession
+from core.database import SessionLocal, ChatMessage as DbChatMessage, AssistantFeedback, Session as DbSession
 from src.auth_helpers import effective_user
 from src.tool_approval_scopes import sanitize_client_message_metadata
 from src.agent_stops import RUN_KEYS, is_continue_prompt, merge_runs   # `B941`
@@ -138,6 +138,75 @@ def _merged_reply_metadata(meta1: dict, meta2: dict) -> dict:
 def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
     router = APIRouter(tags=["history"])
 
+    def _feedback_target(db, session_id: str, message_id: str) -> DbChatMessage:
+        """Only the latest visible assistant reply in this owned chat is rateable."""
+        target = db.query(DbChatMessage).filter(
+            DbChatMessage.id == message_id,
+            DbChatMessage.session_id == session_id,
+            DbChatMessage.role == "assistant",
+        ).first()
+        if target is None:
+            raise HTTPException(404, "Reply not found")
+        recent = db.query(DbChatMessage).filter(
+            DbChatMessage.session_id == session_id,
+            DbChatMessage.role == "assistant",
+        ).order_by(DbChatMessage.timestamp.desc(), DbChatMessage.id.desc())
+        for reply in recent:
+            try:
+                meta = json.loads(reply.meta_data or "{}")
+            except (TypeError, ValueError):
+                meta = {}
+            if isinstance(meta, dict) and (meta.get("hidden") or meta.get("source") == "slash"):
+                continue
+            if reply.id != message_id:
+                raise HTTPException(409, "A newer reply is active")
+            return target
+        raise HTTPException(409, "No visible reply is active")
+
+    @router.get("/api/session/{session_id}/message/{message_id}/feedback")
+    def get_assistant_feedback(request: Request, session_id: str, message_id: str):
+        _verify_session_owner(request, session_id)
+        db = SessionLocal()
+        try:
+            _feedback_target(db, session_id, message_id)
+            saved = db.get(AssistantFeedback, message_id)
+            return {"rating": saved.rating, "correction": saved.correction} if saved else {"rating": None, "correction": ""}
+        finally:
+            db.close()
+
+    @router.post("/api/session/{session_id}/message/{message_id}/feedback")
+    async def save_assistant_feedback(request: Request, session_id: str, message_id: str):
+        _verify_session_owner(request, session_id)
+        try:
+            payload = await request.json()
+        except (ValueError, TypeError):
+            raise HTTPException(400, "Invalid feedback")
+        if not isinstance(payload, dict) or payload.get("rating") not in ("helpful", "off_track"):
+            raise HTTPException(400, "Invalid feedback rating")
+        note = payload.get("correction", "")
+        if not isinstance(note, str):
+            raise HTTPException(400, "Invalid correction")
+        note = note.strip()
+        if len(note) > 280 or any(ord(char) < 32 and char not in "\n\t" for char in note):
+            raise HTTPException(400, "Correction must be 280 characters or less")
+        if payload["rating"] == "helpful" and note:
+            raise HTTPException(400, "Helpful feedback cannot include a correction")
+        db = SessionLocal()
+        try:
+            _feedback_target(db, session_id, message_id)
+            saved = db.get(AssistantFeedback, message_id)
+            if saved is None:
+                saved = AssistantFeedback(message_id=message_id, session_id=session_id,
+                                          rating=payload["rating"], correction=note)
+                db.add(saved)
+            else:
+                saved.rating = payload["rating"]
+                saved.correction = note
+            db.commit()
+            return {"status": "saved", "rating": saved.rating, "correction": saved.correction}
+        finally:
+            db.close()
+
     def _reserve_message_uploads(
         request: Request,
         content: Any,
@@ -223,6 +292,7 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
                 meta = {}
         if m.timestamp and "timestamp" not in meta:
             meta["timestamp"] = m.timestamp.isoformat() + "Z"
+        meta["_db_id"] = m.id
         if meta:
             entry["metadata"] = meta
         return entry

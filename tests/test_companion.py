@@ -45,11 +45,11 @@ export default { get: (key, fallback) => values.get(key) ?? fallback,
     (tmp_path / "probe.mjs").write_text("""
 import assert from 'node:assert/strict';
 const listeners = {};
-const face = { textContent: '' }, line = { textContent: '' };
+const art = { textContent: '' }, line = { textContent: '' };
 const controls = Object.fromEntries(['.companion-character', '.companion-cheer', '.companion-rest', '.companion-hide']
   .map(k => [k, { addEventListener: (event, fn) => { listeners[k] = fn; } }]));
 const stage = { hidden: true, dataset: {}, querySelector: k =>
-  ({ '.companion-face': face, '.companion-line': line, ...controls })[k] };
+  ({ '.companion-art': art, '.companion-line': line, ...controls })[k] };
 const toggle = { checked: false, dataset: {}, addEventListener: (event, fn) => { listeners.toggle = fn; } };
 globalThis.document = { readyState: 'loading', addEventListener: () => {},
   getElementById: id => ({ 'companion-stage': stage, 'companion-toggle': toggle })[id] };
@@ -63,13 +63,13 @@ assert.equal(pip.companionAction('greet'), false);
 toggle.checked = true; listeners.toggle();
 assert.equal(stage.hidden, false);
 listeners['.companion-character']();
-assert.match(line.textContent, /glad/);
+assert.match(line.textContent, /Glad/);
 assert.equal(timers.size, 1);
 pip.companionAction('cheer');
-assert.match(line.textContent, /rooting/);
+assert.match(line.textContent, /Rooting/);
 assert.equal(timers.size, 1); // second action interrupts the first timer
 assert.equal(pip.companionAction('<img>'), false);
-assert.match(line.textContent, /rooting/);
+assert.match(line.textContent, /Rooting/);
 const finish = [...timers.values()][0]; finish();
 assert.equal(stage.dataset.pose, 'rest');
 pip.companionAction('ponder');
@@ -90,5 +90,7 @@ console.log('companion state OK');
 def test_companion_controls_are_native_buttons_and_setting_is_labelled():
     html = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
     assert '<label><input id="companion-toggle" type="checkbox"> Show Pip</label>' in html
-    for control in ("companion-character", "companion-cheer", "companion-rest", "companion-hide"):
+    for control in ("companion-character", "companion-cheer", "companion-rest", "companion-hide",
+                    "companion-helpful", "companion-off-track"):
         assert f'<button type="button" class="{control}"' in html
+    assert '<button type="submit" class="companion-save-feedback"' in html
