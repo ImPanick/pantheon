@@ -13,6 +13,19 @@ const POSES = Object.freeze({
 });
 let resetTimer = null;
 
+function placeCompanion() {
+  const stage = document.getElementById('companion-stage');
+  const composer = document.querySelector?.('.chat-input-bar');
+  if (!stage || stage.hidden || !composer || typeof window === 'undefined') return;
+  // Keep the CSS edge position until the composer actually reaches Pip's column.
+  stage.style.bottom = '';
+  const pip = stage.getBoundingClientRect();
+  const input = composer.getBoundingClientRect();
+  if (pip.left < input.right && pip.right > input.left && pip.bottom > input.top && pip.top < input.bottom) {
+    stage.style.bottom = `${Math.ceil(window.innerHeight - input.top + 12)}px`;
+  }
+}
+
 export function isCompanionEnabled() {
   return Storage.get(KEY, 'off') === 'on';
 }
@@ -24,6 +37,7 @@ function renderEnabled() {
   if (stage) stage.hidden = !enabled;
   if (toggle) toggle.checked = enabled;
   if (!enabled && resetTimer) { clearTimeout(resetTimer); resetTimer = null; }
+  if (enabled) placeCompanion();
 }
 
 export function setCompanionEnabled(enabled) {
@@ -63,6 +77,9 @@ export function initCompanion() {
   stage.querySelector('.companion-cheer')?.addEventListener('click', () => companionAction('cheer'));
   stage.querySelector('.companion-rest')?.addEventListener('click', () => companionAction('rest'));
   stage.querySelector('.companion-hide')?.addEventListener('click', () => setCompanionEnabled(false));
+  const composer = document.querySelector?.('.chat-input-bar');
+  if (composer && typeof ResizeObserver !== 'undefined') new ResizeObserver(placeCompanion).observe(composer);
+  if (typeof window !== 'undefined') window.addEventListener('resize', placeCompanion);
   renderEnabled();
   if (isCompanionEnabled()) companionAction('rest');
 }

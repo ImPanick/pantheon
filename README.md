@@ -76,7 +76,7 @@
 </tr>
 <tr>
 <td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/media/palette-dark.png"><img src="docs/media/palette-light.png" alt="The command palette after typing work, offering the Workstation screen, the Workbench, settings pages, a slash command and a matching chat" width="100%"></picture><br><sub><b>Command palette</b> — <kbd>Ctrl</kbd>+<kbd>K</kbd>: one box for windows, settings, commands and chats.</sub></td>
-<td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/media/themes-dark.png"><img src="docs/media/themes-light.png" alt="The Theme window with sixteen palette swatches over a chat" width="100%"></picture><br><sub><b>Themes</b> — sixteen palettes, and background patterns chosen separately.</sub></td>
+<td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/media/themes-dark.png"><img src="docs/media/themes-light.png" alt="The Theme window with palette swatches over a chat" width="100%"></picture><br><sub><b>Themes</b> - twenty palettes, and background patterns chosen separately.</sub></td>
 </tr>
 <tr>
 <td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/media/brain-dark.png"><img src="docs/media/brain-light.png" alt="The Brain window listing memories tagged preference, project, contact, fact and identity" width="100%"></picture><br><sub><b>Brain</b> — what the assistant remembers about you — each memory with its kind, where it came from and how often it was used.</sub></td>
@@ -94,7 +94,7 @@
 - **Documents** — writing-first editor with AI edits, suggestions, Markdown, HTML, CSV, and folders the agent can file into
 - **Email** — IMAP/SMTP with triage, tags, summaries, reminders and reply drafts
 - **Notes, tasks, calendar** — reminders, todos, scheduled agent tasks, CalDAV sync
-- **Extras** — gallery and image editor, sixteen themes and eight background patterns
+- **Extras** - gallery and image editor, twenty themes, eight background patterns, and opt-in Pip ASCII companion
   (seven of them animated) chosen independently of each other, web search,
   presets, sessions, 2FA
 
@@ -160,7 +160,7 @@ Then we tried to change something small and ended up reading all 42,739 lines of
 times and defined nowhere. 206 style rules resolved to nothing. Nothing errored; the rules simply
 never applied. It is defined now, and deliberately **not** in `:root`: a `:root` definition would
 retire the `var(--accent, var(--red))` fallback the rest of the stylesheet leans on and hand all
-sixteen themes the same accent. Each theme carries its own instead (`P1-01`).
+twenty themes the same accent. Each theme carries its own instead (`P1-01`).
 
 Most of what we found after that was finished work that had never been connected:
 

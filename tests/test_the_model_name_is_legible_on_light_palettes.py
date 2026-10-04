@@ -240,7 +240,7 @@ def test_in_a_browser_every_light_palette_reads_at_least_4_5_to_1(painted):
 
 def test_in_a_browser_every_dark_palette_paints_what_it_did(painted):
     dark = {n: p for n, p in painted["palettes"].items() if p["scheme"] == "dark"}
-    assert len(dark) == 12
+    assert len(dark) == 14
     for name, p in dark.items():
         for row in p["rows"]:
             assert row["fg"] == row["old"], f"{name}: {row['n']} {row['fg']} was {row['old']}"
