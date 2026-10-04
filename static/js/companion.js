@@ -145,7 +145,14 @@ async function submitFeedback(rating, correction = '') {
     if (seq !== feedbackSeq || !isCompanionEnabled()) return;
     feedback.status = 'Could not save feedback. Retry when connected.';
   } finally {
-    if (seq === feedbackSeq) { feedback.saving = false; renderFeedback(); }
+    if (seq === feedbackSeq) {
+      feedback.saving = false;
+      renderFeedback();
+    } else if (isCompanionEnabled()) {
+      // A reply/variant switch may have loaded feedback before this write
+      // finished. Recheck the currently displayed answer after it settles.
+      syncCompanionFeedback(true);
+    }
   }
 }
 

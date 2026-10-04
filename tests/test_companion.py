@@ -113,6 +113,8 @@ const el = () => ({ hidden: false, disabled: false, textContent: '',
   addEventListener() {}, setAttribute() {}, focus() {} });
 const art = el(), line = el(), hint = el(), actions = el(), status = el(), retry = el(), use = el();
 const helpful = el(), offTrack = el(), save = el(), correction = el();
+let helpfulClick;
+helpful.addEventListener = (name, fn) => { if (name === 'click') helpfulClick = fn; };
 const form = { ...el(), querySelector: key => key === '.companion-save-feedback' ? save : null };
 const controls = Object.fromEntries(['.companion-character', '.companion-cheer', '.companion-rest', '.companion-hide',
   '.companion-cancel-feedback'].map(key => [key, el()]));
@@ -131,8 +133,12 @@ globalThis.document = { readyState: 'loading',
   getElementById: id => ({ 'companion-stage': stage, 'companion-toggle': toggle })[id],
   querySelectorAll: () => replies, querySelector: () => null };
 const requests = [];
-globalThis.fetch = async url => {
+let finishPost;
+globalThis.fetch = async (url, options = {}) => {
   requests.push(url);
+  if (options.method === 'POST') return new Promise(resolve => {
+    finishPost = () => resolve({ ok: true, json: async () => ({ rating: 'helpful', correction: '' }) });
+  });
   const variant = new URL(url, 'http://local').searchParams.get('variant_index');
   return { ok: true, json: async () => variant === '0'
     ? { rating: 'off_track', correction: 'Fix the old answer.' }
@@ -144,12 +150,17 @@ pip.setCompanionEnabled(true);
 const settle = () => new Promise(resolve => setTimeout(resolve, 0));
 await settle();
 assert.match(hint.textContent, /Fix the old answer/);
+helpfulClick(); // hold the write while the user switches variants
 reply.dataset.raw = 'Different variant'; reply.dataset.variantIndex = '1';
 listeners['pantheon:reply-list-changed']();
 await settle();
 assert.match(hint.textContent, /Different variant/);
 assert.equal(use.hidden, true);
 assert.equal(requests.at(-1).includes('variant_index=1'), true);
+finishPost();
+await settle(); await settle();
+assert.equal(requests.at(-1).includes('variant_index=1'), true);
+assert.match(hint.textContent, /Different variant/);
 sessionId = ''; replies = [];
 listeners['pantheon:session-changed']();
 assert.match(hint.textContent, /No assistant reply/);
