@@ -247,6 +247,10 @@ they are for.*
 > Entries below the `P0-31` one keep the figure they were written with: a record of what
 > was claimed at the time is worth more than a quietly corrected one (`B44`).
 
+### Platform palettes and Aegean welcome scene - draft review, 2026-10-04
+`3a032456`. **1118 tracked, 806 done. 0 phase rows changed; 0 backlog rows closed;**
+Seven original palettes extend the theme editor without changing its backgrounds or stored options. The empty chat canvas gains original ASCII scenery: a Greek trireme sailing beneath a faint Olympus ridge and temple. The scene uses semantic theme colors, leaves when chat begins, pauses in hidden tabs, and stays still under reduced motion. The Pip companion and its feedback surface were removed from this draft at the owner's request. Desktop and phone browser checks cover light and dark palettes, empty/chat transitions, keyboard access, and reduced motion. A review caught the reduced-motion test's exact keyframe census; it now measures 143 including the scene's three guarded animations. Linux CI runs the full suite.
+
 ### Dependency blockers — draft PR #12
 `f2cf0c7..f1658a5`. **1118 tracked, 806 done. 0 new phase rows, 0 regressions. 0 rows closed; `B1116` and `B1117` filed.**
 MCP v2 is excluded from routine Dependabot bumps until migration; five eligible core bumps and the narrow fixture allowlist are in draft review.

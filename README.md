@@ -76,7 +76,7 @@
 </tr>
 <tr>
 <td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/media/palette-dark.png"><img src="docs/media/palette-light.png" alt="The command palette after typing work, offering the Workstation screen, the Workbench, settings pages, a slash command and a matching chat" width="100%"></picture><br><sub><b>Command palette</b> — <kbd>Ctrl</kbd>+<kbd>K</kbd>: one box for windows, settings, commands and chats.</sub></td>
-<td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/media/themes-dark.png"><img src="docs/media/themes-light.png" alt="The Theme window with sixteen palette swatches over a chat" width="100%"></picture><br><sub><b>Themes</b> — sixteen palettes, and background patterns chosen separately.</sub></td>
+<td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/media/themes-dark.png"><img src="docs/media/themes-light.png" alt="The Theme window with palette swatches over a chat" width="100%"></picture><br><sub><b>Themes</b> - twenty-three palettes, and background patterns chosen separately.</sub></td>
 </tr>
 <tr>
 <td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/media/brain-dark.png"><img src="docs/media/brain-light.png" alt="The Brain window listing memories tagged preference, project, contact, fact and identity" width="100%"></picture><br><sub><b>Brain</b> — what the assistant remembers about you — each memory with its kind, where it came from and how often it was used.</sub></td>
@@ -94,9 +94,25 @@
 - **Documents** — writing-first editor with AI edits, suggestions, Markdown, HTML, CSV, and folders the agent can file into
 - **Email** — IMAP/SMTP with triage, tags, summaries, reminders and reply drafts
 - **Notes, tasks, calendar** — reminders, todos, scheduled agent tasks, CalDAV sync
-- **Extras** — gallery and image editor, sixteen themes and eight background patterns
-  (seven of them animated) chosen independently of each other, web search,
-  presets, sessions, 2FA
+- **Extras** - gallery and image editor, twenty-three themes, eight background patterns
+  (seven animated) chosen independently of the palette, an ASCII Aegean welcome scene,
+  web search, presets, sessions, 2FA
+
+### Themes and the welcome scene
+
+Seven new palettes draw on familiar platform color families while keeping Pantheon's own
+names and design: Guild, Codehost, Grove, Notebook, Channel, Video, and Mintchat.
+The [desktop palette picker](docs/review/palette-picker-1400.png) and
+[phone palette picker](docs/review/palette-picker-390.png) show all twenty-three choices.
+
+The untouched New Chat canvas has original ASCII scenery: a trireme on the Aegean,
+with a faint Olympus ridge and Greek temple behind the welcome message. Gentle CSS
+motion stops when the tab is hidden and becomes a still scene for reduced-motion users.
+The scenery leaves when chat begins and never covers the composer or its controls.
+
+<table><tr><td><img src="docs/review/voyage-notebook-1440.png" alt="Aegean welcome scene in Notebook" width="100%"></td><td><img src="docs/review/voyage-channel-1440.png" alt="Aegean welcome scene in Channel" width="100%"></td></tr></table>
+
+[Phone view in Mintchat](docs/review/voyage-mintchat-390.png).
 
 **What this fork has added, and what proves it, is in the [proof ledger](LEDGER.md)** — 26 claims,
 each with where its number came from and a command you can run to check it. The short version:
@@ -160,7 +176,7 @@ Then we tried to change something small and ended up reading all 42,739 lines of
 times and defined nowhere. 206 style rules resolved to nothing. Nothing errored; the rules simply
 never applied. It is defined now, and deliberately **not** in `:root`: a `:root` definition would
 retire the `var(--accent, var(--red))` fallback the rest of the stylesheet leans on and hand all
-sixteen themes the same accent. Each theme carries its own instead (`P1-01`).
+twenty-three themes the same accent. Each theme carries its own instead (`P1-01`).
 
 Most of what we found after that was finished work that had never been connected:
 

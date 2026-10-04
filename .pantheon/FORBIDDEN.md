@@ -20,7 +20,7 @@ Style them freely. Do not rename them.
 | `.minimized-dock-chip` · `data-modal-id` | The modal auto-wire map, swipe-dismiss and tab-down all key off these. |
 | `data-ui-key` values | Persisted preference keys for 30 visibility toggles. A rename silently resets what users have hidden. |
 | `#search-overlay` · `#search-input` · `#search-results` | The command palette (`P9-01`) is this overlay, extended; the ids carry it. Callers: the rail and sidebar Search buttons, `init` and the page-wide Escape chain in `app.js`, and the `search` keybind (Ctrl+K) in `keyboard-shortcuts.js`. `/find` is not one — it asks `/api/search` itself and replies in the chat. |
-| `ADV_KEYS` + `computeAdvancedDefaults()` | Any new theme token must extend **both in lockstep**, or all 16 themes break. |
+| `ADV_KEYS` + `computeAdvancedDefaults()` | Any new theme token must extend **both in lockstep**, or all 23 themes break. |
 | `.skill-md-editor` + its guard shape | A CI test greps for the literal guard in two functions. |
 | Frontmatter keys + the four `##` headings | The on-disk skill contract. `## Steps` must keep parsing as `procedure`. |
 | A skill's `name` | It is the identity, the filename **and** the API id. Two independent guards enforce never-rename-on-save, pinned by a test. |
@@ -61,7 +61,7 @@ values, and **anything that changes what a theme stores has to keep it whole.** 
 
 ```
 ADV_KEYS                  the advanced-colour picker's schema — static/js/theme.js
-computeAdvancedDefaults   its default provider; the two move in lockstep or 16 themes break
+computeAdvancedDefaults   its default provider; the two move in lockstep or 23 themes break
 applyFrostedGlass         the frosted-glass toggle · body.theme-frosted
 theme-frosted-toggle      the checkbox that drives it
 theme-import-area · theme-import-go · theme-export  the export/import controls
@@ -77,7 +77,7 @@ failed loudly — the file imported cleanly and simply produced a different them
 Add an option to what a theme stores and you add it to all four, or the test fails.
 
 ```
-THEMES                    the 16 built-in entries — static/js/theme.js:11
+THEMES                    the 23 built-in entries - static/js/theme.js:11
 THEME_DEFAULT_PATTERN     which background each theme gets. This map IS the feature.
 _BG_CLASSES               the 8 bg-pattern-* class names
 _CANVAS_PATTERNS          pattern → init-function registry
@@ -98,7 +98,7 @@ odysseus-theme / odysseus-custom-themes     (renamed to pantheon-* by P0-04; the
 
 **`--accent` must never be defined in `:root`.** **535** of the **813** `var(--accent…)` sites
 in `style.css` are `var(--accent, var(--red))` and resolve to the active theme's `red`. A
-`:root` definition beats the fallback and collapses all 16 themes onto one colour. Set it
+`:root` definition beats the fallback and collapses all 23 themes onto one colour. Set it
 per theme inside **`applyColors()`** instead — see `P1-01`, which was rewritten for exactly
 this reason after being written the wrong way round. *(Re-measured 2026-08-28; it was 508, then 521, now 535 — `static/style.css` grows, so derive it rather than quoting this line. `applyTheme()` does not exist. `--red` is set at
 three sites — `theme.js:263`, `index.html:29`, `login.html:54` — and all three need the new

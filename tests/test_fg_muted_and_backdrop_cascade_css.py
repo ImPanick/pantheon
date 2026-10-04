@@ -305,7 +305,7 @@ def _themes() -> dict:
             "light" if _relative_luminance(_rgb(resolved["bg"])) > 0.5 else "dark"
         )
         out[match.group(1)] = resolved
-    assert len(out) == 16, f"expected the sixteen shipped palettes, found {sorted(out)}"
+    assert len(out) == 23, f"expected the twenty-three shipped palettes, found {sorted(out)}"
     return out
 
 
@@ -466,7 +466,7 @@ def test_fg_muted_resolves_on_all_sixteen_palettes():
         colour = _muted(theme)
         assert all(0 <= c <= 255 for c in colour), f"{name}: {colour}"
         seen[name] = tuple(round(c) for c in colour)
-    assert len(set(seen.values())) == 16, (
+    assert len(set(seen.values())) == 23, (
         "--fg-muted resolves to the same colour on more than one palette, so "
         f"it is no longer derived from --fg: {sorted(seen.items())}"
     )
@@ -611,7 +611,7 @@ def test_muted_text_clears_the_floor_on_fourteen_palettes():
         + "\nA palette joining this set means secondary text got less legible "
         "somewhere; a palette leaving it means the B15 ceiling moved."
     )
-    assert len(against_panel) - len(under) == 14
+    assert len(against_panel) - len(under) == 21
 
     # The hard floor holds everywhere, including on the two above.
     for name, ratio in sorted(against_panel.items()):
