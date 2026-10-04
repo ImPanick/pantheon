@@ -108,6 +108,7 @@ export default { get: (key, fallback) => values.get(key) ?? fallback,
     (tmp_path / "motion.js").write_text("export const prefersReducedMotion = () => true;", encoding="utf-8")
     (tmp_path / "probe.mjs").write_text("""
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 const listeners = {};
 const el = () => ({ hidden: false, disabled: false, textContent: '',
   addEventListener() {}, setAttribute() {}, focus() {} });
@@ -137,30 +138,44 @@ let finishPost;
 globalThis.fetch = async (url, options = {}) => {
   requests.push(url);
   if (options.method === 'POST') return new Promise(resolve => {
+    assert.equal(JSON.parse(options.body).content_digest,
+      createHash('sha256').update('Original answer').digest('hex'));
     finishPost = () => resolve({ ok: true, json: async () => ({ rating: 'helpful', correction: '' }) });
   });
   const variant = new URL(url, 'http://local').searchParams.get('variant_index');
+  const raw = variant === '0' ? 'Original answer' : 'Different variant';
   return { ok: true, json: async () => variant === '0'
-    ? { rating: 'off_track', correction: 'Fix the old answer.' }
-    : { rating: null, correction: '' } };
+    ? { rating: 'off_track', correction: 'Fix the old answer.', content: raw, content_digest: createHash('sha256').update(raw).digest('hex') }
+    : { rating: null, correction: '', content: raw, content_digest: createHash('sha256').update(raw).digest('hex') } };
 };
 const pip = await import('./companion.js');
 pip.initCompanion();
 pip.setCompanionEnabled(true);
 const settle = () => new Promise(resolve => setTimeout(resolve, 0));
-await settle();
+const waitFor = async predicate => {
+  for (let i = 0; i < 100 && !predicate(); i++) await new Promise(resolve => setTimeout(resolve, 10));
+};
+await waitFor(() => !hint.textContent.includes('Checking'));
 assert.match(hint.textContent, /Fix the old answer/);
 helpfulClick(); // hold the write while the user switches variants
+await waitFor(() => typeof finishPost === 'function');
 reply.dataset.raw = 'Different variant'; reply.dataset.variantIndex = '1';
 listeners['pantheon:reply-list-changed']();
-await settle();
+await waitFor(() => !hint.textContent.includes('Checking'));
 assert.match(hint.textContent, /Different variant/);
 assert.equal(use.hidden, true);
 assert.equal(requests.at(-1).includes('variant_index=1'), true);
 finishPost();
-await settle(); await settle();
+await waitFor(() => requests.at(-1).includes('variant_index=1'));
 assert.equal(requests.at(-1).includes('variant_index=1'), true);
 assert.match(hint.textContent, /Different variant/);
+reply.dataset.raw = 'Stale browser answer';
+listeners['pantheon:reply-list-changed']();
+await waitFor(() => hint.textContent.includes('Reply changed'));
+assert.equal(actions.hidden, true);
+const before = requests.length;
+helpfulClick();
+assert.equal(requests.length, before); // the displayed text no longer matches the server version
 sessionId = ''; replies = [];
 listeners['pantheon:session-changed']();
 assert.match(hint.textContent, /No assistant reply/);

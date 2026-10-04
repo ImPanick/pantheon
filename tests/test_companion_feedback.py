@@ -63,15 +63,27 @@ def _url(session="alice-chat", message="latest"):
     return f"/api/session/{session}/message/{message}/feedback"
 
 
+def _post(client, url, *, json, headers=None):
+    """Submit feedback for the reply version fetched by a person."""
+    request = dict(json)
+    seen = client.get(url, params={"variant_index": request.get("variant_index", 0)}, headers=headers)
+    request["content_digest"] = seen.json().get("content_digest", "0" * 64)
+    return client.post(url, json=request, headers=headers)
+
+
 def test_rating_is_idempotent_and_not_added_to_message_or_model_metadata(feedback_env):
     client, factory, _ = feedback_env
-    assert client.get(_url()).json() == {"rating": None, "correction": ""}
+    first = client.get(_url()).json()
+    assert first["rating"] is None and first["correction"] == ""
+    assert first["content"] == "latest reply"
+    assert len(first["content_digest"]) == 64
+    assert client.post(_url(), json={"rating": "helpful"}).status_code == 400
     for _ in range(2):
-        result = client.post(_url(), json={"rating": "helpful", "correction": ""})
+        result = _post(client, _url(), json={"rating": "helpful", "correction": ""})
         assert result.status_code == 200, result.text
-    result = client.post(_url(), json={"rating": "off_track", "correction": "Use the second example."})
+    result = _post(client, _url(), json={"rating": "off_track", "correction": "Use the second example."})
     assert result.status_code == 200, result.text
-    assert client.get(_url()).json() == {"rating": "off_track", "correction": "Use the second example."}
+    assert client.get(_url()).json()["correction"] == "Use the second example."
     db = factory()
     try:
         assert db.query(AssistantFeedback).count() == 1
@@ -83,11 +95,11 @@ def test_rating_is_idempotent_and_not_added_to_message_or_model_metadata(feedbac
 def test_stale_other_session_and_nonassistant_targets_are_refused(feedback_env):
     client, _, owner = feedback_env
     payload = {"rating": "helpful"}
-    assert client.post(_url(message="old"), json=payload).status_code == 409
-    assert client.post(_url(message="user"), json=payload).status_code == 404
-    assert client.post(_url(message="bob"), json=payload).status_code == 404
+    assert _post(client, _url(message="old"), json=payload).status_code == 409
+    assert _post(client, _url(message="user"), json=payload).status_code == 404
+    assert _post(client, _url(message="bob"), json=payload).status_code == 404
     owner["name"] = "bob"
-    assert client.post(_url(), json=payload).status_code == 404
+    assert _post(client, _url(), json=payload).status_code == 404
 
 
 @pytest.mark.parametrize("payload", [
@@ -98,13 +110,13 @@ def test_stale_other_session_and_nonassistant_targets_are_refused(feedback_env):
 ])
 def test_payload_is_bounded(feedback_env, payload):
     client, _, _ = feedback_env
-    assert client.post(_url(), json=payload).status_code == 400
+    assert _post(client, _url(), json=payload).status_code == 400
 
 
 def test_feedback_stays_plain_text_and_is_deleted_with_reply(feedback_env):
     client, factory, _ = feedback_env
     note = "<script>alert(1)</script> is the text I want removed"
-    assert client.post(_url(), json={"rating": "off_track", "correction": note}).status_code == 200
+    assert _post(client, _url(), json={"rating": "off_track", "correction": note}).status_code == 200
     assert client.get(_url()).json()["correction"] == note
     db = factory()
     try:
@@ -142,7 +154,7 @@ def test_earlier_draft_feedback_table_gains_identity_columns(tmp_path, monkeypat
 def test_feedback_follows_the_visible_variant_and_changed_text_fails_closed(feedback_env):
     client, factory, _ = feedback_env
     helpful = {"rating": "helpful", "variant_index": 0}
-    assert client.post(_url(), json=helpful).status_code == 200
+    assert _post(client, _url(), json=helpful).status_code == 200
     db = factory()
     try:
         reply = db.get(DbMessage, "latest")
@@ -155,7 +167,7 @@ def test_feedback_follows_the_visible_variant_and_changed_text_fails_closed(feed
         db.close()
     assert client.get(_url(), params={"variant_index": 0}).json()["rating"] == "helpful"
     assert client.get(_url(), params={"variant_index": 1}).json()["rating"] is None
-    assert client.post(_url(), json={"rating": "off_track", "correction": "Use rain.", "variant_index": 1}).status_code == 200
+    assert _post(client, _url(), json={"rating": "off_track", "correction": "Use rain.", "variant_index": 1}).status_code == 200
     assert client.get(_url(), params={"variant_index": 0}).json()["rating"] is None
     assert client.get(_url(), params={"variant_index": 1}).json()["correction"] == "Use rain."
     db = factory()
@@ -169,7 +181,31 @@ def test_feedback_follows_the_visible_variant_and_changed_text_fails_closed(feed
         db.close()
     assert client.get(_url(), params={"variant_index": 1}).json()["rating"] is None
     assert client.get(_url(), params={"variant_index": 2}).status_code == 409
-    assert client.post(_url(), json={"rating": "helpful", "variant_index": True}).status_code == 400
+    assert _post(client, _url(), json={"rating": "helpful", "variant_index": True}).status_code == 400
+
+
+def test_stale_cross_tab_feedback_cannot_rate_revised_reply(feedback_env):
+    client, factory, _ = feedback_env
+    observed = client.get(_url()).json()
+    old_digest = observed["content_digest"]
+    db = factory()
+    try:
+        db.get(DbMessage, "latest").content = "Revised in another tab"
+        db.commit()
+    finally:
+        db.close()
+    current = client.get(_url()).json()
+    assert current["content_digest"] != old_digest
+    stale = client.post(_url(), json={
+        "rating": "helpful", "variant_index": 0, "content_digest": old_digest,
+    })
+    assert stale.status_code == 409
+    db = factory()
+    try:
+        assert db.query(AssistantFeedback).count() == 0
+    finally:
+        db.close()
+    assert _post(client, _url(), json={"rating": "helpful"}).status_code == 200
 
 
 def test_editing_a_variant_updates_its_identity_without_losing_other_variants(feedback_env):
@@ -185,7 +221,7 @@ def test_editing_a_variant_updates_its_identity_without_losing_other_variants(fe
         db.commit()
     finally:
         db.close()
-    assert client.post(_url(), json={"rating": "helpful", "variant_index": 1}).status_code == 200
+    assert _post(client, _url(), json={"rating": "helpful", "variant_index": 1}).status_code == 200
     edited = client.post("/api/session/alice-chat/edit-message", json={
         "msg_id": "latest", "content": "edited alternate", "variant_index": 1,
     })
@@ -197,17 +233,17 @@ def test_editing_a_variant_updates_its_identity_without_losing_other_variants(fe
     finally:
         db.close()
     assert client.get(_url(), params={"variant_index": 1}).json()["rating"] is None
-    assert client.post(_url(), json={"rating": "helpful", "variant_index": 1}).status_code == 200
+    assert _post(client, _url(), json={"rating": "helpful", "variant_index": 1}).status_code == 200
     assert client.get(_url(), params={"variant_index": 1}).json()["rating"] == "helpful"
 
 
 def test_only_person_can_write_feedback_even_when_tool_uses_owner_identity(feedback_env):
     client, factory, owner = feedback_env
     payload = {"rating": "helpful"}
-    assert client.post(_url(), json=payload, headers={INTERNAL_TOOL_HEADER: "tool"}).status_code == 403
+    assert _post(client, _url(), json=payload, headers={INTERNAL_TOOL_HEADER: "tool"}).status_code == 403
     assert client.get(_url(), headers={INTERNAL_TOOL_HEADER: "tool"}).status_code == 403
     owner["delegated"] = True
-    assert client.post(_url(), json=payload).status_code == 403
+    assert _post(client, _url(), json=payload).status_code == 403
     owner["delegated"] = False
     db = factory()
     try:

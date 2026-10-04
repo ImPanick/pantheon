@@ -164,7 +164,7 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
             return target
         raise HTTPException(409, "No visible reply is active")
 
-    def _feedback_identity(target: DbChatMessage, variant_index: int) -> str:
+    def _feedback_identity(target: DbChatMessage, variant_index: int) -> tuple[str, str]:
         """Bind feedback to the visible variant's persisted text, not its bubble ID alone."""
         if type(variant_index) is not int or variant_index < 0:
             raise HTTPException(400, "Invalid reply variant")
@@ -184,7 +184,7 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
             content = target.content
         else:
             raise HTTPException(409, "Reply variant is not saved yet")
-        return hashlib.sha256(str(content).encode("utf-8")).hexdigest()
+        return content, hashlib.sha256(str(content).encode("utf-8")).hexdigest()
 
     @router.get("/api/session/{session_id}/message/{message_id}/feedback")
     def get_assistant_feedback(request: Request, session_id: str, message_id: str, variant_index: int = 0):
@@ -194,11 +194,12 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
         db = SessionLocal()
         try:
             target = _feedback_target(db, session_id, message_id)
-            digest = _feedback_identity(target, variant_index)
+            content, digest = _feedback_identity(target, variant_index)
             saved = db.get(AssistantFeedback, message_id)
             if saved and saved.variant_index == variant_index and saved.content_digest == digest:
-                return {"rating": saved.rating, "correction": saved.correction}
-            return {"rating": None, "correction": ""}
+                return {"rating": saved.rating, "correction": saved.correction, "content_digest": digest,
+                        "content": content}
+            return {"rating": None, "correction": "", "content_digest": digest, "content": content}
         finally:
             db.close()
 
@@ -222,10 +223,17 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
         if payload["rating"] == "helpful" and note:
             raise HTTPException(400, "Helpful feedback cannot include a correction")
         variant_index = payload.get("variant_index", 0)
+        expected_digest = payload.get("content_digest")
+        if not isinstance(expected_digest, str) or len(expected_digest) != 64 or any(
+            char not in "0123456789abcdef" for char in expected_digest
+        ):
+            raise HTTPException(400, "Invalid reply identity")
         db = SessionLocal()
         try:
             target = _feedback_target(db, session_id, message_id)
-            digest = _feedback_identity(target, variant_index)
+            _, digest = _feedback_identity(target, variant_index)
+            if expected_digest != digest:
+                raise HTTPException(409, "Reply changed since feedback was opened")
             saved = db.get(AssistantFeedback, message_id)
             if saved is None:
                 saved = AssistantFeedback(message_id=message_id, session_id=session_id,

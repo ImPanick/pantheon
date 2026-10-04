@@ -14,7 +14,7 @@ const POSES = Object.freeze({
 let resetTimer = null;
 let feedbackSeq = 0;
 let feedback = { sessionId: '', messageId: '', variantIndex: 0, excerpt: '', loading: false, saving: false,
-  editing: false, saved: null, error: '', status: '' };
+  raw: '', contentDigest: '', editing: false, saved: null, error: '', status: '' };
 
 const stageEl = () => document.getElementById('companion-stage');
 const activeSession = () => typeof window === 'undefined' ? '' : (window.sessionModule?.getCurrentSessionId?.() || '');
@@ -44,8 +44,10 @@ function latestReply() {
   if (!messageId) return null;
   const variantIndex = reply.dataset.variantIndex === undefined ? 0 : Number(reply.dataset.variantIndex);
   if (!Number.isSafeInteger(variantIndex) || variantIndex < 0) return null;
-  const raw = String(reply.dataset.raw || reply.querySelector('.body')?.textContent || '').trim();
-  return { sessionId, messageId, variantIndex, excerpt: raw.length > 62 ? `${raw.slice(0, 62)}...` : raw };
+  const raw = String(reply.dataset.raw ?? reply.querySelector('.body')?.textContent ?? '');
+  const excerpt = raw.trim();
+  return { sessionId, messageId, variantIndex, raw,
+    excerpt: excerpt.length > 62 ? `${excerpt.slice(0, 62)}...` : excerpt };
 }
 
 function renderFeedback() {
@@ -90,7 +92,7 @@ export async function syncCompanionFeedback(force = false) {
   const seq = ++feedbackSeq;
   feedback = { sessionId: target?.sessionId || '', messageId: target?.messageId || '',
     variantIndex: target?.variantIndex ?? 0,
-    excerpt: target?.excerpt || '', loading: !!target, saving: false, editing: false,
+    excerpt: target?.excerpt || '', raw: '', contentDigest: '', loading: !!target, saving: false, editing: false,
     saved: null, error: '', status: '' };
   renderFeedback();
   if (!target) return;
@@ -100,6 +102,10 @@ export async function syncCompanionFeedback(force = false) {
     if (!res.ok) throw new Error(res.status === 409 ? 'Reply changed. Open the latest reply and retry.' : 'Feedback is unavailable. Retry when connected.');
     const data = await res.json();
     if (seq !== feedbackSeq || !isCompanionEnabled()) return;
+    if (data.content !== target.raw || !/^[0-9a-f]{64}$/.test(data.content_digest))
+      throw new Error('Reply changed. Reopen this chat to rate the current answer.');
+    feedback.raw = data.content;
+    feedback.contentDigest = data.content_digest;
     feedback.saved = data.rating ? { rating: data.rating, correction: data.correction || '' } : null;
     feedback.loading = false;
   } catch (error) {
@@ -112,7 +118,8 @@ export async function syncCompanionFeedback(force = false) {
 }
 
 async function submitFeedback(rating, correction = '') {
-  if (!isCompanionEnabled() || feedback.saving || !feedback.messageId || feedback.error) return;
+  if (!isCompanionEnabled() || feedback.loading || feedback.saving || !feedback.messageId
+      || !feedback.contentDigest || feedback.error) return;
   const current = latestReply();
   if (!current || current.sessionId !== feedback.sessionId || current.messageId !== feedback.messageId
       || current.variantIndex !== feedback.variantIndex) {
@@ -120,17 +127,22 @@ async function submitFeedback(rating, correction = '') {
     return;
   }
   const seq = feedbackSeq;
+  if (current.raw !== feedback.raw) {
+    syncCompanionFeedback(true);
+    return;
+  }
   feedback.saving = true;
   feedback.status = 'Saving feedback...';
   renderFeedback();
   try {
     const url = `/api/session/${encodeURIComponent(current.sessionId)}/message/${encodeURIComponent(current.messageId)}/feedback`;
     const res = await fetch(url, { method: 'POST', credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rating, correction, variant_index: current.variantIndex }) });
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rating, correction,
+        variant_index: current.variantIndex, content_digest: feedback.contentDigest }) });
     if (res.status === 409) {
       if (seq === feedbackSeq) {
         await syncCompanionFeedback(true);
-        feedback.status = 'A newer reply arrived. Rate that reply instead.';
+        feedback.status = 'Reply changed. Check the current answer before rating.';
         renderFeedback();
       }
       return;
@@ -187,7 +199,7 @@ function renderEnabled() {
     if (resetTimer) clearTimeout(resetTimer);
     resetTimer = null;
     feedback = { sessionId: '', messageId: '', variantIndex: 0, excerpt: '', loading: false, saving: false,
-      editing: false, saved: null, error: '', status: '' };
+      raw: '', contentDigest: '', editing: false, saved: null, error: '', status: '' };
   } else {
     syncCompanionFeedback(true);
   }
