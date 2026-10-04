@@ -94,3 +94,69 @@ def test_companion_controls_are_native_buttons_and_setting_is_labelled():
                     "companion-helpful", "companion-off-track"):
         assert f'<button type="button" class="{control}"' in html
     assert '<button type="submit" class="companion-save-feedback"' in html
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="node binary not on PATH")
+def test_feedback_display_tracks_variant_and_clears_on_new_chat(tmp_path):
+    (tmp_path / "companion.js").write_bytes((ROOT / "static/js/companion.js").read_bytes())
+    (tmp_path / "package.json").write_text('{"type":"module"}', encoding="utf-8")
+    (tmp_path / "storage.js").write_text("""
+const values = new Map();
+export default { get: (key, fallback) => values.get(key) ?? fallback,
+                 set: (key, value) => values.set(key, value) };
+""", encoding="utf-8")
+    (tmp_path / "motion.js").write_text("export const prefersReducedMotion = () => true;", encoding="utf-8")
+    (tmp_path / "probe.mjs").write_text("""
+import assert from 'node:assert/strict';
+const listeners = {};
+const el = () => ({ hidden: false, disabled: false, textContent: '',
+  addEventListener() {}, setAttribute() {}, focus() {} });
+const art = el(), line = el(), hint = el(), actions = el(), status = el(), retry = el(), use = el();
+const helpful = el(), offTrack = el(), save = el(), correction = el();
+const form = { ...el(), querySelector: key => key === '.companion-save-feedback' ? save : null };
+const controls = Object.fromEntries(['.companion-character', '.companion-cheer', '.companion-rest', '.companion-hide',
+  '.companion-cancel-feedback'].map(key => [key, el()]));
+const parts = { '.companion-art': art, '.companion-line': line, '.companion-feedback-hint': hint,
+  '.companion-feedback-actions': actions, '.companion-feedback-form': form,
+  '.companion-feedback-status': status, '.companion-feedback-retry': retry,
+  '.companion-use-in-chat': use, '.companion-helpful': helpful,
+  '.companion-off-track': offTrack, '#companion-correction': correction, ...controls };
+const stage = { ...el(), hidden: true, dataset: {}, style: {}, querySelector: key => parts[key] };
+const toggle = { ...el(), dataset: {} };
+const reply = { dataset: { dbId: 'reply-1', raw: 'Original answer', variantIndex: '0' } };
+let sessionId = 'chat-1', replies = [reply];
+globalThis.window = { sessionModule: { getCurrentSessionId: () => sessionId }, addEventListener() {} };
+globalThis.document = { readyState: 'loading',
+  addEventListener: (name, fn) => { listeners[name] = fn; },
+  getElementById: id => ({ 'companion-stage': stage, 'companion-toggle': toggle })[id],
+  querySelectorAll: () => replies, querySelector: () => null };
+const requests = [];
+globalThis.fetch = async url => {
+  requests.push(url);
+  const variant = new URL(url, 'http://local').searchParams.get('variant_index');
+  return { ok: true, json: async () => variant === '0'
+    ? { rating: 'off_track', correction: 'Fix the old answer.' }
+    : { rating: null, correction: '' } };
+};
+const pip = await import('./companion.js');
+pip.initCompanion();
+pip.setCompanionEnabled(true);
+const settle = () => new Promise(resolve => setTimeout(resolve, 0));
+await settle();
+assert.match(hint.textContent, /Fix the old answer/);
+reply.dataset.raw = 'Different variant'; reply.dataset.variantIndex = '1';
+listeners['pantheon:reply-list-changed']();
+await settle();
+assert.match(hint.textContent, /Different variant/);
+assert.equal(use.hidden, true);
+assert.equal(requests.at(-1).includes('variant_index=1'), true);
+sessionId = ''; replies = [];
+listeners['pantheon:session-changed']();
+assert.match(hint.textContent, /No assistant reply/);
+assert.equal(actions.hidden, true);
+console.log('variant and new-chat state OK');
+""", encoding="utf-8")
+    result = subprocess.run(["node", str(tmp_path / "probe.mjs")],
+                            capture_output=True, text=True, timeout=15)
+    assert result.returncode == 0, result.stderr
+    assert "variant and new-chat state OK" in result.stdout

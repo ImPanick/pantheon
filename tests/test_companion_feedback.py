@@ -7,13 +7,15 @@ from types import SimpleNamespace
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine, event, inspect, text
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from core.database import Base, Session as DbSession, ChatMessage as DbMessage, AssistantFeedback
+from core.middleware import INTERNAL_TOOL_HEADER
 from routes import session_routes
 from routes.history import history_routes
+from src.tools.system import do_app_api
 
 
 @pytest.fixture
@@ -42,13 +44,16 @@ def feedback_env(monkeypatch):
     monkeypatch.setattr(history_routes, "SessionLocal", factory)
     app = FastAPI()
     owner = {"name": "alice"}
+    manager = SimpleNamespace()
+    owner["manager"] = manager
 
     @app.middleware("http")
     async def signed_in(request, call_next):
         request.state.current_user = owner["name"]
+        request.state.api_token = owner.get("delegated", False)
         return await call_next(request)
 
-    app.include_router(history_routes.setup_history_routes(SimpleNamespace()))
+    app.include_router(history_routes.setup_history_routes(manager))
     with TestClient(app) as client:
         yield client, factory, owner
     engine.dispose()
@@ -116,3 +121,127 @@ def test_paged_history_exposes_reply_id_for_precise_targeting(feedback_env):
     assert response.status_code == 200, response.text
     assistant = next(m for m in response.json()["history"] if m["content"] == "latest reply")
     assert assistant["metadata"]["_db_id"] == "latest"
+
+
+def test_earlier_draft_feedback_table_gains_identity_columns(tmp_path, monkeypatch):
+    import core.database as database
+
+    prior = create_engine(f"sqlite:///{tmp_path / 'draft.db'}")
+    with prior.begin() as connection:
+        connection.execute(text("CREATE TABLE assistant_feedback (message_id VARCHAR PRIMARY KEY, session_id VARCHAR NOT NULL, rating VARCHAR(12) NOT NULL, correction TEXT NOT NULL, updated_at DATETIME NOT NULL)"))
+        connection.execute(text("INSERT INTO assistant_feedback VALUES ('m', 's', 'helpful', '', '2026-01-01')"))
+    monkeypatch.setattr(database, "engine", prior)
+    database._migrate_assistant_feedback_identity()
+    database._migrate_assistant_feedback_identity()
+    assert {"variant_index", "content_digest"} <= {c["name"] for c in inspect(prior).get_columns("assistant_feedback")}
+    with prior.connect() as connection:
+        assert connection.execute(text("SELECT variant_index, content_digest FROM assistant_feedback")).one() == (0, "")
+    prior.dispose()
+
+
+def test_feedback_follows_the_visible_variant_and_changed_text_fails_closed(feedback_env):
+    client, factory, _ = feedback_env
+    helpful = {"rating": "helpful", "variant_index": 0}
+    assert client.post(_url(), json=helpful).status_code == 200
+    db = factory()
+    try:
+        reply = db.get(DbMessage, "latest")
+        reply.meta_data = json.dumps({"variants": [
+            {"raw": "latest reply", "label": "original"},
+            {"raw": "new answer", "label": "regen"},
+        ], "variantIndex": 1})
+        db.commit()
+    finally:
+        db.close()
+    assert client.get(_url(), params={"variant_index": 0}).json()["rating"] == "helpful"
+    assert client.get(_url(), params={"variant_index": 1}).json()["rating"] is None
+    assert client.post(_url(), json={"rating": "off_track", "correction": "Use rain.", "variant_index": 1}).status_code == 200
+    assert client.get(_url(), params={"variant_index": 0}).json()["rating"] is None
+    assert client.get(_url(), params={"variant_index": 1}).json()["correction"] == "Use rain."
+    db = factory()
+    try:
+        reply = db.get(DbMessage, "latest")
+        meta = json.loads(reply.meta_data)
+        meta["variants"][1]["raw"] = "edited new answer"
+        reply.meta_data = json.dumps(meta)
+        db.commit()
+    finally:
+        db.close()
+    assert client.get(_url(), params={"variant_index": 1}).json()["rating"] is None
+    assert client.get(_url(), params={"variant_index": 2}).status_code == 409
+    assert client.post(_url(), json={"rating": "helpful", "variant_index": True}).status_code == 400
+
+
+def test_editing_a_variant_updates_its_identity_without_losing_other_variants(feedback_env):
+    client, factory, owner = feedback_env
+    owner["manager"].get_session = lambda _sid: SimpleNamespace(history=[])
+    db = factory()
+    try:
+        reply = db.get(DbMessage, "latest")
+        reply.meta_data = json.dumps({"variants": [
+            {"raw": "latest reply", "label": "original"},
+            {"raw": "alternate", "label": "regen"},
+        ], "variantIndex": 1})
+        db.commit()
+    finally:
+        db.close()
+    assert client.post(_url(), json={"rating": "helpful", "variant_index": 1}).status_code == 200
+    edited = client.post("/api/session/alice-chat/edit-message", json={
+        "msg_id": "latest", "content": "edited alternate", "variant_index": 1,
+    })
+    assert edited.status_code == 200, edited.text
+    db = factory()
+    try:
+        variants = json.loads(db.get(DbMessage, "latest").meta_data)["variants"]
+        assert [v["raw"] for v in variants] == ["latest reply", "edited alternate"]
+    finally:
+        db.close()
+    assert client.get(_url(), params={"variant_index": 1}).json()["rating"] is None
+    assert client.post(_url(), json={"rating": "helpful", "variant_index": 1}).status_code == 200
+    assert client.get(_url(), params={"variant_index": 1}).json()["rating"] == "helpful"
+
+
+def test_only_person_can_write_feedback_even_when_tool_uses_owner_identity(feedback_env):
+    client, factory, owner = feedback_env
+    payload = {"rating": "helpful"}
+    assert client.post(_url(), json=payload, headers={INTERNAL_TOOL_HEADER: "tool"}).status_code == 403
+    assert client.get(_url(), headers={INTERNAL_TOOL_HEADER: "tool"}).status_code == 403
+    owner["delegated"] = True
+    assert client.post(_url(), json=payload).status_code == 403
+    owner["delegated"] = False
+    db = factory()
+    try:
+        assert db.query(AssistantFeedback).count() == 0
+    finally:
+        db.close()
+
+
+@pytest.mark.asyncio
+async def test_generic_app_api_cannot_discover_or_call_reply_feedback(feedback_env, monkeypatch):
+    import httpx
+
+    client, factory, _ = feedback_env
+    real_init = httpx.AsyncClient.__init__
+
+    def route_into_app(self, *args, **kwargs):
+        kwargs.pop("timeout", None)
+        kwargs["transport"] = httpx.ASGITransport(app=client.app)
+        real_init(self, *args, **kwargs)
+
+    monkeypatch.setattr(httpx.AsyncClient, "__init__", route_into_app)
+    discovered = await do_app_api(json.dumps({"action": "endpoints", "filter": "feedback"}), owner="alice")
+    assert discovered["exit_code"] == 0
+    assert all("/feedback" not in row["path"] for row in discovered.get("endpoints", []))
+    for path in (_url(), _url() + "?variant_index=0",
+                 "/api/session/alice-chat/x/../message/latest/feedback",
+                 "/api/session/alice-chat/message/latest/fee%64back"):
+        for method in ("GET", "POST"):
+            refused = await do_app_api(json.dumps({"action": "call", "method": method, "path": path,
+                                                  "body": {"rating": "helpful"}}), owner="alice")
+            assert refused["exit_code"] == 1
+            assert "person" in refused["error"].lower()
+    db = factory()
+    try:
+        assert db.query(AssistantFeedback).count() == 0
+    finally:
+        db.close()

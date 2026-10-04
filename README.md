@@ -108,7 +108,8 @@ The [desktop palette picker](docs/review/palette-picker-1400.png) and
 Pip is an optional ASCII companion in Theme settings. It responds to a click or one of four
 fixed, validated model actions, and otherwise makes no model requests. It can also record
 **Helpful** or **Off track** on the latest saved assistant reply. An optional correction is
-saved with that reply; **Use correction in chat** fills an empty composer so you can decide
+saved with that displayed answer; switching answer variants cannot carry the rating over.
+Only the person can record this feedback. **Use correction in chat** fills an empty composer so you can decide
 whether to send it. Pip has an off switch and respects reduced motion.
 
 <table><tr><td><img src="docs/review/companion-channel-1400.png" alt="Channel palette with Pip's helpful feedback card" width="100%"></td><td><img src="docs/review/feedback-correction-1400.png" alt="Correction editor on the latest assistant reply" width="100%"></td></tr></table>

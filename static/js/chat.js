@@ -7533,6 +7533,7 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
 
     msgElement.dataset.variants = JSON.stringify(variants);
     msgElement.dataset.variantIndex = String(variants.length - 1);
+    document.dispatchEvent(new Event('pantheon:reply-list-changed'));
 
     _renderVariantNav(msgElement, variants, variants.length - 1);
 
@@ -7543,7 +7544,8 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ metadata: { variants: variants, variantIndex: variants.length - 1 } })
-      }).catch(e => console.warn('update-last-meta (variants) failed:', e));
+      }).then(res => { if (res.ok) document.dispatchEvent(new Event('pantheon:reply-list-changed')); })
+        .catch(e => console.warn('update-last-meta (variants) failed:', e));
     }
   }
 
@@ -7629,6 +7631,7 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
     if (body) body.innerHTML = v.html;
     msgElement.dataset.raw = v.raw;
     msgElement.dataset.variantIndex = String(newIdx);
+    document.dispatchEvent(new Event('pantheon:reply-list-changed'));
     if (window.hljs) {
       msgElement.querySelectorAll('pre code').forEach(block => window.hljs.highlightElement(block));
     }
@@ -8099,16 +8102,28 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
       if (!sessionId) { cleanup(); return; }
 
       try {
+        let variants = null;
+        try { variants = JSON.parse(msgElement.dataset.variants || 'null'); } catch (_) {}
+        const variantIndex = Number(msgElement.dataset.variantIndex);
+        const selectedVariant = Array.isArray(variants) && Number.isSafeInteger(variantIndex)
+          && variantIndex >= 0 && variantIndex < variants.length;
         const res = await fetch(`${API_BASE}/api/session/${sessionId}/edit-message`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ msg_id: msgId, content: newContent }),
+          body: JSON.stringify({ msg_id: msgId, content: newContent,
+            ...(selectedVariant ? { variant_index: variantIndex } : {}) }),
         });
         if (!res.ok) throw new Error('Server error ' + res.status);
 
         // Re-render body with markdown
         body.innerHTML = markdownModule.processWithThinking(markdownModule.squashOutsideCode(newContent));
         msgElement.dataset.raw = newContent;
+        if (selectedVariant) {
+          variants[variantIndex] = { ...variants[variantIndex], raw: newContent, html: body.innerHTML };
+          msgElement.dataset.variants = JSON.stringify(variants);
+          _renderVariantNav(msgElement, variants, variantIndex);
+        }
+        document.dispatchEvent(new Event('pantheon:reply-list-changed'));
 
         // Add edited indicator if not already present
         if (!msgElement.querySelector('.edited-indicator')) {
@@ -8262,14 +8277,16 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
         variants.push({ raw: newText, html: bodyEl ? bodyEl.innerHTML : '', label: varLabel });
         aiMsgElement.dataset.variants = JSON.stringify(variants);
         aiMsgElement.dataset.variantIndex = String(variants.length - 1);
+        document.dispatchEvent(new Event('pantheon:reply-list-changed'));
 
         // Persist variant metadata to server
         try {
-          await fetch(`${API_BASE}/api/session/${sessionId}/update-last-meta`, {
+          const variantSave = await fetch(`${API_BASE}/api/session/${sessionId}/update-last-meta`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ metadata: { variants: variants, variantIndex: variants.length - 1 } }),
           });
+          if (variantSave.ok) document.dispatchEvent(new Event('pantheon:reply-list-changed'));
         } catch (_) {}
 
         // Re-render variant navigation

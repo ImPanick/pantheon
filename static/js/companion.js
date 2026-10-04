@@ -13,7 +13,7 @@ const POSES = Object.freeze({
 });
 let resetTimer = null;
 let feedbackSeq = 0;
-let feedback = { sessionId: '', messageId: '', excerpt: '', loading: false, saving: false,
+let feedback = { sessionId: '', messageId: '', variantIndex: 0, excerpt: '', loading: false, saving: false,
   editing: false, saved: null, error: '', status: '' };
 
 const stageEl = () => document.getElementById('companion-stage');
@@ -42,8 +42,10 @@ function latestReply() {
   const reply = replies[replies.length - 1];
   const messageId = reply?.dataset.dbId;
   if (!messageId) return null;
+  const variantIndex = reply.dataset.variantIndex === undefined ? 0 : Number(reply.dataset.variantIndex);
+  if (!Number.isSafeInteger(variantIndex) || variantIndex < 0) return null;
   const raw = String(reply.dataset.raw || reply.querySelector('.body')?.textContent || '').trim();
-  return { sessionId, messageId, excerpt: raw.length > 62 ? `${raw.slice(0, 62)}...` : raw };
+  return { sessionId, messageId, variantIndex, excerpt: raw.length > 62 ? `${raw.slice(0, 62)}...` : raw };
 }
 
 function renderFeedback() {
@@ -83,15 +85,17 @@ function renderFeedback() {
 export async function syncCompanionFeedback(force = false) {
   if (!isCompanionEnabled()) return;
   const target = latestReply();
-  if (!force && target?.sessionId === feedback.sessionId && target?.messageId === feedback.messageId) return;
+  if (!force && target?.sessionId === feedback.sessionId && target?.messageId === feedback.messageId
+      && target?.variantIndex === feedback.variantIndex) return;
   const seq = ++feedbackSeq;
   feedback = { sessionId: target?.sessionId || '', messageId: target?.messageId || '',
+    variantIndex: target?.variantIndex ?? 0,
     excerpt: target?.excerpt || '', loading: !!target, saving: false, editing: false,
     saved: null, error: '', status: '' };
   renderFeedback();
   if (!target) return;
   try {
-    const url = `/api/session/${encodeURIComponent(target.sessionId)}/message/${encodeURIComponent(target.messageId)}/feedback`;
+    const url = `/api/session/${encodeURIComponent(target.sessionId)}/message/${encodeURIComponent(target.messageId)}/feedback?variant_index=${target.variantIndex}`;
     const res = await fetch(url, { credentials: 'same-origin' });
     if (!res.ok) throw new Error(res.status === 409 ? 'Reply changed. Open the latest reply and retry.' : 'Feedback is unavailable. Retry when connected.');
     const data = await res.json();
@@ -110,7 +114,8 @@ export async function syncCompanionFeedback(force = false) {
 async function submitFeedback(rating, correction = '') {
   if (!isCompanionEnabled() || feedback.saving || !feedback.messageId || feedback.error) return;
   const current = latestReply();
-  if (!current || current.sessionId !== feedback.sessionId || current.messageId !== feedback.messageId) {
+  if (!current || current.sessionId !== feedback.sessionId || current.messageId !== feedback.messageId
+      || current.variantIndex !== feedback.variantIndex) {
     syncCompanionFeedback(true);
     return;
   }
@@ -121,7 +126,7 @@ async function submitFeedback(rating, correction = '') {
   try {
     const url = `/api/session/${encodeURIComponent(current.sessionId)}/message/${encodeURIComponent(current.messageId)}/feedback`;
     const res = await fetch(url, { method: 'POST', credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rating, correction }) });
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rating, correction, variant_index: current.variantIndex }) });
     if (res.status === 409) {
       if (seq === feedbackSeq) {
         await syncCompanionFeedback(true);
@@ -146,7 +151,8 @@ async function submitFeedback(rating, correction = '') {
 
 function useCorrectionInChat() {
   const current = latestReply();
-  if (!current || current.sessionId !== feedback.sessionId || current.messageId !== feedback.messageId) {
+  if (!current || current.sessionId !== feedback.sessionId || current.messageId !== feedback.messageId
+      || current.variantIndex !== feedback.variantIndex) {
     syncCompanionFeedback(true);
     return;
   }
@@ -173,7 +179,7 @@ function renderEnabled() {
     ++feedbackSeq;
     if (resetTimer) clearTimeout(resetTimer);
     resetTimer = null;
-    feedback = { sessionId: '', messageId: '', excerpt: '', loading: false, saving: false,
+    feedback = { sessionId: '', messageId: '', variantIndex: 0, excerpt: '', loading: false, saving: false,
       editing: false, saved: null, error: '', status: '' };
   } else {
     syncCompanionFeedback(true);

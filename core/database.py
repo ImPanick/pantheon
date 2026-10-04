@@ -293,6 +293,8 @@ class AssistantFeedback(Base):
 
     message_id = Column(String, ForeignKey("chat_messages.id", ondelete="CASCADE"), primary_key=True)
     session_id = Column(String, ForeignKey("sessions.id", ondelete="CASCADE"), nullable=False, index=True)
+    variant_index = Column(Integer, nullable=False, default=0)
+    content_digest = Column(String(64), nullable=False, default="")
     rating = Column(String(12), nullable=False)
     correction = Column(Text, nullable=False, default="")
     updated_at = Column(DateTime, default=utcnow_naive, onupdate=utcnow_naive, nullable=False)
@@ -3086,6 +3088,7 @@ def init_db():
     _migrate_add_tidy_verdict()
     _migrate_add_doc_source_email_cols()
     _migrate_add_document_folder_column()
+    _migrate_assistant_feedback_identity()
 
 
     _migrate_add_document_source_name_column()
@@ -3116,6 +3119,16 @@ def init_db():
     _migrate_encrypt_mcp_env()
     _migrate_backfill_task_folders()
     _migrate_reclassify_admin_refusals()
+
+
+def _migrate_assistant_feedback_identity():
+    """Earlier draft installs gain reply identity fields; old ratings fail closed."""
+    columns = {column["name"] for column in inspect(engine).get_columns("assistant_feedback")}
+    with engine.begin() as conn:
+        if "variant_index" not in columns:
+            conn.execute(text("ALTER TABLE assistant_feedback ADD COLUMN variant_index INTEGER NOT NULL DEFAULT 0"))
+        if "content_digest" not in columns:
+            conn.execute(text("ALTER TABLE assistant_feedback ADD COLUMN content_digest VARCHAR(64) NOT NULL DEFAULT ''"))
 
 
 def _migrate_reclassify_admin_refusals():
