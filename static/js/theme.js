@@ -31,6 +31,18 @@ export const THEMES = {
                             inputBg: '#2f2f2f', brandColor: '#ffffff', brandMixTo: '#ffffff' } },
   claude:     { bg:'#262624', fg:'#f5f4f0', panel:'#30302e', border:'#4a4a47', red:'#c6613f' },
   cute:       { bg:'#fff0f5', fg:'#d4608a', panel:'#fff8fa', border:'#f0c0d0', red:'#ff6b9d' },
+  // Familiar platform moods, drawn with Pantheon's own palette and tokens.
+  guild:      { bg:'#202127', fg:'#e5e8f5', panel:'#292b35', border:'#484c60', red:'#a9b6ff' },
+  codehost:   { bg:'#f1f5fb', fg:'#22344a', panel:'#f9fbff', border:'#a4b7cd', red:'#4a5fb2' },
+  grove:      { bg:'#121b17', fg:'#e1ede4', panel:'#1c2921', border:'#405347', red:'#79d39d' },
+  notebook:   { bg:'#f5f3ef', fg:'#292724', panel:'#fffefa', border:'#c6c1b9', red:'#80533f' },
+};
+
+const THEME_DESCRIPTIONS = {
+  guild: 'Guild — inspired by Discord chat spaces',
+  codehost: 'Codehost — inspired by GitHub editor colours',
+  grove: 'Grove — inspired by Spotify music greens',
+  notebook: 'Notebook — inspired by Notion paper surfaces',
 };
 
 const DEFAULT_THEME = 'dark';
@@ -882,7 +894,7 @@ export function initThemeUI() {
 
   // Render preset swatches
   grid.innerHTML = Object.entries(THEMES).map(([name, c]) => `
-    <div class="theme-swatch${name === activeName ? ' active' : ''}" data-theme="${name}">
+    <div class="theme-swatch${name === activeName ? ' active' : ''}" data-theme="${name}" role="button" tabindex="0" aria-label="Use ${name} theme" title="${THEME_DESCRIPTIONS[name] || name}">
       <div class="theme-swatch-colors">
         <span style="background:${c.bg}"></span>
         <span style="background:${c.panel}"></span>
@@ -941,6 +953,11 @@ export function initThemeUI() {
   function clearAllActive() { allGrids.forEach(g => g.querySelectorAll('.theme-swatch').forEach(s => s.classList.remove('active'))); }
   allGrids.forEach(g => {
     g.querySelectorAll('.theme-swatch').forEach(sw => {
+      sw.addEventListener('keydown', (e) => {
+        if (e.target !== sw || (e.key !== 'Enter' && e.key !== ' ')) return;
+        e.preventDefault();
+        sw.click();
+      });
       sw.addEventListener('click', (e) => {
         if (e.target.closest('.theme-delete-btn')) return;
         const name = sw.dataset.theme;

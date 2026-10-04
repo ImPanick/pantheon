@@ -635,11 +635,12 @@ async def do_ui_control(content: str, session_id: Optional[str] = None, owner: O
       toggle <name> <on|off>  — Toggle a setting (web, bash, rag, research, incognito, document_editor)
       set_mode <agent|chat>   — Switch between agent and chat mode
       switch_model <model>    — Change the model for the current session
-      set_theme <preset>      — Apply a built-in theme preset (dark, light, midnight, paper, cyberpunk, retrowave, forest, ocean, ume, copper, terminal, organs, lavender, gpt, claude, cute)
+      set_theme <preset>      — Apply a built-in theme preset (dark, light, midnight, paper, cyberpunk, retrowave, forest, ocean, ume, copper, terminal, organs, lavender, gpt, claude, cute, guild, codehost, grove, notebook)
       create_theme <name> <bg> <fg> <panel> <border> <accent> [key=val ...] — Create custom theme. Optional key=val: advanced color overrides AND background effects: bgPattern=<none|dots|synapse|rain|constellations|perlin-flow|petals|sparkles|embers>, bgEffectColor=#RRGGBB, bgEffectIntensity=<num>, bgEffectSize=<num>, frosted=true|false
       open_panel <name>       — Open a panel (documents, gallery, email, sessions, notes, memories, skills, settings, cookbook)
       open_email_reply <uid> [folder] [reply|reply-all|ai-reply] [body text] — Open a reply draft document for an email; does not send. ALWAYS append the body text when the user told you what to say (one-shot draft); only omit body when the user just asked to "open a reply" without content.
-      get_toggles             — Return current toggle states (server-side knowledge)
+      companion <greet|cheer|ponder|rest> - Animate the opt-in ASCII companion
+      get_toggles             - Return current toggle states (server-side knowledge)
     """
     lines = content.strip().split("\n")
     if not lines:
@@ -705,7 +706,7 @@ async def do_ui_control(content: str, session_id: Optional[str] = None, owner: O
         known_presets = [
             "dark", "light", "midnight", "paper", "cyberpunk", "retrowave",
             "forest", "ocean", "ume", "copper", "terminal", "organs",
-            "lavender", "gpt", "claude", "cute",
+            "lavender", "gpt", "claude", "cute", "guild", "codehost", "grove", "notebook",
         ]
         custom_themes = {}
         try:
@@ -722,6 +723,15 @@ async def do_ui_control(content: str, session_id: Optional[str] = None, owner: O
             "theme_name": theme_name,
             "results": f"Theme changed to '{theme_name}'",
         }
+
+    elif action == "companion":
+        # The browser is the final opt-in gate. No text or markup from a model
+        # travels with this event, only a fixed expression name.
+        pose = parts[1].lower() if len(parts) == 2 and len(lines) == 1 else ""
+        if pose not in {"greet", "cheer", "ponder", "rest"}:
+            return {"error": "companion needs one pose: greet, cheer, ponder, rest"}
+        return {"ui_event": "companion", "pose": pose,
+                "results": f"Pip's expression: {pose} (if enabled in Themes)"}
 
     elif action == "create_theme":
         # Re-split without limit to get all parts

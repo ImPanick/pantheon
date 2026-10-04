@@ -796,6 +796,11 @@
         <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px;opacity:0.6"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>Your Themes</h2>
         <div class="theme-grid" id="themeUserGrid"></div>
       </div>
+      <div class="admin-card companion-setting">
+        <h2>Meet Pip</h2>
+        <p>A small ASCII friend for your workspace. Pip responds to a tap, or to a model when you ask it to interact.</p>
+        <label><input id="companion-toggle" type="checkbox"> Show Pip</label>
+      </div>
     </div>
 
     <!-- Tab: Customize -->
@@ -3721,6 +3726,20 @@
   <!-- Toast container (aria-live for screen readers) -->
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
+  <aside id="companion-stage" class="companion-stage" aria-label="Pip, your ASCII companion" hidden>
+    <button type="button" class="companion-hide" aria-label="Hide Pip">&times;</button>
+    <button type="button" class="companion-character" aria-label="Greet Pip">
+      <span class="companion-spark" aria-hidden="true">*</span>
+      <span class="companion-face" aria-hidden="true">( -&gt;- )</span>
+      <span class="companion-feet" aria-hidden="true">/| |\</span>
+    </button>
+    <span class="companion-line" role="status" aria-live="polite">Pip is taking a tiny break.</span>
+    <span class="companion-actions">
+      <button type="button" class="companion-cheer" aria-label="Cheer with Pip">Cheer</button>
+      <button type="button" class="companion-rest" aria-label="Let Pip rest">Rest</button>
+    </span>
+  </aside>
+
 
 
 <!-- Load modules in this order -->
@@ -3751,6 +3770,7 @@
 <script src="/static/js/cookbookSchedule.js"></script>
 <script type="module" src="/static/js/search-chat.js"></script>
 <script type="module" src="/static/js/theme.js"></script>
+<script type="module" src="/static/js/companion.js"></script>
 <script type="module" src="/static/js/censor.js"></script>
 <script type="module" src="/static/js/settings.js?v=20261002slicesce"></script>
 <script type="module" src="/static/js/assistant.js"></script>

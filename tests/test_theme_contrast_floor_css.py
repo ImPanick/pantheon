@@ -204,7 +204,7 @@ def palettes(tmp_path_factory) -> dict:
     painted = json.loads([l for l in proc.stdout.splitlines() if l.strip()][-1])
 
     assert sorted(painted) == sorted(THEME_NAMES), sorted(painted)
-    assert len(painted) == 16, sorted(painted)
+    assert len(painted) == 20, sorted(painted)
 
     out = {}
     for name, props in painted.items():
@@ -408,7 +408,7 @@ def test_scoping_a_token_did_not_move_it_on_the_surface_it_was_tuned_for(palette
     assert scoped == set(dark_tuned) | set(light_tuned), sorted(scoped)
 
     light = set(_light(palettes))
-    assert light == {"cute", "lavender", "light", "paper"}, sorted(light)
+    assert light == {"cute", "lavender", "light", "paper", "notebook", "codehost"}, sorted(light)
 
     for token, literal in dark_tuned.items():
         for name, theme in palettes.items():
@@ -624,7 +624,7 @@ def test_the_link_hue_is_the_one_that_cleared_aa_and_the_others_did_not(palettes
     )
     assert round(min(panel.values()), 2) == 4.61
     assert min(panel, key=panel.get) == "cute"
-    assert {n for n, r in bg.items() if r < BODY_FLOOR} == {"light", "lavender", "cute"}
+    assert {n for n, r in bg.items() if r < BODY_FLOOR} == {"light", "lavender", "cute", "notebook"}
     assert [round(bg[n], 2) for n in ("light", "lavender", "cute")] == [4.19, 4.36, 4.38]
 
     # The six it beat, at their pre-`B22` literals.
@@ -641,8 +641,8 @@ def test_the_link_hue_is_the_one_that_cleared_aa_and_the_others_did_not(palettes
     # And it is not the theme's own accent wearing a different name.
     gaps = {n: _distance(_resolve("var(--link-fg)", t),
                          _resolve("var(--accent)", t)) for n, t in palettes.items()}
-    assert round(min(gaps.values()), 1) == 46.2, sorted(gaps.items(), key=lambda x: x[1])[:3]
-    assert min(gaps, key=gaps.get) == "ocean"
+    assert round(min(gaps.values()), 1) == 32.1, sorted(gaps.items(), key=lambda x: x[1])[:3]
+    assert min(gaps, key=gaps.get) == "codehost"
 
 
 # ── The mechanism `B22` rests on ────────────────────────────────────────────
