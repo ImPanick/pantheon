@@ -121,9 +121,9 @@ def _light_palettes(themes):
     return {n: t for n, t in themes.items() if _luminance(_hex(t["bg"])) > 0.5}
 
 
-def test_the_sixteen_palettes_are_all_here_and_four_are_light(shipped):
-    assert len(shipped["themes"]) == 16
-    assert set(_light_palettes(shipped["themes"])) == {"light", "paper", "lavender", "cute"}
+def test_the_twenty_palettes_are_all_here_and_six_are_light(shipped):
+    assert len(shipped["themes"]) == 20
+    assert set(_light_palettes(shipped["themes"])) == {"light", "paper", "lavender", "cute", "notebook", "codehost"}
 
 
 def test_every_hue_reads_at_least_4_5_to_1_on_every_light_palettes_bubble(shipped):
@@ -231,7 +231,7 @@ def painted(app_url, tmp_path_factory):  # noqa: F811
 
 def test_in_a_browser_every_light_palette_reads_at_least_4_5_to_1(painted):
     light = {n: p for n, p in painted["palettes"].items() if p["scheme"] == "light"}
-    assert set(light) == {"light", "paper", "lavender", "cute"}
+    assert set(light) == {"light", "paper", "lavender", "cute", "notebook", "codehost"}
     for name, p in light.items():
         worst = min(p["rows"], key=lambda r: _ratio(r["fg"][:3], p["bubble"]))
         ratio = _ratio(worst["fg"][:3], p["bubble"])
@@ -240,7 +240,7 @@ def test_in_a_browser_every_light_palette_reads_at_least_4_5_to_1(painted):
 
 def test_in_a_browser_every_dark_palette_paints_what_it_did(painted):
     dark = {n: p for n, p in painted["palettes"].items() if p["scheme"] == "dark"}
-    assert len(dark) == 12
+    assert len(dark) == 14
     for name, p in dark.items():
         for row in p["rows"]:
             assert row["fg"] == row["old"], f"{name}: {row['n']} {row['fg']} was {row['old']}"

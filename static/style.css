@@ -47550,6 +47550,44 @@ button.task-card-toggle {
 .wf-approval-said:empty { display: none; }
 .wf-approval-buttons { display: flex; justify-content: flex-end; gap: 6px; }
 .approval-box .skill-test-out { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 30vh; overflow: auto; }
+
+/* Pip sits at the edge of the workspace and never covers the composer. */
+.companion-setting p { color: var(--fg); opacity: .8; line-height: 1.45; }
+.companion-setting label { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
+.companion-stage {
+  position: fixed; right: 18px; bottom: 106px; z-index: 220;
+  display: grid; justify-items: center; gap: 4px;
+  width: 156px; padding: 10px 8px;
+  color: light-dark(#292724, #eef3f7); background: var(--panel); border: 1px solid var(--border);
+  border-radius: 12px; box-shadow: 0 8px 24px color-mix(in srgb, var(--fg) 12%, transparent);
+  font: 12px/1.3 var(--font-family, monospace); text-align: center;
+}
+.companion-stage[hidden] { display: none; }
+.companion-hide { position: absolute; top: 3px; right: 5px; padding: 2px 5px;
+  color: inherit; background: transparent; border: 0; cursor: pointer; font-size: 16px; }
+.companion-character { display: grid; justify-items: center; align-content: center;
+  grid-template-rows: 13px 22px 16px; width: 90px; min-height: 56px; padding: 3px;
+  color: inherit; background: transparent; border: 0; cursor: pointer;
+  font: 700 15px/1.1 monospace; }
+.companion-character:hover { transform: translateY(-2px); }
+.companion-character:focus-visible, .companion-actions button:focus-visible, .companion-hide:focus-visible,
+.companion-setting input:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
+.companion-spark { font-size: 11px; }
+.companion-face { white-space: pre; }
+.companion-feet { opacity: .8; }
+.companion-line { min-height: 2.5em; display: flex; align-items: center; }
+.companion-actions { display: flex; gap: 7px; }
+.companion-actions button { color: inherit; background: var(--bg); border: 1px solid var(--border);
+  border-radius: 6px; padding: 3px 7px; cursor: pointer; }
+.companion-stage:not([data-pose="rest"]) .companion-character { animation: companion-bob .45s ease-in-out 2; }
+@keyframes companion-bob { 50% { transform: translateY(-4px); } }
+@media (prefers-reduced-motion: reduce) {
+  .companion-stage .companion-character { animation: none !important; transition: none !important; }
+  .companion-character:hover { transform: none; }
+}
+@media (max-width: 768px) {
+  .companion-stage { right: 8px; bottom: 146px; width: 126px; padding: 6px; }
+}
 @media (max-width: 768px) {
   .wf-picker { left: 8px; right: 8px; width: auto; }
   .wf-approval-dialog { right: 8px; left: 8px; bottom: 8px; width: auto; }

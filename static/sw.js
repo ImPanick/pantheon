@@ -8,7 +8,7 @@
 //   - Other static assets (images/fonts/libs): cache-first with bg refresh.
 //   - API / non-GET: never cached.
 // Bump CACHE_NAME whenever the precache list or SW logic changes.
-const CACHE_NAME = 'pantheon-v443-slices-c-d';
+const CACHE_NAME = 'pantheon-v444-companion-palettes';
 
 // KaTeX resolves these from its own stylesheet, so caching the CSS without them
 // gives offline math fallback glyphs instead of proper typesetting.
@@ -127,6 +127,7 @@ const PRECACHE = [
   '/static/js/search-chat.js',
   '/static/js/compare/index.js?v=20261002slicesce',
   '/static/js/theme.js',
+  '/static/js/companion.js',
   '/static/js/censor.js',
   // `B58`. The three entries below carried no query while every importer used
   // one. `caches.match(e.request)` has no `ignoreSearch`, so a bare entry can
