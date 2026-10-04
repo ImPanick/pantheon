@@ -1063,12 +1063,6 @@ def _effective_app_api_path(path: str) -> str:
         collapsed = "/" + collapsed
     return collapsed
 
-
-def _is_reply_feedback_path(path: str) -> bool:
-    """The feedback route has variable IDs, so a fixed prefix cannot name it."""
-    route = path.split("?", 1)[0].split("#", 1)[0].rstrip("/")
-    return bool(re.fullmatch(r"/api/session/[^/]+/message/[^/]+/feedback", route))
-
 # (method, prefix) pairs to refuse specifically. Used for endpoints
 # where GET is fine but writes are destructive or host-control shaped.
 # Saw the agent wipe cookbook_state.json (presets + tasks) by POSTing
@@ -1220,8 +1214,6 @@ async def do_app_api(content: str, owner: Optional[str] = None) -> Dict:
                 continue
             if any(path.startswith(p) for p in _APP_API_BLOCKLIST_PREFIXES):
                 continue
-            if _is_reply_feedback_path(path):
-                continue
             for method, op in methods.items():
                 if method.lower() not in ("get", "post", "put", "patch", "delete"):
                     continue
@@ -1264,8 +1256,6 @@ async def do_app_api(content: str, owner: Optional[str] = None) -> Dict:
     method = (args.get("method") or "GET").upper()
     if method not in ("GET", "POST", "PUT", "PATCH", "DELETE"):
         return {"error": f"Unsupported method: {method}", "exit_code": 1}
-    if _is_reply_feedback_path(_match_path):
-        return {"error": "Reply feedback is the person's action in Pip. I cannot read or change it through app_api; the person can use Pip or send a correction in chat.", "exit_code": 1}
     if any(method == m and _match_path.startswith(p) for m, p in _APP_API_BLOCKLIST_METHOD_PATH):
         # `B896`. The trust-surface refusals name the person as the only one who
         # can do this and point at the UI — a tool result the model reads, so it

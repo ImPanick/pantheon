@@ -95,27 +95,24 @@
 - **Email** — IMAP/SMTP with triage, tags, summaries, reminders and reply drafts
 - **Notes, tasks, calendar** — reminders, todos, scheduled agent tasks, CalDAV sync
 - **Extras** - gallery and image editor, twenty-three themes, eight background patterns
-  (seven animated) chosen independently of the palette, an opt-in Pip ASCII companion,
+  (seven animated) chosen independently of the palette, an ASCII Aegean welcome scene,
   web search, presets, sessions, 2FA
 
-### Themes and Pip
+### Themes and the welcome scene
 
 Seven new palettes draw on familiar platform color families while keeping Pantheon's own
 names and design: Guild, Codehost, Grove, Notebook, Channel, Video, and Mintchat.
 The [desktop palette picker](docs/review/palette-picker-1400.png) and
 [phone palette picker](docs/review/palette-picker-390.png) show all twenty-three choices.
 
-Pip is an optional ASCII companion in Theme settings. It responds to a click or one of four
-fixed, validated model actions, and otherwise makes no model requests. It can also record
-**Helpful** or **Off track** on the latest saved assistant reply. An optional correction is
-saved with that displayed answer; switching answer variants cannot carry the rating over.
-Only the person can record this feedback. **Use correction in chat** fills an empty composer so you can decide
-whether to send it. Pip has an off switch and respects reduced motion.
+The untouched New Chat canvas has original ASCII scenery: a trireme on the Aegean,
+with a faint Olympus ridge and Greek temple behind the welcome message. Gentle CSS
+motion stops when the tab is hidden and becomes a still scene for reduced-motion users.
+The scenery leaves when chat begins and never covers the composer or its controls.
 
-<table><tr><td><img src="docs/review/companion-channel-1400.png" alt="Channel palette with Pip's helpful feedback card" width="100%"></td><td><img src="docs/review/feedback-correction-1400.png" alt="Correction editor on the latest assistant reply" width="100%"></td></tr></table>
+<table><tr><td><img src="docs/review/voyage-notebook-1440.png" alt="Aegean welcome scene in Notebook" width="100%"></td><td><img src="docs/review/voyage-channel-1440.png" alt="Aegean welcome scene in Channel" width="100%"></td></tr></table>
 
-At phone width: [Mintchat with Pip](docs/review/companion-mintchat-390.png) and
-[the correction editor](docs/review/feedback-correction-390.png).
+[Phone view in Mintchat](docs/review/voyage-mintchat-390.png).
 
 **What this fork has added, and what proves it, is in the [proof ledger](LEDGER.md)** — 26 claims,
 each with where its number came from and a command you can run to check it. The short version:

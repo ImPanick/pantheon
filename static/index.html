@@ -308,7 +308,7 @@
        real request is discarded and the font fetched a second time. -->
   <link rel="preload" as="font" type="font/woff2" crossorigin href="/static/fonts/FiraCode-Regular.woff2">
   <link rel="preload" as="font" type="font/woff2" crossorigin href="/static/fonts/FiraCode-SemiBold.woff2">
-  <link rel="stylesheet" href="/static/style.css?v=20261002slicesce">
+  <link rel="stylesheet" href="/static/style.css?v=20261004voyage">
   <link rel="modulepreload" href="/static/app.js?v=20261002slicesce">
   <!-- B58. This must carry the SAME query as the <script> tag below, or the
        browser fetches chat.js twice: the cache and the module map are keyed on
@@ -795,11 +795,6 @@
       <div class="admin-card" id="themeUserCard" style="display:none">
         <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px;opacity:0.6"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>Your Themes</h2>
         <div class="theme-grid" id="themeUserGrid"></div>
-      </div>
-      <div class="admin-card companion-setting">
-        <h2>Meet Pip</h2>
-        <p>An optional ASCII companion. Pip reacts to you and can collect feedback on the latest assistant reply in this chat.</p>
-        <label><input id="companion-toggle" type="checkbox"> Show Pip</label>
       </div>
     </div>
 
@@ -1323,6 +1318,35 @@
     <div class="chat-top-bar">
       <button type="button" class="incognito-indicator" id="incognito-indicator" title="Nobody mode active — click to deactivate" style="display:none;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><line x1="8" y1="16" x2="16" y2="8"/><line x1="8" y1="8" x2="16" y2="16"/></svg></button>
       <div class="chat-meta-overlay"><span id="current-meta">Pantheon Chat</span><span id="current-meta-count" class="chat-meta-count" aria-hidden="true"></span><span id="session-cost-display" class="session-cost-display" style="display:none;"></span><span class="export-dropdown-wrap" id="export-dropdown-wrap"><button type="button" class="export-dl-btn" id="export-dl-btn" title="More"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg></button><div class="export-dropdown-menu" id="export-dropdown-menu"><div class="export-dropdown-item" id="export-rename-btn"><span class="dropdown-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg></span><span>Rename</span></div><div class="export-dropdown-item" id="export-compact-btn"><span class="dropdown-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16"/><path d="M7 12h10"/><path d="M10 17h4"/></svg></span><span class="export-compact-pill">Compact</span></div><div class="export-dropdown-item" id="export-copy-btn"><span class="dropdown-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></span><span>Copy Chat</span></div><div class="export-dropdown-item" id="export-pdf-btn"><span class="dropdown-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M9 15v-2h2a1.5 1.5 0 0 1 0 3H9z"/></svg></span><span>PDF</span></div><div class="export-dropdown-item" id="export-doc-btn"><span class="dropdown-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg></span><span>Save to Documents</span></div><div class="export-dropdown-item dropdown-item-danger" id="export-delete-btn"><span class="dropdown-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg></span><span>Delete Chat</span></div></div></span></div>    </div>
+    <div id="welcome-scenery" class="welcome-scenery" aria-hidden="true">
+      <pre class="scenery-olympus">                       /\                              /\
+          /\          /  \        /\                  /  \
+     /\  /  \    /\  /    \  /\  /  \    /\        /    \  /\
+ ___/  \/    \__/  \/      \/  \/    \__/  \______/      \/  \___</pre>
+      <pre class="scenery-temple">                    /\
+               ____/  \____
+              /____________\
+             /______________\
+             |  ||  ||  ||  |
+             |  ||  ||  ||  |
+            _|__||__||__||__|_</pre>
+      <div class="scenery-sea">
+        <pre class="scenery-warship">                           |\
+                           | \
+                       ____|__\____
+                      /    |   \   \
+                     /_____|____\___\
+                    /      |         \
+       ____________/_______|__________\________
+    __/  o  o  o  o  o  o  o  o  o  o     \___&gt;
+    \____________________________________________/
+       \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \</pre>
+        <pre class="scenery-wave scenery-wave-back">     ~~~       ~~~~~       ~~~       ~~~~~       ~~~
+  ~~      ~~~      ~~~~       ~~~       ~~~~      ~~</pre>
+        <pre class="scenery-wave scenery-wave-front">~~      ~~~~~       ~~       ~~~~~      ~~       ~~~~
+   ~~~~       ~~~       ~~~~       ~~~       ~~~~</pre>
+      </div>
+    </div>
     <div id="welcome-screen">
       <div class="welcome-name"><svg class="welcome-boat" viewBox="0 0 32 32"><path d="M16 4L16 22L6 22Z" fill="currentColor"/><path d="M16 8L16 22L24 22Z" fill="currentColor" opacity="0.6"/><path d="M4 24Q10 20 16 24Q22 28 28 24" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round"/></svg>Pantheon</div>
       <div class="welcome-sub" id="welcome-sub">New chat ready.</div>
@@ -2452,7 +2476,7 @@
               </label>
               <label class="vis-row">
                 <span class="vis-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v2m0 14v2m-7-9H3m18 0h-2m-1.5-6.5L16 7m-8-1.5L6.5 7m11 11l-1.5-1.5M8 18l-1.5 1.5"/><circle cx="12" cy="12" r="4"/></svg></span>
-                <span class="vis-label">Welcome Message <span class="vis-hint">Logo &amp; tips on empty chat</span></span>
+                <span class="vis-label">Welcome Scene <span class="vis-hint">Logo, tips &amp; ASCII voyage on empty chat</span></span>
                 <input type="checkbox" checked data-ui-key="welcome-text"><span class="vis-switch"></span>
               </label>
               <label class="vis-row">
@@ -3726,29 +3750,6 @@
   <!-- Toast container (aria-live for screen readers) -->
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-  <aside id="companion-stage" class="companion-stage" aria-label="Pip, your ASCII companion" hidden>
-    <div class="companion-head"><span><strong>Pip</strong><small>ASCII companion</small></span><button type="button" class="companion-hide" aria-label="Hide Pip">Hide</button></div>
-    <div class="companion-main">
-      <button type="button" class="companion-character" aria-label="Greet Pip"><pre class="companion-art" aria-hidden="true">  .---.
- / o o \
-|  \_/  |
- \_____/
-   / \</pre></button>
-      <div class="companion-voice"><span class="companion-line" role="status" aria-live="polite">Here for your next idea.</span>
-        <span class="companion-actions"><button type="button" class="companion-cheer" aria-label="Cheer with Pip">Cheer</button><button type="button" class="companion-rest" aria-label="Let Pip rest">Rest</button></span>
-      </div>
-    </div>
-    <section class="companion-feedback" aria-label="Feedback on the latest assistant reply">
-      <div class="companion-feedback-heading">Latest reply</div>
-      <p class="companion-feedback-hint">No assistant reply to rate in this chat yet.</p>
-      <div class="companion-feedback-actions" hidden><button type="button" class="companion-helpful">Helpful</button><button type="button" class="companion-off-track">Off track</button></div>
-      <form class="companion-feedback-form" hidden><label for="companion-correction">What should it do instead? <span>(optional)</span></label><textarea id="companion-correction" maxlength="280" rows="2" placeholder="A short correction for this reply"></textarea><div class="companion-feedback-form-actions"><button type="submit" class="companion-save-feedback">Save feedback</button><button type="button" class="companion-cancel-feedback">Cancel</button></div></form>
-      <p class="companion-feedback-status" role="status" aria-live="polite"></p>
-      <button type="button" class="companion-feedback-retry" hidden>Retry</button>
-      <button type="button" class="companion-use-in-chat" hidden>Use correction in chat</button>
-    </section>
-  </aside>
-
 
 
 <!-- Load modules in this order -->
@@ -3779,7 +3780,7 @@
 <script src="/static/js/cookbookSchedule.js"></script>
 <script type="module" src="/static/js/search-chat.js"></script>
 <script type="module" src="/static/js/theme.js"></script>
-<script type="module" src="/static/js/companion.js"></script>
+<script type="module" src="/static/js/welcomeScenery.js?v=20261004voyage"></script>
 <script type="module" src="/static/js/censor.js"></script>
 <script type="module" src="/static/js/settings.js?v=20261002slicesce"></script>
 <script type="module" src="/static/js/assistant.js"></script>

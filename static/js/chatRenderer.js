@@ -4411,7 +4411,6 @@ export function addMessage(role, content, modelName, metadata) {
         b.innerHTML = _renderVariant(sv);
         wrap.dataset.raw = sv.raw;
         wrap.dataset.variantIndex = String(newIdx);
-        document.dispatchEvent(new Event('pantheon:reply-list-changed'));
         if (window.hljs) wrap.querySelectorAll('pre code').forEach(bl => window.hljs.highlightElement(bl));
         tagLabel.textContent = _icons[sv.label] || '';
         tagLabel.className = 'variant-tag' + (sv.label === 'shorter' ? ' variant-tag-scissors' : '');

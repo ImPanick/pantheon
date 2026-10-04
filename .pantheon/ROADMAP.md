@@ -247,9 +247,9 @@ they are for.*
 > Entries below the `P0-31` one keep the figure they were written with: a record of what
 > was claimed at the time is worth more than a quietly corrected one (`B44`).
 
-### Platform palettes and Pip companion - draft review, 2026-10-04
+### Platform palettes and Aegean welcome scene - draft review, 2026-10-04
 `3a032456`. **1118 tracked, 806 done. 0 phase rows changed; 0 backlog rows closed;**
-Seven original palettes extend the theme editor without changing its backgrounds or stored options. Pip is off by default, uses local fixed expressions, and accepts only four validated model actions. Its reply feedback records a bounded helpful or off-track rating and optional correction for the latest saved assistant reply, without adding the correction to model context or making a model call. The write is person-only, and feedback is bound to the displayed answer variant and text; New Chat clears the old card immediately. Desktop and mobile browser checks cover dark and light palettes, keyboard input, Hide/Show, reload persistence, retry, and interrupted saves; Linux CI runs the full suite.
+Seven original palettes extend the theme editor without changing its backgrounds or stored options. The empty chat canvas gains original ASCII scenery: a Greek trireme sailing beneath a faint Olympus ridge and temple. The scene uses semantic theme colors, leaves when chat begins, pauses in hidden tabs, and stays still under reduced motion. The Pip companion and its feedback surface were removed from this draft at the owner's request. Desktop and phone browser checks cover light and dark palettes, empty/chat transitions, keyboard access, and reduced motion; Linux CI runs the full suite.
 
 ### Dependency blockers — draft PR #12
 `f2cf0c7..f1658a5`. **1118 tracked, 806 done. 0 new phase rows, 0 regressions. 0 rows closed; `B1116` and `B1117` filed.**

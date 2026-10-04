@@ -2320,7 +2320,6 @@ export function createDirectChat(url, modelId, endpointId, opts = {}) {
   // Clear chat area and show welcome
   const box = document.getElementById('chat-history');
   if (box) box.innerHTML = '';
-  document.dispatchEvent(new CustomEvent('pantheon:session-changed', { detail: { sessionId: null } }));
   if (window.chatModule && window.chatModule.showWelcomeScreen) {
     window.chatModule.showWelcomeScreen();
   }

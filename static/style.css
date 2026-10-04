@@ -2307,7 +2307,121 @@ body.bg-pattern-sparkles {
     .hwfit-header .hwfit-sortable { cursor: pointer; transition: color .12s; }
     .hwfit-header .hwfit-sortable:hover { color: var(--fg); text-decoration: underline dotted; }
     .hwfit-header .hwfit-sort-active { color: var(--fg); font-weight: 600; }
-    /* Welcome screen — centered in available space above input bar */
+    /* The Aegean scene belongs to the untouched welcome state. It is decorative
+       text in the existing chat canvas, below every control and theme surface. */
+    .welcome-scenery {
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+      overflow: hidden;
+      pointer-events: none;
+      user-select: none;
+      opacity: 1;
+      transition: opacity .25s ease;
+      font-family: 'Fira Code', var(--font-family, monospace);
+      font-variant-ligatures: none;
+    }
+    .chat-container:not(.welcome-active) .welcome-scenery { display: none; }
+    body:not(.welcome-ready) .welcome-scenery { opacity: 0; }
+    .welcome-scenery pre {
+      position: absolute;
+      margin: 0;
+      padding: 0;
+      border: 0;
+      border-radius: 0;
+      background: transparent !important;
+      box-shadow: none;
+      min-height: 0;
+      width: max-content;
+      max-width: none;
+      white-space: pre;
+      word-break: normal;
+      overflow: visible;
+      line-height: 1.12;
+      letter-spacing: 0;
+    }
+    .scenery-olympus {
+      top: 12%;
+      left: 50%;
+      transform: translateX(-50%);
+      color: color-mix(in srgb, var(--fg) 25%, transparent);
+      font-size: clamp(7px, .78vw, 11px);
+      mask-image: linear-gradient(90deg, transparent, black 15%, black 85%, transparent);
+    }
+    .scenery-temple {
+      top: 19%;
+      right: 10%;
+      color: color-mix(in srgb, var(--fg) 30%, transparent);
+      font-size: clamp(8px, .86vw, 12px);
+    }
+    .scenery-sea {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: clamp(34px, 7vh, 80px);
+      height: 220px;
+      display: flex;
+      justify-content: center;
+      align-items: flex-end;
+      overflow: hidden;
+    }
+    .welcome-scenery .scenery-warship {
+      position: relative;
+      z-index: 1;
+      color: color-mix(in srgb, var(--fg) 48%, var(--red));
+      opacity: .78;
+      font-size: clamp(9px, 1.15vw, 16px);
+      animation: scenery-sail 8s ease-in-out infinite alternate;
+    }
+    .welcome-scenery .scenery-wave {
+      left: 50%;
+      bottom: 0;
+      color: color-mix(in srgb, var(--fg) 28%, var(--red));
+      font-size: clamp(9px, 1.15vw, 16px);
+      mask-image: linear-gradient(90deg, transparent, black 12%, black 88%, transparent);
+    }
+    .scenery-wave-back {
+      opacity: .45;
+      animation: scenery-wave-back 9s ease-in-out infinite alternate;
+    }
+    .scenery-wave-front {
+      opacity: .6;
+      animation: scenery-wave-front 11s ease-in-out infinite alternate;
+    }
+    @keyframes scenery-sail {
+      from { transform: translate(-7px, 1px) rotate(-.3deg); }
+      to { transform: translate(7px, -2px) rotate(.3deg); }
+    }
+    @keyframes scenery-wave-back {
+      from { transform: translateX(calc(-50% - 11px)); }
+      to { transform: translateX(calc(-50% + 11px)); }
+    }
+    @keyframes scenery-wave-front {
+      from { transform: translateX(calc(-50% + 12px)); }
+      to { transform: translateX(calc(-50% - 12px)); }
+    }
+    .welcome-scenery[data-paused="true"] .scenery-warship,
+    .welcome-scenery[data-paused="true"] .scenery-wave { animation-play-state: paused; }
+    @media (prefers-reduced-motion: reduce) {
+      .welcome-scenery .scenery-warship,
+      .welcome-scenery .scenery-wave { animation: none; }
+      .scenery-wave-back, .scenery-wave-front { transform: translateX(-50%); }
+    }
+    @media (max-width: 768px) {
+      .scenery-olympus { top: 18%; left: 44%; }
+      .scenery-temple { top: 23%; right: 45px; opacity: .7; }
+      .scenery-sea { bottom: 145px; height: 135px; }
+      .welcome-scenery .scenery-warship,
+      .welcome-scenery .scenery-wave { font-size: 9px; }
+      .chat-container.welcome-active:has(.chat-input-bar:focus-within) .welcome-scenery { opacity: 0; }
+    }
+    @media (max-height: 500px) {
+      .scenery-olympus, .scenery-temple { display: none; }
+      .scenery-sea { bottom: 18px; height: 100px; opacity: .45; }
+    }
+    #welcome-screen { z-index: 1; }
+    .chat-container.welcome-active .chat-input-bar { position: relative; z-index: 2; }
+    /* Welcome screen - centered in available space above input bar */
     #welcome-screen {
       position:absolute;
       top:40%;
@@ -47550,60 +47664,6 @@ button.task-card-toggle {
 .wf-approval-said:empty { display: none; }
 .wf-approval-buttons { display: flex; justify-content: flex-end; gap: 6px; }
 .approval-box .skill-test-out { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 30vh; overflow: auto; }
-
-/* Pip's feedback card follows the composer only when their columns overlap. */
-.companion-setting p { color: var(--fg); opacity: .8; line-height: 1.45; }
-.companion-setting label { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
-.companion-stage {
-  position: fixed; right: 18px; bottom: 106px; z-index: 220;
-  width: 252px; max-height: min(65vh, 480px); overflow-y: auto;
-  color: light-dark(#292724, #eef3f7); background: var(--panel); border: 1px solid var(--border);
-  border-radius: 14px; box-shadow: 0 12px 30px color-mix(in srgb, var(--fg) 16%, transparent);
-  font: 12px/1.4 var(--font-family, monospace);
-}
-.companion-stage[hidden], .companion-stage [hidden] { display: none !important; }
-.companion-head { display: flex; justify-content: space-between; align-items: center; padding: 8px 11px;
-  border-bottom: 1px solid var(--border); background: color-mix(in srgb, var(--red) 9%, var(--panel)); }
-.companion-head strong { display: block; font-size: 13px; letter-spacing: .04em; }
-.companion-head small { display: block; font-size: 9px; letter-spacing: .08em; text-transform: uppercase; opacity: .7; }
-.companion-hide { color: inherit; background: transparent; border: 1px solid var(--border);
-  border-radius: 6px; padding: 4px 7px; cursor: pointer; font: inherit; }
-.companion-main { display: flex; align-items: center; gap: 10px; padding: 10px 11px; }
-.companion-character { display: grid; place-items: center; flex: none; width: 94px; min-height: 88px;
-  color: inherit; background: color-mix(in srgb, var(--red) 10%, var(--bg));
-  border: 1px solid color-mix(in srgb, var(--red) 28%, var(--border)); border-radius: 10px;
-  cursor: pointer; }
-.companion-art { margin: 0; color: inherit; font: 700 12px/1.15 monospace; white-space: pre; }
-.companion-voice { display: grid; gap: 8px; min-width: 0; }
-.companion-line { display: block; min-height: 2.8em; font-size: 11px; font-weight: 600; }
-.companion-actions { display: flex; gap: 5px; }
-.companion-actions button, .companion-feedback button { color: inherit; background: var(--bg);
-  border: 1px solid var(--border); border-radius: 6px; padding: 5px 7px; cursor: pointer; font: inherit; }
-.companion-actions button { padding: 3px 5px; font-size: 10px; }
-.companion-feedback { padding: 10px 11px 11px; border-top: 1px solid var(--border); }
-.companion-feedback-heading { font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; opacity: .78; }
-.companion-feedback-hint { margin: 5px 0 8px; font-size: 11px; line-height: 1.4; overflow-wrap: anywhere; }
-.companion-feedback-actions, .companion-feedback-form-actions { display: flex; gap: 6px; }
-.companion-feedback-actions button { flex: 1; }
-.companion-feedback button[aria-pressed="true"] { border-color: var(--red); background: color-mix(in srgb, var(--red) 16%, var(--bg)); }
-.companion-feedback button:disabled { cursor: wait; opacity: .6; }
-.companion-feedback-form label { display: block; margin-bottom: 5px; font-size: 11px; }
-.companion-feedback-form label span { opacity: .7; }
-.companion-feedback-form textarea { box-sizing: border-box; width: 100%; min-height: 55px; resize: vertical;
-  color: inherit; background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
-  padding: 6px; font: inherit; }
-.companion-feedback-form-actions { margin-top: 6px; }
-.companion-feedback-form-actions .companion-save-feedback { border-color: var(--red); }
-.companion-feedback-status { margin: 7px 0 0; font-size: 10px; line-height: 1.4; overflow-wrap: anywhere; }
-.companion-feedback-status:empty { display: none; }
-.companion-use-in-chat, .companion-feedback-retry { margin-top: 7px; }
-.companion-stage button:hover { border-color: var(--red); }
-.companion-art { transition: transform .24s ease-out; }
-.companion-stage[data-pose="cheer"] .companion-art { transform: translateY(-3px); }
-.companion-stage[data-pose="ponder"] .companion-art { transform: rotate(-3deg); }
-.companion-stage[data-pose="greet"] .companion-art { transform: rotate(3deg); }
-@media (prefers-reduced-motion: reduce) { .companion-art { transition-duration: 0.01ms; } }
-@media (max-width: 768px) { .companion-stage { right: 8px; bottom: 146px; width: 226px; max-height: min(56vh, 370px); } }
 @media (max-width: 768px) {
   .wf-picker { left: 8px; right: 8px; width: auto; }
   .wf-approval-dialog { right: 8px; left: 8px; bottom: 8px; width: auto; }

@@ -2,7 +2,6 @@
 """History routes — session history, truncation, fork, conversation topics."""
 
 import json
-import hashlib
 import uuid
 import logging
 import re
@@ -11,8 +10,8 @@ from typing import Dict, Any, Optional
 from fastapi import APIRouter, Request, HTTPException
 
 from core.models import ChatMessage
-from core.database import SessionLocal, ChatMessage as DbChatMessage, AssistantFeedback, Session as DbSession
-from src.auth_helpers import effective_user, request_is_a_person
+from core.database import SessionLocal, ChatMessage as DbChatMessage, Session as DbSession
+from src.auth_helpers import effective_user
 from src.tool_approval_scopes import sanitize_client_message_metadata
 from src.agent_stops import RUN_KEYS, is_continue_prompt, merge_runs   # `B941`
 from src.topic_analyzer import analyze_topics
@@ -139,117 +138,6 @@ def _merged_reply_metadata(meta1: dict, meta2: dict) -> dict:
 def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
     router = APIRouter(tags=["history"])
 
-    def _feedback_target(db, session_id: str, message_id: str) -> DbChatMessage:
-        """Only the latest visible assistant reply in this owned chat is rateable."""
-        target = db.query(DbChatMessage).filter(
-            DbChatMessage.id == message_id,
-            DbChatMessage.session_id == session_id,
-            DbChatMessage.role == "assistant",
-        ).first()
-        if target is None:
-            raise HTTPException(404, "Reply not found")
-        recent = db.query(DbChatMessage).filter(
-            DbChatMessage.session_id == session_id,
-            DbChatMessage.role == "assistant",
-        ).order_by(DbChatMessage.timestamp.desc(), DbChatMessage.id.desc())
-        for reply in recent:
-            try:
-                meta = json.loads(reply.meta_data or "{}")
-            except (TypeError, ValueError):
-                meta = {}
-            if isinstance(meta, dict) and (meta.get("hidden") or meta.get("source") == "slash"):
-                continue
-            if reply.id != message_id:
-                raise HTTPException(409, "A newer reply is active")
-            return target
-        raise HTTPException(409, "No visible reply is active")
-
-    def _feedback_identity(target: DbChatMessage, variant_index: int) -> tuple[str, str]:
-        """Bind feedback to the visible variant's persisted text, not its bubble ID alone."""
-        if type(variant_index) is not int or variant_index < 0:
-            raise HTTPException(400, "Invalid reply variant")
-        try:
-            metadata = json.loads(target.meta_data or "{}")
-        except (TypeError, ValueError):
-            metadata = {}
-        variants = metadata.get("variants") if isinstance(metadata, dict) else None
-        if variants is not None:
-            if not isinstance(variants, list) or variant_index >= len(variants):
-                raise HTTPException(409, "Reply variant is not saved yet")
-            variant = variants[variant_index]
-            if not isinstance(variant, dict) or not isinstance(variant.get("raw"), str):
-                raise HTTPException(409, "Reply variant is unavailable")
-            content = variant["raw"]
-        elif variant_index == 0:
-            content = target.content
-        else:
-            raise HTTPException(409, "Reply variant is not saved yet")
-        return content, hashlib.sha256(str(content).encode("utf-8")).hexdigest()
-
-    @router.get("/api/session/{session_id}/message/{message_id}/feedback")
-    def get_assistant_feedback(request: Request, session_id: str, message_id: str, variant_index: int = 0):
-        if not request_is_a_person(request):
-            raise HTTPException(403, "Only the person can view reply feedback")
-        _verify_session_owner(request, session_id)
-        db = SessionLocal()
-        try:
-            target = _feedback_target(db, session_id, message_id)
-            content, digest = _feedback_identity(target, variant_index)
-            saved = db.get(AssistantFeedback, message_id)
-            if saved and saved.variant_index == variant_index and saved.content_digest == digest:
-                return {"rating": saved.rating, "correction": saved.correction, "content_digest": digest,
-                        "content": content}
-            return {"rating": None, "correction": "", "content_digest": digest, "content": content}
-        finally:
-            db.close()
-
-    @router.post("/api/session/{session_id}/message/{message_id}/feedback")
-    async def save_assistant_feedback(request: Request, session_id: str, message_id: str):
-        if not request_is_a_person(request):
-            raise HTTPException(403, "Only the person can save reply feedback")
-        _verify_session_owner(request, session_id)
-        try:
-            payload = await request.json()
-        except (ValueError, TypeError):
-            raise HTTPException(400, "Invalid feedback")
-        if not isinstance(payload, dict) or payload.get("rating") not in ("helpful", "off_track"):
-            raise HTTPException(400, "Invalid feedback rating")
-        note = payload.get("correction", "")
-        if not isinstance(note, str):
-            raise HTTPException(400, "Invalid correction")
-        note = note.strip()
-        if len(note) > 280 or any(ord(char) < 32 and char not in "\n\t" for char in note):
-            raise HTTPException(400, "Correction must be 280 characters or less")
-        if payload["rating"] == "helpful" and note:
-            raise HTTPException(400, "Helpful feedback cannot include a correction")
-        variant_index = payload.get("variant_index", 0)
-        expected_digest = payload.get("content_digest")
-        if not isinstance(expected_digest, str) or len(expected_digest) != 64 or any(
-            char not in "0123456789abcdef" for char in expected_digest
-        ):
-            raise HTTPException(400, "Invalid reply identity")
-        db = SessionLocal()
-        try:
-            target = _feedback_target(db, session_id, message_id)
-            _, digest = _feedback_identity(target, variant_index)
-            if expected_digest != digest:
-                raise HTTPException(409, "Reply changed since feedback was opened")
-            saved = db.get(AssistantFeedback, message_id)
-            if saved is None:
-                saved = AssistantFeedback(message_id=message_id, session_id=session_id,
-                                          variant_index=variant_index, content_digest=digest,
-                                          rating=payload["rating"], correction=note)
-                db.add(saved)
-            else:
-                saved.variant_index = variant_index
-                saved.content_digest = digest
-                saved.rating = payload["rating"]
-                saved.correction = note
-            db.commit()
-            return {"status": "saved", "rating": saved.rating, "correction": saved.correction}
-        finally:
-            db.close()
-
     def _reserve_message_uploads(
         request: Request,
         content: Any,
@@ -335,7 +223,6 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
                 meta = {}
         if m.timestamp and "timestamp" not in meta:
             meta["timestamp"] = m.timestamp.isoformat() + "Z"
-        meta["_db_id"] = m.id
         if meta:
             entry["metadata"] = meta
         return entry
@@ -573,17 +460,6 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
                 if db_msg.meta_data:
                     try: meta = json.loads(db_msg.meta_data)
                     except (json.JSONDecodeError, ValueError): pass
-                if not isinstance(meta, dict):
-                    meta = {}
-                if db_msg.role == "assistant" and isinstance(meta.get("variants"), list):
-                    variant_index = body.get("variant_index", meta.get("variantIndex", 0))
-                    variants = meta["variants"]
-                    if (type(variant_index) is not int or variant_index < 0
-                            or variant_index >= len(variants)
-                            or not isinstance(variants[variant_index], dict)):
-                        raise HTTPException(409, "Reply variant changed; reload before editing")
-                    variants[variant_index]["raw"] = content
-                    meta["variantIndex"] = variant_index
                 meta['edited'] = True
                 db_msg.meta_data = json.dumps(meta)
 
@@ -594,15 +470,9 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
                         if isinstance(hmsg, ChatMessage):
                             hmsg.content = content
                             hmsg.metadata['edited'] = True
-                            if "variants" in meta:
-                                hmsg.metadata['variants'] = meta['variants']
-                                hmsg.metadata['variantIndex'] = meta['variantIndex']
                         elif isinstance(hmsg, dict):
                             hmsg['content'] = content
                             hmsg['metadata']['edited'] = True
-                            if "variants" in meta:
-                                hmsg['metadata']['variants'] = meta['variants']
-                                hmsg['metadata']['variantIndex'] = meta['variantIndex']
                         break
 
                 db.commit()

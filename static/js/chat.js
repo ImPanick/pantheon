@@ -4721,9 +4721,6 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
                 // can be edited/deleted immediately, without reloading the chat.
                 if (_isBg) continue;
                 if (holder && json.id) holder.dataset.dbId = json.id;
-                if (json.id) document.dispatchEvent(new CustomEvent('pantheon:message-saved', {
-                  detail: { sessionId: streamSessionId, messageId: json.id },
-                }));
                 // `B892`. The reply is stored now, and with it what its
                 // request was spent on — the wheel reads that back.
                 refreshChatContextHeader('saved');
@@ -7495,7 +7492,6 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
       _pendingVariants = variants;
       _pendingVariantLabel = 'regen';
       aiMsgElement.remove();
-      document.dispatchEvent(new Event('pantheon:reply-list-changed'));
 
       _hideUserBubble = true;
       const messageInput = uiModule.el('message');
@@ -7533,7 +7529,6 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
 
     msgElement.dataset.variants = JSON.stringify(variants);
     msgElement.dataset.variantIndex = String(variants.length - 1);
-    document.dispatchEvent(new Event('pantheon:reply-list-changed'));
 
     _renderVariantNav(msgElement, variants, variants.length - 1);
 
@@ -7544,8 +7539,7 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ metadata: { variants: variants, variantIndex: variants.length - 1 } })
-      }).then(res => { if (res.ok) document.dispatchEvent(new Event('pantheon:reply-list-changed')); })
-        .catch(e => console.warn('update-last-meta (variants) failed:', e));
+      }).catch(e => console.warn('update-last-meta (variants) failed:', e));
     }
   }
 
@@ -7631,7 +7625,6 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
     if (body) body.innerHTML = v.html;
     msgElement.dataset.raw = v.raw;
     msgElement.dataset.variantIndex = String(newIdx);
-    document.dispatchEvent(new Event('pantheon:reply-list-changed'));
     if (window.hljs) {
       msgElement.querySelectorAll('pre code').forEach(block => window.hljs.highlightElement(block));
     }
@@ -8023,7 +8016,6 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
       // error output shown before a model was selected, #1428). Just remove the
       // DOM so the "x" works regardless.
       domToRemove.forEach(el => el.remove());
-      document.dispatchEvent(new Event('pantheon:reply-list-changed'));
       if (uiModule) uiModule.showToast('Message deleted');
       return;
     }
@@ -8036,7 +8028,6 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
       });
       if (!res.ok) throw new Error('Server error ' + res.status);
       domToRemove.forEach(el => el.remove());
-      document.dispatchEvent(new Event('pantheon:reply-list-changed'));
       if (uiModule) uiModule.showToast('Message deleted');
     } catch (err) {
       console.error('Delete failed:', err);
@@ -8102,28 +8093,16 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
       if (!sessionId) { cleanup(); return; }
 
       try {
-        let variants = null;
-        try { variants = JSON.parse(msgElement.dataset.variants || 'null'); } catch (_) {}
-        const variantIndex = Number(msgElement.dataset.variantIndex);
-        const selectedVariant = Array.isArray(variants) && Number.isSafeInteger(variantIndex)
-          && variantIndex >= 0 && variantIndex < variants.length;
         const res = await fetch(`${API_BASE}/api/session/${sessionId}/edit-message`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ msg_id: msgId, content: newContent,
-            ...(selectedVariant ? { variant_index: variantIndex } : {}) }),
+          body: JSON.stringify({ msg_id: msgId, content: newContent }),
         });
         if (!res.ok) throw new Error('Server error ' + res.status);
 
         // Re-render body with markdown
         body.innerHTML = markdownModule.processWithThinking(markdownModule.squashOutsideCode(newContent));
         msgElement.dataset.raw = newContent;
-        if (selectedVariant) {
-          variants[variantIndex] = { ...variants[variantIndex], raw: newContent, html: body.innerHTML };
-          msgElement.dataset.variants = JSON.stringify(variants);
-          _renderVariantNav(msgElement, variants, variantIndex);
-        }
-        document.dispatchEvent(new Event('pantheon:reply-list-changed'));
 
         // Add edited indicator if not already present
         if (!msgElement.querySelector('.edited-indicator')) {
@@ -8277,16 +8256,14 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
         variants.push({ raw: newText, html: bodyEl ? bodyEl.innerHTML : '', label: varLabel });
         aiMsgElement.dataset.variants = JSON.stringify(variants);
         aiMsgElement.dataset.variantIndex = String(variants.length - 1);
-        document.dispatchEvent(new Event('pantheon:reply-list-changed'));
 
         // Persist variant metadata to server
         try {
-          const variantSave = await fetch(`${API_BASE}/api/session/${sessionId}/update-last-meta`, {
+          await fetch(`${API_BASE}/api/session/${sessionId}/update-last-meta`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ metadata: { variants: variants, variantIndex: variants.length - 1 } }),
           });
-          if (variantSave.ok) document.dispatchEvent(new Event('pantheon:reply-list-changed'));
         } catch (_) {}
 
         // Re-render variant navigation

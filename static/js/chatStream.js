@@ -656,11 +656,6 @@ export function handleUIControl(uiData) {
       var modelDisplay = document.querySelector('.current-model-name, #current-model');
       if (modelDisplay) modelDisplay.textContent = uiData.model;
 
-    } else if (uiEvent === 'companion' || uiData.ui_event === 'companion') {
-      // Load Pip only for an explicit companion action. Stream harnesses that
-      // exercise unrelated events do not need the optional companion module.
-      import('./companion.js').then(({ companionAction }) => companionAction(uiData.pose));
-
     } else if (uiEvent === 'set_theme' || uiData.ui_event === 'set_theme') {
       var tm = themeModule;
       if (tm && tm.THEMES && tm.applyColors && tm.save) {
