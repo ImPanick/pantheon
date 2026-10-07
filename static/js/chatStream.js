@@ -755,9 +755,12 @@ export function handleUIControl(uiData) {
           if (fn) fn();
         }).catch(function(){});
       } else if (panel === 'sessions') {
+        // `B1194`: the chats, on the Chats tab — a door the Library's switches
+        // leave open (with no tab it opened on Documents, and was refused with
+        // the Library switched off).
         import('./sessions.js').then(function(mod) {
           var fn = mod.openLibrary || (mod.default && mod.default.openLibrary);
-          if (fn) fn();
+          if (fn) fn('chats');
         }).catch(function(){});
       } else if (panel === 'forge' || panel === 'cookbook') {
         // `P0-29`. `open_panel` is wire protocol between the model and this

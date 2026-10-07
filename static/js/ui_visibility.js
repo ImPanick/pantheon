@@ -131,9 +131,22 @@ function _tool(def) {
     // A composer control rather than a Tools entry: hidden with its switches,
     // but no door of its own to guard.
     chip: false,
+    // What "Off hides …" names when it is not the whole tool (the Library's
+    // switches take its documents, `B1194`). `null`: the label.
+    hides: null,
+    // What a tool's switches leave standing in its window, and the way to it:
+    // `{ tabs, label, where, say, door, open }` — the window's tabs that still
+    // open, the name of what stays, where it lives, the line that says so, the
+    // label of the button that goes there, and the function that does.
+    // `null`: nothing.
+    keeps: null,
     ...def,
   });
 }
+
+// `B1194`. Where the chat archive's own door is, by the labels a person reads:
+// the Chats section's *manage* button (`#chats-library-btn`).
+const _ARCHIVE_WHERE = 'Chats → manage';
 
 /**
  * The table. One row per Tools entry (the audit's § 3 rows, lower-case keys),
@@ -187,11 +200,35 @@ export const TOOL_VISIBILITY = Object.freeze({
     routes: ['/gallery'], shortcut: 'open_gallery',
     feature: 'gallery', privilege: 'can_generate_images', ui: 'tool-gallery',
   }),
+  // `B1194` — `D-2026-10-07-02` §3, the owner: *"Hiding library should guide
+  // archives."* The three switches here (*Document Editor* for everyone,
+  // *Document editor* for one person, *Library* in this browser) take the
+  // documents and the editor away, never the chat archive. Measured on
+  // `fcd559e`: the archive lives in the Library window's tabs and the sidebar's
+  // *manage* door is `openLibrary` too, so every one of them took archived
+  // chats with it. Now the window's Chats, Research and Archive tabs open
+  // whatever these switches say (the window draws without its Documents tab);
+  // `/library` and the Library's other doors refuse with the guide line and an
+  // *Open archive* button. Research stays because it is not document-bound:
+  // its routes answer to Deep Research's switch (`require_feature
+  // ("deep_research")`), not to `document_editor`.
   library: _tool({
     label: 'Library', doors: ['tool-library-btn', 'rail-archive'],
     windows: ['doclib-modal'], slash: ['library', 'tour-library'],
     routes: ['/library'], shortcut: 'open_library',
     feature: 'document_editor', privilege: 'can_use_documents', ui: 'tool-library',
+    hides: 'documents',
+    keeps: Object.freeze({
+      tabs: Object.freeze(['chats', 'archive', 'research']),
+      label: 'Archived chats',
+      where: _ARCHIVE_WHERE,
+      say: `Archived chats are under ${_ARCHIVE_WHERE}.`,
+      door: 'Open archive',
+      open: () => {
+        const s = typeof window !== 'undefined' ? window.sessionModule : null;
+        if (s && typeof s.openLibrary === 'function') s.openLibrary('archive');
+      },
+    }),
   }),
   notes: _tool({
     label: 'Notes', doors: ['tool-notes-btn', 'rail-notes'],
@@ -305,10 +342,27 @@ export function toolRefusal(key, state = _state) {
   const off = toolOff(key, state);
   if (!def || !off) return '';
   const name = def.label;
-  if (off === 'everyone') return featureOffSentence(name);
-  if (off === 'admin') return `${name} is for admins.`;
-  if (off === 'person') return `${name} is switched off for your account. An admin can turn it back on in Settings → Users.`;
-  return `${name} is hidden in this browser. Turn it back on in Settings → Appearance.`;
+  let said;
+  if (off === 'everyone') said = featureOffSentence(name);
+  else if (off === 'admin') said = `${name} is for admins.`;
+  else if (off === 'person') said = `${name} is switched off for your account. An admin can turn it back on in Settings → Users.`;
+  else said = `${name} is hidden in this browser. Turn it back on in Settings → Appearance.`;
+  // `B1194`: a tool whose switches leave something standing says where it is.
+  return def.keeps ? `${said} ${def.keeps.say}` : said;
+}
+
+/** `B1194`. What a tool's switches leave standing (`keeps` in the table), or
+ *  `null`. The refused door's toast carries its `door` button. */
+export function toolGuide(key) {
+  const def = TOOL_VISIBILITY[key];
+  return (def && def.keeps) || null;
+}
+
+/** `B1194`. Does the tool's window still open on `tab` with the tool switched
+ *  off? The Library's Chats, Research and Archive tabs do. */
+export function toolKeeps(key, tab) {
+  const g = toolGuide(key);
+  return !!(g && tab && g.tabs.includes(String(tab).toLowerCase()));
 }
 
 /** The *everyone* sentence, as `src/feature_gate.py:require_feature` words it. */
@@ -316,12 +370,34 @@ export function featureOffSentence(label) {
   return `${label} is switched off for everyone. An admin can turn it back on in Settings → Agent Tools.`;
 }
 
-/** The Tools entries (and chips) a switch hides — for the "Off hides …" lines. */
-export function toolsHiddenBy({ feature = null, privilege = null } = {}) {
+/** The Tools entries (and chips) a switch hides — for the "Off hides …" lines.
+ *  `hides` is what the switch takes (the label, unless the table says less);
+ *  `keeps` the line saying what it leaves and where (`B1194`), or `''`. */
+export function toolsHiddenBy({ feature = null, privilege = null, ui = null } = {}) {
   return Object.entries(TOOL_VISIBILITY)
     .filter(([, def]) => (feature && def.feature === feature)
-      || (privilege && def.privilege === privilege))
-    .map(([key, def]) => ({ key, label: def.label, chip: def.chip }));
+      || (privilege && def.privilege === privilege)
+      || (ui && def.ui === ui))
+    .map(([key, def]) => ({ key, label: def.label, chip: def.chip,
+      hides: def.hides || def.label, keeps: def.keeps ? def.keeps.say : '' }));
+}
+
+/**
+ * The "Off hides …" line for one switch — `{ feature }`, `{ privilege }` or
+ * `{ ui }` — read from the table, so a row cannot claim something the applier
+ * does not do (`SET-U-1`), and it says what the switch leaves standing
+ * (`B1194`: "Off hides documents and the Document editor button. Archived
+ * chats are under Chats → manage."). `''` when it hides nothing.
+ */
+export function hidesLine(which) {
+  const hit = toolsHiddenBy(which);
+  if (!hit.length) return '';
+  const tools = hit.filter((t) => !t.chip).map((t) => t.hides);
+  const chips = hit.filter((t) => t.chip).map((t) => `the ${t.label} button`);
+  const names = [...tools, ...chips];
+  const list = names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : names[0];
+  const kept = [...new Set(hit.map((t) => t.keeps).filter(Boolean))];
+  return [`Off hides ${list}.`, ...kept].join(' ');
 }
 
 /** The tool a door belongs to, by any of its names, or `null`. */
@@ -346,23 +422,31 @@ export function toolKeyFor(spec) {
  * (`{slash}`, `{route}`, `{window}`, `{shortcut}`, `{element}`). A door that
  * belongs to no tool is open. Refused, it says the sentence through `say`
  * (a toast by default) and answers `false`.
+ *
+ * `tab` is the tab of the tool's window the door opens. A tab the tool's
+ * switches leave standing (`toolKeeps`) is open — `B1194`: the Library's
+ * Chats, Research and Archive tabs, the chat archive's way in.
  */
-export function toolDoor(spec, { say } = {}) {
+export function toolDoor(spec, { say, tab } = {}) {
   const keys = Array.isArray(spec) ? spec.map(toolKeyFor) : [toolKeyFor(spec)];
   for (const key of keys) {
-    if (!key || toolShown(key)) continue;
-    _say(toolRefusal(key), say);
+    if (!key || toolShown(key) || toolKeeps(key, tab)) continue;
+    _say(toolRefusal(key), say, key);
     return false;
   }
   return true;
 }
 
-function _say(sentence, say) {
+function _say(sentence, say, key = null) {
   if (!sentence) return;
   try {
     if (typeof say === 'function') { say(sentence); return; }
     const ui = typeof window !== 'undefined' ? window.uiModule : null;
-    if (ui && typeof ui.showToast === 'function') ui.showToast(sentence, 5000);
+    if (!ui || typeof ui.showToast !== 'function') return;
+    // `B1194`: the line that says where the archive is comes with its door.
+    const g = key ? toolGuide(key) : null;
+    if (g) ui.showToast(sentence, { duration: 8000, action: g.door, onAction: g.open });
+    else ui.showToast(sentence, 5000);
   } catch (_) { /* a refusal that cannot be said is still a refusal */ }
 }
 
@@ -382,9 +466,12 @@ export function guardRouteOpener(path, opener, { say } = {}) {
   if (typeof opener !== 'function') return opener;
   const key = toolKeyFor({ route: path });
   if (!key) return opener;
+  // `/library/archive`: the window's tab is the path's second part (`P23-01`'s
+  // URLs), and a tab the switches leave standing opens (`B1194`).
+  const tab = String(path || '').split(/[?#]/)[0].split('/').filter(Boolean)[1] || null;
   return async (...args) => {
     await whenToolVisibilityReady();
-    if (!toolDoor(key, { say })) return undefined;
+    if (!toolDoor(key, { say, tab })) return undefined;
     return opener(...args);
   };
 }
@@ -482,7 +569,7 @@ export function installToolDoorGuard(win = (typeof window !== 'undefined' ? wind
       if (toolShown(key)) return;
       e.preventDefault();
       e.stopImmediatePropagation();
-      _say(toolRefusal(key));
+      _say(toolRefusal(key), null, key);
       return;
     }
   }, true);

@@ -1233,7 +1233,9 @@ function initializeEventListeners() {
     'calendar-modal': () => calendarModule && calendarModule.openCalendar(),
     'gallery-modal':  () => document.getElementById('tool-gallery-btn')?.click(),
     'tasks-modal':    () => document.getElementById('tool-tasks-btn')?.click(),
-    'doclib-modal':   () => sessionModule && sessionModule.openLibrary && sessionModule.openLibrary(),
+    // `B1194`: on its tab — a reload of the chat archive (`/library/archive`)
+    // reopens the archive, which opens with the Library switched off.
+    'doclib-modal':   (tab) => sessionModule && sessionModule.openLibrary && sessionModule.openLibrary(tab || undefined),
     'notes-panel':    () => notesModule && notesModule.openPanel(),
     'email-lib-modal': () => document.querySelector('#email-section .section-header-flex')?.click(),
     'research-overlay': () => researchPanelModule.openPanel(),
@@ -1252,6 +1254,17 @@ function initializeEventListeners() {
   WindowManager.setTabHooks('workbench-modal', {
     getTab: () => document.querySelector('#workbench-rooms [data-room][aria-selected="true"]')?.dataset?.room || null,
     setTab: (room) => { if (room) document.querySelector(`#workbench-rooms [data-room="${CSS.escape(room)}"]`)?.click(); },
+  });
+  // `B1194`. The Library's tab, so the chat archive has a URL of its own
+  // (`/library/archive`) that its door — not the Library's — answers. A tab the
+  // window was drawn without (Documents, with the Library switched off) is not
+  // there to press.
+  WindowManager.setTabHooks('doclib-modal', {
+    getTab: () => document.querySelector('#doclib-modal [data-doclib-tab].active')?.dataset?.doclibTab || null,
+    setTab: (tab) => {
+      const b = tab && document.querySelector(`#doclib-modal [data-doclib-tab="${CSS.escape(tab)}"]`);
+      if (b && !b.classList.contains('active')) b.click();
+    },
   });
   backStack.init();
 
@@ -1305,7 +1318,9 @@ function initializeEventListeners() {
     });
   }
 
-  // Manage Chats — opens Full Library modal (decoupled from Chats accordion toggle)
+  // Manage Chats — opens Full Library modal (decoupled from Chats accordion toggle).
+  // `B1194`: the chat archive's own door — on the Chats tab, which opens with
+  // the Library switched off (the window then has Chats, Research, Archive).
   const chatsLibraryBtn = el('chats-library-btn');
   if (chatsLibraryBtn) {
     chatsLibraryBtn.addEventListener('click', (e) => {

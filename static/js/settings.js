@@ -13,7 +13,7 @@ import {
 } from './settings/registry.js';
 // `P23-03`: the one table — who may see the admin's panels, and why a tool's
 // switch in Appearance cannot bring it back. Same specifier as `app.js`.
-import { TOOL_VISIBILITY, onToolVisibilityApplied, toolOff, toolRefusal, toolVisibilityState, viewerIsAdmin } from './ui_visibility.js';
+import { TOOL_VISIBILITY, hidesLine, onToolVisibilityApplied, toolOff, toolRefusal, toolVisibilityState, viewerIsAdmin } from './ui_visibility.js';
 import {
   collectMcpStdioFields,
   createMcpFieldEditor,
@@ -2340,7 +2340,23 @@ function syncAppearanceCheckboxes() {
     var key = chk.dataset.uiKey;
     chk.checked = key in s ? s[key] !== false : !defaultOff.has(key);
     _syncToolSwitchWhy(chk, key);
+    _syncToolSwitchKeeps(chk, key);
   });
+}
+
+/* `B1194`. A row whose switch leaves something standing says so, in the words
+   the admin's rows use (`hidesLine`, the one table): *Library* hides documents,
+   and archived chats are under Chats → manage. */
+function _syncToolSwitchKeeps(chk, key) {
+  var tool = _UI_KEY_TOOL[key];
+  if (!tool || !TOOL_VISIBILITY[tool].keeps) return;
+  var row = chk.closest ? chk.closest('.vis-row') : null;
+  var label = row ? row.querySelector('.vis-label') : null;
+  if (!label || label.querySelector('.vis-keeps')) return;
+  var hint = document.createElement('span');
+  hint.className = 'vis-hint vis-keeps';
+  hint.textContent = hidesLine({ ui: key });
+  label.appendChild(hint);
 }
 
 /* `P23-03`. A row in *Show in this browser* whose tool an admin switched off —

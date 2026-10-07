@@ -2129,7 +2129,14 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
   }
 
   export function openLibrary(opts) {
-    if (window.pantheonToolDoor && !window.pantheonToolDoor('library')) return;   // `P23-03`: the Library's door
+    // `P23-03`: the Library's door. `B1194` (`D-2026-10-07-02` §3): asked for
+    // the tab it opens, because hiding the Library takes its documents, not
+    // the chat archive — Chats, Research and Archive open with it switched off.
+    const _openTab = (opts && opts.tab) || 'documents';
+    if (window.pantheonToolDoor && !window.pantheonToolDoor('library', { tab: _openTab })) return;
+    // Switched off (for everyone, this person or this browser), the window is
+    // drawn without its Documents tab and never asks for a document.
+    const _docsShown = !window.pantheonToolShown || window.pantheonToolShown('library');
     // `P23-01` (C-NAV): opened from another window — Deep Research's *Library*
     // — the Library says `← Research`, and closing it re-raises Research.
     if (opts && opts.from) backStack.noteOpener('doclib-modal', opts.from, opts.fromTab);
@@ -2966,9 +2973,13 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
           return r.json();
         })
         .catch((e) => { _arcFail.push(`${label}: ${(e && e.message) || 'unreachable'}`); return {}; });
+      // `B1194`: with the Library switched off the archive holds chats and
+      // research; archived documents went with the documents (the route would
+      // refuse anyway, and a refusal here reads as "part of the archive did
+      // not load").
       Promise.all([
         _arcSource('Chats', API_BASE + '/api/sessions/archived?limit=100&sort=recent'),
-        _arcSource('Documents', API_BASE + '/api/documents/library?archived=true&limit=50'),
+        _docsShown ? _arcSource('Documents', API_BASE + '/api/documents/library?archived=true&limit=50') : {},
         _arcSource('Research', '/api/research/library?archived=true'),
       ]).then(([s, d, r]) => {
         // These are all archived by definition — flag them so the expanded
@@ -2977,7 +2988,7 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
         _arcDocs = d.documents || [];
         _arcResearch = (r.research || []).map(x => ({ ...x, archived: true }));
         _arcLoadFailures = _arcFail.slice();
-        if (_arcFail.length === 3) {
+        if (_arcFail.length === (_docsShown ? 3 : 2)) {   // every source asked failed
           uiModule.renderEmptyState(grid, {
             kind: 'error',
             className: 'doclib-empty',
@@ -4162,6 +4173,14 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
     const btn = document.getElementById('tool-library-btn');
     if (btn) btn.classList.add('active');
 
+    // `B1194`. The Library switched off: the window is the chat archive's —
+    // Chats, Research, Archive — and its Documents tab and panel are not there
+    // to be reached (removed after the wiring above, which finds them by id).
+    if (!_docsShown) {
+      modal.querySelectorAll('[data-doclib-tab="documents"], [data-doclib-panel="documents"]')
+        .forEach((n) => n.remove());
+      return;
+    }
     libraryFetch(false);
     if (window.innerWidth >= 768) searchInput.focus();
   }

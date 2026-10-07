@@ -3429,7 +3429,10 @@ function _arcRenderLoadMore() {
 const _lib = { tab: 'chats', search: '', sort: 'recent', debounce: null, selectMode: false, selected: new Set() };
 
 export function openLibrary(defaultTab) {
-  if (window.pantheonToolDoor && !window.pantheonToolDoor('library')) return;   // `P23-03`: the Library's door
+  // `P23-03`: the Library's door. `B1194`: asked for the tab it opens — the
+  // chat archive's tabs (*manage*'s Chats, the guide's Archive) open with the
+  // Library switched off; its documents do not.
+  if (window.pantheonToolDoor && !window.pantheonToolDoor('library', { tab: defaultTab || 'documents' })) return;
   // Delegate everything to the document module's library (has tabs for Chats/Documents/Archive)
   if (window.documentModule && window.documentModule.openLibrary) {
     window.documentModule.openLibrary({ tab: defaultTab || 'documents' });
