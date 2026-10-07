@@ -72,6 +72,11 @@ _IMPORT_REWRITES = {
     "import backStack from './backStack.js';   // `P23-01`": (
         "import backStack from './backStack.mjs';   // `P23-01`"
     ),
+    # `B1194`: the Chats section asks the one visibility table whether the
+    # Library is switched off (its header and *manage* stay while it is).
+    "import { onToolVisibilityApplied, toolShown } from './ui_visibility.js';   // `B1194`": (
+        "import { onToolVisibilityApplied, toolShown } from './ui_visibility.mjs';   // `B1194`"
+    ),
 }
 
 # Modules with no dependencies of their own, copied into the sandbox whole
@@ -87,6 +92,8 @@ _VERBATIM = {
     "agentStops.mjs": _REPO / "static" / "js" / "agentStops.js",
     # `P23-01`. No imports of its own either; the real one.
     "backStack.mjs": _REPO / "static" / "js" / "backStack.js",
+    # `B1194`. No imports of its own; the real table.
+    "ui_visibility.mjs": _REPO / "static" / "js" / "ui_visibility.js",
 }
 
 _STUBS = {

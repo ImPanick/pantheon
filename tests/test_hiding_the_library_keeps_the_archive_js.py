@@ -273,6 +273,40 @@ def test_the_chat_modules_library_door_opens_the_archive_tabs_with_the_library_o
     assert out["on"] == [{"tab": "documents"}, {"tab": "archive"}], "the Library shown: as before"
 
 
+def test_the_chats_header_and_its_manage_door_stay_while_the_library_is_off(tmp_path):
+    """The Chats section goes when there are no chats. *manage* under its
+    header is the archive's own door: with every chat archived and the Library
+    off, the section went and the sidebar had no way to the archive (driven at
+    :8753 as `guest`). The rule is asked again when the switches change."""
+    from tests.helpers.js_source import js_definition
+    src = SESSIONS_JS.read_text(encoding="utf-8")
+    body = js_function(src, "function _syncChatsSection")
+    hook = js_definition(src, src.index("onToolVisibilityApplied(() => _syncChatsSection())"))
+    out = _node(tmp_path, f"""
+        const {{ toolShown, onToolVisibilityApplied }} = V;
+        let sessions = [];
+        let _chatsListKnown = false;
+        const cls = new Set();
+        const section = {{ classList: {{ toggle: (c, on) => (on ? cls.add(c) : cls.delete(c)) }} }};
+        const uiModule = {{ el: (id) => (id === 'sessions-section' ? section : null) }};
+        function _syncChatsSection() {body}
+        {hook};
+        const hidden = () => cls.has('hidden');
+        _syncChatsSection();
+        const unknown = hidden();
+        _chatsListKnown = true; _syncChatsSection();
+        const empty = hidden();
+        V.applyToolVisibility({{ features: {{ document_editor: false }} }}, document);
+        const off = hidden();
+        sessions = [{{ id: 'c1' }}]; _syncChatsSection();
+        const withChats = hidden();
+        sessions = [];
+        V.applyToolVisibility({{ features: {{ document_editor: true }} }}, document);
+        console.log(JSON.stringify({{ unknown, empty, off, withChats, backOn: hidden() }}));
+    """)
+    assert out == {"unknown": False, "empty": True, "off": False, "withChats": False, "backOn": True}
+
+
 def test_open_archive_opens_the_archive_whatever_the_library_says(tmp_path):
     """`/open archive` was mapped to the Library (it pressed the Library's row,
     which opened on Documents): with the Library off it was refused."""

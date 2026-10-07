@@ -13,6 +13,7 @@ import spinnerModule from './spinner.js';
 import { topPortalZ } from './toolWindowZOrder.js';
 import { chevronIcon } from './icons.js';
 import backStack from './backStack.js';   // `P23-01`
+import { onToolVisibilityApplied, toolShown } from './ui_visibility.js';   // `B1194`
 
 const API_BASE = window.location.origin;
 
@@ -1829,12 +1830,8 @@ export async function loadSessions() {
     sessions = _normalizeSessionsList(fetched);
     renderSessionList();
 
-    const sessionsSection = uiModule.el('sessions-section');
-    if (sessions.length === 0) {
-      sessionsSection.classList.add('hidden');
-    } else {
-      sessionsSection.classList.remove('hidden');
-    }
+    _chatsListKnown = true;
+    _syncChatsSection();
 
     const activeSessions = sessions.filter(s => !s.archived);
     // "Transient" sessions = the singleton Assistant chat + any task-output
@@ -3423,6 +3420,20 @@ function _arcRenderLoadMore() {
   btn.style.display = _arc.data.length < _arc.total ? '' : 'none';
 }
 
+
+// `B1194` (`D-2026-10-07-02` §3). The Chats section goes when there are no
+// chats, and *manage* under its header is the chat archive's own door. With
+// the Library switched off that door is the sidebar's only way to archived
+// chats — driven at :8753, a person whose chats were all archived had no
+// Chats section and so no door — so the header stays, empty, while the Library
+// is off; asked again when the switches change (they can arrive after the list).
+let _chatsListKnown = false;
+function _syncChatsSection() {
+  if (!_chatsListKnown) return;
+  const section = uiModule.el('sessions-section');
+  if (section) section.classList.toggle('hidden', sessions.length === 0 && toolShown('library'));
+}
+onToolVisibilityApplied(() => _syncChatsSection());
 
 // ── Unified Library Modal (Chats / Documents / Archive) ──
 
