@@ -89,9 +89,29 @@ const BASE = process.argv[2];
   await page.goBack();
   await settle(1200);
   out.back = await state();
-  // A reload of the archive's URL reopens the archive.
+  // A link to the archive's URL opens the archive.
   await boot('/library/archive');
   out.reload = await state();
+  // A reload of the entry the back stack wrote reopens it as it was — after
+  // the switches are known (it came back with Documents before they were).
+  asked.length = 0;
+  await page.reload({ waitUntil: 'load' });
+  await page.waitForFunction(() => window.__pantheonAppStarted === true, null, { timeout: 90000 });
+  await settle(2500);
+  out.reloadEntry = await state();
+  out.reloadAsked = asked.filter((p) => p.startsWith('/api/documents') || p === '/api/document-folders');
+  await page.click('#doclib-close');
+  await settle(800);
+  // Ctrl+K: "library" offers the archive by its own name.
+  await page.focus('#message');
+  await page.keyboard.press('Control+k'); await settle(300);
+  await page.keyboard.type('library'); await settle(700);
+  out.palette = await page.evaluate(() => {
+    const box = document.getElementById('search-results');
+    return box ? box.textContent.replace(/\s+/g, ' ').trim() : null;
+  });
+  await page.keyboard.press('Enter'); await settle(1300);
+  out.paletteOpened = await state();
   await page.click('#doclib-close');
   await settle(800);
   // The Library's own URL: refused, with the guide and its door.
@@ -183,6 +203,15 @@ def test_back_closes_the_archive_and_a_reload_of_its_url_reopens_it(drive):
     assert drive["reload"]["open"] is True
     assert drive["reload"]["active"] == "archive"
     assert drive["reload"]["tabs"] == ["chats", "research", "archive"]
+    assert drive["reloadEntry"]["open"] is True and drive["reloadEntry"]["active"] == "archive"
+    assert drive["reloadEntry"]["tabs"] == ["chats", "research", "archive"], (
+        "a reload reopened the window before the switches were known")
+    assert drive["reloadAsked"] == []
+
+
+def test_the_palette_offers_the_archive_and_opens_it(drive):
+    assert drive["palette"] and "Archived chats" in drive["palette"], drive["palette"]
+    assert drive["paletteOpened"]["open"] is True and drive["paletteOpened"]["active"] == "archive"
 
 
 def test_the_librarys_own_url_says_where_the_archive_is_and_its_button_goes_there(drive):

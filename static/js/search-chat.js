@@ -284,10 +284,11 @@ function _toolEntries(terms) {
   const out = [];
   for (const w of listWindows()) {
     const door = _DOOR_FUNCTIONS[w.id];
-    if (!w.door && !door) continue;
     // `P23-03`. A window whose tool is switched off is not offered — Skills
     // with the Brain taken away, Email hidden in this browser — whatever its
-    // door function would do (`ui_visibility.js`, the one table).
+    // door function would do (`ui_visibility.js`, the one table). Asked before
+    // the shown-door test below (`B1194`): a switched-off tool's doors are
+    // hidden, so that test skipped it before what it keeps could be offered.
     const tool = toolKeyFor({ window: w.id });
     if (tool && !toolShown(tool)) {
       // `B1194`. What the switches leave standing is still offered, by its own
@@ -300,6 +301,7 @@ function _toolEntries(terms) {
       }
       continue;
     }
+    if (!w.door && !door) continue;
     if (!w.door && _DOOR_SHOWN[w.id] && !_DOOR_SHOWN[w.id]()) continue;
     // The id's first word as well as the label, so the names people learned
     // still find the tool: "cookbook" finds Forge, "memory" finds Brain.

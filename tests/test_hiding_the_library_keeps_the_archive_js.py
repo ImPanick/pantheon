@@ -312,8 +312,11 @@ def test_the_palette_offers_the_archive_where_the_library_is_switched_off(tmp_pa
     ])
     out = _node(tmp_path, matcher + f"""
         const {{ toolKeyFor, toolShown, toolGuide }} = V;
+        // As `modalManager.listWindows` reports them: `door` is whether one of
+        // the window's buttons is shown — the applier hides the Library's.
         const listWindows = () => [
-          {{ id: 'doclib-modal', label: 'Library', door: true, doors: [], state: 'closed' }},
+          {{ id: 'doclib-modal', label: 'Library', door: shown('tool-library-btn') || shown('rail-archive'),
+            doors: ['rail-archive', 'tool-library-btn'], state: 'closed' }},
           {{ id: 'calendar-modal', label: 'Calendar', door: true, doors: [], state: 'closed' }},
         ];
         const _DOOR_FUNCTIONS = {{}}, _DOOR_SHOWN = {{}};
@@ -496,6 +499,32 @@ def test_the_agents_open_sessions_opens_the_chats_tab(tmp_path):
     proc = subprocess.run(["node", str(entry)], capture_output=True, text=True, timeout=60)
     assert proc.returncode == 0, proc.stderr
     assert json.loads(proc.stdout.strip().splitlines()[-1]) == {"asked": ["chats"]}
+
+
+def test_a_reload_reopens_windows_only_once_the_switches_are_known(tmp_path):
+    """Driven at :8753 before the fix: `/library/archive` reloaded with the
+    Library switched off came back with its Documents tab, its list answering
+    403 — the back stack reopened the window before `/api/auth/features` had
+    answered, and unknown is on. `app.js`' `_opener` waits for the switches."""
+    binding = js_binding(APP_JS.read_text(encoding="utf-8"), "_opener")
+    out = _node(tmp_path, f"""
+        const order = [];
+        const {{ whenToolVisibilityReady }} = V;
+        const backStack = {{
+          restoreFromHistory: () => {{ order.push(['restore', V.toolShown('library')]); return true; }},
+          ready: () => order.push(['ready']),
+        }};
+        const _deepLink = null;
+        {binding};
+        const run = _opener();
+        await new Promise((r) => setTimeout(r, 20));
+        order.push(['features']);
+        V.applyToolVisibility({{ features: {{ document_editor: false }} }}, document);
+        V.applyToolVisibility({{ privileges: {{}}, isAdmin: true, auth: true }}, document);
+        await run;
+        console.log(JSON.stringify({{ order }}));
+    """)
+    assert out["order"] == [["features"], ["restore", False], ["ready"]]
 
 
 def test_a_reload_of_the_archive_reopens_it_on_its_tab(tmp_path):
