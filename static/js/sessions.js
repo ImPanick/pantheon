@@ -1806,7 +1806,10 @@ export async function loadSessions() {
       if (_sessionsWanted) params.set('limit', String(_sessionsWanted));
       const query = params.toString();
       const url = `${API_BASE}/api/sessions${query ? `?${query}` : ''}`;
-      const res = await (_earlyFetch(url) || fetch(url));
+      // `B-NEW-9` (fx2-doors): a request that never reached the server is
+      // marked, so the catch below leaves it to the chat area's one line.
+      const res = await Promise.resolve(_earlyFetch(url) || fetch(url))
+        .catch((e) => { if (e && typeof e === 'object') e.unreached = true; throw e; });
       if (!res.ok) {
         let detail = '';
         try {
@@ -1955,6 +1958,14 @@ export async function loadSessions() {
     }
     return true;
   } catch (error) {
+    // `B-NEW-9` (fx2-doors). Offline (or with Pantheon not answering) this
+    // toasted "Could not load chats: Failed to fetch" — hidden on `a936b5c`
+    // only because the presets' toast replaced it a moment later. The chat
+    // area says it once (`presets.js` `sayUnreachable`); this stays quiet.
+    if (error && error.unreached) {
+      console.warn('Chats not loaded: Pantheon could not be reached.');
+      return false;
+    }
     console.error('Error in loadSessions:', error);
     // app.js's global fetch wrapper owns expired-auth navigation. Avoid
     // flashing a redundant session error while that 401 redirect is pending.
