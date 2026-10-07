@@ -134,13 +134,17 @@ def test_the_library_heading_is_bare_until_something_narrows_the_list(tmp_path):
         const searched = stats.textContent;
         _librarySearch = ''; _libraryFolderView = { kind: 'folder', path: 'Finance' }; _libraryTotal = 2;
         libraryRenderStats();
-        console.log(JSON.stringify({ bare, chips, searched, folder: stats.textContent }));
+        const folder = stats.textContent;
+        _libraryLanguages = {}; _libraryTotal = 0; _librarySearch = 'invoice';
+        libraryRenderStats();
+        console.log(JSON.stringify({ bare, chips, searched, folder, empty: stats.textContent }));
     """ % (_body("documentLibrary.js", "function libraryRenderStats("),
            _body("documentLibrary.js", "function libraryRenderLangChips(")))
     assert out["bare"] == "", "the heading said the total the 'all' chip says"
     assert out["chips"][0] == "all (17)"
     assert out["searched"] == "3 of 17"
     assert out["folder"] == "2 of 17"
+    assert out["empty"] == "", "an empty Library searched said '0 of 0'"
 
 
 def test_the_agent_card_says_saved_and_does_not_read_its_fields_back(tmp_path):
