@@ -120,6 +120,7 @@ function turn() {
       foldFirst: !!fold && body.childNodes.indexOf(fold) === 0,
       said,
       footer: !!n.querySelector('.msg-footer'),
+      stopped: words(n.querySelector('.stopped-indicator')) || null,
     };
   });
 }
@@ -240,6 +241,30 @@ def test_a_turn_that_ended_on_reasoning_keeps_it_below_its_rows(reload_sandbox):
     assert [next(iter(n)) for n in out] == ["user", "rows", "bubble"], out
     assert out[1]["rows"] == ["Documents · list folders", "Documents · list"]
     assert out[2]["steps"] == ["Looking first.", "Then the second list."] and out[2]["said"] == ""
+
+
+def test_a_turn_the_person_stopped_reloads_as_one_reply_that_says_so(reload_sandbox):
+    """The record the route now keeps for a stopped turn (its rows and rounds,
+    `test_a_stopped_agent_turn_reloads_as_one_reply.py`): the rows, one reply,
+    and *Stopped · Continue* under it — as the live Stop drew it."""
+    record = ("You have three", {
+        "stopped": True, "round_texts": ["", "", "You have three"],
+        "round_thinking": ["Folders first.", "Now the unfiled ones.", "Counting."],
+        "tool_events": [_row(1, "manage_documents", "list_folders"), _row(2, "manage_documents", "list")],
+    })
+    out = _reload(reload_sandbox, record)
+    assert [next(iter(n)) for n in out] == ["user", "rows", "bubble"], out
+    reply = out[2]
+    assert reply["steps"] == ["Folders first.", "Now the unfiled ones.", "Counting."]
+    assert reply["stopped"] == "Stopped · Continue" and reply["footer"], reply
+
+
+def test_a_turn_paused_at_the_card_never_says_stopped(reload_sandbox):
+    """`stopped` on a reply that paused at a card (an old `mark-stopped` race
+    wrote it there) is not drawn: that reply asked, it did not stop."""
+    paused = (WEEK_PAUSED[0], dict(WEEK_PAUSED[1], stopped=True))
+    out = _reload(reload_sandbox, paused)
+    assert [n.get("stopped") for n in out if "bubble" in n] == [None], out
 
 
 def test_a_record_from_before_draws_its_one_string_once(reload_sandbox):

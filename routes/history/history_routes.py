@@ -104,6 +104,42 @@ def _merge_continue_rows_to_delete(db_messages, db1, db2):
     return to_delete
 
 
+def _paused_at_approval(meta) -> bool:
+    """A reply that stopped at an approval card and wrote nothing of its own:
+    the card's question stood in for it (`P23-04`, CHAT-M-3). The same test
+    the history renderer draws it by (`chatRenderer.js`, `pausedAtApproval`)."""
+    if not isinstance(meta, dict):
+        return False
+    if any(str(t or "").strip() for t in (meta.get("round_texts") or [])):
+        return False
+    return any(isinstance(ev, dict) and isinstance(ev.get("ask_user"), dict)
+               and ev["ask_user"].get("kind") == "tool_approval"
+               for ev in (meta.get("tool_events") or []))
+
+
+def _stoppable_reply(history) -> Any:
+    """`B-NEW-11` (fx2-chat). The reply a Stop stopped: the last assistant
+    message after the person's last message — and not one that paused at an
+    approval card, which asked rather than stopped. ``None`` when there is none.
+
+    It was the last assistant message, whichever. Measured on the showcase: an
+    agent turn stopped before the run's own save had landed marked the reply
+    that had paused at the card (the turn's only assistant message), and a turn
+    stopped before its first word would mark the previous turn's finished
+    reply. The run marks the reply it saves itself (``stopped``), so finding
+    none here marks nothing.
+    """
+    for msg in reversed(history or []):
+        role = msg.role if isinstance(msg, ChatMessage) else (msg.get("role") if isinstance(msg, dict) else None)
+        if role == "user":
+            return None
+        if role != "assistant":
+            continue
+        meta = msg.metadata if isinstance(msg, ChatMessage) else msg.get("metadata")
+        return None if _paused_at_approval(meta) else msg
+    return None
+
+
 def _is_agent_record(meta) -> bool:
     """A reply saved from an agent run's record: it has rounds to draw."""
     return isinstance(meta, dict) and bool(meta.get("round_texts") or meta.get("tool_events"))
@@ -489,37 +525,35 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
 
     @router.post("/api/session/{session_id}/mark-stopped")
     async def mark_stopped(request: Request, session_id: str):
-        """Mark the last assistant message as stopped by user."""
+        """Mark the reply the person stopped as stopped (`_stoppable_reply`)."""
         _verify_session_owner(request, session_id)
         try:
             session = session_manager.get_session(session_id)
-            # Find last assistant message and add stopped metadata
-            for msg in reversed(session.history):
-                if (isinstance(msg, ChatMessage) and msg.role == 'assistant') or \
-                   (isinstance(msg, dict) and msg.get('role') == 'assistant'):
-                    if isinstance(msg, ChatMessage):
-                        if not msg.metadata:
-                            msg.metadata = {}
-                        msg.metadata['stopped'] = True
-                        if not msg.metadata.get('model'):
-                            msg.metadata['model'] = session.model
-                    else:
-                        if 'metadata' not in msg:
-                            msg['metadata'] = {}
-                        msg['metadata']['stopped'] = True
-                        if not msg['metadata'].get('model'):
-                            msg['metadata']['model'] = session.model
-                    break
-            # Also update in DB
+            msg = _stoppable_reply(session.history)
+            if msg is None:
+                return {"status": "ok", "marked": False}
+            if isinstance(msg, ChatMessage):
+                if not msg.metadata:
+                    msg.metadata = {}
+                meta_now = msg.metadata
+            else:
+                if 'metadata' not in msg:
+                    msg['metadata'] = {}
+                meta_now = msg['metadata']
+            meta_now['stopped'] = True
+            if not meta_now.get('model'):
+                meta_now['model'] = session.model
+            _db_id = meta_now.get('_db_id')
+            # Also update in DB — the same row: by its id when the history has
+            # it, else the last assistant row, which is the one found above.
             db = SessionLocal()
             try:
                 import json as _json
-                db_messages = (
-                    db.query(DbChatMessage)
-                    .filter(DbChatMessage.session_id == session_id, DbChatMessage.role == 'assistant')
-                    .order_by(DbChatMessage.timestamp.desc())
-                    .first()
-                )
+                _rows = db.query(DbChatMessage).filter(
+                    DbChatMessage.session_id == session_id, DbChatMessage.role == 'assistant')
+                if _db_id:
+                    _rows = _rows.filter(DbChatMessage.id == _db_id)
+                db_messages = _rows.order_by(DbChatMessage.timestamp.desc()).first()
                 if db_messages:
                     meta = {}
                     if db_messages.meta_data:

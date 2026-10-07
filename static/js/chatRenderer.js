@@ -3893,6 +3893,27 @@ export function buildStoppedIndicator(doc, onContinue) {
   return box;
 }
 
+/** A reply the person stopped, after a reload: *Stopped · Continue* under it.
+ *  "Stopped mid-stream" (had content, can continue) and "cancelled before any
+ *  content" differ — the latter has no Continue. One builder for a plain reply
+ *  and (`B-NEW-11`, fx2-chat) an agent turn's, whose record now keeps its rows. */
+function stoppedLine(wrap, metadata) {
+  return buildStoppedIndicator(document, metadata && metadata.cancelled ? null : () => {
+    if (window.chatModule) {
+      window.chatModule.setHideUserBubble();
+      window.chatModule.setPendingContinue(wrap);
+      const rawText = wrap.dataset.raw || wrap.querySelector('.body')?.textContent || '';
+      const cutoff = rawText;
+      const msgInput = document.getElementById('message');
+      if (msgInput) {
+        msgInput.value = 'Your previous response was interrupted. It ended with:\n\n' + cutoff.slice(-500) + '\n\nDo NOT repeat what you already said. Continue exactly from where you were cut off.';
+        const sb = document.querySelector('.send-btn');
+        if (sb) sb.click();
+      }
+    }
+  });
+}
+
 /** `P23-04` (CHAT-M-8). Take away the row that asked for the approval with
  *  this fingerprint, now that the call it asked about is drawn — and its thread
  *  with it, when that row was all the thread held. */
@@ -4314,6 +4335,13 @@ export function addMessage(role, content, modelName, metadata) {
       if (!pausedAtApproval && firstWrap && firstWrap.classList.contains('msg-ai') && !firstWrap.querySelector('.msg-footer')) {
         footWith(firstWrap, metadata);
       }
+      // `B-NEW-11` (fx2-chat). A turn the person stopped says so under its
+      // reply, as the live Stop drew it — now that its record keeps its rows,
+      // it is drawn here rather than as a plain message. Not under a turn that
+      // paused at a card: that one asked, it did not stop.
+      if (metadata.stopped && !pausedAtApproval && lastMsgAi && lastMsgAi.querySelector('.body')) {
+        lastMsgAi.querySelector('.body').appendChild(stoppedLine(lastMsgAi, metadata));
+      }
 
       if (window.hljs) {
         box.querySelectorAll('pre code:not(.hljs)').forEach(b => window.hljs.highlightElement(b));
@@ -4494,23 +4522,7 @@ export function addMessage(role, content, modelName, metadata) {
 
     // Add stopped indicator + continue button for messages that were stopped by user
     if (role === 'assistant' && metadata?.stopped) {
-      // Differentiate between "stopped mid-stream" (had content, can continue)
-      // and "cancelled before any content" — the latter has no Continue affordance.
-      const stoppedIndicator = buildStoppedIndicator(document, metadata.cancelled ? null : () => {
-          if (window.chatModule) {
-            window.chatModule.setHideUserBubble();
-            window.chatModule.setPendingContinue(wrap);
-            const rawText = wrap.dataset.raw || wrap.querySelector('.body')?.textContent || '';
-            const cutoff = rawText;
-            const msgInput = document.getElementById('message');
-            if (msgInput) {
-              msgInput.value = 'Your previous response was interrupted. It ended with:\n\n' + cutoff.slice(-500) + '\n\nDo NOT repeat what you already said. Continue exactly from where you were cut off.';
-              const sb = document.querySelector('.send-btn');
-              if (sb) sb.click();
-            }
-          }
-        });
-      b.appendChild(stoppedIndicator);
+      b.appendChild(stoppedLine(wrap, metadata));
     }
 
     if (metadata?.edited) {

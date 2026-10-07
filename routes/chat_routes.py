@@ -264,6 +264,37 @@ def _thinking_record(thinking_response: str, round_thinking: Optional[list] = No
     return {"thinking": whole} if whole else {}
 
 
+def _shown_tool_row(event: Any, approval_digest: str = "") -> Optional[dict]:
+    """`B-NEW-11` (fx2-chat). A tool row the browser was shown, kept the way the
+    loop keeps it for a finished reply, so a reply the person stopped reloads
+    with its rows and as one reply.
+
+    Measured on the showcase (`1049a26`): Stop in the middle of an agent turn
+    saved the reply's text and reasoning and none of its rows, so the reload
+    drew a plain message — the rows gone, the steps' reasoning in one block,
+    and (after an approval) a second reply under the one that paused. A
+    ``tool_output`` is a call that ran: kept without its frame ``type`` and the
+    document body a writing card streams. A ``tool_blocked`` is a call that was
+    refused, kept as the loop keeps a refusal (`P4-20`: ``blocked``, its reason
+    as the output). The call an approval let through carries that approval's
+    fingerprint, as the loop's own record of it does (``approval_digest``), so
+    the reload puts it in place of the row that asked. ``None`` for anything else.
+    """
+    if not isinstance(event, dict):
+        return None
+    kind = event.get("type")
+    if kind == "tool_output":
+        row = {k: v for k, v in event.items() if k not in ("type", "document_content")}
+        if row.get("approved") and approval_digest:
+            row["approval_digest"] = approval_digest
+        return row
+    if kind == "tool_blocked":
+        row = {k: v for k, v in event.items() if k not in ("type", "reason")}
+        row.update({"output": str(event.get("reason") or ""), "exit_code": None, "blocked": True})
+        return row
+    return None
+
+
 def _mark_tool_approval_resolved(sess, approval_id: Any, decision: Any) -> bool:
     """Persist a consumed approval decision on its existing tool event."""
 
@@ -2470,6 +2501,10 @@ def setup_chat_routes(
             full_response = ""
             thinking_response = ""
             _round_thinking: list = []   # `P23-04` (CHAT-M-21): per agent round
+            # `B-NEW-11` (fx2-chat): each round's words, and the rows the
+            # browser was shown, kept for a reply the person stops.
+            _round_said: list = []
+            _shown_rows: list = []
             last_metrics = None
 
             # Foreground Chat and Agent requests share one explicit owner-aware
@@ -3158,6 +3193,11 @@ def setup_chat_routes(
                             try:
                                 data = json.loads(chunk[6:])
                                 _agent_notes.observe(data)   # `B915`
+                                # `B-NEW-11`: the rows, for a reply the person stops.
+                                _shown = _shown_tool_row(
+                                    data, str(getattr(exact_tool_approval, "digest", "") or "")[:16])
+                                if _shown is not None:
+                                    _shown_rows.append(_shown)
                                 if "delta" in data:
                                     # Reasoning tokens arrive flagged thinking:true.
                                     # Forward them for the live indicator, but keep
@@ -3172,6 +3212,11 @@ def setup_chat_routes(
                                     else:
                                         full_response += data["delta"]
                                         _stream_set(session, partial=full_response)
+                                        # `B-NEW-11`: per round, as the reasoning is.
+                                        _rs = max(int(_agent_rounds or 0), 1)
+                                        while len(_round_said) < _rs:
+                                            _round_said.append("")
+                                        _round_said[_rs - 1] += data["delta"]
                                     yield chunk
                                 elif data.get("type") == "web_sources":
                                     web_sources = data.get("data", [])
@@ -3396,7 +3441,12 @@ def setup_chat_routes(
                     # outer finally from running and left _active_streams
                     # with a stale entry).
                     try:
-                        if full_response and not incognito:
+                        # `B-NEW-11` (fx2-chat). A reply stopped while a step was
+                        # still thinking is kept too — it showed its reasoning and
+                        # its rows, and the reload draws them — not only one that
+                        # had written words. (Stopped with neither, the browser
+                        # keeps its own "cancelled" line: `_renderCancelledBubble`.)
+                        if (full_response or any(str(t or "").strip() for t in _round_thinking)) and not incognito:
                             logger.info("Client disconnected mid-stream for session %s, saving partial response (%d chars)", session, len(full_response))
                             _stopped_content2, _stopped_md2 = clean_thinking_for_save(
                                 full_response,
@@ -3426,6 +3476,17 @@ def setup_chat_routes(
                             # as the chat-mode branch above keeps them.
                             if not _stopped_md2.get("thinking"):
                                 _stopped_md2.update(_thinking_record(thinking_response, _round_thinking))
+                            # `B-NEW-11`: its rounds and its rows, so the reload
+                            # draws the turn the person stopped as it was on screen:
+                            # the rows, then one reply.
+                            _stopped_rounds = max(len(_round_said), len(_round_thinking), 1)
+                            if _shown_rows or _stopped_rounds > 1:
+                                _stopped_md2["round_texts"] = [
+                                    (_round_said[i] if i < len(_round_said) else "").strip()
+                                    for i in range(_stopped_rounds)
+                                ]
+                            if _shown_rows:
+                                _stopped_md2["tool_events"] = list(_shown_rows)
                             sess.add_message(ChatMessage("assistant", _stopped_content2, metadata=_stopped_md2))
                             session_manager.save_sessions()
                             if not compare_mode and needs_auto_name(getattr(sess, "name", "")):
