@@ -358,10 +358,27 @@ def test_the_policy_says_whether_a_release_is_tagged(security_md):
     assert _tag_statement_problem(tags, security_md) is None
 
 
+# The section as it read until `v0.2.0` was cut (2026-10-07, `D-2026-10-07-01`):
+# the policy this test drove until the tag existed, kept so the half of the
+# rule that catches a stale "none" still has something to catch.
+_BEFORE_THE_TAG = """## Supported Versions
+
+**Pantheon has a version, and no tagged release yet.** No `v*` tag, no release branches.
+
+| Version | Supported |
+|---|---|
+| Tagged releases | None exist yet |
+"""
+
+
 def test_a_cut_tag_makes_the_policy_wrong_until_it_is_edited(security_md):
-    """The day `v0.1.0` exists, *"None exist yet"* is false — and this says so."""
-    problem = _tag_statement_problem(["v0.1.0"], security_md)
+    """The day a tag exists, *"None exist yet"* is false — and this says so.
+    Driven on the section as it read before `v0.2.0`; the live section, which
+    names the tag, gives the rule nothing to object to with the tag present."""
+    problem = _tag_statement_problem(["v0.2.0"], _BEFORE_THE_TAG)
     assert problem and "the policy says none do" in problem, problem
+    assert _tag_statement_problem(["v0.2.0"], security_md) is None
+    assert "v0.2.0" in "\n".join(_supported_versions(security_md))
 
 
 def test_the_policy_does_not_call_the_commit_the_only_identifier(security_md):
