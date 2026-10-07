@@ -228,6 +228,9 @@ export function mountCanvas(root, opts = {}) {
     pos: new Map(), pinned: new Map(), missing: new Set(), order: [],
     nodeEls: new Map(), edgeEls: [],
     view: { x: 0, y: 0, zoom: 1 }, viewed: false, loaded: false, destroyed: false,
+    // `P23-06`: the bounds the view was last fitted to, until the person
+    // pans or zooms; the viewport's observer fits them again when it resizes.
+    fitted: null, fitSize: null, resizeObs: null,
     focusId: opts.focusId != null ? String(opts.focusId) : null,
     selected: null, panel: null, connect: null,
     drag: null, link: null, pan: null, swallow: null,
@@ -350,11 +353,16 @@ export function mountCanvas(root, opts = {}) {
   panelClose.type = 'button';
   panelHead.appendChild(panelTitle);
   panelHead.appendChild(panelDry);
-  panelHead.appendChild(panelRemove);
   panelHead.appendChild(panelClose);
   const panelBody = _el('div', 'wb-panel-body');
+  // `P23-06` (WB-U-13). *Remove step* sat in the head beside *Close* — the
+  // destructive button one slip from the one that only shuts the panel. It
+  // is under the form now, where it is read last.
+  const panelFoot = _el('div', 'wb-panel-foot');
+  panelFoot.appendChild(panelRemove);
   panel.appendChild(panelHead);
   panel.appendChild(panelBody);
+  panel.appendChild(panelFoot);
 
   stage.appendChild(viewport);
   stage.appendChild(panel);
@@ -506,15 +514,30 @@ export function mountCanvas(root, opts = {}) {
     zoomWord.textContent = Math.round(S.view.zoom * 100) + '%';
   }
 
-  function fitTo(bounds) {
+  // `P23-06` (WB-M-3). A fit measures the viewport's layout size, not its
+  // drawn rectangle: the window's entrance is a scale (0.95 → 1), so a fit made
+  // while it played read a smaller box, and the same graph opened at 87 % one
+  // time and 91 % the next.
+  function viewSize() {
+    const w = viewport.clientWidth;
+    const h = viewport.clientHeight;
+    if (w > 0 && h > 0) return { width: w, height: h };
     const r = viewportRect();
+    return { width: r.width, height: r.height };
+  }
+
+  function fitTo(bounds) {
+    const r = viewSize();
     S.view = fitView(bounds, r.width, r.height);
+    S.fitted = bounds;
+    S.fitSize = r;
     applyView();
   }
 
   function fitAll() { fitTo(boundsOf(S.pos.values())); }
 
   function zoomAt(factor, px, py) {
+    S.fitted = null;   // the person's own view now; a resize leaves it alone
     const z = clampZoom(S.view.zoom * factor);
     const k = z / S.view.zoom;
     S.view = { zoom: z, x: px - (px - S.view.x) * k, y: py - (py - S.view.y) * k };
@@ -1749,7 +1772,13 @@ export function mountCanvas(root, opts = {}) {
     }
     const comp = componentOf(S.graph, id);
     const steps = [...comp.ids].filter((x) => S.pos.has(x));
-    fitTo(boundsOf(steps.map((x) => S.pos.get(x))));
+    // `P23-06` (WB-M-2). With a step's panel open beside the canvas — a failed
+    // or waiting run opens on its step — the whole chain was fitted into what
+    // the panel left and hit the floor. The step and its neighbours are fitted
+    // instead; the rest of the chain is a pan away.
+    const near = S.panel ? steps.filter((x) => x === id || S.graph.edges.some((e) =>
+      (e.from === id && e.to === x) || (e.to === id && e.from === x))) : steps;
+    fitTo(boundsOf((near.length ? near : steps).map((x) => S.pos.get(x))));
     for (const [nid, node] of S.nodeEls) node.classList.toggle('wb-node-chain', comp.ids.has(nid));
     focusNode(id);
     say(chainSentence(id), { action: typeof src.offer === 'function' ? src.offer(id) : null });
@@ -1771,6 +1800,7 @@ export function mountCanvas(root, opts = {}) {
   viewport.addEventListener('pointermove', (e) => {
     const p = S.pan;
     if (!p) return;
+    S.fitted = null;
     S.view = { ...S.view, x: p.x0 + (e.clientX - p.cx), y: p.y0 + (e.clientY - p.cy) };
     applyView();
   });
@@ -1783,10 +1813,25 @@ export function mountCanvas(root, opts = {}) {
       const r = viewportRect();
       zoomAt(Math.exp(-(Number(e.deltaY) || 0) * 0.0015), e.clientX - r.left, e.clientY - r.top);
     } else {
+      S.fitted = null;
       S.view = { ...S.view, x: S.view.x - (Number(e.deltaX) || 0), y: S.view.y - (Number(e.deltaY) || 0) };
       applyView();
     }
   }, { passive: false });
+  // `P23-06` (WB-M-3, WB-M-5). The viewport changes size after the first fit —
+  // the window settling, a Versions… or Check them now box opening above the
+  // canvas (it pushed the steps off the bottom edge), a panel opening beside
+  // it. While the view is still the fit (the person has not panned or zoomed),
+  // it is fitted again to the same steps.
+  if (typeof ResizeObserver === 'function') {
+    S.resizeObs = new ResizeObserver(() => {
+      if (S.destroyed || !S.fitted || !S.fitSize) return;
+      const r = viewSize();
+      if (Math.abs(r.width - S.fitSize.width) < 8 && Math.abs(r.height - S.fitSize.height) < 8) return;
+      fitTo(S.fitted);
+    });
+    try { S.resizeObs.observe(viewport); } catch (_) { S.resizeObs = null; }
+  }
   viewport.addEventListener('keydown', (e) => { if (e.target === viewport) zoomKeys(e); });
 
   // ── the toolbar ──────────────────────────────────────────────────────────
@@ -1838,6 +1883,7 @@ export function mountCanvas(root, opts = {}) {
     if (S.destroyed) return;
     if (S.saveTimer) savePositions();
     S.destroyed = true;
+    if (S.resizeObs) { try { S.resizeObs.disconnect(); } catch (_) { /* gone with the room */ } S.resizeObs = null; }
     endMove();
     endLink(null);
     clearPending();

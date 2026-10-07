@@ -156,7 +156,12 @@ export function createTaskSource(opts = {}) {
     return {
       id, taskId: id, name: taskName(task), kind,
       sub: [KIND_WORDS[kind] || KIND_WORDS.llm, trigger, paused ? 'paused' : ''].filter(Boolean).join(' · '),
-      paused, outcome: outcomeOf(task), ports: PORTS.slice(), marks: [], accepts: true, missing: false,
+      // `P23-06` (WB-M-10): a workflow's own steps are what run after its
+      // start, so its node has no ports here — an arrow drawn from it ran a
+      // task its Runs never showed. An arrow into it (a task that starts the
+      // workflow) is still drawn.
+      paused, outcome: outcomeOf(task), ports: kind === 'workflow' ? [] : PORTS.slice(), marks: [], accepts: true,
+      missing: false,
       builtin: !!task.is_builtin,
     };
   }

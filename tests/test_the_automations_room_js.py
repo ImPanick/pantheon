@@ -203,7 +203,8 @@ def test_the_room_opens_on_the_chains_and_lists_every_workflow_on_the_shelf(box)
     """)
     assert o["shelf"][0] == {"key": "tasks", "text": "Tasks and chains|Every task, and the arrows between them",
                              "current": True}
-    assert o["shelf"][1] == {"key": "w1", "text": "Morning brief|Off|✗|Last run: Failed", "current": False}
+    # `P23-06` (WB-U-16): how many steps, so two workflows of one name differ.
+    assert o["shelf"][1] == {"key": "w1", "text": "Morning brief|Off|✗|Last run: Failed|2 steps", "current": False}
     assert o["aria"] == "Morning brief. Off. Last run: Failed."
     assert o["tasks"] == [True, True, True], "the chains canvas is the landing view, unchanged (P22-02)"
     assert o["pick"] == [["tasks", "Tasks and chains"], ["w1", "Morning brief (Off)"]]

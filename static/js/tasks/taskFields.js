@@ -762,7 +762,7 @@ const _formModes = new WeakMap();
  */
 export function mountTaskFields(host, {
   task = null, tasks = [], onSaved = null, onCancel = null, mode = 'task',
-  slots = null, pickField = null, extra = null, problem = null,
+  slots = null, pickField = null, extra = null, problem = null, chain = true,
 } = {}) {
   if (!host) return { destroy() {} };
   // `P22-05` (wf-ui). Which form: see the sections below. Anything else is the
@@ -950,7 +950,11 @@ export function mountTaskFields(host, {
       ...(typeof extra === 'function' ? ['extra'] : []), 'actions']
     : isTrigger
       ? ['head', 'trigger', 'timeout', 'notif', 'actions']
-      : ['head', 'name', 'type', 'trigger', 'output', 'model', 'timeout', 'chain', 'notif', 'actions'];
+      // `P23-06` (WB-M-14): `chain: false` — the Workbench's chains canvas,
+      // where the arrows themselves are the chain; two selects listing every
+      // task were a third way to draw one, in a panel 1,247 px tall.
+      : ['head', 'name', 'type', 'trigger', 'output', 'model', 'timeout',
+        ...(chain === false ? [] : ['chain']), 'notif', 'actions'];
   host.innerHTML = order.map((k) => sections[k]).join('');
 
   // --- `P22-09` (wf-canvas): a step's text boxes, told what they may take ---
@@ -1760,8 +1764,12 @@ ${(isNode && taskType === 'research') ? '' : `
     // edge (`task_routes.py:927-929` — `is not None` is the guard, so an
     // omitted key leaves the stored edge alone), and a person who sets a
     // failure branch and then changes their mind has to be able to remove it.
-    for (const [selectId, field] of CHAIN_FIELDS) {
-      payload[field] = $(selectId)?.value || '';
+    // With no Chain section (`chain: false`) the edges are the canvas's, and
+    // are left as they are rather than cleared.
+    if (chain !== false) {
+      for (const [selectId, field] of CHAIN_FIELDS) {
+        payload[field] = $(selectId)?.value || '';
+      }
     }
 
     // Notifications toggle — defaults to true if absent.

@@ -159,7 +159,14 @@ export const ROOMS = [
     // `P22-05` (wf-ui). The room is the chains canvas and, beside it, the
     // workflows (`workflowRoom.js`); the form and the step renderer are handed
     // in from here, as they were to the canvas.
-    mount: (host, opts) => mountAutomations(host, { ...opts, mountTaskFields, renderSteps: renderRunSteps }),
+    // `P23-06` (WB-M-14): the canvas draws the chain, so the form it opens
+    // for a task has no Chain selects (`chain: false`); the Tasks window's has.
+    mount: (host, opts) => mountAutomations(host, {
+      ...opts,
+      mountTaskFields: (h, o) => mountTaskFields(h, (!o || !o.mode || o.mode === 'task')
+        ? { ...(o || {}), chain: false } : o),
+      renderSteps: renderRunSteps,
+    }),
   },
   { id: 'skills', label: ROOM_NAMES.skills, panel: 'workbench-room-skills', mount: mountSkillsRoom },
   { id: 'integrations', label: ROOM_NAMES.integrations, panel: 'workbench-room-integrations', mount: mountIntegrationsRoom },

@@ -48007,3 +48007,60 @@ button.task-card-toggle {
 .email-lib-just-opened :is(.doclib-card, .date-section-header) {
   animation-name: none;
 }
+
+/* WB-U-4: while a step's panel is open on a run, the run list folds to a strip of marks (each says its run on
+   hover), so the canvas is not squeezed between a 220 px list and the 325 px panel. A phone stacks the list above
+   the canvas and keeps it as it is. */
+@media (min-width: 769px) {
+  .wf-runs:has(> .wf-run-canvas.wb-panel-open) > .wf-run-list {
+    flex-basis: 44px;
+    padding: 6px 4px;
+  }
+  .wf-runs:has(> .wf-run-canvas.wb-panel-open) .wf-run-item {
+    justify-content: center;
+    padding: 5px 0;
+  }
+  .wf-runs:has(> .wf-run-canvas.wb-panel-open) .wf-run-item > :not(.wf-run-mark) {
+    display: none;
+  }
+}
+
+/* WB-M-7, WB-U-1 (the MCP & Integrations room's frame, the part a stylesheet can give): the room is the one
+   scrollbar — a server's tool list and its Try form were a 200 px box inside it (a rule written for the Settings
+   card) with 300 px of window empty below — and the card fills the room instead of a centred 860 px card in an
+   empty 1180 px one. */
+#workbench-room-integrations .mcp-tools-list {
+  max-height: none;
+  overflow: visible;
+}
+#workbench-room-integrations .wb-intg {
+  max-width: none;
+  margin: 0;
+}
+
+/* WB-U-5: the step palette as a side panel — the canvas's right side, full height, where the step's form opens
+   next (`workflowPanels.js` sets its box). */
+.wf-palette.wf-palette-side {
+  width: min(400px, 46%);
+  max-width: none;
+  overflow-y: auto;
+  border-radius: 0;
+  border-width: 0 0 0 1px;
+  box-shadow: none;
+}
+
+/* WB-U-13: on a phone the workflow's toolbar is the name, the switch and ⋯ (`workflowRoom.js`); ⋯ shows the rest.
+   A step's *Remove step* sits under its form, away from *Close*. */
+.wf-bar-more { display: none; }
+@media (max-width: 600px) {
+  .wf-bar-more { display: inline-flex; align-items: center; justify-content: center; min-width: 40px; min-height: 32px; }
+  .wf-bar:not(.wf-bar-more-open) > .wf-bar-runs { display: none; }
+  .wf-bar .wf-switch-word { display: none; }
+}
+.wb-panel-foot {
+  flex: 0 0 auto;
+  display: flex;
+  padding: 8px 10px;
+  border-top: 1px solid var(--border);
+}
+.wb-panel-foot:has(> .wb-panel-remove[hidden]) { display: none; }

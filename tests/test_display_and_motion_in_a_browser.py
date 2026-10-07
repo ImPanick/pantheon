@@ -481,3 +481,98 @@ def test_six_gallery_opens_add_no_listener_to_the_page(tmp_path):
     assert r["gone"], r                        # the window really closed each time
     assert r["after"] == r["before"], r        # was +2 per open: the `scroll` capture and the album menu's dismiss
     assert r["menu"] == {"opened": True, "closedFromOutside": True}, r
+
+
+# ── the Workbench at both widths: WB-M-7, WB-U-4, WB-U-13, WB-U-9 ───────────
+
+_WORKBENCH = """
+<div id="workbench-room-integrations" class="workbench-room workbench-room-integrations" style="height:500px">
+  <div class="wb-intg"><div class="admin-card"><div class="mcp-tools-list" id="tools">
+    <div style="height:600px">tools and the Try form</div></div></div></div></div>
+<div class="wf-runs" style="height:400px;width:1100px">
+  <ul class="wf-run-list" id="runs"><li class="wf-run-row"><button class="wf-run-item" id="run" title="Failed, 8:00 AM">
+    <span class="wf-run-mark">✗</span><span class="wf-run-word" id="runword">Failed</span>
+    <span class="wf-run-when">8:00 AM</span></button></li></ul>
+  <div class="wf-run-canvas wb-room wb-panel-open" id="runcanvas"></div>
+</div>
+<div class="wf-bar" id="bar"><span class="wf-bar-group"><input class="wf-name"></span>
+  <span class="wf-bar-group"><button class="wf-switch">Off</button><span class="wf-switch-word" id="switchword">Off</span></span>
+  <button class="wf-bar-more" id="more">⋯</button>
+  <span class="wf-bar-group wf-bar-runs" id="rungroup"><button>Versions…</button><button>Run now</button></span></div>
+<aside class="wb-panel"><div class="wb-panel-body"></div>
+  <div class="wb-panel-foot" id="foot-shown"><button class="wb-panel-remove">Remove step</button></div></aside>
+<aside class="wb-panel"><div class="wb-panel-foot" id="foot-hidden"><button class="wb-panel-remove" hidden>Remove step</button></div></aside>
+"""
+_WORKBENCH_STEPS = r"""
+  const shown = (id) => { const e = document.getElementById(id); return getComputedStyle(e).display !== 'none'; };
+  const one = await page.evaluate((s) => eval(s), `({
+    toolsMax: getComputedStyle(document.getElementById('tools')).maxHeight,
+    runsW: Math.round(document.getElementById('runs').getBoundingClientRect().width),
+    word: getComputedStyle(document.getElementById('runword')).display,
+    more: getComputedStyle(document.getElementById('more')).display,
+    rungroup: getComputedStyle(document.getElementById('rungroup')).display,
+    switchword: getComputedStyle(document.getElementById('switchword')).display,
+    footShown: getComputedStyle(document.getElementById('foot-shown')).display,
+    footHidden: getComputedStyle(document.getElementById('foot-hidden')).display,
+  })`);
+  await page.evaluate(() => document.getElementById('bar').classList.add('wf-bar-more-open'));
+  one.rungroupOpen = await page.evaluate(() => getComputedStyle(document.getElementById('rungroup')).display);
+  return one;
+"""
+
+
+def test_the_workbench_on_a_desktop(tmp_path):
+    r = _drive(tmp_path, html=_page(_WORKBENCH), steps=_WORKBENCH_STEPS, viewport=(1440, 900))["result"]
+    assert r["toolsMax"] == "none", r          # WB-M-7: was a 200 px box inside the room
+    assert r["runsW"] == 44 and r["word"] == "none", r   # WB-U-4: the run list folds beside a panel
+    assert r["more"] == "none" and r["rungroup"] != "none" and r["switchword"] != "none", r
+    assert r["footShown"] != "none" and r["footHidden"] == "none", r   # WB-U-13: Remove step under the form
+
+
+def test_the_workbench_on_a_phone(tmp_path):
+    r = _drive(tmp_path, html=_page(_WORKBENCH), steps=_WORKBENCH_STEPS, viewport=(390, 844))["result"]
+    assert r["more"] != "none" and r["rungroup"] == "none" and r["switchword"] == "none", r  # name, switch, ⋯
+    assert r["rungroupOpen"] != "none", r       # ⋯ shows the rest
+    assert r["word"] != "none", r               # the phone keeps its run list as it is
+
+
+def _picker_page(above: int) -> str:
+    return _page(
+        f"""
+<div class="modal-content" style="position:fixed;left:100px;top:40px;width:900px;height:800px">
+  <div id="layer" style="position:relative;height:800px;overflow:auto">
+    <div style="height:{above}px"></div>
+    <input id="field">
+    <div class="wf-slot"><button class="wf-slot-pick" id="pick">Insert a field…</button></div>
+  </div>
+</div>
+""",
+        """
+import { placeNear } from '/static/js/workbench/fieldPicker.js';
+// After the window's entrance (a scale): a picker opens on a settled window.
+await new Promise((r) => setTimeout(r, 400));
+const box = document.createElement('div');
+box.className = 'wf-picker';
+box.style.height = '120px';
+document.getElementById('layer').appendChild(box);
+placeNear(box, document.getElementById('field'));
+const b = box.getBoundingClientRect(), p = document.getElementById('pick').getBoundingClientRect();
+window.__placed = { top: Math.round(b.top), left: Math.round(b.left), bottom: Math.round(b.bottom),
+  pickTop: Math.round(p.top), pickBottom: Math.round(p.bottom), pickLeft: Math.round(p.left) };
+""",
+    )
+
+
+_PLACED = "return await page.evaluate(() => window.__placed);"
+
+
+def test_insert_a_field_opens_under_its_button(tmp_path):
+    r = _drive(tmp_path, html=_picker_page(200), steps=_PLACED, viewport=(1440, 900))["result"]
+    assert 0 <= r["top"] - r["pickBottom"] <= 8, r      # was the panel's top-right corner, 500 px away
+    assert r["left"] == r["pickLeft"], r
+
+
+def test_low_in_the_window_it_opens_above_its_button(tmp_path):
+    r = _drive(tmp_path, html=_picker_page(640), steps=_PLACED, viewport=(1440, 900))["result"]
+    assert 0 <= r["pickTop"] - r["bottom"] <= 8, r      # more room above: just above the button
+    assert r["top"] >= 40, r                            # inside the window

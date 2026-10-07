@@ -91,7 +91,9 @@ def test_a_seven_column_run_opens_with_its_start_on_screen(box, live, width):
     o = _run(box, LIVE_PREAMBLE(live.server.base), _MEASURE % width)
     assert o["runs"] == ["Success"], "the real run, as the real route lists it"
     run = o["run"]
-    assert run["zoom"] == 0.35, "at the zoom floor: the graph is wider than the phone"
+    # `P23-06` (WB-M-6): a fit into a canvas under 600 px stops at 0.6, not the
+    # 0.35 floor, where a step was a smudge; the start stays at the padding.
+    assert run["zoom"] == 0.6, "at the narrow floor: the graph is wider than the phone"
     assert 0 <= run["left"] and run["right"] <= width, f"the start is on screen: {run}"
     assert o["last"]["right"] > width, "the rest is wider than the screen — panning reaches it"
     assert 0 <= o["edit"]["left"] and o["edit"]["right"] <= width, "the editing canvas too"
@@ -114,6 +116,6 @@ def test_a_graph_that_fits_is_still_centred(tmp_path):
     s = o["small"]
     assert s["zoom"] == 1 and s["x"] + 40 == (1400 - (232 * 3 + 96 * 2)) / 2, "centred, as before"
     w = o["wide"]
-    assert w["zoom"] == 0.35 and w["x"] + 40 * 0.35 == 40, "its first column at the padding"
+    assert w["zoom"] == 0.6 and w["x"] + 40 * 0.6 == 40, "its first column at the padding (`P23-06`: 0.6 under 600 px)"
     t = o["tall"]
     assert t["zoom"] == 0.35 and round(t["y"] + 40 * 0.35, 6) == 40, "a graph too tall: its first row"

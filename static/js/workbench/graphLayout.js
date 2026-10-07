@@ -49,6 +49,14 @@ export const LONE_COLUMNS = 4;
 /** How far the canvas zooms either way. */
 export const ZOOM_MIN = 0.35;
 export const ZOOM_MAX = 2;
+/** `P23-06` (WB-M-2, WB-M-6). A fit into a canvas narrower than this — a
+ *  phone, or a desktop canvas a run list and a step's panel have squeezed —
+ *  stops at `FIT_FLOOR_NARROW` instead of `ZOOM_MIN`: at 35 % a step is an
+ *  80 px box with 5 px words (measured at 390 px and beside a failed run's
+ *  panel at 1440). The person pans to the rest; `B1113` keeps the start in
+ *  view. The `−` button still goes down to `ZOOM_MIN`. */
+export const NARROW_FIT_WIDTH = 600;
+export const FIT_FLOOR_NARROW = 0.6;
 
 /** The ports a step has, in the order `EDGE_WORDS` names the conditions. */
 export const PORTS = Object.freeze(Object.keys(EDGE_WORDS));
@@ -514,7 +522,8 @@ export function fitView(bounds, width, height, pad = MARGIN) {
   if (!bounds || w <= 0 || h <= 0 || bounds.w <= 0 || bounds.h <= 0) {
     return { zoom: 1, x: _r(pad - ((bounds && bounds.x) || 0)), y: _r(pad - ((bounds && bounds.y) || 0)) };
   }
-  const zoom = clampZoom(Math.min(1, (w - pad * 2) / bounds.w, (h - pad * 2) / bounds.h));
+  const floor = w < NARROW_FIT_WIDTH ? FIT_FLOOR_NARROW : ZOOM_MIN;
+  const zoom = clampZoom(Math.max(floor, Math.min(1, (w - pad * 2) / bounds.w, (h - pad * 2) / bounds.h)));
   // `B1113`. Centred when it fits. When it does not — the zoom is at its floor
   // and the graph is still wider (or taller) than the viewport — its first
   // column (row) sits at the padding: centring put the start off the left
@@ -534,4 +543,5 @@ export default {
   layoutGraph, boundsOf, portPoint, portOffset, inputPoint, edgePath, edgeMid, edgeRoute,
   arrowPath, nodeAt, clampZoom, fitView, nodeHeight,
   NODE_W, NODE_H, GAP_X, GAP_Y, MARGIN, LONE_COLUMNS, ZOOM_MIN, ZOOM_MAX, PORTS,
+  NARROW_FIT_WIDTH, FIT_FLOOR_NARROW,
 };
