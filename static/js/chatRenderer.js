@@ -22,7 +22,7 @@ import { CHECKLIST_SURFACES, checklistProgress, stepChipClass } from './checklis
 import { buildAllowRuleChooser } from './trustLadder.js';
 // `P4-10`. Why the agent stopped itself — the same line the live stream draws.
 import { renderAgentStop, renderAgentNote, withdrawContinueOffers, compactionFromRecord } from './agentStops.js';
-import { applyAgentThreadNode, verifierCardOptions,
+import { applyAgentThreadNode, verifierCardOptions, approvalOutcome,
          blockedCardOptions, toolOutputPanesHtml, screenshotSummary } from './agentThread.js';
 import { prepBreakdownRows } from './agentMeter.js';   // P4-08
 
@@ -108,8 +108,12 @@ export function memoryPillParts(mems) {
   const pinned = list.filter(m => m && m.type === 'pinned').length;
   const recalled = list.filter(m => m && m.type === 'recalled').length;
   const parts = [];
-  if (pinned) parts.push(`${pinned} pinned`);
-  if (recalled) parts.push(`${recalled} recalled`);
+  // `P23-04` (CHAT-U-17): "1 memory", not "1 recalled". The pinned /
+  // recalled split is in the pill's tooltip and its popup. The keyword-only
+  // warning stays on the pill (`B61`: it is the one sign that semantic recall
+  // did not run, and a warning in a tooltip is a warning nobody reads).
+  const total = pinned + recalled;
+  if (total) parts.push(`${total} memor${total === 1 ? 'y' : 'ies'}`);
   if (memoryRecallDegraded(list)) parts.push('keyword only');
   return parts;
 }
@@ -2979,9 +2983,15 @@ export function displayMetrics(messageElement, metrics) {
 
   // Keep token counts in the Message Stats popup; the footer should stay slim.
   const costStr0 = cost !== null ? `$${cost < 0.01 ? cost.toFixed(4) : cost.toFixed(3)}` : null;
-  const hasTps = tps != null && tps !== 'undefined';
+  // `P23-04` (CHAT-U-17). A speed is said as a whole number ("615 tok/s",
+  // not "615.32"), and not at all for a reply too short to have one — a
+  // three-word placeholder read "1331.59 tok/s". The exact figure stays in
+  // the Message Stats popup.
+  const tpsNum = Number(tps);
+  const hasTps = tps != null && tps !== 'undefined' && Number.isFinite(tpsNum) && tpsNum > 0
+    && !(outputTokens && outputTokens < 20);
   const metricsLabel = hasTps
-    ? `${tps} tok/s`
+    ? `${Math.round(tpsNum).toLocaleString()} tok/s`
     : costStr0
       ? costStr0
       : responseTime != null
@@ -3126,7 +3136,9 @@ export function displayMetrics(messageElement, metrics) {
   // Context usage ring
   let ctxRing = null;
   const ctxLen = metrics.context_length || 0;
-  if (ctxPct !== undefined && ctxPct > 0) {
+  // `P23-04` (CHAT-U-17): no grey "0%" wheel under every short reply — the
+  // composer's wheel is the window; this one shows only when it says something.
+  if (ctxPct !== undefined && Math.round(ctxPct) >= 1) {
     const r = 6, stroke = 1.5;
     const circ = 2 * Math.PI * r;
     const fill = circ * (ctxPct / 100);
@@ -3546,6 +3558,9 @@ export function approvalExpiryLine(expiresAt) {
     line.textContent = mins > 0
       ? `Expires in ${mins}m ${String(secs).padStart(2, '0')}s`
       : `Expires in ${secs}s`;
+    // `P23-04` (CHAT-U-11): the clock shows in its last minute; a ten-minute
+    // countdown ticking on every card was one more line to read.
+    line.hidden = left >= 60;
     return true;
   };
   if (paint()) {
@@ -3554,6 +3569,26 @@ export function approvalExpiryLine(expiresAt) {
     }, 1000);
   }
   return line;
+}
+
+/**
+ * `P23-04` (CHAT-U-11). The approval card asks the question its action is
+ * about — *Let it read your private data?* — from the ranked lead effect the
+ * payload already carries (`effect_label`, `P7-06`), rather than the same
+ * "Allow this task to continue?" on every card. The payload's `question`
+ * stays what the model is shown and the fallback when no effect was named.
+ */
+export function approvalTitle(aq) {
+  const q = aq || {};
+  const lead = typeof q.effect_label === 'string' ? q.effect_label.trim() : '';
+  if (q.kind !== 'tool_approval' || !lead) return String(q.question || '');
+  const words = lead.split(/\s+/);
+  let verb = words[0];
+  if (/^can$/i.test(verb) && words.length > 1) { words.shift(); verb = words[0]; }
+  else if (/(?:ch|sh|x|ss)es$/i.test(verb)) verb = verb.slice(0, -2);
+  else if (/s$/i.test(verb) && !/ss$/i.test(verb)) verb = verb.slice(0, -1);
+  words[0] = verb.toLowerCase();
+  return `Let it ${words.join(' ')}?`;
 }
 
 export function renderAskUserCard(payload, options) {
@@ -3601,7 +3636,10 @@ export function renderAskUserCard(payload, options) {
   const question = document.createElement('div');
   question.className = 'ask-user-question';
   question.id = `ask-user-q-${Date.now()}-${Math.floor(Math.random() * 1e4)}`;
-  question.innerHTML = emojiText(aq.question);
+  // `P23-04` (CHAT-U-11): an approval asks about its action; the seal's
+  // fingerprint is the title's tooltip, not a line in the card.
+  question.innerHTML = emojiText(isToolApproval ? approvalTitle(aq) : aq.question);
+  if (isToolApproval && aq.action && aq.action.digest) question.title = `Approval fingerprint: ${aq.action.digest}`;
   card.appendChild(question);
   card.setAttribute('aria-labelledby', question.id);
 
@@ -3664,7 +3702,6 @@ export function renderAskUserCard(payload, options) {
       aq.action.document_version != null
         ? `Document version: ${aq.action.document_version}`
         : '',
-      aq.action.digest ? `Approval fingerprint: ${aq.action.digest}` : '',
     ].filter(Boolean).join('\n');
     action.style.whiteSpace = 'pre-wrap';
     card.appendChild(action);
@@ -3704,7 +3741,9 @@ export function renderAskUserCard(payload, options) {
   opts.forEach((opt) => {
     const label = (opt && opt.label) ? String(opt.label) : String(opt || '');
     if (!label) return;
-    const description = (opt && opt.description) ? String(opt.description) : '';
+    // `P23-04` (CHAT-U-11): an approval's buttons are their labels; what
+    // separates *this task* from *this chat* is said once, under them.
+    const description = (!isToolApproval && opt && opt.description) ? String(opt.description) : '';
     const row = document.createElement(multi ? 'label' : 'button');
     row.className = 'ask-user-option';
     if (multi) {
@@ -3778,6 +3817,13 @@ export function renderAskUserCard(payload, options) {
     list.appendChild(row);
   });
 
+  if (isToolApproval) {
+    const scope = document.createElement('div');
+    scope.className = 'ask-user-scope-note';
+    scope.textContent = 'This task stops at the end of this request; this chat stops asking here again.';
+    card.appendChild(scope);
+  }
+
   const other = document.createElement('div');
   other.className = 'ask-user-other';
   const otherInput = document.createElement('input');
@@ -3819,6 +3865,91 @@ export function renderAskUserCard(payload, options) {
     try { card.focus(); } catch (_) {}
   }
   return card;
+}
+
+/** `P23-04` (CHAT-U-18). The line under a reply the person stopped: one
+ *  link-button, *Stopped · Continue* — it was "[Message interrupted]" in
+ *  brackets beside a bare "▸" titled Continue. With no `onContinue` (a reply
+ *  stopped before it said anything) it says *Stopped* and offers nothing.
+ *  The live Stop, the reader's catch and a reload all draw it from here. */
+export function buildStoppedIndicator(doc, onContinue) {
+  const box = doc.createElement('div');
+  box.className = 'stopped-indicator';
+  if (typeof onContinue !== 'function') {
+    const label = doc.createElement('span');
+    label.textContent = 'Stopped';
+    box.appendChild(label);
+    return box;
+  }
+  const btn = doc.createElement('button');
+  btn.type = 'button';
+  btn.className = 'continue-btn';
+  btn.textContent = 'Stopped · Continue';
+  btn.addEventListener('click', () => { box.remove(); onContinue(); });
+  box.appendChild(btn);
+  return box;
+}
+
+/** `P23-04` (CHAT-M-8). Take away the row that asked for the approval with
+ *  this fingerprint, now that the call it asked about is drawn — and its thread
+ *  with it, when that row was all the thread held. */
+export function dropAskedTwin(box, digest) {
+  if (!box || !digest) return 0;
+  let dropped = 0;
+  box.querySelectorAll('.agent-thread-node').forEach((node) => {
+    if (!node.dataset || node.dataset.approvalDigest !== String(digest)) return;
+    const thread = node.parentNode;
+    node.remove();
+    dropped += 1;
+    if (thread && thread.classList && thread.classList.contains('agent-thread')
+        && !thread.querySelectorAll('.agent-thread-node').length) {
+      thread.remove();
+    }
+  });
+  return dropped;
+}
+
+/** A reply bubble's reasoning and its words, apart. */
+function _bubbleParts(bubble) {
+  const body = bubble && bubble.querySelector ? bubble.querySelector('.body') : null;
+  const isThinking = (n) => !!(n.classList && n.classList.contains('thinking-section'));
+  const holdsThinking = (n) => !!(isThinking(n) || (n.querySelector && n.querySelector('.thinking-section')));
+  // The live stream writes into a wrapper (`.stream-content`) that holds the
+  // reasoning and the reply side by side: look inside it.
+  let box = body;
+  while (box && box.children && box.children.length === 1 && !isThinking(box.children[0])
+         && holdsThinking(box.children[0])) {
+    box = box.children[0];
+  }
+  const kept = [];
+  const reply = [];
+  for (const child of Array.from((box && box.childNodes) || [])) (holdsThinking(child) ? kept : reply).push(child);
+  const said = reply.map((n) => n.textContent || '').join('').replace(/\s+/g, ' ').trim();
+  return { body, kept, reply, said };
+}
+
+/** What a reply bubble says, its reasoning left out; '' for a hidden one. */
+export function bubbleReplyText(bubble) {
+  if (!bubble || (bubble.style && bubble.style.display === 'none')) return '';
+  return _bubbleParts(bubble).said;
+}
+
+/** `P23-04` (CHAT-M-3). The stand-in reply a turn paused at an approval card
+ *  saved — the card's own question, "Allow this task to continue?" — taken off
+ *  the live bubble, as the history renderer never draws it. The round's
+ *  reasoning stays; a bubble left with nothing is hidden. Returns whether
+ *  anything went. Reply text other than the question is left alone. */
+export function dropApprovalPlaceholder(bubble, question) {
+  const q = String(question || '').replace(/\s+/g, ' ').trim();
+  const { body, kept, reply, said } = _bubbleParts(bubble);
+  if (!q || !body || said !== q) return false;
+  reply.forEach((n) => n.remove());
+  if (!kept.length) {
+    bubble.style.display = 'none';
+    const above = bubble.previousElementSibling;
+    if (above && above.classList && above.classList.contains('agent-thread')) above.classList.remove('has-bottom');
+  }
+  return true;
 }
 
 /**
@@ -3904,12 +4035,29 @@ export function addMessage(role, content, modelName, metadata) {
       let firstMsgAi = null;
       let lastMsgAi = null;
 
+      // `P23-04` (CHAT-M-8). The call an approval let through is the first
+      // thing its continuation did, so it opens the turn's first round. It
+      // carries the round it was *asked* in, a round of the reply before, and
+      // grouped by that it was drawn after the answer that reports it.
+      const ownRounds = toolEvents.filter((ev) => ev && !ev.approval_digest)
+        .map((ev) => Number(ev.round ?? 1)).filter((n) => Number.isInteger(n));
+      const openingRound = ownRounds.length ? Math.min(...ownRounds) : 1;
       const toolsByRound = {};
       for (const ev of toolEvents) {
         const r = ev.round ?? 1;
-        if (!toolsByRound[r]) toolsByRound[r] = [];
-        toolsByRound[r].push(ev);
+        const bucket = ev.approval_digest ? openingRound : r;
+        if (!toolsByRound[bucket]) toolsByRound[bucket] = [];
+        toolsByRound[bucket].push(ev);
       }
+      // `P23-04` (CHAT-M-21). Each round's own reasoning, where the reply
+      // kept it per round; a record from before keeps one string for the
+      // turn, and it is drawn once, with the first round.
+      const roundThinking = Array.isArray(metadata.round_thinking) ? metadata.round_thinking : null;
+      const thinkingFor = (r) => {
+        if (r < 0) return '';
+        if (roundThinking) return String(roundThinking[r] || '').trim();
+        return r === 0 ? String(metadata.thinking || '').trim() : '';
+      };
 
       const toolRounds = Object.keys(toolsByRound).map(Number);
       const maxRound = Math.max(toolRounds.length ? Math.max(...toolRounds) : 0, roundTexts.length);
@@ -3935,8 +4083,9 @@ export function addMessage(role, content, modelName, metadata) {
         const txt = r >= 0
           ? resolveDocumentPlaceholderLinks((roundTexts[r] || '').trim(), metadata)
           : '';
+        const think = /<think\b/i.test(txt) ? '' : thinkingFor(r);
 
-        if (txt) {
+        if (txt || think) {
           const wrap = document.createElement('div');
           wrap.className = 'msg msg-ai' + (r > 0 ? ' msg-continuation' : '');
           const roleEl = document.createElement('div');
@@ -3992,7 +4141,10 @@ export function addMessage(role, content, modelName, metadata) {
           if (isLastTextRound && metadata?.rag_sources?.length) {
             agentFindingsSuffix += buildRagSourcesBox(metadata.rag_sources);
           }
-          body.innerHTML = agentSourcesPrefix + markdownModule.processWithThinking(markdownModule.squashOutsideCode(txt)) + agentFindingsSuffix;
+          // `P23-04` (CHAT-M-21): the round's reasoning, drawn as the live
+          // stream drew it — a thinking block above the round's words.
+          const shownTxt = think ? '<think>' + think + '</think>\n\n' + txt : txt;
+          body.innerHTML = agentSourcesPrefix + markdownModule.processWithThinking(markdownModule.squashOutsideCode(shownTxt)) + agentFindingsSuffix;
           wrap.appendChild(body);
           wrap.dataset.raw = txt;
           if (metadata?._db_id) wrap.dataset.dbId = metadata._db_id;
@@ -4019,7 +4171,16 @@ export function addMessage(role, content, modelName, metadata) {
             if (ev.ask_user && !ev.ask_user.resolved) {
               pendingAskUser = askUserWithEffects(ev);
             }
+            // `P23-04` (CHAT-M-8). The approved call takes the place of the
+            // row that asked for it: one row per call, not the same call twice.
+            if (ev.approval_digest) dropAskedTwin(box, ev.approval_digest);
             const ok = (ev.exit_code === 0 || ev.exit_code == null);
+            // `P23-04` (CHAT-M-3, CHAT-M-24). A call that asked for approval
+            // never ran, so its `ok` says nothing: it is *waiting* until
+            // answered and *denied* when refused — read from the event's own
+            // `ask_user.resolved`, which the server writes when it is answered.
+            const outcome = approvalOutcome(ev);
+            const asked = outcome && ev.ask_user && ev.ask_user.action ? ev.ask_user.action : null;
             // `P4-19`: the same builder the live path uses. This was the
             // second copy of the merged-pane markup.
             let outHtml = toolOutputPanesHtml(ev);
@@ -4055,7 +4216,12 @@ export function addMessage(role, content, modelName, metadata) {
                 // `P20-03`: persisted with the event, so a reload says where it ran.
                 ranIn: ev.ran_in, ranAs: ev.ran_as,
                 command: ev.command, fullCommand: ev.full_command,
-                output: outHtml, diff: evDiffHtml, todo: evTodoHtml,
+                // A call that never ran has no output to show; the gate's own
+                // "Waiting for an exact user approval." is not one.
+                output: outcome ? '' : outHtml, diff: evDiffHtml, todo: evTodoHtml,
+                outcome: outcome || undefined,
+                approvalDigest: asked ? asked.digest : undefined,
+                approvalId: outcome && ev.ask_user ? ev.ask_user.approval_id : undefined,
               });
             // Click handling is delegated globally \u2014 see chat.js init.
             threadWrap.appendChild(node);
@@ -4117,9 +4283,15 @@ export function addMessage(role, content, modelName, metadata) {
       }
 
       const firstWrap = lastMsgAi || lastWrap;
+      // `P23-04` (CHAT-M-3). A turn that paused at an approval card and wrote
+      // nothing is not a reply: the card's question was saved in its place
+      // (so the model sees it was asked), and drawing a reply's footer under
+      // it — tokens per second, copy, regenerate — made it read as one.
+      const pausedAtApproval = toolEvents.some((ev) => approvalOutcome(ev))
+        && !roundTexts.some((t) => String(t || '').trim());
       // Not on a bubble an earlier run's footer is already under (a last run
       // that wrote nothing): one bubble, one footer.
-      if (firstWrap && firstWrap.classList.contains('msg-ai') && !firstWrap.querySelector('.msg-footer')) {
+      if (!pausedAtApproval && firstWrap && firstWrap.classList.contains('msg-ai') && !firstWrap.querySelector('.msg-footer')) {
         footWith(firstWrap, metadata);
       }
 
@@ -4302,24 +4474,9 @@ export function addMessage(role, content, modelName, metadata) {
 
     // Add stopped indicator + continue button for messages that were stopped by user
     if (role === 'assistant' && metadata?.stopped) {
-      const stoppedIndicator = document.createElement('div');
-      stoppedIndicator.className = 'stopped-indicator';
-      const stoppedLabel = document.createElement('span');
       // Differentiate between "stopped mid-stream" (had content, can continue)
       // and "cancelled before any content" — the latter has no Continue affordance.
-      stoppedLabel.textContent = metadata.cancelled
-        ? '[Cancelled by user]'
-        : '[Message interrupted]';
-      stoppedIndicator.appendChild(stoppedLabel);
-      // Continue button only makes sense when there's partial content to
-      // resume from \u2014 skip it for fully-cancelled (empty) turns.
-      if (!metadata.cancelled) {
-        const continueBtn = document.createElement('button');
-        continueBtn.className = 'continue-btn';
-        continueBtn.title = 'Continue';
-        continueBtn.textContent = '\u25B8';
-        continueBtn.addEventListener('click', () => {
-          stoppedIndicator.remove();
+      const stoppedIndicator = buildStoppedIndicator(document, metadata.cancelled ? null : () => {
           if (window.chatModule) {
             window.chatModule.setHideUserBubble();
             window.chatModule.setPendingContinue(wrap);
@@ -4333,15 +4490,14 @@ export function addMessage(role, content, modelName, metadata) {
             }
           }
         });
-        stoppedIndicator.appendChild(continueBtn);
-      }
       b.appendChild(stoppedIndicator);
     }
 
     if (metadata?.edited) {
       const editedIndicator = document.createElement('div');
       editedIndicator.className = 'edited-indicator';
-      editedIndicator.textContent = '[Message edited]';
+      // `P23-04` (§ 5): said as the stopped line is — a word, not a bracket.
+      editedIndicator.textContent = 'Edited';
       b.appendChild(editedIndicator);
     }
 
@@ -4473,6 +4629,10 @@ export function addMessage(role, content, modelName, metadata) {
 }
 
 const chatRenderer = {
+  buildStoppedIndicator,   // `P23-04` (CHAT-U-18)
+  dropAskedTwin,           // `P23-04` (CHAT-M-8)
+  dropApprovalPlaceholder, // `P23-04` (CHAT-M-3)
+  bubbleReplyText,         // `P23-04` (CHAT-M-3)
   shortModel,
   sameModelName,
   modelRouteLabel,

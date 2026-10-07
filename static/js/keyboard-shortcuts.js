@@ -244,7 +244,8 @@ export function initKeyboardShortcuts(modules) {
     const before = _cancelBefore && _cancelBefore.e === e ? _cancelBefore.print : null;
     _cancelBefore = null;
     if (escapeClaim(e, before)) return;
-    if (chatModule) chatModule.abortCurrentRequest();
+    // `P23-04` (CHAT-M-1): the keyboard's Stop is the Stop button's own path.
+    if (chatModule) chatModule.stopCurrentReply();
   });
 
   // Load saved keybinds

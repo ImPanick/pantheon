@@ -335,7 +335,11 @@ function initializeEventListeners() {
     let _countScheduled = false;
     const _updateMsgCount = () => {
       _countScheduled = false;
-      const n = _chatHistEl.querySelectorAll(':scope > .msg').length;
+      // `P23-04` (CHAT-M-22): what was said, once each — not the "Response
+      // ready in …" note (`msg-system`), and not each step of one reply drawn
+      // as its own bubble (`msg-continuation`). The header said "2 msgs"
+      // beside a Library saying "3 msgs" for the same chat.
+      const n = _chatHistEl.querySelectorAll(':scope > .msg:not(.msg-system):not(.msg-continuation)').length;
       _metaCountEl.textContent = n ? `· ${n} msg${n === 1 ? '' : 's'}` : '';
     };
     const _scheduleCount = () => {
@@ -1772,9 +1776,11 @@ function initializeEventListeners() {
       // `B948`. The button names its key, read from the live table because
       // Settings can rebind it and the saved binds arrive after first paint.
       const combo = planModeCombo();
-      btn.title = (active
-        ? 'Plan mode on - next message proposes a plan only'
-        : 'Plan mode') + (combo ? ` (${formatKeybind(combo)})` : '');
+      // `P23-04` (CHAT-U-15, CHAT-U-10): the control's name is its tooltip;
+      // the lit chip says it is on. On a touch screen the swipe is named too.
+      const touch = ('ontouchstart' in window)
+        || (typeof navigator !== 'undefined' && navigator.maxTouchPoints > 0);
+      btn.title = 'Plan' + (combo ? ` (${formatKeybind(combo)})` : '') + (touch ? ' · or swipe the message box' : '');
       if (combo) btn.setAttribute('aria-keyshortcuts', ariaKeyshortcuts(combo));
       else btn.removeAttribute('aria-keyshortcuts');
     }
@@ -1795,9 +1801,9 @@ function initializeEventListeners() {
       const resChk = el('research-toggle');
       if (resChk && resChk.checked) _syncResearchIndicator(false);
     }
-    if (!options.silent && uiModule?.showToast) {
-      uiModule.showToast(on ? 'Plan mode on' : 'Plan mode off', 1600);
-    }
+    // `P23-04` (CHAT-U-15): no toast — the lit chip and the pill say it,
+    // and Plan mode was being said four ways at once.
+    void options;
   }
 
   function applyModeToToggles(mode) {
@@ -1952,36 +1958,11 @@ function initializeEventListeners() {
     }
   })();
 
-  // ── Tool splash explainer messages (shown first 2 times per tool) ──
-  const SPLASH_COUNT_KEY = 'pantheon-tool-splash-counts';
-  const SPLASH_MAX = 2;
-  const _toolSplashes = {
-    web: { role: 'Web Search', text: 'Searches the web for relevant information to include in the response. Results are fetched and summarized before the AI answers.' },
-    bash: { role: 'Shell Access', text: 'Gives the AI access to a sandboxed shell for running commands, installing packages, and executing scripts. Use with caution.' },
-    builder: { role: 'Tool Builder', text: 'Create custom mini-apps and tools the AI can use. Describe what you need and the AI will build a tool you can reuse across conversations.' },
-    research: { role: 'Deep Research', text: 'Multi-round web search with source analysis. Takes longer but produces comprehensive, well-sourced answers. Your next message will trigger a deep research cycle.' },
-  };
-  function _showToolSplash(key) {
-    const splash = _toolSplashes[key];
-    if (!splash) return;
-    // Only show the first SPLASH_MAX times per tool
-    const counts = Storage.getJSON(SPLASH_COUNT_KEY, {});
-    const seen = counts[key] || 0;
-    if (seen >= SPLASH_MAX) return;
-    counts[key] = seen + 1;
-    Storage.setJSON(SPLASH_COUNT_KEY, counts);
-    // Hide welcome screen so splash is visible
-    if (chatModule && chatModule.hideWelcomeScreen) {
-      chatModule.hideWelcomeScreen();
-    }
-    const chatBox = document.getElementById('chat-history');
-    if (!chatBox) return;
-    const div = document.createElement('div');
-    div.className = 'msg msg-ai tool-splash';
-    div.innerHTML = '<div class="role">' + splash.role + '</div><div class="body" style="opacity:0.7;font-size:0.92em">' + splash.text + '</div>';
-    chatBox.appendChild(div);
-    if (uiModule) uiModule.scrollHistory();
-  }
+  // `P23-04` (CHAT-M-18, CHAT-U-14). The tool "splash" bubbles are gone: the
+  // first two switches of Web, Shell or Deep Research wrote an explainer into
+  // the transcript as a `msg-ai` reply ("Searches the web for relevant
+  // information…"), beside the toast that already says the switch flipped.
+  // It looked like an answer, was never saved, and hid the welcome screen.
 
   // ── Checkbox-backed toggle buttons (with per-mode persistence) ──
   function setupToggle(btnId, checkboxId, stateKey) {
@@ -2002,7 +1983,6 @@ function initializeEventListeners() {
       btn.setAttribute('aria-pressed', String(chk.checked));
       saveToolPref(stateKey, curMode, chk.checked);
       showToolToggleToast(stateKey, chk.checked);
-      if (chk.checked) _showToolSplash(stateKey);
       // Web search and Research are mutually exclusive — Research takes priority
       if (stateKey === 'web' && chk.checked) {
         const resChk = el('research-toggle');
@@ -2277,7 +2257,6 @@ function initializeEventListeners() {
         const turningOn = chk ? !chk.checked : false;
         _syncResearchIndicator(turningOn);
         if (turningOn) {
-          _showToolSplash('research');
           // Clear character — mutually exclusive with research
           if (presetsModule && presetsModule.deactivateCharacter) presetsModule.deactivateCharacter();
           // Research and Web search are mutually exclusive
@@ -2456,23 +2435,13 @@ function initializeEventListeners() {
 	    const textarea = el('message');
 	    const inputBottom = document.querySelector('.chat-input-bottom');
 	    const _isMobile = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
-	    let _placeholderHintOn = false;
 
+	    // `P23-04` (CHAT-U-10). The box says what it is for. On a phone it
+	    // alternated with "Swipe to toggle plan" every 5 s, for ever; the
+	    // swipe is in the Plan chip's tooltip now (`syncPlanToggle`).
 	    function setComposerPlaceholder(width) {
 	      if (!textarea) return;
-	      if (_isMobile && _placeholderHintOn) {
-	        textarea.setAttribute('placeholder', 'Swipe to toggle plan');
-	        return;
-	      }
-	      textarea.setAttribute('placeholder', width < PLACEHOLDER_COMPACT_WIDTH ? 'Message...' : 'Message Pantheon...');
-	    }
-
-	    if (_isMobile && textarea && !textarea._pantheonPlanPlaceholderHint) {
-	      textarea._pantheonPlanPlaceholderHint = true;
-	      setInterval(() => {
-	        _placeholderHintOn = !_placeholderHintOn;
-	        setComposerPlaceholder(inputTop.clientWidth || window.innerWidth || 0);
-	      }, 5000);
+	      textarea.setAttribute('placeholder', width < PLACEHOLDER_COMPACT_WIDTH ? 'Message…' : 'Message Pantheon…');
 	    }
 
 		    function checkPickerOverflow() {
@@ -2557,7 +2526,6 @@ function initializeEventListeners() {
       const turningOn = chk ? !chk.checked : false;
       _syncResearchIndicator(turningOn);
       if (turningOn) {
-        _showToolSplash('research');
         // Clear character — mutually exclusive with research
         if (presetsModule && presetsModule.deactivateCharacter) presetsModule.deactivateCharacter();
         // Mutual exclusion with web search
@@ -2594,11 +2562,9 @@ function initializeEventListeners() {
         groupModule.setActive(true);  // Set early so updateModelPicker sees it
         _syncGroupIndicator(true);
         _startFreshChat();
-        // Clear any leftover splash screens
+        // Hide the welcome screen (`P23-04`: there are no splash bubbles to clear).
         const _chatBox = document.getElementById('chat-history');
         if (_chatBox) {
-          _chatBox.querySelectorAll('.tool-splash').forEach(s => s.remove());
-          // Also hide welcome screen
           if (chatModule && chatModule.hideWelcomeScreen) chatModule.hideWelcomeScreen();
         }
         // Start group — create participant sessions immediately
@@ -2652,7 +2618,8 @@ function initializeEventListeners() {
       chk.checked = !chk.checked;
       incognitoBtn.classList.toggle('active', chk.checked);
       const tipEl = el('welcome-tip');
-      incognitoBtn.title = chk.checked ? 'Disable Nobody mode' : 'Enable Nobody mode — no memory, no history saved';
+      // `P23-04` (§ 5, names): the control's name, said once.
+      incognitoBtn.title = 'Nobody — no memory, nothing saved';
       const welcomeName = document.querySelector('.welcome-name');
       if (chk.checked) {
         try {
@@ -3993,20 +3960,16 @@ function startPantheonApp() {
     return fileHandlerModule.getPendingCount && fileHandlerModule.getPendingCount() > 0;
   }
 
+  // `P23-04` (CHAT-U-8). While a reply streams the button is Stop, whatever
+  // is in the box: typing used to turn it into "Queue", so there was no Stop
+  // while you had a draft. Enter queues the draft (the composer's keydown).
   function _updateStreamingSubmitButton() {
     if (!sendBtn || sendBtn.dataset.mode !== 'streaming') return false;
-    const hasText = messageInput && messageInput.value.trim().length > 0;
-    const nextPhase = hasText ? 'queue' : 'processing';
-    if (sendBtn.dataset.phase === nextPhase) return true;
-    sendBtn.dataset.phase = nextPhase;
+    if (sendBtn.dataset.phase === 'processing' && sendBtn.title === 'Stop generation') return true;
+    sendBtn.dataset.phase = 'processing';
     sendBtn.classList.remove('mic-mode', 'newchat-mode', 'newchat-expanded', 'anim-spin', 'anim-launch', 'anim-land');
-    if (hasText) {
-      sendBtn.innerHTML = _sendIcon;
-      sendBtn.title = 'Queue message';
-    } else {
-      sendBtn.innerHTML = _stopIcon;
-      sendBtn.title = 'Stop generation';
-    }
+    sendBtn.innerHTML = _stopIcon;
+    sendBtn.title = 'Stop generation';
     return true;
   }
 
@@ -4038,28 +4001,16 @@ function startPantheonApp() {
         newMode = 'idle';
         sendBtn.classList.remove('mic-mode', 'newchat-mode', 'newchat-expanded');
       } else {
-      // Check if we're already on a fresh empty session (welcome screen visible)
-      const isEmptySession = document.getElementById('chat-container')?.classList.contains('welcome-active');
-      if (isEmptySession) {
-        // Already on new chat — show arrow in muted style (ready to type)
-        sendBtn.innerHTML = _sendIcon;
-        sendBtn.title = 'Send message';
-        newMode = 'idle';
-        sendBtn.classList.add('newchat-mode'); // muted gray style
-        sendBtn.classList.remove('mic-mode', 'newchat-expanded');
-        clearTimeout(sendBtn._expandTimer);
-      } else {
-        sendBtn.innerHTML = _newChatIcon + '<span class="send-btn-label">+ New</span>';
-        sendBtn.title = 'New chat';
-        newMode = 'newchat';
-        sendBtn.classList.add('newchat-mode');
-        sendBtn.classList.remove('mic-mode');
-        // The button stays a 32px compact icon (no auto-expand to label —
-        // the "+ New" label inside is for screen readers only; sighted users
-        // see the spinning + on hover + the title tooltip).
-        clearTimeout(sendBtn._expandTimer);
-        sendBtn.classList.remove('newchat-expanded');
-      }
+      // `P23-04` (CHAT-U-8). An empty box shows the send arrow, muted — on
+      // a fresh chat and on an open one alike. It used to be "+ New" on an
+      // open chat, so a mis-click while reading started a new chat, and it
+      // sat exactly where Stop had been. New chat lives in the sidebar.
+      sendBtn.innerHTML = _sendIcon;
+      sendBtn.title = 'Send message';
+      newMode = 'idle';
+      sendBtn.classList.add('newchat-mode'); // muted gray style
+      sendBtn.classList.remove('mic-mode', 'newchat-expanded');
+      clearTimeout(sendBtn._expandTimer);
       } // close group-else
     } else {
       newMode = 'send';
@@ -4114,25 +4065,8 @@ function startPantheonApp() {
       const hasFiles = _hasAttachments();
 
       if (sendBtn.dataset.mode === 'streaming') {
-        if (hasText) window.__pantheonQueueStreamingSubmit = Date.now();
+        // `P23-04` (CHAT-U-8): a click on Stop stops, draft or no draft.
         handleSubmit(e);
-        return;
-      }
-
-      // New chat mode — empty input, no attachments, no STT
-      if (!hasText && !hasFiles && sendBtn.dataset.mode === 'newchat') {
-        if (sessionModule) {
-          const sessions = sessionModule.getSessions();
-          const currentId = sessionModule.getCurrentSessionId();
-          const current = sessions.find(s => s.id === currentId);
-          if (current && current.endpoint_url && current.model) {
-            sessionModule.createDirectChat(current.endpoint_url, current.model, current.endpoint_id);
-          } else {
-            // Fallback to rail button
-            const railNew = el('rail-new-session');
-            if (railNew) railNew.click();
-          }
-        }
         return;
       }
 
@@ -4167,11 +4101,6 @@ function startPantheonApp() {
         // text state. Without this, a fast type-and-Enter would still see the
         // stale 'newchat' mode and open a new chat instead of sending.
         try { _updateSendBtnIcon(); } catch {}
-        if (sendBtn && sendBtn.dataset.mode === 'newchat') {
-          const railNew = el('rail-new-session');
-          if (railNew) railNew.click();
-          return;
-        }
         if (_isForegroundChatBusy() && messageInput.value && messageInput.value.trim()) {
           if (chatModule && chatModule.queueStreamingComposerRequest && chatModule.queueStreamingComposerRequest()) {
             return;

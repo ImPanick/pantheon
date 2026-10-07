@@ -65,13 +65,14 @@ def test_with_no_preparation_it_says_that_no_token_has_come(sandbox):
         console.log(JSON.stringify([5000, 20000, 59000, 60000, 119000, 120000, 600000]
           .map((ms) => m.firstTokenWaitText(null, ms, 0))));
     """)
+    # `P23-04` (PERF-U-3): from 5 s, counted, in the words used after prep.
     assert out == [
-        "",
-        "Still waiting for first token", "Still waiting for first token",
-        "Still waiting for first token - over a minute",
-        "Still waiting for first token - over a minute",
-        "Still working - no tokens yet from the model",
-        "Still working - no tokens yet from the model",
+        "Waiting for the model · ~5s",
+        "Waiting for the model · ~20s", "Waiting for the model · ~59s",
+        "Waiting for the model · ~1m 00s",
+        "Waiting for the model · ~1m 59s",
+        "Waiting for the model · ~2m 00s",
+        "Waiting for the model · ~10m 00s",
     ]
     assert not any("pre-filling" in t for t in out)
 
@@ -241,7 +242,7 @@ def test_a_stream_that_opens_and_then_goes_quiet_says_so_at_twenty_seconds(sandb
         advance(25000);
         console.log(JSON.stringify({ label: spinner.message }));
     """)
-    assert out["label"] == "Still waiting for first token"
+    assert out["label"] == "Waiting for the model · ~25s"
 
 
 def test_a_slow_model_after_preparation_is_counted_on_the_spinner(sandbox):
@@ -277,8 +278,8 @@ def test_the_first_token_calls_it_off(sandbox):
         advance(200000);
         console.log(JSON.stringify({ before, after: spinner.message, left: timers.length }));
     """)
-    assert out["before"] == "Still waiting for first token"
-    assert out["after"] == "Still waiting for first token", "a message was set after the first token"
+    assert out["before"] == "Waiting for the model · ~21s"
+    assert out["after"] == out["before"], "a message was set after the first token"
     assert out["left"] == 0
 
 
@@ -292,7 +293,7 @@ def test_a_tool_call_or_a_thinking_token_calls_it_off_too(sandbox, first):
         scheduleFirstTokenWaitMessages();
         advance(10); feed({ type: 'stream_steerable', steerable: true });
         feed({ type: 'model_actual', model: 'm' });
-        advance(5000); feed(%s);
+        advance(4000); feed(%s);
         advance(200000);
         console.log(JSON.stringify({ shown, left: timers.length }));
     """ % json.dumps(first))

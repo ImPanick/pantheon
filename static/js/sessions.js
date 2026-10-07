@@ -547,7 +547,10 @@ function createSessionItem(s) {
   handle.title = 'Drag to reorder';
   div.appendChild(handle);
 
-  // Provider dot indicator
+  // Provider dot indicator. `P23-04` (CHAT-U-7): a model with no logo drew a
+  // hollow "○" that said nothing. The dot stays (it is also where a running
+  // or finished reply pulses — `_updateResearchDots`), unseen until it has
+  // that to say.
   if (!isOpenClaw) {
     const star = document.createElement('span');
     const _logo = providerLogo(s.model);
@@ -557,6 +560,8 @@ function createSessionItem(s) {
       star.style.opacity = '0.4';
     } else {
       star.className = 'session-star';
+      star.dataset.noLogo = '1';
+      star.style.opacity = '0';
     }
     div.appendChild(star);
   }
@@ -604,8 +609,9 @@ function createSessionItem(s) {
   let chatTitle = s.name || '';
   if (_isFork) chatTitle = chatTitle.replace(/^Fork:\s*/, '').replace(/^\u2ADD\s*/, '');
   if (_isGroup) chatTitle = chatTitle.replace(/^\[GRP\]\s*/, '');
+  // `P23-04` (CHAT-U-7): the row is the chat's title; its model (the same on
+  // every row, cut to "scr…") is in the tooltip below.
   let label = chatTitle;
-  if (s.model) label += ' · ' + s.model.split('/').pop();
   if (s.archived) label += ' [archived]';
   span.textContent = label;
   span.title = (s.model ? s.model.split('/').pop() + ' · ' : '') + chatTitle;
@@ -944,7 +950,9 @@ function createSessionItem(s) {
       return;
     }
     dropdown.style.display = 'none';
-    if (!await uiModule.styledConfirm('Delete this session?', { confirmText: 'Delete', danger: true })) {
+    // `P23-04` (CHAT-U-22): the product's word is *chat*, and the title is
+    // the action, not "Confirm".
+    if (!await uiModule.styledConfirm('Delete this chat?', { title: 'Delete', confirmText: 'Delete', danger: true })) {
       _forceSidebarOpen();
       return;
     }
@@ -986,16 +994,27 @@ function createSessionItem(s) {
         headers: { 'Content-Type': 'application/json' }
       });
       if (response.ok) {
+        // `P23-04` (CHAT-M-6). Archiving the open chat leaves it: it stayed on
+        // screen, live, out of the list, and the next list refresh blanked
+        // its model label because it was no longer among the chats. A run
+        // still going keeps going (detached, as on any switch); the screen
+        // shows a new chat.
+        if (currentSessionId === s.id) {
+          try {
+            if (window.chatModule && window.chatModule.detachCurrentStream) window.chatModule.detachCurrentStream(s.id);
+          } catch (_) {}
+          _deselectCurrentSession(s.id);
+        }
         _forceSidebarOpen();
         await loadSessions();
         dropdown.style.display = 'none';
-        uiModule.showToast('Session archived');
+        uiModule.showToast('Chat archived');
       } else {
-        throw new Error('Failed to archive session');
+        throw new Error('Failed to archive chat');
       }
     } catch (error) {
       console.error('Error archiving session:', error);
-      uiModule.showError('Failed to archive session');
+      uiModule.showError('Could not archive that chat. Try again.');
     }
   });
 
@@ -1855,6 +1874,14 @@ export async function loadSessions() {
       if (metaEl && s) metaEl.textContent = s.name;
     }
 
+    // `P23-04` (PERF-U-2). The page hid the welcome screen before first paint
+    // because the address named a chat (`index.html`, the welcome block); a
+    // chat that turned out not to be there gets the welcome screen back.
+    if (window.__pantheonDeepLinkHidWelcome && targetId !== hashId) {
+      window.__pantheonDeepLinkHidWelcome = false;
+      if (!targetId && chatRenderer.showWelcomeScreen) chatRenderer.showWelcomeScreen();
+    }
+
     // No session selected — still enable input so slash commands (e.g. /setup) work
     if (!targetId && !hasPendingChat) {
       const msgInput = document.getElementById('message');
@@ -1945,6 +1972,14 @@ export async function selectSession(id, { keepSidebar = false, showLoading = tru
       if (presetsModule && presetsModule.onSessionSwitch) presetsModule.onSessionSwitch(id);
     } catch (e) {}
     const meta = sessions.find(s => s.id === id);
+    // `P23-04` (CHAT-M-19, CHAT-U-3). A chat opens in the mode it last ran in:
+    // an agent chat opened with Chat selected, because the toggle was one
+    // global preference. Only on a switch, so re-reading the open chat (after
+    // a reply) never undoes a toggle the person just made.
+    if (prevSessionId !== id && meta && (meta.mode === 'agent' || meta.mode === 'chat')
+        && typeof window.__pantheonSetChatMode === 'function') {
+      try { window.__pantheonSetChatMode(meta.mode); } catch (_) {}
+    }
 
     // Detach any in-flight stream to background instead of aborting
     try {
@@ -2368,8 +2403,11 @@ export async function materializePendingSession() {
 
     const incognitoChk = document.getElementById('incognito-toggle');
     const isIncognito = incognitoChk && incognitoChk.checked;
-    const base = (pending.modelId || 'model').split('/').pop();
-    const name = isIncognito ? 'Nobody' : `${base} ${new Date().toLocaleTimeString()}`;
+    // `P23-04` (CHAT-U-24). "New chat" until it is named (the server names it
+    // after its first reply, or its first stopped one — `needs_auto_name`).
+    // It was "scripted-demo 3:29:34 AM": a model and a clock, for ever on a
+    // turn that never finished. The model is in the row's tooltip.
+    const name = isIncognito ? 'Nobody' : 'New chat';
 
     const fd = new FormData();
     fd.append('name', name);
@@ -2651,7 +2689,7 @@ function _updateResearchDots() {
     if (isRunning || isCompleted) {
       star.style.opacity = '1';
     } else {
-      star.style.opacity = '';
+      star.style.opacity = star.dataset.noLogo ? '0' : '';   // `P23-04` (CHAT-U-7)
     }
   });
 }

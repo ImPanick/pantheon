@@ -8,6 +8,8 @@
 
 import Storage from './storage.js';
 import uiModule from './ui.js';
+// `P23-04` (C-ERR). A refused response is read once, by the one helper.
+import { readRefusal } from './workbench/refusal.js';
 import sessionModule from './sessions.js';
 import chatRenderer, { buildDiffHtml } from './chatRenderer.js?v=20261003waveg';
 import chatStream from './chatStream.js?v=20261003waveg';
@@ -48,7 +50,7 @@ import {
   applyModelRouteEventState,
   inheritModelRouteState,
 } from './chatModelProvenance.js';
-import { createTerminalStreamError, isRecoverableStreamError } from './chatStreamErrors.js';
+import { createTerminalStreamError, isRecoverableStreamError, buildReplyError } from './chatStreamErrors.js';
 import { createAgentMeter, presentMeterEvent, METER_EVENT_TYPES, renderLimitsHint } from './agentMeter.js';   // P4-08 / P4-23 / P4-24 / P7-10
 import { loadPanel } from './panels.js';
 import planWindow from './planWindow.js';
@@ -438,6 +440,11 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
   function _bindContextHeaderPill() {
     if (_contextHeaderBound) return;
     _contextHeaderBound = true;
+    // `P23-04` (CHAT-M-4): switching Agent / Chat changes the window.
+    ['mode-agent-btn', 'mode-chat-btn'].forEach((id) => {
+      const b = document.getElementById(id);
+      if (b) b.addEventListener('click', () => setTimeout(() => refreshChatContextHeader('mode'), 0));
+    });
     const pill = document.getElementById('chat-context-pill');
     if (!pill) return;
     pill.addEventListener('click', (e) => {
@@ -456,14 +463,20 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
     }
     try {
       const res = await fetch(`/api/session/${encodeURIComponent(sid)}/compact`, { method: 'POST' });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) {
+        // `P23-04` (CHAT-M-20, C-ERR): the server's sentence, read once — it
+        // was "Compact failed: {"detail":"Not enough messages to compact"}".
+        const refusal = await readRefusal(res, 'Could not compact this chat. Try again.');
+        uiModule.showError(refusal.sentence);
+        return false;
+      }
       uiModule.showToast('Context compacted');
       _closeContextHeaderPopup();
       if (sm && sm.selectSession) await sm.selectSession(sid, { keepSidebar: true, showLoading: false });
       refreshChatContextHeader('compact');
       return true;
     } catch (err) {
-      uiModule.showError(`Compact failed: ${err.message || err}`);
+      uiModule.showError('Could not reach Pantheon to compact this chat. Try again.');
       return false;
     }
   }
@@ -488,7 +501,11 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
     pill.hidden = false;
     pill.classList.add('loading');
     try {
-      const res = await fetch(`/api/session/${encodeURIComponent(sid)}/context`, { credentials: 'same-origin' });
+      // `P23-04` (CHAT-M-4): the mode the next send will use decides the
+      // window (the agent's budget, or the model's), read off the toggle.
+      const agentBtn = document.getElementById('mode-agent-btn');
+      const mode = agentBtn && agentBtn.classList.contains('active') ? 'agent' : 'chat';
+      const res = await fetch(`/api/session/${encodeURIComponent(sid)}/context?mode=${mode}`, { credentials: 'same-origin' });
       if (!res.ok) throw new Error(await res.text());
       const data = await res.json();
       if (seq !== _contextHeaderSeq) return;
@@ -862,6 +879,10 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
   const _backgroundStreams = new Map(); // sessionId -> { status, accumulated, sourcesHtml, abortCtrl, query, metrics }
   const _activeStreams = new Map();     // sessionId -> { abortCtrl, holder, query, startedAt, cancelViewWork, finalizeView }
   const _resumingStreams = new Set();   // sessionId -> a resumeStream() reader is live (re-attach lock)
+  // `P23-04` (CHAT-M-5). A resumed view that set the send button to Stop, and
+  // the ones the person stopped (their end reloads the saved, stopped reply).
+  const _resumeHoldsButton = new Set();
+  const _resumeStopRequested = new Set();
   const _terminalSavedStreams = new Set(); // sessionId -> canonical terminal event seen by active reader
   const _streamRunIds = new Map();      // sessionId -> opaque identity of the current send's detached run
   const _streamGenerations = new Map(); // sessionId -> generation of the current (latest) send
@@ -890,7 +911,10 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
 
   function _syncForegroundStreamGlobals() {
     const active = _getForegroundStreamState();
-    isStreaming = !!active;
+    // `P23-04` (CHAT-M-5): a resumed view on screen streams too.
+    let _sidNow = null;
+    try { _sidNow = sessionModule && sessionModule.getCurrentSessionId && sessionModule.getCurrentSessionId(); } catch (_) {}
+    isStreaming = !!active || !!(_sidNow && _resumeHoldsButton.has(_sidNow));
     currentAbort = active ? active.abortCtrl : null;
     currentHolder = active ? active.holder : null;
     _setForegroundChatBusy(!!active || !!_sendInFlight);
@@ -1110,11 +1134,10 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
       // and the user sees nothing fly out.
       setTimeout(() => {
         if (submitBtn.dataset.mode !== 'streaming') return;
-        const msgInput = uiModule.el('message');
-        const hasQueuedText = !!(msgInput && msgInput.value && msgInput.value.trim());
-        submitBtn.innerHTML = hasQueuedText && icons ? icons.send : _stopSvg;
-        submitBtn.dataset.phase = hasQueuedText ? 'queue' : 'processing';
-        submitBtn.title = hasQueuedText ? 'Queue message' : 'Stop generation';
+        // `P23-04` (CHAT-U-8): Stop while anything streams; Enter queues a draft.
+        submitBtn.innerHTML = _stopSvg;
+        submitBtn.dataset.phase = 'processing';
+        submitBtn.title = 'Stop generation';
         submitBtn.classList.remove('anim-launch');
         void submitBtn.offsetWidth;
         submitBtn.classList.add('anim-land');
@@ -2160,6 +2183,185 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
 
 
   /**
+   * `P23-04` (CHAT-M-1). The explicit Stop: what the send button does while a
+   * reply streams, lifted out of `handleChatSubmit` so Escape can do the same
+   * thing rather than a lesser one. Cancels the detached server run
+   * (`abortCurrentRequest(true)`), research too, and draws the stopped reply.
+   */
+  function _stopForegroundReply(sessionId, submitBtn) {
+    if (fileHandlerModule.isUploading && fileHandlerModule.isUploading()) {
+      fileHandlerModule.cancelUpload && fileHandlerModule.cancelUpload();
+    }
+    // Cancel server-side research if in progress
+    const _cancelSid = sessionModule.getCurrentSessionId();
+    if (_cancelSid && _researchingStreamIds.has(_cancelSid)) {
+      fetch(`${API_BASE}/api/research/cancel/${_cancelSid}`, { method: 'POST' }).catch(e => console.warn('Research cancel failed:', e));
+      _researchingStreamIds.delete(_cancelSid);
+      _clearResearchTimer();
+    }
+    // A resumed view keeps reading until the server's run ends, so the reply
+    // it saved on the way out is what the view's reload draws (CHAT-M-5).
+    if (_cancelSid && _resumingStreams.has(_cancelSid)) {
+      _resumeStopRequested.add(_cancelSid);
+      _resumeHoldsButton.delete(_cancelSid);   // the idle below is the hand-back
+    }
+    abortCurrentRequest(true);  // explicit user Stop → also cancel the detached server run
+
+    // Clean up any running agent thread nodes (stop wave animation, remove "running" state)
+    document.querySelectorAll('.agent-thread-node.running').forEach(node => {
+      if (node._waveInterval) { clearInterval(node._waveInterval); node._waveInterval = null; }
+      if (node._elapsedTicker) { clearInterval(node._elapsedTicker); node._elapsedTicker = null; }
+      node.classList.remove('running');
+      const wave = node.querySelector('.agent-thread-wave');
+      if (wave) wave.textContent = '';
+      const icon = node.querySelector('.agent-thread-icon');
+      if (icon) icon.textContent = '\u25A0'; // stop square
+      const statusEl = node.querySelector('.agent-thread-status');
+      if (!statusEl) {
+        const header = node.querySelector('.agent-thread-header');
+        if (header) {
+          const s = document.createElement('span');
+          s.className = 'agent-thread-status';
+          s.textContent = 'stopped';
+          header.appendChild(s);
+        }
+      }
+    });
+    document.querySelectorAll('.agent-thread.streaming').forEach(t => t.classList.remove('streaming'));
+
+    // Clean up any thinking spinners
+    document.querySelectorAll('.agent-thinking-dots').forEach(el => {
+      if (el._spinner) el._spinner.destroy();
+      el.remove();
+    });
+    // No text accumulated — remove the empty holder with spinner
+    if (currentHolder && !currentAccumulated) {
+      if (currentSpinner) { currentSpinner.destroy(); currentSpinner = null; }
+      // Empty cancel — keep the assistant bubble around with a "Cancelled
+      // by user" indicator and persist a placeholder server-side so the
+      // turn survives a refresh instead of vanishing without a trace.
+      _renderCancelledBubble(currentHolder);
+      currentHolder = null;
+      updateSubmitButton('idle', submitBtn);
+      const messageInput = uiModule.el('message');
+      if (messageInput) messageInput.disabled = false;
+      currentAccumulated = '';
+      _drainQueuedAgentRequests(sessionId);
+      return;
+    }
+    // Render whatever was accumulated so far
+    if (currentHolder && currentAccumulated) {
+      const _activeStopStream = _getForegroundStreamState();
+      const _terminalView = _activeStopStream?.finalizeView?.() || null;
+      const _stoppedViewHolder = _terminalView?.holder || currentHolder;
+      const _viewPreparedByStream = !!_terminalView;
+      // The stream finalizer may close a synthetic reasoning tag. Capture the
+      // durable raw value only after that canonical terminal preparation.
+      const stoppedContent = _terminalView?.raw || currentAccumulated;
+      _stoppedViewHolder.dataset.raw = stoppedContent;
+      if (!_viewPreparedByStream) {
+        _stoppedViewHolder.querySelector('.body').innerHTML = markdownModule.processWithThinking(
+          markdownModule.squashOutsideCode(stoppedContent)
+        );
+      }
+      
+      // Highlight code blocks
+      if (window.hljs) {
+        _stoppedViewHolder.querySelectorAll('pre code').forEach((block) => {
+          window.hljs.highlightElement(block);
+        });
+      }
+      
+      // Add the stopped indicator with continue button (`P23-04` CHAT-U-18:
+      // one "Stopped · Continue", from the builder a reload draws with too)
+      const _stoppedHolder = _stoppedViewHolder; // capture before globals are cleared
+      const stoppedIndicator = chatRenderer.buildStoppedIndicator(document, () => {
+        _hideUserBubble = true;
+        _pendingContinue = _stoppedHolder;
+        _pendingContinueSteps = false;   // `B941`: a stopped reply's text
+        const cutoff = stoppedContent;
+        const msgInput = uiModule.el('message');
+        if (msgInput) {
+          msgInput.value = 'Your previous response was interrupted. It ended with:\n\n' + cutoff.slice(-500) + '\n\nDo NOT repeat what you already said. Continue exactly from where you were cut off.';
+          const sb = document.querySelector('.send-btn');
+          if (sb) sb.click();
+        }
+      });
+      _stoppedViewHolder.querySelector('.body').appendChild(stoppedIndicator);
+
+      // Tell server to mark this message as stopped
+      const _sid = sessionModule.getCurrentSessionId();
+      if (_sid) fetch(`${API_BASE}/api/session/${_sid}/mark-stopped`, { method: 'POST' }).catch(e => console.warn('mark-stopped failed:', e));
+
+      // Add footer with copy/regen if not already present
+      if (!_stoppedViewHolder.querySelector('.msg-footer')) {
+        _stoppedViewHolder.dataset.raw = stoppedContent;
+        // `B920`: the reply may end in a later step's bubble than the one the pills are on.
+        _stoppedViewHolder.appendChild(createMsgFooter(_withTurnPills(_stoppedViewHolder, currentHolder)));
+      }
+
+      uiModule.scrollHistory();
+    }
+    
+    // Reset button state
+    updateSubmitButton('idle', submitBtn);
+    
+    // Re-enable message input
+    const messageInput = uiModule.el('message');
+    if (messageInput) messageInput.disabled = false;
+    
+    // Clear tracking variables
+    currentAccumulated = '';
+    currentHolder = null;
+  }
+
+  /**
+   * `P23-04` (CHAT-M-1, CHAT-M-5). Stop the reply on screen, as the Stop
+   * button does — the one call Escape makes. Returns false when nothing is
+   * streaming into the open chat, so Escape then does nothing at all.
+   */
+  export function stopCurrentReply() {
+    if (!isStreaming && !_sendInFlight) return false;
+    const sid = sessionModule.getCurrentSessionId && sessionModule.getCurrentSessionId();
+    _stopForegroundReply(sid, document.querySelector('.send-btn'));
+    return true;
+  }
+
+  /**
+   * `P23-04` (CHAT-M-14, CHAT-U-13). With no model to send to, say so once
+   * and offer the one thing to do — and keep what was typed. It was a reply
+   * from a sender called "…" listing three options, and the message was
+   * thrown away.
+   */
+  export function _sayNoModel(doc = document) {
+    const box = doc.getElementById('chat-history');
+    if (!box) return null;
+    const prior = box.querySelector('.no-model-note');
+    if (prior) prior.remove();
+    try { hideWelcomeScreen(); } catch (_) {}
+    const note = doc.createElement('div');
+    note.className = 'no-model-note';
+    note.setAttribute('role', 'status');
+    note.style.cssText = 'display:flex; align-items:center; gap:10px; padding:10px 0;';
+    const text = doc.createElement('span');
+    text.textContent = 'No model yet.';
+    const add = doc.createElement('button');
+    add.type = 'button';
+    add.className = 'no-model-add';
+    add.textContent = 'Add a model';
+    add.addEventListener('click', () => {
+      note.remove();
+      const door = doc.getElementById('model-picker-add-models-btn');
+      if (door) door.click();
+    });
+    note.appendChild(text);
+    note.appendChild(add);
+    box.appendChild(note);
+    try { uiModule.scrollHistory(); } catch (_) {}
+    return note;
+  }
+
+  /**
    * Handle chat form submission
    */
   export async function handleChatSubmit(e) {
@@ -2190,135 +2392,10 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
       if (shouldQueueStreamingSubmit && queueStreamingComposerRequest()) {
         return;
       }
-      if (fileHandlerModule.isUploading && fileHandlerModule.isUploading()) {
-        fileHandlerModule.cancelUpload && fileHandlerModule.cancelUpload();
-      }
-      // Cancel server-side research if in progress
-      const _cancelSid = sessionModule.getCurrentSessionId();
-      if (_cancelSid && _researchingStreamIds.has(_cancelSid)) {
-        fetch(`${API_BASE}/api/research/cancel/${_cancelSid}`, { method: 'POST' }).catch(e => console.warn('Research cancel failed:', e));
-        _researchingStreamIds.delete(_cancelSid);
-        _clearResearchTimer();
-      }
-      abortCurrentRequest(true);  // explicit user Stop → also cancel the detached server run
-
-      // Clean up any running agent thread nodes (stop wave animation, remove "running" state)
-      document.querySelectorAll('.agent-thread-node.running').forEach(node => {
-        if (node._waveInterval) { clearInterval(node._waveInterval); node._waveInterval = null; }
-        if (node._elapsedTicker) { clearInterval(node._elapsedTicker); node._elapsedTicker = null; }
-        node.classList.remove('running');
-        const wave = node.querySelector('.agent-thread-wave');
-        if (wave) wave.textContent = '';
-        const icon = node.querySelector('.agent-thread-icon');
-        if (icon) icon.textContent = '\u25A0'; // stop square
-        const statusEl = node.querySelector('.agent-thread-status');
-        if (!statusEl) {
-          const header = node.querySelector('.agent-thread-header');
-          if (header) {
-            const s = document.createElement('span');
-            s.className = 'agent-thread-status';
-            s.textContent = 'stopped';
-            header.appendChild(s);
-          }
-        }
-      });
-      document.querySelectorAll('.agent-thread.streaming').forEach(t => t.classList.remove('streaming'));
-
-      // Clean up any thinking spinners
-      document.querySelectorAll('.agent-thinking-dots').forEach(el => {
-        if (el._spinner) el._spinner.destroy();
-        el.remove();
-      });
-      // No text accumulated — remove the empty holder with spinner
-      if (currentHolder && !currentAccumulated) {
-        if (currentSpinner) { currentSpinner.destroy(); currentSpinner = null; }
-        // Empty cancel — keep the assistant bubble around with a "Cancelled
-        // by user" indicator and persist a placeholder server-side so the
-        // turn survives a refresh instead of vanishing without a trace.
-        _renderCancelledBubble(currentHolder);
-        currentHolder = null;
-        updateSubmitButton('idle', submitBtn);
-        const messageInput = uiModule.el('message');
-        if (messageInput) messageInput.disabled = false;
-        currentAccumulated = '';
-        _drainQueuedAgentRequests(sessionId);
-        return;
-      }
-      // Render whatever was accumulated so far
-      if (currentHolder && currentAccumulated) {
-        const _activeStopStream = _getForegroundStreamState();
-        const _terminalView = _activeStopStream?.finalizeView?.() || null;
-        const _stoppedViewHolder = _terminalView?.holder || currentHolder;
-        const _viewPreparedByStream = !!_terminalView;
-        // The stream finalizer may close a synthetic reasoning tag. Capture the
-        // durable raw value only after that canonical terminal preparation.
-        const stoppedContent = _terminalView?.raw || currentAccumulated;
-        _stoppedViewHolder.dataset.raw = stoppedContent;
-        if (!_viewPreparedByStream) {
-          _stoppedViewHolder.querySelector('.body').innerHTML = markdownModule.processWithThinking(
-            markdownModule.squashOutsideCode(stoppedContent)
-          );
-        }
-        
-        // Highlight code blocks
-        if (window.hljs) {
-          _stoppedViewHolder.querySelectorAll('pre code').forEach((block) => {
-            window.hljs.highlightElement(block);
-          });
-        }
-        
-        // Add the stopped indicator with continue button
-        const stoppedIndicator = document.createElement('div');
-        stoppedIndicator.className = 'stopped-indicator';
-        const stoppedLabel = document.createElement('span');
-        stoppedLabel.textContent = '[Message interrupted]';
-        stoppedIndicator.appendChild(stoppedLabel);
-        const continueBtn = document.createElement('button');
-        continueBtn.className = 'continue-btn';
-        continueBtn.title = 'Continue';
-        continueBtn.textContent = '\u25B8';
-        const _stoppedHolder = _stoppedViewHolder; // capture before globals are cleared
-        continueBtn.addEventListener('click', () => {
-          stoppedIndicator.remove();
-          _hideUserBubble = true;
-          _pendingContinue = _stoppedHolder;
-          _pendingContinueSteps = false;   // `B941`: a stopped reply's text
-          const cutoff = stoppedContent;
-          const msgInput = uiModule.el('message');
-          if (msgInput) {
-            msgInput.value = 'Your previous response was interrupted. It ended with:\n\n' + cutoff.slice(-500) + '\n\nDo NOT repeat what you already said. Continue exactly from where you were cut off.';
-            const sb = document.querySelector('.send-btn');
-            if (sb) sb.click();
-          }
-        });
-        stoppedIndicator.appendChild(continueBtn);
-        _stoppedViewHolder.querySelector('.body').appendChild(stoppedIndicator);
-
-        // Tell server to mark this message as stopped
-        const _sid = sessionModule.getCurrentSessionId();
-        if (_sid) fetch(`${API_BASE}/api/session/${_sid}/mark-stopped`, { method: 'POST' }).catch(e => console.warn('mark-stopped failed:', e));
-
-        // Add footer with copy/regen if not already present
-        if (!_stoppedViewHolder.querySelector('.msg-footer')) {
-          _stoppedViewHolder.dataset.raw = stoppedContent;
-          // `B920`: the reply may end in a later step's bubble than the one the pills are on.
-          _stoppedViewHolder.appendChild(createMsgFooter(_withTurnPills(_stoppedViewHolder, currentHolder)));
-        }
-
-        uiModule.scrollHistory();
-      }
-      
-      // Reset button state
-      updateSubmitButton('idle', submitBtn);
-      
-      // Re-enable message input
-      const messageInput = uiModule.el('message');
-      if (messageInput) messageInput.disabled = false;
-      
-      // Clear tracking variables
-      currentAccumulated = '';
-      currentHolder = null;
-
+      // `P23-04` (CHAT-M-1). The Stop is one function now, so Escape stops a
+      // reply exactly as this button does (it used to abort the reader only,
+      // and the server finished the run and saved all of it).
+      _stopForegroundReply(sessionId, submitBtn);
       return;
     }
 
@@ -2327,6 +2404,8 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
     const _sendPerf = _createChatSendPerf();
     _sendInFlight = true;
     const approvalForSend = _pendingToolApproval;
+    // `P23-04` (CHAT-M-3): set when this send was a refusal the server took.
+    let _deniedApprovalRedraw = false;
     // `B81`. The verdict travels with the edge that raises the bar, so the bar
     // is never painted for a turn the composer already knows cannot take a
     // steer — instead of being painted here and withdrawn ~880 lines and one
@@ -2379,6 +2458,10 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
       const handled = await handleSlashCommand(msg.trim());
       if (handled) {
         el('message').value = '';
+        // `P23-04` (SET-M-22). Say the box is empty, so the command popup —
+        // whose own Enter listener runs after this one — closes rather than
+        // putting the command back ("/notes " stayed in the box).
+        el('message').dispatchEvent(new Event('input', { bubbles: true }));
         if (window._syncModelPickerAutohide) window._syncModelPickerAutohide();
         if (uiModule.autoResize) uiModule.autoResize(el('message'));
         _releaseSendFlag();
@@ -2449,24 +2532,12 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
           _sendPerf.mark('direct_chat_materialize_done');
           if (!ok || !sessionModule.getCurrentSessionId()) { _releaseSendFlag(); return; }
         } else {
-          el('message').value = '';
-          if (uiModule.autoResize) uiModule.autoResize(el('message'));
-          addMessage('assistant',
-            'No chat session active. You can:\n\n' +
-            '- Open the model picker in the chat box and pick a model\n' +
-            '- Use the `+` button in the model picker to add a model endpoint\n' +
-            '- Use `/help` to see all available commands');
+          _sayNoModel();
           _releaseSendFlag();
           return;
         }
       } catch (e) {
-        el('message').value = '';
-        if (uiModule.autoResize) uiModule.autoResize(el('message'));
-        addMessage('assistant',
-          'No chat session active. You can:\n\n' +
-          '- Open the model picker in the chat box and pick a model\n' +
-          '- Use the `+` button in the model picker to add a model endpoint\n' +
-          '- Use `/help` to see all available commands');
+        _sayNoModel();
         _releaseSendFlag();
         return;
       }
@@ -3342,6 +3413,8 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
       }
       // _keepResearchOn removed — clarification state now persisted server-side via DB mode
       function _metricsTargetForTurn() {
+        // `P23-04` (CHAT-M-3): a turn paused at an approval card has no footer.
+        if (holder && holder.dataset?.approvalPaused) return null;
         const visibleRound = (roundHolder && roundHolder.style.display !== 'none') ? roundHolder : null;
         const visibleText = visibleRound ? (visibleRound.querySelector('.body')?.textContent || '').trim() : '';
         // `B920`: the footer made here carries the turn's pills.
@@ -4036,6 +4109,7 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
                 if (spinner && spinner.element) spinner.destroy();
                 if (!_isBg && roundHolder && roundHolder !== holder) roundHolder.remove();
                 if (!_isBg && holder) holder.remove();
+                if (String(json.decision || '').toLowerCase() === 'deny') _deniedApprovalRedraw = true;
                 continue;
               }
               if (json.delta) {
@@ -4923,6 +4997,14 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
                 // versions have identical behavior.
                 _cancelThinkingTimer();
                 _removeThinkingSpinner();
+                // `P23-04` (CHAT-M-3). An approval card ends the turn on the
+                // server's stand-in reply ("Allow this task to continue?"),
+                // which is saved so the model sees it asked. It is not a
+                // reply: the end of the stream takes it off the screen and
+                // keeps the footer off the turn, as a reload draws it.
+                if (holder && json.data && json.data.kind === 'tool_approval') {
+                  holder.dataset.approvalPaused = String(json.data.question || '').trim() || '1';
+                }
                 chatRenderer.renderAskUserCard(json.data || {});
 
               } else if (json.type === 'plan_update') {
@@ -5056,10 +5138,9 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
                 console.error('Stream error from backend:', json.error);
                 if (_isBg) continue;
                 if (spinner && spinner.element) spinner.destroy();
-                const errDiv = document.createElement('div');
-                errDiv.style.cssText = 'color: var(--color-error); font-style: italic; padding: 4px 0;';
-                errDiv.textContent = `[Error: ${json.error}]`;
-                roundHolder.querySelector('.body').appendChild(errDiv);
+                // `P23-04` (CHAT-M-13): a sentence, Retry and Details.
+                roundHolder.querySelector('.body').appendChild(buildReplyError(document,
+                  { message: String(json.error) }, { model: modelName, onRetry: _retryLastTurn }));
                 uiModule.scrollHistory();
               }
             } catch (e) {
@@ -5137,14 +5218,13 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
           if (_usedTools && _proseLen < 24 && !holder.querySelector('.agent-continue-btn')) {
             const _stall = document.createElement('div');
             _stall.className = 'stopped-indicator';
-            const _lbl = document.createElement('span');
-            _lbl.style.cssText = 'font-style:italic;opacity:0.7;';
-            _lbl.textContent = 'Paused mid-task';
-            _stall.appendChild(_lbl);
+            // `P23-04` (CHAT-U-18): one control that says what it is, as a
+            // stopped reply's "Stopped · Continue" — not a label and a bare ▸.
             const _cont = document.createElement('button');
+            _cont.type = 'button';
             _cont.className = 'continue-btn agent-continue-btn';
-            _cont.title = 'Continue — pick up where it left off';
-            _cont.textContent = '▸';
+            _cont.title = 'Pick up where it left off';
+            _cont.textContent = 'Paused · Continue';
             _cont.addEventListener('click', () => {
               _stall.remove();
               const mi = uiModule.el('message');
@@ -5281,6 +5361,11 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
           const _hText = _hBody ? _hBody.textContent.trim() : '';
           if (!_hText) holder.style.display = 'none';
         }
+        // `P23-04` (CHAT-M-3): the stand-in reply under an approval card goes;
+        // the round's reasoning, if it wrote any, stays.
+        if (holder.dataset?.approvalPaused) {
+          chatRenderer.dropApprovalPlaceholder(roundHolder, holder.dataset.approvalPaused);
+        }
 
         // Attach footer to the last visible bubble (roundHolder for multi-round agent, holder for single),
         // with the turn's pills handed to it (`B920`).
@@ -5340,6 +5425,13 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
         }
         if (metrics) {
           displayMetrics(_metricsTargetForTurn() || footerTarget, metrics);
+        }
+        // `P23-04` (CHAT-M-3): built (the cost is counted, the id is wired)
+        // and not shown — a reload draws no footer under a paused turn that
+        // wrote nothing of its own.
+        if (holder.dataset?.approvalPaused && !chatRenderer.bubbleReplyText(footerTarget)) {
+          const _pausedFooter = footerTarget.querySelector('.msg-footer');
+          if (_pausedFooter) _pausedFooter.style.display = 'none';
         }
         // Attach variant navigation if this was a regeneration
         _attachVariantNav(footerTarget);
@@ -5551,17 +5643,8 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
           // interruption controls here so each terminal path renders once.
           if (_catchViewHolder && accumulated && currentHolder) {
             _catchViewHolder.dataset.raw = accumulated;
-            const stoppedIndicator = document.createElement('div');
-            stoppedIndicator.className = 'stopped-indicator';
-            const stoppedLabel = document.createElement('span');
-            stoppedLabel.textContent = '[Message interrupted]';
-            stoppedIndicator.appendChild(stoppedLabel);
-            const continueBtn = document.createElement('button');
-            continueBtn.className = 'continue-btn';
-            continueBtn.title = 'Continue';
-            continueBtn.textContent = '\u25B8';
-            continueBtn.addEventListener('click', () => {
-              stoppedIndicator.remove();
+            // `P23-04` (CHAT-U-18): the one "Stopped · Continue" builder.
+            const stoppedIndicator = chatRenderer.buildStoppedIndicator(document, () => {
               _hideUserBubble = true;
               _pendingContinue = _catchViewHolder;
               _pendingContinueSteps = false;   // `B941`: a stopped reply's text
@@ -5573,7 +5656,6 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
                 if (sb) sb.click();
               }
             });
-            stoppedIndicator.appendChild(continueBtn);
             _catchViewHolder.querySelector('.body').appendChild(stoppedIndicator);
 
             // Tell server to mark this message as stopped
@@ -5627,10 +5709,12 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
                   || roundHolder?.querySelector('.body')
                   || document.querySelector('.msg-ai:last-of-type .body');
                 if (terminalBody) {
-                  const terminalNote = document.createElement('div');
-                  terminalNote.style.cssText = 'color: var(--color-error); font-style: italic; padding: 4px 0;';
-                  terminalNote.textContent = `[Error: ${err.message}]`;
-                  terminalBody.appendChild(terminalNote);
+                  // `P23-04` (CHAT-M-13, PERF-U-6): one sentence a person
+                  // reads, the model's own words behind Details, and Retry.
+                  const _failedModel = (_catchViewHolder && (_catchViewHolder._actualModel
+                    || _catchViewHolder._requestedModel)) || '';
+                  terminalBody.appendChild(buildReplyError(document, err,
+                    { model: _failedModel, onRetry: _retryLastTurn }));
                 }
               }
               return;
@@ -5781,6 +5865,15 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
           sessionModule.loadSessions();
         }
       }, 3000);
+      // `P23-04` (CHAT-M-3). A refusal is drawn from the record the server
+      // wrote before it answered: the call's row says *denied*, and the card's
+      // question, which stood where the reply would be, is not drawn as a
+      // reply. On screen it used to stay "Allow this task to continue?" with
+      // a tok/s footer, and the reload said "✓ done" for a call that never ran.
+      if (_deniedApprovalRedraw && sessionModule.getCurrentSessionId
+          && sessionModule.getCurrentSessionId() === streamSessionId) {
+        try { sessionModule.selectSession(streamSessionId, { keepSidebar: true, showLoading: false }); } catch (_) {}
+      }
       // Name the session whose stream just ended: the drain fires only items
       // queued from it, never whichever chat happens to be open now (P6-01).
       _drainQueuedAgentRequests(streamSessionId);
@@ -5910,7 +6003,14 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
         cache: 'no-store',
       });
       if (!_getForegroundStreamState() || _backgroundStreams.has(sid)) return;
-      if (res.status !== 404) return;
+      // `P23-04` (PERF-M-7): "nothing streaming" is a 200 `{active: false}`
+      // now; a 404 still means the same from a server that predates it.
+      let _serverIdle = res.status === 404;
+      if (res.ok) {
+        const info = await res.json().catch(() => null);
+        _serverIdle = !!(info && info.active === false);
+      }
+      if (!_serverIdle) return;
 
       console.warn('[stream-watchdog] Local stream was stale and server has no active stream. Unlocking composer.');
       if (active.abortCtrl && !active.abortCtrl.signal.aborted) {
@@ -5960,14 +6060,9 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
     const body = holder.querySelector('.body');
     if (body) {
       body.innerHTML = '';
-      const indicator = document.createElement('div');
-      indicator.className = 'stopped-indicator';
-      const label = document.createElement('span');
-      label.style.fontStyle = 'italic';
-      label.style.opacity = '0.7';
-      label.textContent = '[Cancelled by user]';
-      indicator.appendChild(label);
-      body.appendChild(indicator);
+      // `P23-04` (CHAT-U-18): "Stopped", from the one builder; nothing to
+      // continue from a reply that never started.
+      body.appendChild(chatRenderer.buildStoppedIndicator(document, null));
     }
     if (typeof createMsgFooter === 'function' && !holder.querySelector('.msg-footer')) {
       holder.appendChild(createMsgFooter(holder));
@@ -6010,6 +6105,9 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
     if (!active || !active.abortCtrl) {
       // Not streaming — fall through to abort
       abortCurrentRequest();
+      // `P23-04` (CHAT-M-5): a resumed view's Stop does not follow the person
+      // into the chat they move to.
+      _releaseResumeButton(sessionId);
       return;
     }
     // Detachment deliberately keeps the network stream alive, but the outgoing
@@ -6379,6 +6477,18 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
     }
   }
 
+  /** `P23-04` (CHAT-M-5). A resumed view hands the send button back when it
+   *  ends or the person leaves the chat — unless what is on screen now is
+   *  streaming in its own right. */
+  function _releaseResumeButton(sessionId) {
+    if (!_resumeHoldsButton.delete(sessionId)) return;
+    const btn = document.querySelector('.send-btn');
+    if (!btn || btn.dataset.mode !== 'streaming') return;
+    if (_getForegroundStreamState() || _sendInFlight) return;
+    if (_resumeHoldsButton.has(_currentSessionIdSafe())) return;
+    updateSubmitButton('idle', btn);
+  }
+
   /**
    * Live-resume a chat run still streaming detached on the server (#2539).
    *
@@ -6460,6 +6570,19 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
     spinner.start();
     uiModule.scrollHistory();
 
+    // `P23-04` (CHAT-M-5). Something is streaming into the open chat, so the
+    // send button is Stop — through the one state machine the live send uses
+    // (`updateSubmitButton`), never a second copy. It stayed "+ New" for the
+    // whole of a resumed reply, and nothing could stop it.
+    let _resumeTookButton = false;
+    const _resumeBtn = document.querySelector('.send-btn');
+    if (_resumeBtn && _resumeBtn.dataset.mode !== 'streaming'
+        && sessionModule.getCurrentSessionId && sessionModule.getCurrentSessionId() === sessionId) {
+      _resumeHoldsButton.add(sessionId);
+      updateSubmitButton('streaming', _resumeBtn);
+      _resumeTookButton = true;
+    }
+
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
@@ -6508,6 +6631,7 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
       });
       meter.dispose();
       _resumingStreams.delete(sessionId);
+      if (_resumeTookButton) _releaseResumeButton(sessionId);
     };
 
     const renderDelta = () => {
@@ -6806,6 +6930,9 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
     if (thinkOpen) { roundText += '</think>'; thinkOpen = false; }
     cleanup();
     if (docRound) _finishDocumentWritingStatus(docRound, true);
+    // Stopped by the person: the server saved the partial reply, marked
+    // stopped; the reload draws that record (and its Continue), not this view.
+    if (_resumeTookButton && _resumeStopRequested.delete(sessionId)) rich = true;
     if (leftSession) { _removeViewFrom(holder); return true; }
 
     const onThisSession = sessionModule.getCurrentSessionId &&
@@ -6815,9 +6942,9 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
     // recover through a canonical reload. Keep its sanitized provider/request
     // error visible in the replay holder instead of deleting the only evidence.
     if (onThisSession && replayError && !canonicalTerminalSeen) {
-      const errorDiv = document.createElement('div');
-      errorDiv.style.cssText = 'color: var(--color-error); font-style: italic; padding: 4px 0;';
-      errorDiv.textContent = `[Error: ${replayError.message}]`;
+      // `P23-04` (CHAT-M-13): the live path's line, from the same builder.
+      const errorDiv = buildReplyError(document, replayError,
+        { model: meta && meta.model, onRetry: () => _retryLastTurn() });
       roundHolder.style.display = '';
       contentDiv.appendChild(errorDiv);
       uiModule.scrollHistory();
@@ -7222,6 +7349,31 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
   /**
    * Edit a user message: show an input, truncate to before it, resubmit the edited text.
    */
+  /** `P23-04` (CHAT-M-9). What sending an edit removes, in one line, or ''.
+   *  `later` is the chat's `.msg` bubbles after the edited one; a step's
+   *  continuation bubble is part of its reply, and a system line is not a
+   *  message. */
+  export function editRemovesNote(later) {
+    const counted = (later || []).filter((m) => m && m.classList
+      && !m.classList.contains('msg-continuation') && !m.classList.contains('msg-system'));
+    if (!counted.length) return '';
+    if (counted.length === 1) {
+      return counted[0].classList.contains('msg-ai')
+        ? 'Sending removes the reply below.' : 'Sending removes the message below.';
+    }
+    return `Sending removes the ${counted.length} messages below.`;
+  }
+
+  /** `P23-04` (CHAT-M-13). *Retry* on a failed reply: the chat's last
+   *  message is sent again in its place — the Regenerate path, which trims the
+   *  chat to it first, so it is not asked twice. */
+  function _retryLastTurn() {
+    const box = document.getElementById('chat-history');
+    const users = box ? Array.from(box.querySelectorAll('.msg-user')) : [];
+    const last = users[users.length - 1];
+    if (last) resendUserMessage(last, { replaceFromHere: true });
+  }
+
   export async function editUserMessage(userMsgElement) {
     const box = document.getElementById('chat-history');
     const allMsgs = Array.from(box.querySelectorAll('.msg'));
@@ -7249,6 +7401,18 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
     cancelBtn.textContent = 'Cancel';
     btnRow.appendChild(saveBtn);
     btnRow.appendChild(cancelBtn);
+    // `P23-04` (CHAT-M-9). Sending an edit starts the chat again from here,
+    // so everything after this message goes — and it went without a word.
+    // The editor says so before Send, and how much.
+    const removes = editRemovesNote(allMsgs.slice(msgIndex + 1));
+    if (removes) {
+      const note = document.createElement('span');
+      note.className = 'edit-removes-note';
+      note.style.cssText = 'align-self:center; font-size:12px; color:var(--color-muted-alt);';
+      note.textContent = removes;
+      btnRow.appendChild(note);
+      saveBtn.title = removes;
+    }
 
     const originalHTML = bodyEl.innerHTML;
     bodyEl.innerHTML = '';
@@ -7271,11 +7435,18 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
 
       const keepCount = msgIndex;
       try {
-        await fetch(`${API_BASE}/api/session/${sessionId}/truncate`, {
+        const truncated = await fetch(`${API_BASE}/api/session/${sessionId}/truncate`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ keep_count: keepCount })
         });
+        if (!truncated.ok) {
+          // `P23-04` (C-ERR): nothing was removed, so nothing is sent.
+          const refusal = await readRefusal(truncated, 'Could not edit that message. Try again.');
+          uiModule.showError(refusal.sentence);
+          bodyEl.innerHTML = originalHTML;
+          return;
+        }
 
         // Remove DOM elements from msgIndex onward
         for (let i = allMsgs.length - 1; i >= msgIndex; i--) {
@@ -7289,7 +7460,7 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
         if (submitBtn) submitBtn.click();
       } catch (err) {
         console.error('Edit failed:', err);
-        if (uiModule) uiModule.showError('Edit failed: ' + err.message);
+        if (uiModule) uiModule.showError('Could not reach Pantheon to edit that message. Try again.');
         bodyEl.innerHTML = originalHTML;
       }
     });
@@ -7679,11 +7850,13 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
     if (!sessionId) return;
     try {
       const res = await fetch(`${API_BASE}/api/research/status/${sessionId}`);
-      if (!res.ok) {
+      // `P23-04` (PERF-M-7): no research is a 200 `{active: false}`; a 404
+      // from an older server means the same.
+      const data = res.ok ? await res.json().catch(() => null) : null;
+      if (!data || data.active === false) {
         if (sessionModule && sessionModule.clearResearching) sessionModule.clearResearching(sessionId);
-        return; // 404 = no research for this session
+        return;
       }
-      const data = await res.json();
 
       if (data.status === 'done') {
         // Fetch and render the completed result
@@ -7838,7 +8011,9 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
         }
         try {
           const pollRes = await fetch(`${API_BASE}/api/research/status/${sessionId}`);
-          if (!pollRes.ok) {
+          // `P23-04` (PERF-M-7): "no research" is a 200 `{active: false}`.
+          const pollData = pollRes.ok ? await pollRes.json().catch(() => null) : null;
+          if (!pollData || pollData.active === false) {
             clearInterval(pollInterval);
             spinner.destroy();
             _clearResearchTimer();
@@ -7846,7 +8021,6 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
             if (sessionModule && sessionModule.clearResearching) sessionModule.clearResearching(sessionId);
             return;
           }
-          const pollData = await pollRes.json();
           updateSpinnerFromProgress(pollData.progress);
           if (_researchSynapse && pollData.progress) {
             _researchSynapse.setPhase(pollData.progress.phase, pollData.progress);
@@ -7917,15 +8091,6 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
    * Delete an AI message and its preceding user message from the conversation.
    */
   export async function deleteMessage(msgElement) {
-    if (uiModule && uiModule.styledConfirm) {
-      const ok = await uiModule.styledConfirm('Delete this message?', {
-        confirmText: 'Delete',
-        cancelText: 'Cancel',
-        danger: true,
-      });
-      if (!ok) return;
-    }
-
     const box = document.getElementById('chat-history');
     const allMsgs = Array.from(box.querySelectorAll('.msg'));
     const clickedIndex = allMsgs.indexOf(msgElement);
@@ -7971,6 +8136,22 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
           break;
         }
       }
+    }
+
+    // `P23-04` (CHAT-M-10, CHAT-U-22). The question says what goes: the
+    // pair is deleted together, so "Delete this message?" deleted the reply
+    // too, and asked under a title that said only "Confirm".
+    if (uiModule && uiModule.styledConfirm) {
+      const both = userIndex >= 0 && aiIndex >= 0;
+      const question = !both ? 'Delete this message?'
+        : (clickedIsUser ? 'Delete this message and its reply?' : 'Delete this reply and the message it answers?');
+      const ok = await uiModule.styledConfirm(question, {
+        title: 'Delete',
+        confirmText: 'Delete',
+        cancelText: 'Cancel',
+        danger: true,
+      });
+      if (!ok) return;
     }
 
     // Collect DB message IDs and DOM elements to remove
@@ -8026,12 +8207,19 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ msg_ids: msgIds })
       });
-      if (!res.ok) throw new Error('Server error ' + res.status);
+      if (!res.ok) {
+        // `P23-04` (C-ERR): the server's sentence, read once, never a raw body.
+        const refusal = await readRefusal(res, 'Could not delete that message. Try again.');
+        if (uiModule) uiModule.showError(refusal.sentence);
+        return;
+      }
       domToRemove.forEach(el => el.remove());
-      if (uiModule) uiModule.showToast('Message deleted');
+      if (uiModule) uiModule.showToast('Deleted');
+      // A chat with nothing left in it shows the empty chat, not a blank page.
+      if (!box.querySelector('.msg') && chatRenderer.showWelcomeScreen) chatRenderer.showWelcomeScreen();
     } catch (err) {
       console.error('Delete failed:', err);
-      if (uiModule) uiModule.showError('Delete failed: ' + err.message);
+      if (uiModule) uiModule.showError('Could not reach Pantheon to delete that message. Try again.');
     }
   }
 
@@ -8108,7 +8296,7 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
         if (!msgElement.querySelector('.edited-indicator')) {
           const indicator = document.createElement('div');
           indicator.className = 'edited-indicator';
-          indicator.textContent = '[Message edited]';
+          indicator.textContent = 'Edited';   // `P23-04` (§ 5): as a reload draws it
           body.parentNode.insertBefore(indicator, body.nextSibling);
         }
 
@@ -8468,6 +8656,7 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
     // undefined and fell through — Law 13, a handler with no reachable caller.
     queueStreamingComposerRequest,
     abortCurrentRequest,
+    stopCurrentReply,
     detachCurrentStream,
     checkBackgroundStream,
     resumeStream,
@@ -8552,12 +8741,26 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
   // per-node listeners on every innerHTML rewrite was the source of the
   // "needs many clicks" bug.
   if (!window.__pantheon_thread_click_bound) {
+    // `P23-04` (CHAT-U-4). The header is a `role="button"` with a tab stop
+    // (`agentThread.js`), so Enter and Space open it as a click does — through
+    // this one handler, not a listener per row (`B56`).
+    document.body.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      const header = e.target && e.target.classList && e.target.classList.contains('agent-thread-header')
+        ? e.target : null;
+      if (!header) return;
+      e.preventDefault();
+      header.click();
+    });
     document.body.addEventListener('click', (e) => {
       const header = e.target.closest('.agent-thread-header');
       if (!header) return;
+      // A button inside the header (View screen) is its own action.
+      if (e.target.closest('button') && header.contains(e.target.closest('button'))) return;
       const node = header.closest('.agent-thread-node');
       if (!node) return;
       const opened = node.classList.toggle('open');
+      header.setAttribute('aria-expanded', opened ? 'true' : 'false');
       // `P5-08`: the thread's own control says "Expand all" or "Collapse all",
       // and opening the last shut card by hand is exactly when it goes stale.
       syncThreadToggleAll(node.closest('.agent-thread'));

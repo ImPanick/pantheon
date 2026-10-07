@@ -304,11 +304,10 @@ def _preview(sandbox, payload):
       "tool_call_limit": 10}, "Up to 20 steps · 10 tool calls"),
     ({"round_limit": 150, "round_limit_source": "configured", "round_limit_configured": 150,
       "tool_call_limit": 1}, "Up to 150 steps · 1 tool call"),
-    ({"round_limit": 100000, "round_limit_source": "local_lift", "round_limit_configured": 20,
-      "tool_call_limit": None}, "Step limit lifted (local model)"),
+    # `P23-04` (CHAT-U-16): no step limit is not said; the tool limit still is.
     ({"round_limit": 100000, "round_limit_source": "forced_lift", "round_limit_configured": 20,
-      "tool_call_limit": 5}, "Step limit lifted (this server) · 5 tool calls"),
-], ids=["steps", "steps-and-calls", "one-call", "local-lift", "forced-lift"])
+      "tool_call_limit": 5}, "5 tool calls"),
+], ids=["steps", "steps-and-calls", "one-call", "forced-lift"])
 def test_the_hint_says_the_limit_in_a_few_words(sandbox, payload, text):
     out = _preview(sandbox, payload)
     assert out["hint"]["text"] == text
@@ -324,9 +323,10 @@ def test_a_lifted_limit_is_not_promised_as_a_bar_toward_100000(sandbox):
     out = _preview(sandbox, {"round_limit": 100000, "round_limit_source": "local_lift",
                              "round_limit_configured": 20, "tool_call_limit": None})
     assert "100,000" not in out["hint"]["text"]
-    assert out["hint"]["title"] == (
-        'On a local model the 20-step limit is lifted to 100,000; saving "Max steps per '
-        'message" keeps it. There is no tool-call limit. Both are set in Settings › Agent Tools.')
+    # `P23-04` (CHAT-U-16): with no limit at all there is nothing to promise,
+    # so the chip is quiet; the run's own meter still says the cap was lifted
+    # (`test_the_meter_warns_before_the_stop.py`).
+    assert out["view"] is None and out["hint"]["hidden"] is True
 
 
 @node_only
@@ -346,11 +346,9 @@ def test_the_hint_says_nothing_rather_than_guess(sandbox, payload):
 @pytest.mark.parametrize("payload", [
     {"round_limit": 20, "round_limit_source": "configured", "round_limit_configured": 20,
      "tool_call_limit": 10},
-    {"round_limit": 100000, "round_limit_source": "local_lift", "round_limit_configured": 20,
-     "tool_call_limit": None},
     {"round_limit": 100000, "round_limit_source": "forced_lift", "round_limit_configured": 40,
      "tool_call_limit": 3},
-], ids=["configured", "local-lift", "forced-lift"])
+], ids=["configured", "forced-lift"])
 def test_the_promise_and_the_meter_are_one_vocabulary(sandbox, payload):
     """The hint's sentence is the meter's hover text at step 1 of the same
     limits, with only the subject changed — *Each message in Agent mode*
@@ -455,7 +453,8 @@ def test_with_nothing_picked_it_asks_about_the_open_chat(wiring_sandbox):
     assert out["asked"][0]["url"] == (
         "/api/chat/agent-limits?endpoint_url="
         "http%3A%2F%2Flocalhost%3A1234%2Fv1%2Fchat%2Fcompletions")
-    assert out["shown"]["text"] == "Step limit lifted (local model)"
+    # `P23-04` (CHAT-U-16): a lifted step limit with no tool limit says nothing.
+    assert out["shown"]["hidden"] is True
 
 
 @node_only

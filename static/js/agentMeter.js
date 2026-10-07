@@ -308,7 +308,9 @@ export function prepLineText(state, nowMs = Date.now()) {
 
 /** How long after sending, with nothing back from the model, before the reply's
  *  spinner starts saying the wait is long. */
-export const FIRST_TOKEN_WAIT_FROM_MS = 20000;
+// `P23-04` (PERF-U-3): from 5 s, not 20 — "Processing request ▂▃" sat for a
+// 12 s first byte with no clock (measured, `ux-perf.md`).
+export const FIRST_TOKEN_WAIT_FROM_MS = 5000;
 
 /** Events that end the wait for a first token: the model's own output — a token,
  *  thinking included, or a tool call and what only follows one — plus the two
@@ -361,9 +363,11 @@ export function firstTokenWaitText(state, waitedMs, nowMs = Date.now()) {
   }
   const w = Number(waitedMs);
   if (!(w >= FIRST_TOKEN_WAIT_FROM_MS)) return '';
-  if (w >= 120000) return 'Still working - no tokens yet from the model';
-  if (w >= 60000) return 'Still waiting for first token - over a minute';
-  return 'Still waiting for first token';
+  // `P23-04` (PERF-U-3). The same words as after preparation, counted from
+  // the send — one line that says what is happening and for how long, where
+  // three fixed sentences said only that nothing had come yet. The composer's
+  // button is Stop all the while (CHAT-U-8).
+  return `${WAITING_FOR_MODEL} · ~${countText(Math.floor(w / 1000))}`;
 }
 
 function nearThreshold(limit) {
@@ -532,12 +536,16 @@ export function limitsPreview(payload) {
   const b = limitsFrom(payload);
   if (!b.roundLimit) return null;
   const lifted = isLifted(b);
-  const liftedWhere = b.source === 'local_lift' ? 'local model' : 'this server';
-  const steps = lifted ? `Step limit lifted (${liftedWhere})` : `Up to ${num(b.roundLimit)} steps`;
+  // `P23-04` (CHAT-U-16, COPY-U-12). A limit is said; no limit is not — the
+  // composer said "Step limit lifted (local model)" in grey for as long as
+  // Agent mode was on. Why there is none stays in the tooltip.
+  const steps = lifted ? '' : `Up to ${num(b.roundLimit)} steps`;
   const tools = b.toolLimit ? `${num(b.toolLimit)} tool call${b.toolLimit === 1 ? '' : 's'}` : '';
+  const text = [steps, tools].filter(Boolean).join(' · ');
+  if (!text) return null;
   const raise = raiseRules(b, payload);
   return {
-    text: tools ? `${steps} · ${tools}` : steps,
+    text,
     title: `${stepRuleText(b, 'Each message in Agent mode')}${raise.steps} `
       + `${toolRuleText(b)}${raise.tools} Both are set in ${SETTINGS_PATH}.`,
     source: b.source,

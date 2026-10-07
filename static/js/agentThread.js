@@ -48,6 +48,26 @@ export const SEARCH_ICON =
 export const RUNNING_ICON = '▶';   // ▶
 export const DONE_ICON = '✓';      // ✓
 export const FAILED_ICON = '✗';    // ✗
+// `P23-04` (CHAT-M-3, CHAT-M-24). A gated call that has not run is not "done":
+// it is waiting for an answer, or it was refused by the person.
+export const WAITING_ICON = '…';
+export const DENIED_ICON = '⊘';
+
+/** `P23-04` (CHAT-M-3). The state of a call that asked for approval, read from
+ *  the event itself (`ask_user.resolved`, written by the server's one resolve
+ *  path), never from `exit_code`/`ok` — a gated call never ran, so those say
+ *  nothing about it. `null` for a call that asked nothing: its `ok` decides. */
+export function approvalOutcome(ev) {
+  const q = ev && ev.ask_user;
+  if (!q || typeof q !== 'object' || q.kind !== 'tool_approval') return null;
+  const resolved = String(q.resolved || '').toLowerCase();
+  if (!resolved) return 'waiting';
+  if (resolved === 'deny') return 'denied';
+  return 'allowed';
+}
+
+/** The words a finished row's status says for each approval outcome. */
+export const OUTCOME_WORDS = { waiting: 'waiting', denied: 'denied', allowed: 'allowed' };
 
 /** Tool id → what to call it while it runs, and what to call it once it has. */
 export const TOOL_LABELS = {
@@ -68,13 +88,56 @@ export const TOOL_LABELS = {
   'manage_memory':    { running: 'Remembering',  done: 'Memory' },
   'save_memory':      { running: 'Remembering',  done: 'Memory' },
   'search_memory':    { running: 'Recalling',    done: 'Memory Search' },
-  'manage_session':   { running: 'Organizing',   done: 'Sessions' },
+  'manage_session':   { running: 'Organizing',   done: 'Chat' },
   'deep_research':    { running: 'Researching',  done: 'Deep Research' },
   'list_models':      { running: 'Browsing',     done: 'Models' },
   'ui_control':       { running: 'Adjusting',    done: 'Interface' },
   // `P20-04`. The workstation's screen, mouse and keyboard.
   'computer':         { running: 'Using computer', done: 'Computer' },
 };
+
+/** `P23-04` (COPY-U-8). Tools with a name and no glyph of their own, so they
+ *  draw the default triangle (`TOOL_LABELS` is the table where every name has
+ *  its glyph, and stays that). These were drawn by their code names,
+ *  upper-cased by the stylesheet: *MANAGE_TASKS 1 done*. The names are the
+ *  ones Settings › Agent Tools gives them (`admin.js` `TOOL_META`); the action
+ *  the call asked for goes beside the name (`toolActionLabel`). */
+export const TOOL_NAMES = {
+  'manage_tasks': 'Tasks',
+  'manage_documents': 'Documents',
+  'manage_calendar': 'Calendar',
+  'manage_notes': 'Notes',
+  'manage_contact': 'Contacts',
+  'manage_skills': 'Skills',
+  'manage_research': 'Deep Research',
+  'manage_settings': 'Settings',
+  'manage_endpoints': 'Models',
+  'manage_mcp': 'MCP & Integrations',
+  'manage_webhooks': 'Webhooks',
+  'manage_tokens': 'API tokens',
+  'manage_bg_jobs': 'Background jobs',
+  'search_chats': 'Search chats',
+  'list_sessions': 'Chats',
+  'create_session': 'New chat',
+  'send_to_session': 'Send to chat',
+  'bulk_email': 'Email',
+};
+
+/** `P23-04` (COPY-U-8). What the call asked its tool to do — `list`,
+ *  `create event` — read off the arguments' `action`, which every `manage_*`
+ *  tool takes. Read with a pattern, not `JSON.parse`: the line a card carries
+ *  is cut at 240 characters. `''` when there is none (a shell command). */
+export function toolAction(command) {
+  const m = /"action"\s*:\s*"([A-Za-z][\w -]{0,40})"/.exec(String(command || ''));
+  return m ? m[1].replace(/_/g, ' ').trim() : '';
+}
+
+/** The row's name: *Tasks · list*, *Calendar · create event*, *Terminal*. */
+export function toolActionLabel(tool, state, command) {
+  const name = toolLabel(tool, state);
+  const action = toolAction(command);
+  return action ? `${name} · ${action}` : name;
+}
 
 /**
  * `P5-04`. One glyph per tool, drawn the same way as the label beside it.
@@ -219,7 +282,7 @@ export function screenshotSummary(o) {
 export function toolLabel(tool, state) {
   const key = String(tool || '').toLowerCase();
   const entry = TOOL_LABELS[key];
-  if (!entry) return String(tool || '');
+  if (!entry) return TOOL_NAMES[key] || String(tool || '');
   return entry[state === 'running' ? 'running' : 'done'] || String(tool || '');
 }
 
@@ -338,7 +401,8 @@ export function toolOutputPanesHtml(o) {
   const primary = stderr.trim() && stdout ? stdout : merged;
   let html = '';
   if (primary && primary.trim()) {
-    html += '<details class="agent-tool-output"><summary>Output'
+    // `P23-04` (CHAT-U-5): open — the output is what the row is opened for.
+    html += '<details class="agent-tool-output" open><summary>Output'
       + copyBtn('output') + '</summary>'
       + `<pre>${esc(primary)}</pre></details>`;
   }
@@ -580,9 +644,12 @@ export function highlightCommandBlocks(node) {
   });
 }
 
-/** The className an `.agent-thread-node` carries in `state`. */
-export function nodeClassName(state, ok) {
+/** The className an `.agent-thread-node` carries in `state`. `outcome`
+ *  (`P23-04`): a gated call's `waiting` / `denied` / `allowed`, as a class the
+ *  stylesheet can read beside the word the row says. */
+export function nodeClassName(state, ok, outcome) {
   if (state === 'running') return 'agent-thread-node running';
+  if (outcome && OUTCOME_WORDS[outcome]) return 'agent-thread-node ' + outcome;
   return 'agent-thread-node' + (ok ? '' : ' error');
 }
 
@@ -616,20 +683,37 @@ export function nodeClassName(state, ok) {
  */
 export function agentThreadNodeHtml(o) {
   const state = o.state === 'running' ? 'running' : 'done';
+  const outcome = state === 'done' && o.outcome && OUTCOME_WORDS[o.outcome] ? o.outcome : '';
   const label = o.label !== undefined && o.label !== null
     ? String(o.label)
-    : toolLabel(o.tool, state);
+    : toolActionLabel(o.tool, state, o.command);
   const todo = o.todo || '';
   const diff = o.diff || '';
-  const cmd = (o.command && !todo && !diff)
+  // `P23-04` (CHAT-U-5). What the tool returned is what a row is opened for,
+  // so it comes first and open; arguments that are a JSON object are folded
+  // under *Arguments* below it. A command line (a shell's, Python's) stays
+  // where it was — above its output, as a terminal shows it.
+  const argsAreJson = !!(o.command && prettyJson(String(o.command)));
+  const cmdHtml = (o.command && !todo && !diff)
     ? commandBlockHtml(o.command, o.fullCommand, o.tool) : '';
+  const cmd = cmdHtml && argsAreJson
+    ? `<details class="agent-thread-args"><summary>Arguments</summary>${cmdHtml}</details>` : cmdHtml;
+  const output = String(o.output || '');
+  const statusWord = outcome ? OUTCOME_WORDS[outcome] : (o.ok ? 'done' : 'failed');
   const tail = state === 'running'
     ? '<span class="agent-thread-wave">▁▂▃</span>'
-    : `<span class="agent-thread-status">${o.ok ? 'done' : 'failed'}</span>`
+    : `<span class="agent-thread-status">${statusWord}</span>`
       + '<span class="agent-thread-chevron">▶</span>';
+  const icon = outcome === 'waiting' ? WAITING_ICON
+    : outcome === 'denied' ? DENIED_ICON
+      : toolIcon(o.tool, state, outcome === 'allowed' ? true : o.ok);
+  // `P23-04` (CHAT-U-4). The header is the row's control: reachable with Tab,
+  // Enter and Space open it (the delegated handler in `chat.js`), and it says
+  // whether it is open. A `<div>` with a click listener could do none of it.
+  const expanded = o.open ? 'true' : 'false';
   return '<div class="agent-thread-dot"></div>'
-    + '<div class="agent-thread-header">'
-    + `<span class="agent-thread-icon">${toolIcon(o.tool, state, o.ok)}</span>`
+    + `<div class="agent-thread-header" role="button" tabindex="0" aria-expanded="${expanded}">`
+    + `<span class="agent-thread-icon">${icon}</span>`
     + `<span class="agent-thread-tool">${esc(label)}</span>`
     + approvedBadgeHtml(o.approved)
     + whereBadgeHtml(o.ranIn, o.ranAs)
@@ -639,7 +723,7 @@ export function agentThreadNodeHtml(o) {
     + '</div>'
     + todo
     + '<div class="agent-thread-content">'
-    + `<div class="agent-thread-content-inner">${cmd}${o.output || ''}${diff}</div>`
+    + `<div class="agent-thread-content-inner">${argsAreJson ? output + cmd : cmd + output}${diff}</div>`
     + '</div>';
 }
 
@@ -727,6 +811,9 @@ export function ensureThreadToggleAll(thread) {
     if (!doc) return null;
     bar = doc.createElement('div');
     bar.className = 'agent-thread-toolbar';
+    // `P23-04` (CHAT-U-6): at the thread's start, where its rows begin — it
+    // floated right, between the first row and the rest.
+    if (bar.style) bar.style.justifyContent = 'flex-start';
     const btn = doc.createElement('button');
     btn.type = 'button';
     btn.className = 'agent-thread-expand-all';
@@ -745,6 +832,8 @@ export function toggleThreadAll(thread) {
   const open = !threadIsAllOpen(thread);
   thread.querySelectorAll('.agent-thread-node').forEach((n) => {
     n.classList.toggle('open', open);
+    const h = n.querySelector && n.querySelector('.agent-thread-header');
+    if (h && h.setAttribute) h.setAttribute('aria-expanded', open ? 'true' : 'false');
   });
   syncThreadToggleAll(thread);
   return open ? 'expanded' : 'collapsed';
@@ -760,8 +849,14 @@ export function applyAgentThreadNode(node, o) {
   // the className by hand — one caller out of six. It belongs here, where every
   // caller gets it.
   const wasOpen = node.classList && node.classList.contains('open');
-  node.className = nodeClassName(o.state === 'running' ? 'running' : 'done', o.ok)
+  node.className = nodeClassName(o.state === 'running' ? 'running' : 'done', o.ok, o.outcome)
     + (wasOpen ? ' open' : '');
+  // `P23-04` (CHAT-M-3, CHAT-M-8): which approval a gated row is, so the
+  // answer can find it and its approved twin can take its place.
+  if (node.dataset) {
+    if (o.approvalDigest) node.dataset.approvalDigest = String(o.approvalDigest);
+    if (o.approvalId) node.dataset.approvalId = String(o.approvalId);
+  }
   // `P4-11`. Same reason as `open`: a card is built twice, once from
   // `tool_start` and once from `tool_output`, and the second event deciding
   // the badge means the badge can vanish when the tool finishes. Remember the
@@ -770,7 +865,7 @@ export function applyAgentThreadNode(node, o) {
   const round = Number.isInteger(Number(o.round)) && Number(o.round) >= 1
     ? Number(o.round) : node._agentRound;
   if (round) node._agentRound = round;
-  node.innerHTML = agentThreadNodeHtml(round === o.round ? o : { ...o, round });
+  node.innerHTML = agentThreadNodeHtml({ ...o, round, open: wasOpen });
   highlightCommandBlocks(node);
   return node;
 }
@@ -779,9 +874,9 @@ export default { agentThreadNodeHtml, applyAgentThreadNode, agentThreadContent,
                  screenshotSummary,
                  ensureThreadToggleAll, toggleThreadAll, syncThreadToggleAll,
                  threadIsAllOpen, prettyJson,
-                 toolLabel, toolIcon,
+                 toolLabel, toolIcon, toolAction, toolActionLabel, approvalOutcome,
                  nodeClassName, roundBadgeHtml, approvedBadgeHtml, whereBadgeHtml,
                  commandBlockHtml, highlightCommandBlocks, verifierCardOptions,
                  blockedCardOptions, toolOutputPanesHtml,
-                 TOOL_LABELS, TOOL_ICONS, CMD_LANGUAGES, SEARCH_ICON,
+                 TOOL_LABELS, TOOL_NAMES, TOOL_ICONS, CMD_LANGUAGES, SEARCH_ICON,
                  APPROVED_ICON, COPY_ICON, WORKSTATION_ICON };

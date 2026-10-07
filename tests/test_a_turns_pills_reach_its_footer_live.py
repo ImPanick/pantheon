@@ -62,8 +62,15 @@ def _handler() -> str:
     """Comment-blanked `handleChatSubmit`: the live stream's arms are cut from
     here rather than the whole file, because `resumeStream` has look-alike arms."""
     code = blank(CHAT_JS)
+    src = CHAT_JS.read_text(encoding="utf-8")
     start = code.index("export async function handleChatSubmit(")
-    return code[start:start + len(js_definition(CHAT_JS.read_text(encoding="utf-8"), start))]
+    handler = code[start:start + len(js_definition(src, start))]
+    # `P23-04`: the Stop button's branch is `_stopForegroundReply` now, so
+    # Escape can call the same Stop; its footer is still the handler's.
+    if "function _stopForegroundReply(" in code:
+        at = code.index("function _stopForegroundReply(")
+        handler += "\n" + code[at:at + len(js_definition(src, at))]
+    return handler
 
 
 def _between(opening: str, closing: str, *, keep_opening: bool = False) -> str:

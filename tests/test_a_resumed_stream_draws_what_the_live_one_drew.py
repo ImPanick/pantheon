@@ -301,6 +301,7 @@ _MODULE_LEVEL = (
     "_headWithTeacher",      # `B922`
     "_threadOrBare", "_removeViewFrom",
     "checkBackgroundStream", "_showBackgroundStreamSpinner",
+    "_releaseResumeButton",  # `P23-04` (CHAT-M-5)
 )
 
 
@@ -325,7 +326,7 @@ import { startToolCard as _startToolCard, drawToolProgress as _drawToolProgress,
 import spinnerModule from './spinner.js';
 import uiModule from './ui.js';
 import { inheritModelRouteState, applyModelRouteEventState } from './chatModelProvenance.js';
-import { createTerminalStreamError } from './chatStreamErrors.js';
+import { createTerminalStreamError, buildReplyError } from './chatStreamErrors.js';
 
 const history = document.body.appendChild(new Node('div'));
 history.setAttribute('id', 'chat-history');
@@ -381,6 +382,20 @@ const _streamRunIds = new Map();
 const _researchingStreamIds = new Set();
 let _streamSessionId = null;
 let isStreaming = true;
+// `P23-04` (CHAT-M-5): the send button a resumed view now drives, through a
+// stand-in for chat.js's one state machine that records each state it is set to.
+const sendBtn = document.body.appendChild(new Node('button'));
+sendBtn.className = 'send-btn';
+const buttonStates = [];
+function updateSubmitButton(state, btn) {
+  buttonStates.push(state);
+  if (btn) btn.dataset.mode = state === 'streaming' ? 'streaming' : '';
+}
+const _resumeHoldsButton = new Set();
+const _resumeStopRequested = new Set();
+let _sendInFlight = false;
+function _currentSessionIdSafe() { return sessionModule.getCurrentSessionId() || ''; }
+function _getForegroundStreamState() { return _activeStreams.get(sessionModule.getCurrentSessionId()) || null; }
 /** Empty the history the way a reload does: every node leaves the page. */
 function clear() { for (const c of history.childNodes.slice()) c.remove(); }
 """
@@ -986,7 +1001,9 @@ def test_a_replay_that_ends_on_an_error_leaves_no_card_running(sandbox):
           running: node.classList.contains('running') }));
     """ % json.dumps(events))
     assert out["reloads"] == []
-    assert out["left"][0]["text"] == "Let me look at the logs.[Error: upstream went away]"
+    # `P23-04` (CHAT-M-13): one sentence, Retry, and the provider's words behind Details.
+    assert out["left"][0]["text"] == (
+        "Let me look at the logs.The model didn't answer (HTTP 502).RetryDetailsupstream went away")
     assert out["left"][1]["thread"][0]["tool"] == "Running"
     assert not out["ticking"], "the orphaned card's clock is still going"
     assert not out["running"], "the orphaned card still says it is running"
@@ -1201,7 +1218,6 @@ def test_leaving_again_keeps_the_replay_in_charge(sandbox):
         const _terminalSavedStreams = new Set();
         function abortCurrentRequest() {}
         function _syncForegroundStreamGlobals() {}
-        function updateSubmitButton() {}
         %s
         detachCurrentStream('s1');
         const kept = _backgroundStreams.get('s1').resumedView;

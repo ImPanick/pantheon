@@ -41,7 +41,7 @@ import {
   safeToolScreenshotSrc,
 } from './chatRenderer.js?v=20261003waveg';
 import { applyAgentThreadNode, agentThreadContent, toolOutputPanesHtml,
-         screenshotSummary } from './agentThread.js';
+         screenshotSummary, approvalOutcome } from './agentThread.js';
 
 function scrollAfter(opts) {
   const scroll = opts && opts.scroll !== undefined ? opts.scroll : () => uiModule.scrollHistory();
@@ -207,11 +207,18 @@ export function finishToolCard(currentToolBubble, json, opts = {}) {
   // were right here and absent from the other five copies.
   // Click handling is delegated (see init at the bottom of `chat.js`),
   // so no per-node listener is added anywhere.
+  // `P23-04` (CHAT-M-3, CHAT-M-24): a call held for approval did not run —
+  // its row says *waiting*, from the event's `ask_user`, not *done* from `ok`.
+  const outcome = approvalOutcome(json);
+  const asked = outcome && json.ask_user && json.ask_user.action ? json.ask_user.action : null;
   applyAgentThreadNode(currentToolBubble, {
     tool: json.tool, state: 'done', ok, round: json.round, approved: json.approved,
     ranIn: json.ran_in, ranAs: json.ran_as,   // `P20-03`: where it ran
     command: cmd, fullCommand: json.full_command,
-    output: outHtml, diff: diffHtml, todo: todoHtml,
+    output: outcome ? '' : outHtml, diff: diffHtml, todo: todoHtml,
+    outcome: outcome || undefined,
+    approvalDigest: asked ? asked.digest : undefined,
+    approvalId: outcome && json.ask_user ? json.ask_user.approval_id : undefined,
   });
   if (todoHtml) demoteSupersededTodoCards(opts && opts.todoScope);
   // --- Render browser screenshots in tool output ---

@@ -199,11 +199,12 @@ def test_detached_resume_surfaces_fallback_then_provider_alias_before_reload():
 @pytest.mark.skipif(not _HAS_NODE, reason="node binary not on PATH")
 def test_detached_resume_renders_preoutput_error_without_empty_reload():
     source = "\n".join([
-        "import { createTerminalStreamError } from './static/js/chatStreamErrors.js';",
+        "import { createTerminalStreamError, buildReplyError } from './static/js/chatStreamErrors.js';",
         "import { createAgentMeter, presentMeterEvent, METER_EVENT_TYPES } from './static/js/agentMeter.js';",
         "class Element {",
         "  constructor(tag = 'div') { this.tag = tag; this.children = []; this.parentNode = null; this.style = {}; this.dataset = {}; this.textContent = ''; this._html = ''; }",
         "  appendChild(child) { child.parentNode = this; this.children.push(child); return child; }",
+        "  setAttribute() {} addEventListener() {}",
         "  remove() { if (!this.parentNode) return; this.parentNode.children = this.parentNode.children.filter(c => c !== this); this.parentNode = null; }",
         "  set innerHTML(value) {",
         "    this._html = value;",
@@ -236,15 +237,18 @@ def test_detached_resume_renders_preoutput_error_without_empty_reload():
         "async function fetch() { return { ok:true, body:{getReader(){return reader;}}, headers:{get(){return 'run-1';}} }; }",
         _resume_function_source(),
         "const result = await resumeStream('s1');",
-        "const holder = box.children[0]; const errorNode = holder && holder._content.children.find(node => node.textContent.startsWith('[Error:'));",
-        "console.log(JSON.stringify({result, selectCalls, holderCount: box.children.length, errorText: errorNode && errorNode.textContent}));",
+        # `P23-04` (CHAT-M-13): the failure is the error builder's line — a
+        # sentence, Retry, and the provider's own words behind Details.
+        "const holder = box.children[0]; const errorNode = holder && holder._content.children.find(node => node.className === 'reply-error');",
+        "const words = (n) => [n.textContent].concat(n.children.map(words)).filter(Boolean).join('|');",
+        "console.log(JSON.stringify({result, selectCalls, holderCount: box.children.length, errorText: errorNode && words(errorNode)}));",
     ])
 
     assert _run_node(source) == {
         "result": True,
         "selectCalls": 0,
         "holderCount": 1,
-        "errorText": "[Error: invalid key <img src=x>]",
+        "errorText": "The model didn't answer (HTTP 401).|Retry|Details|invalid key <img src=x>",
     }
 
 

@@ -744,7 +744,9 @@ def test_the_palette_offers_it_and_opens_it_through_its_own_door(box):
 
 def _door(html: str):
     """The door inside the card's header, if there is one, and its words."""
-    header = html.split('<div class="agent-thread-header">', 1)[1].split(
+    # `P23-04` (CHAT-U-4): the header carries `role`, `tabindex` and
+    # `aria-expanded` now, so its opening tag is matched, not spelled.
+    header = re.split(r'<div class="agent-thread-header"[^>]*>', html, maxsplit=1)[1].split(
         '<div class="agent-thread-content">', 1)[0]
     m = re.search(r'<button type="button" class="agent-thread-ws-door" '
                   r'data-open-workstation-screen title="([^"]*)">.*?</svg>([^<]*)</button>', header)

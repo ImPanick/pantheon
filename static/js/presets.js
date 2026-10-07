@@ -575,7 +575,7 @@ export function openCustomPresetModal() {
     } else if (activeTab === 'inject') {
       // Inject tab = a plain tuned "prompt" chat (prefix/suffix + temp/tokens),
       // no persona.
-      label = 'Start Prompt';
+      label = 'Apply';   // `P23-04` (CHAT-U-21): what it does to the chat
     } else {
       // Character/persona tab. "Save & " prefix when the user edited a template,
       // so it's clear the edit is being saved on start.

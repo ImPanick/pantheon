@@ -285,7 +285,8 @@ def test_a_live_run_draws_a_bar_that_names_both_verbs_and_both_keys(sandbox):
     assert out["role"] == "status"
     text = out["text"]
     assert "Ctrl+⏎" in text, "the steer key is named on screen"
-    assert "⏎" in text and "queues it for after" in text, "the queue verb is named too"
+    # `P23-04` (§ 5): "Ctrl+⏎ steers now, ⏎ queues." — both verbs, both keys.
+    assert "⏎" in text and "queues" in text, "the queue verb is named too"
     assert "next step" in text, "the honest round-boundary promise"
 
 

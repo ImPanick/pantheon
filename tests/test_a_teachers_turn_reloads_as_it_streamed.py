@@ -320,6 +320,9 @@ def test_the_students_rounds_are_headed_and_footed_from_the_students_record(monk
     # Figures a person can tell apart: each footer says its own run's speed.
     saved["earlier_runs"][0]["tokens_per_second"] = 11
     saved["tokens_per_second"] = 99
+    # `P23-04` (CHAT-U-17): a speed is said for a reply long enough to have one.
+    saved["earlier_runs"][0]["output_tokens"] = 40
+    saved["output_tokens"] = 40
     out = reload_view(reload_sandbox, "reply", saved)
     assert out["errors"] == []
     assert [(b["text"], b["heading"], b["footer"]) for b in out["bubbles"]] == [

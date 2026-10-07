@@ -607,7 +607,10 @@ function _say(text) {
 function _statusText(query) {
   if (!query) return '';
   const n = _options.length;
-  const found = n ? `${n} ${n === 1 ? 'result' : 'results'}. ↑ ↓ to move, Enter to select, Esc to close.` : '';
+  // `P23-04` (§ 5): the count, once. The keys are the list's own (a listbox
+  // announces arrow keys); the sentence describing them was read out on
+  // every keystroke.
+  const found = n ? `${n} ${n === 1 ? 'result' : 'results'}` : '';
   if (_chat.query === query && _chat.state === 'error') {
     return `Couldn't search your chats (${_chat.error}).${found ? ' ' + found : ''}`;
   }

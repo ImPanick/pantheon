@@ -6,6 +6,7 @@ Query and cache model context window sizes from OpenAI-compatible APIs.
 Provides token estimation for context usage tracking.
 """
 
+import contextvars
 import ipaddress
 import logging
 import sys
@@ -54,6 +55,47 @@ def _normalize_base_for_compare(url: str) -> str:
     return url
 
 
+# `P23-04` (PERF-M-14). One context-length lookup asked the endpoint table
+# six times — `_configured_endpoint_kind` four times (directly and through
+# `is_local_endpoint`) and `_endpoint_auth_headers` twice — measured in-process
+# on the showcase: 11 statements per `GET /api/session/{id}/context`, six of
+# them `SELECT … FROM model_endpoints`, and that route runs on every chat open.
+# Inside `_rows_read_once()` the enabled rows are read once and shared; outside
+# one, every call reads as it always did, so nothing else changes.
+_ROWS_SCOPE: contextvars.ContextVar = contextvars.ContextVar("model_context_rows", default=None)
+
+
+class _rows_read_once:
+    """Within this block, the enabled endpoint rows are read at most once."""
+
+    def __enter__(self):
+        self._token = _ROWS_SCOPE.set({})
+        return self
+
+    def __exit__(self, *exc):
+        _ROWS_SCOPE.reset(self._token)
+        return False
+
+
+def _enabled_endpoint_rows():
+    """The enabled `ModelEndpoint` rows — shared within `_rows_read_once()`.
+
+    Raises when the database layer is unavailable; callers keep their own
+    fallbacks for that, exactly as before."""
+    scope = _ROWS_SCOPE.get()
+    if scope is not None and "rows" in scope:
+        return scope["rows"]
+    from core.database import SessionLocal, ModelEndpoint
+    db = SessionLocal()
+    try:
+        rows = db.query(ModelEndpoint).filter(ModelEndpoint.is_enabled == True).all()  # noqa: E712
+    finally:
+        db.close()
+    if scope is not None:
+        scope["rows"] = rows
+    return rows
+
+
 def _endpoint_auth_headers(url: str) -> Dict[str, str]:
     """Authorization header for a configured endpoint matching ``url``.
 
@@ -67,24 +109,18 @@ def _endpoint_auth_headers(url: str) -> Dict[str, str]:
     if not target or "core.database" not in sys.modules:
         return {}
     try:
-        from core.database import SessionLocal, ModelEndpoint
         from src.endpoint_resolver import resolve_endpoint_runtime
-        db = SessionLocal()
-        try:
-            rows = db.query(ModelEndpoint).filter(ModelEndpoint.is_enabled == True).all()
-            for ep in rows:
-                base = _normalize_base_for_compare(getattr(ep, "base_url", "") or "")
-                if not base:
-                    continue
-                if target != base and not target.startswith(base + "/"):
-                    continue
-                try:
-                    _b, api_key = resolve_endpoint_runtime(ep, owner=getattr(ep, "owner", None))
-                except Exception:
-                    api_key = getattr(ep, "api_key", None)
-                return {"Authorization": f"Bearer {api_key}"} if api_key else {}
-        finally:
-            db.close()
+        for ep in _enabled_endpoint_rows():
+            base = _normalize_base_for_compare(getattr(ep, "base_url", "") or "")
+            if not base:
+                continue
+            if target != base and not target.startswith(base + "/"):
+                continue
+            try:
+                _b, api_key = resolve_endpoint_runtime(ep, owner=getattr(ep, "owner", None))
+            except Exception:
+                api_key = getattr(ep, "api_key", None)
+            return {"Authorization": f"Bearer {api_key}"} if api_key else {}
     except Exception:
         return {}
     return {}
@@ -98,28 +134,22 @@ def _configured_endpoint_kind(url: str) -> Optional[str]:
     if "core.database" not in sys.modules:
         return None
     try:
-        from core.database import SessionLocal, ModelEndpoint
-        db = SessionLocal()
-        try:
-            rows = db.query(ModelEndpoint).filter(ModelEndpoint.is_enabled == True).all()
-            for ep in rows:
-                base = _normalize_base_for_compare(getattr(ep, "base_url", "") or "")
-                if not base:
-                    continue
-                if target != base and not target.startswith(base + "/"):
-                    continue
-                kind = (getattr(ep, "endpoint_kind", None) or "auto").strip().lower()
-                if kind in ("local", "api", "proxy"):
-                    return kind
-                if getattr(ep, "api_key", None):
-                    parsed = urlparse(base)
-                    host = (parsed.hostname or "").lower()
-                    path = (parsed.path or "").rstrip("/")
-                    if parsed.port != 11434 and "ollama" not in host and (path.endswith("/v1") or "/openai" in path):
-                        return "proxy"
-                return "auto"
-        finally:
-            db.close()
+        for ep in _enabled_endpoint_rows():
+            base = _normalize_base_for_compare(getattr(ep, "base_url", "") or "")
+            if not base:
+                continue
+            if target != base and not target.startswith(base + "/"):
+                continue
+            kind = (getattr(ep, "endpoint_kind", None) or "auto").strip().lower()
+            if kind in ("local", "api", "proxy"):
+                return kind
+            if getattr(ep, "api_key", None):
+                parsed = urlparse(base)
+                host = (parsed.hostname or "").lower()
+                path = (parsed.path or "").rstrip("/")
+                if parsed.port != 11434 and "ollama" not in host and (path.endswith("/v1") or "/openai" in path):
+                    return "proxy"
+            return "auto"
     except Exception:
         return None
 
@@ -278,6 +308,11 @@ _context_cache: Dict[Tuple[str, str], Tuple[int, bool]] = {}
 def _get_context_length_cached(endpoint_url: str, model: str) -> Tuple[int, bool]:
     """Return (context_length, known). ``known`` is False only when the value is a
     bare DEFAULT_CONTEXT fallback (no endpoint report and not in the known table)."""
+    with _rows_read_once():   # `P23-04` (PERF-M-14)
+        return _get_context_length_once(endpoint_url, model)
+
+
+def _get_context_length_once(endpoint_url: str, model: str) -> Tuple[int, bool]:
     configured_kind = _configured_endpoint_kind(endpoint_url)
     is_local = is_local_endpoint(endpoint_url)
     # Key on (endpoint_url, model): the same model id can be served by two
