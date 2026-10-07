@@ -4942,9 +4942,12 @@ import { chevronIcon, playIcon } from './icons.js';
       }
       syncHighlighting();
       renderTabs();
-      // Trigger auto-detect and auto-title
+      // Trigger auto-detect and auto-title. `P23-08`: from what the editor
+      // holds by then — Create now stores on the first keystroke, and the
+      // keys typed while that POST was out never reach the input listener's
+      // own title timer (measured: a typed burst left the title empty).
       setTimeout(attemptAutoDetect, 100);
-      setTimeout(() => autoTitleFromContent(content), 300);
+      setTimeout(() => autoTitleFromContent(document.getElementById('doc-editor-textarea')?.value || content), 300);
       // Auto-save
       clearTimeout(_autoSaveDebounce);
       _autoSaveDebounce = setTimeout(() => { saveDocument({ silent: true }); }, 2000);

@@ -306,7 +306,8 @@ function _ensureDocPaneMounted() { isOpen = true; }
 function exitDiffMode() {} function clearSelection() {} function _hideEmailFields() {}
 function _setMarkdownPreviewActive() {} function exitHtmlPreview() {} function _syncHeaderActions() {}
 function _hideLoadingOverlay() {} function syncHighlighting() {} function _syncDocIndicator() {}
-function attemptAutoDetect() {} function autoTitleFromContent() {}
+const titled = [];
+function attemptAutoDetect() {} function autoTitleFromContent(text) { titled.push(text); }
 function langIcon() { return ''; } function _esc(s) { return String(s); }
 function updateArrowVisibility() {} function _wireSwipeDismiss() {} function initTabDragReorder() {}
 function switchToDoc(id) { _blankDoc = null; activeDocId = id; }
@@ -346,6 +347,22 @@ def test_the_first_keystroke_stores_it_in_the_chat_that_was_open(page):
     assert out["docs"] == [{"session_id": "chat-a", "title": "", "content": "Packing list"}]
     assert out["sessions"] == 0 and out["active"] == "doc-1"
     assert "doc-tab-ghost" not in out["tabs"]
+
+
+def test_keys_typed_while_the_first_save_is_out_still_name_it(page):
+    """The first keystroke stores the document; a fast typist's next keys
+    land before that POST answers and never reach the editor's own title
+    timer, so the title is read from what the editor holds (driven: a typed
+    burst in Chromium left the title empty before this)."""
+    out = run(page, _CREATE + """
+        await newDocument();
+        ta.value = 'P';
+        const storing = _autoCreateFromInput(ta.value);
+        ta.value = 'Packing list';
+        await storing; await settle();
+        console.log(JSON.stringify({ titled }));
+    """)
+    assert out["titled"] == ["Packing list"]
 
 
 def test_create_beside_open_documents_draws_the_blank_tab_and_saves_the_last_one(page):
