@@ -297,12 +297,18 @@ function _bindEvents() {
   // each time, and drift is the point here rather than a defect.
   const _unreadJitter = (base) => base + Math.random() * base * 0.1;
   setTimeout(_refreshUnreadCount, _unreadJitter(8000));
+  // `P23-07` (PERF-M-12): not while the tab is hidden — the dot it draws is
+  // not seen there, and each look reaches the mail provider. Coming back to
+  // the tab looks once, if a look is due.
   (function _pollUnread() {
     setTimeout(() => {
-      _refreshUnreadCount();
+      if (document.visibilityState !== 'hidden') _refreshUnreadCount();
       _pollUnread();
     }, _unreadJitter(60000));
   })();
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'hidden' && Date.now() - _unreadCheckedAt >= 60000) _refreshUnreadCount();
+  });
 
   // Deep-link: #email=<folder>:<uid> opens the library and expands that card
   _maybeOpenFromHash();
@@ -328,7 +334,9 @@ function _urgencyColor(score) {
   return '';                                                // default (blue / theme)
 }
 
+let _unreadCheckedAt = 0;   // `P23-07`: when the dot last looked
 async function _refreshUnreadCount() {
+  _unreadCheckedAt = Date.now();
   // Default the dot to hidden — only the verified "new mail above threshold"
   // path below should turn it on. Without this, a fetch error or a backend
   // returning malformed data left a stale dot from a previous account/session.

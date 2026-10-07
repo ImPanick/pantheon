@@ -4006,9 +4006,19 @@ function startPantheonApp() {
     _show('rail-chats', !!hasChatNotif);
   }
   window._syncRailDynamic = _syncRailDynamic;
-  // Sync periodically and on key events
-  setInterval(_syncRailDynamic, 1000);
+  // Sync on the key events, and — `P23-07` (PERF-M-12) — when one of the three
+  // things it reads changes: the body's `doc-view` (the document pane), the doc
+  // indicator's `visible` and the chats rail button's `rail-notify`. This was
+  // `setInterval(_syncRailDynamic, 1000)`: a wake-up a second for the life of
+  // the tab, hidden or not, to look at three classes.
   document.addEventListener('overflow-state-change', _syncRailDynamic);
+  if (typeof MutationObserver !== 'undefined') {
+    const _railWatch = new MutationObserver(_syncRailDynamic);
+    [document.body, el('doc-indicator-btn'), el('rail-chats')].forEach(node => {
+      if (node) _railWatch.observe(node, { attributes: true, attributeFilter: ['class'] });
+    });
+  }
+  _syncRailDynamic();
 
   const sidebarSearchBtn = el('sidebar-search-btn');
   if (sidebarSearchBtn) {
