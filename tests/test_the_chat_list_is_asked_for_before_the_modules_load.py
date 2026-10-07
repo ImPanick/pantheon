@@ -63,6 +63,11 @@ const BASE = process.argv[2];
   }, sid);
   out.current = await page.evaluate(() => window.sessionModule && window.sessionModule.getCurrentSessionId
     ? window.sessionModule.getCurrentSessionId() : null);
+  // A later reload of the list asks the server again: an early answer is taken once.
+  out.reloaded = await page.evaluate(async () => {
+    await window.sessionModule.loadSessions();
+    return performance.getEntriesByType('resource').filter(r => /\/api\/sessions(\?|$)/.test(r.name)).length;
+  });
   console.log(JSON.stringify(out));
   await browser.close();
 })().catch((e) => { console.error(e); process.exit(1); });
@@ -101,6 +106,10 @@ def test_the_linked_chat_is_asked_for_once_and_early(drive):
     t = drive["timing"]
     assert len(t["history"]) == 1, t
     assert t["history"][0] < t["parsed"], t
+
+
+def test_a_later_list_reload_asks_again(drive):
+    assert drive["reloaded"] == 2, drive
 
 
 def test_the_linked_chat_is_the_one_open(drive):
