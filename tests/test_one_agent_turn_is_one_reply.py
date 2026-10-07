@@ -605,3 +605,34 @@ def test_a_resumed_view_keeps_one_fold_while_a_step_streams(sandbox):
     assert streaming[1]["folds"] == [["Looking for the folders first.", "Now the unfiled ones.", "Counting them."]]
     assert all(len(n["folds"]) <= 1 for snap in out["snaps"] for n in snap if "bubble" in n), out["snaps"]
     assert out["reloads"] == 1
+
+
+def test_every_fold_on_the_page_opens_its_own_reasoning(reload_sandbox):
+    """A fold is opened by its id (`markdown.js`'s click handler reads
+    `data-thinking-id` and calls `getElementById`). A reload draws every turn in
+    one tick, and the id was the millisecond plus a block index that is always
+    0: two turns' folds shared one, and the second turn's header opened the
+    first turn's reasoning."""
+    out = _run(reload_sandbox, "", _READ + textwrap.dedent("""
+        // One millisecond for the whole reload, as a browser draws it (measured
+        // under node with the real renderer: six folds, two ids between them).
+        Date.now = () => 1791398137498;
+        user('First.');
+        addMessage('assistant', 'One.', 'm', %s);
+        user('Second.');
+        addMessage('assistant', 'Two.', 'm', %s);
+        addMessage('assistant', '<think>A plain reply thought too.</think>Three.', 'm', {});
+        const headers = history.querySelectorAll('.thinking-header');
+        console.log(JSON.stringify(headers.map((h) => {
+          const content = document.getElementById(h.dataset.thinkingId);
+          const fold = h.parentNode;
+          return { opens: !!content && content.parentNode === fold,
+                   text: words(content && content.querySelector('.thinking-content-inner')) };
+        })));
+    """ % (json.dumps({"round_texts": ["", "One."], "round_thinking": ["First a.", "First b."],
+                        "tool_events": [_row(1, "bash", "ls")]}),
+           json.dumps({"round_texts": ["", "Two."], "round_thinking": ["Second a.", "Second b."],
+                        "tool_events": [_row(1, "bash", "ls")]}))))
+    assert [f["opens"] for f in out] == [True, True, True], out
+    # (The shim keeps no whitespace-only text between the steps' parts.)
+    assert [f["text"] for f in out] == ["First a.First b.", "Second a.Second b.", "A plain reply thought too."], out

@@ -685,10 +685,17 @@ export function extractThinkingBlocks(text) {
  * string that only happened to match the text above it. One builder now, so
  * the label is stated once and the fold that opens is the fold that closes.
  */
+// `B-NEW-11` (fx2-chat). A fold is opened by its id (`getElementById` in the
+// click handler below), and the id was the millisecond plus the block's index —
+// always 0, since the blocks are merged. A reload draws every turn in one tick:
+// measured under node, six folds drawn back to back had two ids between them,
+// so a later turn's *View thinking process* opened an earlier turn's fold. The
+// second number is a count of folds drawn now (the id keeps its shape).
+let _thinkingFoldSeq = 0;
 function createThinkingSection(thinkingContent, index = 0, thinkingTime = null) {
   const timeHtml = thinkingTime ? `<span style="font-size:11px;opacity:0.4;font-variant-numeric:tabular-nums;">${thinkingTime}s</span>` : '';
   return createCollapsible(thinkingContent, 'thinking process', {
-    id: `thinking-${Date.now()}-${index}`,
+    id: `thinking-${Date.now()}-${++_thinkingFoldSeq}`,
     aside: timeHtml,
   });
 }
