@@ -298,6 +298,61 @@ def refresh_dynamic_catalogs(force=False):
     reset_model_cache()
     return refreshed
 
+
+# ── `P23-07` (`PERF-M-6`): the refresh runs beside the answer, not inside it ──
+#
+# `GET /api/hwfit/models?refresh_catalog=1` ran `refresh_dynamic_catalogs`
+# inline — up to 40 sequential requests to huggingface.co — and the Forge
+# waited on it: measured on `32df791`, 8,102 ms the first time and 1,768 ms
+# after, against 98 ms without the refresh. The Forge asks for it after every
+# paint from its cache, and the mlx-community half had no floor, so every one
+# of those asks went to the host again. Now one refresh runs at a time, in a
+# thread; the answer carries the rows already cached and this state, and the
+# Forge asks `GET /api/hwfit/catalog-refresh` until it is done, then redraws.
+# A refresh that finished in the last five minutes is not started again — the
+# floor `P15-05` gave the collections half, for both halves.
+import threading as _threading  # noqa: E402
+import time as _time  # noqa: E402
+
+CATALOG_REFRESH_FLOOR_S = 300
+_refresh_lock = _threading.Lock()
+_refresh_state = {"state": "idle"}
+
+
+def catalog_refresh_status() -> dict:
+    """`{"state": "idle" | "running" | "done" | "failed", …}`."""
+    with _refresh_lock:
+        return dict(_refresh_state)
+
+
+def start_catalog_refresh(force: bool = True) -> dict:
+    """Start the dynamic-catalog refresh in a thread unless one is running or
+    one finished within `CATALOG_REFRESH_FLOOR_S`; return the state either way."""
+    with _refresh_lock:
+        current = dict(_refresh_state)
+        if current.get("state") == "running":
+            return current
+        finished = current.get("finished_at")
+        if finished and _time.time() - finished < CATALOG_REFRESH_FLOOR_S:
+            return current
+        _refresh_state.clear()
+        _refresh_state.update(state="running", started_at=_time.time())
+        started = dict(_refresh_state)
+    _threading.Thread(target=_run_catalog_refresh, args=(force,),
+                      name="hwfit-catalog-refresh", daemon=True).start()
+    return started
+
+
+def _run_catalog_refresh(force: bool) -> None:
+    try:
+        outcome = {"state": "done", "refreshed": refresh_dynamic_catalogs(force=force)}
+    except Exception as e:  # noqa: BLE001 — said in the state, the Forge keeps its rows
+        outcome = {"state": "failed", "error": str(e)[:200]}
+    outcome["finished_at"] = _time.time()
+    with _refresh_lock:
+        _refresh_state.clear()
+        _refresh_state.update(outcome)
+
 def get_models():
     global _models_cache
     if _models_cache is None:
