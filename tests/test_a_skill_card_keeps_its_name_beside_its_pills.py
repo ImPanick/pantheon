@@ -18,7 +18,7 @@ and a wide card is one row, as before.
 Driven, not read (`Law 20`): the real app booted out of process on a data
 directory whose skills are planted through `SkillsManager` before it starts
 (the store the app reads), signed in, the Skills window opened through the
-Brain's own tab; the real `skills.js` draws the cards and the real
+Brain's own Skills door (a tab until `P23-02`); the real `skills.js` draws the cards and the real
 `static/style.css` lays them out in headless Chromium. Measured: each card's
 name box, and how much of the name's own text is drawn inside it.
 """
@@ -143,10 +143,14 @@ const MEASURE = () => [...document.querySelectorAll('#skills-list .skill-card[da
     await page.goto(BASE + '/', { waitUntil: 'load' });
     await page.waitForFunction(() => window.__pantheonAppStarted === true, null, { timeout: 90000 });
     await page.waitForTimeout(1200);
-    // The Brain, by its own door, then its Skills tab — the Skills window.
+    // The Brain, by its own door, then its Skills door — the Skills window.
+    // P23: `P23-02` (fx-brain, `NAV-U-1`) made Skills a door beside the
+    // Brain's four tabs (`#memory-skills-door`, `openSkillsWindow('browse',
+    // {from:'memory-modal'})`) instead of a fifth tab; this setup clicked the
+    // gone tab and timed out. The cards it measures are the same window's.
     await page.evaluate(() => document.getElementById('tool-memory-btn').click());
-    await page.waitForSelector("[data-memory-tab='skills']", { state: 'attached', timeout: 30000 });
-    await page.evaluate(() => document.querySelector("[data-memory-tab='skills']").click());
+    await page.waitForSelector('#memory-skills-door', { state: 'attached', timeout: 30000 });
+    await page.evaluate(() => document.getElementById('memory-skills-door').click());
     await page.waitForSelector('#skills-list .skill-card', { timeout: 30000 });
     await page.waitForTimeout(800);
     out[w] = await page.evaluate(MEASURE);

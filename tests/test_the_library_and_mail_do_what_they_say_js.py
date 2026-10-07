@@ -28,6 +28,7 @@ from pathlib import Path
 
 import pytest
 
+from tests.helpers.esc_stub import esc_source
 from tests.helpers.js_source import js_definition
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -308,7 +309,9 @@ function _setMarkdownPreviewActive() {} function exitHtmlPreview() {} function _
 function _hideLoadingOverlay() {} function syncHighlighting() {} function _syncDocIndicator() {}
 const titled = [];
 function attemptAutoDetect() {} function autoTitleFromContent(text) { titled.push(text); }
-function langIcon() { return ''; } function _esc(s) { return String(s); }
+function langIcon() { return ''; }
+// P23 round 2 (`B874`): document.js's `_esc` is `uiModule.esc`; the shipped one, not `String(s)`.
+""" + esc_source("_esc") + """
 function updateArrowVisibility() {} function _wireSwipeDismiss() {} function initTabDragReorder() {}
 function switchToDoc(id) { _blankDoc = null; activeDocId = id; }
 function closePanel() { nav.push(['closePanel']); isOpen = false; _blankDoc = null; }
@@ -516,7 +519,8 @@ def test_the_library_import_stores_a_text_file_as_text(live, name, body, languag
 def test_the_mail_reader_s_chips_say_bytes_under_a_kilobyte(page):
     out = run(page, """
         const state = { _libFolder: 'INBOX' };
-        const _esc = (s) => String(s);
+        // P23 round 2 (`B874`): the reader's `_esc` is the shared escaper; the shipped one.
+    """ + esc_source("_esc") + """
         const _isLikelySignatureImage = () => false;
         const chevronIcon = () => '';
     """ + cut(MAILJS, "function _buildAttsHtmlFor(") + """

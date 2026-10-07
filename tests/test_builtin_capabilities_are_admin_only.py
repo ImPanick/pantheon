@@ -308,9 +308,15 @@ def test_expanding_a_card_reads_the_block_from_the_gated_detail_route(sandbox):
         card.dispatchEvent({ type: 'click', target: card,
                              stopPropagation(){}, preventDefault(){} });
         await tick();
+        // P23: `P23-02` (fx-brain, `45d7f4d`, COPY-U-22) cut the 30-word
+        // warning ("This is a built-in capability. Editing changes…") to one
+        // line. Still pinned: the expanded card says it is built in, what an
+        // edit changes, and that Revert undoes it.
+        const warn = readable(card);
         console.log(JSON.stringify({
           body: card.querySelector('.skill-md-pre').textContent,
-          warned: readable(card).includes('built-in capability'),
+          warned: warn.includes('Built in.') && warn.includes('Edits change how the model uses this tool')
+            && warn.includes('Revert restores the default'),
         }));
     """)
     assert out["body"] == "BLOCK TEXT"

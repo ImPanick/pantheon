@@ -3235,8 +3235,13 @@
 
           <div class="admin-card" style="margin-top:12px;">
             <h2>Network agent</h2>
+            <!-- `B1236` (P23 round 2). `P23-03`'s short line said "sees the network
+                 Docker cannot", which reads as the container reaching no network:
+                 the dated claim `B975` corrected (2026-10-01, Docker Desktop 29.7.2,
+                 the container reached the LAN). What the host sees and a bridged
+                 container does not is its own addresses and its neighbour table. -->
             <div class="admin-toggle-sub" style="margin-bottom:10px;line-height:1.5;">
-              A small read-only process on the host that sees the network Docker cannot. Start <code>python -m netagent.server</code> and paste the token it prints. Blank: nothing is called.
+              A small read-only process you run on the host. It sees the host&rsquo;s own addresses and the devices it has talked to. Start <code>python -m netagent.server</code> and paste the token it prints. Blank: nothing is called.
             </div>
             <div class="settings-col">
               <div class="settings-row">

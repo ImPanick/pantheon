@@ -11663,8 +11663,11 @@ body.fullwidth-chat .chat-history {
   color: inherit;
   opacity: 1;
 }
-.stopped-indicator:not(.rounds-exhausted) > .continue-btn:hover,
-.stopped-indicator:not(.rounds-exhausted) > .continue-btn:focus-visible {
+/* P23 round 2: hover only. A `:focus-visible` arm here was the census's
+   52nd (`tests/test_one_focus_ring_css.py`); the global ring already paints
+   on this button (nothing suppresses it), so keyboard focus is shown by the
+   one ring every control shares (P10-01), not by an underline of its own. */
+.stopped-indicator:not(.rounds-exhausted) > .continue-btn:hover {
   text-decoration: underline;
 }
 /* `P4-12`. The action you personally stopped and allowed. Louder than the round

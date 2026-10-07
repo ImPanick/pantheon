@@ -23,6 +23,7 @@ from pathlib import Path
 import pytest
 
 from test_one_skills_module_two_places_js import SHIM, STUBS, _markup  # noqa: E402
+from tests.helpers.esc_stub import esc_source  # noqa: E402
 from test_tool_effect_surfaces_js import _make_sandbox, _run  # noqa: E402
 from tests.helpers.js_source import js_definition
 
@@ -225,7 +226,9 @@ def test_the_skill_settings_are_a_view_of_the_skills_window_and_the_room_mirrors
 # ── BRAIN-M-13 · Publish is offered on a pass, not on an unclear verdict ────
 
 _VERDICT_HARNESS = r"""
-const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+// P23 round 2 (`B874`): the shipped escaper (skills.js's `esc`), not a
+// two-character copy that left `>`, `"` and `'` alone.
+__ESC__
 const _applyVerdictToHeader = () => {};
 const el = (html) => ({ innerHTML: '', querySelector: () => null, _set(h) { this.innerHTML = h; } });
 __FN__
@@ -247,7 +250,8 @@ def test_publish_is_offered_on_a_pass_and_unpublish_on_a_published_skill(tmp_pat
     src = SKILLS_JS.read_text(encoding="utf-8")
     fn = js_definition(src, src.index("function _renderTestVerdict("))
     case = tmp_path / "verdict.mjs"
-    case.write_text(_VERDICT_HARNESS.replace("__FN__", fn), encoding="utf-8")
+    case.write_text(_VERDICT_HARNESS.replace("__FN__", fn).replace("__ESC__", esc_source()),
+                    encoding="utf-8")
     proc = subprocess.run(["node", str(case)], capture_output=True, text=True, timeout=30)
     assert proc.returncode == 0, proc.stderr
     got = json.loads(proc.stdout.strip().splitlines()[-1])
