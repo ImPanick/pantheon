@@ -295,6 +295,15 @@ def _shown_tool_row(event: Any, approval_digest: str = "") -> Optional[dict]:
     return None
 
 
+def _approval_fingerprint(exact_approval: Any) -> str:
+    """`B-NEW-11`. The fingerprint the loop gives the call an approval let
+    through (`approval_digest`, ``exact_approval.pending.digest[:16]`` in
+    `src/agent_loop.py`) — the one its row is matched to the row that asked by.
+    ``''`` when this run continues no approval."""
+    pending = getattr(exact_approval, "pending", None)
+    return str(getattr(pending, "digest", "") or "")[:16]
+
+
 def _mark_tool_approval_resolved(sess, approval_id: Any, decision: Any) -> bool:
     """Persist a consumed approval decision on its existing tool event."""
 
@@ -3194,8 +3203,7 @@ def setup_chat_routes(
                                 data = json.loads(chunk[6:])
                                 _agent_notes.observe(data)   # `B915`
                                 # `B-NEW-11`: the rows, for a reply the person stops.
-                                _shown = _shown_tool_row(
-                                    data, str(getattr(exact_tool_approval, "digest", "") or "")[:16])
+                                _shown = _shown_tool_row(data, _approval_fingerprint(exact_tool_approval))
                                 if _shown is not None:
                                     _shown_rows.append(_shown)
                                 if "delta" in data:

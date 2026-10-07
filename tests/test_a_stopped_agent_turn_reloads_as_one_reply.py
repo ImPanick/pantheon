@@ -102,6 +102,17 @@ def test_a_refused_call_is_kept_as_a_refusal_and_an_approved_one_keeps_its_finge
     assert chat_routes._shown_tool_row({"type": "agent_step", "round": 2}) is None
 
 
+def test_the_fingerprint_is_the_one_the_loop_gives_the_approved_call():
+    """`src/agent_loop.py` stamps the approved call `exact_approval.pending.digest[:16]`;
+    the stopped reply's row must carry the same, or the reload cannot match it
+    to the row that asked (measured: the first cut read `exact_approval.digest`,
+    which is not there, and the reload drew the turn as two replies again)."""
+    from types import SimpleNamespace
+    exact = SimpleNamespace(pending=SimpleNamespace(digest="86f97e1f8374f62c" + "0" * 48))
+    assert chat_routes._approval_fingerprint(exact) == "86f97e1f8374f62c"
+    assert chat_routes._approval_fingerprint(None) == ""
+
+
 # ── which reply a Stop marks ────────────────────────────────────────────────
 
 def _paused():
