@@ -12,7 +12,6 @@ from typing import Dict, Any, Optional
 from pydantic import BaseModel
 
 from core.database import GalleryImage
-from src.auth_helpers import _auth_disabled
 
 logger = logging.getLogger(__name__)
 
@@ -126,14 +125,12 @@ def _image_to_dict(img: GalleryImage, session_name: str = None) -> Dict[str, Any
 def _owner_filter(q, user, model_cls=GalleryImage):
     """Apply owner filtering to a gallery query.
 
-    ``get_current_user`` returns None both in auth-disabled single-user mode
-    and when auth is enabled but no current user was resolved. Preserve the
-    single-user behavior, but fail closed for auth-enabled null-user states.
+    ``get_current_user`` returns None when no person was resolved, which fails
+    closed: an empty answer. (It once also meant an auth-off install's
+    everything, which went with auth-off, `D-2026-10-07-02` §2.)
     """
     if user is not None:
         return q.filter(model_cls.owner == user)
-    if _auth_disabled():
-        return q
     return q.filter(False)
 
 

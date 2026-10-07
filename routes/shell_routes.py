@@ -57,8 +57,12 @@ def _require_admin(request: Request):
     regular users; that's RCE-after-signup."""
     auth_manager = getattr(request.app.state, "auth_manager", None)
     if not auth_manager:
-        # No auth at all — only safe in fully-trusted localhost dev mode
-        return
+        # No auth manager is no one to ask: refused. Until 2026-10-07 this
+        # returned — "No auth at all — only safe in fully-trusted localhost dev
+        # mode" — and there is no such mode (`D-2026-10-07-02` §2). The app
+        # always holds one (`app.state.auth_manager`), so the refusal only meets
+        # an app assembled without it.
+        raise HTTPException(403, "Admin only")
     user = getattr(request.state, "current_user", None)
     # In-process tool loopback. The AuthMiddleware already validated the
     # internal token + loopback client before setting this marker. Naming

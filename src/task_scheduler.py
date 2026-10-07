@@ -449,8 +449,8 @@ def resolve_task_concurrency_cap(owner: str | None = None) -> Tuple[int, str]:
 # never include bash/python, so on a host with an empty/degraded tool-embedding
 # index a task could not run shell or Python even for an admin owner. Offering
 # them here is safe: stream_agent_loop's blocked_tools_for_owner() still strips
-# this whole group for non-admin multi-user owners, and only admits it for
-# admins and single-user (AUTH_ENABLED=false) deployments.
+# this whole group for non-admin owners, and only admits it for admins
+# (`D-2026-10-07-02` §2 retired the auth-off deployment that also got it).
 TASK_DEFAULT_SHELL_TOOLS = frozenset({
     "bash", "python", "read_file", "write_file", "edit_file",
     "grep", "glob", "ls", "get_workspace",
@@ -4683,8 +4683,8 @@ class TaskScheduler:
         # Compute the disabled-tools set: the crew's enabled_tools allowlist
         # (inverted) plus the operator's global disabled_tools setting. The
         # global list must be merged here — chat does the same merge before
-        # entering the agent loop (routes/chat_routes.py) — otherwise an admin
-        # or AUTH_ENABLED=false scheduled task would still see and call shell/
+        # entering the agent loop (routes/chat_routes.py) — otherwise an admin's
+        # scheduled task would still see and call shell/
         # file tools after the operator disabled them globally, because the
         # prompt/schema/execution gates only enforce what is passed in.
         disabled_tools: set[str] = set()

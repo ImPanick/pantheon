@@ -1024,9 +1024,9 @@ async def action_tidy_research(owner: str, **kwargs) -> Tuple[str, bool]:
     no chat session matches its id. Only prune files that fail to load.
 
     A broken file has no readable owner stamp, so it cannot be matched against
-    `owner`. Clearing one is privileged: admins and the single-user operator
-    (AUTH_ENABLED=false) may, a regular user may not, and neither may anyone
-    during the pre-setup window before an admin exists.
+    `owner`. Clearing one is privileged: admins may, a regular user may not, and
+    neither may anyone during the pre-setup window before an admin exists. (The
+    auth-off operator who also could is gone, `D-2026-10-07-02` §2.)
     """
     try:
         from pathlib import Path

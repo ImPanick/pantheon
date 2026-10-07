@@ -11,7 +11,7 @@ from fastapi import APIRouter, HTTPException, Query, Request, UploadFile, File, 
 from sqlalchemy import case, func, or_
 from core.database import SessionLocal, Document, DocumentVersion
 from core.database import Session as DbSession
-from src.auth_helpers import get_current_user, _auth_disabled
+from src.auth_helpers import get_current_user
 from src.upload_handler import reserve_upload_references
 # `P21-03`: one answer to "what is this file called" for every door.
 from src.file_names import (
@@ -721,8 +721,7 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
         db = SessionLocal()
         try:
             if not user:
-                if not _auth_disabled():
-                    raise HTTPException(403, "Authentication required")
+                raise HTTPException(403, "Authentication required")
             # v2 review HIGH-9: raise 403 explicitly when the caller
             # can't see this session, instead of returning [] which the
             # UI treats identically to "no docs" and silently masks

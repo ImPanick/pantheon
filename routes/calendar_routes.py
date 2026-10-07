@@ -56,96 +56,25 @@ def _ensure_positive_duration(start_dt, end_dt, all_day):
     return end_dt
 
 
-# Single-user fallback identity. Used only when:
-#   1. The app is configured for single-user (no auth middleware), AND
-#   2. The request didn't resolve to an authenticated user.
-# Override at deploy time via `PANTHEON_FALLBACK_OWNER` env var. In a real
-# multi-user install set `PANTHEON_SINGLE_USER=0` so unauthenticated requests
-# are rejected instead of silently writing to this address.
+# The owner a default calendar is made for when a caller names nobody
+# (`_ensure_default_calendar`). Override at deploy time via
+# `PANTHEON_FALLBACK_OWNER`. Until 2026-10-07 it was also where an
+# unauthenticated calendar request landed while `PANTHEON_SINGLE_USER` was on —
+# its default — which `B96`/`B150` found inert and then made to work. There is
+# always authentication now (`D-2026-10-07-02` §2), so a request is a person's
+# or is refused, and `PANTHEON_SINGLE_USER` is ignored (said once at start,
+# `src/owner_identity.warn_ignored_auth_switches`).
 import os as _os
 FALLBACK_OWNER = _os.environ.get("PANTHEON_FALLBACK_OWNER", "owner@localhost")
 
 
-def _single_user_mode() -> bool:
-    """May an unauthenticated calendar write land on `FALLBACK_OWNER`?
-
-    `B96`, and two defects in one line.
-
-    **The spelling.** Until 2026-09-15 this read `!= "0"`, so
-    `PANTHEON_SINGLE_USER=false` left single-user mode **on**: an operator typed
-    the disabling value, believed unauthenticated writes were being rejected,
-    and they were still being accepted under a shared owner. It reads the shared
-    vocabulary now (`B91`), so `0`, `false`, `no` and `off` all turn it off and
-    the comment above — which has told operators to set `PANTHEON_SINGLE_USER=0`
-    since this file was written — is finally true.
-
-    **And it was computed at import into a module constant nothing read.**
-    Measured 2026-09-15: `_SINGLE_USER_MODE` was assigned once and referenced
-    nowhere in the tree, so *no* spelling turned single-user off, including the
-    documented `0`. That is why the row could say `PANTHEON_SINGLE_USER` "fails
-    open" — it was not narrow, it was inert. Filed as `B150`, because a variable
-    that is read and then discarded is invisible to every rule
-    `.pantheon/check-env-declared.py` has: it is declared, it is referenced, and
-    it does nothing.
-
-    A function rather than a constant so the answer is re-read per request. The
-    constant shape is what let it rot unnoticed for the life of the file, and it
-    made the switch untestable without reloading a module 41 others import from
-    (`B18`, `B130`).
-    """
-    from src.env_flags import env_flag
-    return env_flag("PANTHEON_SINGLE_USER", True)
-
-
-_warned_single_user_spelling = False
-
-
-def _warn_old_single_user_spelling() -> None:
-    """Announce the boot the old rule would have read the other way (`B96`)."""
-    global _warned_single_user_spelling
-    if _warned_single_user_spelling:
-        return
-    from src.env_flags import OFF_VALUES
-    raw = _os.environ.get("PANTHEON_SINGLE_USER", "")
-    # Derived from the shared off-set rather than spelled out: the spellings
-    # whose meaning changed are exactly the ones the old `!= "0"` rule did not
-    # recognise, so `0` is the one to subtract and the other three are whatever
-    # `env_flags` says they are. A literal list here would be a tenth rule
-    # written to describe the ninth (`B91`, `Law 13`).
-    if raw.strip().lower() not in (OFF_VALUES - {"0"}):
-        return
-    _warned_single_user_spelling = True
-    import logging
-    logging.getLogger(__name__).warning(
-        "PANTHEON_SINGLE_USER=%r now turns single-user mode OFF, so an "
-        "unauthenticated calendar request is rejected instead of being written "
-        "under %s. Before 2026-09-15 only the literal `0` did that, and it did "
-        "not work either (`B96`, `B150`). If you meant single-user on, unset "
-        "PANTHEON_SINGLE_USER.",
-        raw, FALLBACK_OWNER,
-    )
-
-
 def _require_user(request: Request) -> str:
-    """Return the authenticated user. Uses require_user so AUTH_ENABLED=false
-    and single-user mode both work: require_user returns "" when auth is
-    disabled or unconfigured, and only raises 401 when auth is configured but
-    the caller is unauthenticated. Falls back to FALLBACK_OWNER for calendar
-    writes so data isn't stored under an empty owner in single-user mode."""
-    user = require_user(request)
-    if user:
-        return user
-    # require_user returned "" — auth is off or unconfigured (single-user).
-    # Use FALLBACK_OWNER so calendar rows have a stable owner for filtering.
-    #
-    # `B96`. The switch above is consulted HERE, which is the one place the
-    # fallback is handed out; before this it was computed at import and read
-    # nowhere, so an operator who set `PANTHEON_SINGLE_USER=0` on a multi-user
-    # host got the fallback owner anyway (`B150`).
-    if not _single_user_mode():
-        _warn_old_single_user_spelling()
-        raise HTTPException(401, "Not authenticated")
-    return FALLBACK_OWNER
+    """Return the signed-in person, or refuse (`require_user`).
+
+    Kept as this module's own name because nine routes and two tests call it
+    by it. It once handed an anonymous caller `FALLBACK_OWNER` in single-user
+    mode; that mode went with auth-off (`D-2026-10-07-02` §2)."""
+    return require_user(request)
 
 
 def _get_or_404_calendar(db, cal_id: str, owner: str) -> CalendarCal:

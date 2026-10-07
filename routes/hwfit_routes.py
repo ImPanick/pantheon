@@ -204,8 +204,8 @@ def setup_hwfit_routes():
     # gets 403 before any parameter is read, the SSRF validators included.
     # The Forge is the only caller in the product, and every other read it
     # makes (`/api/cookbook/state`, `/gpus`, `/model/cached`) is admin-only
-    # already; a single-user owner is the admin, and with auth off
-    # `require_admin` returns. The validators still run after this (`FORBIDDEN.md`
+    # already; a single-user owner is the admin (and there is no auth-off
+    # install for `require_admin` to wave through, `D-2026-10-07-02` §2). The validators still run after this (`FORBIDDEN.md`
     # Part 2): an admin naming `-oProxyCommand=…` is refused as before.
     router = APIRouter(prefix="/api/hwfit", tags=["hwfit"],
                        dependencies=[Depends(require_admin)])

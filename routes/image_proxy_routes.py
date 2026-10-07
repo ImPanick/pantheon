@@ -111,18 +111,13 @@ def _store(url: str, body: bytes, ctype: str) -> None:
 def _require_session(request: Request) -> None:
     """Refuse an unauthenticated caller, belt-and-braces.
 
-    `AuthMiddleware` already 401s every `/api/` path when `AUTH_ENABLED` is on,
-    so in the normal build this never fires. It is here because this route
+    `AuthMiddleware` already 401s every `/api/` path without a session, so in
+    the normal build this never fires. It is here because this route
     fetches an arbitrary URL on the caller's behalf: if the global gate is ever
     reordered, relaxed, or mounted differently, an *open proxy* is the failure
-    mode, and that is not a failure to discover in production. When auth is
-    switched off entirely the middleware is absent by design and so is this —
-    the operator has said the box is trusted.
+    mode, and that is not a failure to discover in production. Auth cannot be
+    switched off (`D-2026-10-07-02` §2), so neither can this.
     """
-    from src.owner_identity import auth_disabled
-
-    if auth_disabled():
-        return
     if not getattr(request.state, "current_user", None):
         raise HTTPException(401, "Not authenticated")
 

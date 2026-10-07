@@ -25,13 +25,8 @@ def is_admin_only_task_action(task_type: str | None, action: str | None) -> bool
 
 
 def owner_has_admin_task_privileges(owner: str | None) -> bool:
-    try:
-        from src.auth_helpers import _auth_disabled
-        if _auth_disabled():
-            return True
-    except Exception:
-        pass
-
+    # `D-2026-10-07-02` §2: no auth-off install answers every owner as an admin
+    # any more; an owner is an admin by name, or Pantheon's own loopback.
     if owner:
         try:
             from core.middleware import INTERNAL_TOOL_USER

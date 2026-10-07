@@ -2806,10 +2806,10 @@
             <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>Registration</h2>
             <div class="admin-toggle-row">
               <div>
-                <div class="admin-toggle-label">Open signup</div>
-                <div class="admin-toggle-sub">Allow anyone to create an account from the login page</div>
+                <div class="admin-toggle-label" id="adm-signupLabel">People can sign themselves up</div>
+                <div class="admin-toggle-sub" id="adm-signupSub">On: the sign-in page offers <em>Sign up</em>, and anyone who reaches it can make an account. Off: only an admin adds people, under <em>Add User</em> below. Off on a new install. Signing in is always required either way.</div>
               </div>
-              <label class="admin-switch"><input type="checkbox" id="adm-signupToggle"><span class="admin-slider"></span></label>
+              <label class="admin-switch"><input type="checkbox" id="adm-signupToggle" aria-labelledby="adm-signupLabel" aria-describedby="adm-signupSub"><span class="admin-slider"></span></label>
             </div>
           </div>
           <div class="admin-card">

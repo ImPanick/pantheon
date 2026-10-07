@@ -30,7 +30,7 @@ from src.endpoint_resolver import (
     build_models_url,
     build_headers,
 )
-from src.auth_helpers import _auth_disabled, effective_user, owner_filter
+from src.auth_helpers import effective_user, owner_filter
 from src.env_flags import request_flag, request_truthy
 
 logger = logging.getLogger(__name__)
@@ -1711,7 +1711,7 @@ def setup_model_routes(model_discovery):
             # Reject anonymous in configured deployments — no leaking the model
             # list to unauthenticated callers.
             auth_mgr = getattr(request.app.state, "auth_manager", None)
-            if not owner and not _auth_disabled() and auth_mgr is not None and getattr(auth_mgr, "is_configured", False):
+            if not owner and auth_mgr is not None and getattr(auth_mgr, "is_configured", False):
                 raise HTTPException(401, "Not authenticated")
         except HTTPException:
             raise

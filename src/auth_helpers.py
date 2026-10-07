@@ -1,11 +1,10 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Shared auth helpers used by all route files."""
 
-import os
 from typing import Any, Optional
 from fastapi import Request, HTTPException
 
-from src.owner_identity import auth_disabled, effective_storage_owner
+from src.owner_identity import effective_storage_owner
 
 
 def get_current_user(request: Request) -> Optional[str]:
@@ -74,9 +73,7 @@ def request_is_a_person(request: Request) -> bool:
     Any internal-tool header counts against the request, valid or not: a
     browser never sends one, so a request carrying it is not a person's
     whatever else it is. A request the middleware already named the internal
-    tool user is not one either. A same-host request under `LOCALHOST_BYPASS`
-    is the operator's own machine and is answered as a person — reaching it
-    takes a shell, and an agent with a shell is not held by this (`Law 17`).
+    tool user is not one either.
     """
     try:
         if is_delegated_credential(request):
@@ -128,41 +125,29 @@ def require_authenticated_request(request: Request) -> str:
     return require_user(request)
 
 
-def _auth_disabled() -> bool:
-    """True when the operator has explicitly turned off auth via .env.
-    Mirrors the AUTH_ENABLED parse in app.py / core/middleware.py so the
-    three call sites agree on what "off" means."""
-    return auth_disabled()
-
-
 def storage_owner_for_request(request: Request) -> Optional[str]:
-    """Resolve the storage owner for code paths that need an owner bucket.
+    """Resolve the storage owner for code paths that need an owner bucket:
+    the signed-in person (a bearer token's owner), never a request sentinel.
 
-    This does not replace route authentication. It only gives auth-disabled
-    no-login mode a stable storage identity instead of writing new data as
-    legacy NULL/ownerless state.
+    This does not replace route authentication.
     """
     return effective_storage_owner(effective_user(request))
 
 
 def require_user(request: Request) -> str:
-    """FastAPI dependency: reject unauthenticated callers when the upstream
-    auth middleware was bypassed unexpectedly (e.g. SSRF from a sibling
-    service). Returns the resolved username, or "" in single-user / anonymous
-    modes where no username is available.
+    """FastAPI dependency: the signed-in person, or a refusal.
 
-    The three "" cases are:
-      1. AUTH_ENABLED=false — the operator explicitly turned auth off.
-         The full /login flow is skipped (issue #622), so route-level
-         require_user must let the request through too instead of 401-ing
-         and forcing the browser to /login.
-      2. Unconfigured first-run + loopback caller — pre-setup access from
-         localhost so the operator can hit the SPA before creating the
-         first admin.
-      3. LOCALHOST_BYPASS=true + loopback caller — documented dev bypass.
+    Returns the username `AuthMiddleware` stamped on the request. A bearer API
+    token is refused (403) — it uses a scope-aware route — and a request with
+    no person on it is refused (401) wherever it came from: belt and braces
+    behind the middleware, for the day a route is mounted or reordered past it
+    (an SSRF from a sibling service is the usual way in).
 
-    Use this on routes that touch user data so middleware misconfig can't
-    open them up.
+    `D-2026-10-07-02` §2: there is always authentication. Until 2026-10-07
+    this answered ``""`` — *anybody* — in three cases: `AUTH_ENABLED=false`, a
+    loopback caller under `LOCALHOST_BYPASS=true`, and a loopback caller before
+    the first account existed. None of them is a configuration Pantheon offers
+    now, so none of them is an answer here.
     """
     if _is_api_token_request(request):
         raise HTTPException(403, "API tokens must use a scope-aware API route")
@@ -170,31 +155,6 @@ def require_user(request: Request) -> str:
     u = get_current_user(request)
     if u:
         return u
-    # Operator-disabled auth: honor it at the route layer too. Without this,
-    # routes that depend on require_user 401, the front-end fetch wrapper
-    # redirects to /login, and the user sees a login page despite
-    # AUTH_ENABLED=false (issue #622). Docker / reverse-proxy deployments
-    # hit this because requests arrive from a non-loopback client.host, so
-    # the loopback fall-through below never fires.
-    if _auth_disabled():
-        return ""
-    auth_mgr = getattr(request.app.state, "auth_manager", None)
-    client = getattr(request, "client", None)
-    host = (client.host if client else "") or ""
-    is_loopback = host in ("127.0.0.1", "::1", "localhost")
-    # LOCALHOST_BYPASS=true is the dev-only "I'm on loopback, skip auth"
-    # switch. Mirror the middleware so routes don't 401 the same caller
-    # the middleware just let through.
-    # env-spelling: the middleware half of this switch is held on its own rule
-    # for the reason written at `app.py`. The two must always agree, so neither
-    # moves alone (`B91`).
-    if is_loopback and os.getenv("LOCALHOST_BYPASS", "false").lower() == "true":
-        return ""
-    if auth_mgr is not None and getattr(auth_mgr, "is_configured", False):
-        raise HTTPException(401, "Not authenticated")
-    # Unconfigured / first-run mode: only allow loopback callers.
-    if is_loopback:
-        return ""
     raise HTTPException(401, "Not authenticated")
 
 
@@ -303,13 +263,11 @@ def require_privilege(request: Request, key: str) -> str:
     (which returns ADMIN_PRIVILEGES wholesale), so this is a no-op for them on
     any registered key. An **undeclared** key denies admins too — see
     `resolve_privilege` case 4; that is deliberate, because a typo'd key is a
-    bug and a 403 on the first request is how it gets found. In
-    unauthenticated single-user mode (`require_user` returns ""), privileges
-    aren't enforced.
+    bug and a 403 on the first request is how it gets found. `require_user`
+    answers a person or refuses, so there is no anonymous caller to wave
+    through (`D-2026-10-07-02` §2).
     """
     user = require_user(request)
-    if not user:
-        return user
     auth_mgr = getattr(request.app.state, "auth_manager", None)
     if auth_mgr is None:
         return user
