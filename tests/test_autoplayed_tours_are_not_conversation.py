@@ -65,8 +65,19 @@ def _declaration(name: str) -> str:
     return match.group(0)
 
 
+_UI_VIS = _REPO / "static" / "js" / "ui_visibility.js"
+
+# Round 2 (`fx2-doors`): `P23-03` put the tool-visibility door in front of every
+# command (`window.pantheonToolDoor`, set by `ui_visibility.js` when it loads).
+# Run without a `window`, the dispatcher threw `ReferenceError: window is not
+# defined` and its `catch` said the error instead of running the tour — the
+# autoplayed case failed on the merged tree (`a936b5c`) while the product, which
+# always has a `window`, was fine. The real door is loaded here, nothing
+# switched off, so the tour is let through as it is on a page.
 _HARNESS = """
     const out = { added: [], posted: [], replies: [], materialised: 0 };
+    globalThis.window = { uiModule: { showToast: () => {} } };
+    await import(__UI_VIS__);
 
     // --- the two production functions, verbatim ---
     __DEPTH__
@@ -114,6 +125,7 @@ _HARNESS = """
 def _run(body: str, sid="null", pending="false", throw="") -> dict:
     script = (
         _HARNESS
+        .replace("__UI_VIS__", json.dumps(_UI_VIS.as_uri()))
         .replace("__DEPTH__", _declaration("_transcriptOnlyDepth"))
         .replace("__PERSIST__", _function("_persistMsg"))
         .replace("__HANDLE__", _function("handleSlashCommand"))

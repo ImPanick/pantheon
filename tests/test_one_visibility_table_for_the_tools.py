@@ -289,7 +289,11 @@ def test_a_link_to_a_hidden_tool_waits_for_the_switches_then_says_why(tmp_path):
 
 
 def test_open_by_name_refuses_a_hidden_tool_in_the_chat(tmp_path):
-    """SET-M-2 (slash half): `/open gallery` pressed a `display:none` button."""
+    """SET-M-2 (slash half): `/open gallery` pressed a `display:none` button.
+
+    Round 2 (`B-NEW-2`): the refusal is the door's toast, as at the URL and the
+    sidebar — said through `slashReply` it was saved into the chat as an
+    assistant message on every try. Nothing is said in the chat now."""
     src = SLASH_JS.read_text(encoding="utf-8")
     body = js_function(src, "async function _cmdOpen")
     out = _node(tmp_path, """
@@ -304,13 +308,14 @@ def test_open_by_name_refuses_a_hidden_tool_in_the_chat(tmp_path):
         await _cmdOpen(['gallery'], ctx);
         await _cmdOpen(['documents'], ctx);
         console.log(JSON.stringify({
-          replies, gallery: nodes['tool-gallery-btn'].clicked, library: nodes['tool-library-btn'].clicked,
+          replies, toasts, gallery: nodes['tool-gallery-btn'].clicked, library: nodes['tool-library-btn'].clicked,
         }));
     """ % body)
     assert out["gallery"] == 0
     assert out["library"] == 1
-    assert out["replies"] == ["Gallery is switched off for your account. An admin can turn "
-                              "it back on in Settings → Users."]
+    assert out["replies"] == []
+    assert out["toasts"] == ["Gallery is switched off for your account. An admin can turn "
+                             "it back on in Settings → Users."]
 
 
 def test_the_slash_catalogue_does_not_offer_a_hidden_tool(tmp_path):
@@ -340,6 +345,80 @@ def test_the_slash_catalogue_does_not_offer_a_hidden_tool(tmp_path):
     """)
     assert set(out["before"]) == {"/brain", "/gallery", "/tour-brain", "/notes", "/forge"}
     assert out["after"] == ["/gallery", "/notes"]
+
+
+_POPUP_SHIM = r"""
+import { installDom } from './dom.js';
+export const document = installDom();
+globalThis.window = globalThis;
+globalThis.addEventListener = globalThis.addEventListener || (() => {});
+globalThis.Event = class Event { constructor(type, init) { this.type = type; Object.assign(this, init || {}); } };
+"""
+
+_POPUP_COMMANDS = """
+const h = () => true;
+export const COMMANDS = {
+  gallery: { category: 'Tools', help: 'Open Gallery', usage: '/gallery', handler: h },
+  'tour-gallery': { category: 'Tours', help: 'Gallery tour', usage: '/tour-gallery', handler: h },
+  notes: { category: 'Tools', help: 'Open Notes', usage: '/notes', handler: h },
+};
+export const LEGACY_ALIASES = {};
+export default { COMMANDS };
+"""
+
+
+def test_the_slash_popup_asks_the_table_each_time_it_opens(tmp_path):
+    """`B-NEW-1`. Measured on `a936b5c` in Chromium: with Gallery off (a fresh
+    page or a live switch), typing `/gal` listed `/gallery Open Gallery` and
+    `/tour-gallery`, while `slashCatalog()`, Ctrl+K and the dispatcher had all
+    dropped it — the popup filtered its list once, when the message box was
+    wired, before `/api/auth/features` had answered. Driven: the real popup
+    (`slashAutocomplete.js`) on a DOM shim with the real `ui_visibility.js`
+    beside it; the rows read off the popup it draws."""
+    from test_tool_effect_surfaces_js import _make_sandbox, _run
+
+    sandbox = _make_sandbox(tmp_path, AUTOCOMPLETE_JS, _POPUP_SHIM,
+                            {"slashCommands.js": _POPUP_COMMANDS})
+    out = _run(sandbox, "import { document } from './shim.js';\n", """
+        const T = await import('./ui_visibility.js');
+        const ac = await import('./slashAutocomplete.js');
+        const box = () => {
+          const ta = document.createElement('textarea');
+          document.body.appendChild(ta);
+          ta.getBoundingClientRect = () => ({ top: 500, left: 10, width: 600, height: 40, bottom: 540, right: 610 });
+          ac.initSlashAutocomplete(ta);
+          return ta;
+        };
+        const offered = (ta, q) => {
+          ta.value = q;
+          ta.dispatchEvent(new Event('input', { bubbles: true }));
+          const pop = document.getElementById('slash-autocomplete');
+          if (!pop || pop.style.display === 'none') return [];
+          return [...String(pop.innerHTML).matchAll(/data-token="([^"]+)"/g)].map((m) => m[1]);
+        };
+        // The page wires the box at load, before the switches are known.
+        const ta = box();
+        const before = offered(ta, '/gal');
+        T.applyToolVisibility({ features: { gallery: false } }, null);
+        const off = offered(ta, '/gal');
+        const offAll = offered(ta, '/');
+        // A box wired while Gallery is off, then Gallery back on, live. (The
+        // popup is one element by id: the first box closes it first.)
+        offered(ta, 'done');
+        const late = box();
+        const lateOff = offered(late, '/gal');
+        T.applyToolVisibility({ features: { gallery: true } }, null);
+        console.log(JSON.stringify({
+          before, off, offAll, lateOff, back: offered(ta, '/gal'), lateBack: offered(late, '/gal'),
+        }));
+    """)
+    assert out["before"] == ["/gallery", "/tour-gallery"]
+    assert out["off"] == [], "the popup offered a tool switched off after the box was wired"
+    assert out["offAll"] == ["/notes"]
+    assert out["lateOff"] == []
+    assert out["back"] == ["/gallery", "/tour-gallery"]
+    assert out["lateBack"] == ["/gallery", "/tour-gallery"], (
+        "a box wired while the tool was off never offered it again")
 
 
 def test_the_palette_does_not_offer_a_hidden_tools_window(tmp_path):

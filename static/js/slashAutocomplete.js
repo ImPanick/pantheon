@@ -28,7 +28,10 @@ const PROMOTED_ALIASES = new Set([
   'memories','forget',
 ]);
 
-function _flatten() {
+// Every command the popup could ever offer, before the visibility table is
+// asked. `_flatten` asks it; the popup keeps this list and asks at each
+// refresh (`B-NEW-1`, below).
+function _flattenAll() {
   const out = [];
   const seen = new Set();
 
@@ -83,7 +86,11 @@ function _flatten() {
     }
   }
 
-  return out.filter(_offered);
+  return out;
+}
+
+function _flatten() {
+  return _flattenAll().filter(_offered);
 }
 
 /**
@@ -257,7 +264,12 @@ export function initSlashAutocomplete(textarea) {
   if (!textarea || textarea._slashAcWired) return;
   textarea._slashAcWired = true;
 
-  let all = _flatten();
+  // `B-NEW-1`. Every command, not the ones offered at wiring time: this runs
+  // once, before `/api/auth/features` has answered, so a list filtered here
+  // went on offering `/gallery` after Gallery was switched off (on a fresh
+  // page and live), and would have kept a tool hidden at wiring time hidden
+  // after it came back. `refresh` asks the table each time the popup opens.
+  let all = _flattenAll();
   let popup = null;
   let visible = false;
   let items = [];
@@ -284,11 +296,12 @@ export function initSlashAutocomplete(textarea) {
     // the menu hides — we don't autocomplete mid-sentence.
     if (!v.startsWith('/') || v.includes('\n')) { hide(); return; }
     const query = v.trim();
-    const groupItems = _exactCommandGroupItems(all, query);
+    const live = all.filter(_offered);
+    const groupItems = _exactCommandGroupItems(live, query);
     if (groupItems.length) {
       items = groupItems.slice(0, MAX_VISIBLE);
     } else {
-      items = all
+      items = live
       .map(e => ({ e, s: _scoreMatch(e, query) }))
       .filter(x => x.s > 0)
       .sort((a, b) => b.s - a.s)
@@ -298,7 +311,7 @@ export function initSlashAutocomplete(textarea) {
     if (!items.length && query.length > 1) { hide(); return; }
     if (!items.length) {
       // Just "/" with no matches — fall back to showing everything up to MAX_VISIBLE
-      items = all.slice(0, MAX_VISIBLE);
+      items = live.slice(0, MAX_VISIBLE);
     }
     selectedIdx = 0;
     show();
