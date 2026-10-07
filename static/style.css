@@ -48171,3 +48171,26 @@ body.plan-mode-active .chat-input-bar {
 /* fx-chat's `B-NEW-5` (CHAT-U-21): the temperature slider's words sit under it, clear of the thumb — at 1.0
    "Balanced" was under the thumb itself. */
 .preset-temp-hints { margin-top: 4px; }
+
+/* fx-back's `B-NEW-3` (Doc 2 § 2, SET-U-10's second half): a window opened from another — its header shows
+   `← <opener>` (C-NAV, `modalManager.drawBackButton`, which writes `data-back-to`) — leaves its opener beneath it
+   dimmed and inert to the pointer, so the opener's header and × are not live beside the window on top. Read off
+   that button, so nothing else has to keep the pairs; the opener comes back as the button, ×, Escape or Back closes
+   the window above it. (Keyboard inertness wants the `inert` attribute, a script's — filed with the note.) */
+body:has(:is(.modal, .research-overlay):not(.hidden):not(.modal-minimized) .modal-back-btn[data-back-to="memory-modal"]) #memory-modal > *,
+body:has(:is(.modal, .research-overlay):not(.hidden):not(.modal-minimized) .modal-back-btn[data-back-to="skills-modal"]) #skills-modal > *,
+body:has(:is(.modal, .research-overlay):not(.hidden):not(.modal-minimized) .modal-back-btn[data-back-to="workbench-modal"]) #workbench-modal > *,
+body:has(:is(.modal, .research-overlay):not(.hidden):not(.modal-minimized) .modal-back-btn[data-back-to="settings-modal"]) #settings-modal > *,
+body:has(:is(.modal, .research-overlay):not(.hidden):not(.modal-minimized) .modal-back-btn[data-back-to="cookbook-modal"]) #cookbook-modal > *,
+body:has(:is(.modal, .research-overlay):not(.hidden):not(.modal-minimized) .modal-back-btn[data-back-to="calendar-modal"]) #calendar-modal > *,
+body:has(:is(.modal, .research-overlay):not(.hidden):not(.modal-minimized) .modal-back-btn[data-back-to="gallery-modal"]) #gallery-modal > *,
+body:has(:is(.modal, .research-overlay):not(.hidden):not(.modal-minimized) .modal-back-btn[data-back-to="tasks-modal"]) #tasks-modal > *,
+body:has(:is(.modal, .research-overlay):not(.hidden):not(.modal-minimized) .modal-back-btn[data-back-to="doclib-modal"]) #doclib-modal > *,
+body:has(:is(.modal, .research-overlay):not(.hidden):not(.modal-minimized) .modal-back-btn[data-back-to="email-lib-modal"]) #email-lib-modal > *,
+body:has(:is(.modal, .research-overlay):not(.hidden):not(.modal-minimized) .modal-back-btn[data-back-to="research-overlay"]) #research-overlay > *,
+body:has(:is(.modal, .research-overlay):not(.hidden):not(.modal-minimized) .modal-back-btn[data-back-to="theme-modal"]) #theme-modal > *,
+body:has(:is(.modal, .research-overlay):not(.hidden):not(.modal-minimized) .modal-back-btn[data-back-to="compare-model-overlay"]) #compare-model-overlay > *,
+body:has(:is(.modal, .research-overlay):not(.hidden):not(.modal-minimized) .modal-back-btn[data-back-to="notes-panel"]) #notes-pane {
+  filter: brightness(0.72) saturate(0.85);
+  pointer-events: none;
+}

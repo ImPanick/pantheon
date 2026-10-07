@@ -676,3 +676,31 @@ def test_a_denied_or_waiting_tool_row_looks_its_own_and_plan_mode_leaves_the_com
     assert r["waiting"] == ["dashed", "italic"], r
     assert r["plan"] == r["plain"], r          # CHAT-U-15: the chip and the pill say Plan; the composer does not
     assert r["hintsTop"] == "4px", r           # CHAT-U-21: the words clear the thumb
+
+
+# ── fx-back's B-NEW-3: the opener beneath, dimmed and inert ─────────────────
+
+_OPENER = """
+<div id="memory-modal" class="modal" style="display:flex"><div class="modal-content memory-modal-content" id="brain">
+  <div class="modal-header"><h4>Brain</h4><button class="close-btn" id="brain-x">✖</button></div></div></div>
+<div id="skills-modal" class="modal" style="display:flex"><div class="modal-content" id="skills">
+  <div class="modal-header"><button class="modal-back-btn" data-back-to="memory-modal">← Brain</button><h4>Skills</h4></div></div></div>
+<div id="settings-modal" class="modal" style="display:flex"><div class="modal-content settings-modal-content" id="settings"></div></div>
+"""
+_OPENER_STEPS = r"""
+  await page.waitForTimeout(400);
+  return await page.evaluate(() => {
+    const look = (id) => { const cs = getComputedStyle(document.getElementById(id)); return [cs.filter !== 'none', cs.pointerEvents]; };
+    const open = { brain: look('brain'), settings: look('settings'), skills: look('skills') };
+    document.getElementById('skills-modal').classList.add('hidden');
+    return { open, closed: look('brain') };
+  });
+"""
+
+
+def test_a_window_opened_from_another_leaves_its_opener_dimmed_and_inert(tmp_path):
+    r = _drive(tmp_path, html=_page(_OPENER), steps=_OPENER_STEPS, viewport=(1440, 900))["result"]
+    assert r["open"]["brain"] == [True, "none"], r          # the opener: dimmed, takes no pointer
+    assert r["open"]["settings"] == [False, "auto"], r      # a window nobody opened from: as it was
+    assert r["open"]["skills"] == [False, "auto"], r        # the window on top: live
+    assert r["closed"] == [False, "auto"], r                # the window above it gone: the opener is back
