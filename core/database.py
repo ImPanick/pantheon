@@ -313,6 +313,8 @@ def _settle_write_ahead_log(path: str) -> Optional[str]:
         try:
             probe.close()
         except Exception:
+            # A throwaway connection that will not close holds nothing anyone
+            # reads; the answer above is what this function is for.
             pass
     fallback = previous if previous in _JOURNAL_MODES and previous != "wal" else "delete"
     try:
