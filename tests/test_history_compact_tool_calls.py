@@ -255,6 +255,10 @@ def test_registered_manual_compact_route_rejects_active_agent_run(monkeypatch):
     )
 
     assert response.status_code == 409
-    assert "active run" in response.text
+    # P23: `P23-05` (fx-words, `6cf4773`, COPY-U-48) rewrote the refusal from
+    # "Session has an active run; try compacting after it finishes" to a
+    # sentence a person acts on. What this pins is unchanged: a refusal that
+    # says to wait for the reply, with no model call and nothing replaced.
+    assert response.json()["detail"] == "Wait for the reply to finish, then compact."
     assert captured == {}
     assert manager.replaced_messages is None
