@@ -1258,6 +1258,13 @@ def test_a_module_that_came_back_unchanged_is_not_written_again():
     same = _run({"op": "navigate", "online": True, "mode": "cors", "urls": urls})
     assert all(same["answered"][u]["status"] == 200 for u in urls), same["answered"]
     assert same["puts"] == 0, same["puts"]
+    # Known from install: not even read back.
+    assert same["reads"] == 0, same["reads"]
+    # A worker the browser stopped and started again has forgotten what it
+    # holds; it reads each copy once and still writes nothing.
+    restarted = _run({"op": "navigate", "online": True, "mode": "cors", "urls": urls,
+                      "workerRestarted": True})
+    assert (restarted["puts"], restarted["reads"]) == (0, 2), restarted
     changed = _run({"op": "navigate", "online": True, "mode": "cors", "urls": urls,
                     "serve": {"/static/js/ui.js": "export const v = 2;"}})
     assert changed["puts"] == 1, changed["puts"]

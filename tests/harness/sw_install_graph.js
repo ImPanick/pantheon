@@ -33,7 +33,11 @@
 //                                        fetch sees a 302 (`redirect:'manual'`
 //                                        → type 'opaqueredirect', status 0);
 //                                        `after` is the cache once the
-//                                        handler's writes have landed.
+//                                        handler's writes have landed; `puts`
+//                                        and `reads` count cache writes and
+//                                        reads after install;
+//                                        `workerRestarted` empties the
+//                                        worker's globals first.
 //
 // A Response here refuses to be read twice, because `cache.put` consumes the
 // body: a walk that stores before it clones would pass a forgiving stub and
@@ -118,6 +122,7 @@ function run(cmd) {
   // redirect (a person who is signed out).
   let installDone = false;
   let putsAfterInstall = 0;
+  let readsAfterInstall = 0;
   const serve = cmd.serve || {};
   const opaque = new Set(cmd.opaqueRedirects || []);
 
@@ -130,6 +135,7 @@ function run(cmd) {
   const cache = {
     async put(url, res) { if (installDone) putsAfterInstall += 1; stored.set(keyOf(url), await res.text()); },
     async match(url) {
+      if (installDone) readsAfterInstall += 1;
       const hit = stored.get(keyOf(url));
       return hit === undefined ? undefined : makeResponse(hit);
     },
@@ -217,6 +223,8 @@ function run(cmd) {
       for (const [url, body] of stored) hashes[url] = sha(body);
       installDone = true;
       offline = !cmd.online;
+      // The browser stops an idle worker; its globals start over.
+      if (cmd.workerRestarted) vm.runInContext('HELD_ETAGS.clear()', context);
       const onFetch = (listeners.fetch || [])[0];
       if (!onFetch) throw new Error('sw.js registered no fetch listener');
       const answered = {};
@@ -243,7 +251,7 @@ function run(cmd) {
       await new Promise(r => setTimeout(r, 0));
       const after = {};
       for (const [url, body] of stored) after[url] = sha(body);
-      return { answered, hashes, after, puts: putsAfterInstall, cached: [...stored.keys()].sort() };
+      return { answered, hashes, after, puts: putsAfterInstall, reads: readsAfterInstall, cached: [...stored.keys()].sort() };
     });
   }
 
