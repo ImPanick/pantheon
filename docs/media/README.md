@@ -68,7 +68,7 @@ matches the reader's GitHub theme.
 | `skills-*` | the Skills window: the person's own, an imported package, a group |
 | `settings-*` | Settings → Workstation |
 | `palette-*` | the command palette (Ctrl+K) |
-| `themes-*` | the sixteen palettes |
+| `themes-*` | the twenty-three palettes |
 | `brain-*` | the Brain's memories |
 | `phone-chat`, `phone-documents`, `phone-tasks` | the same at 390×844 |
 | `describe.gif` | *Describe it*: the bank-mail example drafted into three steps marked *check me*, *Check them now*, *All look right*, switched on. The scene registers `scripts/showcase/demo_chat.py` — a chat server that writes posts to a file — through the admin route, and removes it and the workflow after |

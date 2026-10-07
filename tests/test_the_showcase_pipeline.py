@@ -134,6 +134,33 @@ def test_every_shown_picture_is_one_the_pipeline_makes():
         assert Path(rel).name in made, f"{rel} is not made by any scene in scripts/showcase/scenes.py"
 
 
+_ONES = ("zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen "
+         "fifteen sixteen seventeen eighteen nineteen").split()
+_TENS = "_ _ twenty thirty forty fifty sixty seventy eighty ninety".split()
+
+
+def _spelled(n: int) -> str:
+    return _ONES[n] if n < 20 else _TENS[n // 10] + (f"-{_ONES[n % 10]}" if n % 10 else "")
+
+
+def test_the_themes_picture_says_how_many_palettes_it_shows():
+    """`B-NEW-12` (P23 round 2). The scene and the media README called the
+    Theme window "the sixteen palettes" after main's palettes made it
+    twenty-three (`69c26bb`); the picture showed twenty-three. The count is
+    read the way the capture reads the palettes (`capture.theme_colours`, out
+    of `static/js/theme.js`), so the next palette added fails here, not in a
+    caption nobody re-reads."""
+    import capture
+    import scenes
+
+    count = _spelled(len(capture.theme_colours()))
+    scene = next(sc for sc in scenes.SCENES if sc.name == "themes")
+    assert scene.what == f"the {count} palettes", scene.what
+    row = next(line for line in (MEDIA_DIR / "README.md").read_text(encoding="utf-8").splitlines()
+               if line.startswith("| `themes-*` |"))
+    assert row == f"| `themes-*` | the {count} palettes |", row
+
+
 # ── the demo world is fictional ─────────────────────────────────────────────
 
 _SECRET_SHAPES = {

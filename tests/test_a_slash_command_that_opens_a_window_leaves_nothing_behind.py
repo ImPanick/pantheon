@@ -24,6 +24,18 @@ a tool window carry the table's own `noUserBubble` flag.
 Driven under node (`Law 20`): the real popup (`slashAutocomplete.js`) on a DOM
 shim, with the real slash branch cut out of `handleChatSubmit`; and the real
 dispatcher with the real `notes` row cut out of the command table.
+
+**Round 2 (`fx2-doors`).** `P23-03` put the tool-visibility door in front of
+every command (`window.pantheonToolDoor`, set by `ui_visibility.js`), and on
+the merged tree (`a936b5c`) the dispatcher cases here failed with
+`ReferenceError: window is not defined` — the harness ran the dispatcher
+without the global it now reads. The product was right (a page always has a
+`window`; the acceptance drive saw `/notes` open and `/gallery` refused); the
+harness now loads the real `ui_visibility.js` beside the dispatcher. And
+`B-NEW-2`: a command for a tool switched off said its refusal through
+`slashReply`, which saved it into the chat as an assistant message on every
+try; it now says it once in the door's toast, and the chat keeps nothing — no
+echo, no reply, nothing saved (`test_a_refused_command_leaves_nothing_in_the_chat`).
 """
 
 import json
@@ -34,6 +46,7 @@ from pathlib import Path
 
 import pytest
 
+from tests.helpers.esc_stub import esc_source
 from tests.helpers.js_source import js_definition
 from tests.helpers.source_text import blank_text
 from test_tool_effect_surfaces_js import _make_sandbox, _run
@@ -42,6 +55,7 @@ ROOT = Path(__file__).resolve().parents[1]
 JS = ROOT / "static" / "js"
 CHAT_JS = JS / "chat.js"
 SLASH_JS = JS / "slashCommands.js"
+UI_VIS = JS / "ui_visibility.js"
 
 pytestmark = pytest.mark.skipif(not shutil.which("node"), reason="node binary not on PATH")
 
@@ -132,34 +146,134 @@ def _dispatcher() -> str:
     return js_definition(src, code.index("async function handleSlashCommand("))
 
 
-@pytest.mark.parametrize("name", ["notes", "tasks", "email", "gallery", "library", "brain"])
-def test_a_command_that_opens_a_window_does_not_echo_into_the_chat(tmp_path, name):
-    script = """
-        const out = { added: [], opened: [] };
-        let _transcriptOnlyDepth = 0;
-        const _persistMsg = () => {};
-        const _addMessage = (role, content) => out.added.push({ role, content });
-        const slashReply = () => {};
-        const _makeCtx = () => ({ esc: (s) => s });
-        const _fuzzyMatch = () => [];
-        const _invokeSkillByName = async () => true;
-        const _loadSkillSlashCatalog = async () => [];
-        const _cmdToolPanel = async (tool) => { out.opened.push(tool); return true; };
-        const LEGACY_ALIASES = {};
-        const COMMANDS = { %s,
-          help: { category: 'General', help: 'Help', handler: async () => true } };
-        const _resolveCommand = (c) => (c in COMMANDS ? c : null);
-        const _resolveSubcommand = () => null;
-        %s
-        await handleSlashCommand('/%s');
-        const tool = out.added.length;
-        await handleSlashCommand('/help');
-        console.log(JSON.stringify({ echoed: tool, opened: out.opened, helpEchoed: out.added.length - tool }));
-    """ % (_command_row(name), _dispatcher(), name)
+def _cmd_open() -> str:
+    """`_cmdOpen`, the handler of the real `open` row, cut from the source."""
+    src = SLASH_JS.read_text(encoding="utf-8")
+    code = blank_text(src, "js")
+    return js_definition(src, code.index("async function _cmdOpen("))
+
+
+# The real dispatcher, the real rows, and the real door: `ui_visibility.js`
+# sets `window.pantheonToolDoor` when it loads, and says a refusal through
+# `window.uiModule.showToast` unless it is handed something else to say it with.
+# `slashReply` is stubbed the way the real one ends — in `_persistMsg`.
+_DISPATCH = """
+    const out = { added: [], persisted: [], replies: [], opened: [], toasts: [] };
+    globalThis.window = { uiModule: { showToast: (m) => out.toasts.push(String(m)) } };
+    const V = await import(__UI_VIS__);
+    let _transcriptOnlyDepth = 0;
+    const _persistMsg = (role, content) => { out.persisted.push({ role, content }); };
+    const _addMessage = (role, content) => out.added.push({ role, content });
+    const slashReply = (text) => { out.replies.push(text); _persistMsg('assistant', text, { source: 'slash' }); };
+    __ESC__
+    const _makeCtx = () => ({ esc: _shippedEsc });
+    const _fuzzyMatch = () => [];
+    const _invokeSkillByName = async () => true;
+    const _loadSkillSlashCatalog = async () => [];
+    const _cmdToolPanel = async (tool) => { out.opened.push(tool); return true; };
+    let cookbookModule = null, settingsModule = null;
+    const document = { getElementById: (id) => ({ click: () => out.opened.push(id) }) };
+    const LEGACY_ALIASES = {};
+    const COMMANDS = { __ROWS__,
+      help: { category: 'General', help: 'Help', handler: async () => true } };
+    const _resolveCommand = (c) => (c in COMMANDS ? c : null);
+    const _resolveSubcommand = () => null;
+    __DISPATCHER__
+    __EXTRA__
+    __BODY__
+    console.log(JSON.stringify(out));
+"""
+
+
+def _dispatch(tmp_path, rows, body, extra="") -> dict:
+    script = (_DISPATCH
+              .replace("__UI_VIS__", json.dumps(UI_VIS.as_uri()))
+              .replace("__ESC__", esc_source("_shippedEsc"))
+              .replace("__ROWS__", ",\n".join(rows))
+              .replace("__DISPATCHER__", _dispatcher())
+              .replace("__EXTRA__", extra)
+              .replace("__BODY__", body))
     (tmp_path / "case.mjs").write_text(script, encoding="utf-8")
     proc = subprocess.run(["node", "case.mjs"], cwd=tmp_path, capture_output=True, text=True, timeout=30)
     assert proc.returncode == 0, proc.stderr
-    out = json.loads(proc.stdout.strip().splitlines()[-1])
+    return json.loads(proc.stdout.strip().splitlines()[-1])
+
+
+@pytest.mark.parametrize("name", ["notes", "tasks", "email", "gallery", "library", "brain"])
+def test_a_command_that_opens_a_window_does_not_echo_into_the_chat(tmp_path, name):
+    out = _dispatch(tmp_path, [_command_row(name)], """
+        await handleSlashCommand('/%s');
+        out.echoed = out.added.length;
+        await handleSlashCommand('/help');
+        out.helpEchoed = out.added.length - out.echoed;
+    """ % name)
     assert out["opened"] == [name]
     assert out["echoed"] == 0, f"/{name} echoed into the chat"
     assert out["helpEchoed"] == 1, "a command that answers in the chat still shows what was asked"
+    assert out["toasts"] == [], "nothing is switched off, so the door says nothing"
+
+
+# Each command's tool switched off in one of the three columns (`P23-03`).
+_OFF = {
+    "gallery": "{ features: { gallery: false } }",                         # for everyone
+    "brain": "{ features: { memory: false } }",                            # for everyone
+    "library": "{ privileges: { can_use_documents: false }, auth: true }", # for this person
+    "notes": "{ ui: { 'tool-notes': false } }",                            # in this browser
+    "tasks": "{ ui: { 'tool-tasks': false } }",                            # in this browser
+    "email": "{ ui: { 'email-section': false } }",                         # in this browser
+}
+
+
+@pytest.mark.parametrize("name", sorted(_OFF))
+def test_a_refused_command_leaves_nothing_in_the_chat(tmp_path, name):
+    """`B-NEW-2`. Measured on `a936b5c`: with Gallery off, `/gallery` + Enter
+    said *Gallery is switched off for everyone…* through `slashReply`, which
+    saved it; six tries left six assistant rows in the chat's history."""
+    out = _dispatch(tmp_path, [_command_row(name)], """
+        V.applyToolVisibility(%s, null);
+        out.sentence = V.toolRefusal(V.toolKeyFor({ slash: '%s' }));
+        out.handled = await handleSlashCommand('/%s');
+    """ % (_OFF[name], name, name))
+    assert out["handled"] is True, "a refused command is still the slash path's, never sent to the model"
+    assert out["opened"] == [], f"/{name} opened a window that is switched off"
+    assert out["sentence"], "the table has no refusal for this tool"
+    assert out["toasts"] == [out["sentence"]], "the refusal is said once, in the door's toast"
+    assert out["replies"] == [], "the refusal became a reply in the chat"
+    assert out["added"] == [], f"/{name} was echoed into the chat"
+    assert out["persisted"] == [], "something about a refused command was saved into the chat"
+    if name == "gallery":
+        assert out["sentence"] == ("Gallery is switched off for everyone. An admin can turn it "
+                                   "back on in Settings → Agent Tools.")
+
+
+def test_settings_opens_without_an_echo_or_a_chat_to_hold_it(tmp_path):
+    """Found driving `B-NEW-2` at `:8732`: `/settings tools` echoed and was
+    saved into the chat, and a guest on the welcome screen got a new chat in
+    the sidebar for each `/settings appearance` (0 → 1 → 2). The real
+    `settings` row and `_cmdSettings` behind the real dispatcher: Settings
+    opens on the tab asked for, and nothing reaches the chat."""
+    src = SLASH_JS.read_text(encoding="utf-8")
+    handler = js_definition(src, blank_text(src, "js").index("async function _cmdSettings("))
+    out = _dispatch(tmp_path, [_command_row("settings")], """
+        settingsModule = { open: (tab) => out.opened.push('settings:' + (tab || '')) };
+        await handleSlashCommand('/settings appearance');
+    """, extra=handler)
+    assert out["opened"] == ["settings:appearance"]
+    assert out["added"] == [] and out["persisted"] == [] and out["replies"] == []
+
+
+def test_open_by_name_opens_without_an_echo_and_refuses_without_a_trace(tmp_path):
+    """`/open notes` is a window opening like `/notes` (`SET-M-22`), and
+    `/open gallery` with Gallery off is refused like `/gallery` (`B-NEW-2`):
+    the real `open` row and its real handler behind the real dispatcher."""
+    out = _dispatch(tmp_path, [_command_row("open")], """
+        await handleSlashCommand('/open notes');
+        out.afterNotes = { opened: out.opened.slice(), added: out.added.length, persisted: out.persisted.length };
+        V.applyToolVisibility({ features: { gallery: false } }, null);
+        await handleSlashCommand('/open gallery');
+    """, extra=_cmd_open())
+    assert out["afterNotes"] == {"opened": ["tool-notes-btn"], "added": 0, "persisted": 0}
+    assert out["opened"] == ["tool-notes-btn"], "/open gallery pressed the Gallery's hidden door"
+    assert out["toasts"] == ["Gallery is switched off for everyone. An admin can turn it back on "
+                             "in Settings → Agent Tools."]
+    assert out["replies"] == [] and out["added"] == [] and out["persisted"] == []

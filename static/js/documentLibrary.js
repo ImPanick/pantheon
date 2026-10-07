@@ -402,10 +402,15 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
     const el = document.getElementById('doclib-stats');
     if (!el) return;
     const totalAll = Object.values(_libraryLanguages).reduce((a, b) => a + b, 0);
-    if (_librarySearch || _libraryActiveLanguage || _libraryFolderView.kind !== 'all') {
-      el.textContent = `${_libraryTotal} of ${totalAll} document${totalAll !== 1 ? 's' : ''}`;
+    // `B-NEW-5` (round 2). The heading is bare unless something narrows the
+    // list: the "all (17)" chip below it says the total, and "Documents 17
+    // documents" said it a second time (measured on `a936b5c`). Narrowed, it
+    // says "3 of 17", as the Skills header does (`P23-02`) — and nothing over
+    // an empty Library ("0 of 0", driven as `guest`).
+    if (totalAll && (_librarySearch || _libraryActiveLanguage || _libraryFolderView.kind !== 'all')) {
+      el.textContent = `${_libraryTotal} of ${totalAll}`;
     } else {
-      el.textContent = `${totalAll} document${totalAll !== 1 ? 's' : ''}`;
+      el.textContent = '';
     }
   }
 

@@ -444,11 +444,52 @@ function initPersistentChat() {
 }
 
 /**
+ * `B-NEW-9` (P23 round 2). The chat area's one line when the page could not
+ * reach Pantheon at all.
+ *
+ * `P23-07`'s worker draws the shell offline (sidebar, composer, the address
+ * kept), but nothing said so: measured on `a936b5c`, an offline reload of a
+ * chat's address showed a red *Failed to load presets* toast over an empty
+ * chat area. This read is the boot's first (`app.js`, "Load initial data"), so
+ * when its request never reaches the server the chat area says why — *You're
+ * offline.* when the browser knows it is, *Pantheon isn't answering.* when the
+ * browser is online and the server is not — beside **Reload**, and the
+ * presets' own toast stays quiet. Drawn with the one empty-state builder
+ * (`ui.js` `renderEmptyState`, through `window.uiModule`, as
+ * `ui_visibility.js` toasts); a chat already on screen is left alone. When the
+ * connection comes back the line says so; Reload is the person's to press.
+ */
+export function sayUnreachable(doc = (typeof document !== 'undefined' ? document : null)) {
+  const host = doc && doc.getElementById('chat-history');
+  const ui = typeof window !== 'undefined' ? window.uiModule : null;
+  if (!host || !ui || typeof ui.renderEmptyState !== 'function') return null;
+  if (host.querySelector('.msg')) return null;
+  const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
+  const box = ui.renderEmptyState(host, {
+    kind: 'error',
+    icon: null,
+    className: 'unreachable-note',
+    title: offline ? 'You’re offline.' : 'Pantheon isn’t answering.',
+    retryLabel: 'Reload',
+    onRetry: () => { window.location.reload(); },
+  });
+  if (offline && typeof window.addEventListener === 'function') {
+    window.addEventListener('online', () => {
+      const title = box && box.querySelector('.empty-state-title');
+      if (title) title.textContent = 'Back online.';
+    }, { once: true });
+  }
+  return box;
+}
+
+/**
  * Load presets from server
  */
 export async function loadPresets(showError) {
+  let reached = false;
   try {
     const res = await fetch(`${API_BASE}/api/presets`);
+    reached = true;
     presets = await res.json();
 
     const custom = presets.custom;
@@ -476,6 +517,13 @@ export async function loadPresets(showError) {
     }
     setTimeout(() => { _syncCharIndicator(); }, 0);
   } catch (error) {
+    // `B-NEW-9`: the request never reached the server — the page's news, said
+    // once in the chat area, not this loader's toast.
+    if (!reached) {
+      console.warn('Presets not loaded: Pantheon could not be reached.', error);
+      sayUnreachable();
+      return;
+    }
     console.error('Failed to load presets:', error);
     if (showError) {
       showError('Failed to load presets');
