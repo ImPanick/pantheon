@@ -164,45 +164,57 @@ const { chromium } = require('playwright');
 const BASE = process.argv[2];
 (async () => {
   const browser = await chromium.launch({ args: ['--no-sandbox'] });
-  const out = { errors: [] };
-  const context = await browser.newContext({ viewport: { width: 1280, height: 860 }, serviceWorkers: 'block' });
-  await context.addInitScript(() => {
-    try { localStorage.setItem('pantheon-ui-visibility', JSON.stringify({ 'first-run-tours': false })); } catch (_) {}
-  });
-  const page = await context.newPage();
-  page.on('pageerror', (e) => out.errors.push(String((e && e.message) || e)));
-  await page.request.post(BASE + '/api/auth/login', { data: { username: 'helper', password: 'helper-pass-1', remember: true } });
-  const asked = [];
-  page.on('request', (r) => { const u = r.url(); if (/\/api\/sessions(\?|$)/.test(u)) asked.push(u.replace(BASE, '')); });
-  await page.goto(BASE + '/', { waitUntil: 'load' });
-  await page.waitForFunction(() => window.__pantheonAppStarted === true, null, { timeout: 90000 });
-  await page.waitForTimeout(1500);
-  const rows = () => page.evaluate(() => document.querySelectorAll('#session-list .list-item[data-session-id]').length);
-  const older = () => page.locator('#session-list .session-show-older-btn');
-  // Open the chats section if it is folded, then expand the client-side cut,
-  // as a person would.
-  const listShown = await page.evaluate(() => { const l = document.getElementById('session-list'); return !!(l && l.offsetParent); });
-  if (!listShown && await page.locator('#chats-section-title').count()) {
-    await page.locator('#chats-section-title').click();
-    await page.waitForTimeout(400);
-  }
-  const more = page.locator('#session-list .session-show-more-btn:not(.session-show-older-btn)');
-  if (await more.count()) { await more.first().click(); await page.waitForTimeout(500); }
-  out.before = await rows();
-  out.olderShown = await older().count();
-  out.olderText = out.olderShown ? (await older().first().textContent()).trim() : null;
-  if (out.olderShown) {
-    await older().first().click();
-    await page.waitForTimeout(2000);
-  }
-  out.after = await rows();
-  out.olderAfter = await older().count();
-  // A later reload of the list keeps what was shown.
-  await page.evaluate(() => window.sessionModule && window.sessionModule.loadSessions && window.sessionModule.loadSessions());
-  await page.waitForTimeout(1500);
-  out.afterReloadList = await rows();
-  out.asked = asked;
-  console.log(JSON.stringify(out));
+  const result = { errors: [] };
+  // `mode`: the sidebar's sort — '' is the default (last active, one flat
+  // list), 'group' draws folders and then the unfiled chats.
+  const drive = async (mode) => {
+    const out = {};
+    const context = await browser.newContext({ viewport: { width: 1280, height: 860 }, serviceWorkers: 'block' });
+    await context.addInitScript((m) => {
+      try {
+        localStorage.setItem('pantheon-ui-visibility', JSON.stringify({ 'first-run-tours': false }));
+        if (m) localStorage.setItem('pantheon-session-sort', m);
+      } catch (_) {}
+    }, mode);
+    const page = await context.newPage();
+    page.on('pageerror', (e) => result.errors.push(String((e && e.message) || e)));
+    await page.request.post(BASE + '/api/auth/login', { data: { username: 'helper', password: 'helper-pass-1', remember: true } });
+    const asked = [];
+    page.on('request', (r) => { const u = r.url(); if (/\/api\/sessions(\?|$)/.test(u)) asked.push(u.replace(BASE, '')); });
+    await page.goto(BASE + '/', { waitUntil: 'load' });
+    await page.waitForFunction(() => window.__pantheonAppStarted === true, null, { timeout: 90000 });
+    await page.waitForTimeout(1500);
+    const rows = () => page.evaluate(() => document.querySelectorAll('#session-list .list-item[data-session-id]').length);
+    const older = () => page.locator('#session-list .session-show-older-btn');
+    // Open the chats section if it is folded, then expand the client-side cut,
+    // as a person would.
+    const listShown = await page.evaluate(() => { const l = document.getElementById('session-list'); return !!(l && l.offsetParent); });
+    if (!listShown && await page.locator('#chats-section-title').count()) {
+      await page.locator('#chats-section-title').click();
+      await page.waitForTimeout(400);
+    }
+    const more = page.locator('#session-list .session-show-more-btn:not(.session-show-older-btn)');
+    if (await more.count()) { await more.first().click(); await page.waitForTimeout(500); }
+    out.before = await rows();
+    out.olderShown = await older().count();
+    out.olderText = out.olderShown ? (await older().first().textContent()).trim() : null;
+    if (out.olderShown) {
+      await older().first().click();
+      await page.waitForTimeout(2000);
+    }
+    out.after = await rows();
+    out.olderAfter = await older().count();
+    // A later reload of the list keeps what was shown.
+    await page.evaluate(() => window.sessionModule && window.sessionModule.loadSessions && window.sessionModule.loadSessions());
+    await page.waitForTimeout(1500);
+    out.afterReloadList = await rows();
+    out.asked = asked;
+    await context.close();
+    return out;
+  };
+  result.flat = await drive('');
+  result.group = await drive('group');
+  console.log(JSON.stringify(result));
   await browser.close();
 })().catch((e) => { console.error(e); process.exit(1); });
 """
@@ -247,11 +259,17 @@ def sidebar(seeded_database, app_url, tmp_path_factory):  # noqa: F811
 
 
 @pytest.mark.skipif(NODE is None, reason=_SKIP or "")
-def test_the_sidebar_ends_in_show_older_chats_and_it_shows_them(sidebar):
-    assert sidebar["before"] == 100, sidebar
-    assert sidebar["olderShown"] == 1 and sidebar["olderText"] == "Show older chats"
-    assert sidebar["after"] == 130, sidebar
-    assert sidebar["olderAfter"] == 0
-    assert sidebar["afterReloadList"] == 130, "a reload of the list dropped what was shown"
-    assert any("limit=" in u for u in sidebar["asked"]), sidebar["asked"]
+@pytest.mark.parametrize("mode", ["flat", "group"])
+def test_the_sidebar_ends_in_show_older_chats_and_it_shows_them(sidebar, mode):
+    run = sidebar[mode]
+    assert run["before"] == 100, run
+    assert run["olderShown"] == 1 and run["olderText"] == "Show older chats"
+    assert run["after"] == 130, run
+    assert run["olderAfter"] == 0
+    assert run["afterReloadList"] == 130, "a reload of the list dropped what was shown"
+    assert any("limit=" in u for u in run["asked"]), run["asked"]
+
+
+@pytest.mark.skipif(NODE is None, reason=_SKIP or "")
+def test_the_sidebar_drive_raised_no_page_error(sidebar):
     assert sidebar["errors"] == []
