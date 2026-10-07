@@ -1086,7 +1086,11 @@ async function _createEmailChat(emailData, opts = {}) {
     // goes back to the chat the person was in (`noteHelperChat`).
     _docModule?.noteHelperChat?.(sid, { returnTo: currentSid });
     if (sessionModule?.loadSessions) await sessionModule.loadSessions();
-    if (sessionModule?.selectSession) await sessionModule.selectSession(sid);
+    // `B-NEW-6`: Pantheon's switch, not the person's — it rewrites the mail's
+    // history entry (`replace`), and the way back from the draft gives it back
+    // (`document.js` `_leaveDeletedChat`). As a push, after Reply → Close one
+    // Back landed on `/email#<deleted chat>` and changed nothing (`a936b5c`).
+    if (sessionModule?.selectSession) await sessionModule.selectSession(sid, { replace: true });
     const meta = document.getElementById('current-meta');
     if (meta) meta.textContent = title;
     return sid;

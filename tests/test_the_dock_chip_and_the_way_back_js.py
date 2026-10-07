@@ -148,6 +148,11 @@ def test_the_chip_close_is_a_real_button_named_for_the_window(mm):
         const buttons = chip.querySelectorAll('button').map((b) => ({ cls: b.className, type: b.type,
           label: b.getAttribute('aria-label') }));
         document.activeElement = document.body;
+        // Enter on Restore: the browser reads the focus that follows as a
+        // keyboard's (`:focus-visible`). After a click it does not, and the
+        // window takes the focus instead (`B-NEW-10`,
+        // `tests/test_the_move_chip_is_for_the_keyboard_js.py`).
+        t.handle.matches = (sel) => sel === ':focus-visible';
         press(chip.querySelector('.minimized-dock-restore'));
         const restored = { up: !t.modal._classes().includes('hidden'), focus: document.activeElement === t.handle };
         const chipG = document.querySelectorAll('.minimized-dock-chip').find((c) => c.dataset.modalId === 'gallery-modal');
