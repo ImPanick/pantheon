@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
+import asyncio
 import os
 import logging
 import sqlite3
@@ -11,6 +12,7 @@ from sqlalchemy.engine import Engine, make_url
 from sqlalchemy.types import TypeDecorator
 from sqlalchemy.ext.declarative import declarative_base, declared_attr
 from sqlalchemy.orm import relationship, sessionmaker, backref
+from sqlalchemy.pool import Pool
 
 from src.runtime_paths import get_app_root
 from core.platform_compat import safe_chmod, IS_WINDOWS
@@ -151,6 +153,170 @@ def set_sqlite_pragma(dbapi_connection, connection_record):
         cursor = dbapi_connection.cursor()
         cursor.execute("PRAGMA foreign_keys=ON")
         cursor.close()
+        _use_write_ahead_log(dbapi_connection)
+
+
+# ========= `P23-07` (`PERF-M-2`): WAL, and a wait the event loop can afford =========
+#
+# Measured on `32df791` against the seeded showcase install
+# (`/tmp/scratch-fx-ops/lock_probe.py`, after the perf audit's probe): a second
+# connection held a write lock for 6 s; `POST /api/email/accounts`, an
+# `async def` handler, answered a bare 500 after **5,074 ms**, and
+# `GET /api/auth/status`, which touches no database at all, took **4,773 ms**.
+# Two causes, one fix each:
+#
+#   * The rollback journal (`journal_mode=delete`). Under it a writer that is
+#     committing locks every reader out. In WAL a reader reads the last commit
+#     while one writer writes; only writers queue for each other.
+#   * pysqlite's default 5 s busy timeout, spent ON THE EVENT LOOP. 141
+#     `async def` route handlers open `SessionLocal()` inline (counted on
+#     `32df791` by `/tmp/scratch-fx-ops/count_async_db.py`: own body, not a
+#     nested def), and SQLite's busy wait is a blocking sleep — so one waiting
+#     writer was a wait for every request, every stream and every poll. Moving
+#     that work off the loop is part 2 (filed); this bounds what it costs now.
+#
+# So the wait is chosen per thread, at checkout. Off the loop — sync handlers in
+# the threadpool, `asyncio.to_thread`, scripts — a writer waits its turn exactly
+# as long as it always did. On the loop it waits half a second and then raises
+# "database is locked", which `install_database_busy_answer` turns into a 503
+# with a sentence: the half second is everybody's, the 5 s was everybody's too.
+DEFAULT_BUSY_WAIT_MS = 5000      # pysqlite's own default — unchanged off the loop
+EVENT_LOOP_BUSY_WAIT_MS = 500    # on the loop: the stall every request shares
+
+# `init_db` runs at import, and `uvicorn app:app` — how Docker and the Windows
+# launcher start this — imports the app INSIDE its running loop. Startup is the
+# one time a loop-thread wait blocks nobody, and a migration refused for a lock
+# is skipped until the next boot (the audit saw two skipped that way), so a
+# caller may ask for the patient wait explicitly.
+from contextvars import ContextVar  # noqa: E402
+
+_BUSY_WAIT_OVERRIDE_MS: ContextVar[Optional[int]] = ContextVar(
+    "sqlite_busy_wait_override_ms", default=None)
+
+# Journal modes an operator may choose. `wal` is the default; the others are
+# SQLite's rollback journals, for a data directory on a filesystem that cannot
+# share WAL's memory-mapped index (a network share — SQLite's own documentation
+# says WAL "does not work over a network filesystem"). `memory` and `off` are
+# not offered: both lose the database on a crash.
+_JOURNAL_MODES = ("wal", "delete", "truncate", "persist")
+_JOURNAL_MODE_REPORTED = False
+
+
+def chosen_journal_mode() -> str:
+    """The journal mode this process asks SQLite for (`PANTHEON_SQLITE_JOURNAL_MODE`)."""
+    raw = (os.getenv("PANTHEON_SQLITE_JOURNAL_MODE") or "wal").strip().lower()
+    return raw if raw in _JOURNAL_MODES else "wal"
+
+
+def _use_write_ahead_log(dbapi_connection) -> None:
+    """Put a file-backed SQLite database in the chosen journal mode.
+
+    The mode is a property of the FILE once it is `wal`, so after the first
+    connection this is a read that answers at once. Switching needs a moment
+    alone with the file, so it is tried with a short wait and never raised:
+    a connection that cannot switch works in the mode the file already has,
+    and the next connection tries again. Said once per process, whichever way
+    it went.
+    """
+    global _JOURNAL_MODE_REPORTED
+    want = chosen_journal_mode()
+    try:
+        current = str(dbapi_connection.execute("PRAGMA journal_mode").fetchone()[0]).lower()
+    except Exception:
+        return
+    if current == "memory":
+        return  # `:memory:` and `mode=memory` URIs: nothing on disk to journal
+    got = current
+    if current != want:
+        try:
+            dbapi_connection.execute("PRAGMA busy_timeout=250")
+            got = str(dbapi_connection.execute(f"PRAGMA journal_mode={want}").fetchone()[0]).lower()
+        except Exception as exc:  # locked by another process; next connection retries
+            if not _JOURNAL_MODE_REPORTED:
+                logger.warning("SQLite journal mode stays %r for now (asked for %r): %s",
+                               current, want, exc)
+                _JOURNAL_MODE_REPORTED = True
+            got = current
+    if got == "wal":
+        # In WAL, NORMAL cannot corrupt the database; a power cut may lose the
+        # last commits, not the file — the trade every WAL deployment makes.
+        dbapi_connection.execute("PRAGMA synchronous=NORMAL")
+    if not _JOURNAL_MODE_REPORTED:
+        logger.info("SQLite journal mode: %s", got)
+        _JOURNAL_MODE_REPORTED = True
+
+
+def busy_wait_ms_here() -> int:
+    """How long a SQLite statement run from THIS thread may wait for a lock."""
+    override = _BUSY_WAIT_OVERRIDE_MS.get()
+    if override is not None:
+        return int(override)
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return DEFAULT_BUSY_WAIT_MS
+    return EVENT_LOOP_BUSY_WAIT_MS
+
+
+class patient_database_waits:
+    """`with patient_database_waits():` — the off-loop wait, even on the loop.
+
+    For startup work that nobody is waiting behind (`init_db`). Not for a
+    request: a request that needs the long wait belongs off the loop.
+    """
+
+    def __enter__(self):
+        self._token = _BUSY_WAIT_OVERRIDE_MS.set(DEFAULT_BUSY_WAIT_MS)
+        return self
+
+    def __exit__(self, *exc):
+        _BUSY_WAIT_OVERRIDE_MS.reset(self._token)
+        return False
+
+
+@event.listens_for(Pool, "checkout")
+def _bound_the_busy_wait(dbapi_connection, connection_record, connection_proxy):
+    """Set the connection's busy timeout for the thread checking it out.
+
+    A pooled connection moves between the loop and the threadpool, so the
+    value is checked at every checkout and written only when it changes — the
+    common case is a dictionary read.
+    """
+    if not isinstance(dbapi_connection, sqlite3.Connection):
+        return
+    ms = busy_wait_ms_here()
+    if connection_record.info.get("busy_wait_ms") != ms:
+        dbapi_connection.execute(f"PRAGMA busy_timeout={int(ms)}")
+        connection_record.info["busy_wait_ms"] = ms
+
+
+DATABASE_BUSY_DETAIL = "Pantheon is busy saving something else. Try again in a moment."
+
+
+def is_database_locked(exc: BaseException) -> bool:
+    """True for SQLite's two lock refusals, raw or wrapped by SQLAlchemy."""
+    text = str(getattr(exc, "orig", None) or exc).lower()
+    return "database is locked" in text or "database table is locked" in text
+
+
+def install_database_busy_answer(app) -> None:
+    """Answer a lock refusal with a 503 and one sentence, not a bare 500.
+
+    Any other `OperationalError` is re-raised and reaches the server-error
+    handler exactly as before.
+    """
+    from sqlalchemy.exc import OperationalError as SAOperationalError
+    from starlette.responses import JSONResponse
+
+    async def _answer(request, exc):
+        if not is_database_locked(exc):
+            raise exc
+        logger.warning("database busy: %s %s answered 503", request.method, request.url.path)
+        return JSONResponse({"detail": DATABASE_BUSY_DETAIL}, status_code=503,
+                            headers={"Retry-After": "1"})
+
+    app.add_exception_handler(SAOperationalError, _answer)
+    app.add_exception_handler(sqlite3.OperationalError, _answer)
 
 
 class EncryptedText(TypeDecorator):
@@ -3769,7 +3935,10 @@ def archive_session(session_id: str):
             return True
     return False
 
-# Initialize the database by creating all tables
+# Initialize the database by creating all tables. `P23-07`: with the patient
+# wait — `uvicorn app:app` imports this inside its running loop, and a
+# migration refused for a lock is skipped until the next boot.
 
 
-init_db()
+with patient_database_waits():
+    init_db()

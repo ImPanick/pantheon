@@ -868,6 +868,10 @@ async def llm_service_error_handler(request: Request, exc: LLMServiceError):
 async def web_search_error_handler(request: Request, exc: WebSearchError):
     return JSONResponse(status_code=502, content={"error": "WEB_SEARCH_ERROR", "message": str(exc)})
 
+# `P23-07` (`PERF-M-2`): a held SQLite lock is a 503 with a sentence, not a bare 500.
+from core.database import install_database_busy_answer
+install_database_busy_answer(app)
+
 # ========= WEBHOOK MANAGER =========
 from src.webhook_manager import WebhookManager
 
