@@ -1234,7 +1234,12 @@ import { chevronIcon, playIcon } from './icons.js';
     const note = document.createElement('p');
     note.className = 'doc-pdf-text-note';
     note.setAttribute('role', 'note');
-    note.textContent = `Showing the text read from this PDF. ${why || 'The page view is not available here.'}`;
+    // `P23-08` (DOCS-M-6). It was "Showing the text read from this PDF." and
+    // the server's install line (`pip install -r requirements-optional.txt`),
+    // which nobody but the admin can act on. Doc 2 § 5: what happened, then
+    // who can change it.
+    note.textContent = why
+      || 'Shown as text. Page view needs an optional component (PyMuPDF) that an admin can install.';
     const page = document.createElement('div');
     page.className = 'doc-pdf-text-page';
     page.textContent = text || 'No text could be read from this PDF.';
@@ -1250,6 +1255,13 @@ import { chevronIcon, playIcon } from './icons.js';
     const docId = activeDocId;
     // Keep the save pill across re-renders by detaching/re-attaching it
     const savedPill = document.getElementById('doc-pdf-save-pill');
+    // `P23-08` (DOCS-M-6): the document answer already said its pages cannot
+    // be drawn here (`can_render_pages`) — show the text, ask nothing.
+    if (docs.get(docId)?.canRenderPages === false) {
+      _showPdfTextInstead(pane, docId);
+      if (savedPill) pane.appendChild(savedPill);
+      return;
+    }
     pane.innerHTML = '<div style="color:#bbb;font-size:13px;text-align:center;padding:40px;">Loading PDF…</div>';
     if (savedPill) pane.appendChild(savedPill);
     let data;
@@ -1264,9 +1276,13 @@ import { chevronIcon, playIcon } from './icons.js';
         // in red where the PDF should be, while the text the import read was
         // in the document all along. So the text is shown, with the server's
         // own sentence above it as the one line saying why.
-        const why = await _pdfResponseErrorMessage(res);
+        // `P23-08`: an answer from before `can_render_pages` (or a server
+        // that lost the module since) says the same as the flag would have.
+        await _pdfResponseErrorMessage(res);
         if (docId !== activeDocId) return;
-        _showPdfTextInstead(pane, docId, why);
+        const cached = docs.get(docId);
+        if (cached) cached.canRenderPages = false;
+        _showPdfTextInstead(pane, docId);
         if (savedPill) pane.appendChild(savedPill);
         return;
       }
@@ -3083,7 +3099,7 @@ import { chevronIcon, playIcon } from './icons.js';
           // affordance the email reader uses. One `_openAsDoc` below serves
           // both, so the as-doc call and its download fallback exist once.
           const isPdf = (att.filename || '').toLowerCase().endsWith('.pdf');
-          const sizeKb = att.size > 0 ? `${Math.round(att.size / 1024)} KB` : '';
+          const sizeKb = _attachmentSizeText(att.size);   // `P23-08` (DOCS-M-13)
           const openHtml = '<span class="email-attachment-open" title="Open in document editor"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/><line x1="8" y1="9" x2="10" y2="9"/></svg><span class="email-attachment-open-label">Open</span></span>';
           const chipHtml = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 17.93 8.8l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg><span>${_escHtml(att.filename)}</span><span class="att-size">${sizeKb}</span>`;
           const folderQs = encodeURIComponent(fields.sourceFolder || 'INBOX');
@@ -3755,7 +3771,7 @@ import { chevronIcon, playIcon } from './icons.js';
     for (const att of atts) {
       const chip = document.createElement('span');
       chip.className = 'email-compose-chip';
-      const sizeKb = att.size > 0 ? `${Math.round(att.size / 1024)} KB` : '';
+      const sizeKb = _attachmentSizeText(att.size);   // `P23-08` (DOCS-M-13)
       chip.innerHTML = `
         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 17.93 8.8l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
         <span class="compose-chip-name">${_escHtml(att.filename)}</span>
@@ -4017,6 +4033,17 @@ import { chevronIcon, playIcon } from './icons.js';
    * plus the type picker's value: a document switched to Email this moment
    * shows its Send button before `updateLanguage`'s PATCH has answered.
    */
+  // `P23-08` (DOCS-M-13). An attachment's size as a chip reads it: bytes below
+  // 1 KB (a 170-byte file read "0 KB", which looks empty), nothing when unknown.
+  // The mail reader's chips say it the same way (`emailLibrary.js`).
+  function _attachmentSizeText(bytes) {
+    const n = Number(bytes);
+    if (!Number.isFinite(n) || n <= 0) return '';
+    if (n < 1024) return `${n} B`;
+    if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB`;
+    return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
   function _activeDocIsEmail() {
     const doc = activeDocId && docs.get(activeDocId);
     if (!doc) return false;
@@ -7554,6 +7581,9 @@ import { chevronIcon, playIcon } from './icons.js';
       sourceEmailFolder:    doc.source_email_folder || null,
       sourceEmailAccountId: doc.source_email_account_id || null,
       sourceEmailMessageId: doc.source_email_message_id || null,
+      // `P23-08` (DOCS-M-6): false = this server cannot draw the PDF's pages;
+      // undefined = not a PDF, or an answer that does not say.
+      canRenderPages: (typeof doc.can_render_pages === 'boolean') ? doc.can_render_pages : existing?.canRenderPages,
     });
   }
 

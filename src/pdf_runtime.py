@@ -25,6 +25,23 @@ def load_pymupdf_for_pdf_viewer():
     return fitz
 
 
+def pdf_page_view_available() -> bool:
+    """`P23-08` (DOCS-M-6). Whether this server can draw a PDF's pages.
+
+    Read through `load_pymupdf_for_pdf_viewer` — the one test `render-pages`
+    makes — and not cached: a missing module costs one path scan, and a test or
+    an admin who installs it is believed at once. The document answer carries it
+    as `can_render_pages`, so the editor shows the text without first asking
+    `render-pages` for a 503 the server could have predicted (measured on
+    `9560d50`: one 503 in the console per PDF opened).
+    """
+    try:
+        load_pymupdf_for_pdf_viewer()
+    except RuntimeError:
+        return False
+    return True
+
+
 # `B1154` (f-import: `import-pdf` accepted any file). What a PDF looks like
 # from its first bytes. The header is `%PDF-`; readers (pypdf, PyMuPDF, Acrobat)
 # accept it anywhere in the first 1024 bytes, because some producers write a

@@ -1158,7 +1158,11 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
     const pre = document.createElement('pre');
     const code = document.createElement('code');
     try {
-      if (doc.language && doc.language !== 'text' && window.hljs && !_librarySearch) {
+      // `P23-08` (DOCS-M-11): only a language highlight.js has — it ships no
+      // `csv`, and asking logged "Could not find the language 'csv'" once per
+      // CSV card (4 per Library open on the showcase world).
+      if (doc.language && doc.language !== 'text' && window.hljs && !_librarySearch
+          && window.hljs.getLanguage(doc.language)) {
         code.innerHTML = window.hljs.highlight(doc.preview || '', { language: doc.language }).value;
       } else if (_librarySearch) {
         // While searching, highlight matched terms in the preview (plain
@@ -1338,7 +1342,8 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
       // highlighting anyway, so skip it there.
       const HL_CAP = 20000;
       try {
-        if (lang && lang !== 'text' && lang !== 'markdown' && window.hljs && content.length <= HL_CAP) {
+        if (lang && lang !== 'text' && lang !== 'markdown' && window.hljs && content.length <= HL_CAP
+            && window.hljs.getLanguage(lang)) {   // `P23-08` (DOCS-M-11)
           code.innerHTML = window.hljs.highlight(content, { language: lang }).value;
         } else {
           code.textContent = content;
@@ -1932,8 +1937,14 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
     const dotIdx = name.lastIndexOf('.');
     const ext = dotIdx >= 0 ? name.slice(dotIdx).toLowerCase() : '';
     const baseTitle = dotIdx > 0 ? name.slice(0, dotIdx) : name;
+    // `P23-08` (DOCS-M-12): a file named as text (`.txt`, `.log`) is stored as
+    // `text`. `documentLanguage` answers '' for prose — the editor's "no
+    // syntax" — and the server reads '' as "sniff it", so every imported
+    // `.txt` was "markdown" beside the seeded "text" one and the type chips
+    // counted them apart. A name with no extension is still sniffed.
     const language = CONVERTED_TO[ext] !== undefined
-      ? CONVERTED_TO[ext] : documentLanguage(name);
+      ? CONVERTED_TO[ext]
+      : ((ext && documentLanguage(name) === '') ? 'text' : documentLanguage(name));
 
     const isSpreadsheet = ['.xlsx', '.xls', '.ods'].includes(ext);
     const isPdf = ext === '.pdf';
