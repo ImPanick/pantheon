@@ -21,6 +21,7 @@ import pytest
 from src.builtin_actions import EFFECT_SENTENCES
 from src.workflow_document import CODE_EFFECT_SENTENCE
 from tests.helpers.walker_harness import app_for, client_for, make_db, node, recording_scheduler, seed_workflow
+from tests.helpers.signed_in import signed_in
 
 pytestmark = pytest.mark.asyncio
 
@@ -35,7 +36,9 @@ def world(monkeypatch, tmp_path):
     from core.database import ScheduledTask
 
     factory = make_db(monkeypatch, tmp_path / "effects.db")
-    monkeypatch.setenv("AUTH_ENABLED", "false")
+    # `root` is the install's admin, signed in (`D-2026-10-07-02` §2 — this was
+    # `AUTH_ENABLED=false`, which made every owner an admin).
+    signed_in(monkeypatch, tmp_path / "auth", admin="root", members=())
     monkeypatch.setattr(integrations, "load_integrations", lambda: [
         {"id": "int1", "name": "Miniflux", "enabled": True, "base_url": "http://miniflux.lan",
          "api_key": "k", "preset": "miniflux", "description": ""}])

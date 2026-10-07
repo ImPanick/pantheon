@@ -140,10 +140,14 @@ def test_unauthenticated_caller_rejected(monkeypatch):
     assert exc.value.status_code == 401
 
 
-def test_auth_disabled_allows_owner_stamped_session(monkeypatch):
+def test_auth_enabled_false_no_longer_opens_an_owner_stamped_session(monkeypatch):
+    """Single-user/auth-disabled mode verified a session existed and skipped the
+    owner comparison for a caller with nobody on it. `AUTH_ENABLED=false` is
+    ignored now (`D-2026-10-07-02` §2), so that caller is refused like any."""
     monkeypatch.setenv("AUTH_ENABLED", "false")
     monkeypatch.setattr(SR, "SessionLocal", _session_local_returning("admin"))
     req = _req(api_token=False, current_user=None)
 
-    # Single-user/auth-disabled mode should verify existence but not compare owner.
-    SR._verify_session_owner(req, "sid-owned-by-admin")
+    with pytest.raises(HTTPException) as exc:
+        SR._verify_session_owner(req, "sid-owned-by-admin")
+    assert exc.value.status_code == 401

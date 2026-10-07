@@ -4,8 +4,9 @@
 Broken research files (empty or unparseable JSON) have no readable owner
 stamp. The HTTP path and _find_owned_research_path treat parse failure as
 not-owned, so a regular user's tidy task must not unlink them. Clearing a
-corrupt record is a privileged act instead: admins, and the operator in
-single-user mode (AUTH_ENABLED=false), keep the janitor.
+corrupt record is a privileged act instead: admins keep the janitor. (The
+operator in single-user mode, AUTH_ENABLED=false, kept it too until
+`D-2026-10-07-02` §2 — there is always authentication now.)
 
 Every case installs a fake AuthManager rather than relying on ambient state.
 Setting AUTH_ENABLED=true alone leaves is_configured False, so the admin check
@@ -145,16 +146,19 @@ async def test_empty_owner_does_not_delete_broken_files(research_dir, configured
 
 
 @pytest.mark.asyncio
-async def test_auth_disabled_still_removes_broken_files(research_dir, monkeypatch):
+async def test_auth_enabled_false_no_longer_hands_a_regular_user_the_janitor(
+        research_dir, configured_auth, monkeypatch):
+    """`AUTH_ENABLED=false` once made every owner the single-user operator, so
+    alice's tidy cleared the broken files. It is ignored now
+    (`D-2026-10-07-02` §2): she is a regular user, and they stay."""
     monkeypatch.setenv("AUTH_ENABLED", "false")
     valid = _write_owned(research_dir, "ok", "alice")
     empty = _write(research_dir, "broken-empty", "   ")
     garbage = _write(research_dir, "broken-json", "not-json")
 
-    message, ok = await action_tidy_research("alice")
+    with pytest.raises(TaskNoop, match="not permitted"):
+        await action_tidy_research("alice")
 
-    assert ok is True
-    assert "Removed 2" in message
     assert valid.exists()
-    assert not empty.exists()
-    assert not garbage.exists()
+    assert empty.exists()
+    assert garbage.exists()

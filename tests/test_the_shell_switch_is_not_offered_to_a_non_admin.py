@@ -53,10 +53,8 @@ def auth(tmp_path, monkeypatch):
     """`boss` (admin), `ann` (granted the workstation) and `bob` (still holding a
     `can_use_bash` an admin switched on before this change)."""
     from core.auth import AuthManager
-    from src.owner_identity import auth_disabled
     import src.settings as S
 
-    assert not auth_disabled()
     am = AuthManager(str(tmp_path / "auth.json"))
     assert am.setup("boss", "correct-horse-1")
     assert am.create_user("ann", "correct-horse-1")

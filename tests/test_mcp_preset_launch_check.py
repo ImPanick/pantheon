@@ -220,8 +220,6 @@ def test_a_body_it_cannot_read_is_refused_with_a_sentence(body, contains):
 def test_a_non_admin_cannot_ask():
     """`require_admin`, as on every route in this file: whether a binary
     exists on the host is the host's business."""
-    import unittest.mock as mock
-
     class _Stranger:
         headers = {}
         state = SimpleNamespace(current_user="bob")
@@ -231,9 +229,8 @@ def test_a_non_admin_cannot_ask():
         async def json(self):
             return {"command": "npx"}
 
-    with mock.patch("core.middleware.auth_disabled", return_value=False):
-        with pytest.raises(HTTPException) as caught:
-            asyncio.run(_endpoint("/api/mcp/check", "POST")(request=_Stranger()))
+    with pytest.raises(HTTPException) as caught:
+        asyncio.run(_endpoint("/api/mcp/check", "POST")(request=_Stranger()))
     assert caught.value.status_code == 403
 
 

@@ -4,23 +4,26 @@ from types import SimpleNamespace
 import pytest
 
 
-def test_effective_storage_owner_matrix(monkeypatch):
-    from src.owner_identity import DEFAULT_LOCAL_OWNER, effective_storage_owner
+@pytest.mark.parametrize("auth_enabled", [None, "true", "false", "0"])
+def test_effective_storage_owner_matrix(monkeypatch, auth_enabled):
+    """No owner is nobody's bucket, whatever `AUTH_ENABLED` says.
 
-    monkeypatch.delenv("AUTH_ENABLED", raising=False)
+    Until `D-2026-10-07-02` §2 `AUTH_ENABLED=false` resolved ``None`` and ``""``
+    to `DEFAULT_LOCAL_OWNER`, the no-login install's bucket. There is always
+    authentication now, so the answer is the same with the variable set to
+    anything as with it unset."""
+    from src.owner_identity import effective_storage_owner
+
+    if auth_enabled is None:
+        monkeypatch.delenv("AUTH_ENABLED", raising=False)
+    else:
+        monkeypatch.setenv("AUTH_ENABLED", auth_enabled)
     assert effective_storage_owner(None) is None
     assert effective_storage_owner("") is None
     assert effective_storage_owner("alice") == "alice"
     for sentinel in ("api", "demo", "system", "internal-tool"):
         assert effective_storage_owner(sentinel) is None
         assert effective_storage_owner(f" {sentinel.upper()} ") is None
-
-    monkeypatch.setenv("AUTH_ENABLED", "false")
-    assert effective_storage_owner(None) == DEFAULT_LOCAL_OWNER
-    assert effective_storage_owner("") == DEFAULT_LOCAL_OWNER
-    assert effective_storage_owner("admin") == "admin"
-    for sentinel in ("api", "demo", "system", "internal-tool"):
-        assert effective_storage_owner(sentinel) is None
 
 
 def test_storage_owner_for_request_uses_api_token_owner(monkeypatch):
@@ -54,18 +57,19 @@ def test_storage_owner_for_request_rejects_request_sentinel(monkeypatch, sentine
     assert storage_owner_for_request(request) is None
 
 
-def test_storage_owner_for_request_uses_default_local_when_auth_disabled(monkeypatch):
+def test_storage_owner_for_request_is_nobody_when_nobody_is_signed_in(monkeypatch):
+    """`AUTH_ENABLED=false` no longer files a signed-out request under the
+    reserved local owner (`D-2026-10-07-02` §2): nobody signed in owns nothing."""
     from src.auth_helpers import storage_owner_for_request
-    from src.owner_identity import DEFAULT_LOCAL_OWNER
 
     monkeypatch.setenv("AUTH_ENABLED", "false")
     request = SimpleNamespace(state=SimpleNamespace(current_user=None))
 
-    assert storage_owner_for_request(request) == DEFAULT_LOCAL_OWNER
+    assert storage_owner_for_request(request) is None
 
 
 @pytest.mark.parametrize(
-    "value,expected",
+    "value,named",
     [
         (None, False),
         ("", False),
@@ -75,13 +79,11 @@ def test_storage_owner_for_request_uses_default_local_when_auth_disabled(monkeyp
         ("false", True),
         ("FALSE", True),
         (" false ", True),
-        # `B96`. These five were `False` here until 2026-09-15 — an operator who
-        # wrote `AUTH_ENABLED=0` got authentication left **on**, because the old
-        # parser recognised the literal `false` and nothing else. The row is that
-        # a switch meant the opposite of what the operator typed; this table is
-        # where it was written down as correct. `env_flags.env_flag` reads the
-        # whole off vocabulary now, so each of these turns auth off and says so
-        # in the log once.
+        # `B96`. Until 2026-09-15 these five left authentication **on**,
+        # because only the literal `false` turned it off; then they turned it
+        # off. Since `D-2026-10-07-02` §2 none of them turns anything off —
+        # there is always authentication — and each is named as ignored, once,
+        # at start: an operator wrote it to turn sign-in off.
         ("0", True),
         ("no", True),
         ("off", True),
@@ -89,34 +91,27 @@ def test_storage_owner_for_request_uses_default_local_when_auth_disabled(monkeyp
         (" 0 ", True),
     ],
 )
-def test_auth_disabled_parser_is_centralized(monkeypatch, value, expected):
-    """`AUTH_ENABLED` is read in one place and answers the whole vocabulary.
-
-    The default is the safe one: unset, blank, or a word outside the vocabulary
-    leaves authentication **enabled**, so a typo never opens the door. What
-    changed in `B96` is that a word an operator plainly meant as *off* is now
-    read as off instead of being silently discarded.
-    """
-    from src.owner_identity import auth_disabled
+def test_auth_enabled_is_read_in_one_place_and_only_to_say_it_is_ignored(monkeypatch, value, named):
+    """`AUTH_ENABLED` is read in one place, through the shared vocabulary, and
+    only to say that it is ignored."""
+    from src.owner_identity import ignored_auth_switches
 
     if value is None:
         monkeypatch.delenv("AUTH_ENABLED", raising=False)
     else:
         monkeypatch.setenv("AUTH_ENABLED", value)
 
-    assert auth_disabled() is expected
+    assert ("AUTH_ENABLED" in ignored_auth_switches()) is named
 
 
-def test_an_unknown_spelling_leaves_authentication_on(monkeypatch):
-    """The other half of `B96`, and the reason the widening is safe. A value
-    nobody in the vocabulary recognises is not a guess toward off — `banana` is
-    a typo, and a typo that disabled authentication would be the defect `B96`
-    fixed, pointing the other way."""
-    from src.owner_identity import auth_disabled
+def test_an_unknown_spelling_is_not_named(monkeypatch):
+    """A value nobody in the vocabulary recognises is a typo, not a request to
+    turn sign-in off — it is not news, and it never opened anything."""
+    from src.owner_identity import ignored_auth_switches
 
     for junk in ("banana", "1.5", "disabled", "-", "null"):
         monkeypatch.setenv("AUTH_ENABLED", junk)
-        assert auth_disabled() is False, junk
+        assert "AUTH_ENABLED" not in ignored_auth_switches(), junk
 
 
 def test_default_local_owner_is_reserved_auth_name_but_valid_storage_owner():
@@ -130,6 +125,5 @@ def test_default_local_owner_is_reserved_auth_name_but_valid_storage_owner():
 
     assert DEFAULT_LOCAL_OWNER in RESERVED_AUTH_USERNAMES
     assert DEFAULT_LOCAL_OWNER not in REQUEST_SENTINEL_OWNERS
-    assert effective_storage_owner(DEFAULT_LOCAL_OWNER, auth_is_disabled=False) == DEFAULT_LOCAL_OWNER
-    assert effective_storage_owner(DEFAULT_LOCAL_OWNER, auth_is_disabled=True) == DEFAULT_LOCAL_OWNER
+    assert effective_storage_owner(DEFAULT_LOCAL_OWNER) == DEFAULT_LOCAL_OWNER
     assert is_default_local_owner(f" {DEFAULT_LOCAL_OWNER.upper()} ")

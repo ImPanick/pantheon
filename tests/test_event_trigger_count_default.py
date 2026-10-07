@@ -33,7 +33,6 @@ from src.event_bus import DEFAULT_TRIGGER_COUNT  # noqa: E402
 @pytest.fixture()
 def task_db(monkeypatch, tmp_path):
     monkeypatch.setitem(sys.modules, "core.database", cdb)
-    monkeypatch.setenv("AUTH_ENABLED", "false")
     engine = create_engine(
         f"sqlite:///{tmp_path / 'tasks.db'}",
         connect_args={"check_same_thread": False},

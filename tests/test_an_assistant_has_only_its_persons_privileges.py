@@ -96,9 +96,9 @@ def chats():
 
 
 READS = %(reads)r
-RESULT["auth_enabled"] = bool(app_module.AUTH_ENABLED)
+RESULT["auth_enabled"] = RESULT["premise"]["auth_enabled"]
 RESULT["in_person"] = {who: {p: client(who).get(p).status_code for p in READS}
-                       for who in (MEMBER, ADMIN)} if app_module.AUTH_ENABLED else {}
+                       for who in (MEMBER, ADMIN)}
 WHO = {"bob": MEMBER, "ada": ADMIN, "local owner": "__pantheon_local__", "nobody": None}
 RESULT["reads"] = {label: {p: assistant(who, "GET", p) for p in READS}
                    for label, who in WHO.items()}
@@ -142,7 +142,9 @@ def gated(tmp_path_factory):
 
 
 @pytest.fixture(scope="module")
-def no_login(tmp_path_factory):
+def auth_enabled_false(tmp_path_factory):
+    """The same app booted with `AUTH_ENABLED=false` — a no-login install until
+    `D-2026-10-07-02` §2, the gated one now."""
     return gated_app_probe(tmp_path_factory.mktemp("b1175-off"), _PROBE,
                            env_overrides={"AUTH_ENABLED": "false"})
 
@@ -226,12 +228,16 @@ def test_the_dispatcher_still_refuses_app_api_to_a_non_admin_first(gated):
     assert row["reached"] == [], row
 
 
-def test_a_no_login_install_keeps_what_it_had(no_login):
-    """`AUTH_ENABLED=false`: no middleware, and whoever the loopback names is
-    the owner of a box with no logins — the local owner, an account that exists
-    on disk, or nobody."""
-    assert no_login["premise"]["auth_enabled"] is False, no_login["premise"]
-    for who in ("local owner", "bob", "nobody"):
-        for path in _READS:
-            row = no_login["reads"][who][path]
-            assert row["reached"] == [["GET", path, 200]], (who, path, row)
+def test_auth_enabled_false_is_the_gated_install(auth_enabled_false):
+    """`AUTH_ENABLED=false` was no middleware, and whoever the loopback named
+    was the owner of a box with no logins — the local owner, bob, or nobody —
+    each read every route. There is always authentication now
+    (`D-2026-10-07-02` §2): with the variable set, the assistant has its
+    person's privileges, exactly as on the gated install above."""
+    off = auth_enabled_false
+    assert off["premise"]["auth_enabled"] is True, off["premise"]
+    for path in _READS:
+        assert off["reads"]["bob"][path]["reached"] == [["GET", path, 403]], path
+        assert off["reads"]["local owner"][path]["reached"] == [["GET", path, 403]], path
+        assert off["reads"]["ada"][path]["reached"] == [["GET", path, 200]], path
+        assert off["reads"]["nobody"][path]["reached"] == [["GET", path, 200]], path

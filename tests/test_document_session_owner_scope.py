@@ -145,7 +145,9 @@ async def test_list_documents_filters_foreign_docs_in_visible_session():
         droutes.SessionLocal = previous_session_local
 
 
-def test_owner_session_filter_noops_for_auth_disabled_single_user(monkeypatch):
+def test_owner_session_filter_shows_nobody_nothing_whatever_auth_enabled_says(monkeypatch):
+    """It left the query whole for nobody under `AUTH_ENABLED=false` until
+    `D-2026-10-07-02` §2; the variable is ignored, and nobody sees nothing."""
     monkeypatch.setenv("AUTH_ENABLED", "false")
     previous_session_local = _bind_test_db()
     try:
@@ -153,7 +155,7 @@ def test_owner_session_filter_noops_for_auth_disabled_single_user(monkeypatch):
         db = _TS()
         try:
             q = db.query(Document).filter(Document.id == alice_doc)
-            assert _owner_session_filter(q, None).first().id == alice_doc
+            assert _owner_session_filter(q, None).first() is None
         finally:
             db.close()
     finally:

@@ -430,8 +430,7 @@ def test_a_non_admin_cannot_edit_a_server():
 
     fields = {f: None for f in _PUT_FIELDS}
     fields["command"] = "curl"
-    with mock.patch("routes.mcp.mcp_routes.SessionLocal", Factory), \
-            mock.patch("core.middleware.auth_disabled", return_value=False):
+    with mock.patch("routes.mcp.mcp_routes.SessionLocal", Factory):
         with pytest.raises(HTTPException) as caught:
             asyncio.run(endpoint(server_id="abcd1234", request=stranger, **fields))
     assert caught.value.status_code == 403

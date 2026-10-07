@@ -471,7 +471,10 @@ def pantheon_settings(tmp_path, monkeypatch):
     settings_file.parent.mkdir()
     monkeypatch.setattr(src.constants, "SETTINGS_FILE", str(settings_file))
     monkeypatch.setattr(src.settings, "SETTINGS_FILE", str(settings_file))
-    monkeypatch.setenv("AUTH_ENABLED", "false")
+    # The install's admin, signed in (`D-2026-10-07-02` §2 — this was the
+    # single-user owner, nobody, under `AUTH_ENABLED=false`).
+    from tests.helpers.signed_in import signed_in
+    signed_in(monkeypatch, tmp_path / "auth", members=())
     monkeypatch.setenv(P.PAIRING_DIR_ENV, str(tmp_path / "no-pairing"))
     src.settings._invalidate_caches()
     yield settings_file
@@ -502,14 +505,15 @@ def test_the_printed_lines_reach_the_daemon_the_unit_starts_on_another_address(
         health = run(client.health())
         assert (health["backend"], health["sudo"]) == ("remote", False)
         from src import workstation_access as wa
-        status = run(wa.status_for(None, is_admin=True))
+        from tests.helpers.signed_in import ADMIN
+        status = run(wa.status_for(ADMIN, is_admin=True))
         assert status["state"] == wa.STATE_UP and status["daemon"]["backend"] == "remote"
         assert status["you"]["home_state"] == wa.HOME_NONE
         assert not (machine_root / "home").exists() or not any((machine_root / "home").iterdir())
-        account = wa.account_of(None)
+        account = wa.account_of(ADMIN)
         r = run(client.exec(account, "echo hello from $HOSTNAME-less $PWD"))
         assert r["exit_code"] == 0 and str(machine_root / "home" / account) in r["stdout"]
-        assert run(wa.status_for(None, is_admin=True))["you"]["home_state"] == wa.HOME_KEPT
+        assert run(wa.status_for(ADMIN, is_admin=True))["you"]["home_state"] == wa.HOME_KEPT
         # The same address with the pin of some other certificate: refused.
         monkeypatch.setenv(P.TLS_PIN_ENV, "00" * 32)
         with pytest.raises(WorkstationError) as e:

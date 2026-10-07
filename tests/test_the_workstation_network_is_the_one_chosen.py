@@ -55,6 +55,7 @@ from workstation import netrules as N
 from workstation import protocol as P
 from workstation.agentd import SingleUserSystem, Workstation, load_or_create_token
 from workstation.agentd import WorkstationError as DaemonError
+from tests.helpers.signed_in import ADMIN, signed_in
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -650,7 +651,9 @@ def test_the_tool_path_refuses_to_run_when_the_gate_will_not_hold_the_mode(tmp_p
     """The gate boots at `none`, the admin chose `internet`, and the gate's
     `nft` refuses: the command is not run, and the tool says why."""
     from src.agent_tools.workstation_tools import run_in_workstation
-    monkeypatch.setenv("AUTH_ENABLED", "false")
+    # The install's admin, signed in (`D-2026-10-07-02` §2 — this was the
+    # single-user owner, nobody, under `AUTH_ENABLED=false`).
+    signed_in(monkeypatch, tmp_path / "auth", members=())
     settings["workstation_network"] = "internet"
     gate = RunningGate(tmp_path)
     try:
@@ -659,8 +662,8 @@ def test_the_tool_path_refuses_to_run_when_the_gate_will_not_hold_the_mode(tmp_p
         with running_workstation(tmp_path) as ws:
             settings["workstation_url"] = ws.url
             settings["workstation_token"] = ws.token
-            _desc, result = run(run_in_workstation("bash", "touch ran-here", owner=None))
-            ran = (ws.root / P.account_name(None) / "ran-here").exists()
+            _desc, result = run(run_in_workstation("bash", "touch ran-here", owner=ADMIN))
+            ran = (ws.root / P.account_name(ADMIN) / "ran-here").exists()
         assert result.get("exit_code") == 1 and "network gate" in result.get("error", "")
         assert not ran, "the command ran under a network the admin did not choose"
     finally:
@@ -700,19 +703,19 @@ def test_each_state_has_its_word(chosen, daemon, state):
 
 def test_the_status_answer_carries_the_network_as_it_is(tmp_path, settings, monkeypatch):
     settings["workstation_network"] = "internet"
-    monkeypatch.setenv("AUTH_ENABLED", "false")
+    signed_in(monkeypatch, tmp_path / "auth", members=())
     gate = RunningGate(tmp_path)
     try:
         _point_at_gate(monkeypatch, tmp_path, gate)
         with running_workstation(tmp_path) as ws:
             settings["workstation_url"] = ws.url
             settings["workstation_token"] = ws.token
-            status = run(wa.status_for(None, is_admin=True))
+            status = run(wa.status_for(ADMIN, is_admin=True))
         assert status["state"] == "up"
         assert status["network"] == {"chosen": "internet", "in_force": "internet",
                                      "enforcement": "gate", "state": "enforced"}
         settings["workstation_enabled"] = False
-        off = run(wa.status_for(None, is_admin=True))
+        off = run(wa.status_for(ADMIN, is_admin=True))
         assert off["network"]["state"] == "unknown"
     finally:
         gate.close()

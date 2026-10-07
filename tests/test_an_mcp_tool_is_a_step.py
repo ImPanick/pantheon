@@ -33,6 +33,7 @@ from src import workflow_effects as fx
 from src.mcp_manager import McpManager
 from src.tool_capabilities import ToolRunSecurityContext, TrustRung
 from src.workflow_slots import MAPPING_VALUE, RenderedCall, classify_argument, render_call
+from tests.helpers.signed_in import PASSWORD, signed_in
 
 SEND = "mcp__chat__send_message"
 
@@ -51,7 +52,7 @@ class _Session:
 
 
 @pytest.fixture
-def chat(monkeypatch):
+def chat(monkeypatch, tmp_path):
     from core.database import Base, McpServer
     from tests.helpers.sqlite_db import make_temp_sqlite
 
@@ -74,8 +75,10 @@ def chat(monkeypatch):
         {"name": "delete_channel", "description": "Delete a channel", "input_schema": {}},
     ]
     monkeypatch.setattr("src.tool_execution.get_mcp_manager", lambda: mgr)
-    monkeypatch.setenv("AUTH_ENABLED", "false")          # the single-user owner: an admin
-    yield SimpleNamespace(mgr=mgr, session=session, SessionLocal=SessionLocal)
+    # The single-user owner: its one account, an admin, signed in as `local`
+    # (`D-2026-10-07-02` §2 — it was `AUTH_ENABLED=false` and nobody).
+    people = signed_in(monkeypatch, tmp_path / "auth", admin="local", members=())
+    yield SimpleNamespace(mgr=mgr, session=session, SessionLocal=SessionLocal, people=people)
     engine.dispose()
 
 
@@ -253,6 +256,8 @@ def test_an_email_send_from_a_step_is_staged_as_a_draft(chat, monkeypatch, tmp_p
             out = await es.call_tool(name, dict(arguments))
             return SimpleNamespace(content=out, isError=False)
 
+    # alice is an admin of her own install: mail is an admin's tool.
+    assert chat.people.create_user("alice", PASSWORD, is_admin=True)
     email = _EmailServer()
     chat.mgr._sessions["email"] = email
     chat.mgr._connections["email"] = {"name": "Email", "status": "connected"}

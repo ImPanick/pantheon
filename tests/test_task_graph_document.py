@@ -157,7 +157,6 @@ async def test_the_list_endpoint_carries_the_graph_beside_the_tasks(task_db, mon
     fetches."""
     import routes.task_routes as task_routes
     monkeypatch.setattr(task_routes, "SessionLocal", task_db)
-    monkeypatch.setenv("AUTH_ENABLED", "false")
     _chain(task_db, ["a", "b"], owner=None)
 
     scheduler = MagicMock()

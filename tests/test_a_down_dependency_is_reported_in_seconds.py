@@ -129,10 +129,12 @@ _LIST_PROBE = textwrap.dedent(
     """
     import json, time
     import app as app_module
+    from tests.helpers.signed_in import sign_in
     from fastapi.testclient import TestClient
     PORT = __PORT__
     out = {}
     with TestClient(app_module.app) as client:
+        sign_in(app_module, client)  # the install's admin: there is always authentication (`D-2026-10-07-02` §2)
         r = client.post("/api/email/accounts", json={
             "name": "Not there", "imap_host": "127.0.0.1", "imap_port": PORT,
             "imap_user": "x@example.com", "imap_password": "pw", "smtp_host": "127.0.0.1",
@@ -149,7 +151,7 @@ _LIST_PROBE = textwrap.dedent(
 def test_a_list_that_could_not_be_read_is_not_a_200(tmp_path):
     env = os.environ.copy()
     env.update({
-        "AUTH_ENABLED": "false", "CHROMADB_CONNECT_TIMEOUT": "0.01", "CHROMADB_HOST": "127.0.0.1",
+        "CHROMADB_CONNECT_TIMEOUT": "0.01", "CHROMADB_HOST": "127.0.0.1",
         "CHROMADB_PORT": "9", "DATABASE_URL": f"sqlite:///{tmp_path / 'app.db'}",
         "PANTHEON_DATA_DIR": str(tmp_path), "PANTHEON_DISABLE_MCP": "1",
         "PYTHONPATH": str(_REPO), "PYTHON_DOTENV_DISABLED": "1",

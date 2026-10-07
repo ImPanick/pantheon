@@ -39,7 +39,13 @@ def owner_has_admin_task_privileges(owner: str | None) -> bool:
         from src.auth_manager_access import shared_auth_manager  # `P23-07` (`PERF-M-15`)
         auth = shared_auth_manager()
         if not auth.is_configured:
-            return True
+            # Before the first account nobody is an admin — the answer
+            # `owner_is_admin_or_single_user` gives the same window. This said
+            # yes to every owner until 2026-10-07, so an install that had run
+            # without sign-in kept running its owner-less admin-only tasks (a
+            # shell, SSH, a serve) — and a webhook could start one — until
+            # somebody made an account (`D-2026-10-07-02` §2).
+            return False
         if not owner:
             return False
         return bool(auth.is_admin(owner))

@@ -39,6 +39,7 @@ from src import workflow_effects as fx
 from src.tool_capabilities import ToolRunSecurityContext, TrustRung
 from src.tool_execution import format_tool_result
 from src.workflow_slots import RenderedCall, render_call
+from tests.helpers.signed_in import signed_in
 
 HOST = "miniflux.lan"          # a name, so the pin is exercised: it resolves to the loopback
 KEY = "sekret-api-key-123"
@@ -88,13 +89,15 @@ class _Server:
 
 
 @pytest.fixture
-def server(monkeypatch):
+def server(monkeypatch, tmp_path):
     srv = _Server()
     # The name resolves to the loopback through the SSRF guard's own resolver,
     # so the guard approves it and the transport is pinned to what it approved.
     monkeypatch.setattr("src.url_safety._default_resolver", _resolve)
     monkeypatch.delenv("INTEGRATION_API_BLOCK_PRIVATE_IPS", raising=False)
-    monkeypatch.setenv("AUTH_ENABLED", "false")      # the single-user owner: an admin
+    # The single-user owner: its one account, an admin, signed in as `local`
+    # (`D-2026-10-07-02` §2 — it was `AUTH_ENABLED=false` and nobody).
+    signed_in(monkeypatch, tmp_path / "auth", admin="local", members=())
     _use_integration(monkeypatch, f"http://{HOST}:{srv.port}")
     yield srv
     srv.close()

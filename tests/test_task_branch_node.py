@@ -423,7 +423,6 @@ async def test_a_task_with_no_failure_edge_behaves_as_before(task_db, monkeypatc
 async def test_the_failure_edge_is_created_validated_and_served(task_db, monkeypatch):
     import routes.task_routes as task_routes
     monkeypatch.setattr(task_routes, "SessionLocal", task_db)
-    monkeypatch.setenv("AUTH_ENABLED", "false")
     _seed_branch(task_db)
 
     scheduler = MagicMock()

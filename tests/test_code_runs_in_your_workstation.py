@@ -55,7 +55,6 @@ def station(tmp_path, monkeypatch):
     import src.settings as S
     from workstation import protocol as P
 
-    monkeypatch.setattr(src.auth_helpers, "_auth_disabled", lambda: False)
     monkeypatch.setattr(core.auth, "AuthManager", _Auth)
     monkeypatch.delenv(P.URL_ENV, raising=False)
     monkeypatch.delenv(P.TOKEN_ENV, raising=False)

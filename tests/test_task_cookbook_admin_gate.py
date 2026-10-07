@@ -348,18 +348,45 @@ async def test_admin_action_metadata_includes_cookbook_serve(
 
 
 @pytest.mark.asyncio
-async def test_auth_disabled_single_user_can_create_cookbook_serve_task(
-    monkeypatch, task_db
+async def test_a_single_user_installs_admin_can_create_cookbook_serve_task(
+    monkeypatch, task_db, tmp_path
 ):
-    monkeypatch.setenv("AUTH_ENABLED", "false")
+    """The single-user owner is the install's first account, its admin, signed
+    in. (It was nobody under `AUTH_ENABLED=false` until `D-2026-10-07-02` §2.)"""
+    from tests.helpers.signed_in import ADMIN, signed_in
+    signed_in(monkeypatch, tmp_path / "auth", members=())
     create_task = _endpoint("POST", "/api/tasks")
 
-    out = await create_task(_req(None), _cookbook_create_req())
+    out = await create_task(_req(ADMIN), _cookbook_create_req())
 
     assert out["action"] == "cookbook_serve"
     db = task_db()
     try:
         task = db.query(ScheduledTask).filter(ScheduledTask.id == out["id"]).first()
-        assert task.owner is None
+        assert task.owner == ADMIN
+    finally:
+        db.close()
+
+
+@pytest.mark.asyncio
+async def test_nobody_creates_a_cookbook_serve_task_before_the_first_account(
+    monkeypatch, task_db, tmp_path
+):
+    """Before the first account exists nobody is an admin. The pre-setup window
+    answered every owner as one until `D-2026-10-07-02` §2 — so with auth off,
+    or before setup, nobody could save an admin-only action."""
+    import core.auth
+    from core.auth import AuthManager
+    monkeypatch.setenv("AUTH_ENABLED", "false")
+    monkeypatch.setattr(core.auth, "_SHARED_AUTH_MANAGER",
+                        AuthManager(auth_path=str(tmp_path / "auth.json")))
+    create_task = _endpoint("POST", "/api/tasks")
+
+    with pytest.raises(HTTPException) as exc:
+        await create_task(_req(None), _cookbook_create_req())
+    assert exc.value.status_code == 403
+    db = task_db()
+    try:
+        assert db.query(ScheduledTask).count() == 0
     finally:
         db.close()

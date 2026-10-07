@@ -371,9 +371,10 @@ def test_a_deliberate_narrowing_still_narrows(vault):
 
 # ── the fourth site: POST /api/personal/upload ──────────────────────────────
 
-# Loopback: `upload_files_to_rag` calls `require_privilege(request, ...)`
-# directly rather than through `Depends`, so a dependency override cannot
-# stand in for it and the request has to be one `require_user` admits.
+# `upload_files_to_rag` calls `require_privilege(request, ...)` directly rather
+# than through `Depends`, so a dependency override cannot stand in for it and
+# the request has to be one `require_user` admits: a person signed in. (It was
+# a loopback caller on an install with no account until `D-2026-10-07-02` §2.)
 _PEER = ("127.0.0.1", 54321)
 
 
@@ -395,7 +396,9 @@ def personal_api(tmp_path, monkeypatch):
 
     manager = SimpleNamespace(index=[], skipped=[], indexed_directories=[],
                               add_directory=lambda *a, **k: None)
-    app = FastAPI()
+    from tests.helpers.signed_in import as_person, people
+    app = as_person(FastAPI(), "alice",
+                    auth_manager=people(tmp_path / "auth", admin="alice", members=()))
     app.include_router(personal_routes.setup_personal_routes(manager, rag, True))
     app.dependency_overrides[require_user] = lambda: "alice"
     app.dependency_overrides[require_admin] = lambda: None

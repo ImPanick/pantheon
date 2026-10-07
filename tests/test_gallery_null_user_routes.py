@@ -95,30 +95,22 @@ def test_auth_enabled_null_user_gallery_routes_fail_closed(monkeypatch, tmp_path
     }
 
 
-def test_auth_disabled_null_user_gallery_routes_keep_single_user_mode(monkeypatch, tmp_path):
+def test_auth_enabled_false_null_user_gallery_routes_fail_closed_too(monkeypatch, tmp_path):
+    """Under `AUTH_ENABLED=false` a null user kept single-user mode — both
+    people's images, tags, albums and stats, and a batch tag of all of them —
+    until `D-2026-10-07-02` §2. The variable is ignored now: the same caller
+    gets what the test above gets with it on."""
     monkeypatch.setenv("AUTH_ENABLED", "false")
     client = _client_with_gallery(monkeypatch, tmp_path)
 
     library = client.get("/api/gallery/library").json()
-    assert {item["id"] for item in library["items"]} == {"img-alice", "img-bob"}
-    assert library["total"] == 2
-    assert library["tags"] == ["alice-tag", "bob-tag"]
-    assert library["models"] == ["model-a", "model-b"]
-
-    assert client.get("/api/gallery/tags").json() == {"tags": ["alice-tag", "bob-tag"]}
-    assert len(client.get("/api/gallery/albums").json()["albums"]) == 2
-    assert client.get("/api/gallery/stats").json() == {
-        "total_photos": 2,
-        "total_size": 30,
-        "total_size_human": "30.0 B",
-        "favorites": 0,
-        "albums": 2,
-    }
+    assert library["items"] == [] and library["total"] == 0
+    assert library["tags"] == [] and library["models"] == []
+    assert client.get("/api/gallery/tags").json() == {"tags": []}
+    assert client.get("/api/gallery/albums").json() == {"albums": []}
+    assert client.get("/api/gallery/stats").json()["total_photos"] == 0
     batch = client.post("/api/gallery/ai-tag-batch").json()
-    assert batch["ok"] is True
-    assert batch["queued"] == 2
-    assert batch["total_untagged"] == 2
-    assert set(batch["image_ids"]) == {"img-alice", "img-bob"}
+    assert batch["queued"] == 0 and batch["image_ids"] == []
 
 
 def test_authenticated_gallery_routes_remain_owner_scoped(monkeypatch, tmp_path):

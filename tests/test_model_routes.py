@@ -1697,9 +1697,14 @@ def _route_ep(
 
 
 def _route_request():
+    """`GET /api/models` asked by the install's admin, signed in — what
+    `AuthMiddleware` leaves on a request. (It was nobody under a patched
+    `_auth_disabled` until `D-2026-10-07-02` §2: there is always
+    authentication.)"""
     return SimpleNamespace(
-        state=SimpleNamespace(current_user=None),
-        app=SimpleNamespace(state=SimpleNamespace(auth_manager=None)),
+        state=SimpleNamespace(current_user="ada", api_token=False),
+        app=SimpleNamespace(state=SimpleNamespace(auth_manager=SimpleNamespace(
+            is_configured=True, is_admin=lambda user: user == "ada"))),
     )
 
 
@@ -1784,7 +1789,6 @@ def test_api_models_returns_only_pinned_proxy_models_without_refresh_probe(monke
 
     monkeypatch.setattr(model_routes, "ModelEndpoint", _RouteModelEndpoint)
     monkeypatch.setattr(model_routes, "SessionLocal", lambda: db)
-    monkeypatch.setattr(model_routes, "_auth_disabled", lambda: True)
     monkeypatch.setattr(model_routes, "build_chat_url", lambda base: f"{base}/chat/completions")
 
     def fail_probe(*args, **kwargs):
@@ -1817,7 +1821,6 @@ def test_api_models_openrouter_uses_pinned_models_not_hidden(monkeypatch):
 
     monkeypatch.setattr(model_routes, "ModelEndpoint", _RouteModelEndpoint)
     monkeypatch.setattr(model_routes, "SessionLocal", lambda: db)
-    monkeypatch.setattr(model_routes, "_auth_disabled", lambda: True)
     monkeypatch.setattr(model_routes, "build_chat_url", lambda base: f"{base}/chat/completions")
     monkeypatch.setattr(threading, "Thread", _NoopThread)
 
@@ -1841,7 +1844,6 @@ def test_api_models_openrouter_defaults_cached_models_visible(monkeypatch):
 
     monkeypatch.setattr(model_routes, "ModelEndpoint", _RouteModelEndpoint)
     monkeypatch.setattr(model_routes, "SessionLocal", lambda: db)
-    monkeypatch.setattr(model_routes, "_auth_disabled", lambda: True)
     monkeypatch.setattr(model_routes, "build_chat_url", lambda base: f"{base}/chat/completions")
     monkeypatch.setattr(threading, "Thread", _NoopThread)
 
@@ -1891,7 +1893,6 @@ def test_background_refresh_deduplicates_same_base_url(monkeypatch):
 
     monkeypatch.setattr(model_routes, "ModelEndpoint", _RouteModelEndpoint)
     monkeypatch.setattr(model_routes, "SessionLocal", lambda: db)
-    monkeypatch.setattr(model_routes, "_auth_disabled", lambda: True)
     monkeypatch.setattr(model_routes, "build_chat_url", lambda base: f"{base}/chat/completions")
 
     calls = []
@@ -1925,7 +1926,6 @@ def test_background_refresh_failure_keeps_existing_cached_models(monkeypatch):
 
     monkeypatch.setattr(model_routes, "ModelEndpoint", _RouteModelEndpoint)
     monkeypatch.setattr(model_routes, "SessionLocal", lambda: db)
-    monkeypatch.setattr(model_routes, "_auth_disabled", lambda: True)
     monkeypatch.setattr(model_routes, "build_chat_url", lambda base: f"{base}/chat/completions")
     probe_done = threading.Event()
 
@@ -1948,11 +1948,14 @@ def test_api_models_auth_gate_fails_closed_on_unexpected_error(monkeypatch):
     silent pass-through that leaks the model list to an unauthenticated caller."""
     router = model_routes.setup_model_routes(model_discovery=None)
 
-    monkeypatch.setattr(model_routes, "_auth_disabled", lambda: (_ for _ in ()).throw(RuntimeError("boom")))
+    class _Unanswerable:
+        @property
+        def is_configured(self):
+            raise RuntimeError("boom")
 
     request = SimpleNamespace(
         state=SimpleNamespace(current_user=None),
-        app=SimpleNamespace(state=SimpleNamespace(auth_manager=SimpleNamespace(is_configured=True))),
+        app=SimpleNamespace(state=SimpleNamespace(auth_manager=_Unanswerable())),
     )
 
     with pytest.raises(HTTPException) as exc:

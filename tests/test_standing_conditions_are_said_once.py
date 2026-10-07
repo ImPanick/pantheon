@@ -97,7 +97,7 @@ _ACCESS_PROBE = textwrap.dedent(
 
 def _access(tmp_path, level):
     env = os.environ.copy()
-    env.update({"AUTH_ENABLED": "false", "CHROMADB_CONNECT_TIMEOUT": "0.01", "CHROMADB_HOST": "127.0.0.1",
+    env.update({"CHROMADB_CONNECT_TIMEOUT": "0.01", "CHROMADB_HOST": "127.0.0.1",
                 "CHROMADB_PORT": "9", "DATABASE_URL": f"sqlite:///{tmp_path / 'app.db'}",
                 "PANTHEON_DATA_DIR": str(tmp_path), "PANTHEON_DISABLE_MCP": "1",
                 "PYTHONPATH": str(_REPO), "PYTHON_DOTENV_DISABLED": "1"})

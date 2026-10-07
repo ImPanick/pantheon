@@ -38,9 +38,13 @@ def _endpoint(method, path):
 
 
 @pytest.fixture()
-def auth_off(monkeypatch):
-    """No auth configured — the single-user case, where everyone is admin."""
-    monkeypatch.setenv("AUTH_ENABLED", "false")
+def admin(monkeypatch, tmp_path):
+    """The single-user case: the install's one account, its admin, signed in.
+    (It was `AUTH_ENABLED=false`, where everyone was an admin, until
+    `D-2026-10-07-02` §2.)"""
+    from tests.helpers.signed_in import ADMIN, signed_in
+    signed_in(monkeypatch, tmp_path / "auth", members=())
+    return ADMIN
 
 
 def test_every_dispatchable_action_is_described():
@@ -70,22 +74,22 @@ def test_model_backed_is_stated_once():
 
 
 @pytest.mark.asyncio
-async def test_the_action_listing_offers_every_action_to_an_admin(auth_off):
+async def test_the_action_listing_offers_every_action_to_an_admin(admin):
     """The two that were invisible. This is the endpoint the task form's
     action picker is built from, so this is also the user-facing fix."""
     actions = _endpoint("GET", "/api/tasks/meta/actions")
 
-    names = {a["name"] for a in (await actions(_req(None)))["actions"]}
+    names = {a["name"] for a in (await actions(_req(admin)))["actions"]}
 
     assert names == set(BUILTIN_ACTIONS)
     assert {"run_local", "cookbook_serve"} <= names
 
 
 @pytest.mark.asyncio
-async def test_the_listing_carries_the_taxonomy_the_client_used_to_hold(auth_off):
+async def test_the_listing_carries_the_taxonomy_the_client_used_to_hold(admin):
     actions = _endpoint("GET", "/api/tasks/meta/actions")
 
-    out = await actions(_req(None))
+    out = await actions(_req(admin))
     by_name = {a["name"]: a for a in out["actions"]}
 
     for name, node in by_name.items():
@@ -137,22 +141,22 @@ async def test_the_listing_hides_admin_only_actions_from_a_non_admin(monkeypatch
 
 
 @pytest.mark.asyncio
-async def test_the_listing_keeps_the_shape_its_existing_caller_reads(auth_off):
+async def test_the_listing_keeps_the_shape_its_existing_caller_reads(admin):
     """`Law 1` — the merge adds keys to this response and takes none away.
     `static/js/tasks.js` builds the action picker from `name` + `description`."""
     actions = _endpoint("GET", "/api/tasks/meta/actions")
 
-    out = await actions(_req(None))
+    out = await actions(_req(admin))
     assert out["actions"], "the picker would be empty"
     for entry in out["actions"]:
         assert entry["description"] == BUILTIN_ACTION_INFO[entry["name"]]
 
 
 @pytest.mark.asyncio
-async def test_the_output_target_route_still_answers(auth_off):
+async def test_the_output_target_route_still_answers(admin):
     """Extracting the builder must not change what the third route returns."""
     targets = _endpoint("GET", "/api/tasks/meta/output-targets")
 
-    out = await targets(_req(None))
+    out = await targets(_req(admin))
     assert [t["value"] for t in out["targets"]][:3] == [
         "session", "notification", "email"]

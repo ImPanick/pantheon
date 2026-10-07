@@ -75,7 +75,6 @@ def env(tmp_path, monkeypatch):
     legacy.mkdir(parents=True)
     monkeypatch.setattr(font_routes, "UPLOADED_FONTS_DIR", str(uploads))
     monkeypatch.setattr(font_routes, "CUSTOM_FONTS_DIR", str(legacy))
-    monkeypatch.setattr(middleware, "auth_disabled", lambda: False)
     monkeypatch.setattr(S, "SETTINGS_FILE", str(tmp_path / "settings.json"))
     S._invalidate_caches()
     monkeypatch.delenv("PANTHEON_FONT_UPLOAD_MAX_BYTES", raising=False)
