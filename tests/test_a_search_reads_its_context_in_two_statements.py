@@ -42,8 +42,10 @@ _PROBE = textwrap.dedent(
         for i in range(60):
             role = ("user", "assistant", "system")[i % 3]
             words = "remember the reminders" if i % 7 == 3 else f"line {i}"
-            # Two neighbours share a timestamp in every chat, around a hit.
-            t = base + timedelta(minutes=s * 100 + (i if i != 25 else 24))
+            # Neighbours that share a hit's timestamp, one ordered after the
+            # hit (25 with hit 24) and one before it (30 with hit 31).
+            minute = {25: 24, 30: 31}.get(i, i)
+            t = base + timedelta(minutes=s * 100 + minute)
             db.add(M(id=f"{sid}-{i:02d}", session_id=sid, role=role, content=words, timestamp=t))
     db.commit()
 
@@ -80,6 +82,16 @@ _PROBE = textwrap.dedent(
     plain = search_session_messages("reminders", limit=20, owner="ann", context_messages=0, db=db)
     out["no_context_statements"] = len(statements)
     out["no_context_empty"] = all(not r.context_before and not r.context_after for r in plain)
+    # Where SQLite has no FTS5 the LIKE path answers alone, with the same context.
+    db.execute(cdb.text("DROP TABLE chat_messages_fts"))
+    db.commit()
+    statements.clear()
+    results = search_session_messages("reminders", limit=20, owner="ann", context_messages=2, db=db)
+    out["like_only_statements"] = len(statements)
+    out["like_only_hits"] = len(results)
+    out["like_only_mismatches"] = [r.message_id for r in results
+        if ([c["message_id"] for c in r.context_before], [c["message_id"] for c in r.context_after])
+        != oracle(db, r.message_id, 2)]
     print("RESULT " + json.dumps(out))
     """
 )
@@ -106,3 +118,7 @@ def test_a_search_reads_its_context_in_two_statements_and_reads_the_same_context
         assert out[f"chat_message_selects_{count}"] <= 6, out
     assert out["no_context_empty"] is True
     assert out["no_context_statements"] <= 5
+    assert out["like_only_hits"] == 20
+    assert out["like_only_mismatches"] == []
+    # FTS check + LIKE hits + context window + context rows.
+    assert out["like_only_statements"] <= 4, out
