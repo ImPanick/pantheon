@@ -248,20 +248,22 @@ proved it dead.
 
 ## Status
 
-**1194 tracked tasks, 889 done.** The tracker is [`.pantheon/ROADMAP.md`](.pantheon/ROADMAP.md) and
+**1246 tracked tasks, 889 done.** The tracker is [`.pantheon/ROADMAP.md`](.pantheon/ROADMAP.md) and
 it is the only place work is tracked — one list, one progress area, validated by a script that
 recounts every phase row against its own ticks. It exists because the summary line was once wrong
 by nineteen and carried forward unread from entry to entry, because each author copied the line
 above.
 
 **Read that number with the trend beside it.** Over the last ten waves, *done* went
-**71.3% → 74.5%** and *open* went **308 → 305**: 119 rows filed against 122 closed, a
-file-to-close ratio of **0.975** — the last two waves filed eleven rows and closed none: `P23`, the audits' fixes,
-and two rows that came in from `main`. The open count falls only when closing outruns filing, and in
+**71.6% → 71.3%** and *open* went **312 → 357**: 149 rows filed against 104 closed, a
+file-to-close ratio of **1.433** — the last three waves filed sixty-three rows and closed none: `P23`, the audits'
+fixes; two rows that came in from `main`; and fifty-two filed while `P23` was built — fifty that its eight lanes
+found and two the merged tree's tests turned up (`B1235`, `B1236`) — all before its own rows are driven on the
+merged tree and ticked. The open count falls only when closing outruns filing, and in
 most waves it does not — most rows are defects found by sweeps over code that was already here,
-not new work invented — so this reading is a good stretch, not a promise. What matters more is a different number: of the last 40 backlog rows filed (`B1145`–`B1184`), **none** is
+not new work invented — so this reading is a good stretch, not a promise. What matters more is a different number: of the last 40 backlog rows filed (`B1197`–`B1236`), **none** is
 on the ship line's open list — the short list of rows that stop a stranger relying on this
-repository now that it is public (measured 2026-10-02): `B1179`, found at wave G's merge, was met
+repository now that it is public (measured 2026-10-02, and read again on 2026-10-07 for the fifty rows `P23`'s lanes filed): `B1179`, found at wave G's merge, was met
 the same day, and every gate the list named is met. The series, the classification and
 what counts as blocking are in
 [`.pantheon/SHIP-LINE.md`](.pantheon/SHIP-LINE.md). Every figure in this paragraph is
