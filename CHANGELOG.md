@@ -144,6 +144,17 @@ operator should know at a glance.
   (`B541`). On a single-user install nothing changes — the first account is the
   admin. The three developer sandbox pages under `/static/` need a session and
   live at `/sandbox/<name>` (`B370`).
+- **The Forge no longer reaches Hugging Face or Ollama until an admin switches
+  them on** — *Hugging Face and Ollama* in Settings → Forge (`B1229`). Opening
+  the Forge used to refresh its catalog from huggingface.co and fetch
+  ollama.com's library by itself. An install that did that before starts off
+  too: the catalog it already fetched is still listed, and a model download
+  says where the switch is instead of reaching out.
+- **SQLite's write-ahead log falls back where it cannot work** (`B1231`). On a
+  data directory that cannot hold one — `./data` bind-mounted from the host by
+  Docker Desktop on Windows or macOS can be one — Pantheon puts the database
+  back on the rollback journal at start, keeps running, and says so once in the
+  log. `PANTHEON_SQLITE_JOURNAL_MODE=delete` in `.env` skips the check.
 
 #### Fixed
 - *Import from device* in the Documents panel opens a file picker again, and a
