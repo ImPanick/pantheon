@@ -9,6 +9,11 @@ import { makeWindowDraggable } from './windowDrag.js';
 import { snapModalToZone } from './tileManager.js';
 import { topPortalZ } from './toolWindowZOrder.js';
 import { setBackgroundWork } from './modalManager.js?v=20261003waveg';
+import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
+// C-NAV (`P23-01` builds it): `register(id, { getTab, setTab })`.
+import * as Modals from './modalManager.js?v=20261003waveg';
+// C-ERR: a refused response is read once, by the one reader.
+import { readRefusal } from './workbench/refusal.js';
 
 var escapeHtml = uiModule.esc;
 
@@ -26,6 +31,10 @@ let memoriesLoading = false;
 // one, is a false statement (`Law 10`).
 let memoriesKnown = false;
 let memoriesError = '';
+// `PERF-M-7` (P23-02): set by a chat switch, cleared by a load.
+let memoriesStale = false;
+// `SET-U-15` (P23-02): the server's sentence when it refused the list.
+let memoriesRefused = '';
 
 
 const MEMORY_CATEGORIES = ['fact', 'identity', 'preference', 'contact', 'project', 'goal', 'task'];
@@ -111,14 +120,40 @@ function _initMemorySortPicker() {
     .map(o => ({ value: o.value, label: o.textContent }));
 
   menu.innerHTML = items.map(it => `
-    <button type="button" role="option" class="memory-sort-item" data-value="${it.value}">
-      <span class="memory-sort-item-icon">${_memorySortIcon(it.value)}</span>
+    <button type="button" role="option" class="memory-sort-item" data-value="${it.value}" aria-selected="false">
+      <span class="memory-sort-item-icon" aria-hidden="true">${_memorySortIcon(it.value)}</span>
       <span class="memory-sort-item-label">${it.label}</span>
     </button>
   `).join('');
 
-  const close = () => { menu.hidden = true; btn.setAttribute('aria-expanded', 'false'); };
-  const open  = () => { menu.hidden = false; btn.setAttribute('aria-expanded', 'true'); };
+  // `BRAIN-U-7` (P23-02). Opened, walked and closed through `bindMenuDismiss`,
+  // the one menu wrapper (`P10-06`): a keyboard-opened picker takes the focus,
+  // the arrows walk it, Escape closes it through the stack and hands the focus
+  // back to the button. It used to open on Enter and leave the focus on the
+  // button, so ArrowDown did nothing and Enter re-chose *Newest*; and it kept
+  // two `document` listeners of its own, one of them an Escape handler in the
+  // capture phase (C-NAV: Escape layers go through `escMenuStack`).
+  let dismiss = null;
+  const close = () => { if (dismiss) dismiss(); };
+  const open = () => {
+    const fromKeys = (() => { try { return btn.matches(':focus-visible'); } catch (_) { return false; } })();
+    menu.hidden = false;
+    btn.setAttribute('aria-expanded', 'true');
+    const current = sel.value || 'newest';
+    let pick = null;
+    menu.querySelectorAll('.memory-sort-item').forEach((b) => {
+      const on = b.dataset.value === current;
+      b.setAttribute('aria-selected', on ? 'true' : 'false');
+      if (on) pick = b;
+    });
+    dismiss = bindMenuDismiss(menu, () => {
+      menu.hidden = true;
+      btn.setAttribute('aria-expanded', 'false');
+      dismiss = null;
+    }, (ev) => !picker.contains(ev.target));
+    // The chosen one, not the first: Enter straight away keeps the order.
+    if (fromKeys && pick) setTimeout(() => { try { pick.focus(); } catch (_) {} }, 0);
+  };
 
   btn.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -132,15 +167,6 @@ function _initMemorySortPicker() {
     _renderMemorySortPickerCurrent();
     close();
   });
-  document.addEventListener('click', (e) => {
-    if (!menu.hidden && !picker.contains(e.target)) close();
-  });
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && !menu.hidden) {
-      e.stopPropagation();
-      close();
-    }
-  }, { capture: true });
 
   _renderMemorySortPickerCurrent();
 }
@@ -233,19 +259,44 @@ function buildCategoryChips() {
   });
 }
 
-async function syncToggles() {
+// `PERF-M-8` (P23-02). The Brain's seven switches are read from ONE
+// `GET /api/prefs`, once per page, and set in one pass. They were seven serial
+// single-key reads (`/api/prefs/<key>`, each awaited before the next) on every
+// `loadMemories()` — at load and again 2.8 s after every chat switch (measured
+// on `32df791`: 1 + 7 requests each time), and each switch sat at its default
+// until its own answer came back (`PERF-U-5`). `fresh` re-reads, still in one
+// request: the Brain asks once when it opens, in case another tab moved one.
+let _brainPrefs = null;
+function _readBrainPrefs(fresh = false) {
+  if (!_brainPrefs || fresh) {
+    _brainPrefs = fetch(`${window.location.origin}/api/prefs`, { credentials: 'same-origin' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((p) => (p && typeof p === 'object' ? p : null))
+      .catch(() => null);
+  }
+  return _brainPrefs;
+}
+
+/** A saved switch is what the next redraw shows: the one read is kept current,
+ *  so a later `loadMemories()` cannot put a switch back where it was. */
+function _rememberPref(key, value) {
+  if (_brainPrefs) _brainPrefs = _brainPrefs.then((p) => ({ ...(p || {}), [key]: value }));
+}
+
+async function syncToggles({ fresh = false } = {}) {
+  const prefs = (await _readBrainPrefs(fresh)) || {};
   // The settings tab no longer hosts a separate "Memory in context" toggle —
   // the header toggle owns that pref directly now.
-  await syncPrefToggle('memory-enabled-header-toggle', 'memory_enabled', 'Memory enabled', 'Memory disabled', false);
+  await syncPrefToggle('memory-enabled-header-toggle', 'memory_enabled', 'Memories on', 'Memories off', false, prefs);
   // The Skills header toggle owns the `skills_enabled` pref (was never wired —
   // toggling it did nothing, so skills stayed on). Now it actually gates skill
   // injection (see chat_helpers.py: uprefs.skills_enabled).
-  await syncPrefToggle('skills-enabled-header-toggle', 'skills_enabled', 'Skills enabled', 'Skills disabled', false);
-  await syncPrefToggle('auto-memory-toggle', 'auto_memory', 'Auto-extract memories enabled', 'Auto-extract memories disabled', false);
-  await syncPrefToggle('auto-skills-toggle', 'auto_skills', 'Auto-extract skills enabled', 'Auto-extract skills disabled', false);
-  await syncPrefToggle('auto-approve-skills-toggle', 'auto_approve_skills', 'Auto-approve skills enabled', 'Auto-approve skills disabled', false);
-  await syncPrefSlider('skill-confidence-slider', 'skill_min_confidence', 'skill-confidence-label', 0.85);
-  await syncPrefNumber('skill-max-input', 'skill_max_injected', 3);
+  await syncPrefToggle('skills-enabled-header-toggle', 'skills_enabled', 'Skills on', 'Skills off', false, prefs);
+  await syncPrefToggle('auto-memory-toggle', 'auto_memory', 'Auto-extract memories on', 'Auto-extract memories off', false, prefs);
+  await syncPrefToggle('auto-skills-toggle', 'auto_skills', 'Auto-draft skills on', 'Auto-draft skills off', false, prefs);
+  await syncPrefToggle('auto-approve-skills-toggle', 'auto_approve_skills', 'Auto-publish on', 'Auto-publish off', false, prefs);
+  await syncPrefSlider('skill-confidence-slider', 'skill_min_confidence', 'skill-confidence-label', 0.85, prefs);
+  await syncPrefNumber('skill-max-input', 'skill_max_injected', 3, prefs);
 
   // `P8-05`. Both controls feed one sentence apiece, and both have to redraw
   // when either moves — the whole defect is that the toggle changes what the
@@ -262,26 +313,35 @@ async function syncToggles() {
   }
   refreshSkillGateHints();
 
-  // Reflect the header toggle into the sidebar dim + modal body opacity.
+  // Reflect the header toggle into the sidebar dim + the list's opacity.
+  // `BRAIN-U-11` (P23-02): the list only. It dimmed the whole `.memory-modal-
+  // body` — the tab strip, RAG, Add and Settings with it, none of which the
+  // switch touches — while the list itself stayed at full strength (measured).
   const headerToggle = document.getElementById('memory-enabled-header-toggle');
   if (headerToggle) {
-    const modalBody = document.querySelector('.memory-modal-body');
-    if (modalBody) modalBody.style.opacity = headerToggle.checked ? '' : '0.3';
+    const dimList = () => {
+      const list = document.getElementById('memory-list');
+      if (list) list.style.opacity = headerToggle.checked ? '' : '0.4';
+    };
+    dimList();
     reflectMemoryToggleInSidebar(headerToggle.checked);
     if (!headerToggle.dataset.boundUx) {
       headerToggle.dataset.boundUx = '1';
       headerToggle.addEventListener('change', () => {
-        if (modalBody) modalBody.style.opacity = headerToggle.checked ? '' : '0.3';
+        dimList();
         reflectMemoryToggleInSidebar(headerToggle.checked);
       });
     }
   }
 
-  // Same dim treatment for the Skills toggle — dims the skills panel when off.
+  // Same dim treatment for the Skills toggle — the list, not its toolbar
+  // (`BRAIN-U-11`).
   const skillsToggle = document.getElementById('skills-enabled-header-toggle');
   if (skillsToggle) {
-    const skillsPanel = document.querySelector('#skills-modal [data-skills-view-panel="browse"]');
-    const applyDim = () => { if (skillsPanel) skillsPanel.style.opacity = skillsToggle.checked ? '' : '0.3'; };
+    const applyDim = () => {
+      const list = document.getElementById('skills-list');
+      if (list) list.style.opacity = skillsToggle.checked ? '' : '0.4';
+    };
     applyDim();
     if (!skillsToggle.dataset.boundUx) {
       skillsToggle.dataset.boundUx = '1';
@@ -325,7 +385,16 @@ function syncToggleDim(toggle) {
 // its meaning and the geometry stops lying. `slider.min` is the sentinel stop
 // (45, one step below the lowest real percentage) and `min + step` is the
 // lowest percentage the control can express — no setting was taken away.
-export async function syncPrefSlider(elementId, prefKey, labelId, defaultVal) {
+/** `PERF-M-8`. A pref's value: from the prefs already read when the caller has
+ *  them (`syncToggles`), else one single-key read. `{ value }` either way. */
+async function _prefValue(prefKey, prefs) {
+  if (prefs && typeof prefs === 'object') return { value: prefs[prefKey] };
+  const res = await fetch(`${window.location.origin}/api/prefs/${prefKey}`);
+  if (!res.ok) return null;
+  return res.json();
+}
+
+export async function syncPrefSlider(elementId, prefKey, labelId, defaultVal, prefs = null) {
   const slider = document.getElementById(elementId);
   if (!slider) return;
   const label = labelId ? document.getElementById(labelId) : null;
@@ -334,9 +403,8 @@ export async function syncPrefSlider(elementId, prefKey, labelId, defaultVal) {
   const floorPos = allPos + (Number(slider.step) || 5);
   const fmt = (pos) => (Number(pos) <= allPos ? 'All' : `≥ ${pos}%`);
   try {
-    const res = await fetch(`${window.location.origin}/api/prefs/${prefKey}`);
-    if (res.ok) {
-      const data = await res.json();
+    const data = await _prefValue(prefKey, prefs);
+    if (data) {
       let pref = (data.value === undefined || data.value === null) ? defaultVal : Number(data.value);
       // pref 0 (or falsy) = "All" → the sentinel stop at the loose end; else
       // percent, clamped to a position the control can actually express so a
@@ -364,6 +432,7 @@ export async function syncPrefSlider(elementId, prefKey, labelId, defaultVal) {
           body: JSON.stringify({ value: pref })
         });
         if (!res.ok) { showError('Failed to save preference'); return; }
+        _rememberPref(prefKey, pref);
         showToast(pref === 0
           ? 'Skill confidence: no minimum'
           : `Skill confidence ≥ ${Math.round(pref * 100)}%`);
@@ -393,17 +462,20 @@ export async function syncPrefSlider(elementId, prefKey, labelId, defaultVal) {
 export function skillGateHints({ autoApprove = true, minConfidence = 0.85 } = {}) {
   const value = Number(minConfidence) || 0;
   const pct = Math.round(value * 100);
+  // `D-9` (P23-02, Doc 2 § 5): one line each, the words of `BRAIN-U-17`
+  // (draft / published, auto-publish). The coupling `P8-05` made visible is
+  // kept where it bites — auto-publish off — and is silent when it does not.
   if (!autoApprove) {
     return {
-      confidence: 'Not in use for injection while auto-approve is off — it still decides what Audit all publishes.',
-      coupling: 'Auto-approve is off, so only published skills are injected. An uncatalogued skill stays out of every request until you publish it.',
+      confidence: 'Not used for injection while auto-publish is off — it still decides what Audit publishes.',
+      coupling: 'Auto-publish is off, so only published skills are used. A draft waits until you publish it.',
     };
   }
   return {
     confidence: value <= 0
-      ? 'No minimum: every uncatalogued skill is injected whenever your message matches it, however little the audit trusted it. This is the loosest setting on this control, not the strictest.'
-      : `An uncatalogued skill is injected only at ${pct}% confidence or more; a published one always is. A skill you write here starts at 80%, so at ${pct}% it waits until an audit raises it or you publish it. Audit all publishes at this bar too.`,
-    coupling: 'Auto-approve is on, so uncatalogued skills can be injected — the minimum above is what holds them back.',
+      ? 'No minimum: every draft is used when a message matches it — the loosest setting.'
+      : `Drafts are used from ${pct}%; published skills always. A new skill starts at 80%.`,
+    coupling: '',
   };
 }
 
@@ -425,7 +497,7 @@ export function refreshSkillGateHints() {
 }
 
 /** Load/save an integer-valued pref backed by a <input type="number">. */
-async function syncPrefNumber(elementId, prefKey, defaultVal) {
+async function syncPrefNumber(elementId, prefKey, defaultVal, prefs = null) {
   const input = document.getElementById(elementId);
   if (!input) return;
   const clamp = (raw) => {
@@ -437,9 +509,8 @@ async function syncPrefNumber(elementId, prefKey, defaultVal) {
     return v;
   };
   try {
-    const res = await fetch(`${window.location.origin}/api/prefs/${prefKey}`);
-    if (res.ok) {
-      const data = await res.json();
+    const data = await _prefValue(prefKey, prefs);
+    if (data) {
       input.value = String((data.value === undefined || data.value === null) ? defaultVal : clamp(data.value));
     }
   } catch (e) {
@@ -457,6 +528,7 @@ async function syncPrefNumber(elementId, prefKey, defaultVal) {
           body: JSON.stringify({ value: v })
         });
         if (!res.ok) { showError('Failed to save preference'); return; }
+        _rememberPref(prefKey, v);
         showToast(v === 0 ? 'No skills injected' : `Max injected skills: ${v}`);
       } catch (e) {
         console.error(`Failed to save ${prefKey} pref:`, e);
@@ -466,13 +538,12 @@ async function syncPrefNumber(elementId, prefKey, defaultVal) {
   }
 }
 
-async function syncPrefToggle(elementId, prefKey, onMsg, offMsg, dimBelow = true) {
+async function syncPrefToggle(elementId, prefKey, onMsg, offMsg, dimBelow = true, prefs = null) {
   const toggle = document.getElementById(elementId);
   if (!toggle) return;
   try {
-    const res = await fetch(`${window.location.origin}/api/prefs/${prefKey}`);
-    if (res.ok) {
-      const data = await res.json();
+    const data = await _prefValue(prefKey, prefs);
+    if (data) {
       toggle.checked = data.value !== false;
     }
   } catch (e) {
@@ -496,6 +567,7 @@ async function syncPrefToggle(elementId, prefKey, onMsg, offMsg, dimBelow = true
           showError('Failed to save preference');
           return;
         }
+        _rememberPref(prefKey, toggle.checked);
         showToast(toggle.checked ? onMsg : offMsg);
       } catch (e) {
         console.error(`Failed to save ${prefKey} pref:`, e);
@@ -543,7 +615,12 @@ export async function loadMemories() {
   let data = null;
   try {
     const response = await fetch(`${window.location.origin}/api/memory`);
-    if (!response.ok) {
+    if (response.status === 403) {
+      // `SET-U-15` (P23-02): a person not allowed the Brain reads the server's
+      // own sentence, not "No memories yet" over a refusal.
+      memoriesRefused = (await readRefusal(response, 'Your account is not allowed to manage memory.')).sentence;
+      memoriesError = memoriesRefused;
+    } else if (!response.ok) {
       console.error('Memory fetch failed with status:', response.status);
       memoriesError = `the server answered ${response.status}`;
     } else {
@@ -562,7 +639,9 @@ export async function loadMemories() {
   if (data !== null) {
     memories = _memoriesFrom(data);
     memoriesKnown = true;
+    memoriesStale = false;
     memoriesError = '';
+    memoriesRefused = '';
   } else {
     memories = [];
     memoriesKnown = false;
@@ -587,9 +666,15 @@ export async function loadMemories() {
  * and redrawing it here would throw away an edit in progress.
  */
 export function loadMemoriesIfUnknown() {
-  if (memoriesKnown || memoriesLoading) return null;
+  if (memoriesLoading) return null;
+  if (memoriesKnown && !memoriesStale) return null;
   return loadMemories();
 }
+
+/** `PERF-M-7` (P23-02). A chat switch may have added memories; a closed Brain
+ *  is marked stale and re-reads when it next opens, instead of re-reading and
+ *  redrawing on every switch whether anyone was looking or not. */
+export function markMemoriesStale() { memoriesStale = true; }
 
 // ---- Bulk select mode ----
 
@@ -723,7 +808,7 @@ export function describeMemoryTidy(data) {
  */
 export async function tidyMemories() {
   const ok = await uiModule.styledConfirm(
-    'Tidy sends your memories to your model and rewrites the list it sends back.',
+    'Your model merges duplicates and rewrites the survivors.',
     {
       title: 'Tidy memories',
       confirmText: 'Tidy memories',
@@ -736,10 +821,8 @@ export async function tidyMemories() {
           { label: 'Stops the merged ones surfacing', note: 'mostly recoverable' },
           { label: 'Records conflicts it could not settle', note: 'nothing deleted' },
         ],
-        footnote: 'Most of what disappears is superseded rather than destroyed \u2014 it '
-                + 'stays on the record pointing at the entry that replaced it, and the '
-                + 'count afterwards says how many. There is no preview of the rewrite '
-                + 'before it happens.',
+        // `D-14` (P23-02, Doc 2 § 5): the four rows stay; two paragraphs go.
+        footnote: 'Merged entries are kept, not deleted. No preview.',
       },
     },
   );
@@ -964,10 +1047,9 @@ async function _runFireQuery(query) {
       const n = _fireResult.order.length;
       // The query type is the single most surprising thing a person learns
       // here, so it is stated plainly rather than hidden in a tooltip.
-      note.textContent = `${n} memor${n === 1 ? 'y' : 'ies'} would be retrieved. `
-        + (_fireResult.queryType
-            ? `The retriever reads this as a ${_fireResult.queryType} question.`
-            : 'The retriever does not recognise this as any particular kind of question.');
+      // `D-12` (P23-02): one line; the question type only when there is one.
+      note.textContent = `${n} memor${n === 1 ? 'y' : 'ies'} would be used`
+        + (_fireResult.queryType ? ` (read as a ${_fireResult.queryType} question).` : '.');
       note.hidden = false;
     }
   } catch (e) {
@@ -1066,24 +1148,23 @@ export function renderMemoryList() {
       // `B1070`. A failed load is not an empty store either.
       const row = document.createElement('div');
       row.className = 'memory-empty';
-      row.textContent = `Could not load memories — ${memoriesError}. Reopen the Brain to try again.`;
+      row.textContent = memoriesRefused
+        || `Could not load memories — ${memoriesError}. Reopen the Brain to try again.`;
       memoryList.replaceChildren(row);
       return;
     }
     const searchTerm = document.getElementById('memory-search')?.value?.trim() || '';
-    const _smiley = '<span style="vertical-align:-3px;margin-left:6px;">' + uiModule.emptyStateIcon('smiley') + '</span>';
     if (searchTerm || activeCategory !== 'all') {
       memoryList.innerHTML = `<div class="memory-empty">No matches.</div>`;
     } else {
-      memoryList.innerHTML = `<div class="memory-empty" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;">
-        <span>No memories yet${_smiley}</span>
-        <span style="opacity:0.7;font-size:11px;display:block;">
-          <a href="#" data-mem-goto-add style="color:var(--accent,var(--red));text-decoration:underline;">Import in Add tab</a>
-        </span>
+      // Doc 2 § 5, rule 8: one line, and the action beside it.
+      memoryList.innerHTML = `<div class="memory-empty" style="display:flex;align-items:center;justify-content:center;gap:8px;">
+        <span>No memories yet.</span>
+        <button type="button" class="memory-toolbar-btn" data-mem-goto-add>Add one</button>
       </div>`;
       memoryList.querySelector('[data-mem-goto-add]')?.addEventListener('click', (e) => {
         e.preventDefault();
-        document.querySelector('.memory-tab[data-memory-tab="add"]')?.click();
+        showBrainTab('add', { focus: true });
       });
     }
     return;
@@ -1199,134 +1280,27 @@ export function renderMemoryList() {
     // Menu button (hidden in select mode)
     if (!selectMode) {
       const menuBtn = document.createElement('button');
+      menuBtn.type = 'button';
       menuBtn.className = 'memory-menu-btn';
       menuBtn.innerHTML = '\u22EE';
       menuBtn.title = 'Actions';
+      menuBtn.setAttribute('aria-label', 'Actions');
+      menuBtn.setAttribute('aria-haspopup', 'menu');
+      menuBtn.setAttribute('aria-expanded', 'false');
 
-      const dropdown = document.createElement('div');
-      dropdown.className = 'memory-item-dropdown';
-
-      // Pin / Unpin — bookmark icon matches the chat-session "Favorite" SVG.
-      // Filled when pinned, outlined when not.
-      const _bookmarkPath = '<path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>';
-      const _pinSvg = memory.pinned
-        ? `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${_bookmarkPath}</svg>`
-        : `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${_bookmarkPath}</svg>`;
-      const pinItem = document.createElement('div');
-      pinItem.className = 'dropdown-item-compact';
-      pinItem.innerHTML = `<span class="dropdown-icon">${_pinSvg}</span><span>${memory.pinned ? 'Unpin' : 'Pin'}</span>`;
-      pinItem.addEventListener('click', () => { dropdown.style.display = 'none'; togglePin(memory.id, !memory.pinned); });
-
-      const editItem = document.createElement('div');
-      editItem.className = 'dropdown-item-compact';
-      editItem.textContent = '✎ Edit';
-      editItem.addEventListener('click', () => { dropdown.style.display = 'none'; startInlineEdit(item, memory); });
-
-      const deleteItem = document.createElement('div');
-      deleteItem.className = 'dropdown-item-compact memory-dropdown-delete';
-      deleteItem.textContent = '✕ Delete';
-      deleteItem.addEventListener('click', () => { dropdown.style.display = 'none'; deleteMemory(memory.id); });
-
-      // Select — enters bulk-select mode and pre-selects this memory. Same
-      // pattern as the email/documents/skills Select item.
-      const selectItem = document.createElement('div');
-      selectItem.className = 'dropdown-item-compact';
-      selectItem.innerHTML = '<span class="dropdown-icon"><span style="font-size:16px;line-height:1;">●</span></span><span>Select</span>';
-      selectItem.addEventListener('click', (e) => {
-        e.stopPropagation();
-        if (dropdown.parentNode) dropdown.remove();
-        if (!selectMode) enterSelectMode();
-        selectedIds.add(memory.id);
-        updateBulkCount();
-        renderMemoryList();
-      });
-
-      // Mobile-only Cancel — mirrors the email/documents popup pattern. CSS
-      // hides `.dropdown-cancel-mobile` on desktop where outside-click already
-      // dismisses cleanly.
-      const cancelItem = document.createElement('div');
-      cancelItem.className = 'dropdown-item-compact dropdown-cancel-mobile';
-      cancelItem.textContent = '✕ Cancel';
-      cancelItem.addEventListener('click', (e) => { e.stopPropagation(); if (dropdown.parentNode) dropdown.remove(); });
-
-      dropdown.appendChild(pinItem);
-      dropdown.appendChild(selectItem);
-      dropdown.appendChild(editItem);
-      dropdown.appendChild(deleteItem);
-      dropdown.appendChild(cancelItem);
-
+      // `PERF-M-3` / `BRAIN-U-6` (P23-02). The menu is built when it opens and
+      // dismissed through `bindMenuDismiss`, as the skill kebab is. It used to
+      // be built for every memory on every render, each copy adding a
+      // `document` click listener that nothing removed — and the list is
+      // redrawn on every Brain open, so 67 memories × 6 opens left +402 click
+      // listeners on `document` (CDP `getEventListeners`, measured on
+      // `32df791`), each holding a detached list alive, and every click
+      // anywhere ran all of them. Its items were `<div>`s: Tab and the arrows
+      // never reached them.
       menuBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        // Close any other open dropdowns
-        document.querySelectorAll('.memory-item-dropdown').forEach(d => d.remove());
-        const rect = menuBtn.getBoundingClientRect();
-        dropdown.style.position = 'fixed';
-        dropdown.style.top = rect.bottom + 2 + 'px';
-        dropdown.style.right = (window.innerWidth - rect.right) + 'px';
-        dropdown.style.left = 'auto';
-        // Portaled to <body>, so it must outrank the Brain modal it belongs to.
-        // Tool modals get a monotonically increasing z-index from modalManager's
-        // bring-to-front counter, which climbs unbounded over a long session —
-        // once it passed the old hardcoded 10001 the menu rendered behind the
-        // panel (#4720). topPortalZ() derives the value from the live tool-window
-        // stack so the menu always sits just above, however high it has climbed.
-        dropdown.style.zIndex = String(topPortalZ());
-        dropdown.style.display = 'block';
-        document.body.appendChild(dropdown);
-        // Keep on-screen (mobile): flip above the button if it overflows the
-        // bottom, clamp the left edge, cap height as a last resort.
-        const dr = dropdown.getBoundingClientRect();
-        if (dr.bottom > window.innerHeight - 6) {
-          dropdown.style.top = Math.max(6, rect.top - dr.height - 2) + 'px';
-        }
-        if (dr.left < 6) {
-          dropdown.style.right = Math.max(6, window.innerWidth - 6 - dr.width) + 'px';
-        }
-        const dr2 = dropdown.getBoundingClientRect();
-        if (dr2.bottom > window.innerHeight - 6) {
-          dropdown.style.maxHeight = Math.max(80, window.innerHeight - 12 - dr2.top) + 'px';
-          dropdown.style.overflowY = 'auto';
-        }
-
-        // Swipe-down-to-dismiss — mirrors the documents library popup gesture.
-        // Drag the popup down past ~60px and release to close; release earlier
-        // and it snaps back. Vertical-only; horizontal flicks fall through.
-        let _sw = null;
-        let _swDy = 0;
-        const _onTS = (ev) => {
-          if (ev.touches.length !== 1) return;
-          _sw = { x: ev.touches[0].clientX, y: ev.touches[0].clientY };
-          _swDy = 0;
-          dropdown.style.transition = '';
-        };
-        const _onTM = (ev) => {
-          if (!_sw || ev.touches.length !== 1) return;
-          const dx = ev.touches[0].clientX - _sw.x;
-          const dy = ev.touches[0].clientY - _sw.y;
-          if (Math.abs(dy) < Math.abs(dx)) { _sw = null; return; }
-          if (dy > 0) {
-            _swDy = dy;
-            dropdown.style.transform = 'translateY(' + dy + 'px)';
-            dropdown.style.opacity = String(Math.max(0.3, 1 - dy / 240));
-          }
-        };
-        const _onTE = () => {
-          if (!_sw) return;
-          _sw = null;
-          if (_swDy > 60) {
-            dropdown.style.transition = 'transform 0.15s ease, opacity 0.15s ease';
-            dropdown.style.transform = 'translateY(120px)';
-            dropdown.style.opacity = '0';
-            setTimeout(() => { if (dropdown.parentNode) dropdown.remove(); }, 160);
-          } else {
-            dropdown.style.transition = 'transform 0.18s ease, opacity 0.18s ease';
-            dropdown.style.transform = '';
-            dropdown.style.opacity = '';
-          }
-        };
-        dropdown.addEventListener('touchstart', _onTS, { passive: true });
-        dropdown.addEventListener('touchmove', _onTM, { passive: true });
-        dropdown.addEventListener('touchend', _onTE);
+        if (menuBtn._closeMenu) { menuBtn._closeMenu(); return; }
+        _openMemoryMenu(menuBtn, item, memory);
       });
 
       item.appendChild(menuBtn);
@@ -1357,13 +1331,128 @@ export function renderMemoryList() {
         item.addEventListener('pointercancel', _lpCancel);
       }
 
-      // Close dropdown on outside click
-      document.addEventListener('click', () => { if (dropdown.parentNode) dropdown.remove(); }, { once: false });
     }
 
     memoryList.appendChild(item);
   });
 
+}
+
+/** One memory's ⋮ menu, built on open and gone on close (`PERF-M-3`). */
+function _openMemoryMenu(menuBtn, item, memory) {
+  // One menu at a time, each torn down through its own dismiss so its Escape
+  // entry and its outside-click listener go with it.
+  document.querySelectorAll('.memory-item-dropdown').forEach(dismissOrRemove);
+  const dropdown = document.createElement('div');
+  dropdown.className = 'memory-item-dropdown';
+  dropdown.setAttribute('role', 'menu');
+  const close = bindMenuDismiss(dropdown, () => {
+    dropdown.remove();
+    menuBtn._closeMenu = null;
+    menuBtn.setAttribute('aria-expanded', 'false');
+  }, (ev) => !dropdown.contains(ev.target) && !menuBtn.contains(ev.target));
+  menuBtn._closeMenu = close;
+  menuBtn.setAttribute('aria-expanded', 'true');
+
+  const addItem = (cls, html, onPick) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.setAttribute('role', 'menuitem');
+    b.className = 'dropdown-item-compact' + (cls ? ' ' + cls : '');
+    b.innerHTML = html;
+    b.addEventListener('click', (e) => { e.stopPropagation(); close(); if (onPick) onPick(); });
+    dropdown.appendChild(b);
+    return b;
+  };
+  // Pin / Unpin — bookmark icon matches the chat-session "Favorite" SVG.
+  // Filled when pinned, outlined when not.
+  const _bookmarkPath = '<path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>';
+  const _pinSvg = memory.pinned
+    ? `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${_bookmarkPath}</svg>`
+    : `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${_bookmarkPath}</svg>`;
+  addItem('', `<span class="dropdown-icon" aria-hidden="true">${_pinSvg}</span><span>${memory.pinned ? 'Unpin' : 'Pin'}</span>`,
+    () => togglePin(memory.id, !memory.pinned));
+  // Select — enters bulk-select mode and pre-selects this memory. Same
+  // pattern as the email/documents/skills Select item.
+  addItem('', '<span class="dropdown-icon" aria-hidden="true"><span style="font-size:16px;line-height:1;">●</span></span><span>Select</span>', () => {
+    if (!selectMode) enterSelectMode();
+    selectedIds.add(memory.id);
+    updateBulkCount();
+    renderMemoryList();
+  });
+  addItem('', '<span aria-hidden="true">✎</span> Edit', () => startInlineEdit(item, memory));
+  addItem('memory-dropdown-delete', '<span aria-hidden="true">✕</span> Delete', () => deleteMemory(memory.id));
+  // Mobile-only Cancel — mirrors the email/documents popup pattern. CSS
+  // hides `.dropdown-cancel-mobile` on desktop where outside-click already
+  // dismisses cleanly.
+  addItem('dropdown-cancel-mobile', '<span aria-hidden="true">✕</span> Cancel', null);
+
+  const rect = menuBtn.getBoundingClientRect();
+  dropdown.style.position = 'fixed';
+  dropdown.style.top = rect.bottom + 2 + 'px';
+  dropdown.style.right = (window.innerWidth - rect.right) + 'px';
+  dropdown.style.left = 'auto';
+  // Portaled to <body>, so it must outrank the Brain modal it belongs to.
+  // Tool modals get a monotonically increasing z-index from modalManager's
+  // bring-to-front counter, which climbs unbounded over a long session —
+  // once it passed the old hardcoded 10001 the menu rendered behind the
+  // panel (#4720). topPortalZ() derives the value from the live tool-window
+  // stack so the menu always sits just above, however high it has climbed.
+  dropdown.style.zIndex = String(topPortalZ());
+  dropdown.style.display = 'block';
+  document.body.appendChild(dropdown);
+  // Keep on-screen (mobile): flip above the button if it overflows the
+  // bottom, clamp the left edge, cap height as a last resort.
+  const dr = dropdown.getBoundingClientRect();
+  if (dr.bottom > window.innerHeight - 6) {
+    dropdown.style.top = Math.max(6, rect.top - dr.height - 2) + 'px';
+  }
+  if (dr.left < 6) {
+    dropdown.style.right = Math.max(6, window.innerWidth - 6 - dr.width) + 'px';
+  }
+  const dr2 = dropdown.getBoundingClientRect();
+  if (dr2.bottom > window.innerHeight - 6) {
+    dropdown.style.maxHeight = Math.max(80, window.innerHeight - 12 - dr2.top) + 'px';
+    dropdown.style.overflowY = 'auto';
+  }
+
+  // Swipe-down-to-dismiss — mirrors the documents library popup gesture.
+  // Drag the popup down past ~60px and release to close; release earlier
+  // and it snaps back. Vertical-only; horizontal flicks fall through. The
+  // three listeners are on the menu, so they go with it.
+  let _sw = null;
+  let _swDy = 0;
+  dropdown.addEventListener('touchstart', (ev) => {
+    if (ev.touches.length !== 1) return;
+    _sw = { x: ev.touches[0].clientX, y: ev.touches[0].clientY };
+    _swDy = 0;
+    dropdown.style.transition = '';
+  }, { passive: true });
+  dropdown.addEventListener('touchmove', (ev) => {
+    if (!_sw || ev.touches.length !== 1) return;
+    const dx = ev.touches[0].clientX - _sw.x;
+    const dy = ev.touches[0].clientY - _sw.y;
+    if (Math.abs(dy) < Math.abs(dx)) { _sw = null; return; }
+    if (dy > 0) {
+      _swDy = dy;
+      dropdown.style.transform = 'translateY(' + dy + 'px)';
+      dropdown.style.opacity = String(Math.max(0.3, 1 - dy / 240));
+    }
+  }, { passive: true });
+  dropdown.addEventListener('touchend', () => {
+    if (!_sw) return;
+    _sw = null;
+    if (_swDy > 60) {
+      dropdown.style.transition = 'transform 0.15s ease, opacity 0.15s ease';
+      dropdown.style.transform = 'translateY(120px)';
+      dropdown.style.opacity = '0';
+      setTimeout(close, 160);
+    } else {
+      dropdown.style.transition = 'transform 0.18s ease, opacity 0.18s ease';
+      dropdown.style.transform = '';
+      dropdown.style.opacity = '';
+    }
+  });
 }
 
 // ---- Inline edit with category picker ----
@@ -1399,12 +1488,12 @@ function startInlineEdit(item, memory) {
 
   const saveBtn = document.createElement('button');
   saveBtn.className = 'memory-item-btn save';
-  saveBtn.textContent = 'save';
+  saveBtn.textContent = 'Save';
   saveBtn.addEventListener('click', () => saveInlineEdit(memory.id, input.value, catSelect.value));
 
   const cancelBtn = document.createElement('button');
   cancelBtn.className = 'memory-item-btn';
-  cancelBtn.textContent = 'cancel';
+  cancelBtn.textContent = 'Cancel';
   cancelBtn.addEventListener('click', () => renderMemoryList());
 
   actions.appendChild(saveBtn);
@@ -1465,7 +1554,7 @@ export function updateMemoryCount() {
   if (!h2Count && !tabCount) return;
   if (memoriesLoading || !memoriesKnown) {
     // `B1070`: "0 memories" before the store has answered is a guess.
-    if (h2Count) h2Count.textContent = memoriesError ? '' : 'loading...';
+    if (h2Count) h2Count.textContent = '';
     if (tabCount) tabCount.textContent = memoriesError ? '' : '...';
     return;
   }
@@ -1482,11 +1571,12 @@ export function updateMemoryCount() {
     visible = visible.filter(m => (m.category || 'fact') === activeCategory);
   }
 
-  const num = visible.length === scopeTotal ? `${scopeTotal}` : `${visible.length}/${scopeTotal}`;
-  // Header (next to the "Memories" title) reads "N memories", like the
-  // Documents header. The bare number still feeds any tab badge if present.
-  if (h2Count) h2Count.textContent = `${num} ${scopeTotal === 1 && visible.length === scopeTotal ? 'memory' : 'memories'}`;
-  if (tabCount) tabCount.textContent = num;
+  // `COPY-U-15` (P23-02). A count is said once: the tab carries it, and the
+  // header under it is bare — "Memories 7 memories" under a tab reading
+  // "Memories 7" was the same number twice. The header speaks only when a
+  // search or a category hides some, and then says how many of how many.
+  if (h2Count) h2Count.textContent = visible.length === scopeTotal ? '' : `${visible.length} of ${scopeTotal}`;
+  if (tabCount) tabCount.textContent = String(scopeTotal);
 }
 
 export async function addNewMemory() {
@@ -1516,13 +1606,11 @@ export async function addNewMemory() {
       await loadMemories();
       showToast('Memory added');
     } else {
-      const errorData = await response.json();
-      console.error('Server error details:', errorData);
-      throw new Error(errorData.detail || 'Failed to add memory');
+      throw new Error((await readRefusal(response, 'Could not add the memory.')).sentence);
     }
   } catch (error) {
     console.error('Error adding memory:', error);
-    showError('Failed to add memory');
+    showError((error && error.message) || 'Could not add the memory.');
   }
 }
 
@@ -1546,7 +1634,9 @@ async function togglePin(id, pinned) {
       const mem = memories.find(m => m.id === id);
       if (mem) mem.pinned = pinned;
       renderMemoryList();
-      showToast(pinned ? 'Pinned — always in context' : 'Unpinned — RAG only');
+      // `D-13` (P23-02): "RAG" was the wrong system — an unpinned memory is
+      // used when it is relevant, by the memory retriever.
+      showToast(pinned ? 'Pinned: always included' : 'Unpinned: included when relevant');
     }
   } catch (e) {
     console.error('Failed to toggle pin:', e);
@@ -1603,14 +1693,14 @@ export async function extractMemory(sessionId) {
   if (memList) memList.classList.add('hidden');
 
   if (suggestions.length === 0) {
-    body.innerHTML = '<div class="memory-empty">No useful information detected.</div>';
+    body.innerHTML = '<div class="memory-empty">Nothing to keep from this chat.</div>';
   } else {
     const header = document.createElement('div');
     header.className = 'memory-suggestions-header';
     header.innerHTML = '<span>Suggested memories</span>';
     const backBtn = document.createElement('button');
     backBtn.className = 'memory-item-btn';
-    backBtn.textContent = 'back';
+    backBtn.textContent = 'Back';
     backBtn.addEventListener('click', () => {
       body.classList.add('hidden');
       body.innerHTML = '';
@@ -1627,7 +1717,7 @@ export async function extractMemory(sessionId) {
       txt.textContent = s;
       const btn = document.createElement('button');
       btn.className = 'memory-item-btn save';
-      btn.textContent = 'save';
+      btn.textContent = 'Save';
       btn.addEventListener('click', async () => {
         await fetch(`${window.location.origin}/api/memory/add`, {
           method: 'POST',
@@ -1635,7 +1725,7 @@ export async function extractMemory(sessionId) {
           body: JSON.stringify({ text: s })
         });
         btn.disabled = true;
-        btn.textContent = 'saved';
+        btn.textContent = 'Saved';
         showToast('Saved to memory');
       });
       div.appendChild(txt);
@@ -1722,7 +1812,16 @@ async function handleImportFile(file) {
     if (memList) memList.classList.add('hidden');
 
     if (suggestions.length === 0) {
-      body.innerHTML = '<div class="memory-empty">No useful information found in file.</div>';
+      // `BRAIN-M-14` (P23-02): the server says which empty answer this is.
+      const why = {
+        empty: 'Nothing readable in that file.',
+        model_unparsed: 'The model gave no suggestions.',
+      }[data.reason] || 'Nothing to keep from that file.';
+      body.innerHTML = '';
+      const row = document.createElement('div');
+      row.className = 'memory-empty';
+      row.textContent = data.message && data.provider ? String(data.message) : why;
+      body.appendChild(row);
     } else {
       const reviewItems = suggestions
         .map((s) => ({
@@ -1743,7 +1842,7 @@ async function handleImportFile(file) {
       headerActions.className = 'memory-suggestions-actions';
       const backBtn = document.createElement('button');
       backBtn.className = 'memory-item-btn';
-      backBtn.textContent = 'back';
+      backBtn.textContent = 'Back';
       backBtn.addEventListener('click', () => {
         body.classList.add('hidden');
         body.innerHTML = '';
@@ -1751,7 +1850,7 @@ async function handleImportFile(file) {
       });
       const saveAllBtn = document.createElement('button');
       saveAllBtn.className = 'memory-item-btn save';
-      saveAllBtn.textContent = 'save all';
+      saveAllBtn.textContent = 'Save all';
       saveAllBtn.addEventListener('click', async () => {
         let saved = 0;
         for (const s of reviewItems) {
@@ -1797,7 +1896,7 @@ async function handleImportFile(file) {
         actionWrap.className = 'memory-suggestion-actions';
         const btn = document.createElement('button');
         btn.className = 'memory-item-btn save';
-        btn.textContent = 'save';
+        btn.textContent = 'Save';
         btn.addEventListener('click', async () => {
           await fetch(`${window.location.origin}/api/memory/add`, {
             method: 'POST',
@@ -1808,12 +1907,12 @@ async function handleImportFile(file) {
           div.remove();
           updateHeaderTitle();
           btn.disabled = true;
-          btn.textContent = 'saved';
+          btn.textContent = 'Saved';
           showToast('Saved to memory');
         });
         const deleteBtn = document.createElement('button');
         deleteBtn.className = 'memory-item-btn delete';
-        deleteBtn.textContent = 'delete';
+        deleteBtn.textContent = 'Delete';
         deleteBtn.addEventListener('click', () => {
           item.active = false;
           div.remove();
@@ -1845,6 +1944,94 @@ async function handleImportFile(file) {
   }
 }
 
+// ---- The Brain's tabs, and its door to Skills — `P23-02` ----
+
+const BRAIN_ID = 'memory-modal';
+
+/** The four tabs, in strip order. Scoped to the Brain: `.memory-tab` is also
+ *  the class of the Tasks, Skills and Workbench tabs. */
+function _brainTabs() {
+  const modal = document.getElementById(BRAIN_ID);
+  return modal ? Array.from(modal.querySelectorAll('.memory-tab[data-memory-tab]')) : [];
+}
+
+/** The tab on show: `browse` · `rag` · `add` · `settings` (C-NAV `getTab`). */
+export function getBrainTab() {
+  const on = _brainTabs().find((t) => t.classList.contains('active'));
+  return on ? on.dataset.memoryTab : 'browse';
+}
+
+/** Show one tab (C-NAV `setTab`). An unknown name is ignored rather than
+ *  emptying the window. Returns whether it is now on show. */
+export function showBrainTab(name, { focus = false } = {}) {
+  const tabs = _brainTabs();
+  const tab = tabs.find((t) => t.dataset.memoryTab === name);
+  if (!tab) return false;
+  for (const t of tabs) {
+    const on = t === tab;
+    t.classList.toggle('active', on);
+    t.setAttribute('aria-selected', on ? 'true' : 'false');
+    t.tabIndex = on ? 0 : -1;
+  }
+  const modal = document.getElementById(BRAIN_ID);
+  (modal ? Array.from(modal.querySelectorAll('.memory-tab-panel[data-memory-panel]')) : []).forEach((p) => {
+    p.classList.toggle('hidden', p.dataset.memoryPanel !== name);
+  });
+  if (focus) { try { tab.focus(); } catch (_) {} }
+  return true;
+}
+
+/** Left/Right walk the tabs (and wrap), Home/End jump to the ends; the panel
+ *  follows the focus — the Workbench's rooms do the same (`workbench.js`). */
+function _onBrainTabKey(e) {
+  const keys = { ArrowLeft: -1, ArrowRight: 1, Home: 'first', End: 'last' };
+  if (!(e.key in keys)) return;
+  const tabs = _brainTabs();
+  if (!tabs.length) return;
+  const i = Math.max(0, tabs.findIndex((t) => t.dataset.memoryTab === getBrainTab()));
+  const step = keys[e.key];
+  const next = step === 'first' ? 0 : step === 'last' ? tabs.length - 1
+    : (i + step + tabs.length) % tabs.length;
+  if (e.preventDefault) e.preventDefault();
+  showBrainTab(tabs[next].dataset.memoryTab, { focus: true });
+}
+
+/**
+ * `NAV-U-1` / `BRAIN-U-1` (P23-02) — the owner's example: Brain → RAG →
+ * Skills, then back. The Skills door opens the Skills window *from* the Brain
+ * (C-NAV: `from` is the opener's window id, `tab` its tab at that moment), so
+ * the window can say `← Brain` and closing it re-raises the Brain on that tab.
+ * The Brain's own tab is not touched: it used to switch to a Skills launcher
+ * card first, and the window then covered it — closing Skills landed on that
+ * card, and the Brain reopened on it next time (`NAV-M-14`).
+ */
+export async function openSkillsFromBrain(view = 'browse') {
+  const opts = { from: BRAIN_ID, tab: getBrainTab() };
+  const m = await import('./skills.js');
+  const mod = m.openSkillsWindow ? m : (m.default || {});
+  // The Brain tour points at the door without pressing it.
+  if (document.body.classList.contains('tour-active')) { mod.loadSkills?.(); return false; }
+  return mod.openSkillsWindow ? mod.openSkillsWindow(view, opts) : false;
+}
+
+/** C-NAV: the Brain is a window with tabs, so it gives `getTab` and `setTab`.
+ *  The rest is what `_AUTO_WIRE` registers it with on a minimize, so a
+ *  registration made here changes nothing else about the window. */
+function _registerBrainWindow() {
+  if (typeof Modals.register !== 'function') return;
+  if (typeof Modals.isRegistered === 'function' && Modals.isRegistered(BRAIN_ID)) return;
+  Modals.register(BRAIN_ID, {
+    sidebarBtnId: 'tool-memory-btn',
+    closeFn: () => {
+      const btn = document.getElementById('close-memory-modal');
+      if (btn) btn.click();
+    },
+    restoreFn: () => {},
+    getTab: getBrainTab,
+    setTab: (tab) => { showBrainTab(tab); },
+  });
+}
+
 // Utility aliases (canonical implementations live in uiModule)
 var showToast = uiModule.showToast;
 var showError = uiModule.showError;
@@ -1859,36 +2046,26 @@ document.addEventListener('DOMContentLoaded', () => {
   const memModal = document.getElementById('memory-modal');
   if (memModal && typeof MutationObserver === 'function') {
     new MutationObserver(() => {
-      if (!memModal.classList.contains('hidden')) loadMemoriesIfUnknown();
+      if (memModal.classList.contains('hidden')) return;
+      loadMemoriesIfUnknown();
+      // A dock chip's × forgets the window (`Modals.close`); the next open
+      // registers it again, so `getTab`/`setTab` are always there to read.
+      _registerBrainWindow();
     }).observe(memModal, { attributes: true, attributeFilter: ['class'] });
   }
 
-  // Memory modal tabs
-  document.querySelectorAll('.memory-tab[data-memory-tab]').forEach(tab => {
-    tab.addEventListener('click', () => {
-      const target = tab.dataset.memoryTab;
-      // Scoped to this tab strip: `.memory-tab` is also the class of the
-      // Tasks window's tabs and the Skills window's, and a document-wide
-      // toggle switched those off whenever a Brain tab was pressed.
-      const strip = tab.closest('.memory-tabs') || document;
-      strip.querySelectorAll('.memory-tab').forEach(t => t.classList.toggle('active', t === tab));
-      const brain = tab.closest('.memory-modal-body') || document;
-      brain.querySelectorAll('.memory-tab-panel[data-memory-panel]').forEach(p => {
-        p.classList.toggle('hidden', p.dataset.memoryPanel !== target);
-      });
-      // `P9-06`. Skills have their own window; this tab opens it. The tab
-      // still shows its card behind the window, and the Brain tour — which
-      // walks the tabs by clicking them — shows that card without opening
-      // the window over its own tooltip.
-      if (target === 'skills') {
-        import('./skills.js').then(m => {
-          const mod = m.openSkillsWindow ? m : (m.default || {});
-          if (document.body.classList.contains('tour-active')) mod.loadSkills?.();
-          else mod.openSkillsWindow?.('browse');
-        });
-      }
-    });
+  // Memory modal tabs — `BRAIN-U-8` (P23-02): a WAI-ARIA tablist, the same
+  // keys as the Skills window's and the Workbench's.
+  _brainTabs().forEach(tab => {
+    tab.addEventListener('click', () => showBrainTab(tab.dataset.memoryTab));
+    tab.addEventListener('keydown', _onBrainTabKey);
   });
+  // `NAV-U-1` (P23-02). The Brain's doors to Skills — beside the tabs, and on
+  // the Add tab — open the window with the Brain as its opener (C-NAV).
+  document.querySelectorAll('[data-brain-skills]').forEach(door => {
+    door.addEventListener('click', () => openSkillsFromBrain(door.getAttribute('data-brain-skills') || 'browse'));
+  });
+  _registerBrainWindow();
 
   const sortSelect = document.getElementById('memory-sort');
   if (sortSelect) {
@@ -1944,6 +2121,10 @@ document.addEventListener('DOMContentLoaded', () => {
 const memoryModule = {
   loadMemories,
   loadMemoriesIfUnknown,
+  markMemoriesStale,
+  getBrainTab,
+  showBrainTab,
+  openSkillsFromBrain,
   renderMemoryList,
   updateMemoryCount,
   addNewMemory,

@@ -10,7 +10,7 @@ from fastapi import APIRouter, HTTPException, Query, Request, UploadFile, File, 
 from fastapi.concurrency import run_in_threadpool
 from src.request_models import DirectoryRequest
 from core.constants import BASE_DIR, PERSONAL_DIR, PERSONAL_UPLOADS_DIR
-from src.rag_singleton import get_rag_manager
+from src.rag_singleton import get_rag_manager, rag_unavailable_reason
 from src.auth_helpers import require_privilege, require_user
 from core.middleware import require_admin
 from src.upload_handler import secure_filename
@@ -256,7 +256,11 @@ def setup_personal_routes(personal_docs_manager, rag_manager, rag_available):
         """Enhanced version that includes directories"""
         files = [{"name": f["name"], "size": f["size"], "path": f.get("path", "")} for f in personal_docs_manager.index]
         directories = personal_docs_manager.get_indexed_directories() if hasattr(personal_docs_manager, "get_indexed_directories") else []
-        return {"files": files, "directories": directories}
+        # `BRAIN-M-5` (P23-02): whether the index behind the list is up, and
+        # the sentence saying why not — both RAG panels draw it.
+        reason = rag_unavailable_reason()
+        return {"files": files, "directories": directories,
+                "healthy": not reason, "reason": reason}
     
     @router.post("/reload")
     async def api_personal_reload(owner: str = Depends(require_user), _admin: None = Depends(require_admin)):
@@ -425,7 +429,9 @@ def setup_personal_routes(personal_docs_manager, rag_manager, rag_available):
         user = require_privilege(request, "can_use_documents")
         rag = _rag()
         if not rag:
-            raise HTTPException(503, "RAG system is not available — is the embedding service running?")
+            # `BRAIN-M-4` (P23-02): the reason the server knows, not a guess.
+            raise HTTPException(503, rag_unavailable_reason()
+                                or "RAG is off: the document index did not start. The server log says why.")
 
         upload_dir = _personal_upload_dir_for_owner(user)
 

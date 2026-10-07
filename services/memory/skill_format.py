@@ -234,6 +234,25 @@ def _as_list(v: Any) -> List[str]:
     return [str(v)]
 
 
+# `BRAIN-M-2` (P23-02). A skill's state is one of two words, and only these two
+# reach anything that decides what the model is shown (`index_for`,
+# `get_relevant_skills` keep `published` and `draft`). The field was free text:
+# the showcase seed wrote `active` — a word nothing reads — so four skills were
+# listed with an "active" pill, filtered out of *Published only* and never
+# injected, and `POST /api/skills/add` stored `banana` with a 200 (measured on
+# `32df791`). Read through this, a skill is always one of the two: the legacy
+# `active` (and `approved`) mean what their writer meant, published; anything
+# else unknown is a draft — unlisted, still matched — the cautious one.
+SKILL_STATUSES = ("draft", "published")
+_PUBLISHED_ALIASES = frozenset({"published", "active", "approved"})
+
+
+def normalize_status(value: Any) -> str:
+    """`draft` or `published`, whatever was written (`BRAIN-M-2`)."""
+    v = str(value or "").strip().lower()
+    return "published" if v in _PUBLISHED_ALIASES else "draft"
+
+
 def _as_float(v: Any, default: float = 0.8) -> float:
     try:
         return float(v)
@@ -454,7 +473,7 @@ class Skill:
             platforms=_as_list(fm.get("platforms")),
             requires_toolsets=_as_list(fm.get("requires_toolsets")),
             fallback_for_toolsets=_as_list(fm.get("fallback_for_toolsets")),
-            status=str(fm.get("status", "draft") or "draft"),
+            status=normalize_status(fm.get("status", "draft")),
             confidence=_as_float(fm.get("confidence", 0.8), 0.8),
             source=str(fm.get("source", "learned") or "learned"),
             teacher_model=str(fm.get("teacher_model")) if fm.get("teacher_model") else None,

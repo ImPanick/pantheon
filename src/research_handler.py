@@ -492,6 +492,21 @@ class ResearchHandler:
                 pass
         return None
 
+    def get_stopped(self, session_id: str) -> str:
+        """`BRAIN-M-6` (P23-02). Why a run that found nothing stopped — the
+        researcher's `stopped` while it is in memory, else the saved one."""
+        entry = self._active_tasks.get(session_id)
+        researcher = entry.get("researcher") if entry else None
+        if researcher is not None:
+            return getattr(researcher, "stopped", "") or ""
+        path = _research_json_path(session_id)
+        if path is None or not path.exists():
+            return ""
+        try:
+            return str(json.loads(path.read_text(encoding="utf-8")).get("stopped") or "")
+        except Exception:
+            return ""
+
     def get_sources(self, session_id: str) -> Optional[list]:
         """Get deduplicated source list from research findings."""
         # Check in-memory first
@@ -638,6 +653,8 @@ class ResearchHandler:
                 "raw_findings": raw_findings,
                 "stats": entry.get("stats"),
                 "category": entry.get("category"),
+                # `BRAIN-M-6` (P23-02): why a run with nothing in it stopped.
+                "stopped": getattr(researcher, "stopped", "") or "",
                 "started_at": entry["started_at"],
                 "completed_at": time.time(),
                 # SECURITY: stamp owner so route handlers can filter by user.

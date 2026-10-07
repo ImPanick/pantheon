@@ -174,7 +174,9 @@ def test_a_skill_step_says_p8_18s_sentence_and_code_starts_from_a_three_line_tem
         const warn = c.h.querySelector('.wf-sf-warn').textContent;
         out({ gate, same: gate === SKILL_GATE_NOTE, py, pyLines: py.trim().split('\\n').length, sh, kept, warn });
     """)
-    assert o["same"] is True and "stop halfway and wait" in o["gate"]
+    # `P23-02` (`D-26`): P8-18's sentence, shortened to what the run does — the
+    # why is said once, in Skills › Settings.
+    assert o["same"] is True and "asks before it writes, runs, sends or deletes" in o["gate"]
     assert o["pyLines"] == 3 and "json.load(sys.stdin)" in o["py"] and "print(json.dumps(" in o["py"]
     assert o["sh"].startswith("input=$(cat)")
     assert o["kept"] == "echo mine", "written code is never replaced by a template"

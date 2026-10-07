@@ -306,19 +306,10 @@ export function openSkill(name, opts = {}, m = null) {
 let _skillApprovalThreshold = 0.85;
 
 function updateCount() {
+  // The Brain's door to this window carries the total (`P23-02`).
   const el = document.getElementById('skills-count');
   if (el) el.textContent = skills.length || '0';
-  for (const m of _allMounts()) {
-    const elH = m.el('skills-count-h2');
-    if (elH) elH.textContent = skills.length + ' skill' + (skills.length === 1 ? '' : 's');
-  }
-  const summary = document.getElementById('skills-launcher-summary');
-  if (summary) {
-    const n = (k, one, many) => `${k} ${k === 1 ? one : many}`;
-    summary.textContent = `${n(skills.length, 'skill', 'skills')} · `
-      + `${n(_collections.packages.length, 'package', 'packages')} · `
-      + `${n(_collections.groups.length, 'group', 'groups')}.`;
-  }
+  for (const m of _allMounts()) _writeShownCount(m);
 }
 
 function _sortSkills(m, list) {
@@ -350,21 +341,24 @@ function _matches(sk, query) {
 // frontmatter, it is compared server-side, and `data-status` is the hook the
 // styling and the select-mode code use — `Law 2`. Only the word moves.
 //
-// It moves because "draft" says unfinished and the state is not that. A draft
-// is left OUT of the catalogue the model browses (`index_for`,
-// services/memory/skills.py:655) and is STILL matched and injected by keyword
-// (`get_relevant_skills`, :725) whenever it clears the minimum confidence.
-// "Inactive" would have been the same wrong idea in a different word: the
-// skill is not switched off, it is unlisted.
+// A draft is left OUT of the catalogue the model browses (`index_for`) and is
+// STILL matched and injected by keyword (`get_relevant_skills`) whenever it
+// clears the minimum confidence — not switched off, unlisted. `P8-03` said so
+// with the word "uncatalogued"; `BRAIN-U-17` (P23-02, Doc 2 § 5) counted six
+// words for these two states (*uncatalogued / published / active*,
+// *Uncatalogue / Publish*, *Unpublish*, *Approve*, *Auto-approve*) and settles
+// on two, **Draft** and **Published**, with the verbs **Publish** /
+// **Unpublish** — and the rule P8-03 cared about carried by the hover, so the
+// word can be short and the state still told truly.
 const _STATUS_PILL_TITLE = {
-  published: 'Catalogued: the AI is given its name and description on every request, and the full procedure when your message matches it.',
-  draft: 'Uncatalogued: the AI is not shown it in the list it browses — but it is still injected when your message matches it and its confidence clears the minimum. Publish it to add it to the list.',
+  published: 'Published: listed for the model on every request.',
+  draft: 'Draft: not listed; used only when a message matches it and it clears the confidence bar in Settings.',
 };
 
 function _statusPill(sk) {
   const s = sk.status || (sk._legacy ? 'legacy' : 'draft');
   if (s === 'published') return `<span class="memory-cat-badge skill-status-pill" data-status="published" title="${esc(_STATUS_PILL_TITLE.published)}" style="background:color-mix(in srgb, var(--accent, #4ade80) 30%, transparent)">published</span>`;
-  if (s === 'draft')     return `<span class="memory-cat-badge skill-status-pill" data-status="draft" title="${esc(_STATUS_PILL_TITLE.draft)}" style="background:color-mix(in srgb, var(--fg) 14%, transparent)">uncatalogued</span>`;
+  if (s === 'draft')     return `<span class="memory-cat-badge skill-status-pill" data-status="draft" title="${esc(_STATUS_PILL_TITLE.draft)}" style="background:color-mix(in srgb, var(--fg) 14%, transparent)">draft</span>`;
   return `<span class="memory-cat-badge skill-status-pill" data-status="${esc(s)}" style="opacity:0.6">${esc(s)}</span>`;
 }
 
@@ -374,7 +368,7 @@ function _statusPill(sk) {
 function _offPill(sk) {
   const why = (_collections.off || {})[sk.name || sk.id];
   if (!Array.isArray(why) || !why.length) return '';
-  const title = `Not shown to the AI — switched off with ${why.join(' and ')}. Switch that back on in the sidebar to use it again.`;
+  const title = `Off with ${why.join(' and ')} (sidebar).`;
   return `<span class="memory-cat-badge skill-off-pill" title="${esc(title)}">off</span>`;
 }
 
@@ -422,6 +416,11 @@ function _scoreDuplicateKeeper(sk) {
   ].reduce((a, b) => a + b, 0);
 }
 
+function _forkedFrom(sk, origin) {
+  const body = String((sk && (sk.body_extra || sk.solution)) || '');
+  return !!origin && body.includes('Forked from `' + origin + '`');
+}
+
 function _duplicateMeta(list) {
   const parent = new Map();
   const names = list.map(s => s.name || s.id).filter(Boolean);
@@ -440,6 +439,11 @@ function _duplicateMeta(list) {
       const a = list[i], b = list[j];
       const an = a.name || a.id, bn = b.name || b.id;
       if (!an || !bn) continue;
+      // `BRAIN-M-9` (P23-02). A fork is the one deliberate copy: it is not a
+      // duplicate of the skill it was forked from (`fork_skill` writes
+      // "Forked from `<name>`." into its body). A fresh fork opened branded
+      // "duplicate #1 · lower-priority" of its own origin (measured).
+      if (_forkedFrom(a, bn) || _forkedFrom(b, an)) continue;
       if (_baseSkillName(an) === _baseSkillName(bn) || _skillSimilarity(a, b) >= 0.38) {
         unite(an, bn);
       }
@@ -580,7 +584,7 @@ function _openSkillMenu(m, btn, card, sk, name, isPublished) {
     item.addEventListener('click', (e) => { e.stopPropagation(); close(); onClick(); });
     menu.appendChild(item);
   };
-  if (isPublished) mk(_ICON.unpublish, 'Uncatalogue', {}, () => _setSkillStatus(name, 'draft'));
+  if (isPublished) mk(_ICON.unpublish, 'Unpublish', {}, () => _setSkillStatus(name, 'draft'));
   else mk(_ICON.approve, 'Publish', {}, () => _setSkillStatus(name, 'published'));
   // Select — moved up to 2nd so it sits next to Publish/Unpublish
   // (bulk actions cluster at the top of the menu).
@@ -700,7 +704,8 @@ function _buildBuiltinCards(rows) {
     // Warning banner — editing a built-in changes how the assistant uses a native tool.
     const warn = document.createElement('div');
     warn.className = 'skill-builtin-warn';
-    warn.innerHTML = '⚠ This is a built-in capability. Editing changes how the assistant is instructed to use this native tool — it can break or alter core behaviour. Use Revert to restore the shipped default.';
+    // `COPY-U-22` (P23-02): 30 words → one line.
+    warn.innerHTML = '⚠ Built in. Edits change how the model uses this tool; Revert restores the default.';
     preview.appendChild(warn);
     const pre = document.createElement('pre');
     pre.className = 'skill-md-pre';
@@ -863,9 +868,34 @@ function _getFilteredSkills(m) {
   return _sortSkills(m, filtered);
 }
 
+/** `BRAIN-M-10` / `COPY-U-15` (P23-02). The header beside "Skills" counts what
+ *  is on screen, and only when that is not everything: "5 of 8" under a scope,
+ *  a search or a filter; nothing otherwise — the total is on the door. It wrote
+ *  `skills.length` whatever was shown ("8 skills" over five cards, and over
+ *  none). */
+function _writeShownCount(m) {
+  const elH = m.el('skills-count-h2');
+  if (!elH) return;
+  const shown = loaded ? _getFilteredSkills(m).length : skills.length;
+  elH.textContent = shown === skills.length ? '' : `${shown} of ${skills.length}`;
+}
+
+/** Whether a filter (not the scope or the search) is narrowing the list. */
+function _filtering(m) {
+  return !!(m.draftsOnly || m.publishedOnly || m.confMax != null);
+}
+
+function _clearFilter(m) {
+  m.draftsOnly = false; m.publishedOnly = false; m.confMax = null;
+  const sel = m.el('skills-filter');
+  if (sel) sel.value = 'filter:all';
+  renderSkillsList(m);
+}
+
 function renderSkillsList(m) {
   const container = m.el('skills-list');
   if (!container) return;
+  _writeShownCount(m);
   // Re-render rebuilds the cards (none expanded), so clear the expand flag
   // on the admin-card or it would keep the toolbar hidden with nothing open.
   container.closest('.admin-card')?.classList.remove('skills-has-expanded');
@@ -886,7 +916,11 @@ function renderSkillsList(m) {
     const selectBtn = m.el('skills-select-btn');
     if (selectBtn) selectBtn.disabled = true;
     if (m.selectMode) _exitSelectMode(m);
-    container.innerHTML = `<div style="text-align:center;opacity:0.4;padding:24px 0;font-size:11px;">${loaded ? esc(_emptyListText(m)) : 'Loading…'}</div>`;
+    // `BRAIN-U-5` (P23-02). A filter that hides everything says so, with the
+    // way out beside it; it used to say "No skills yet" over a full library.
+    const clear = loaded && _filtering(m)
+      ? ' <button type="button" class="memory-toolbar-btn" data-skills-clear-filter>Clear</button>' : '';
+    container.innerHTML = `<div style="text-align:center;opacity:0.4;padding:24px 0;font-size:11px;">${loaded ? esc(_emptyListText(m)) : 'Loading…'}${clear}</div>`;
     return;
   }
 
@@ -953,7 +987,8 @@ function renderSkillsList(m) {
         ${_auditModelPills(sk)}
         ${_necessityPill(sk)}
         ${_duplicatePriorityPill(sk)}
-        <span class="skill-stats">${_auditMarks(sk)}<span class="skill-conf" style="color:${confColor};">${conf}%</span> · ${uses}u</span>
+        <span class="skill-stats">${_auditMarks(sk)}<span class="skill-conf" style="color:${confColor};">${conf}%</span> · used ${uses}×</span>
+        <button type="button" class="skill-chevron-up skill-back-to-list" aria-label="Back to the list">← Skills</button>
         <span class="skill-chevron-up" title="Collapse">${chevronIcon({ direction: 'up', size: 14 })}</span>
         <button class="skill-kebab-btn" title="Actions" aria-label="Actions"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg></button>
       </div>
@@ -993,11 +1028,9 @@ function renderSkillsList(m) {
     pubBtn.className = 'doclib-card-text-btn doclib-card-action-btn';
     if (isPublished) {
       pubBtn.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12l5 5L20 7"/></svg>Unpublish';
-      pubBtn.title = 'Take it out of the catalogue — it stays here, and is still injected when a message matches it';
       pubBtn.addEventListener('click', (e) => { e.stopPropagation(); _setSkillStatus(name, 'draft'); });
     } else {
       pubBtn.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>Publish';
-      pubBtn.title = 'Publish — adds it to the catalogue the AI browses';
       pubBtn.style.color = 'var(--color-success, #4caf50)';
       pubBtn.addEventListener('click', (e) => { e.stopPropagation(); _setSkillStatus(name, 'published'); });
     }
@@ -1045,6 +1078,15 @@ function renderSkillsList(m) {
     preview.appendChild(actions);
     card.appendChild(preview);
 
+    // `BRAIN-U-12` (P23-02). An open card hides the toolbar and every other
+    // card (Fork and Import land here), and the way back was an unlabelled ˄.
+    // Not while editing: as for the card itself (#4002), Save or Cancel leave
+    // the editor, so an edit is never dropped by a way out (the CSS hides it).
+    header.querySelector('.skill-back-to-list')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (card.querySelector('.skill-md-editor')) return;
+      if (card.classList.contains('doclib-card-expanded')) _expandSkillCard(card, name);
+    });
     // Click to expand/collapse (unless in select mode → toggle checkbox).
     card.addEventListener('click', (e) => {
       if (card._suppressNextClick) { card._suppressNextClick = false; return; }
@@ -1392,7 +1434,7 @@ async function _setSkillStatus(name, status) {
       body: JSON.stringify({ status }),
     });
     await loadSkills();
-    uiModule.showToast(status === 'published' ? 'Skill published — now in the catalogue' : 'Skill uncatalogued — still injected on a match');
+    uiModule.showToast(status === 'published' ? `Published ${name}` : `${name} is a draft again`);
   } catch (e) { uiModule.showError('Update failed: ' + e.message); }
 }
 
@@ -1448,7 +1490,9 @@ function _renderTestLog(logEl, verdictEl, job, card, name) {
     else if (ev.type === 'tool_output') add(String(ev.output || '').slice(0, 500), 'skill-test-out');
     else if (ev.type === 'approval_granted' || ev.type === 'approval_denied') add(ev.text || '', 'skill-test-meta');
     else if (ev.type === 'say') add(ev.text || '', 'skill-test-say');
-    else if (ev.type === 'evaluating') add('Evaluating run…', 'skill-test-meta');
+    // `BRAIN-M-13` (P23-02): "Evaluating run…" stayed above the verdict it
+    // led to, 30 s after it came; once the run is done it is not drawn.
+    else if (ev.type === 'evaluating') { if (job.status !== 'done') add('Evaluating run…', 'skill-test-meta'); }
     else if (ev.type === 'error') add('Error: ' + (ev.error || 'run failed'), 'skill-test-err');
   }
   if (job.status === 'awaiting_approval' && job.approval) {
@@ -1478,7 +1522,7 @@ async function _testSkill(card, name, force = false) {
     '<div class="skill-test">' +
       '<div class="skill-test-ask hidden">' +
         '<label class="skill-test-ask-label">What should it try?' +
-          '<textarea class="skill-test-task-input" rows="2" spellcheck="false" placeholder="Leave blank and the AI invents a realistic example to apply the skill to."></textarea>' +
+          '<textarea class="skill-test-task-input" rows="2" spellcheck="false" placeholder="Blank: the model invents an example."></textarea>' +
         '</label>' +
         '<div class="skill-test-gate-note">' + SKILL_GATE_NOTE + '</div>' +
         '<div class="skill-test-ask-actions">' +
@@ -1786,7 +1830,7 @@ async function _compareSkill(card, name, presetTask = '') {
   ta.className = 'skill-test-task-input';
   ta.rows = 2;
   ta.spellcheck = false;
-  ta.placeholder = 'Leave blank and the AI invents a realistic example — both halves get the same one.';
+  ta.placeholder = 'Blank: the model invents an example — both halves get the same one.';
   ta.value = presetTask || '';
   ta.addEventListener('click', (e) => e.stopPropagation());
   label.appendChild(ta);
@@ -1973,18 +2017,19 @@ function _renderTestVerdict(el, v, card, name) {
   const label = { pass: 'PASS', needs_work: 'NEEDS WORK', fail: 'FAIL', inconclusive: 'INCONCLUSIVE', unknown: 'UNCLEAR' }[verdict] || 'UNCLEAR';
   const conf = v && typeof v.confidence === 'number' ? Math.round(v.confidence * 100) + '%' : '';
   const issues = Array.isArray(v && v.issues) ? v.issues : [];
-  // Reflect the skill's current state: if it's already published, the button
-  // confirms "Approved" (click to unpublish) rather than offering to approve.
+  // Reflect the skill's current state: a published skill offers Unpublish; a
+  // draft offers Publish only on a pass — `BRAIN-M-13` (P23-02): it was
+  // offered on UNCLEAR and FAIL too. The verbs are the two of `BRAIN-U-17`.
   const isPub = card && card.dataset && card.dataset.skillStatus === 'published';
-  const approveLabel = isPub ? 'Approved' : 'Approve';
+  const offerPublish = isPub || verdict === 'pass';
+  const approveLabel = isPub ? 'Unpublish' : 'Publish';
   const approveCls = 'skill-eval-approve' + (isPub ? ' is-approved' : (verdict === 'pass' ? ' suggested' : ''));
-  const approveTitle = isPub ? 'Already approved — click to unpublish' : 'Publish — appears in the skills index';
   el.innerHTML =
     '<div class="skill-eval-head"><span class="skill-eval-badge skill-eval-' + cls + '">' + label + (conf ? ' · ' + conf : '') + '</span>' +
     '<span class="skill-eval-summary">' + esc((v && v.summary) || '') + '</span></div>' +
     (issues.length ? '<ul class="skill-eval-issues">' + issues.map(i => '<li>' + esc(i) + '</li>').join('') + '</ul>' : '') +
     '<div class="doclib-card-expanded-actions skill-eval-actions-wrap">' +
-      '<button class="doclib-card-text-btn doclib-card-action-btn ' + approveCls + '" data-act="approve" title="' + approveTitle + '">' + approveLabel + '</button>' +
+      (offerPublish ? '<button class="doclib-card-text-btn doclib-card-action-btn ' + approveCls + '" data-act="approve">' + approveLabel + '</button>' : '') +
       '<div class="doclib-action-group"><div class="doclib-action-btn-row">' +
         '<button class="doclib-card-text-btn doclib-card-action-btn" data-act="retry" title="Run the test again">Retry</button>' +
         '<button class="doclib-card-text-btn doclib-card-action-btn" data-act="copy" title="Copy the run output + verdict">Copy</button>' +
@@ -2002,8 +2047,7 @@ function _renderTestVerdict(el, v, card, name) {
     const btn = el.querySelector('[data-act="approve"]');
     if (btn) {
       const pub = card.dataset.skillStatus === 'published';
-      btn.textContent = pub ? 'Approved' : 'Approve';
-      btn.title = pub ? 'Already approved — click to unpublish' : 'Publish — appears in the skills index';
+      btn.textContent = pub ? 'Unpublish' : 'Publish';
       btn.classList.toggle('is-approved', pub);
       btn.classList.toggle('suggested', !pub && verdict === 'pass');
     }
@@ -2057,7 +2101,7 @@ function _confirmAuditSkills(label) {
     const skip = overlay.querySelector('#skills-audit-skip-audited');
     const okBtn = overlay.querySelector('#skills-audit-confirm-ok');
     const cancelBtn = overlay.querySelector('#skills-audit-confirm-cancel');
-    msg.textContent = `Audit ${label}? Each is tested from top to bottom, then published or moved to draft using your auto-approve confidence threshold.`;
+    msg.textContent = `Test ${label}? Each is published or kept as a draft by the confidence bar in Settings.`;
     skip.checked = true;
     overlay.classList.remove('hidden');
     overlay.style.display = '';
@@ -2738,12 +2782,13 @@ async function _bulkAudit(m) {
 const _PROMPT_PREVIEW_FACTS = [
   ['In the block above', 'each skill’s name and description, filed under its category.'],
   ['Added when your message matches one', 'its when-to-use, its numbered procedure, and its pitfalls.'],
-  ['Never sent', 'its verification steps, and everything below the frontmatter in SKILL.md. Open a skill here to read them — the AI can ask for the whole file itself, one skill at a time.'],
+  ['Never sent', 'its verification steps, and everything below the frontmatter in SKILL.md. Open a skill here to read them — the model can ask for the whole file, one skill at a time.'],
 ];
 
+// `P8-18` on the surface that shows the injected text; `D-11` (P23-02)
+// shortened it to the one sentence Skills › Settings says too.
 const _PROMPT_PREVIEW_GATE =
-  'All of it arrives as untrusted text, because you or a teacher model wrote it and it can say anything. '
-  + 'So a reply that gets a skill asks you before anything that writes, runs, sends or deletes.';
+  'Skills are untrusted text, so a reply that uses one asks before it writes, runs, sends or deletes.';
 
 function _closePromptPreview(m) {
   const panel = m.el('skills-prompt-panel');
@@ -2763,7 +2808,7 @@ function _el(tag, cls, text) {
 // because when it was written the endpoint had no `prompt` to render. It has
 // one now, the panel leads with it, and a title promising a catalogue in front
 // of a block of prompt text would be the preview lying about itself.
-const _PROMPT_PREVIEW_TITLE = 'What the AI is given';
+const _PROMPT_PREVIEW_TITLE = 'What the model is shown';
 
 function _formatChars(n) {
   const v = Number(n);
@@ -2838,7 +2883,7 @@ async function _renderPromptPreview(m) {
   }
   if (!index.length) {
     body.appendChild(_el('div', 'skill-prompt-empty',
-      'Empty. The AI is told about no skills at all — publish one and it appears here.'));
+      'Empty. The model is shown no skills — publish one and it appears here.'));
   } else {
     const byCat = new Map();
     for (const entry of index) {
@@ -2854,7 +2899,7 @@ async function _renderPromptPreview(m) {
         row.appendChild(_el('span', 'skill-prompt-desc', (entry && entry.description) || ''));
         if (entry && entry.status === 'draft') {
           row.appendChild(_el('span', 'skill-prompt-tag',
-            'uncatalogued — the teacher wrote it, so it is listed anyway'));
+            'draft — listed because the teacher wrote it'));
         }
         body.appendChild(row);
       }
@@ -2971,8 +3016,9 @@ async function importSkillFromUrl(m) {
   } catch (err) {
     clearInterval(timer);
     const msg = (err && err.message) || String(err);
+    // `BRAIN-M-12` (P23-02): said once, beside the box it was started from —
+    // the status line exists for this (`B926`); a toast repeated it.
     _importStatus(m, 'error', `Import failed: ${msg}`);
-    uiModule.showError('Import failed: ' + msg);
   } finally {
     clearInterval(timer);
     _importInFlight = false;
@@ -3248,14 +3294,14 @@ function _scopeTitle(m) {
 
 function _emptyListText(m) {
   const sc = m.scope;
-  if (sc.kind === 'group') {
-    return `No skills in “${_scopeTitle(m)}” yet. Press Select and then Group, or open a skill's ⋯ menu and choose Groups, to add some.`;
-  }
+  // `BRAIN-U-5`: a filter is said first — it is the reason, whatever the scope.
+  if (_filtering(m) && skills.length) return 'No skills match this filter.';
+  if (sc.kind === 'group') return `Nothing in “${_scopeTitle(m)}” yet. Add skills from a card's ⋯ → Groups.`;
   if (sc.kind === 'package' || sc.kind === 'section') return 'This package has no skills left here.';
-  if (sc.kind === 'mine') return 'None yet. Skills you write under Add, and the ones the AI learns, appear here.';
+  if (sc.kind === 'mine') return 'None yet. Skills you write, and the ones Pantheon drafts, appear here.';
   if (sc.kind === 'bundled') return 'No built-in skills on this install.';
   if ((m.el('skills-search')?.value || '').trim()) return 'No skill matches that search.';
-  return 'No skills yet. Import a package under Add, write one, or let the agent learn them.';
+  return 'No skills yet.';
 }
 
 // ── the sidebar — `P9-06` ────────────────────────────────────────────────────
@@ -3297,9 +3343,7 @@ function _sideRow(m, { title, count, scope, hint = '', sub = false, toggle = nul
   if (toggle) {
     const label = document.createElement('label');
     label.className = 'admin-switch skills-side-switch';
-    label.title = toggle.on
-      ? `On — the AI can be shown the skills in ${title}. Switch off to leave them out.`
-      : `Off — the skills in ${title} are left out of what the AI is shown.`;
+    label.title = toggle.on ? 'On' : 'Off';
     const input = document.createElement('input');
     input.type = 'checkbox';
     input.checked = !!toggle.on;
@@ -3337,7 +3381,7 @@ function _renderSkillsSide(m) {
   side.appendChild(_sideRow(m, { title: 'All skills', count: skills.length, scope: { kind: 'all' } }));
   side.appendChild(_sideRow(m, {
     title: 'Yours', count: mine, scope: { kind: 'mine' },
-    hint: 'Skills you wrote and skills the AI learned — not built in, not from a package',
+    hint: 'Skills you wrote and skills Pantheon learned',
   }));
   if (bundled) {
     side.appendChild(_sideRow(m, {
@@ -3471,7 +3515,7 @@ async function _refreshAfterCollections() {
 async function _switchPackage(p, on, input) {
   try {
     await _skillsApi('PATCH', `/api/skills/packages/${encodeURIComponent(p.id)}`, { enabled: on });
-    uiModule.showToast(on ? `${p.title}: its skills can be used again` : `${p.title}: switched off — its skills are left out of what the AI is shown`);
+    uiModule.showToast(on ? `${p.title}: on` : `${p.title}: off — its skills are left out`);
   } catch (e) {
     if (input) input.checked = !on;
     uiModule.showError('Could not switch the package: ' + e.message);
@@ -3483,7 +3527,7 @@ async function _switchPackage(p, on, input) {
 async function _switchGroup(g, on, input) {
   try {
     await _skillsApi('PATCH', `/api/skills/groups/${encodeURIComponent(g.id)}`, { enabled: on });
-    uiModule.showToast(on ? `${g.title}: switched on` : `${g.title}: switched off — its skills are left out of what the AI is shown`);
+    uiModule.showToast(on ? `${g.title}: on` : `${g.title}: off — its skills are left out`);
   } catch (e) {
     if (input) input.checked = !on;
     uiModule.showError('Could not switch the group: ' + e.message);
@@ -3537,7 +3581,7 @@ async function _newGroup(m, names) {
     uiModule.showToast(names.length ? `Made ${data.group.title} with ${names.length} ${names.length === 1 ? 'skill' : 'skills'}` : `Made ${data.group.title}`);
     if (!names.length) m.scope = { kind: 'group', id: data.group.id };
   } catch (e) {
-    uiModule.showError('Could not make the group: ' + e.message);
+    uiModule.showError(e.message);   // `BRAIN-M-8`: the server's sentence
     return;
   }
   if (m.selectMode && names.length) _exitSelectMode(m);
@@ -3602,14 +3646,14 @@ async function _deleteGroup(g) {
 
 async function _forkSkill(m, name) {
   const title = await uiModule.styledPrompt(
-    `A fork is a separate skill you can change without touching “${name}”. Name the copy.`,
+    'Name the copy.',
     { title: 'Fork skill', defaultValue: `${name}-fork`, confirmText: 'Fork', maxLength: 80 });
   if (!title || !String(title).trim()) return;
   let made;
   try {
     made = (await _skillsApi('POST', `/api/skills/${encodeURIComponent(name)}/fork`, { name: String(title).trim() })).skill;
   } catch (e) {
-    uiModule.showError('Could not fork the skill: ' + e.message);
+    uiModule.showError(e.message);
     return;
   }
   uiModule.showToast(`Forked ${name} as ${made.name}`);
@@ -3684,12 +3728,6 @@ async function _draftFromDescription(m) {
   }
 }
 
-function _countWords(c) {
-  const p = Number(c && c.problem) || 0;
-  const a = Number(c && c.advisory) || 0;
-  return `${p} ${p === 1 ? 'problem' : 'problems'}, ${a} ${a === 1 ? 'suggestion' : 'suggestions'}`;
-}
-
 /** *Fix these with the model*: `POST /api/skills/{name}/improve`, and the
  *  lint's counts before and after, in the panel the findings were in. */
 async function _fixWithModel(m, name, btn) {
@@ -3699,10 +3737,13 @@ async function _fixWithModel(m, name, btn) {
     const res = await fetch(`${API}/api/skills/${encodeURIComponent(name)}/improve`, { method: 'POST' });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
+    // `D-31` (P23-02). The server writes a rewrite only when it scores better
+    // (`BRAIN-M-3`), so this line is only ever said of a real fix.
+    const n = (c, k) => Number(c && c[k]) || 0;
     const line = data.outcome === 'nothing_to_fix'
       ? `Nothing left to fix in ${name}.`
-      : `Fixed ${name} with the model. Before: ${_countWords(data.before)}. `
-        + `After: ${_countWords(data.after)}. The earlier text is kept — History on its card puts it back.`;
+      : `Fixed ${name}: problems ${n(data.before, 'problem')} → ${n(data.after, 'problem')}, `
+        + `suggestions ${n(data.before, 'advisory')} → ${n(data.after, 'advisory')}. Undo in History.`;
     if (panel) {
       panel.classList.remove('hidden');
       panel.replaceChildren(_el('div', 'skill-lint-head skill-lint-fixed', line));
@@ -3718,7 +3759,10 @@ async function _fixWithModel(m, name, btn) {
 }
 
 function _when(seconds) {
-  return seconds ? new Date(seconds * 1000).toLocaleString() : '';
+  // `D-30` (P23-02): "3 Oct, 03:33", not "10/3/2026, 3:33:40 AM".
+  return seconds ? new Date(seconds * 1000).toLocaleString(undefined, {
+    day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false,
+  }) : '';
 }
 
 /** *History*: a skill's earlier copies, newest first, each with *View* and
@@ -3740,7 +3784,7 @@ async function _showSkillHistory(card, name) {
   }
   const current = skills.find((s) => (s.name || s.id) === name) || {};
   wrap.appendChild(_el('div', 'skill-test-meta',
-    `Each is a copy an edit replaced. The skill now is version ${current.version || '—'}.`));
+    `Earlier copies. Now: ${current.version || '—'}.`));
   const list = _el('div', 'skill-history-list');
   wrap.appendChild(list);
   const text = _el('pre', 'skill-md-pre skill-history-text');
@@ -3768,8 +3812,7 @@ async function _showSkillHistory(card, name) {
     back.addEventListener('click', async (e) => {
       e.stopPropagation();
       const ok = await uiModule.styledConfirm(
-        `Put back the copy saved ${_when(v.saved_at)} (version ${v.version})? It replaces the skill as it `
-        + `is now (version ${current.version || '—'}), which is kept in History, so this can be undone.`,
+        `Put back ${v.version} (${_when(v.saved_at)})? The current copy (${current.version || '—'}) stays in History.`,
         { confirmText: 'Put this back' });
       if (!ok) return;
       try {
@@ -3778,7 +3821,7 @@ async function _showSkillHistory(card, name) {
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
         _mdCache.delete(name);
-        uiModule.showToast(`Put back the copy saved ${_when(v.saved_at)}. What it replaced is in History.`);
+        uiModule.showToast(`Restored ${v.version}. The old copy is in History.`);
         await loadSkills();
       } catch (err) {
         uiModule.showError(`Could not put it back: ${(err && err.message) || err}`);
@@ -3819,13 +3862,17 @@ async function _downloadSkill(name) {
 
 let _windowWired = false;
 
+const _SKILLS_VIEWS = ['browse', 'add', 'settings'];
+
 function _showSkillsView(m, view) {
   if (!m || !m.host || m.host === document.body) return;
-  const want = view === 'add' ? 'add' : 'browse';
+  // `BRAIN-U-10` (P23-02): a third view, the skill settings.
+  const want = _SKILLS_VIEWS.includes(view) ? view : 'browse';
   m.host.querySelectorAll('[data-skills-view]').forEach(tab => {
     const on = tab.getAttribute('data-skills-view') === want;
     tab.classList.toggle('active', on);
     tab.setAttribute('aria-selected', on ? 'true' : 'false');
+    tab.tabIndex = on ? 0 : -1;
   });
   m.host.querySelectorAll('[data-skills-view-panel]').forEach(panel => {
     panel.classList.toggle('hidden', panel.getAttribute('data-skills-view-panel') !== want);
@@ -3849,16 +3896,27 @@ function _wireSkillsWindow() {
   }
 }
 
-/** Open the Skills window on `view` ('browse' | 'add'), or bring it forward. */
-export async function openSkillsWindow(view) {
+/** Open the Skills window on `view` ('browse' | 'add' | 'settings'), or bring
+ *  it forward.
+ *
+ *  C-NAV (`P23-01` provides it; `P23-02` consumes it): `from` is the opener's
+ *  window id and `tab` the opener's tab at that moment, both passed through to
+ *  `Modals.showWindow`, which draws `← <opener>` in this window's header and
+ *  re-raises the opener on that tab when this one closes. `showWindow` is the
+ *  three cases this function used to spell out — minimized → restore, open →
+ *  raise, closed → `openClosedWindow` — so without the other half (`from`
+ *  ignored) nothing here behaves differently. */
+export async function openSkillsWindow(view, { from = null, tab = null } = {}) {
   const modal = document.getElementById('skills-modal');
   if (!modal) return false;
   _wireSkillsWindow();
   if (view) _showSkillsView(_windowMount(), view);
   try {
     const Modals = await import('./modalManager.js?v=20261003waveg');
-    if (Modals.isMinimized('skills-modal')) Modals.restore('skills-modal');
-    else Modals.openClosedWindow('skills-modal');
+    const nav = {};
+    if (from) nav.from = from;
+    if (from && tab != null) nav.tab = tab;
+    Modals.showWindow('skills-modal', nav);
   } catch (_) {
     modal.classList.remove('hidden');
     modal.style.display = '';
@@ -3897,9 +3955,9 @@ function _wireMount(m) {
   });
   on('add-skill-btn', 'click', () => addSkill(m));
   on('skills-search', 'input', () => renderSkillsList(m));
-  on('skills-sort', 'change', (e) => {
-    // Dropdown holds two optgroups: Sort (sort:<key>) and Filter (filter:<key>).
-    // Picking a sort option leaves the filter alone, and vice-versa.
+  // `BRAIN-U-5` (P23-02). Sort and filter are two selects now; one handler
+  // reads either, by the prefix each option carries.
+  const onSortOrFilter = (e) => {
     const v = e.target.value || '';
     if (v.startsWith('sort:')) {
       m.sort = v.slice(5);
@@ -3911,6 +3969,11 @@ function _wireMount(m) {
       else if (f.startsWith('conf')) { m.draftsOnly = false; m.publishedOnly = false; m.confMax = parseInt(f.slice(4), 10) || null; }
     }
     renderSkillsList(m);
+  };
+  on('skills-sort', 'change', onSortOrFilter);
+  on('skills-filter', 'change', onSortOrFilter);
+  on('skills-list', 'click', (e) => {
+    if (e.target && e.target.closest && e.target.closest('[data-skills-clear-filter]')) _clearFilter(m);
   });
   on('skills-select-btn', 'click', () => {
     if (m.selectMode) _exitSelectMode(m); else _enterSelectMode(m);
@@ -3946,8 +4009,22 @@ function _wireMount(m) {
   }
   // The view tabs (Skills · Add) are this mount's own.
   if (m.host && m.host !== document.body) {
-    m.host.querySelectorAll('[data-skills-view]').forEach(tab => {
+    const viewTabs = Array.from(m.host.querySelectorAll('[data-skills-view]'));
+    viewTabs.forEach(tab => {
       tab.addEventListener('click', () => _showSkillsView(m, tab.getAttribute('data-skills-view')));
+      // `BRAIN-U-8` (P23-02): one tab-strip behaviour in the three windows —
+      // Left/Right (wrapping), Home/End; the view follows the focus.
+      tab.addEventListener('keydown', (e) => {
+        const keys = { ArrowLeft: -1, ArrowRight: 1, Home: 'first', End: 'last' };
+        if (!(e.key in keys)) return;
+        const i = viewTabs.indexOf(tab);
+        const step = keys[e.key];
+        const next = viewTabs[step === 'first' ? 0 : step === 'last' ? viewTabs.length - 1
+          : (i + step + viewTabs.length) % viewTabs.length];
+        e.preventDefault();
+        _showSkillsView(m, next.getAttribute('data-skills-view'));
+        try { next.focus(); } catch (_) {}
+      });
     });
     m.host.addEventListener('focusin', () => { _lastMount = m; });
     m.host.addEventListener('pointerdown', () => { _lastMount = m; });
@@ -3992,23 +4069,55 @@ function _stampRoom(host) {
 // switch, not a second writer (`Law 14`): pressing it presses the window's, the
 // window's moving moves it, and it dims the room's list the way `memory.js`
 // dims the window's.
-function _mirrorSkillsSwitch(m) {
-  const mine = m.el('skills-enabled-header-toggle');
-  const theirs = document.getElementById('skills-enabled-header-toggle');
-  if (!mine || !theirs || mine === theirs) return () => {};
-  const panel = m.host.querySelector('[data-skills-view-panel="browse"]');
+//
+// `BRAIN-U-10` (P23-02). The skill settings moved into this window (a third
+// view), so the room's stamp carries copies of them too, and they are mirrored
+// the same way: each is pressed through the window's control, which
+// `memory.js` owns, and the sentences it writes beside them are copied back.
+const _MIRRORED = [
+  ['skills-enabled-header-toggle', 'check'],
+  ['auto-skills-toggle', 'check'],
+  ['auto-approve-skills-toggle', 'check'],
+  ['skill-confidence-slider', 'value'],
+  ['skill-max-input', 'value'],
+];
+const _MIRRORED_TEXT = ['skill-confidence-label', 'skill-confidence-hint', 'skill-approve-coupling'];
+
+function _mirrorSkillControls(m) {
+  const pairs = _MIRRORED
+    .map(([id, kind]) => ({ id, kind, mine: m.el(id), theirs: document.getElementById(id) }))
+    .filter((p) => p.mine && p.theirs && p.mine !== p.theirs);
+  if (!pairs.length) return () => {};
   const sync = () => {
-    mine.checked = !!theirs.checked;
-    if (panel) panel.style.opacity = theirs.checked ? '' : '0.3';
-  };
-  mine.addEventListener('change', () => {
-    if (theirs.checked !== mine.checked) {
-      theirs.checked = mine.checked;
-      theirs.dispatchEvent(new Event('change'));
+    for (const p of pairs) {
+      if (p.kind === 'check') p.mine.checked = !!p.theirs.checked;
+      else p.mine.value = p.theirs.value;
     }
-    sync();
-  });
-  theirs.addEventListener('change', sync);
+    for (const id of _MIRRORED_TEXT) {
+      const mine = m.el(id), theirs = document.getElementById(id);
+      if (mine && theirs && mine !== theirs) mine.textContent = theirs.textContent;
+    }
+    const sw = document.getElementById('skills-enabled-header-toggle');
+    const list = m.el('skills-list');
+    if (sw && list) list.style.opacity = sw.checked ? '' : '0.4';
+  };
+  for (const p of pairs) {
+    for (const type of (p.kind === 'check' ? ['change'] : ['input', 'change'])) {
+      p.mine.addEventListener(type, () => {
+        if (p.kind === 'check') {
+          if (p.theirs.checked !== p.mine.checked) {
+            p.theirs.checked = p.mine.checked;
+            p.theirs.dispatchEvent(new Event(type));
+          }
+        } else {
+          p.theirs.value = p.mine.value;
+          p.theirs.dispatchEvent(new Event(type));
+        }
+        sync();
+      });
+      p.theirs.addEventListener(type, sync);
+    }
+  }
   sync();
   return sync;
 }
@@ -4031,7 +4140,7 @@ export function mountSkills(host, { view = null, skill = null } = {}) {
     m = _makeMount(host, { prefix: ROOM_PREFIX, scopeKey: _ROOM_SCOPE_KEY });
     _mounts.push(m);
     _wireMount(m);
-    m.syncSwitch = _mirrorSkillsSwitch(m);
+    m.syncSwitch = _mirrorSkillControls(m);
   }
   const handle = {
     mount: m,
@@ -4049,9 +4158,12 @@ document.addEventListener('DOMContentLoaded', () => {
   _wireMount(_windowMount());
   // `P9-06`. Every "Open Skills" door — the Brain's launcher card and its Add
   // tab — is one delegated listener, so a door added later needs no wiring.
+  // `P23-02`: a door inside another window opens Skills *from* it (C-NAV).
   document.addEventListener('click', (e) => {
     const door = e.target && e.target.closest && e.target.closest('[data-open-skills]');
-    if (door) openSkillsWindow(door.getAttribute('data-open-skills') || 'browse');
+    if (!door) return;
+    const host = door.closest('.modal[id]');
+    openSkillsWindow(door.getAttribute('data-open-skills') || 'browse', host ? { from: host.id } : {});
   });
 });
 

@@ -188,6 +188,19 @@ function _ensureOrbit() {
 }
 
 /** Fetch the count of saved research items and populate the header chip. */
+/** `D-34` (P23-02): "1 report · No reports · 3 reports" — it said
+ *  "1 research", "0 research" and "0 researches". */
+const _FAIL_NOTE = {
+  no_queries: 'The model gave no search queries.',
+  no_results: 'The search engine returned nothing.',
+  no_search_provider: 'No search engine is set up — Settings → Search.',
+  '': 'Nothing was found.',
+};
+
+function _reportCount(n) {
+  return n === 0 ? 'No reports' : n === 1 ? '1 report' : `${n} reports`;
+}
+
 async function _updateResearchCount() {
   const el = document.getElementById('research-stats');
   if (!el) return;
@@ -196,7 +209,7 @@ async function _updateResearchCount() {
     if (!res.ok) return;
     const data = await res.json();
     const n = data.total || 0;
-    el.textContent = n + (n === 1 ? ' research' : ' research');
+    el.textContent = _reportCount(n);
   } catch {}
 }
 
@@ -379,11 +392,11 @@ function _buildPanelHTML() {
     <div class="modal-body research-pane-body" data-no-swipe-dismiss>
       <div class="research-new-job">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px;">
-          <h2 style="margin:0;padding:0;line-height:1;display:inline-flex;align-items:center;gap:6px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent, var(--red))" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><path d="M6 18h8"/><path d="M3 22h18"/><path d="M14 22a7 7 0 1 0 0-14h-1"/><path d="M9 14h2"/><path d="M9 12a2 2 0 0 1-2-2V6h4v4a2 2 0 0 1-2 2Z"/><path d="M12 6V3a1 1 0 0 0-1-1H9a1 1 0 0 0-1 1v3"/></svg>Research <span id="research-stats" class="memory-count" style="font-size:0.6em;opacity:0.6;font-weight:normal"></span></h2>
+          <h2 style="margin:0;padding:0;line-height:1;display:inline-flex;align-items:center;gap:6px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent, var(--red))" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><path d="M6 18h8"/><path d="M3 22h18"/><path d="M14 22a7 7 0 1 0 0-14h-1"/><path d="M9 14h2"/><path d="M9 12a2 2 0 0 1-2-2V6h4v4a2 2 0 0 1-2 2Z"/><path d="M12 6V3a1 1 0 0 0-1-1H9a1 1 0 0 0-1 1v3"/></svg>Deep Research <span id="research-stats" class="memory-count" style="font-size:0.6em;opacity:0.6;font-weight:normal"></span></h2>
         </div>
         <p class="memory-desc doclib-desc" style="margin-top:2px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-          <span>Multi-step web research with an LLM-in-the-loop agent</span>
-          <span id="research-no-past-hint" style="display:none;font:inherit;opacity:1;position:static;">All past research found in: <button type="button" class="research-library-link" style="background:none;border:none;padding:0;font:inherit;color:var(--accent, var(--red));cursor:pointer;text-decoration:underline;">Library, Research</button></span>
+          <span>Searches the web, reads the sources, writes a report.</span>
+          <span id="research-no-past-hint" style="display:none;font:inherit;opacity:1;position:static;">Past reports: <button type="button" class="research-library-link" style="background:none;border:none;padding:0;font:inherit;color:var(--accent, var(--red));cursor:pointer;text-decoration:underline;">Library → Research</button></span>
         </p>
         <textarea id="research-query" class="research-query" placeholder="${_pickResearchHint()}" rows="4"></textarea>
         <button id="research-settings-toggle" class="research-settings-toggle${chevronCls}">
@@ -391,11 +404,11 @@ function _buildPanelHTML() {
         </button>
         <div id="research-settings-body" class="research-settings-row"${settingsHidden}>
           <label class="research-setting">
-            <span class="research-setting-label">Rounds <span class="hwfit-help-chip hwfit-help-chip-inline" title="How many search → read → reflect rounds the agent runs. More rounds = deeper coverage, longer wait, more tokens.">?</span></span>
+            <span class="research-setting-label">Rounds <span class="hwfit-help-chip hwfit-help-chip-inline" title="Search-read-think rounds. More is deeper and slower.">?</span></span>
             <select id="research-rounds">${roundOpts}</select>
           </label>
           <label class="research-setting">
-            <span class="research-setting-label">Format <span class="hwfit-help-chip hwfit-help-chip-inline" title="Auto lets the LLM pick the output shape. Override when you specifically want a Compare table, How-to, Product, or Fact-check.">?</span></span>
+            <span class="research-setting-label">Format <span class="hwfit-help-chip hwfit-help-chip-inline" title="Auto lets the model choose.">?</span></span>
             <select id="research-category">
               <option value="" selected>Auto</option>
               <option value="product">Product</option>
@@ -724,7 +737,7 @@ function _renderJobs() {
   const statsEl = document.getElementById('research-stats');
   if (statsEl) {
     const n = recentDone.length + past.length;
-    statsEl.textContent = n + ' research';
+    statsEl.textContent = _reportCount(n);
   }
 
   // The main Start button doubles as "Start All (N)" when more than one job
@@ -793,10 +806,14 @@ function _renderJobs() {
     }
     // Both sections carry a "Clear all" button in the header (cookbook-running
     // section style); it clears all research and must not toggle the fold.
-    const clearAllHtml = '<button class="research-section-clear" title="Clear all research">' + _cancelIcon + ' Clear all</button>';
+    // `BRAIN-U-15` (P23-02): *Hide* takes cards off this list and leaves the
+    // reports in the Library; *Delete* removes one from disk. "Clear",
+    // "Clear from list" and "Delete from disk" told the two apart only in
+    // their tooltips.
+    const clearAllHtml = '<button class="research-section-clear" title="Stays in the Library">' + _cancelIcon + ' Hide all</button>';
     header.innerHTML =
       '<span class="research-section-title">' + title + '</span>'
-      + '<span class="research-section-count memory-count">' + arr.length + ' research</span>'
+      + '<span class="research-section-count memory-count">' + _reportCount(arr.length) + '</span>'
       + '<span class="research-section-right">'
       +   clearAllHtml
       +   '<span class="research-section-dot' + (dotPulse ? ' pulsing' : '') + '" style="background:' + dotColor + ';"></span>'
@@ -805,7 +822,7 @@ function _renderJobs() {
     if (key === 'past') {
       const hint = document.createElement('span');
       hint.className = 'research-library-hint';
-      hint.innerHTML = '<span>All past research found in:</span> <button type="button" class="research-library-link">Library, Research</button>';
+      hint.innerHTML = '<span>Past reports:</span> <button type="button" class="research-library-link">Library → Research</button>';
       hint.querySelector('.research-library-link').addEventListener('click', (e) => {
         e.stopPropagation();
         // Close the research panel first so the Library opens ABOVE it on mobile
@@ -969,8 +986,11 @@ function _buildJobCard(job) {
     const doneBadge = failed
       ? `<span class="research-cat-badge research-cat-failed">${_cancelIcon} no results</span>`
       : (job.category ? `<span class="research-cat-badge">${_esc(job.category)}</span>` : `<span class="research-cat-badge research-cat-standard">standard</span>`);
+    // `BRAIN-M-6` (P23-02): the note says why, from the run's own reason
+    // (`stopped`); it blamed the question or the search engine whatever had
+    // happened — including a model that planned no search at all.
     const failNote = failed
-      ? `<div class="research-job-failnote">Couldn't extract anything — try rephrasing the question, or switch the search engine in Settings.</div>`
+      ? `<div class="research-job-failnote">${_esc(_FAIL_NOTE[job.stopped] || _FAIL_NOTE[''])}</div>`
       : '';
     const thumbSource = (job.sources || []).find(s => s && (s.image || s.og_image));
     const thumbUrl = job.thumbnail || thumbSource?.image || thumbSource?.og_image || '';
@@ -981,36 +1001,39 @@ function _buildJobCard(job) {
       <div class="research-job-header">
         <span class="research-job-query">${_esc(job.query)}</span>${doneBadge}
         ${modelTag}
-        <span class="research-job-meta">${elapsed} -- ${srcCount} sources</span>
+        <span class="research-job-meta">${elapsed} · ${srcCount} ${srcCount === 1 ? 'source' : 'sources'}</span>
       </div>
       ${failNote}
       <div class="research-job-actions">
         ${thumbnail}
-        <button class="research-job-action research-job-action-report" data-action="report" title="Visual report">${_externalIcon} Visual Report</button>
-        <button class="research-job-action" data-action="chat" title="Open follow-up chat with this research as context">${_chatIcon} Discuss</button>
+        ${failed ? '' : `<button class="research-job-action research-job-action-report" data-action="report" title="Visual report">${_externalIcon} Visual Report</button>`}
+        ${failed ? '' : `<button class="research-job-action" data-action="chat" title="Open follow-up chat with this research as context">${_chatIcon} Discuss</button>`}
         <button class="research-job-action research-job-action-dim" data-action="copy" title="Copy report to clipboard">${_copyIcon}</button>
-        <button class="research-job-action research-job-action-dim" data-action="dismiss" title="Clear from list">${_cancelIcon}</button>
-        <button class="research-job-action research-job-action-dim" data-action="delete" title="Delete from disk">${_trashIcon} Delete</button>
+        <button class="research-job-action research-job-action-dim" data-action="dismiss" title="Stays in the Library">${_cancelIcon} Hide</button>
+        <button class="research-job-action research-job-action-dim" data-action="delete">${_trashIcon} Delete</button>
       </div>
       ${isExpanded ? `<div class="research-job-result">${_renderResult(job)}</div>` : ''}
     `;
     // Clicking anywhere on the card (except the action buttons, which
     // stopPropagation) opens the visual report — same as the Visual Report btn.
-    card.style.cursor = 'pointer';
-    card.addEventListener('click', () => {
-      window.open(`${_apiBase}/api/research/report/${job.id}`, '_blank');
-    });
+    // `BRAIN-U-14`: an empty run offers no report — there is nothing in it.
+    if (!failed) {
+      card.style.cursor = 'pointer';
+      card.addEventListener('click', () => {
+        window.open(`${_apiBase}/api/research/report/${job.id}`, '_blank');
+      });
+    }
     card.querySelector('[data-action="copy"]').addEventListener('click', async (e) => {
       e.stopPropagation();
       const btn = e.currentTarget; // capture before await — currentTarget becomes null after
       if (!job.result) await _ensureResult(job);
       _copyResult(job, btn);
     });
-    card.querySelector('[data-action="report"]').addEventListener('click', (e) => {
+    card.querySelector('[data-action="report"]')?.addEventListener('click', (e) => {
       e.stopPropagation();
       window.open(`${_apiBase}/api/research/report/${job.id}`, '_blank');
     });
-    card.querySelector('[data-action="chat"]').addEventListener('click', (e) => {
+    card.querySelector('[data-action="chat"]')?.addEventListener('click', (e) => {
       e.stopPropagation();
       _chatAboutResearch(job.id, e.currentTarget);
     });

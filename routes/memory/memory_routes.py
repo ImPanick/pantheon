@@ -225,6 +225,18 @@ def _read_import_text(content: bytes, filename: str, ext: str,
             logger.warning("Memory import: could not remove %s", tmp_path)
 
 
+def _mostly_unreadable(text: str) -> bool:
+    """`BRAIN-M-14`. A binary file decoded as text (an 8-byte PNG passed the
+    sniff and went to the model) is not "a document": under 70 % printable
+    characters reads as nothing readable."""
+    sample = text[:4000]
+    if not sample:
+        return True
+    printable = sum(1 for ch in sample
+                    if (ch.isprintable() and ch != "\ufffd") or ch in "\n\r\t")
+    return printable / len(sample) < 0.7
+
+
 def _import_result(suggestions, filename, export, memory_manager, owner):
     """The import's answer, and on the provider path the memories themselves.
 
@@ -721,7 +733,7 @@ def setup_memory_routes(memory_manager: MemoryManager, session_manager: SessionM
             endpoint_url, model, headers = resolve_task_endpoint(owner=user)
     
         if not endpoint_url or not model:
-            raise HTTPException(400, "No LLM model configured. Set a default model in Settings.")
+            raise HTTPException(400, "No model yet. Add one in Settings → Add Models.")
 
         # `P2-05`. The cap is resolved for the person importing, not for
         # nobody. `D-2026-08-26-06` makes size — not the file's name — the real
@@ -735,8 +747,14 @@ def setup_memory_routes(memory_manager: MemoryManager, session_manager: SessionM
         _, ext = os.path.splitext(filename.lower())
         text = _read_import_text(content, filename, ext, user)
 
-        if not text.strip():
-            return {"suggestions": [], "message": "No readable content found"}
+        # `BRAIN-M-14` (P23-02). `reason` says which empty answer this is:
+        # `empty` — nothing readable in the file; `model_unparsed` — the
+        # model's reply could not be read; `none_found` — it read the file and
+        # found nothing to keep. The Brain said "No useful information found in
+        # file." for all three, blaming the file for the model (measured: a
+        # readable .txt and a scripted "OK" reply).
+        if not text.strip() or _mostly_unreadable(text):
+            return {"suggestions": [], "reason": "empty", "message": "No readable content found"}
 
         # `P13-06`. A conversation export from ChatGPT, Claude or Gemini,
         # recognised by its own structure rather than by its filename — all
@@ -860,15 +878,21 @@ def setup_memory_routes(memory_manager: MemoryManager, session_manager: SessionM
             else:
                 suggestions = []
 
-            return _import_result(suggestions, filename, export,
-                                  memory_manager, user)
+            out = _import_result(suggestions, filename, export,
+                                 memory_manager, user)
+            if not suggestions:
+                out["reason"] = "none_found"
+            return out
 
         except json.JSONDecodeError:
             # Fallback: split by lines, stripping any "1.", "2)" markdown-list
             # numbering the model added so saved memories don't keep the prefix.
             lines = [_strip_list_prefix(l.strip()) for l in raw.splitlines() if l.strip() and len(l.strip()) > 5]
-            return _import_result([{"text": l, "category": "fact"} for l in lines[:20]],
-                                  filename, export, memory_manager, user)
+            out = _import_result([{"text": l, "category": "fact"} for l in lines[:20]],
+                                 filename, export, memory_manager, user)
+            if not lines:
+                out["reason"] = "model_unparsed"
+            return out
         except Exception as e:
             logger.error(f"Memory import extraction failed: {e}")
             raise HTTPException(502, f"LLM extraction failed: {str(e)}")

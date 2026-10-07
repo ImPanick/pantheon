@@ -260,8 +260,10 @@ def test_the_settings_card_says_what_the_toggle_does_to_injection():
     """Two sentences, both written by `skillGateHints`, and the off-branch has
     to name the consequence rather than the mechanism."""
     body = js_function(MEMORY_JS, "export function skillGateHints")
-    assert "only published skills are injected" in body
-    assert "Audit all publishes" in body
+    # `P23-02` (`D-9`, `BRAIN-U-17`): shorter, and in the two state words — the
+    # consequence is still named, not the mechanism.
+    assert "only published skills are used" in body
+    assert "Audit publishes" in body
     assert '<span class="admin-toggle-sub" id="skill-approve-coupling"' in INDEX
     assert 'id="skill-confidence-hint"' in INDEX
 
@@ -307,22 +309,30 @@ def test_the_product_says_so_where_injection_is_configured():
     card = INDEX[INDEX.index('class="admin-toggle-sub skill-gate-note"'):]
     card = card[:card.index("</span>")]
     assert "untrusted" in card
-    assert "asks you" in card
+    assert "asks before" in card
     for consequence in ("writes", "runs", "sends", "deletes"):
         assert consequence in card, consequence
-    assert "testing a skill" in card
+    # `P23-02` (`D-11`): said once, here; the skill test's own panel says what
+    # its run will do (`SKILL_GATE_NOTE`), so "testing a skill" left this note.
+    # It moved with the skill settings into the Skills window (`BRAIN-U-10`).
+    skills_window = INDEX[INDEX.index('<div id="skills-modal"'):INDEX.index('<div id="workbench-modal"')]
+    assert 'class="admin-toggle-sub skill-gate-note"' in skills_window
 
 
 # ── the word itself ───────────────────────────────────────────────────────
 
-def test_the_pill_reads_uncatalogued():
+def test_the_pill_reads_draft_again():
+    """`P23-02` (`BRAIN-U-17`, Doc 2 § 5). Six words for two states became two:
+    **Draft** and **Published**. `P8-03`'s point — a draft is unlisted, not
+    switched off — is carried by the hover (next case), so the word can be the
+    short one the rest of the product uses."""
     body = js_function(SKILLS_JS, "function _statusPill")
-    assert ">uncatalogued<" in body
+    assert ">draft<" in body
     assert 'data-status="draft"' in body, (
         "the stored value is frontmatter and a CSS/selection hook — `Law 2`. "
         "Only the word a person reads was supposed to move"
     )
-    assert ">draft<" not in body
+    assert ">uncatalogued<" not in body
 
 
 def test_nothing_in_the_skills_surface_calls_it_inactive():
@@ -338,20 +348,21 @@ def test_nothing_in_the_skills_surface_calls_it_inactive():
     for path, label in ((ROOT / "static" / "js" / "skills.js", "skills.js"),
                         (ROOT / "static" / "js" / "memory.js", "memory.js")):
         assert not re.search(r"\binactive\b", blank(path), re.I), label
-    skills_panel = INDEX[INDEX.index('data-memory-panel="skills"'):]
-    skills_panel = skills_panel[:skills_panel.index('data-memory-panel="rag"')]
-    assert not re.search(r"\binactive\b", skills_panel, re.I)
+    # `P23-02`: the Brain's Skills launcher card is gone; the skills surface in
+    # the page is the Skills window, settings and all.
+    skills_window = INDEX[INDEX.index('<div id="skills-modal"'):INDEX.index('<div id="workbench-modal"')]
+    assert not re.search(r"\binactive\b", skills_window, re.I)
 
 
 def test_the_pill_explains_the_state_rather_than_naming_it():
-    """`Law 15`. "Uncatalogued" is a better word than "draft" and still not
-    self-explanatory, so the hover carries the whole rule: out of the list, in
-    on a match, and what to do about it."""
+    """`Law 15`. "Draft" is not self-explanatory, so the hover carries the
+    whole rule: out of the list, in on a match, and only past the confidence
+    bar (`P23-02` shortened it, D-23; the rule is the same)."""
     titles = SKILLS_JS[SKILLS_JS.index("const _STATUS_PILL_TITLE"):]
     titles = titles[:titles.index("};")]
-    assert "not shown it in the list" in titles
-    assert "still injected" in titles
-    assert "Publish it" in titles
+    assert "not listed" in titles
+    assert "when a message matches" in titles
+    assert "confidence" in titles
 
 
 # ── helper, moved to tests/helpers/js_source.py by `B876` ─────────────

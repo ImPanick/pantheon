@@ -9,7 +9,8 @@
 // leaf with no imports, so either side can take it without pulling the other.
 // Plain text, no markup: `skills.js` puts it inside a template string.
 
-export const SKILL_GATE_NOTE = 'A skill is untrusted text, so this run asks you before anything that writes, '
-  + 'runs, sends or deletes — it can stop halfway and wait.';
+// `D-26` (P23-02, Doc 2 § 5): the why is said once, in Skills › Settings; here
+// only what the run will do.
+export const SKILL_GATE_NOTE = 'The run asks before it writes, runs, sends or deletes.';
 
 export default { SKILL_GATE_NOTE };

@@ -178,8 +178,8 @@ def test_fix_these_with_the_model_appears_once_saved_and_says_the_counts(box):
     assert o["label"] == "Fix these with the model"
     assert "fix them with the model below" in o["head"], "the line sent the person to the card instead"
     assert o["improve"] == ["/api/skills/gamma-spooler/improve"]
-    assert ("Fixed gamma-spooler with the model. Before: 2 problems, 1 suggestion. "
-            "After: 0 problems, 1 suggestion.") in o["said"]
+    # `P23-02` (`D-31`): the counts before → after, in one line.
+    assert "Fixed gamma-spooler: problems 2 → 0, suggestions 1 → 1." in o["said"]
     assert "History" in o["said"]
 
 
@@ -214,10 +214,10 @@ def test_history_lists_views_as_text_and_puts_back_only_after_saying_what_it_rep
     assert o["viewed"]["text"].endswith("<script>alert(1)</script>") and o["viewed"]["nodes"] == 0
     assert o["viewed"]["hidden"] is False
     assert o["declined"] == 0, "No still put the copy back"
-    assert "version 1.0.0" in o["confirm"] and "It replaces the skill as it is now (version 1.0.0)" in o["confirm"]
-    assert "kept in History" in o["confirm"]
+    # `P23-02` (`D-30`): which copy, which it replaces, and that it is kept — in one line.
+    assert o["confirm"].startswith("Put back 1.0.0 (") and "The current copy (1.0.0) stays in History." in o["confirm"]
     assert o["restored"] == ["/api/skills/beta-print/versions/0001-1.0.0/restore"]
-    assert o["toast"].startswith("Put back the copy saved")
+    assert o["toast"] == "Restored 1.0.0. The old copy is in History."
 
 
 def test_download_saves_the_skill_as_a_file(box):

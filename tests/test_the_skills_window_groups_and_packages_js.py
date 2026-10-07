@@ -158,8 +158,9 @@ def test_a_skill_held_off_says_so_and_by_what(tmp_path):
           gpt: _offPill({ name: 'gpt-taste' }),
           offRows: rows().filter(r => String(r.className).includes('is-off')).map(rowText) }));
     """)
-    assert "skill-off-pill" in out["brandkit"] and "switched off with Design" in out["brandkit"]
-    assert "switched off with agent-skills" in out["pdf"]
+    # `P23-02` (`D-28`): "Off with Design (sidebar)." — by what, and where.
+    assert "skill-off-pill" in out["brandkit"] and "Off with Design" in out["brandkit"]
+    assert "Off with agent-skills" in out["pdf"]
     assert out["gpt"] == ""
     assert out["offRows"] == ["agent-skills 2", "Design 2"]
 
@@ -234,7 +235,11 @@ def test_the_window_holds_the_list_and_the_import_and_the_brain_holds_the_doors(
                     "skills-enabled-header-toggle", "close-skills-modal"):
         assert f'id="{control}"' in skills, control
         assert f'id="{control}"' not in brain, f"{control} is in two windows"
-    assert 'data-open-skills="browse"' in brain and 'data-open-skills="add"' in brain
-    assert 'data-memory-tab="skills"' in brain, "the Brain lost the tab that opens the window"
+    # `P23-02` (`NAV-U-1`): the Brain's two doors to the window — beside its
+    # tabs, and on its Add tab — open it *from* the Brain (`memory.js`
+    # `openSkillsFromBrain`); Skills is no longer a tab of the Brain's.
+    assert 'data-brain-skills="browse"' in brain and 'data-brain-skills="add"' in brain
+    assert 'id="memory-skills-door"' in brain, "the Brain lost the door that opens the window"
+    assert 'data-memory-tab="skills"' not in brain, "Skills is a door, not a tab"
     for control in re.findall(r'\bid="([^"]+)"', skills):
         assert html.count(f'id="{control}"') == 1, f"id {control} is declared twice"

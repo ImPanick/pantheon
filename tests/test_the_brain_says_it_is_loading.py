@@ -70,7 +70,8 @@ globalThis.MutationObserver = class {
 const notify = (el) => observers.filter((o) => o.target === el).forEach((o) => o.cb([{ type: 'attributes' }]));
 const mem = (await import('./memory.js')).default;
 const list = () => byId('memory-list').readable;
-const count = () => byId('memory-count-h2').textContent;
+// `P23-02` (`COPY-U-15`): the count is said once, on the tab; the header is bare.
+const count = () => byId('memory-count').textContent;
 const gets = () => calls.fetch.filter((c) => c.method === 'GET' && /\\/api\\/memory$/.test(c.url)).length;
 const ROWS = [
   { id: 'a', text: 'Rowan prefers tea to coffee', category: 'preference', source: 'manual', timestamp: 1 },
@@ -104,7 +105,7 @@ def test_before_the_store_answers_the_brain_says_it_is_loading(brain):
     """)
     assert "No memories yet" not in out["list"]
     assert "Loading memories" in out["list"]
-    assert out["count"] == "loading..."
+    assert out["count"] == "..."
 
 
 @_needs_node
@@ -133,7 +134,7 @@ def test_opening_the_brain_asks_for_its_list_and_draws_it(brain):
     assert "No memories yet" not in out["whileWaiting"]
     assert "Rowan prefers tea to coffee" in out["drawn"]
     assert out["again"] == 1
-    assert out["count"] == "2 memories"
+    assert out["count"] == "2"
 
 
 @_needs_node
@@ -166,7 +167,7 @@ def test_an_empty_store_still_says_it_is_empty(brain):
         console.log(JSON.stringify({ list: list(), count: count() }));
     """)
     assert "No memories yet" in out["list"]
-    assert out["count"] == "0 memories"
+    assert out["count"] == "0"
 
 
 # ── the real app ───────────────────────────────────────────────────────────

@@ -27,7 +27,7 @@ import re
 import time
 from typing import Dict, Iterable, List, Optional, Tuple
 
-from .skill_format import Skill, slugify
+from .skill_format import Skill, normalize_status, slugify
 from .skill_lint import skill_similarity
 
 logger = logging.getLogger(__name__)
@@ -785,7 +785,7 @@ class SkillsManager:
                             "version": "0.0.1",
                             "category": "legacy",
                             "tags": row.get("tags") or [],
-                            "status": row.get("status") or "draft",
+                            "status": normalize_status(row.get("status")),
                             "confidence": row.get("confidence", 0.5),
                             "source": row.get("source", "imported"),
                             "owner": row.get("owner"),
@@ -1185,7 +1185,7 @@ class SkillsManager:
             platforms=list(platforms or []),
             requires_toolsets=list(requires_toolsets or []),
             fallback_for_toolsets=list(fallback_for_toolsets or []),
-            status=status or "draft",
+            status=normalize_status(status),   # `BRAIN-M-2`
             confidence=float(confidence),
             source=source,
             teacher_model=teacher_model,
@@ -1302,6 +1302,8 @@ class SkillsManager:
             for k in scalar_keys:
                 if k in updates:
                     setattr(sk, k, updates[k])
+            if "status" in updates:
+                sk.status = normalize_status(sk.status)   # `BRAIN-M-2`
             list_keys = ("tags", "procedure", "pitfalls", "verification",
                          "platforms", "requires_toolsets", "fallback_for_toolsets")
             for k in list_keys:

@@ -186,7 +186,10 @@ def test_both_places_draw_the_one_store(box):
               sides: [$('skills-side').children.length > 0, $('wb-skills-side').children.length > 0] });
     """)
     assert sorted(o["win"]) == sorted(o["room"]) == ["alpha-logs", "beta-print"]
-    assert o["counts"] == ["2 skills", "2 skills"]
+    # `P23-02` (`COPY-U-15`, `BRAIN-M-10`): the header beside "Skills" is bare
+    # when everything is shown — the count is said once, on the Brain's door —
+    # and says "N of M" only when something hides some.
+    assert o["counts"] == ["", ""]
     assert o["sides"] == [True, True]
 
 
@@ -251,7 +254,7 @@ def test_a_skill_added_in_the_room_appears_in_the_window_and_the_windows_form_is
     assert o["post"] == "gamma-spooler"
     assert "gamma-spooler" in o["win"] and "gamma-spooler" in o["room"]
     assert o["roomForm"] == "" and o["winForm"] == "half-typed-in-the-window"
-    assert o["counts"] == ["3 skills", "3 skills"]
+    assert o["counts"] == ["", ""]   # `P23-02`: nothing hidden, nothing said
 
 
 def test_the_rooms_skills_switch_is_the_windows_switch(box):
@@ -265,10 +268,10 @@ def test_the_rooms_skills_switch_is_the_windows_switch(box):
         const followed = mine.checked;
         mine.checked = false; fire(mine, 'change');
         out({ followed, theirs: theirs.checked, writes,
-              dimmed: $('skills-room').querySelector('[data-skills-view-panel="browse"]').style.opacity,
+              dimmed: $('wb-skills-list').style.opacity,
               prefCalls: server.calls.filter((c) => c.url.includes('/api/prefs/')).length });
     """)
     assert o["followed"] is True
     assert o["theirs"] is False and o["writes"] == [True, False]
-    assert o["dimmed"] == "0.3"
+    assert o["dimmed"] == "0.4"   # `P23-02` (`BRAIN-U-11`): the list, not its toolbar
     assert o["prefCalls"] == 0, "the room wrote the preference itself"
