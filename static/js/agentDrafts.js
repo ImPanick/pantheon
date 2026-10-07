@@ -65,6 +65,8 @@ let _hint = null;
 let _foldBtn = null;
 let _discardAll = null;
 let _timer = null;
+let _refreshedAt = 0;          // `P23-07`: when the panel last asked
+let _visibilityHooked = false;
 let _busy = new Set();
 let _expanded = new Set();
 let _lastCount = -1;
@@ -264,6 +266,7 @@ function _sentence(count, oldestSeconds) {
 
 export async function refresh() {
   if (!_bind()) return;
+  _refreshedAt = Date.now();
   let payload = null;
   try {
     const res = await fetch('/api/email/pending');
@@ -302,11 +305,22 @@ export function start() {
   if (_timer) clearInterval(_timer);
   // `P15-10` — a self-rescheduling timeout rather than setInterval, so the tick
   // re-rolls instead of every install polling on the same grid.
+  //
+  // `P23-07` (PERF-M-12): not while the tab is hidden — measured, 2 asks in
+  // 90 s for a panel nobody could see. Coming back looks once, if a look is due.
   const tick = () => {
-    _timer = setTimeout(() => { refresh(); tick(); },
-                        POLL_MS + Math.random() * POLL_MS * 0.1);
+    _timer = setTimeout(() => {
+      if (document.visibilityState !== 'hidden') refresh();
+      tick();
+    }, POLL_MS + Math.random() * POLL_MS * 0.1);
   };
   tick();
+  if (!_visibilityHooked) {
+    _visibilityHooked = true;
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState !== 'hidden' && Date.now() - _refreshedAt >= POLL_MS) refresh();
+    });
+  }
 }
 
 export default { start, refresh };

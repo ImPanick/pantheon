@@ -190,6 +190,39 @@ def test_the_mail_dot_looks_once_on_return_and_polls_while_visible(mail):
     assert mail["quickReturn"] == 0, mail
 
 
+@pytest.fixture(scope="module")
+def held_drafts(tmp_path_factory) -> dict:
+    """The held-mail panel's poll (`agentDrafts.js`) — the fourth hidden-tab
+    poll, found re-measuring on `32df791`: `GET /api/email/pending` twice in
+    90 s hidden."""
+    fns = _cut("static/js/agentDrafts.js", "export async function refresh(", "export function start(")
+    body = r"""
+const POLL_MS = 60000;
+let _timer = null, _refreshedAt = 0, _visibilityHooked = false, _lastCount = 0;
+const _bind = () => true;
+""" + fns + r"""
+(async () => {
+  start();
+  await advance(5000);
+  const out = { atLoad: count('email/pending') };
+  setVisible(false); await advance(200000); out.hidden200s = count('email/pending') - out.atLoad;
+  const before = count('email/pending'); setVisible(true); out.onReturn = count('email/pending') - before;
+  const b2 = count('email/pending'); await advance(130000); out.visible130s = count('email/pending') - b2;
+  setVisible(false); setVisible(true); out.quickReturn = count('email/pending') - b2 - out.visible130s;
+  console.log(JSON.stringify(out));
+})();
+"""
+    return _run_node(tmp_path_factory.mktemp("drafts"), "drafts", body)
+
+
+def test_the_held_mail_panel_does_not_poll_a_hidden_tab(held_drafts):
+    assert held_drafts["atLoad"] == 1
+    assert held_drafts["hidden200s"] == 0, held_drafts
+    assert held_drafts["onReturn"] == 1
+    assert held_drafts["visible130s"] == 2
+    assert held_drafts["quickReturn"] == 0, held_drafts
+
+
 # ── the two scans, in the real app ──────────────────────────────────────────
 
 _SCRIPT = r"""
