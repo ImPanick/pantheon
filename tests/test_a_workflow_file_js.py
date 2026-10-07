@@ -209,8 +209,8 @@ def test_export_downloads_the_saved_workflow_as_a_file(box, one):
     assert json.loads(c["bytes"]) == o["served"], "the file is the server's bytes, as they came"
     assert o["served"]["pantheon_workflow"] == 1
     assert "sekret-api-key-123" not in c["bytes"] and "miniflux.lan" not in c["bytes"]
-    assert c["said"] == (f"Downloaded “{name}”. It holds the saved steps and the names of what they "
-                         "use; keys, tokens, addresses and pinned samples are left out.")
+    # P23-05 (Doc 2 § 5): one short line.
+    assert c["said"] == f"Downloaded {name}. No keys, addresses or samples in it."
     assert o["dirtySaid"].endswith("Your unsaved changes are not in it.")
 
 

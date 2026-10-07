@@ -55,7 +55,7 @@ _REAL_DATABASE_ATTRS = {
     "TaskRun": TaskRun,
 }
 
-HEADLINE = "Dry run — nothing ran, nothing changed."
+HEADLINE = "Dry run — nothing ran."  # P23-05 (COPY-U-27)
 
 
 @pytest.fixture()

@@ -4038,9 +4038,9 @@ def dry_run_plan(*, task_type: str | None, action: str | None,
         lines.append("Would run this workflow, every step in one run. Its own "
                      "dry run shows what each step would do.")
     else:
+        # `P23-05` (COPY-U-27): one line; "It would: call a model, and whatever
+        # the tools it is allowed to call then do" said it again.
         lines.append(f"Would send this {noun}'s prompt to a model, with tools.")
-        lines.append("It would: call a model, and whatever the tools it is "
-                     "allowed to call then do.")
     if kind in ("llm", "research"):
         lines.append(f"Model: {model}" if model else "Model: the default.")
     for line in (extra or ()):

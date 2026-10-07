@@ -1140,7 +1140,10 @@ def _normalize_chat_endpoint(url: str) -> str:
 # so "is this row a dry run" has one answer, in Python (`is_dry_run`) and in
 # SQL (`real_run_clause`), and a dry run is never a task's last run.
 DRY_RUN_MARK = "Dry run — "
-DRY_RUN_HEADLINE = f"{DRY_RUN_MARK}nothing ran, nothing changed."
+# `P23-05` (COPY-U-27): said once — "nothing changed" restated "nothing ran". The
+# MARK is the stored prefix every reader keys on and does not move; rows already
+# written keep the longer sentence and still start with it.
+DRY_RUN_HEADLINE = f"{DRY_RUN_MARK}nothing ran."
 
 
 def is_dry_run(run) -> bool:

@@ -64,8 +64,10 @@ const RUNS_SHOWN = 30;
  *  the room again. Nothing is asked while no run is in flight. */
 export const SHELF_WATCH_MS = 4000;
 /** Said when a workflow is off — the design's words (§ 6.2). */
-export const OFF_WORDS = 'Off — it will not run.';
-export const ON_WORDS = 'On';
+// `P23-05` (Doc 2 § 5): the switch itself reads *On* / *Off*; the word beside
+// it adds only what the switch cannot say (driven: "On On" on the merged tree).
+export const OFF_WORDS = 'It will not run.';
+export const ON_WORDS = '';
 /** `P22-19`. At most this many example sentences are offered under *Describe
  *  it* (`D-2026-10-02-02` §1). */
 export const EXAMPLES_MAX = 6;

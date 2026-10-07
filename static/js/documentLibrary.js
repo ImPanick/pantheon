@@ -3591,7 +3591,7 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
         const metaBits = [];
         if (date) metaBits.push(`${date} ${time}`);
         if (sources) metaBits.push(`${sources} sources`);
-        if (rounds) metaBits.push(`${rounds} rounds`);
+        if (rounds) metaBits.push(`${rounds} round${Number(rounds) === 1 ? '' : 's'}`);
         if (duration) metaBits.push(`${duration}`);
         const metaText = metaBits.join(' \u00B7 ');
         html += `<div class="memory-item doclib-chat-row doclib-research-card" data-research-id="${r.id}" style="cursor:pointer;">`;

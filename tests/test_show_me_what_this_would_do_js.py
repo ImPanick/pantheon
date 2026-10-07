@@ -234,7 +234,7 @@ async def test_the_card_draws_the_plan_the_scheduler_wrote(sandbox, task_db, mon
     assert "What a real run would do" in out["text"]
     for step in run["steps"]:
         assert step["detail"] in out["text"], step["detail"]
-    assert "Dry run — nothing ran, nothing changed." in out["text"]
+    assert "Dry run — nothing ran." in out["text"]  # P23-05 (COPY-U-27)
     assert "A dry run cannot tell you what this would change" in out["text"]
     rows = _steps_of(out["html"])
     assert rows and all("task-run-step-dry-run" in r["class"] for r in rows), rows

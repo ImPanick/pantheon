@@ -170,7 +170,7 @@ export const EDIT_WORDS = Object.freeze({
   emptyText: 'Add a step, and the start leads to it. A step asks a model, decides which way to go, '
     + 'calls a service, waits, or runs your code.',
   // `P23-05` (COPY-U-23): one line; the keys are its tooltip.
-  hint: 'Drag from a step’s way out to the next step, or press Connect…. Click a step to change it. '
+  hint: 'Drag from a step’s way out to the next step (or use Connect…). Click a step to change it. '
     + 'Save keeps your changes.',
   hintKeys: 'Keys: arrows go from step to step, Enter opens one, M moves it.',
   newLabel: 'New step',

@@ -225,7 +225,7 @@ def test_a_workflow_opens_on_the_same_canvas_with_its_toolbar(box):
     """)
     assert o["name"] == "Morning brief"
     assert (o["sw"], o["checked"]) == ("Off", "false")
-    assert o["word"] == "Off — it will not run."  # P23-05 (Doc 2 § 5)
+    assert o["word"] == "It will not run."  # P23-05 (Doc 2 § 5): the switch says "Off"
     assert o["dirty"] == ""
     assert o["items"] == ["Starts", "Summarise my inbox", "Send me the summary"]
     assert o["start"] == "Daily at 08:00", "what starts it, in the Tasks window's words"

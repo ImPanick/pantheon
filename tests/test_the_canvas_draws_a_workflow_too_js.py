@@ -273,6 +273,26 @@ def test_a_document_is_planned_whole_from_no_head(box):
     assert o["startSub"] == "Starts here"
 
 
+def test_starts_here_is_said_once_when_the_plan_begins_at_the_first_step(box):
+    """`P23-05` (WB-U-7). Driven on the merged tree, a workflow's dry run read
+    *Starts here* on the start and *Starts here · Prompt* on the step under it:
+    the server's plan puts its first step at depth 0. The start says it; the
+    step says how it is reached."""
+    o = _case(box, """
+        const plans = [['__start__', { steps: [{ kind: 'dry-run', detail: 'Would start: Every day at 08:00.' }],
+                                       declined: null, when: null, depth: 0 }],
+                       ['n1', { steps: [{ kind: 'dry-run', detail: 'Would send this step’s prompt to a model, with tools.' }],
+                                declined: null, when: null, depth: 0 }]];
+        const { root, c } = await mount({ plans });
+        await c.dryRun(null, { title: 'Morning brief' });
+        await settle(5);
+        out({ start: itemOf(root, '__start__').querySelector('.wb-node-sub').textContent,
+              n1: itemOf(root, 'n1').querySelector('.wb-node-sub').textContent });
+    """)
+    assert o["start"] == "Starts here"
+    assert o["n1"] == "When it starts · Prompt", o
+
+
 def test_a_steps_done_on_a_source_that_saves_later_says_it_is_in_the_draft(box):
     o = _case(box, """
         const { root, S } = await mount({ save: true });

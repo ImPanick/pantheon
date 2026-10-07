@@ -82,7 +82,7 @@ export const TASK_WORDS = Object.freeze({
   // `P23-05` (COPY-U-23, Doc 2 § 5): one line, always on; the keys are its
   // tooltip (`hintKeys`), not a third sentence. One noun on this canvas: task.
   hint: 'Drag from “' + EDGE_WORDS.success + '” or “' + EDGE_WORDS.error
-    + '” to the next step, or press Connect…. Click a step to edit it.',
+    + '” to the next step (or use Connect…). Click a step to edit it.',
   hintKeys: 'Keys: arrows go from step to step, Enter opens one, M moves it.',
   newLabel: 'New task',
   newTitle: 'Make a new task and put it on the canvas',

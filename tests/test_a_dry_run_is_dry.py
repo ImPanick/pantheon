@@ -206,7 +206,7 @@ async def test_not_one_of_the_eighteen_actions_is_called(task_db, monkeypatch, a
     row = _run_row(task_db)
     assert row["status"] == "skipped"
     assert "I RAN" not in (row["result"] or "")
-    assert row["result"].startswith("Dry run — nothing ran, nothing changed.")
+    assert row["result"].startswith("Dry run — nothing ran.")  # P23-05 (COPY-U-27)
 
 
 @pytest.mark.asyncio
