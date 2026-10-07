@@ -560,9 +560,9 @@ def owner_is_admin_or_single_user(owner: Optional[str]) -> bool:
         if _auth_disabled():
             return True
 
-        from core.auth import AuthManager
+        from src.auth_manager_access import shared_auth_manager  # `P23-07` (`PERF-M-15`)
 
-        auth = AuthManager()
+        auth = shared_auth_manager()
         if not auth.is_configured:
             return False
         return bool(owner and auth.is_admin(owner))

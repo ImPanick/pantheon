@@ -41,8 +41,8 @@ def owner_has_admin_task_privileges(owner: str | None) -> bool:
             pass
 
     try:
-        from core.auth import AuthManager
-        auth = AuthManager()
+        from src.auth_manager_access import shared_auth_manager  # `P23-07` (`PERF-M-15`)
+        auth = shared_auth_manager()
         if not auth.is_configured:
             return True
         if not owner:

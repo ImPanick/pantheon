@@ -285,6 +285,9 @@ from src.roles import install_role_layer
 
 auth_manager = AuthManager()
 app.state.auth_manager = auth_manager
+# `P23-07` (`PERF-M-15`): the one the policy checks ask for (`core.auth.shared_auth_manager`).
+from core.auth import register_shared_auth_manager
+register_shared_auth_manager(auth_manager)
 # `P11-02`. The one line `P12-01` left this registry waiting for: from here on
 # `settings.resolve_limit` consults the caller's role profile before the
 # instance setting, the environment and the built-in default — for every byte
