@@ -1153,8 +1153,14 @@ function renderSkillsList(m) {
   // `owner: null`), and `B590` is open because none of them can be opened.
   // "Skills" is what this section actually holds — SKILL.md files, whoever
   // wrote them — beside "Built-in capabilities", which holds native tools.
+  //
+  // `B-NEW-5` (round 2). No count on this head: the library column's row
+  // counts the scope ("All skills 8") and the header writes "5 of 8" when a
+  // search or filter narrows it, so "SKILLS 8" said the number a second time
+  // (measured on `a936b5c`). The built-in head keeps its count — nothing else
+  // counts the built-in capabilities, and that section ships folded.
   if (cards.length) {
-    if (showBuiltin) container.appendChild(_mkSectionHeader('user', 'Skills', cards.length));
+    if (showBuiltin) container.appendChild(_mkSectionHeader('user', 'Skills', null));
     cards.forEach(c => { c.dataset.skillSection = 'user'; container.appendChild(c); });
   }
 
@@ -1221,10 +1227,12 @@ function _skillsSectionHeader(container, sectionId, title, count) {
   hdr.className = 'skills-section-label skills-section-header' + (collapsed ? ' collapsed' : '');
   hdr.setAttribute('aria-expanded', String(!collapsed));
   hdr.dataset.section = sectionId;
+  // `B-NEW-5`: a section with no count of its own (`count` null) says only
+  // its name — see the "Skills" call in `renderSkillsList`.
   hdr.innerHTML =
     chevronIcon({ className: 'skills-section-chevron' }) +
     `<span>${esc(title)}</span>` +
-    `<span class="skills-section-count">${count}</span>`;
+    (count == null ? '' : `<span class="skills-section-count">${count}</span>`);
   hdr.addEventListener('click', () => {
     if (_collapsedSections.has(sectionId)) _collapsedSections.delete(sectionId);
     else _collapsedSections.add(sectionId);

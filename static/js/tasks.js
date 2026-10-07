@@ -677,7 +677,10 @@ function _renderTaskChips() {
     b.addEventListener('click', () => { _taskFilter = value; _renderList(); });
     bar.appendChild(b);
   };
-  mkChip(`all (${_tasks.length})`, null, !_taskFilter);
+  // `B-NEW-5` (round 2): "all", bare — the tab says "Tasks 19", and "all (19)"
+  // said it again under it (measured on `a936b5c`). Activity's chips already
+  // read "all".
+  mkChip('all', null, !_taskFilter);
   for (const c of cats) mkChip(`${c} (${counts[c]})`, c, _taskFilter === c);
 }
 

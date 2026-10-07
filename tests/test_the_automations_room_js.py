@@ -211,6 +211,23 @@ def test_the_room_opens_on_the_chains_and_lists_every_workflow_on_the_shelf(box)
     assert o["view"] is True and o["listed"] == 1
 
 
+def test_the_shelf_does_not_say_the_tab_again(box):
+    """`B-NEW-5` (P23 round 2). The tab above the room says *Automations*, and
+    the shelf's first line said it again (measured on `a936b5c`, 1440×900; a
+    phone already hid it). The shelf keeps the name as its landmark's, for a
+    screen reader."""
+    o = _case(box, """
+        const { root } = await room();
+        const nav = root.querySelector('.wf-shelf');
+        out({ head: root.querySelectorAll('.wf-shelf-head').length,
+              first: nav.children[0] && nav.children[0].className,
+              label: nav.getAttribute('aria-label') });
+    """)
+    assert o["head"] == 0, "the shelf repeats the tab's word"
+    assert o["first"] == "wf-shelf-pick"
+    assert o["label"] == "Automations"
+
+
 def test_a_workflow_opens_on_the_same_canvas_with_its_toolbar(box):
     o = _case(box, """
         const { root } = await room();

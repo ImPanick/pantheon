@@ -199,8 +199,11 @@ export function mountAutomations(host, opts = {}) {
   host.classList.add('wf-room', 'wb-room');
 
   const shelf = _el('nav', 'wf-shelf');
+  // `B-NEW-5` (round 2): the column has no visible heading. The tab above it
+  // says *Automations*, and a `wf-shelf-head` saying it again sat under the
+  // tab (measured on `a936b5c`; a phone already hid it). The landmark keeps
+  // the name for a screen reader.
   shelf.setAttribute('aria-label', 'Automations');
-  const shelfHead = _el('p', 'wf-shelf-head', 'Automations');
   const shelfList = _el('ul', 'wf-shelf-list');
   const newWfBtn = _button('wf-shelf-new', 'New workflow',
     'A workflow is one named set of steps with one start. It is made switched off.');
@@ -265,7 +268,7 @@ export function mountAutomations(host, opts = {}) {
   pickLabel.appendChild(_el('span', 'wf-shelf-pick-word', 'Showing'));
   const pick = _el('select', 'wf-shelf-select');
   pickLabel.appendChild(pick);
-  for (const n of [shelfHead, pickLabel, shelfList, newWfBtn, newForm, shelfNote]) shelf.appendChild(n);
+  for (const n of [pickLabel, shelfList, newWfBtn, newForm, shelfNote]) shelf.appendChild(n);
 
   const main = _el('div', 'wf-main');
   const ask = _el('div', 'wf-ask');

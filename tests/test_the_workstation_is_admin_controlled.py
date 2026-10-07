@@ -454,6 +454,28 @@ def test_off_is_said_and_nothing_is_called(app, ws):
     assert as_user(app, ALLOWED).post("/api/workstation/reset").status_code == 409
 
 
+def test_the_admin_is_told_what_off_costs_once(app, ws):
+    """`B-NEW-5` (P23 round 2). Settings → Workstation said what off costs
+    twice, 40 px apart (measured on `a936b5c`): the status card's *The
+    workstation is off. Nothing calls it, and the agent's shell, Python and file
+    tools run inside Pantheon as they always have.* above the switch's own line
+    *Off: the agent's shell, Python and files run inside Pantheon.* Doc 2 § 5:
+    once, under the switch. The status says the state; the switch says the
+    rest."""
+    import html
+    import re
+
+    admin_view = as_user(app, ADMIN).get("/api/workstation/status").json()
+    assert admin_view["state"] == wa.STATE_OFF
+    assert admin_view["sentence"] == "The workstation is off."
+    markup = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
+    under_switch = re.search(r'id="ws-enabled-why">([^<]*)<', markup)
+    assert under_switch, "the switch's own line moved"
+    why = html.unescape(under_switch.group(1)).strip()
+    assert why == "Off: the agent’s shell, Python and files run inside Pantheon."
+    assert "inside Pantheon" not in admin_view["sentence"]
+
+
 def test_check_now_asks_a_workstation_that_is_switched_off(app, ws):
     """So an admin can start the overlay, check it, and then turn it on."""
     as_user(app, ADMIN).post("/api/auth/settings", json={

@@ -2133,12 +2133,12 @@ async function initAgentSettings() {
       // tell it they moved rather than leave it on the old numbers until the
       // next model or chat change.
       try { document.dispatchEvent(new CustomEvent('pantheon:agent-limits-changed')); } catch (_) {}
-      msg.textContent = (tools > 0 ? 'Limit: ' + tools + ' tool calls' : 'Unlimited tool calls') +
-        (rounds != null ? ' · ' + rounds + ' steps/message' : '') +
-        (supInput && supInput.checked ? ' · supervisor on' : '') +
-        (ceiling === 0 ? ' · local lift off'
-          : ceiling != null ? ' · local ceiling ' + ceiling : '');
+      // `B-NEW-5` (round 2): "Saved", as the other cards say it. The line
+      // read the fields back ("Unlimited tool calls · 20 steps/message")
+      // under the fields that already say it.
+      msg.textContent = 'Saved';
       msg.style.color = 'var(--fg)';
+      setTimeout(() => { if (msg.textContent === 'Saved') msg.textContent = ''; }, 2000);
     } catch (e) { msg.textContent = _notSaved(e); msg.style.color = 'var(--red)'; }
   }
 
@@ -2147,12 +2147,10 @@ async function initAgentSettings() {
   if (supInput) supInput.addEventListener('change', save);
   if (verInput) verInput.addEventListener('change', save);   // H16
   if (ceilInput) ceilInput.addEventListener('change', save);  // P3-21
-  var cur = parseInt(toolsInput.value, 10) || 0;
-  var curR = roundsInput ? (parseInt(roundsInput.value, 10) || 20) : null;
-  msg.textContent = (cur > 0 ? 'Limit: ' + cur + ' tool calls' : 'Unlimited tool calls') +
-    (curR != null ? ' · ' + curR + ' steps/message' : '') +
-    (supInput && supInput.checked ? ' · supervisor on' : '');
-
+  // `B-NEW-5` (round 2): nothing on load — the card's own fields say the
+  // limits; the line beneath them said "Unlimited tool calls · 20
+  // steps/message" a second time (measured on `a936b5c`).
+  msg.textContent = '';
 }
 
 /* ═══════════════════════════════════════════
