@@ -62,32 +62,10 @@ document.addEventListener('DOMContentLoaded', markComposerUserEdited, { once: tr
       clearFreshComposerRestore();
     }
     localStorage.setItem(KEY, liveUser);
-    // Apply per-user privilege gates to the UI. The backend enforces these
-    // independently — this is purely cosmetic / "don't dangle controls the
-    // user can't actually use." Privileges come from /api/auth/status; admins
-    // always get the full set so this is a no-op for them.
-    try {
-      const privs = (data && data.privileges) || {};
-      const hideOn = (selector, allowed) => {
-        if (allowed === undefined || allowed === true) return;
-        document.querySelectorAll(selector).forEach(el => {
-          el.style.display = 'none';
-        });
-      };
-      // Document editor — overflow menu button + the docs panel rail/tool button.
-      hideOn('#overflow-doc-btn, #tool-doc-btn', privs.can_use_documents);
-      // Research — sidebar tool + the in-input deep-research toggle.
-      hideOn('#tool-research-btn, #research-toggle-btn', privs.can_use_research);
-      // Memory & skills (rail/tool button only — UI/API entry).
-      hideOn('#tool-memory-btn', privs.can_manage_memory);
-      // Agent mode toggle — force chat mode by hiding the Agent toggle button.
-      if (privs.can_use_agent === false) {
-        const _agent = document.getElementById('mode-agent-btn');
-        const _chat = document.getElementById('mode-chat-btn');
-        if (_agent) _agent.style.display = 'none';
-        if (_chat) { _chat.classList.add('active'); _chat.click?.(); }
-      }
-    } catch (_) { /* DOM not ready or unexpected shape — UI gates are non-fatal */ }
+    // `P23-03` (SET-M-15). A second privilege applier lived here, with its own
+    // selector set — `#tool-doc-btn`, which no template renders, and no rail
+    // twin — racing `app.js`'s for the same `/api/auth/status`. The person's
+    // column is applied once now, by the table in `ui_visibility.js`.
   } catch (_) { /* anonymous / loopback mode — nothing to do */ }
 })();
 

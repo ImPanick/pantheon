@@ -174,7 +174,7 @@ def test_a_failed_save_puts_the_switch_back():
     that visibly refused."""
     body = SETTINGS_JS.split("async function initEmailConfirm(", 1)[1].split("\n}", 1)[0]
     assert "input.checked = !input.checked;" in body
-    assert "left unchanged" in body
+    assert "Left unchanged" in body
 
 
 def test_the_panel_says_the_agent_cannot_turn_it_off():
@@ -186,8 +186,8 @@ def test_the_panel_says_the_agent_cannot_turn_it_off():
     in its mildest form."""
     import re as _re
     card = _re.sub(r"\s+", " ", INDEX.split('id="set-emailConfirm"', 1)[1][:900])
-    assert "the agent cannot turn it off" in card
-    assert "looks the same whether it came from you" in card
+    # `COPY-U-38` (P23-03): one line, the same promise (Doc 2 § 5).
+    assert "The agent can't switch it off, even if asked in chat." in card
 
 
 def test_the_trust_ladder_already_had_a_control():

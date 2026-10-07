@@ -121,13 +121,22 @@ export function renderSettingsNav(modalEl, options = {}) {
 
   list.innerHTML = '';
   let drawn = 0;
+  // Panels a non-admin sees, drawn so far. `P23-03` (SET-M-8) made the whole
+  // *Models & AI* group admin-only, so a non-admin's first rule would have had
+  // nothing above it — a rule is theirs only between two things they can see.
+  let shownToAll = 0;
   for (const group of SETTINGS_GROUPS) {
     const panels = SETTINGS_PANELS.filter(panel => panel.group === group.id);
     if (!panels.length) continue;
+    const groupForAdmins = group.adminOnly || panels.every(panel => panel.adminOnly);
 
     // A rule between groups, never above the first one — the same shape the
     // markup drew, and the reason the divider is derived rather than listed.
-    if (drawn) list.appendChild(make('div', 'settings-sidebar-divider' + (group.adminOnly ? ' admin-only' : '')));
+    if (drawn) {
+      list.appendChild(make('div', 'settings-sidebar-divider'
+        + (groupForAdmins || !shownToAll ? ' admin-only' : '')));
+    }
+    shownToAll += panels.filter(panel => !panel.adminOnly).length;
     if (group.heading) {
       const heading = make('div', 'settings-sidebar-label' + (group.adminOnly ? ' admin-only' : ''));
       heading.textContent = group.heading;

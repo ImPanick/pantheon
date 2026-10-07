@@ -10,6 +10,11 @@ import { PROVIDER_DEVICE_FLOWS, formatDeviceFlowError, runProviderDeviceFlow } f
 import { getSettings, getTools, invalidateSettings, invalidateTools } from './appConfig.js';
 import { chevronIcon } from './icons.js';
 import { MCP_PRESETS } from './settings/mcpPresets.js';
+// C-ERR: a refused response is read once, by the one reader.
+import { readRefusal } from './workbench/refusal.js';
+// `P23-03`: the one table — each switch below names the Tools entry it hides.
+// Same specifier as `app.js` (no query): one instance of the table's state.
+import { toolsHiddenBy, toolVisibilityState } from './ui_visibility.js';
 
 let initialized = false;
 let modalEl = null;
@@ -50,6 +55,43 @@ const NON_ADMIN_RETIRED_PRIVS = {
   can_use_bash: "Pantheon's own shell is for admins only — turn on Workstation below to give this person a shell in the workstation.",
 };
 
+/**
+ * One privilege switch (or the daily limit) for one person.
+ *
+ * `SET-M-10` (P23-03). No word when it worked, and a refused PUT left the
+ * switch where it was flipped to. Now: *Saved* and when it takes effect, or the
+ * switch goes back and the server's sentence is shown.
+ */
+async function _savePrivilege(input) {
+  const username = input.dataset.user;
+  const key = input.dataset.priv;
+  let value;
+  if (input.type === 'checkbox') value = input.checked;
+  else if (input.type === 'number') value = parseInt(input.value) || 0;
+  else value = input.value;
+  const revert = () => {
+    if (input.type === 'checkbox') input.checked = !input.checked;
+  };
+  try {
+    const res = await fetch(`/api/auth/users/${encodeURIComponent(username)}/privileges`, {
+      method: 'PUT', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ [key]: value }),
+    });
+    if (!res.ok) {
+      revert();
+      uiModule.showError((await readRefusal(res, 'Not saved.')).sentence);
+      return false;
+    }
+    uiModule.showToast(`Saved. ${username} sees it after their next reload.`);
+    return true;
+  } catch (e) {
+    revert();
+    uiModule.showError('Not saved: Pantheon did not answer.');
+    return false;
+  }
+}
+
 async function loadUsers() {
   const list = el('adm-userList');
   try {
@@ -58,6 +100,9 @@ async function loadUsers() {
     const data = await res.json();
     if (!data.users || data.users.length === 0) { list.innerHTML = '<div class="admin-empty">No users found</div>'; return; }
     list.innerHTML = '';
+    // `SET-M-11` (P23-03). *Revoke admin* was offered on the only admin, and
+    // pressing it confirmed and then answered "Cannot demote the last admin".
+    const adminCount = data.users.filter(x => x.is_admin).length;
     data.users.forEach(u => {
       const row = document.createElement('div');
       row.className = 'admin-user-row';
@@ -71,13 +116,14 @@ async function loadUsers() {
           <div style="width:28px;height:28px;border-radius:50%;background:color-mix(in srgb, var(--accent) 20%, var(--panel));display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;flex-shrink:0;color:var(--accent);">${esc(initial)}</div>
           <div>
             <span class="admin-user-name">${esc(u.username)}</span>
-            ${u.is_admin ? '<span class="admin-badge" style="margin-left:6px;">ADMIN</span>' : '<span style="font-size:10px;opacity:0.4;display:block;">Click to manage privileges</span>'}
+            ${u.is_admin ? '<span class="admin-badge" style="margin-left:6px;">ADMIN</span>' : ''}
           </div>
         </div>
-        <div style="display:flex;gap:8px;align-items:center;">
-          <button class="admin-btn-sm" data-adm-toggle-admin="${esc(u.username)}" data-make-admin="${u.is_admin ? '0' : '1'}" style="font-size:11px;">${u.is_admin ? 'Revoke admin' : 'Make admin'}</button>
-          <button class="admin-btn-sm" data-adm-rename-user="${esc(u.username)}" style="font-size:11px;">Rename</button>
-          ${u.is_admin ? '' : `<button class="admin-btn-delete" data-adm-del-user="${esc(u.username)}" style="font-size:11px;">Remove</button>`}
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end;">
+          ${u.is_admin ? '' : `<button type="button" class="admin-btn-sm" data-adm-privs="${esc(u.username)}" aria-expanded="false" style="font-size:11px;">Privileges</button>`}
+          ${u.is_admin && adminCount <= 1 ? '' : `<button type="button" class="admin-btn-sm" data-adm-toggle-admin="${esc(u.username)}" data-make-admin="${u.is_admin ? '0' : '1'}" style="font-size:11px;">${u.is_admin ? 'Revoke admin' : 'Make admin'}</button>`}
+          <button type="button" class="admin-btn-sm" data-adm-rename-user="${esc(u.username)}" style="font-size:11px;">Rename</button>
+          ${u.is_admin ? '' : `<button type="button" class="admin-btn-delete" data-adm-del-user="${esc(u.username)}" style="font-size:11px;">Remove</button>`}
           ${u.is_admin ? '' : chevronIcon({ size: 12, className: 'admin-user-chevron', style: 'opacity:0.3;transition:transform 0.2s,opacity 0.2s;' })}
         </div>
       `;
@@ -89,17 +135,21 @@ async function loadUsers() {
         privPanel.className = 'admin-priv-panel hidden';
         privPanel.style.cssText = 'padding:8px 0 4px;border-top:1px solid var(--border);margin-top:8px;';
 
-        // Boolean toggles
-        let html = '<div style="font-size:10px;text-transform:uppercase;letter-spacing:0.5px;opacity:0.35;font-weight:600;margin-bottom:4px;">Features</div>';
+        // Boolean toggles. `P23-03` (SET-U-1): the heading was *Features*, the
+        // same word as the instance switches in Agent Tools, and no row said
+        // which entry under Tools it took away. *Can use* is this person's
+        // column of the one table; each row names what it hides.
+        let html = '<div style="font-size:10px;text-transform:uppercase;letter-spacing:0.5px;opacity:0.35;font-weight:600;margin-bottom:4px;">Can use</div>';
         for (const [key, label] of Object.entries(PRIV_LABELS)) {
           if (NON_ADMIN_RETIRED_PRIVS[key]) {
             html += `<div class="admin-toggle-sub" style="padding:4px 0;">${esc(NON_ADMIN_RETIRED_PRIVS[key])}</div>`;
             continue;
           }
           const checked = u.privileges && u.privileges[key] ? 'checked' : '';
+          const hides = _hidesLine({ privilege: key });
           html += `<div style="display:flex;align-items:center;justify-content:space-between;padding:4px 0;">
-            <span style="font-size:12px;">${label}</span>
-            <label class="admin-switch" style="transform:scale(0.85);"><input type="checkbox" data-priv="${key}" data-user="${esc(u.username)}" ${checked}><span class="admin-slider"></span></label>
+            <span style="font-size:12px;">${label}${hides ? `<span class="admin-toggle-sub" style="display:block;font-size:10px;opacity:0.55;">${esc(hides)}</span>` : ''}</span>
+            <label class="admin-switch" style="transform:scale(0.85);"><input type="checkbox" data-priv="${key}" data-user="${esc(u.username)}" ${checked} aria-label="${esc(label)}"><span class="admin-slider"></span></label>
           </div>`;
         }
         // Rate limit
@@ -140,11 +190,18 @@ async function loadUsers() {
         header.addEventListener('click', (e) => {
           if (e.target.closest('.admin-btn-delete, [data-adm-rename-user], [data-adm-toggle-admin]')) return;
           privPanel.classList.toggle('hidden');
+          const isOpen = !privPanel.classList.contains('hidden');
           const chevron = header.querySelector('.admin-user-chevron');
           if (chevron) {
-            const isOpen = !privPanel.classList.contains('hidden');
             chevron.style.transform = isOpen ? 'rotate(180deg)' : '';
             chevron.style.opacity = isOpen ? '0.7' : '0.3';
+          }
+          // `SET-U-7` (P23-03): the row's hint said "Click to manage
+          // privileges" open or shut; the button says what pressing it does.
+          const privBtn = header.querySelector('[data-adm-privs]');
+          if (privBtn) {
+            privBtn.textContent = isOpen ? 'Hide privileges' : 'Privileges';
+            privBtn.setAttribute('aria-expanded', String(isOpen));
           }
           // Load models list on first expand
           if (!_modelsLoaded && !privPanel.classList.contains('hidden')) {
@@ -155,23 +212,7 @@ async function loadUsers() {
 
         // Wire privilege changes (boolean + number inputs, not model checkboxes)
         privPanel.querySelectorAll('[data-priv]').forEach(input => {
-          const handler = async () => {
-            const username = input.dataset.user;
-            const key = input.dataset.priv;
-            let value;
-            if (input.type === 'checkbox') value = input.checked;
-            else if (input.type === 'number') value = parseInt(input.value) || 0;
-            else value = input.value;
-            try {
-              await fetch(`/api/auth/users/${encodeURIComponent(username)}/privileges`, {
-                method: 'PUT', credentials: 'same-origin',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ [key]: value }),
-              });
-            } catch (e) { uiModule.showError('Failed to update privilege'); }
-          };
-          if (input.type === 'checkbox') input.addEventListener('change', handler);
-          else input.addEventListener('change', handler);
+          input.addEventListener('change', () => _savePrivilege(input));
         });
       }
 
@@ -232,8 +273,8 @@ async function loadUsers() {
           const username = adminToggleBtn.dataset.admToggleAdmin;
           const makeAdmin = adminToggleBtn.dataset.makeAdmin === '1';
           const confirmMsg = makeAdmin
-            ? `Grant admin rights to "${username}"? They'll get full access to all settings and users — including the power to demote or remove other admins (you included).`
-            : `Revoke admin rights from "${username}"? They'll lose access to the admin panel.`;
+            ? `Make ${username} an admin? They can change every setting and every user, including you.`
+            : `Take admin away from ${username}? They keep their account and lose the Admin settings.`;
           if (!await uiModule.styledConfirm(confirmMsg, { confirmText: makeAdmin ? 'Make admin' : 'Revoke admin', danger: !makeAdmin })) return;
           adminToggleBtn.disabled = true;
           try {
@@ -2009,6 +2050,7 @@ async function loadBuiltinTools() {
       const state = new Map(
         (latest.tools || []).map(t => [t.id, !!t.enabled])
       );
+      const before = new Map(state);
 
       for (const change of changes) {
         if (state.has(change.id)) {
@@ -2027,16 +2069,31 @@ async function loadBuiltinTools() {
           body: JSON.stringify({ disabled }),
           credentials: 'same-origin',
         });
-        if (!res.ok) throw new Error(`Failed to update tools (${res.status})`);
+        // `SET-M-10` (P23-03). A refusal threw into a change handler nobody
+        // caught: the switch stayed flipped and nothing was said. Now a
+        // refused save puts every switch back where the server has it and
+        // says the server's sentence; a save says so.
+        const refused = res.ok ? null : (await readRefusal(res, 'Not saved.')).sentence;
+        const shown = refused ? before : state;
 
         // Bring the still-open editor forward to the same merged snapshot so an
         // out-of-band change is visible instead of leaving stale checkboxes.
         list.querySelectorAll('input[data-tool-id]').forEach(c => {
-          if (state.has(c.dataset.toolId)) {
-            c.checked = state.get(c.dataset.toolId);
+          if (shown.has(c.dataset.toolId)) {
+            c.checked = shown.get(c.dataset.toolId);
           }
         });
         list.querySelectorAll('.admin-tool-category').forEach(_updateCatCounter);
+        if (refused) uiModule.showError(refused);
+        else uiModule.showToast(changes.length === 1
+          ? `Saved. The agent ${changes[0].enabled ? 'may' : 'may not'} call ${(TOOL_META[changes[0].id] || {}).name || changes[0].id}.`
+          : 'Saved.');
+      } catch (e) {
+        list.querySelectorAll('input[data-tool-id]').forEach(c => {
+          if (before.has(c.dataset.toolId)) c.checked = before.get(c.dataset.toolId);
+        });
+        list.querySelectorAll('.admin-tool-category').forEach(_updateCatCounter);
+        uiModule.showError('Not saved: Pantheon did not answer.');
       } finally {
         // This route persists disabled_tools into the settings store
         // (routes/model_routes.py), so both snapshots are now stale.
@@ -2801,28 +2858,71 @@ function initWebhookForm() {
   });
 }
 
-/* ── Features ── */
+/* ── Features — *Switched on for everyone* ── */
 const featureLabels = {
   web_search: 'Web Search', deep_research: 'Deep Research',
   memory: 'Memory', document_editor: 'Document Editor', rag: 'RAG Knowledge Base', sensitive_filter: 'Sensitive Info Filter',
   gallery: 'Gallery'
 };
 
+/** `P23-03` (SET-U-1). "Off hides Brain." — the Tools entries (and composer
+ *  buttons) a switch takes away, read from the one table, so a row cannot
+ *  claim something the applier does not do. Empty when it hides nothing. */
+function _hidesLine(which) {
+  const hit = toolsHiddenBy(which);
+  if (!hit.length) return '';
+  const tools = hit.filter(t => !t.chip).map(t => t.label);
+  const chips = hit.filter(t => t.chip).map(t => `the ${t.label} button`);
+  const names = [...tools, ...chips];
+  const list = names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : names[0];
+  return `Off hides ${list}.`;
+}
+
+/**
+ * One *Switched on for everyone* switch.
+ *
+ * `SET-M-10` / `SET-M-12` (P23-03). It posted and said nothing, kept a refused
+ * switch flipped, and changed nothing on the admin's own page until a reload.
+ * Now the page applies the answer at once (`window.applyFeatureFlags`, the
+ * load path's applier) and says so, and a refusal puts the switch back.
+ */
+async function _saveFeature(toggle) {
+  const key = toggle.dataset.admFeature;
+  const body = {}; body[key] = toggle.checked;
+  try {
+    const r = await fetch('/api/auth/features', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    if (!r.ok) {
+      toggle.checked = !toggle.checked;
+      uiModule.showError((await readRefusal(r, 'Not saved.')).sentence);
+      return false;
+    }
+    const now = await r.json().catch(() => null);
+    if (typeof window.applyFeatureFlags === 'function') window.applyFeatureFlags(now || { [key]: toggle.checked });
+    uiModule.showToast(`${featureLabels[key] || key} ${toggle.checked ? 'on' : 'off'} for everyone. Others see it after their next reload.`);
+    return true;
+  } catch (e) {
+    toggle.checked = !toggle.checked;
+    uiModule.showError('Not saved: Pantheon did not answer.');
+    return false;
+  }
+}
+
 async function loadFeatures() {
   const container = el('adm-featureToggles');
+  if (!container) return;
   try {
     const res = await fetch('/api/auth/features', { credentials: 'same-origin' });
     const features = await res.json();
-    container.innerHTML = Object.entries(featureLabels).map(([key, label]) => `
+    container.innerHTML = Object.entries(featureLabels).map(([key, label]) => {
+      const hides = _hidesLine({ feature: key });
+      return `
       <div class="admin-toggle-row" style="padding:0.4rem 0;border-bottom:1px solid var(--border);">
-        <div class="admin-toggle-label">${label}</div>
-        <label class="admin-switch"><input type="checkbox" data-adm-feature="${key}" ${features[key] ? 'checked' : ''}><span class="admin-slider"></span></label>
-      </div>`).join('');
+        <div class="admin-toggle-label">${label}${hides ? `<div class="admin-toggle-sub" style="font-size:11px;opacity:0.6;">${esc(hides)}</div>` : ''}</div>
+        <label class="admin-switch"><input type="checkbox" data-adm-feature="${key}" ${features[key] ? 'checked' : ''} aria-label="${esc(label)}"><span class="admin-slider"></span></label>
+      </div>`;
+    }).join('');
     container.querySelectorAll('input[data-adm-feature]').forEach(toggle => {
-      toggle.addEventListener('change', async () => {
-        const body = {}; body[toggle.dataset.admFeature] = toggle.checked;
-        await fetch('/api/auth/features', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-      });
+      toggle.addEventListener('change', () => _saveFeature(toggle));
     });
   } catch (e) { container.innerHTML = '<div class="admin-error">Failed to load features</div>'; }
 }
@@ -3310,7 +3410,8 @@ async function loadSelfChecks() {
     const body = document.createElement('div');
     const title = document.createElement('div');
     title.className = 'self-check-title';
-    title.textContent = `${String(svc.name)} — ${svc.status === 'down' ? 'not answering' : 'degraded'}`;
+    // `COPY-U-44` (P23-03): "chromadb — not answering" named a library.
+    title.textContent = `${_SERVICE_NAMES[svc.name] || String(svc.name)} — ${svc.status === 'down' ? 'down' : 'degraded'}`;
     body.appendChild(title);
 
     const summary = document.createElement('p');
@@ -3322,6 +3423,9 @@ async function loadSelfChecks() {
   }
   panel.hidden = false;
 }
+
+/** The services `src/service_health.py` reports, by what a person knows them as. */
+const _SERVICE_NAMES = { chromadb: 'Vector store', searxng: 'SearXNG' };
 
 // ---------------------------------------------------------------------------
 // Usage over time (P14-05)
@@ -3745,6 +3849,12 @@ function refreshAll() {
    PUBLIC API
    ═══════════════════════════════════════════ */
 export function _initData() {
+  // `SET-M-8` (P23-03). Everything this module loads is admin-only on the
+  // server; for anyone else it was fifteen 403s per Settings open and panels
+  // drawn over refusals. Read from the table's state, where `isAdmin` is
+  // `false` only for a signed-in non-admin (`null` with auth off, where the
+  // server lets the owner in).
+  if (toolVisibilityState().isAdmin === false) return;
   if (!initialized) initAll();
   else refreshAll();
 }

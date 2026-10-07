@@ -2105,6 +2105,7 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
   }
 
   export function openLibrary(opts) {
+    if (window.pantheonToolDoor && !window.pantheonToolDoor('library')) return;   // `P23-03`: the Library's door
     // `P23-01` (C-NAV): opened from another window — Deep Research's *Library*
     // — the Library says `← Research`, and closing it re-raises Research.
     if (opts && opts.from) backStack.noteOpener('doclib-modal', opts.from, opts.fromTab);

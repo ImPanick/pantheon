@@ -70,6 +70,20 @@ def feature_enabled(name: str, features: Optional[dict] = None) -> bool:
     return bool(features.get(name))
 
 
+def feature_off_sentence(label: str) -> str:
+    """What a person is told when a feature is switched off for everyone.
+
+    `P23-03`. The browser says the same sentence when one of its doors is
+    refused before any request is made (`static/js/ui_visibility.js`,
+    `featureOffSentence`), so a person reads one wording whichever side
+    answered; `tests/test_one_visibility_table_for_the_tools.py` drives both.
+    It names where the switch is (Doc 2 § 5 rule 7) — "in Settings" sent a
+    person through sixteen panels.
+    """
+    return (f"{label} is switched off for everyone. "
+            f"An admin can turn it back on in Settings → Agent Tools.")
+
+
 def require_feature(name: str, *, label: Optional[str] = None) -> Callable[..., Any]:
     """A FastAPI dependency that refuses when `name` is switched off.
 
@@ -87,11 +101,7 @@ def require_feature(name: str, *, label: Optional[str] = None) -> Callable[..., 
         if feature_enabled(name):
             return
         from fastapi import HTTPException
-        raise HTTPException(
-            403,
-            f"{pretty} is switched off for this install. "
-            f"An administrator can turn it back on in Settings.",
-        )
+        raise HTTPException(403, feature_off_sentence(pretty))
 
     _guard.__name__ = f"require_feature_{name}"
     _guard.__doc__ = f"Refuses every request in this router when `{name}` is off (H05)."

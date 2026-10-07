@@ -112,9 +112,9 @@ const TOKEN_SOURCE_WORDS = {
   setting: 'Present — set here.',
   environment: 'Present — from PANTHEON_WORKSTATION_TOKEN.',
   pairing: 'Present — read from the pairing volume the workstation shares with Pantheon.',
-  none: 'None yet. Pantheon reads it from the pairing volume once the workstation has '
-    + 'started. For a workstation somewhere else, set PANTHEON_WORKSTATION_TOKEN on both '
-    + 'sides, or paste it here.',
+  // `COPY-U-43` (P23-03): one line each, the same facts.
+  none: 'None yet. Read from the pairing volume when the workstation starts. For a remote '
+    + 'one, set PANTHEON_WORKSTATION_TOKEN on both sides or paste it.',
 };
 
 // `B980`. Where the pinned certificate came from, said beside its fingerprint.
@@ -297,9 +297,11 @@ function fillSettings(settings) {
   if ($('ws-enabled')) $('ws-enabled').checked = !!settings.enabled;
   if ($('ws-sudo')) $('ws-sudo').checked = !!settings.sudo;
   if ($('ws-route-tools')) $('ws-route-tools').checked = !!settings.route_tools;
-  if ($('ws-url')) $('ws-url').value = settings.url_setting || '';
+  // `SET-M-13` (P23-03): what the admin typed and has not saved yet is kept —
+  // a re-read on reopen or a status poll emptied the field without a word.
+  if ($('ws-url') && !_typed($('ws-url'))) $('ws-url').value = settings.url_setting || '';
   // `B980`: shown, unlike the token — a certificate's fingerprint is no secret.
-  if ($('ws-tls-pin')) $('ws-tls-pin').value = settings.tls_pin_setting || '';
+  if ($('ws-tls-pin') && !_typed($('ws-tls-pin'))) $('ws-tls-pin').value = settings.tls_pin_setting || '';
   fillSelect($('ws-backend'), settings.backends, BACKEND_WORDS, settings.backend);
   fillSelect($('ws-network'), settings.network_modes, NETWORK_WORDS, settings.network);
 }
@@ -311,8 +313,7 @@ function renderEffects(settings, daemon, network) {
     const where = URL_SOURCE_WORDS[settings.url_source];
     url.textContent = settings.url
       ? `In effect: ${settings.url} — ${where || settings.url_source}.`
-      : 'No address yet. Start the workstation overlay, or type the address of a machine '
-        + 'running the workstation daemon.';
+      : 'No address yet. Filled in by the workstation overlay, or type one.';
   }
   const token = $('ws-token-effect');
   if (token) {
@@ -488,7 +489,13 @@ async function saveAddress() {
   }
   const ok = await save(body);
   if ($('ws-token')) $('ws-token').value = '';
+  if (ok) ['ws-url', 'ws-tls-pin'].forEach((id) => { if ($(id)) delete $(id).dataset.typed; });
   return ok;
+}
+
+/** Typed into since the last save (`SET-M-13`). */
+function _typed(input) {
+  return !!(input && input.dataset && input.dataset.typed === '1');
 }
 
 /**
@@ -547,6 +554,9 @@ function wire() {
     if (text && uiModule && uiModule.copyToClipboard) uiModule.copyToClipboard(text);
   });
   $('ws-forget-token')?.addEventListener('click', () => { save({ workstation_token: '' }); });
+  ['ws-url', 'ws-tls-pin'].forEach((id) => {
+    $(id)?.addEventListener('input', () => { $(id).dataset.typed = '1'; });
+  });
 }
 
 export async function open() {

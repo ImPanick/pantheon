@@ -1321,7 +1321,8 @@ def test_allowing_with_a_scope_chosen_writes_the_rule_in_the_stores_own_fields(a
     # need it in the same breath rather than after a hunt through Settings.
     toast = out["toasts"][0].lower()
     assert "settings" in toast, "the toast no longer says where to take it back"
-    assert "how often pantheon checks with you" in toast, (
+    # `COPY-U-37` (P23-03): the card's title is "When Pantheon asks before acting".
+    assert "when pantheon asks before acting" in toast, (
         "and it has to name the card, not just the panel"
     )
 

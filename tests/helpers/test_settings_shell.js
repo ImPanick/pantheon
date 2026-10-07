@@ -428,8 +428,12 @@ function moduleSource(relativePath) {
 
   check(
     'Settings registry distinguishes admin-only visibility from admin-controlled routing',
-    ['tools', 'users', 'embeddings', 'networks', 'system'].every(id => context.isAdminOnlySettingsTab(id))
-      && ['services', 'added-models', 'integrations']
+    // `P23-03` (SET-M-8): Add Models, Added Models, AI Defaults, Search and
+    // Reminders are admin-only now — every control in them saves to an
+    // admin-only route. Integrations is still admin-controlled and not hidden.
+    ['tools', 'users', 'embeddings', 'networks', 'system',
+      'services', 'added-models', 'ai', 'search', 'reminders'].every(id => context.isAdminOnlySettingsTab(id))
+      && ['integrations', 'workstation', 'appearance', 'account']
         .every(id => !context.isAdminOnlySettingsTab(id)),
   );
 

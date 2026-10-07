@@ -120,19 +120,24 @@ export const DEFAULT_TRUST_RUNG = 'gate_on_untrusted';
  * nothing. On both others it is a required field — see `TRUST_RUNGS` assertions
  * in `tests/test_trust_ladder_js.py`.
  */
+// `COPY-U-37` (P23-03). ~420 words for a three-way radio, the option names
+// jargon ("Gate on untrusted"), the current state said three times. Cut to
+// one sentence and one price per rung. Every fact the ladder's own tests guard
+// stays (`tests/test_trust_ladder_js.py`: reads of your own things ask once
+// something from outside has come in, `B19`; on Allow-listed that moment also
+// sets aside what you said yes to); only the words around them went. Rung
+// semantics untouched (`P7-13`, `B700`).
 export const TRUST_RUNGS = [
   {
     value: 'gate_on_untrusted',
-    name: 'Gate on untrusted',
+    name: 'Only after outside content',
     current: true,
     badge: 'What you have now',
     band: 'none',
     sentence:
-      'This is auto-pilot, and it is what your install already does. Pantheon '
-      + 'gets on with the job and does not interrupt you; it stops to ask only '
-      + 'after something from outside the conversation — a web page, an email, '
-      + 'a file it fetched — has been pulled in. Leave this alone if you are '
-      + 'not sure.',
+      'What your install already does: Pantheon gets on with the job and does '
+      + 'not interrupt you, and stops to ask once a web page, an email or a file '
+      + 'from outside has been read.',
     cost: '',
   },
   {
@@ -142,56 +147,40 @@ export const TRUST_RUNGS = [
     badge: '',
     band: 'some',
     sentence:
-      'Pantheon stops and waits for your yes before it changes or sends '
-      + 'anything — saving a file, running code, sending anything, deleting '
-      + 'anything — except the things you have already said yes to, which it '
-      + 'goes ahead and does. Reading things of yours — your mail, your '
-      + 'calendar, your notes, what it remembers from earlier chats — does not '
-      + 'stop and ask, until something from outside the conversation comes in.',
+      'Stops and waits for your yes before saving a file, running code, sending '
+      + 'or deleting anything you have not already allowed. Reading your mail, '
+      + 'calendar, notes and what it remembers asks only once something from '
+      + 'outside has come in.',
     cost:
-      'What this costs you: a run of questions to begin with. They thin out as '
-      + 'you approve the things you do often, but anything new still stops and '
-      + 'waits, so a job left running on its own sits unfinished until you come '
-      + 'back to it. And once something from outside the conversation has been '
-      + 'pulled in — a web page, an email, a file it fetched — Pantheon asks '
-      + 'about everything again, including the things you said yes to.',
+      'What this costs: a run of questions at first, and anything new still '
+      + 'stops and waits. Once something from outside the conversation comes in, '
+      + 'it asks about everything again, including the things you said yes to.',
   },
   {
     value: 'ask_every_time',
-    name: 'Ask every time',
+    name: 'Every time',
     current: false,
     badge: '',
     band: 'high',
     sentence:
-      'Pantheon stops and waits for your yes before it changes or sends '
-      + 'anything — saving a file, running code, sending anything, deleting '
-      + 'anything — every single time, even when nothing has gone wrong and '
-      + 'nothing came in from outside. Reading things of yours — your mail, '
-      + 'your calendar, your notes, what it remembers from earlier chats — '
-      + 'does not stop and ask on its own; the moment anything from outside '
-      + 'the conversation comes in, it asks about those too.',
+      'Stops and waits for your yes before saving a file, running code, sending '
+      + 'or deleting anything, every time. Reading your mail, calendar, notes and '
+      + 'what it remembers asks too, once something from outside has come in.',
     cost:
-      'What this costs you: a great many interruptions. A job that touches '
-      + 'twenty files asks you twenty times, and once anything has come in '
-      + 'from outside — a web page, an email, a file it fetched — it stops to '
-      + 'ask before it so much as looks up your calendar. Nothing happens at '
-      + 'all while you are away from the screen.',
+      'What this costs: a job that touches twenty files asks you twenty times, '
+      + 'and after something from outside comes in it asks before reading your '
+      + 'calendar. Nothing happens while you are away from the screen.',
   },
 ];
 
-export const LADDER_TITLE = 'How often Pantheon checks with you';
+export const LADDER_TITLE = 'When Pantheon asks before acting';
 
 export const LADDER_INTRO =
-  'Auto-pilot is what you have today: in a fresh chat Pantheon gets on with '
-  + 'the job and only stops if something from outside gets pulled in. It is the '
-  + 'first choice below and it stays chosen unless you move it. The other two '
-  + 'only ever make Pantheon ask more often — there is nothing here that makes '
-  + 'it ask less.';
+  'The first is auto-pilot, and it stays chosen unless you move it. The other '
+  + 'two only ever add questions.';
 
 export const LADDER_NOTE =
-  'Plan mode is not on this list. It is the Plan button beside the message '
-  + 'box, and it applies to one conversation at a time rather than to every '
-  + 'chat.';
+  'Plan mode is the Plan button by the message box; it applies to one chat.';
 
 const _RUNG_VALUES = TRUST_RUNGS.map((rung) => rung.value);
 

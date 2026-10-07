@@ -3270,6 +3270,7 @@ function _arcRenderLoadMore() {
 const _lib = { tab: 'chats', search: '', sort: 'recent', debounce: null, selectMode: false, selected: new Set() };
 
 export function openLibrary(defaultTab) {
+  if (window.pantheonToolDoor && !window.pantheonToolDoor('library')) return;   // `P23-03`: the Library's door
   // Delegate everything to the document module's library (has tabs for Chats/Documents/Archive)
   if (window.documentModule && window.documentModule.openLibrary) {
     window.documentModule.openLibrary({ tab: defaultTab || 'documents' });

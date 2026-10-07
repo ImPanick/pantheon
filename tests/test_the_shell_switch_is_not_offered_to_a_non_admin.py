@@ -10,7 +10,8 @@ Every reader of the key, decided and driven here:
   * **Settings → Users** (`static/js/admin.js` `loadUsers`) — cut out of the
     module and run under node against the users list the real
     `GET /api/auth/users` returns: no switch, the sentence where it stood.
-  * **The composer's Shell switch** (`static/app.js` `shellSwitchHidden`) —
+  * **The composer's Shell switch** (`TOOL_VISIBILITY.shell` in
+    `static/js/ui_visibility.js` since `P23-03`) —
     keyed on where the person's shell runs, which `GET /api/auth/status` now
     answers (`shell`), not on the privilege; fed the real route's JSON.
   * **The dispatcher** — a non-admin holding the stored privilege is still
@@ -138,13 +139,13 @@ def test_a_non_admin_holding_the_privilege_is_still_refused_the_shell(auth, monk
 
 # ── the composer: the Shell switch follows `shell` ──────────────────────────
 
-def _app_function() -> str:
-    src = APP_JS.read_text(encoding="utf-8")
-    return "function shellSwitchHidden(status) " + js_function(src, "function shellSwitchHidden")
+UI_VIS_JS = ROOT / "static" / "js" / "ui_visibility.js"
 
 
 @NODE
 def test_the_composer_offers_the_shell_switch_to_whoever_has_a_shell(auth, tmp_path):
+    """`P23-03`: the rule is the `shell` row of `TOOL_VISIBILITY` now — the one
+    table every door reads — so it is driven there, fed the real route's JSON."""
     cases = {}
     for on in (False, True):
         _workstation(on)
@@ -152,13 +153,20 @@ def test_the_composer_offers_the_shell_switch_to_whoever_has_a_shell(auth, tmp_p
             cases[f"{who}-{'on' if on else 'off'}"] = _status(auth, who)
     cases["old-server-admin"] = {"privileges": {"can_use_bash": True}}
     cases["old-server-user"] = {"privileges": {"can_use_bash": False}}
-    (tmp_path / "dom.js").write_text(_DOM)
-    out = _run(tmp_path, "", _app_function() + textwrap.dedent(f"""
+    entry = tmp_path / "shell.mjs"
+    entry.write_text(textwrap.dedent(f"""
+        const {{ toolOff }} = await import({json.dumps(UI_VIS_JS.as_uri())});
         const cases = {json.dumps(cases)};
         const out = {{}};
-        for (const [k, d] of Object.entries(cases)) out[k] = shellSwitchHidden(d);
+        for (const [k, d] of Object.entries(cases)) {{
+          out[k] = toolOff('shell', {{ privileges: d.privileges || null, shell: d.shell || null }}) === 'person';
+        }}
         console.log(JSON.stringify(out));
     """))
+    import subprocess
+    proc = subprocess.run(["node", str(entry)], capture_output=True, text=True, timeout=60)
+    assert proc.returncode == 0, proc.stderr
+    out = json.loads(proc.stdout.strip().splitlines()[-1])
     assert out == {
         "boss-off": False, "ann-off": True, "bob-off": True,
         "boss-on": False, "ann-on": False, "bob-on": True,
@@ -169,7 +177,7 @@ def test_the_composer_offers_the_shell_switch_to_whoever_has_a_shell(auth, tmp_p
 def _auth_status_callback() -> str:
     """The body of the `.then(d => { … })` that applies `/api/auth/status` in
     `static/app.js`, braces balanced with strings and comments skipped — the
-    one place the composer's switches are hidden."""
+    one place the person's column of the table is handed its answer."""
     src = APP_JS.read_text(encoding="utf-8")
     code = js_code(src)
     at = src.index("fetch(`${API_BASE}/api/auth/status`")
@@ -181,11 +189,11 @@ def _auth_status_callback() -> str:
 
 def test_the_composer_hides_the_switch_on_that_answer_and_nothing_else():
     """The decision above is the one the page makes: inside the status
-    callback, the Shell switch is hidden on `shellSwitchHidden(d)`, and the
-    privilege is not consulted there (`Law 20`, option 2 — scoped first)."""
+    callback the server's `shell` answer is handed to the table's applier, and
+    the privilege is not consulted there (`Law 20`, option 2 — scoped first)."""
     body = js_code(_auth_status_callback())
     assert "window._isAdmin" in body, "cut the wrong callback"
-    assert re.search(r"if\s*\(\s*shellSwitchHidden\(\s*d\s*\)\s*\)", body)
+    assert re.search(r"applyToolVisibility\(\s*\{[^}]*shell:\s*d\.shell", body, re.S)
     assert not re.search(r"\.can_use_bash\b", body)
 
 
@@ -203,6 +211,10 @@ def _users_case(users_payload: dict) -> str:
         "function el(id) { return document.getElementById(id); }",
         js_binding(src, "PRIV_LABELS") + ";",
         js_binding(src, "NON_ADMIN_RETIRED_PRIVS") + ";",
+        # `P23-03`: each switch names the Tools entry it hides, read from the
+        # one table.
+        f"import {{ toolsHiddenBy }} from {json.dumps(UI_VIS_JS.as_uri())};",
+        "function _hidesLine(which) " + js_function(src, "function _hidesLine"),
         "async function loadUsers() " + js_function(src, "async function loadUsers"),
         f"const PAYLOAD = {json.dumps(users_payload)};",
         "globalThis.fetch = async () => ({ ok: true, status: 200, json: async () => PAYLOAD });",

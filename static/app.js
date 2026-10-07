@@ -29,7 +29,7 @@ import memoryModule from './js/memory.js?v=20261003waveg';
 import voiceRecorderModule from './js/voiceRecorder.js';
 import censorModule from './js/censor.js';
 import galleryModule from './js/gallery.js?v=20260708match1';
-import { UI_VIS_DEFAULT_OFF, resolveVisibility } from './js/ui_visibility.js';
+import { UI_VIS_DEFAULT_OFF, resolveVisibility, applyToolVisibility, guardRouteOpener, installToolDoorGuard, onToolVisibilityApplied, toolShown } from './js/ui_visibility.js';
 import tasksModule from './js/tasks.js?v=20261003waveg';
 import calendarModule from './js/calendar.js';
 import notesModule from './js/notes.js';
@@ -291,17 +291,8 @@ async function _createDirectChatFromPreferredModel() {
 // ============================================
 // EVENT LISTENERS INITIALIZATION
 // ============================================
-// `B966` (`D-2026-10-01-01`). Is the composer's Shell switch hidden from the
-// person signed in? `shell` is the server's answer to where their agent's
-// shell runs (`/api/auth/status`), and `none` hides it. Not `can_use_bash`:
-// that grants a non-admin nothing — Pantheon's own shell is admin-only — and
-// someone whose shell runs in their workstation needs the switch whatever it
-// says. A status without `shell` falls back to the privilege, as before.
-function shellSwitchHidden(status) {
-  const d = status || {};
-  if (d.shell) return d.shell === 'none';
-  return !(d.privileges || {}).can_use_bash;
-}
+// (`B966`'s Shell rule — `shell` before `can_use_bash` — is the `shell` row of
+// `TOOL_VISIBILITY` in `js/ui_visibility.js` now, `P23-03`.)
 
 function initializeEventListeners() {
   // Chat form submission
@@ -1244,10 +1235,13 @@ function initializeEventListeners() {
   backStack.init();
 
   const _linked = backStack.windowForPath(urlPath);
-  const _deepLink = _routeOpen[urlPath]
+  // `P23-03` (SET-M-2): a link to a tool switched off says why instead of
+  // opening it. The guard wraps the link, not `_opener`, so the back stack is
+  // still made ready when a link is refused.
+  const _deepLink = guardRouteOpener(urlPath, _routeOpen[urlPath]
     || (_linked && _routeOpen['/' + backStack.ROUTES[_linked.id]] && !_linked.tab
       ? _routeOpen['/' + backStack.ROUTES[_linked.id]] : null)
-    || (_linked ? () => backStack.openWindows([_linked]) : null);
+    || (_linked ? () => backStack.openWindows([_linked]) : null));
   const _opener = () => {
     try {
       if (!backStack.restoreFromHistory() && _deepLink) _deepLink();
@@ -1360,55 +1354,29 @@ function initializeEventListeners() {
         userBarName.textContent = displayName;
         if (userBarAvatar) userBarAvatar.textContent = d.username.charAt(0).toUpperCase();
       }
-      // Apply per-user privilege restrictions
-      if (d.privileges) {
-        window._userPrivileges = d.privileges;
-        const p = d.privileges;
-        // Hide agent mode toggle.
-        //
-        // `P3-20`: this read `#mode-toggle` and `.chat-input-toggle`, neither
-        // of which exists. The control became a two-button segmented picker
-        // (`#mode-agent-btn` / `#mode-chat-btn` inside `.mode-toggle`, a CLASS)
-        // and this branch was never updated, so a user whose admin had turned
-        // `can_use_agent` off still saw Agent, could press it, and got a
-        // refusal from `routes/chat_routes.py:1705` on send. The server side
-        // was never the hole; the affordance was (`Law 15`).
-        //
-        // The Agent button goes, not the whole picker — Chat has to stay
-        // reachable and has to be what the user is on.
-        if (!p.can_use_agent) {
-          const agentBtn = document.getElementById('mode-agent-btn');
-          if (agentBtn) {
-            agentBtn.style.display = 'none';
-            try {
-              if (typeof window.__pantheonSetChatMode === 'function') {
-                window.__pantheonSetChatMode('chat');
-              }
-            } catch (_) {}
-          }
-        }
-        // Hide bash toggle
-        if (shellSwitchHidden(d)) {
-          const bashToggle = document.getElementById('bash-toggle');
-          if (bashToggle) bashToggle.closest('.chat-input-toggle')?.style.setProperty('display', 'none');
-          const bashBtn = document.getElementById('bash-toggle-btn');
-          if (bashBtn) bashBtn.style.display = 'none';
-        }
-        // Hide document button
-        if (!p.can_use_documents) {
-          const docBtn = document.getElementById('overflow-doc-btn');
-          if (docBtn) docBtn.style.display = 'none';
-          const docInd = document.getElementById('doc-indicator-btn');
-          if (docInd) docInd.style.display = 'none';
-        }
-        // Hide research toggle
-        if (!p.can_use_research) {
-          const resBtn = document.getElementById('research-toggle-btn');
-          if (resBtn) resBtn.style.display = 'none';
-          const resOverflow = document.getElementById('overflow-research-btn');
-          if (resOverflow) resOverflow.style.display = 'none';
-        }
-
+      // `P23-03` (C-VIS, SET-M-1/3/15). The person's column of the one table
+      // (`ui_visibility.js`). This block and `init.js` were two appliers with
+      // two selector sets — one hid `#tool-doc-btn`, which no template renders,
+      // and `#overflow-research-btn`, likewise; neither touched a rail twin, so
+      // with the sidebar folded to the rail a person saw a tool their admin had
+      // taken away exactly as before; and `applyUIVis` showed them all again on
+      // the next Appearance flip. Now the status is handed to the applier,
+      // which hides every door of the tool and records it in the one set.
+      window._userPrivileges = d.privileges || null;
+      applyToolVisibility({
+        privileges: d.privileges || null,
+        // Forge is for admins (`SET-M-9`). Unknown when nobody is signed in
+        // (auth off): unknown is on, and the server decides.
+        isAdmin: d.authenticated ? !!d.is_admin : null,
+        shell: d.shell || null,
+        auth: true,
+      });
+      // The Agent button goes, not the whole picker — Chat has to stay
+      // reachable and has to be what the person is on (`P3-20`).
+      if (!toolShown('agent')) {
+        try {
+          if (typeof window.__pantheonSetChatMode === 'function') window.__pantheonSetChatMode('chat');
+        } catch (_) {}
       }
     })
     .catch(() => {});
@@ -1530,44 +1498,26 @@ function initializeEventListeners() {
 
 
 
-  // Feature visibility — hide admin-disabled features
-  // Use prefetched data from login page if available
+  // Feature visibility — the *everyone* column of the one table (`P23-03`).
+  // Use prefetched data from login page if available.
+  //
+  // This was a four-key `map` (`web_search`, `deep_research`,
+  // `document_editor`, `gallery`) beside a seven-switch card that promised
+  // "turning one off hides its controls": *Memory* and *RAG* off hid nothing,
+  // and *Web Search* off left the chip, because `applyModeToToggles` showed it
+  // again on the next mode change (`SET-M-4/5`). The table names every
+  // feature's doors; the applier hides them and keeps them hidden through
+  // every later pass (`H05`'s precedence, kept: `applyUIVis` cannot undo it).
   const _prefetchedFeatures = sessionStorage.getItem('pan-prefetch-features');
   sessionStorage.removeItem('pan-prefetch-features');
   window._initFeaturesReady = (_prefetchedFeatures
     ? Promise.resolve(JSON.parse(_prefetchedFeatures))
     : fetch(`${API_BASE}/api/auth/features`, { credentials: 'same-origin' }).then(r => r.json())
   ).then(features => {
-      const map = {
-        web_search:      ['web-toggle-btn'],
-        deep_research:   ['research-toggle-btn', 'tool-research-btn', 'overflow-research-btn', 'rail-research'],
-        document_editor: ['overflow-doc-btn', 'rail-documents'],
-        gallery:         ['tool-gallery-btn', 'rail-gallery'],
-      };
-      Object.entries(map).forEach(([key, ids]) => {
-        if (features[key] === false) {
-          ids.forEach(id => {
-            // Recorded, not just hidden: `applyUIVis` writes `display` for all
-            // 31 UI_VIS_MAP selectors and would otherwise show these again on
-            // its next pass — which is exactly what happened one line below
-            // this, until `H05` (`_featureHiddenIds`).
-            if (window.__pantheonFeatureHiddenIds) window.__pantheonFeatureHiddenIds.add(id);
-            const e = el(id);
-            if (e) e.style.display = 'none';
-          });
-        }
-      });
-      // Re-apply the user's Appearance UI-vis preferences after the features
-      // fetch, which is why it is here: without it an admin-disabled feature
-      // left the sidebar entry hidden even when the user's "Show in sidebar"
-      // toggle was on, and they had to toggle off and on again — reported as
-      // "deep research only shows after I toggle".
-      //
-      // `applyUIVis` now re-hides the recorded ids as its last step, so this
-      // call restores the user's preferences WITHOUT undoing the admin's.
-      try { if (window.applyUIVis && window.loadUIVis) window.applyUIVis(window.loadUIVis()); } catch (_) {}
+      applyToolVisibility({ features: features || {} });
+      return features;
     })
-    .catch(() => {});
+    .catch(() => { applyToolVisibility({ features: null }); });
 
   // Hide Gallery when image generation is disabled in settings.
   // getSettings() consumes the login prefetch itself, so every other module
@@ -1859,9 +1809,14 @@ function initializeEventListeners() {
         btn.style.display = 'none';
         return;
       }
+      // `SET-M-4` (P23-03). A chip the table hides stays hidden: this showed
+      // every chip on every mode change, after the feature pass, so *Web
+      // Search* switched off for everyone came back half a second later — and
+      // the guard that followed it (`display === 'none'` straight after
+      // writing `''`) could never be true.
+      if (window.__pantheonFeatureHiddenIds && window.__pantheonFeatureHiddenIds.has(btnId)) return;
       // Show buttons in agent mode (or for web toggle in any mode)
       btn.style.display = '';
-      if (btn.style.display === 'none') return;
       const on = loadToolPref(stateKey, mode);
       btn.classList.toggle('active', on);
       if (checkboxId) { const chk = el(checkboxId); if (chk) chk.checked = on; }
@@ -1904,7 +1859,17 @@ function initializeEventListeners() {
     // send and puts the user's mode back afterwards, which it cannot do without
     // reading the current one first — and a setter with no getter is how that
     // restore came to be missing in the first place.
-    window.__pantheonGetChatMode = () => st.mode;
+    //
+    // `CHAT-M-2` (P23-03). This returned `st.mode`, and `st` is a `const`
+    // inside `setMode`, so every call threw a ReferenceError: the steer bar
+    // and the queued-mode restore read nothing. `currentMode` is the one
+    // `setMode` keeps.
+    window.__pantheonGetChatMode = () => currentMode;
+    // A chip the table shows again (an admin switched its feature back on,
+    // live) is re-drawn for the mode it is in — Shell stays hidden in Chat.
+    onToolVisibilityApplied(({ restored }) => {
+      if (restored && restored.length) applyModeToToggles(currentMode);
+    });
     agentBtn.addEventListener('click', () => {
       // Agent mode turns off research if active
       const resChk = el('research-toggle');
@@ -2824,28 +2789,19 @@ function initializeEventListeners() {
     Storage.setJSON(UI_VIS_KEY, state);
   }
 
-  // `H05`. Element ids the ADMIN has switched off via a feature flag. The
-  // user's Appearance preferences cannot bring these back — a "show in sidebar"
-  // toggle is not a way to re-enable a feature somebody else turned off — so
-  // `applyUIVis` re-hides them on every pass.
+  // `H05`, then `P23-03`. Element ids the admin (or this person's privileges)
+  // switched off outrank this browser's Appearance preferences — a "show in
+  // sidebar" toggle is not a way to re-enable a tool somebody else turned off.
+  // H05 kept a set here that only the features fetch filled; the privilege
+  // pass never wrote to it, so any Appearance flip brought a privilege-hidden
+  // tool back (`SET-M-3`). The set is the table's now (`ui_visibility.js`,
+  // `window.__pantheonFeatureHiddenIds`), and `applyUIVis` hands this browser's
+  // column to the same applier as its last step, so the order of the passes
+  // cannot decide the outcome.
   //
-  // This is the whole bug the row found. The features fetch hid nine elements
-  // and then, in the SAME `.then()` callback one line later, called
-  // `applyUIVis(loadUIVis())`, which writes `display` for all 31 selectors in
-  // `UI_VIS_MAP` — and for a user with default Appearance prefs every one
-  // resolves visible. Measured by replaying the real sequence: nine hidden,
-  // then seven shown again. The `applyUIVis` call was added deliberately, to
-  // fix "deep research only shows after I toggle", so removing it would put
-  // that back. The fix is precedence, not ordering: the admin's decision is
-  // re-applied last, every time, rather than once.
-  const _featureHiddenIds = new Set();
-  function _reapplyFeatureHiding() {
-    _featureHiddenIds.forEach(id => {
-      const e = el(id);
-      if (e) e.style.display = 'none';
-    });
-  }
-  window.__pantheonFeatureHiddenIds = _featureHiddenIds;
+  // The one guard every programmatic door goes through (`el.click()` on a
+  // hidden sidebar row — the `open_*` shortcuts, the rail, `/open`, a link).
+  installToolDoorGuard();
 
   function applyUIVis(state) {
     // resolveVisibility computes selector→visible (pure; ui_visibility.js),
@@ -2856,9 +2812,10 @@ function initializeEventListeners() {
         el.style.display = visible ? '' : 'none';
       });
     }
-    // The admin's feature flags outrank the user's Appearance preferences, so
-    // this runs after the preference pass and not before it (`H05`).
-    _reapplyFeatureHiding();
+    // The admin's switches outrank the user's Appearance preferences, so the
+    // table runs after the preference pass and not before it (`H05`): it hides
+    // every door of a tool any column took away, this browser's included.
+    applyToolVisibility({ ui: state });
     // Drag reorder: use body class so dynamically created handles are covered
     const dragEnabled = state['section-drag-reorder'] === true;
     document.body.classList.toggle('rearrange-mode', dragEnabled);

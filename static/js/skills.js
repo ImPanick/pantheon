@@ -3907,6 +3907,7 @@ function _wireSkillsWindow() {
  *  raise, closed → `openClosedWindow` — so without the other half (`from`
  *  ignored) nothing here behaves differently. */
 export async function openSkillsWindow(view, { from = null, tab = null } = {}) {
+  if (window.pantheonToolDoor && !window.pantheonToolDoor('brain')) return false;   // `P23-03`: the Brain's door
   const modal = document.getElementById('skills-modal');
   if (!modal) return false;
   _wireSkillsWindow();

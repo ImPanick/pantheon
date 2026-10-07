@@ -368,6 +368,7 @@ export function openWorkbench({
   focusId = null, workflowId = null, runId = null, describeTrigger = null,
   from = null, tab = null,
 } = {}) {
+  if (window.pantheonToolDoor && !window.pantheonToolDoor(room === 'skills' ? ['workbench', 'brain'] : 'workbench')) return false;   // `P23-03`
   if (typeof describeTrigger === 'function') _describe = describeTrigger;
   const modal = _modal();
   if (!modal) return false;

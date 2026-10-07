@@ -1377,6 +1377,13 @@ async function _cmdOpen(args, ctx) {
     slashReply('Open what? Try /open Forge, /open Settings, /open Gallery, /open Notes, /open Tasks, /open Library, /open Research, or /open Compare.');
     return true;
   }
+  // `P23-03` (SET-M-2). A tool switched off is not opened by name either: this
+  // pressed a `display:none` button, so `/open gallery` opened a Gallery its
+  // admin had switched off, to a window of 403s. The names it answers to that
+  // are not commands of their own are mapped here; the rest are the table's.
+  const tool = { documents: 'library', docs: 'library', archive: 'library', theme: 'theme' }[target]
+    || { slash: target };
+  if (window.pantheonToolDoor && !window.pantheonToolDoor(tool, { say: (t) => slashReply(ctx.esc(t)) })) return true;
   const clickFirst = (...ids) => {
     for (const id of ids) {
       const el = document.getElementById(id);
@@ -6366,6 +6373,8 @@ async function handleSlashCommand(input, { echo = true, persist = true } = {}) {
     // --- 1. Try direct command resolution ---
     let cmdKey = _resolveCommand(rawCmd);
     let cmdDef = cmdKey ? COMMANDS[cmdKey] : null;
+    // `P23-03` (SET-M-2): a command for a tool switched off says why (`ui_visibility.js`).
+    if (window.pantheonToolDoor && !window.pantheonToolDoor({ slash: cmdKey || rawCmd }, { say: (t) => slashReply(ctx.esc(t)) })) return true;
 
     // --- 2. Try legacy alias ---
     if (!cmdDef && LEGACY_ALIASES[rawCmd]) {

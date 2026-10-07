@@ -46,6 +46,7 @@ import settingsModule from './settings.js?v=20261003waveg';
 import { doorShown, isMinimized, listWindows, showWindow } from './modalManager.js?v=20261003waveg';
 import { openSkillsWindow } from './skills.js';
 import { slashCatalog, insertSlashToken, loadSkillEntries, mergeSkillEntries } from './slashAutocomplete.js';
+import { toolKeyFor, toolShown, viewerIsAdmin } from './ui_visibility.js';
 import { SETTINGS_GROUPS, searchSettingsPanels } from './settings/registry.js';
 import { controlTextFor } from './settings/search.js';
 import { topPortalZ } from './toolWindowZOrder.js';
@@ -64,7 +65,7 @@ let _chat = { query: '', state: 'idle', results: [], error: '' };
 let _options = [];      // [{ el, entry }] in listbox order
 let _active = -1;       // index into _options, mirrored by aria-activedescendant
 let _returnFocus = null; // what had focus before the overlay opened
-let _catalog = null;    // the slash catalogue; static, so read once
+let _catalog = null;    // the slash catalogue, read once; filtered per query (`P23-03`)
 let _seq = 0;           // ids for options and group headings
 
 // Per-group caps, so commands never crowd the chat hits off the screen. The
@@ -284,6 +285,11 @@ function _toolEntries(terms) {
   for (const w of listWindows()) {
     const door = _DOOR_FUNCTIONS[w.id];
     if (!w.door && !door) continue;
+    // `P23-03`. A window whose tool is switched off is not offered — Skills
+    // with the Brain taken away, Email hidden in this browser — whatever its
+    // door function would do (`ui_visibility.js`, the one table).
+    const tool = toolKeyFor({ window: w.id });
+    if (tool && !toolShown(tool)) continue;
     if (!w.door && _DOOR_SHOWN[w.id] && !_DOOR_SHOWN[w.id]()) continue;
     // The id's first word as well as the label, so the names people learned
     // still find the tool: "cookbook" finds Forge, "memory" finds Brain.
@@ -323,13 +329,17 @@ function _settingsEntries(q) {
   let panels = [];
   try {
     panels = searchSettingsPanels(q, {
-      isAdmin: !!window._isAdmin,
+      isAdmin: viewerIsAdmin(),   // `P23-03`: auth off counts as the owner
       controlText: modal ? controlTextFor(modal) : {},
     });
   } catch (_) { panels = []; }
   return panels.map((panel) => ({
     kind: 'settings', key: 'settings:' + panel.id, label: panel.label,
-    detail: (SETTINGS_GROUPS.find((g) => g.id === panel.group) || {}).label || '',
+    // `SET-U-13`: a group the viewer's nav hides is not named to them.
+    detail: (() => {
+      const g = SETTINGS_GROUPS.find((x) => x.id === panel.group) || {};
+      return g.adminOnly && !viewerIsAdmin() ? '' : (g.label || '');
+    })(),
     run: () => settingsModule.open(panel.id),
   }));
 }
@@ -339,6 +349,12 @@ function _commandEntries(terms) {
     try { _catalog = slashCatalog(); } catch (_) { _catalog = []; }
   }
   return _catalog
+    // `P23-03`. The catalogue is read once, and a tool can be switched off
+    // after that (live, on an admin's page): its commands are asked again here.
+    .filter((c) => {
+      const tool = toolKeyFor({ slash: String(c.token || '').replace(/^\//, '').split(' ')[0] });
+      return !tool || toolShown(tool);
+    })
     .filter((c) => _wordsMatch(terms, [c.token, ...(c.aliases || []), c.help, c.category].join(' ')))
     .map((c) => ({
       kind: 'command', key: 'command:' + c.token, label: c.token, detail: c.help || '',

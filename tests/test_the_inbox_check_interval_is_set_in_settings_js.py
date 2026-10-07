@@ -109,8 +109,13 @@ async function type(v) {
 async def _settings_page(served, body: str, cookie: str | None = None) -> dict:
     work = served["seen_db"].parent / "node-settings"
     work.mkdir(parents=True, exist_ok=True)
-    cut = "\n".join(_cut(sig) for sig in ("async function _postSettings(",
-                                           "async function initInboxCheckInterval("))
+    # `P23-03` (SET-M-6): the writer reads a refusal with C-ERR's one reader
+    # and says it through `_notSaved`; both come with it.
+    refusal = (Path(__file__).resolve().parents[1] / "static" / "js" / "workbench" / "refusal.js").as_uri()
+    cut = (f"const {{ readRefusal }} = await import({json.dumps(refusal)});\n"
+           + "\n".join(_cut(sig) for sig in ("async function _postSettings(",
+                                              "function _notSaved(",
+                                              "async function initInboxCheckInterval(")))
     source = (_PAGE.replace("__BASE__", json.dumps(served["base"]))
               .replace("__COOKIE__", json.dumps(cookie or served["cookie"]))
               .replace("__CUT__", cut)
@@ -189,7 +194,8 @@ async def test_a_refused_save_leaves_the_field_as_it_was_and_says_so(served):
     page = await _settings_page(served, "await type('2');",
                                 cookie=f"{auth_routes.SESSION_COOKIE}=user-session")
     assert inbox_check_minutes() == 5
-    assert page["shown"][1] == {"value": "5", "said": "Failed to save — left unchanged.", "red": True}
+    # `SET-M-6` (P23-03): the server's own sentence, not a generic one.
+    assert page["shown"][1] == {"value": "5", "said": "Admin only. Left unchanged.", "red": True}
 
 
 def test_the_field_is_in_settings_email_for_admins_only():

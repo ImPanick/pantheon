@@ -43,6 +43,13 @@ const REAL_MODULES = new Set([
   // `P23-01`. The back stack: `settings.js` and `lifecycle.js` note an opener
   // through it (`← Settings`). No imports and no work at load, so it runs real.
   path.join(JS, 'backStack.js'),
+  // `P23-03`. The one visibility table (`ui_visibility.js`) — who may see the
+  // admin's panels and why a tool's Appearance switch cannot bring it back —
+  // and C-ERR's one reader of a refusal (`workbench/refusal.js`), which
+  // `_postSettings` reads a 403 with. Real for the same reason as the rest:
+  // `settings.js` imports both at load.
+  path.join(JS, 'ui_visibility.js'),
+  path.join(JS, 'workbench/refusal.js'),
 ]);
 
 const realModulesLoaded = new Set();
@@ -1016,7 +1023,11 @@ for (const required of REAL_MODULES) {
 }
 
 
-// First open drives initAll() and therefore the real shell bindings.
+// First open drives initAll() and therefore the real shell bindings. The
+// viewer is an admin: `/api/auth/status` has answered (`P23-03` — a page that
+// does not know yet who is looking keeps the admin's panels shut, and a
+// non-admin is sent to Account; `ui_visibility.js` `viewerIsAdmin`).
+sandbox._isAdmin = true;
 settings.open('services');
 
 assert(
