@@ -523,6 +523,12 @@ async def _cookbook_hf_model_info(repo_id: str) -> Dict[str, Any]:
     repo_id = (repo_id or "").strip().strip("/")
     if not repo_id:
         return {"error": "repo_id is required"}
+    from src import model_hubs
+    if not model_hubs.allowed():
+        # `B1229`. A structured warning, as every other failure here is: the
+        # launch plan goes on without Hugging Face's metadata.
+        return {"repo_id": repo_id, "url": f"https://huggingface.co/{repo_id}",
+                "error": model_hubs.OFF_SENTENCE}
     headers: Dict[str, str] = {"Accept": "application/json"}
     token = load_stored_hf_token()
     if token:
@@ -1264,6 +1270,10 @@ async def do_search_hf_models(content: str, owner: Optional[str] = None) -> Dict
                                     params=params, headers=_internal_headers())
             data = resp.json()
         models = data.get("models") if isinstance(data, dict) else data
+        if not models and isinstance(data, dict) and data.get("hubs_off"):
+            # `B1229`: "no models found" would be a claim about Hugging Face
+            # the switch never let anyone check.
+            return {"error": data.get("error") or "Hugging Face is off.", "exit_code": 1}
         if not models:
             return {"output": f"No models found for query: {query!r}", "exit_code": 0}
         lines = [f"Found {len(models)} model(s) for {query!r}:" if query else f"{len(models)} model(s):"]

@@ -19,6 +19,14 @@ from services.hwfit import hf_discovery as hf
 from src.rate_limiter import HostPolicy, OutboundHostLimiter
 
 
+@pytest.fixture(autouse=True)
+def _hubs_on(monkeypatch):
+    """`B1229`: these cases are about the refresh an admin has switched on."""
+    import src.model_hubs as model_hubs
+
+    monkeypatch.setattr(model_hubs, "allowed", lambda: True)
+
+
 @pytest.fixture
 def no_pacing(monkeypatch):
     """Real limiter, zero interval -- behaviour under test, not wall clock."""

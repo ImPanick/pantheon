@@ -142,6 +142,21 @@ DEFAULT_SETTINGS = {
     # so nothing that reads this key with `bool()` changes. See
     # `env_backed_flag`.
     "allow_model_download": None,
+    # May the Forge reach Hugging Face and the Ollama library? (`B1229`, the
+    # owner's ruling of 2026-10-07: *"hugging face should be toggleable inside
+    # the admin settings"*.) Ships OFF. Measured on `299bd50`: opening the Forge
+    # on a fresh install walked up to 40 pages of huggingface.co's collections
+    # and fetched ollama.com's library list, with nothing switched on. Off, the
+    # Forge lists the models it already knows and a download says where the
+    # switch is; on, everything is paced by `OutboundHostLimiter` as before.
+    # Read only through `src/model_hubs.py`; Settings → Forge is its control.
+    #
+    # A plain boolean, not `None` like the three above: there is no environment
+    # variable beneath it, so a stored `False` and the shipped one mean the same
+    # thing (`B90`'s third value exists for the layer this key does not have).
+    # The agent may set it — `manage_settings` asks, as for every admin change,
+    # and nothing it could reach here is out of reach of its own web tools.
+    "forge_model_hubs": False,
     # Where the diagnostic bundle's "report this" link points (`P16-14`).
     #
     # Ships EMPTY, deliberately, and the emptiness is load-bearing twice over.

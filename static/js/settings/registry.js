@@ -78,6 +78,20 @@ export const SETTINGS_PANELS = Object.freeze([
     keywords: ['models', 'configured', 'provider', 'endpoint'],
   }),
   definePanel({
+    id: 'forge',
+    icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 7v14"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/></svg>',
+    // `B1229` (the owner's ruling of 2026-10-07): Hugging Face's switch, and
+    // the way to everything else about serving a model. Beside the endpoints
+    // because a model the Forge serves becomes one. `settings.js` draws it
+    // (`initForgeSettings`), so the controller stays 'settings'.
+    label: 'Forge',
+    group: 'models',
+    adminOnly: true,
+    keywords: ['forge', 'hugging face', 'huggingface', 'ollama', 'model hub',
+               'download', 'serve', 'serving', 'launch', 'servers', 'ssh',
+               'gpu', 'internet', 'offline'],
+  }),
+  definePanel({
     id: 'ai',
     icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a4 4 0 0 0-4 4v2H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2h-2V6a4 4 0 0 0-4-4z"/></svg>',
     label: 'AI Defaults',

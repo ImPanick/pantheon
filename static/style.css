@@ -48462,3 +48462,46 @@ body:has(:is(.modal, .research-overlay):not(.hidden):not(.modal-minimized) .moda
   filter: brightness(0.72) saturate(0.85);
   pointer-events: none;
 }
+
+/* fx3-forge's `B1229`: the Forge's one line when an admin has Hugging Face and Ollama switched off, with its door to
+   Settings → Forge; and that panel's list of where each serving setting lives. Existing tokens only; the global
+   `:focus-visible` ring marks the buttons. */
+#cookbook-modal .forge-hubs-off {
+  margin: 0;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: color-mix(in srgb, var(--fg) 82%, transparent);
+  background: color-mix(in srgb, var(--fg) 4%, transparent);
+}
+#cookbook-modal .forge-hubs-off-door {
+  /* The global `button` height and `.modal-body button` margin would make one line two. */
+  height: auto;
+  margin: 0;
+  vertical-align: baseline;
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: var(--fg);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+#settings-modal .forge-settings-sub { margin: -4px 0 4px; line-height: 1.4; }
+#settings-modal .forge-settings-msg { font-size: 11px; min-height: 14px; color: color-mix(in srgb, var(--fg) 60%, transparent); }
+#settings-modal .forge-settings-doors { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+#settings-modal .forge-settings-doors > li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 0;
+  font-size: 12px;
+  border-top: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+}
+#settings-modal .forge-settings-doors > li:first-child { border-top: 0; }
+#settings-modal .forge-settings-doors > li > span { min-width: 0; overflow-wrap: anywhere; }
+#settings-modal .forge-settings-doors > li > button { flex-shrink: 0; white-space: nowrap; }

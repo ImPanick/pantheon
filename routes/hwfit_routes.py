@@ -349,7 +349,9 @@ def setup_hwfit_routes():
     @router.get("/catalog-refresh")
     def get_catalog_refresh():
         """`P23-07` (`PERF-M-6`): where the HuggingFace catalog refresh is —
-        `idle`, `running`, `done` (with what it fetched) or `failed`."""
+        `idle`, `running`, `done` (with what it fetched) or `failed`. A refresh
+        refused because the Forge's switch is off is `off` in the `/models`
+        answer and starts nothing (`B1229`)."""
         from services.hwfit.models import catalog_refresh_status
         return catalog_refresh_status()
 

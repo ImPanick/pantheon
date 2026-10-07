@@ -612,6 +612,10 @@ def setup_cookbook_routes() -> APIRouter:
             env["hfTokenConfigured"] = bool(token)
             env["hfTokenMasked"] = _mask_secret(token)
             env["hostPlatform"] = _client_host_platform()
+            # `B1229`. Read from the setting on every answer, never stored
+            # here: the Forge draws its one line ("… are off") from it.
+            from src import model_hubs
+            env["modelHubs"] = model_hubs.allowed()
         return state
 
     def _state_for_storage(state, on_disk=None):
@@ -631,6 +635,7 @@ def setup_cookbook_routes() -> APIRouter:
             env.pop("hfTokenMasked", None)
             env.pop("hfTokenConfigured", None)
             env.pop("hostPlatform", None)
+            env.pop("modelHubs", None)  # `B1229`: the setting's, never this file's
         return state
 
     def _load_stored_hf_token() -> str:
@@ -1068,6 +1073,14 @@ def setup_cookbook_routes() -> APIRouter:
         Uses `hf download` CLI directly — runs in tmux via `script -qc`
         for real TTY progress, streams ANSI-stripped output via log file."""
         require_admin(request)
+        from src import model_hubs
+        if not model_hubs.allowed():
+            # `B1229`. A download a person starts by hand is their own act, but
+            # it is the Forge sending a machine to huggingface.co or ollama.com,
+            # and the switch an admin set says whether it may. Refused before a
+            # session or a script exists; the sentence names the switch, and
+            # the Forge shows it on the task (`cookbookRunning.js`).
+            return {"ok": False, "error": model_hubs.OFF_SENTENCE, "hubs_off": True}
         # Defence-in-depth: even though this endpoint is admin-gated, refuse
         # values that would land in shell contexts with metacharacters.
         backend = (req.backend or "").strip().lower()
@@ -3529,6 +3542,12 @@ def setup_cookbook_routes() -> APIRouter:
         """
         import re
         import httpx
+        from src import model_hubs
+
+        if not model_hubs.allowed():
+            # `B1229`. The trending list and the agent's `search_hf_models`
+            # both come here; the sentence names the switch for both.
+            return {"models": [], "error": model_hubs.OFF_SENTENCE, "hubs_off": True}
 
         # Fetch a larger pool so we have enough to filter from (we drop ~80%)
         pool_size = max(limit * 15, 100)
@@ -3873,8 +3892,12 @@ def setup_cookbook_routes() -> APIRouter:
     async def hf_gguf_files(repo_id: str, owner: str = Depends(require_user)):
         """List GGUF files in a HuggingFace repo for the direct-download picker."""
         import httpx
+        from src import model_hubs
 
         repo_id = _validate_repo_id(repo_id)
+        if not model_hubs.allowed():
+            # `B1229`: asked as a repo id is typed into Direct Download.
+            return {"ok": False, "files": [], "error": model_hubs.OFF_SENTENCE, "hubs_off": True}
         url = f"https://huggingface.co/api/models/{repo_id}"
         try:
             headers = {}
@@ -3947,8 +3970,20 @@ def setup_cookbook_routes() -> APIRouter:
         curated hard-coded list so the picker always renders something."""
         import time as _time
         import httpx as _httpx
+        from src import model_hubs
         TTL = 3600.0
         now = _time.time()
+        if not model_hubs.allowed():
+            # `B1229`. The Forge asked this on every open, and on a fresh
+            # install the cache was empty, so opening it fetched ollama.com.
+            # Off: what this process already has, else the curated list —
+            # nothing cached, so switching on fetches at the next ask.
+            return {
+                "models": _ollama_library_cache["models"] or list(_OLLAMA_FALLBACK_LIBRARY),
+                "fetched_at": _ollama_library_cache["fetched_at"],
+                "error": None,
+                "hubs_off": True,
+            }
         if refresh or (now - _ollama_library_cache["fetched_at"]) > TTL or not _ollama_library_cache["models"]:
             models: list[dict] = []
             err = None

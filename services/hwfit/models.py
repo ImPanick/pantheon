@@ -290,7 +290,9 @@ def refresh_dynamic_catalogs(force=False):
         refresh_hf_collection_models_cache,
         refresh_mlx_community_cache,
     )
+    from src import model_hubs
 
+    model_hubs.require()  # `B1229`: raised before either cache is touched
     refreshed = {
         "mlx_community": len(refresh_mlx_community_cache(force=force)),
         "hf_collections": len(refresh_hf_collection_models_cache(force=force)),
@@ -320,14 +322,23 @@ _refresh_state = {"state": "idle"}
 
 
 def catalog_refresh_status() -> dict:
-    """`{"state": "idle" | "running" | "done" | "failed", …}`."""
+    """`{"state": "idle" | "running" | "done" | "failed", …}` — and
+    `start_catalog_refresh` answers `"off"` when nothing may start (`B1229`)."""
     with _refresh_lock:
         return dict(_refresh_state)
 
 
 def start_catalog_refresh(force: bool = True) -> dict:
     """Start the dynamic-catalog refresh in a thread unless one is running or
-    one finished within `CATALOG_REFRESH_FLOOR_S`; return the state either way."""
+    one finished within `CATALOG_REFRESH_FLOOR_S`; return the state either way.
+
+    `B1229`: with the Forge's switch for Hugging Face off, nothing starts and
+    the answer is `{"state": "off"}` — the rows already cached are the list.
+    """
+    from src import model_hubs
+
+    if not model_hubs.allowed():
+        return {"state": "off"}
     with _refresh_lock:
         current = dict(_refresh_state)
         if current.get("state") == "running":

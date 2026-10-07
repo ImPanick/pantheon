@@ -201,11 +201,134 @@ _BUSY_WAIT_OVERRIDE_MS: ContextVar[Optional[int]] = ContextVar(
 _JOURNAL_MODES = ("wal", "delete", "truncate", "persist")
 _JOURNAL_MODE_REPORTED = False
 
+# ── `B1231`: a data directory that cannot hold a write-ahead log ──
+#
+# WAL keeps its index in a memory-mapped `-shm` file beside the database, and
+# a filesystem that cannot share that mapping cannot run WAL. Docker Desktop
+# on Windows and macOS bind-mounts `./data` from a host file share, and SQLite's
+# own documentation says WAL "does not work over a network filesystem". The
+# trouble is WHEN it says so: `PRAGMA journal_mode=wal` only rewrites two bytes
+# of the header and answers `wal`; the shared memory is first opened by the
+# next statement. Measured here with a directory standing where `app.db-shm`
+# belongs (a `-shm` SQLite can open read-only and never write): the pragma
+# answered `wal`, a read worked, and every write after it failed "attempt to
+# write a readonly database" — and on that connection there was no way back,
+# because leaving WAL needs the index it could not write.
+#
+# So the question is asked once per database file per process, on throwaway
+# connections, before the pooled connection touches the file: switch, then
+# open the index and take its write lock (`BEGIN IMMEDIATE`, nothing written).
+# Anything but `wal` from the switch, or any error from the probe that is not
+# a lock, means the directory cannot hold one: the file goes back to the mode
+# it had (a file already in WAL goes to `delete`, through a connection in
+# exclusive locking mode — SQLite then keeps the index in that connection's
+# own memory, so it can leave WAL without the shared file), the warning names
+# `PANTHEON_SQLITE_JOURNAL_MODE`, and the process keeps running on the
+# rollback journal it ran on before `P23-07`.
+_JOURNAL_SETTLED: dict = {}
+_WAL_REFUSAL_REPORTED = False
+
 
 def chosen_journal_mode() -> str:
     """The journal mode this process asks SQLite for (`PANTHEON_SQLITE_JOURNAL_MODE`)."""
     raw = (os.getenv("PANTHEON_SQLITE_JOURNAL_MODE") or "wal").strip().lower()
     return raw if raw in _JOURNAL_MODES else "wal"
+
+
+def _main_database_file(dbapi_connection) -> Optional[str]:
+    """The file behind a connection's `main` database, or None when it has none.
+
+    `PRAGMA database_list` reads no page of the database (measured: on a file
+    in WAL it creates neither `-wal` nor `-shm`), so asking it leaves the
+    connection exactly as untouched as it was.
+    """
+    try:
+        rows = dbapi_connection.execute("PRAGMA database_list").fetchall()
+    except Exception:
+        return None
+    for row in rows:
+        if len(row) >= 3 and row[1] == "main":
+            return str(row[2] or "") or None
+    return None
+
+
+def _open_for_journal_check(path: str):
+    """A throwaway connection to `path` for the WAL question (`B1231`).
+
+    Its own function so a test can hand it SQLite's no-shared-memory VFS or a
+    connection that fails the way a host share does, and so nothing it does
+    ever happens on a connection the pool keeps.
+    """
+    return sqlite3.connect(path, timeout=0.25, isolation_level=None,
+                           check_same_thread=False)
+
+
+def _leave_write_ahead_log(path: str, mode: str) -> None:
+    """Put `path` back in `mode` without the shared index WAL could not use.
+
+    `locking_mode=EXCLUSIVE` before the first read is the one way SQLite opens
+    a WAL database without the `-shm` mapping; measured with a broken `-shm`,
+    the same switch on an ordinary connection answered SQLITE_READONLY and the
+    header stayed WAL. Closing the connection gives the lock back.
+    """
+    conn = _open_for_journal_check(path)
+    try:
+        conn.execute("PRAGMA busy_timeout=1000")
+        conn.execute("PRAGMA locking_mode=EXCLUSIVE")
+        conn.execute(f"PRAGMA journal_mode={mode}").fetchone()
+    finally:
+        conn.close()
+
+
+def _settle_write_ahead_log(path: str) -> Optional[str]:
+    """Can the directory holding `path` keep a write-ahead log? (`B1231`)
+
+    Returns `"wal"`, the rollback mode this process uses for the file instead,
+    or None when another connection held the lock and the question could not be
+    asked — the next connection asks again.
+    """
+    global _WAL_REFUSAL_REPORTED
+    try:
+        probe = _open_for_journal_check(path)
+    except Exception:
+        return None  # the pooled connection opened it; it will say what is wrong
+    previous = None
+    reason = ""
+    try:
+        previous = str(probe.execute("PRAGMA journal_mode").fetchone()[0]).lower()
+        got = previous
+        if previous != "wal":
+            got = str(probe.execute("PRAGMA journal_mode=wal").fetchone()[0]).lower()
+        if got == "wal":
+            # The index is opened and write-locked here, not by the pragma.
+            probe.execute("BEGIN IMMEDIATE")
+            probe.execute("ROLLBACK")
+            return "wal"
+        reason = f"SQLite answered journal_mode={got}"
+    except sqlite3.Error as exc:
+        if is_database_locked(exc):
+            return None
+        reason = str(exc)
+    finally:
+        try:
+            probe.close()
+        except Exception:
+            # A throwaway connection that will not close holds nothing anyone
+            # reads; the answer above is what this function is for.
+            pass
+    fallback = previous if previous in _JOURNAL_MODES and previous != "wal" else "delete"
+    try:
+        _leave_write_ahead_log(path, fallback)
+    except Exception as exc:  # said below; the pooled connection works in what the file has
+        reason = f"{reason}; leaving WAL: {exc}"
+    if not _WAL_REFUSAL_REPORTED:
+        logger.warning(
+            "SQLite cannot keep a write-ahead log beside %s (%s), so it uses "
+            "journal_mode=%s. A data directory on a host share (Docker Desktop on "
+            "Windows or macOS) does this. Set PANTHEON_SQLITE_JOURNAL_MODE=%s to "
+            "skip this check.", path, reason, fallback, fallback)
+        _WAL_REFUSAL_REPORTED = True
+    return fallback
 
 
 def _use_write_ahead_log(dbapi_connection) -> None:
@@ -217,9 +340,23 @@ def _use_write_ahead_log(dbapi_connection) -> None:
     a connection that cannot switch works in the mode the file already has,
     and the next connection tries again. Said once per process, whichever way
     it went.
+
+    `B1231`: whether the directory can hold a WAL at all is settled first, once
+    per file, by `_settle_write_ahead_log` on connections of its own.
     """
     global _JOURNAL_MODE_REPORTED
+    path = _main_database_file(dbapi_connection)
+    if not path:
+        return  # `:memory:`, `mode=memory` and temporary databases: nothing on disk to journal
     want = chosen_journal_mode()
+    if want == "wal":
+        settled = _JOURNAL_SETTLED.get(path)
+        if settled is None:
+            settled = _settle_write_ahead_log(path)
+            if settled is not None:
+                _JOURNAL_SETTLED[path] = settled
+        # Unsettled (the file was busy): keep whatever mode the file has.
+        want = settled
     try:
         current = str(dbapi_connection.execute("PRAGMA journal_mode").fetchone()[0]).lower()
     except Exception:
@@ -227,7 +364,7 @@ def _use_write_ahead_log(dbapi_connection) -> None:
     if current == "memory":
         return  # `:memory:` and `mode=memory` URIs: nothing on disk to journal
     got = current
-    if current != want:
+    if want and current != want:
         try:
             dbapi_connection.execute("PRAGMA busy_timeout=250")
             got = str(dbapi_connection.execute(f"PRAGMA journal_mode={want}").fetchone()[0]).lower()
