@@ -1690,6 +1690,9 @@ export function mountAutomations(host, opts = {}) {
     // The layer says per step what the arrival box said (needs, doors), and
     // the two together would leave the canvas no room: the box goes.
     closeArrived();
+    // `P23-06` (WB-M-5): the line that offered *Check them now* (a refused
+    // switch-on) goes too — it stayed under the box with a second button.
+    say('');
     if (w.tab !== 'edit') setTab('edit', { quiet: true });
     const all = typeof w.source.marked === 'function' ? w.source.marked() : [];
     const ids = Array.isArray(nodeIds) && nodeIds.length ? nodeIds.map(String) : all.map((m) => m.id);
