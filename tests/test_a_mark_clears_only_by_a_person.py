@@ -166,7 +166,7 @@ async def test_a_step_a_person_checked_is_marked_again_when_something_else_chang
     assert refused.status_code == 409 and refused.json()["node_ids"] == ["post"]
     assert refused.json()["detail"].startswith(
         "Your assistant (or an API token) changed 1 step nobody has checked yet: “Post to #dev”. "
-        "Open it and press Looks right")
+        "Check it first.")  # P23-05 (Doc 2 § 5): short; *Check them now* sits beside it
     looked = await _call(w, "PUT", f"/api/workflows/{wf_id}", json={"checked": ["post"]})
     assert looked.status_code == 200
     on = await _call(w, "POST", f"/api/workflows/{wf_id}/switch", json={"on": True})

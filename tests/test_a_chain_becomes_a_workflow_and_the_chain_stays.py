@@ -151,7 +151,7 @@ def test_switch_off_is_the_start_paused_and_nothing_else(client, wf_db):
     off = call(client, "POST", f"/api/workflows/{wf['id']}/switch", json={"on": False})
     assert off.status_code == 200
     assert off.json()["chain_paused"] is None
-    assert off.json()["notes"] == ["Switched off — it will not run until you switch it on."]
+    assert off.json()["notes"] == ["Switched off."]  # P23-05: the switch word says the rest
     assert off.json()["workflow"]["trigger_status"] == "paused"
     (head,) = rows(wf_db, ScheduledTask, id="backup")
     assert head.status == "paused", "switching off does not restart the chain; Put back does"

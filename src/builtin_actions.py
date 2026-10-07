@@ -3743,7 +3743,7 @@ EFFECT_SENTENCES = {
     EFFECT_WRITES: "writes new data inside Pantheon",
     EFFECT_DELETES: "deletes data inside Pantheon",
     EFFECT_REWRITES: "REPLACES text you wrote with text a model wrote",
-    EFFECT_TOUCHES_REMOTE: "changes something on a machine or service that is not this one",
+    EFFECT_TOUCHES_REMOTE: "changes something outside Pantheon",
     EFFECT_NOTIFIES: "can send you a notification",
     EFFECT_RUNS_CODE: "runs the command on this task, as the user Pantheon runs as",
     EFFECT_CALLS_MODEL: "calls a model",
@@ -3972,7 +3972,7 @@ def action_effect_sentences(action: str | None) -> list:
 def dry_run_plan(*, task_type: str | None, action: str | None,
                  prompt: str | None = None, owner: str | None = None,
                  model: str | None = None, endpoint_url: str | None = None,
-                 extra: "list | None" = None) -> list:
+                 extra: "list | None" = None, noun: str = "task") -> list:
     """What the real run would do, as lines. Executes nothing.
 
     `P8-33`. The whole honesty of the dry run is that this function cannot run
@@ -3984,6 +3984,10 @@ def dry_run_plan(*, task_type: str | None, action: str | None,
 
     Returns lines rather than a paragraph because they become the run's step
     log, and `_renderRunSteps` already draws one row per step.
+
+    `P23-05` (WB-M-11): `noun` is what the plan is of — a workflow's caller
+    says `"step"` — and the model line names the model, never its endpoint
+    URL (an address is not something a person reads in a plan).
     """
     lines = []
     kind = (task_type or "llm")
@@ -4034,15 +4038,11 @@ def dry_run_plan(*, task_type: str | None, action: str | None,
         lines.append("Would run this workflow, every step in one run. Its own "
                      "dry run shows what each step would do.")
     else:
-        lines.append("Would send this task's prompt to a model, with tools.")
+        lines.append(f"Would send this {noun}'s prompt to a model, with tools.")
         lines.append("It would: call a model, and whatever the tools it is "
                      "allowed to call then do.")
     if kind in ("llm", "research"):
-        if model or endpoint_url:
-            lines.append(f"Model: {model or '(resolved at run time)'} at "
-                         f"{endpoint_url or '(the default endpoint)'}")
-        else:
-            lines.append("Model: resolved at run time from Settings.")
+        lines.append(f"Model: {model}" if model else "Model: the default.")
     for line in (extra or ()):
         lines.append(line)
     return lines

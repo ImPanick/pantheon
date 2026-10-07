@@ -1074,8 +1074,10 @@ def create_from_document(db, *, owner, name, graph, trigger_fields, origin, need
                                            else VERSION_SOURCE_IMPORTED))
     db.commit()
     count = len(marked["nodes"])
-    said = [f"Made {quoted(name)}, {count} step{'s' if count != 1 else ''}. It is switched off, "
-            f"and each step waits for you to check it before it can run."]
+    # `P23-05` (WB-U-2): the arrival box beside it says why it is off (each
+    # step waits to be checked); this line names what was made and keeps the
+    # one fact an API caller has no box for.
+    said = [f"Made {quoted(name)}, {count} step{'s' if count != 1 else ''}. It is off."]
     address = webhook_path(trigger)
     if address:
         said.append(f"Its webhook address is {address}. It answers once you switch the "
@@ -1386,7 +1388,8 @@ def switch_workflow(db, wf, trigger, *, on: bool, name_of=None) -> tuple:
     if not on:
         trigger.status = "paused"
         db.commit()
-        return None, ["Switched off — it will not run until you switch it on."]
+        # `P23-05`: the switch beside it already says "Off — it will not run."
+        return None, ["Switched off."]
     # `P22-19` (`SLICE-EF-DESIGN` § 1.1). Not while a step the model drafted,
     # or one a file carried, waits for a person to check it — a 409 naming the
     # steps (`reason: "unchecked"`, `node_ids`), so the Workbench can open them.

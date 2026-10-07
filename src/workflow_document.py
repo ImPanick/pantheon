@@ -1714,9 +1714,11 @@ def unchecked_refusal(graph: dict) -> DocumentRefusal | None:
         who = "The model, a file or your assistant wrote"
     count = len(marked)
     named = ", ".join(_called(n) for n in marked[:6]) + (" …" if count > 6 else "")
-    which = "it" if count == 1 else "each one"
+    # `P23-05` (WB-U-2): what happened, then what to do, short — the Workbench
+    # offers *Check them now* beside it, and every other door reads the same.
+    which = "it" if count == 1 else "them"
     sentence = (f"{who} {count} step{'s' if count != 1 else ''} nobody has checked yet: "
-                f"{named}. Open {which} and press Looks right (or change it), then switch it on.")
+                f"{named}. Check {which} first.")
     return DocumentRefusal(REFUSE_UNCHECKED, tuple(n["id"] for n in marked), sentence)
 
 
@@ -1945,7 +1947,7 @@ def plan_lines(node: dict, resources: WorkflowResources | None = None) -> list:
     if kind in STAND_IN_KINDS:
         lines = dry_run_plan(task_type=kind, action=config.get("action"),
                              prompt=config.get("prompt"), model=config.get("model"),
-                             endpoint_url=config.get("endpoint_url"))
+                             endpoint_url=config.get("endpoint_url"), noun="step")
         if kind != NODE_KIND_ACTION and config.get("prompt") and "{{" in config["prompt"]:
             lines.append(f"Its prompt, as written: {config['prompt']}")
         if kind == NODE_KIND_PROMPT and config.get("tools") is not None:
@@ -1960,8 +1962,9 @@ def plan_lines(node: dict, resources: WorkflowResources | None = None) -> list:
     elif kind == NODE_KIND_IF:
         join = JOIN_WORDS.get(config.get("join") or "all", "all of these")
         tests = "; ".join(describe_condition(c) for c in config.get("conditions") or ())
-        lines.append(f"Would go the “then” way if {join} hold: {tests}. Otherwise the "
-                     f"“otherwise” way.")
+        # `P23-05` (WB-U-7): the port's own words, as the canvas draws them
+        # (`workflowDiagram.js:PORT_WORDS`: then → "if so").
+        lines.append(f"Would go “if so” if {join} hold: {tests}; otherwise “otherwise”.")
     elif kind == NODE_KIND_SWITCH:
         lines.append("Would go the first way that matches:")
         for case in config.get("cases") or ():

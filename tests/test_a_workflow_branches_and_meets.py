@@ -632,8 +632,9 @@ def test_plan_lines_show_what_you_typed_and_where_a_value_comes_from_never_a_val
     assert code[:2] == ["Would run 4 lines of Python in your workstation, as you.",
                         "Hands it prices: {{ steps.a.data.prices }}"]
     if_lines = wd.plan_lines(step("i", "if", join="any", **IF))
-    assert if_lines == ["Would go the “then” way if any of these hold: {{ steps.start.data.subject }} "
-                        "contains “urgent”. Otherwise the “otherwise” way."]
+    # P23-05 (WB-U-7): the plan says the port's own words.
+    assert if_lines == ["Would go “if so” if any of these hold: {{ steps.start.data.subject }} "
+                        "contains “urgent”; otherwise “otherwise”."]
     switch = wd.plan_lines(step("s", "switch", cases=CASES))
     assert switch[1].startswith("“Urgent” if all of these hold:") and \
         switch[-1] == "and the “otherwise” way if none does."

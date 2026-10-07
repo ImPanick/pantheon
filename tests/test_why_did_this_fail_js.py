@@ -136,9 +136,9 @@ def test_the_button_is_only_on_a_failed_record_and_its_title_names_who_is_asked(
         out({ failed, worked, notReached, explains: calls('POST', (u) => u.endsWith('/explain')).length });
     """)
     assert o["failed"]["title"] == "Fetch unread", "the run opens on the step that failed (P22-07)"
+    # P23-05 (Doc 2 § 5): the tooltip in one line; *Asked:* under the answer names the model.
     assert o["failed"]["ask"] == [["Why did this fail?",
-                                   "Asks a model — your utility model, or your default one if none is set — to read what "
-                                   "this step was handed and what came back. Nothing changes unless you press Apply."]]
+                                   "Asks a model to read this step’s record. Nothing changes until you press Apply."]]
     assert o["worked"] == {"title": "List entries", "ask": 0}, "a step that worked has nothing to explain"
     assert o["notReached"] == {"title": "Summarise", "ask": 0}
     assert o["explains"] == 0, "nothing is asked until the person presses it"
@@ -171,7 +171,8 @@ def test_the_answer_is_the_models_reading_the_diff_rows_with_their_words_and_wha
     assert o["posted"] == [[f"/api/workflows/{live.wid}/runs/{live.run_id}/explain",
                             {"node_id": "fetch-unread", "item": None}]]
     assert o["head"] == "The model’s reading"
-    assert o["notes"][0].startswith("It read what this step was handed and what came back — text someone else may have written")
+    # P23-05: shorter, and still names who may have written the record (`Law 17`).
+    assert o["notes"][0] == "A suggestion — the run’s record may hold text someone else wrote."
     assert o["why"] == ex["why"] and ex["why"].startswith(_ANSWER["why"])
     assert o["model"] == (f"Asked: {ex['model']}" if ex["model"] else None)
     changes = ex["proposal"]["changes"]

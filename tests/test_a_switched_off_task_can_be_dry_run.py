@@ -221,7 +221,7 @@ async def test_an_active_tasks_plan_is_what_it_was(task_db, scheduler, calls):
     (run,) = _runs(task_db)
     details = [s["detail"] for s in run["steps"]]
     assert details[0] == DRY_RUN_HEADLINE
-    assert details[-1] == "Where the result would go: session"
+    assert details[-1] == "Result goes to: a chat"  # P23-05 (COPY-M-13): a key is not a place
 
 
 # ── what is declined is declined in words, and changes nothing ─────────────

@@ -149,7 +149,7 @@ def test_the_describe_box_posts_describe_and_tz_and_the_draft_opens_marked_and_o
     assert o["start"] is None, "the start is the trigger's, never marked"
     assert o["switchWord"] == "Off"
     assert o["arrived"]["head"] == "Drafted by the model"
-    assert o["arrived"]["lede"].startswith("It is switched off, and each step is marked “check me”")
+    assert o["arrived"]["lede"] == "It is off until you check each step."  # P23-05 (Doc 2 § 5)
     # `integrate-e` (`B1134`): one line, only where it sends things.
     assert reply["destinations"] == ["“Post to #dev” sends to Chat: send_message — channel: #dev."]
     assert o["arrived"]["where"] == ["".join(reply["destinations"])], "where it sends things, in the server's words"
@@ -236,7 +236,7 @@ def test_switching_on_with_unchecked_steps_offers_check_them_now_and_all_look_ri
     assert rf["reply"]["detail"].startswith("The model drafted 3 steps nobody has checked yet:")
     assert rf["action"] == "Check them now"
     assert o["listed"]["role"] == "dialog"
-    assert o["listed"]["lede"].startswith("3 steps nobody has checked yet.")
+    assert o["listed"]["lede"].startswith("3 steps to check.")  # P23-05 (Doc 2 § 5)
     assert o["listed"]["rows"] == [[i, label, "Drafted by the model", o["plans"][i]]
                                    for i, label in zip(IDS, o["labels"])], \
         "every step the refusal names, with what it would do"

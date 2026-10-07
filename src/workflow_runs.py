@@ -321,7 +321,7 @@ def input_summary(stored_input) -> str:
     from src.event_bus import trigger_summary
 
     if stored_input is None:
-        return "Nothing — it was not handed anything."
+        return "Nothing."
     if is_truncated(stored_input):
         return stored_input.get("summary") or (
             f"Too long to keep in full ({stored_input.get('chars')} characters).")

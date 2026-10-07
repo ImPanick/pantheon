@@ -213,7 +213,7 @@ def test_the_form_renders_into_its_host_and_owns_nothing_outside_it(sandbox):
         }));
     """)
     assert out["inHost"] and out["nameIsTheHosts"], out
-    assert out["heading"] == "New Task" and out["button"] == "Create", out
+    assert out["heading"] == "New task" and out["button"] == "Create", out  # P23-05: one noun, sentence case
     assert out["elsewhere"] == "untouched"
 
 
@@ -244,7 +244,7 @@ def test_it_is_filled_from_a_row_as_get_api_tasks_serves_it(sandbox, task_db):
           bold: host.querySelectorAll('b').length,
         }));
     """ % (json.dumps(row), json.dumps([row] + _OTHERS)))
-    assert out["heading"] == "Edit Task"
+    assert out["heading"] == "Edit task"  # P23-05
     assert out["name"] == "Morning brief"
     assert out["prompt"] == "Summarise </textarea><b>this</b>", out["prompt"]
     assert out["bold"] == 0, "the stored prompt became markup"
@@ -685,5 +685,5 @@ def test_the_card_names_retries_only_where_they_happen(sandbox):
     """)
     assert out["one"] == "1 retry if it fails" and out["none"] == "" and out["event"] == ""
     assert out["limits"] == ["45 s", "10 min", "2 h", ""]
-    assert out["cron"] == "Cron: 0 9 * * 1 (Buenos Aires time)"
+    assert out["cron"] == "Every Monday at 09:00 (Buenos Aires time)"  # P23-05 (WB-U-11)
     assert out["place"] == "UTC"

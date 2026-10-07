@@ -482,7 +482,7 @@ async def test_a_dry_run_plans_every_step_breadth_first_and_runs_none(task_db):
         ("n1", None, 0), ("n3", "success", 1), ("n2", "error", 1), ("n4", "success", 2)]
     plan = {e["node_id"]: [st["detail"] for st in e["steps"]] for e in entries}
     assert "It would: deletes data inside Pantheon" in plan["n2"]
-    assert "Where the result would go: only to the next step" in plan["n1"]
+    assert "Result goes to: only the next step" in plan["n1"]  # P23-05 (Doc 2 § 5)
     assert plan["n3"][0] == "Would run the task “Weekly report”, as its own run with its own history."
     assert "It is paused, so a real run would not start it." in plan["n3"]
     assert all(e["declined"] is None for e in entries)

@@ -1358,6 +1358,22 @@ def plan_dry_chain(head, rows, *, head_steps, head_declined=None,
     return out
 
 
+# `P23-05` (COPY-M-13): where a result goes, in words — the stored
+# `output_target` is a key (`FORBIDDEN.md` Part 1), never a place a person reads.
+_RESULT_PLACES = {"session": "a chat", "email": "your email", "document": "a document",
+                  "notification": "a notification, and a chat"}
+
+
+def result_place(target) -> str:
+    """`session` → "a chat"; an MCP tool target by its server and tool."""
+    key = str(target or "session")
+    if key in _RESULT_PLACES:
+        return _RESULT_PLACES[key]
+    if key.startswith("mcp__"):
+        return "the tool " + key[len("mcp__"):].replace("__", " › ")
+    return key
+
+
 def dry_run_lines(task) -> list:
     """The plan for `task`, headline first. Runs nothing, reads no session.
 
@@ -1376,7 +1392,7 @@ def dry_run_lines(task) -> list:
         owner=task.owner,
         model=task.model,
         endpoint_url=task.endpoint_url,
-        extra=[f"Where the result would go: {task.output_target or 'session'}"],
+        extra=[f"Result goes to: {result_place(task.output_target)}"],
     )
     why_not = not_active_words(task)
     if why_not:
@@ -5513,12 +5529,13 @@ class TaskScheduler:
             from src import workflow_effects as we
             lines = list(wd.plan_lines(node, we.workflow_resources(task.owner)))
         else:
+            target = config.get("output_target")
             lines = dry_run_plan(
                 task_type=kind, action=config.get("action"), prompt=config.get("prompt"),
                 owner=task.owner, model=config.get("model"),
-                endpoint_url=config.get("endpoint_url"),
-                extra=[f"Where the result would go: "
-                       f"{config.get('output_target') or 'only to the next step'}"])
+                endpoint_url=config.get("endpoint_url"), noun="step",
+                extra=[f"Result goes to: "
+                       f"{result_place(target) if target else 'only the next step'}"])
         return [shape_run_step({"kind": "dry-run", "detail": line}) for line in lines], None
 
     async def _run_workflow(self, task, db, run_id: str):

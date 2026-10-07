@@ -79,10 +79,12 @@ export const TASK_WORDS = Object.freeze({
   // `B1048`: there are tasks, and every one of them is a built-in set aside.
   emptyTitleOwn: 'No automations of your own yet.',
   emptyText: 'A step is a task: a prompt, a research run or an action, started by a schedule, an event or a webhook. Make one, make another, then join them.',
-  hint: 'Drag from a step’s “' + EDGE_WORDS.success + '” or “' + EDGE_WORDS.error
-    + '” onto the step that should run next, or use its Connect… button. Click a step to edit it. '
-    + 'Keys: the arrows go from step to step and along the arrows, Enter opens a step, M moves it.',
-  newLabel: 'New step',
+  // `P23-05` (COPY-U-23, Doc 2 § 5): one line, always on; the keys are its
+  // tooltip (`hintKeys`), not a third sentence. One noun on this canvas: task.
+  hint: 'Drag from “' + EDGE_WORDS.success + '” or “' + EDGE_WORDS.error
+    + '” to the next step, or press Connect…. Click a step to edit it.',
+  hintKeys: 'Keys: arrows go from step to step, Enter opens one, M moves it.',
+  newLabel: 'New task',
   newTitle: 'Make a new task and put it on the canvas',
   unknownName: 'a task you cannot see',
   missingTitle: 'A task you cannot see',

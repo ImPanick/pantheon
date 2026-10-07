@@ -169,9 +169,10 @@ export const EDIT_WORDS = Object.freeze({
   // out beyond the two every task has.
   emptyText: 'Add a step, and the start leads to it. A step asks a model, decides which way to go, '
     + 'calls a service, waits, or runs your code.',
-  hint: 'Drag from a step’s way out — “' + EDGE_WORDS.success + '”, “' + EDGE_WORDS.error + '”, “'
-    + PORT_WORDS.then + '”, a case — onto the step that should run next, or use its Connect… button. '
-    + 'Click a step to change it. Your changes stay here until you press Save.',
+  // `P23-05` (COPY-U-23): one line; the keys are its tooltip.
+  hint: 'Drag from a step’s way out to the next step, or press Connect…. Click a step to change it. '
+    + 'Save keeps your changes.',
+  hintKeys: 'Keys: arrows go from step to step, Enter opens one, M moves it.',
   newLabel: 'New step',
   newTitle: 'Add a step to this workflow',
   unknownName: 'a step that is not in this workflow',
@@ -185,7 +186,9 @@ export const RUN_WORDS = Object.freeze({
   region: 'This run, step by step',
   emptyTitle: 'This run left no steps.',
   emptyText: '',
-  hint: 'Each step says how it went in this run. Click one to read what it was handed and what it made.',
+  // `P23-05`: the run's own line under the canvas says this ("This run worked.
+  // Click a step for …"), so the hint above it is not drawn twice.
+  hint: '',
   newLabel: 'New step',
   newTitle: '',
   unknownName: 'a step that is not in this run',

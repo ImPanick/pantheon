@@ -164,7 +164,8 @@ def test_try_on_a_connected_tool_posts_call_and_shows_text(box):
               headline: text(result.querySelector('.mcp-try-headline')),
               answered: result.querySelector('pre').textContent,
               notes: result.querySelectorAll('.mcp-try-note').map((n) => text(n)),
-              desc: host.querySelector('.mcp-try-desc').textContent,
+              desc: host.querySelector('.mcp-try-desc'),
+              lead: text(host.querySelector('.mcp-try-lead')),
               imgs: tags(formEl, 'img').length, scripts: tags(formEl, 'script').length,
               bolds: tags(formEl, 'b').length });
     """)
@@ -175,7 +176,8 @@ def test_try_on_a_connected_tool_posts_call_and_shows_text(box):
     assert o["headline"] == "It answered in 41 ms."
     assert o["answered"] == "<script>alert(1)</script> Oslo: sun"
     assert o["notes"][0].startswith("The assistant has this tool switched off.")
-    assert o["desc"] == HOSTILE
+    # P23-05 (Doc 2 § 5): the description is the row's, above; the form says one line.
+    assert o["desc"] is None and o["lead"] == "Runs get_forecast once, for real."
     assert o["imgs"] == 0 and o["scripts"] == 0 and o["bolds"] == 0
 
 

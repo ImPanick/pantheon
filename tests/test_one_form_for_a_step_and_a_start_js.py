@@ -265,5 +265,5 @@ def test_the_task_form_is_the_same_form_with_no_mode_or_mode_task(sandbox):
     """)
     assert out["same"] is True
     d = out["d"]
-    assert d["heading"] == "Edit Task" and d["button"] == "Save"
+    assert d["heading"] == "Edit task" and d["button"] == "Save"  # P23-05
     assert all(d[k] for k in ("name", "type", "trigger", "output", "model", "timeout", "chain", "notif"))

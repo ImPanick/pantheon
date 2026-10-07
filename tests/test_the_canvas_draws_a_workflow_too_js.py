@@ -265,7 +265,7 @@ def test_a_document_is_planned_whole_from_no_head(box):
               startSub: itemOf(root, '__start__').querySelector('.wb-node-sub').textContent });
     """)
     assert o["asked"] == [["dryRun"]], "a workflow's source is asked with no head"
-    assert o["said"].startswith("Dry run of Morning brief: nothing ran and nothing changed. 2 steps say what they would do;")
+    assert o["said"].startswith("Dry run of Morning brief — nothing ran. 2 steps planned;")  # P23-05 (COPY-U-24)
     assert o["n1"] == "planned" and o["n2"] == "aside"
     assert o["line"] == "Would send this task’s prompt to a model, with tools."
     # The start is not a Prompt: a kind the diagram has no word for is not

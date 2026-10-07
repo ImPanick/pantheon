@@ -104,7 +104,7 @@ async def test_a_draft_is_saved_off_marked_and_its_webhook_token_minted(world):
     [v1] = versions(w.factory, wf_id)
     assert v1["version"] == 1 and v1["source"] == wd.VERSION_SOURCE_DRAFTED == "drafted"
     assert all("unchecked" not in n for n in v1["graph"]["nodes"]), "a version never holds a mark"
-    assert any("switched off" in n for n in notes)
+    assert any(n.endswith("It is off.") for n in notes)  # P23-05: said once, short
     assert any(f"/api/tasks/{task_id}/webhook/{trigger.webhook_token}" in n for n in notes)
 
 
@@ -127,9 +127,9 @@ async def test_switching_on_is_refused_while_a_step_is_unchecked(world):
     body = res.json()
     assert body["reason"] == wd.REFUSE_UNCHECKED == "unchecked"
     assert body["node_ids"] == IDS
+    # P23-05 (Doc 2 § 5, WB-U-2): the instruction is short; *Check them now* sits beside it.
     assert body["detail"] == ("The model drafted 3 steps nobody has checked yet: “Is it a new "
-                              "issue?”, “Summarise”, “Post to #dev”. Open each one and press "
-                              "Looks right (or change it), then switch it on.")
+                              "issue?”, “Summarise”, “Post to #dev”. Check them first.")
     assert stored(w.factory, wf_id)[2].status == "paused"
 
 

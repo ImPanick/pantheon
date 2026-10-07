@@ -68,7 +68,8 @@ def test_every_kind_is_offered_grouped_and_a_kind_you_may_not_use_says_why(box):
           g.querySelectorAll('.wf-palette-kind').map((b) => b.dataset.kind)]);
         const read = (k) => { const b = kindBtn(k); return {
           disabled: !!b.disabled, aria: b.getAttribute('aria-disabled'), available: b.dataset.available || null,
-          words: b.querySelectorAll('span').map((s) => [s.className, s.textContent]), label: b.getAttribute('aria-label') }; };
+          words: b.querySelectorAll('span').map((s) => [s.className, s.textContent]), label: b.getAttribute('aria-label'),
+          title: b.title || null }; };
         const http = read('http');
         const code = read('code');
         const iff = read('if');
@@ -94,10 +95,14 @@ def test_every_kind_is_offered_grouped_and_a_kind_you_may_not_use_says_why(box):
         ["wf-palette-word", "HTTP request"], ["wf-palette-hint", fx.KIND_HINTS["http"]],
         ["wf-palette-why", fx._ADMIN_ONLY_WHY["http"]]]
     assert o["http"]["label"] == f"HTTP request: not available. {fx._ADMIN_ONLY_WHY['http']}"
-    assert o["code"]["words"][-1] == ["wf-palette-why", OFF_SENTENCE]
+    # P23-05 (WB-U-5, Doc 2 § 5): a greyed row says the reason's first sentence;
+    # who can change it is the tooltip and the accessible name.
+    assert o["code"]["words"][-1] == ["wf-palette-why", "The workstation is switched off."]
+    assert o["code"]["title"] == OFF_SENTENCE and OFF_SENTENCE in o["code"]["label"]
+    assert o["http"]["title"] is None, "a one-sentence reason needs no tooltip"
     assert o["iff"] == {"disabled": False, "aria": None, "available": None,
                         "words": [["wf-palette-word", "If"], ["wf-palette-hint", fx.KIND_HINTS["if"]]],
-                        "label": f"If: {fx.KIND_HINTS['if']}"}
+                        "label": f"If: {fx.KIND_HINTS['if']}", "title": None}
     assert o["stillOpen"] is True, "a greyed kind cannot be picked"
     assert o["focused"] is True, "the first kind that can be picked has the focus"
     assert o["picked"] == "if" and o["gone"] is True

@@ -260,14 +260,61 @@ function _editTask(task) {
   return _showForm(task);
 }
 
+// `P23-05` (WB-U-11). An event as a person says it — the stored name
+// (`src/event_bus.EVENT_CATALOGUE`, `FORBIDDEN.md` Part 1) is read, never
+// written: [one, many]. A name not here is said as before, underscores spaced.
+const _EVENT_WORDS = Object.freeze({
+  session_created: ['new chat', 'new chats'],
+  message_sent: ['message sent', 'messages sent'],
+  document_created: ['new document', 'new documents'],
+  document_updated: ['document update', 'document updates'],
+  memory_added: ['new memory', 'new memories'],
+  research_completed: ['finished research run', 'finished research runs'],
+  email_received: ['email received', 'emails received'],
+  skill_added: ['new skill', 'new skills'],
+});
+
+const _DAY_WORDS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+/** `P23-05` (WB-U-11). The cron shapes the built-in tasks use, in words —
+ *  "Every 2 hours", "At 06:00 and 18:00", "Every Monday at 09:00" — or `null`
+ *  for any other, which the card then shows as written. */
+function _cronWords(expr) {
+  const f = String(expr || '').trim().split(/\s+/);
+  if (f.length !== 5) return null;
+  const [min, hour, dom, mon, dow] = f;
+  const num = (s) => /^\d{1,2}$/.test(s);
+  const clock = (h, m) => `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+  if (dom !== '*' || mon !== '*') return null;
+  if (min.startsWith('*/') && num(min.slice(2)) && hour === '*' && dow === '*') {
+    const n = Number(min.slice(2));
+    return n === 1 ? 'Every minute' : `Every ${n} minutes`;
+  }
+  if (!num(min)) return null;
+  if (hour === '*' && dow === '*') return Number(min) === 0 ? 'Every hour' : `Every hour at :${clock(0, min).slice(3)}`;
+  if (hour.startsWith('*/') && num(hour.slice(2)) && dow === '*') {
+    const n = Number(hour.slice(2));
+    return (n === 1 ? 'Every hour' : `Every ${n} hours`) + (Number(min) ? ` at :${clock(0, min).slice(3)}` : '');
+  }
+  const hours = hour.split(',');
+  if (!hours.every(num)) return null;
+  const at = hours.map((h) => clock(h, min));
+  const times = at.length > 1 ? `${at.slice(0, -1).join(', ')} and ${at[at.length - 1]}` : at[0];
+  if (dow === '*') return `${at.length > 1 ? 'At' : 'Daily at'} ${times}`;
+  if (dow === '1-5') return `Weekdays at ${times}`;
+  if (/^[0-6]$/.test(dow)) return `Every ${_DAY_WORDS[Number(dow)]} at ${times}`;
+  return null;
+}
+
 function _scheduleLabel(task) {
   const tt = task.trigger_type || 'schedule';
   if (tt === 'event') {
     // `Every 1 document updated` is what this said, and `P8-31` makes 1 the
     // common case rather than the rare one. `s` was pluralising the verb.
-    const evtName = String(task.trigger_event || 'event').replace(/_/g, ' ');
+    const name = String(task.trigger_event || 'event');
+    const words = _EVENT_WORDS[name] || [name.replace(/_/g, ' '), name.replace(/_/g, ' ')];
     const n = task.trigger_count || 1;
-    return n > 1 ? `Every ${n} × ${evtName}` : `On ${evtName}`;
+    return n > 1 ? `Every ${n} ${words[1]}` : `Every ${words[0]}`;
   }
   if (tt === 'webhook') return 'Webhook';
   const t = task.scheduled_time || '00:00';
@@ -278,7 +325,8 @@ function _scheduleLabel(task) {
   const zone = task.tz_name || '';
   const zoneWords = zone ? ` ${_zonePlace(zone)} time` : '';
   if (task.schedule === 'cron') {
-    return `Cron: ${task.cron_expression || '?'}${zone ? ` (${_zonePlace(zone)} time)` : ''}`;
+    const said = _cronWords(task.cron_expression);
+    return `${said || `Cron: ${task.cron_expression || '?'}`}${zone ? ` (${_zonePlace(zone)} time)` : ''}`;
   }
   if (task.schedule === 'once') {
     if (task.scheduled_date) {
@@ -653,7 +701,8 @@ function _renderList() {
   const _tabCount = document.getElementById('tasks-tab-count');
   if (_tabCount) _tabCount.textContent = _tasks.length;
   const _headCount = document.getElementById('tasks-head-count');
-  if (_headCount) _headCount.textContent = _tasks.length ? `${_tasks.length} task${_tasks.length !== 1 ? 's' : ''}` : '';
+  // `P23-05` (COPY-U-15): the count is the tab's; the header is bare.
+  if (_headCount) _headCount.textContent = '';
 
   if (_tasks.length === 0) {
     // Differentiate "still loading" from "really empty" so the first paint
@@ -662,7 +711,7 @@ function _renderList() {
     if (!_tasksFetched) {
       list.appendChild(spinnerModule.createLoadingRow('Loading…'));
     } else {
-      list.innerHTML = '<div style="opacity:0.4;font-size:12px;text-align:center;padding:24px 0;">No tasks yet. Create one to get started.</div>';
+      list.innerHTML = '<div style="opacity:0.4;font-size:12px;text-align:center;padding:24px 0;">No tasks yet.</div>';
     }
     return;
   }
@@ -797,8 +846,10 @@ function _renderList() {
         const chip = document.createElement('button');
         chip.type = 'button';
         chip.className = 'task-workflow-chip';
-        chip.title = 'Open this workflow in the Workbench';
-        chip.textContent = `Part of a ${steps}-step workflow`;
+        // `P23-05` (`B1092`, Doc 2 § 5): a chain is a chain — the word
+        // *workflow* is the Workbench's document, which this card is not.
+        chip.title = 'Open this chain in the Workbench';
+        chip.textContent = `Part of a ${steps}-step chain`;
         chip.addEventListener('click', (e) => {
           e.stopPropagation();
           _openInWorkbench(task);
@@ -1106,15 +1157,15 @@ function _showPresetPicker() {
   if (!body) return;
 
   let html = '<div class="admin-card" style="flex:1;display:flex;flex-direction:column;overflow:hidden;">';
-  html += '<div style="display:flex;align-items:baseline;gap:8px;margin-bottom:2px;"><h2 style="margin:0;padding:0;line-height:1;">Add Task</h2></div>';
-  html += '<p class="memory-desc" style="position:relative;top:4px;">Describe a task for the AI to draft, or pick a type below to set one up manually.</p>';
+  html += '<div style="display:flex;align-items:baseline;gap:8px;margin-bottom:2px;"><h2 style="margin:0;padding:0;line-height:1;">Add task</h2></div>';
+  html += '<p class="memory-desc" style="position:relative;top:4px;">Describe it, or pick a type below.</p>';
   // flex-wrap + min-width:0 on the input lets the row collapse cleanly
   // on narrow modal widths instead of pushing the AI button past the
   // right edge. margin-left:-4px nudges the compose row 4px into the
   // description bar above so the input lines up with it visually.
   html += '<div class="task-ai-compose" style="display:flex;gap:6px;margin:6px 0 10px -4px;flex-wrap:wrap;align-items:center;">'
     + '<input type="text" id="task-ai-input" class="memory-search-input" style="flex:1 1 220px;min-width:0;" placeholder="Describe a task — e.g. &quot;every weekday 7am summarize my unread email&quot;" />'
-    + '<button class="memory-toolbar-btn active" id="task-ai-btn" title="Draft a task with AI" style="white-space:nowrap;height:28px;flex:0 0 auto;"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:-1px;margin-right:3px;"><path d="M12 0L14.59 8.41L23 12L14.59 15.59L12 24L9.41 15.59L1 12L9.41 8.41Z"/></svg>Draft with AI</button>'
+    + '<button class="memory-toolbar-btn active" id="task-ai-btn" title="Draft a task from your words" style="white-space:nowrap;height:28px;flex:0 0 auto;"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:-1px;margin-right:3px;"><path d="M12 0L14.59 8.41L23 12L14.59 15.59L12 24L9.41 15.59L1 12L9.41 8.41Z"/></svg>Draft it</button>'
     + '</div>';
   html += '<div class="memory-list" style="max-height:none;flex:1;gap:0px;margin-top:2px;padding-right:8px;">';
   _TASK_PRESETS.forEach((p, i) => {
@@ -1847,7 +1898,7 @@ async function _renderCompletedView() {
         <h2 style="margin:0;padding:0;line-height:1;">Completed</h2>
         <button class="memory-toolbar-btn" id="tasks-completed-refresh" title="Refresh" style="margin-left:auto;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;"><path d="M1 4v6h6"/><path d="M23 20v-6h-6"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/></svg></button>
       </div>
-      <p class="memory-desc">Assistant and research runs that finished: the output, the error, or why the run stopped. Runs that never started stay in Activity.</p>
+      <p class="memory-desc">Finished assistant and research runs — the output, the error, or why it stopped.</p>
       <div id="tasks-completed-list" class="memory-list tasks-activity-list tasks-completed-list" style="flex:1;overflow:auto;font-size:13px;min-height:0;"></div>
     </div>
   `;
@@ -2037,7 +2088,6 @@ async function _renderActivityView() {
         <h2 style="margin:0;padding:0;line-height:1;">Activity</h2>
         <button class="memory-toolbar-btn" id="tasks-activity-refresh" title="Refresh" style="margin-left:auto;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;"><path d="M1 4v6h6"/><path d="M23 20v-6h-6"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/></svg></button>
       </div>
-      <p class="memory-desc">Recent task runs across all scheduled tasks.</p>
       <div style="display:flex;align-items:center;gap:6px;margin:6px 0 8px;">
         <input type="text" id="tasks-activity-search" placeholder="Filter activity…" class="memory-search-input" style="flex:1;" />
       </div>
@@ -2743,6 +2793,10 @@ function _renderActivityEntry(entry, opts = {}) {
   // Skipped (noop) rows: render as a slim, dimmed one-liner — no body, no
   // actions, just `· name · skipped — reason · time`. CSS via .is-skipped.
   const _isSkipped = entry.status === 'skipped';
+  // `P23-05` (WB-M-12). A dry run is stored `skipped` with a result that starts
+  // with the plan's mark (`task_scheduler.DRY_RUN_MARK`): it is a plan, not a
+  // run that was skipped, and *Run again* on it would run the task for real.
+  const _isDry = _isSkipped && String(entry.result || '').startsWith('Dry run — ');
   if (_isRunning && !(entry.result || '').trim()) {
     resultHtml = '';
   } else {
@@ -2839,7 +2893,7 @@ function _renderActivityEntry(entry, opts = {}) {
          Clear cache
        </button>`;
   }
-  if (hasResult && entry.taskId) {
+  if (hasResult && entry.taskId && !_isDry) {
     actionBtn += `<button class="task-log-run-again" type="button" title="Run this task again">
          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
          Run again
@@ -2914,7 +2968,7 @@ function _renderActivityEntry(entry, opts = {}) {
           <span class="task-log-task-icon">${_taskIcon({ action: entry.action, task_type: entry.kind })}</span>
           <span class="task-log-name">${_escHtml(entry.taskName)}</span>${_taskAiMark(entry)}
           ${repeatBadge}
-          <span class="task-log-skipped-reason">skipped${reason ? ' — ' + _escHtml(reason) : ''}</span>
+          <span class="task-log-skipped-reason">${_isDry ? _escHtml(reason) : `skipped${reason ? ' — ' + _escHtml(reason) : ''}`}</span>
           ${actionBtn}
           ${skippedStop}
           <span class="task-log-time" title="${_escHtml(tsAbs)}">${_escHtml(tsLabel)}</span>
@@ -3033,7 +3087,7 @@ function _renderMainView() {
   body.innerHTML = `
     <div class="admin-card" style="flex:1;display:flex;flex-direction:column;overflow:hidden;position:relative;top:-2px;">
       <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:2px;">
-        <h2 style="margin:0;padding:0;line-height:1;position:relative;top:-4px;">Ongoing Tasks <span id="tasks-head-count" class="memory-count" style="font-size:0.6em;opacity:0.6;font-weight:normal"></span></h2>
+        <h2 style="margin:0;padding:0;line-height:1;position:relative;top:-4px;">Tasks <span id="tasks-head-count" class="memory-count" style="font-size:0.6em;opacity:0.6;font-weight:normal"></span></h2>
         <button class="memory-toolbar-btn" id="tasks-pause-all-btn" title="Pause all active tasks" style="margin-left:auto;">Pause all</button>
       </div>
       <div class="memory-toolbar">
