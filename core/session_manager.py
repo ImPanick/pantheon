@@ -698,6 +698,64 @@ class SessionManager:
     # Queries
     # ------------------------------------------------------------------
 
+    def list_page(self, username: Optional[str], *, limit: int = 100, offset: int = 0,
+                  hidden_names=()) -> tuple:
+        """`P23-07` (`PERF-M-5`). The sidebar's chats for one person, from the
+        database: ``(rows, has_more)``.
+
+        `/api/sessions` read `self.sessions`, which `load_sessions` fills at
+        boot with the 100 most recently used chats **of every owner**, and
+        filtered that by owner afterwards — measured on a world of 405 chats:
+        100 listed and no way to the rest, and on a shared install a person
+        whose chats were older than someone else's last 100 saw none. Now the
+        owner filter and the cut are in the query, and the cut is a page.
+
+        Kept from the cache's rules, so the list is the same list, longer:
+          * a named person sees chats whose owner is exactly them (shared,
+            owner-less rows were never listed for a signed-in person);
+          * a chat is listed when it has a message, or when it was created or
+            opened in this process (a new chat is in the list before its first
+            message, as it always was);
+          * archived chats and the hidden names are not listed.
+        Ordered by last activity, newest first. The first page also carries
+        every pinned chat and every chat in a folder, wherever its activity
+        falls: the sidebar counts a folder from what it holds, and its × deletes
+        what it holds — a folder half loaded would be counted and deleted half.
+        """
+        from sqlalchemy import or_
+
+        limit = max(1, int(limit))
+        offset = max(0, int(offset))
+        db = SessionLocal()
+        try:
+            q = db.query(DbSession).filter(DbSession.archived == False)  # noqa: E712
+            if username:
+                q = q.filter(DbSession.owner == username)
+            hidden = [n for n in hidden_names if n]
+            if hidden:
+                q = q.filter(func.trim(func.coalesce(DbSession.name, "")).notin_(hidden))
+            known = [sid for sid, s in self.sessions.items()
+                     if not username or s.owner == username]
+            listed = DbSession.messages.any()
+            if known:
+                listed = or_(listed, DbSession.id.in_(known))
+            q = q.filter(listed)
+            recency = func.coalesce(DbSession.last_message_at, DbSession.updated_at, DbSession.created_at)
+            rows = q.order_by(recency.desc(), DbSession.id).offset(offset).limit(limit + 1).all()
+            has_more = len(rows) > limit
+            rows = rows[:limit]
+            if offset == 0:
+                on_page = [r.id for r in rows]
+                kept = or_(DbSession.is_important == True,  # noqa: E712
+                           func.coalesce(DbSession.folder, "") != "")
+                extra = q.filter(kept)
+                if on_page:
+                    extra = extra.filter(DbSession.id.notin_(on_page))
+                rows.extend(extra.order_by(recency.desc(), DbSession.id).all())
+            return [self._db_to_session_meta(r) for r in rows], has_more
+        finally:
+            db.close()
+
     def get_sessions_for_user(self, username: Optional[str] = None) -> Dict[str, Session]:
         """Return sessions for a specific user (or all if username is None)."""
         if username is None:

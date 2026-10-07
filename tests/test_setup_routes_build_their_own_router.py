@@ -107,8 +107,9 @@ def test_the_second_call_is_the_one_that_answers(monkeypatch, tmp_path):
     monkeypatch.setattr(sr, "effective_user", lambda request: "alice")
 
     first_manager, second_manager = MagicMock(), MagicMock()
-    first_manager.get_sessions_for_user.return_value = {}
-    second_manager.get_sessions_for_user.return_value = {}
+    # `P23-07` (`PERF-M-5`): the list asks its manager for a page now.
+    first_manager.list_page.return_value = ([], False)
+    second_manager.list_page.return_value = ([], False)
     sr.setup_session_routes(first_manager, {})
     router = sr.setup_session_routes(second_manager, {})
 
@@ -117,11 +118,11 @@ def test_the_second_call_is_the_one_that_answers(monkeypatch, tmp_path):
     request = MagicMock()
     request.query_params.get.return_value = ""
     endpoint(request=request)
-    assert second_manager.get_sessions_for_user.called, (
+    assert second_manager.list_page.called, (
         "the router returned by the second call reaches the first call's "
         "manager — the routers are still shared"
     )
-    assert not first_manager.get_sessions_for_user.called
+    assert not first_manager.list_page.called
 
 
 def test_no_test_needs_to_reset_a_router_any_more():

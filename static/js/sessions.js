@@ -29,6 +29,28 @@ const HISTORY_PAGE_LIMIT_DESKTOP = 24;
 const SIDEBAR_MAX_VISIBLE = 10;
 const FOLDER_MAX_VISIBLE = 5;
 let _showAllSessions = false;
+// `P23-07` (PERF-M-5). The server sends a person's newest chats a page at a
+// time (every pinned chat and every chat in a folder come with the first) and
+// says `X-More-Chats: 1` when there are older ones. "Show older chats" raises
+// how many this page asks for, so every later reload keeps what was shown.
+const SESSIONS_PAGE = 100;
+let _sessionsWanted = 0;       // 0 = the server's first page
+let _moreChats = false;
+function _showOlderChatsRow() {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'session-show-more-btn session-show-older-btn';
+  btn.textContent = 'Show older chats';
+  btn.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    btn.disabled = true;
+    const shown = sessions.filter(s => !s.archived).length;
+    _sessionsWanted = Math.max(_sessionsWanted || SESSIONS_PAGE, shown) + SESSIONS_PAGE;
+    _showAllSessions = true;
+    await loadSessions();
+  });
+  return btn;
+}
 let _expandedFolders = {};  // folderName -> true if "show more" clicked
 let _sortMode = Storage.get('pantheon-session-sort') || 'active'; // default to last active
 const DATE_SECTION_COLLAPSE_KEY = 'pan-session-date-section-collapsed';
@@ -1220,6 +1242,9 @@ function _renderSessionListImpl() {
       });
       _frag.appendChild(toggleBtn);
     }
+    if (_moreChats && (_showAllSessions || allFlat.length <= SIDEBAR_MAX_VISIBLE)) {
+      _frag.appendChild(_showOlderChatsRow());
+    }
 
     list.innerHTML = '';
     list.appendChild(_frag);
@@ -1475,6 +1500,10 @@ function _renderSessionListImpl() {
     });
     unfiledTarget.appendChild(toggleBtn);
   }
+  // `P23-07` (PERF-M-5): older chats are on the server, past what was sent.
+  if (_moreChats && (_showAllSessions || unfiled.length <= SIDEBAR_MAX_VISIBLE)) {
+    (unfiledTarget || _frag).appendChild(_showOlderChatsRow());
+  }
 
   // Flush all built elements into the list in one operation
   list.innerHTML = '';
@@ -1729,16 +1758,21 @@ export async function loadSessions() {
     await _cleanupIncognitoSessions();
 
     // Use prefetched data from login page if available (first load only)
-    const prefetched = sessionStorage.getItem('pan-prefetch-sessions');
+    const prefetched = _sessionsWanted ? null : sessionStorage.getItem('pan-prefetch-sessions');
     let fetched;
     if (prefetched) {
       sessionStorage.removeItem('pan-prefetch-sessions');
       fetched = JSON.parse(prefetched);
+      _moreChats = sessionStorage.getItem('pan-prefetch-sessions-more') === '1';
+      sessionStorage.removeItem('pan-prefetch-sessions-more');
     } else {
-      let url = `${API_BASE}/api/sessions`;
+      const params = new URLSearchParams();
       if (currentSessionId && _isIncognitoSession(currentSessionId)) {
-        url += `?active_incognito_id=${encodeURIComponent(currentSessionId)}`;
+        params.set('active_incognito_id', currentSessionId);
       }
+      if (_sessionsWanted) params.set('limit', String(_sessionsWanted));
+      const query = params.toString();
+      const url = `${API_BASE}/api/sessions${query ? `?${query}` : ''}`;
       const res = await fetch(url);
       if (!res.ok) {
         let detail = '';
@@ -1751,6 +1785,7 @@ export async function loadSessions() {
         throw error;
       }
       fetched = await res.json();
+      _moreChats = !!(res.headers && typeof res.headers.get === 'function' && res.headers.get('X-More-Chats') === '1');
     }
     if (!Array.isArray(fetched)) {
       throw new Error('Session request returned an invalid response');

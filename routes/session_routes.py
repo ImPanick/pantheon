@@ -245,8 +245,13 @@ def setup_session_routes(
     OPENAI_API_KEY = config.get("OPENAI_API_KEY")
     SESSIONS_FILE = config.get("SESSIONS_FILE")
     
+    # `P23-07` (`PERF-M-5`). How many chats the sidebar asks for by default, and
+    # the most one request may ask for. "Show older" asks for the next hundred.
+    SESSION_PAGE = 100
+    SESSION_PAGE_MAX = 5000
+
     @router.get("/sessions")
-    def list_sessions(request: Request):
+    def list_sessions(request: Request, response: Response = None, limit: int = SESSION_PAGE, offset: int = 0):
         user = effective_user(request)
         active_incognito_id = str(request.query_params.get("active_incognito_id") or "").strip()
         # Lazy purge: incognito sessions are ephemeral by design — wipe leftovers
@@ -288,7 +293,13 @@ def setup_session_routes(
                 _purge_db.close()
         except Exception:
             pass
-        user_sessions = session_manager.get_sessions_for_user(user)
+        # `P23-07` (`PERF-M-5`): the person's own chats, paged in the query —
+        # not the newest 100 of everyone's, cut before the owner filter.
+        page, has_more = session_manager.list_page(
+            user, limit=max(1, min(int(limit), SESSION_PAGE_MAX)), offset=offset,
+            hidden_names=("Nobody", "Incognito", *_HIDDEN_SYSTEM_SESSION_NAMES))
+        if has_more and response is not None:
+            response.headers["X-More-Chats"] = "1"
         # Fetch folder info from DB for each session
         db = SessionLocal()
         try:
@@ -351,7 +362,7 @@ def setup_session_routes(
                      "has_images": s.id in img_session_ids,
                      "mode": mode_map.get(s.id),
                      "message_count": msg_count_map.get(s.id, 0)}
-                    for s in user_sessions.values()
+                    for s in page
                     if not s.archived
                     and (s.name or "").strip() not in ("Nobody", "Incognito")
                     and (s.name or "").strip() not in _HIDDEN_SYSTEM_SESSION_NAMES]
