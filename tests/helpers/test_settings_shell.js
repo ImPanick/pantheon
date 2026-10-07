@@ -258,6 +258,7 @@ function buildFixture(document) {
   const panelIds = [
     'services',
     'added-models',
+    'forge',   // `B1229`
     'ai',
     'search',
     'integrations',
@@ -386,6 +387,7 @@ function moduleSource(relativePath) {
     registryPanelIds === [
       'services',
       'added-models',
+      'forge',   // `B1229` — see the fixture list above
       'ai',
       'search',
       'integrations',
@@ -432,7 +434,8 @@ function moduleSource(relativePath) {
     // Reminders are admin-only now — every control in them saves to an
     // admin-only route. Integrations is still admin-controlled and not hidden.
     ['tools', 'users', 'embeddings', 'networks', 'system',
-      'services', 'added-models', 'ai', 'search', 'reminders'].every(id => context.isAdminOnlySettingsTab(id))
+      'services', 'added-models', 'ai', 'search', 'reminders',
+      'forge'].every(id => context.isAdminOnlySettingsTab(id))
       && ['integrations', 'workstation', 'appearance', 'account']
         .every(id => !context.isAdminOnlySettingsTab(id)),
   );

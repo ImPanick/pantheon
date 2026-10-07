@@ -216,7 +216,8 @@ def test_every_tab_is_drawn_from_the_registry_in_the_registrys_order(sandbox):
     assert [b["tab"] for b in buttons] == [p["id"] for p in out["registry"]]
     assert [b["label"] for b in buttons] == [p["label"] for p in out["registry"]]
     # Sixteen since `P20-02` added the Workstation panel (2026-09-30).
-    assert len(buttons) == 16, f"expected sixteen tabs, drew {len(buttons)}"
+    # `B1229`: + forge.
+    assert len(buttons) == 17, f"expected seventeen tabs, drew {len(buttons)}"
     assert all(b["hasIcon"] for b in buttons), "a tab lost its glyph"
 
 
@@ -257,8 +258,10 @@ def test_the_admin_tabs_still_carry_the_class_that_hides_them(sandbox):
     admin_only = {p["id"] for p in out["panels"] if p["adminOnly"]}
     # `P23-03` (SET-M-8, SET-U-2): the five panels whose every control saves
     # to an admin-only route joined them.
+    # `B1229`: Forge, whose one control saves to an admin-only route.
     assert admin_only == {"tools", "users", "embeddings", "networks", "system",
-                          "services", "added-models", "ai", "search", "reminders"}
+                          "services", "added-models", "ai", "search", "reminders",
+                          "forge"}
     for row in out["nav"]:
         if row.get("tab"):
             assert ("admin-only" in row["classes"]) == (row["tab"] in admin_only), row
@@ -317,7 +320,7 @@ def test_redrawing_the_nav_keeps_the_tab_you_were_on(sandbox):
         }));
     """ % json.dumps(_index_panel_ids()))
     assert out["active"] == ["appearance"]
-    assert out["count"] == 16, "a redraw duplicated the nav"
+    assert out["count"] == 17, "a redraw duplicated the nav"  # `B1229`: + forge
 
 
 def test_a_missing_container_is_not_an_exception(sandbox):
@@ -372,7 +375,7 @@ def test_the_page_carries_the_container_and_no_hand_written_tab():
     assert 'data-settings-tab=' not in html, "a tab is still declared in the markup"
     # The panels are still markup, deliberately — that is the half the
     # self-check still has something to compare.
-    assert len(_index_panel_ids()) == 16  # `P20-02`: + workstation
+    assert len(_index_panel_ids()) == 17  # `P20-02`: + workstation; `B1229`: + forge
 
 
 def test_the_generated_nav_has_the_css_it_needs():

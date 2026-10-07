@@ -39,6 +39,11 @@ def _route(path: str):
 @pytest.fixture()
 def slow_refresh(monkeypatch):
     import services.hwfit.models as models
+    import src.model_hubs as model_hubs
+
+    # `B1229`: the refresh starts only with the Forge's switch for Hugging Face
+    # on (`tests/test_the_forge_reaches_hugging_face_only_when_an_admin_says.py`).
+    monkeypatch.setattr(model_hubs, "allowed", lambda: True)
 
     calls = []
     release = threading.Event()

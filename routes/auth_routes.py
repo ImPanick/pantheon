@@ -1249,6 +1249,12 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
                         400,
                         f"{key} must be true, false, or null (null means "
                         f"'let {ENV_BACKED_FLAGS[key][0]} or the default decide')")
+            if key == "forge_model_hubs" and not isinstance(val, bool):
+                # `B1229`. The switch that lets the Forge reach Hugging Face
+                # and Ollama. `src/model_hubs.allowed` reads only a stored
+                # `true` as yes, so a string here would store cleanly and
+                # leave the panel saying on over a Forge that stays off.
+                raise HTTPException(400, f"{key} must be true or false")
             if key in _STRING_MAPS:
                 if not isinstance(val, dict) or not all(
                         isinstance(k, str) and isinstance(v, (str, int, float, bool))

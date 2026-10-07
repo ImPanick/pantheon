@@ -36,6 +36,7 @@ import {
 
 import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
 import { topPortalZ } from './toolWindowZOrder.js';
+import backStack from './backStack.js';   // `B1229`: the door to Settings → Forge
 
 const STORAGE_KEY = 'cookbook-presets';
 const LAST_STATE_KEY = 'cookbook-last-state';
@@ -1976,6 +1977,50 @@ async function _refreshScanDownloadTarget() {
   }
 }
 
+/** `B1229`: Settings, on the Forge panel that holds the switch, with `← Forge`. */
+export function _openForgeSettings() {
+  return backStack.openWindows([{ id: 'settings-modal', tab: 'forge', from: 'cookbook-modal' }]);
+}
+
+/**
+ * `B1229`. With the admin's switch off the Forge reaches neither Hugging Face
+ * nor Ollama and lists what it already knows; one line above the Download card
+ * says so, with the door to the switch. `modelHubs` comes from
+ * `GET /api/cookbook/state`, read from the setting on every answer; only
+ * `false` draws the line, so a state from an older server draws nothing.
+ * Called after every render and when Settings saves the switch, so the line
+ * and the setting cannot disagree while both windows are open.
+ */
+export function _syncHubsLine(root = document.querySelector('#cookbook-modal .cookbook-body')) {
+  const group = root && root.querySelector('.cookbook-group[data-backend-group="Search"]');
+  if (!group) return null;
+  const existing = group.querySelector(':scope > .forge-hubs-off');
+  if (_envState.modelHubs !== false) {
+    if (existing) existing.remove();
+    return null;
+  }
+  if (existing) return existing;
+  const line = document.createElement('p');
+  line.className = 'forge-hubs-off';
+  line.setAttribute('role', 'status');
+  line.textContent = 'Hugging Face and Ollama are off. ';
+  const door = document.createElement('button');
+  door.type = 'button';
+  door.className = 'forge-hubs-off-door';
+  door.textContent = 'Settings → Forge';
+  door.addEventListener('click', () => { _openForgeSettings(); });
+  line.appendChild(door);
+  group.insertBefore(line, group.firstChild);
+  return line;
+}
+
+if (typeof document !== 'undefined' && document.addEventListener) {
+  document.addEventListener('pantheon:forge-hubs-changed', (e) => {
+    _envState.modelHubs = !!(e && e.detail && e.detail.on);
+    _syncHubsLine();
+  });
+}
+
 function _wireTabEvents(body) {
   // Tab switching
   body.querySelectorAll('.cookbook-tab').forEach(tab => {
@@ -2398,6 +2443,8 @@ function _wireTabEvents(body) {
         const res = await fetch(`/api/cookbook/hf-gguf-files?repo_id=${encodeURIComponent(repo)}`, { credentials: 'same-origin' });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
+        // `B1229`: the line above the card already says the hubs are off.
+        if (data.hubs_off) { _hideGgufPicker(); return false; }
         if (!data.ok) throw new Error(data.error || 'scan failed');
         if (dlGgufQuant.dataset.repo !== repo) return false;
         const files = (data.files || [])
@@ -2682,10 +2729,12 @@ function _wireTabEvents(body) {
       const vram = hwInfo.vram || 0;
       try {
         let lastErr = '';
+        let hubsOff = false;
         const _fetchLatest = async (v) => {
           const res = await fetch(`/api/cookbook/hf-latest?vram_gb=${v}&limit=10`);
           const data = await res.json();
           if (data.error) lastErr = data.error;   // HF API timeout/rate-limit etc.
+          if (data.hubs_off) hubsOff = true;      // `B1229`: not a failure — a switch
           return data.models || [];
         };
         let models = await _fetchLatest(vram);
@@ -2695,9 +2744,11 @@ function _wireTabEvents(body) {
         if (!models.length) {
           // Distinguish "the HF API failed" from "nothing matched" so an outage
           // doesn't masquerade as no-fitting-models.
-          const msg = lastErr
-            ? `Couldn't load trending models (${esc(lastErr)})`
-            : 'No trending models found';
+          const msg = hubsOff
+            ? esc(lastErr)
+            : lastErr
+              ? `Couldn't load trending models (${esc(lastErr)})`
+              : 'No trending models found';
           hfList.innerHTML = `<div class="hwfit-loading">${msg}</div>`;
           return;
         }
@@ -3214,6 +3265,7 @@ function _renderRecipes() {
 
   body.innerHTML = html;
   _wireTabEvents(body);
+  _syncHubsLine(body);
 
   // Auto-init What Fits
   _hwfitInit();

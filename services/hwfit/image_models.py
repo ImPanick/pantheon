@@ -169,6 +169,14 @@ def _collection_item_to_model(item: dict[str, Any], collection_title: str = "", 
 
 
 def _fetch_hf_image_collection_models() -> list[dict[str, Any]]:
+    from src import model_hubs
+
+    if not model_hubs.allowed():
+        # `B1229`: what this process already fetched, and nothing new. The
+        # registry above is empty by design, so on an install that never had
+        # the hubs on the Image list is empty — the Forge's line says why.
+        # The TTL is left alone, so switching on fetches at the next ask.
+        return list(_HF_COLLECTION_CACHE.get("models") or [])
     now = time.time()
     if now - float(_HF_COLLECTION_CACHE.get("ts") or 0) < _HF_COLLECTION_TTL:
         return list(_HF_COLLECTION_CACHE.get("models") or [])
@@ -207,8 +215,11 @@ def _hf_get_json(url: str, *, timeout: float = 2.5):
     """
     import json as _json
     import urllib.request
+    from src import model_hubs
     from src.rate_limiter import outbound, host_of, OutboundRateLimited
 
+    if not model_hubs.allowed():
+        return None  # `B1229`: the Forge's switch for Hugging Face is off
     host = host_of(url)
     try:
         outbound.acquire(host, authenticated=False)

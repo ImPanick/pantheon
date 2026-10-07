@@ -57,6 +57,11 @@ from core.middleware import INTERNAL_TOOL_HEADER, INTERNAL_TOOL_TOKEN
 from src.constants import COOKBOOK_STATE_FILE
 
 HOST, SECRET_CMDLINE = %(host)r, %(cmdline)r
+
+# `B1229`: the Forge's switch for Hugging Face ships off; this world has it on,
+# so the search below is about whom its loopback names, not about the switch.
+from src.settings import load_settings, save_settings
+_s = load_settings(); _s["forge_model_hubs"] = True; save_settings(_s)
 PAST_STOP = [{"id": "qwen1", "sessionId": "qwen1", "type": "serve", "status": "running",
               "remoteHost": "ops@gpu-box", "_scheduledStopAtMs": 1, "_endpointId": "ep-gone",
               "payload": {"_cmd": "vllm serve Qwen/Qwen3-8B --port 8000"}}]

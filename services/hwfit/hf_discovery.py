@@ -10,6 +10,7 @@ from email.utils import parsedate_to_datetime
 from pathlib import Path
 
 from src.constants import DATA_DIR
+from src.model_hubs import ModelHubsOff
 
 
 HF_COLLECTIONS_URL = "https://huggingface.co/api/collections"
@@ -310,7 +311,13 @@ def fetch_collection_models(source, timeout=20, max_pages=HF_MAX_PAGES_PER_SOURC
     `budget` is a mutable [remaining] cell shared across every source in a
     refresh. Capping pages per source is not enough on its own — thirteen
     sources each politely stopping at their own limit still add up to a burst.
+
+    `B1229`: raises `ModelHubsOff` when the Forge's switch for Hugging Face is
+    off — asked before every page, so no caller can reach the host around it
+    and a switch turned off mid-refresh stops it at the next request; and
+    before any cache is written, so a refresh refused leaves the rows it had.
     """
+    from src import model_hubs
     from src.rate_limiter import OutboundRateLimited, outbound
 
     params = urllib.parse.urlencode({
@@ -323,6 +330,7 @@ def fetch_collection_models(source, timeout=20, max_pages=HF_MAX_PAGES_PER_SOURC
     models = {}
     pages = 0
     while url and pages < max_pages:
+        model_hubs.require()
         if budget is not None:
             if budget[0] <= 0:
                 break
@@ -437,6 +445,9 @@ def refresh_hf_collection_models_cache(force=False):
         try:
             for row in fetch_collection_models(source, budget=budget):
                 rows_by_name.setdefault(row["name"], row)
+        except ModelHubsOff:
+            # `B1229`: the switch went off. Twelve more refusals say nothing new.
+            break
         except urllib.error.HTTPError as e:
             if e.code in (429, 403):
                 # Stop the whole refresh. Continuing here was the amplifier:

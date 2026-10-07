@@ -123,6 +123,9 @@ function onSettingsPanelActivated(tab) {
   // AI endpoints are intentionally refreshed only when entering the AI panel.
   if (tab === 'ai') refreshAiModelEndpoints();
 
+  // `B1229`: the switch as stored now, not as it was when Settings first drew.
+  if (tab === 'forge') _readForgeModelHubs();
+
   // H04. Loaded on activation, not at boot: it makes three requests, one of
   // which walks the model cache on disk, and nobody opens Settings to look at
   // embeddings by accident. Dynamic import so a panel most people never open
@@ -1802,6 +1805,86 @@ async function initEmailConfirm() {
   msg.textContent = describe(input.checked);
 }
 
+/* ── Forge (`B1229`) ──
+   The owner, 2026-10-07: "hugging face should be toggleable inside the admin
+   settings, along with how the LLM is served etc." One switch,
+   `forge_model_hubs` (`src/model_hubs.py`), shipped off; and doors to where
+   every serving setting already lives, so none of them has a second copy.
+   The switch is read again each time the panel is shown — the agent's
+   `manage_settings` can change it — and a save tells an open Forge, whose
+   line saying the hubs are off follows it (`cookbook.js` `_syncHubsLine`). */
+async function _readForgeModelHubs() {
+  const input = el('set-forgeModelHubs');
+  if (!input) return null;
+  try {
+    const res = await fetch('/api/auth/settings', { credentials: 'same-origin' });
+    if (!res.ok) return null;
+    const settings = await res.json();
+    // `=== true`: the server reads only a stored `true` as on.
+    input.checked = settings.forge_model_hubs === true;
+    return input.checked;
+  } catch (_) { return null; }
+}
+
+function _openForgeDoor(where) {
+  const [kind, tab] = String(where || '').split(':');
+  if (kind === 'settings') {
+    const button = modalEl && modalEl.querySelector(`[data-settings-tab="${tab}"]`);
+    if (button) button.click();
+    return;
+  }
+  if (kind === 'forge') {
+    const forge = window.cookbookModule;
+    if (!forge || typeof forge.open !== 'function') return;
+    if (typeof forge.isVisible === 'function' && forge.isVisible()) {
+      // Already open under Settings (its door to here says `← Forge`): show
+      // the tab and step back to it.
+      forge.open({ tab });
+      close();
+      return;
+    }
+    backStack.noteOpener('cookbook-modal', 'settings-modal', 'forge');
+    forge.open({ tab });
+    return;
+  }
+  if (kind === 'tasks') {
+    backStack.noteOpener('tasks-modal', 'settings-modal', 'forge');
+    const door = document.getElementById('tool-tasks-btn');
+    if (door) door.click();
+  }
+}
+
+async function initForgeSettings() {
+  const input = el('set-forgeModelHubs');
+  const msg = el('set-forgeModelHubsMsg');
+  if (!input || !msg) return;
+  if (input.dataset.bound !== '1') {
+    input.dataset.bound = '1';
+    input.addEventListener('change', async () => {
+      const on = !!input.checked;
+      try {
+        await _postSettings({ forge_model_hubs: on });
+        msg.textContent = 'Saved.';
+        msg.style.color = '';
+        try {
+          document.dispatchEvent(new CustomEvent('pantheon:forge-hubs-changed', { detail: { on } }));
+        } catch (_) {}
+      } catch (e) {
+        // A switch that looks changed and did not save is the wrong way round
+        // for a `Law 16` gate in either direction.
+        input.checked = !on;
+        msg.textContent = _notSaved(e) + ' Left unchanged.';
+        msg.style.color = 'var(--red)';
+      }
+    });
+    const panel = modalEl && modalEl.querySelector('[data-settings-panel="forge"]');
+    (panel ? panel.querySelectorAll('[data-forge-door]') : []).forEach((button) => {
+      button.addEventListener('click', () => _openForgeDoor(button.dataset.forgeDoor));
+    });
+  }
+  await _readForgeModelHubs();
+}
+
 /* ── How often the inbox is checked (`B1152`, f-mail) ──
    `email_inbox_check_minutes` (`B1137`: the background check that runs "when
    mail arrives" with nobody looking) had no field; an operator who wanted it
@@ -2904,6 +2987,7 @@ function initAll() {
     initAgentSettings();
     initSkillAudit();   // H16
     initEmailConfirm();   // H18 / B42
+    initForgeSettings();   // `B1229`
     initInboxCheckInterval();   // `B1152` (f-mail)
     initEnvBackedFlags();   // B95
     initAgentBudget();   // H18

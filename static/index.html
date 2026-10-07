@@ -2997,6 +2997,42 @@
           </div>
         </div>
 
+        <!-- ═══ FORGE TAB ═══ -->
+        <!-- `B1229`. The owner, 2026-10-07: "hugging face should be toggleable
+             inside the admin settings, along with how the LLM is served etc."
+             Opening the Forge on a fresh install reached huggingface.co and
+             ollama.com with nothing switched on; `forge_model_hubs` ships off
+             and this is its one control. The second card holds no setting of
+             its own: every way a model is served is already set somewhere —
+             the Forge's Settings and Launch tabs, Tasks, Added Models, Agent
+             Tools — and a second copy here would be the one that goes stale
+             (`Law 7`), so each row is a door to where the setting lives.
+             `initForgeSettings` in `settings.js` wires both. -->
+        <div data-settings-panel="forge" class="hidden">
+          <div class="admin-card">
+            <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>Hugging Face and Ollama</h2>
+            <div class="settings-col">
+              <div class="settings-row">
+                <label class="settings-label" for="set-forgeModelHubs">Look up and download models</label>
+                <label class="admin-switch"><input type="checkbox" id="set-forgeModelHubs" /><span class="admin-slider"></span></label>
+              </div>
+              <div class="admin-toggle-sub forge-settings-sub">From huggingface.co and ollama.com. Off, the Forge works from the models it already has.</div>
+              <div id="set-forgeModelHubsMsg" class="forge-settings-msg" role="status" aria-live="polite"></div>
+            </div>
+          </div>
+          <div class="admin-card">
+            <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></svg>Serving</h2>
+            <ul class="forge-settings-doors">
+              <li><span>Servers, SSH ports, Python environments and model folders</span><button type="button" class="admin-btn-sm" data-forge-door="forge:Settings">Forge › Settings</button></li>
+              <li><span>Hugging Face token</span><button type="button" class="admin-btn-sm" data-forge-door="forge:Settings">Forge › Settings</button></li>
+              <li><span>Engine, port and launch command</span><button type="button" class="admin-btn-sm" data-forge-door="forge:Serve">Forge › Launch</button></li>
+              <li><span>Scheduled launches</span><button type="button" class="admin-btn-sm" data-forge-door="tasks">Tasks</button></li>
+              <li><span>Models Pantheon chats with</span><button type="button" class="admin-btn-sm" data-forge-door="settings:added-models">Added Models</button></li>
+              <li><span>Local reply ceiling</span><button type="button" class="admin-btn-sm" data-forge-door="settings:tools">Agent Tools</button></li>
+            </ul>
+          </div>
+        </div>
+
         <!-- ═══ TOOLS TAB ═══ -->
         <!-- ═══ INTEGRATIONS TAB ═══ -->
         <!-- `P22-21`. The Integrations card moved to the Workbench's MCP &
