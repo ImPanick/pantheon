@@ -128,6 +128,82 @@ import { chevronIcon, playIcon } from './icons.js';
   let _lastSessionId = '';          // session context for "+" button
   const docs = new Map();           // docId -> { id, title, language, content, version, sessionId }
   let _emailSendInFlight = false;
+  // `P23-08` (DOCS-M-2): Create opens a blank editor and nothing is stored
+  // until the first keystroke. While it is open this holds the chat the new
+  // document will join ('' = none yet: one is made on the first keystroke).
+  let _blankDoc = null;             // { sessionId } | null
+
+  // `P23-08` (DOCS-M-1). Chats Pantheon made only to hold a draft — a Reply or
+  // Compose's "Email: <subject>", the chat a document typed on the welcome
+  // screen needs. Measured on `9560d50`: six Replies left six 0-message chats
+  // in the list after their drafts were closed. Each id maps to the chat the
+  // person was in before ('' = a new chat). When the draft closes (Close, tab ×,
+  // chip ×, sent, deleted) and no other tab of that chat is open, the chat is
+  // deleted if it still has no message — the server counts, `only_if_empty` —
+  // and the person is put back where they were. Its documents stay in the
+  // Library (`delete_session` detaches them). localStorage, so a reload still
+  // knows which chats are helpers; a browser that does not know one leaves it.
+  const _HELPER_CHATS_KEY = 'pantheon:doc-helper-chats:v1';
+  const _HELPER_CHATS_MAX = 50;
+  function _readHelperChats() {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(_HELPER_CHATS_KEY) || '{}');
+      return (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) ? parsed : {};
+    } catch (_) { return {}; }
+  }
+  function _writeHelperChats(map) {
+    try {
+      const ids = Object.keys(map);
+      while (ids.length > _HELPER_CHATS_MAX) delete map[ids.shift()];
+      localStorage.setItem(_HELPER_CHATS_KEY, JSON.stringify(map));
+    } catch (_) { /* private window: the chat is simply kept */ }
+  }
+  export function noteHelperChat(sessionId, { returnTo = '' } = {}) {
+    if (!sessionId) return;
+    const map = _readHelperChats();
+    map[String(sessionId)] = returnTo ? String(returnTo) : '';
+    _writeHelperChats(map);
+  }
+  async function _leaveDeletedChat(sessionId, returnTo) {
+    if (!sessionModule) return;
+    const current = sessionModule.getCurrentSessionId?.() || '';
+    if (current === sessionId) {
+      const back = returnTo && (sessionModule.getSessions?.() || [])
+        .some(s => String(s.id) === returnTo && !s.archived);
+      if (back) {
+        await sessionModule.selectSession?.(returnTo);
+      } else {
+        // The way the person's own New chat goes (`app.js`
+        // `_handleNewChatAction`), as `documentLibrary.js` already reaches it.
+        document.getElementById('sidebar-new-chat-btn')?.click();
+      }
+    }
+    await sessionModule.loadSessions?.();
+  }
+  async function _releaseHelperChat(sessionId) {
+    if (!sessionId) return false;
+    const sid = String(sessionId);
+    const map = _readHelperChats();
+    if (!Object.prototype.hasOwnProperty.call(map, sid)) return false;
+    for (const d of docs.values()) {
+      if (String(d.sessionId || '') === sid) return false;   // another tab still uses it
+    }
+    const returnTo = map[sid] || '';
+    let res;
+    try {
+      res = await fetch(`${API_BASE}/api/session/${encodeURIComponent(sid)}?only_if_empty=true`, {
+        method: 'DELETE', credentials: 'same-origin',
+      });
+    } catch (_) { return false; }   // offline: still a helper, tried again on the next close
+    // Deleted, kept because it has messages (409), or already gone: either way
+    // it is no longer a chat to let go of.
+    delete map[sid];
+    _writeHelperChats(map);
+    if (!res.ok) return false;
+    if (_lastSessionId === sid) _lastSessionId = '';
+    await _leaveDeletedChat(sid, returnTo);
+    return true;
+  }
 
   const _docOpenKey = (sessionId) => 'pantheon-doc-open-' + sessionId;
   const _docMinimizedKey = (sessionId) => 'pantheon-doc-minimized-' + sessionId;
@@ -321,7 +397,8 @@ import { chevronIcon, playIcon } from './icons.js';
     }
     // Empty state (panel open, no doc yet): show a ghost "Untitled" tab so it's
     // obvious you're in a fresh document rather than staring at a blank pane.
-    if (!_anyTab && isOpen && !activeDocId) {
+    // `P23-08`: beside other tabs too, while Create's blank editor is open.
+    if ((!_anyTab || _blankDoc) && isOpen && !activeDocId) {
       html += `<div class="doc-tab active doc-tab-ghost" title="New document — start typing"><span class="doc-tab-title">Untitled</span></div>`;
     }
     html += `<button class="doc-tab-new" id="doc-tab-new-btn" title="New document"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>`;
@@ -431,20 +508,8 @@ import { chevronIcon, playIcon } from './icons.js';
     // Wire new doc button
     const newBtn = document.getElementById('doc-tab-new-btn');
     if (newBtn) {
-      newBtn.addEventListener('click', async () => {
-        let sessionId = docs.get(activeDocId)?.sessionId
-          || _lastSessionId
-          || (sessionModule && sessionModule.getCurrentSessionId());
-        if (!sessionId) {
-          try {
-            sessionId = await _autoCreateSession();
-          } catch (e) {
-            console.error('Failed to auto-create session for document:', e);
-            return;
-          }
-        }
-        createDocument(sessionId);
-      });
+      // `P23-08` (DOCS-M-2): a blank editor; stored on the first keystroke.
+      newBtn.addEventListener('click', () => { _openBlankDocument().catch(() => {}); });
     }
 
     // Scroll active tab into view after DOM is laid out
@@ -1169,7 +1234,12 @@ import { chevronIcon, playIcon } from './icons.js';
     const note = document.createElement('p');
     note.className = 'doc-pdf-text-note';
     note.setAttribute('role', 'note');
-    note.textContent = `Showing the text read from this PDF. ${why || 'The page view is not available here.'}`;
+    // `P23-08` (DOCS-M-6). It was "Showing the text read from this PDF." and
+    // the server's install line (`pip install -r requirements-optional.txt`),
+    // which nobody but the admin can act on. Doc 2 § 5: what happened, then
+    // who can change it.
+    note.textContent = why
+      || 'Shown as text. Page view needs an optional component (PyMuPDF) that an admin can install.';
     const page = document.createElement('div');
     page.className = 'doc-pdf-text-page';
     page.textContent = text || 'No text could be read from this PDF.';
@@ -1185,6 +1255,13 @@ import { chevronIcon, playIcon } from './icons.js';
     const docId = activeDocId;
     // Keep the save pill across re-renders by detaching/re-attaching it
     const savedPill = document.getElementById('doc-pdf-save-pill');
+    // `P23-08` (DOCS-M-6): the document answer already said its pages cannot
+    // be drawn here (`can_render_pages`) — show the text, ask nothing.
+    if (docs.get(docId)?.canRenderPages === false) {
+      _showPdfTextInstead(pane, docId);
+      if (savedPill) pane.appendChild(savedPill);
+      return;
+    }
     pane.innerHTML = '<div style="color:#bbb;font-size:13px;text-align:center;padding:40px;">Loading PDF…</div>';
     if (savedPill) pane.appendChild(savedPill);
     let data;
@@ -1199,9 +1276,13 @@ import { chevronIcon, playIcon } from './icons.js';
         // in red where the PDF should be, while the text the import read was
         // in the document all along. So the text is shown, with the server's
         // own sentence above it as the one line saying why.
-        const why = await _pdfResponseErrorMessage(res);
+        // `P23-08`: an answer from before `can_render_pages` (or a server
+        // that lost the module since) says the same as the flag would have.
+        await _pdfResponseErrorMessage(res);
         if (docId !== activeDocId) return;
-        _showPdfTextInstead(pane, docId, why);
+        const cached = docs.get(docId);
+        if (cached) cached.canRenderPages = false;
+        _showPdfTextInstead(pane, docId);
         if (savedPill) pane.appendChild(savedPill);
         return;
       }
@@ -3018,7 +3099,7 @@ import { chevronIcon, playIcon } from './icons.js';
           // affordance the email reader uses. One `_openAsDoc` below serves
           // both, so the as-doc call and its download fallback exist once.
           const isPdf = (att.filename || '').toLowerCase().endsWith('.pdf');
-          const sizeKb = att.size > 0 ? `${Math.round(att.size / 1024)} KB` : '';
+          const sizeKb = _attachmentSizeText(att.size);   // `P23-08` (DOCS-M-13)
           const openHtml = '<span class="email-attachment-open" title="Open in document editor"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/><line x1="8" y1="9" x2="10" y2="9"/></svg><span class="email-attachment-open-label">Open</span></span>';
           const chipHtml = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 17.93 8.8l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg><span>${_escHtml(att.filename)}</span><span class="att-size">${sizeKb}</span>`;
           const folderQs = encodeURIComponent(fields.sourceFolder || 'INBOX');
@@ -3690,7 +3771,7 @@ import { chevronIcon, playIcon } from './icons.js';
     for (const att of atts) {
       const chip = document.createElement('span');
       chip.className = 'email-compose-chip';
-      const sizeKb = att.size > 0 ? `${Math.round(att.size / 1024)} KB` : '';
+      const sizeKb = _attachmentSizeText(att.size);   // `P23-08` (DOCS-M-13)
       chip.innerHTML = `
         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 17.93 8.8l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
         <span class="compose-chip-name">${_escHtml(att.filename)}</span>
@@ -3952,6 +4033,17 @@ import { chevronIcon, playIcon } from './icons.js';
    * plus the type picker's value: a document switched to Email this moment
    * shows its Send button before `updateLanguage`'s PATCH has answered.
    */
+  // `P23-08` (DOCS-M-13). An attachment's size as a chip reads it: bytes below
+  // 1 KB (a 170-byte file read "0 KB", which looks empty), nothing when unknown.
+  // The mail reader's chips say it the same way (`emailLibrary.js`).
+  function _attachmentSizeText(bytes) {
+    const n = Number(bytes);
+    if (!Number.isFinite(n) || n <= 0) return '';
+    if (n < 1024) return `${n} B`;
+    if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB`;
+    return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
   function _activeDocIsEmail() {
     const doc = activeDocId && docs.get(activeDocId);
     if (!doc) return false;
@@ -4088,7 +4180,9 @@ import { chevronIcon, playIcon } from './icons.js';
         if (sendDocId) {
           fetch(`${API_BASE}/api/document/${sendDocId}`, { method: 'DELETE' }).catch(() => {});
           const wasActiveSentDoc = activeDocId === sendDocId;
+          const sentSessionId = docs.get(sendDocId)?.sessionId || '';
           docs.delete(sendDocId);
+          _releaseHelperChat(sentSessionId).catch(() => {});   // `P23-08` (DOCS-M-1)
           if (wasActiveSentDoc) {
             activeDocId = null;
             const nextId = _visibleDocIdsForCurrentSession().find(id => docs.has(id));
@@ -4182,6 +4276,7 @@ import { chevronIcon, playIcon } from './icons.js';
 
   function _closeWithoutDeleting(deleteDoc = false) {
     if (!activeDocId) return;
+    const closingSessionId = docs.get(activeDocId)?.sessionId || '';
     if (deleteDoc) {
       fetch(`${API_BASE}/api/document/${activeDocId}`, { method: 'DELETE' }).catch(() => {});
     }
@@ -4191,6 +4286,7 @@ import { chevronIcon, playIcon } from './icons.js';
       saveDocument({ silent: true }).catch(() => {});
     }
     docs.delete(activeDocId);
+    _releaseHelperChat(closingSessionId).catch(() => {});   // `P23-08` (DOCS-M-1)
     const remaining = Array.from(docs.keys());
     if (remaining.length > 0) {
       switchToDoc(remaining[0]);
@@ -4583,15 +4679,9 @@ import { chevronIcon, playIcon } from './icons.js';
 
     // Auto-delete the doc we're leaving if it's completely empty
     const prevId = activeDocId;
-    if (prevId && prevId !== docId && docs.has(prevId)) {
-      const prev = docs.get(prevId);
-      if (prev.language !== 'email' && !(prev.content || '').trim() && !(prev.title || '').trim()) {
-        fetch(`${API_BASE}/api/document/${prevId}`, { method: 'DELETE' }).catch(() => {});
-        docs.delete(prevId);
-        _syncDocIndicator();
-      }
-    }
+    if (prevId && prevId !== docId) _dropUntouchedEmptyDoc(prevId);
 
+    _blankDoc = null;
     activeDocId = docId;
     clearSelection();
     const doc = docs.get(docId);
@@ -4716,6 +4806,59 @@ import { chevronIcon, playIcon } from './icons.js';
 
   }
 
+  // A document with no title, no text and no mail envelope is nothing a person
+  // made: leaving it deletes it (switchToDoc's rule, shared with the blank editor).
+  function _dropUntouchedEmptyDoc(docId) {
+    const prev = docId && docs.get(docId);
+    if (!prev) return;
+    if (prev.language !== 'email' && !(prev.content || '').trim() && !(prev.title || '').trim()) {
+      fetch(`${API_BASE}/api/document/${docId}`, { method: 'DELETE' }).catch(() => {});
+      docs.delete(docId);
+      _syncDocIndicator();
+    }
+  }
+
+  // `P23-08` (DOCS-M-2). Create — the Library's, the sidebar's "+", the tab
+  // bar's "+" — opens this: an empty editor under a ghost "Untitled" tab, and
+  // nothing stored. Measured on `9560d50`: three Creates closed untyped left
+  // three "Untitled · empty" rows, which the Tidy then offered to delete. The
+  // first keystroke stores it (`_autoCreateFromInput`, the path typing into an
+  // empty editor already took), in the chat that was open — or, from the
+  // welcome screen, a chat made then and let go of with the document.
+  async function _openBlankDocument() {
+    _closeNotesForDocumentOpen();
+    if (activeDocId && docs.has(activeDocId)) {
+      saveCurrentToMap();
+      const leaving = activeDocId;
+      if (_autoSaveDebounce) {
+        clearTimeout(_autoSaveDebounce);
+        _autoSaveDebounce = null;
+        await saveDocument({ silent: true }).catch(() => {});
+      }
+      _dropUntouchedEmptyDoc(leaving);
+    }
+    const sessionId = docs.get(activeDocId)?.sessionId
+      || (sessionModule && sessionModule.getCurrentSessionId && sessionModule.getCurrentSessionId())
+      || '';
+    _blankDoc = { sessionId };
+    if (sessionId) _lastSessionId = sessionId;
+    _ensureDocPaneMounted();
+    // Leave whatever view the last document had (switchToDoc's resets).
+    if (_diffModeActive) exitDiffMode(true);
+    clearSelection();
+    _hideEmailFields();
+    _setMarkdownPreviewActive(false, { remember: false });
+    const csvPreview = document.getElementById('doc-csv-preview');
+    if (csvPreview) csvPreview.style.display = 'none';
+    exitHtmlPreview();
+    document.querySelectorAll('.md-toolbar-pdf-only').forEach(el => { el.style.display = 'none'; });
+    document.getElementById('doc-version-panel')?.classList.add('hidden');
+    showEmptyState();
+    _syncHeaderActions();
+    const textarea = document.getElementById('doc-editor-textarea');
+    if (textarea) textarea.focus();
+  }
+
   // Close a doc tab without breaking its chat association. The chat transcript
   // can contain durable document links, so detaching a non-empty doc from the
   // session makes it look like the document vanished from that chat.
@@ -4730,6 +4873,7 @@ import { chevronIcon, playIcon } from './icons.js';
     }
     docs.delete(docId);
     _syncDocIndicator();
+    _releaseHelperChat(doc?.sessionId).catch(() => {});   // `P23-08` (DOCS-M-1)
   }
 
   async function closeTab(docId) {
@@ -4768,11 +4912,15 @@ import { chevronIcon, playIcon } from './icons.js';
     if (_autoCreating) return;
     _autoCreating = true;
     try {
-      let sessionId = _lastSessionId
-        || (sessionModule && sessionModule.getCurrentSessionId());
+      // `P23-08`: Create's blank editor names the chat it was opened in ('' =
+      // none: make one now, the first content).
+      let sessionId = _blankDoc
+        ? _blankDoc.sessionId
+        : (_lastSessionId || (sessionModule && sessionModule.getCurrentSessionId()));
       if (!sessionId) {
         sessionId = await _autoCreateSession();
       }
+      _blankDoc = null;
       const res = await fetch(`${API_BASE}/api/document`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -4794,9 +4942,12 @@ import { chevronIcon, playIcon } from './icons.js';
       }
       syncHighlighting();
       renderTabs();
-      // Trigger auto-detect and auto-title
+      // Trigger auto-detect and auto-title. `P23-08`: from what the editor
+      // holds by then — Create now stores on the first keystroke, and the
+      // keys typed while that POST was out never reach the input listener's
+      // own title timer (measured: a typed burst left the title empty).
       setTimeout(attemptAutoDetect, 100);
-      setTimeout(() => autoTitleFromContent(content), 300);
+      setTimeout(() => autoTitleFromContent(document.getElementById('doc-editor-textarea')?.value || content), 300);
       // Auto-save
       clearTimeout(_autoSaveDebounce);
       _autoSaveDebounce = setTimeout(() => { saveDocument({ silent: true }); }, 2000);
@@ -6930,6 +7081,7 @@ import { chevronIcon, playIcon } from './icons.js';
       return;
     }
     isOpen = false;
+    _blankDoc = null;   // `P23-08`: an untyped blank editor leaves nothing behind
     // On touch, closing the doc should leave the keyboard DOWN. The tap blurs
     // the textarea (keyboard starts down), but a stray refocus during teardown
     // (the view behind regaining focus, etc.) was bouncing it back up. Blur any
@@ -7040,15 +7192,13 @@ import { chevronIcon, playIcon } from './icons.js';
   // Create a new blank document, reusing the current/last session or
   // auto-creating one. Same flow as the tab-bar "+" — the single entry point
   // the sidebar Library "+" should use too.
+  //
+  // `P23-08` (DOCS-M-2): no longer stores anything — it opens the blank editor
+  // and the first keystroke stores the document (and, from the welcome
+  // screen, the chat it needs). `createDocument` stays for a caller that has
+  // content to store at once.
   export async function newDocument() {
-    let sessionId = docs.get(activeDocId)?.sessionId
-      || _lastSessionId
-      || (sessionModule && sessionModule.getCurrentSessionId());
-    if (!sessionId) {
-      try { sessionId = await _autoCreateSession(); }
-      catch (e) { console.error('Failed to auto-create session for document:', e); return; }
-    }
-    await createDocument(sessionId);
+    await _openBlankDocument();
   }
 
   export async function createDocument(sessionId) {
@@ -7299,27 +7449,28 @@ import { chevronIcon, playIcon } from './icons.js';
 
   /** Open panel and ensure a document exists, creating a session if needed */
   export async function ensureDocPanel() {
-    let sessionId = _lastSessionId
-      || (sessionModule && sessionModule.getCurrentSessionId());
+    // `P23-08` (DOCS-M-1/2): the chat on screen, not `_lastSessionId` — on a
+    // new chat that is the one the person left. No chat on screen: the blank
+    // editor, and a chat only once there is something to keep.
+    const sessionId = sessionModule && sessionModule.getCurrentSessionId();
     if (!sessionId) {
-      try {
-        sessionId = await _autoCreateSession();
-      } catch (e) {
-        console.error('Failed to auto-create session for document:', e);
-        openPanel();
-        return;
-      }
+      await _openBlankDocument();
+      return;
     }
     await loadSessionDocs(sessionId);
   }
 
   /** Create a session and sync it with the sessions module */
+  //
+  // `P23-08` (DOCS-M-1): the chat made here exists for the document — the
+  // audit's "scripted-demo 3:37:01 AM" — so it is a helper chat: let go of
+  // when the document closes, if nobody wrote in it.
   async function _autoCreateSession() {
     // Materialize pending chat first if one exists
     if (sessionModule && sessionModule.hasPendingChat && sessionModule.hasPendingChat()) {
       await sessionModule.materializePendingSession();
       const id = sessionModule.getCurrentSessionId();
-      if (id) { _lastSessionId = id; return id; }
+      if (id) { _lastSessionId = id; noteHelperChat(id); return id; }
     }
     // Preserve the current model when creating a doc session
     const curModel = sessionModule?.getCurrentModel ? sessionModule.getCurrentModel() : null;
@@ -7338,6 +7489,7 @@ import { chevronIcon, playIcon } from './icons.js';
     const payload = await res.json();
     const sessionId = payload.id;
     _lastSessionId = sessionId;
+    noteHelperChat(sessionId);   // `P23-08` (DOCS-M-1)
     // Tell sessions module so chat uses the same session
     if (sessionModule && sessionModule.setCurrentSessionId) {
       sessionModule.setCurrentSessionId(sessionId);
@@ -7349,6 +7501,7 @@ import { chevronIcon, playIcon } from './icons.js';
   /** Load all documents for a session into tabs */
   export async function loadSessionDocs(sessionId, opts = {}) {
     _lastSessionId = sessionId;
+    _blankDoc = null;
     const restoreMode = !!opts.restoreMode;
     const shouldRestoreOpen = localStorage.getItem(_docOpenKey(sessionId)) === '1';
     const shouldRestoreMinimized = localStorage.getItem(_docMinimizedKey(sessionId)) === '1';
@@ -7431,6 +7584,9 @@ import { chevronIcon, playIcon } from './icons.js';
       sourceEmailFolder:    doc.source_email_folder || null,
       sourceEmailAccountId: doc.source_email_account_id || null,
       sourceEmailMessageId: doc.source_email_message_id || null,
+      // `P23-08` (DOCS-M-6): false = this server cannot draw the PDF's pages;
+      // undefined = not a PDF, or an answer that does not say.
+      canRenderPages: (typeof doc.can_render_pages === 'boolean') ? doc.can_render_pages : existing?.canRenderPages,
     });
   }
 
@@ -9851,7 +10007,9 @@ import { chevronIcon, playIcon } from './icons.js';
       // Remove tab
       const tab = document.querySelector(`.doc-tab[data-doc-id="${activeDocId}"]`);
       if (tab) tab.remove();
+      const deletedSessionId = docs.get(activeDocId)?.sessionId || '';
       docs.delete(activeDocId);
+      _releaseHelperChat(deletedSessionId).catch(() => {});   // `P23-08` (DOCS-M-1)
       // Switch to another doc or close panel
       const remaining = Array.from(docs.keys());
       if (remaining.length > 0) {
@@ -11248,6 +11406,7 @@ const documentModule = {
   getCurrentDocId,
   getActiveEmailComposerContext,
   findEmailDocId,
+  noteHelperChat,
   getSelectionContext,
   clearSelection,
   clearAll,

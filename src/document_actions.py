@@ -23,6 +23,22 @@ _JUNK_TITLES = {
 }
 
 
+def is_mail_draft(doc) -> bool:
+    """`P23-08` (DOCS-M-3). An email document is a mail being written, not clutter.
+
+    Measured on `9560d50`: one scheduled tidy proposed "New Email — junk title
+    'new email'" (an unsent compose) and four "Q3 Board Pack – final (v2) — a
+    duplicate" (four reply drafts of one mail) — a person pressing Delete loses
+    what they may still be writing. A draft's title is the mail's subject or
+    "New Email" by construction, and two replies to one mail share it, so the
+    title and duplicate rules cannot tell a draft from junk; no tidy judges one.
+    Sending deletes it, and Close discards it (`document.js`), which is where a
+    draft goes away. The library's own Tidy still clears an envelope nobody
+    typed into (`POST /api/documents/tidy`).
+    """
+    return (getattr(doc, "language", None) or "").strip().lower() == "email"
+
+
 def _norm_title(t: str) -> str:
     """Normalize a title for grouping: trim, collapse whitespace, lowercase."""
     t = t if isinstance(t, str) else ""
@@ -67,6 +83,8 @@ def tidy_verdicts(docs, now=None) -> dict:
     order, `kept` the number of documents (one per duplicate group) that stay.
 
     Conservative rules (no length-based deletion — short notes are valid):
+    - An email draft is never named (`is_mail_draft`, `P23-08`), nor counted
+      as a duplicate of another draft — it is left out before any rule runs
     - Empty / whitespace-only / placeholder ("# Untitled")
     - Title is a throwaway name (test, asdf, …) or the content itself is one
     - Email reply-chain with no original content
@@ -79,6 +97,8 @@ def tidy_verdicts(docs, now=None) -> dict:
     survivors = []  # docs that pass the junk rules, considered for dedup
 
     for doc in docs:
+        if is_mail_draft(doc):
+            continue   # `P23-08`: not junk, not a duplicate, and not "kept" either
         created = doc.created_at
         if created and created.tzinfo is None:
             created = created.replace(tzinfo=timezone.utc)

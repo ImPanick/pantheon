@@ -49,7 +49,7 @@ class DocumentPatch(BaseModel):
 # ---- Helpers ----
 
 def _doc_to_dict(doc: Document) -> Dict[str, Any]:
-    return {
+    out = {
         "id": doc.id,
         "session_id": doc.session_id,
         "title": doc.title,
@@ -71,6 +71,14 @@ def _doc_to_dict(doc: Document) -> Dict[str, Any]:
         # `P21-03`. The file this document was made from, as its owner named it.
         "source_name":             getattr(doc, "source_name", None),
     }
+    # `P23-08` (DOCS-M-6). On a document made from a PDF only: whether its
+    # pages can be drawn here (`render-pages`), so the editor shows the text
+    # at once instead of asking for a 503. Absent on every other document.
+    from src.pdf_form_doc import find_source_upload_id
+    if find_source_upload_id(doc.current_content or ""):
+        from src.pdf_runtime import pdf_page_view_available
+        out["can_render_pages"] = pdf_page_view_available()
+    return out
 
 def _version_to_dict(v: DocumentVersion) -> Dict[str, Any]:
     return {

@@ -2043,12 +2043,10 @@ function initializeEventListeners() {
         overflowDocBtn.classList.remove('active');
         const st = loadToggleState(); st.doc = false; saveToggleState(st);
       } else {
-        let sessionId = sessionModule.getCurrentSessionId();
-        // If there's a pending "New Chat", materialize it first
-        if (!sessionId && sessionModule.hasPendingChat && sessionModule.hasPendingChat()) {
-          await sessionModule.materializePendingSession();
-          sessionId = sessionModule.getCurrentSessionId();
-        }
+        // `P23-08` (DOCS-M-1): a pending "New Chat" is no longer materialized
+        // here — `ensureDocPanel` opens the blank editor and the chat is made
+        // on the first keystroke, then let go of if nobody writes in it.
+        const sessionId = sessionModule.getCurrentSessionId();
         if (sessionId) {
           documentModule.loadSessionDocs(sessionId, { forceOpen: true });
         } else {

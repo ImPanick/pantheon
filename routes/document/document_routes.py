@@ -1142,7 +1142,7 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
             # Same junk-detection logic as the scheduled tidy_documents
             # action (src/document_actions.py). Keep these two in sync.
             import re as _re
-            from src.document_actions import _JUNK_TITLES
+            from src.document_actions import _JUNK_TITLES, is_mail_draft
 
             to_delete = []
             now = datetime.now(timezone.utc)
@@ -1197,7 +1197,10 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
                     to_delete.append(doc); deleted += 1; continue
                 if _is_email_stub:
                     to_delete.append(doc); deleted += 1; continue
-                if title in _JUNK_TITLES:
+                # `P23-08` (DOCS-M-3): a draft's title is "New Email" or the
+                # mail's subject by construction — never a reason to delete
+                # one somebody typed into (`document_actions.is_mail_draft`).
+                if title in _JUNK_TITLES and not is_mail_draft(doc):
                     to_delete.append(doc); deleted += 1; continue
 
                 # Fix empty or placeholder titles on survivors
@@ -1244,7 +1247,7 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
         from src.task_endpoint import resolve_task_endpoint
         from src.endpoint_resolver import resolve_endpoint
         from src.llm_core import llm_call_async
-        from src.document_actions import write_tidy_verdict
+        from src.document_actions import is_mail_draft, write_tidy_verdict
 
         user = get_current_user(request)
         url, model, headers = resolve_task_endpoint(owner=user or None)
@@ -1265,8 +1268,10 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
             q = _owner_session_filter(q, user)
             docs = q.all()
 
-            # Only review docs that haven't been reviewed yet
-            to_review = [d for d in docs if not d.tidy_verdict]
+            # Only review docs that haven't been reviewed yet. `P23-08`
+            # (DOCS-M-3): never a mail draft — a model reading a short reply
+            # would call it junk, and this pass deletes what it calls junk.
+            to_review = [d for d in docs if not d.tidy_verdict and not is_mail_draft(d)]
             if not to_review:
                 return {"deleted": 0, "reviewed": 0, "message": "All documents already reviewed"}
 

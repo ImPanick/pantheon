@@ -5336,7 +5336,9 @@ def setup_email_routes():
                 return delivery_result
             except Exception as e:
                 logger.error(f"Failed to send email to {_to_label}: {e}")
-                return {"success": False, "error": str(e) or "Failed to send email"}
+                # `P23-08` (DOCS-M-5): a sentence naming the server, not `[Errno 111]`.
+                from routes.email_helpers import _smtp_send_failure
+                return {"success": False, "error": _smtp_send_failure(_smtp_host, _smtp_port, e)}
 
         if req.wait_for_delivery:
             result = await asyncio.to_thread(_deliver)

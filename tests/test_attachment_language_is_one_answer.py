@@ -153,7 +153,10 @@ def test_a_library_import_stores_the_language_the_server_would_have_named():
     by_name = {p["name"]: p for p in posted}
     for name in names:
         want = attachment_language(name)
-        want = "" if want in {"text", "log"} else want
+        # `P23-08` (DOCS-M-12): prose was sent as '' and the server reads ''
+        # as "sniff it", so an imported `.txt` was stored as markdown beside a
+        # seeded `text` one. A file named as text is now stored as `text`.
+        want = "text" if want in {"text", "log"} else want
         assert by_name[name]["language"] == want, by_name[name]
 
 

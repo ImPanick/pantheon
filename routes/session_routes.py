@@ -654,8 +654,17 @@ def setup_session_routes(
         return {"deleted": deleted_count}
 
     @router.delete("/session/{sid}")
-    def delete_session(request: Request, sid: str):
-        """Permanently delete a session and all its messages."""
+    def delete_session(request: Request, sid: str, only_if_empty: bool = False):
+        """Permanently delete a session and all its messages.
+
+        `P23-08` (DOCS-M-1): ``only_if_empty`` is how the document editor lets
+        go of a chat it made only to hold a draft (a Reply's "Email: <subject>",
+        a document started on the welcome screen) when the draft closes. The
+        browser's message count can be stale — a message sent a moment ago — so
+        the count is read here, from the stored rows and the live transcript,
+        and a chat with any message is kept (409). Its documents are not
+        deleted with it: ``delete_session`` detaches them into the Library.
+        """
         _verify_session_owner(request, sid, session_manager)
         try:
             # Block deletion of starred/favorited sessions
@@ -667,6 +676,13 @@ def setup_session_routes(
                         status_code=403,
                         detail={"error": "SESSION_STARRED", "message": "Unstar the chat before deleting it."}
                     )
+                if only_if_empty:
+                    from core.database import ChatMessage as _StoredMessage
+                    stored = db.query(_StoredMessage.id).filter(
+                        _StoredMessage.session_id == sid).first() is not None
+                    live = getattr(session_manager, "sessions", {}).get(sid)
+                    if stored or (live is not None and getattr(live, "history", None)):
+                        raise HTTPException(409, "This chat has messages, so it stays.")
             finally:
                 db.close()
 

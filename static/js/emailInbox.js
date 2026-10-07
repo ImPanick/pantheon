@@ -1081,6 +1081,10 @@ async function _createEmailChat(emailData, opts = {}) {
     const payload = await res.json().catch(() => ({}));
     const sid = payload?.id || '';
     if (!sid) return '';
+    // `P23-08` (DOCS-M-1): this chat exists only for the draft. When the
+    // draft closes while the chat is still empty, the editor deletes it and
+    // goes back to the chat the person was in (`noteHelperChat`).
+    _docModule?.noteHelperChat?.(sid, { returnTo: currentSid });
     if (sessionModule?.loadSessions) await sessionModule.loadSessions();
     if (sessionModule?.selectSession) await sessionModule.selectSession(sid);
     const meta = document.getElementById('current-meta');
