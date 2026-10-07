@@ -90,6 +90,29 @@ def test_a_dead_index_says_why_under_the_heading(box):
     assert o["up"] == {"hidden": True, "text": ""}
 
 
+def test_a_non_admins_rag_tab_offers_no_upload_and_logs_nothing(box):
+    """`B-NEW-8` (P23 round 2). Measured on `a936b5c` as `guest`: the RAG tab
+    offered *Drop files here or click to upload* above *Admin only*, and the
+    console logged `Error: Admin only at loadPersonalDocs` — the refusal was
+    thrown, then `console.error`ed. Every `/api/personal` route is
+    `require_admin`; the refusal is the tab's one line now."""
+    o = _run(box, _PREAMBLE, """
+        const logged = [];
+        console.error = (...a) => logged.push(a.map(String).join(' '));
+        globalThis.fetch = async () => reply(403, { detail: 'Admin only' });
+        await rag.loadPersonalDocs();
+        const guest = { zone: $('rag-upload-zone').style.display, health: $('rag-health').hidden,
+                        list: $('docs-view').textContent.trim(), logged: logged.slice() };
+        globalThis.fetch = async () => reply(200, { files: [], healthy: true });
+        await rag.loadPersonalDocs();
+        out({ guest, admin: { zone: $('rag-upload-zone').style.display, list: $('docs-view').textContent.trim() },
+              errors: calls.errors });
+    """)
+    assert o["guest"] == {"zone": "none", "health": True, "list": "Admin only", "logged": []}
+    assert o["admin"] == {"zone": "block", "list": "No files yet."}, "the upload comes back for someone the list answers"
+    assert o["errors"] == [], "a refusal is not an error toast either"
+
+
 def test_a_refused_upload_is_a_toast_with_the_servers_sentence(box):
     o = _run(box, _PREAMBLE, """
         globalThis.fetch = async (url, init = {}) => init.method === 'POST'

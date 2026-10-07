@@ -38,11 +38,31 @@ export async function loadPersonalDocs() {
 
   try {
     const res = await fetch(`${API_BASE}/api/personal`, { credentials: 'same-origin' });
+    // `B-NEW-8` (P23 round 2). Every `/api/personal` route is `require_admin`.
+    // A non-admin's RAG tab offered *Drop files here or click to upload* above
+    // the refusal, and the refusal was thrown and then `console.error`ed
+    // (`Error: Admin only at loadPersonalDocs`, measured on `a936b5c` as
+    // `guest`). A refusal is an answer, not a fault: its sentence stands where
+    // the files would be, nothing offers an upload it would refuse, nothing is
+    // logged — the way `memory.js` draws a refused Brain (`SET-U-15`).
+    if (res.status === 403) {
+      const { sentence } = await readRefusal(res, 'Only an admin manages these files.');
+      _offerUpload(false);
+      _showHealth(null);
+      box.innerHTML = '';
+      const said = document.createElement('div');
+      said.className = 'rag-refused';
+      said.textContent = sentence;
+      said.style.cssText = 'color:var(--color-muted);font-size:12px;padding:4px 0;';
+      box.appendChild(said);
+      return;
+    }
     if (!res.ok) throw new Error((await readRefusal(res, 'Could not load the files.')).sentence);
     const data = await res.json();
     const files = data.files || [];
 
     box.innerHTML = '';
+    _offerUpload(true);
     // `BRAIN-M-5` (P23-02). A dead index says so, with what to do; it used to
     // say "Drop files above to add to RAG" and let the upload find out.
     _showHealth(data);
@@ -148,6 +168,14 @@ export async function uploadRagFiles(fileList) {
     // (measured on `32df791`).
     uiModule.showError((e && e.message) || 'The upload failed.');
   }
+}
+
+/** `B-NEW-8`. The drop zone is offered only to someone the list answered. Its
+ *  markup carries an inline `display:block`, which a `hidden` attribute does
+ *  not beat. */
+function _offerUpload(on) {
+  const zone = document.getElementById('rag-upload-zone');
+  if (zone) zone.style.display = on ? 'block' : 'none';
 }
 
 /** The one line under the RAG heading saying the index is down, and why. */
