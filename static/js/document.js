@@ -171,7 +171,8 @@ import { chevronIcon, playIcon } from './icons.js';
       const back = returnTo && (sessionModule.getSessions?.() || [])
         .some(s => String(s.id) === returnTo && !s.archived);
       if (back) {
-        await sessionModule.selectSession?.(returnTo);
+        // `B-NEW-6`: a replace, so no history entry names the chat just deleted.
+        await sessionModule.selectSession?.(returnTo, { replace: true });
       } else {
         // The way the person's own New chat goes (`app.js`
         // `_handleNewChatAction`), as `documentLibrary.js` already reaches it.

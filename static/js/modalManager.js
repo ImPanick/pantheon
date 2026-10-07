@@ -1740,7 +1740,17 @@ export function raiseWindow(id) {
 }
 
 /** `P23-01` (NAV-M-11/12). Give a window the focus on its move handle — where
- *  a door's own press puts it — when the focus is nowhere in particular. */
+ *  a door's own press puts it — when the focus is nowhere in particular.
+ *
+ *  `B-NEW-10`. The handle draws *Move: arrow keys · Resize: Shift + arrows*
+ *  over the title bar whenever it has the focus (`style.css`, `P10-06`: "nothing
+ *  but a keyboard can focus it"). This function and the back stack's re-raise
+ *  (`backStack.js`, through the `focusWindow` hook) focus it after a mouse
+ *  too — measured on `a936b5c`: the chip on the Brain's title bar after a click
+ *  on `← Brain`, after the browser's Back, after a click on a dock chip. So the
+ *  browser is asked whether this focus is a keyboard's (`:focus-visible`, its
+ *  own reading of the last input); when it is not, the window itself takes
+ *  the focus (`tabindex="-1"`), and Tab still starts inside it. */
 export function focusWindowHandle(id) {
   const el = _windowEl(id);
   if (!el) return;
@@ -1751,6 +1761,16 @@ export function focusWindowHandle(id) {
   if (handle && typeof handle.focus === 'function') {
     try { handle.focus({ preventScroll: true }); } catch (_) { try { handle.focus(); } catch (__) {} }
   }
+  if (!handle || !handle.classList || !handle.classList.contains('window-move-handle')) return;
+  if (document.activeElement === handle) {
+    let keyboard = true;   // a browser without the selector keeps the handle, as before
+    try { keyboard = handle.matches(':focus-visible'); } catch (_) {}
+    if (keyboard) return;
+  }
+  // A pointer's focus, or a handle the phone layout does not draw: the window.
+  const box = (el.querySelector && el.querySelector('.modal-content')) || el;
+  if (box.getAttribute('tabindex') == null) box.setAttribute('tabindex', '-1');
+  try { box.focus({ preventScroll: true }); } catch (_) { try { box.focus(); } catch (__) {} }
 }
 
 /**
@@ -1818,6 +1838,7 @@ backStack.configure({
   closeWindow,
   raise: raiseWindow,
   drawBack: drawBackButton,
+  focusWindow: focusWindowHandle,   // `B-NEW-10`
 });
 
 /** Inject a minimize (`_`) button next to the close button in a modal.

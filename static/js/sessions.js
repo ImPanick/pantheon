@@ -1914,7 +1914,9 @@ export async function loadSessions() {
 
     if (targetId && targetId !== currentSessionId) {
       const showLoading = !suppressSessionLoading && !(_isFirstLoad && !hashId);
-      await selectSession(targetId, { keepSidebar: true, showLoading });
+      // `B-NEW-4`: the list's own pick (the hash, the last chat, the newest)
+      // is not the person's — it rewrites the entry, never adds one.
+      await selectSession(targetId, { keepSidebar: true, showLoading, replace: true });
     } else if (targetId && targetId === currentSessionId) {
       // Same session — just refresh the header name in case it was auto-generated
       const s = sessions.find(x => x.id === targetId);
@@ -1965,7 +1967,33 @@ export async function loadSessions() {
   }
 }
 
-export async function selectSession(id, { keepSidebar = false, showLoading = true, immediateLoading = false, fromHistory = false } = {}) {
+/**
+ * `P23-01` (CHAT-U-1), `B-NEW-4`, `B-NEW-6`. Is this chat switch a new history
+ * entry? A person's switch is: from one chat to another (the URL named the
+ * chat on screen), or from the welcome screen (no chat on screen, none in the
+ * URL) — measured on `a936b5c` at 1440×900, the first chat opened from the
+ * welcome screen replaced the welcome's entry, so Back from it left the app.
+ * A switch Back itself made (`fromHistory`) and one Pantheon makes for itself
+ * (`replace`: the boot's restore, a helper chat for a mail draft and the way
+ * back from it) rewrite the entry they are on.
+ */
+export function chatSwitchIsAnEntry(prevSessionId, id, { fromHistory = false, replace = false,
+  hash = window.location.hash } = {}) {
+  if (!id || fromHistory || replace) return false;
+  if (prevSessionId) return prevSessionId !== id && hash === '#' + prevSessionId;
+  return !hash;
+}
+
+/** `P23-01` (CHAT-U-1, CHAT-M-7). The chat into the URL. This was always
+ *  `replaceState`, so three chats visited left `history.length` at 2 and Back
+ *  left the app; a person's switch is a new entry now (`chatSwitchIsAnEntry`),
+ *  written by the back stack (`backStack.chatSwitched`). */
+function _writeChatUrl(id, prevSessionId, { fromHistory = false, replace = false } = {}) {
+  if (window.location.hash === '#' + id) return;
+  backStack.chatSwitched(id, { push: chatSwitchIsAnEntry(prevSessionId, id, { fromHistory, replace }) });
+}
+
+export async function selectSession(id, { keepSidebar = false, showLoading = true, immediateLoading = false, fromHistory = false, replace = false } = {}) {
   // Exit compare mode cleanly if active. `P23-01`: Compare is taken down in
   // place now (no reload), and lands on the chat that was picked.
   if (window.compareModule && window.compareModule.isActive()) {
@@ -2003,16 +2031,7 @@ export async function selectSession(id, { keepSidebar = false, showLoading = tru
       Storage.set('lastSessionId', id);
       // Update URL hash without triggering hashchange handler.
       //
-      // `P23-01` (CHAT-U-1, CHAT-M-7). This was always `replaceState`, so three
-      // chats visited left `history.length` at 2 and Back left the app. A
-      // switch from one chat to another is a new history entry now — Back is
-      // the chat before. The first chat of a load, a new chat taking its id and
-      // a switch that Back itself made (`fromHistory`) rewrite the entry.
-      if (window.location.hash !== '#' + id) {
-        const fromChat = !!prevSessionId && prevSessionId !== id
-          && window.location.hash === '#' + prevSessionId;
-        backStack.chatSwitched(id, { push: fromChat && !fromHistory });
-      }
+      _writeChatUrl(id, prevSessionId, { fromHistory, replace });
     }
     // Restore character preset for persistent chats
     try {
@@ -2714,15 +2733,45 @@ export function initDragSort() {
 // Skip entity-prefixed hashes (document-, note-, etc.) — those are handled
 // by their own click handlers in chatRenderer.js and must not trigger
 // session navigation (which would reset the active chat).
-window.addEventListener('hashchange', () => {
+function _onHashChange() {
   const hashId = window.location.hash.replace('#', '');
   if (/^(document|note|image|email|event|task|skill|research)-/.test(hashId) || /^open=notes&note=/.test(hashId)) return;
-  if (hashId && hashId !== currentSessionId) {
+  if (!hashId) {
+    // `B-NEW-4`. Back (or Forward) onto an entry the back stack wrote with no
+    // chat in it: the welcome screen the first chat was opened from. Only
+    // such an entry — a click on an `<a href="#">` lands on a new one with no
+    // state, and the chat stays.
+    if (currentSessionId && backStack.ownsEntry()) _welcomeFromHistory();
+    return;
+  }
+  if (hashId !== currentSessionId) {
     const target = sessions.find(s => s.id === hashId && !s.archived);
     // `P23-01`: Back and Forward land here — the entry is already the one.
     if (target) selectSession(hashId, { fromHistory: true });
   }
-});
+}
+window.addEventListener('hashchange', _onHashChange);
+
+/** `B-NEW-4`. The welcome screen again, as Back finds it: no chat selected, the
+ *  list unlit, the composer empty. A reply still streaming in the chat left
+ *  goes on in the background, as it does on any switch. */
+function _welcomeFromHistory() {
+  const prev = currentSessionId;
+  if (!prev) return;
+  _sessionNavToken++;   // a switch still loading does not draw over the welcome screen
+  try {
+    if (window.chatModule && window.chatModule.detachCurrentStream) window.chatModule.detachCurrentStream(prev);
+  } catch (_) {}
+  _deselectCurrentSession(prev);
+  try { window.__pantheonLastSelectedSessionId = ''; } catch (_) {}
+  _syncAttachmentsToSession();
+  document.querySelectorAll('.list-item.active-session').forEach(el => el.classList.remove('active-session'));
+  if (window.documentModule && window.documentModule.isPanelOpen && window.documentModule.isPanelOpen()) {
+    try { window.documentModule.closePanel(); } catch (_) {}
+  }
+  updateModelPicker();
+  if (window.refreshChatContextHeader) window.refreshChatContextHeader('welcome');
+}
 
 // ── Research indicator management ──
 function _updateResearchDots() {

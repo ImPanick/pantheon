@@ -28,7 +28,10 @@
 //     entry in place;
 //   * a reload restores the windows the entry names, opener and tab included;
 //   * a user chat switch pushes an entry with the same windows and the new
-//     `#chat` (`chatSwitched`), so Back is the previous chat (CHAT-U-1).
+//     `#chat` (`chatSwitched`), so Back is the previous chat (CHAT-U-1) — or
+//     the welcome screen the first chat was opened from (`B-NEW-4`); a chat
+//     picked in the phone drawer keeps the drawer's entry as its own
+//     (`B-NEW-3`).
 //
 // The stack is read off the page, not told: one `MutationObserver` watches the
 // tool windows' own `class`/`style` and their arrival and removal, so a window
@@ -107,6 +110,7 @@ let _hooks = {};
 let _openers = {};
 let _expect = 0;                // pops our own history.back() will cause
 let _expectTimer = null;
+let _afterPop = null;           // { id, push }: a chat switch made while one of those pops was under way
 let _booted = false;
 let _restoring = false;
 let _idx = 0;
@@ -116,11 +120,22 @@ const _now = () => Date.now();
 const _hist = () => globalThis.history;
 const _loc = () => globalThis.location;
 const _isOurs = (s) => !!(s && typeof s === 'object' && s.pn === 1 && Array.isArray(s.wins));
+const _hashNow = () => { const loc = _loc(); return (loc && loc.hash) || ''; };
+
+/** Is the current history entry one this module wrote (in this load or an
+ *  earlier one)? `sessions.js` asks before it reads a Back onto an entry with
+ *  no `#chat` as "the welcome screen" (`B-NEW-4`): a click on an
+ *  `<a href="#">` also lands on an entry with no chat, a new one, with no
+ *  state. */
+export function ownsEntry() {
+  const h = _hist();
+  return !!(h && _isOurs(h.state));
+}
 
 /** What the rest of the page provides (`modalManager.js` sets these):
  *  `labelOf(id)`, `tabHooks(id) → { getTab, setTab } | null`,
  *  `closeWindow(id)`, `raise(id)`, `drawBack(id, fromId | null)`,
- *  `dismissTopMenu() → boolean`. */
+ *  `focusWindow(id)` (a re-raised opener takes the focus), `dismissTopMenu() → boolean`. */
 export function configure(hooks) { _hooks = Object.assign({}, _hooks, hooks || {}); }
 
 /** How to open each window when a reload or Forward needs it: id → `(tab) => void`. */
@@ -234,6 +249,10 @@ function _readPage() {
 }
 
 function _focusHandle(id) {
+  // `B-NEW-10`: the window manager's one rule (`modalManager.focusWindowHandle`)
+  // — the move handle for a keyboard, the window itself after a pointer, so
+  // the handle's *Move: arrow keys* chip is not drawn after a click on `←`.
+  if (_hooks.focusWindow) { try { _hooks.focusWindow(id); } catch (_) {} return; }
   const el = _el(id);
   const handle = el && typeof el.querySelector === 'function'
     ? el.querySelector('.window-move-handle, .modal-header [tabindex], .modal-header button') : null;
@@ -272,6 +291,8 @@ const _prefix = (a, b) => a.every((x, i) => b[i] === x);
 const _sameWins = (a, b) => a.length === b.length && a.every((w, i) => w.id === b[i].id
   && (w.from || null) === (b[i].from || null) && (w.tab || null) === (b[i].tab || null)
   && (w.fromTab || null) === (b[i].fromTab || null));
+/** `B-NEW-3`: the `#chat` is not the one this window's entry was pushed over. */
+const _chatMoved = (s) => typeof s.chat === 'string' && s.chat !== _hashNow();
 
 function _current() {
   const h = _hist();
@@ -288,12 +309,14 @@ export function sync() {
   const curIds = cur ? _ids(cur.wins) : [];
   const ids = _ids(_stack);
   if (cur) _idx = cur.idx;
-  // Opened on top of what the entry holds: one entry per window.
+  // Opened on top of what the entry holds: one entry per window. `chat` is the
+  // `#chat` the window opened over — the one the entry beneath it names.
   if (ids.length > curIds.length && _prefix(curIds, ids)) {
     for (let n = curIds.length + 1; n <= ids.length; n++) {
       _idx += 1;
       const s = _stateFor(ids[n - 1]);
       s.wins = s.wins.slice(0, n);
+      s.chat = _hashNow();
       _write('push', s);
     }
     return;
@@ -301,14 +324,24 @@ export function sync() {
   // The window whose push made this entry has closed: take the entry back off.
   // Off an entry this document pushed only, never the first — so this never
   // leaves the app or reloads a page an older document pushed.
+  //
+  // `B-NEW-3`. Unless the chat changed while the entry was the current one:
+  // the entry beneath names the chat the window opened over, so `back()` lost
+  // the switch — measured on `a936b5c` at 390×844, a chat picked in the phone
+  // drawer was written onto the drawer's entry, the drawer closed, its entry
+  // went, and the URL said `/` again; two chats later Back left the app. The
+  // entry stays, as the chat's (the rewrite below): Back from it is the chat
+  // or the welcome screen before.
   if (cur && ids.length === curIds.length - 1 && _prefix(ids, curIds)
-      && cur.opened === curIds[curIds.length - 1] && cur.doc === DOC && cur.idx > 0) {
+      && cur.opened === curIds[curIds.length - 1] && cur.doc === DOC && cur.idx > 0
+      && !_chatMoved(cur)) {
     _expectPop();
     try { _hist().back(); } catch (_) { _expect = 0; }
     return;
   }
   const next = _stateFor(cur && cur.opened && ids[ids.length - 1] === cur.opened ? cur.opened : null);
   if (cur && cur.doc !== DOC) next.doc = cur.doc;
+  if (cur && next.opened && typeof cur.chat === 'string') next.chat = cur.chat;
   const loc = _loc();
   const url = _urlFor(next.wins);
   const here = loc ? loc.pathname + (loc.search || '') + (loc.hash || '') : url;
@@ -328,7 +361,16 @@ function _expectPop() {
   clearTimeout(_expectTimer);
   // A traversal the browser drops (a sandboxed frame, a page being unloaded)
   // must not leave the stack waiting for ever.
-  _expectTimer = setTimeout(() => { if (_expect) { _expect = 0; _queueSync(); } }, 1500);
+  _expectTimer = setTimeout(() => { if (_expect) { _expect = 0; _switchAfterPop(); _queueSync(); } }, 1500);
+}
+
+/** `B-NEW-3`. A chat switch made while a pop of ours was under way is written
+ *  on the entry the pop lands on — written before, it went with the entry
+ *  being taken off. */
+function _switchAfterPop() {
+  const p = _afterPop;
+  _afterPop = null;
+  if (p) chatSwitched(p.id, { push: p.push });
 }
 
 // ── Back ─────────────────────────────────────────────────────────────────
@@ -357,6 +399,7 @@ export function onPopState(ev) {
     _remember();
     sync();
     _remember();
+    if (!_expect) _switchAfterPop();
     return;
   }
   const forward = !!(landing && prev && prev.state && landing.idx > prev.state.idx);
@@ -444,18 +487,30 @@ export function restoreFromHistory() {
 }
 
 // ── chats ────────────────────────────────────────────────────────────────
-/** `sessions.js` calls this when the chat in the URL changes. A user's switch
- *  from one chat to another is a push (Back = the previous chat); the first
- *  chat of a load, a new chat materialising and a switch Back itself made are
- *  a replace. */
+/** `sessions.js` calls this when the chat in the URL changes. A person's
+ *  switch — from one chat to another, or from the welcome screen — is a push
+ *  (Back = the chat or the welcome screen before); the first chat of a load, a
+ *  new chat materialising, a switch Back itself made and a chat Pantheon opens
+ *  only for a draft (`B-NEW-6`) are a replace.
+ *
+ *  `B-NEW-3`. While the entry is the phone drawer's — or a window's that has
+ *  just closed — the switch is written onto that entry, and `sync()` keeps it
+ *  as the chat's when the window goes, instead of taking it off; a switch made
+ *  while a pop of ours is under way waits for the entry the pop lands on. */
 export function chatSwitched(id, { push = false } = {}) {
   const h = _hist();
   const loc = _loc();
   if (!h || !loc || !id) return;
+  if (_expect > 0) { _afterPop = { id, push }; return; }
   const url = loc.pathname + (loc.search || '') + '#' + id;
   const cur = _current();
+  const closing = !!(cur && cur.opened && cur.doc === DOC && cur.idx > 0
+    && (cur.opened === DRAWER || !isOpenNow(cur.opened)));
   try {
-    if (push && _booted && !_restoring && _expect === 0) {
+    if (closing) {
+      h.replaceState(cur, '', url);
+      _queueSync();
+    } else if (push && _booted && !_restoring) {
       _readPage();
       _idx = (cur ? cur.idx : _idx) + 1;
       const s = _stateFor(null);
@@ -530,12 +585,13 @@ export function ready() {
 export function _reset() {
   _stack.length = 0; _pending.clear(); _closing.clear();
   _hooks = {}; _openers = {}; _expect = 0; _booted = false; _restoring = false; _idx = 0;
-  _syncQueued = false; _lastEntry = null; _inited = false;
+  _syncQueued = false; _lastEntry = null; _inited = false; _afterPop = null;
 }
 export const _DOC = DOC;
 
 const backStack = {
   ROUTES, ROUTE_ALIASES, TRACKED, DRAWER, elementIdOf, windowForPath, pathFor, configure, setOpeners, stack, top,
-  isTracked, isOpenNow, noteOpener, sync, onPopState, restoreFromHistory, openWindows, chatSwitched, init, ready,
+  isTracked, isOpenNow, noteOpener, sync, onPopState, restoreFromHistory, openWindows, chatSwitched, ownsEntry,
+  init, ready,
 };
 export default backStack;
