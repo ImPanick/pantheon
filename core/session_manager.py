@@ -438,8 +438,8 @@ class SessionManager:
         # Keep model/endpoint metadata fresh. Endpoint deletion can clear the
         # DB row while a session object is still cached in RAM. Refreshing first
         # also exposes the authoritative message count before completeness is
-        # checked.
-        self.sync_session_metadata(session_id)
+        # checked. `P23-07`: the same read marks the chat used (`touch`).
+        self.sync_session_metadata(session_id, touch=True)
 
         cached = self.sessions[session_id]
         cached_count = len(cached.history or [])
@@ -447,12 +447,30 @@ class SessionManager:
         if cached_count < stored_count:
             self._load_session_from_db(session_id)
 
-        # Update last_accessed
-        self._touch_session(session_id)
-
         return self.sessions[session_id]
 
-    def sync_session_metadata(self, session_id: str) -> bool:
+    # `P23-07` (`PERF-M-14`, the session half `fx-chat` filed as its
+    # `B-NEW-3`). `get_session` cost four statements a call — the metadata
+    # refresh read the row and counted the messages, then `_touch_session` read
+    # the row again and wrote `last_accessed` — and the routes call it several
+    # times a request (the context route four), so every chat open wrote the
+    # row as many times. `last_accessed` orders the boot cache and the agent's
+    # chat list; a minute is fine-grained enough for both. So the refresh's own
+    # read now carries the touch, and the write happens once a minute at most:
+    # two statements a call.
+    TOUCH_EVERY_S = 60
+
+    def _touch_row(self, db_session, db) -> None:
+        now = datetime.now(timezone.utc)
+        last = getattr(db_session, "last_accessed", None)
+        if last is not None:
+            seen = last.replace(tzinfo=None) if last.tzinfo else last
+            if (now.replace(tzinfo=None) - seen).total_seconds() < self.TOUCH_EVERY_S:
+                return
+        db_session.last_accessed = now
+        db.commit()
+
+    def sync_session_metadata(self, session_id: str, *, touch: bool = False) -> bool:
         """Refresh non-message session fields from the DB into the cached object.
 
         ``message_count`` is reconciled against the real ``chat_messages`` rows
@@ -491,6 +509,12 @@ class SessionManager:
                 .filter(DbChatMessage.session_id == session_id)
                 .count()
             )
+            if touch:
+                try:
+                    self._touch_row(db_session, db)
+                except Exception as e:  # the refresh stands; the stamp waits
+                    logger.error(f"Error updating last_accessed: {e}")
+                    db.rollback()
             return True
         except Exception as e:
             logger.error(f"Error syncing session metadata {session_id}: {e}")
