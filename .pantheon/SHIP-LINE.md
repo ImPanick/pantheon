@@ -93,6 +93,17 @@ closed with it; the sweeps kept filing, and closing outran them.
 
 **Direction as of 2026-10-03: the open count is falling.**
 
+Re-measured 2026-10-07, after `P23`'s eight lanes merged: the ten distinct headlines read 149 filed, 104 closed —
+**a ratio of 1.433**, open 312 → 357. The last three waves filed sixty-three rows and closed none: `P23`'s nine, the
+two `main` brought, fifty the lanes filed from what they found while building, and two the tracker pass filed
+(`B1235`, `B1236`). `P23`'s own rows tick only after the merged-tree drive, so this reading is taken before the
+phase's closing, not after it. **Done went 71.6 % → 71.3 %** — the first window this document has measured in which
+the percentage fell; `tests/test_ship_line.py` holds that it rises, unconditionally, and is red on this tree for that
+reason alone (`B1235`). None of the fifty-two is a gate; the two closest, `B1229` and `B1231`, are in § 7 with what
+would make each one.
+
+**Direction as of 2026-10-07: the open count is rising.**
+
 ### A second number, which is the one that moves
 
 Of the last 40 `B` rows filed — `B360` through `B455`, four waves of sweeps plus
@@ -567,6 +578,14 @@ weakest one in this document: it means nobody adjudicated them individually.
 | `B1175` | tracked | security | a non-admin's loopback passed `require_admin`; one gate deep — the dispatcher refused `app_api` to a non-admin, so no person's assistant reached it — and closed the day it was filed (2026-10-03): the gate asks about the person named |
 | `B1179` | landed | security | Forge's read tools looped back naming nobody, so a non-admin's assistant read the admin's Forge state the person is refused and ran `ssh` to a host it named; met 2026-10-03 — the dispatcher binds the person a tool call acts for and every tool loopback names them, the shell's own gate asks about a named person, and the read tools say a refusal |
 | `B1181` | tracked | defect | fails closed: on a no-login install the shell's own gate refuses everyone, so the Forge cannot stop a scheduled serve — a cost, not a hole; opening that gate is the owner's call |
+| `P23-03` | tracked | doors | one table for what each tool's switches hide; the server's own refusals (`require_feature`, the privileges) are the controls and stand as they were — the row is the doors agreeing with them, and the rule flagged it on the table's privilege column |
+| `P23-06` | tracked | display | display and motion; the rule flagged it on *dead end* — two phone dead ends found by driving and fixed in the same row |
+| `B1191` | tracked | decision | a switch for everyone and per person on the tools that have only *Show in this browser*; the switches that exist hold, and what "off" means for work that runs without its window is the owner's call |
+| `B1195` | tracked | decision | the person's Gallery switch hides the window while the routes that list a person's own gallery do not ask for `can_generate_images`; making or editing an image does (`require_privilege`), so the capability the switch names holds — whether it should also hide a person's own pictures is the owner's call |
+| `B1198` | tracked | tidy | two buttons on a user row that belong behind ⋯; the rule flagged it on *Privileges*, the name of the button beside them |
+| `B1207` | tracked | owner | the §13 link's tooltip and accessible name say different things; the link and what it offers are right (`P0-17`, `B1165`), and the tooltip is the owner's own words |
+| `B1229` | tracked | decision | opening the Forge refreshes the model catalog from huggingface.co with nothing switched on — `Law 16` clause 3 asks whether that is a call a person asked for, which is the owner's ruling; ruled *not asked for*, the 0.2.0 notes' sentence that a fresh install reaches nothing on the public internet does not hold for the Forge, and this becomes a claim gate |
+| `B1231` | tracked | owner | SQLite's write-ahead log is on by default since `P23-07`, unmeasured on a Docker Desktop host file share, where SQLite's documentation warns against it; no install has been seen to fail and `PANTHEON_SQLITE_JOURNAL_MODE=delete` is the way back — the owner's own Windows install is the measurement before 0.2.0, and a failure there makes it a first-ten gate |
 
 ---
 
