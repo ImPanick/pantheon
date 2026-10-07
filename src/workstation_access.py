@@ -169,8 +169,8 @@ def may_use(owner: Optional[str], *, auth_manager: Any = None) -> bool:
         if not name:
             return False
         if auth_manager is None:
-            from core.auth import AuthManager
-            auth_manager = AuthManager()
+            from src.auth_manager_access import shared_auth_manager  # `P23-07` (`PERF-M-15`)
+            auth_manager = shared_auth_manager()
         if not getattr(auth_manager, "is_configured", False):
             # Auth is on and nobody has set it up: nobody is an admin yet, and
             # the workstation is a shell. The same answer the pre-setup window

@@ -963,3 +963,18 @@ class AuthManager:
             # for an admin and for anyone with no role.
             result["role"] = self.get_role(username)
         return result
+
+
+# ── `P23-07` (`PERF-M-15`): one AuthManager per process ──────────────────────
+#
+# The app registers the manager it holds (`app.py`); policy checks ask for it
+# through `src.auth_manager_access.shared_auth_manager`, which reads this
+# module at call time — see there for why, and for what a process with no app
+# gets.
+_SHARED_AUTH_MANAGER: Optional["AuthManager"] = None
+
+
+def register_shared_auth_manager(manager: Optional["AuthManager"]) -> None:
+    """The app's manager, for `src.auth_manager_access` (`None` to forget it)."""
+    global _SHARED_AUTH_MANAGER
+    _SHARED_AUTH_MANAGER = manager

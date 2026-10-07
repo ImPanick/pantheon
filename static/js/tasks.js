@@ -3526,14 +3526,39 @@ async function _pollTaskNotifications() {
   }
 }
 
+// `P23-07` (PERF-M-12). A hidden tab asked every 30 s whatever happened. What it
+// can do with an answer while hidden is one thing: a task whose result goes to a
+// notification raises a real desktop notification from this poll — so a hidden
+// tab keeps asking when the browser lets it show one, and otherwise waits; a
+// toast nobody can see is better shown when the tab comes back, and coming back
+// asks at once if an ask is due.
+const _NOTIF_POLL_MS = 30000;
+let _lastNotifPollAt = 0;
+function _notificationPollMayRun() {
+  if (document.visibilityState !== 'hidden') return true;
+  return typeof Notification !== 'undefined' && Notification.permission === 'granted';
+}
+function _pollTaskNotificationsNow() {
+  _lastNotifPollAt = Date.now();
+  return _pollTaskNotifications();
+}
+function _onVisibleAgainPollTasks() {
+  if (document.visibilityState !== 'hidden' && Date.now() - _lastNotifPollAt >= _NOTIF_POLL_MS) {
+    _pollTaskNotificationsNow();
+  }
+}
+
 function startNotificationPolling() {
   if (_notifInterval) return;
-  setTimeout(_pollTaskNotifications, 1500);
+  setTimeout(_pollTaskNotificationsNow, 1500);
   // `B1006`: a proposal still waiting from before this page loaded.
   setTimeout(_offerWaitingDocumentPlans, 2500);
   // `P22-17`: and a workflow step still waiting for a yes.
   setTimeout(_offerWaitingWorkflowApprovals, 3000);
-  _notifInterval = setInterval(_pollTaskNotifications, 30000);
+  _notifInterval = setInterval(() => {
+    if (_notificationPollMayRun()) _pollTaskNotificationsNow();
+  }, _NOTIF_POLL_MS);
+  document.addEventListener('visibilitychange', _onVisibleAgainPollTasks);
 }
 
 function stopNotificationPolling() {
@@ -3541,6 +3566,7 @@ function stopNotificationPolling() {
     clearInterval(_notifInterval);
     _notifInterval = null;
   }
+  document.removeEventListener('visibilitychange', _onVisibleAgainPollTasks);
 }
 
 // `P22-04`, the canvas half. The Workbench draws a step's full plan with the

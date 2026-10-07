@@ -438,8 +438,8 @@ class SessionManager:
         # Keep model/endpoint metadata fresh. Endpoint deletion can clear the
         # DB row while a session object is still cached in RAM. Refreshing first
         # also exposes the authoritative message count before completeness is
-        # checked.
-        self.sync_session_metadata(session_id)
+        # checked. `P23-07`: the same read marks the chat used (`touch`).
+        self.sync_session_metadata(session_id, touch=True)
 
         cached = self.sessions[session_id]
         cached_count = len(cached.history or [])
@@ -447,12 +447,30 @@ class SessionManager:
         if cached_count < stored_count:
             self._load_session_from_db(session_id)
 
-        # Update last_accessed
-        self._touch_session(session_id)
-
         return self.sessions[session_id]
 
-    def sync_session_metadata(self, session_id: str) -> bool:
+    # `P23-07` (`PERF-M-14`, the session half `fx-chat` filed as its
+    # `B-NEW-3`). `get_session` cost four statements a call — the metadata
+    # refresh read the row and counted the messages, then `_touch_session` read
+    # the row again and wrote `last_accessed` — and the routes call it several
+    # times a request (the context route four), so every chat open wrote the
+    # row as many times. `last_accessed` orders the boot cache and the agent's
+    # chat list; a minute is fine-grained enough for both. So the refresh's own
+    # read now carries the touch, and the write happens once a minute at most:
+    # two statements a call.
+    TOUCH_EVERY_S = 60
+
+    def _touch_row(self, db_session, db) -> None:
+        now = datetime.now(timezone.utc)
+        last = getattr(db_session, "last_accessed", None)
+        if last is not None:
+            seen = last.replace(tzinfo=None) if last.tzinfo else last
+            if (now.replace(tzinfo=None) - seen).total_seconds() < self.TOUCH_EVERY_S:
+                return
+        db_session.last_accessed = now
+        db.commit()
+
+    def sync_session_metadata(self, session_id: str, *, touch: bool = False) -> bool:
         """Refresh non-message session fields from the DB into the cached object.
 
         ``message_count`` is reconciled against the real ``chat_messages`` rows
@@ -491,6 +509,12 @@ class SessionManager:
                 .filter(DbChatMessage.session_id == session_id)
                 .count()
             )
+            if touch:
+                try:
+                    self._touch_row(db_session, db)
+                except Exception as e:  # the refresh stands; the stamp waits
+                    logger.error(f"Error updating last_accessed: {e}")
+                    db.rollback()
             return True
         except Exception as e:
             logger.error(f"Error syncing session metadata {session_id}: {e}")
@@ -697,6 +721,64 @@ class SessionManager:
     # ------------------------------------------------------------------
     # Queries
     # ------------------------------------------------------------------
+
+    def list_page(self, username: Optional[str], *, limit: int = 100, offset: int = 0,
+                  hidden_names=()) -> tuple:
+        """`P23-07` (`PERF-M-5`). The sidebar's chats for one person, from the
+        database: ``(rows, has_more)``.
+
+        `/api/sessions` read `self.sessions`, which `load_sessions` fills at
+        boot with the 100 most recently used chats **of every owner**, and
+        filtered that by owner afterwards — measured on a world of 405 chats:
+        100 listed and no way to the rest, and on a shared install a person
+        whose chats were older than someone else's last 100 saw none. Now the
+        owner filter and the cut are in the query, and the cut is a page.
+
+        Kept from the cache's rules, so the list is the same list, longer:
+          * a named person sees chats whose owner is exactly them (shared,
+            owner-less rows were never listed for a signed-in person);
+          * a chat is listed when it has a message, or when it was created or
+            opened in this process (a new chat is in the list before its first
+            message, as it always was);
+          * archived chats and the hidden names are not listed.
+        Ordered by last activity, newest first. The first page also carries
+        every pinned chat and every chat in a folder, wherever its activity
+        falls: the sidebar counts a folder from what it holds, and its × deletes
+        what it holds — a folder half loaded would be counted and deleted half.
+        """
+        from sqlalchemy import or_
+
+        limit = max(1, int(limit))
+        offset = max(0, int(offset))
+        db = SessionLocal()
+        try:
+            q = db.query(DbSession).filter(DbSession.archived == False)  # noqa: E712
+            if username:
+                q = q.filter(DbSession.owner == username)
+            hidden = [n for n in hidden_names if n]
+            if hidden:
+                q = q.filter(func.trim(func.coalesce(DbSession.name, "")).notin_(hidden))
+            known = [sid for sid, s in self.sessions.items()
+                     if not username or s.owner == username]
+            listed = DbSession.messages.any()
+            if known:
+                listed = or_(listed, DbSession.id.in_(known))
+            q = q.filter(listed)
+            recency = func.coalesce(DbSession.last_message_at, DbSession.updated_at, DbSession.created_at)
+            rows = q.order_by(recency.desc(), DbSession.id).offset(offset).limit(limit + 1).all()
+            has_more = len(rows) > limit
+            rows = rows[:limit]
+            if offset == 0:
+                on_page = [r.id for r in rows]
+                kept = or_(DbSession.is_important == True,  # noqa: E712
+                           func.coalesce(DbSession.folder, "") != "")
+                extra = q.filter(kept)
+                if on_page:
+                    extra = extra.filter(DbSession.id.notin_(on_page))
+                rows.extend(extra.order_by(recency.desc(), DbSession.id).all())
+            return [self._db_to_session_meta(r) for r in rows], has_more
+        finally:
+            db.close()
 
     def get_sessions_for_user(self, username: Optional[str] = None) -> Dict[str, Session]:
         """Return sessions for a specific user (or all if username is None)."""

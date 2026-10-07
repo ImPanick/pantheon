@@ -937,8 +937,8 @@ def setup_note_routes(task_scheduler=None, upload_handler=None):
         # because there's no second user to attack; we keep that branch
         # explicit and gated on AuthManager.is_configured.
         try:
-            from core.auth import AuthManager
-            _allow_null = not AuthManager().is_configured
+            from src.auth_manager_access import shared_auth_manager  # `P23-07` (`PERF-M-15`)
+            _allow_null = not shared_auth_manager().is_configured
         except Exception:
             _allow_null = False
         db = SessionLocal()

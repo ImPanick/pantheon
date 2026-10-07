@@ -65,13 +65,17 @@ def test_list_sessions_excludes_other_users_sessions(monkeypatch):
                               model="gpt-4", endpoint_url="http://localhost",
                               rag=False, archived=False)
     sm = MagicMock()
-    sm.get_sessions_for_user.return_value = {alice_id: alice_session}
+    # `P23-07` (`PERF-M-5`): the list is paged from the database by
+    # `SessionManager.list_page` (its owner scope is driven against a real
+    # database in `tests/test_the_sidebar_lists_a_persons_own_chats.py`); this
+    # case keeps its own point — the enrichment query is owner-scoped too.
+    sm.list_page.return_value = ([alice_session], False)
     router = sr.setup_session_routes(sm, {})
     endpoint = next(r.endpoint for r in router.routes
                     if getattr(r, "path", "") == "/api/sessions"
                     and "GET" in getattr(r, "methods", set()))
 
-    result = endpoint(request=MagicMock())
+    result = endpoint(request=MagicMock(), response=MagicMock())
     returned_ids = {s["id"] for s in result}
     assert alice_id in returned_ids
     assert bob_id not in returned_ids

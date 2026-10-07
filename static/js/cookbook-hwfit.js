@@ -665,6 +665,31 @@ function _ollamaToHwfitRows(libModels, vramAvail, ramAvail) {
   return out;
 }
 
+// `P23-07` (PERF-M-6). The server answers `refresh_catalog=1` at once with the
+// rows it has and runs the HuggingFace refresh in a thread (it held this window
+// 1.8–8.1 s before). While that runs, ask how it is going; when it is done,
+// draw the list once more, without asking for another refresh.
+const _CATALOG_FOLLOW_MS = 2000;
+const _CATALOG_FOLLOW_FOR_MS = 120000;
+let _catalogFollowTimer = null;
+function _followCatalogRefresh(refresh) {
+  if (!refresh || refresh.state !== 'running' || _catalogFollowTimer) return;
+  const giveUpAt = Date.now() + _CATALOG_FOLLOW_FOR_MS;
+  const stop = () => { clearInterval(_catalogFollowTimer); _catalogFollowTimer = null; };
+  _catalogFollowTimer = setInterval(async () => {
+    let state = null;
+    try {
+      const res = await fetch('/api/hwfit/catalog-refresh');
+      state = res.ok ? await res.json() : null;
+    } catch (_) { state = null; }
+    if (state && state.state === 'running' && Date.now() < giveUpAt) return;
+    stop();
+    if (state && state.state === 'done' && document.getElementById('hwfit-list')) {
+      _hwfitFetch(false, { keepPrevious: true, afterCatalogRefresh: true });
+    }
+  }, _CATALOG_FOLLOW_MS);
+}
+
 export async function _hwfitFetch(fresh = false, opts = {}) {
   const _tk = ++_hwfitFetchToken;
   const allowNetwork = fresh || opts.allowNetwork !== false;
@@ -825,7 +850,7 @@ export async function _hwfitFetch(fresh = false, opts = {}) {
     if (hasManualOrDismissed) params.set('_hw_override_ts', String(Date.now()));
     // Image models use a separate registry/endpoint.
     const isImageMode = useCase === 'image_gen';
-    if ((fresh || (_paintedFromCache && !search)) && !isImageMode) {
+    if ((fresh || (_paintedFromCache && !search)) && !isImageMode && !opts.afterCatalogRefresh) {
       params.set('refresh_catalog', '1'); // update HF-backed dynamic catalogs in the background
     }
     if (!isImageMode) {
@@ -892,6 +917,7 @@ export async function _hwfitFetch(fresh = false, opts = {}) {
       if (!_cached) { _hwfitShowError(list, remoteHost, data.error); if (hw) hw.innerHTML = ''; }
       return;
     }
+    _followCatalogRefresh(data.catalog_refresh);
     // Merge Ollama library rows into the main list so they appear with the
     // same Fit/Param/Quant/VRAM/Mode columns as HF results and respond to the
     // Engine filter. Skipped in image-gen mode (Ollama doesn't serve diffusers).

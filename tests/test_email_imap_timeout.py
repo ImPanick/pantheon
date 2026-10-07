@@ -10,6 +10,7 @@ os.environ.setdefault("DATA_DIR", str(_tmp_data))
 os.environ.setdefault("DATABASE_URL", f"sqlite:///{_tmp_data / 'app.db'}")
 
 from routes.email_helpers import (
+    _IMAP_CONNECT_SECONDS,
     _IMAP_TIMEOUT_SECONDS,
     _coerce_imap_timeout_seconds,
     _open_imap_connection,
@@ -66,8 +67,10 @@ def test_open_imap_connection_uses_shared_timeout_for_implicit_ssl(monkeypatch):
 
     conn = _open_imap_connection("imap.one.com", 993, starttls=False)
 
+    # `P23-07`: the connection opens within its own cap; the session's reads
+    # then run on the shared timeout.
     assert _FakeIMAP.calls == [
-        ("connect", "_FakeIMAPSSL", "imap.one.com", 993, _IMAP_TIMEOUT_SECONDS)
+        ("connect", "_FakeIMAPSSL", "imap.one.com", 993, _IMAP_CONNECT_SECONDS)
     ]
     assert conn.sock.timeout == _IMAP_TIMEOUT_SECONDS
 
@@ -82,7 +85,7 @@ def test_open_imap_connection_supports_starttls(monkeypatch):
     _open_imap_connection("imap.local", 143, starttls=True)
 
     assert _FakeIMAP.calls == [
-        ("connect", "_FakeIMAP", "imap.local", 143, _IMAP_TIMEOUT_SECONDS),
+        ("connect", "_FakeIMAP", "imap.local", 143, _IMAP_CONNECT_SECONDS),
         ("starttls", "imap.local", 143),
     ]
 

@@ -68,11 +68,25 @@ logger = logging.getLogger(__name__)
 
 URL_ENV = P.URL_ENV
 _TIMEOUT = 30.0
+# `P23-07` (`PERF-M-10`): how long a call waits for the CONNECTION, apart from
+# the answer. One 30 s timeout covered both, so a workstation on an address
+# that drops packets was reported down after 30 s (`health`), 15 s
+# (`status`), 35 s (`screen`) — measured on `32df791` against 10.255.255.1. A
+# workstation is on this machine or this network: an open port answers a
+# connect in milliseconds, so three seconds of silence is "not there". The
+# answer itself keeps the call's own timeout (an exec, a VM starting up).
+_CONNECT_S = 3.0
 # An exec's answer can take as long as the command; the daemon enforces the
 # command's own timeout and this only has to outlast it.
 _EXEC_GRACE_S = 15.0
 
 account_for = P.account_name
+
+
+def _timeouts(total: float):
+    """`P23-07`: `total` for the answer, at most `_CONNECT_S` for the connection."""
+    import httpx
+    return httpx.Timeout(total, connect=min(_CONNECT_S, total))
 
 
 class WorkstationError(Exception):
@@ -364,8 +378,8 @@ class WorkstationClient:
                     host, parts.port or 80, type=0, proto=0)
             except OSError as e:
                 raise WorkstationUnreachable(
-                    "unavailable", f"The workstation at {self.base} did not answer "
-                                   f"({type(e).__name__}). Is it running?") from e
+                    "unavailable", f"The workstation at {self.base} did not answer. "
+                                   "Is it running?") from e
             addresses = {info[4][0] for info in infos}
             verdict = bool(addresses) and all(_not_global(a) for a in addresses)
         if not verdict:
@@ -397,16 +411,17 @@ class WorkstationClient:
 
     def _http(self, timeout: float, verify: Any):
         import httpx
-        return httpx.AsyncClient(timeout=timeout, verify=verify, follow_redirects=False,
+        return httpx.AsyncClient(timeout=_timeouts(timeout), verify=verify, follow_redirects=False,
                                  mounts=self._mounts or None)  # `B982`
 
     def _unreachable(self, e: BaseException) -> WorkstationError:
         """The sentence for a request that never got an answer — and for a
         certificate, which one it was and what to do."""
+        # `P23-07` (`PERF-U-7`): the sentence a person reads, without the
+        # exception's class name; `_call` logs that at INFO for whoever needs it.
         return self._certificate_refused(e) or WorkstationUnreachable(
             "unavailable",
-            f"The workstation at {self.base} did not answer ({type(e).__name__}). "
-            "Is it running?")
+            f"The workstation at {self.base} did not answer. Is it running?")
 
     def _certificate_refused(self, e: BaseException) -> Optional[WorkstationError]:
         """The sentence when the connection failed on the certificate, found
@@ -582,7 +597,7 @@ class WorkstationClient:
         await outbound.acquire_async(host, authenticated=True)
         result: Optional[Dict] = None
         try:
-            async with httpx.AsyncClient(timeout=wait, verify=verify, follow_redirects=False,
+            async with httpx.AsyncClient(timeout=_timeouts(wait), verify=verify, follow_redirects=False,
                                          mounts=self._mounts or None) as client:  # `B982`
                 async with client.stream(method, url, json=body, headers=self._headers()) as r:
                     _observe(host, r)

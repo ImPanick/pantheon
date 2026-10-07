@@ -30,6 +30,9 @@ function _markDismissed(ids) {
 
 let _activePollInterval = null;
 let _activePollInFlight = false;
+const _ACTIVE_POLL_MS = 20000;
+let _lastActivePollAt = 0;
+let _visibilityHooked = false;
 let _librarySyncInFlight = false;
 let _lastLibrarySyncAt = 0;
 const _LIBRARY_SYNC_MIN_MS = 120000;
@@ -41,8 +44,22 @@ export function init(apiBase) {
   // (e.g. by the agent via trigger_research) gets adopted into the
   // sidebar — _reconnectActive only ran once at load before, so
   // agent-started jobs never appeared until a page reload.
+  //
+  // `P23-07` (PERF-M-12): not while the tab is hidden — measured, a hidden tab
+  // asked `/api/research/active` five times in 90 s for a panel nobody could
+  // see. Coming back to the tab looks once, if a look is due.
   if (_activePollInterval) clearInterval(_activePollInterval);
-  _activePollInterval = setInterval(() => { _reconnectActive(); }, 20000);
+  _activePollInterval = setInterval(() => {
+    if (document.visibilityState !== 'hidden') _reconnectActive();
+  }, _ACTIVE_POLL_MS);
+  if (!_visibilityHooked) {
+    _visibilityHooked = true;
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState !== 'hidden' && Date.now() - _lastActivePollAt >= _ACTIVE_POLL_MS) {
+        _reconnectActive();
+      }
+    });
+  }
 }
 
 // Allow an immediate adopt when the chat stream signals a new research
@@ -59,6 +76,7 @@ export function refreshLibrary(options = {}) {
 async function _reconnectActive(options = {}) {
   if (_activePollInFlight) return;
   _activePollInFlight = true;
+  _lastActivePollAt = Date.now();
   try {
     // Reconnect to running tasks
     const res = await fetch(`${_apiBase}/api/research/active`, { credentials: 'same-origin' });

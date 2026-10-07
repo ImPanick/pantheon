@@ -144,18 +144,23 @@ function _countLineBreaks(s) {
   return ((s || '').match(/\n/g) || []).length;
 }
 
+// `P23-07` (PERF-M-11, C-IDLE). A beat from a key, a pointer, a scroll, the
+// window's focus or the tab coming forward says a person is here; the 15 s
+// interval beat says only that the tab is open, `{"idle": true}`, and the
+// server's gate ignores it. Until this row the interval beat was `{}` too, so a
+// tab left visible held the inbox check and every scheduled run back all day.
+// The two keep separate clocks: an idle beat must not use up the 12 s gap and
+// swallow the key a person presses when they come back.
 function initForegroundActivityHeartbeat() {
-  let lastSent = 0;
+  let lastActive = 0;
   const minGapMs = 12000;
-  const send = (force = false) => {
-    if (document.visibilityState === 'hidden') return;
-    const now = Date.now();
-    if (!force && now - lastSent < minGapMs) return;
-    lastSent = now;
+  const intervalMs = 15000;
+  const post = (idle) => {
+    const body = idle ? '{"idle":true}' : '{}';
     try {
       if (navigator.sendBeacon) {
-        const body = new Blob(['{}'], { type: 'application/json' });
-        if (navigator.sendBeacon('/api/activity/heartbeat', body)) return;
+        const blob = new Blob([body], { type: 'application/json' });
+        if (navigator.sendBeacon('/api/activity/heartbeat', blob)) return;
       }
     } catch (_) {}
     fetch('/api/activity/heartbeat', {
@@ -163,8 +168,20 @@ function initForegroundActivityHeartbeat() {
       credentials: 'same-origin',
       keepalive: true,
       headers: { 'Content-Type': 'application/json' },
-      body: '{}',
+      body,
     }).catch(() => {});
+  };
+  const send = (force = false) => {
+    if (document.visibilityState === 'hidden') return;
+    const now = Date.now();
+    if (!force && now - lastActive < minGapMs) return;
+    lastActive = now;
+    post(false);
+  };
+  const idleBeat = () => {
+    if (document.visibilityState === 'hidden') return;
+    if (Date.now() - lastActive < intervalMs) return;   // a person's beat just went
+    post(true);
   };
   send(true);
   window.addEventListener('focus', () => send(true));
@@ -174,7 +191,7 @@ function initForegroundActivityHeartbeat() {
   ['pointerdown', 'keydown', 'touchstart', 'scroll'].forEach(type => {
     window.addEventListener(type, () => send(false), { passive: true, capture: true });
   });
-  setInterval(() => send(false), 15000);
+  setInterval(idleBeat, intervalMs);
 }
 initForegroundActivityHeartbeat();
 
@@ -3882,9 +3899,19 @@ function startPantheonApp() {
     _show('rail-chats', !!hasChatNotif);
   }
   window._syncRailDynamic = _syncRailDynamic;
-  // Sync periodically and on key events
-  setInterval(_syncRailDynamic, 1000);
+  // Sync on the key events, and — `P23-07` (PERF-M-12) — when one of the three
+  // things it reads changes: the body's `doc-view` (the document pane), the doc
+  // indicator's `visible` and the chats rail button's `rail-notify`. This was
+  // `setInterval(_syncRailDynamic, 1000)`: a wake-up a second for the life of
+  // the tab, hidden or not, to look at three classes.
   document.addEventListener('overflow-state-change', _syncRailDynamic);
+  if (typeof MutationObserver !== 'undefined') {
+    const _railWatch = new MutationObserver(_syncRailDynamic);
+    [document.body, el('doc-indicator-btn'), el('rail-chats')].forEach(node => {
+      if (node) _railWatch.observe(node, { attributes: true, attributeFilter: ['class'] });
+    });
+  }
+  _syncRailDynamic();
 
   const sidebarSearchBtn = el('sidebar-search-btn');
   if (sidebarSearchBtn) {

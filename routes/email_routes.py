@@ -38,7 +38,7 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
 from fastapi import APIRouter, Query, UploadFile, File, BackgroundTasks, HTTPException, Depends, Request
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from src.constants import DATA_DIR
 from src import mail_auth, providers
 
@@ -2726,6 +2726,15 @@ def setup_email_routes():
                 owner, account_id or "", folder, filter, limit, offset, bool(cache_bust),
                 len((result or {}).get("emails") or []), (result or {}).get("total"), elapsed_ms,
             )
+        if result and result.get("error"):
+            # `P23-07` (`PERF-M-10`): a list that could not be read is not a
+            # 200 — measured on `32df791`, an unreachable server answered
+            # `200 {"emails": [], "error": "Mail operation failed: timed out"}`
+            # after 30 s. Same body (every caller reads `error` from it), and
+            # the status says what happened: 504 when the server did not
+            # answer in time, 502 when it answered with a failure.
+            timed_out = "timed out" in str(result.get("error")).lower()
+            return JSONResponse(result, status_code=504 if timed_out else 502)
         return result
 
     @router.get("/unread-state")

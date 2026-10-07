@@ -56,6 +56,17 @@ def _sqlite_safe_copy(src: Path, dst: Path) -> None:
         dst.write_bytes(src.read_bytes())
 
 
+_SQLITE_SIDECARS = ("-wal", "-shm", "-journal")
+
+
+def _is_sidecar_of(path: Path, snapshotted) -> bool:
+    """`P23-07`: is this a live SQLite sidecar of a database snapshotted via `.backup()`?"""
+    for suffix in _SQLITE_SIDECARS:
+        if path.name.endswith(suffix) and path.with_name(path.name[: -len(suffix)]) in snapshotted:
+            return True
+    return False
+
+
 def _reject_output_inside_data(out_path: Path) -> None:
     try:
         resolved = out_path.resolve()
@@ -105,6 +116,13 @@ def cmd_snapshot(args):
                 if not args.include_research and "deep_research" in rel.parts:
                     continue
                 if not args.include_attachments and "mail-attachments" in rel.parts:
+                    continue
+                # `P23-07`. A database snapshotted above already holds every
+                # commit in its `-wal`; the live sidecars are a later state of
+                # a different file. Restored beside the snapshot, SQLite would
+                # replay that WAL over it — and a checkpoint between the two
+                # copies makes that a database of two moments.
+                if _is_sidecar_of(p, db_map):
                     continue
                 # Substitute SQLite snapshots for the live files
                 source = db_map.get(p, p)

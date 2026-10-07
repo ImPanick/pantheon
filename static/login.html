@@ -570,7 +570,11 @@
       submitBtn.innerHTML = '<span class="login-spinner" aria-hidden="true"></span>';
       submitBtn.disabled = true;
       Promise.all([
-        fetch(appUrl('/api/sessions'), { credentials: 'same-origin' }).then(r => r.json()),
+        fetch(appUrl('/api/sessions'), { credentials: 'same-origin' }).then(r => {
+          // `P23-07`: whether the sidebar has older chats to offer (`X-More-Chats`).
+          sessionStorage.setItem('pan-prefetch-sessions-more', r.headers.get('X-More-Chats') || '');
+          return r.json();
+        }),
         fetch(appUrl('/api/auth/features'), { credentials: 'same-origin' }).then(r => r.json()),
         fetch(appUrl('/api/auth/settings'), { credentials: 'same-origin' }).then(r => r.json()),
       ]).then(([sess, feat, sett]) => {

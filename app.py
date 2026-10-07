@@ -191,6 +191,38 @@ app.add_middleware(
 # security-header middleware composes cleanly on top.
 app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=6)
 
+
+# ========= ACCESS LOG: `/static/` AT DEBUG (`P23-07`, `PERF-M-16`) =========
+# uvicorn logs every request at INFO, and a page load is ~190 of them for the
+# shell's modules, fonts and icons — measured by the perf audit, 11,274 access
+# lines in a 45-minute session, the requests that said anything lost among them.
+# A `/static/` file served is now a DEBUG line (kept, and shown when uvicorn's
+# level is debug); a `/static/` request that failed (4xx/5xx) stays at INFO.
+# A filter on the logger, not a handler: `uvicorn app:app` configures logging
+# before this module is imported and `uvicorn.run(app)` after, and
+# `logging.config.dictConfig` replaces a logger's handlers but keeps its filters.
+class StaticAccessAtDebug(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        args = record.args if isinstance(record.args, tuple) else ()
+        if len(args) < 5:
+            return True
+        path, status = args[2], args[4]
+        if not (isinstance(path, str) and path.startswith("/static/")):
+            return True
+        try:
+            if int(status) >= 400:
+                return True
+        except (TypeError, ValueError):
+            return True
+        if not logging.getLogger("uvicorn.access").isEnabledFor(logging.DEBUG):
+            return False
+        record.levelno, record.levelname = logging.DEBUG, "DEBUG"
+        return True
+
+
+if not any(isinstance(f, StaticAccessAtDebug) for f in logging.getLogger("uvicorn.access").filters):
+    logging.getLogger("uvicorn.access").addFilter(StaticAccessAtDebug())
+
 # ========= SECURITY HEADERS MIDDLEWARE =========
 app.add_middleware(SecurityHeadersMiddleware)
 
@@ -285,6 +317,9 @@ from src.roles import install_role_layer
 
 auth_manager = AuthManager()
 app.state.auth_manager = auth_manager
+# `P23-07` (`PERF-M-15`): the one the policy checks ask for (`core.auth.shared_auth_manager`).
+from core.auth import register_shared_auth_manager
+register_shared_auth_manager(auth_manager)
 # `P11-02`. The one line `P12-01` left this registry waiting for: from here on
 # `settings.resolve_limit` consults the caller's role profile before the
 # instance setting, the environment and the built-in default — for every byte
@@ -708,6 +743,14 @@ class _RevalidatingStatic(StaticFiles):
         resp = await super().get_response(path, scope)
         if path.endswith((".js", ".css", ".html")):
             resp.headers["Cache-Control"] = "no-cache"
+        if path.replace(os.sep, "/") == "sw.js":
+            # `P23-07` (`PERF-M-1`). A worker's scope may not reach above its
+            # script's folder unless the script's response says so, and this
+            # one lives in `/static/` — so it was registered at `/static/` and
+            # controlled no page the app serves: 0 of 188 responses came from
+            # it, and an offline reload was a browser error page. On the `304`
+            # too: a browser refreshing the worker reads the merged headers.
+            resp.headers["Service-Worker-Allowed"] = "/"
         return resp
 
     def file_response(self, full_path, stat_result, scope, status_code=200):
@@ -868,6 +911,10 @@ async def llm_service_error_handler(request: Request, exc: LLMServiceError):
 async def web_search_error_handler(request: Request, exc: WebSearchError):
     return JSONResponse(status_code=502, content={"error": "WEB_SEARCH_ERROR", "message": str(exc)})
 
+# `P23-07` (`PERF-M-2`): a held SQLite lock is a 503 with a sentence, not a bare 500.
+from core.database import install_database_busy_answer
+install_database_busy_answer(app)
+
 # ========= WEBHOOK MANAGER =========
 from src.webhook_manager import WebhookManager
 
@@ -881,27 +928,14 @@ app.include_router(auth_router)
 
 
 @app.post("/api/activity/heartbeat")
-async def activity_heartbeat():
-    from src.interactive_gate import (
-        mark_browser_activity,
-        maybe_stop_background_tasks_for_heartbeat,
-    )
+async def activity_heartbeat(request: Request):
+    # `P23-07` (C-IDLE): the tab's interval beat says `{"idle": true}` and holds
+    # nothing back; a beat from input, focus or the tab coming forward does.
+    # The whole answer is `on_heartbeat`'s, so the tests drive what this runs.
+    from src.interactive_gate import on_heartbeat
 
-    await mark_browser_activity()
-
-    async def _stop_background():
-        try:
-            await maybe_stop_background_tasks_for_heartbeat(
-                task_scheduler.stop_background_tasks_for_foreground
-            )
-        except Exception:
-            logging.getLogger("app.foreground_gate").debug(
-                "heartbeat task stop failed",
-                exc_info=True,
-            )
-
-    asyncio.create_task(_stop_background())
-    return {"ok": True}
+    return await on_heartbeat(
+        await request.body(), task_scheduler.stop_background_tasks_for_foreground)
 
 
 # Uploads

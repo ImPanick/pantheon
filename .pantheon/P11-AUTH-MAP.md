@@ -163,7 +163,7 @@ derived: direct 106 · Depends 21 · total 127
 | `routes/diagnostics_routes.py` | `prometheus_metrics` | `GET /metrics` | the Prometheus scrape endpoint. `Law 16` clause 4 makes this the operator's to point where they like, which is exactly the operator tier |
 | `routes/diagnostics_routes.py` | `run_eval` | `POST /api/diagnostics/evals/{name}/run` | runs one; it costs the instance's model budget |
 | `routes/diagnostics_routes.py` | `test_research` | `POST /api/test-research` | a research-pipeline probe that spends model budget |
-| `routes/hwfit_routes.py` | `setup_hwfit_routes` | `—` | not a route: a router-level `dependencies=[Depends(require_admin)]` covering all four `/api/hwfit` routes — hardware detection on the serving host, or over SSH on a host the caller names. Host topology, like `list_gpus` above, and the choice of which box this instance opens SSH to. `B541`: until 2026-10-02 the middleware was the whole gate, and `/profiles` with no host was a directory-existence probe on the serving host for any signed-in account |
+| `routes/hwfit_routes.py` | `setup_hwfit_routes` | `—` | not a route: a router-level `dependencies=[Depends(require_admin)]` covering all five `/api/hwfit` routes — hardware detection on the serving host, or over SSH on a host the caller names. Host topology, like `list_gpus` above, and the choice of which box this instance opens SSH to. `B541`: until 2026-10-02 the middleware was the whole gate, and `/profiles` with no host was a directory-existence probe on the serving host for any signed-in account |
 | `routes/embedding_routes.py` | `setup_embedding_routes` | `—` | not a route: a router-level `dependencies=[Depends(require_admin)]` covering every route under `/api/embeddings`. One site, whole-surface reach — the shape `P11-02`'s refactor should prefer |
 | `routes/model_routes.py` | `delete_model_endpoint` | `DELETE /api/model-endpoints/{ep_id}` | deletes it |
 | `routes/model_routes.py` | `discover_local` | `GET /api/discover` | LAN/local discovery, which makes outbound connections |
@@ -400,16 +400,17 @@ routes: 4
 
 #### `routes/hwfit_routes.py`
 
-All four take `host` and `ssh_port` and run hardware detection over SSH against them — or, with no host, on the serving host itself. `GET /api/cookbook/gpus` answers the same question behind `require_admin`, and `routes/codex_routes.py`'s `_require_cookbook_scope` writes down why. Since `B541` the router carries the same gate, so a fifth route here is gated on the commit that adds it; § E holds every route in the tree that reaches a caller-named host to that.
+Four take `host` and `ssh_port` and run hardware detection over SSH against them — or, with no host, on the serving host itself; the fifth (`P23-07`) only reports the catalogue refresh. `GET /api/cookbook/gpus` answers the same question behind `require_admin`, and `routes/codex_routes.py`'s `_require_cookbook_scope` writes down why. Since `B541` the router carries the same gate, so a fifth route here is gated on the commit that adds it; § E holds every route in the tree that reaches a caller-named host to that.
 
-routes: 4
+routes: 5
 
 | route | handler | gate | intended |
 |---|---|---|---|
 | `GET /api/hwfit/system` | `get_system` | `middleware + require_admin` | yes — `B541`. `?host=user@server` makes the instance open SSH to a host the caller names; admin, as `GET /api/cookbook/gpus` is for the same question. The SSRF validators still run behind the gate. |
-| `GET /api/hwfit/models` | `get_models` | `middleware + require_admin` | yes — `B541`. Same `host`/`ssh_port` pair, same detection path; `refresh_catalog=1` also forces a HuggingFace catalogue refresh on the instance's paced outbound budget. |
+| `GET /api/hwfit/models` | `get_models` | `middleware + require_admin` | yes — `B541`. Same `host`/`ssh_port` pair, same detection path; `refresh_catalog=1` also starts a HuggingFace catalogue refresh on the instance's paced outbound budget — since `P23-07` in a thread, one at a time and at most once per five minutes. |
 | `GET /api/hwfit/profiles` | `get_serve_profiles` | `middleware + require_admin` | yes — `B541`. Same, and `model_path` runs `test -d` / `find` on the target, the serving host when no host is named. |
 | `GET /api/hwfit/image-models` | `get_image_models` | `middleware + require_admin` | yes — `B541`. Same. |
+| `GET /api/hwfit/catalog-refresh` | `get_catalog_refresh` | `middleware + require_admin` | yes — `P23-07`. Where the background catalogue refresh `refresh_catalog=1` starts is (`idle`/`running`/`done`/`failed`, with counts); the Forge follows it to redraw. Reads no host and starts nothing. |
 
 #### `routes/prefs_routes.py`
 

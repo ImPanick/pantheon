@@ -1946,12 +1946,37 @@ function _scanAndWire() {
     injectMinimizeButton(modal, id);
   }
 }
-const _scanTimer = setInterval(_scanAndWire, 1000);
-// First scan after DOM ready
+// `P23-07` (PERF-M-12). This was `setInterval(_scanAndWire, 1000)`: a wake-up
+// a second for the life of the tab, hidden or not, and a window built between
+// two ticks went up to a second without its `_`. Now the scan runs when the
+// document changes in a way that can need it — a wired window or a
+// `.modal-header` arrives, or something inside a header is replaced (a tool
+// that rebuilds its header drops the `_` with it) — and never otherwise. A
+// chat's streaming text adds no header and wakes nothing here.
+const _WIRED_SELECTOR = Object.keys(_AUTO_WIRE).map(id => `#${id}`).concat('.modal-header').join(',');
+function _mayNeedWiring(records) {
+  for (const r of records) {
+    let added = false;
+    for (const n of r.addedNodes) {
+      if (n.nodeType !== 1) continue;
+      added = true;
+      if ((n.matches && n.matches(_WIRED_SELECTOR)) || (n.querySelector && n.querySelector(_WIRED_SELECTOR))) return true;
+    }
+    if (added && r.target && r.target.closest && r.target.closest('.modal-header')) return true;
+  }
+  return false;
+}
+function _watchForWindows() {
+  if (typeof MutationObserver === 'undefined' || !document.body) return;
+  new MutationObserver(records => { if (_mayNeedWiring(records)) _scanAndWire(); })
+    .observe(document.body, { childList: true, subtree: true });
+}
+// First scan after DOM ready, and the watch from then on.
 if (document.readyState !== 'loading') {
   setTimeout(_scanAndWire, 100);
+  _watchForWindows();
 } else {
-  document.addEventListener('DOMContentLoaded', () => setTimeout(_scanAndWire, 100));
+  document.addEventListener('DOMContentLoaded', () => { setTimeout(_scanAndWire, 100); _watchForWindows(); });
 }
 
 // `P23-06` (NAV-M-13). Swipe-down was two things: the Forge, Calendar and

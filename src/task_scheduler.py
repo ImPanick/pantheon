@@ -2617,6 +2617,10 @@ class TaskScheduler:
         await asyncio.sleep(10)
         while self._running:
             try:
+                await self._seed_defaults_for_new_owners()
+            except Exception:
+                logger.warning("Seeding a new person's built-in tasks failed", exc_info=True)
+            try:
                 await self._check_due_tasks()
             except Exception:
                 logger.exception("Error in task scheduler loop")
@@ -7125,8 +7129,49 @@ class TaskScheduler:
             logger.info("Stopped %d background scheduler task(s): %s", stopped, reason)
         return stopped
 
+    # `P23-07` (`PERF-M-18`). Built-in tasks are seeded where nobody is waiting:
+    # at startup for everyone in `auth.json` (`app._ensure_default_tasks`), and
+    # by this loop for a person created since — read off `auth.json`, which is
+    # re-read only when it changes. Until this row the first `GET /api/tasks`
+    # after an account was made did it, and every later one re-ran the
+    # reconcile and committed: measured by the perf audit, the first list after
+    # boot wrote 11 rows (320 ms), and a GET that writes is a read that can wait
+    # on the database lock (`PERF-M-2`).
+    def _seeded_owners(self) -> set:
+        seeded = getattr(self, "_defaults_seeded", None)
+        if seeded is None:
+            seeded = self._defaults_seeded = set()
+        return seeded
+
+    def _owners_in_auth_file(self) -> set:
+        from src.constants import AUTH_FILE
+        try:
+            stamp = os.stat(AUTH_FILE).st_mtime_ns
+        except OSError:
+            return set()
+        cached = getattr(self, "_auth_owners_cache", None)
+        if cached and cached[0] == stamp:
+            return cached[1]
+        try:
+            with open(AUTH_FILE, encoding="utf-8") as f:
+                owners = {u for u in (json.load(f).get("users") or {}) if u}
+        except Exception:
+            owners = set()
+        self._auth_owners_cache = (stamp, owners)
+        return owners
+
+    async def _seed_defaults_for_new_owners(self) -> list:
+        """Seed the built-ins of every person in `auth.json` this process has
+        not seeded yet; return who was seeded."""
+        fresh = sorted(self._owners_in_auth_file() - self._seeded_owners())
+        for owner in fresh:
+            await self.ensure_defaults(owner)
+            self._seeded_owners().add(owner)   # once per process, done or not
+        return fresh
+
     async def ensure_defaults(self, owner: str):
         """Create default housekeeping tasks for this owner (idempotent per action)."""
+        self._seeded_owners().add(owner)
         from core.database import SessionLocal, ScheduledTask
         try:
             from routes.prefs_routes import _load_for_user

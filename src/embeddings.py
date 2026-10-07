@@ -35,6 +35,7 @@ from typing import List, Optional
 from src.runtime_paths import get_app_root
 
 logger = logging.getLogger(__name__)
+from src.log_once import clear as _clear_said, log_once  # noqa: E402  `P23-07` (`PERF-M-16`)
 
 _DEFAULT_MODEL = "all-minilm:l6-v2"
 _DEFAULT_FASTEMBED_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
@@ -329,10 +330,13 @@ def get_embedding_client():
         client = FastEmbedClient()
         client.get_sentence_embedding_dimension()
         logger.info(f"Using local FastEmbed: model={client.model}")
+        _clear_said("fastembed-init")
         return client
     except ImportError:
-        logger.error("fastembed not installed — run: pip install fastembed")
+        log_once(logger, logging.ERROR, "fastembed-init", "fastembed not installed — run: pip install fastembed")
     except Exception as e:
-        logger.error(f"FastEmbed init failed: {e}")
+        # `P23-07` (`PERF-M-16`): a state, said once per process — it was an
+        # ERROR on every page load while nothing about it changed.
+        log_once(logger, logging.ERROR, "fastembed-init", "FastEmbed init failed: %s", e)
 
     return None

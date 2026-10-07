@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // static/sw.js — Pantheon PWA Service Worker
 // Strategy:
-//   - HTML (navigation): stale-while-revalidate. Instant open from cache,
-//     background refresh so the next open has latest HTML.
+//   - HTML (navigation): network-first, the cached shell when the network
+//     fails (`P23-07` — see the navigation branch for why not stale-first).
 //   - JS/CSS (/static/*.js|.css): network-first, cache fallback for offline.
 //     (So code/style edits show up on a normal reload, no manual cache clear.)
 //   - Other static assets (images/fonts/libs): cache-first with bg refresh.
@@ -550,6 +550,17 @@ function assetsOf(rawSource, url) {
 // `/` is the one that cannot revalidate, under any mode: `serve_html_with_nonce`
 // (src/app_helpers.py:31) builds a fresh HTMLResponse per request with no ETag
 // and no Last-Modified, so it is a full 283 KB every install. `B121`.
+// `P23-07`. The ETag of what this worker last stored or confirmed, per
+// absolute URL, so a reload that brings back the same bytes costs neither a
+// clone nor a cache read (see the JS/CSS branch of the fetch handler). Lost
+// when the browser stops an idle worker; then the first sight of each URL
+// reads the cache once and fills it in again.
+const HELD_ETAGS = new Map();
+
+function etagOf(res) {
+  return (res && res.headers && typeof res.headers.get === 'function' && res.headers.get('etag')) || '';
+}
+
 async function precacheOne(cache, url) {
   let res;
   try {
@@ -579,8 +590,10 @@ async function precacheOne(cache, url) {
       source = '';
     }
   }
+  const tag = etagOf(res);
   try {
     await cache.put(url, res);
+    if (tag) HELD_ETAGS.set(new URL(url, self.location.origin).href, tag);
   } catch (err) {
     /* storage quota, or a response that cannot be stored — the walk carries on */
   }
@@ -700,31 +713,50 @@ self.addEventListener('fetch', (e) => {
   // Never touch API calls or non-GET.
   if (url.pathname.startsWith('/api/') || e.request.method !== 'GET') return;
 
-  // HTML navigation: stale-while-revalidate the document this route serves —
-  // and ONLY for a route this worker has a document for. Other navigations
-  // (e.g. a deep-linked /static/*.html page, or a path that does not exist)
-  // must go to the network/static handlers below; otherwise every navigation
-  // was served the app index, replacing the page the user actually asked for.
+  // HTML navigation: the document this route serves — and ONLY for a route
+  // this worker has a document for. Other navigations (e.g. a deep-linked
+  // /static/*.html page, or a path that does not exist) must go to the
+  // network/static handlers below; otherwise every navigation was served the
+  // app index, replacing the page the user actually asked for.
   //
   // `navigationKey` is what makes that distinction a route set instead of the
   // single path this used to test (`B120`, `B122`).
+  //
+  // `P23-07` (`PERF-M-1`): network first, the cache only when the network
+  // fails. Until this row the worker was registered at `/static/` and this
+  // branch never ran for the app; at scope `/` it runs for every load, and
+  // the stale-while-revalidate it used to say would have done two wrong
+  // things there:
+  //   * a person who is signed out (or whose session expired) would be handed
+  //     the cached app instead of the server's `302 → /login` — the shell
+  //     carries no one's data, but the page would be a dead app whose every
+  //     call answers 401;
+  //   * the first load after an upgrade would be the OLD index.html beside the
+  //     NEW modules (`/static/*.js` is network-first and the server ignores
+  //     `?v=`), so a module looking for an element the new page added finds
+  //     nothing.
+  // A navigation's own fetch does not follow redirects (`redirect: 'manual'`),
+  // so the server's 302 comes back as an opaque redirect and the browser
+  // follows it, as if no worker were here. What is stored is unchanged: an OK,
+  // unredirected copy of the shell, under the one key all shell routes share.
   if (e.request.mode === 'navigate') {
     const key = navigationKey(url.pathname);
     if (key) {
       e.respondWith(
-        caches.open(CACHE_NAME).then(async cache => {
-          const cached = await cache.match(key);
-          const network = fetch(e.request).then(res => {
-            // The nine shell routes return the same bytes, so a fresh copy
-            // from any of them refreshes the one entry all nine are served
-            // from — the premise the route set is derived on, checked against
-            // the real server by the test named above. `redirected` is the
-            // same guard `precacheOne` carries, for the same reason.
-            if (res && res.ok && !res.redirected) cache.put(key, res.clone());
-            return res;
-          }).catch(() => cached);
-          return cached || network;
-        })
+        fetch(e.request).then(res => {
+          // The shell routes return the same bytes, so a fresh copy from any
+          // of them refreshes the one entry they are all served from — the
+          // premise the route set is derived on, checked against the real
+          // server by the test named above. `redirected` is the same guard
+          // `precacheOne` carries, for the same reason.
+          if (res && res.ok && !res.redirected) {
+            const copy = res.clone();
+            caches.open(CACHE_NAME).then(cache => cache.put(key, copy));
+          }
+          return res;
+        }).catch(() => caches.open(CACHE_NAME)
+          .then(cache => cache.match(key))
+          .then(cached => cached || Response.error()))
       );
       return;
     }
@@ -732,12 +764,29 @@ self.addEventListener('fetch', (e) => {
 
   // JS/CSS: network-first — always try the network so code/style edits show up
   // on a normal reload; fall back to cache only when offline.
+  //
+  // `P23-07`: a copy is written only when it is not the one already held
+  // (`HELD_ETAGS`). Once this worker controlled the app (scope `/`), every
+  // reload sent ~150 modules through here and cloned and rewrote each of them
+  // into the cache — measured on the seeded install, warm reload DCL median
+  // 472 ms with the worker blocked, 875 ms with it, 637 ms with the write
+  // removed, 772 ms with a cache read deciding each write.
+  // `_RevalidatingStatic` gives every file an ETag, so the same ETag is the
+  // same bytes.
   if (url.pathname.startsWith('/static/') && /\.(js|css)(\?|$)/.test(url.pathname + url.search)) {
     e.respondWith(
       fetch(e.request).then(res => {
         if (res && res.ok) {
-          const copy = res.clone();
-          caches.open(CACHE_NAME).then(cache => cache.put(e.request, copy));
+          const tag = etagOf(res);
+          // Known to be held: no clone (a clone tees the whole body), no read.
+          if (!tag || HELD_ETAGS.get(e.request.url) !== tag) {
+            const copy = res.clone();
+            caches.open(CACHE_NAME).then(async cache => {
+              const held = tag ? await cache.match(e.request) : null;
+              if (!(held && etagOf(held) === tag)) await cache.put(e.request, copy);
+              if (tag) HELD_ETAGS.set(e.request.url, tag);
+            }).catch(() => {});
+          }
         }
         return res;
       }).catch(() => caches.match(e.request))

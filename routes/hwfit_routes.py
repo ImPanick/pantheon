@@ -228,17 +228,20 @@ def setup_hwfit_routes():
         fresh=true bypasses the hardware-detection cache."""
         from services.hwfit.hardware import detect_system
         from services.hwfit.fit import rank_models
-        from services.hwfit.models import get_models, model_catalog_path, refresh_dynamic_catalogs
+        from services.hwfit.models import get_models, model_catalog_path, start_catalog_refresh
         host, ssh_port = _validate_detection_target(host, ssh_port)
         system = deepcopy(detect_system(host=host, ssh_port=ssh_port, platform=platform, fresh=fresh))
         if system.get("error"):
             return {"system": system, "models": [], "error": system["error"]}
         catalog_refresh = None
         if refresh_catalog:
+            # `P23-07` (`PERF-M-6`): beside the answer, not inside it — the
+            # rows below are the ones already cached; the Forge follows
+            # `/catalog-refresh` and redraws when it is done.
             try:
-                catalog_refresh = refresh_dynamic_catalogs(force=True)
+                catalog_refresh = start_catalog_refresh(force=True)
             except Exception as e:
-                catalog_refresh = {"error": str(e)}
+                catalog_refresh = {"state": "failed", "error": str(e)}
         if not get_models():
             return {
                 "system": system,
@@ -342,6 +345,13 @@ def setup_hwfit_routes():
         if catalog_refresh is not None:
             payload["catalog_refresh"] = catalog_refresh
         return payload
+
+    @router.get("/catalog-refresh")
+    def get_catalog_refresh():
+        """`P23-07` (`PERF-M-6`): where the HuggingFace catalog refresh is —
+        `idle`, `running`, `done` (with what it fetched) or `failed`."""
+        from services.hwfit.models import catalog_refresh_status
+        return catalog_refresh_status()
 
     @router.get("/profiles")
     def get_serve_profiles(model: str = "", model_path: str = "", host: str = "", ssh_port: str = "", platform: str = "", fresh: bool = False, serve_weights_gb: float = 0.0, serve_quant: str = ""):

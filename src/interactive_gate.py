@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import asynccontextmanager
+import json
 import os
 import time
 
@@ -126,6 +127,30 @@ def should_track_interactive_request(path: str, method: str = "GET") -> bool:
     return True
 
 
+def heartbeat_says_idle(body: bytes | str | None) -> bool:
+    """`P23-07` (`PERF-M-11`, C-IDLE). Is this heartbeat a tab saying it is
+    merely open?
+
+    The page beats every 15 s while it is visible, and until this row every
+    beat counted as somebody using Pantheon. With a 45 s window that made a
+    tab left open — on a second monitor, over lunch — busy for ever:
+    `wait_for_interactive_quiet` has no deadline by default, so the background
+    inbox check never looked and every due scheduled run was moved 15 minutes
+    on at each tick (`B1094`), all day. Now the interval beat carries
+    `{"idle": true}` and is ignored here; a beat from a key, a pointer, a
+    scroll, the window's focus or the tab coming forward still counts. A body
+    that is anything else — `{}`, an old cached page, not JSON — is a person,
+    which is what every beat meant before (`Law 1`).
+    """
+    if not body:
+        return False
+    try:
+        data = json.loads(body)
+    except (TypeError, ValueError):
+        return False
+    return isinstance(data, dict) and data.get("idle") is True
+
+
 async def mark_browser_activity() -> None:
     """Record that an authenticated browser tab is visibly using Pantheon."""
     global _LAST_BROWSER_ACTIVITY
@@ -135,6 +160,30 @@ async def mark_browser_activity() -> None:
     async with cond:
         _LAST_BROWSER_ACTIVITY = time.monotonic()
         cond.notify_all()
+
+
+async def on_heartbeat(body: bytes | str | None, stop_background) -> dict:
+    """`POST /api/activity/heartbeat`, whole (`app.activity_heartbeat` is this).
+
+    An idle beat is answered and nothing else happens. A person's beat marks
+    the browser active and — when the gate is on — stops background work that
+    is running, in its own task so the beat answers at once (what the route
+    did before `P23-07`, moved here so tests drive the route's own code).
+    """
+    if heartbeat_says_idle(body):
+        return {"ok": True, "idle": True}
+    await mark_browser_activity()
+
+    async def _stop_background():
+        try:
+            await maybe_stop_background_tasks_for_heartbeat(stop_background)
+        except Exception:
+            import logging
+            logging.getLogger("app.foreground_gate").debug(
+                "heartbeat task stop failed", exc_info=True)
+
+    asyncio.create_task(_stop_background())
+    return {"ok": True}
 
 
 def _has_recent_browser_activity(now: float | None = None) -> bool:
