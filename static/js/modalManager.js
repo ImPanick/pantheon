@@ -99,6 +99,15 @@ function _captureRestoreHeight(modal, state) {
     delete state.restoreMinHeight;
     return;
   }
+  // `P23-06` (NAV-M-18). A window minimised while docked to an edge is as
+  // tall as the screen; `resumeDock` gives it that height back on restore.
+  // Kept here as well, the full height outlived the dock as an inline
+  // `min-height` — closed and reopened, the Brain came back 560×876 at y 12
+  // instead of 560×690.
+  if (modal.classList.contains('modal-right-docked') || modal.classList.contains('modal-left-docked')) {
+    delete state.restoreMinHeight;
+    return;
+  }
   const rect = content.getBoundingClientRect();
   if (!rect || rect.height < 120) return;
   const maxHeight = Math.max(180, window.innerHeight - 24);

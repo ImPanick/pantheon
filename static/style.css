@@ -47988,3 +47988,22 @@ button.task-card-toggle {
     pointer-events: none;
   }
 }
+
+/* NAV-U-10: one entrance for every window — the 250 ms scale-fade `.modal-content` already has (a phone sheet keeps
+   its slide up). The Forge's own 280 ms overshoot is gone, and so is the per-card cascade (`section-domino-in`, 360 ms
+   a card) that Tasks, the Library, the Gallery, Email and Skills replayed on every open. */
+#cookbook-modal .modal-content.cookbook-modal-entering {
+  animation: modal-enter 0.25s ease-out both;
+}
+@media (max-width: 768px) {
+  #cookbook-modal .modal-content.cookbook-modal-entering {
+    animation: sheet-enter 0.2s ease-out forwards;
+  }
+}
+.gallery-just-opened > .gallery-card,
+.tasks-just-opened > .task-card,
+.doclib-just-opened > .memory-item,
+.doclib-just-opened > .doclib-card,
+.email-lib-just-opened :is(.doclib-card, .date-section-header) {
+  animation-name: none;
+}

@@ -313,3 +313,104 @@ def test_the_rail_over_the_chat_still_has_its_dim_layer(tmp_path):
     html = _page(_DRAWER.replace('class="icon-rail"', 'class="icon-rail mobile-mini"'))
     out = _drive(tmp_path, html=html, steps=_HIT)
     assert out["result"] == "sidebar-backdrop", out
+
+
+# ── NAV-M-15: nothing behind a window moves — the Calendar keeps the sidebar ──
+
+_CALENDAR_PAGE = _page(
+    """
+<div class="icon-rail" id="icon-rail"></div>
+<nav class="sidebar" id="sidebar" style="width:260px">rows</nav>
+<div id="chat-container"><textarea id="message"></textarea></div>
+""",
+    """
+// The Calendar asks the server for its calendars; the harness has none to give.
+window.fetch = async () => ({ ok: true, status: 200, json: async () => ([]) });
+const cal = await import('/static/js/calendar.js');
+cal.openCalendar();
+window.__opened = !document.getElementById('calendar-modal').classList.contains('hidden');
+""",
+)
+_SIDEBAR_STATE = r"""
+  await page.waitForTimeout(300);
+  return await page.evaluate(() => ({
+    opened: window.__opened,
+    sidebarHidden: document.getElementById('sidebar').classList.contains('hidden'),
+  }));
+"""
+
+
+def test_opening_the_calendar_on_a_desktop_leaves_the_sidebar_where_it_was(tmp_path):
+    out = _drive(tmp_path, html=_CALENDAR_PAGE, steps=_SIDEBAR_STATE, viewport=(1440, 900))
+    assert out["result"] == {"opened": True, "sidebarHidden": False}, out
+
+
+def test_on_a_phone_the_calendar_still_shuts_the_drawer_it_would_open_under(tmp_path):
+    out = _drive(tmp_path, html=_CALENDAR_PAGE, steps=_SIDEBAR_STATE, viewport=(390, 844))
+    assert out["result"] == {"opened": True, "sidebarHidden": True}, out
+
+
+# ── NAV-U-10: one entrance — the 250 ms scale-fade ──────────────────────────
+
+_ENTRANCES = """
+<div id="cookbook-modal" class="modal"><div class="modal-content cookbook-modal-entering" id="forge"></div></div>
+<div id="tasks-modal" class="modal"><div class="modal-content" id="tasks"><div id="tasks-list" class="tasks-just-opened">
+  <div class="task-card memory-item" id="card"></div></div></div></div>
+<div id="doclib-modal" class="modal"><div class="modal-content doclib-modal-content"><div class="doclib-just-opened">
+  <div class="doclib-card memory-item" id="doc"></div></div></div></div>
+<div id="gallery-modal" class="modal"><div class="modal-content"><div class="gallery-just-opened">
+  <div class="gallery-card" id="photo"></div></div></div></div>
+<div id="email-lib-modal" class="modal"><div class="modal-content"><div class="email-lib-just-opened">
+  <div class="doclib-card" id="mail"></div></div></div></div>
+"""
+_ANIMATIONS = r"""
+  return await page.evaluate(() => Object.fromEntries(['forge', 'tasks', 'card', 'doc', 'photo', 'mail'].map((id) => {
+    const cs = getComputedStyle(document.getElementById(id));
+    return [id, cs.animationName + ' ' + cs.animationDuration];
+  })));
+"""
+
+
+def test_every_window_enters_with_one_250ms_scale_fade_and_no_card_cascade(tmp_path):
+    out = _drive(tmp_path, html=_page(_ENTRANCES), steps=_ANIMATIONS, viewport=(1440, 900))
+    r = out["result"]
+    assert r["forge"] == "modal-enter 0.25s", r      # was cookbook-modal-enter 0.28s, an overshoot
+    assert r["tasks"] == "modal-enter 0.25s", r
+    for card in ("card", "doc", "photo", "mail"):    # was section-domino-in 0.36s, per card, per open
+        assert r[card].startswith("none"), (card, r)
+
+
+def test_on_a_phone_the_forge_slides_up_like_every_other_sheet(tmp_path):
+    out = _drive(tmp_path, html=_page(_ENTRANCES), steps=_ANIMATIONS, viewport=(390, 844))
+    r = out["result"]
+    assert r["forge"] == r["tasks"] == "sheet-enter 0.2s", r
+
+
+# ── NAV-M-18: a window keeps its own height after a right-dock ──────────────
+
+_DOCKED_PAGE = _page(
+    """
+<div id="memory-modal" class="modal"><div class="modal-content memory-modal-content" id="brain"
+  style="width:560px;height:690px"><div class="modal-header"><h4>Brain</h4></div></div></div>
+""",
+    """
+import * as Modals from '/static/js/modalManager.js';
+import { applyEdgeDock } from '/static/js/modalSnap.js';
+const modal = document.getElementById('memory-modal');
+Modals.register('memory-modal', { closeFn: () => modal.classList.add('hidden'), restoreFn: () => {} });
+applyEdgeDock(modal, 'right');
+window.__docked = modal.className;
+Modals.minimize('memory-modal');
+Modals.restore('memory-modal');
+Modals.close('memory-modal');
+window.__after = { minHeight: document.getElementById('brain').style.minHeight };
+""",
+)
+
+
+def test_a_window_closed_after_a_right_dock_does_not_keep_the_screens_height(tmp_path):
+    steps = r"return await page.evaluate(() => ({ docked: window.__docked, after: window.__after }));"
+    out = _drive(tmp_path, html=_DOCKED_PAGE, steps=steps, viewport=(1440, 900))
+    r = out["result"]
+    assert "modal-right-docked" in r["docked"], r
+    assert r["after"]["minHeight"] == "", r     # was 876px — the Brain reopened 560×876 at y 12
