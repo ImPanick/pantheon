@@ -101,6 +101,10 @@ def test_the_network_agent_card_claims_no_reach_for_the_container():
     card = parser.text()
     assert "read-only process you run on the host" in card
     assert not re.search(r"cannot reach (your|the) LAN", card), card
+    # P23 round 2 (`B1236`): `P23-03` shortened the card to "sees the network
+    # Docker cannot" — the same lasting claim in other words (the container
+    # sees no network). Held here too, so the next shortening cannot say it.
+    assert not re.search(r"network (Docker|the container) cannot", card), card
 
 
 def test_the_threat_models_shell_gap_says_the_lan_is_in_reach():
