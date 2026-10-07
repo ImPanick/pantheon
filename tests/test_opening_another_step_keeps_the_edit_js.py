@@ -135,10 +135,11 @@ def test_new_step_asks_too_and_typing_again_asks_again(box):
         out({ asked, again, now: open(root), title: title(root) });
     """)
     assert o["asked"]["open"] == ["a"]
-    assert o["asked"]["said"] == ("Nightly backup has changes that are not saved. Press New step again to "
+    # P23-05 (WB-U-12): the chains canvas's button is *New task*, and its sentence says so.
+    assert o["asked"]["said"] == ("Nightly backup has changes that are not saved. Press New task again to "
                                   "close it without saving them, or Save first.")
     assert o["again"] == ["a"], "typing after the question asks again rather than taking the old yes"
-    assert o["now"] == [None] and o["title"] == "New step"
+    assert o["now"] == [None] and o["title"] == "New task"
 
 
 def test_the_open_step_asked_for_again_keeps_its_form_and_an_unedited_form_just_moves(box):

@@ -68,7 +68,8 @@ def test_the_chip_opens_the_workbench_on_that_chain(box):
         await tick();
         console.log(JSON.stringify({ shown, opened: globalThis.__opened, diagram: body.innerHTML.includes('mermaid') }));
     """)
-    assert o["shown"] == {"text": "Part of a 2-step workflow", "title": "Open this workflow in the Workbench"}
+    # P23-05 (`B1092`, Doc 2 § 5): a chain is called a chain.
+    assert o["shown"] == {"text": "Part of a 2-step chain", "title": "Open this chain in the Workbench"}
     # The Workbench, focused on the task whose chip was pressed, with the Tasks
     # window's own schedule words — what ⋮ → Workflow hands it.
     assert o["opened"] == [{"focusId": "b", "words": "Webhook"}]

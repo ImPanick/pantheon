@@ -88,7 +88,7 @@ export const TOOL_LABELS = {
   'manage_memory':    { running: 'Remembering',  done: 'Memory' },
   'save_memory':      { running: 'Remembering',  done: 'Memory' },
   'search_memory':    { running: 'Recalling',    done: 'Memory Search' },
-  'manage_session':   { running: 'Organizing',   done: 'Chat' },
+  'manage_session':   { running: 'Organizing',   done: 'Chats' },
   'deep_research':    { running: 'Researching',  done: 'Deep Research' },
   'list_models':      { running: 'Browsing',     done: 'Models' },
   'ui_control':       { running: 'Adjusting',    done: 'Interface' },

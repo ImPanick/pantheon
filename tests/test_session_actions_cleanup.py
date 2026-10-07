@@ -89,7 +89,7 @@ def test_auto_sort_keeps_fresh_chat_with_completed_first_turn(monkeypatch):
     try:
         assert db.query(DbSession).filter(DbSession.id == sid).first() is not None
         assert db.query(DbMessage).filter(DbMessage.session_id == sid).count() == 2
-        assert "Cleaned 0 sessions" in result
+        assert "Cleaned 0 chats" in result
     finally:
         db.close()
 
@@ -124,7 +124,7 @@ def test_auto_sort_keeps_fresh_session_while_first_response_is_pending(monkeypat
     try:
         assert db.query(DbSession).filter(DbSession.id == sid).first() is not None
         assert db.query(DbMessage).filter(DbMessage.session_id == sid).count() == 1
-        assert "Cleaned 0 sessions" in result
+        assert "Cleaned 0 chats" in result
     finally:
         db.close()
 
@@ -162,6 +162,6 @@ def test_auto_sort_still_deletes_old_throwaway_sessions(monkeypatch):
     db = session_factory()
     try:
         assert db.query(DbSession).filter(DbSession.id == sid).first() is None
-        assert "Cleaned 1 sessions" in result
+        assert "Cleaned 1 chat." in result  # P23-05: chats, counted right
     finally:
         db.close()

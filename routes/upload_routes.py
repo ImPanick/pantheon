@@ -420,10 +420,11 @@ def setup_upload_routes(upload_handler):
         if recent_uploads >= burst_limit:
             raise HTTPException(
                 status_code=429,
-                detail=(
-                    f"Upload burst limit reached: no more than {burst_limit} "
-                    f"uploads per {burst_window} seconds from one client."
-                ),
+                # `P23-05` (COPY-U-48): what happened, then what to do — and the
+                # limit's real shape (`Law 10`: a burst over a window, never
+                # "at once", which is the concurrency claim this replaced).
+                detail=(f"Too many uploads: at most {burst_limit} every {burst_window} s. "
+                        f"Wait a moment."),
             )
         
         for u in files:

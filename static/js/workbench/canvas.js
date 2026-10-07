@@ -165,6 +165,7 @@ const DEFAULT_WORDS = Object.freeze({
   emptyTitleOwn: '',
   emptyText: '',
   hint: '',
+  hintKeys: '',
   newLabel: 'New step',
   newTitle: '',
   unknownName: 'a step you cannot see',
@@ -266,8 +267,7 @@ export function mountCanvas(root, opts = {}) {
   // Tasks card puts on them, "built-in". Drawn only for a source whose items
   // say `builtin` (the tasks canvas's).
   const builtinsSwitch = _el('label', 'wb-tool-switch');
-  builtinsSwitch.title = 'The housekeeping tasks Pantheon comes with, such as Memory Tidy and Email Tags. '
-    + 'Hidden here so your own steps come first; a built-in task joined to one of yours is always shown.';
+  builtinsSwitch.title = 'Pantheon’s own housekeeping tasks.';
   const builtinsBox = _el('input', 'wb-tool-switch-box');
   builtinsBox.type = 'checkbox';
   const builtinsWord = _el('span', 'wb-tool-switch-word', 'Show built-in tasks');
@@ -282,6 +282,7 @@ export function mountCanvas(root, opts = {}) {
 
   const hint = _el('p', 'wb-hint', word('hint'));
   hint.hidden = !word('hint');
+  if (word('hintKeys')) hint.title = word('hintKeys');   // `P23-05`: the keys, behind the one line
 
   const sayBox = _el('div', 'wb-say');
   const sayText = _el('span', 'wb-say-text');
@@ -1573,7 +1574,14 @@ export function mountCanvas(root, opts = {}) {
     }
     // A paused step is planned (`B1036`) and says it is paused, from its own
     // status — the server's half plans it with `declined: null`.
-    const sub = [entry.depth === 0 ? 'Starts here' : entry.after, kindWord,
+    // `P23-05` (WB-U-7): "Starts here" once. Where the canvas draws a start of
+    // its own (a workflow), the step the plan begins at reads "When it starts"
+    // beneath it, as an arrow from the start does; measured on the merged tree
+    // as "Starts here" over "Starts here · Prompt".
+    const isStart = (x) => !!(x && (x.entry || x.kind === 'start'));
+    const drawsStart = [...S.byId.values()].some(isStart);
+    const first = drawsStart && !isStart(it) ? 'When it starts' : 'Starts here';
+    const sub = [entry.depth === 0 ? first : entry.after, kindWord,
       it && it.paused ? 'paused' : ''].filter(Boolean).join(' · ');
     const lines = entry.steps.map((s) => String((s && s.detail) || '').trim()).filter(Boolean);
     if (!lines.length) {
@@ -1635,12 +1643,13 @@ export function mountCanvas(root, opts = {}) {
     render();
     focusNode(head);
     const name = title || nameOf(head);
-    let sentence = `Dry run of ${name}: nothing ran and nothing changed.`;
+    // `P23-05` (COPY-U-24, Doc 2 § 5): what happened, counted once.
+    let sentence = `Dry run of ${name} — nothing ran.`;
     if (!partial) {
       const reached = byId.size;
       const aside = S.order.filter((id) => !byId.has(id) && S.nodeEls.has(id)).length;
-      sentence += ` ${reached} ${reached === 1 ? 'step says what it' : 'steps say what they'} would do`
-        + (aside ? `; ${aside} it would not reach ${aside === 1 ? 'is' : 'are'} dimmed.` : '.');
+      sentence += ` ${reached} ${reached === 1 ? 'step' : 'steps'} planned`
+        + (aside ? `; ${aside} unreachable, dimmed.` : '.');
     } else {
       sentence += ` Only ${name} was planned: this Pantheon did not plan the steps after it.`;
     }

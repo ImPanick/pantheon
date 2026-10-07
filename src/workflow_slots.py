@@ -71,8 +71,8 @@ WHY_WHAT = ("This decides what the step does, so it only takes what you type her
             "never a value from another step.")
 WHY_WHEN = ("This decides when the step runs, so it only takes what you type here, "
             "never a value from another step.")
-WHY_NOT_TEXT = ("Only words a person reads can come from another step. This could be "
-                "an address, a name or a command, so it only takes what you type here.")
+# `P23-05` (Doc 2 § 5): the reason in one line, under the setting it is on.
+WHY_NOT_TEXT = "Typed only: this could be an address or a command."
 WHYS = (WHY_WHERE, WHY_WHAT, WHY_WHEN, WHY_NOT_TEXT)
 
 

@@ -53,8 +53,20 @@ function _isVisible(el) {
   return r.width > 0 && r.height > 0;
 }
 
+/** `P23-05` (COPY-M-6): *First-run tours* off means no first-open text, this
+ *  hint included. Absent (a sandbox, a page without `tourAutoplay.js`) is on,
+ *  as the switch's own default is. */
+function _toursOn() {
+  try {
+    return typeof window.pantheonToursEnabled !== 'function' || window.pantheonToursEnabled() !== false;
+  } catch (_) {
+    return true;
+  }
+}
+
 function _onModalOpened(modal) {
   if (_shown || _hasSeen()) return;
+  if (!_toursOn()) return;
   const id = modal.id;
   if (!_modalShouldShowHint(id)) return;
   // Don't interrupt the welcome / tour itself
@@ -91,7 +103,7 @@ function _show(modal) {
         <path class="th-cursor" d="M0 0 L0 9 L2.5 7 L4.5 10 L6 9 L4 6 L7 6 Z" fill="currentColor" />
       </svg>
     </div>
-    <div class="tour-hint-text"><b>Pro tip:</b> drag any window's title bar to a screen edge to snap it. Drag to the top for fullscreen.</div>
+    <div class="tour-hint-text">Drag a window’s title bar to an edge to snap it; to the top to fill the screen.</div>
     <button class="tour-hint-dismiss" type="button">Got it</button>
   `;
   document.body.appendChild(pop);

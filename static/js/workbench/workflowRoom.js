@@ -67,8 +67,10 @@ const RUNS_SHOWN = 30;
  *  the room again. Nothing is asked while no run is in flight. */
 export const SHELF_WATCH_MS = 4000;
 /** Said when a workflow is off — the design's words (§ 6.2). */
-export const OFF_WORDS = 'Switched off — it will not run until you switch it on.';
-export const ON_WORDS = 'On — it runs whenever what starts it happens.';
+// `P23-05` (Doc 2 § 5): the switch itself reads *On* / *Off*; the word beside
+// it adds only what the switch cannot say (driven: "On On" on the merged tree).
+export const OFF_WORDS = 'It will not run.';
+export const ON_WORDS = '';
 /** `P22-19`. At most this many example sentences are offered under *Describe
  *  it* (`D-2026-10-02-02` §1). */
 export const EXAMPLES_MAX = 6;
@@ -81,11 +83,9 @@ export const ARRIVED_WORDS = Object.freeze({
   assistant: 'Changed by your assistant',
 });
 /** Said over every workflow that arrived: it does nothing until checked. */
-export const ARRIVED_LEDE = 'It is switched off, and each step is marked “check me” until you look at it: open a step '
-  + 'and press Looks right, or press Check them now.';
+export const ARRIVED_LEDE = 'It is off until you check each step.';
 /** `P22-24`. What the export says the file holds (C-A's export, design § 1.6). */
-export const EXPORT_WORDS = 'It holds the saved steps and the names of what they use; keys, tokens, addresses and '
-  + 'pinned samples are left out.';
+export const EXPORT_WORDS = 'No keys, addresses or samples in it.';
 
 /** `P22-24`. Hand `blob` to the browser as a download named `filename`. */
 function _download(blob, filename) {
@@ -298,7 +298,7 @@ export function mountAutomations(host, opts = {}) {
   chainBtn.hidden = true;
   const runBtn = _button('wf-run-now', 'Run now', 'Run the saved workflow once, now');
   // `P22-24`. The saved workflow as a file.
-  const exportBtn = _button('wf-export', 'Export', 'Download the saved workflow as a file to hand someone. ' + EXPORT_WORDS);
+  const exportBtn = _button('wf-export', 'Export', 'Download the saved workflow as a file. ' + EXPORT_WORDS);
   const dryBtn = _button('wf-dry', 'Show me what this would do',
     'Plans a run of the saved workflow and shows the plan on the canvas. Nothing runs and nothing changes.');
   const tabs = _el('div', 'wf-tabs');
@@ -1038,7 +1038,9 @@ export function mountAutomations(host, opts = {}) {
     if (R.destroyed || R.wf !== w) return;
     runBtn.disabled = false;
     if (err || (reply && reply.ok === false)) {
-      say(`Not started: ${_sentence(err || reply, 'the server refused')}`, { refusal: true });
+      // `P23-05` (WB-U-2): the server's parked sentence already says it did not
+      // start; "Not started: Did not start: …" said it twice.
+      say(`Not started: ${_sentence(err || reply, 'the server refused').replace(/^Did not start:\s*/i, '')}`, { refusal: true });
       return;
     }
     // A chain paused by switching on keeps its way back as the action.
@@ -1100,7 +1102,7 @@ export function mountAutomations(host, opts = {}) {
     box.setAttribute('aria-label', 'Versions');
     box.appendChild(_el('p', 'wf-versions-head', 'Versions'));
     box.appendChild(_el('p', 'wf-versions-note',
-      'A version is kept each time a save changes the steps or the name; moving a step or pinning a sample makes none.'));
+      'A version is kept each time the steps or the name change.'));
     const ul = _el('ul', 'wf-versions-list');
     if (!list.length) ul.appendChild(_el('li', 'wf-versions-empty', 'No versions are kept yet.'));
     for (const v of list) {
@@ -1182,7 +1184,7 @@ export function mountAutomations(host, opts = {}) {
       syncBar();
       const doc = (reply && reply.workflow) || docOf(w.source);
       say(`Version ${version} is back${doc && doc.version != null ? `, saved as version ${doc.version}` : ''}. `
-        + 'Nothing was lost: the version before it is still in Versions….');
+        + 'The version before it is kept in Versions.');
       refreshShelf();
     };
     // Putting a version back replaces the draft: unsaved changes are asked
@@ -1245,7 +1247,7 @@ export function mountAutomations(host, opts = {}) {
     shelfFromRuns(w);
     if (!w.runs.length) {
       teardownRun();
-      say('No runs yet. Run now runs it once; otherwise it runs when what starts it happens, while it is on.');
+      say('No runs yet.');
       return;
     }
     // Opened on the newest run, or the one already open.
@@ -1351,7 +1353,7 @@ export function mountAutomations(host, opts = {}) {
     }
     rc.say(isDryRun(run)
       ? 'A dry run: each step says what it would have done. Nothing ran.'
-      : `This run ${runWords(run).word === 'Success' ? 'worked' : 'ended: ' + runWords(run).word.toLowerCase()}. Open a step to read what it was handed and what it made.`);
+      : `This run ${runWords(run).word === 'Success' ? 'worked' : 'ended: ' + runWords(run).word.toLowerCase()}. Click a step for what it was handed and what it made.`);
   }
 
   /** What a waiting run's line says when it opens on its waiting step. */
@@ -1393,7 +1395,11 @@ export function mountAutomations(host, opts = {}) {
     w.failFocus = null;
     const label = String((record && record.label) || (node && node.label) || 'A step');
     const line = _firstLine(record && record.error) || 'it left no message';
-    w.failSentence = `“${label}” failed: ${line.replace(/\.$/, '')}. Its panel is open at What it was handed.`;
+    // `P23-05` (WB-U-10): the step is named once — a line that starts with its
+    // name says "it" — and nothing describes the panel beside it.
+    const own = `“${label}” `;
+    const told = line.startsWith(own) ? 'it ' + line.slice(own.length) : line;
+    w.failSentence = `“${label}” failed: ${told.replace(/\.$/, '')}.`;
     w.runCanvas.say(w.failSentence);
   }
 
@@ -1710,8 +1716,7 @@ export function mountAutomations(host, opts = {}) {
     function drawFoot() {
       const n = left().length;
       lede.textContent = n
-        ? `${n} step${n === 1 ? '' : 's'} nobody has checked yet. Read what each would do, then press Looks right — `
-          + 'or open it and change it, which makes it yours.'
+        ? `${n} step${n === 1 ? '' : 's'} to check. Read each, then Looks right — or open it and change it.`
         : 'Every step is checked.';
       const kids = [];
       if (n) {
@@ -1840,7 +1845,7 @@ export function mountAutomations(host, opts = {}) {
       say(`Not downloaded: ${_sentence(e, 'the browser refused')}`, { refusal: true });
       return;
     }
-    say(`Downloaded “${r.filename}”. ${EXPORT_WORDS}${r.unsaved ? ' Your unsaved changes are not in it.' : ''}`);
+    say(`Downloaded ${r.filename}. ${EXPORT_WORDS}${r.unsaved ? ' Your unsaved changes are not in it.' : ''}`);
   }
 
   async function makeNew() {

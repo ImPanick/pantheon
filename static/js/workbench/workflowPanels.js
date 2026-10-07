@@ -67,7 +67,8 @@ export const TEST_SOURCES = Object.freeze([
 /** Said wherever a pin is: the promise the design makes about it (§ 4.3). */
 export const PIN_SENTENCE = 'A pinned sample is only used when you press Test. Scheduled runs never use it.';
 /** Said under every test result: a test runs one step and nothing else. */
-export const NOTHING_ELSE = 'Nothing else ran: no other step, no delivery, no notification.';
+// `P23-05` (WB-U-2): said once, before the test (the lede); not again under its result.
+export const NOTHING_ELSE = 'Nothing is delivered.';
 /** `P22-07`. Action and Research steps run with their own settings. */
 export const DOES_NOT_READ = 'This kind of step does not read what it is handed; it runs with its own settings.';
 /** `P22-17`. Under a waiting step's card: what each answer does. */
@@ -94,11 +95,10 @@ export const CHECK_NOTES = Object.freeze({
 /** Said once a step is checked. */
 export const CHECKED_WORDS = 'Checked. It runs as it is once the workflow is switched on.';
 /** `P22-20`. *Why did this fail?* — the title names who is asked. */
-export const WHY_TITLE = 'Asks a model — your utility model, or your default one if none is set — to read what this step '
-  + 'was handed and what came back. Nothing changes unless you press Apply.';
+export const WHY_TITLE = 'Asks a model to read this step’s record. Nothing changes until you press Apply.';
 /** Over the model's answer: where its words come from (`Law 17`). */
-export const READING_NOTE = 'It read what this step was handed and what came back — text someone else may have '
-  + 'written — so read it as a suggestion.';
+// `Law 17` stays in it: the record can hold text someone else wrote.
+export const READING_NOTE = 'A suggestion — the run’s record may hold text someone else wrote.';
 /** A proposed field whose slot says where the request goes (`where`). */
 export const whereWords = (name) => `This changes where the request goes (still to “${name || 'the same service'}”).`;
 /** A proposed value found verbatim in what the run recorded (`from_run`). */
@@ -302,7 +302,13 @@ export function createWorkflowPanels({
             b.disabled = true;
             b.setAttribute('aria-disabled', 'true');
             b.dataset.available = 'false';
-            b.appendChild(_el('span', 'wf-palette-why', k.why || 'Not available here.'));
+            // `P23-05` (WB-U-5, Doc 2 § 5): the row carries the reason's first
+            // sentence ("No Integrations yet."); who can change it is the tooltip.
+            const why = k.why || 'Not available here.';
+            const first = (why.match(/^.*?[.!?](?=\s|$)/) || [why])[0];
+            const whyEl = _el('span', 'wf-palette-why', first);
+            if (first !== why) b.title = why;
+            b.appendChild(whyEl);
             b.setAttribute('aria-label', `${k.word}: not available. ${k.why || ''}`.trim());
           } else {
             b.setAttribute('aria-label', `${k.word}: ${k.hint}`);
@@ -744,7 +750,7 @@ export function createWorkflowPanels({
     box.setAttribute('aria-label', 'Test this step');
     box.appendChild(_el('h4', 'wf-test-head', 'Test this step'));
     box.appendChild(_el('p', 'wf-test-lede',
-      'Runs this step on its own, on the input you choose. ' + NOTHING_ELSE.replace('Nothing else ran', 'Nothing else runs')));
+      'Runs only this step, with the input you choose. ' + NOTHING_ELSE));
     const edits = _el('p', 'wf-test-edits', 'Your changes above are not in the test until you press Done.');
     edits.hidden = true;
     box.appendChild(edits);
@@ -919,7 +925,6 @@ export function createWorkflowPanels({
       if (steps.length) result.appendChild(stepsPart(steps, false));
       const dl = droppedLine(reply);
       if (dl) result.appendChild(_el('p', 'wf-test-dropped', dl));
-      result.appendChild(_el('p', 'wf-test-alone', NOTHING_ELSE));
       result.hidden = false;
       sayLine('');
     }

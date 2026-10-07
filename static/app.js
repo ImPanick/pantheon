@@ -1635,7 +1635,7 @@ function initializeEventListeners() {
       const newName = sessionNameInput.value.trim();
       
       if (!newName) {
-        uiModule.showError('Please enter a name for the session');
+        uiModule.showError('Name the chat first.');
         return;
       }
       
@@ -1648,23 +1648,24 @@ function initializeEventListeners() {
         
         const result = await response.json();
         if (response.ok) {
-          uiModule.showToast(`Session renamed to ${newName}`);
+          uiModule.showToast(`Renamed to ${newName}`);
           renameSessionModal.classList.add('hidden');
           sessionNameInput.value = '';
           // Update the current session name in the UI
           const meta = sessionModule.getSessions().find(s => s.id === sessionModule.getCurrentSessionId());
           if (meta) {
             meta.name = newName;
-            const ver = window._appVersion ? ` v${window._appVersion}` : '';
-            el('current-meta').textContent = `Session: ${meta.name}${meta.model ? ' ' + meta.model.split('/').pop() : ''}${meta.rag ? ' [RAG]' : ''}${ver}`;
+            // P23-05: the header names the chat, as `selectSession` writes it —
+            // not "Session: <name> <model> [RAG] v<version>" until the next switch.
+            el('current-meta').textContent = meta.name;
           }
           // Refresh the sessions list
         await sessionModule.loadSessions();
         } else {
-          throw new Error(result.detail || 'Failed to rename session');
+          throw new Error(result.detail || 'Could not rename the chat');
         }
       } catch (e) {
-        uiModule.showError('Failed to rename session: ' + e.message);
+        uiModule.showError('Could not rename the chat: ' + e.message);
       }
     });
   }
@@ -2640,10 +2641,12 @@ function initializeEventListeners() {
         const welcomeSub = el('welcome-sub');
         if (welcomeSub) {
           if (!welcomeSub.dataset.originalText) welcomeSub.dataset.originalText = welcomeSub.textContent;
-          welcomeSub.textContent = "Who am I? I'm nobody.";
+          // `P23-05` (fx-chat's B-NEW-9): the heading says *Nobody*; the line
+          // under it says what that means, once, and does not joke.
+          welcomeSub.textContent = 'No memory, nothing saved.';
           welcomeSub.style.display = '';
         }
-        if (tipEl) { tipEl.dataset.originalTip = tipEl.textContent; tipEl.textContent = 'Temporary session \u2014 won\u2019t be saved and no memory activation.'; tipEl.style.opacity = '0.5'; tipEl.style.marginTop = '8px'; }
+        if (tipEl) { tipEl.dataset.originalTip = tipEl.textContent; tipEl.textContent = ''; tipEl.style.opacity = '0.5'; tipEl.style.marginTop = '8px'; }
         // Default to plain chat: disable tools visually, switch to chat mode.
         // IMPORTANT: don't overwrite the user's persisted per-mode tool prefs
         // (`web_agent`, `bash_agent`, `web_chat`, `bash_chat`). Nobody mode is
@@ -3424,7 +3427,7 @@ function initializeEventListeners() {
       if (!currentId) return;
       const sessions = sessionModule.getSessions();
       const current = sessions.find(s => s.id === currentId);
-      const name = current ? current.name : 'this session';
+      const name = current ? current.name : 'this chat';
       if (!await uiModule.styledConfirm(`Delete "${name}"?`, { confirmText: 'Delete', danger: true })) return;
       try {
         // Find the next session below the current one before deleting
@@ -3437,12 +3440,12 @@ function initializeEventListeners() {
           if (nextSession) {
             await sessionModule.selectSession(nextSession.id);
           }
-          uiModule.showToast('Session deleted');
+          uiModule.showToast('Chat deleted');
         } else {
-          uiModule.showError('Failed to delete session');
+          uiModule.showError('Could not delete the chat');
         }
       } catch (e) {
-        uiModule.showError('Failed to delete session: ' + e);
+        uiModule.showError('Could not delete the chat: ' + e);
       }
     });
   }

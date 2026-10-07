@@ -282,7 +282,10 @@ _SINGLE_STAGE = [e for e in ESCAPERS if e.name != "_attrEsc"]
 def test_the_sweep_found_both_kinds():
     assert len(_SECOND_STAGE) == 2, [repr(e) for e in _SECOND_STAGE]
     assert len(_SINGLE_STAGE) >= 11, len(_SINGLE_STAGE)
-    assert "static/js/notes.js:548 _attrEscRaw" in [repr(e) for e in _SINGLE_STAGE], (
+    # By file and name, not line: `P23-05` moved it nine lines down (the Notes
+    # hint's gate), and a sweep's finding is not where a line happens to sit.
+    assert any(r.startswith("static/js/notes.js:") and r.endswith(" _attrEscRaw")
+               for r in (repr(e) for e in _SINGLE_STAGE)), (
         "`B875`'s first-stage helper must be swept as a single-stage escaper: "
         "it is handed raw text and has to escape `&`")
 

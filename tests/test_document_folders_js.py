@@ -465,7 +465,7 @@ def test_the_newer_of_two_answers_wins(sandbox):
 
 
 _GRID = """
-    let _libraryDocs = [], _librarySearch = '', _libraryActiveLanguage = null;
+    let _libraryDocs = [], _librarySearch = '', _libraryActiveLanguage = null, _libraryArchivedView = false;
     let _libraryFolderView = F.VIEW_ALL, _docsVisibleLimit = 20, _libraryTotal = 0;
     const VIEW_ALL = F.VIEW_ALL;
     function dismissOrRemove() {}
@@ -493,7 +493,7 @@ def test_an_empty_folder_is_not_reported_as_an_empty_library(sandbox):
         emptyStates[0].action.onClick();
         console.log(JSON.stringify({ titles: emptyStates.map((s) => s.title), opened }));
     """)
-    assert out["titles"] == ["Nothing in this folder yet", "Nothing is unfiled", "No documents yet"]
+    assert out["titles"] == ["No documents here.", "Nothing is unfiled", "No documents yet"]  # P23-05 (DOCS-U-18)
     assert out["opened"] == [{"kind": "all"}]
 
 

@@ -566,10 +566,10 @@ CONTEXT_BREAKDOWN_CATEGORIES: tuple[tuple[str, str], ...] = (
     ("system", "System prompt"),
     ("tools", "Tool definitions"),
     ("skills", "Skills"),
-    ("memory", "Memory"),
+    ("memory", "Memories"),
     ("retrieved", "Retrieved context"),
     ("attachments", "Attachments"),
-    ("conversation", "Conversation"),
+    ("conversation", "Chat"),
 )
 
 #: The parts a request carries besides the chat itself, measured on the last

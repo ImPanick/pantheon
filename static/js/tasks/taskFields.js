@@ -144,7 +144,7 @@ async function _fetchOutputTargets() {
     const data = await res.json();
     _outputTargets = data.targets || [];
   } catch (e) {
-    _outputTargets = [{ value: 'session', label: 'Session' }];
+    _outputTargets = [{ value: 'session', label: 'Chat' }];
   }
   return _outputTargets;
 }
@@ -821,13 +821,15 @@ export function mountTaskFields(host, {
   //                 its keys to Done's config, or refuses.
   //   `problem`   — the draft's refusal naming this step (`{ sentence, field }`),
   //                 said on that field.
+  // `P23-05` (WB-U-2, WB-U-12, Doc 2 § 5): one noun — *task* — and a lede only
+  // where the heading cannot carry it. A step's kind is the subtitle (its
+  // locked one-button toggle below is kept, out of sight, as the form's read
+  // of the kind).
   const heading = isNode ? 'Edit step' : isTrigger ? 'What starts it'
-    : (existing?.id ? 'Edit Task' : 'New Task');
+    : (existing?.id ? 'Edit task' : 'New task');
   const lede = isNode
-    ? 'What this step does. Done puts it on the canvas; Save above the canvas keeps the workflow.'
-    : isTrigger
-      ? 'When this workflow runs. Saved straight away when you press Save; the steps are saved with the workflow.'
-      : (existing?.id ? 'Update this task’s schedule, prompt, and output.' : 'Configure a prompt, research, or action to run automatically.');
+    ? `${_escHtml(KIND_WORDS[curTaskType] || 'Prompt')} step. Done here, then Save above.`
+    : isTrigger ? 'When it runs.' : '';
   const namePlaceholder = isNode ? _escHtml(KIND_WORDS[curTaskType] || 'Step') : (existing?.id ? '' : 'Auto-generated if blank');
   const saveWord = isNode ? 'Done' : isTrigger ? 'Save' : (existing?.id ? 'Save' : 'Create');
   const sections = {
@@ -836,7 +838,7 @@ export function mountTaskFields(host, {
       <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:2px;">
         <h2 style="margin:0;padding:0;line-height:1;">${heading}</h2>
       </div>
-      <p class="memory-desc">${lede}</p>
+      ${lede ? `<p class="memory-desc">${lede}</p>` : ''}
     <div class="task-form" style="flex:1;overflow-y:auto;min-height:0;">`,
     name: `
       <label class="task-form-label">Name</label>
@@ -865,14 +867,14 @@ export function mountTaskFields(host, {
     output: `
       <label class="task-form-label">Output</label>
       <select id="task-form-output" class="task-form-input">
-        <option value="session">Session</option>
+        <option value="session">Chat</option>
       </select>
       <div id="task-form-output-extra"></div>
 `,
     model: `
-      <label class="task-form-label">Model <span style="opacity:0.5;font-weight:normal;font-size:10px;">(optional — overrides session default)</span></label>
+      <label class="task-form-label">Model</label>
       <select id="task-form-model" class="task-form-input">
-        <option value="">Use session default</option>
+        <option value="">Default</option>
       </select>
 `,
     timeout: `
@@ -927,11 +929,9 @@ export function mountTaskFields(host, {
     // The kind, shown and not chosen: a step's kind is picked in the palette,
     // and a Prompt step's prompt is not an Action's parameter.
     sections.type = `
-      <label class="task-form-label">Type</label>
-      <div class="task-form-toggle task-form-toggle-locked" id="task-form-type-toggle">
-        <button type="button" class="task-toggle-btn active" data-val="${_escHtml(curTaskType)}" disabled aria-disabled="true" style="position:relative;top:-4px;">${_escHtml(KIND_WORDS[curTaskType] || curTaskType)}</button>
+      <div class="task-form-toggle task-form-toggle-locked" id="task-form-type-toggle" style="display:none">
+        <button type="button" class="task-toggle-btn active" data-val="${_escHtml(curTaskType)}" disabled aria-disabled="true">${_escHtml(KIND_WORDS[curTaskType] || curTaskType)}</button>
       </div>
-      <div class="task-form-hint">A step’s kind is chosen when it is added.</div>
 
       <div id="task-form-type-opts"></div>
 `;
@@ -1016,7 +1016,7 @@ export function mountTaskFields(host, {
         <label class="task-form-label">${taskType === 'research' ? 'Research question' : 'Prompt'}</label>
         <textarea id="task-form-prompt" class="task-form-input task-form-textarea" rows="4" placeholder="${placeholder}">${_escHtml(existing?.prompt || '')}</textarea>
 ${(isNode && taskType === 'research') ? '' : `
-        <label class="task-form-label">Persona <span style="opacity:0.5;font-weight:normal;font-size:10px;">(optional — biases the output voice)</span></label>
+        <label class="task-form-label">Persona</label>
         <select id="task-form-persona" class="task-form-input">${_personaOptsHtml}</select>`}
       `;
       // `P22-05`. A Research step takes no persona (its config has no

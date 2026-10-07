@@ -68,7 +68,7 @@ def _load_sam_backend():
     except Exception as exc:
         raise HTTPException(
             501,
-            "SAM mask tools are not installed. Install Forge Dependencies -> SAM mask tools.",
+            "SAM mask tools are not installed. Install sam_mask in Forge → Dependencies → Image.",
         ) from exc
 
     device = "cpu"
@@ -104,7 +104,7 @@ def _load_grounding_backend():
     except Exception as exc:
         raise HTTPException(
             501,
-            "Object mask tools are not installed. Install Forge Dependencies -> SAM mask tools.",
+            "Object mask tools are not installed. Install sam_mask in Forge → Dependencies → Image.",
         ) from exc
 
     device = "cpu"
@@ -1330,7 +1330,7 @@ def setup_gallery_routes() -> APIRouter:
             #   OpenAI: transparent alpha = regenerate, opaque = keep
             # So we convert the incoming PNG mask into an alpha-channel PNG.
             if not api_key:
-                raise HTTPException(400, "OpenAI endpoint has no api_key stored — edit it in Endpoints settings.")
+                raise HTTPException(400, "That OpenAI endpoint has no API key. Add it in Settings → Added Models.")
             import base64, io
             try:
                 from PIL import Image
@@ -1627,8 +1627,7 @@ def setup_gallery_routes() -> APIRouter:
                 # Spelled out here because the sentence is what a user reads
                 # when their image generation has just refused.
                 "(SD WebUI / SD-Forge / Comfy). OpenAI's API doesn't expose "
-                "one. Pantheon's Forge → Models can serve an SD-compatible model "
-                "locally in a few clicks.")
+                "one. Serve a diffusion model in Forge → Launch.")
 
         # Try img2img-shaped routes in order. Most self-hosted servers
         # expose at least one of these. Whatever returns 200 wins.

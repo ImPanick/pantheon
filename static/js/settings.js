@@ -615,7 +615,7 @@ async function initAgentBudget() {
     try {
       await _postSettings(payload);
       if (msg) {
-        msg.textContent = mode.value === 'off' ? 'No trimming — the whole conversation is sent.'
+        msg.textContent = mode.value === 'off' ? 'No trimming — the whole chat is sent.'
           : mode.value === 'auto' ? 'Scaling to the model\u2019s window.'
           : 'Fixed at ' + payload.agent_input_token_budget + ' tokens.';
         msg.style.color = 'var(--fg)';
@@ -2347,7 +2347,7 @@ const SHORTCUT_LABELS = KEYBIND_LABELS;   // `H19` — one table, not three
 
 const SHORTCUT_CATEGORIES = [
   { name: 'Navigation', keys: ['search', 'toggle_sidebar', 'focus_input', 'settings'] },
-  { name: 'Sessions', keys: ['new_session', 'fav_session', 'delete_session'] },
+  { name: 'Chats', keys: ['new_session', 'fav_session', 'delete_session'] },
   { name: 'Tools', keys: ['plan_mode', 'incognito', 'tts', 'cancel'] },
   { name: 'Open Tools', keys: ['open_calendar', 'open_compare', 'open_cookbook', 'open_research', 'open_gallery', 'open_library', 'open_memory', 'open_notes', 'open_tasks', 'open_theme'] },
   // `H20`. Rebindable like the rest, and it genuinely works: the editor reads
@@ -3011,7 +3011,7 @@ async function initReminderSettings() {
 
   if (!smtpConfigured && emailOpt) {
     emailOpt.disabled = true;
-    emailOpt.textContent = 'Email (add an account in Integrations)';
+    emailOpt.textContent = 'Email (add an account in MCP & Integrations)';
   }
 
   // Detect whether ntfy integration exists — try admin endpoint, fall back to
@@ -3037,7 +3037,7 @@ async function initReminderSettings() {
 
   if (!ntfyConfigured && ntfyOpt) {
     ntfyOpt.disabled = true;
-    ntfyOpt.textContent = 'ntfy (add in Integrations first)';
+    ntfyOpt.textContent = 'ntfy (add it in MCP & Integrations first)';
   }
 
   // Webhook: available whenever at least one integration with a base_url exists.
@@ -3081,18 +3081,18 @@ async function initReminderSettings() {
     if (!webhookIntgSel) return;
     webhookIntgSel.innerHTML = allIntegrations.length
       ? allIntegrations.map(i => `<option value="${esc(i.id)}">${esc(i.name || i.id)}</option>`).join('')
-      : '<option value="">No integrations configured</option>';
+      : '<option value="">No integrations yet</option>';
     if (selectedId && allIntegrations.some(i => i.id === selectedId)) webhookIntgSel.value = selectedId;
   }
 
   function applyReminderChannelAvailability() {
     if (emailOpt) {
       emailOpt.disabled = !smtpConfigured;
-      emailOpt.textContent = smtpConfigured ? 'Email' : 'Email (add an account in Integrations)';
+      emailOpt.textContent = smtpConfigured ? 'Email' : 'Email (add an account in MCP & Integrations)';
     }
     if (ntfyOpt) {
       ntfyOpt.disabled = !ntfyConfigured;
-      ntfyOpt.textContent = ntfyConfigured ? 'ntfy' : 'ntfy (add in Integrations first)';
+      ntfyOpt.textContent = ntfyConfigured ? 'ntfy' : 'ntfy (add it in MCP & Integrations first)';
     }
     if (webhookOpt) {
       webhookOpt.disabled = !webhookConfigured;
@@ -3723,7 +3723,7 @@ async function initIntegrations() {
       const data = await res.json();
       const items = data.integrations || [];
       if (!items.length) {
-        listEl.innerHTML = '<div style="padding:12px;opacity:0.5;font-size:12px;text-align:center;">No integrations configured</div>';
+        listEl.innerHTML = '<div style="padding:12px;opacity:0.5;font-size:12px;text-align:center;">No integrations yet</div>';
         return;
       }
       listEl.innerHTML = items.map(i => `
@@ -4081,7 +4081,7 @@ async function initUnifiedIntegrations() {
         <button type="button" class="admin-btn-sm intg-open-email-settings" style="white-space:nowrap;">Email settings</button>
       </div>` : '';
     if (items.length === 0) {
-      listEl.innerHTML = noticeHtml + '<div style="padding:12px;opacity:0.5;font-size:12px;text-align:center">No integrations configured</div>';
+      listEl.innerHTML = noticeHtml + '<div style="padding:12px;opacity:0.5;font-size:12px;text-align:center">No integrations yet</div>';
     } else {
       listEl.innerHTML = noticeHtml + items.map(renderCard).join('');
     }

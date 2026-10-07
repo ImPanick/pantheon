@@ -173,14 +173,11 @@ export function mountToolTry(host, { tool, call } = {}) {
   const box = _el('div', 'mcp-try');
   box.setAttribute('data-mcp-try-panel', name);
   box.style.cssText = 'margin:4px 0 6px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;';
-  const lead = _el('p', 'mcp-try-lead', `Call ${name} once with what you type. It runs for real.`);
+  // `P23-05` (Doc 2 § 5): one line. The tool's description and whether it
+  // writes are on its row, just above; they are not said a second time here.
+  const lead = _el('p', 'mcp-try-lead', `Runs ${name} once, for real.`);
   lead.style.cssText = _NOTE + 'opacity:0.75;margin-top:0;';
   box.appendChild(lead);
-  if (t.description) {
-    const desc = _el('p', 'mcp-try-desc', String(t.description));
-    desc.style.cssText = _NOTE + 'opacity:0.6;';
-    box.appendChild(desc);
-  }
   const formHost = _el('div', 'mcp-try-form');
   box.appendChild(formHost);
   const form = mountArgsForm(formHost, {

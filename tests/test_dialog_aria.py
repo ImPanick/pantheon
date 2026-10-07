@@ -20,7 +20,8 @@ _UI = (_REPO / "static" / "js" / "ui.js").read_text(encoding="utf-8")
 def test_static_modals_expose_dialog_role_and_name():
     # Each static tool window must announce itself as a named dialog. These are
     # dockable/tiling windows, so they are role="dialog" WITHOUT aria-modal.
-    for name in ("Brain", "Theme", "Prompt", "Rename session", "Cookbook", "Settings"):
+    # `P23-05`: one name per thing — the window is Forge (`P0-29`) and a chat is a chat.
+    for name in ("Brain", "Theme", "Prompt", "Rename chat", "Forge", "Settings"):
         assert f'role="dialog" aria-label="{name}"' in _INDEX, f"missing dialog role/name for {name!r}"
 
 

@@ -25,7 +25,7 @@ export async function openAssistantChat() {
   try {
     const info = await _fetchJSON(`${API}/session`);
     if (!info?.session_id) {
-      uiModule.showToast('Assistant session unavailable');
+      uiModule.showToast('The Assistant chat is not available');
       return;
     }
     await selectSession(info.session_id);
@@ -98,7 +98,7 @@ function _ensureModalEl() {
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px;"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
           Assistant settings
         </h4>
-        <button class="close-btn" id="assistant-settings-close">✖</button>
+        <button class="close-btn" id="assistant-settings-close" aria-label="Close">✖</button>
       </div>
       <div class="modal-body" id="assistant-settings-body">
         <div class="hwfit-loading">Loading…</div>
@@ -233,7 +233,7 @@ function _renderSettingsBody(body, data, tzList) {
   const epSelect = body.querySelector('#assistant-endpoint');
   const modelSelect = body.querySelector('#assistant-model');
   _fetchEndpoints().then(endpoints => {
-    let epHTML = '<option value="">(use session default)</option>';
+    let epHTML = '<option value="">(default)</option>';
     for (const ep of endpoints) {
       if (!ep.is_enabled) continue;
       const url = ep.base_url || '';

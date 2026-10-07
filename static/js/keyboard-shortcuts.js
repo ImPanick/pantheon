@@ -80,12 +80,12 @@ export const KEYBIND_LABELS = {
   // a persisted key (`keybinds.search`) and does not move.
   search: 'Search chats and commands',
   toggle_sidebar: 'Toggle sidebar',
-  new_session: 'New session',
-  fav_session: 'Favorite session',
-  delete_session: 'Delete session',
+  new_session: 'New chat',
+  fav_session: 'Star chat',
+  delete_session: 'Delete chat',
   cancel: 'Cancel / close',
   tts: 'Play/stop TTS',
-  incognito: 'Toggle incognito',
+  incognito: 'Toggle Nobody',
   plan_mode: 'Toggle Plan mode',
   // `P23-01` (NAV-M-10, NAV-U-14). It was "Toggle Window" and closed the
   // first window in a fixed list. It opens Settings, and raises it when open.
@@ -97,7 +97,7 @@ export const KEYBIND_LABELS = {
   open_research: 'Open Deep Research',
   open_gallery: 'Open Gallery',
   open_library: 'Open Library',
-  open_memory: 'Open Memory',
+  open_memory: 'Open Brain',
   open_notes: 'Open Notes',
   open_tasks: 'Open Tasks',
   open_theme: 'Open Theme',
@@ -331,7 +331,7 @@ export function initKeyboardShortcuts(modules) {
       fetch(`${API_BASE}/api/session/${sid}/important`, { method: 'POST', body: fd });
       s.is_important = newVal;
       sessionModule.renderSessionList();
-      uiModule.showToast(newVal ? 'Session favorited' : 'Session unfavorited');
+      uiModule.showToast(newVal ? 'Starred' : 'Unstarred');
       return;
     }
     if (_matchesCombo(e, kb.delete_session)) {
@@ -341,7 +341,7 @@ export function initKeyboardShortcuts(modules) {
       const s = sessionModule.getSessions().find(x => x.id === sid);
       if (!s) return;
       if (s.is_important) { uiModule.showToast('Unstar before deleting'); return; }
-      uiModule.styledConfirm('Delete this session?', { confirmText: 'Delete', danger: true }).then(ok => {
+      uiModule.styledConfirm('Delete this chat?', { confirmText: 'Delete', danger: true }).then(ok => {
         if (!ok) return;
         const allSessions = sessionModule.getSessions();
         const idx = allSessions.findIndex(x => x.id === sid);

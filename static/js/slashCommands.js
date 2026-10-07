@@ -1036,8 +1036,8 @@ async function _cmdSessionNew(args, ctx) {
     await sessionModule.selectSession(data.id, { showLoading: false });
     _hideWelcomeScreen();
     const shortModel = (model || '').split('/').pop();
-    await typewriterReply(`New session — ${shortModel || 'ready'}.`);
-  } else { const err = await res.json().catch(() => null); slashReply('Failed to create session' + (err?.detail ? ': ' + ctx.esc(err.detail) : '')); }
+    await typewriterReply(shortModel ? `New chat — ${shortModel}.` : 'New chat.');
+  } else { const err = await res.json().catch(() => null); slashReply('Could not start a chat' + (err?.detail ? ': ' + ctx.esc(err.detail) : '')); }
   return true;
 }
 
@@ -1058,7 +1058,7 @@ async function _cmdSessionDelete(args, ctx) {
       if (res.ok) deleted++; else failed++;
     }
     await sessionModule.loadSessions();
-    let msg = `Deleted ${deleted} session${deleted !== 1 ? 's' : ''}`;
+    let msg = `Deleted ${deleted} chat${deleted !== 1 ? 's' : ''}`;
     if (skipped && !force) msg += `, kept ${skipped} starred`;
     if (failed) msg += `, ${failed} failed`;
     slashReply(msg);
@@ -1067,7 +1067,7 @@ async function _cmdSessionDelete(args, ctx) {
 
   // Single session delete
   const target = _resolveSession(cleanArg) || ctx.sid;
-  if (!target) { slashReply('No session to delete'); return true; }
+  if (!target) { slashReply('No chat to delete'); return true; }
   const sessions = sessionModule.getSessions();
   const sess = sessions.find(s => s.id === target);
   const label = sess ? `"${ctx.esc(sess.name || target.slice(0,8))}"` : target.slice(0,8);
@@ -1076,14 +1076,14 @@ async function _cmdSessionDelete(args, ctx) {
     await typewriterReply(`Deleted ${label}`);
     await sessionModule.loadSessions();
   } else if (res.status === 403) {
-    slashReply('Cannot delete a starred session — unstar it first, or use <code>/s rm -rf</code>');
+    slashReply('Cannot delete a starred chat — unstar it first, or use <code>/s rm -rf</code>');
   } else { const err = await res.json().catch(() => null); slashReply('Delete failed' + (err?.detail ? ': ' + ctx.esc(err.detail) : '')); }
   return true;
 }
 
 async function _cmdSessionArchive(args, ctx) {
   const target = _resolveSession(args[0]) || ctx.sid;
-  if (!target) { slashReply('No session to archive'); return true; }
+  if (!target) { slashReply('No chat to archive'); return true; }
   const sessions = sessionModule.getSessions();
   const sess = sessions.find(s => s.id === target);
   const label = sess ? `"${ctx.esc(sess.name || target.slice(0,8))}"` : target.slice(0,8);
@@ -1107,19 +1107,19 @@ async function _cmdSessionRename(args, ctx) {
 async function _cmdSessionImportant(args, ctx) {
   const fd = new FormData(); fd.append('important', 'true');
   await fetch(`${API_BASE}/api/session/${ctx.sid}/important`, { method: 'POST', body: fd, credentials: 'same-origin' });
-  await typewriterReply('Session marked as important');
+  await typewriterReply('Marked important');
   return true;
 }
 
 async function _cmdSessionUnimportant(args, ctx) {
   const fd = new FormData(); fd.append('important', 'false');
   await fetch(`${API_BASE}/api/session/${ctx.sid}/important`, { method: 'POST', body: fd, credentials: 'same-origin' });
-  await typewriterReply('Session unmarked');
+  await typewriterReply('Unmarked');
   return true;
 }
 
 async function _cmdSessionFork(args, ctx) {
-  if (!ctx.sid) { slashReply('No active session'); return true; }
+  if (!ctx.sid) { slashReply('No chat open'); return true; }
   const keepCount = parseInt(args[0]) || 0;
   const res = await fetch(`${API_BASE}/api/session/${ctx.sid}/fork`, {
     method: 'POST', credentials: 'same-origin',
@@ -1130,13 +1130,13 @@ async function _cmdSessionFork(args, ctx) {
     const data = await res.json();
     await sessionModule.loadSessions();
     await sessionModule.selectSession(data.id);
-    await typewriterReply(`Forked session (${data.kept || 0} messages)`);
+    await typewriterReply(`Forked (${data.kept || 0} messages)`);
   } else { slashReply('Fork failed'); }
   return true;
 }
 
 async function _cmdSessionTruncate(args, ctx) {
-  if (!ctx.sid) { slashReply('No active session'); return true; }
+  if (!ctx.sid) { slashReply('No chat open'); return true; }
   const keep = parseInt(args[0]);
   if (!keep || keep < 1) { slashReply('Usage: /truncate N — deletes older messages, keeps the last N'); return true; }
   const res = await fetch(`${API_BASE}/api/session/${ctx.sid}/truncate`, {
@@ -1152,7 +1152,7 @@ async function _cmdSessionTruncate(args, ctx) {
 async function _cmdSessionList(args, ctx) {
   const sessions = sessionModule.getSessions();
   const active = sessions.filter(s => !s.archived);
-  if (!active.length) { slashReply('No active sessions'); return true; }
+  if (!active.length) { slashReply('No chats'); return true; }
   const lines = active.slice(0, 40).map(s => {
     const current = s.id === ctx.sid ? ' <b>(current)</b>' : '';
     return `${ctx.esc(s.name || 'Untitled')} <span style="opacity:0.5">${s.id.slice(0,8)}</span>${current}`;
@@ -1172,7 +1172,7 @@ async function _cmdSessionSwitch(args, ctx) {
   if (match) {
     await sessionModule.selectSession(match.id);
     await typewriterReply(`Switched to "${ctx.esc(match.name)}"`);
-  } else { await typewriterReply(`No session matching "${ctx.esc(query)}"`); }
+  } else { await typewriterReply(`No chat matching "${ctx.esc(query)}"`); }
   return true;
 }
 
@@ -1183,14 +1183,14 @@ async function _cmdSessionSort(args, ctx) {
   // person is most likely to disagree with — were removed without appearing in
   // any number on any screen.
   if (!await sessionModule.confirmChatTidy()) { slashReply('Tidy cancelled'); return true; }
-  slashReply('Auto-sorting sessions...');
+  slashReply('Sorting chats…');
   const res = await fetch(`${API_BASE}/api/sessions/auto-sort`, { method: 'POST', credentials: 'same-origin' });
   if (res.ok) {
     const data = await res.json();
     await sessionModule.loadSessions();
     // Handle skipped status
     if (data.status === 'skipped') {
-      await typewriterReply(`Auto-sort skipped: ${data.reason || 'No sessions to sort'}`);
+      await typewriterReply(`Auto-sort skipped: ${data.reason || 'No chats to sort'}`);
     } else {
       await typewriterReply(sessionModule.describeChatTidy(data));
     }
@@ -1199,11 +1199,11 @@ async function _cmdSessionSort(args, ctx) {
 }
 
 async function _cmdSessionInfo(args, ctx) {
-  if (!ctx.sid) { slashReply('No active session'); return true; }
+  if (!ctx.sid) { slashReply('No chat open'); return true; }
   const sessions = sessionModule.getSessions();
   const s = sessions.find(ss => ss.id === ctx.sid);
-  if (!s) { slashReply('Session not found'); return true; }
-  slashReply(`<pre>Session: ${ctx.esc(s.name || 'Untitled')}
+  if (!s) { slashReply('Chat not found'); return true; }
+  slashReply(`<pre>Chat:    ${ctx.esc(s.name || 'Untitled')}
 ID:      ${s.id}
 Model:   ${ctx.esc(s.model || '?')}
 Folder:  ${ctx.esc(s.folder || '(none)')}
@@ -1219,7 +1219,7 @@ async function _cmdSessionClear(args, ctx) {
 }
 
 async function _cmdSessionExport(args, ctx) {
-  if (!ctx.sid) { slashReply('No active session'); return true; }
+  if (!ctx.sid) { slashReply('No chat open'); return true; }
   // Parse linux-style: cat > file.json, cat > notes.txt, cat > chat.html
   let filename = '';
   let fmt = 'md';
@@ -1250,7 +1250,7 @@ async function _cmdToggleIncognito(args, ctx) {
   const sessions = sessionModule.getSessions();
   const sess = ctx.sid ? sessions.find(s => s.id === ctx.sid) : null;
   if (sess && sess.message_count > 0) {
-    slashReply(`Can't toggle Nobody mode mid-conversation — start a new session first`);
+    slashReply(`Can't switch Nobody on mid-chat — start a new chat first`);
     return true;
   }
   const v = (args[0]||'').toLowerCase();
@@ -2030,7 +2030,7 @@ async function _cmdStats(args, ctx) {
   const res = await fetch(`${API_BASE}/api/db/stats`, { credentials: 'same-origin' });
   if (res.ok) {
     const d = await res.json();
-    slashReply(`<pre>Sessions:  ${d.sessions || '?'}
+    slashReply(`<pre>Chats:     ${d.sessions || '?'}
 Messages:  ${d.messages || '?'}
 Memories:  ${d.memories || '?'}
 Documents: ${d.documents || '?'}
@@ -2042,7 +2042,7 @@ Uploads:   ${d.uploads || '?'}</pre>`);
 async function _cmdUsage(args, ctx) {
   const sid = ctx.sid;
   if (!sid) {
-    slashReply('No active session.');
+    slashReply('No chat open.');
     return true;
   }
 
@@ -2075,7 +2075,7 @@ async function _cmdUsage(args, ctx) {
       : 'Estimated local cost: no billable usage recorded';
 
   slashReply(`<pre>${[
-    `Session: ${ctx.esc(session?.name || 'Current chat')}`,
+    `Chat: ${ctx.esc(session?.name || 'Current chat')}`,
     `Model: ${ctx.esc(model)}`,
     `Messages: ${messageCount.toLocaleString()}`,
     `Recorded tokens: ${totalTokens.toLocaleString()}`,
@@ -2107,7 +2107,7 @@ async function _cmdCompact(args, ctx) {
   compactSpinner.destroy();
   if (res.ok) {
     const d = await res.json();
-    slashReply(`Conversation compacted. Summarized ${d.summarized || 0} older messages, kept ${d.kept || 0} recent messages.`);
+    slashReply(`Compacted: ${d.summarized || 0} older messages summarised, ${d.kept || 0} kept.`);
     if (sessionModule?.selectSession) await sessionModule.selectSession(ctx.sid);
   } else {
     let detail = 'Compaction failed';
@@ -2516,7 +2516,7 @@ async function _cmdDemo(args, ctx) {
   const delay = ms => new Promise(r => setTimeout(r, ms));
 
   // ── Welcome ──
-  await typewriterReply('Welcome to Pantheon! Lets begin the tour!');
+  await typewriterReply('A quick tour.');
   // Beat between the welcome line and the first hint so it doesn't snap in.
   await delay(900);
 
@@ -2551,14 +2551,14 @@ async function _cmdDemo(args, ctx) {
   const sidebar = document.getElementById('sidebar');
 
   const steps = [
-    { sel: '#sidebar-new-chat-btn', text: 'Start a new chat here. <b>Click it.</b> You can do it!', mode: 'click',
+    { sel: '#sidebar-new-chat-btn', text: 'Start a new chat. <b>Click it.</b>', mode: 'click',
       before() { if (sidebar?.classList.contains('hidden')) sidebar.classList.remove('hidden'); } },
-    { sel: '#model-picker-btn',   text: 'Pick your LLM, Local or API.', advanceOnClick: true },
-    { sel: '#mode-agent-btn',     text: '<b>Agent mode</b> gives Pantheon more control of the app when your model supports tools: create a theme, download a model, make a daily task, organize things, and more.', mode: 'click' },
-    { sel: '#web-toggle-btn',     text: 'Toggle tools like <b>web search</b>. Pantheon comes with private built-in <b>SearXNG</b> search.', mode: 'click' },
-    { sel: '#overflow-plus-btn',  text: 'More tools can be found here, or in your sidebar. <b>Click to peek.</b>',
+    { sel: '#model-picker-btn',   text: 'Pick a model.', advanceOnClick: true },
+    { sel: '#mode-agent-btn',     text: '<b>Agent mode</b> lets the model use tools.', mode: 'click' },
+    { sel: '#web-toggle-btn',     text: '<b>Web search</b>, built in.', mode: 'click' },
+    { sel: '#overflow-plus-btn',  text: 'More tools. <b>Click to peek.</b>',
       advanceOnClick: true, pulseNext: true, afterDelay: 2200 },
-    { sel: '#message',            text: 'Write your prompt here. Drag and drop files to attach them. <b>/prompt</b> for random prompt, <b>/help</b> for more.',
+    { sel: '#message',            text: 'Write here; drop files to attach them. <b>/help</b> lists the commands.',
       finishLabel: true,
       before() { document.getElementById('overflow-menu')?.classList.add('hidden'); } },
   ];
@@ -2585,7 +2585,7 @@ async function _cmdDemo(args, ctx) {
   }
 
   _clearTour();
-  await typewriterReply('Pantheon is yours to explore, enjoy the voyage!');
+  await typewriterReply('That’s the tour.');
   return true;
 }
 
@@ -2773,18 +2773,18 @@ async function _cmdTourCompare(args, ctx) {
   // bounding-rect was putting the tooltip in the top-left corner.
   const phase1 = [
     { sel: '#compare-model-overlay .modal-body',
-      text: 'Pick what type of test you want to run. <b>Chat</b>, <b>Agent</b>, <b>Search</b> or <b>Deep Research</b>.',
+      text: 'Pick the kind of test: <b>Chat</b>, <b>Agent</b>, <b>Search</b> or <b>Deep Research</b>.',
       placement: 'center-above',
       before: () => {
         const modalBody = document.querySelector('#compare-model-overlay .modal-body');
         if (modalBody) modalBody.scrollTop = 0;
       } },
     { sel: '#compare-model-overlay .compare-blind-toggle',
-      text: '<b>Blind Mode</b> hides model names so you don’t know which model gives what output.' },
+      text: '<b>Blind Mode</b> hides which model wrote which answer.' },
     { sel: '#compare-model-overlay .compare-parallel-toggle',
-      text: '<b>Parallel</b> runs side by side, toggle to <b>Sequential</b> as well.' },
+      text: '<b>Parallel</b> runs them side by side; <b>Sequential</b> one after another.' },
     { sel: '#compare-model-overlay .compare-dice-toggle',
-      text: '<b>Shuffle</b> picks the models in your entire list of endpoints. Combine with <b>Blind Mode</b> and you get the cleanest evaluation.' },
+      text: '<b>Shuffle</b> picks models from your whole list. With <b>Blind Mode</b>, it is a fair test.' },
   ];
 
   for (let i = 0; i < phase1.length; i++) {
@@ -2849,11 +2849,11 @@ async function _cmdTourCompare(args, ctx) {
   // tour it here; the user will discover it naturally when needed.
   const phase2 = [
     { sel: '#compare-add-btn',
-      text: 'Add more <b>Models</b> here, keep stacking, who’s stopping ya? (you can also remove btw).' },
+      text: 'Add more <b>models</b> here, or remove them.' },
     { sel: '#compare-shuffle-btn',
-      text: 'After adding, <b>Shuffle</b> to randomize the order again.' },
+      text: '<b>Shuffle</b> puts them in a new order.' },
     { sel: '#cmp-eval-btn',
-      text: 'When you’re ready to test, feel free to use curated <b>evaluation prompts</b>.',
+      text: 'Ready? Pick one of the <b>evaluation prompts</b>.',
       advanceOnClick: true },
   ];
 
@@ -2869,7 +2869,7 @@ async function _cmdTourCompare(args, ctx) {
   }
 
   _clear();
-  await typewriterReply('That’s it, you’ll figure out the rest! Have fun!');
+  await typewriterReply('That’s Compare.');
   return true;
 }
 
@@ -3046,27 +3046,27 @@ async function _cmdTourCookbook(args, ctx) {
   // without having to navigate manually. Keep copy tight — no walls of text.
   const steps = [
     { sel: '#cookbook-modal .modal-content',
-      text: '<b>Welcome to Forge!</b> Download / Cook / Serve models here!',
+      text: '<b>Forge</b> — download, launch and serve models.',
       placement: 'center-above' },
     { sel: '#cookbook-modal .cookbook-tab[data-backend="Settings"]',
-      text: 'Hosting on another machine? Configure it under <b>Settings</b>.' },
+      text: 'Serving on another machine? Add it under <b>Settings</b>.' },
     { sel: '#cookbook-dl-repo',
       text: 'Paste a HuggingFace URL or <code>org/model-name</code> to download. Quantizations like <code>org/model:Q4_K_M</code> work too.',
       before: () => _clickTab('Search') },
     { sel: '#cookbook-modal .admin-card:has(> #hwfit-list)',
-      text: '<b>Scan / Download</b> — reads your hardware and lists every model that\'ll run on it.',
+      text: 'Models that fit this machine, read from its hardware.',
       before: () => _clickTab('Search') },
     { sel: '#hwfit-hw-manual-btn',
-      text: 'Your detected hardware appears here. You can also manually edit it to see what would fit on other setups.',
+      text: 'The hardware it found. Edit it to see what fits elsewhere.',
       before: () => _clickTab('Search') },
     { sel: '#cookbook-hf-latest-toggle',
-      text: 'Check <b>latest trending models</b> here.',
+      text: '<b>Trending</b> models.',
       before: () => _clickTab('Search') },
     { sel: '#cookbook-modal .cookbook-tab[data-backend="Serve"]',
-      text: '<b>Serve</b> — fire up downloaded models with vLLM, Ollama, llama.cpp, and diffusion models too.',
+      text: '<b>Launch</b> — serve a downloaded model with vLLM, Ollama or llama.cpp.',
       before: () => _clickTab('Serve') },
     { sel: '#cookbook-modal .cookbook-tab[data-backend="Dependencies"]',
-      text: '<b>Dependencies</b> — install missing Python packages or check GPU drivers.',
+      text: '<b>Dependencies</b> — optional packages and GPU drivers.',
       before: () => _clickTab('Dependencies') },
   ];
 
@@ -3076,7 +3076,7 @@ async function _cmdTourCookbook(args, ctx) {
   if (runTab) {
     steps.push({
       sel: '#cookbook-modal .cookbook-tab[data-backend="Running"]',
-      text: '<b>Running</b> — live status, tail logs, downloads, kill.',
+      text: '<b>Running</b>, under Launch: status, logs, downloads.',
       before: () => _clickTab('Running'),
     });
   }
@@ -3096,7 +3096,7 @@ async function _cmdTourCookbook(args, ctx) {
   // Leave Forge on the Download tab so the user can start downloading immediately.
   _clickTab('Search');
   _clear();
-  await typewriterReply('That’s Forge. Pick a model that catches your eye and let it cook.');
+  await typewriterReply('That’s Forge. Pick a model that fits this machine.');
   return true;
 }
 
@@ -3302,7 +3302,7 @@ async function _cmdTourTheme(args, ctx) {
   // work as a fallback (read past without touching anything).
   const steps = [
     { sel: '#theme-popup',
-      text: '<b>Welcome to Theme.</b> Pantheon is yours to customize!',
+      text: '<b>Theme</b> — colours, fonts and backgrounds.',
       placement: 'center-above',
       before: () => _clickTab('theme-tab-browse') },
     { sel: '#themeGrid',
@@ -3310,11 +3310,11 @@ async function _cmdTourTheme(args, ctx) {
       extraSel: '#theme-tabs .admin-tab[data-tab="theme-tab-customize"]',
       interactive: true },
     { sel: '#theme-harmony-card',
-      text: 'Build a quick theme with <b>color harmony</b> — pick one accent color, hit Generate, and a matching palette falls out.',
+      text: '<b>Colour harmony</b> — pick one accent colour, press Generate, get a palette.',
       before: () => _clickTab('theme-tab-customize'),
       interactive: true },
     { sel: '#themeCustom',
-      text: 'Want finer control? <b>Edit each color individually</b> here — the page updates live.',
+      text: 'Or <b>set each colour</b> here; the page follows as you go.',
       before: () => _clickTab('theme-tab-customize'),
       interactive: true },
     { sel: '#theme-bg-pattern-select',
@@ -3322,7 +3322,7 @@ async function _cmdTourTheme(args, ctx) {
       before: () => _clickTab('theme-tab-customize'),
       interactive: true },
     { sel: '#theme-opacity-wrap',
-      text: '<b>Peek</b> fades this window so you can see the page behind it while you tweak.',
+      text: '<b>Peek</b> fades this window so you can see the page behind it.',
       before: () => _clickTab('theme-tab-customize'),
       interactive: true },
   ];
@@ -3342,7 +3342,7 @@ async function _cmdTourTheme(args, ctx) {
   }
 
   _clear();
-  await typewriterReply('That’s Theme. Make it yours.');
+  await typewriterReply('That’s Theme.');
   return true;
 }
 
@@ -3526,37 +3526,38 @@ async function _cmdTourSettings(args, ctx) {
 
   const steps = [
     { sel: '#settings-modal .modal-content',
-      text: '<b>Welcome to Settings.</b> HOW EXCITING.',
+      text: '<b>Settings.</b> Add a model first.',
       placement: 'center-above' },
     { sel: '#settings-modal .settings-nav-item[data-settings-tab="services"]',
-      text: '<b>Add Models</b> — add a local endpoint first, like Ollama, vLLM, or llama.cpp. Cloud providers are optional.',
+      text: '<b>Add Models</b> — a local endpoint (Ollama, vLLM, llama.cpp) or a cloud provider.',
       before: () => _clickNav('services') },
     { sel: '#settings-modal .settings-nav-item[data-settings-tab="ai"]',
-      text: '<b>AI Defaults</b> — three roles share the work. Let\'s walk through them.',
+      text: '<b>AI Defaults</b> — the chat, utility and vision models.',
       before: () => _clickNav('ai') },
     { sel: '#settings-modal .admin-card:has(#set-defaultModelSelect)',
-      text: '<b>Default Chat Model</b> — your main model. The one Pantheon reaches for whenever you start a new chat.',
+      text: '<b>Default chat model</b> — the one a new chat uses.',
       before: () => _clickNav('ai') },
     { sel: '#settings-modal .admin-card:has(#set-utilityModelSelect)',
-      text: '<b>Utility Model</b> — your hard-working sidekick. Runs background tasks (compaction, cleanup, auto-naming, summarization) so your chat model doesn\'t burn cycles on chores. <b>Recommend a small local model</b> here — it\'s free and always on.',
+      text: '<b>Utility model</b> — background jobs: naming, cleanup, memory extraction. A small local model is ideal.',
       before: () => _clickNav('ai') },
     { sel: '#settings-modal .admin-card:has(#set-vlModelSelect)',
-      text: '<b>Vision</b> — powers any image-recognition feature: drop a photo in chat, ask what\'s in it, OCR, etc.',
+      text: '<b>Vision</b> — reads the images you drop in a chat.',
       before: () => _clickNav('ai') },
     { sel: '#settings-modal .settings-nav-item[data-settings-tab="integrations"]',
-      text: '<b>Integrations</b> — wire up email, calendar, contacts here (per-account).',
-      before: () => _clickNav('integrations') },
+      // `P23-05`: highlighted, not pressed — the entry opens the Workbench over
+      // Settings, which would cover every step after it.
+      text: '<b>MCP &amp; Integrations</b> — mail, calendars, MCP servers and APIs, in the Workbench.' },
     { sel: '#settings-modal .settings-nav-item[data-settings-tab="search"]',
-      text: '<b>Search</b> — plug in your own search provider, or use the bundled <b>SearXNG</b> out of the box.',
+      text: '<b>Search</b> — your own provider, or the bundled <b>SearXNG</b>.',
       before: () => _clickNav('search') },
     { sel: '#settings-modal .settings-nav-item[data-settings-tab="appearance"]',
-      text: '<b>Appearance</b> — too many tools you don\'t need? Adjust them here! Toggle sidebar buttons, tool icons, and section visibility.',
+      text: '<b>Appearance</b> — show or hide tools.',
       before: () => _clickNav('appearance') },
     { sel: '#settings-modal .settings-nav-item[data-settings-tab="email"]',
-      text: '<b>Email</b> — sync schedule, drafts, snooze defaults — everything email-flow related.',
+      text: '<b>Email</b> — hold the agent’s mail for your approval, and how often inboxes are checked.',
       before: () => _clickNav('email') },
     { sel: '#settings-modal .settings-nav-item[data-settings-tab="reminders"]',
-      text: '<b>Reminders</b> — quiet hours and how Pantheon nudges you about calendar + urgent email.',
+      text: '<b>How you’re reminded</b> — where a note reminder goes.',
       before: () => _clickNav('reminders') },
   ];
 
@@ -3575,7 +3576,7 @@ async function _cmdTourSettings(args, ctx) {
   // Land on the first tab so the user has a familiar starting point.
   _clickNav('services');
   _clear();
-  await typewriterReply('See? Not so bad. Tweak away.');
+  await typewriterReply('Done.');
   return true;
 }
 
@@ -3759,7 +3760,7 @@ async function _cmdTourGallery(args, ctx) {
 
   const steps = [
     { sel: '#gallery-modal .modal-content',
-      text: '<b>Welcome to Gallery.</b> Photos and albums live here.',
+      text: '<b>Gallery</b> — photos and albums.',
       placement: 'center-above',
       before: () => _clickTab('images') },
     { sel: '#gallery-modal .gallery-tab[data-tab="images"]',
@@ -3772,7 +3773,7 @@ async function _cmdTourGallery(args, ctx) {
       text: '<b>Albums</b> — group images into collections.',
       before: () => _clickTab('albums') },
     { sel: '#gallery-modal .gallery-tab[data-tab="editor"]',
-      text: '<b>Editor</b> — honestly still WIP, so explore as you want.',
+      text: '<b>Editor</b> — early; expect rough edges.',
       before: () => _clickTab('editor') },
   ];
 
@@ -3791,7 +3792,7 @@ async function _cmdTourGallery(args, ctx) {
   // Land on Photos so the user has a familiar starting point.
   _clickTab('images');
   _clear();
-  await typewriterReply('That\'s Gallery. Editor is rough — feedback welcome.');
+  await typewriterReply('That’s Gallery.');
   return true;
 }
 
@@ -3968,18 +3969,18 @@ async function _cmdTourNotes(args, ctx) {
 
   const steps = [
     { sel: '#notes-pane',
-      text: '<b>Notes</b> is your basic todo list, and also where reminders are managed.',
+      text: '<b>Notes</b> — to-dos and reminders.',
       placement: 'center-above' },
     { sel: '#notes-pane .notes-pane-body',
-      text: 'Your notes show up here. You can also <b>ask Pantheon in chat</b> to take a note for you.' },
+      text: 'Your notes. You can also <b>ask in chat</b> for one.' },
     { sel: '#notes-search',
-      text: '<b>Search</b> across every note — title, body, tags, the works.' },
+      text: '<b>Search</b> every note — title, body and tags.' },
     { sel: '#notes-view-toggle',
-      text: 'Switch between <b>grid</b> and <b>list</b> views — pick whichever fits your brain.' },
+      text: '<b>Grid</b> or <b>list</b>. Pick one.' },
     { sel: '#notes-archive-toggle',
-      text: '<b>Archive</b> stashes old notes you don\'t want cluttering the active view but still want to keep.' },
+      text: '<b>Archive</b> keeps old notes out of the way.' },
     { sel: '#notes-select-btn',
-      text: '<b>Select</b> drops you into multi-select mode for bulk archive or delete.' },
+      text: '<b>Select</b> several to archive or delete.' },
   ];
 
   for (let i = 0; i < steps.length; i++) {
@@ -3995,7 +3996,7 @@ async function _cmdTourNotes(args, ctx) {
   }
 
   _clear();
-  await typewriterReply('That\'s Notes. Write down whatever you want to remember.');
+  await typewriterReply('That’s Notes.');
   return true;
 }
 
@@ -4170,20 +4171,25 @@ async function _cmdTourBrain(args, ctx) {
   const _tab = (name) => document.querySelector(`.memory-tab[data-memory-tab="${name}"]`)?.click();
   const steps = [
     { sel: '#memory-modal .memory-modal-content',
-      text: '<b>Brain</b> is where your memories are. You can edit them, or add new ones under <b>Add</b>. Wow.',
+      text: '<b>Brain</b> — what Pantheon remembers. Add or edit here.',
       before: () => _tab('browse'),
       placement: 'center-above' },
     { sel: '#memory-tidy-btn',
-      text: '<b>Tidy</b> runs your model to clear out irrelevant memories and duplicates. It also triggers automatically from Tasks.',
+      text: '<b>Tidy</b> merges duplicates.',
       before: () => _tab('browse') },
     // `P23-02` (fx-brain merge point): Skills is a door beside the tabs now,
     // not a tab with a launcher card; a step whose target is missing ends the
     // tour, so the step points at the door.
     { sel: '#memory-skills-door',
-      text: '<b>Skills</b> are basically your AI’s memory for improving its abilities.',
+      text: '<b>Skills</b> are procedures it can follow.',
       before: () => _tab('browse') },
+    { sel: '.memory-tab-panel[data-memory-panel="rag"]',
+      text: '<b>RAG</b> — files Pantheon can quote. Turn it on in the chat bar.',
+      before: () => _tab('rag') },
+    // fx-brain's B-NEW-3: the skill confidence bar moved to Skills › Settings
+    // (`BRAIN-U-10`); the Brain's Settings holds memory extraction only.
     { sel: '.memory-tab-panel[data-memory-panel="settings"]',
-      text: '<b>Settings</b> lets you turn off auto extraction and set how strong skills need to be before they are tagged.',
+      text: '<b>Settings</b> — whether memories are picked out of chats on their own.',
       before: () => _tab('settings') },
   ];
 
@@ -4200,7 +4206,7 @@ async function _cmdTourBrain(args, ctx) {
   }
 
   _clear();
-  await typewriterReply('That’s Brain — memories, skills, tidy, and settings in one place.');
+  await typewriterReply('That’s Brain.');
   return true;
 }
 
@@ -4410,14 +4416,12 @@ async function _runTaskTour(steps, doneText, opts) {
 async function _cmdTourTask1(args, ctx) {
   const result = await _runTaskTour([
     { sel: '#tasks-modal .modal-content',
-      text: '<b>Welcome to Tasks.</b> Manage all your AI background work here.' },
+      text: '<b>Tasks</b> — work that runs on its own.' },
     { sel: '#tasks-pause-all-btn',
-      text: 'Tasks are <b>paused by default</b> — resume whichever ones make sense for you. (Or pause anything that\'s running.)' },
-    { sel: '#tasks-modal .modal-body',
-      text: 'When enabled, Tasks use the <b>utility model configured in Settings</b> for cleanup and organization jobs.' },
-  ], 'Use Tasks when you want Pantheon to handle background housekeeping.', {
+      text: 'Built-in housekeeping tasks ship <b>paused</b>; yours run as soon as you save them.' },
+  ], 'That’s Tasks.', {
     continueLabel: 'continue →',
-    continueText: '<b>Part 1 done.</b> Want to keep going into <b>adding & managing tasks</b>?',
+    continueText: '<b>Part 1 done.</b> Go on to <b>adding tasks</b>?',
   });
   if (result === 'continue') return _cmdTourTask2(args, ctx);
   return true;
@@ -4426,12 +4430,12 @@ async function _cmdTourTask1(args, ctx) {
 async function _cmdTourTask2(args, ctx) {
   return _runTaskTour([
     { sel: '#tasks-modal .tasks-tab[data-tab="new"]',
-      text: '<b>Add</b> creates scheduled prompts, research jobs, actions, event triggers, or webhooks.',
+      text: '<b>Add</b> — a prompt, research or action, on a schedule, an event or a webhook.',
       before: () => document.querySelector('#tasks-modal .tasks-tab[data-tab="new"]')?.click() },
     { sel: '#task-ai-input',
-      text: 'You can just describe the task in plain chat language. Example: “weekday mornings summarize unread email”.' },
+      text: 'Describe it in plain words: “weekday mornings, summarise unread email”.' },
     { sel: '#tasks-modal .memory-item[data-idx="0"]',
-      text: 'Or pick a template and fill out the form manually.' },
+      text: 'Or pick a type and fill in the form.' },
     { sel: '#task-form-save, #tasks-modal .tasks-tab[data-tab="tasks"]',
       text: 'Tasks can be edited, paused, resumed, run now, or deleted from their cards.',
       before: () => document.querySelector('#tasks-modal .tasks-tab[data-tab="tasks"]')?.click() },
@@ -4439,10 +4443,10 @@ async function _cmdTourTask2(args, ctx) {
     // re-show it when the user moves past this step so the tour lands
     // back where it started.
     { sel: '#message',
-      text: 'You can also <b>just ask in chat</b> — say "every weekday at 9am check for urgent emails" and Pantheon will create the task for you.',
+      text: 'Or <b>ask in chat</b>: “every weekday at 9am, check for urgent email”.',
       before: () => document.getElementById('tasks-modal')?.classList.add('hidden'),
       after:  () => document.getElementById('tasks-modal')?.classList.remove('hidden') },
-  ], 'That\'s Tasks. Have it run the background bits so you can stay in chat.');
+  ], 'That’s Tasks.');
 }
 
 // ── Tour: Deep Research ──
@@ -4616,15 +4620,15 @@ async function _cmdTourResearch(args, ctx) {
 
   const steps = [
     { sel: '#research-pane',
-      text: '<b>Welcome to Deep Research!</b> An LLM-in-the-loop agent that plans the search, queries the web, extracts findings, and writes you a full report.',
+      text: '<b>Deep Research</b> searches the web and writes a report.',
       placement: 'center-above' },
     { sel: '#research-query',
-      text: 'Type what you want to researched here. Be specific — <i>"compare X vs Y for Z"</i> beats <i>"tell me about X"</i>.' },
+      text: 'Type the question. Specific beats broad: <i>"compare X vs Y for Z"</i>.' },
     { sel: '#research-settings-body',
-      text: '<b>Rounds</b> is how long the model will keep searching for. You can set to <b>Auto</b>, or go deeper/quicker depending on preference.',
+      text: '<b>Rounds</b> — how long it keeps searching. <b>Auto</b> lets the model choose.',
       before: _ensureSettingsOpen },
     { sel: '#research-pane',
-      text: 'When a report finishes you can <b>discuss the results with the LLM</b> in chat, or open the full <b>visual HTML report</b> — sources, images, the works.',
+      text: 'When a report is done, discuss it in chat or open the <b>visual report</b>.',
       placement: 'center-above' },
   ];
 
@@ -4840,7 +4844,7 @@ async function _cmdTourLibrary(args, ctx) {
   // ── Phase 1: Library overview ──
   const libSteps = [
     { sel: '#doclib-modal .doclib-modal-content',
-      text: '<b>Welcome to Library!</b> Your hub for <b>Chats</b>, <b>Documents</b>, <b>Research</b>, and <b>Archive</b> — search, sort and tidy!',
+      text: '<b>Library</b> — <b>Chats</b>, <b>Documents</b>, <b>Research</b> and <b>Archive</b>. Search, sort, tidy.',
       placement: 'center-above',
       before: () => {
         // Force the modal box to fill its intended frame so the halo wraps the
@@ -4852,10 +4856,10 @@ async function _cmdTourLibrary(args, ctx) {
         }
       } },
     { sel: '#doclib-create-btn',
-      text: '<b>Create</b> a fresh blank document — click it to try it out! (Or hit <b>Import</b> next to it to bring in a file from disk.)',
+      text: '<b>Create</b> a blank document — try it. <b>Import</b> brings in a file.',
       interactive: true },
     { sel: '#doclib-grid .doclib-card',
-      text: 'Each card is a saved document. It’s linked to the chat you created it in — so either <b>clone</b> it for a new chat, or <b>open</b> it in its original.',
+      text: 'Each card is a document, linked to the chat it was made in: <b>Open</b> it there, or <b>Clone</b> it into this chat.',
       optional: true },
   ];
 
@@ -4886,7 +4890,7 @@ async function _cmdTourLibrary(args, ctx) {
 
   if (!firstDocId || !window.documentModule || !window.documentModule.loadDocument) {
     _clear();
-    await typewriterReply('All yours — create or import a doc, then run /tour-library again to see the editor.');
+    await typewriterReply('Create or import a document, then run /tour-library again for the editor.');
     return true;
   }
 
@@ -4900,7 +4904,7 @@ async function _cmdTourLibrary(args, ctx) {
   }
   if (!document.getElementById('doc-editor-pane')) {
     _clear();
-    await typewriterReply('All yours — open a doc and run /tour-library again for the editor walkthrough.');
+    await typewriterReply('Open a document, then run /tour-library again for the editor.');
     return true;
   }
 
@@ -4916,7 +4920,7 @@ async function _cmdTourLibrary(args, ctx) {
     { sel: '#doc-language-select',
       text: 'Switch the <b>document type</b> — markdown shows a preview, email shows To/Subject/Send, PDF lets you fill blanks with AI.' },
     { sel: '#doc-editor-textarea',
-      text: 'Ask the LLM to <i>draft</i>, <i>rewrite</i>, <i>summarize</i>, <i>feedback</i> — edits stream live.' },
+      text: 'Ask the model to <i>draft</i>, <i>rewrite</i>, <i>summarise</i> or give <i>feedback</i> — edits stream in.' },
   ];
 
   for (let i = 0; i < editorSteps.length; i++) {
@@ -4932,7 +4936,7 @@ async function _cmdTourLibrary(args, ctx) {
   }
 
   _clear();
-  await typewriterReply('All yours — write away!');
+  await typewriterReply('Write here.');
   return true;
 }
 
@@ -5242,7 +5246,7 @@ async function _cmdSetup(args, ctx) {
         await typewriterReply(`Feature toggles:\n\n${lines}\n\nType a feature name to toggle it.`);
         setupMode = 'features';
       } catch {
-        await typewriterReply('Could not load features. Check the Admin Panel.');
+        await typewriterReply('Could not load features. Check Settings → Agent Tools.');
       }
       return true;
     }
@@ -5603,7 +5607,7 @@ async function _cmdUptime(args, ctx) {
   _eggRender(`<div style="display:flex;flex-direction:column;align-items:center;gap:6px;animation:egg-fade 0.3s ease-out">
     <div style="font-size:1.4em;font-weight:700;font-variant-numeric:tabular-nums">${parts.join(' ')}</div>
     <div style="width:120px;height:4px;border-radius:2px;background:var(--border);overflow:hidden"><div style="height:100%;width:${pct}%;background:var(--red);border-radius:2px;transition:width 0.5s"></div></div>
-    <div style="font-size:0.7em;opacity:0.35">session uptime</div>
+    <div style="font-size:0.7em;opacity:0.35">uptime</div>
   </div>`);
   if (!document.getElementById('egg-styles')) { const s2=document.createElement('style');s2.id='egg-styles';s2.textContent='@keyframes egg-spin{0%{transform:rotateY(0) scale(0.5);opacity:0}50%{transform:rotateY(540deg) scale(1.2)}100%{transform:rotateY(720deg) scale(1)}} @keyframes egg-shake{0%,100%{transform:rotate(0)}25%{transform:rotate(-8deg)}75%{transform:rotate(8deg)}} @keyframes egg-fade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}';document.head.appendChild(s2); }
   return true;
@@ -5781,7 +5785,7 @@ async function _cmdHelp(args, ctx) {
       categories[cat].push(`  ${usage.padEnd(21)}${desc}`);
     }
   }
-  const order = ['Getting started', 'Tours', 'Chats', 'Settings', 'Memory', 'Productivity', 'AI Tools'];
+  const order = ['Getting started', 'Tours', 'Chats', 'Settings', 'Brain', 'Productivity', 'AI Tools'];
   let lines = [];
   for (const cat of order) {
     if (categories[cat] && categories[cat].length) {
@@ -5825,7 +5829,7 @@ const COMMANDS = {
   chats: {
     alias: ['chat', 'session', 'sessions', 's'],
     category: 'Chats',
-    help: 'Manage chat sessions',
+    help: 'Manage chats',
     default: 'info',
     subs: {
       'new':         { handler: _cmdSessionNew,         alias: ['create','mkdir'], help: 'Create new chat',             usage: '/chats new [name]' },
@@ -5869,7 +5873,7 @@ const COMMANDS = {
   },
   memory: {
     alias: ['m'],
-    category: 'Memory',
+    category: 'Brain',
     help: 'Manage persistent memories',
     default: 'list',
     subs: {
@@ -5881,14 +5885,14 @@ const COMMANDS = {
   },
   skills: {
     alias: ['skill'],
-    category: 'Memory',
+    category: 'Brain',
     help: 'List, search, inspect, or run skills',
     handler: _cmdSkills,
     usage: '/skills list | search query | view name | use name request',
   },
   'reload-skills': {
     alias: ['reload_skills'],
-    category: 'Memory',
+    category: 'Brain',
     help: 'Refresh the slash skill catalog',
     handler: _cmdReloadSkills,
     usage: '/reload-skills',
@@ -6169,7 +6173,7 @@ const COMMANDS = {
     alias: ['search-history'],
     category: 'Utility',
     hidden: true,
-    help: 'Search all conversations',
+    help: 'Search all chats',
     handler: _cmdSearch,
     usage: '/find query'
   },
@@ -6218,7 +6222,7 @@ const COMMANDS = {
   },
   note: {
     alias: ['n'],
-    category: 'Memory',
+    category: 'Brain',
     help: 'Quick-save a note',
     handler: _cmdNote,
     usage: '/note text'

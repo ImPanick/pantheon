@@ -232,7 +232,7 @@ def test_two_equally_relevant_memories_are_broken_by_durability():
     manager = MemoryManager.__new__(MemoryManager)
     ranked = manager.explain_relevant_memories("where is the deployment key", rows, max_items=5)
     assert [r["memory"]["id"] for r in ranked][:1] == ["often"]
-    assert "separate conversations" in ranked[0]["reason"]
+    assert "separate chats" in ranked[0]["reason"]  # P23-05: a chat is a chat
 
 
 def test_recency_and_durability_share_one_slice_rather_than_taking_two():
@@ -321,7 +321,7 @@ def test_each_pill_explains_itself_where_a_person_actually_looks():
     # tooltip is where somebody looks when two numbers sit side by side.
     uses, said = _pills({"uses": 11, "mention_sessions": 3})
     assert "Injected into chat context 11 times" in uses["title"]
-    assert "3 separate conversations" in said["title"]
+    assert "3 separate chats" in said["title"]  # P23-05: a chat is a chat
     assert "which counts how often it was injected" in said["title"], (
         "the mentions pill must name what it is *not*, or the pair is a riddle")
 

@@ -400,7 +400,7 @@ def test_fulfilled_503_keeps_failure_state_and_route_deferred(results):
     assert results["opened"] == 0
     assert results["staleRouteRan"] is False
     assert results["errors"] == [
-        "Failed to load sessions: temporarily unavailable",
+        "Could not load chats: temporarily unavailable",  # P23-05: a chat is a chat
     ]
 
 

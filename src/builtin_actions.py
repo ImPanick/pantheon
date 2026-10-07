@@ -655,7 +655,7 @@ async def action_tidy_sessions(owner: str, **kwargs) -> Tuple[str, bool]:
         return result, True
     except asyncio.TimeoutError:
         logger.error("tidy_sessions action timed out")
-        return "Chat session tidy timed out", False
+        return "Chat tidy timed out", False
     except Exception as e:
         logger.error(f"tidy_sessions action failed: {e}")
         return str(e), False
@@ -3743,7 +3743,7 @@ EFFECT_SENTENCES = {
     EFFECT_WRITES: "writes new data inside Pantheon",
     EFFECT_DELETES: "deletes data inside Pantheon",
     EFFECT_REWRITES: "REPLACES text you wrote with text a model wrote",
-    EFFECT_TOUCHES_REMOTE: "changes something on a machine or service that is not this one",
+    EFFECT_TOUCHES_REMOTE: "changes something outside Pantheon",
     EFFECT_NOTIFIES: "can send you a notification",
     EFFECT_RUNS_CODE: "runs the command on this task, as the user Pantheon runs as",
     EFFECT_CALLS_MODEL: "calls a model",
@@ -3794,12 +3794,12 @@ DRY_VERDICTS = (DRY_DESCRIBES, DRY_SHOWS_INPUT, DRY_CANNOT)
 # the order people have already learned, moved across unchanged.
 ACTION_CATEGORY_ORDER = (
     "Forge", "Other", "Calendar", "Email", "Chats", "Documents",
-    "Memory", "Research", "Skills", "Assistant", "System",
+    "Brain", "Research", "Skills", "Assistant", "System",
 )
 
 BUILTIN_ACTION_META = {
     "tidy_sessions": {
-        "description": "Clean up empty chat sessions and auto-sort into folders",
+        "description": "Clean up empty chats and sort the rest into folders",
         "category": "Chats", "icon": "chat", "model_backed": False,
         "effects": (EFFECT_DELETES,),
         "dry": DRY_DESCRIBES,
@@ -3814,13 +3814,13 @@ BUILTIN_ACTION_META = {
     },
     "consolidate_memory": {
         "description": "Remove duplicate memories",
-        "category": "Memory", "icon": "brain", "model_backed": True,
+        "category": "Brain", "icon": "brain", "model_backed": True,
         "effects": (EFFECT_DELETES, EFFECT_REWRITES, EFFECT_CALLS_MODEL),
         "dry": DRY_CANNOT,
         "params": [],
     },
     "tidy_research": {
-        "description": "Remove orphaned research files (sessions that were deleted)",
+        "description": "Remove research files whose chat was deleted",
         "category": "Research", "icon": "search", "model_backed": False,
         "effects": (EFFECT_DELETES,),
         "dry": DRY_DESCRIBES,
@@ -3972,7 +3972,7 @@ def action_effect_sentences(action: str | None) -> list:
 def dry_run_plan(*, task_type: str | None, action: str | None,
                  prompt: str | None = None, owner: str | None = None,
                  model: str | None = None, endpoint_url: str | None = None,
-                 extra: "list | None" = None) -> list:
+                 extra: "list | None" = None, noun: str = "task") -> list:
     """What the real run would do, as lines. Executes nothing.
 
     `P8-33`. The whole honesty of the dry run is that this function cannot run
@@ -3984,6 +3984,10 @@ def dry_run_plan(*, task_type: str | None, action: str | None,
 
     Returns lines rather than a paragraph because they become the run's step
     log, and `_renderRunSteps` already draws one row per step.
+
+    `P23-05` (WB-M-11): `noun` is what the plan is of — a workflow's caller
+    says `"step"` — and the model line names the model, never its endpoint
+    URL (an address is not something a person reads in a plan).
     """
     lines = []
     kind = (task_type or "llm")
@@ -4034,15 +4038,11 @@ def dry_run_plan(*, task_type: str | None, action: str | None,
         lines.append("Would run this workflow, every step in one run. Its own "
                      "dry run shows what each step would do.")
     else:
-        lines.append("Would send this task's prompt to a model, with tools.")
-        lines.append("It would: call a model, and whatever the tools it is "
-                     "allowed to call then do.")
+        # `P23-05` (COPY-U-27): one line; "It would: call a model, and whatever
+        # the tools it is allowed to call then do" said it again.
+        lines.append(f"Would send this {noun}'s prompt to a model, with tools.")
     if kind in ("llm", "research"):
-        if model or endpoint_url:
-            lines.append(f"Model: {model or '(resolved at run time)'} at "
-                         f"{endpoint_url or '(the default endpoint)'}")
-        else:
-            lines.append("Model: resolved at run time from Settings.")
+        lines.append(f"Model: {model}" if model else "Model: the default.")
     for line in (extra or ()):
         lines.append(line)
     return lines

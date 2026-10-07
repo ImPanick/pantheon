@@ -1576,8 +1576,8 @@ def setup_task_routes(task_scheduler) -> APIRouter:
         rule below is unchanged.
         """
         targets = [
-            {"value": "session", "label": "Session", "description": "Save result to a chat session"},
-            {"value": "notification", "label": "Notification", "description": "Push a browser notification with the result (also saved to the session for history)"},
+            {"value": "session", "label": "Chat", "description": "Save the result to a chat"},
+            {"value": "notification", "label": "Notification", "description": "Push a browser notification with the result (also saved to a chat)"},
             {"value": "email", "label": "Email me", "description": "Send result through your configured SMTP account"},
         ]
         # Only include tools whose NAME clearly indicates an outbound delivery

@@ -78,9 +78,14 @@ NOT_JSON_SENTENCE = "its answer was not a JSON object"
 
 class AskProblem(NamedTuple):
     """`kind` is `ASK_NO_ANSWER` (the call failed; `sentence` says how) or
-    `ASK_NOT_JSON` (it answered, and no JSON object was in it)."""
+    `ASK_NOT_JSON` (it answered, and no JSON object was in it).
+
+    `raw` is what it answered for `ASK_NOT_JSON` — `P23-05` (WB-M-9): a caller
+    that can use the model's plain words (*Why did this fail?*) is handed
+    them rather than a refusal. Empty for `ASK_NO_ANSWER`."""
     kind: str
     sentence: str
+    raw: str = ""
 
 
 def _endpoint(owner):
@@ -146,7 +151,7 @@ async def ask_for_json(owner, messages, *, max_tokens, temperature=0.2, timeout=
         return None, AskProblem(ASK_NO_ANSWER, f"{type(err).__name__}: {err}")
     found = first_json_object(raw)
     if found is None:
-        return None, AskProblem(ASK_NOT_JSON, NOT_JSON_SENTENCE)
+        return None, AskProblem(ASK_NOT_JSON, NOT_JSON_SENTENCE, raw if isinstance(raw, str) else "")
     return found, None
 
 
@@ -870,7 +875,14 @@ async def explain_step(owner, *, node: dict, record: dict, graph: dict, base_ver
                        own_task_id=None) -> Explained:
     """`P22-20`. Why `node` failed, read from its `record`, and a change to its
     settings the rule allows — or none. Writes nothing. Raises `NoModelSetUp`;
-    `ValueError(EXPLAIN_UNREADABLE)` for an answer that is not one.
+    `ValueError(EXPLAIN_UNREADABLE)` when the model did not answer, or said
+    nothing.
+
+    `P23-05` (WB-M-9): an answer in plain words rather than the JSON object —
+    what a small local model nearly always gives — is that model's reading, not
+    a failure. It comes back as `why` with no proposal (the panel already says
+    "It proposes no change that can be applied here."), where it used to be
+    thrown away as a 422 "could not be read".
 
     Each proposed change is asked of `fix_problem` in turn, on top of the
     ones kept before it: kept, it becomes a row of `proposal.changes`
@@ -891,6 +903,10 @@ async def explain_step(owner, *, node: dict, record: dict, graph: dict, base_ver
     ]
     answer, why = await ask_for_json(owner, messages, max_tokens=EXPLAIN_MAX_TOKENS,
                                      timeout=EXPLAIN_TIMEOUT_SECONDS)
+    if why is not None and why.kind == ASK_NOT_JSON:
+        prose = " ".join(str(why.raw or "").split())[:WHY_MAX_CHARS]
+        if prose:
+            return Explained(prose, None, [])
     if why is not None or not isinstance(answer, dict):
         raise ValueError(EXPLAIN_UNREADABLE)
     said = " ".join(str(answer.get("why") or "").split())

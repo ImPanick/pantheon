@@ -71,10 +71,26 @@ export function toursEnabled() {
   }
 }
 
-/** Clears every per-tour marker, so the walkthroughs play again. */
+/** `P23-05` (COPY-M-6). The two hints a person meets first — the drag-to-snap
+ *  hint (`tourHints.js` `HINT_SEEN_KEY`) and the Notes first-open hint
+ *  (`notes.js` `NOTES_FIRST_OPEN_HINT_KEY`) — are not tours, but the switch says
+ *  *first-run tours* and *Replay* says *again*, so both govern them: they ask
+ *  `window.pantheonToursEnabled` (set below) before showing, and Replay clears
+ *  their keys. The keys are written in those two modules;
+ *  `tests/test_the_hints_obey_the_tours_switch.py` holds the three equal. */
+export const HINT_KEYS = Object.freeze([
+  'pantheon-hint-drag-to-snap-seen',
+  'pantheon-notes-first-open-hint-v1',
+]);
+
+/** Clears every per-tour marker, so the walkthroughs play again — and the
+ *  two first-open hints with them. */
 export function resetSeenTours() {
   Object.values(TOUR_FOR_MODAL).forEach(tour => {
     try { localStorage.removeItem(SEEN_KEY(tour)); } catch (_) {}
+  });
+  HINT_KEYS.forEach(key => {
+    try { localStorage.removeItem(key); } catch (_) {}
   });
 }
 
@@ -205,7 +221,7 @@ function _bindReplayButton() {
       toggle.checked = true;
       toggle.dispatchEvent(new Event('change', { bubbles: true }));
     }
-    try { uiModule?.showToast?.('Walkthroughs reset — open a tool to see its tour.'); } catch (_) {}
+    try { uiModule?.showToast?.('Tours reset. Open a tool to see its tour.'); } catch (_) {}
   });
 }
 
@@ -226,6 +242,10 @@ export function init() {
 }
 
 if (typeof window !== 'undefined') {
+  // The hints' modules (`tourHints.js`, `notes.js`) read the switch through
+  // this, not by importing this module: it imports `slashCommands.js`, and a
+  // hint must not pull the command table in (or into a node sandbox).
+  try { window.pantheonToursEnabled = toursEnabled; } catch (_) {}
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);
   } else {
@@ -233,4 +253,4 @@ if (typeof window !== 'undefined') {
   }
 }
 
-export default { init, toursEnabled, resetSeenTours, TOURS_ENABLED_KEY };
+export default { init, toursEnabled, resetSeenTours, TOURS_ENABLED_KEY, HINT_KEYS };

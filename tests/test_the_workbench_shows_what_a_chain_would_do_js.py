@@ -256,8 +256,8 @@ def test_every_step_the_run_would_reach_says_what_it_would_do(box):
         assert s[k]["mark"] in ("→", "?"), k
         assert s[k]["planBtn"] is True, k
         assert s[k]["outcome"] is None and s[k]["last"] is None, "the plan replaces the last-run line"
-    assert o["said"] == ("Dry run of Morning digest: nothing ran and nothing changed. 6 steps say what they "
-                         "would do; 2 it would not reach are dimmed.")
+    # P23-05 (COPY-U-24, Doc 2 § 5): what happened, counted once.
+    assert o["said"] == "Dry run of Morning digest — nothing ran. 6 steps planned; 2 unreachable, dimmed."
     assert o["action"] == "Clear the plan"
     assert o["panel"] is False and o["focusedA"] is True
 
@@ -437,8 +437,8 @@ def test_a_reply_without_a_chain_draws_the_head_and_claims_nothing_of_the_rest(b
     """, reply=reply)
     assert o["steps"]["A"]["state"] == "planned" and o["steps"]["A"]["line"] == _lines("A")[0]
     assert all(o["steps"][k]["state"] is None for k in "EBCDGHL")
-    assert o["said"] == ("Dry run of Morning digest: nothing ran and nothing changed. Only Morning digest was "
-                         "planned: this Pantheon did not plan the steps after it.")
+    assert o["said"] == ("Dry run of Morning digest — nothing ran. Only Morning digest was "
+                         "planned: this Pantheon did not plan the steps after it.")  # P23-05
 
 
 def test_unsaved_edits_are_kept_open_and_said_to_be_left_out(box):

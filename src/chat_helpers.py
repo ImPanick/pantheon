@@ -440,7 +440,7 @@ def validate_message(message: str) -> str:
         raise HTTPException(status_code=400, detail="Message cannot be empty")
 
     if len(message) > 50000:
-        raise HTTPException(status_code=400, detail="Message exceeds maximum length")
+        raise HTTPException(status_code=400, detail="Message too long.")
 
     return message
 
@@ -496,7 +496,7 @@ def coerce_message_and_session(req_json: dict | None, message: str | None,
                 status_code=404,
                 detail={
                     "error": "SESSION_NOT_FOUND",
-                    "message": f"Session '{session}' not found"
+                    "message": "That chat no longer exists."
                 }
             )
 

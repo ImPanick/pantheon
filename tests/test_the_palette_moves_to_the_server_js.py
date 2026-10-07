@@ -548,7 +548,7 @@ def test_the_card_no_longer_says_every_1_document_updated(tasks_sandbox):
           many: __t._scheduleLabel({ trigger_type: 'event', trigger_event: 'document_updated', trigger_count: 5 }),
         }));
     """)
-    assert out["one"] == "On document updated"
+    assert out["one"] == "Every document update"  # P23-05 (WB-U-11): the event in words
     assert out["none"] == out["one"], "a missing count is one, as the bus reads it"
     assert "5" in out["many"] and "updateds" not in out["many"]
 

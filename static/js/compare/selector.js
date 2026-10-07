@@ -78,7 +78,7 @@ async function showModelSelector() {
     header.className = 'modal-header';
 
     const title = document.createElement('h4');
-    title.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px"><rect x="3" y="4" width="7" height="16" rx="1.5"/><rect x="14" y="4" width="7" height="16" rx="1.5"/><path d="M10 8h4"/><path d="M10 16h4"/></svg>Model Comparison';
+    title.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px"><rect x="3" y="4" width="7" height="16" rx="1.5"/><rect x="14" y="4" width="7" height="16" rx="1.5"/><path d="M10 8h4"/><path d="M10 16h4"/></svg>Compare';
     // Absorb the free space so the injected minimize (_) and close (✕) cluster
     // together on the right instead of being spread apart by space-between.
     title.style.marginRight = 'auto';
@@ -223,7 +223,7 @@ async function showModelSelector() {
     const saveBtn = document.createElement('button');
     saveBtn.type = 'button';
     saveBtn.className = 'compare-save-toggle';
-    saveBtn.title = 'Save — keep sessions after closing compare';
+    saveBtn.title = 'Keep these chats after Compare closes';
     saveBtn.innerHTML = SAVE_ICON + _toggleLabel('Save');
     saveBtn.addEventListener('click', () => {
       state._saveOnClose = !state._saveOnClose;
@@ -231,8 +231,8 @@ async function showModelSelector() {
       uiModule.showToast('Mode: Save ' + (state._saveOnClose ? 'on' : 'off'));
       _updateModeLabel();
       _setModeHint(state._saveOnClose
-        ? '<span style="color:var(--color-save-green)">Save</span>: keep these sessions after you close Compare.'
-        : '<span style="color:var(--color-save-green)">Save off</span>: sessions are discarded when you close Compare.');
+        ? '<span style="color:var(--color-save-green)">Save</span>: keep these chats after you close Compare.'
+        : '<span style="color:var(--color-save-green)">Save off</span>: these chats are discarded when you close Compare.');
     });
     toggleRow.appendChild(saveBtn);
 

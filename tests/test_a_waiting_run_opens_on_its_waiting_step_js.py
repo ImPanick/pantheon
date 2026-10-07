@@ -174,7 +174,7 @@ def test_a_for_each_steps_items_are_each_a_line_and_the_failed_one_is_named(box)
               lines: rp.querySelectorAll('.wf-record-item').map((li) => [li.dataset.tone, li.querySelector('.wf-record-item-word').textContent]) });
     """)
     assert o["title"] == "Each mail"
-    assert o["said"] == "“Each mail” failed: Item 3 of 5 failed: The model refused: too long. Its panel is open at What it was handed."
+    assert o["said"] == "“Each mail” failed: Item 3 of 5 failed: The model refused: too long."  # P23-05 (WB-U-10)
     assert o["summary"] == "Items (5)" and o["open"] is True
     assert o["lines"] == [
         ["ok", "Item 1 of 5: Success — Summary 1"], ["ok", "Item 2 of 5: Success — Summary 2"],

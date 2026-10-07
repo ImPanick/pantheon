@@ -79,6 +79,10 @@ function _forceCloseNotesPanel() {
 
 function _showNotesFirstOpenHint(pane) {
   if (!pane || typeof localStorage === 'undefined') return;
+  // `P23-05` (COPY-M-6): *First-run tours* off means no first-open text.
+  try {
+    if (typeof window.pantheonToursEnabled === 'function' && window.pantheonToursEnabled() === false) return;
+  } catch { /* the switch's default is on */ }
   try {
     if (localStorage.getItem(NOTES_FIRST_OPEN_HINT_KEY)) return;
     localStorage.setItem(NOTES_FIRST_OPEN_HINT_KEY, '1');
@@ -91,7 +95,7 @@ function _showNotesFirstOpenHint(pane) {
   hint.id = 'notes-first-open-hint';
   hint.className = 'tour-hint';
   hint.innerHTML = `
-    <div class="tour-hint-text"><b>Notes</b> is your basic todo list, and also where reminders are managed.</div>
+    <div class="tour-hint-text">To-dos and reminders live here.</div>
     <button type="button" class="tour-hint-dismiss">OK</button>
   `;
   document.body.appendChild(hint);
@@ -103,11 +107,16 @@ function _showNotesFirstOpenHint(pane) {
     hint.style.top = Math.max(12, r.top + 58) + 'px';
     hint.style.left = Math.min(window.innerWidth - hw - 12, Math.max(12, r.left + 18)) + 'px';
   };
+  let gone = null;
   const close = () => {
+    if (gone) { clearInterval(gone); gone = null; }
     window.removeEventListener('resize', place);
     hint.classList.add('tour-hint-out');
     setTimeout(() => hint.remove(), 180);
   };
+  // `P23-05` (COPY-M-6): a hint about Notes leaves with Notes — it was seen
+  // over the Calendar after the pane had closed, on its 6.5 s timer.
+  gone = setInterval(() => { if (!pane.isConnected) close(); }, 300);
 
   requestAnimationFrame(() => {
     place();
@@ -2113,7 +2122,9 @@ function _renderNotes() {
     _renderLabelsInto(body);
     _renderQuickAdd(body);
     if (sorted.length === 0) {
-      body.insertAdjacentHTML('beforeend', '<div class="notes-empty-msg">No notes yet <span style="vertical-align:-3px;margin-left:4px;">' + uiModule.emptyStateIcon('smiley') + '</span></div>');
+      // `P23-05` (DOCS-U-19): the archive's empty state is not the notes' own,
+      // and an empty state is one plain line.
+      body.insertAdjacentHTML('beforeend', `<div class="notes-empty-msg">${_showingArchived ? 'Nothing archived.' : 'No notes yet.'}</div>`);
     } else {
       body.insertAdjacentHTML('beforeend', html);
     }
@@ -4904,7 +4915,7 @@ async function _runAgentSolveJob(job) {
     const csRes = await fetch(`${API_BASE}/api/session`, {
       method: 'POST', credentials: 'same-origin', body: csFd, signal: abort.signal,
     });
-    if (!csRes.ok) { uiModule.showError('Could not create agent session'); return; }
+    if (!csRes.ok) { uiModule.showError('Could not start an agent chat'); return; }
     const sess = await csRes.json();
     const sid = sess.id;
     run.sid = sid;

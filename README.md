@@ -25,14 +25,10 @@
 
 <p align="center">
   <sub>
-    Live status of the five merge-blocking pipelines on <code>main</code>. These are the real thing —
-    click one and you get the run. The repository is public, so they show the same status to everyone.
-    <strong>A badge that says nothing is not a badge that says yes:</strong> a workflow that has never
-    run reads <em>no status</em> rather than failing, and a badge is green whenever the workflow
-    finished green, which a job that fails open does. What the badges can and cannot tell you is
-    written down in
+    The five merge-blocking pipelines on <code>main</code>; click one for the run. What they can and
+    cannot tell you:
     <a href="docs/security-ci.md#how-to-tell-whether-ci-is-actually-passing">the security CI guide</a>.
-    Anyway questions can be directed to my Discord which is in my profile or you can DM me on GH.
+    Questions: Discord (on my profile) or a GitHub DM.
   </sub>
 </p>
 
@@ -120,9 +116,7 @@ each with where its number came from and a command you can run to check it. The 
 the Brain rebuilt around a local embedding model that needs no service, an agent that can reach
 the host it runs on behind a denylist it cannot edit, a checker in CI for each way a fact in this
 project has been caught rotting, every outbound call paced, mailbox and service sign-in reduced to
-one record type, and full AGPL attribution for code that shipped without it. The checker count is
-a ledger claim rather than a sentence here, because it is read out of `.github/workflows/ci.yml`
-and a number typed twice is a number that will disagree with itself.
+one record type, and full AGPL attribution for code that shipped without it.
 
 ### In motion
 

@@ -55,7 +55,7 @@ def test_card_offers_task_chat_session_and_deny_without_leaking_private_state():
     ]
     assert [option["label"] for option in payload["options"]] == [
         "Allow for this task",
-        "Allow for this chat session",
+        "Allow for this chat",  # P23-05 (C-NAMES; fx-chat's B-NEW-4): the label, not the value
         "Deny",
     ]
     serialized = json.dumps(payload, sort_keys=True)
@@ -346,7 +346,7 @@ def test_route_context_agent_frontend_and_cache_bust_wire_the_contract():
     assert "ev.ask_user && !ev.ask_user.resolved" in renderer
     assert '"label": "Allow once"' not in approvals
     assert '"label": "Allow for this task"' in approvals
-    assert '"label": "Allow for this chat session"' in approvals
+    assert '"label": "Allow for this chat"' in approvals
     assert "scope_for_decision(normalized_decision)" in approvals
     assert "CHAT_SESSION_APPROVAL_CONTEXT_MARKER" in capabilities
     assert "CHAT_SESSION_APPROVAL_CONTEXT_MARKER" in models

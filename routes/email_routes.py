@@ -2812,8 +2812,9 @@ def setup_email_routes():
                 "sync": {
                     "source": "unavailable",
                     "retry_in": int(blocked_for),
-                    "detail": "This mailbox is not answering; Pantheon has stopped retrying "
-                              "for now so the provider does not lock the account.",
+                    # `P23-05` (Doc 2 § 5): what happened and when it tries again.
+                    "detail": (f"Mailbox not answering — retrying in "
+                               f"{max(1, round(blocked_for / 60))} min."),
                 },
             }
 

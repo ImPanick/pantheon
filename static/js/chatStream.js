@@ -882,13 +882,13 @@ export function insertStreamDoneToast(sessionId, query) {
   if (!box) return;
   var sessions = sessionModule ? sessionModule.getSessions() : [];
   var sess = sessions.find(function(s) { return s.id === sessionId; });
-  var name = sess ? sess.name : 'another session';
+  var name = sess ? sess.name : 'another chat';
   var preview = query ? '"' + query.substring(0, 50) + (query.length > 50 ? '...' : '') + '"' : '';
   var div = document.createElement('div');
   div.className = 'msg msg-system stream-done-toast';
   div.innerHTML = '<div class="body">'
     + '<span class="stream-done-indicator">●</span>'
-    + '<span>Response ready in <strong>' + (name || 'session').replace(/</g, '&lt;') + '</strong>'
+    + '<span>Response ready in <strong>' + (name || 'chat').replace(/</g, '&lt;') + '</strong>'
     + (preview ? ' &mdash; ' + preview.replace(/</g, '&lt;') : '')
     + '</span>'
     + '</div>';

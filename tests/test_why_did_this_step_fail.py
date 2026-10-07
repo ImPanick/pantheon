@@ -257,7 +257,17 @@ async def test_no_model_is_a_503_and_an_unreadable_answer_a_422(world, monkeypat
     none = await _call(w, "POST", f"/api/workflows/{wf_id}/runs/{run_id}/explain",
                        json={"node_id": "fetch"})
     assert none.status_code == 503 and none.json()["detail"] == wa.NO_MODEL_TO_EXPLAIN
-    script_model(monkeypatch, "I think the path is wrong.")
+    # `P23-05` (WB-M-9): an answer in plain words is the model's reading, shown
+    # with no proposal — it used to be a 422 and thrown away, the path a small
+    # local model always took. Only an answer that says nothing is unreadable.
+    script_model(monkeypatch, "I think the   path is wrong.\n\nTry /v1/entries.")
+    prose = await _call(w, "POST", f"/api/workflows/{wf_id}/runs/{run_id}/explain",
+                        json={"node_id": "fetch"})
+    assert prose.status_code == 200, prose.text
+    body = prose.json()
+    assert body["why"] == "I think the path is wrong. Try /v1/entries."
+    assert body["proposal"] is None and body["left_out"] == []
+    script_model(monkeypatch, "   ")
     garbage = await _call(w, "POST", f"/api/workflows/{wf_id}/runs/{run_id}/explain",
                           json={"node_id": "fetch"})
     assert garbage.status_code == 422 and garbage.json()["detail"] == wa.EXPLAIN_UNREADABLE

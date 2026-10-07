@@ -225,7 +225,7 @@ def test_a_workflow_opens_on_the_same_canvas_with_its_toolbar(box):
     """)
     assert o["name"] == "Morning brief"
     assert (o["sw"], o["checked"]) == ("Off", "false")
-    assert o["word"] == "Switched off — it will not run until you switch it on."
+    assert o["word"] == "It will not run."  # P23-05 (Doc 2 § 5): the switch says "Off"
     assert o["dirty"] == ""
     assert o["items"] == ["Starts", "Summarise my inbox", "Send me the summary"]
     assert o["start"] == "Daily at 08:00", "what starts it, in the Tasks window's words"
@@ -372,7 +372,8 @@ def test_a_failed_run_opens_on_its_failed_step_with_what_it_was_handed_open(box)
     assert o["list"] == [["r2", "Failed", "true"], ["r1", "Success", None], ["r0", "Dry run", None]]
     assert o["readOnly"] is True and o["ports"] == 0
     assert o["selected"] is True, "the failed step is the one opened, without being told where to look"
-    assert o["said"] == "“Summarise my inbox” failed: RuntimeError: model unavailable. Its panel is open at What it was handed."
+    # P23-05 (WB-U-10): the step is named once; nothing describes the panel beside it.
+    assert o["said"] == "“Summarise my inbox” failed: RuntimeError: model unavailable."
     assert o["head"] == "✗Failed"
     assert o["parts"][0] == ["What it was handed", True] and ["What went wrong", True] in o["parts"]
     assert '"subject": "<img src=x onerror=alert(1)> Your statement"' in o["handed"]
@@ -403,7 +404,7 @@ def test_testing_a_step_that_does_something_real_asks_first_and_runs_nothing_els
               ran: { calls: called('testNode').map((c) => [c[2], c[3].source, c[3].confirm, c[3].input]),
                      outcome: result.querySelector('.wf-test-outcome').textContent,
                      made: result.querySelector('pre').textContent,
-                     alone: result.querySelector('.wf-test-alone').textContent },
+                     alone: result.querySelector('.wf-test-alone') },
               other: W.calls.map((c) => c[0]).filter((n) => !['listWorkflows', 'getWorkflow', 'testNode'].includes(n)) });
     """)
     assert o["form"]["mode"] == "node"
@@ -419,7 +420,8 @@ def test_testing_a_step_that_does_something_real_asks_first_and_runs_nothing_els
                                  ["n2", "custom", True, {"subject": "Your statement is ready"}]]
     assert o["ran"]["outcome"].startswith("✓Test: Success · 840 ms")
     assert o["ran"]["made"] == "Three new statements; one fee change."
-    assert o["ran"]["alone"] == "Nothing else ran: no other step, no delivery, no notification."
+    # P23-05 (Doc 2 § 5, WB-U-2): the lede says it once, before the test; not again after.
+    assert o["ran"]["alone"] is None
     assert o["other"] == [], "a test runs one step: no run, no save, no switch"
 
 
@@ -557,7 +559,7 @@ def test_versions_can_be_looked_at_and_put_back(box):
     assert o["looking"] == {"bar": True, "text": "You are looking at version 2. It cannot be changed here.",
                             "save": True, "readOnly": True}
     assert o["call"] == [["restoreVersion", "w1", 2, 3]]
-    assert o["said"] == "Version 2 is back, saved as version 4. Nothing was lost: the version before it is still in Versions…."
+    assert o["said"] == "Version 2 is back, saved as version 4. The version before it is kept in Versions."  # P23-05
     assert o["bar"] is True
 
 
@@ -661,7 +663,7 @@ def test_a_run_that_worked_after_a_handled_failure_is_not_opened_as_a_failure(bo
     """, world)
     assert o["marks"] == ["error", "ok"], "the step that failed still reads failed"
     assert o["panel"] is False, "a run that worked is not opened as a failure"
-    assert o["said"] == "This run worked. Open a step to read what it was handed and what it made."
+    assert o["said"] == "This run worked. Click a step for what it was handed and what it made."  # P23-05
 
 
 def test_leaving_the_page_with_unsaved_changes_asks_through_the_browser(box):

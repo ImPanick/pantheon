@@ -100,7 +100,7 @@ def _message_metadata(message) -> dict:
 def _reject_compact_during_active_run(session_id: str) -> None:
     from src import agent_runs
     if agent_runs.is_active(session_id):
-        raise HTTPException(409, "Session has an active run; try compacting after it finishes")
+        raise HTTPException(409, "Wait for the reply to finish, then compact.")
 
 
 def _verify_session_owner(request: Request, session_id: str, session_manager=None):
@@ -654,7 +654,7 @@ def setup_session_routes(
                 if db_sess and db_sess.is_important:
                     raise HTTPException(
                         status_code=403,
-                        detail={"error": "SESSION_STARRED", "message": "Unstar the session before deleting it"}
+                        detail={"error": "SESSION_STARRED", "message": "Unstar the chat before deleting it."}
                     )
             finally:
                 db.close()
@@ -1233,7 +1233,7 @@ def setup_session_routes(
                     "deleted_throwaway": deleted_throwaway,
                     "unfiled_remaining": unfiled_total,
                 }
-            return {"status": "skipped", "reason": "No unfiled sessions to sort"}
+            return {"status": "skipped", "reason": "No unfiled chats to sort"}
 
         # Pick an endpoint — prefer admin-configured task endpoint
         from src.task_endpoint import resolve_task_endpoint
@@ -1297,7 +1297,7 @@ def setup_session_routes(
                     result = _loads_lenient(text[brace_start:brace_end + 1])
             if result is None:
                 logger.error(f"Auto-sort: could not parse JSON from: {text[:500]}")
-                raise HTTPException(502, "AI returned invalid JSON for auto-sort — the model may not follow JSON instructions; try a different utility model in Settings.")
+                raise HTTPException(502, "The model's answer could not be read. Try another utility model (Settings → AI Defaults).")
         except HTTPException:
             raise
         except Exception as e:

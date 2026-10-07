@@ -683,7 +683,7 @@ function _getModal() {
     <div class="modal-content cal-modal-content">
       <div class="modal-header">
         <h4><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>Calendar</h4>
-        <button class="close-btn" id="cal-close">✖</button>
+        <button class="close-btn" id="cal-close" aria-label="Close">✖</button>
       </div>
       <div class="modal-body" id="cal-body"></div>
     </div>`;
@@ -722,17 +722,15 @@ function _getModal() {
 
 // Quick-add hint examples — the placeholder cycles through these every few
 // seconds so users see different prompt shapes (events, deadlines, recurring).
+// `P23-05` (COPY-M-10): plain examples — the Odyssey's names were the fork's.
 const _QA_HINT_EXAMPLES = [
-  'return home to Ithaca 1pm tmrw',
-  'dinner with Penelope Friday 8pm',
-  'coffee with Athena 9am Saturday',
-  'call Telemachus tomorrow morning',
-  'dentist appointment 3pm next Tuesday',
-  'finish the wooden horse by Friday EOD',
+  'dentist 3pm next Tuesday',
+  'team stand-up 9:30 every weekday',
+  'flight Sunday 6:30am',
+  'lunch with Sam Friday 1pm',
+  'call the bank tomorrow morning',
+  'report due Friday EOD',
   'gym 7am every weekday',
-  'flight to Athens Sunday 6:30am',
-  'crew muster 10am daily',
-  'council on Ithaca Monday 2pm',
 ];
 function _initQuickAddHintCycle() {
   const span = document.getElementById('qa-hint-example');
@@ -956,7 +954,7 @@ function _headerHTML() {
       placeholder=" "
       autocomplete="off"
     />
-    <span class="cal-quickadd-hint" id="cal-quickadd-hint" aria-hidden="true"><span class="qa-hint-accent">Quick add</span> — <span class="qa-hint-example" id="qa-hint-example">return home to Ithaca 1pm tmrw</span> <svg class="qa-hint-enter" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 10 4 15 9 20"/><path d="M20 4v7a4 4 0 0 1-4 4H4"/></svg></span>
+    <span class="cal-quickadd-hint" id="cal-quickadd-hint" aria-hidden="true"><span class="qa-hint-accent">Quick add</span> — <span class="qa-hint-example" id="qa-hint-example">dentist 3pm next Tuesday</span> <svg class="qa-hint-enter" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 10 4 15 9 20"/><path d="M20 4v7a4 4 0 0 1-4 4H4"/></svg></span>
     <span class="cal-quickadd-status" id="cal-quickadd-status"></span>
   </div>`;
 }
@@ -1705,7 +1703,7 @@ async function _renderAgenda() {
     h += '<div class="cal-empty" style="display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;">' +
       '<span>No upcoming events</span>' +
       '<span style="opacity:0.7;font-size:11px;">' +
-        '<a href="#" data-cal-open-settings="integrations" style="color:var(--accent,var(--red));text-decoration:underline;">Settings &rsaquo; Integrations</a>' +
+        '<a href="#" data-cal-open-settings="integrations" style="color:var(--accent,var(--red));text-decoration:underline;">Add a calendar</a>' +
         ' &middot; ' +
         '<a href="#" data-cal-create-event="1" style="color:var(--accent,var(--red));text-decoration:underline;">Create event</a>' +
       '</span>' +
@@ -2606,7 +2604,7 @@ async function _showCalSettings() {
     <div class="modal-content" style="width:420px;max-width:92vw;">
       <div class="modal-header">
         <h4>Calendar Settings</h4>
-        <button class="close-btn" id="cal-settings-close">\u2716</button>
+        <button class="close-btn" id="cal-settings-close" aria-label="Close">\u2716</button>
       </div>
       <div class="modal-body" style="padding:16px;display:flex;flex-direction:column;gap:16px;">
         <div>
@@ -2913,7 +2911,6 @@ function _showEventForm(existing, defaultDate, defaultEndDate) {
     <button type="button" class="cal-form-mobile-cancel" id="cal-form-mobile-cancel" title="Cancel" aria-label="Cancel event">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
     </button>
-    <div class="cal-form-today" id="cal-form-today">Today is <span id="cal-form-today-text">${_clockDate(_today())} · ${_nowClock()}</span></div>
     <div class="cal-hero">
       <button type="button" class="cal-hero-time" id="cal-hero-time" title="Change time">
         <span class="cal-hero-clock" id="cal-hero-clock">${_clockFace(ad ? '' : st)}</span>
@@ -3423,17 +3420,8 @@ function _showEventForm(existing, defaultDate, defaultEndDate) {
   // the form showing only the title + buttons), then focus the title.
   if (!isEdit) { setExpanded(true); titleInput?.focus(); }
 
-  // Live "Today is …" tick. Updates every 30s; auto-stops the moment the
-  // header element disappears (any _render() call swaps #cal-body's HTML).
-  const _todayTextEl = document.getElementById('cal-form-today-text');
-  if (_todayTextEl) {
-    const _tick = () => {
-      const el = document.getElementById('cal-form-today-text');
-      if (!el) { clearInterval(_todayInterval); return; }
-      el.textContent = `${_clockDate(_today())} · ${_nowClock()}`;
-    };
-    const _todayInterval = setInterval(_tick, 30000);
-  }
+  // `P23-05` (DOCS-U-20): the "Today is …" line over the form and its 30 s
+  // tick are gone — the date and time controls below say the same thing.
 }
 
 // ── Helpers ──
@@ -3468,11 +3456,6 @@ function _clockAmpm(hhmm) {
 function _clockDate(ds) {
   if (!ds) return '';
   return new Date(ds + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
-}
-function _nowClock() {
-  // Live wall-clock string for the "Today is …" header. Locale-aware so
-  // 24-h users don't see AM/PM.
-  return new Date().toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
 }
 function _fmtTime(s) {
   if (!s || s.length < 16) return '';

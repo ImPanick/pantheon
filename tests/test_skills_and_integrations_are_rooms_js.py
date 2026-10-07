@@ -353,7 +353,10 @@ def test_the_integrations_card_moved_with_its_ids_and_settings_keeps_a_door():
         assert f'id="{control}"' in room, f"{control} is not in the room"
         assert f'id="{control}"' not in settings, f"{control} is still in Settings"
     assert 'id="settings-open-integrations-room"' in settings
-    assert "MCP servers, APIs, mail and calendars — what Pantheon connects to." in room
+    # P23-05: one line under the room, in the voice guide (Doc 2 § 5), and the
+    # heading says the room's name (`D-2026-10-03-01`), never just "Integrations".
+    assert "Mail, calendars, MCP servers and APIs." in room
+    assert "</svg>MCP &amp; Integrations</h2>" in room
 
 
 def test_the_skills_window_is_still_a_window_and_the_room_is_beside_it():

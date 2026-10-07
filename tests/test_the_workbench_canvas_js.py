@@ -669,7 +669,8 @@ def test_new_step_mounts_the_form_for_a_new_task(box):
         out({ task: panel.mounts[0].args.task, n: panel.mounts[0].args.tasks.length,
               heading: root.querySelector('.wb-panel-title').textContent });
     """)
-    assert o["task"] is None and o["n"] == 3 and o["heading"] == "New step"
+    # P23-05 (WB-U-12): one noun on the chains canvas — the button and the panel say *New task*.
+    assert o["task"] is None and o["n"] == 3 and o["heading"] == "New task"
 
 
 def test_an_empty_list_says_what_a_step_is_and_offers_the_first_one(box):
