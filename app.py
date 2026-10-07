@@ -893,27 +893,14 @@ app.include_router(auth_router)
 
 
 @app.post("/api/activity/heartbeat")
-async def activity_heartbeat():
-    from src.interactive_gate import (
-        mark_browser_activity,
-        maybe_stop_background_tasks_for_heartbeat,
-    )
+async def activity_heartbeat(request: Request):
+    # `P23-07` (C-IDLE): the tab's interval beat says `{"idle": true}` and holds
+    # nothing back; a beat from input, focus or the tab coming forward does.
+    # The whole answer is `on_heartbeat`'s, so the tests drive what this runs.
+    from src.interactive_gate import on_heartbeat
 
-    await mark_browser_activity()
-
-    async def _stop_background():
-        try:
-            await maybe_stop_background_tasks_for_heartbeat(
-                task_scheduler.stop_background_tasks_for_foreground
-            )
-        except Exception:
-            logging.getLogger("app.foreground_gate").debug(
-                "heartbeat task stop failed",
-                exc_info=True,
-            )
-
-    asyncio.create_task(_stop_background())
-    return {"ok": True}
+    return await on_heartbeat(
+        await request.body(), task_scheduler.stop_background_tasks_for_foreground)
 
 
 # Uploads
