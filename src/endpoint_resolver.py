@@ -131,17 +131,111 @@ def _endpoint_enabled_models(ep) -> list:
     The auto-pick fallback must never select a model the user disabled — a
     Groq endpoint can list 16 models with only 1 enabled, and picking the
     raw first one resolves to a model that 400s ("requires terms acceptance").
+
+    `D-2026-10-07-02` §1 (`B1259`): only what the endpoint's latest listing
+    named (`cached_models`, emptied when a listing fails —
+    `routes/model_routes._store_listing`). Pinned names used to be merged in
+    whether or not the endpoint listed them; now a pinned name counts only as
+    the Forge's MLX shim path, which is on disk and served under that path.
     """
     hidden = _endpoint_hidden_models(ep)
     merged = []
     seen = set()
-    for m in [*_endpoint_cached_models(ep), *_endpoint_pinned_models(ep)]:
+    on_disk = [m for m in _endpoint_pinned_models(ep) if _is_mlx_deepseek_v4_shim_id(m)]
+    for m in [*_endpoint_cached_models(ep), *on_disk]:
         if not isinstance(m, str) or not m or m in seen:
             continue
         seen.add(m)
         merged.append(m)
     merged = _filter_mlx_deepseek_v4_repo_when_shimmed(merged)
     return [m for m in merged if m not in hidden]
+
+
+class NoUsableModel(RuntimeError):
+    """`D-2026-10-07-02` §1. A run that has no model an endpoint lists right
+    now. Its message is the one sentence the run records (what happened, then
+    what to do) — the task's History shows it as written, not as
+    `RuntimeError: …`."""
+
+
+def endpoint_matches_url(ep, endpoint_url: str) -> bool:
+    """Whether a chat/model URL (a session's or a task's) is `ep`'s.
+
+    The one matcher: `routes/chat_routes._session_url_matches_endpoint` is this.
+    """
+    url = (endpoint_url or "").strip().rstrip("/")
+    base = normalize_base(getattr(ep, "base_url", "") or "").rstrip("/")
+    if not url or not base:
+        return False
+    variants = {base, base + "/chat/completions"}
+    try:
+        variants.add(build_chat_url(base).rstrip("/"))
+    except Exception:
+        pass
+    return url in variants or url.startswith(base + "/")
+
+
+NO_MODEL_FOR_RUN = "No model yet. An admin adds one in Settings → Added Models."
+
+
+def usable_model_problem(endpoint_url: str, model: str, owner: Optional[str] = None,
+                         *, then: str = "Pick another model for this task.",
+                         unregistered_ok: bool = False, db=None) -> str:
+    """`""` when an enabled endpoint the owner may use is at `endpoint_url` and
+    lists `model` now; otherwise the sentence saying why it cannot run.
+
+    `D-2026-10-07-02` §1: a task or a workflow step naming a model that is not
+    currently enumerated is not used silently — its run records this. An
+    endpoint that lists nothing is asked once (`ensure_listed`).
+    """
+    from routes.model_routes import offered_models, unusable_model_sentence
+
+    model = (model or "").strip()
+    if not model or not (endpoint_url or "").strip():
+        return NO_MODEL_FOR_RUN
+    # The caller's session when it has one (the scheduler's run), else ours.
+    own = db is None
+    db = SessionLocal() if own else db
+    try:
+        q = db.query(ModelEndpoint).filter(ModelEndpoint.is_enabled == True)  # noqa: E712
+        if owner:
+            from src.auth_helpers import owner_filter
+            q = owner_filter(q, ModelEndpoint, owner)
+        ep = next((cand for cand in q.all() if endpoint_matches_url(cand, endpoint_url)), None)
+    finally:
+        if own:
+            db.close()
+    if ep is None:
+        # A chat the API made on the caller's own key and base URL
+        # (`/v1/chat` with `api_key`) has no endpoint here to have listed it.
+        return "" if unregistered_ok else unusable_model_sentence(None, model, then)
+    listed = offered_models(ep) or ensure_listed(ep)
+    if model in listed:
+        return ""
+    return unusable_model_sentence(ep, model, then, listed=listed)
+
+
+def ensure_listed(ep) -> list:
+    """`ep`'s enabled models; when it lists none, ask it once now.
+
+    The listing is `routes/model_routes.relist_endpoint` — the one place an
+    endpoint is asked and its answer stored (`Law 14`); it skips an endpoint
+    whose listing failed within the last 30 s, so a dead one costs a run at
+    most one ask. Imported here, at call time, because that module imports
+    this one.
+    """
+    try:
+        from routes.model_routes import relist_endpoint
+        relist_endpoint(str(getattr(ep, "id", "") or ""), timeout=5.0)
+        db = SessionLocal()
+        try:
+            fresh = db.query(ModelEndpoint).filter(ModelEndpoint.id == getattr(ep, "id", None)).first()
+            return _endpoint_enabled_models(fresh) if fresh is not None else []
+        finally:
+            db.close()
+    except Exception as e:
+        logger.debug("Could not list endpoint %s: %s", getattr(ep, "id", "?"), e)
+        return []
 
 
 def resolve_endpoint_runtime(ep, owner: Optional[str] = None) -> Tuple[str, Optional[str]]:
@@ -421,9 +515,25 @@ def resolve_endpoint(
         # instead of dispatching to a disabled model that 400s.
         if model and model in _endpoint_hidden_models(ep):
             model = ""
+        enabled = _endpoint_enabled_models(ep)
+        if not enabled:
+            # Nothing listed: ask now (a headless run has no picker to have
+            # asked), within the listing's own back-off.
+            enabled = ensure_listed(ep)
+        # `D-2026-10-07-02` §1. A configured model the endpoint does not list
+        # is not used, and is not swapped for another either — that would be
+        # the silent default the ruling forbids. This route answers no model,
+        # so a candidate chain (`resolve_task_candidates`) goes to its next
+        # configured entry and a single caller says it has no model.
+        if model and model not in enabled:
+            logger.warning(
+                "[resolve_endpoint] %s_model %r is not listed by endpoint %s; not used",
+                setting_prefix, model, getattr(ep, "id", "?"),
+            )
+            return chat_url, fallback_model, headers
         # If no (usable) model specified, pick the first enabled chat model.
         if not model:
-            model = _first_chat_model(_endpoint_enabled_models(ep)) or ""
+            model = _first_chat_model(enabled) or ""
         if not model and not fallback_model:
             logger.warning('[resolve_endpoint] no usable model (all models hidden or list empty)')
 
@@ -470,6 +580,10 @@ def _resolve_endpoint_by_id_with_descriptor(
         headers = build_headers(api_key, base)
         m = (model or "").strip()
         enabled_models = _endpoint_enabled_models(ep)
+        # `D-2026-10-07-02` §1: an entry naming a model its endpoint does not
+        # list is not dispatched to (it was, whenever the list was empty).
+        if m and m not in enabled_models and m not in _endpoint_hidden_models(ep):
+            return None
         if require_exact_model:
             # Explicit foreground fallback entries are concrete choices. A
             # hidden or known-missing model must disable the entry instead of

@@ -1565,9 +1565,15 @@ def setup_cookbook_routes() -> APIRouter:
                 existing.model_type = "image"
                 existing.name = display_name
                 existing.endpoint_kind = "local"
-                existing.model_refresh_mode = "manual"
+                # `D-2026-10-07-02` §1: listed by the image server's own
+                # `/v1/models` (`scripts/diffusion_server.py`,
+                # `mlx_image_server.py` both answer it), refreshed like any
+                # local endpoint. It was `manual` with the launched name
+                # written as listed, so it was offered whether or not the
+                # server ever came up.
+                existing.model_refresh_mode = "auto"
+                existing.cached_models = None
                 if pinned_models:
-                    existing.cached_models = json.dumps(pinned_models)
                     existing.pinned_models = json.dumps(pinned_models)
                 db.commit()
                 settings = load_settings()
@@ -1586,8 +1592,8 @@ def setup_cookbook_routes() -> APIRouter:
                 is_enabled=True,
                 model_type="image",
                 endpoint_kind="local",
-                model_refresh_mode="manual",
-                cached_models=json.dumps(pinned_models) if pinned_models else None,
+                model_refresh_mode="auto",       # `D-2026-10-07-02` §1, as above
+                cached_models=None,
                 pinned_models=json.dumps(pinned_models) if pinned_models else None,
             )
             db.add(ep)
@@ -1872,8 +1878,9 @@ def setup_cookbook_routes() -> APIRouter:
                     existing.pinned_models = json.dumps(merged_pinned) if merged_pinned else None
                 if is_ollama_endpoint:
                     existing.endpoint_kind = "ollama"
-                    if pinned_models:
-                        existing.cached_models = json.dumps(pinned_models)
+                    # `D-2026-10-07-02` §1: the launched name is pinned, not
+                    # written as listed — it is offered once the server lists
+                    # it (the re-probe below, then the background refresh).
                 if supports_tools is not None:
                     existing.supports_tools = supports_tools
                 db.commit()
@@ -1887,11 +1894,12 @@ def setup_cookbook_routes() -> APIRouter:
                         existing.pinned_models = json.dumps([mlx_shim_model_id])
                         db.commit()
                     else:
-                        from routes.model_routes import _probe_endpoint
-                        import json as _json2
-                        probed = _probe_endpoint(base_url, existing.api_key, timeout=5)
-                        if probed:
-                            existing.cached_models = _json2.dumps(probed)
+                        from routes.model_routes import _probe_endpoint, _store_listing
+                        _outcome: dict = {}
+                        probed = _probe_endpoint(base_url, existing.api_key, timeout=5, outcome=_outcome)
+                        # What the server lists now, or nothing — never the
+                        # previous launch's names (`D-2026-10-07-02` §1).
+                        if _store_listing(existing, probed, _outcome):
                             db.commit()
                 except Exception as _pe:
                     logger.warning(f"Re-probe failed for {base_url}: {_pe!r}")
@@ -1923,7 +1931,9 @@ def setup_cookbook_routes() -> APIRouter:
                 model_type="llm",
                 endpoint_kind="ollama" if is_ollama_endpoint else "local",
                 model_refresh_mode="auto",
-                cached_models=json.dumps(pinned_models) if pinned_models else None,
+                # `D-2026-10-07-02` §1: nothing is listed until the server
+                # answers; the launched name is pinned, offered once listed.
+                cached_models=None,
                 pinned_models=json.dumps(pinned_models) if pinned_models else None,
                 supports_tools=supports_tools,
             )
@@ -1955,12 +1965,12 @@ def setup_cookbook_routes() -> APIRouter:
                     db.commit()
                     logger.info(f"Auto-register: pinned MLX DeepSeek-V4 shim model @ {base_url}")
                 else:
-                    from routes.model_routes import _probe_endpoint
-                    import json as _json2
-                    probed = _probe_endpoint(base_url, None, timeout=5)
-                    if probed:
-                        ep.cached_models = _json2.dumps(probed)
+                    from routes.model_routes import _probe_endpoint, _store_listing
+                    _outcome: dict = {}
+                    probed = _probe_endpoint(base_url, None, timeout=5, outcome=_outcome)
+                    if _store_listing(ep, probed, _outcome):
                         db.commit()
+                    if probed:
                         logger.info(f"Auto-register: probed {len(probed)} models @ {base_url}")
             except Exception as _pe:
                 logger.warning(f"Auto-register: probe-after-create failed for {base_url}: {_pe!r}")
@@ -2042,6 +2052,16 @@ def setup_cookbook_routes() -> APIRouter:
                 raise HTTPException(400, "Invalid pip package name")
         else:
             _validate_serve_model_id(req.repo_id)
+        # `B1259` (`D-2026-10-07-02` §1). With the Forge's switch off, a serve
+        # does not let its engine fetch: a command that exists to fetch
+        # (llama.cpp's `-hf`, `ollama pull`/`run`) is refused here, before a
+        # script exists, with the switch's sentence — as a download is
+        # (`B1229`) — and every other serve script runs offline
+        # (`model_hubs.offline_runner_lines`, below).
+        from src import model_hubs
+        hubs_on = model_hubs.allowed()
+        if not hubs_on and not is_pip_install and model_hubs.serve_fetches(req.cmd):
+            return {"ok": False, "error": model_hubs.OFF_SENTENCE, "hubs_off": True}
         TMUX_LOG_DIR.mkdir(parents=True, exist_ok=True)
         session_id = f"serve-{uuid.uuid4().hex[:8]}"
         remote = req.remote_host
@@ -2105,6 +2125,8 @@ def setup_cookbook_routes() -> APIRouter:
                 ps_lines.append(f"$env:HF_TOKEN = '{_ps_squote(req.hf_token)}'")
             if req.gpus:
                 ps_lines.append(f"$env:CUDA_VISIBLE_DEVICES = '{req.gpus}'")
+            if not hubs_on and not is_pip_install:
+                ps_lines.extend(model_hubs.offline_powershell_lines())   # `B1259`
             if req.env_prefix:
                 ps_lines.append(_safe_env_prefix(req.env_prefix))
             # Auto-install ollama if the command uses it
@@ -2175,6 +2197,8 @@ def setup_cookbook_routes() -> APIRouter:
                     # user PATH entries from the already-running Pantheon process.
                     runner_lines.append('export PATH="$HOME/bin:$HOME/llama.cpp/build-cuda/bin/Release:$HOME/llama.cpp/build/bin/Release:$HOME/llama.cpp/build/bin/Debug:$HOME/llama.cpp/build/bin:$PATH"')
             runner_lines.append("export FLASHINFER_DISABLE_VERSION_CHECK=1")
+            if not hubs_on and not is_pip_install:
+                runner_lines.extend(model_hubs.offline_runner_lines(req.cmd, req.repo_id))   # `B1259`
             if req.hf_token:
                 runner_lines.append(f"export HF_TOKEN='{_bash_squote(req.hf_token)}'")
             if req.gpus:

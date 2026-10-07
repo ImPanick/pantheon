@@ -21,7 +21,7 @@ from core.database import SessionLocal, ModelEndpoint, Session as DbSession
 from core.log_safety import redact_url as _redact_url_for_log
 from core.middleware import require_admin
 from src.constants import COOKBOOK_STATE_FILE
-from src.llm_core import _detect_provider, _host_match, ANTHROPIC_MODELS
+from src.llm_core import _detect_provider, _host_match
 from src.tls_overrides import llm_verify
 from src.settings import load_settings as _load_settings, save_settings as _save_settings
 from src.endpoint_resolver import (
@@ -327,6 +327,12 @@ def _rewrite_loopback_for_docker(base_url: str, *, container_local: bool = False
 # ── Curated model lists per provider ──
 # For cloud providers that return 100+ models, only show these by default.
 # A model ID matches if it starts with or equals a curated entry.
+# `D-2026-10-07-02` §1 (`B1259`). ORDER, NEVER OFFER. These lists rank the
+# names a provider's own list call answered — `_curate_models` puts a listed
+# `gpt-5` ahead of a listed `gpt-3.5-turbo-0613` — and that is all they may do.
+# They used to be offered: appended to the Z.AI and Kimi coding plans' listings,
+# and answered whole for any of these hosts whose listing failed. A name here
+# that the provider did not list is never shown (`_probe_endpoint`).
 _PROVIDER_CURATED = {
     "openai": [
         "gpt-5.2", "gpt-5.2-pro", "gpt-5", "gpt-5-pro", "gpt-5-mini", "gpt-5-nano",
@@ -519,7 +525,11 @@ def _endpoint_refresh_timeout(ep: Any, category: str) -> float:
     # llama.cpp and other local OpenAI-compatible servers can block briefly
     # while warming/loading. A 2s local timeout makes working endpoints flicker
     # offline before /v1/models is ready.
-    return 10.0 if category == "local" else 2.0
+    # `D-2026-10-07-02` §1: an API listing that times out now takes the
+    # endpoint's names away (nothing unlisted is offered), so the background
+    # ask gets 10 s, not 2 — it runs in its own thread and a catalog the size
+    # of OpenRouter's can take longer than 2 s to answer.
+    return 10.0
 
 
 def _manual_refresh_timeout(ep: Any, category: str, requested: Any = None) -> float:
@@ -966,31 +976,62 @@ def _probe_google_models(base_url: str, api_key: str = None, timeout: int = 5, p
     return models
 
 
-def _probe_endpoint(base_url: str, api_key: str = None, timeout: int = 5) -> List[str]:
-    """Probe a base URL's /models endpoint and return list of model IDs.
-    For Anthropic, queries their /v1/models API, falling back to hardcoded list."""
+def _probe_endpoint(base_url: str, api_key: str = None, timeout: int = 5,
+                    outcome: Optional[Dict[str, Any]] = None) -> List[str]:
+    """Ask an endpoint which models it serves; the names it answered, or `[]`.
+
+    `D-2026-10-07-02` §1 (`B1259`). Only an answer counts. Three stand-ins used
+    to fill this list when the endpoint did not give one, and each put a model
+    in the picker that nothing had listed: an unkeyed Anthropic endpoint whose
+    `/v1/models` failed answered a built-in list of ten `claude-*` names
+    (`ANTHROPIC_MODELS`); the Z.AI and Kimi coding plans had `_PROVIDER_CURATED`
+    names appended to what they did list; and any host `_PROVIDER_CURATED`
+    knows (Groq, Mistral, xAI, …) answered its curated list when the listing
+    failed outright — a dead key showed eight Groq models. All three are gone:
+    what the provider's own list call named, or nothing.
+
+    `outcome`, when given, says how the ask went, for the line a person reads
+    when nothing came back: `{"answered": True}` when the endpoint answered
+    (an empty list is an answer — Ollama with nothing pulled), else
+    `{"error": "<short reason>"}`, with `"loading": True` for a server that
+    says it is still loading its model.
+    """
     from src.endpoint_resolver import resolve_url
     from src.llm_core import httpx_get_kimi_aware
+    out = outcome if isinstance(outcome, dict) else {}
+
+    def _failed(reason: str, *, loading: bool = False) -> List[str]:
+        out["error"] = (str(reason or "") or "no answer")[:160]
+        if loading:
+            out["loading"] = True
+        return []
+
+    def _answered(models: List[str]) -> List[str]:
+        out["answered"] = True
+        out.pop("error", None)
+        return models
+
     base = resolve_url(_normalize_base(base_url))
     provider = _safe_detect_provider(base)
     if provider == "chatgpt-subscription":
         from src.chatgpt_subscription import fetch_available_models
         if api_key:
-            return fetch_available_models(api_key, timeout=timeout)
-        return []
+            models = fetch_available_models(api_key, timeout=timeout)
+            return _answered(models) if models else _failed("the account listed no models")
+        return _failed("not signed in")
     if _is_google_api_base(base):
         try:
-            models = _probe_google_models(base, api_key, timeout=timeout)
-            if models:
-                return models
+            return _answered(_probe_google_models(base, api_key, timeout=timeout))
         except httpx.HTTPStatusError as e:
             status = e.response.status_code if e.response is not None else "unknown"
             logger.warning(f"Google native models probe failed: HTTP {status}")
+            return _failed(f"HTTP {status}")
         except Exception as e:
             logger.warning(f"Google native models probe failed: {e}")
-        return []
+            return _failed(str(e))
     if provider == "anthropic":
-        # Try Anthropic's /v1/models endpoint first
+        # Anthropic's own list call, `GET /v1/models` with the key in
+        # `x-api-key`. No answer, no names.
         url = _safe_build_models_url(base)
         headers = {"anthropic-version": "2023-06-01"}
         if api_key:
@@ -998,22 +1039,14 @@ def _probe_endpoint(base_url: str, api_key: str = None, timeout: int = 5) -> Lis
         try:
             r = httpx.get(url, headers=headers, timeout=timeout, verify=llm_verify())
             r.raise_for_status()
-            data = r.json()
-            models = _openai_model_ids(data)
-            if models:
-                return models
+            return _answered(_openai_model_ids(r.json()))
         except httpx.HTTPStatusError as e:
-            if api_key:
-                status = e.response.status_code if e.response is not None else "unknown"
-                logger.warning(f"Anthropic /v1/models failed with API key: HTTP {status}")
-                return []
-            logger.warning(f"Anthropic /v1/models failed, using hardcoded list: {e}")
+            status = e.response.status_code if e.response is not None else "unknown"
+            logger.warning(f"Anthropic /v1/models failed: HTTP {status}")
+            return _failed(f"HTTP {status}")
         except Exception as e:
-            if api_key:
-                logger.warning(f"Anthropic /v1/models failed with API key: {e}")
-                return []
-            logger.warning(f"Anthropic /v1/models failed, using hardcoded list: {e}")
-        return list(ANTHROPIC_MODELS)
+            logger.warning(f"Anthropic /v1/models failed: {e}")
+            return _failed(str(e))
     url = _safe_build_models_url(base)
     headers = _safe_build_headers(api_key, base)
     try:
@@ -1026,33 +1059,25 @@ def _probe_endpoint(base_url: str, api_key: str = None, timeout: int = 5) -> Lis
         if not models:
             models = _ollama_model_names(data)
         if models:
-            # Z.AI coding plan omits some working models from /models;
-            # append curated-only entries for that endpoint only.
-            if _host_match(base, "z.ai") and "/api/coding" in (urlparse(base).path or ""):
-                _ck = _match_provider_curated(base, None)
-                for _e in _PROVIDER_CURATED.get(_ck, []):
-                    if _e not in set(models) and not any(m.startswith(_e) for m in models):
-                        models.append(_e)
-            if _host_match(base, "kimi.com") and "/coding" in (urlparse(base).path or ""):
-                _ck = _match_provider_curated(base, None)
-                for _e in _PROVIDER_CURATED.get(_ck, []):
-                    if _e not in set(models) and not any(m.startswith(_e) for m in models):
-                        models.append(_e)
-            return [m for m in models if _is_chat_model(m)]
+            return _answered([m for m in models if _is_chat_model(m)])
+        if isinstance(data, (dict, list)):
+            out["answered"] = True
     except httpx.HTTPStatusError as e:
         if e.response is not None and _is_loading_model_response(e.response):
             logger.info("Endpoint still loading model at %s", _redact_url_for_log(url))
-            return []
+            return _failed("loading model", loading=True)
+        status = e.response.status_code if e.response is not None else "unknown"
         if api_key:
-            status = e.response.status_code if e.response is not None else "unknown"
             logger.warning("Failed to probe %s with API key: HTTP %s", _redact_url_for_log(url), status)
-            return []
+            return _failed(f"HTTP {status}")
         logger.warning("Failed to probe %s: %s", _redact_url_for_log(url), e)
+        out["error"] = f"HTTP {status}"
     except Exception as e:
         if api_key:
             logger.warning("Failed to probe %s with API key: %s", _redact_url_for_log(url), e)
-            return []
+            return _failed(str(e))
         logger.warning("Failed to probe %s: %s", _redact_url_for_log(url), e)
+        out["error"] = str(e)[:160] or "no answer"
 
     # Older Ollama builds and some proxies expose native /api/tags even when
     # the OpenAI-compatible /v1/models path is unavailable.
@@ -1065,15 +1090,13 @@ def _probe_endpoint(base_url: str, api_key: str = None, timeout: int = 5) -> Lis
             data = r.json()
             models = _ollama_model_names(data)
             if models:
-                return [m for m in models if _is_chat_model(m)]
+                return _answered([m for m in models if _is_chat_model(m)])
+            out["answered"] = True
+            out.pop("error", None)
     except Exception as e:
         logger.debug(f"Ollama /api/tags probe failed for {base}: {e}")
-    # Fall back to curated list if the provider has a URL-based match (e.g. z.ai has no /models endpoint)
-    curated_key = _match_provider_curated(base, None)
-    fallback = _PROVIDER_CURATED.get(curated_key) if curated_key else None
-    if fallback:
-        logger.info(f"Using curated fallback for {curated_key}: {fallback}")
-        return list(fallback)
+    if not out.get("answered") and not out.get("error"):
+        out["error"] = "no answer"
     return []
 
 
@@ -1360,22 +1383,180 @@ def _legacy_visible_api_models(ep) -> List[str]:
 
 
 def _picker_models_for_endpoint(ep, base_url: str, kind: str):
-    """Return model IDs that should appear in the picker for an endpoint.
+    """Return `(offered, pinned)`: the names this endpoint offers, and the
+    admin's pinned list as stored.
 
     API providers expose remote inventory from /v1/models. Default to that
     visible inventory until an explicit pinned-model allow-list is saved.
     Local/self-hosted endpoints keep the older hide-list behavior.
+
+    `D-2026-10-07-02` §1 (`B1259`): **offered means listed.** `cached_models`
+    holds what the endpoint's latest listing answered and is emptied when a
+    listing fails (`_store_listing`), so it is the one record of what is
+    enumerated (`Law 7`). A pinned name is the admin's choice, kept as stored;
+    it is offered when the endpoint lists it and not before. It used to be
+    offered either way ("cloud deployment IDs the provider does not list") —
+    a typed name that nothing listed, in the picker. The one exception is a
+    pinned path on disk: the Forge's MLX shim for DeepSeek-V4, which
+    `mlx_lm.server` serves under that path while listing the repo id.
     """
     pinned = _normalize_model_ids(getattr(ep, "pinned_models", None))
+    listed = _cached_model_ids(ep)
     if _picker_requires_pinning(base_url, kind):
         if not _has_explicit_pinned_models(ep):
             pinned = _legacy_visible_api_models(ep)
-        return pinned, pinned
+        listed_set = set(listed)
+        return [m for m in pinned if m in listed_set], pinned
+    on_disk = [m for m in pinned if _is_mlx_deepseek_v4_shim_id(m)]
     return _visible_models(
-        _cached_model_ids(ep),
+        listed,
         getattr(ep, "hidden_models", None),
-        pinned,
+        on_disk,
     ), pinned
+
+
+# ── What each endpoint's latest listing said (`D-2026-10-07-02` §1) ──────────
+#
+# The owner, 2026-10-07: *"never populate a fabricated model … Pantheon will
+# only ever show models successfully enumerated."* `cached_models` is that
+# record: written by a listing that answered, emptied by one that did not, so
+# an endpoint that stopped answering says so instead of offering what it once
+# listed. It was kept on failure ("never clears a non-empty cached model list
+# on timeout/failure"), which is how a dead server's three models stayed in
+# the picker, dimmed, clickable, failing in 0.2 s (`CHAT-M-23`).
+#
+# The reason for the line lives here, in memory: after a restart an endpoint
+# with nothing listed says it is not answering until it is asked again.
+_LISTING_STATE: Dict[str, Dict[str, Any]] = {}
+# A listing that just failed is not asked again for this long unless a person
+# presses Retry — a chat or a task naming a dead endpoint must not wait on it
+# once per message.
+_LISTING_RETRY_AFTER = 30.0
+_LISTING_LISTENERS: List[Any] = []
+
+
+def _invalidate_models_cache() -> None:
+    """Tell `/api/models`' per-user cache that a listing changed.
+
+    Module-level so `routes/copilot_routes.py` and
+    `routes/chatgpt_subscription_routes.py` can call it — they have imported
+    this name since they were written, and it existed only inside
+    `setup_model_routes`, so the import failed inside their `try` and the new
+    endpoint waited out the 30 s cache.
+    """
+    for listener in list(_LISTING_LISTENERS):
+        try:
+            listener()
+        except Exception as exc:  # a stale listener must not stop the others
+            logger.debug("model list cache listener failed: %s", exc)
+
+
+def _store_listing(ep: Any, models: Optional[List[str]], outcome: Optional[Dict[str, Any]] = None) -> bool:
+    """Write what a listing answered onto `ep` (the caller commits).
+
+    Names → `cached_models`; no names → `None`, so nothing is offered until
+    the endpoint answers again. Returns whether the row changed.
+    """
+    outcome = outcome or {}
+    ep_id = str(getattr(ep, "id", "") or "")
+    now = _time.time()
+    ids = [m for m in (models or []) if isinstance(m, str) and m]
+    if ids:
+        _LISTING_STATE[ep_id] = {"ok": True, "at": now}
+        new_value = json.dumps(ids)
+    else:
+        _LISTING_STATE[ep_id] = {
+            "ok": False,
+            "at": now,
+            "answered": bool(outcome.get("answered")),
+            "loading": bool(outcome.get("loading")),
+            "error": str(outcome.get("error") or ""),
+        }
+        new_value = None
+    changed = getattr(ep, "cached_models", None) != new_value
+    ep.cached_models = new_value
+    return changed
+
+
+def _listing_failed_recently(ep: Any) -> bool:
+    state = _LISTING_STATE.get(str(getattr(ep, "id", "") or "")) or {}
+    return state.get("ok") is False and (_time.time() - float(state.get("at") or 0)) < _LISTING_RETRY_AFTER
+
+
+def endpoint_down_line(ep: Any) -> str:
+    """The one line said for an endpoint that offers nothing right now."""
+    name = (getattr(ep, "name", "") or "").strip() or "This endpoint"
+    state = _LISTING_STATE.get(str(getattr(ep, "id", "") or "")) or {}
+    if state.get("loading"):
+        return f"{name} is loading its model."
+    if state.get("answered"):
+        return f"{name} lists no models."
+    return f"{name} isn't answering."
+
+
+PICK_ANOTHER = "Pick another from the model menu."
+
+
+def unusable_model_sentence(ep: Any, model: str, then: str = PICK_ANOTHER,
+                            listed: Optional[List[str]] = None) -> str:
+    """Why `model` on `ep` cannot be used now — what happened, then what to do
+    (Doc 2 § 5, rule 7). `ep` None: the endpoint it named is gone. `listed`:
+    what it offers, when the caller has just asked it."""
+    short = str(model or "").rstrip("/").split("/")[-1]
+    if ep is None:
+        return f"{short or 'That model'}'s endpoint is gone. {then}"
+    if not (offered_models(ep) if listed is None else listed):
+        return f"{endpoint_down_line(ep)} {then}"
+    name = (getattr(ep, "name", "") or "").strip() or "its endpoint"
+    return f"{short or 'That model'} isn't listed by {name} now. {then}"
+
+
+def offered_models(ep: Any) -> List[str]:
+    """The names `ep` offers right now — the picker's list for it, and the
+    one every other door asks (`Law 7`): listed, and not turned off."""
+    base = _normalize_base(getattr(ep, "base_url", "") or "")
+    kind = _effective_endpoint_kind(ep, base)
+    return _picker_models_for_endpoint(ep, base, kind)[0]
+
+
+def _listing_key(ep: Any) -> Optional[str]:
+    """The credential a listing is asked with: the row's key, or for a
+    signed-in provider (ChatGPT) the current access token."""
+    if getattr(ep, "provider_auth_id", None):
+        return _resolve_probe_key(ep)
+    return getattr(ep, "api_key", None)
+
+
+def relist_endpoint(ep_id: str, *, force: bool = False, timeout: Optional[float] = None) -> List[str]:
+    """Ask one endpoint for its models now, store the answer, return what it
+    offers. A listing that failed under `_LISTING_RETRY_AFTER` ago is not asked
+    again unless `force` — Retry forces; a chat send or a task run does not."""
+    db = SessionLocal()
+    try:
+        ep = db.query(ModelEndpoint).filter(
+            ModelEndpoint.id == ep_id, ModelEndpoint.is_enabled == True  # noqa: E712
+        ).first()
+        if ep is None:
+            return []
+        if not force and _listing_failed_recently(ep):
+            return offered_models(ep)
+        base = _normalize_base(getattr(ep, "base_url", "") or "")
+        kind = _effective_endpoint_kind(ep, base)
+        category = _classify_endpoint(base, kind)
+        outcome: Dict[str, Any] = {}
+        try:
+            ids = _probe_endpoint(base, _listing_key(ep),
+                                  timeout=timeout or _manual_refresh_timeout(ep, category),
+                                  outcome=outcome)
+        except Exception as exc:
+            logger.warning("Listing %s failed: %s", ep_id, exc)
+            ids, outcome = [], {"error": str(exc)[:160]}
+        if _store_listing(ep, ids, outcome):
+            db.commit()
+            _invalidate_models_cache()
+        return offered_models(ep)
+    finally:
+        db.close()
 
 
 def _api_key_fingerprint(api_key: Optional[str]) -> str:
@@ -1471,6 +1652,11 @@ def setup_model_routes(model_discovery):
         flip)."""
         _models_cache.clear()
 
+    # The module-level `_invalidate_models_cache` (a listing stored outside
+    # this router — `relist_endpoint`, the Copilot and ChatGPT links) reaches
+    # this router's cache. One router per process; a rebuilt one replaces it.
+    _LISTING_LISTENERS[:] = [_invalidate_models_cache]
+
     # Track model-list refreshes by URL+key. This prevents repeated picker/API
     # opens from starting duplicate /models probes, and gives slow/offline
     # providers a cooldown after failures.
@@ -1507,7 +1693,10 @@ def setup_model_routes(model_discovery):
         info = {
             "id": getattr(ep, "id", ""),
             "base": base,
-            "api_key": getattr(ep, "api_key", None),
+            # `D-2026-10-07-02` §1: a signed-in provider is listed with its
+            # current token, not the empty `api_key` — a failed listing now
+            # takes the endpoint's names away, so it must be a real ask.
+            "api_key": _listing_key(ep) if getattr(ep, "provider_auth_id", None) else getattr(ep, "api_key", None),
             "kind": kind,
             "category": category,
             "mode": mode,
@@ -1526,7 +1715,9 @@ def setup_model_routes(model_discovery):
             empty_local = (
                 not cached
                 and category == "local"
-                and str(getattr(ep, "id", "") or "").startswith("local-")
+                # `img-` too: a Forge image server registers before it can
+                # answer, and nothing is offered until it does.
+                and str(getattr(ep, "id", "") or "").startswith(("local-", "img-"))
             )
             if now - last_failure < _failure_delay(fails, empty_local=empty_local):
                 return False, info
@@ -1576,24 +1767,28 @@ def setup_model_routes(model_discovery):
                         st["last_attempt"] = now
 
                     def _probe_one(key: str, data: Dict[str, Any]):
+                        outcome: Dict[str, Any] = {}
                         try:
-                            ids = _probe_endpoint(data["base"], data.get("api_key"), timeout=data.get("timeout") or 2)
-                            return key, data["endpoint_ids"], ids, None
+                            ids = _probe_endpoint(data["base"], data.get("api_key"), timeout=data.get("timeout") or 2,
+                                                  outcome=outcome)
+                            return key, data["endpoint_ids"], ids, outcome
                         except Exception as e:
-                            return key, data["endpoint_ids"], None, e
+                            return key, data["endpoint_ids"], None, {"error": str(e)[:160]}
 
                     if groups:
                         with ThreadPoolExecutor(max_workers=min(4, len(groups))) as pool:
                             futures = [pool.submit(_probe_one, key, data) for key, data in groups.items()]
                             for fut in as_completed(futures):
-                                key, endpoint_ids, ids, err = fut.result()
+                                key, endpoint_ids, ids, outcome = fut.result()
                                 st = _refresh_state.setdefault(key, {})
+                                # `D-2026-10-07-02` §1: what the listing
+                                # answered, or nothing — a failure no longer
+                                # keeps the names it listed before.
+                                for ep_id in endpoint_ids:
+                                    ep_obj = db.query(ModelEndpoint).filter(ModelEndpoint.id == ep_id).first()
+                                    if ep_obj and _store_listing(ep_obj, ids, outcome):
+                                        changed = True
                                 if ids:
-                                    for ep_id in endpoint_ids:
-                                        ep_obj = db.query(ModelEndpoint).filter(ModelEndpoint.id == ep_id).first()
-                                        if ep_obj:
-                                            ep_obj.cached_models = json.dumps(ids)
-                                            changed = True
                                     st["last_success"] = _time.time()
                                     st["fail_count"] = 0
                                     st.pop("last_failure", None)
@@ -1654,9 +1849,12 @@ def setup_model_routes(model_discovery):
                 curated_key = _match_provider_curated(base, None)
                 curated, extra = _curate_models(model_ids, curated_key)
                 # Pinned models are admin-selected — they always belong in the
-                # primary curated list, not buried in extras.
+                # primary curated list, not buried in extras. Only a pinned
+                # name the endpoint listed (`D-2026-10-07-02` §1): this loop
+                # used to append every pinned name, listed or not.
+                listed = set(model_ids)
                 for m in pinned:
-                    if m not in curated:
+                    if m in listed and m not in curated:
                         curated.append(m)
                 extra = [m for m in extra if m not in pinned]
                 items.append({
@@ -1674,7 +1872,9 @@ def setup_model_routes(model_discovery):
                     "model_type": ep_model_type,
                 })
             else:
-                # Endpoint unreachable but still show it greyed out
+                # `D-2026-10-07-02` §1. Nothing listed: the endpoint is shown
+                # as one line saying so (`down_line`), with Retry, and no
+                # names — not the ones it listed before.
                 items.append({
                     "host": "custom",
                     "port": 0,
@@ -1689,14 +1889,21 @@ def setup_model_routes(model_discovery):
                     "endpoint_kind": kind,
                     "model_type": ep_model_type,
                     "offline": True,
+                    "down_line": endpoint_down_line(ep),
                 })
 
         return {"hosts": [], "items": items}
 
     @router.get("/models")
-    def api_models(request: Request, refresh: bool = False, background: bool = False):
+    def api_models(request: Request, refresh: bool = False, background: bool = False,
+                   retry: str = ""):
         """Get available models — per-user (caller sees only their endpoints +
-        legacy/shared null-owner rows). Cached per-user for 30s."""
+        legacy/shared null-owner rows). Cached per-user for 30s.
+
+        `retry=<endpoint id>` is the picker's Retry on an endpoint that is not
+        answering (`D-2026-10-07-02` §1): that endpoint is asked for its
+        models now, the answer stored, and the fresh list returned — for any
+        person who can see the endpoint, not only an admin."""
         # Require auth; "" is the unconfigured single-user mode, treated as
         # "see everything" by _fetch_models.
         try:
@@ -1727,6 +1934,26 @@ def setup_model_routes(model_discovery):
                 _is_admin = bool(auth_mgr.is_admin(owner))
         except Exception:
             _is_admin = False
+        retry_id = (retry or "").strip()
+        if retry_id:
+            db = SessionLocal()
+            try:
+                q = db.query(ModelEndpoint).filter(
+                    ModelEndpoint.id == retry_id, ModelEndpoint.is_enabled == True  # noqa: E712
+                )
+                if owner and not _is_admin:
+                    q = owner_filter(q, ModelEndpoint, owner)
+                target = q.first()
+                if target is None:
+                    raise HTTPException(404, "That model endpoint is gone.")
+                category = _classify_endpoint(_normalize_base(target.base_url or ""),
+                                              _effective_endpoint_kind(target, _normalize_base(target.base_url or "")))
+                retry_timeout = min(_manual_refresh_timeout(target, category), 15.0)
+            finally:
+                db.close()
+            relist_endpoint(retry_id, force=True, timeout=retry_timeout)
+            _models_cache.clear()
+            refresh = False
         now = _time.time()
         # Cache key includes the admin flag so a demotion / promotion doesn't
         # serve the wrong scoped view from cache.
@@ -1861,7 +2088,8 @@ def setup_model_routes(model_discovery):
                 entry["latency_ms"] = round((_time.time() - t0) * 1000)
                 entry["status"] = "loading" if ping.get("loading") else ("online" if ping.get("reachable") or cached_count else "offline")
                 entry["error"] = ping.get("error")
-                entry["model_count"] = cached_count or (len(ANTHROPIC_MODELS) if provider == "anthropic" else 0)
+                # What it listed — never a count of a built-in list (`B1259`).
+                entry["model_count"] = cached_count
             except Exception as e:
                 entry["latency_ms"] = None
                 entry["status"] = "online" if cached_count else "offline"
@@ -1948,17 +2176,17 @@ def setup_model_routes(model_discovery):
             ok_count = 0
             for ep in ep_data:
                 base = _normalize_base(ep["base_url"])
-                all_models = _probe_endpoint(base, ep.get("api_key"))
-                # Update cached_models in DB
-                if all_models:
-                    db2 = SessionLocal()
-                    try:
-                        ep_obj = db2.query(ModelEndpoint).filter(ModelEndpoint.id == ep["id"]).first()
-                        if ep_obj:
-                            ep_obj.cached_models = json.dumps(all_models)
-                            db2.commit()
-                    finally:
-                        db2.close()
+                _outcome: Dict[str, Any] = {}
+                all_models = _probe_endpoint(base, ep.get("api_key"), outcome=_outcome)
+                # What it listed, or nothing (`D-2026-10-07-02` §1).
+                db2 = SessionLocal()
+                try:
+                    ep_obj = db2.query(ModelEndpoint).filter(ModelEndpoint.id == ep["id"]).first()
+                    if ep_obj and _store_listing(ep_obj, all_models, _outcome):
+                        db2.commit()
+                        _invalidate_models_cache()
+                finally:
+                    db2.close()
                 if not all_models:
                     yield f"data: {json.dumps({'type': 'probe_start', 'endpoint': ep['name'], 'model_count': 0, 'error': 'No models found or endpoint offline'})}\n\n"
                     continue
@@ -1994,7 +2222,7 @@ def setup_model_routes(model_discovery):
         now = _time.time()
         if not refresh and _providers_cache["data"] is not None and (now - _providers_cache["time"]) < _PROVIDERS_CACHE_TTL:
             return _providers_cache["data"]
-        result = model_discovery.get_providers()
+        result = model_discovery.get_providers(list_models=_probe_endpoint)
         _providers_cache["data"] = result
         _providers_cache["time"] = now
         return result
@@ -2033,7 +2261,21 @@ def setup_model_routes(model_discovery):
                     upgraded_legacy_pins = True
                 model_inventory_count = len(_merge_model_ids(all_models, pinned))
                 picker_requires_pinning = _picker_requires_pinning(base, kind)
-                status = "online" if (all_models or visible or pinned) else ("empty" if r.is_enabled else "offline")
+                # `D-2026-10-07-02` §1: "online" means it listed something; a
+                # pinned name alone used to make a dead endpoint "online". An
+                # enabled endpoint that lists nothing is "empty" (it answered
+                # with no models) or "down" (it did not answer) — both stay
+                # out of *Clear offline*, which removes disabled rows only, as
+                # before.
+                _state = _LISTING_STATE.get(str(r.id)) or {}
+                if all_models:
+                    status = "online"
+                elif not r.is_enabled:
+                    status = "offline"
+                elif _state.get("answered"):
+                    status = "empty"
+                else:
+                    status = "down"
                 results.append({
                     "id": r.id,
                     "name": r.name,
@@ -2048,6 +2290,7 @@ def setup_model_routes(model_discovery):
                     "hidden_count": len(hidden),
                     "online": status != "offline",
                     "status": status,
+                    "down_line": "" if all_models else endpoint_down_line(r),
                     "ping_error": (ping or {}).get("error") if ping else None,
                     "model_type": getattr(r, "model_type", None) or "llm",
                     "supports_tools": getattr(r, "supports_tools", None),
@@ -2179,35 +2422,36 @@ def setup_model_routes(model_discovery):
                 # Explicit "require models" calls still probe; normal refresh
                 # belongs to /model-endpoints/{id}/models or /probe.
                 if require_model_list:
+                    _outcome: Dict[str, Any] = {}
                     probed_models = _probe_endpoint(
                         base_url,
                         (api_key.strip() or existing.api_key or None),
                         timeout=_explicit_model_list_timeout(base_url, existing_kind_for_probe, refresh_timeout),
+                        outcome=_outcome,
                     )
-                    if probed_models:
-                        existing.cached_models = json.dumps(probed_models)
+                    if _store_listing(existing, probed_models, _outcome):   # `D-2026-10-07-02` §1
                         changed = True
                 if changed:
                     _db_dedup.commit()
                     _invalidate_models_cache()
                     _local_probe_cache["data"] = None
-                existing_models = _cached_model_ids(existing)
                 _existing_pinned = _normalize_model_ids(getattr(existing, "pinned_models", None))
                 existing_kind = _effective_endpoint_kind(existing, existing.base_url)
+                # `D-2026-10-07-02` §1: what it offers — listed names only —
+                # and "online" only when it has listed something.
+                _existing_offered = offered_models(existing)
+                if require_model_list and not _existing_offered:
+                    raise HTTPException(400, _model_endpoint_error_message(base_url, {}))
                 return {
                     "id": existing.id,
                     "name": existing.name,
                     "base_url": existing.base_url,
                     "has_key": bool(existing.api_key),
                     "api_key_fingerprint": _api_key_fingerprint(existing.api_key),
-                    "models": _visible_models(
-                        existing_models,
-                        getattr(existing, "hidden_models", None),
-                        existing.pinned_models,
-                    ),
+                    "models": _existing_offered,
                     "pinned_models": _existing_pinned,
-                    "online": True,
-                    "status": "online",
+                    "online": bool(_existing_offered),
+                    "status": "online" if _existing_offered else "offline",
                     "existing": True,
                     "endpoint_kind": existing_kind,
                     "category": _classify_endpoint(existing.base_url, existing_kind),
@@ -2215,7 +2459,9 @@ def setup_model_routes(model_discovery):
         finally:
             _db_dedup.close()
 
-        model_ids = _probe_endpoint(base_url, api_key.strip() or None, timeout=explicit_timeout) if should_probe else []
+        _create_outcome: Dict[str, Any] = {}
+        model_ids = (_probe_endpoint(base_url, api_key.strip() or None, timeout=explicit_timeout,
+                                     outcome=_create_outcome) if should_probe else [])
         ping = {"reachable": False, "error": None}
         if (should_probe or requested_kind in ("api", "proxy")) and not model_ids:
             ping = _ping_endpoint(base_url, api_key.strip() or None, timeout=min(explicit_timeout, 10.0))
@@ -2252,6 +2498,8 @@ def setup_model_routes(model_discovery):
             )
             db.add(ep)
             db.commit()
+            if should_probe:
+                _store_listing(ep, model_ids, _create_outcome)   # the line's reason
             # Auto-set as default chat endpoint when none is usable yet — either
             # nothing is configured, or the configured default points at an
             # endpoint that is now missing/disabled (#3586). Seed the first CHAT
@@ -2286,16 +2534,21 @@ def setup_model_routes(model_discovery):
             db.close()
 
         # Return immediately — probing happens via the separate /probe SSE endpoint
+        # `D-2026-10-07-02` §1: `models` is what the endpoint listed — a
+        # pinned name it did not list is stored, not offered, and does not
+        # make the endpoint "online".
+        _listed = set(model_ids or [])
+        _offered = [m for m in _merge_model_ids(model_ids, _pinned) if m in _listed]
         return {
             "id": ep_id,
             "name": name.strip(),
             "base_url": base_url,
             "has_key": bool(api_key.strip()),
             "api_key_fingerprint": _api_key_fingerprint(api_key),
-            "models": _merge_model_ids(model_ids, _pinned),
+            "models": _offered,
             "pinned_models": _pinned,
-            "online": bool(model_ids) or bool(_pinned) or bool(ping.get("reachable")),
-            "status": "online" if (model_ids or _pinned) else ("loading" if ping.get("loading") else ("empty" if ping.get("reachable") else "offline")),
+            "online": bool(model_ids) or bool(ping.get("reachable")),
+            "status": "online" if model_ids else ("loading" if ping.get("loading") else ("empty" if ping.get("reachable") else "offline")),
             "ping_error": ping.get("error") if ping else None,
             "endpoint_kind": requested_kind,
             "category": _classify_endpoint(base_url, requested_kind),
@@ -2346,7 +2599,8 @@ def setup_model_routes(model_discovery):
             db.close()
 
         base = _normalize_base(ep_data["base_url"])
-        all_models = _probe_endpoint(base, ep_data["api_key"])
+        _outcome: Dict[str, Any] = {}
+        all_models = _probe_endpoint(base, ep_data["api_key"], outcome=_outcome)
         chat_models = [m for m in all_models if _is_chat_model(m)]
         skipped = len(all_models) - len(chat_models)
 
@@ -2371,8 +2625,7 @@ def setup_model_routes(model_discovery):
                 ep_obj = db2.query(ModelEndpoint).filter(ModelEndpoint.id == ep_id).first()
                 if ep_obj:
                     ep_obj.hidden_models = json.dumps(failed) if failed else None
-                    if all_models:
-                        ep_obj.cached_models = json.dumps(all_models)
+                    _store_listing(ep_obj, all_models, _outcome)   # `D-2026-10-07-02` §1
                     db2.commit()
             finally:
                 db2.close()
@@ -2405,29 +2658,38 @@ def setup_model_routes(model_discovery):
             if refresh:
                 category = _classify_endpoint(base, kind)
                 timeout = _manual_refresh_timeout(ep, category, refresh_timeout)
+                _outcome: Dict[str, Any] = {}
                 try:
-                    probed = _probe_endpoint(base, ep.api_key, timeout=timeout)
+                    probed = _probe_endpoint(base, _listing_key(ep), timeout=timeout, outcome=_outcome)
                 except Exception as exc:
                     logger.warning("Manual model refresh failed for endpoint %s at %s: %s", ep_id, base, exc)
-                    probed = []
-                if probed:
-                    all_models = probed
-                    ep.cached_models = json.dumps(all_models)
+                    probed, _outcome = [], {"error": str(exc)[:160]}
+                # `D-2026-10-07-02` §1: the listing's answer, or nothing.
+                # "kept cached models" is what kept a dead endpoint's names on
+                # offer.
+                if _store_listing(ep, probed, _outcome):
                     db.commit()
                     _invalidate_models_cache()
+                all_models = _cached_model_ids(ep)
+                if probed:
                     response.headers["X-Model-Refresh-Status"] = "refreshed"
                     response.headers["X-Model-Refresh-Count"] = str(len(probed))
                 else:
                     response.headers["X-Model-Refresh-Status"] = "failed"
-                    response.headers["X-Model-Refresh-Warning"] = "Model refresh failed or returned no models; kept cached models."
+                    response.headers["X-Model-Refresh-Warning"] = endpoint_down_line(ep)
             _, pinned = _picker_models_for_endpoint(ep, base, kind)
             pinned_set = set(pinned)
+            listed_set = set(all_models)
             return [
                 {
                     "id": m,
                     "display": m.split("/")[-1],
                     "is_hidden": m in hidden,
                     "is_pinned": m in pinned_set,
+                    # `D-2026-10-07-02` §1. A pinned name the endpoint did not
+                    # list stays the admin's choice and is shown here so it
+                    # can be unpinned — marked, because nothing offers it.
+                    "is_listed": m in listed_set,
                     "picker_requires_pinning": picker_requires_pinning,
                 }
                 for m in _merge_model_ids(all_models, pinned)
@@ -2545,28 +2807,44 @@ def setup_model_routes(model_discovery):
                 if _user and not _is_admin:
                     ep_q = owner_filter(ep_q, ModelEndpoint, _user)
                 ep = ep_q.first()
+            # `D-2026-10-07-02` §1. A saved default is used only while its
+            # endpoint lists it; otherwise this says why (`reason`) and offers
+            # no model, so the composer shows "Select model" and a send says
+            # the sentence — instead of opening a chat on a model nothing
+            # listed, or quietly on another one.
+            if ep_id and ep is None:
+                return {"endpoint_id": "", "endpoint_url": "", "model": "",
+                        "reason": unusable_model_sentence(None, model)}
+            if ep is not None and model:
+                if model in offered_models(ep):
+                    return {"endpoint_id": ep.id, "endpoint_url": build_chat_url(_normalize_base(ep.base_url)),
+                            "model": model}
+                return {"endpoint_id": ep.id, "endpoint_url": "", "model": "",
+                        "reason": unusable_model_sentence(ep, model)}
             # Last resort: first enabled endpoint owned by THIS user. Do not
             # include null-owner/shared endpoints here: a brand-new user with
             # no explicit default should not auto-open a pending chat using an
             # existing shared/admin endpoint. Shared endpoints remain visible
             # in the picker and still work when explicitly selected/saved.
-            if not ep:
+            # The first one that offers a model — a listed name, never one it
+            # listed before it stopped answering.
+            candidates = [ep] if ep is not None else []
+            if not candidates:
                 _last_q = db.query(ModelEndpoint).filter(ModelEndpoint.is_enabled == True)
                 if _user and not _is_admin:
                     _last_q = owner_filter(_last_q, ModelEndpoint, _user, include_shared=False)
-                ep = _last_q.first()
-            if not ep:
-                return {"endpoint_id": "", "endpoint_url": "", "model": ""}
-            base = _normalize_base(ep.base_url)
-            chat_url = build_chat_url(base)
-            if not model and (getattr(ep, "cached_models", None) or getattr(ep, "pinned_models", None)):
-                try:
-                    visible = _visible_models(ep.cached_models, getattr(ep, "hidden_models", None), getattr(ep, "pinned_models", None))
-                    if visible:
-                        model = visible[0]
-                except Exception:
-                    pass
-            return {"endpoint_id": ep.id, "endpoint_url": chat_url, "model": model}
+                candidates = _last_q.all()
+            if not candidates:
+                return {"endpoint_id": "", "endpoint_url": "", "model": "", "reason": ""}
+            for cand in candidates:
+                offered = offered_models(cand)
+                if offered:
+                    return {"endpoint_id": cand.id,
+                            "endpoint_url": build_chat_url(_normalize_base(cand.base_url)),
+                            "model": offered[0]}
+            first = candidates[0]
+            return {"endpoint_id": first.id, "endpoint_url": "", "model": "",
+                    "reason": unusable_model_sentence(first, "")}
         finally:
             db.close()
 

@@ -596,7 +596,11 @@ async function loadEndpoints() {
       // empty, but we still need to render the expand panel so the user can
       // un-hide them. Gate on the total instead.
       const hasModels = ep.online && totalCount > 0;
-      const statusBadge = ep.status === 'empty'
+      // `D-2026-10-07-02` §1: "down" — enabled, its listing failed, so it
+      // offers nothing until it answers (the picker shows its one line).
+      const statusBadge = ep.status === 'down'
+        ? `<span class="admin-badge admin-badge-off" title="${esc(ep.down_line || '')}">not answering</span>`
+        : ep.status === 'empty'
         ? '<span class="admin-badge">no models</span>'
         : ep.online
           ? `<span class="admin-badge">${visibleCount}/${totalCount} models enabled</span>`
@@ -829,7 +833,9 @@ async function loadEndpoints() {
                   _refreshAfterEndpointChange();
                   if (refreshWarning && uiModule?.showToast) uiModule.showToast(refreshWarning, 6000);
                 } catch (_) {
-                  renderModels(sortedModels, 'Model refresh failed; kept cached models.');
+                  // `D-2026-10-07-02` §1: the request itself failed, so
+                  // nothing was learned about the endpoint.
+                  renderModels(sortedModels, 'Could not ask it. Try again.');
                 }
               });
             };
@@ -858,7 +864,7 @@ async function loadEndpoints() {
               `<label title="${esc(m.id)}" data-ep-model-row data-search="${esc((m.display + ' ' + m.id).toLowerCase())}" class="adm-model-row">
                 <input type="checkbox" class="adm-cb-hidden" data-ep-model-id="${esc(m.id)}" ${(usesPinnedPicker ? m.is_pinned : !m.is_hidden) ? 'checked' : ''}>
                 <span class="adm-check-dot" aria-hidden="true"></span>
-                <span>${esc(m.display)}</span>
+                <span>${esc(m.display)}</span>${m.is_listed === false ? '<span class="adm-model-unlisted">not listed</span>' : ''}
               </label>`
             ).join('') + '</div>';
             const filterRows = (q) => {

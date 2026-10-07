@@ -144,7 +144,16 @@ async function _ensureDefaultPendingChat() {
         if (res.ok) dc = await res.json();
       } catch (_) {}
     }
+    // `D-2026-10-07-02` §1. The saved default is not listed now (its endpoint
+    // is not answering, or no longer lists it): say so on the picker and use
+    // nothing — not the default, and not another model in its place.
+    if (dc && dc.reason && !dc.model) {
+      _forgetDefaultChat(dc.reason);
+      updateModelPicker();
+      return;
+    }
     if (dc && dc.endpoint_url && dc.model) {
+      try { window.__pantheonDefaultChatReason = ''; } catch (_) {}
       if (seq !== _defaultPendingSeq) return;
       const latest = _deps.getPendingChat && _deps.getPendingChat();
       if (latest && latest.modelId && latest.source !== 'default' && latest.source !== 'fallback') return;
@@ -182,6 +191,20 @@ async function _ensureDefaultPendingChat() {
   }
 }
 
+/** `D-2026-10-07-02` §1: drop a cached default that is not listed now, and
+ *  keep the sentence that says why (the picker's label tooltip, the send). */
+export function _forgetDefaultChat(reason = '') {
+  try {
+    window.__pantheonDefaultChat = null;
+    window.__pantheonDefaultChatReason = String(reason || '');
+    localStorage.removeItem('pantheon-default-chat-cache');
+  } catch (_) {}
+  try {
+    const pending = _deps && _deps.getPendingChat && _deps.getPendingChat();
+    if (pending && pending.source === 'default' && _deps.setPendingChat) _deps.setPendingChat(null);
+  } catch (_) {}
+}
+
 /**
  * Initialize the model picker dropdown.
  * @param {Object} deps
@@ -194,6 +217,14 @@ async function _ensureDefaultPendingChat() {
 export function initModelPicker(deps) {
   _deps = deps;
   _initModelPickerDropdown();
+  // `D-2026-10-07-02` §1: the boot check (`app.js` `_refreshDefaultChat`)
+  // found the saved default is not listed now.
+  try {
+    document.addEventListener('pantheon:default-chat-unusable', (ev) => {
+      _forgetDefaultChat((ev && ev.detail && ev.detail.reason) || '');
+      updateModelPicker();
+    });
+  } catch (_) {}
 }
 
 function _initModelPickerDropdown() {
@@ -302,25 +333,34 @@ function _initModelPickerDropdown() {
     });
   } catch (_) {}
 
-  function _getAllModels() {
+  // `D-2026-10-07-02` §1 (`B1259`). The owner: *"Pantheon will only ever show
+  // models successfully enumerated."* An endpoint that is not answering — its
+  // latest listing failed (`item.offline`, `down_line` from the server), its
+  // local probe failed, or a send to it just went unanswered (`P23-04`'s
+  // CHAT-M-23 mark) — is ONE line saying so, with Retry, and none of the names
+  // it listed before. It used to keep them, dimmed and clickable ("Click to
+  // try anyway"), and picking one failed in 0.2 s.
+  function _readPicker() {
     const items = (window.modelsModule && window.modelsModule.getCachedItems) ? window.modelsModule.getCachedItems() : [];
     const result = [];
+    const down = [];
     const seen = new Set();
     items.forEach(item => {
-      // Previously: offline endpoints were skipped entirely, so a server
-      // that briefly went down disappeared from the picker — confusing
-      // when the user can still see it (offline-tagged) in Settings.
-      // Now: include offline-endpoint models too but flag them
-      // `stale: true` so the row renderer dims them + shows the offline
-      // pill. The user can still click and try anyway (matches the
-      // existing "local server appears offline" path on line 301).
-      const epOffline = !!item.offline;
       const allModels = (item.models || []).concat(item.models_extra || []);
       const allDisplay = (item.models_display || []).concat(item.models_extra_display || []);
-      // Mark local endpoints whose live probe failed.
       const probeResult = item.endpoint_id ? _localProbe[item.endpoint_id] : null;
       const unanswered = _unansweredFor(item.url);   // `P23-04` (CHAT-M-23)
-      const isLocalDead = !!(probeResult && probeResult.alive === false) || unanswered;
+      const probeDead = !!(probeResult && probeResult.alive === false);
+      if (item.offline || !allModels.length || probeDead || unanswered) {
+        const name = item.endpoint_name || 'This endpoint';
+        down.push({
+          endpointId: item.endpoint_id || '',
+          url: item.url || '',
+          name,
+          line: (item.offline && item.down_line) ? item.down_line : `${name} isn't answering.`,
+        });
+        return;
+      }
       const isApiEndpoint = item.category && item.category !== 'local';
       allModels.forEach((mid, i) => {
         // Local/self-hosted servers often expose the same model through several
@@ -347,16 +387,31 @@ function _initModelPickerDropdown() {
             item.host || '',
             item.url || '',
           ].filter(Boolean).join(' '),
-          stale: isLocalDead || epOffline,
-          staleReason: epOffline
-            ? (item.ping_error || 'endpoint offline')
-            : (isLocalDead ? ((probeResult && probeResult.alive === false && probeResult.error)
-              || (unanswered ? 'not answering' : 'not responding')) : ''),
-          offline: epOffline,
         });
       });
     });
-    return sortModelObjects(result);
+    return { models: sortModelObjects(result), down };
+  }
+
+  function _getAllModels() { return _readPicker().models; }
+
+  /** Retry: ask that endpoint for its models now, then redraw. */
+  async function _retryEndpoint(d, btn) {
+    if (btn) { btn.disabled = true; btn.textContent = 'Asking…'; }
+    _unansweredBases.forEach((base) => {
+      const u = String(d.url || '').replace(/\/+$/, '');
+      if (u === base || u.startsWith(base + '/') || base.startsWith(u + '/')) _unansweredBases.delete(base);
+    });
+    if (d.endpointId) delete _localProbe[d.endpointId];
+    // A default that was not listed is asked about again once this answers.
+    try { window.__pantheonDefaultChatReason = ''; } catch (_) {}
+    try {
+      if (window.modelsModule && window.modelsModule.refreshModels) {
+        await window.modelsModule.refreshModels(true, { retry: d.endpointId });
+      }
+    } catch (_) {}
+    if (!menu.classList.contains('hidden')) _populate(search.value || '');
+    updateModelPicker();
   }
 
   function _hasModelCache() {
@@ -462,7 +517,9 @@ function _initModelPickerDropdown() {
   function _populate(filter) {
     listEl.innerHTML = '';
     listEl.classList.remove('is-loading');
-    const all = _getAllModels();
+    const picked = _readPicker();
+    const all = picked.models;
+    const down = picked.down;
     const q = (filter || '').trim().toLowerCase();
     const hasAnyModel = all.length > 0;
     listEl.classList.toggle('is-empty', !hasAnyModel);
@@ -470,13 +527,43 @@ function _initModelPickerDropdown() {
     if (search) {
       // `P23-04` (CHAT-M-14, COPY): the empty picker says it once and offers
       // the one door, as a button a person can find — not a 12-px "+" alone.
-      search.placeholder = hasAnyModel ? 'Search models…' : 'No models yet';
+      search.placeholder = hasAnyModel ? 'Search models…' : (down.length ? 'No model answering' : 'No models yet');
     }
     if (searchRow) {
       searchRow.classList.toggle('searching', !!q);
     }
 
+    // `D-2026-10-07-02` §1: one line per endpoint that is not answering, with
+    // Retry — never its old names. Not in search results: those are names.
+    if (!q) {
+      down.forEach((d) => {
+        const row = document.createElement('div');
+        row.className = 'model-switch-down';
+        row.setAttribute('role', 'status');
+        const text = document.createElement('span');
+        text.className = 'model-switch-down-text';
+        text.textContent = d.line;
+        const retry = document.createElement('button');
+        retry.type = 'button';
+        retry.className = 'model-switch-down-retry';
+        retry.textContent = 'Retry';
+        retry.addEventListener('click', (e) => { e.stopPropagation(); _retryEndpoint(d, retry); });
+        row.appendChild(text);
+        row.appendChild(retry);
+        listEl.appendChild(row);
+      });
+    }
+
     if (!hasAnyModel) {
+      if (down.length) return;
+      if (window._isAdmin === false) {
+        // A member cannot add one; the door would open a panel they lack.
+        const note = document.createElement('div');
+        note.className = 'model-switch-empty';
+        note.textContent = 'An admin adds models in Settings → Added Models.';
+        listEl.appendChild(note);
+        return;
+      }
       const add = document.createElement('button');
       add.type = 'button';
       add.className = 'model-picker-empty-add';
@@ -513,11 +600,6 @@ function _initModelPickerDropdown() {
     function _addRow(m) {
       const row = document.createElement('div');
       row.className = 'model-switch-item';
-      if (m.stale) {
-        row.classList.add('model-switch-stale');
-        row.style.opacity = '0.45';
-        row.title = `Local server appears offline: ${m.staleReason}. Click to try anyway, or relaunch in Forge.`;
-      }
       const _mlogo = providerLogo(m.mid);
       if (_mlogo) {
         const logoSpan = document.createElement('span');
@@ -533,10 +615,8 @@ function _initModelPickerDropdown() {
       // hover so the suffix/variant tag is still discoverable (#1982).
       nameSpan.title = m.display;
       row.appendChild(nameSpan);
-      // Offline state is already conveyed by the row's reduced opacity —
-      // a redundant "offline" pill on top of that just added clutter.
-      // (Class kept on `row` so the opacity rule still applies; the text
-      // badge is gone.)
+      // No offline state on a model row: an endpoint that is not answering
+      // is one line of its own, without its names (`D-2026-10-07-02` §1).
       const epSpan = document.createElement('span');
       epSpan.className = 'model-switch-ep';
       // Don't show endpoint name if it matches the model name (local self-hosted)
@@ -860,6 +940,7 @@ async function _pick(m) {
       e.stopPropagation();
       refreshBtn.disabled = true;
       refreshBtn.classList.add('spinning');
+      try { window.__pantheonDefaultChatReason = ''; } catch (_) {}
       try {
         await _refreshPickerModels({ force: true, showLoading: true });
         if (!menu.classList.contains('hidden')) _populate(search.value || '');
@@ -934,6 +1015,14 @@ export function updateModelPicker() {
         cachedDefault = JSON.parse(localStorage.getItem('pantheon-default-chat-cache') || 'null');
       } catch (_) {}
     }
+    // `D-2026-10-07-02` §1: a cached default is used only while the loaded
+    // list offers it (`_modelExists` answers yes while nothing is loaded; the
+    // server's `/api/default-chat` check follows).
+    if (cachedDefault && cachedDefault.endpoint_url && cachedDefault.model
+        && !_modelExists(cachedDefault.model, cachedDefault.endpoint_url)) {
+      _forgetDefaultChat(`${String(cachedDefault.model).split('/').pop()} isn't answering. Pick another from the model menu.`);
+      cachedDefault = null;
+    }
     if (cachedDefault && cachedDefault.endpoint_url && cachedDefault.model) {
       modelId = cachedDefault.model;
       _deps.setPendingChat({
@@ -967,8 +1056,13 @@ export function updateModelPicker() {
       if (item.offline) return;
       (item.models || []).concat(item.models_extra || []).forEach(m => allAvailable.push(m));
     });
-    if (allAvailable.length > 0 && !allAvailable.includes(modelId)) {
-      // Model no longer available — switch to first available
+    if (_pendingChat.source === 'default' && items.length && !allAvailable.includes(modelId)) {
+      // `D-2026-10-07-02` §1: the saved default is not listed now. Say so
+      // (the label's tooltip, and a send) instead of quietly using another.
+      _forgetDefaultChat(`${String(modelId).split('/').pop()} isn't answering. Pick another from the model menu.`);
+      modelId = null;
+    } else if (allAvailable.length > 0 && !allAvailable.includes(modelId)) {
+      // A fallback pick no longer available — switch to first available
       const fallback = items.find(item => !item.offline && (item.models || []).length > 0);
       if (fallback) {
         modelId = fallback.models[0];
@@ -977,9 +1071,12 @@ export function updateModelPicker() {
     }
   }
   const latestPending = _deps.getPendingChat && _deps.getPendingChat();
+  let _defaultReason = '';
+  try { _defaultReason = String(window.__pantheonDefaultChatReason || ''); } catch (_) {}
   if (
     !currentSessionId &&
     !_autoSelectingDefault &&
+    !(_defaultReason && !modelId) &&
     window.modelsModule &&
     window.modelsModule.getCachedItems &&
     (!modelId || (latestPending && latestPending.source === 'fallback'))
@@ -989,8 +1086,9 @@ export function updateModelPicker() {
 
   const displayName = modelId ? modelId.split('/').pop() : 'Select model';
   // The header indicator clips long names with ellipsis; show the full model
-  // identifier on hover (#1982). No tooltip on the "Select model" placeholder.
-  label.title = modelId || '';
+  // identifier on hover (#1982). With no model because the saved default is
+  // not listed now, the tooltip says why (`D-2026-10-07-02` §1).
+  label.title = modelId || (!currentSessionId ? _defaultReason : '') || '';
   const logo = modelId ? providerLogo(modelId) : null;
   if (logo) {
     label.innerHTML = '<span class="model-picker-logo">' + logo + '</span> ' + displayName;

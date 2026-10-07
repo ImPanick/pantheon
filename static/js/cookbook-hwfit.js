@@ -1724,6 +1724,13 @@ export function _expandModelRow(row, modelData) {
         _cachedModelIds.has(modelData.name)
         || [..._cachedModelIds].some(id => id === modelData.name || id.endsWith('/' + _short))
       );
+      if (_cachedModelIds && !_downloaded && _envState.modelHubs === false) {
+        // `B1259` (`D-2026-10-07-02` §1). With the hubs off the Forge serves
+        // what is on this machine, and a download would be refused: say the
+        // switch's sentence instead of "starting download".
+        uiModule.showToast(`${_short} is not on this machine. Hugging Face and Ollama are off. An admin turns them on in Settings → Forge.`, 6000);
+        return;
+      }
       if (_cachedModelIds && !_downloaded) {
         uiModule.showToast('Model not downloaded yet — starting download. Run again to serve once it finishes.');
         if (backend === 'ollama') {

@@ -89,9 +89,7 @@ def _resolve_model(spec: str, owner: Optional[str] = None, model_type: Optional[
 
     Raises ValueError if model not found.
     """
-    import httpx
     from src.database import SessionLocal, ModelEndpoint
-    from src.llm_core import _detect_provider, ANTHROPIC_MODELS
     from src.auth_helpers import owner_filter
 
     spec = spec.strip()
@@ -103,15 +101,6 @@ def _resolve_model(spec: str, owner: Optional[str] = None, model_type: Optional[
         target_endpoint_name = target_endpoint_name.strip()
     else:
         model_name = spec
-
-    def _json_list(value) -> list[str]:
-        try:
-            data = json.loads(value or "[]")
-        except Exception:
-            return []
-        if not isinstance(data, list):
-            return []
-        return [str(x) for x in data if isinstance(x, (str, int, float)) and str(x)]
 
     def _image_like(name: str) -> bool:
         n = (name or "").lower()
@@ -137,75 +126,40 @@ def _resolve_model(spec: str, owner: Optional[str] = None, model_type: Optional[
             raise ValueError("No enabled endpoints found" +
                              (f" matching '{target_endpoint_name}'" if target_endpoint_name else ""))
 
+        # `D-2026-10-07-02` §1. The names each endpoint's listing answered —
+        # the picker's own list (`offered_models`), with an endpoint that lists
+        # nothing asked once (`ensure_listed`). This matched Anthropic against
+        # a built-in list of ten `claude-*` names, called `/models` itself on
+        # every ask, and for image endpoints added pinned names nothing had
+        # listed.
+        from routes.model_routes import offered_models
+        from src.endpoint_resolver import ensure_listed
         for ep in endpoints:
             try:
                 base, api_key = resolve_endpoint_runtime(ep, owner=owner)
             except Exception:
                 continue
-            provider = _detect_provider(base)
             headers = build_headers(api_key, base)
+            model_ids = offered_models(ep) or ensure_listed(ep)
 
-            if provider == "anthropic":
-                # Anthropic: match against hardcoded model list
-                matched = None
-                for am in ANTHROPIC_MODELS:
-                    if model_name.lower() in am.lower() or am.lower() in model_name.lower():
-                        matched = am
-                        break
-                if matched:
-                    return build_chat_url(base), matched, headers
-            else:
-                # OpenAI-compatible and native Ollama: probe the provider's model list.
-                endpoint_reachable = False
-                try:
-                    models_url = build_models_url(base)
-                    if models_url:
-                        r = httpx.get(models_url, headers=headers, timeout=5)
-                        r.raise_for_status()
-                        endpoint_reachable = True
-                        data = r.json()
-                        items = data if isinstance(data, list) else (data.get("data") or [])
-                        model_ids = [m.get("id") for m in items if isinstance(m, dict) and m.get("id")]
-                        if not model_ids:
-                            model_ids = [
-                                m.get("name") or m.get("model")
-                                for m in (data.get("models") or [])
-                                if m.get("name") or m.get("model")
-                            ]
-                    else:
-                        endpoint_reachable = True
-                        model_ids = json.loads(ep.cached_models or "[]")
-                except Exception:
-                    model_ids = []
+            # Exact match first
+            for mid in model_ids:
+                if mid.lower() == model_name.lower():
+                    return build_chat_url(base), mid, headers
 
-                # Manual/local image endpoints are often registered with pinned
-                # model ids, while /models may return a runtime alias or only the
-                # served internal id. Include pinned/cached ids in the match set
-                # so chat sessions using the HF repo id still resolve. Do not use
-                # stale cached aliases when the endpoint itself is unreachable.
-                if model_type == "image" and endpoint_reachable:
-                    for extra in _json_list(getattr(ep, "pinned_models", None)) + _json_list(getattr(ep, "cached_models", None)):
-                        if extra not in model_ids:
-                            model_ids.append(extra)
+            # Partial match
+            for mid in model_ids:
+                if model_name.lower() in mid.lower() or mid.lower() in model_name.lower():
+                    return build_chat_url(base), mid, headers
 
-                # Exact match first
-                for mid in model_ids:
-                    if mid.lower() == model_name.lower():
-                        return build_chat_url(base), mid, headers
+            # Last resort for local image endpoints: if the requested model
+            # name is clearly an image model, use the endpoint's first listed
+            # image model id. This prevents a harmless alias mismatch from
+            # blocking image generation.
+            if model_type == "image" and _image_like(model_name) and model_ids:
+                return build_chat_url(base), model_ids[0], headers
 
-                # Partial match
-                for mid in model_ids:
-                    if model_name.lower() in mid.lower() or mid.lower() in model_name.lower():
-                        return build_chat_url(base), mid, headers
-
-                # Last resort for local image endpoints: if the requested model
-                # name is clearly an image model, use the endpoint's first known
-                # image model id. This prevents a harmless alias mismatch from
-                # blocking image generation.
-                if model_type == "image" and _image_like(model_name) and model_ids:
-                    return build_chat_url(base), model_ids[0], headers
-
-        raise ValueError(f"Model '{spec}' not found on any configured endpoint")
+        raise ValueError(f"Model '{spec}' is not listed by any endpoint now. Call list_models for the names that are.")
     finally:
         db.close()
 

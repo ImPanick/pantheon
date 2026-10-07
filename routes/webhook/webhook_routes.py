@@ -1,17 +1,16 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Webhook, API Token, and sync chat routes."""
 
+import asyncio
 import uuid
 import logging
 from typing import Optional
 
-import httpx
 from fastapi import APIRouter, HTTPException, Request, Form
 from pydantic import BaseModel, Field
 
 from core.database import SessionLocal, Webhook, ModelEndpoint
 from src.auth_helpers import owner_filter
-from src import paced_http  # `B1014`: NO_PROXY ranges, read for every client
 from src.url_security import validate_public_http_url
 from src.webhook_manager import WebhookManager, validate_webhook_url, validate_events
 
@@ -255,7 +254,7 @@ def setup_webhook_routes(
 
         from core.models import ChatMessage
         from src.llm_core import llm_call_async
-        from src.endpoint_resolver import build_chat_url, build_headers, build_models_url, normalize_base
+        from src.endpoint_resolver import build_chat_url, build_headers, normalize_base
 
         message = body.message.strip()
         if not message:
@@ -285,11 +284,24 @@ def setup_webhook_routes(
             _sess_owner = getattr(sess, "owner", None)
             if not _caller_owns_session(_sess_owner, _tok_user):
                 raise HTTPException(404, "Session not found")
+            # `D-2026-10-07-02` §1: a chat on a model no endpoint lists now is
+            # refused with the reason, as the composer's send is.
+            from src.endpoint_resolver import usable_model_problem
+            _problem = await asyncio.to_thread(
+                usable_model_problem, getattr(sess, "endpoint_url", "") or "",
+                getattr(sess, "model", "") or "", token_owner,
+                then="Pick another model for this chat.", unregistered_ok=True)
+            if _problem:
+                raise HTTPException(409, _problem)
 
         # --- Case 2: Direct API key + model (no pre-configured endpoint needed) ---
         if not sess and body.api_key:
             api_key = body.api_key.strip()
-            model = body.model or "deepseek-chat"
+            # `D-2026-10-07-02` §1: no model is assumed for a caller's key —
+            # this was "deepseek-chat" whatever the provider.
+            model = (body.model or "").strip()
+            if not model:
+                raise HTTPException(400, "Pass model with api_key: a name your provider lists for that key.")
 
             # Validate only token-supplied direct base_url; auto-resolved known-provider
             # URLs are not subject to extra local/LAN blocking beyond existing provider logic.
@@ -346,30 +358,20 @@ def setup_webhook_routes(
                 except Exception:
                     raise HTTPException(500, "Could not resolve endpoint credentials")
 
+            # `D-2026-10-07-02` §1: the endpoint's listed names — the picker's
+            # (`offered_models`), an endpoint listing nothing asked once. "auto"
+            # is the first of them; a named model must be one of them. With
+            # nothing listed this used to send the literal model "auto".
+            from routes.model_routes import offered_models, unusable_model_sentence
+            from src.endpoint_resolver import ensure_listed
+            listed = offered_models(ep) or await asyncio.to_thread(ensure_listed, ep)
+            if not listed:
+                raise HTTPException(503, unusable_model_sentence(ep, model if model != "auto" else "",
+                                                                 "Try again when it answers."))
             if model == "auto":
-                try:
-                    async with httpx.AsyncClient(
-                            timeout=5, mounts=paced_http.direct_mounts(base_url)) as client:
-                        models_url = build_models_url(base_url)
-                        hdrs = build_headers(api_key, base_url)
-                        if models_url:
-                            resp = await client.get(models_url, headers=hdrs)
-                            resp.raise_for_status()
-                            data = resp.json()
-                            items = data if isinstance(data, list) else (data.get("data") or [])
-                            ids = [m.get("id") for m in items if isinstance(m, dict) and m.get("id")]
-                            if not ids and isinstance(data, dict):
-                                ids = [
-                                    m.get("name") or m.get("model")
-                                    for m in (data.get("models") or [])
-                                    if m.get("name") or m.get("model")
-                                ]
-                        else:
-                            import json as _json
-                            ids = _json.loads(ep.cached_models or "[]")
-                        model = ids[0] if ids else "auto"
-                except Exception:
-                    raise HTTPException(500, "Could not discover models from endpoint")
+                model = listed[0]
+            elif model not in listed:
+                raise HTTPException(409, unusable_model_sentence(ep, model, "Pass a model it lists."))
 
             if not session_manager:
                 raise HTTPException(500, "Session manager not available")

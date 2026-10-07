@@ -301,31 +301,30 @@ class ModelDiscovery:
                 urls.append(url)
         return urls
 
-    def get_providers(self) -> Dict[str, Any]:
-        """Get all available providers"""
+    def get_providers(self, list_models=None) -> Dict[str, Any]:
+        """Get all available providers.
+
+        `D-2026-10-07-02` §1 (`B1259`). With `OPENAI_API_KEY` set this used to
+        answer six OpenAI model names written here (`gpt-5.2-codex`, `gpt-4o`,
+        …) whatever the key could use. Now the names are what OpenAI's own
+        `GET /v1/models` answers for that key — `list_models(base, key)` is the
+        one listing (`routes/model_routes._probe_endpoint`, `Law 14`) — and a
+        listing that fails says so with no names.
+        """
         discovery = self.discover_models()
         items = discovery["items"]
         providers = [{"provider": "vllm", "hosts": discovery["hosts"], "items": items}]
 
-        if self.openai_api_key:
-            openai_models = [
-                "gpt-5.2-codex",
-                "gpt-4o-mini",
-                "gpt-image-1.5",
-                "gpt-4o",
-                "gpt-5.2",
-                "gpt-5.2-pro",
-            ]
-            providers.append(
-                {
-                    "provider": "openai",
-                    "items": [
-                        {
-                            "url": "https://api.openai.com/v1/chat/completions",
-                            "models": openai_models,
-                        }
-                    ],
-                }
-            )
+        if self.openai_api_key and list_models is not None:
+            base = "https://api.openai.com/v1"
+            outcome: Dict[str, Any] = {}
+            try:
+                models = list_models(base, self.openai_api_key, outcome=outcome) or []
+            except Exception as exc:
+                models, outcome = [], {"error": str(exc)[:160]}
+            item: Dict[str, Any] = {"url": base + "/chat/completions", "models": models}
+            if not models:
+                item["error"] = "OpenAI isn't answering for this key."
+            providers.append({"provider": "openai", "items": [item]})
 
         return {"providers": providers}

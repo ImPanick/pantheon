@@ -939,16 +939,11 @@ async def _resolve_message_path_workspace(request, message: str) -> tuple[str, s
 
 
 def _session_url_matches_endpoint(session_url: str, endpoint_base: str) -> bool:
-    if not session_url or not endpoint_base:
-        return False
-    sess = session_url.rstrip("/")
-    base = _normalize_base(endpoint_base).rstrip("/")
-    variants = {
-        base,
-        base + "/chat/completions",
-        build_chat_url(base).rstrip("/"),
-    }
-    return sess in variants or sess.startswith(base + "/")
+    # One matcher (`Law 7`): `src/endpoint_resolver.endpoint_matches_url`,
+    # which a task's model check uses too (`D-2026-10-07-02` §1).
+    from types import SimpleNamespace
+    from src.endpoint_resolver import endpoint_matches_url
+    return endpoint_matches_url(SimpleNamespace(base_url=endpoint_base), session_url)
 
 
 def _clear_orphaned_session_endpoint(sess, owner: str | None = None) -> bool:
@@ -1062,6 +1057,77 @@ def _first_image_attachment(chat_handler, att_ids: List[str], owner: str | None 
         except Exception:
             continue
     return None
+
+
+# `D-2026-10-07-02` §1: "Started a chat with no model fails clearly, and
+# states why." The composer's words (`P23-04`'s *No model yet.*) and where a
+# model is added, said the same to everyone: it names the label, and does not
+# claim the reader holds that door (Added Models is an admin's) — the composer
+# says the member's version itself (`chat.js` `_sayNoModel`).
+NO_MODEL_SENTENCE = "No model yet. Models are added in Settings → Added Models."
+
+
+def _any_endpoint_for(owner: str | None) -> bool:
+    db = SessionLocal()
+    try:
+        q = db.query(ModelEndpoint).filter(ModelEndpoint.is_enabled == True)  # noqa: E712
+        if owner:
+            from src.auth_helpers import owner_filter
+            q = owner_filter(q, ModelEndpoint, owner)
+        return q.first() is not None
+    finally:
+        db.close()
+
+
+def _require_usable_model(request: Request, sess, owner: str | None = None) -> None:
+    """Refuse a chat whose model no endpoint lists right now — before any work.
+
+    `D-2026-10-07-02` §1 (`B1259`): a model is used only while an enumeration
+    that succeeded names it. Measured on `fcd559e`: a chat whose endpoint had
+    stopped answering was sent anyway (the picker still offered the names it
+    listed before) and failed after the model call timed out; a chat on a
+    model its server no longer listed went to the server and came back a 404
+    in the provider's words. Now it is refused here with one sentence: what
+    happened, then what to do (Doc 2 § 5, rule 7), read by the composer
+    through `readRefusal` (C-ERR).
+
+    An endpoint that lists nothing is asked once more before refusing
+    (`relist_endpoint`, within its 30 s back-off) — a server that came back
+    since its last listing is not refused on a stale answer.
+    """
+    from routes.model_routes import offered_models, relist_endpoint, unusable_model_sentence
+
+    model = (getattr(sess, "model", "") or "").strip()
+    endpoint_url = (getattr(sess, "endpoint_url", "") or "").strip()
+    if not model or not endpoint_url:
+        if not _any_endpoint_for(owner):
+            raise HTTPException(400, NO_MODEL_SENTENCE)
+        raise HTTPException(400, "No model chosen for this chat. Pick one from the model menu.")
+    db = SessionLocal()
+    try:
+        q = db.query(ModelEndpoint).filter(ModelEndpoint.is_enabled == True)  # noqa: E712
+        if owner:
+            from src.auth_helpers import owner_filter
+            q = owner_filter(q, ModelEndpoint, owner)
+        ep = next((cand for cand in q.all()
+                   if _session_url_matches_endpoint(endpoint_url, cand.base_url or "")), None)
+    finally:
+        db.close()
+    if ep is None:
+        raise HTTPException(409, unusable_model_sentence(None, model))
+    if model in offered_models(ep):
+        return
+    if not offered_models(ep):
+        relist_endpoint(ep.id, timeout=5.0)
+        db = SessionLocal()
+        try:
+            ep = db.query(ModelEndpoint).filter(ModelEndpoint.id == ep.id).first() or ep
+        finally:
+            db.close()
+        if model in offered_models(ep):
+            return
+        raise HTTPException(503, unusable_model_sentence(ep, model))
+    raise HTTPException(409, unusable_model_sentence(ep, model))
 
 
 def _recover_empty_session_model(sess, session_id: str, owner: str | None = None) -> bool:
@@ -1359,13 +1425,9 @@ def setup_chat_routes(
         # the endpoint's cached model list before privilege checks, which
         # otherwise see "" and behave inconsistently with the allowlist.
         _recover_empty_session_model(sess, session, owner=owner)
-        if not getattr(sess, "model", "").strip():
-            raise HTTPException(
-                400,
-                "No model selected for this chat. Open the model picker and choose one before sending.",
-            )
-        if not (getattr(sess, "endpoint_url", "") or "").strip():
-            raise HTTPException(400, "Selected model endpoint is not configured")
+        # `D-2026-10-07-02` §1: no model, or one nothing lists → a 4xx that
+        # says why, never a silent default.
+        _require_usable_model(request, sess, owner=owner)
 
         # Same allowed_models + daily-cap gate as chat_stream (mirror so the
         # non-streaming path can't be used to bypass).
@@ -1870,13 +1932,9 @@ def setup_chat_routes(
             # upstream isn't called with model="" (which surfaces as a
             # generic 401/503).
             _recover_empty_session_model(sess, session, owner=owner)
-            if not getattr(sess, "model", "").strip():
-                raise HTTPException(
-                    400,
-                    "No model selected for this chat. Open the model picker and choose one before sending.",
-                )
-            if not (getattr(sess, "endpoint_url", "") or "").strip():
-                raise HTTPException(400, "Selected model endpoint is not configured")
+            # `D-2026-10-07-02` §1: no model, or one nothing lists → a 4xx
+            # that says why, never a silent default.
+            _require_usable_model(request, sess, owner=owner)
             if (
                 chat_mode == "chat"
                 and isinstance(message, str)

@@ -586,14 +586,22 @@ def seed_memories(client) -> int:
 # ── the scripted model, and the chats that run on it ────────────────────────
 
 def register_demo_model(client, base_url: str) -> Dict[str, str]:
-    """Add the scripted model as an ordinary OpenAI-compatible endpoint."""
+    """Add the scripted model as an ordinary OpenAI-compatible endpoint.
+
+    `D-2026-10-07-02` §1: the model the world is seeded with is the one the
+    endpoint's listing named (`model_id`) — the tasks, workflow steps and chats
+    below take it from here, not from the constant, so nothing in the
+    showcase names a model its server did not list.
+    """
     out = _ok(client.post("/api/model-endpoints",
                           data={"name": DEMO_ENDPOINT_NAME, "base_url": base_url,
                                 "supports_tools": "true", "require_models": "true"}),
               "model endpoint")
-    if DEMO_MODEL_ID not in (out.get("models") or []):
+    listed = [m for m in (out.get("models") or []) if m == DEMO_MODEL_ID]
+    if not listed:
         raise SeedError(f"the demo endpoint listed {out.get('models')!r}, not {DEMO_MODEL_ID}")
-    return {"endpoint_id": out["id"], "chat_url": base_url.rstrip("/") + "/chat/completions"}
+    return {"endpoint_id": out["id"], "model_id": listed[0],
+            "chat_url": base_url.rstrip("/") + "/chat/completions"}
 
 
 def _sse_events(text: str) -> Iterable[Dict[str, Any]]:
@@ -607,7 +615,7 @@ def _sse_events(text: str) -> Iterable[Dict[str, Any]]:
 
 def send_chat(client, endpoint_id: str, session_id: Optional[str], message: str,
               mode: str = "agent", allow_bash: bool = False,
-              max_approvals: int = 6) -> Dict[str, Any]:
+              max_approvals: int = 6, model_id: str = DEMO_MODEL_ID) -> Dict[str, Any]:
     """One turn through `/api/chat_stream`, as the composer sends it.
 
     Once a turn has read something it did not write — a recalled memory, a
@@ -618,10 +626,10 @@ def send_chat(client, endpoint_id: str, session_id: Optional[str], message: str,
     """
     if session_id is None:
         sess = _ok(client.post("/api/session", data={"endpoint_id": endpoint_id,
-                                                     "model": DEMO_MODEL_ID}), "new chat")
+                                                     "model": model_id}), "new chat")
         session_id = sess.get("session_id") or sess.get("id")
     form = {"message": message, "session": session_id, "mode": mode, "plan_mode": "false",
-            "selected_model": DEMO_MODEL_ID, "selected_endpoint_id": endpoint_id,
+            "selected_model": model_id, "selected_endpoint_id": endpoint_id,
             "allow_bash": "true" if allow_bash else "false", "allow_web_search": "false"}
     tools: List[str] = []
     approvals = 0
@@ -652,7 +660,8 @@ def send_chat(client, endpoint_id: str, session_id: Optional[str], message: str,
     return {"session_id": session_id, "tools": tools, "approvals": approvals}
 
 
-def seed_chats(client, endpoint_id: str, have: Iterable[str] = ()) -> List[Dict[str, Any]]:
+def seed_chats(client, endpoint_id: str, have: Iterable[str] = (),
+               model_id: str = DEMO_MODEL_ID) -> List[Dict[str, Any]]:
     """The chats in `demo_model.CONVERSATIONS`, oldest first, so the hero —
     the last one — is at the top of the sidebar. A conversation that `needs`
     something (the workstation) is played only when `have` names it."""
@@ -663,7 +672,7 @@ def seed_chats(client, endpoint_id: str, have: Iterable[str] = ()) -> List[Dict[
         sid = None
         for turn in conv["turns"]:
             out = send_chat(client, endpoint_id, sid, turn["user"], mode=turn.get("mode", "agent"),
-                            allow_bash=bool(turn.get("allow_bash")))
+                            allow_bash=bool(turn.get("allow_bash")), model_id=model_id)
             sid = out["session_id"]
             missing = [t for t in turn.get("expect_tools", []) if t not in out["tools"]]
             if missing:
@@ -690,14 +699,14 @@ def seed_all(client, *, model_base_url: Optional[str] = None,
         model = register_demo_model(client, model_base_url)
         report["model"] = model
     report["documents"] = seed_documents(client)
-    report["tasks"] = seed_tasks(client, model=DEMO_MODEL_ID if model else None,
+    report["tasks"] = seed_tasks(client, model=model["model_id"] if model else None,
                                  endpoint_url=model["chat_url"] if model else None)
-    report["workflows"] = seed_workflows(client, model=DEMO_MODEL_ID if model else None,
+    report["workflows"] = seed_workflows(client, model=model["model_id"] if model else None,
                                          endpoint_url=model["chat_url"] if model else None)
     report["skills"] = seed_skills(client)
     report["notes"] = seed_notes(client)
     report["events"] = seed_calendar(client, today)
     report["memories"] = seed_memories(client)
     if model:
-        report["chats"] = seed_chats(client, model["endpoint_id"], have)
+        report["chats"] = seed_chats(client, model["endpoint_id"], have, model_id=model["model_id"])
     return report

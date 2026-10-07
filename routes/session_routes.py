@@ -970,11 +970,24 @@ def setup_session_routes(
     def create_session_openai(
         request: Request,
         name: str = Form("New Chat (OpenAI)"),
-        model: str = Form("gpt-4o"),
+        # `D-2026-10-07-02` §1: no model is assumed. This was "gpt-4o" for a
+        # caller who named none, whatever the server's key could use.
+        model: str = Form(""),
         rag: str = Form(None)
     ):
         if not OPENAI_API_KEY:
             raise HTTPException(400, "Server missing OPENAI_API_KEY")
+        model = (model or "").strip()
+        if not model:
+            raise HTTPException(400, "Name a model: one OpenAI lists for this server's key.")
+        # The one listing (`Law 14`): OpenAI's own `GET /v1/models` for the key.
+        from routes.model_routes import _probe_endpoint
+        _outcome: dict = {}
+        listed = _probe_endpoint("https://api.openai.com/v1", OPENAI_API_KEY, timeout=15, outcome=_outcome)
+        if not listed:
+            raise HTTPException(503, "OpenAI isn't answering for this server's key. Try again.")
+        if model not in listed:
+            raise HTTPException(409, f"OpenAI doesn't list {model} for this server's key.")
         sid = str(uuid.uuid4())
         user = effective_user(request)
         session = session_manager.create_session(

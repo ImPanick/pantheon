@@ -48505,3 +48505,42 @@ body:has(:is(.modal, .research-overlay):not(.hidden):not(.modal-minimized) .moda
 #settings-modal .forge-settings-doors > li:first-child { border-top: 0; }
 #settings-modal .forge-settings-doors > li > span { min-width: 0; overflow-wrap: anywhere; }
 #settings-modal .forge-settings-doors > li > button { flex-shrink: 0; white-space: nowrap; }
+
+/* `D-2026-10-07-02` §1 (`B1259`, fx4-models). An endpoint that is not
+   answering is one line in the model menu — what it is, and Retry — instead of
+   its old names dimmed. The Retry is a quiet text button (the global `button`
+   height and margin would make the line two). In Added Models, a pinned name
+   the endpoint does not list says so beside it. */
+.model-picker-list .model-switch-down {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  font-size: 0.82em;
+  color: color-mix(in srgb, var(--fg) 65%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+}
+.model-picker-list .model-switch-down-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.model-picker-list .model-switch-down-retry {
+  flex-shrink: 0;
+  height: auto;
+  margin: 0;
+  padding: 0;
+  background: none;
+  border: 0;
+  font: inherit;
+  color: var(--fg);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.model-picker-list .model-switch-down-retry:disabled { cursor: default; opacity: 0.6; }
+.adm-model-row .adm-model-unlisted {
+  margin-left: 6px;
+  font-size: 10px;
+  color: var(--color-muted-alt);
+}

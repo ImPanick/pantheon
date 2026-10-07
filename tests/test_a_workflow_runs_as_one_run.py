@@ -49,6 +49,13 @@ def task_db(monkeypatch, tmp_path):
                            connect_args={"check_same_thread": False}, poolclass=NullPool)
     cdb.Base.metadata.create_all(engine)
     factory = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+    # fx4-models (`D-2026-10-07-02` §1): a step runs on a model an endpoint
+    # lists; the steps below name `m` at this address (nothing connects).
+    _db = factory()
+    _db.add(cdb.ModelEndpoint(id="ep-m", name="Local", is_enabled=True, endpoint_kind="local",
+                              base_url="http://127.0.0.1:9/v1", cached_models='["m"]'))
+    _db.commit()
+    _db.close()
     monkeypatch.setattr(cdb, "SessionLocal", factory)
     # Nobody is using Pantheon: the gate lets every run straight through.
     monkeypatch.setenv("BACKGROUND_TASK_FOREGROUND_GATE", "0")

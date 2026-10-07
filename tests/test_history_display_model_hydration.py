@@ -465,6 +465,9 @@ async def test_model_send_routes_hydrate_before_context_build(monkeypatch, path)
         "_recover_empty_session_model",
         lambda *_args, **_kwargs: False,
     )
+    # fx4-models (`D-2026-10-07-02` §1): the model gate, stubbed as its
+    # neighbours are; this stand-in session has no endpoint table.
+    monkeypatch.setattr(chat_routes, "_require_usable_model", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(chat_routes, "_enforce_chat_privileges", lambda *_args: None)
     monkeypatch.setattr(
         chat_routes,

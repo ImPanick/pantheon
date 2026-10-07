@@ -58,6 +58,10 @@ async def test_scheduler_agent_loop_path(monkeypatch):
     monkeypatch.setattr("src.task_endpoint.resolve_task_candidates", lambda **kw: [])
 
     from src.task_scheduler import TaskScheduler
+    # fx4-models (`D-2026-10-07-02` §1): the model gate needs an endpoint table
+    # this direct call does not have; it is driven in
+    # `test_a_run_names_why_it_did_not_run.py`.
+    monkeypatch.setattr(TaskScheduler, "_usable_route", lambda self, db, task, url, model: (url, model))
     await TaskScheduler(session_manager=None)._execute_llm_task(_make_task(), db=None)
 
     msgs = captured.get("messages", [])
@@ -137,6 +141,10 @@ async def test_scheduler_fallback_path(monkeypatch):
     monkeypatch.setattr(_te, "task_llm_call_async", _capture_call)
 
     from src.task_scheduler import TaskScheduler
+    # fx4-models (`D-2026-10-07-02` §1): the model gate needs an endpoint table
+    # this direct call does not have; it is driven in
+    # `test_a_run_names_why_it_did_not_run.py`.
+    monkeypatch.setattr(TaskScheduler, "_usable_route", lambda self, db, task, url, model: (url, model))
     sched = TaskScheduler(session_manager=None)
     sched._run_agent_loop = _fail
     await sched._execute_llm_task(_make_task(prompt="send the digest"), db=None)

@@ -3658,6 +3658,10 @@ class TaskScheduler:
             try:
                 # Persist the actual exception message so the UI can show it
                 err_text = f"{type(exec_exc).__name__}: {exec_exc}"
+                from src.endpoint_resolver import NoUsableModel
+                if isinstance(exec_exc, NoUsableModel):
+                    # `D-2026-10-07-02` §1: why it did not run, as a sentence.
+                    err_text = str(exec_exc)
                 run_obj = db.query(TaskRun).filter(TaskRun.id == run_id).first()
                 if run_obj and run_obj.status in ("running", "success"):
                     if run_obj.status == "running":
@@ -4604,10 +4608,7 @@ class TaskScheduler:
         if (not endpoint_url or not model) and crew:
             endpoint_url = endpoint_url or crew.endpoint_url
             model = model or crew.model
-        if not endpoint_url or not model:
-            endpoint_url, model = self._resolve_defaults(db, task.owner)
-        if not endpoint_url or not model:
-            raise RuntimeError("No model/endpoint configured")
+        endpoint_url, model = self._usable_route(db, task, endpoint_url, model)
         endpoint_url = _normalize_chat_endpoint(endpoint_url)
         # Record the resolved model so _execute_task_locked can persist it on
         # the run (tasks rarely pin a model, so this is the only record of
@@ -5287,10 +5288,7 @@ class TaskScheduler:
             except Exception:
                 pass
 
-        if not endpoint_url or not model:
-            endpoint_url, model = self._resolve_defaults(db, task.owner)
-        if not endpoint_url or not model:
-            raise RuntimeError("No model/endpoint configured for research")
+        endpoint_url, model = self._usable_route(db, task, endpoint_url, model)
         endpoint_url = _normalize_chat_endpoint(endpoint_url)
         # Record the resolved model for the run record (see _execute_task_locked).
         self.set_run_model(run_id, model)
@@ -6906,19 +6904,71 @@ class TaskScheduler:
         return self._chain_refusal(db, start_id, max_depth, owner) is not None
 
     def _resolve_defaults(self, db, owner):
-        """Find the first available endpoint + model from an existing session."""
-        from core.database import Session as DbSession
+        """The configured model for scheduled work: Settings → Background
+        Tasks, else Utility, else the default chat model — each used only
+        while its endpoint lists it (`src/task_endpoint.resolve_task_endpoint`).
+
+        `D-2026-10-07-02` §1. This used to answer the model of the owner's
+        newest chat, whatever it was and whether or not anything still listed
+        it — a silent default the Settings line contradicted ("Scheduled work
+        uses the default chat model.").
+        """
         try:
-            recent = db.query(DbSession).filter(
-                DbSession.endpoint_url.isnot(None),
-                DbSession.model.isnot(None),
-                *([DbSession.owner == owner] if owner else []),
-            ).order_by(DbSession.created_at.desc()).first()
-            if recent:
-                return recent.endpoint_url, recent.model
-        except Exception:
-            pass
+            from src.task_endpoint import resolve_task_endpoint
+            url, model, _headers = resolve_task_endpoint(owner=owner or None)
+        except Exception as e:
+            logger.warning("Could not resolve the task model: %s", e)
+            return None, None
+        if url and model:
+            return url, model
         return None, None
+
+    def _usable_route(self, db, task, endpoint_url, model):
+        """`(endpoint_url, model)` this run may use, or `NoUsableModel` with
+        the sentence its run records (`D-2026-10-07-02` §1).
+
+        A task or step that names a model is run on that model only while an
+        endpoint lists it — never swapped for the default. One that names
+        none takes the configured chain (`_resolve_defaults`). A step that
+        names a model but not an endpoint runs where that model is listed.
+        """
+        from src.endpoint_resolver import NoUsableModel, NO_MODEL_FOR_RUN, usable_model_problem
+        try:
+            from src.workflow_document import WorkflowNodeTask
+            then = ("Pick another model for this step." if isinstance(task, WorkflowNodeTask)
+                    else "Pick another model for this task.")
+        except Exception:
+            then = "Pick another model for this task."
+        owner = getattr(task, "owner", None)
+        if model and not endpoint_url:
+            endpoint_url = self._endpoint_listing(db, owner, model)
+            if not endpoint_url:
+                short = str(model).rstrip("/").split("/")[-1]
+                raise NoUsableModel(f"{short} isn't listed by any endpoint now. {then}")
+        if not endpoint_url or not model:
+            endpoint_url, model = self._resolve_defaults(db, owner)
+            if not endpoint_url or not model:
+                raise NoUsableModel(NO_MODEL_FOR_RUN)
+            return endpoint_url, model
+        problem = usable_model_problem(endpoint_url, model, owner=owner, then=then, db=db)
+        if problem:
+            raise NoUsableModel(problem)
+        return endpoint_url, model
+
+    def _endpoint_listing(self, db, owner, model):
+        """The chat URL of the first enabled endpoint (the owner's or shared)
+        whose listing names `model`, or `None`."""
+        from core.database import ModelEndpoint
+        from src.endpoint_resolver import build_chat_url, normalize_base
+        from routes.model_routes import offered_models
+        q = db.query(ModelEndpoint).filter(ModelEndpoint.is_enabled == True)  # noqa: E712
+        if owner:
+            from src.auth_helpers import owner_filter
+            q = owner_filter(q, ModelEndpoint, owner)
+        for ep in q.all():
+            if model in offered_models(ep):
+                return build_chat_url(normalize_base(ep.base_url or ""))
+        return None
 
     async def _deliver_via_mcp(self, tool_name: str, task, result: str):
         """Send the task result via an MCP tool (e.g. Gmail send).
