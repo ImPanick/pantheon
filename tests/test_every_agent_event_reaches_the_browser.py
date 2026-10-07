@@ -321,6 +321,9 @@ def sandbox(tmp_path_factory):
     # `B915` / `B917`: the takeover's banner is drawn by the one builder the
     # reload and a resumed stream use, so the real module is in the sandbox.
     shutil.copy(AGENT_STOPS, d / AGENT_STOPS.name)
+    # `B-NEW-11` (fx2-chat): a step's bubble and its thread are drawn through
+    # `turnReasoning.js` now; the real module.
+    shutil.copy(AGENT_STOPS.parent / "turnReasoning.js", d / "turnReasoning.js")
     return d
 
 
@@ -424,6 +427,8 @@ def _script(body: str) -> str:
         "import { document, Node, box, bubble, thread, history } from './shim.js';",
         "import { inheritModelRouteState } from './chatModelProvenance.js';",
         "import { renderAgentNote } from './agentStops.js';   // B915 / B917",
+        "import { reasoningAbove, reasoningAtFoot, carryTurnReasoning, settleTurnReasoning,"
+        " lastShownStep } from './turnReasoning.js';   // B-NEW-11",
         esc_source(),
         _STUBS,
         "let holder = null; let roundHolder = null;",

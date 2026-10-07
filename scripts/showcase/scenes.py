@@ -292,7 +292,7 @@ class Studio:
 
 def _hero(st: Studio, theme: str, size=DESKTOP, name: Optional[str] = None, phone=False):
     page = st.open(theme, size, "/#" + st.chat_id("week"), phone=phone)
-    page.wait_for_selector(".msg-ai", timeout=30000)
+    page.wait_for_selector(".msg-ai >> visible=true", timeout=30000)   # B-NEW-11: a step that only thought leaves a hidden bubble
     if not phone:
         page.locator("#chats-section-title").click()       # show the chats in the sidebar
         page.locator("#mode-agent-btn").click()            # the composer in the mode the turn ran in
@@ -412,7 +412,7 @@ def scene_brain(st: Studio, theme: str):
 def scene_workstation(st: Studio, theme: str):
     """The chat where the agent worked in the workstation, and its screen beside it."""
     page = st.open(theme, path="/#" + st.chat_id("workstation"))
-    page.wait_for_selector(".msg-ai", timeout=30000)
+    page.wait_for_selector(".msg-ai >> visible=true", timeout=30000)   # B-NEW-11
     page.keyboard.press("Control+b")                       # the sidebar folds to its rail
     page.wait_for_timeout(600)
     st.palette(page, "workstation screen")

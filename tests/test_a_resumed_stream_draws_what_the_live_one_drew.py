@@ -242,8 +242,10 @@ export const buildDiffHtml = (d) => (d ? '<div class="agent-diff">changed</div>'
 def sandbox(tmp_path_factory):
     d = _make_sandbox(tmp_path_factory.mktemp("resumedview"), JS / "agentThread.js",
                       _SHIM, _STUBS)
+    # `B-NEW-11` (fx2-chat): `turnReasoning.js`, which a step's bubble and its
+    # thread are drawn through now, the real module.
     for name in ("agentMeter.js", "agentStops.js", "spinner.js", "agentTurn.js",
-                 "chatModelProvenance.js", "chatStreamErrors.js"):
+                 "chatModelProvenance.js", "chatStreamErrors.js", "turnReasoning.js"):
         shutil.copy(JS / name, d / name)
     return d
 
@@ -316,6 +318,9 @@ _PREAMBLE = r"""
 import { document, Node, flushTimers, describe } from './shim.js';
 import { applyAgentThreadNode, verifierCardOptions, blockedCardOptions, toolOutputPanesHtml,
          agentThreadContent, TOOL_LABELS } from './agentThread.js';
+// `B-NEW-11` (fx2-chat): under the names chat.js imports them as.
+import { reasoningAbove, reasoningAtFoot, carryTurnReasoning, settleTurnReasoning,
+         lastShownStep } from './turnReasoning.js';
 import { renderAgentStop, renderAgentNote } from './agentStops.js';
 import { createAgentMeter, presentMeterEvent, METER_EVENT_TYPES } from './agentMeter.js';
 // `B918` / `B916`: the card's life and a new step's spinner, the real module,
