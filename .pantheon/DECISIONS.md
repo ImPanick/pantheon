@@ -2796,3 +2796,23 @@ draft."*
 3. **A reply's chat holds its draft** (`B1234`, the owner's "4 … yes, it creates a draft"). Pressing Reply and then
    switching chats with the draft still open keeps the "Email: …" chat in the list — it is where the draft lives — and
    it goes when the draft is sent, deleted or closed empty (`P23-08`).
+
+## D-2026-10-07-02 — no fabricated model; always authentication; a hidden Library guides to the archive
+
+**Asked**, 2026-10-07, after P23 closed: the open owner calls `B1259`, `B1181` and `B1194`. The owner, verbatim:
+*"B1259 - never populate a fabricated model. Started a chat with no model fails clearly, and states why. Pantheon will
+only ever show models successfully enumerated... including models pulled from successful api link with openai, and
+anthropic etc. B1181 - there is always authentication. What's toggleable is registration. We keep it this way. Hiding
+library should guide archives."*
+
+1. **No fabricated model** (`B1259` and wider). A model is offered — in the picker, a default, the Forge, a task, a
+   workflow step, the agent — only when an enumeration that succeeded named it: a local server's model list, what is on
+   disk, or a provider's own list call (OpenAI, Anthropic and the rest) on a key that answered. No built-in list of
+   model names stands in for one, and an endpoint whose listing failed says it is not answering instead of offering
+   what it once listed. A chat started with no model fails at once and says why, with the door to add one. With the
+   Forge's hub switch off, serving a model that is not on disk does not let the engine fetch it.
+2. **There is always authentication** (`B1181`). No install runs without sign-in; what an admin toggles is
+   **registration** — whether new people may create their own accounts. A no-login mode is not a configuration
+   Pantheon offers, so `B1181`'s premise is withdrawn rather than fixed.
+3. **A hidden Library guides to the archive** (`B1194`). Hiding the Library takes documents away, not the chat
+   archive: the archive keeps a door of its own, and a hidden Library reached anyway says where archived chats are.
