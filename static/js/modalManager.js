@@ -3,7 +3,8 @@
  * ModalManager — unified open/minimize/close behavior for tool modals.
  *
  * Goals:
- *  - Tab-down (swipe) and the `_` button MINIMIZE: modal hidden, JS state preserved.
+ *  - The `_` button MINIMIZES: modal hidden, JS state preserved. A phone swipe-down
+ *    is Back, which closes like ✕ (`ui.js` `swipeBack`, `P23-06`).
  *  - The ✕ button CLOSES: tears down via the registered closeFn.
  *  - Sidebar/rail click handler: closed → open, minimized → restore, open → minimize.
  *  - Rail icon shows a "minimized" badge when state is held.
@@ -28,7 +29,7 @@
 
 import { previewZoneAt, clearPreview, snapModalToZone } from './tileManager.js';
 import { suspendDock, resumeDock, clearRightDock, applyEdgeDock } from './modalSnap.js';
-import { dismissOrRemove } from './escMenuStack.js';
+import { prefersReducedMotion } from './motion.js';
 import { nextToolWindowZ, toolWindowZ } from './toolWindowZOrder.js';
 import { WORKFLOW_GLYPH, iconSvg } from './icons.js';
 
@@ -944,7 +945,10 @@ function _wireChipDrag(chip, dock) {
       } else if (dragMode === 'free') {
         chip.classList.add('chip-free-drag');
       } else if (dragMode === 'chain') {
-        chainState = _initChainPhysics(chip, dock, startX, startY);
+        // `P23-06` (NAV-M-17): the spring-following chain is motion a script
+        // draws frame by frame, which the stylesheet's reduced-motion guard
+        // cannot reach. Under reduce the whole dock moves with the finger.
+        chainState = prefersReducedMotion() ? null : _initChainPhysics(chip, dock, startX, startY);
         if (chainState) {
           const stepLoop = () => {
             if (!chainState) return;
@@ -954,9 +958,13 @@ function _wireChipDrag(chip, dock) {
           };
           chainState.raf = requestAnimationFrame(stepLoop);
         } else {
-          // Init failed for some reason — fall back to move-dock so the
-          // user's gesture isn't dropped on the floor.
+          // Reduced motion, or init failed — fall back to move-dock so the
+          // user's gesture isn't dropped on the floor. The dock's start is
+          // read here: pointerdown only reads it for a lone chip.
           dragMode = 'move-dock';
+          const dr = dock.getBoundingClientRect();
+          dockStartLeft = dr.left;
+          dockStartTop = dr.top;
           dock.classList.add('dock-dragging');
         }
       } else {
@@ -1111,7 +1119,11 @@ function _wireChipDrag(chip, dock) {
       if (state.overTrash && dragging) {
         // Drop on X: animate every link toward the trash zone, then close.
         const ids = state.links.map(l => l.chip.dataset.modalId);
-        const tz = trashZone ? trashZone.getBoundingClientRect() : null;
+        // `P23-06` (NAV-M-17): under reduced motion no whirl — the chips go
+        // and the windows close at once. The inline transition below would
+        // outrank the stylesheet's guard.
+        const still = prefersReducedMotion();
+        const tz = trashZone && !still ? trashZone.getBoundingClientRect() : null;
         for (const l of state.links) {
           if (tz) {
             const dx = (tz.left + tz.width / 2) - (l.x + l.width / 2);
@@ -1130,7 +1142,7 @@ function _wireChipDrag(chip, dock) {
           for (const id of ids) close(id);
           dock.style.cssText = '';
           _saveDockState();
-        }, 320);
+        }, still ? 0 : 320);
       } else if (dragging) {
         // Released away from X: settle the chain into a tight line in the
         // last trail direction, then persist each chip's position so they
@@ -1180,14 +1192,19 @@ function _wireChipDrag(chip, dock) {
         // `!important`, so the close animation needs setProperty(...important)
         // too or the styles don't apply and the chip just snaps.
         const cur = chip.style.transform || 'translate(0,0)';
+        // `P23-06` (NAV-M-17): no whirl under reduced motion; the
+        // `!important` inline styles here outrank the stylesheet's guard.
+        const still = prefersReducedMotion();
         chip.classList.add('chip-trashing');
-        chip.style.setProperty('transition', 'transform 0.32s cubic-bezier(0.45, 0, 0.25, 1), opacity 0.3s ease-in', 'important');
-        // Whirlpool: spin + shrink as the chip swirls into the X.
-        chip.style.setProperty('transform', `${cur} scale(0.15) rotate(720deg)`, 'important');
+        if (!still) {
+          chip.style.setProperty('transition', 'transform 0.32s cubic-bezier(0.45, 0, 0.25, 1), opacity 0.3s ease-in', 'important');
+          // Whirlpool: spin + shrink as the chip swirls into the X.
+          chip.style.setProperty('transform', `${cur} scale(0.15) rotate(720deg)`, 'important');
+        }
         chip.style.setProperty('opacity', '0', 'important');
         _trashBurst();
         const id = chip.dataset.modalId;
-        setTimeout(() => close(id), 320);
+        setTimeout(() => close(id), still ? 0 : 320);
       } else {
         // Drop wherever the finger let go — capture the current viewport
         // position. If we land within snap-distance of another floating chip
@@ -1266,10 +1283,14 @@ function _wireChipDrag(chip, dock) {
         .map(c => c.dataset.modalId)
         .filter(Boolean);
       _trashBurst();
-      // Whirlpool: spin + shrink the whole dock as it spirals into the X.
-      dock.style.transition = 'transform 0.32s cubic-bezier(0.45, 0, 0.25, 1), opacity 0.3s ease-in';
+      // `P23-06` (NAV-M-17): the dock's whirl is skipped under reduced motion.
+      const still = prefersReducedMotion();
       dock.style.opacity = '0';
-      dock.style.transform = 'scale(0.2) rotate(720deg)';
+      if (!still) {
+        // Whirlpool: spin + shrink the whole dock as it spirals into the X.
+        dock.style.transition = 'transform 0.32s cubic-bezier(0.45, 0, 0.25, 1), opacity 0.3s ease-in';
+        dock.style.transform = 'scale(0.2) rotate(720deg)';
+      }
       setTimeout(() => {
         for (const id of ids) close(id);
         // The animation left the dock at opacity:0 / scale(0.2) rotated and
@@ -1284,7 +1305,7 @@ function _wireChipDrag(chip, dock) {
         dock.style.removeProperty('right');
         dock.style.removeProperty('bottom');
         _saveDockState();
-      }, 320);
+      }, still ? 0 : 320);
       if (trashZone) trashZone.classList.remove('visible', 'engaged');
       overTrash = false;
       dock.classList.remove('dock-dragging');
@@ -1780,76 +1801,14 @@ if (document.readyState !== 'loading') {
   document.addEventListener('DOMContentLoaded', () => setTimeout(_scanAndWire, 100));
 }
 
-// Tools that survive a swipe-down as a dock chip. Anything else falls
-// through to the legacy close handler and goes away entirely.
-const _SWIPE_DOWN_MINIMIZES = new Set([
-  'cookbook-modal',
-  'calendar-modal',
-  'email-lib-modal',
-]);
-// Same idea but matched by id prefix — so dynamically-created modals
-// (per-email reader tabs) survive swipe-down too.
-const _SWIPE_DOWN_MINIMIZES_PREFIX = ['email-reader-'];
-
-function _clearEmailSplitAfterMinimize() {
-  document.body.classList.remove('email-doc-split-active', 'email-front');
-  document.documentElement.style.removeProperty('--email-doc-split-left-x');
-  document.documentElement.style.removeProperty('--email-doc-split-email-w');
-  document.documentElement.style.removeProperty('--email-doc-split-right-x');
-  const docPane = document.getElementById('doc-editor-pane');
-  if (docPane) {
-    [
-      'position', 'left', 'right', 'top', 'bottom', 'width', 'max-width',
-      'height', 'z-index', 'transform',
-    ].forEach(prop => docPane.style.removeProperty(prop));
-  }
-  const divider = document.getElementById('doc-divider');
-  if (divider) divider.style.display = '';
-  requestAnimationFrame(() => window.dispatchEvent(new Event('resize')));
-  setTimeout(() => window.dispatchEvent(new Event('resize')), 80);
-}
-
-// Re-route swipe-dismiss to minimize-rather-than-close — but only for the
-// allowlisted tools above. For every other modal, return early so the
-// default close handler runs and the modal goes away.
-// Close any open body-mounted popups (kebab dropdowns, split-button menus,
-// etc.) when the cookbook modal is swiped away. Otherwise the dropdowns
-// stay floating in the middle of the page with no anchor.
-window.addEventListener('modal-dismissed', (e) => {
-  const id = e.detail?.id;
-  if (id === 'cookbook-modal') {
-    document.querySelectorAll(
-      '.cookbook-task-dropdown, .cookbook-gpu-split-menu, .hwfit-cached-dropdown, .cookbook-saved-menu, .cookbook-dep-menu'
-    ).forEach(dismissOrRemove);
-  }
-});
-
-window.addEventListener('modal-dismissed', (e) => {
-  const id = e.detail?.id;
-  if (!id) return;
-  if (!_SWIPE_DOWN_MINIMIZES.has(id) && !_SWIPE_DOWN_MINIMIZES_PREFIX.some(p => id.startsWith(p))) return;
-  // Auto-register if it's a known tool modal
-  if (!_state.has(id)) _autoRegister(id);
-  const s = _state.get(id);
-  if (!s) return;
-  s.isMinimized = true;
-  _setBadge(s.btnIds, true);
-  const modal = document.getElementById(id);
-  if (modal) {
-    const isEmailModal = id === 'email-lib-modal' || id.startsWith('email-reader-');
-    if (modal.classList.contains('modal-right-docked')
-        || modal.classList.contains('modal-left-docked')
-        || modal.classList.contains('email-snap-left')) {
-      try { suspendDock(modal); } catch (err) { console.warn('suspendDock on dismissed failed', err); }
-    }
-    if (isEmailModal) _clearEmailSplitAfterMinimize();
-    modal.classList.add('modal-minimized');
-  }
-  _ensureDock();
-  _renderDock();
-  // Stop legacy listeners that reset internal `_open` state
-  e.stopImmediatePropagation();
-});
+// `P23-06` (NAV-M-13). Swipe-down was two things: the Forge, Calendar and
+// Email (and the per-mail readers) went to a dock chip through a
+// `modal-dismissed` listener here, every other window was hidden without its
+// own close, and the Forge's floating menus were swept by a second listener.
+// Swipe-down is Back now — `ui.js` `swipeBack` closes the sheet the way its ×
+// does — so the event, its minimise rule (`_SWIPE_DOWN_MINIMIZES`), the email
+// split clean-up only that rule used, and the menu sweep (now in the swipe's
+// own sweep) are gone. `_` minimises, on a phone too.
 
 // Capture-phase intercept: if user clicks a sidebar/rail button whose
 // associated modal is currently MINIMIZED, restore it and stop the click

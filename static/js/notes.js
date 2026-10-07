@@ -621,11 +621,14 @@ function _wireNotesSwipeDismiss(el, pane) {
     pane.style.willChange = '';
     const dy = lastY - startY;
     if (dy > DISMISS_THRESHOLD || (dy > 20 && velocity > VELOCITY_THRESHOLD)) {
-      // Slide fully off-screen, then minimise. Keep it translated down (don't
+      // Slide fully off-screen, then close. Keep it translated down (don't
       // reset) so it doesn't flash back before closePanel removes it.
+      // `P23-06` (NAV-M-13): swipe-down is Back, one meaning on every sheet —
+      // it closes the way × does (`closePanel()`); it minimised here, as `_`
+      // does.
       pane.style.transition = 'transform 0.2s cubic-bezier(0.2, 0, 0.4, 1)';
       pane.style.transform = 'translateY(100%)';
-      setTimeout(() => closePanel('down'), 200);
+      setTimeout(() => closePanel(), 200);
     } else {
       pane.style.transition = 'transform 0.25s cubic-bezier(0.2, 0.9, 0.3, 1.05)';
       pane.style.transform = '';

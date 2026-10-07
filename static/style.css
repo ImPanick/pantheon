@@ -7282,7 +7282,7 @@ body.bg-pattern-sparkles {
       color:var(--fg);
     }
     @media (max-width: 768px) {
-      .minimize-btn { display: none !important; }
+      /* `P23-06` (NAV-U-2): `.minimize-btn` was hidden here too; `_` shows on a phone sheet. */
       #modal-dock { display: none !important; }
     }
     /* Minimized modals are hidden but stay in the DOM with their state intact */
@@ -9007,12 +9007,8 @@ pre { background: var(--code-bg, var(--hl-bg, #282c34)) !important; }
         background-clip: padding-box;
         animation: none;
       }
-      .memory-modal-content .close-btn,
-      .memory-modal-content .modal-close,
-      .settings-modal-content .close-btn,
-      .settings-modal-content .modal-close {
-        display: none !important;
-      }
+      /* `P23-06` (NAV-U-2, NAV-M-13): the rule that hid × here on the Brain,
+         Skills and Settings sheets is gone — a phone sheet shows its way out. */
       .memory-modal-content,
       .settings-modal-content {
         touch-action: pan-y;
@@ -9130,20 +9126,11 @@ pre { background: var(--code-bg, var(--hl-bg, #282c34)) !important; }
         border-bottom: 6px solid transparent;
         background-clip: padding-box;
       }
-      /* Hide close X on mobile — swipe down to dismiss */
-      .modal-content .close-btn,
-      .modal-content .modal-close,
-      #theme-popup .close-btn {
-        display: none !important;
-      }
-      /* Hide the auto-injected minimize (_) button on mobile — the dock
-         chip already represents the minimized state, and the swipe-down
-         gesture is the canonical minimize action. */
-      .modal-minimize-btn,
-      .minimize-btn,
-      [data-minimize] {
-        display: none !important;
-      }
+      /* `P23-06` (NAV-U-2, NAV-M-13). Two rules here hid × and `_` on every
+         phone sheet ("swipe down to dismiss"), so a sheet had no visible way
+         out and swipe-down meant minimise for three windows and close for the
+         rest. Both are gone: × and `_` show (40 px targets, the phone block at
+         the end of this file) and swipe-down is Back, one meaning (`ui.js`). */
       /* Lock modals to vertical touch only, prevent horizontal dragging */
       .modal-content {
         touch-action: pan-y;
@@ -47966,4 +47953,38 @@ button.task-card-toggle {
   .wf-arrived { max-height: 34vh; }
   .wf-check { max-height: 58vh; }
   .wf-why-diff { grid-template-columns: 1fr; }
+}
+
+/* ── P23-06 · Display and motion (fx-display). Scoped blocks, one per concern. ── */
+
+/* NAV-U-2, NAV-M-13: a phone sheet shows its way out. The rules that hid × and `_` under 768 px are gone; here
+   they are 40 px tap targets. Swipe-down is Back (`ui.js`), the same thing × does. */
+@media (max-width: 768px) {
+  .modal-header .close-btn,
+  .modal-header .modal-close,
+  .modal-header .modal-minimize-btn,
+  .modal-header .minimize-btn,
+  #theme-popup .close-btn {
+    min-width: 40px;
+    min-height: 40px;
+    flex-shrink: 0;
+  }
+}
+@media (max-width: 768px) {
+  .notes-pane-header .close-btn,
+  .notes-pane-header .modal-minimize-btn {
+    min-width: 40px;
+    min-height: 40px;
+    flex-shrink: 0;
+  }
+}
+/* The phone drawer's dim layer takes taps only while the drawer (or the rail laid over the chat) is out. Notes hides
+   the drawer itself as it opens, before `sidebar-layout.js` looks, so the layer stayed up — transparent to the eye
+   once Notes closed, and every tap on the page landed on it. Measured at 390 px: drawer → Notes → close, then ☰
+   and every row were dead (`elementFromPoint` = `#sidebar-backdrop`). */
+@media (max-width: 768px) {
+  body:has(#sidebar.hidden):not(:has(#icon-rail.mobile-mini)) #sidebar-backdrop.visible {
+    opacity: 0;
+    pointer-events: none;
+  }
 }
