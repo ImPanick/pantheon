@@ -133,6 +133,7 @@ _BAR = """
         current: crumbs.filter((c) => c.getAttribute('aria-current') === 'page').map((c) => c.textContent),
         chips: texts(chips),
         targets: chips.map((c) => c.dataset.folderTarget),
+        titles: chips.map((c) => c.title),
         active: chips.filter((c) => c.classList.contains('active')).map((c) => c.textContent),
         add: (host.querySelector('.doclib-folder-new') || {}).textContent || null,
         menu: !!host.querySelector('.doclib-folder-actions'),
@@ -148,8 +149,12 @@ def test_at_the_top_the_bar_offers_unfiled_and_the_top_level_folders(sandbox):
         console.log(JSON.stringify(bar(F.VIEW_ALL)));
     """)
     assert out["crumbs"] == ["All documents"] and out["current"] == ["All documents"]
-    assert out["chips"] == ["Unfiled(4)", "Clients(3)", "Personal(0)"], (
-        "a top-level chip counts what is in its folders too, and an empty folder is listed")
+    # `P23-06` (DOCS-M-4): the number is what opening the folder shows — its own
+    # documents — and the title says what its folders hold too. "Projects (7)"
+    # opened onto "Nothing in this folder yet" when the seven were a level down.
+    assert out["chips"] == ["Unfiled(4)", "Clients(1)", "Personal(0)"], (
+        "a top-level chip counts the documents in it, and an empty folder is listed")
+    assert out["titles"][1] == "1 document in Clients, 3 with its folders", out["titles"]
     assert out["targets"] == ["", "Clients", "Personal"]
     assert out["add"] == "+ New folder" and out["menu"] is False
 

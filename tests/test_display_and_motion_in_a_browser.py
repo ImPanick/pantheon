@@ -576,3 +576,66 @@ def test_low_in_the_window_it_opens_above_its_button(tmp_path):
     r = _drive(tmp_path, html=_picker_page(640), steps=_PLACED, viewport=(1440, 900))["result"]
     assert 0 <= r["pickTop"] - r["bottom"] <= 8, r      # more room above: just above the button
     assert r["top"] >= 40, r                            # inside the window
+
+
+# ── the Library, the Calendar, Mail and Settings at both widths ─────────────
+
+_DOCS = """
+<div id="doclib-modal" class="modal"><div class="modal-content doclib-modal-content" id="lib">
+  <div class="modal-header"><h4>Library</h4></div><div class="modal-body">one folder, nearly empty</div></div></div>
+<div id="calendar-modal" class="modal" style="display:flex"><div class="modal-content cal-modal-content" id="cal">
+  <div class="modal-header"><h4>Calendar</h4></div>
+  <div class="modal-body" id="cal-body"><div class="cal-grid" id="grid"><div class="cal-week-headers"><div class="cal-weekday">M</div></div>
+    <div class="cal-week-row"><div class="cal-day">1</div></div><div class="cal-week-row"><div class="cal-day">8</div></div>
+    <div class="cal-week-row"><div class="cal-day">15</div></div><div class="cal-week-row"><div class="cal-day">22</div></div>
+    <div class="cal-week-row"><div class="cal-day">29</div></div><div class="cal-week-row"><div class="cal-day">5</div></div></div>
+    <div class="cal-splitter"></div><div class="cal-day-detail">the day</div></div></div></div>
+<div id="styled-confirm-overlay" class="modal"><div class="modal-content styled-confirm-box" id="confirm">
+  <div class="styled-confirm-details"><ul class="styled-confirm-details-list"><li class="styled-confirm-detail">
+  <span class="styled-confirm-detail-label" id="label">Q3 Board Pack – Lumen 2.0 launch review, final, with the appendix</span>
+  <span class="styled-confirm-detail-note">a duplicate</span></li></ul></div></div></div>
+<div id="email-lib-modal" class="modal"><div class="email-reader-atts" id="atts">
+  <span class="email-attachment-chip" style="width:220px" id="first">statement-september.pdf</span>
+  <span class="email-attachment-chip" style="width:220px" id="second">fee-schedule-2027.pdf</span></div></div>
+<div class="pan-source-offer" data-source-offer="1"
+  style="position:fixed;right:10px;bottom:6px;z-index:9000;pointer-events:none;font-size:10px;line-height:1">
+  <a href="#" id="source" style="pointer-events:auto;padding:3px 6px;border:1px solid var(--border)">Source</a></div>
+<div class="doc-email-actions" id="footer"><button>Save</button></div>
+<div class="admin-add-form"><input type="text" placeholder="Username"><input type="password" placeholder="Password (min 8)">
+  <div class="admin-switch-inline"><label class="admin-switch"><input type="checkbox" id="isadmin"><span class="admin-slider"></span></label> Admin</div></div>
+"""
+_DOCS_STEPS = r"""
+  await page.waitForTimeout(500);
+  return await page.evaluate(() => {
+    const r = (id) => document.getElementById(id).getBoundingClientRect();
+    const g = document.getElementById('grid');
+    return {
+      lib: Math.round(r('lib').height), cal: Math.round(r('cal').height), vh: innerHeight,
+      grid: [g.scrollHeight, g.clientHeight],
+      confirm: Math.round(r('confirm').width),
+      label: getComputedStyle(document.getElementById('label')).whiteSpace,
+      atts: getComputedStyle(document.getElementById('atts')).flexWrap,
+      second: [Math.round(r('second').top), Math.round(r('first').top)],
+      source: { top: Math.round(r('source').top), left: Math.round(r('source').left), bottom: Math.round(r('source').bottom) },
+      footerPad: getComputedStyle(document.getElementById('footer')).paddingBottom,
+      check: Math.round(r('isadmin').right), width: innerWidth,
+      pageWide: document.documentElement.scrollWidth,
+    };
+  });
+"""
+
+
+def test_the_documents_windows_on_a_desktop(tmp_path):
+    r = _drive(tmp_path, html=_page(_DOCS), steps=_DOCS_STEPS, viewport=(1440, 900))["result"]
+    assert r["lib"] == round(0.85 * 900), r          # DOCS-U-8: one height, not the content's
+    assert r["cal"] == round(0.88 * 900), r
+    assert r["grid"][0] <= r["grid"][1] + 1, r       # DOCS-U-15: every week shows, nothing behind a scroll
+    assert r["confirm"] == 480 and r["label"] == "normal", r   # DOCS-U-6: wide enough, names wrap
+    assert r["footerPad"] == "30px", r               # CHAT-U-9: the editor's footer clears the Source tag
+
+
+def test_the_documents_windows_on_a_phone(tmp_path):
+    r = _drive(tmp_path, html=_page(_DOCS), steps=_DOCS_STEPS, viewport=(390, 844))["result"]
+    assert r["atts"] == "nowrap" and r["second"][0] == r["second"][1], r   # DOCS-M-7: one row, sideways
+    assert r["source"]["top"] < 30 and r["source"]["left"] < 20, r         # CHAT-U-9: top-left, off the send button
+    assert r["check"] <= r["width"] and r["pageWide"] <= r["width"], r     # SET-M-21: nothing past the phone's edge

@@ -48064,3 +48064,81 @@ button.task-card-toggle {
   border-top: 1px solid var(--border);
 }
 .wb-panel-foot:has(> .wb-panel-remove[hidden]) { display: none; }
+
+/* DOCS-U-8 (and BRAIN-U-3's rule for the windows the Brain's lane does not own): a window keeps its size until the
+   person resizes it. The Library was 765 px on All documents and 550 on an empty folder; the Gallery's grid, photo
+   and editor each set their own; the Calendar's New event form shrank it 155 px and moved it down 78 (measured at
+   1440×900). One height each — the one they already reached — and the content scrolls inside. A size the person
+   drags is inline and still wins. */
+@media (min-width: 769px) {
+  #doclib-modal .doclib-modal-content { height: 85vh; }
+  #gallery-modal .gallery-modal-content { height: 92vh; }
+  #calendar-modal .cal-modal-content { height: 88vh; }
+  #calendar-modal #cal-body { flex: 1 1 auto; }
+  #calendar-modal #cal-body:has(> .cal-form) { overflow-y: auto; overscroll-behavior: contain; }
+}
+
+/* DOCS-U-15: the month's weeks share the grid's height, so all five (or six) show — four did, the last behind an
+   inner scroll with nothing to say so (`.cal-grid` 496 / 322 px at 1440×900). */
+#cal-body > .cal-grid:has(> .cal-week-row) { overflow-y: hidden; }
+#cal-body > .cal-grid > .cal-week-row { flex: 1 1 0; min-height: 0; }
+#cal-body > .cal-grid > .cal-week-row > .cal-day { min-height: 0; }
+
+/* DOCS-U-14: the image editor's tool column scrolls when the window is shorter than its tools — at 900 px it was
+   cut after Upscale. */
+.ge-toolbar {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+}
+
+/* DOCS-U-6 (the layout half): a confirm that lists what it will do is wide enough to read the list — 480 px — and a
+   long name wraps instead of ending in "…", so four "Q3 Board Pack – …" rows can be told apart; more rows show. */
+@media (min-width: 769px) {
+  .styled-confirm-box:has(.styled-confirm-details-list) { width: 480px; }
+}
+.styled-confirm-details-list { max-height: min(40vh, 320px); }
+.styled-confirm-detail { flex-wrap: wrap; }
+.styled-confirm-detail-label { white-space: normal; overflow-wrap: anywhere; text-overflow: clip; }
+
+/* DOCS-M-7: on a phone a mail's attachments are one row that scrolls sideways — the second chip wrapped under the
+   body (y 349 under a body at 350) and could be neither tapped nor scrolled to. */
+@media (max-width: 768px) {
+  #email-lib-modal .email-reader-atts {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    max-height: none;
+    overscroll-behavior-x: contain;
+  }
+  #email-lib-modal .email-reader-atts > * { flex-shrink: 0; }
+}
+
+/* CHAT-U-9 / DOCS-U-10 (`B1168`): the §13 *Source* tag (`src/source_link.py`, inline-styled, so these outrank it
+   with `!important`) sat on the send button at 390 px and on the Save / Send caret of a docked editor at 1440. On a
+   phone it goes to the top-left corner, where the chat's bar and a sheet's grab strip hold nothing; on a desktop the
+   editor's footer is lifted by the tag's height. */
+@media (max-width: 768px) {
+  .pan-source-offer {
+    top: calc(env(safe-area-inset-top, 0px) + 6px) !important;
+    bottom: auto !important;
+    left: 8px !important;
+    right: auto !important;
+  }
+}
+@media (min-width: 769px) {
+  body:has(.pan-source-offer) .doc-email-actions { padding-bottom: 30px; }
+}
+
+/* SET-M-21: Settings › Users on a phone — a row's name and its buttons wrap instead of pushing the panel 30 px
+   sideways (scrollWidth 420 in 390). */
+@media (max-width: 480px) {
+  .admin-user-row > div:first-child { flex-wrap: wrap; gap: 6px; }
+  .admin-user-row > div:first-child > div:last-child { flex-wrap: wrap; justify-content: flex-end; }
+  /* Add User: a box a line, so "Password (min …)" is not cut to "Password (mir". */
+  .admin-add-form input[type="text"],
+  .admin-add-form input[type="password"] { flex-basis: 100%; }
+}
+/* What actually pushed the panel 30 px past the phone: the Admin switch's own checkbox took the form's
+   `min-width: 120px` for text boxes (measured: `#adm-newIsAdmin` 297–417 in a 390 px window). */
+.admin-add-form .admin-switch input { min-width: 0; }
