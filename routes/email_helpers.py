@@ -1280,10 +1280,18 @@ def _get_email_config(account_id: str | None = None, owner: str = "") -> dict:
         "imap_starttls": _starttls(_v("imap_starttls", "IMAP_STARTTLS", "true")),
         "from_address": _v("email_from", "EMAIL_FROM"),
     }
-    if not (cfg["smtp_host"] and cfg["smtp_user"] and cfg["smtp_password"]):
-        logger.warning("SMTP not configured — add an Email Account in Settings or set env vars")
-    if not (cfg["imap_host"] and cfg["imap_user"] and cfg["imap_password"]):
-        logger.warning("IMAP not configured — add an Email Account in Settings or set env vars")
+    # `P23-07` (`PERF-M-16`): a state, said once per process per account — it
+    # was two WARNING lines on every mail request and every minute's poll.
+    from src.log_once import clear as _clear_said, log_once
+    _who = cfg.get("account_name") or account_id or "default"
+    for _kind, _ok in (("SMTP", cfg["smtp_host"] and cfg["smtp_user"] and cfg["smtp_password"]),
+                       ("IMAP", cfg["imap_host"] and cfg["imap_user"] and cfg["imap_password"])):
+        _key = f"mail-not-configured:{_kind}:{_who}"
+        if _ok:
+            _clear_said(_key)
+        else:
+            log_once(logger, logging.WARNING, _key,
+                     "%s not configured — add an Email Account in Settings or set env vars", _kind)
     return cfg
 
 

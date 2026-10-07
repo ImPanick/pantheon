@@ -191,6 +191,38 @@ app.add_middleware(
 # security-header middleware composes cleanly on top.
 app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=6)
 
+
+# ========= ACCESS LOG: `/static/` AT DEBUG (`P23-07`, `PERF-M-16`) =========
+# uvicorn logs every request at INFO, and a page load is ~190 of them for the
+# shell's modules, fonts and icons — measured by the perf audit, 11,274 access
+# lines in a 45-minute session, the requests that said anything lost among them.
+# A `/static/` file served is now a DEBUG line (kept, and shown when uvicorn's
+# level is debug); a `/static/` request that failed (4xx/5xx) stays at INFO.
+# A filter on the logger, not a handler: `uvicorn app:app` configures logging
+# before this module is imported and `uvicorn.run(app)` after, and
+# `logging.config.dictConfig` replaces a logger's handlers but keeps its filters.
+class StaticAccessAtDebug(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        args = record.args if isinstance(record.args, tuple) else ()
+        if len(args) < 5:
+            return True
+        path, status = args[2], args[4]
+        if not (isinstance(path, str) and path.startswith("/static/")):
+            return True
+        try:
+            if int(status) >= 400:
+                return True
+        except (TypeError, ValueError):
+            return True
+        if not logging.getLogger("uvicorn.access").isEnabledFor(logging.DEBUG):
+            return False
+        record.levelno, record.levelname = logging.DEBUG, "DEBUG"
+        return True
+
+
+if not any(isinstance(f, StaticAccessAtDebug) for f in logging.getLogger("uvicorn.access").filters):
+    logging.getLogger("uvicorn.access").addFilter(StaticAccessAtDebug())
+
 # ========= SECURITY HEADERS MIDDLEWARE =========
 app.add_middleware(SecurityHeadersMiddleware)
 
