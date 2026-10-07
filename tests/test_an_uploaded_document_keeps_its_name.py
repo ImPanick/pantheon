@@ -111,6 +111,12 @@ def env(tmp_path, monkeypatch):
     app.include_router(personal_routes.setup_personal_routes(manager, _Rag(), True))
     app.include_router(email_routes.setup_email_routes())
     app.dependency_overrides[require_owner] = lambda: OWNER
+    # The router's `Depends` holds the function `email_routes` imported. A test
+    # earlier in a full run can drop `routes.email_helpers` from `sys.modules`,
+    # and then the import above is a different function and the override misses
+    # it: every mail route answered 401 and seven office-file cases failed only
+    # in the whole suite. Override the one the routes actually use too.
+    app.dependency_overrides[email_routes.require_owner] = lambda: OWNER
 
     db = Session()
     db.add(cdb.Session(id="chat-1", name="chat", owner=OWNER,

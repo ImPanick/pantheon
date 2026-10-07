@@ -249,7 +249,7 @@ they are for.*
 > was claimed at the time is worth more than a quietly corrected one (`B44`).
 
 ### The audits become a phase: P23 opened
-`e363b81..HEAD`. **1192 tracked, 889 done. 9 new phase rows, 0 regressions. `P23-00` … `P23-08` filed.**
+`e363b81..HEAD`. **1192 tracked, 889 done. 9 new phase rows, 0 regressions. No row closed; `P23-00` … `P23-08` filed.**
 The owner: *"Some functions are extremely wonky."* Eight auditors drove the product and wrote two documents — 134
 mechanism findings (none P0) and a UI/UX audit of every window's way in and way out. `D-2026-10-03-01` makes them
 eight lanes of work, run at once, each owning its files: one back stack, the Brain and Skills, one visibility table
