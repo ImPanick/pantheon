@@ -708,6 +708,14 @@ class _RevalidatingStatic(StaticFiles):
         resp = await super().get_response(path, scope)
         if path.endswith((".js", ".css", ".html")):
             resp.headers["Cache-Control"] = "no-cache"
+        if path.replace(os.sep, "/") == "sw.js":
+            # `P23-07` (`PERF-M-1`). A worker's scope may not reach above its
+            # script's folder unless the script's response says so, and this
+            # one lives in `/static/` — so it was registered at `/static/` and
+            # controlled no page the app serves: 0 of 188 responses came from
+            # it, and an offline reload was a browser error page. On the `304`
+            # too: a browser refreshing the worker reads the merged headers.
+            resp.headers["Service-Worker-Allowed"] = "/"
         return resp
 
     def file_response(self, full_path, stat_result, scope, status_code=200):

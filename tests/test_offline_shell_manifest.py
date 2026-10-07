@@ -36,6 +36,7 @@ closed under import. A list can be checked by reading it; a walk cannot, so
 these execute it (`Law 20`).
 """
 
+import hashlib
 import importlib.util
 import json
 import os
@@ -1187,6 +1188,91 @@ def test_a_precache_entry_that_redirects_is_not_stored_under_the_url_asked_for()
     # It was still asked for — the guard is about what is stored, not about
     # skipping the request.
     assert "/login" in out["fetched"]
+
+
+# ── `P23-07` (`PERF-M-1`): the worker controls `/`, so its navigation branch
+# runs for every load of the app. Network first; the cache only offline. ──────
+
+
+def _digest(body: str) -> str:
+    """The harness's `sha`: the first 16 hex digits of the sha256."""
+    return hashlib.sha256(body.encode("utf-8")).hexdigest()[:16]
+
+
+@_needs_node
+def test_online_a_navigation_gets_the_page_the_server_has_now():
+    """After an upgrade the server's `index.html` is new while the cache holds
+    the old one. Stale-first would draw the OLD page beside the NEW modules
+    (`/static/*.js` is network-first and the server ignores `?v=`), so a module
+    looking for an element the new page added finds nothing. Measured in the
+    shipped handler before this row: the cached copy answered."""
+    out = _run({"op": "navigate", "online": True, "urls": ["/", "/tasks"],
+                "serve": {"/": "release two", "/tasks": "release two"}})
+    for url in ("/", "/tasks"):
+        assert out["answered"][url]["sha"] == _digest("release two"), (url, out["answered"][url])
+    # And the shell entry is refreshed for the next offline load.
+    assert out["after"]["/"] == _digest("release two")
+
+
+@_needs_node
+def test_a_signed_out_navigation_is_the_servers_redirect_not_the_cached_app():
+    """`AuthMiddleware` answers a signed-out `GET /` with `302 → /login`; a
+    navigation's fetch does not follow it (`redirect: 'manual'`) and hands the
+    worker an opaque redirect, which the browser follows. Stale-first answered
+    the cached app instead — a page whose every call is a 401."""
+    out = _run({"op": "navigate", "online": True, "urls": ["/", "/tasks"],
+                "opaqueRedirects": ["/", "/tasks"]})
+    for url in ("/", "/tasks"):
+        answer = out["answered"][url]
+        assert answer.get("type") == "opaqueredirect" and answer.get("status") == 0, (url, answer)
+    assert out["after"]["/"] == out["hashes"]["/"], "a redirect must not replace the cached shell"
+
+
+@_needs_node
+def test_the_worker_never_answers_an_api_request():
+    """Controlling `/` puts every request the app makes in front of this
+    handler. An `/api/` answer is a person's own data — a chat, a download
+    sent with `Content-Disposition: attachment`, a generated image behind an
+    ownership check — and Cache Storage is shared by everyone who uses this
+    browser profile. So the worker claims none of them, online or off, as a
+    page or as a fetch, and no non-GET at all."""
+    urls = ["/api/history/abc", "/api/documents/1/download", "/api/generated-image/a.png",
+            "/api/auth/status"]
+    for online in (True, False):
+        for mode in ("navigate", "cors"):
+            out = _run({"op": "navigate", "online": online, "mode": mode, "urls": urls})
+            for url in urls:
+                assert out["answered"][url] == {"handled": False}, (online, mode, url, out["answered"][url])
+    out = _run({"op": "navigate", "online": True, "method": "POST", "urls": ["/", "/static/app.js"]})
+    assert all(a == {"handled": False} for a in out["answered"].values()), out["answered"]
+
+
+@_needs_node
+def test_a_module_that_came_back_unchanged_is_not_written_again():
+    """Controlling `/` sends ~150 modules through the JS/CSS branch on every
+    reload. Rewriting each one cost the warm reload ~400 ms on the seeded
+    install (DCL median 472 ms with the worker blocked, 875 ms with it); the
+    same ETag is the same bytes, so the copy the worker holds stands. A module
+    that changed is still written, which is the freshness path `B57` keeps."""
+    urls = ["/static/js/ui.js", "/static/js/storage.js"]
+    same = _run({"op": "navigate", "online": True, "mode": "cors", "urls": urls})
+    assert all(same["answered"][u]["status"] == 200 for u in urls), same["answered"]
+    assert same["puts"] == 0, same["puts"]
+    changed = _run({"op": "navigate", "online": True, "mode": "cors", "urls": urls,
+                    "serve": {"/static/js/ui.js": "export const v = 2;"}})
+    assert changed["puts"] == 1, changed["puts"]
+    assert changed["after"]["/static/js/ui.js"] == _digest("export const v = 2;")
+    assert changed["after"]["/static/js/storage.js"] == changed["hashes"]["/static/js/storage.js"]
+
+
+@_needs_node
+def test_offline_with_no_shell_cached_is_a_network_error_not_a_hang():
+    """A cold install that could not fetch `/` holds no shell; offline, the
+    navigation is the browser's own network error (`Response.error()`), not an
+    empty `respondWith` that the page waits on."""
+    out = _run({"op": "navigate", "fail": ["/"], "urls": ["/tasks"]})
+    answer = out["answered"]["/tasks"]
+    assert answer.get("handled") and answer.get("status") == 0 and answer.get("type") == "error", answer
 
 
 # ── `B82`: the shell's import closure, walked from outside the worker ─────────

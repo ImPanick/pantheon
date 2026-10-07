@@ -25,6 +25,15 @@
 //                                        and the sha256 of what it answered
 //                                        with, against `hashes` — the sha256
 //                                        of every entry install stored.
+//     ... "online":true                  `P23-07`: keep the network after
+//                                        install; `serve` {url: body} is what
+//                                        the server answers NOW (a new
+//                                        release), `opaqueRedirects` [url] are
+//                                        answered the way a navigation's
+//                                        fetch sees a 302 (`redirect:'manual'`
+//                                        → type 'opaqueredirect', status 0);
+//                                        `after` is the cache once the
+//                                        handler's writes have landed.
 //
 // A Response here refuses to be read twice, because `cache.put` consumes the
 // body: a walk that stores before it clones would pass a forgiving stub and
@@ -73,6 +82,9 @@ function makeResponse(body, ok = true, redirected = false) {
     // somebody else's document under this key, so the flag has to exist on
     // the stub or the guard cannot be tested.
     redirected,
+    // `P23-07`. `_RevalidatingStatic` gives every file an ETag computed from
+    // the file, so the stub's is the digest of its body.
+    headers: { get(name) { return String(name).toLowerCase() === 'etag' && ok ? `"${sha(body)}"` : null; } },
     _used: false,
     clone() {
       if (this._used) throw new TypeError('Response body is already used');
@@ -101,6 +113,13 @@ function run(cmd) {
   // Offline is a property of this context, not of a call: the `navigate` op
   // takes the network away after install and leaves it away.
   let offline = false;
+  // `P23-07`. What the server answers once install is done, for the online
+  // navigation cases: a body that changed since install (an upgrade), or a
+  // redirect (a person who is signed out).
+  let installDone = false;
+  let putsAfterInstall = 0;
+  const serve = cmd.serve || {};
+  const opaque = new Set(cmd.opaqueRedirects || []);
 
   // `B120`. A real Cache is keyed on the resolved URL, so `cache.put('/')` and
   // `cache.match(request)` for `http://localhost/` are the same entry. The
@@ -109,7 +128,7 @@ function run(cmd) {
   // install stored.
   const keyOf = (u) => String((u && u.url) || u).replace(`${ORIGIN}`, '') || '/';
   const cache = {
-    async put(url, res) { stored.set(keyOf(url), await res.text()); },
+    async put(url, res) { if (installDone) putsAfterInstall += 1; stored.set(keyOf(url), await res.text()); },
     async match(url) {
       const hit = stored.get(keyOf(url));
       return hit === undefined ? undefined : makeResponse(hit);
@@ -120,6 +139,8 @@ function run(cmd) {
     console,
     URL,
     setTimeout,
+    // What `Response.error()` gives a page: a network error, status 0.
+    Response: { error() { const r = makeResponse('', false); r.status = 0; r.type = 'error'; return r; } },
     caches: {
       async open() { return cache; },
       async keys() { return []; },
@@ -137,6 +158,13 @@ function run(cmd) {
       // resolve with a 404, and a handler that only checked `res.ok` would
       // pass a stub that faked one.
       if (offline) throw new TypeError('Failed to fetch');
+      if (installDone && opaque.has(key)) {
+        const r = makeResponse('', false);
+        r.status = 0;
+        r.type = 'opaqueredirect';
+        return r;
+      }
+      if (installDone && key in serve) return makeResponse(serve[key], true, redirects.has(key));
       if (fail.has(key)) return makeResponse('<!doctype html>not found', false);
       const body = files ? (key in files ? files[key] : null) : diskBody(key);
       if (body === null) return makeResponse('<!doctype html>not found', false);
@@ -187,7 +215,8 @@ function run(cmd) {
     return Promise.resolve(installed).then(async () => {
       const hashes = {};
       for (const [url, body] of stored) hashes[url] = sha(body);
-      offline = true;
+      installDone = true;
+      offline = !cmd.online;
       const onFetch = (listeners.fetch || [])[0];
       if (!onFetch) throw new Error('sw.js registered no fetch listener');
       const answered = {};
@@ -208,9 +237,13 @@ function run(cmd) {
           continue;
         }
         if (!res) { answered[url] = { handled: true, empty: true }; continue; }
-        answered[url] = { handled: true, status: res.status, sha: sha(await res.text()) };
+        answered[url] = { handled: true, status: res.status, type: res.type || 'basic', sha: sha(await res.text()) };
       }
-      return { answered, hashes, cached: [...stored.keys()].sort() };
+      // The handler's cache writes are not awaited by the page; let them land.
+      await new Promise(r => setTimeout(r, 0));
+      const after = {};
+      for (const [url, body] of stored) after[url] = sha(body);
+      return { answered, hashes, after, puts: putsAfterInstall, cached: [...stored.keys()].sort() };
     });
   }
 

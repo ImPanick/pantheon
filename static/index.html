@@ -3812,6 +3812,8 @@
 <script type="module" src="/static/app.js?v=20261003waveg"></script>  <!-- app.js must be LAST -->
   <script type="module" src="/static/js/init.js?v=20260918a11yfocus1"></script>
 <script type="module" src="/static/js/a11y.js"></script>
-<script>if('serviceWorker' in navigator){navigator.serviceWorker.register('/static/sw.js').catch(()=>{});}</script>
+<!-- `P23-07` (PERF-M-1): scope '/' (the server sends Service-Worker-Allowed: /), so the worker controls the app; the
+     registration the old scope left behind (/static/) is dropped. -->
+<script>if('serviceWorker' in navigator){navigator.serviceWorker.register('/static/sw.js',{scope:'/'}).then(()=>navigator.serviceWorker.getRegistrations()).then(rs=>rs.forEach(r=>{if(new URL(r.scope).pathname==='/static/')r.unregister();})).catch(()=>{});}</script>
 </body>
 </html>
