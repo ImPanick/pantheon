@@ -2775,3 +2775,24 @@ alone. Recorded so the ruling is not read as resting on a fact that has since ch
    (never just "Integrations" for that room), and **Forge** (already `D-2026-09-18-04`). Library vs Documents was not
    chosen: unchanged. Names change where a person reads them; stored identifiers stay (`D-2026-09-18-04`'s rule).
 
+
+## D-2026-10-07-01 — version up; Hugging Face is an admin switch; a reply's chat holds its draft
+
+**Asked**, 2026-10-07, with P23's eight lanes and its second round built and the owner's walk (`P23-00`) passing on
+the merged tree. The owner, verbatim: *"Version up. Merge and close. My calls: hugging face should be toggleable
+inside the admin settings, along with how the LLM is served etc. If that makes sense.. And for 4 yes, it creates a
+draft."*
+
+1. **Version up, merge and close.** `0.2.0` is cut: P23 merges to `main`, its rows close, and the annotated tag
+   `v0.2.0` goes on the released commit — the owner's word `D-2026-10-02-04` §1 waited for.
+2. **Hugging Face is an admin switch** (`B1229`). Settings → Forge holds one instance setting that gates every
+   request the Forge makes to a model hub that a person did not start — catalog refresh, collections, trending, file
+   lists, the agent's lookups — and a hand-started download says the switch is off rather than reaching out. **Off by
+   default, existing installs included**, so a fresh or upgraded install reaches nothing on its own (`Law 16`; the
+   0.2.0 notes' "nothing reaches the public internet"). Ollama's library is behind the same switch, because opening
+   the Forge reached ollama.com too; splitting them is one more setting if wanted. *"How the LLM is served"*: the same
+   panel gathers doors to every serving setting where it already lives (no setting copied, `Law 7`); moving them into
+   one place is filed as its own row.
+3. **A reply's chat holds its draft** (`B1234`, the owner's "4 … yes, it creates a draft"). Pressing Reply and then
+   switching chats with the draft still open keeps the "Email: …" chat in the list — it is where the draft lives — and
+   it goes when the draft is sent, deleted or closed empty (`P23-08`).
