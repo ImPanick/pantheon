@@ -146,6 +146,20 @@ function _historyPageLimit() {
   return window.innerWidth <= 768 ? HISTORY_PAGE_LIMIT_MOBILE : HISTORY_PAGE_LIMIT_DESKTOP;
 }
 
+// `P23-07` (PERF-M-9). index.html starts `/api/sessions`, and the history of a
+// chat the address names, before the modules have loaded; a fetch here takes
+// that answer when its URL is exactly the one asked for, once.
+function _earlyFetch(url) {
+  const early = window.__pantheonEarly;
+  if (!early) return null;
+  let key;
+  try { key = new URL(url, location.href).href; } catch (_) { return null; }
+  const answer = early[key];
+  if (!answer) return null;
+  delete early[key];
+  return answer;
+}
+
 function _historyUrl(id, { limit = null, offset = null } = {}) {
   const url = new URL(`${API_BASE}/api/history/${id}`);
   if (limit != null) url.searchParams.set('limit', String(limit));
@@ -1773,7 +1787,7 @@ export async function loadSessions() {
       if (_sessionsWanted) params.set('limit', String(_sessionsWanted));
       const query = params.toString();
       const url = `${API_BASE}/api/sessions${query ? `?${query}` : ''}`;
-      const res = await fetch(url);
+      const res = await (_earlyFetch(url) || fetch(url));
       if (!res.ok) {
         let detail = '';
         try {
@@ -2060,7 +2074,8 @@ export async function selectSession(id, { keepSidebar = false, showLoading = tru
           loadingPaintReady = _nextPaint();
         }, loadingDelayMs);
       }
-      const res = await fetch(_historyUrl(id, { limit: _historyPageLimit() }));
+      const historyUrl = _historyUrl(id, { limit: _historyPageLimit() });
+      const res = await (_earlyFetch(historyUrl) || fetch(historyUrl));
       const data = await res.json();
       if (loadingTimer) {
         clearTimeout(loadingTimer);
