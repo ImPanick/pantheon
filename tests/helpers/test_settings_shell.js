@@ -747,39 +747,19 @@ function moduleSource(relativePath) {
     isTouchInsideModal() { return false; },
   });
 
-  const form = document.createElement('div');
-  form.id = 'unified-intg-form';
-  form.style.display = '';
-  form.appendChild(document.createElement('input'));
-  fixture.content.appendChild(form);
+  // `P23-01` (NAV-M-6, SET-M-7). Settings' own `document` Escape listener is
+  // gone: the one arbiter in `static/js/ui.js` closes Settings through its ×
+  // (this `closeSettings`), after the Escape stack and after the popovers this
+  // listener used to look for (`peelInnerLayer`, driven by
+  // `tests/test_escape_peels_the_innermost_layer_js.py`). The three checks that
+  // stood here pinned that listener — and had been red since `B1125` removed
+  // its integration-editor branch, measured on `32df791`.
   document.dispatch('keydown', {
     key: 'Escape',
     preventDefault() {},
     stopPropagation() {},
   });
-  check(
-    'Escape closes an inner integration editor before closing Settings',
-    form.style.display === 'none' && form.children.length === 0 && closeCount === 0,
-  );
-
-  document.dispatch('keydown', {
-    key: 'Escape',
-    preventDefault() {},
-    stopPropagation() {},
-  });
-  check('Escape closes Settings when no nested flow is active', closeCount === 1);
-
-  const popover = document.createElement('div');
-  popover.setAttribute('data-popover-open', '1');
-  popover.style.display = 'block';
-  fixture.content.appendChild(popover);
-  document.dispatch('keydown', {
-    key: 'Escape',
-    preventDefault() {},
-    stopPropagation() {},
-  });
-  check('Escape leaves Settings open while a transient popover is active', closeCount === 1);
-  popover.classList.add('hidden');
+  check('Settings leaves Escape to the one arbiter (no listener of its own)', closeCount === 0);
 
   context.hideSettingsModal(fixture.modal);
   check(

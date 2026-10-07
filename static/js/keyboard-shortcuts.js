@@ -87,7 +87,9 @@ export const KEYBIND_LABELS = {
   tts: 'Play/stop TTS',
   incognito: 'Toggle incognito',
   plan_mode: 'Toggle Plan mode',
-  settings: 'Toggle Window',
+  // `P23-01` (NAV-M-10, NAV-U-14). It was "Toggle Window" and closed the
+  // first window in a fixed list. It opens Settings, and raises it when open.
+  settings: 'Settings',
   focus_input: 'Focus chat input',
   open_calendar: 'Open Calendar',
   open_compare: 'Open Compare',
@@ -250,90 +252,35 @@ export function initKeyboardShortcuts(modules) {
     .then(s => { if (s.keybinds) window._pantheonKeybinds = { ..._defaultKeybinds, ...s.keybinds }; })
     .catch(() => {});
 
-  // ── Esc cancels select mode (capture phase, before modal-close) ──
-  // Every tool's bulk-select bar has a `*-bulk-cancel` button whose click
-  // already runs the correct teardown (clears selection, hides the bar,
-  // re-renders). So a single global handler that clicks whichever cancel
-  // button is currently visible covers all of them — notes, skills,
-  // memory, gallery, sessions, doc library (chats/archive/research/docs),
-  // email, cookbook serve — without each module wiring its own listener.
-  // Capture phase + stopPropagation so Esc cancels select instead of
-  // closing the surrounding modal.
-  document.addEventListener('keydown', (e) => {
-    if (e.key !== 'Escape') return;
-    const cancels = document.querySelectorAll('[id$="-bulk-cancel"]');
-    for (const btn of cancels) {
-      // Do not rely on offsetParent: visible fixed-position or modal-contained
-      // controls can report null. Check the rendered box and hidden ancestors.
-      const visible = (() => {
-        if (btn.disabled || btn.closest('.hidden,[hidden]')) return false;
-        const cs = getComputedStyle(btn);
-        if (cs.display === 'none' || cs.visibility === 'hidden' || cs.opacity === '0') return false;
-        return btn.offsetWidth > 0 || btn.offsetHeight > 0 || btn.getClientRects().length > 0;
-      })();
-      if (visible) {
-        e.preventDefault();
-        e.stopPropagation();
-        e.stopImmediatePropagation();
-        btn.click();
-        return;
-      }
-    }
-  }, true);
+  // `P23-01`. Two more Escape rules lived here: a capture listener that pressed
+  // a visible `*-bulk-cancel` button, and "Toggle Window" on Ctrl+, that closed
+  // the first open window of a fixed list (`_WINDOW_TRIGGERS`) — not the one on
+  // top, and never Skills or the Workbench (NAV-M-10). The select-mode rule is
+  // the `ui.js` arbiter's now (`peelInnerLayer`), where it runs — this one was
+  // registered after the arbiter, which stopped the key first, so it fired only
+  // when nothing else was open. Ctrl+, opens Settings.
 
-  // ── "Toggle Window" — close whatever tool window is open, or reopen the
-  // last one. Maps each window's modal element to the button/title that
-  // opens it (mirrors modalManager's _AUTO_WIRE, plus email's section title).
-  const _WINDOW_TRIGGERS = {
-    'settings-modal':         'user-bar-settings',
-    'theme-modal':            'tool-theme-btn',
-    'tasks-modal':            'tool-tasks-btn',
-    // `P3-20`: the key is the ELEMENT id — `_windowVisible` and the close
-    // branch below both `getElementById` it — and this said `notes-panel`,
-    // which is the modal-registry key notes.js registers under. The pane's
-    // own id is `notes-pane` (static/js/notes.js:1252), so Toggle Window has
-    // never been able to see Notes open: it fell through to "reopen the last
-    // window" with Notes filling the screen.
-    'notes-pane':             'tool-notes-btn',
-    'memory-modal':           'tool-memory-btn',
-    'doclib-modal':           'tool-library-btn',
-    'gallery-modal':          'tool-gallery-btn',
-    'research-overlay':       'tool-research-btn',
-    'cookbook-modal':         'tool-cookbook-btn',
-    'compare-model-overlay':  'tool-compare-btn',
-    'calendar-modal':         'tool-calendar-btn',
-    'email-lib-modal':        'email-section-title',
-  };
-  let _lastWindow = 'settings-modal';
-
-  const _windowVisible = (id) => {
-    const m = document.getElementById(id);
-    if (!m || m.classList.contains('hidden')) return false;
-    const cs = getComputedStyle(m);
-    if (cs.display === 'none' || cs.visibility === 'hidden' || cs.opacity === '0') return false;
-    return m.offsetWidth > 0 || m.offsetHeight > 0 || m.getClientRects().length > 0;
+  /** `P23-01` (NAV-M-11). A window opened from the keyboard takes the focus,
+   *  as one opened with Enter on its door does: `a11y.js` hears this before
+   *  the window appears, focuses it, and gives the focus back on close. */
+  const _launchFromKeyboard = () => {
+    try {
+      document.dispatchEvent(new CustomEvent('pantheon:window-launch', {
+        detail: { from: document.activeElement },
+      }));
+    } catch (_) { /* the window still opens */ }
   };
 
-  const _toggleActiveWindow = () => {
-    // Close the first open window (remembering it), else reopen the last one.
-    let openId = null;
-    for (const id in _WINDOW_TRIGGERS) {
-      if (_windowVisible(id)) { openId = id; break; }
-    }
-    if (openId) {
-      _lastWindow = openId;
-      const m = document.getElementById(openId);
-      const closeBtn = m && m.querySelector('.close-btn, .modal-close, [data-close]');
-      if (closeBtn) closeBtn.click();
-      else if (openId === 'settings-modal' && settingsModule) settingsModule.close();
-      else { const t = el(_WINDOW_TRIGGERS[openId]); if (t) t.click(); }
-    } else if (_lastWindow === 'settings-modal') {
-      if (settingsModule) settingsModule.open();
-    } else {
-      const t = el(_WINDOW_TRIGGERS[_lastWindow]);
-      if (t) t.click();
-      else if (settingsModule) settingsModule.open();
-    }
+  // The window manager is fetched when the key is pressed, not imported: this
+  // module is loaded into small sandboxes by a dozen tests for its key table,
+  // and the window manager wires the whole page when it loads.
+  const _openSettings = async () => {
+    _launchFromKeyboard();
+    try {
+      const Modals = await import('./modalManager.js?v=20261003waveg');
+      if (Modals.windowState('settings-modal') !== 'closed') { Modals.showWindow('settings-modal'); return; }
+    } catch (_) { /* opened below */ }
+    if (settingsModule) settingsModule.open();
   };
 
   document.addEventListener('keydown', (e) => {
@@ -461,16 +408,17 @@ export function initKeyboardShortcuts(modules) {
     }
     if (_matchesCombo(e, kb.settings)) {
       e.preventDefault();
-      _toggleActiveWindow();
+      _openSettings();
       return;
     }
     // Open-tool shortcuts — click the sidebar tool button so each tool's
-    // own open/toggle logic runs. Unbound (empty) combos never match.
+    // own open logic runs (a door raises an open window, `P23-01`).
+    // Unbound (empty) combos never match.
     for (const action in KEYBIND_TOOL_DOORS) {
       if (_matchesCombo(e, kb[action])) {
         e.preventDefault();
         const b = el(KEYBIND_TOOL_DOORS[action]);
-        if (b) b.click();
+        if (b) { _launchFromKeyboard(); b.click(); }
         return;
       }
     }

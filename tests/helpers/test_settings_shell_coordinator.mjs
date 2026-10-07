@@ -40,6 +40,9 @@ const REAL_MODULES = new Set([
   path.join(JS, 'settings/sidebar.js'),
   path.join(JS, 'settings/navigation.js'),
   path.join(JS, 'settings/lifecycle.js'),
+  // `P23-01`. The back stack: `settings.js` and `lifecycle.js` note an opener
+  // through it (`← Settings`). No imports and no work at load, so it runs real.
+  path.join(JS, 'backStack.js'),
 ]);
 
 const realModulesLoaded = new Set();

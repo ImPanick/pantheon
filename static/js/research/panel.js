@@ -60,6 +60,7 @@ function _toggleSynapseMinimized() {
 
 let _open = false;
 let _onDocKeydown = null;
+let _draftQuery = '';   // `P23-01` (BRAIN-U-13)
 let _apiBase = '';
 let _endpoints = [];
 let _expandedJobId = null;
@@ -277,6 +278,10 @@ export function openPanel(focusJobId) {
     ? 'width:100vw;max-width:100vw;height:90dvh;max-height:90dvh;border-radius:14px 14px 0 0;background:var(--bg);'
     : 'width:min(640px, 92vw);background:var(--bg);';
   pane.innerHTML = _buildPanelHTML();
+  if (_draftQuery) {
+    const _q = pane.querySelector('#research-query');
+    if (_q) _q.value = _draftQuery;
+  }
 
   overlay.appendChild(pane);
   document.body.appendChild(overlay);
@@ -285,15 +290,11 @@ export function openPanel(focusJobId) {
     if (e.target === overlay) closePanel();
   });
 
-  // Document-level ESC handler — overlay-only listener never fired because
-  // overlay isn't focused. Tracked in module scope so closePanel can detach.
-  _onDocKeydown = (e) => {
-    if (e.key === 'Escape' && _open) {
-      e.preventDefault();
-      closePanel();
-    }
-  };
-  document.addEventListener('keydown', _onDocKeydown);
+  // `P23-01` (NAV-M-6, BRAIN-U-13). A document-level Escape listener lived
+  // here and closed the panel even with the focus in the question box, which
+  // took the typed question with it. Escape is the one arbiter's in `ui.js`
+  // now: a key in the box leaves the box, the next closes the window — and the
+  // question is kept across a close either way (`_draftQuery`).
 
   // Make the pane draggable by its header — same pattern as Library/Calendar.
   const paneHeader = pane.querySelector('.research-pane-header');
@@ -336,6 +337,9 @@ function _focusJob(jobId) {
 export function closePanel() {
   if (!_open) return;
   _open = false;
+  // `P23-01` (BRAIN-U-13): the question typed and not started survives a close.
+  const _q = document.getElementById('research-query');
+  if (_q) _draftQuery = _q.value;
 
   if (_onDocKeydown) {
     document.removeEventListener('keydown', _onDocKeydown);
@@ -454,11 +458,20 @@ function _resetCategoryToAuto() {
 
 function _wireEvents(pane) {
   pane.querySelector('#research-panel-close').addEventListener('click', closePanel);
-  pane.querySelector('#research-panel-minimize')?.addEventListener('click', () => {
-    const overlay = document.getElementById('research-overlay');
-    if (overlay) overlay.style.display = 'none';
-    const btn = document.getElementById('tool-research-btn');
-    if (btn) btn.classList.add('minimized');
+  // `P23-01` (BRAIN-M-7). `_` hid the overlay itself: no dock chip, and the
+  // window read as closed to everything that asks (`windowState`). It
+  // minimizes through the window manager now, like every other window — a
+  // chip, the rail badge, and the door or the chip brings it back.
+  pane.querySelector('#research-panel-minimize')?.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    try {
+      const Modals = await import('../modalManager.js?v=20261003waveg');
+      Modals.minimize('research-overlay');
+    } catch (_) {
+      const overlay = document.getElementById('research-overlay');
+      if (overlay) overlay.style.display = 'none';
+      document.getElementById('tool-research-btn')?.classList.add('minimized');
+    }
   });
   pane.querySelector('#research-start-btn').addEventListener('click', _handleStart);
   pane.querySelector('#research-add-btn').addEventListener('click', _handleAdd);
@@ -691,7 +704,7 @@ function _renderJobs() {
           e.stopPropagation();
           closePanel();
           if (window.documentModule && window.documentModule.openLibrary) {
-            window.documentModule.openLibrary({ tab: 'research' });
+            window.documentModule.openLibrary({ tab: 'research', from: 'research-overlay' });   // `P23-01`
           }
         });
       }
@@ -739,7 +752,7 @@ function _renderJobs() {
         e.stopPropagation();
         closePanel();
         if (window.documentModule && window.documentModule.openLibrary) {
-          window.documentModule.openLibrary({ tab: 'research' });
+          window.documentModule.openLibrary({ tab: 'research', from: 'research-overlay' });   // `P23-01`
         }
       });
     }
@@ -799,7 +812,7 @@ function _renderJobs() {
         // (otherwise it stacks under the full-screen panel).
         closePanel();
         if (window.documentModule && window.documentModule.openLibrary) {
-          window.documentModule.openLibrary({ tab: 'research' });
+          window.documentModule.openLibrary({ tab: 'research', from: 'research-overlay' });   // `P23-01`
         }
       });
       header.appendChild(hint);

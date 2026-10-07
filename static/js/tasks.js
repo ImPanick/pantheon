@@ -26,7 +26,8 @@ import {
   _builtinActions, _edgeWhenLabel, _localTimeToUtc, _zonePlace, _zoneDrawable,
   DAYS_OF_WEEK,
 } from './tasks/taskFields.js';
-import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
+import { bindMenuDismiss, dismissOrRemove, registerMenuDismiss } from './escMenuStack.js';
+import backStack from './backStack.js';   // `P23-01`
 import { PLAY_GLYPH, playIcon, stopIcon, WORKFLOW_GLYPH } from './icons.js';
 import {
   runStatusLabel, runStaleLabel, runStatusTone, runStatusDotClass, isRunFinished,
@@ -52,7 +53,6 @@ let _tasks = [];
 let _graph = { nodes: [], edges: [], conditions: [], max_depth: 0 };
 let _viewingWorkflow = null;     // task id when viewing the workflow diagram
 let _tasksFetched = false;   // first-fetch sentinel — `false` → show loading row instead of "No tasks yet"
-let _escHandler = null;
 let _viewingRuns = null; // task id when viewing run history
 let _clockInterval = null;
 let _taskFailurePending = false;
@@ -246,8 +246,11 @@ function _openInWorkbench(task) {
   // `GET /api/tasks` puts on the row (`workflow_id`); the room finds it from
   // the task's id when a row does not carry one.
   const workflowId = task && task.task_type === 'workflow' && task.workflow_id != null ? task.workflow_id : null;
+  // `P23-01` (NAV-U-4, C-NAV): opened from Tasks, the Workbench says `← Tasks`.
+  const from = _open ? 'tasks-modal' : undefined;
+  if (from) backStack.noteOpener('workbench-modal', from);
   return import('./workbench/workbench.js')
-    .then((wb) => wb.openWorkbench({ focusId: task.id, workflowId, describeTrigger: _scheduleLabel }))
+    .then((wb) => wb.openWorkbench({ focusId: task.id, workflowId, describeTrigger: _scheduleLabel, from }))
     .catch(() => uiModule.showError('The Workbench did not load. Reload the page and try again.'));
 }
 
@@ -1100,6 +1103,7 @@ function _presetIcon(p) {
 }
 
 function _showPresetPicker() {
+  _releaseLayers();   // `P23-01`: the form it replaces leaves the Escape stack
   const modal = document.getElementById('tasks-modal');
   if (!modal) return;
   const body = modal.querySelector('.modal-body');
@@ -1173,41 +1177,91 @@ function _showForm(existing, initTaskType, initTriggerType) {
     task,
     tasks: _tasks,
     onSaved: async () => {
+      _formDirty = false;
       await _fetchTasks();
       _switchTab('tasks');
+      const after = _afterSave;
+      _afterSave = null;
+      if (typeof after === 'function' && after !== _showPresetPicker) after();
     },
-    onCancel: () => _switchTab('tasks'),
+    onCancel: () => { _formDirty = false; _switchTab('tasks'); },
   });
 
   // Esc on the form goes back to the Add tab's preset picker (not the Tasks
-  // tab — Cancel handles that). Capture-phase + stopImmediatePropagation so
-  // app.js's generic modal-dismiss doesn't close the whole Tasks window first.
-  if (window._tasksFormEsc) document.removeEventListener('keydown', window._tasksFormEsc, true);
-  window._tasksFormEsc = (e) => {
-    if (e.key !== 'Escape') return;
-    // `P22-03`. This window's form, not any form: the Workbench's panel mounts
-    // the same one with the same ids, and a document-wide lookup would keep
-    // this handler alive — and stepping this window back — for Esc pressed
-    // over there.
-    const tasksModal = document.getElementById('tasks-modal');
-    if (!tasksModal || !tasksModal.querySelector('#task-form-save')) {
-      // Form is no longer in the DOM — detach to stop leaking.
-      document.removeEventListener('keydown', window._tasksFormEsc, true);
-      window._tasksFormEsc = null;
-      return;
-    }
-    const t = e.target;
-    if (t && t !== document.body && typeof tasksModal.contains === 'function' && !tasksModal.contains(t)) return;
-    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) {
-      t.blur();
-      return;
-    }
-    e.stopImmediatePropagation();
-    e.preventDefault();
-    _showPresetPicker();
-  };
-  document.addEventListener('keydown', window._tasksFormEsc, true);
+  // tab — Cancel handles that).
+  //
+  // `P23-01` (NAV-M-2, NAV-M-6). This was a `document` capture listener that
+  // ran after `ui.js`'s arbiter, so the arbiter — or `app.js`'s second one,
+  // which removed the window — closed Tasks and dropped the draft before it
+  // was asked. The form is a layer on the Escape stack now (`escMenuStack.js`),
+  // which the arbiter asks first, for Escape and for Back alike; and a form
+  // with changes asks before it goes (`B1052`'s question, `askBeforeLeaving`).
+  // A key typed in a field leaves the field first (the arbiter's own rule).
+  _formDirty = false;
+  _trackFormEdits(body);
+  _releaseLayers();
+  _holdFormLayer();
 }
+
+// `P23-01`. The Tasks window's two inner layers, on the Escape stack while
+// they are on screen: the form (with whether it has changes) and a task's run
+// history.
+let _formLayer = null;
+let _runsLayer = null;
+let _formDirty = false;
+
+function _releaseLayers() {
+  if (_formLayer) { _formLayer(); _formLayer = null; }
+  if (_runsLayer) { _runsLayer(); _runsLayer = null; }
+}
+
+function _formMounted() {
+  const m = document.getElementById('tasks-modal');
+  return !!(m && m.querySelector('#task-form-save'));
+}
+
+/** Whether the form on show has changes, and how it calls itself. */
+function _formChanges() {
+  if (!_formMounted() || !_formDirty) return null;
+  const m = document.getElementById('tasks-modal');
+  const name = (m.querySelector('#task-form-name')?.value || '').trim();
+  return { name: name || 'This task' };
+}
+
+function _trackFormEdits(body) {
+  if (!body || body._tasksEditsWired) return;
+  body._tasksEditsWired = true;
+  const mark = () => { if (_formMounted()) _formDirty = true; };
+  body.addEventListener('input', mark);
+  body.addEventListener('change', mark);
+}
+
+function _holdFormLayer() {
+  if (_formLayer) _formLayer();
+  _formLayer = registerMenuDismiss(() => {
+    _formLayer = null;
+    if (!_formMounted()) return;
+    const u = _formChanges();
+    if (!u) { _showPresetPicker(); return; }
+    _askAboutForm(u, () => _showPresetPicker());
+  });
+}
+
+/** Ask Save / Discard / Keep editing, then `go` after a save or a discard. */
+async function _askAboutForm(u, go) {
+  const answer = await uiModule.askBeforeLeaving(u.name);
+  if (answer === 'keep' || !_formMounted()) {
+    if (_formMounted() && !_formLayer) _holdFormLayer();
+    return;
+  }
+  if (answer === 'discard') { _formDirty = false; go(); return; }
+  // Save: the form's own Save, which goes back to the list when it works;
+  // `go` runs after it (`onSaved`). A refused save keeps the form and says why.
+  _afterSave = go;
+  document.getElementById('task-form-save')?.click();
+  if (_formMounted() && !_formLayer) _holdFormLayer();
+}
+let _afterSave = null;
 
 // ---- Run History ----
 
@@ -1320,6 +1374,14 @@ async function _showRunHistory(taskId, taskName) {
   if (!modal) return;
   const body = modal.querySelector('.modal-body');
   if (!body) return;
+  // `P23-01`: Escape and Back go back to the list first, like *← Back*.
+  _releaseLayers();
+  _runsLayer = registerMenuDismiss(() => {
+    _runsLayer = null;
+    if (_viewingRuns == null) return;
+    _viewingRuns = null;
+    _renderMainView();
+  });
 
   body.innerHTML = '';
   body.appendChild(spinnerModule.createLoadingRow('Loading…'));
@@ -1370,6 +1432,7 @@ async function _showRunHistory(taskId, taskName) {
 
   document.getElementById('task-history-back').addEventListener('click', () => {
     _viewingRuns = null;
+    if (_runsLayer) { _runsLayer(); _runsLayer = null; }
     _renderMainView();
   });
 
@@ -1756,6 +1819,7 @@ function _syncPauseAllButton() {
 let _activeTab = 'tasks';
 
 function _switchTab(tab) {
+  _releaseLayers();   // `P23-01`
   _activeTab = tab;
   const modal = document.getElementById('tasks-modal');
   if (!modal) return;
@@ -3025,6 +3089,7 @@ async function _aiDraftTask(inputEl, btnEl) {
 }
 
 function _renderMainView() {
+  _releaseLayers();   // `P23-01`: the run history / form it replaces leaves the Escape stack
   const modal = document.getElementById('tasks-modal');
   if (!modal) return;
   const body = modal.querySelector('.modal-body');
@@ -3182,27 +3247,12 @@ export function openTasks(focusId, opts) {
     if (e.target === modal) closeTasks();
   });
 
-  _escHandler = (e) => {
-    if (e.key === 'Escape') {
-      if (_viewingRuns) {
-        _viewingRuns = null;
-        _renderMainView();
-        return;
-      }
-      // If we're on the "Add" tab inside the new-task form (preset already
-      // picked), step back to the preset picker instead of closing the modal.
-      // Detect by: Add tab active + the form's name input is mounted.
-      const _modal = document.getElementById('tasks-modal');
-      const _addActive = _modal?.querySelector('.tasks-tab.active[data-tab="new"]');
-      const _formMounted = _modal?.querySelector('#task-form-name');
-      if (_addActive && _formMounted) {
-        _showPresetPicker();
-        return;
-      }
-      closeTasks();
-    }
-  };
-  document.addEventListener('keydown', _escHandler);
+  // `P23-01` (NAV-M-6). Tasks' own `document` Escape listener is gone: the
+  // run history and the form are layers on the Escape stack (above), and the
+  // window itself is closed by the one arbiter in `ui.js` through `tasks-close`
+  // — so Escape, Back and × all reach `closeTasks`, which asks first when the
+  // form has changes. `app.js`'s arbiter, registered before this listener,
+  // used to close the window first, which is why this one never ran.
 
   // Paint the scaffolding immediately so the modal-enter animation reveals a
   // populated shell (header/search/sort/empty list with a spinner row) instead
@@ -3242,6 +3292,15 @@ function _focusTask(taskId) {
 
 export function closeTasks() {
   if (!_open) return;
+  // `P23-01` (NAV-M-2). A form with changes asks before the window goes, and
+  // whichever way it was closed — ×, Escape, Back — it is the same question.
+  const u = _formChanges();
+  if (u) {
+    _askAboutForm(u, () => { _formDirty = false; closeTasks(); });
+    return;
+  }
+  _releaseLayers();
+  _formDirty = false;
   _open = false;
   _viewingRuns = null;
   const modal = document.getElementById('tasks-modal');
@@ -3255,19 +3314,9 @@ export function closeTasks() {
       modal.remove();
     }
   }
-  if (_escHandler) {
-    document.removeEventListener('keydown', _escHandler);
-    _escHandler = null;
-  }
   if (_clockInterval) {
     clearInterval(_clockInterval);
     _clockInterval = null;
-  }
-  // Detach the form-Esc capture listener if it survived (e.g. user closed the
-  // modal from the X / outside-click while the form was open).
-  if (window._tasksFormEsc) {
-    document.removeEventListener('keydown', window._tasksFormEsc, true);
-    window._tasksFormEsc = null;
   }
 }
 

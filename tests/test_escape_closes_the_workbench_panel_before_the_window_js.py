@@ -25,6 +25,20 @@ stub, as in `tests/test_the_workbench_canvas_js.py`.
 **What else the `ui.js` change affects** is pinned too: a window that does not
 mark an open layer with `[data-esc-layer]` closes on the first Escape exactly
 as before, even with a menu registered elsewhere on the stack.
+
+**`P23-01` (2026-10-03, fx-back) moved this file onto the one arbiter.** The
+owner's ruling `D-2026-10-03-01` §2 is `B1052`'s rule made general — Escape =
+Back = `←`, innermost layer first, *for every window*, wherever the pointer is.
+So the arbiter asks the Escape stack first for every window (the `[data-esc-
+layer]` mark is no longer what decides it), the pointer no longer picks the
+window (the top one by z is closed), and the window is closed through
+`modalManager.closeWindow`, the path its own × takes. The functions cut out of
+`ui.js` changed with it (`_closeHoveredWindow` and `_windowAtPointer` are gone).
+Every case below that pinned `B1052`'s behaviour holds unchanged in what it
+asserts about the panel, the question and the window; the one that pinned the
+opposite of the ruling — *a window that marks no layer closes first, whatever
+is on the stack* — now pins the ruling: the menu goes first. The new rule's
+own cases are in `tests/test_escape_peels_the_innermost_layer_js.py`.
 """
 
 from __future__ import annotations
@@ -52,19 +66,27 @@ pytestmark = pytest.mark.skipif(not shutil.which("node"), reason="node binary no
 
 
 def _arbiter() -> str:
-    """The arbiter's functions and its Escape handler, as `ui.js` has them."""
+    """The arbiter's functions and its two Escape handlers, as `ui.js` has them.
+
+    `escapeArbiter` is the capture-phase listener; `escapeLeavesField` the
+    bubble-phase one that takes the focus out of a field nobody else answered.
+    Shared with `tests/test_escape_peels_the_innermost_layer_js.py`."""
     src = UI_JS.read_text(encoding="utf-8")
     code = blank_text(src, "js")
     parts = []
-    for name in ("_visibleModalForSpace", "_spaceWindowId", "_windowAtPointer", "_closeHoveredWindow"):
+    for name in ("_isTextEditingTarget", "_targetEl", "peelInnerLayer"):
         assert code.count(f"function {name}(") == 1, name
         parts.append(js_definition(src, code.index(f"function {name}(")))
-    for name in ("_isVisible", "pickTopModal"):
+    for name in ("_isVisible", "pickTopModal", "_OWN_ESCAPE_DIALOGS", "_openById", "_inWindow",
+                 "_OWN_LAYERS", "_ownLayerOpen"):
         assert code.count(f"const {name} = ") == 1, name
         parts.append(js_definition(src, code.index(f"const {name} = ")))
-    anchor = code.index("if (e.key !== 'Escape' || e.defaultPrevented) return;")
+    anchor = code.index("if (_OWN_ESCAPE_DIALOGS.some(_openById)) return;")
     start = code.rindex("(e) => {", 0, anchor)
     parts.append("const escapeArbiter = " + js_definition(src, start) + ";")
+    anchor = code.index("if (!_isTextEditingTarget(target) || !_inWindow(target)) return;")
+    start = code.rindex("(e) => {", 0, anchor)
+    parts.append("const escapeLeavesField = " + js_definition(src, start) + ";")
     return "\n".join(parts)
 
 
@@ -77,14 +99,21 @@ Node.prototype.click = function click() { this.dispatchEvent({ type: 'click', ta
 
 // ── the browser around the arbiter ──────────────────────────────────────────
 export const closed = [];
+// `P23-01`: the arbiter closes a window through `modalManager.closeWindow` —
+// the path its own × takes — and asks `backStack.js` what is on its stack.
 export const Modals = {
-  isRegistered: (id) => ['workbench-modal', 'notes-modal'].includes(id),
-  isMinimized: () => false,
-  close: (id) => { closed.push(id); document.getElementById(id).classList.add('hidden'); },
+  closeWindow: (id) => { closed.push(id); document.getElementById(id).classList.add('hidden'); },
 };
+export const backStack = {
+  DRAWER: 'sidebar-drawer',
+  top: () => null,
+  isTracked: (id) => ['workbench-modal', 'notes-modal', 'memory-modal', 'tasks-modal'].includes(id),
+};
+export const toolWindowZ = (el) => parseInt((el.style && el.style.zIndex) || '0', 10);
 globalThis.getComputedStyle = (el) => ({
   zIndex: (el.style && el.style.zIndex) || '0',
   display: el._classes && el._classes().includes('hidden') ? 'none' : 'block',
+  visibility: 'visible',
 });
 document.elementFromPoint = () => null;
 const _qsa = document.querySelectorAll.bind(document);
@@ -118,7 +147,7 @@ export const isOpen = (id) => !document.getElementById(id)._classes().includes('
 
 _PREAMBLE = (
     "import { document, Node, server, net, panel, mountPanel, fire, settle, nodeOf, said, edgeEls,"
-    " closed, Modals, makeWindow, isOpen } from './shim.js';\n"
+    " closed, Modals, backStack, toolWindowZ, makeWindow, isOpen } from './shim.js';\n"
     "import { dismissTopMenu, registerMenuDismiss, _openMenuCount } from '../escMenuStack.js';\n"
     "const { mountCanvas } = await import('./canvas.js');\n"
     "let _lastPointerClientX = 500, _lastPointerClientY = 400;\n"
@@ -131,6 +160,7 @@ _PREAMBLE = (
     "  const ev = { key: 'Escape', defaultPrevented: false, target, stopped: false,\n"
     "    stopImmediatePropagation() { this.stopped = true; }, preventDefault() { this.defaultPrevented = true; } };\n"
     "  escapeArbiter(ev);\n"
+    "  if (!ev.stopped) escapeLeavesField(ev);   // the bubble phase, when nothing stopped it\n"
     "  return ev.stopped;\n"
     "};\n"
     "const wb = makeWindow('workbench-modal', 1002);\n"
@@ -289,7 +319,7 @@ def test_with_the_pointer_off_the_window_the_order_is_the_same(box):
         escape();
         out({ asked, panelGone, window: isOpen('workbench-modal'), closed });
     """)
-    assert o == {"asked": True, "panelGone": True, "window": False, "closed": ["workbench-modal (button)"]}
+    assert o == {"asked": True, "panelGone": True, "window": False, "closed": ["workbench-modal"]}
 
 
 def test_the_workbench_with_nothing_open_closes_on_the_first_escape(box):
@@ -303,10 +333,13 @@ def test_the_workbench_with_nothing_open_closes_on_the_first_escape(box):
     assert o == {"marked0": False, "window": False, "closed": ["workbench-modal"]}
 
 
-def test_a_window_that_marks_no_layer_closes_as_before_whatever_is_on_the_stack(box):
-    """What else the `ui.js` change touches: nothing that does not say it holds
-    a layer. A menu registered elsewhere — a kebab dropdown hanging off
-    `<body>` — does not stop Escape over another window closing that window."""
+def test_a_menu_anywhere_on_the_stack_goes_before_any_window(box):
+    """`P23-01` replaced this case's old assertion, which pinned the opposite of
+    `D-2026-10-03-01`: *a window that marks no layer closes on the first Escape,
+    whatever is on the stack*. That is NAV-M-4 / DOCS-U-1 / BRAIN-U-4 — Escape
+    with a ⋮ menu open closed the whole window under the pointer. The stack is
+    LIFO and a registered menu is the innermost thing on the page, so it goes
+    first; the window goes on the next Escape."""
     o = _case(box, """
         const notes = makeWindow('notes-modal', 1003);
         wb.modal.classList.add('hidden');
@@ -314,6 +347,10 @@ def test_a_window_that_marks_no_layer_closes_as_before_whatever_is_on_the_stack(
         registerMenuDismiss(() => { menuClosed = true; });
         pointerOn();
         escape();
-        out({ notes: isOpen('notes-modal'), menuClosed, left: _openMenuCount(), closed });
+        const first = { notes: isOpen('notes-modal'), menuClosed, left: _openMenuCount() };
+        escape();
+        out({ first, second: { notes: isOpen('notes-modal') }, closed });
     """)
-    assert o == {"notes": False, "menuClosed": False, "left": 1, "closed": ["notes-modal"]}
+    assert o["first"] == {"notes": True, "menuClosed": True, "left": 0}
+    assert o["second"] == {"notes": False}
+    assert o["closed"] == ["notes-modal"]

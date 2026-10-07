@@ -33,6 +33,7 @@ import { emailApiUrl } from './emailShared.js';
 // (`Law 13`).
 import { isThrottledSource, throttleNotice, clearsInLabel } from './runStatus.js';
 import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
+import backStack from './backStack.js';   // `P23-01`
 import { chevronIcon } from './icons.js';
 
 const API_BASE = window.location.origin;
@@ -3215,26 +3216,13 @@ export function openEmailLibrary(opts = {}) {
       }
       return;
     }
-    if (e.key === 'Escape') {
-      e.preventDefault();
-      e.stopPropagation();
-      e.stopImmediatePropagation?.();
-      const expanded = modal.querySelector('.doclib-card.doclib-card-expanded');
-      if (expanded) {
-        _exitEmailReaderModeForList();
-        expanded.focus?.({ preventScroll: true });
-        return;
-      }
-      if (state._selectMode) {
-        state._selectMode = false;
-        state._selectedUids.clear();
-        _updateBulkBar();
-        _renderGrid();
-        return;
-      }
-      closeEmailLibrary();
-      return;
-    }
+    // `P23-01` (NAV-M-6, DOCS-U-1, DOCS-U-4). Escape is not this listener's
+    // any more: it ran after `ui.js`'s arbiter, which with the pointer on the
+    // mail window closed the window first. The arbiter peels the same layers
+    // in the same order — an open email back to the list (its expanded card),
+    // Select mode (`email-bulk-cancel`), then the window — wherever the pointer
+    // is, and the reader has its own *← Inbox* now.
+    if (e.key === 'Escape') return;
     // Don't hijack arrows / delete while the user is typing somewhere.
     const t = e.target;
     if (_isEmailTypingTarget(t)) return;
@@ -5119,13 +5107,21 @@ function _renderGrid() {
         '<div class="email-loading" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;text-align:center;">' +
           '<span>No emails' + _smileyIco + '</span>' +
           '<span style="opacity:0.7;font-size:11px;">' +
-            'Set up at: <a href="#" data-open-settings="integrations" style="color:var(--accent,var(--red));text-decoration:underline;">Settings &rsaquo; Integrations</a>' +
+            '<a href="#" data-open-settings="integrations" style="color:var(--accent,var(--red));text-decoration:underline;">Add a mail account</a>' +
           '</span>' +
         '</div>';
+      // `P23-01` (DOCS-U-3, NAV-U-6). The link said *Settings › Integrations*,
+      // a panel that moved (`P22-21`), and opened the Workbench's MCP &
+      // Integrations room in place of the mail window. It says what it does,
+      // opens the room over mail with `← Email` in its header, and mail is
+      // there when the room closes.
       const _link = grid.querySelector('[data-open-settings]');
       if (_link) _link.addEventListener('click', (e) => {
         e.preventDefault();
-        _openSettingsTab(_link.dataset.openSettings || 'integrations');
+        backStack.noteOpener('workbench-modal', 'email-lib-modal');
+        import('./workbench/workbench.js')
+          .then((wb) => wb.openWorkbench({ room: 'integrations', from: 'email-lib-modal' }))
+          .catch(() => _openSettingsTab('integrations'));
       });
     } else {
       grid.innerHTML =
@@ -5699,6 +5695,7 @@ async function _toggleCardPreview(card, em) {
             ${data.cc ? `<div class="email-reader-meta-row"><strong>Cc:</strong><span class="recipient-chips">${buildRecipients(data.cc)}</span></div>` : ''}
           </div>` : ''}
           <div class="email-reader-actions-inline">
+            <button class="memory-toolbar-btn reader-icon-btn email-reader-back" data-act="back" type="button" title="Back to the inbox" aria-label="Back to the inbox"><span aria-hidden="true">←</span><span class="reader-btn-label">Inbox</span></button>
             <button class="memory-toolbar-btn reader-icon-btn" data-act="ai-reply" title="${data.cached_ai_reply ? 'AI Reply (cached draft ready)' : 'AI Reply (suggest a draft)'}">${_aiReplyIcon(data)}<span class="reader-btn-label">AI reply</span></button>
             <button class="memory-toolbar-btn reader-icon-btn" data-act="reply" title="Reply"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg><span class="reader-btn-label">Reply</span></button>
             ${_hasMultipleRecipients(data) ? `<button class="memory-toolbar-btn reader-icon-btn" data-act="reply-all" title="Reply All"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="7 17 2 12 7 7"/><polyline points="12 17 7 12 12 7"/><path d="M22 18v-2a4 4 0 0 0-4-4H7"/></svg><span class="reader-btn-label">Reply all</span></button>` : ''}
@@ -5722,6 +5719,15 @@ async function _toggleCardPreview(card, em) {
     _loadDeferredAttachmentsIntoReader(reader, em.uid, folderAtStart, data, !!em.has_attachments);
     _maybeAutoTranslateEmail(reader);
 
+    // `P23-01` (DOCS-U-4). The reader had no way back to the list on screen —
+    // only Escape, with the pointer off the window. *← Inbox* is the same step.
+    reader.querySelector('[data-act="back"]')?.addEventListener('click', (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      const card = reader.closest('.doclib-card');
+      _exitEmailReaderModeForList();
+      card?.focus?.({ preventScroll: true });
+    });
     reader.querySelector('[data-act="reply"]')?.addEventListener('click', async (ev) => {
       ev.stopPropagation();
       _snapEmailModalToLeftSidebar(ev.currentTarget.closest('.modal'));

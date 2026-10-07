@@ -57,9 +57,14 @@ _STUBS = {
     "windowDrag.js": "export function makeWindowDraggable(){}\n",
     "toolWindowZOrder.js": "export function topPortalZ(){return 1;}\n",
     "modelSort.js": "export function sortModelIds(a){return a;}\n",
-    "escMenuStack.js": "export function bindMenuDismiss(){return()=>{};}\nexport function dismissOrRemove(){}\n",
+    # `P23-01`: the Tasks form and run history are layers on the Escape stack.
+    "escMenuStack.js": "export function bindMenuDismiss(){return()=>{};}\nexport function dismissOrRemove(){}\n"
+                       "export function registerMenuDismiss(){return()=>{};}\n",
     "appConfig.js": "export function getSettings(){return{};}\nexport function invalidateSettings(){}\n",
     "util/ordinal.js": "export function ordinalSuffix(n){return String(n);}\n",
+    # `P23-01`: the real back stack (no imports, no work at load) — Tasks notes
+    # itself as the Workbench's opener through it.
+    "backStack.js": (ROOT / "static" / "js" / "backStack.js").read_text(encoding="utf-8"),
 }
 
 _SHIM = r"""

@@ -633,16 +633,28 @@ async function precacheShellGraph(cache, seeds) {
 // exactly this. A tenth route added to `app.py` fails that test on the commit
 // that adds it, which is the only thing that stops this list from being the
 // next one to go stale.
+// `P23-01` (NAV-M-8): every window has a URL now — `/brain`, `/settings`,
+// `/skills`, `/workbench`, `/research`, `/theme`, `/compare`, and `/forge` beside
+// `/cookbook` — and one level below each for a window's tab
+// (`/settings/shortcuts`), all served the shell by `app.py`'s `PAGE_ROUTES`.
 const SHELL_ROUTES = new Set([
   '/',
+  '/brain',
   '/calendar',
+  '/compare',
   '/cookbook',
   '/email',
+  '/forge',
   '/gallery',
   '/library',
   '/memory',
   '/notes',
+  '/research',
+  '/settings',
+  '/skills',
   '/tasks',
+  '/theme',
+  '/workbench',
 ]);
 
 // `B122`. Documents this worker holds that are NOT the shell — they answer a
@@ -658,6 +670,9 @@ const CACHED_PAGES = new Set(
 // the network and the branches below".
 function navigationKey(pathname) {
   if (SHELL_ROUTES.has(pathname)) return '/';
+  // A window's tab: `/settings/shortcuts` is the Settings shell on a panel.
+  const tab = /^(\/[a-z]+)\/[^/]+$/.exec(pathname);
+  if (tab && tab[1] !== '/' && SHELL_ROUTES.has(tab[1])) return '/';
   if (CACHED_PAGES.has(pathname)) return pathname;
   return '';
 }

@@ -1187,6 +1187,41 @@ async def serve_tasks(request: Request):
 async def serve_library(request: Request):
     return await serve_index(request)
 
+
+# `P23-01` (NAV-M-8). Every window has a URL: the app writes the top window's
+# path as it opens (`static/js/backStack.js`, `ROUTES`), and a reload or a link
+# has to land on the app, not on a raw `{"detail":"Not Found"}` — which is what
+# `/settings`, `/skills`, `/workbench`, `/research`, `/compare`, `/theme` and
+# `/brain` answered. The eight routes above stay as they are; these are the
+# rest, plus one level below each for a window's tab (`/settings/shortcuts`,
+# `/workbench/integrations`, `/brain/rag`). Only these names: a path nobody
+# draws still answers 404, and nothing here can shadow a route registered
+# after it. `/memory` and `/cookbook` stay the spellings the bookmarks have;
+# `/brain` and `/forge` are the names a person reads.
+PAGE_ROUTES = (
+    "notes", "calendar", "cookbook", "forge", "email", "memory", "brain",
+    "gallery", "tasks", "library", "settings", "skills", "workbench",
+    "research", "theme", "compare",
+)
+_PAGE_ROUTES_ALREADY_SERVED = {"notes", "calendar", "cookbook", "email", "memory",
+                               "gallery", "tasks", "library"}
+
+
+async def serve_app_page(request: Request):
+    """The app, at a window's URL; the browser opens the window."""
+    return await serve_index(request)
+
+
+async def serve_app_page_tab(request: Request, tab: str):
+    """The app, at a window's tab's URL (`/settings/shortcuts`)."""
+    return await serve_index(request)
+
+
+for _page in PAGE_ROUTES:
+    if _page not in _PAGE_ROUTES_ALREADY_SERVED:
+        app.add_api_route(f"/{_page}", serve_app_page, methods=["GET"], include_in_schema=False)
+    app.add_api_route(f"/{_page}/{{tab}}", serve_app_page_tab, methods=["GET"], include_in_schema=False)
+
 @app.get("/backgrounds")
 async def serve_backgrounds(request: Request):
     """The background sandbox page is not shipped in this build.

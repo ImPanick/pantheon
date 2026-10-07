@@ -31,6 +31,7 @@ import { suspendDock, resumeDock, clearRightDock, applyEdgeDock } from './modalS
 import { dismissOrRemove } from './escMenuStack.js';
 import { nextToolWindowZ, toolWindowZ } from './toolWindowZOrder.js';
 import { WORKFLOW_GLYPH, iconSvg } from './icons.js';
+import backStack from './backStack.js';
 
 const _state = new Map(); // id -> { restoreFn, closeFn, railBtnId, isMinimized, restoreMinHeight }
 
@@ -497,10 +498,16 @@ function _renderDock() {
   dock.innerHTML = '';
   for (const id of renderIds) {
     const meta = _LABELS[id] || { label: id, icon: '' };
-    const chip = document.createElement('button');
-    chip.type = 'button';
+    // `P23-01` (NAV-M-12). The chip was one `<button>` whose × was a `<span>`
+    // inside it: the keyboard reached the chip and never the ×, and a button
+    // cannot hold another. Now the chip is the group and holds two real
+    // buttons — *Restore* (the icon and the name) and *Close* — with the same
+    // class and `data-modal-id` on the chip (`FORBIDDEN.md` Part 1).
+    const chip = document.createElement('div');
     chip.className = 'minimized-dock-chip';
     chip.dataset.modalId = id;
+    chip.setAttribute('role', 'group');
+    chip.setAttribute('aria-label', meta.label);
     const work = getBackgroundWork(id);
     chip.title = work ? work.detail : `Restore ${meta.label}`;
     // Restore any external data-* attributes the previous chip carried
@@ -521,11 +528,23 @@ function _renderDock() {
     // the work back out of sight, which is the defect, not the fix. It leaves
     // when `setBackgroundWork(id, null)` is called.
     const workOnly = !!work && !_state.has(id);
-    chip.innerHTML = `
-      ${iconHtml}
-      <span class="minimized-dock-label">${meta.label}</span>
-      ${workOnly ? '' : '<span class="minimized-dock-x" title="Close">×</span>'}
-    `;
+    const restoreBtn = document.createElement('button');
+    restoreBtn.type = 'button';
+    restoreBtn.className = 'minimized-dock-restore';
+    restoreBtn.style.cssText = 'background:none;border:0;padding:0;margin:0;color:inherit;font:inherit;'
+      + 'display:inline-flex;align-items:center;gap:6px;cursor:inherit;';
+    restoreBtn.innerHTML = `${iconHtml}<span class="minimized-dock-label">${meta.label}</span>`;
+    chip.appendChild(restoreBtn);
+    if (!workOnly) {
+      const x = document.createElement('button');
+      x.type = 'button';
+      x.className = 'minimized-dock-x';
+      x.title = 'Close';
+      x.setAttribute('aria-label', `Close ${meta.label}`);
+      x.style.cssText = 'border:0;background:none;color:inherit;font:inherit;padding:0;cursor:pointer;';
+      x.textContent = '×';
+      chip.appendChild(x);
+    }
     if (work) {
       chip.classList.add('chip-working');
       // `textContent`: a label can carry a skill name or a research question,
@@ -537,7 +556,7 @@ function _renderDock() {
     }
     chip.addEventListener('click', (e) => {
       if (chip._wasDragging) { chip._wasDragging = false; return; }
-      if (e.target.classList.contains('minimized-dock-x')) {
+      if (e.target.closest && e.target.closest('.minimized-dock-x')) {
         e.stopPropagation();
         close(id);
         return;
@@ -550,6 +569,10 @@ function _renderDock() {
         minimize(id);
       } else if (s) {
         restore(id);
+        // `P23-01` (NAV-M-12): the chip is gone with the restore, and the
+        // focus went to `<body>` with it. The window takes it, on its move
+        // handle — where a door's own press puts it (`a11y.js`).
+        focusWindowHandle(id);
       } else {
         // `P9-11`. A work chip for a CLOSED window. There is nothing to
         // restore — the tool has to be opened the way a person would open it,
@@ -814,7 +837,7 @@ function _wireChipDrag(chip, dock) {
   };
 
   const onPointerDown = (e) => {
-    if (e.target.classList.contains('minimized-dock-x')) return;
+    if (e.target.closest && e.target.closest('.minimized-dock-x')) return;
     if (e.button !== 0 && e.pointerType === 'mouse') return;
     if (activePointerId !== null) return;
     startX = e.clientX; startY = e.clientY; dragging = false;
@@ -1313,7 +1336,30 @@ function _wireChipDrag(chip, dock) {
 // `unregister` — built-in labels stay for the lifetime of the page.
 const _customLabelIds = new Set();
 
-export function register(id, { restoreFn, closeFn, railBtnId, sidebarBtnId, label, icon } = {}) {
+// `P23-01` (C-NAV). A window with tabs gives `getTab` and `setTab` at
+// `register`; they are kept here, apart from `_state`, because `close()`
+// deletes a window's entry and the tab hooks must outlive one opening — a
+// reload or a `←` asks the opener's tab of a window that may have been
+// re-registered since.
+const _tabHooks = new Map();   // id → { getTab, setTab }
+
+/** C-NAV: the tab hooks of a window, or null. */
+export function tabHooks(id) { return _tabHooks.get(id) || null; }
+
+/** C-NAV: give a window tab hooks without registering it for the dock (a
+ *  window `register` would change the close path of). */
+export function setTabHooks(id, { getTab, setTab } = {}) {
+  if (!id) return;
+  if (typeof getTab !== 'function' && typeof setTab !== 'function') { _tabHooks.delete(id); return; }
+  _tabHooks.set(id, { getTab: typeof getTab === 'function' ? getTab : null,
+    setTab: typeof setTab === 'function' ? setTab : null });
+}
+
+/** The name a window goes by on its chip and on a `← <opener>` button. */
+export function labelOf(id) { return (_LABELS[id] && _LABELS[id].label) || id; }
+
+export function register(id, { restoreFn, closeFn, railBtnId, sidebarBtnId, label, icon, getTab, setTab } = {}) {
+  if (typeof getTab === 'function' || typeof setTab === 'function') setTabHooks(id, { getTab, setTab });
   // railBtnId can be a single id or an array; we accept both rail and sidebar separately too.
   const btnIds = [];
   if (railBtnId) btnIds.push(...(Array.isArray(railBtnId) ? railBtnId : [railBtnId]));
@@ -1574,7 +1620,12 @@ export function windowState(id) {
  * boolean because "it was already there" and "it opened" are different news
  * (`Law 10`).
  */
-export function showWindow(id) {
+export function showWindow(id, { from, tab } = {}) {
+  // `P23-01` (C-NAV). Opened from another window: the opener and the tab it
+  // was on, read through its `getTab` when the caller gives none. The opened
+  // window's header then says `← <opener>`, and closing it — ×, Escape, Back
+  // or that button — re-raises the opener on that tab (`backStack.js`).
+  if (from && from !== id) backStack.noteOpener(id, from, tab);
   const state = windowState(id);
   if (state === 'minimized') return restore(id) ? 'restored' : 'none';
   if (state === 'open') {
@@ -1645,6 +1696,99 @@ export function close(id) {
   _saveDockState();
   _renderDock();
 }
+
+/** The element a window id draws (Notes registers `notes-panel` and draws
+ *  `#notes-pane`). */
+function _windowEl(id) {
+  return document.getElementById(backStack.elementIdOf(id));
+}
+
+/** Bring an open window to the top of the windows. */
+export function raiseWindow(id) {
+  const el = _windowEl(id);
+  if (el && el.classList && el.classList.contains('modal')) _bringToFront(el);
+}
+
+/** `P23-01` (NAV-M-11/12). Give a window the focus on its move handle — where
+ *  a door's own press puts it — when the focus is nowhere in particular. */
+export function focusWindowHandle(id) {
+  const el = _windowEl(id);
+  if (!el) return;
+  const a = document.activeElement;
+  if (a && a !== document.body && a !== document.documentElement && el.contains && el.contains(a)) return;
+  const handle = el.querySelector('.window-move-handle')
+    || el.querySelector('.modal-header button, .notes-pane-header button');
+  if (handle && typeof handle.focus === 'function') {
+    try { handle.focus({ preventScroll: true }); } catch (_) { try { handle.focus(); } catch (__) {} }
+  }
+}
+
+/**
+ * `P23-01` — close a window the way its own × does. Escape (`ui.js`), Back
+ * (`backStack.js`) and `← <opener>` all come here, so a window that asks
+ * before it closes (the Workbench's *Save / Discard / Keep editing*, `B1052`;
+ * a Tasks draft) asks whichever of the three a person used.
+ */
+export function closeWindow(id) {
+  if (id === backStack.DRAWER) {
+    if (typeof window._odyCloseSidebar === 'function') window._odyCloseSidebar();
+    return;
+  }
+  if (id === 'notes-panel') {
+    const nm = window.notesModule;
+    if (nm && typeof nm.closePanel === 'function') { nm.closePanel(); return; }
+  }
+  const modal = _windowEl(id);
+  if (!modal) { if (_state.has(id)) close(id); return; }
+  const btn = (id === 'email-lib-modal' && document.getElementById('email-lib-close'))
+    || modal.querySelector('.modal-header .close-btn, .modal-header .modal-close, .close-btn, .modal-close, '
+      + '.modal-close-btn, [data-close], [data-action="close"]');
+  if (btn) { try { btn.click(); return; } catch (_) { /* fall through */ } }
+  if (_state.has(id)) { close(id); return; }
+  modal.classList.add('hidden');
+}
+
+/**
+ * `P23-01` (C-NAV, NAV-U-4). The `← <opener>` button at the left of a
+ * window's header: one for a window opened from another, none otherwise. It
+ * closes this window the way × does; the opener is re-raised on its tab by
+ * `backStack.js`, which calls this with `fromId = null` to take it away.
+ */
+export function drawBackButton(id, fromId) {
+  const host = _windowEl(id);
+  const header = host && host.querySelector('.modal-header, .notes-pane-header, .research-pane-header');
+  if (!header) return;
+  let btn = header.querySelector('.modal-back-btn');
+  if (!fromId) { if (btn) btn.remove(); return; }
+  const label = labelOf(fromId);
+  if (!btn) {
+    btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'modal-back-btn';
+    // Tokens only (`--fg`, `--border`), so every palette draws it; the shape
+    // is the header's own icon buttons'.
+    btn.style.cssText = 'flex-shrink:0;display:inline-flex;align-items:center;gap:4px;margin:0 8px 0 0;'
+      + 'padding:2px 8px;border:1px solid var(--border);border-radius:6px;background:none;'
+      + 'color:var(--fg);font:inherit;font-size:12px;line-height:1.6;cursor:pointer;white-space:nowrap;';
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      closeWindow(id);
+    });
+    header.insertBefore(btn, header.firstChild);
+  }
+  btn.dataset.backTo = fromId;
+  btn.textContent = `← ${label}`;
+  btn.title = `Back to ${label}`;
+  btn.setAttribute('aria-label', `Back to ${label}`);
+}
+
+backStack.configure({
+  labelOf,
+  tabHooks,
+  closeWindow,
+  raise: raiseWindow,
+  drawBack: drawBackButton,
+});
 
 /** Inject a minimize (`_`) button next to the close button in a modal.
  * Skips if a minimize button already exists (any class containing "minimize"). */
@@ -1872,4 +2016,5 @@ document.addEventListener('click', (e) => {
 
 export default { register, unregister, isRegistered, isMinimized, minimize, restore, toggle, close,
   injectMinimizeButton, setBackgroundWork, getBackgroundWork, listBackgroundWork, openClosedWindow,
-  listWindows, showWindow, windowState, doorShown };
+  listWindows, showWindow, windowState, doorShown, closeWindow, raiseWindow, drawBackButton,
+  focusWindowHandle, tabHooks, setTabHooks, labelOf };

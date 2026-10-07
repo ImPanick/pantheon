@@ -820,14 +820,19 @@ DEFAULT_SETTINGS = {
         "Newsletters, marketing, automated digests, and FYI-only updates are "
         "NOT urgent."
     ),
-    # Keyboard shortcuts (action: key combination)
+    # Keyboard shortcuts (action: key combination).
+    #
+    # `P23-01` (NAV-M-20). The browser merges these OVER its registry
+    # (`static/js/keyboard-shortcuts.js`, `KEYBIND_DEFAULTS`), so this table
+    # decided: the sidebar key was Ctrl+B while the Shortcuts panel printed the
+    # registry's Ctrl+Alt+B (measured: Ctrl+Alt+B did nothing on a fresh
+    # install), and `star_session` / `admin_panel` were bound to no action at
+    # all (`H19` named them invented). Each value here is now the registry's.
     "keybinds": {
         "search": "ctrl+k",
-        "toggle_sidebar": "ctrl+b",
+        "toggle_sidebar": "ctrl+alt+b",
         "new_session": "ctrl+alt+n",
-        "star_session": "ctrl+alt+s",
         "delete_session": "ctrl+alt+d",
-        "admin_panel": "ctrl+shift+u",
         "cancel": "escape",
     },
 }

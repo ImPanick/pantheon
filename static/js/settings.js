@@ -39,6 +39,7 @@ import { sortModelIds } from './modelSort.js';
 import { providerLogo } from './providers.js';
 import { isAltGrEvent } from './platform.js';
 import { bindMenuDismiss } from './escMenuStack.js';
+import backStack from './backStack.js';   // `P23-01`: the Integrations door's `← Settings`
 import { invalidateSettings } from './appConfig.js';
 // H19: the Shortcuts panel reads the one registry instead of keeping a
 // second copy that disagreed with it about `toggle_sidebar`.
@@ -2744,9 +2745,12 @@ function _reportSettingsRegistryIssues(modal, issues) {
  * comes through `open`, and `open` sends it here. The module is the page's own
  * instance of `workbench.js` (`app.js` and `tasks.js` spell it the same way).
  */
-function _openIntegrationsRoom() {
+function _openIntegrationsRoom(from) {
+  // `P23-01` (C-NAV): opened from Settings, the room says `← Settings` and
+  // closing it re-raises Settings on the panel it was on.
+  if (from) backStack.noteOpener('workbench-modal', from);
   return import('./workbench/workbench.js')
-    .then((wb) => wb.openWorkbench({ room: 'integrations' }))
+    .then((wb) => wb.openWorkbench(from ? { room: 'integrations', from } : { room: 'integrations' }))
     .catch((e) => {
       console.error('The Workbench did not load:', e);
       uiModule.showError('The Workbench did not load. Reload the page and try again.');
@@ -6652,12 +6656,17 @@ function syncAdminVisibility() {
    ═══════════════════════════════════════════ */
 export function open(tab) {
   // `P22-21`. Integrations is a Workbench room now. Opened from outside
-  // Settings, only the room opens; with Settings already on screen (its own nav
-  // entry), the panel's door card is shown too, so the nav says where you are.
+  // Settings, only the room opens.
+  //
+  // `P23-01` (SET-M-23, SET-U-3, SET-U-10, WB-U-6, NAV-U-6). From Settings'
+  // own nav it opened the room on top AND switched Settings to a stub card
+  // whose one button opened the same room again — two windows for one press,
+  // and Escape landed on the stub. The nav entry is a door now: the room opens
+  // over Settings with `← Settings`, and Settings stays on the panel it was on.
   if (tab === 'integrations') {
-    _openIntegrationsRoom();
     const shown = modalEl && !modalEl.classList.contains('hidden') && modalEl.style.display !== 'none';
-    if (!shown) return;
+    _openIntegrationsRoom(shown ? 'settings-modal' : null);
+    return;
   }
   if (!initialized) initAll();
 

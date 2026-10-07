@@ -12,6 +12,7 @@ import themeModule from './theme.js';
 import spinnerModule from './spinner.js';
 import { topPortalZ } from './toolWindowZOrder.js';
 import { chevronIcon } from './icons.js';
+import backStack from './backStack.js';   // `P23-01`
 
 const API_BASE = window.location.origin;
 
@@ -1889,11 +1890,12 @@ export async function loadSessions() {
   }
 }
 
-export async function selectSession(id, { keepSidebar = false, showLoading = true, immediateLoading = false } = {}) {
-  // Exit compare mode cleanly if active
+export async function selectSession(id, { keepSidebar = false, showLoading = true, immediateLoading = false, fromHistory = false } = {}) {
+  // Exit compare mode cleanly if active. `P23-01`: Compare is taken down in
+  // place now (no reload), and lands on the chat that was picked.
   if (window.compareModule && window.compareModule.isActive()) {
-    window.compareModule.deactivate(true);
-    return; // deactivate does a page reload
+    window.compareModule.deactivate(true, { returnTo: id });
+    return;
   }
   try {
     const navToken = ++_sessionNavToken;
@@ -1924,9 +1926,17 @@ export async function selectSession(id, { keepSidebar = false, showLoading = tru
     const _isTransientChat = !!_meta && (_meta.folder === 'Assistant' || _meta.folder === 'Tasks');
     if (!_isTransientChat) {
       Storage.set('lastSessionId', id);
-      // Update URL hash without triggering hashchange handler
+      // Update URL hash without triggering hashchange handler.
+      //
+      // `P23-01` (CHAT-U-1, CHAT-M-7). This was always `replaceState`, so three
+      // chats visited left `history.length` at 2 and Back left the app. A
+      // switch from one chat to another is a new history entry now — Back is
+      // the chat before. The first chat of a load, a new chat taking its id and
+      // a switch that Back itself made (`fromHistory`) rewrite the entry.
       if (window.location.hash !== '#' + id) {
-        history.replaceState(null, '', '#' + id);
+        const fromChat = !!prevSessionId && prevSessionId !== id
+          && window.location.hash === '#' + prevSessionId;
+        backStack.chatSwitched(id, { push: fromChat && !fromHistory });
       }
     }
     // Restore character preset for persistent chats
@@ -2617,7 +2627,8 @@ window.addEventListener('hashchange', () => {
   if (/^(document|note|image|email|event|task|skill|research)-/.test(hashId) || /^open=notes&note=/.test(hashId)) return;
   if (hashId && hashId !== currentSessionId) {
     const target = sessions.find(s => s.id === hashId && !s.archived);
-    if (target) selectSession(hashId);
+    // `P23-01`: Back and Forward land here — the entry is already the one.
+    if (target) selectSession(hashId, { fromHistory: true });
   }
 });
 

@@ -165,18 +165,28 @@ def test_the_shipped_declarations_are_true_of_this_tree():
 # ── the product: three defects the count was carrying ──
 
 def test_toggle_window_looks_up_the_notes_pane_by_its_real_id():
-    """`_WINDOW_TRIGGERS`'s KEY is an element id — `_windowVisible` and the
+    """`_WINDOW_TRIGGERS`'s KEY was an element id — `_windowVisible` and the
     close branch both `getElementById` it. It said `notes-panel`, which is the
     modal-registry key `notes.js` registers under; the element is `notes-pane`.
     Toggle Window therefore never saw Notes open and fell through to "reopen
-    the last window" with Notes filling the screen."""
-    ks = (ROOT / "static" / "js" / "keyboard-shortcuts.js").read_text(errors="replace")
+    the last window" with Notes filling the screen.
+
+    `P23-01` deleted Toggle Window and its table (NAV-M-10: Ctrl+, opens
+    Settings). The split it got wrong — a window's key against the element it
+    draws — is answered in one place now, `backStack.elementIdOf`, which the
+    back stack and `modalManager.closeWindow` both ask; driven here."""
+    import json
+    import shutil
+    import subprocess
+    if not shutil.which("node"):
+        pytest.skip("node binary not on PATH")
+    back = (ROOT / "static" / "js" / "backStack.js").as_uri()
+    script = ("import(%s).then((m) => console.log(JSON.stringify("
+              "['notes-panel', 'memory-modal'].map(m.elementIdOf))))" % json.dumps(back))
+    proc = subprocess.run(["node", "--input-type=module", "-e", script], capture_output=True,
+                          text=True, timeout=60, check=True)
+    assert json.loads(proc.stdout.strip().splitlines()[-1]) == ["notes-pane", "memory-modal"]
     notes = (ROOT / "static" / "js" / "notes.js").read_text(errors="replace")
-    body = re.search(r"_WINDOW_TRIGGERS\s*=\s*\{(.*?)\}", ks, re.S)
-    assert body, "the trigger table moved"
-    keys = set(re.findall(r"'([a-z0-9-]+)':", body.group(1)))
-    assert "notes-pane" in keys
-    assert "notes-panel" not in keys
     assert "pane.id = 'notes-pane'" in notes, "the pane's own id moved"
 
 

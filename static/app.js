@@ -36,7 +36,9 @@ import notesModule from './js/notes.js';
 import adminModule from './js/admin.js?v=20261003waveg';
 import settingsModule from './js/settings.js?v=20261003waveg';
 // Eagerly bind unified minimize/restore behavior across all tool modals.
-import './js/modalManager.js?v=20261003waveg';
+import * as WindowManager from './js/modalManager.js?v=20261003waveg';
+// `P23-01`. One back stack: Back = Escape = `←`, the URL names the top window.
+import backStack from './js/backStack.js';
 // `P20-05`. The workstation screen window: loaded here for its one delegated
 // listener, which answers every `[data-open-workstation-screen]` door — a
 // workstation tool card's *View screen*, Settings → Workstation's *Open the
@@ -689,134 +691,16 @@ function initializeEventListeners() {
   
 
 
-  // Close popups one by one with Escape key (topmost first)
-  //
-  // `B945`. Every branch that closes something marks the key as used
-  // (`preventDefault`), so the stream stop bound to the same key
-  // (`keyboard-shortcuts.js`, `cancel`) knows this Escape closed a thing and
-  // does not also stop the reply.
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') {
-      // If a confirm dialog is open, let it handle the Escape
-      const confirmOverlay = document.getElementById('styled-confirm-overlay');
-      if (confirmOverlay && !confirmOverlay.classList.contains('hidden')) return;
-
-      // If editing a memory inline, cancel the edit instead of closing the modal
-      const editingMemory = document.querySelector('.memory-item-editing');
-      if (editingMemory) {
-        e.preventDefault();
-        if (window.memoryModule) window.memoryModule.renderMemoryList();
-        return;
-      }
-
-      // Priority order: topmost overlay first. Close exactly one per press
-      // so a window stacked on another (e.g. scoreboard over compare) only
-      // dismisses the top one, not both.
-
-      // Scoreboard sits on top of the compare window — close it first.
-      const scoreboardOverlay = document.getElementById('scoreboard-overlay');
-      if (scoreboardOverlay) {
-        e.preventDefault();
-        scoreboardOverlay.remove();
-        return;
-      }
-
-      if (searchChatModule && searchChatModule.isOpen()) {
-        e.preventDefault();
-        searchChatModule.closeSearch();
-        return;
-      }
-
-      // Compare model selector
-      const cmpOverlay = document.getElementById('compare-model-overlay');
-      if (cmpOverlay) {
-        e.preventDefault();
-        cmpOverlay.remove();
-        return;
-      }
-
-      // Theme popup
-      const themeModal = document.getElementById('theme-modal');
-      if (themeModal && !themeModal.classList.contains('hidden')) {
-        e.preventDefault();
-        themeModule.closePopup();
-        return;
-      }
-
-      // Calendar owns a few inner Escape layers (settings panel, event form,
-      // then the calendar modal itself). Let calendar.js handle those instead
-      // of falling through to unrelated page-level fallbacks like document
-      // panel minimize.
-      const calendarModal = document.getElementById('calendar-modal');
-      if (calendarModal && !calendarModal.classList.contains('hidden') && getComputedStyle(calendarModal).display !== 'none') {
-        return;
-      }
-
-      // Model picker popup — close before opening any modals
-      const modelPickerMenu = document.getElementById('model-picker-menu');
-      if (modelPickerMenu && modelPickerMenu.classList.contains('open')) {
-        e.preventDefault();
-        modelPickerMenu.classList.remove('open');
-        return;
-      }
-
-      // Close one modal at a time (last in DOM = topmost)
-      // Map modal id → sidebar list-item id to clear active state
-      const modalItemMap = {
-        'cookbook-modal': null,
-        'rename-session-modal': null,
-        'rename-ai-modal': null,
-        'custom-preset-modal': null,
-        // `P9-06`. Before the Brain: it opens from the Brain, so it is above it.
-        'skills-modal': null,
-        'memory-modal': null,
-      };
-
-      // Dynamic modals (removed from DOM on close)
-      const dynamicModals = ['library-modal', 'archive-modal', 'doclib-modal', 'gallery-modal', 'tasks-modal', 'email-lib-modal'];
-      for (const id of dynamicModals) {
-        const m = document.getElementById(id);
-        if (id === 'gallery-modal') {
-          const editor = document.getElementById('gallery-editor-container');
-          const editing = !!window.__galleryEditLive || !!(
-            editor &&
-            getComputedStyle(editor).display !== 'none' &&
-            editor.querySelector('.gallery-editor')
-          );
-          if (editing) {
-            e.preventDefault();
-            e.stopImmediatePropagation();
-            return;
-          }
-        }
-        if (m) { e.preventDefault(); dismissModal(m); return; }
-      }
-
-      for (const modalId of Object.keys(modalItemMap)) {
-        const modal = el(modalId);
-        if (modal && !modal.classList.contains('hidden')) {
-          e.preventDefault();
-          dismissModal(modal);
-          return;
-        }
-      }
-
-      // No modals/popups open — minimize the document panel if open.
-      // Esc should tab the doc down to a dock chip (same as the chevron),
-      // NOT fully close it — closePanel('down') registers the chip +
-      // Modals.minimize so the doc is preserved and restorable.
-      if (documentModule && documentModule.isPanelOpen()) {
-        // If there's a text selection in the document editor, let Escape clear that first
-        const docTextarea = document.getElementById('doc-editor-textarea');
-        if (docTextarea && docTextarea.selectionStart !== docTextarea.selectionEnd) {
-          return;
-        }
-        e.preventDefault();
-        documentModule.closePanel('down');
-        return;
-      }
-    }
-  });
+  // `P23-01`. A second Escape arbiter lived here: a bubble-phase listener that
+  // closed a fixed list of windows in a fixed order — Tasks before the Brain on
+  // top of it — with no text-field guard, so Escape typed in a Tasks field
+  // removed the window and the draft with it (NAV-M-2, NAV-M-3, NAV-M-6). Its
+  // rules moved, once each, into the one arbiter in `ui.js`: the memory inline
+  // edit and the Compare scoreboard (`peelInnerLayer`), the palette and the
+  // confirm dialog (they answer their own Escape), the model picker, the
+  // Gallery editor, and the document pane to its chip. Calendar's own layers
+  // are on the Escape stack. Escape on the Compare picker closes it through its
+  // own ×, which now returns to the chat (NAV-M-5).
 
   // ── Shared modal dismiss helper ──
   const _modalSidebarMap = {
@@ -1018,7 +902,8 @@ function initializeEventListeners() {
   }
 
   // ── Close compare if active (used by all tool/sidebar activations) ──
-  // Returns true if compare was active (page will reload), caller should return early
+  // Returns true if compare was active, and the caller returns early: Compare
+  // goes back to the chat it was opened from (`P23-01`; it reloaded the page).
   function _closeCompareIfActive() {
     if (compareModule && compareModule.isActive()) {
       compareModule.deactivate(true);
@@ -1028,30 +913,55 @@ function initializeEventListeners() {
   }
 
   // ── Tools section click handlers ──
+  // `P23-01` (NAV-M-5, NAV-U-9, CHAT-U-2, CHAT-M-12). Compare emptied the chat
+  // you were in BEFORE its picker opened — `_startFreshChat()` ran first — so
+  // cancelling the picker left an empty new chat, and leaving Compare reloaded
+  // the page onto `/`. The picker now opens over the chat; the fresh chat is
+  // made only when a comparison starts (`beforeBuild`), and leaving it returns
+  // to the chat you came from (`compare/index.js`, `returnTo`).
   const toolCompareBtn = el('tool-compare-btn');
   if (toolCompareBtn) {
     toolCompareBtn.addEventListener('click', () => {
       if (compareModule) {
         if (compareModule.isActive()) {
-          // Already active — toggle off
-          compareModule.toggleMode();
+          // A door raises, never closes (NAV-M-7): Compare is left from its
+          // own header's ×, which returns to the chat.
           return;
         }
-        // Close other exclusive tools before opening compare
-        const resChk = el('research-toggle');
-        if (resChk && resChk.checked) {
-          _syncResearchIndicator(false);
+        if (WindowManager.windowState('compare-model-overlay') !== 'closed') {
+          WindowManager.showWindow('compare-model-overlay');
+          return;
         }
-        _startFreshChat();
-        compareModule.toggleMode();
+        const returnTo = sessionModule && sessionModule.getCurrentSessionId
+          ? sessionModule.getCurrentSessionId() : null;
+        compareModule.toggleMode({
+          returnTo,
+          beforeBuild: () => {
+            // Close other exclusive tools before the comparison takes the chat.
+            const resChk = el('research-toggle');
+            if (resChk && resChk.checked) _syncResearchIndicator(false);
+            _startFreshChat();
+          },
+        });
       }
     });
   }
 
+  // `P23-01` (NAV-M-7). A door's second press closed Calendar, Gallery, Notes,
+  // Tasks, the Workbench and Research and did nothing to the rest. Every door
+  // now raises: closed → opens, minimized → restores (the capture-phase click in
+  // `modalManager.js`), open → comes to the top. × closes; `_` minimizes.
+  const _raiseIfOpen = (id) => {
+    if (WindowManager.windowState(id) === 'closed') return false;
+    WindowManager.showWindow(id);
+    return true;
+  };
+
   const toolResearchBtn = el('tool-research-btn');
   if (toolResearchBtn) {
     toolResearchBtn.addEventListener('click', () => {
-      researchPanelModule.toggle();
+      if (researchPanelModule.isOpen() && _raiseIfOpen('research-overlay')) return;
+      researchPanelModule.openPanel();
     });
   }
 
@@ -1062,10 +972,10 @@ function initializeEventListeners() {
       if (!cookbookModule) return;
       // Try minimized→restore or open→minimize via the manager first
       const Modals = await import('./js/modalManager.js?v=20261003waveg');
-      if (!Modals.toggle('cookbook-modal')) {
-        // Not registered yet → fresh open
-        cookbookModule.open();
-      }
+      if (Modals.toggle('cookbook-modal')) return;
+      if (_raiseIfOpen('cookbook-modal')) return;
+      // Not registered yet → fresh open
+      cookbookModule.open();
     });
   }
 
@@ -1075,11 +985,8 @@ function initializeEventListeners() {
     toolDoclibBtn.addEventListener('click', () => {
       if (_closeCompareIfActive()) return;
       if (documentModule) {
-        if (documentModule.isLibraryOpen()) {
-          documentModule.closeLibrary();
-        } else {
-          documentModule.openLibrary();
-        }
+        if (documentModule.isLibraryOpen() && _raiseIfOpen('doclib-modal')) return;
+        documentModule.openLibrary();
       }
     });
   }
@@ -1090,10 +997,9 @@ function initializeEventListeners() {
     toolGalleryBtn.addEventListener('click', async () => {
       if (!galleryModule) return;
       const Modals = await import('./js/modalManager.js?v=20261003waveg');
-      if (!Modals.toggle('gallery-modal')) {
-        if (galleryModule.isGalleryOpen()) galleryModule.closeGallery();
-        else galleryModule.openGallery();
-      }
+      if (Modals.toggle('gallery-modal')) return;
+      if (galleryModule.isGalleryOpen() && _raiseIfOpen('gallery-modal')) return;
+      galleryModule.openGallery();
     });
   }
 
@@ -1108,7 +1014,8 @@ function initializeEventListeners() {
   });
     toolTasksBtn.addEventListener('click', () => {
       if (tasksModule) {
-        tasksModule.isTasksOpen() ? tasksModule.closeTasks() : tasksModule.openTasks();
+        if (tasksModule.isTasksOpen() && _raiseIfOpen('tasks-modal')) return;
+        tasksModule.openTasks();
       }
     });
   }
@@ -1128,8 +1035,8 @@ function initializeEventListeners() {
       if (Modals.toggle('workbench-modal')) return;
       try {
         const wb = await import('./js/workbench/workbench.js');
-        if (wb.isWorkbenchOpen()) wb.closeWorkbench();
-        else wb.openWorkbench({ describeTrigger: tasksModule && tasksModule.scheduleLabel });
+        if (wb.isWorkbenchOpen() && _raiseIfOpen('workbench-modal')) return;
+        wb.openWorkbench({ describeTrigger: tasksModule && tasksModule.scheduleLabel });
       } catch (err) {
         console.error('The Workbench did not load:', err);
         uiModule.showError('The Workbench did not load. Reload the page and try again.');
@@ -1145,10 +1052,9 @@ function initializeEventListeners() {
       const Modals = await import('./js/modalManager.js?v=20261003waveg');
       // toggle returns true when a registered modal was minimized/restored;
       // returns false when nothing is registered → open fresh.
-      if (!Modals.toggle('calendar-modal')) {
-        if (calendarModule.isCalendarOpen()) calendarModule.closeCalendar();
-        else calendarModule.openCalendar();
-      }
+      if (Modals.toggle('calendar-modal')) return;
+      if (calendarModule.isCalendarOpen() && _raiseIfOpen('calendar-modal')) return;
+      calendarModule.openCalendar();
     });
   }
 
@@ -1156,9 +1062,8 @@ function initializeEventListeners() {
   const toolNotesBtn = el('tool-notes-btn');
   if (toolNotesBtn) {
     toolNotesBtn.addEventListener('click', () => {
-      if (notesModule) {
-        notesModule.togglePanel();
-      }
+      // `openPanel` brings an open Notes to the front.
+      if (notesModule) notesModule.openPanel();
     });
   }
   // Refresh notes due-reminder badge on load and every 5 minutes
@@ -1291,7 +1196,65 @@ function initializeEventListeners() {
     '/tasks':    () => document.getElementById('tool-tasks-btn')?.click(),
     '/library':  () => sessionModule && sessionModule.openLibrary && sessionModule.openLibrary(),
   };
-  const _opener = _routeOpen[urlPath];
+
+  // `P23-01` (NAV-M-1, NAV-M-8, NAV-M-9). Every window has a URL now and the
+  // URL follows what is on screen (`backStack.js`): `/brain`, `/skills`,
+  // `/settings/<panel>`, `/workbench/<room>`, `/research`, `/theme`,
+  // `/compare`, beside the eight above. `/settings` and the other five answered
+  // a raw `{"detail":"Not Found"}` (`app.py` serves them all now), and nothing
+  // ever wrote a window's URL back, so a reload forgot what was open.
+  //
+  // Two ways in, kept apart on purpose. A link typed or followed (no history
+  // state of ours) runs the deep-link opener above for the path, as before —
+  // `/email` and `/notes` still open full-screen. A reload, or Back into a page
+  // an earlier load pushed, reopens what the entry names the way a door would,
+  // each on its tab and with its `← <opener>` (`_openWindow`).
+  let _wbModule = null;
+  const _loadWorkbench = () => import('./js/workbench/workbench.js').then((m) => { _wbModule = m; return m; });
+  const _openWindow = {
+    'memory-modal':   () => document.getElementById('tool-memory-btn')?.click(),
+    'skills-modal':   (tab) => import('./js/skills.js').then((m) => m.openSkillsWindow(tab || 'browse')),
+    'workbench-modal': (tab) => _loadWorkbench().then((wb) => wb.openWorkbench({
+      room: tab || undefined, describeTrigger: tasksModule && tasksModule.scheduleLabel })),
+    'settings-modal': (tab) => settingsModule && settingsModule.open(tab || undefined),
+    'cookbook-modal': () => document.getElementById('tool-cookbook-btn')?.click(),
+    'calendar-modal': () => calendarModule && calendarModule.openCalendar(),
+    'gallery-modal':  () => document.getElementById('tool-gallery-btn')?.click(),
+    'tasks-modal':    () => document.getElementById('tool-tasks-btn')?.click(),
+    'doclib-modal':   () => sessionModule && sessionModule.openLibrary && sessionModule.openLibrary(),
+    'notes-panel':    () => notesModule && notesModule.openPanel(),
+    'email-lib-modal': () => document.querySelector('#email-section .section-header-flex')?.click(),
+    'research-overlay': () => researchPanelModule.openPanel(),
+    'theme-modal':    () => document.getElementById('tool-theme-btn')?.click(),
+    'compare-model-overlay': () => document.getElementById('tool-compare-btn')?.click(),
+    'custom-preset-modal': () => presetsModule && presetsModule.openCustomPresetModal
+      && presetsModule.openCustomPresetModal(),
+  };
+  backStack.setOpeners(_openWindow);
+  // The tabs a URL names for the two windows whose modules another lane owns:
+  // Settings' panel and the Workbench's room, read off their own nav.
+  WindowManager.setTabHooks('settings-modal', {
+    getTab: () => document.querySelector('#settings-modal [data-settings-tab].active')?.dataset?.settingsTab || null,
+    setTab: (tab) => { if (tab && tab !== 'integrations' && settingsModule) settingsModule.open(tab); },
+  });
+  WindowManager.setTabHooks('workbench-modal', {
+    getTab: () => document.querySelector('#workbench-rooms [data-room][aria-selected="true"]')?.dataset?.room || null,
+    setTab: (room) => { if (room) document.querySelector(`#workbench-rooms [data-room="${CSS.escape(room)}"]`)?.click(); },
+  });
+  backStack.init();
+
+  const _linked = backStack.windowForPath(urlPath);
+  const _deepLink = _routeOpen[urlPath]
+    || (_linked && _routeOpen['/' + backStack.ROUTES[_linked.id]] && !_linked.tab
+      ? _routeOpen['/' + backStack.ROUTES[_linked.id]] : null)
+    || (_linked ? () => backStack.openWindows([_linked]) : null);
+  const _opener = () => {
+    try {
+      if (!backStack.restoreFromHistory() && _deepLink) _deepLink();
+    } finally {
+      backStack.ready();
+    }
+  };
   // Defer the opener — at this point in init, the modules whose handlers we
   // trigger (#rail-new-session click handler, the email-section header click
   // handler in emailInbox, sessionModule) are still being wired up further
@@ -1299,6 +1262,8 @@ function initializeEventListeners() {
   // as wiring completes, or — for the routes that read the session list —
   // once /api/sessions has settled.
   deferRouteOpener(urlPath, _opener);
+  // A load whose session list never settles still gets its back stack.
+  setTimeout(() => backStack.ready(), 8000);
 
   // Archive browser tool button
   const toolLibraryBtn = el('tool-library-btn');
@@ -1344,6 +1309,7 @@ function initializeEventListeners() {
   const toolThemeBtn = el('tool-theme-btn');
   if (toolThemeBtn) {
     toolThemeBtn.addEventListener('click', () => {
+      if (_raiseIfOpen('theme-modal')) return;   // `P23-01`: a door raises
       const tm = document.getElementById('theme-modal');
       if (tm) tm.classList.remove('hidden');
     });

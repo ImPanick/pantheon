@@ -289,7 +289,9 @@ def _settings_case(tmp_path, shown: bool) -> dict:
     case = """
 import { installDom } from './dom.js';
 const document = installDom();
-const seen = { inits: 0, activated: [], shownSettings: 0 };
+const seen = { inits: 0, activated: [], shownSettings: 0, noted: [] };
+// `P23-01`: the door records Settings as the room's opener (`← Settings`).
+const backStack = { noteOpener: (id, from) => { seen.noted.push([id, from]); } };
 let initialized = false;
 let modalEl = document.body.appendChild(document.createElement('div'));
 modalEl.setAttribute('id', 'settings-modal');
@@ -320,12 +322,19 @@ def test_open_integrations_opens_the_room_and_not_settings(tmp_path):
     o = _settings_case(tmp_path, shown=False)
     assert o["opened"] == [{"room": "integrations"}]
     assert o["shownSettings"] == 0 and o["inits"] == 0 and o["activated"] == []
+    assert o["noted"] == [], "opened from outside Settings, the room has no `← Settings`"
 
 
-def test_the_settings_nav_entry_opens_the_room_and_shows_its_door(tmp_path):
+def test_the_settings_nav_entry_opens_the_room_over_settings_with_a_way_back(tmp_path):
+    """`P23-01` (SET-M-23, SET-U-3, WB-U-6, NAV-U-6) changed this case. It
+    pinned the nav entry opening the room AND switching Settings to a stub card
+    whose one button opened the same room again — measured as two windows for
+    one press, with Escape landing on the stub. Now the room opens over
+    Settings with `← Settings`, and Settings stays on the panel it was on."""
     o = _settings_case(tmp_path, shown=True)
-    assert o["opened"] == [{"room": "integrations"}]
-    assert o["activated"] == ["integrations"], "the nav did not say where the person is"
+    assert o["opened"] == [{"room": "integrations", "from": "settings-modal"}]
+    assert o["noted"] == [["workbench-modal", "settings-modal"]]
+    assert o["activated"] == [] and o["shownSettings"] == 0, "Settings was switched to the stub"
 
 
 # ── the markup ──────────────────────────────────────────────────────────────

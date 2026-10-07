@@ -214,6 +214,11 @@ function makeExtra(extra) {
   return new Function(...ks, `
     let _viewingRuns = null;
     let _open = false;
+    // \`P23-01\`: the run history is a layer on the Escape stack while it is
+    // up. The stack itself is not what these modes drive.
+    let _runsLayer = null;
+    const _releaseLayers = () => {};
+    const registerMenuDismiss = () => () => {};
     let _completedLimit = 40;
     let _completedHasMore = false;
     ${runStatusModule}

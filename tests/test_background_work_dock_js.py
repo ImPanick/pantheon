@@ -175,7 +175,9 @@ export function readDock() {
     working: chip.classList.contains('chip-working'),
     state: (chip.querySelector('.minimized-dock-work') || {}).textContent || null,
     stateHtml: (chip.querySelector('.minimized-dock-work') || {})._html || '',
-    hasClose: String(chip._writtenHtml || '').includes('minimized-dock-x'),
+    // `P23-01` (NAV-M-12): the × is a real `<button>` child of the chip now,
+    // not markup inside the chip's own `innerHTML`.
+    hasClose: !!chip.querySelector('.minimized-dock-x'),
   }));
 }
 """

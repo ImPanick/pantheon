@@ -662,3 +662,32 @@ def test_a_run_that_worked_after_a_handled_failure_is_not_opened_as_a_failure(bo
     assert o["marks"] == ["error", "ok"], "the step that failed still reads failed"
     assert o["panel"] is False, "a run that worked is not opened as a failure"
     assert o["said"] == "This run worked. Open a step to read what it was handed and what it made."
+
+
+def test_leaving_the_page_with_unsaved_changes_asks_through_the_browser(box):
+    """`P23-01` (WB-M-1). Measured on `9560d50`: an edited workflow, *Unsaved
+    changes* on its toolbar, then a reload — no question, and the stored
+    document kept the old prompt; Back past the app lost it the same way. The
+    room's own doors asked (`B1052`); the page did not. It asks now while
+    anything is unsaved, says nothing when nothing is, and the listener goes
+    with the room."""
+    o = _case(box, """
+        const ls = [];
+        globalThis.addEventListener = (t, fn) => { if (t === 'beforeunload') ls.push(fn); };
+        globalThis.removeEventListener = (t, fn) => { const i = ls.indexOf(fn); if (i >= 0) ls.splice(i, 1); };
+        const unload = () => {
+          const e = { returnValue: undefined, prevented: false, preventDefault() { this.prevented = true; } };
+          ls.forEach((f) => f(e));
+          return { prevented: e.prevented, asks: e.returnValue !== undefined };
+        };
+        const { root, h } = await room();
+        await openW(root);
+        const clean = unload();
+        typed(by(root, 'wf-name'), 'Changed');
+        const dirty = unload();
+        h.destroy();
+        out({ listening: true, clean, dirty, left: ls.length });
+    """)
+    assert o["clean"] == {"prevented": False, "asks": False}
+    assert o["dirty"] == {"prevented": True, "asks": True}
+    assert o["left"] == 0
