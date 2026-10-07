@@ -27,6 +27,7 @@ from pathlib import Path
 
 import pytest
 
+from tests.helpers.esc_stub import esc_source
 from tests.helpers.js_source import js_function
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -296,14 +297,14 @@ def test_open_by_name_refuses_a_hidden_tool_in_the_chat(tmp_path):
     assistant message on every try. Nothing is said in the chat now."""
     src = SLASH_JS.read_text(encoding="utf-8")
     body = js_function(src, "async function _cmdOpen")
-    out = _node(tmp_path, """
+    out = _node(tmp_path, esc_source("_shippedEsc") + """
         window.pantheonToolDoor = V.toolDoor;
         const replies = [];
         const slashReply = (t) => replies.push(t);
         const cookbookModule = null, settingsModule = null;
         globalThis.document = document;
         async function _cmdOpen(args, ctx) %s
-        const ctx = { esc: (t) => String(t) };
+        const ctx = { esc: _shippedEsc };
         V.applyToolVisibility({ privileges: { can_generate_images: false }, auth: true }, document);
         await _cmdOpen(['gallery'], ctx);
         await _cmdOpen(['documents'], ctx);

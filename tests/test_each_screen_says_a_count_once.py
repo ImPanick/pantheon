@@ -66,22 +66,20 @@ const mk = (tag) => ({
 
 def test_the_skills_section_head_leaves_the_count_to_the_library_column(tmp_path):
     out = _node(tmp_path, _ELEMENT + """
-        // `skills.js`' `esc` hands off to `uiModule.esc`: the shipped one.
+        // `skills.js`' `esc` hands off to `uiModule.esc`: the shipped escaper,
+        // under that name (`tests/helpers/esc_stub.py`).
         %s
-        const uiModule = { esc: _shippedEsc };
         const document = { createElement: mk };
         const chevronIcon = () => '<svg></svg>';
         const _collapsedSections = new Set(['builtin']);
         const _saveCollapsedSections = () => {};
         const _applySectionCollapse = () => {};
-        function esc(s) %s
         function _skillsSectionHeader(container, sectionId, title, count) %s
         console.log(JSON.stringify({
           user: _skillsSectionHeader({}, 'user', 'Skills', null).innerHTML,
           builtin: _skillsSectionHeader({}, 'builtin', 'Built-in capabilities', 60).innerHTML,
         }));
-    """ % (esc_source("_shippedEsc"), _body("skills.js", "function esc("),
-           _body("skills.js", "function _skillsSectionHeader(")))
+    """ % (esc_source("esc"), _body("skills.js", "function _skillsSectionHeader(")))
     assert "skills-section-count" not in out["user"], out["user"]
     assert "<span>Skills</span>" in out["user"]
     # Nothing else counts the built-in capabilities, and that section ships folded.

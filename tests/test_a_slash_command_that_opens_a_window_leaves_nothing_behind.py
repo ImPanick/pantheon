@@ -46,6 +46,7 @@ from pathlib import Path
 
 import pytest
 
+from tests.helpers.esc_stub import esc_source
 from tests.helpers.js_source import js_definition
 from tests.helpers.source_text import blank_text
 from test_tool_effect_surfaces_js import _make_sandbox, _run
@@ -164,7 +165,8 @@ _DISPATCH = """
     const _persistMsg = (role, content) => { out.persisted.push({ role, content }); };
     const _addMessage = (role, content) => out.added.push({ role, content });
     const slashReply = (text) => { out.replies.push(text); _persistMsg('assistant', text, { source: 'slash' }); };
-    const _makeCtx = () => ({ esc: (s) => s });
+    __ESC__
+    const _makeCtx = () => ({ esc: _shippedEsc });
     const _fuzzyMatch = () => [];
     const _invokeSkillByName = async () => true;
     const _loadSkillSlashCatalog = async () => [];
@@ -186,6 +188,7 @@ _DISPATCH = """
 def _dispatch(tmp_path, rows, body, extra="") -> dict:
     script = (_DISPATCH
               .replace("__UI_VIS__", json.dumps(UI_VIS.as_uri()))
+              .replace("__ESC__", esc_source("_shippedEsc"))
               .replace("__ROWS__", ",\n".join(rows))
               .replace("__DISPATCHER__", _dispatcher())
               .replace("__EXTRA__", extra)
