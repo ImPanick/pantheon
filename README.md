@@ -248,22 +248,23 @@ proved it dead.
 
 ## Status
 
-**1246 tracked tasks, 889 done.** The tracker is [`.pantheon/ROADMAP.md`](.pantheon/ROADMAP.md) and
+**1275 tracked tasks, 918 done.** The tracker is [`.pantheon/ROADMAP.md`](.pantheon/ROADMAP.md) and
 it is the only place work is tracked — one list, one progress area, validated by a script that
 recounts every phase row against its own ticks. It exists because the summary line was once wrong
 by nineteen and carried forward unread from entry to entry, because each author copied the line
 above.
 
 **Read that number with the trend beside it.** Over the last ten waves, *done* went
-**71.6% → 71.3%** and *open* went **312 → 357**: 149 rows filed against 104 closed, a
-file-to-close ratio of **1.433** — the last three waves filed sixty-three rows and closed none: `P23`, the audits'
-fixes; two rows that came in from `main`; and fifty-two filed while `P23` was built — fifty that its eight lanes
-found and two the merged tree's tests turned up (`B1235`, `B1236`) — all before its own rows are driven on the
-merged tree and ticked. The open count falls only when closing outruns filing, and in
+**72.2% → 72.0%** and *open* went **310 → 357**: 159 rows filed against 112 closed, a
+file-to-close ratio of **1.420**. Most of it is `P23`, the audits' fixes: filed as nine rows, built by eight lanes
+that filed fifty more, driven by the owner's walk twice on the merged tree — the first drive found twelve defects,
+the second round fixed them — and closed on 2026-10-07 with twenty-nine rows ticked, while the second round, the
+Forge's admin switch and the closing pass filed twenty-nine, twelve of them already done. So the wave that finished
+the phase left the open count where it found it. The open count falls only when closing outruns filing, and in
 most waves it does not — most rows are defects found by sweeps over code that was already here,
-not new work invented — so this reading is a good stretch, not a promise. What matters more is a different number: of the last 40 backlog rows filed (`B1197`–`B1236`), **none** is
+not new work invented — so this reading is a good stretch, not a promise. What matters more is a different number: of the last 40 backlog rows filed (`B1226`–`B1265`), **none** is
 on the ship line's open list — the short list of rows that stop a stranger relying on this
-repository now that it is public (measured 2026-10-02, and read again on 2026-10-07 for the fifty rows `P23`'s lanes filed): `B1179`, found at wave G's merge, was met
+repository now that it is public (measured 2026-10-02, and read again on 2026-10-07 for every row `P23` filed): `B1179`, found at wave G's merge, was met
 the same day, and every gate the list named is met. The series, the classification and
 what counts as blocking are in
 [`.pantheon/SHIP-LINE.md`](.pantheon/SHIP-LINE.md). Every figure in this paragraph is

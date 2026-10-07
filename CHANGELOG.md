@@ -75,9 +75,10 @@ scheme that stops it drifting again.
 **`0.1.0` was never tagged.** This section said, on 2026-09-17, that its tag would
 be cut on the merge; it was not, and `P20`–`P22` landed under its heading's date.
 So the release that carries them is `0.2.0` (`D-2026-10-02-04` §1), and `[0.1.0]`
-stays below as the record of the day the version line was set. **`0.2.0` is not
-tagged yet either**: cutting the tag is the owner's act, on the commit that is
-released, and it waits for the owner's word.
+stays below as the record of the day the version line was set. **`0.2.0` is cut
+on the owner's word**, `D-2026-10-07-01` §1 (*"Version up. Merge and close."*):
+the annotated tag `v0.2.0` goes on the commit that is released — the owner's act,
+and the one step above that no test can do.
 
 ---
 
@@ -103,10 +104,11 @@ _Nothing yet. Entries land here and move down when a version is cut._
 ## [0.2.0] — 2026-10-02
 
 **The first release.** `0.1.0` below set the version line on 2026-09-17 and was
-never tagged; the workstation (`P20`), documents in folders (`P21`) and the
-Workbench (`P22`) landed after it, so this is the next minor (`D-2026-10-02-04`
-§1). Dated the day `APP_VERSION` moved to `0.2.0`; the tag `v0.2.0` waits for
-the owner's word. **The account to read is the
+never tagged; the workstation (`P20`), documents in folders (`P21`), the
+Workbench (`P22`) and the audits' fixes (`P23`) landed after it, so this is the
+next minor (`D-2026-10-02-04` §1). Dated the day `APP_VERSION` moved to `0.2.0`;
+the tag `v0.2.0` is cut on the owner's word, `D-2026-10-07-01` §1, on the commit
+that is released. **The account to read is the
 [release notes](docs/release-notes/0.2.0.md)** — the Odysseus credit, every rename,
 each phase, the gates still open and the upgrade steps, checked against the tree
 by `tests/test_the_release_notes_name_every_rename.py`. This section lists what an
@@ -119,6 +121,10 @@ operator should know at a glance.
   commands, paths, services and volumes, stored values, headers, user agents and
   browser keys — is in the release notes' *Breaking renames*, each derived from
   the list that owns the name and checked against the fork point `b4d1293`.
+- **The names a person reads** (`P23-05`, `P0-29`): *Brain* (not Memory), *chat*
+  (not session or conversation), *MCP & Integrations* and *Forge* (not Cookbook)
+  on every label. Routes, stored keys, ids and classes keep their names
+  (`D-2026-09-18-04`), so there is nothing here to follow.
 
 #### Added
 - **The AGPL-3.0 §13 source offer, on by default** (`P0-17`, `D-2026-10-02-04`
@@ -132,6 +138,12 @@ operator should know at a glance.
   Workbench** (`P22`) — see the release notes, *What is new, phase by phase*.
 - **"When mail arrives" runs with nobody looking at the inbox** (`B1137`): a
   background check every `email_inbox_check_minutes` (default 5; 0 turns it off).
+- **One back stack and one table for the Tools** (`P23-01`, `P23-03`): Back,
+  Escape and `←` close the same thing, every window has a URL and a reload
+  reopens it; a tool switched off — for everyone, one person or one browser — is
+  off at every door. The rest of `P23` is in the release notes, *What is new*.
+- **Settings → Forge** (`B1229`): the *Hugging Face and Ollama* switch, and a
+  door to where each setting for serving a model already lives.
 
 #### Changed — read this before upgrading
 - **If you run a modified copy of Pantheon for other people, point the source
@@ -150,6 +162,15 @@ operator should know at a glance.
   ollama.com's library by itself. An install that did that before starts off
   too: the catalog it already fetched is still listed, and a model download
   says where the switch is instead of reaching out.
+- **SQLite keeps a write-ahead log by default** (`P23-07`): `app.db-wal` and
+  `app.db-shm` sit beside `app.db` while Pantheon runs, and `pantheon-backup`
+  copies the database through SQLite's own backup rather than the files. A write
+  that meets a held lock is answered `503` with a sentence in under a second.
+- **The service worker controls the app at `/`** (`P23-07`), not only
+  `/static/`: an offline reload draws the app. A browser holding the old
+  registration drops it by itself.
+- **The sidebar lists your own chats**, a page at a time with *Show older chats*
+  (`P23-07`) — it listed the newest hundred of everyone's.
 - **SQLite's write-ahead log falls back where it cannot work** (`B1231`). On a
   data directory that cannot hold one — `./data` bind-mounted from the host by
   Docker Desktop on Windows or macOS can be one — Pantheon puts the database
@@ -164,6 +185,12 @@ operator should know at a glance.
   workflow run the foreground pauses reads *waiting*, never *aborted* first
   (`B1138`); an Integration added through a step's door is offered on that step
   at once (`B1136`).
+- **The chat tells the truth** (`P23-04`): Escape stops the reply on the server
+  too, a denied tool call is drawn denied after a reload as well, and one agent
+  turn reads as one reply (`B1247`).
+- **The Library and Mail** (`P23-08`): Reply, Compose and Create leave no empty
+  chat or *Untitled* behind; the scheduled Tidy never proposes an unsent draft; a
+  failed send names the server it could not reach.
 
 ---
 

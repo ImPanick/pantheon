@@ -104,6 +104,14 @@ would make each one.
 
 **Direction as of 2026-10-07: the open count is rising.**
 
+Re-measured at `P23`'s close the same day: 159 filed, 110 closed — **a ratio of 1.445**, open 310 → 359, done
+72.2 % → 71.8 %. The closing wave ticked twenty-seven rows — `P23`'s nine, `P0-29`, `B480`, four of its own filings
+(`B1229`, `B1231`, `B1234`, `B1236`) and the twelve defects its acceptance found and its second round fixed — and
+filed seventeen, so the open count still rose by two, and *done %* is still below the window's first wave
+(`B1235` stays open). None of the seventeen is a gate: `B1259` and `B1264` are in § 7 with what would make each one.
+
+**Direction as of 2026-10-07, at `P23`'s close: the open count is rising.**
+
 ### A second number, which is the one that moves
 
 Of the last 40 `B` rows filed — `B360` through `B455`, four waves of sweeps plus
@@ -584,8 +592,10 @@ weakest one in this document: it means nobody adjudicated them individually.
 | `B1195` | tracked | decision | the person's Gallery switch hides the window while the routes that list a person's own gallery do not ask for `can_generate_images`; making or editing an image does (`require_privilege`), so the capability the switch names holds — whether it should also hide a person's own pictures is the owner's call |
 | `B1198` | tracked | tidy | two buttons on a user row that belong behind ⋯; the rule flagged it on *Privileges*, the name of the button beside them |
 | `B1207` | tracked | owner | the §13 link's tooltip and accessible name say different things; the link and what it offers are right (`P0-17`, `B1165`), and the tooltip is the owner's own words |
-| `B1229` | tracked | decision | opening the Forge refreshes the model catalog from huggingface.co with nothing switched on — `Law 16` clause 3 asks whether that is a call a person asked for, which is the owner's ruling; ruled *not asked for*, the 0.2.0 notes' sentence that a fresh install reaches nothing on the public internet does not hold for the Forge, and this becomes a claim gate |
-| `B1231` | tracked | owner | SQLite's write-ahead log is on by default since `P23-07`, unmeasured on a Docker Desktop host file share, where SQLite's documentation warns against it; no install has been seen to fail and `PANTHEON_SQLITE_JOURNAL_MODE=delete` is the way back — the owner's own Windows install is the measurement before 0.2.0, and a failure there makes it a first-ten gate |
+| `B1229` | tracked | decision | opening the Forge refreshed the model catalog from huggingface.co — and ollama.com — with nothing switched on; **closed 2026-10-07** on the owner's ruling (`D-2026-10-07-01` §2): one admin switch, off by default, asked at every request, so the 0.2.0 notes' *nothing reaches the public internet* holds — the one way round it, a serve of a model not on disk, is `B1259` and the notes say so |
+| `B1231` | tracked | owner | SQLite's write-ahead log by default, on a share that may not hold it; **closed 2026-10-07** (fx3-forge): forced on Linux, the database is put back on the rollback journal at start and keeps working — the owner's Windows install is still the one place to see it for real, and safe either way |
+| `B1259` | tracked | decision | a *serve* of a model not on disk lets the engine fetch it from Hugging Face or Ollama with the Forge's switch off — a person's act on a model they named; whether the switch also stops the engine's own fetch is the owner's `Law 16` call, and the 0.2.0 notes name it as the one way round the switch, so no published sentence is false |
+| `B1264` | tracked | claim | `SECURITY.md` says no release is tagged — true on this tree, false on the commit `v0.2.0` goes on; `B452`'s class, so the release commit carries the change, and `tests/test_security_documents_are_true.py` goes red the day the tag exists if it does not; a gate the moment the tag is pushed without it |
 
 ---
 
@@ -622,7 +632,7 @@ matters here:
   same string. Tag, heading and `APP_VERSION` agree or the tests fail. **`0.1.0`
   was never tagged** — this said, on 2026-09-17, that the tag would be cut on the
   merge, and it was not — so the release that carries `P20`–`P22` is **`0.2.0`**
-  (`D-2026-10-02-04` §1), and its tag waits for the owner's word. Each version's
+  (`D-2026-10-02-04` §1), and its tag `v0.2.0` is cut on the owner's word, `D-2026-10-07-01` §1. Each version's
   release notes are `docs/release-notes/x.y.z.md` (`P10-12`).
 - **Two things it does not answer, both filed rather than half-done.** `B453` —
   the version says which release line, not which commit, and everyone on `main`
