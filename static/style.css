@@ -48079,9 +48079,10 @@ button.task-card-toggle {
 }
 
 /* DOCS-U-15: the month's weeks share the grid's height, so all five (or six) show — four did, the last behind an
-   inner scroll with nothing to say so (`.cal-grid` 496 / 322 px at 1440×900). */
-#cal-body > .cal-grid:has(> .cal-week-row) { overflow-y: hidden; }
-#cal-body > .cal-grid > .cal-week-row { flex: 1 1 0; min-height: 0; }
+   inner scroll with nothing to say so (`.cal-grid` 496 / 322 px at 1440×900). A day was 78 px tall whatever it held;
+   now a week is as tall as its busiest day needs (never less: a row's `min-height` stays its content, so no event
+   or "+1 more" is cut) and the weeks share what is left. Only a month busier than the grid still scrolls. */
+#cal-body > .cal-grid > .cal-week-row { flex: 1 1 auto; }
 #cal-body > .cal-grid > .cal-week-row > .cal-day { min-height: 0; }
 
 /* DOCS-U-14: the image editor's tool column scrolls when the window is shorter than its tools — at 900 px it was

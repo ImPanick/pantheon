@@ -587,7 +587,9 @@ _DOCS = """
   <div class="modal-header"><h4>Calendar</h4></div>
   <div class="modal-body" id="cal-body"><div class="cal-grid" id="grid"><div class="cal-week-headers"><div class="cal-weekday">M</div></div>
     <div class="cal-week-row"><div class="cal-day">1</div></div><div class="cal-week-row"><div class="cal-day">8</div></div>
-    <div class="cal-week-row"><div class="cal-day">15</div></div><div class="cal-week-row"><div class="cal-day">22</div></div>
+    <div class="cal-week-row"><div class="cal-day" id="busy"><span class="cal-day-num">15</span>
+      <div class="cal-event-row">09:30 Team</div><div class="cal-event-row">10:00 Launch</div>
+      <div class="cal-event-row">14:00 Review</div><div class="cal-event-more" id="more">+1 more</div></div></div><div class="cal-week-row"><div class="cal-day">22</div></div>
     <div class="cal-week-row"><div class="cal-day">29</div></div><div class="cal-week-row"><div class="cal-day">5</div></div></div>
     <div class="cal-splitter"></div><div class="cal-day-detail">the day</div></div></div></div>
 <div id="styled-confirm-overlay" class="modal"><div class="modal-content styled-confirm-box" id="confirm">
@@ -612,6 +614,8 @@ _DOCS_STEPS = r"""
     return {
       lib: Math.round(r('lib').height), cal: Math.round(r('cal').height), vh: innerHeight,
       grid: [g.scrollHeight, g.clientHeight],
+      busy: [document.getElementById('busy').scrollHeight, document.getElementById('busy').clientHeight],
+      more: r('more').bottom <= r('busy').bottom + 1,
       confirm: Math.round(r('confirm').width),
       label: getComputedStyle(document.getElementById('label')).whiteSpace,
       atts: getComputedStyle(document.getElementById('atts')).flexWrap,
@@ -630,6 +634,7 @@ def test_the_documents_windows_on_a_desktop(tmp_path):
     assert r["lib"] == round(0.85 * 900), r          # DOCS-U-8: one height, not the content's
     assert r["cal"] == round(0.88 * 900), r
     assert r["grid"][0] <= r["grid"][1] + 1, r       # DOCS-U-15: every week shows, nothing behind a scroll
+    assert r["busy"][0] <= r["busy"][1] + 1 and r["more"], r   # and a busy day is not cut: "+1 more" shows
     assert r["confirm"] == 480 and r["label"] == "normal", r   # DOCS-U-6: wide enough, names wrap
     assert r["footerPad"] == "30px", r               # CHAT-U-9: the editor's footer clears the Source tag
 
