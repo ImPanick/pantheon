@@ -281,6 +281,46 @@ def _friendly_email_auth_error(protocol: str, host: str, error: object) -> str:
     return raw[:200]
 
 
+def _smtp_send_failure(host: str, port, error: BaseException) -> str:
+    """`P23-08` (DOCS-M-5). The sentence a failed send shows, naming the server.
+
+    Measured on `9560d50`: with the SMTP host down the toast read
+    ``[Errno 111] Connection refused`` — `str(e)` — which says neither which
+    server nor what to check. Every `smtplib` error is an `OSError`, so the
+    specific ones are read first and a socket that never connected (refused,
+    timed out, no such host, TLS) last.
+    """
+    where = f"{host}:{port}" if host and port else (host or "the mail server")
+    if isinstance(error, _mail_auth.MailAuthUnavailable):
+        return str(error)   # already a sentence that says what to do
+    if isinstance(error, smtplib.SMTPAuthenticationError):
+        friendly = _friendly_email_auth_error("SMTP", host, error)
+        if friendly != str(error)[:200]:
+            return friendly   # a provider rule it knows (Microsoft's)
+        return (f"The mail server ({where}) did not accept the sign-in. "
+                "Check the account's SMTP user and password.")
+    if isinstance(error, smtplib.SMTPRecipientsRefused):
+        return (f"The mail server ({where}) refused every recipient. "
+                "Check the addresses in To, Cc and Bcc.")
+    if isinstance(error, smtplib.SMTPSenderRefused):
+        return (f"The mail server ({where}) refused the sender address. "
+                "Check the account's email address.")
+    unreachable = (f"Couldn't reach the mail server ({where}). "
+                   "Check the account's SMTP settings.")
+    if isinstance(error, smtplib.SMTPConnectError):   # a response error, but at the door
+        return unreachable
+    if isinstance(error, smtplib.SMTPResponseException):
+        said = error.smtp_error
+        if isinstance(said, bytes):
+            said = said.decode("utf-8", "replace")
+        said = " ".join(str(said or "").split())[:160]
+        return (f"The mail server ({where}) refused this mail: {said}" if said
+                else f"The mail server ({where}) refused this mail.")
+    if isinstance(error, OSError):   # refused, timed out, no such host, TLS, hung up
+        return unreachable
+    return f"Couldn't send this mail through {where}."
+
+
 def _strip_think(text: str) -> str:
     """Email-flavored think strip — thin wrapper over the central helper.
 
@@ -1464,16 +1504,38 @@ def _imap(account_id: str | None = None, owner: str = ""):
             pass
 
 
+def _raw_8bit_charset(data, charset):
+    """`P23-08` (DOCS-M-10). Name the charset of a header's raw 8-bit bytes.
+
+    A Subject sent with a bare UTF-8 "—" (not RFC 2047 — non-compliant but
+    common) reaches here as a `Header` whose bytes are `unknown-8bit`, which
+    `make_header` renders as "���". Measured on `9560d50` in the list, the
+    reader and the reply. UTF-8 when the bytes are UTF-8, else Windows-1252,
+    the 8-bit charset such mail is usually in (every byte decodes).
+    """
+    if isinstance(data, bytes) and (charset or "").lower() == "unknown-8bit":
+        try:
+            data.decode("utf-8")
+            return data, "utf-8"
+        except UnicodeDecodeError:
+            return data, "windows-1252"
+    return data, charset
+
+
 def _decode_header(raw):
     if not raw:
         return ""
+    if isinstance(raw, str) and any("\udc80" <= ch <= "\udcff" for ch in raw):
+        # The same bytes on a str path: surrogate-escaped (`P23-08`).
+        raw = raw.encode("utf-8", "surrogateescape").decode("utf-8", "replace")
     try:
         # make_header concatenates per RFC 2047: no spurious space between an
         # encoded-word and adjacent plain text (plain runs keep their own
         # whitespace), and the whitespace between two adjacent encoded-words is
         # dropped. The old " ".join produced "Re:  Jose"-style double spaces on
         # every non-ASCII subject or sender.
-        return str(email.header.make_header(email.header.decode_header(raw)))
+        parts = [_raw_8bit_charset(d, c) for d, c in email.header.decode_header(raw)]
+        return str(email.header.make_header(parts))
     except Exception:
         # Malformed header or unknown/invalid MIME charset (e.g. a spam header
         # like =?x-unknown-charset?B?...?=) makes make_header raise LookupError;
