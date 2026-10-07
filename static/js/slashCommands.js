@@ -4170,15 +4170,19 @@ async function _cmdTourBrain(args, ctx) {
     { sel: '#memory-tidy-btn',
       text: '<b>Tidy</b> merges duplicates.',
       before: () => _tab('browse') },
-    // `P23-05`: the tab is pointed at, not pressed — Skills opens its own
-    // window, which would cover the rest of the tour (`NAV-U-1`).
-    { sel: '#memory-modal .memory-tab[data-memory-tab="skills"]',
-      text: '<b>Skills</b> are procedures it can follow.' },
+    // `P23-02` (fx-brain merge point): Skills is a door beside the tabs now,
+    // not a tab with a launcher card; a step whose target is missing ends the
+    // tour, so the step points at the door.
+    { sel: '#memory-skills-door',
+      text: '<b>Skills</b> are procedures it can follow.',
+      before: () => _tab('browse') },
     { sel: '.memory-tab-panel[data-memory-panel="rag"]',
       text: '<b>RAG</b> — files Pantheon can quote. Turn it on in the chat bar.',
       before: () => _tab('rag') },
+    // fx-brain's B-NEW-3: the skill confidence bar moved to Skills › Settings
+    // (`BRAIN-U-10`); the Brain's Settings holds memory extraction only.
     { sel: '.memory-tab-panel[data-memory-panel="settings"]',
-      text: '<b>Settings</b> — auto-extraction, and how strong a skill must be before it is published.',
+      text: '<b>Settings</b> — whether memories are picked out of chats on their own.',
       before: () => _tab('settings') },
   ];
 
@@ -5235,7 +5239,7 @@ async function _cmdSetup(args, ctx) {
         await typewriterReply(`Feature toggles:\n\n${lines}\n\nType a feature name to toggle it.`);
         setupMode = 'features';
       } catch {
-        await typewriterReply('Could not load features. Check the Admin Panel.');
+        await typewriterReply('Could not load features. Check Settings → Agent Tools.');
       }
       return true;
     }

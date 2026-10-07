@@ -1439,7 +1439,7 @@ def test_no_refusal_creates_a_rule_whatever_the_button_is_called(
 
 @pytest.mark.parametrize("decision,label", [
     ("approve_task", "allow for this task"),
-    ("approve", "allow for this chat session"),
+    ("approve", "allow for this chat"),
 ])
 def test_both_of_the_servers_affirmative_decisions_create_the_rule(
     allow_sandbox, decision, label,
@@ -1458,7 +1458,7 @@ def test_both_of_the_servers_affirmative_decisions_create_the_rule(
           action: %s,
           options: [
             { label: 'Allow for this task', value: 'approve_task' },
-            { label: 'Allow for this chat session', value: 'approve' },
+            { label: 'Allow for this chat', value: 'approve' },
             { label: 'Deny', value: 'deny' },
           ],
         }), { root: root(), onSubmit: () => false });
@@ -1635,7 +1635,7 @@ def test_the_list_says_the_rules_stop_applying_once_something_came_in(ladder_san
     """ % (_ON_RUNG_LADDER, _TWO_RULES, _IMPORT), ladder_sandbox)
 
     hint = out["hint"].lower()
-    assert "from outside the conversation" in hint
+    assert "from outside the chat" in hint  # P23-05: a chat is a chat
     assert "asks about everything again" in hint
     # And when a revoke bites. `SNAPSHOT_TTL_SECONDS` is five seconds precisely
     # so this sentence can be true — *"revoke means revoked before the user has
@@ -2653,7 +2653,7 @@ def test_a_chat_with_no_grants_says_so_and_names_the_button_that_makes_one(
     assert grants["empty"], "an empty chat must say so"
     # The exact label `src/tool_approvals.py:361` puts on the card, so a person
     # can find the promise and its receipt as the same words.
-    assert "Allow for this chat session" in grants["empty"]
+    assert "Allow for this chat" in grants["empty"]  # P23-05: the card's label, renamed with it
     # And no control, because there is nothing for it to do.
     assert grants["revoke"] is None
     assert grants["timing"] is None

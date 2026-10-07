@@ -1245,7 +1245,7 @@ function _renderGrid() {
     </div>`;
 
   if (_items.length === 0) {
-    grid.innerHTML = uploadTile + '<div class="gallery-empty">No photos yet. Click Upload or drag-and-drop to get started!</div>';
+    grid.innerHTML = uploadTile + '<div class="gallery-empty">No photos yet.</div>';
     _wireUploadTile();
     if (loadMore) loadMore.style.display = 'none';
     return;

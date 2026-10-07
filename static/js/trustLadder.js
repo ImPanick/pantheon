@@ -884,7 +884,7 @@ export const ALLOW_RULE_LIST_HINT =
   'These are the things you told Pantheon to stop asking about. Revoke one and '
   + 'it goes back to asking before that action within a few seconds, even in '
   + 'the middle of a chat that is already running. None of them apply once '
-  + 'something from outside the conversation has been pulled in — a web page, '
+  + 'something from outside the chat has been pulled in — a web page, '
   + 'an email, a file it fetched — because then Pantheon asks about everything '
   + 'again.';
 
@@ -1263,7 +1263,7 @@ export const SESSION_GRANT_LIST_TITLE = 'What you have allowed for this chat';
 // `allowRuleWording` makes for Job 3, applied to the wider grant.
 export const SESSION_GRANT_LIST_HINT =
   'When Pantheon stops to ask before doing something, one of the buttons on '
-  + 'that card is “Allow for this chat session”. It is wider than it looks: it '
+  + 'that card is “Allow for this chat”. It is wider than it looks: it '
   + 'does not just allow the one thing it asked about, it stops Pantheon asking '
   + 'again for the rest of this chat, whatever it goes on to do. Every time you '
   + 'have pressed it in this chat is listed below.';
@@ -1305,7 +1305,7 @@ export const SESSION_GRANT_RUNG_NOTE =
 export const SESSION_GRANT_LIST_EMPTY =
   'Nothing yet. You have not told Pantheon to stop asking for the rest of this '
   + 'chat. It is a button on the card Pantheon shows when it stops to ask — '
-  + '“Allow for this chat session” — and if you press it, it turns up here.';
+  + '“Allow for this chat” — and if you press it, it turns up here.';
 
 export const SESSION_GRANT_REVOKE_LABEL = 'Take all of these back';
 

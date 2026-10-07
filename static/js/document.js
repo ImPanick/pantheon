@@ -5123,7 +5123,7 @@ import { chevronIcon, playIcon } from './icons.js';
       <div id="doc-actions-footer" class="doc-email-actions">
         <span class="email-send-split" id="doc-copy-export-split">
           <button type="button" id="doc-footer-copy-btn" class="email-send-btn email-send-main" title="Save new version" data-mode="save"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>Save</button>
-          <button type="button" id="doc-footer-export-btn" class="email-send-btn email-send-caret" title="Export as…" aria-label="Export options">${chevronIcon({ direction: 'up', size: 12, ariaHidden: true })}</button>
+          <button type="button" id="doc-footer-export-btn" class="email-send-btn email-send-caret" title="More…" aria-label="More">${chevronIcon({ direction: 'up', size: 12, ariaHidden: true })}</button>
         </span>
       </div>
       <div id="doc-version-panel" class="doc-version-panel hidden">

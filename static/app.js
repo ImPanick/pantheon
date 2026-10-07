@@ -2743,10 +2743,12 @@ function initializeEventListeners() {
         const welcomeSub = el('welcome-sub');
         if (welcomeSub) {
           if (!welcomeSub.dataset.originalText) welcomeSub.dataset.originalText = welcomeSub.textContent;
-          welcomeSub.textContent = "Who am I? I'm nobody.";
+          // `P23-05` (fx-chat's B-NEW-9): the heading says *Nobody*; the line
+          // under it says what that means, once, and does not joke.
+          welcomeSub.textContent = 'No memory, nothing saved.';
           welcomeSub.style.display = '';
         }
-        if (tipEl) { tipEl.dataset.originalTip = tipEl.textContent; tipEl.textContent = 'Nobody \u2014 no memory, nothing saved.'; tipEl.style.opacity = '0.5'; tipEl.style.marginTop = '8px'; }
+        if (tipEl) { tipEl.dataset.originalTip = tipEl.textContent; tipEl.textContent = ''; tipEl.style.opacity = '0.5'; tipEl.style.marginTop = '8px'; }
         // Default to plain chat: disable tools visually, switch to chat mode.
         // IMPORTANT: don't overwrite the user's persisted per-mode tool prefs
         // (`web_agent`, `bash_agent`, `web_chat`, `bash_chat`). Nobody mode is

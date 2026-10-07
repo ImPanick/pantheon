@@ -2114,7 +2114,9 @@ function _renderNotes() {
     _renderLabelsInto(body);
     _renderQuickAdd(body);
     if (sorted.length === 0) {
-      body.insertAdjacentHTML('beforeend', '<div class="notes-empty-msg">No notes yet <span style="vertical-align:-3px;margin-left:4px;">' + uiModule.emptyStateIcon('smiley') + '</span></div>');
+      // `P23-05` (DOCS-U-19): the archive's empty state is not the notes' own,
+      // and an empty state is one plain line.
+      body.insertAdjacentHTML('beforeend', `<div class="notes-empty-msg">${_showingArchived ? 'Nothing archived.' : 'No notes yet.'}</div>`);
     } else {
       body.insertAdjacentHTML('beforeend', html);
     }

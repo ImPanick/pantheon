@@ -760,7 +760,7 @@ function createSessionItem(s) {
 
   const copyItem = document.createElement('div');
   copyItem.className = 'dropdown-item-compact';
-  copyItem.innerHTML = _icon(_copyIcon) + '<span>Copy Chat</span>';
+  copyItem.innerHTML = _icon(_copyIcon) + '<span>Copy chat</span>';
   copyItem.addEventListener('click', async (e) => {
     e.stopPropagation();
     dropdown.style.display = 'none';

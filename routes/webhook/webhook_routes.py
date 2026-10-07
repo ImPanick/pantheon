@@ -331,8 +331,8 @@ def setup_webhook_routes(
 
             if not ep:
                 raise HTTPException(400,
-                    "No session, api_key, or configured endpoints. "
-                    "Pass api_key + model, or configure an endpoint in Admin.")
+                    "No model to answer with. Pass api_key + model, or add a model in "
+                    "Settings → Add Models.")
 
             base_url = normalize_base(ep.base_url)
             endpoint_url = build_chat_url(base_url)

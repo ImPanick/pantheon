@@ -282,7 +282,7 @@ def test_the_runtime_menu_still_offers_what_it_carried_across():
     """Adding one item must not have displaced the four the static markup's
     replacement already had."""
     for label in ("<span>Rename</span>", "<span>Archive</span>",
-                  "<span>Delete</span>", "<span>Copy Chat</span>"):
+                  "<span>Delete</span>", "<span>Copy chat</span>"):  # P23-05
         assert label in SESSIONS, label
 
 

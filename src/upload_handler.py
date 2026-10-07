@@ -1482,7 +1482,7 @@ class UploadHandler:
             if len(self.upload_rate_log[client_ip]) >= rate_limit:
                 raise HTTPException(
                     status_code=429,
-                    detail="Upload rate limit exceeded. Please try again later."
+                    detail="Too many uploads at once. Wait a moment."
                 )
             
             self.upload_rate_log[client_ip].append(now)

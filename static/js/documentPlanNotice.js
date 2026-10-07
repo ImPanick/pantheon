@@ -66,9 +66,9 @@ export async function reviewDocumentPlan(review) {
     details: {
       heading: 'What it would delete, and why',
       items,
-      footnote: more
-        ? `And ${more} more after these — the next tidy offers them. Nothing is deleted until you choose Delete.`
-        : 'Nothing is deleted until you choose Delete.',
+      // `P23-05` (DOCS-U-6): the question already asks before anything is
+      // deleted; the footnote says only what the list does not show.
+      footnote: more ? `And ${more} more after these — the next tidy offers them.` : '',
     },
   });
   const answer = answerFor(review, choice);

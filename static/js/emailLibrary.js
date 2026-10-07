@@ -7918,7 +7918,7 @@ function _showReaderMoreMenu(em, card, reader, anchor) {
       // sidebar-pin / favorites filter so the visual language stays
       // consistent. Toggling updates em.is_flagged and re-sorts via
       // _renderGrid (favorited rows are always pinned at the top).
-      label: em.is_flagged ? 'Unfavorite' : 'Favorite (pin to top)',
+      label: em.is_flagged ? 'Unfavorite' : 'Favorite',
       icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="' + (em.is_flagged ? 'currentColor' : 'none') + '" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>',
       action: async () => {
         const next = !em.is_flagged;
@@ -7968,7 +7968,7 @@ function _showReaderMoreMenu(em, card, reader, anchor) {
     {
       // Save the sender to CardDAV contacts. Pulls name + address off the
       // list-item (em); falls back to splitting the local-part for a name.
-      label: 'Save sender to contacts',
+      label: 'Save contact',
       icon: _contactIcon,
       action: async () => {
         const email = (em.from_address || em.from || '').trim();
@@ -8172,7 +8172,7 @@ function _showCardMenu(em, anchor) {
       },
     });
     actions.push({
-      label: em.is_flagged ? 'Unfavorite' : 'Favorite (pin to top)',
+      label: em.is_flagged ? 'Unfavorite' : 'Favorite',
       icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="' + (em.is_flagged ? 'currentColor' : 'none') + '" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>',
       action: async () => {
         const next = !em.is_flagged;
@@ -8200,7 +8200,7 @@ function _showCardMenu(em, anchor) {
     });
   } else {
     actions.push({
-      label: em.is_flagged ? 'Unfavorite' : 'Favorite (pin to top)',
+      label: em.is_flagged ? 'Unfavorite' : 'Favorite',
       icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="' + (em.is_flagged ? 'currentColor' : 'none') + '" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>',
       action: async () => {
         const next = !em.is_flagged;

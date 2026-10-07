@@ -388,8 +388,8 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
         uiModule.renderEmptyState(grid, {
           kind: 'error',
           className: 'doclib-empty',
-          title: 'Could not load your documents',
-          message: 'Your documents are still on the server — this screen could not reach them.',
+          title: 'Could not load.',
+          message: 'Your documents are safe.',
           reason: e && e.message,
           onRetry: () => libraryFetch(false),
         });
@@ -766,13 +766,21 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
       // `P9-07`. This tab was the only one of the four that already told the
       // two states apart, and it is the model the other three are brought onto
       // rather than the exception. The class stays; the shape is now shared.
-      if (_librarySearch || _libraryActiveLanguage) {
+      if (_libraryArchivedView && !_librarySearch && !_libraryActiveLanguage) {
+        // `P23-05` (DOCS-U-18): the archive with nothing in it said "No documents
+        // yet — Import a file", which is the library's empty state, not the
+        // archive's.
+        uiModule.renderEmptyState(grid, {
+          kind: 'empty',
+          className: 'doclib-empty',
+          title: 'Nothing archived.',
+        });
+      } else if (_librarySearch || _libraryActiveLanguage) {
         uiModule.renderEmptyState(grid, {
           kind: 'filtered',
           className: 'doclib-empty',
-          title: 'No documents match',
-          message: 'You have documents — this search or language filter is hiding them.',
-          action: { label: 'Clear filters', onClick: _libraryClearFilters },
+          title: 'Nothing matches.',
+          action: { label: 'Clear', onClick: _libraryClearFilters },
         });
       } else if (_libraryFolderView.kind === 'folder') {
         // `P21-01`. An empty folder is not an empty library, and saying "No
@@ -780,8 +788,7 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
         uiModule.renderEmptyState(grid, {
           kind: 'empty',
           className: 'doclib-empty',
-          title: 'Nothing in this folder yet',
-          message: 'Drag a document onto the folder, or choose Move to\u2026 on one.',
+          title: 'No documents here.',
           action: { label: 'Show all documents', onClick: () => libraryOpenFolder(VIEW_ALL) },
         });
       } else if (_libraryFolderView.kind === 'unfiled') {
@@ -2945,8 +2952,8 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
           uiModule.renderEmptyState(grid, {
             kind: 'error',
             className: 'doclib-empty',
-            title: 'Could not load your archive',
-            message: 'Nothing archived has been lost — none of the three sources answered.',
+            title: 'The archive did not load.',
+            message: 'Nothing is lost.',
             reason: _arcFail.join('\n'),
             onRetry: _renderLibArchive,
           });
@@ -2958,8 +2965,8 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
         uiModule.renderEmptyState(grid, {
           kind: 'error',
           className: 'doclib-empty',
-          title: 'Could not load your archive',
-          message: 'Nothing archived has been lost — this screen could not draw it.',
+          title: 'The archive did not load.',
+          message: 'Nothing is lost.',
           reason: e && e.message,
           onRetry: _renderLibArchive,
         });
@@ -3084,8 +3091,7 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
           uiModule.renderEmptyState(grid, {
             kind: 'error',
             className: 'doclib-empty',
-            title: 'Part of your archive did not load',
-            message: 'What is missing here is missing because a source did not answer, not because it is not archived.',
+            title: 'Part of the archive did not load.',
             reason: _arcLoadFailures.join('\n'),
             onRetry: _renderLibArchive,
           });
@@ -3544,7 +3550,8 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
       else if (_rSort === 'oldest') items.sort((a, b) => (a.completed_at || 0) - (b.completed_at || 0));
       else if (_rSort === 'most-sources') items.sort((a, b) => (b.source_count || 0) - (a.source_count || 0));
       else if (_rSort === 'alpha') items.sort((a, b) => (a.query || '').localeCompare(b.query || ''));
-      if (stats) stats.textContent = items.length + ' research' + (items.length !== 1 ? 'es' : '');
+      // `P23-05` (COPY-M-14): "0 researches" — a run of Deep Research is a report.
+      if (stats) stats.textContent = items.length + ' report' + (items.length !== 1 ? 's' : '');
       if (!items.length) {
         // `P9-07`. "No research yet" was drawn over a search that matched
         // nothing as well, and in `.hwfit-loading` — the loading class again.
@@ -3969,23 +3976,16 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
     // half is named on the row.
     const tidyBtn = document.getElementById('doclib-tidy-btn');
     if (tidyBtn) tidyBtn.addEventListener('click', async () => {
+      // `P23-05` (DOCS-U-5, Doc 2 § 5): three sentences, no rows — the 360 px
+      // dialog cut the rows' second halves, which were the half that said what
+      // leaves the machine. What it does, what it sends, what it leaves alone.
       const okTidy = await uiModule.styledConfirm(
-        'Tidy deletes documents in two passes, and both are permanent.',
+        'Deletes empty and junk documents for good. Your model picks the junk from up to 30 titles. '
+          + 'The last 15 minutes and the archive are left alone.',
         {
           title: 'Tidy documents',
-          confirmText: 'Tidy documents',
+          confirmText: 'Delete junk',
           danger: true,
-          details: {
-            heading: 'What Tidy does',
-            items: [
-              { label: 'Deletes empty documents and email drafts with nothing typed in', note: 'permanent' },
-              { label: 'Sends up to 30 documents\u2019 titles and openings to your model', note: 'one call' },
-              { label: 'Deletes the ones it calls junk', note: 'permanent' },
-              { label: 'Fixes blank titles on the rest', note: 'reversible' },
-            ],
-            footnote: 'Documents created in the last 15 minutes are skipped, and archived '
-                    + 'documents are not touched. Everything deleted here is gone \u2014 there is no undo.',
-          },
         },
       );
       if (!okTidy) return;

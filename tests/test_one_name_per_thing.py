@@ -34,6 +34,7 @@ exactly what is left.
 """
 
 import ast
+import bisect
 import functools
 import json
 import pathlib
@@ -72,15 +73,18 @@ def _js_phrases(source: str):
     """(line, text) for every literal a person could read in a JS source."""
     blanked = blank_text(source, "js")
     code = js_code(source)
+    # Where each statement of real code may begin: after a `;` or a brace. Not
+    # a brace balancer — only "the last boundary before here" is asked.
+    bounds = [m.start() for m in re.finditer(r"[;{}]", code)]
     for start, end in js_spans(blanked):
         lit = blanked[start:end]
         if not lit or lit[0] == "/" or not lit.strip():
             continue                      # a regex literal, or a comment's blanks
         body = lit.strip("'\"`")
-        # The statement this literal sits in: back to the last `;`, `{` or `}`
-        # of real code. `console.warn(` anywhere in it makes it a log line.
-        head = max(code.rfind(";", 0, start), code.rfind("{", 0, start),
-                   code.rfind("}", 0, start))
+        # The statement this literal sits in: back to the last boundary of
+        # real code. `console.warn(` anywhere in it makes it a log line.
+        at = bisect.bisect_left(bounds, start)
+        head = bounds[at - 1] if at else -1
         if "console." in code[head + 1:start]:
             continue
         line = blanked.count("\n", 0, start) + 1
@@ -212,22 +216,16 @@ CHAT_RESIDUE = {
                                  "CHAT-M-6 rewrites."),
     "static/js/settings.js": (1, "Bitwarden's word: unlocking the vault saves a vault "
                                  "*session* — not a chat. fx-tools' file."),
-    "static/js/trustLadder.js": (8, "fx-tools (`P23-03`) rewrites the ladder "
-                                    "(COPY-U-37); `:1266, 1308` quote the approval "
-                                    "card's button, which fx-chat renames to *Allow "
-                                    "for this chat* — they move together, "
-                                    "`tests/test_trust_ladder_js.py` pins both."),
+    "static/js/trustLadder.js": (5, "fx-tools (`P23-03`) rewrote the ladder "
+                                    "(COPY-U-37, `:123-194`); its *outside the "
+                                    "conversation* lines are that rewrite's to word. "
+                                    "The approval label it quotes moved here with "
+                                    "the card's (*Allow for this chat*)."),
 }
 
 ROOM_RESIDUE = {
     "static/index.html": (1, "fx-back (`P23-01`): the Settings stub panel's heading "
                              "(`:2971`), which NAV-U-6 deletes."),
-    "static/js/settings.js": (4, "fx-tools (`P23-03`), Reminders: *(add an account "
-                                 "in Integrations)* — COPY-U-39's row; the spelling "
-                                 "is *(Workbench › MCP & Integrations)*."),
-    "static/js/settings/registry.js": (1, "fx-back (`P23-01`) `registry.js:88`: the "
-                                          "Settings nav entry NAV-U-6 turns into a "
-                                          "door; its label is *MCP & Integrations*."),
     "static/js/settings/mcpPresets.js": (1, "Todoist's own menu path, "
                                             "*Settings > Integrations > Developer*."),
     "src/integrations.py": (1, "Discord's own menu path, *Server Settings -> "
