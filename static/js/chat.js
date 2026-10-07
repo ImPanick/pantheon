@@ -29,6 +29,10 @@ import { createStreamRenderer } from './streamingRenderer.js';
 import { applyAgentThreadNode, verifierCardOptions, blockedCardOptions,
          toolOutputPanesHtml, agentThreadContent, ensureThreadToggleAll,
          toggleThreadAll, syncThreadToggleAll, TOOL_LABELS } from './agentThread.js';
+// `B-NEW-11` (fx2-chat). One turn, one reply: a step that only thought hands its
+// reasoning on to the next bubble, and its rows go above the bubble that holds it.
+import { reasoningAbove, reasoningAtFoot, carryTurnReasoning, settleTurnReasoning,
+         lastShownStep } from './agentThread.js';
 // `B918` / `B916`. A tool card's life on screen, and the spinner a new step
 // opens with, shared with a compare pane.
 import { startToolCard as _startToolCard, drawToolProgress as _drawToolProgress,
@@ -3291,6 +3295,11 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
         researchBtn.classList.remove('active');
       }
       box.appendChild(holder);
+      // `B-NEW-11`: the turn an approval lets go on is the turn that paused at
+      // the card — its reasoning is this reply's too, as a reload draws it.
+      if (approvalForSend && approvalForSend.decision !== 'deny') {
+        carryTurnReasoning(reasoningAbove(holder), holder);
+      }
       uiModule.scrollHistory();
 
       const enableResearchBtn = () => {
@@ -3773,12 +3782,15 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
           terminalHolder.style.display = 'none';
           roundFinalized = true;
           roundFinalization = { rendered: true, holder: terminalHolder, hasContent: false };
+          // `B-NEW-11`: reasoning it carried goes back to the step it came from.
+          settleTurnReasoning(terminalHolder);
           return roundFinalization;
         }
         const body = terminalHolder.querySelector('.body');
         const content = _ensureStreamLayout(body);
         content.style.minHeight = '';
         content.innerHTML = markdownModule.processWithThinking(markdownModule.squashOutsideCode(dt));
+        settleTurnReasoning(terminalHolder);   // `B-NEW-11`: one fold for the turn
         if (window.hljs) terminalHolder.querySelectorAll('pre code').forEach((block) => window.hljs.highlightElement(block));
         roundFinalized = true;
         lastContentRoundHolder = terminalHolder;
@@ -5328,6 +5340,8 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
             }
           }
         }
+        // `B-NEW-11`: the last step's render drew its own fold; the turn's is one.
+        settleTurnReasoning(roundHolder);
 
 
         if (window.hljs) {
@@ -5369,8 +5383,11 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
 
         // Attach footer to the last visible bubble (roundHolder for multi-round agent, holder for single),
         // with the turn's pills handed to it (`B920`).
+        // `B-NEW-11`: when both are hidden (the first step's reasoning went on,
+        // the last step wrote nothing), the bubble the turn shows takes it.
         const footerTarget = _withTurnPills(
-          (roundHolder && roundHolder !== holder && roundHolder.style.display !== 'none') ? roundHolder : holder,
+          (roundHolder && roundHolder !== holder && roundHolder.style.display !== 'none') ? roundHolder
+            : (holder.style.display === 'none' && lastShownStep(holder)) || holder,
           holder);
         if (!footerTarget.querySelector('.msg-footer')) {
           footerTarget.appendChild(createMsgFooter(footerTarget));
@@ -6304,6 +6321,8 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
     newBody.className = 'body';
     newWrap.appendChild(newBody);
     box.appendChild(newWrap);
+    // `B-NEW-11`: the step before, if it only thought, is this bubble's now.
+    carryTurnReasoning(reasoningAbove(newWrap), newWrap);
     return newWrap;
   }
 
@@ -6314,17 +6333,22 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
    * thread's line reaches up to. Marks the thread as the one being written.
    */
   function _threadForNextCard(box, textAbove) {
+    // `B-NEW-11`: a step that only thought keeps its bubble at the foot of the
+    // turn, holding the turn's reasoning; its rows go above it.
+    const thinker = reasoningAtFoot(box);
     // Find existing thread to append to — check last few children
     // (agent_step may insert an empty msg-ai between tool rounds)
     let threadWrap = null;
-    for (let ci = box.children.length - 1; ci >= Math.max(0, box.children.length - 5); ci--) {
+    // Every step leaves a hidden bubble behind now, so the walk is not capped:
+    // it only ever passes hidden bubbles, the spinner and the thinker.
+    for (let ci = box.children.length - 1; ci >= 0; ci--) {
       const child = box.children[ci];
       if (child.classList.contains('agent-thread')) {
         threadWrap = child;
         break;
       }
       // Skip hidden (empty) bubbles and thinking spinners
-      if (child.style.display === 'none' || child.classList.contains('agent-thinking-dots')) continue;
+      if (child === thinker || child.style.display === 'none' || child.classList.contains('agent-thinking-dots')) continue;
       // `B904`: anything else that is visible — a bubble with text, a takeover
       // banner, a note — sits between that thread and this card.
       break;
@@ -6340,11 +6364,14 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
       const _prevSib = box.lastElementChild;
       const _hasBubbleAbove = _prevSib && (_prevSib.classList.contains('msg') && _prevSib.style.display !== 'none');
       const _hasThreadAbove = _prevSib && _prevSib.classList.contains('agent-thread');
-      if (_hasBubbleAbove || _hasThreadAbove || textAbove) {
+      // Above the thinker the thread starts the step: nothing of it is above.
+      if (!thinker && (_hasBubbleAbove || _hasThreadAbove || textAbove)) {
         threadWrap.classList.add('has-top');
       }
-      box.appendChild(threadWrap);
+      if (thinker) box.insertBefore(threadWrap, thinker);
+      else box.appendChild(threadWrap);
     }
+    if (thinker) threadWrap.classList.add('has-bottom');
     threadWrap.classList.add('streaming');
     return threadWrap;
   }
@@ -6661,9 +6688,11 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
       const dt = markdownModule.normalizeThinkingMarkup(_streamDisplayText(roundText));
       if (!dt.trim()) {
         roundHolder.style.display = 'none';
+        settleTurnReasoning(roundHolder);   // `B-NEW-11`, as `_finalizeRoundRender`
         return;
       }
       contentDiv.innerHTML = markdownModule.processWithThinking(markdownModule.squashOutsideCode(dt));
+      settleTurnReasoning(roundHolder);
       if (window.hljs) roundHolder.querySelectorAll('pre code').forEach((block) => window.hljs.highlightElement(block));
     };
 

@@ -23,7 +23,9 @@ import { buildAllowRuleChooser } from './trustLadder.js';
 // `P4-10`. Why the agent stopped itself — the same line the live stream draws.
 import { renderAgentStop, renderAgentNote, withdrawContinueOffers, compactionFromRecord } from './agentStops.js';
 import { applyAgentThreadNode, verifierCardOptions, approvalOutcome,
-         blockedCardOptions, toolOutputPanesHtml, screenshotSummary } from './agentThread.js';
+         blockedCardOptions, toolOutputPanesHtml, screenshotSummary,
+         bubbleParts, isReasoningOnly, reasoningAbove, threadAbove,
+         carryTurnReasoning } from './agentThread.js';
 import { prepBreakdownRows } from './agentMeter.js';   // P4-08
 
 // The decisions that mean yes, and the whole of that set.
@@ -3909,24 +3911,9 @@ export function dropAskedTwin(box, digest) {
   return dropped;
 }
 
-/** A reply bubble's reasoning and its words, apart. */
-function _bubbleParts(bubble) {
-  const body = bubble && bubble.querySelector ? bubble.querySelector('.body') : null;
-  const isThinking = (n) => !!(n.classList && n.classList.contains('thinking-section'));
-  const holdsThinking = (n) => !!(isThinking(n) || (n.querySelector && n.querySelector('.thinking-section')));
-  // The live stream writes into a wrapper (`.stream-content`) that holds the
-  // reasoning and the reply side by side: look inside it.
-  let box = body;
-  while (box && box.children && box.children.length === 1 && !isThinking(box.children[0])
-         && holdsThinking(box.children[0])) {
-    box = box.children[0];
-  }
-  const kept = [];
-  const reply = [];
-  for (const child of Array.from((box && box.childNodes) || [])) (holdsThinking(child) ? kept : reply).push(child);
-  const said = reply.map((n) => n.textContent || '').join('').replace(/\s+/g, ' ').trim();
-  return { body, kept, reply, said };
-}
+// A reply bubble's reasoning and its words, apart: `bubbleParts` in
+// `agentThread.js` (fx2-chat, `B-NEW-11` reads bubbles the same way).
+const _bubbleParts = bubbleParts;
 
 /** What a reply bubble says, its reasoning left out; '' for a hidden one. */
 export function bubbleReplyText(bubble) {
@@ -4058,6 +4045,20 @@ export function addMessage(role, content, modelName, metadata) {
         if (roundThinking) return String(roundThinking[r] || '').trim();
         return r === 0 ? String(metadata.thinking || '').trim() : '';
       };
+      // `B-NEW-11` (fx2-chat). One turn, one reply: a step that only thought
+      // hands its reasoning on to the next bubble this reply draws
+      // (`carryTurnReasoning`), and its rows go above the bubble that holds it.
+      // `ownWraps` are this reply's bubbles. The continuation an approval let
+      // through is the same turn as the reply that paused at the card, so its
+      // first bubble takes that reply's reasoning too — as the live stream does.
+      const ownWraps = [];
+      const continuesApproval = toolEvents.some((ev) => ev && ev.approval_digest);
+      const takeReasoningAbove = (wrap) => {
+        const above = reasoningAbove(wrap);
+        if (above && (ownWraps.includes(above) || (continuesApproval && !ownWraps.length))) {
+          carryTurnReasoning(above, wrap);
+        }
+      };
 
       const toolRounds = Object.keys(toolsByRound).map(Number);
       const maxRound = Math.max(toolRounds.length ? Math.max(...toolRounds) : 0, roundTexts.length);
@@ -4149,6 +4150,8 @@ export function addMessage(role, content, modelName, metadata) {
           wrap.dataset.raw = txt;
           if (metadata?._db_id) wrap.dataset.dbId = metadata._db_id;
           box.appendChild(wrap);
+          takeReasoningAbove(wrap);
+          ownWraps.push(wrap);
           lastWrap = wrap;
           if (!firstMsgAi) firstMsgAi = wrap;
           lastMsgAi = wrap;
@@ -4158,7 +4161,26 @@ export function addMessage(role, content, modelName, metadata) {
         if (roundTools.length > 0) {
           // Reuse previous thread if no text separated us (merge consecutive tool rounds)
           let threadWrap = null;
-          if (!txt && lastWrap && lastWrap.classList.contains('agent-thread')) {
+          // `P23-04` (CHAT-M-8). The approved call takes the place of the row
+          // that asked for it: one row per call, not the same call twice. Done
+          // before a thread is chosen — the asked row's thread, emptied, goes.
+          for (const ev of roundTools) {
+            if (ev.approval_digest) dropAskedTwin(box, ev.approval_digest);
+          }
+          // `B-NEW-11`. The bubble at the foot only thought: it stays the last
+          // thing the turn shows, and the rows go into the thread above it.
+          const foot = box.children[box.children.length - 1];
+          const thinker = isReasoningOnly(foot)
+            && (ownWraps.includes(foot) || (continuesApproval && !ownWraps.length)) ? foot : null;
+          if (thinker) {
+            threadWrap = threadAbove(thinker);
+            if (!threadWrap) {
+              threadWrap = document.createElement('div');
+              threadWrap.className = 'agent-thread';
+              box.insertBefore(threadWrap, thinker);
+            }
+            threadWrap.classList.add('has-bottom');
+          } else if (!txt && lastWrap && lastWrap.classList.contains('agent-thread')) {
             threadWrap = lastWrap;
           } else {
             threadWrap = document.createElement('div');
@@ -4171,9 +4193,6 @@ export function addMessage(role, content, modelName, metadata) {
             if (ev.ask_user && !ev.ask_user.resolved) {
               pendingAskUser = askUserWithEffects(ev);
             }
-            // `P23-04` (CHAT-M-8). The approved call takes the place of the
-            // row that asked for it: one row per call, not the same call twice.
-            if (ev.approval_digest) dropAskedTwin(box, ev.approval_digest);
             const ok = (ev.exit_code === 0 || ev.exit_code == null);
             // `P23-04` (CHAT-M-3, CHAT-M-24). A call that asked for approval
             // never ran, so its `ok` says nothing: it is *waiting* until

@@ -11195,6 +11195,17 @@ body.fullwidth-chat .chat-history {
   opacity: 0.9;
   line-height: 1.5;
 }
+/* `B-NEW-11` (fx2-chat). One fold holds an agent turn's reasoning, a part per
+   step (`agentThread.js` `settleTurnReasoning`); a rule in the fold's own
+   colour between the steps, so they read in order and never run together
+   (`CHAT-M-21`). */
+.thinking-content-inner > .thinking-round + .thinking-round {
+  margin-top: 0.75em;
+  padding-top: 0.75em;
+  border-top: 1px dashed color-mix(in srgb, var(--red) 35%, transparent);
+}
+.thinking-content-inner > .thinking-round > :first-child { margin-top: 0; }
+.thinking-content-inner > .thinking-round > :last-child { margin-bottom: 0; }
 .live-reply-content {
   animation: fadeSlideIn 0.3s ease-out;
 }
