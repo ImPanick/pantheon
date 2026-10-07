@@ -474,22 +474,11 @@ def setup_task_routes(task_scheduler) -> APIRouter:
     async def list_tasks(request: Request, status: Optional[str] = None,
                          include_last_run: bool = False):
         user = _owner(request)
-        if user:
-            await task_scheduler.ensure_defaults(user)
-        else:
-            db_seed = SessionLocal()
-            try:
-                owners = {
-                    row[0] for row in db_seed.query(ScheduledTask.owner)
-                    .filter(ScheduledTask.task_type == "action")
-                    .filter(ScheduledTask.action.in_(list(HOUSEKEEPING_DEFAULTS.keys())))
-                    .all()
-                    if row[0]
-                }
-            finally:
-                db_seed.close()
-            for owner in owners:
-                await task_scheduler.ensure_defaults(owner)
+        # `P23-07` (`PERF-M-18`): a list is a read. The built-ins are seeded at
+        # startup and, for a person created since, by the scheduler's own loop
+        # (`TaskScheduler._seed_defaults_for_new_owners`) — not here, where the
+        # first open after an account was made wrote 11 rows and every open
+        # re-ran the reconcile and committed.
         db = SessionLocal()
         try:
             q = db.query(ScheduledTask)
