@@ -345,3 +345,21 @@ def test_a_saved_model_that_is_not_listed_is_shown_as_such_where_it_is_set(sandb
     assert out["value"] == "gone-70b", "the select fell to another model and looked like the setting"
     assert out["labels"] == ["alpha-7b", "beta-13b", "gone-70b (not listed now)"]
     assert out["listedValue"] == "beta-13b" and out["listedLabels"] == ["alpha-7b", "beta-13b"]
+
+
+def test_retry_asks_the_server_to_list_that_endpoint_now(sandbox):
+    """`models.js` `refreshModels(true, { retry })` is `GET /api/models?retry=<id>`,
+    and the answer replaces the cached list."""
+    out = _run(sandbox, _PRE, """
+        let API_BASE = '', _cachedItems = [{ endpoint_id: 'gone', offline: true, models: [] }];
+        let _lastFetchTime = 0, _fetchInflight = null, _fetchSeq = 0;
+        const _FETCH_CACHE_TTL = 30000;
+        const asked = [];
+        globalThis.fetch = async (url) => { asked.push(url);
+          return { ok: true, json: async () => ({ items: [{ endpoint_id: 'gone', models: ['back-model'] }] }) }; };
+        %s
+        await refreshModels(true, { retry: 'gone' });
+        console.log(JSON.stringify({ asked, items: _cachedItems }));
+    """ % _cut(JS / "models.js", "export async function refreshModels("))
+    assert out["asked"] == ["/api/models?retry=gone"]
+    assert out["items"] == [{"endpoint_id": "gone", "models": ["back-model"]}]

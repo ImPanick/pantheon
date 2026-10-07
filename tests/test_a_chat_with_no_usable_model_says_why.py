@@ -255,6 +255,25 @@ def test_a_task_with_no_model_does_not_borrow_the_newest_chats(scheduler_world):
     assert error == "No model yet. An admin adds one in Settings → Added Models."
 
 
+def test_a_configured_task_model_nothing_lists_is_not_used_or_swapped(scheduler_world):
+    """Settings → Background Tasks names a model the endpoint does not list
+    (pinned there, even): the resolver does not hand it out, and does not
+    pick another of the endpoint's models in its place."""
+    import src.settings as S
+    db = scheduler_world.factory()
+    from core.database import ModelEndpoint as ME
+    row = db.query(ME).filter(ME.id == "walker-world").first()
+    row.pinned_models = json.dumps(["gone-70b"])
+    db.commit()
+    db.close()
+    s = S.load_settings()
+    s.update(task_endpoint_id="walker-world", task_model="gone-70b")
+    S.save_settings(s)
+    status, error = _run_task(scheduler_world)
+    assert status == "error"
+    assert error == "No model yet. An admin adds one in Settings → Added Models."
+
+
 def test_a_workflow_step_naming_a_model_nothing_lists_says_so_for_the_step(scheduler_world):
     from src import workflow_document as wd
     from src.endpoint_resolver import NoUsableModel
@@ -345,7 +364,12 @@ def test_the_api_names_no_model_for_a_callers_key(world, monkeypatch):
 
 
 def test_an_openai_session_names_no_model(world, monkeypatch):
+    import routes.model_routes as model_routes
     import routes.session_routes as session_routes
+
+    # Nothing may be asked of OpenAI here (`Law 16`): a call is a failure.
+    monkeypatch.setattr(model_routes, "_probe_endpoint",
+                        lambda *a, **k: (_ for _ in ()).throw(AssertionError("asked OpenAI")))
 
     router = session_routes.setup_session_routes(
         SimpleNamespace(create_session=lambda **kw: (_ for _ in ()).throw(AssertionError("made"))),
