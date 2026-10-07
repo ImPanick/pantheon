@@ -1359,11 +1359,11 @@ def test_frontend_tool_approval_uses_opaque_id_and_fixed_decisions():
         )
     ]
     assert all(
-        "20260722emailfastindex1" not in source
+        "20260815approvalsave1" not in source
         for source in approval_module_sources
     )
     assert all(
-        "20260815approvalsave1" in source
+        "20261007approvalp23" in source
         for source in approval_module_sources
     )
 

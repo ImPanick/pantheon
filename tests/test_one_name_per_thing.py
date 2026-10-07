@@ -187,14 +187,6 @@ def _bare_room_hits():
 # ── the hand-off: strings other lanes hold this wave, with who holds them ────
 
 CHAT_RESIDUE = {
-    "static/app.js": (1, "fx-chat (`P23-04`): the Tool Builder explainer bubble, "
-                         "`app.js:2024-2052`, which CHAT-U-14 deletes."),
-    "static/index.html": (5, "fx-brain `index.html:405-740` (`:543`, dropped by "
-                             "COPY-U-19), fx-chat `:1340-1400` (three welcome tips "
-                             "the § 5 composer row drops), fx-tools `:1990-3720` "
-                             "(`:2011`, dropped by COPY-U-34)."),
-    "static/js/chat.js": (2, "fx-chat (`P23-04`): the no-model bubble, "
-                             "*No model yet.* + Add a model."),
     "static/js/chatRenderer.js": (1, "the compact marker matched by text, "
                                      "`Conversation compacted`: it is stored in "
                                      "every compacted chat's history "
@@ -211,16 +203,11 @@ CHAT_RESIDUE = {
                                    "path, which DOCS-M-1 rewrites."),
     "static/js/research/panel.js": (1, "fx-brain (`P23-02`): a thrown error in "
                                        "the research start path."),
-    "static/js/sessions.js": (4, "fx-chat (`P23-04`) `sessions.js:946, 979-991`: "
-                                 "*Delete this chat?* and the archive handler "
-                                 "CHAT-M-6 rewrites."),
     "static/js/settings.js": (1, "Bitwarden's word: unlocking the vault saves a vault "
                                  "*session* — not a chat. fx-tools' file."),
-    "static/js/trustLadder.js": (5, "fx-tools (`P23-03`) rewrote the ladder "
-                                    "(COPY-U-37, `:123-194`); its *outside the "
-                                    "conversation* lines are that rewrite's to word. "
-                                    "The approval label it quotes moved here with "
-                                    "the card's (*Allow for this chat*)."),
+    "static/js/trustLadder.js": (1, "fx-tools (`P23-03`) rewrote the ladder "
+                                    "(COPY-U-37, `:123-194`); one *outside the "
+                                    "conversation* line is left, that rewrite's to word."),
 }
 
 ROOM_RESIDUE = {

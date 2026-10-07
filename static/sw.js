@@ -8,7 +8,7 @@
 //   - Other static assets (images/fonts/libs): cache-first with bg refresh.
 //   - API / non-GET: never cached.
 // Bump CACHE_NAME whenever the precache list or SW logic changes.
-const CACHE_NAME = 'pantheon-v446-merge';
+const CACHE_NAME = 'pantheon-v447-p23';
 
 // KaTeX resolves these from its own stylesheet, so caching the CSS without them
 // gives offline math fallback glyphs instead of proper typesetting.
@@ -81,8 +81,8 @@ const PRECACHE = [
   // browser error page with no way back, and the same form works the moment
   // the network returns.
   '/login',
-  '/static/style.css?v=20261007merge',
-  '/static/app.js?v=20261003waveg',
+  '/static/style.css?v=20261007p23',
+  '/static/app.js?v=20261007p23',
   '/static/js/storage.js',
   '/static/js/appConfig.js',
   '/static/js/ui.js',
@@ -94,10 +94,10 @@ const PRECACHE = [
   '/static/js/langIcons.js',
   '/static/js/dragSort.js',
   '/static/js/sessions.js',
-  '/static/js/memory.js?v=20261003waveg',
+  '/static/js/memory.js?v=20261007p23',
   '/static/js/skills.js',
   '/static/js/tourHints.js',
-  '/static/js/fileHandler.js?v=20261003waveg',
+  '/static/js/fileHandler.js?v=20261007p23',
   '/static/js/voiceRecorder.js',
   '/static/js/models.js?v=20260715startupcalm2',
   '/static/js/rag.js',
@@ -105,16 +105,16 @@ const PRECACHE = [
   '/static/js/search.js',
   '/static/js/spinner.js',
   '/static/js/tts-ai.js',
-  '/static/js/document.js?v=20260815approvalsave1',
+  '/static/js/document.js?v=20261007approvalp23',
   '/static/js/gallery.js?v=20260708match1',
-  '/static/js/chatRenderer.js?v=20261003waveg',
+  '/static/js/chatRenderer.js?v=20261007p23',
   // `P4-01`: the one builder for a tool card in the agent thread. On the
   // critical path via chat.js and chatRenderer.js.
   '/static/js/agentThread.js',
   '/static/js/trustLadder.js',
   '/static/js/codeRunner.js',
-  '/static/js/chatStream.js?v=20261003waveg',
-  '/static/js/chat.js?v=20261003waveg',
+  '/static/js/chatStream.js?v=20261007p23',
+  '/static/js/chat.js?v=20261007p23',
   '/static/js/planWindow.js',
   // `B11`/`B13`. Two leaf tables on the critical path: what the plan window and
   // the todo card call themselves, and the word the six run statuses are shown
@@ -125,25 +125,25 @@ const PRECACHE = [
   '/static/js/runStatus.js',
   '/static/js/cookbook.js',
   '/static/js/search-chat.js',
-  '/static/js/compare/index.js?v=20261003waveg',
+  '/static/js/compare/index.js?v=20261007p23',
   '/static/js/theme.js',
-  '/static/js/welcomeScenery.js?v=20261004voyage',
+  '/static/js/welcomeScenery.js?v=20261007p23',
   '/static/js/censor.js',
   // `B58`. The three entries below carried no query while every importer used
   // one. `caches.match(e.request)` has no `ignoreSearch`, so a bare entry can
   // never answer a versioned request: they were fetched at install and served
   // to nothing. Third recurrence of what `P3-11` and `B54` each fixed, and the
   // first one a checker can see.
-  '/static/js/settings.js?v=20261003waveg',
-  '/static/js/admin.js?v=20261003waveg',
+  '/static/js/settings.js?v=20261007p23',
+  '/static/js/admin.js?v=20261007p23',
   '/static/js/init.js?v=20260918a11yfocus1',
-  '/static/js/slashCommands.js?v=20260815approvalsave1',
-  '/static/js/emailInbox.js?v=20260815approvalsave1',
+  '/static/js/slashCommands.js?v=20261007approvalp23',
+  '/static/js/emailInbox.js?v=20261007approvalp23',
   '/static/js/emailLibrary/utils.js',
   '/static/js/emailLibrary/signatureFold.js',
   '/static/js/emailLibrary/state.js',
   '/static/js/notes.js',
-  '/static/js/tasks.js?v=20261003waveg',
+  '/static/js/tasks.js?v=20261007p23',
   '/static/js/calendar.js',
   '/static/js/calendar/utils.js',
   '/static/js/group.js',

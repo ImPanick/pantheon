@@ -39,7 +39,7 @@ import {
   buildTodoCard,
   demoteSupersededTodoCards,
   safeToolScreenshotSrc,
-} from './chatRenderer.js?v=20261003waveg';
+} from './chatRenderer.js?v=20261007p23';
 import { applyAgentThreadNode, agentThreadContent, toolOutputPanesHtml,
          screenshotSummary, approvalOutcome } from './agentThread.js';
 

@@ -42,8 +42,8 @@
 // start a new chat.
 
 import sessionModule from './sessions.js';
-import settingsModule from './settings.js?v=20261003waveg';
-import { doorShown, isMinimized, listWindows, showWindow } from './modalManager.js?v=20261003waveg';
+import settingsModule from './settings.js?v=20261007p23';
+import { doorShown, isMinimized, listWindows, showWindow } from './modalManager.js?v=20261007p23';
 import { openSkillsWindow } from './skills.js';
 import { slashCatalog, insertSlashToken, loadSkillEntries, mergeSkillEntries } from './slashAutocomplete.js';
 import { toolKeyFor, toolShown, viewerIsAdmin } from './ui_visibility.js';

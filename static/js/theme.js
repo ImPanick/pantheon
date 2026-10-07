@@ -48,7 +48,7 @@ const THEME_DESCRIPTIONS = {
   notebook: 'Notebook - inspired by Notion paper surfaces',
   channel: 'Channel - inspired by Slack aubergine spaces',
   video: 'Video - inspired by YouTube red on white',
-  mintchat: 'Mintchat - inspired by WhatsApp conversation greens',
+  mintchat: 'Mintchat - inspired by WhatsApp chat greens',
 };
 
 const DEFAULT_THEME = 'dark';

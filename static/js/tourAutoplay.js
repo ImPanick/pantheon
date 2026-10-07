@@ -33,7 +33,7 @@
 // Only the preference gate marks nothing and re-reads live, so turning tours
 // back on in Settings takes effect without a reload.
 
-import { handleSlashCommand, getSetupMode } from './slashCommands.js?v=20260815approvalsave1';
+import { handleSlashCommand, getSetupMode } from './slashCommands.js?v=20261007approvalp23';
 import uiModule from './ui.js';
 
 // Modal id → slash command to fire (without the leading "/"). Add to this
