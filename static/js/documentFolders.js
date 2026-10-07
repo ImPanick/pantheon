@@ -304,11 +304,15 @@ export function renderFolderBar(host, model, on) {
   }
   for (const f of folders) {
     if ((f.parent || null) !== here) continue;
-    const c = chip(f.name, Number(f.total || 0), f.path, false);
+    // `P23-06` (DOCS-M-4). The number is what opening the folder shows — the
+    // documents in it, not in its folders too: "Projects (7)" opened onto
+    // "0 of 17 documents" because the seven were in Projects › Lumen 2.0,
+    // whose own chip says so one click in. The title keeps the whole count.
+    const c = chip(f.name, Number(f.count || 0), f.path, false);
     c.dataset.folderTarget = f.path;
     c.title = f.total === f.count
       ? `${_plural(Number(f.total || 0), 'document')} in ${f.path}`
-      : `${_plural(Number(f.total || 0), 'document')} in ${f.path} and its folders`;
+      : `${_plural(Number(f.count || 0), 'document')} in ${f.path}, ${Number(f.total || 0)} with its folders`;
     c.draggable = true;
     c.addEventListener('dragstart', (e) => startFolderDrag(e, f.path));
     c.addEventListener('click', () => handlers.open && handlers.open(folderView(f.path)));

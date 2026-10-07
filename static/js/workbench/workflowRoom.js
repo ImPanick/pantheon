@@ -134,10 +134,18 @@ function _firstLine(text) {
   return line.length > 200 ? line.slice(0, 199) + '…' : line;
 }
 
-function _when(iso) {
+/** `P23-06` (WB-U-4): "3:44 AM" today, "Oct 2, 3:44 AM" another day this
+ *  year, the year after that — `toLocaleString()` printed the full date and
+ *  seconds on runs minutes apart. */
+function _when(iso, now = new Date()) {
   if (!iso) return '';
   const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? String(iso) : d.toLocaleString();
+  if (Number.isNaN(d.getTime())) return String(iso);
+  const time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  if (d.toDateString() === now.toDateString()) return time;
+  const day = { month: 'short', day: 'numeric' };
+  if (d.getFullYear() !== now.getFullYear()) day.year = 'numeric';
+  return `${d.toLocaleDateString([], day)}, ${time}`;
 }
 
 /** A run or a last run, as a mark, a word and a tone. */
@@ -319,9 +327,21 @@ export function mountAutomations(host, opts = {}) {
   switchGroup.appendChild(switchBtn);
   switchGroup.appendChild(switchWord);
   switchGroup.appendChild(chainBtn);
-  const runGroup = _el('span', 'wf-bar-group');
+  const runGroup = _el('span', 'wf-bar-group wf-bar-runs');
   for (const n of [versionsBtn, runBtn, dryBtn, exportBtn]) runGroup.appendChild(n);
-  for (const n of [nameGroup, switchGroup, runGroup, tabs]) bar.appendChild(n);
+  // `P23-06` (WB-U-13). On a phone the toolbar took 280 px over a 434 px
+  // canvas. There it is the name, the switch and this ⋯, which shows the
+  // rest (Versions…, Run now, the plan, Export) when pressed; on a desktop
+  // the ⋯ is not drawn and the rest is always there (`style.css`).
+  const moreBtn = _button('wf-bar-more', '⋯', 'Versions, Run now, the plan, Export');
+  moreBtn.setAttribute('aria-label', 'More');
+  moreBtn.setAttribute('aria-expanded', 'false');
+  moreBtn.addEventListener('click', () => {
+    const open = !bar.classList.contains('wf-bar-more-open');
+    bar.classList.toggle('wf-bar-more-open', open);
+    moreBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  });
+  for (const n of [nameGroup, switchGroup, moreBtn, runGroup, tabs]) bar.appendChild(n);
 
   const viewing = _el('div', 'wf-viewing');
   viewing.setAttribute('role', 'status');
@@ -383,6 +403,17 @@ export function mountAutomations(host, opts = {}) {
     if (c && typeof c.say === 'function') {
       sayLine.hidden = true;
       c.say(text, o);
+      return;
+    }
+    // `P23-06` (WB-M-4). The Runs tab with no run on it has no canvas to say
+    // things on, so its line ("No runs yet…") fell back to the room's line —
+    // above the workflow's own toolbar, pushing it down, and still there after
+    // Edit. It belongs in the empty run list.
+    if (R.view === 'workflow' && R.wf && R.wf.tab === 'runs' && !R.wf.runCanvas && text && !o.action) {
+      sayLine.hidden = true;
+      const li = _el('li', 'wf-run-empty', text);
+      if (o.refusal) li.classList.add('wf-say-refusal');
+      runList.replaceChildren(li);
       return;
     }
     sayText.textContent = text || '';
@@ -515,6 +546,12 @@ export function mountAutomations(host, opts = {}) {
       mark.dataset.tone = last.tone;
       sub.appendChild(mark);
       sub.appendChild(_el('span', 'wf-shelf-last', last.tone === 'none' ? last.word : `Last run: ${last.word}`));
+      // `P23-06` (WB-U-16): two workflows drafted from one sentence were two
+      // identical rows; how many steps each has tells them apart.
+      const steps = Number(w.step_count);
+      if (Number.isFinite(steps) && w.step_count != null) {
+        sub.appendChild(_el('span', 'wf-shelf-steps', `${steps} step${steps === 1 ? '' : 's'}`));
+      }
       b.appendChild(sub);
       b.setAttribute('aria-label', `${String(w.name || 'Untitled workflow')}. ${on ? 'On' : 'Off'}. `
         + (last.tone === 'none' ? last.word : `Last run: ${last.word}`) + '.');
@@ -1215,6 +1252,8 @@ export function mountAutomations(host, opts = {}) {
     }
     editHost.hidden = w.tab !== 'edit';
     runsView.hidden = w.tab !== 'runs';
+    // `P23-06` (WB-M-4): a line the other tab left on the room goes with it.
+    sayLine.hidden = true;
     if (w.tab === 'runs' && !quiet) loadRuns();
   }
   editTab.addEventListener('click', () => setTab('edit'));
@@ -1271,6 +1310,9 @@ export function mountAutomations(host, opts = {}) {
       b.appendChild(_el('span', 'wf-run-word', dry ? 'Dry run' : words.word));
       b.appendChild(_el('span', 'wf-run-when', _when(r.started_at || r.finished_at)));
       b.setAttribute('aria-label', `${dry ? 'Dry run' : words.word}, ${_when(r.started_at || r.finished_at)}`);
+      // `P23-06` (WB-U-4): folded to its mark while a step's panel is open,
+      // a run still says what it is on hover.
+      b.title = b.getAttribute('aria-label');
       if (String(r.id) === w.runId) b.setAttribute('aria-current', 'true');
       b.addEventListener('click', () => openRun(r.id));
       li.appendChild(b);
@@ -1657,6 +1699,9 @@ export function mountAutomations(host, opts = {}) {
     // The layer says per step what the arrival box said (needs, doors), and
     // the two together would leave the canvas no room: the box goes.
     closeArrived();
+    // `P23-06` (WB-M-5): the line that offered *Check them now* (a refused
+    // switch-on) goes too — it stayed under the box with a second button.
+    say('');
     if (w.tab !== 'edit') setTab('edit', { quiet: true });
     const all = typeof w.source.marked === 'function' ? w.source.marked() : [];
     const ids = Array.isArray(nodeIds) && nodeIds.length ? nodeIds.map(String) : all.map((m) => m.id);
@@ -1851,6 +1896,14 @@ export function mountAutomations(host, opts = {}) {
   async function makeNew() {
     if (!R.api || R.making) return;
     const name = newName.value.trim();
+    // `P23-06` (WB-M-8). *Make it* with the box empty made "New workflow" at
+    // once — scheduled daily at 09:00 and listed on the shelf, on the canvas
+    // and in Tasks — with nothing asking for a name.
+    if (!name) {
+      shelfNote.textContent = 'Give it a name first.';
+      if (typeof newName.focus === 'function') newName.focus();
+      return;
+    }
     newGo.disabled = true;
     let reply = null;
     let err = null;

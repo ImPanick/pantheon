@@ -446,6 +446,25 @@ def clean_name(name, *, required: bool = True) -> str | None:
     return text
 
 
+def unused_name(db, owner, name: str) -> str:
+    """`name`, or `name (2)`, `name (3)`… when this person already has a
+    workflow called that. `P23-06` (WB-U-16, WB-M-8): two drafts of one
+    sentence made two workflows called "Bank mail to chat", alike on the shelf,
+    in *Connect…* and in Tasks. Only a new workflow is named here; renaming
+    one to a name in use stays the person's choice."""
+    _, _, Workflow, _ = _models()
+    taken = {n for (n,) in db.query(Workflow.name).filter(Workflow.owner == owner).all()}
+    if name not in taken:
+        return name
+    i = 2
+    while True:
+        tail = f" ({i})"
+        candidate = name[:WORKFLOW_NAME_MAX - len(tail)].rstrip() + tail
+        if candidate not in taken:
+            return candidate
+        i += 1
+
+
 # ── versions ─────────────────────────────────────────────────────────────────
 
 def _write_version(db, wf, graph: dict, *, source: str) -> None:
@@ -895,7 +914,7 @@ def create_workflow(db, *, owner, name=None):
     document is refused at save — `no_steps` — and this one is off)."""
     from src.workflow_document import VERSION_SOURCE_USER, empty_graph
     _, _, Workflow, _ = _models()
-    name = clean_name(name, required=False) or NEW_WORKFLOW_NAME
+    name = unused_name(db, owner, clean_name(name, required=False) or NEW_WORKFLOW_NAME)
     trigger = _new_trigger(owner=owner, name=name, fields={})
     db.add(trigger)
     db.flush()
@@ -1049,7 +1068,7 @@ def create_from_document(db, *, owner, name, graph, trigger_fields, origin, need
     if origin not in DOOR_ORIGINS:
         raise ValueError(f"not an origin a mark can have: {origin!r}")
     _, _, Workflow, _ = _models()
-    name = clean_name(name, required=False) or NEW_WORKFLOW_NAME
+    name = unused_name(db, owner, clean_name(name, required=False) or NEW_WORKFLOW_NAME)
     fields, notes = clean_trigger_fields(trigger_fields)
     trigger = _new_trigger(owner=owner, name=name, fields=fields)
     if isinstance(graph, dict):

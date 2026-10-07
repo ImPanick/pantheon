@@ -501,6 +501,10 @@ const _TASK_ICONS = {
 };
 
 function _taskIcon(task) {
+  // `P23-06` (WB-M-13): a workflow's start wears the Workbench's workflow mark.
+  if (task && task.task_type === 'workflow') {
+    return `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity:0.4;flex-shrink:0;position:relative;top:-4px;">${WORKFLOW_GLYPH}</svg>`;
+  }
   const node = _actionNode(task && task.action);
   let path = node ? _TASK_ICONS[node.icon] : null;
   if (!path) {
@@ -859,6 +863,21 @@ function _renderList() {
         });
         content.appendChild(chip);
       }
+    }
+    // `P23-06` (WB-M-13). The card that IS a workflow said nothing — only ⋮ →
+    // *Edit in the Workbench* told — while the chain cards beside it wore a
+    // chip. It wears one too: a door to the Workbench, on this workflow.
+    if (task.task_type === 'workflow') {
+      const chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'task-workflow-chip';
+      chip.title = 'Open this workflow in the Workbench';
+      chip.textContent = 'Workflow';
+      chip.addEventListener('click', (e) => {
+        e.stopPropagation();
+        _openInWorkbench(task);
+      });
+      content.appendChild(chip);
     }
 
     const statusPill = titleRow.querySelector('[data-task-status-action]');

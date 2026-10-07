@@ -335,13 +335,29 @@ export function createWorkflowPanels({
       try {
         const a = anchorEl.getBoundingClientRect();
         const r = room.getBoundingClientRect();
-        const top = Math.max(8, Math.round(a.bottom - r.top + 4));
-        box.style.top = top + 'px';
-        box.style.left = Math.max(8, Math.min(Math.round(a.left - r.left), Math.round((r.width || 0) - 300))) + 'px';
-        // Every kind fits the room it opens in, scrolling inside it: measured in
-        // Chromium at 1400×860, fourteen kinds ran past the window's edge and
-        // the last group (where Code is greyed) could not be reached.
-        if (r.height) box.style.maxHeight = Math.max(160, Math.round(r.height - top - 12)) + 'px';
+        // `P23-06` (WB-U-5). On a desktop the list stands where a step's form
+        // will open — the canvas's right side, as tall as the canvas — rather
+        // than a 290 px dropdown under *New step* over the canvas's left third,
+        // where it covered the Starts node and scrolled inside itself.
+        const vp = window.innerWidth > 768 && typeof room.querySelector === 'function'
+          ? room.querySelector('.wf-edit:not([hidden]) .wb-viewport') : null;
+        const v = vp ? vp.getBoundingClientRect() : null;
+        if (v && v.height > 160) {
+          box.classList.add('wf-palette-side');
+          box.style.top = Math.round(v.top - r.top) + 'px';
+          box.style.height = Math.round(v.height) + 'px';
+          box.style.right = Math.max(0, Math.round(r.right - v.right)) + 'px';
+          box.style.left = 'auto';
+          box.style.maxHeight = 'none';
+        } else {
+          const top = Math.max(8, Math.round(a.bottom - r.top + 4));
+          box.style.top = top + 'px';
+          box.style.left = Math.max(8, Math.min(Math.round(a.left - r.left), Math.round((r.width || 0) - 300))) + 'px';
+          // Every kind fits the room it opens in, scrolling inside it: measured in
+          // Chromium at 1400×860, fourteen kinds ran past the window's edge and
+          // the last group (where Code is greyed) could not be reached.
+          if (r.height) box.style.maxHeight = Math.max(160, Math.round(r.height - top - 12)) + 'px';
+        }
       } catch (_) { /* no layout (a test): the sheet places it */ }
       room.appendChild(box);
       release = hold(() => finish(null));

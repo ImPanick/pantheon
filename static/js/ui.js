@@ -1242,6 +1242,64 @@ if ('ontouchstart' in window || window.innerWidth <= 768) {
 // ── Mobile swipe-down-to-dismiss for bottom sheet modals ──
 // Finger-following drag with velocity-based dismiss.
 // Works from grab handle, header, OR anywhere on the sheet when content is scrolled to top.
+
+/**
+ * `P23-06` (NAV-M-13, NAV-U-2). Swipe-down on a phone sheet is Back — one
+ * meaning. It used to hide the sheet and fire `modal-dismissed`, which
+ * minimised the Forge, Calendar and Email to a chip and closed the rest
+ * without the close their × runs (a Tasks draft, the Workbench's *Save /
+ * Discard / Keep editing*). Now it closes the sheet the way its × does,
+ * through the path Escape, the browser's Back and `← <opener>` share —
+ * `Modals.closeWindow` (C-NAV, fx-back's `P23-01`); until that half is on
+ * this branch, the sheet's own ×, which is what `closeWindow` presses. The
+ * back stack sees the window go and takes its history entry off. A window
+ * that asks before it closes keeps its sheet, which comes back up.
+ * Returns whether a window was asked to close.
+ */
+function swipeBack(el) {
+  const modal = el && typeof el.closest === 'function' ? el.closest('.modal') : null;
+  const settle = () => {
+    el.classList.remove('sheet-ready');
+    el.style.removeProperty('animation');
+    el.style.transform = '';
+    el.style.transition = '';
+  };
+  if (!modal) { settle(); return false; }
+  // The finger left the sheet off the bottom; its own closing animation
+  // would start it back at the top first.
+  el.style.setProperty('animation', 'none', 'important');
+  const id = modal.id;
+  if (typeof Modals.closeWindow === 'function') {
+    Modals.closeWindow(id);
+  } else {
+    const btn = (id === 'email-lib-modal' && document.getElementById('email-lib-close'))
+      || modal.querySelector('.modal-header .close-btn, .modal-header .modal-close, .close-btn, .modal-close, '
+        + '.modal-close-btn, [data-close], [data-action="close"]');
+    if (btn) btn.click();
+    else if (Modals.isRegistered(id)) Modals.close(id);
+    else modal.classList.add('hidden');
+  }
+  setTimeout(() => {
+    const stillUp = modal.isConnected && !modal.classList.contains('hidden')
+      && !modal.classList.contains('modal-minimized') && modal.style.display !== 'none'
+      && !el.classList.contains('modal-closing');
+    if (stillUp) {
+      // It asked first (Save / Discard / Keep editing): the sheet comes back.
+      el.style.removeProperty('animation');
+      el.style.transition = prefersReducedMotion() ? 'none' : 'transform 0.25s cubic-bezier(0.2, 0.9, 0.3, 1.05)';
+      el.style.transform = '';
+      setTimeout(() => { el.style.transition = ''; }, 260);
+      return;
+    }
+    settle();
+    // Swiping a tool away to reveal a new/empty chat replays the welcome
+    // "splash" reveal — only when the welcome screen is already showing.
+    const ws = document.getElementById('welcome-screen');
+    if (ws && !ws.classList.contains('hidden')) window.chatModule?.showWelcomeScreen?.();
+  }, 320);
+  return true;
+}
+
 if ('ontouchstart' in window) {
   const DISMISS_THRESHOLD = 50;    // px — dismiss if dragged past this
   const VELOCITY_THRESHOLD = 0.3;  // px/ms — fast flick dismisses even below threshold
@@ -1258,8 +1316,12 @@ if ('ontouchstart' in window) {
   // Called when a swipe-dismiss gesture starts so the menu doesn't orphan over
   // the page after the sheet slides away.
   function _closeFloatingDropdownsForSwipe() {
+    // `P23-06`: the Forge's task and GPU menus joined this list from the
+    // `modal-dismissed` listener `modalManager.js` kept for them — a swipe no
+    // longer fires that event (it is Back now, below).
     document.querySelectorAll(
-      '.email-card-dropdown, .hwfit-cached-dropdown, .cookbook-saved-menu, .cookbook-dep-menu'
+      '.email-card-dropdown, .hwfit-cached-dropdown, .cookbook-saved-menu, .cookbook-dep-menu, '
+      + '.cookbook-task-dropdown, .cookbook-gpu-split-menu'
     ).forEach(d => {
       if (d._anchor) d._anchor.classList.remove('cookbook-menu-active', 'reader-more-active');
       // Registered menus tear down through their own dismiss (releasing the
@@ -1403,37 +1465,14 @@ if ('ontouchstart' in window) {
     el.style.willChange = '';
 
     if (shouldDismiss) {
-      // Animate out — use remaining distance to calculate duration
+      // Animate out — use remaining distance to calculate duration. Under
+      // reduced motion the sheet goes at once (`P23-06`, NAV-M-17's rule).
       const remaining = el.offsetHeight - dy;
       const speed = Math.max(Math.abs(_velocity), 0.8); // min speed
-      const duration = Math.min(Math.max(remaining / speed, 120), 300);
-      el.style.transition = `transform ${duration}ms cubic-bezier(0.2, 0, 0.4, 1)`;
+      const duration = prefersReducedMotion() ? 0 : Math.min(Math.max(remaining / speed, 120), 300);
+      el.style.transition = duration ? `transform ${duration}ms cubic-bezier(0.2, 0, 0.4, 1)` : 'none';
       el.style.transform = 'translateY(100%)';
-      setTimeout(() => {
-        const modal = el.closest('.modal');
-        if (modal) {
-          modal.classList.add('hidden');
-          // Some modals (calendar, email library) toggle visibility via
-          // inline display style which would override .hidden — clear it
-          // so the modal is actually dismissed.
-          modal.style.display = '';
-          document.querySelectorAll('#settings-menu-list .list-item.active').forEach(i => i.classList.remove('active'));
-          // Notify modules so they can sync internal open-state flags
-          window.dispatchEvent(new CustomEvent('modal-dismissed', { detail: { id: modal.id } }));
-          // Swiping a tool away to reveal a new/empty chat replays the welcome
-          // "splash" reveal — the same nice effect notes gives on dismiss.
-          // Only when the welcome screen is already the active state (new chat),
-          // so we never cover a chat that has messages.
-          const ws = document.getElementById('welcome-screen');
-          if (ws && !ws.classList.contains('hidden')) {
-            window.chatModule?.showWelcomeScreen?.();
-          }
-        }
-        el.classList.remove('sheet-ready');
-        el.style.transform = '';
-        el.style.transition = '';
-        el.style.animation = '';
-      }, duration + 10);
+      setTimeout(() => swipeBack(el), duration + 10);
     } else {
       // Snap back with spring-like easing
       el.style.transition = 'transform 0.25s cubic-bezier(0.2, 0.9, 0.3, 1.05)';

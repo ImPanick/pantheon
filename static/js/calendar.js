@@ -76,7 +76,6 @@ let _escHandler = null;
 let _modal = null;
 
 let _dragUid = null;
-let _sidebarWasOpen = false;
 let _slideDir = 0;  // -1 = prev, +1 = next, 0 = none
 
 // (Single undo stack lives at `_calUndoStack` further below; this used to
@@ -617,29 +616,18 @@ async function _createEventReminder(ev, dueDate) {
 
 // ── Sidebar collapse ──
 
+// `P23-06` (NAV-M-15, DOCS-U-9). Nothing behind a window moves. On a desktop
+// this folded the sidebar away as the Calendar opened — the only window that
+// did — so the whole chat slid 96 px left and back again on close (measured:
+// composer x 453 → 357 → 453). Now it touches the sidebar only on a phone,
+// where the sidebar is a drawer laid over the page and a sheet opened under it
+// would be hidden; nothing puts it back, as when any other tool is picked.
 function _collapseSidebar() {
+  if (window.innerWidth > 768) return;
   const sb = document.getElementById('sidebar');
   if (sb && !sb.classList.contains('hidden')) {
-    // Only remember the prior state on desktop. On mobile the sidebar is an
-    // overlay that the user intentionally swipes/taps away when the tool
-    // opens — popping it back on close is unwanted.
-    //
-    // B50: this read `>= 700`, so 701–768 counted as desktop while every other
-    // test in the product — 105 of them — calls that mobile. On a viewport in
-    // that band the sidebar is an overlay, and closing the calendar popped it
-    // back: exactly what the comment above says is unwanted, in the only place
-    // that disagreed about where mobile ends.
-    if (window.innerWidth > 768) _sidebarWasOpen = true;
     sb.classList.add('hidden');
     if (window.syncRailSide) window.syncRailSide();
-  }
-}
-
-function _restoreSidebar() {
-  if (_sidebarWasOpen) {
-    const sb = document.getElementById('sidebar');
-    if (sb) { sb.classList.remove('hidden'); if (window.syncRailSide) window.syncRailSide(); }
-    _sidebarWasOpen = false;
   }
 }
 
@@ -3660,7 +3648,6 @@ let _highlightEventUid = null;
 
 function _doCloseCalendar() {
   _open = false;
-  _restoreSidebar();
   if (_modal) {
     _modal.style.display = 'none';
     _modal.classList.add('hidden');

@@ -215,7 +215,8 @@ def test_switching_on_with_unchecked_steps_offers_check_them_now_and_all_look_ri
         const listed = { role: layer.getAttribute('role'), lede: by(layer, 'wf-check-lede').textContent,
           rows: all(layer, 'wf-check-step').map((li) => [li.dataset.nodeId, by(li, 'wf-check-label').textContent,
             by(li, 'wf-check-origin').textContent, by(li, 'wf-check-plan').querySelectorAll('li').map((x) => x.textContent)]),
-          foot: by(layer, 'wf-check-foot').querySelectorAll('button').map((x) => x.textContent) };
+          foot: by(layer, 'wf-check-foot').querySelectorAll('button').map((x) => x.textContent),
+          offerLeft: sayButton(r) ? sayButton(r).textContent : null };
         fire(by(layer, 'wf-check-all'), 'click'); await quiet();
         const after = { lede: by(layer, 'wf-check-lede').textContent,
           said: all(layer, 'wf-check-said').map((p) => p.textContent),
@@ -241,6 +242,8 @@ def test_switching_on_with_unchecked_steps_offers_check_them_now_and_all_look_ri
                                    for i, label in zip(IDS, o["labels"])], \
         "every step the refusal names, with what it would do"
     assert o["listed"]["foot"] == ["All look right", "Close"]
+    # `P23-06` (WB-M-5): the line that offered it goes when the box opens.
+    assert o["listed"]["offerLeft"] is None, o["listed"]
     assert o["puts"] == [[f"/api/workflows/{o['WID']}", {"checked": IDS}]], "one check for the rest"
     assert o["after"]["lede"] == "Every step is checked."
     assert o["after"]["said"] == ["Checked.", "Checked.", "Checked."]

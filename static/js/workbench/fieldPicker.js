@@ -157,6 +157,41 @@ export function insertAtCaret(input, text) {
 // ── the list ───────────────────────────────────────────────────────────────
 
 /**
+ * `P23-06` (WB-U-9). Put the list under the *Insert a field…* that opened it
+ * (the text box's own, when the box is the anchor), inside the window — above
+ * the button when the window has more room there. It opened at the panel's
+ * top-right corner whatever was pressed: measured, a button at y 747 and the
+ * list at y 185, over the toolbar. The list keeps `position: absolute` in the
+ * layer it is drawn in; this only writes its `left`/`top` and how tall it may be.
+ */
+export function placeNear(box, anchor) {
+  if (!box || !anchor || typeof anchor.getBoundingClientRect !== 'function') return;
+  const slot = anchor.nextElementSibling || anchor.nextSibling;
+  const btn = slot && slot.classList && slot.classList.contains('wf-slot')
+    && typeof slot.querySelector === 'function' && slot.querySelector('.wf-slot-pick');
+  const at = (btn || anchor).getBoundingClientRect();
+  const host = box.offsetParent;
+  if (!host || typeof host.getBoundingClientRect !== 'function') return;
+  const h = host.getBoundingClientRect();
+  const win = typeof anchor.closest === 'function' ? anchor.closest('.modal-content') : null;
+  const w = win ? win.getBoundingClientRect()
+    : { top: 0, left: 0, bottom: window.innerHeight, right: window.innerWidth };
+  const gap = 4;
+  const below = w.bottom - at.bottom - gap - 8;
+  const above = at.top - w.top - gap - 8;
+  const down = below >= 200 || below >= above;
+  const room = Math.max(120, Math.min(520, down ? below : above));
+  box.style.maxHeight = `${Math.round(room)}px`;
+  const width = box.offsetWidth || 330;
+  const left = Math.max(w.left + 8, Math.min(at.left, w.right - width - 8));
+  const height = Math.min(box.offsetHeight || 0, room);
+  const top = down ? at.bottom + gap : at.top - gap - height;
+  box.style.right = 'auto';
+  box.style.left = `${Math.round(left - h.left + (host.scrollLeft || 0))}px`;
+  box.style.top = `${Math.round(top - h.top + (host.scrollTop || 0))}px`;
+}
+
+/**
  * Open the list of fields beside `anchor`. `load()` answers
  * `{ ok, sources, sentence }` (C-W's `sources`: `[{ node_id, label, kind,
  * origin, at, fields: [{ ref, path, type, example }] }]`); `extra` are
@@ -195,6 +230,7 @@ export function openFieldPicker(anchor, { load, extra = [], holdEscape = null, l
     };
     cancel.addEventListener('click', () => finish(null));
     room.appendChild(box);
+    placeNear(box, anchor);
     if (typeof holdEscape === 'function') release = holdEscape(() => finish(null));
 
     const draw = (sources) => {
@@ -241,6 +277,7 @@ export function openFieldPicker(anchor, { load, extra = [], holdEscape = null, l
         e.preventDefault();
         buttons[(i + (e.key === 'ArrowDown' ? 1 : buttons.length - 1)) % buttons.length].focus();
       });
+      placeNear(box, anchor);   // as tall as its list now
       if (buttons[0]) buttons[0].focus();
     };
 
@@ -342,5 +379,5 @@ export function decorateField(input, { slot = null, pick = null, labelOf = null,
 export default {
   pathWords,
   openFieldPicker, decorateField, refsIn, usesLine, insertAtCaret, originWords, exampleText, looksLikeRef,
-  NEVER_FALLBACK,
+  NEVER_FALLBACK, placeNear,
 };

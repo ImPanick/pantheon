@@ -487,13 +487,9 @@ export function initSidebarLayout(Storage, opts) {
     }, 0);
   });
 
-  // When a tool is dismissed by swiping it down (ui.js fires `modal-dismissed`),
-  // don't bounce the sidebar back open — the swipe should just dismiss the tool.
-  // Button-close still restores the prior sidebar state (no event fired there).
-  window.addEventListener('modal-dismissed', () => {
-    _sidebarWasOpenBeforeTool = false;
-    _railWasOpenBeforeTool = false;
-  });
+  // `P23-06`: a swipe-down fired `modal-dismissed` and this kept the sidebar
+  // shut after it while × reopened it. Swipe-down is Back now and closes the
+  // way × does (`ui.js` `swipeBack`), so there is one rule and no event.
 
   // ── Mobile: when a tool modal closes, restore the sidebar/rail to
   // whatever state it was in before the tool was opened. ──
@@ -530,9 +526,15 @@ export function initSidebarLayout(Storage, opts) {
       if (_railWasOpenBeforeTool && rail && !rail.classList.contains('mobile-mini')) {
         rail.classList.add('mobile-mini');
       }
+      // `P23-06`: this read the two flags after clearing them, so it never
+      // ran, and a drawer put back here kept the body's rail classes from
+      // when it was folded — drawn 0 px wide behind a backdrop that took
+      // every tap. Unreachable while a phone sheet had no × (`NAV-U-2`);
+      // measured on the Gallery's × at 390 px once it had one.
+      const restored = _sidebarWasOpenBeforeTool || _railWasOpenBeforeTool;
       _sidebarWasOpenBeforeTool = false;
       _railWasOpenBeforeTool = false;
-      if (_sidebarWasOpenBeforeTool || _railWasOpenBeforeTool) syncRailSide();
+      if (restored) syncRailSide();
     };
     const _modalObs = new MutationObserver((muts) => {
       let triggered = false;
