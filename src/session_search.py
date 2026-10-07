@@ -5,11 +5,11 @@ from __future__ import annotations
 
 import logging
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import Any, Iterable
 
-from sqlalchemy import text
+from sqlalchemy import bindparam, text
 
 from core.database import ChatMessage as DBChatMessage
 from core.database import Session as DBSession
@@ -138,38 +138,76 @@ def _owner_filter(query, owner: str | None, include_legacy_owner: bool):
 def _context_for_message(db, msg: DBChatMessage, count: int) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     if count <= 0 or not msg.timestamp:
         return [], []
+    return _contexts_by_id(db, [(msg.id, msg.session_id)], count).get(msg.id, ([], []))
 
-    before_rows = (
-        db.query(DBChatMessage)
-        .filter(
-            DBChatMessage.session_id == msg.session_id,
-            DBChatMessage.role.in_(SEARCH_ROLES),
-            DBChatMessage.timestamp < msg.timestamp,
-        )
-        .order_by(DBChatMessage.timestamp.desc())
-        .limit(count)
-        .all()
+
+# `P23-07` (`PERF-M-13`). The messages around every hit, in two statements
+# whatever the number of hits. `_context_for_message` asked twice per hit — the
+# messages before, the messages after — and both the FTS and the LIKE path
+# asked for every hit of their own, including the ones the merge then threw
+# away: measured by the perf audit on 8,000 messages, `?q=reminders&limit=20`
+# was 84 statements, 82 of them `SELECT chat_messages…`. Now one window query
+# numbers each hit session's messages and returns only the rows near a hit, and
+# one more reads those rows. A little slack around each hit lets the rule stay
+# exactly what it was — the nearest `count` messages strictly before and
+# strictly after the hit's timestamp — when neighbours share a timestamp.
+_CONTEXT_NEIGHBOURS_SQL = text(
+    """
+    WITH numbered AS (
+        SELECT id, session_id,
+               ROW_NUMBER() OVER (PARTITION BY session_id ORDER BY timestamp, id) AS rn
+        FROM chat_messages
+        WHERE session_id IN :sessions AND role IN ('user', 'assistant')
+    ),
+    anchors AS (
+        SELECT id AS anchor_id, session_id, rn FROM numbered WHERE id IN :hits
     )
-    after_rows = (
-        db.query(DBChatMessage)
-        .filter(
-            DBChatMessage.session_id == msg.session_id,
-            DBChatMessage.role.in_(SEARCH_ROLES),
-            DBChatMessage.timestamp > msg.timestamp,
-        )
-        .order_by(DBChatMessage.timestamp.asc())
-        .limit(count)
-        .all()
-    )
-    before = [_message_to_context(row) for row in reversed(before_rows)]
-    after = [_message_to_context(row) for row in after_rows]
-    return before, after
+    SELECT a.anchor_id AS anchor_id, n.id AS id, n.rn - a.rn AS offset
+    FROM anchors a
+    JOIN numbered n ON n.session_id = a.session_id
+     AND n.rn BETWEEN a.rn - :span AND a.rn + :span
+    """
+).bindparams(bindparam("sessions", expanding=True), bindparam("hits", expanding=True))
+
+
+def _contexts_by_id(db, hits, count: int) -> dict[str, tuple[list[dict[str, Any]], list[dict[str, Any]]]]:
+    """`{message_id: (before, after)}` for `hits`, an iterable of
+    `(message_id, session_id)`."""
+    hits = [(mid, sid) for mid, sid in hits if mid and sid]
+    if count <= 0 or not hits:
+        return {}
+    pairs = db.execute(_CONTEXT_NEIGHBOURS_SQL, {
+        "sessions": sorted({sid for _, sid in hits}),
+        "hits": sorted({mid for mid, _ in hits}),
+        "span": count * 2 + 2,
+    }).fetchall()
+    ids = {row.id for row in pairs}
+    msgs = {m.id: m for m in db.query(DBChatMessage).filter(DBChatMessage.id.in_(ids)).all()} if ids else {}
+    around: dict[str, list[tuple[int, DBChatMessage]]] = {}
+    for row in pairs:
+        found = msgs.get(row.id)
+        if found is not None:
+            around.setdefault(row.anchor_id, []).append((row.offset, found))
+    out = {}
+    for anchor_id, rows in around.items():
+        anchor = msgs.get(anchor_id)
+        stamp = anchor.timestamp if anchor is not None else None
+        if not stamp:
+            out[anchor_id] = ([], [])
+            continue
+        rows.sort(key=lambda r: r[0])
+        before = [m for off, m in rows if off < 0 and m.timestamp and m.timestamp < stamp][-count:]
+        after = [m for off, m in rows if off > 0 and m.timestamp and m.timestamp > stamp][:count]
+        out[anchor_id] = ([_message_to_context(m) for m in before], [_message_to_context(m) for m in after])
+    return out
 
 
 def _rows_to_results(db, rows: Iterable[tuple[DBChatMessage, str, str]], query: str, context_messages: int) -> list[SessionSearchResult]:
+    rows = list(rows)
+    contexts = _contexts_by_id(db, ((msg.id, msg.session_id) for msg, _, _ in rows), context_messages)
     results: list[SessionSearchResult] = []
     for msg, session_name, snippet in rows:
-        before, after = _context_for_message(db, msg, context_messages)
+        before, after = contexts.get(msg.id, ([], [])) if msg.timestamp else ([], [])
         content = msg.content or ""
         results.append(
             SessionSearchResult(
@@ -185,6 +223,13 @@ def _rows_to_results(db, rows: Iterable[tuple[DBChatMessage, str, str]], query: 
             )
         )
     return results
+
+
+def _with_context(db, results: list[SessionSearchResult], count: int) -> list[SessionSearchResult]:
+    """`P23-07`: the merged results, given their context in one pass."""
+    contexts = _contexts_by_id(db, ((r.message_id, r.session_id) for r in results if r.timestamp), count)
+    return [replace(r, context_before=contexts[r.message_id][0], context_after=contexts[r.message_id][1])
+            if r.message_id in contexts else r for r in results]
 
 
 def _search_like(
@@ -324,13 +369,15 @@ def search_session_messages(
     if owns_db:
         db = SessionLocal()
     try:
+        # `P23-07` (`PERF-M-13`): both paths find hits without context; the
+        # merged list gets its context once, below.
         fts_results = _search_fts(
             db,
             query,
             limit,
             owner,
             include_archived,
-            context_messages,
+            0,
             restrict_owner,
             include_legacy_owner,
         )
@@ -341,7 +388,7 @@ def search_session_messages(
                 limit,
                 owner,
                 include_archived,
-                context_messages,
+                0,
                 restrict_owner,
                 include_legacy_owner,
             )
@@ -354,7 +401,7 @@ def search_session_messages(
                 merged.append(result)
                 if len(merged) >= limit:
                     break
-            return merged
+            return _with_context(db, merged, context_messages)
         return _search_like(
             db,
             query,
