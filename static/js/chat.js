@@ -32,7 +32,7 @@ import { applyAgentThreadNode, verifierCardOptions, blockedCardOptions,
 // `B-NEW-11` (fx2-chat). One turn, one reply: a step that only thought hands its
 // reasoning on to the next bubble, and its rows go above the bubble that holds it.
 import { reasoningAbove, reasoningAtFoot, carryTurnReasoning, settleTurnReasoning,
-         lastShownStep } from './agentThread.js';
+         lastShownStep } from './turnReasoning.js';
 // `B918` / `B916`. A tool card's life on screen, and the spinner a new step
 // opens with, shared with a compare pane.
 import { startToolCard as _startToolCard, drawToolProgress as _drawToolProgress,

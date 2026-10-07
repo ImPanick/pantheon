@@ -445,6 +445,8 @@ def test_anything_else_draws_nothing(stop_sandbox):
 _LIVE_SCRIPT = r"""
 import { installDom, Node } from './dom.js';
 import { renderAgentStop } from './agentStops.js';
+// `B-NEW-11` (fx2-chat): the finalizer settles a step's reasoning through it.
+import { settleTurnReasoning } from './turnReasoning.js';
 const document = installDom();
 const uiModule = { scrollHistory() {} };
 const history = document.body.appendChild(new Node('div'));
@@ -516,6 +518,7 @@ def live_sandbox(tmp_path_factory):
     d = tmp_path_factory.mktemp("livestop")
     (d / "dom.js").write_text(_DOM, encoding="utf-8")
     shutil.copy(AGENT_STOPS_JS, d / "agentStops.js")
+    shutil.copy(AGENT_STOPS_JS.parent / "turnReasoning.js", d / "turnReasoning.js")   # B-NEW-11
     return d
 
 

@@ -11196,7 +11196,7 @@ body.fullwidth-chat .chat-history {
   line-height: 1.5;
 }
 /* `B-NEW-11` (fx2-chat). One fold holds an agent turn's reasoning, a part per
-   step (`agentThread.js` `settleTurnReasoning`); a rule in the fold's own
+   step (`turnReasoning.js` `settleTurnReasoning`); a rule in the fold's own
    colour between the steps, so they read in order and never run together
    (`CHAT-M-21`). */
 .thinking-content-inner > .thinking-round + .thinking-round {

@@ -211,8 +211,9 @@ def live_sandbox(tmp_path_factory):
         pytest.skip("node binary not on PATH")
     d = _make_sandbox(tmp_path_factory.mktemp("teacherlive"), JS / "agentThread.js",
                       resumed._SHIM, resumed._STUBS)
+    # `B-NEW-11` (fx2-chat): `turnReasoning.js`, as the resumed-stream sandbox.
     for name in ("agentMeter.js", "agentStops.js", "spinner.js", "agentTurn.js",
-                 "chatModelProvenance.js", "chatStreamErrors.js"):
+                 "chatModelProvenance.js", "chatStreamErrors.js", "turnReasoning.js"):
         shutil.copy(JS / name, d / name)
     return d
 

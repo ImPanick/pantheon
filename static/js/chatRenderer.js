@@ -23,9 +23,10 @@ import { buildAllowRuleChooser } from './trustLadder.js';
 // `P4-10`. Why the agent stopped itself — the same line the live stream draws.
 import { renderAgentStop, renderAgentNote, withdrawContinueOffers, compactionFromRecord } from './agentStops.js';
 import { applyAgentThreadNode, verifierCardOptions, approvalOutcome,
-         blockedCardOptions, toolOutputPanesHtml, screenshotSummary,
-         bubbleParts, isReasoningOnly, reasoningAbove, threadAbove,
-         carryTurnReasoning } from './agentThread.js';
+         blockedCardOptions, toolOutputPanesHtml, screenshotSummary } from './agentThread.js';
+// `B-NEW-11` (fx2-chat). One agent turn, one reply.
+import { bubbleParts, isReasoningOnly, reasoningAbove, threadAbove,
+         carryTurnReasoning } from './turnReasoning.js';
 import { prepBreakdownRows } from './agentMeter.js';   // P4-08
 
 // The decisions that mean yes, and the whole of that set.
@@ -3912,7 +3913,7 @@ export function dropAskedTwin(box, digest) {
 }
 
 // A reply bubble's reasoning and its words, apart: `bubbleParts` in
-// `agentThread.js` (fx2-chat, `B-NEW-11` reads bubbles the same way).
+// `turnReasoning.js` (fx2-chat, `B-NEW-11` reads bubbles the same way).
 const _bubbleParts = bubbleParts;
 
 /** What a reply bubble says, its reasoning left out; '' for a hidden one. */
