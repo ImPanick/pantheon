@@ -1942,9 +1942,10 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
     // syntax" — and the server reads '' as "sniff it", so every imported
     // `.txt` was "markdown" beside the seeded "text" one and the type chips
     // counted them apart. A name with no extension is still sniffed.
+    const named = documentLanguage(name);
     const language = CONVERTED_TO[ext] !== undefined
       ? CONVERTED_TO[ext]
-      : ((ext && documentLanguage(name) === '') ? 'text' : documentLanguage(name));
+      : ((ext && named === '') ? 'text' : named);
 
     const isSpreadsheet = ['.xlsx', '.xls', '.ods'].includes(ext);
     const isPdf = ext === '.pdf';

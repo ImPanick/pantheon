@@ -33,6 +33,16 @@ if (from < 0 || to < 0 || to <= from) {
 // that one brace so the block is a loop BODY that can be run once per
 // attachment. Balance is asserted rather than assumed.
 let block = source.slice(from, to).replace(/\n[ \t]*\}[ \t]*$/, '\n');
+// `P23-08` (DOCS-M-13): the block reads an attachment's size through the
+// module's own `_attachmentSizeText`; it comes from the same file, sliced the
+// same way, so the chip shows what the panel shows.
+const SIZE_FROM = source.indexOf('  function _attachmentSizeText(');
+const SIZE_TO = source.indexOf('\n  }\n', SIZE_FROM);
+if (SIZE_FROM < 0 || SIZE_TO < 0) {
+  console.error('ANCHOR-MISSING: could not extract _attachmentSizeText from document.js');
+  process.exit(2);
+}
+block = source.slice(SIZE_FROM, SIZE_TO + 4) + '\n' + block;
 const opens = (block.match(/\{/g) || []).length;
 const closes = (block.match(/\}/g) || []).length;
 if (opens !== closes) {
