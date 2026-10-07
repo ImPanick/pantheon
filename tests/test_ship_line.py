@@ -111,7 +111,19 @@ def test_the_trend_is_the_series_the_proposal_states():
     opened = (last[0] - last[1]) - (first[0] - first[1])
     assert filed > 0 and closed > 0, (filed, closed)
     assert opened == filed - closed                              # the identity § 1 rests on
-    assert (last[1] / last[0]) > (first[1] / first[0])          # done % converges
+    # Done %, read against the README sentence that states it. Until 2026-10-07
+    # this asserted done % always rises over the window; P23 filed its audit's
+    # findings (and twelve rows already done) faster than the window's first wave
+    # had closed, so 806/1116 → 916/1275 fell 72.2% → 71.8% with the tree better
+    # for it. A direction is a claim to hold the prose to, not a law of the
+    # tracker — the same turn § 1's open count took on 2026-10-01 (`B1235`).
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    said = re.search(r"\*\*(\d+\.\d)% → (\d+\.\d)%\*\*", readme)
+    assert said, "README no longer states the done % this test holds it to"
+    a, b = float(said.group(1)), float(said.group(2))
+    assert (a, b) == (round(100 * first[1] / first[0], 1), round(100 * last[1] / last[0], 1)), (
+        f"README says done went {a}% → {b}%; the tracker says "
+        f"{100 * first[1] / first[0]:.1f}% → {100 * last[1] / last[0]:.1f}% — re-measure, don't patch")
     stated = re.findall(r"\*\*Direction as of [^:*]+: the open count is (falling|rising)\.\*\*",
                         SHIP_LINE_TEXT)
     assert stated, "§ 1 no longer states a direction for this test to hold it to"

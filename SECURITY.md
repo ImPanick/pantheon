@@ -29,7 +29,7 @@ Private reporting is on for this repository (checked 2026-10-02; [`docs/security
 
 The more of this you have, the faster it moves. Send what you have; do not wait until the list is complete.
 
-- **The version and the revision.** The version is what `GET /api/version` returns on the instance (see *Supported Versions* below); the revision, from the repository root: `git show -s --abbrev=12 --format='%h (%cs)' HEAD`. Send both — until releases are tagged, many commits report the same version.
+- **The version and the revision.** The version is what `GET /api/version` returns on the instance (see *Supported Versions* below); the revision, from the repository root: `git show -s --abbrev=12 --format='%h (%cs)' HEAD`. Send both — between releases, many commits report the same version.
 - **Install method** — Docker, manual Python, Windows native, macOS app.
 - **The configuration that matters.** At minimum `AUTH_ENABLED`, `LOCALHOST_BYPASS`, whether the instance is reachable beyond localhost, and what sits in front of it.
 - **Reproduction steps**, and what an attacker gets at the end of them.
@@ -59,15 +59,15 @@ These are not vulnerabilities in this project, and saying so up front saves you 
 
 ## Supported Versions
 
-**Pantheon has a version, and no tagged release yet.** No `v*` tag, no release branches, no long-term-support line — and no release notes to subscribe to, so Watch → Custom → Releases will stay silent until the first tag is cut.
+**Pantheon's first release is tagged: `v0.2.0`, cut 2026-10-07 on the owner's word (`D-2026-10-07-01`).** It is `0.x`: there are no release branches and no long-term-support line, and a security fix lands on `main` and the next version, never on an older tag. Its notes are [`docs/release-notes/0.2.0.md`](docs/release-notes/0.2.0.md).
 
 | Version | Supported |
 |---|---|
 | `main` (default branch) | Yes — the only supported version |
 | Anything older than current `main` | No |
-| Tagged releases | None exist yet |
+| `v0.2.0` (tagged 2026-10-07) | Only as `main` was that day — fixes land on `main` |
 
-**Which version am I running?** Ask the instance: `GET /api/version` returns `{"version": "0.2.0"}`. That is the `APP_VERSION` constant in `src/constants.py`; `GET /api/readiness` and the `pantheon_build_info` metric report the same string, and so does `--version` on every `pantheon-*` command. [`CHANGELOG.md`](CHANGELOG.md) § *Versions* has the scheme, and how that string, the changelog's newest version heading and a release tag are kept equal. A version names a release, and until releases are tagged many commits on `main` report the same one — so the commit is the finer identifier, and a report should carry both.
+**Which version am I running?** Ask the instance: `GET /api/version` returns `{"version": "0.2.0"}`. That is the `APP_VERSION` constant in `src/constants.py`; `GET /api/readiness` and the `pantheon_build_info` metric report the same string, and so does `--version` on every `pantheon-*` command. [`CHANGELOG.md`](CHANGELOG.md) § *Versions* has the scheme, and how that string, the changelog's newest version heading and a release tag are kept equal. A version names a release, and between releases many commits on `main` report the same one — so the commit is the finer identifier, and a report should carry both.
 
 If you self-host this, that means: track `main`, pull and redeploy to pick up a security fix, and pin to a commit rather than to a tag if you need a fixed target — the bug report form already asks for `git show -s --abbrev=12 --format='%h (%cs)' HEAD`. A fix does not get backported to the commit you happen to be sitting on; there is nowhere to backport it to. Watch the repository for pushes, or read [`CHANGELOG.md`](CHANGELOG.md): new entries land under `[Unreleased]` and move under a version heading when one is cut.
 
