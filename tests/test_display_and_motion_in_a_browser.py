@@ -48,7 +48,8 @@ ROOT = Path(__file__).resolve().parents[1]
 STATIC = ROOT / "static"
 
 # One case = one browser. `CASE.steps` is the body of an async function given
-# `page` and `touch` (a CDP finger) and returning what the test asserts on.
+# `page`, `touch` (a CDP finger) and `globalListeners()` (how many listeners sit
+# on `document` and `window`, by DevTools) and returning what the test asserts on.
 _DRIVER = r"""
 const { chromium } = require('playwright');
 const fs = require('fs');
@@ -89,8 +90,17 @@ const TYPES = { '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg
       await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
     },
   };
-  const steps = new (Object.getPrototypeOf(async function () {}).constructor)('page', 'touch', CASE.steps);
-  const result = await steps(page, touch);
+  // Listeners on `document` and `window`, counted by the browser itself.
+  const globalListeners = async () => {
+    let n = 0;
+    for (const expr of ['document', 'window']) {
+      const { result } = await cdp.send('Runtime.evaluate', { expression: expr });
+      n += (await cdp.send('DOMDebugger.getEventListeners', { objectId: result.objectId })).listeners.length;
+    }
+    return n;
+  };
+  const steps = new (Object.getPrototypeOf(async function () {}).constructor)('page', 'touch', 'globalListeners', CASE.steps);
+  const result = await steps(page, touch, globalListeners);
   process.stdout.write(JSON.stringify({ result, errors }) + '\n');
   await browser.close();
 })().catch((e) => { process.stdout.write(JSON.stringify({ crash: String(e && e.stack || e) }) + '\n'); process.exit(0); });
@@ -414,3 +424,60 @@ def test_a_window_closed_after_a_right_dock_does_not_keep_the_screens_height(tmp
     r = out["result"]
     assert "modal-right-docked" in r["docked"], r
     assert r["after"]["minHeight"] == "", r     # was 876px — the Brain reopened 560×876 at y 12
+
+
+# ── PERF-M-4: six Gallery opens add no listener ─────────────────────────────
+
+_GALLERY_PAGE = _page(
+    """
+<div class="icon-rail" id="icon-rail"></div><nav class="sidebar" id="sidebar"></nav>
+<button id="tool-gallery-btn">Gallery</button>
+<div id="chat-container"><textarea id="message"></textarea></div>
+""",
+    """
+// A library with no photos and one album: what the Gallery asks for, answered small.
+const album = { id: 'a1', name: 'Harbour', count: 0, image_count: 0, cover: null };
+window.fetch = async () => ({ ok: true, status: 200,
+  json: async () => ({ images: [], total: 0, albums: [album], ok: true }) });
+window.__gallery = await import('/static/js/gallery.js');
+""",
+)
+_GALLERY_STEPS = r"""
+  const cycle = async () => {
+    await page.evaluate(() => window.__gallery.openGallery());
+    await page.waitForTimeout(250);
+    // The Albums tab draws the album cards and their ⋯ menus.
+    await page.evaluate(() => document.querySelector('#gallery-modal .gallery-tab[data-tab="albums"]').click());
+    await page.waitForTimeout(150);
+    await page.evaluate(() => window.__gallery.closeGallery());
+    await page.waitForTimeout(350);
+  };
+  await cycle();                       // the first open makes what a page keeps once
+  const before = await globalListeners();
+  for (let i = 0; i < 6; i++) await cycle();
+  const after = await globalListeners();
+  const gone = await page.evaluate(() => !document.getElementById('gallery-modal'));
+  // The album ⋯ menu still closes from outside, through the one listener.
+  await page.evaluate(() => window.__gallery.openGallery());
+  await page.waitForTimeout(250);
+  await page.evaluate(() => document.querySelector('#gallery-modal .gallery-tab[data-tab="albums"]').click());
+  await page.waitForTimeout(150);
+  const menu = await page.evaluate(() => {
+    const btn = document.querySelector('.gallery-album-menu-btn');
+    if (!btn) return 'no album menu drawn';
+    btn.click();
+    const pop = document.querySelector('.gallery-album-menu-pop');
+    const opened = !pop.hidden;
+    document.getElementById('message').click();
+    return { opened, closedFromOutside: pop.hidden };
+  });
+  return { before, after, gone, menu };
+"""
+
+
+def test_six_gallery_opens_add_no_listener_to_the_page(tmp_path):
+    out = _drive(tmp_path, html=_GALLERY_PAGE, steps=_GALLERY_STEPS, viewport=(1440, 900))
+    r = out["result"]
+    assert r["gone"], r                        # the window really closed each time
+    assert r["after"] == r["before"], r        # was +2 per open: the `scroll` capture and the album menu's dismiss
+    assert r["menu"] == {"opened": True, "closedFromOutside": True}, r

@@ -15,6 +15,36 @@ import fileHandlerModule from './fileHandler.js?v=20261003waveg';
 const API_BASE = window.location.origin;
 let _open = false;
 let _galleryResizeHandler = null;
+let _galleryScrollHandler = null;
+
+// `P23-06` (PERF-M-4). The Gallery is built afresh on every open and removed
+// on close, but three of its handlers sat on `document`: the infinite-scroll
+// `scroll` listener (one per open, never removed), and an outside-click
+// dismiss for the album ⋯ menu (one per open) and for the photo ⋮ menu (one
+// per photo opened), each closing over the window it was made for — so every
+// closed Gallery stayed in memory. Measured: six opens and closes, +1,641
+// listeners and +33,700 nodes. The scroll listener is held here and removed on
+// close; the two menus share one listener, made once, that reads the Gallery
+// on screen when a click lands.
+let _galleryOutsideClickWired = false;
+function _wireGalleryOutsideClick() {
+  if (_galleryOutsideClickWired) return;
+  _galleryOutsideClickWired = true;
+  document.addEventListener('click', (e) => {
+    const modal = document.getElementById('gallery-modal');
+    if (!modal) return;
+    const t = e.target;
+    if (!(t && t.closest && (t.closest('.gallery-album-menu-btn') || t.closest('.gallery-album-menu-pop')))) {
+      modal.querySelectorAll('.gallery-album-menu-pop').forEach(p => { p.hidden = true; });
+    }
+    const menu = document.getElementById('gallery-detail-menu');
+    const menuBtn = document.getElementById('gallery-detail-menu-btn');
+    if (menu && !menu.hidden && !menu.contains(t) && !(menuBtn && menuBtn.contains(t))) {
+      menu.hidden = true;
+      menu.style.display = 'none';
+    }
+  });
+}
 
 // ── Image editor, loaded on first use ──
 // galleryEditor.js plus everything under js/editor/ is 54 modules / 576 KB.
@@ -720,15 +750,9 @@ function _wireAlbumsEvents(scope) {
       if (pop && !wasOpen) pop.hidden = false;
     });
   });
-  // Click anywhere else closes any open pop.
-  if (!container._popDismissWired) {
-    document.addEventListener('click', (e) => {
-      if (e.target.closest('.gallery-album-menu-btn')) return;
-      if (e.target.closest('.gallery-album-menu-pop')) return;
-      container.querySelectorAll('.gallery-album-menu-pop').forEach(p => { p.hidden = true; });
-    });
-    container._popDismissWired = true;
-  }
+  // Click anywhere else closes any open pop — `_wireGalleryOutsideClick`, one
+  // listener for the page (`P23-06`, PERF-M-4).
+  _wireGalleryOutsideClick();
 
   container.querySelectorAll('.gallery-album-menu-pop').forEach(pop => {
     const id = pop.dataset.album;
@@ -1608,10 +1632,8 @@ function _openDetail(img) {
       _setMenu(menu.hidden);
     });
     menu.addEventListener('click', () => { _setMenu(false); });
-    // Click outside closes the menu.
-    document.addEventListener('click', (e) => {
-      if (!menu.hidden && !menu.contains(e.target) && e.target !== menuBtn) _setMenu(false);
-    });
+    // Click outside closes the menu — `_wireGalleryOutsideClick` (`P23-06`).
+    _wireGalleryOutsideClick();
   }
 
   const _toggleDetailFavorite = async () => {
@@ -2303,11 +2325,14 @@ export function openGallery() {
       Promise.resolve(_fetchLibrary(true)).finally(() => { _loadingMore = false; });
     }
   };
-  document.addEventListener('scroll', () => {
+  // Held so `_doCloseGallery` can take it off (`P23-06`, PERF-M-4).
+  if (_galleryScrollHandler) document.removeEventListener('scroll', _galleryScrollHandler, true);
+  _galleryScrollHandler = () => {
     if (_scrollTick) return;
     _scrollTick = true;
     requestAnimationFrame(_maybeAutoLoad);
-  }, true);
+  };
+  document.addEventListener('scroll', _galleryScrollHandler, true);
 
   // When the window grows (e.g. entering fullscreen), the visible grid
   // can hold more photos than the last page fetched — top up so there's
@@ -3095,6 +3120,10 @@ function _doCloseGallery() {
   if (_galleryResizeHandler) {
     window.removeEventListener('resize', _galleryResizeHandler);
     _galleryResizeHandler = null;
+  }
+  if (_galleryScrollHandler) {
+    document.removeEventListener('scroll', _galleryScrollHandler, true);
+    _galleryScrollHandler = null;
   }
   // Detach the face-overlay resize listener so we don't leak a
   // handler past close (v2 review HIGH-9).
