@@ -119,3 +119,32 @@ def test_someone_seeded_at_startup_is_not_seeded_again(monkeypatch, tmp_path):
     monkeypatch.setattr(s, "ensure_assistant_defaults", fake_assistant)
     asyncio.run(s.ensure_defaults("alice"))
     assert asyncio.run(s._seed_defaults_for_new_owners()) == []
+
+
+def test_the_loop_seeds_before_it_looks_for_due_work(monkeypatch):
+    """One turn of the scheduler's own loop: a new person's built-ins are
+    seeded there, and before the due work is looked for."""
+    from src.task_scheduler import TaskScheduler
+
+    s = TaskScheduler(None)
+    order = []
+
+    async def seed():
+        order.append("seed")
+        return []
+
+    async def check():
+        order.append("check")
+        s._running = False
+
+    real_sleep = asyncio.sleep
+
+    async def no_wait(_seconds, *a, **k):
+        await real_sleep(0)
+
+    monkeypatch.setattr(s, "_seed_defaults_for_new_owners", seed)
+    monkeypatch.setattr(s, "_check_due_tasks", check)
+    monkeypatch.setattr(asyncio, "sleep", no_wait)
+    s._running = True
+    asyncio.run(s._loop())
+    assert order == ["seed", "check"]
