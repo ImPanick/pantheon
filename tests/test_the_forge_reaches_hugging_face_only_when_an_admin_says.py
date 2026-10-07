@@ -284,6 +284,17 @@ def test_every_lookup_says_the_hubs_are_off_and_reaches_nobody(datadir, direct, 
     assert asked == [] and no_egress == []
 
 
+def test_the_image_paths_request_function_asks_too(datadir, direct, asked, no_egress):  # noqa: F811
+    """`_hf_get_json` is the one request in `image_models`; its search caller is
+    switched off today (`_should_discover_variants`), so it is asked directly —
+    the day that caller comes back, it is already behind the switch."""
+    import services.hwfit.image_models as image_models
+
+    assert image_models._hf_get_json("https://huggingface.co/api/collections/x") is None
+    assert image_models._hf_model_search("flux fp8") == []
+    assert asked == [] and no_egress == []
+
+
 @pytest.mark.parametrize("body", [
     {"repo_id": "Qwen/Qwen3-8B"},
     {"repo_id": "qwen2.5:7b", "backend": "ollama"},
