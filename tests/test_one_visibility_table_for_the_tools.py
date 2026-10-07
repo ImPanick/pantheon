@@ -27,6 +27,7 @@ from pathlib import Path
 
 import pytest
 
+from tests.helpers.esc_stub import esc_source
 from tests.helpers.js_source import js_function
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -292,6 +293,7 @@ def test_open_by_name_refuses_a_hidden_tool_in_the_chat(tmp_path):
     """SET-M-2 (slash half): `/open gallery` pressed a `display:none` button."""
     src = SLASH_JS.read_text(encoding="utf-8")
     body = js_function(src, "async function _cmdOpen")
+    (tmp_path / "esc.mjs").write_text(esc_source() + "export { esc };\n", encoding="utf-8")
     out = _node(tmp_path, """
         window.pantheonToolDoor = V.toolDoor;
         const replies = [];
@@ -299,7 +301,11 @@ def test_open_by_name_refuses_a_hidden_tool_in_the_chat(tmp_path):
         const cookbookModule = null, settingsModule = null;
         globalThis.document = document;
         async function _cmdOpen(args, ctx) %s
-        const ctx = { esc: (t) => String(t) };
+        // P23 round 2 (`B874`): `_makeCtx` hands `_cmdOpen` `uiModule.esc`, so
+        // the stub is the shipped escaper (written beside this case), not a
+        // pass-through that could not show an escaped reply.
+        const { esc } = await import('./esc.mjs');
+        const ctx = { esc };
         V.applyToolVisibility({ privileges: { can_generate_images: false }, auth: true }, document);
         await _cmdOpen(['gallery'], ctx);
         await _cmdOpen(['documents'], ctx);
