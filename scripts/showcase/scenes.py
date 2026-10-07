@@ -662,7 +662,7 @@ SCENES: List[Scene] = [
     Scene("skills", "png", "the Skills window: yours, an imported package, a group", scene_skills),
     Scene("settings", "png", "Settings → Workstation", scene_settings),
     Scene("palette", "png", "the command palette (Ctrl+K)", scene_palette),
-    Scene("themes", "png", "the sixteen palettes", scene_themes),
+    Scene("themes", "png", "the twenty-three palettes", scene_themes),
     Scene("brain", "png", "the Brain's memories", scene_brain),
     Scene("phone-chat", "phone", "the chat at phone width", scene_phone_chat),
     Scene("phone-documents", "phone", "the Library at phone width", scene_phone_documents),
