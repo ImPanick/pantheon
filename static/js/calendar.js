@@ -181,7 +181,7 @@ let _calendarsError = null;
 // every list/render path calls _fetchCalendars, but we only want to
 // hit the remote server lazily on the first user open.
 let _caldavSyncedOnce = false;
-async function _fetchCalendars() {
+async function _fetchCalendars({ sync = true } = {}) {
   _calendarsError = null;
   try {
     const res = await fetch(`${API_BASE}/api/calendar/calendars`, { credentials: 'same-origin' });
@@ -196,7 +196,7 @@ async function _fetchCalendars() {
   // First open: fire a background CalDAV pull. We don't await — the
   // initial render uses whatever's already cached locally, and the
   // sync's writes show up on the next paint after it resolves.
-  if (!_caldavSyncedOnce) {
+  if (sync && !_caldavSyncedOnce) {
     _caldavSyncedOnce = true;
     _syncCaldav(false);
   }
@@ -3734,12 +3734,17 @@ function _loadCache() {
   } catch (e) { return false; }
 }
 
-// Boot: load cache, refresh badge, prefetch current month
+// Boot: load cache, refresh badge, prefetch current month.
+// `P23-07` (PERF-M-17): without the CalDAV pull. The guard above says it is for
+// the first open, and this boot path took it on every page load — `POST
+// /api/calendar/sync` with the Calendar closed, a request to the person's CalDAV
+// server per reload once one is configured. The badge needs this month's
+// events, not a pull; the first open still pulls.
 (async () => {
   _loadCache();
   _updateBadge();
   try {
-    await _fetchCalendars();
+    await _fetchCalendars({ sync: false });
     _saveCache();
     const [s, e] = _monthRange(new Date());
     await _fetchEvents(s, e);
