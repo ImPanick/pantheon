@@ -323,7 +323,10 @@ def test_closing_the_mail_while_the_reply_chat_is_open_keeps_that_chat(box):
     so closing the mail keeps that chat on screen — its entry stays, as the
     chat's — rather than `back()` onto the chat replied from."""
     o = _case(box, _MAIL + """
+        let mailTab = 'inbox';
+        tabs['email-lib-modal'] = { getTab: () => mailTab, setTab: (t) => { mailTab = t; } };
         up('email-lib-modal'); await step();
+        mailTab = 'sent'; await step();         // the entry is rewritten in place: it keeps its chat
         await _createEmailChat({ subject: 'Q3 Board Pack' }, { forceNew: true });
         down('email-lib-modal'); await step(); await settle(); await step();
         const closed = here();
