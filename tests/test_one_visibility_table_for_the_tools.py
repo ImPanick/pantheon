@@ -408,9 +408,11 @@ def test_the_slash_popup_asks_the_table_each_time_it_opens(tmp_path):
         const late = box();
         const lateOff = offered(late, '/gal');
         T.applyToolVisibility({ features: { gallery: true } }, null);
-        console.log(JSON.stringify({
-          before, off, offAll, lateOff, back: offered(ta, '/gal'), lateBack: offered(late, '/gal'),
-        }));
+        // The late box first: the popup is one element, so the first box's
+        // rows must not be the ones read for it.
+        const lateBack = offered(late, '/gal');
+        offered(late, 'done');
+        console.log(JSON.stringify({ before, off, offAll, lateOff, lateBack, back: offered(ta, '/gal') }));
     """)
     assert out["before"] == ["/gallery", "/tour-gallery"]
     assert out["off"] == [], "the popup offered a tool switched off after the box was wired"
