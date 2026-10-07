@@ -6055,6 +6055,12 @@ const COMMANDS = {
     category: 'Settings',
     help: 'Open the Settings panel',
     handler: _cmdSettings,
+    // The `SET-M-22` rule, found driving `B-NEW-2` (round 2): opening the
+    // window is the answer. It echoed "/settings tools" and saved it, and from
+    // the welcome screen each `/settings appearance` made a new chat in the
+    // sidebar to hold it (measured as `guest`: 0 → 1 → 2 chats). Its one chat
+    // answer, "Could not open Settings.", reads without the echo.
+    noUserBubble: true,
     usage: '/settings [tab]'
   },
   open: {

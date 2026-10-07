@@ -169,7 +169,7 @@ _DISPATCH = """
     const _invokeSkillByName = async () => true;
     const _loadSkillSlashCatalog = async () => [];
     const _cmdToolPanel = async (tool) => { out.opened.push(tool); return true; };
-    const cookbookModule = null, settingsModule = null;
+    let cookbookModule = null, settingsModule = null;
     const document = { getElementById: (id) => ({ click: () => out.opened.push(id) }) };
     const LEGACY_ALIASES = {};
     const COMMANDS = { __ROWS__,
@@ -241,6 +241,22 @@ def test_a_refused_command_leaves_nothing_in_the_chat(tmp_path, name):
     if name == "gallery":
         assert out["sentence"] == ("Gallery is switched off for everyone. An admin can turn it "
                                    "back on in Settings → Agent Tools.")
+
+
+def test_settings_opens_without_an_echo_or_a_chat_to_hold_it(tmp_path):
+    """Found driving `B-NEW-2` at `:8732`: `/settings tools` echoed and was
+    saved into the chat, and a guest on the welcome screen got a new chat in
+    the sidebar for each `/settings appearance` (0 → 1 → 2). The real
+    `settings` row and `_cmdSettings` behind the real dispatcher: Settings
+    opens on the tab asked for, and nothing reaches the chat."""
+    src = SLASH_JS.read_text(encoding="utf-8")
+    handler = js_definition(src, blank_text(src, "js").index("async function _cmdSettings("))
+    out = _dispatch(tmp_path, [_command_row("settings")], """
+        settingsModule = { open: (tab) => out.opened.push('settings:' + (tab || '')) };
+        await handleSlashCommand('/settings appearance');
+    """, extra=handler)
+    assert out["opened"] == ["settings:appearance"]
+    assert out["added"] == [] and out["persisted"] == [] and out["replies"] == []
 
 
 def test_open_by_name_opens_without_an_echo_and_refuses_without_a_trace(tmp_path):
