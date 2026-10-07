@@ -6671,6 +6671,9 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
         _showDocumentWritingStatus(contentDiv);
       } else {
         contentDiv.innerHTML = markdownModule.processWithThinking(markdownModule.squashOutsideCode(dt));
+        // `B-NEW-11`: this view draws a step's reasoning shut, as the reload
+        // does, so it joins the turn's one fold as it comes.
+        settleTurnReasoning(roundHolder);
       }
       uiModule.scrollHistory();
     };

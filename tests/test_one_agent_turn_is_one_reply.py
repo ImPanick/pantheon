@@ -583,3 +583,25 @@ def test_the_continuation_an_approval_lets_through_is_the_same_reply(reload_sand
         assert out == {"pausedShown": False, "folds": 1, "steps": ["Three things to gather."]}, out
     else:
         assert out == {"pausedShown": True, "folds": 0, "steps": []}, out
+
+
+def test_a_resumed_view_keeps_one_fold_while_a_step_streams(sandbox):
+    """`resumeStream` — a page reloaded mid-turn — draws each step's reasoning
+    shut, as the reload does; a step streaming there joins the turn's one fold
+    as it comes, rather than standing under it as a second *View thinking
+    process*. The view ends in the canonical reload (`agent_step` makes it rich)."""
+    events = THREE_STEPS + ["[DONE]"]
+    script = (streams._module_level() + "\n" + _live_driver() + "\n" + streams._RESUMED_DRIVER
+              + "\n" + _LIVE_READ + "\n" + textwrap.dedent("""
+        const snaps = [];
+        await runResumed(%s, snaps);
+        console.log(JSON.stringify({ snaps, reloads: reloads.length }));
+    """ % json.dumps(events)))
+    out = _run(sandbox, _live_preamble(), script)
+    # `snaps[i]` is the page after event `i`. Step 3's words are streaming
+    # (event 8): the rows, then one bubble, one fold of the three steps.
+    streaming = out["snaps"][8]
+    assert [next(iter(n)) for n in streaming] == ["rows", "bubble"], streaming
+    assert streaming[1]["folds"] == [["Looking for the folders first.", "Now the unfiled ones.", "Counting them."]]
+    assert all(len(n["folds"]) <= 1 for snap in out["snaps"] for n in snap if "bubble" in n), out["snaps"]
+    assert out["reloads"] == 1
