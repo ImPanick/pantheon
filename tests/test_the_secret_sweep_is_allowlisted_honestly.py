@@ -43,7 +43,9 @@ def _allowlisted_literals() -> list[str]:
     assert block, "no allowlist regexes in .gitleaks.toml"
     found = re.findall(r"'''(.*?)'''", block.group(1), re.S)
     assert found, "the allowlist block parsed to nothing"
-    return [f.strip() for f in found]
+    # A trailing word boundary keeps a shorter token from excusing a longer
+    # one with the same prefix. It is a regex assertion, not part of the token.
+    return [f.strip().removesuffix(r"\b") for f in found]
 
 
 def _uncommented_lines() -> list[str]:
@@ -115,6 +117,10 @@ def test_no_allowlisted_literal_looks_like_a_real_credential(literal):
         "AAAABBBBCCCCDDDD",   # repeated runs
         "Jane-Doe",           # a test persona
         "abc123",             # the universal placeholder
+        "sk-live-4f9a8b7c6d5e4f3a",  # fixed redaction-test token
+        "AKIAABCDEFGHIJKLMNOP",  # sequential sample AWS key
+        "sekret-api-key-123",   # deliberately misspelled test key
+        "0123456789abcdef0123456789abcdef",  # repeated ascending hex
     )
     assert any(m in literal for m in fake_markers), (
         f"{literal!r} does not carry any of the markers that make the existing "
@@ -171,3 +177,19 @@ def test_the_allowlist_is_global_and_not_bolted_to_one_rule():
     assert any(ln.strip() == "[allowlist]" for ln in lines), (
         "the literals are excused somewhere other than the top-level allowlist")
     assert _allowlisted_literals(), "the allowlist is empty"
+
+
+def test_the_new_token_exceptions_do_not_cover_longer_credentials():
+    """The short redaction fixture prefixes the long one; neither exception
+    may hide a different credential with extra characters appended."""
+    text = _config()
+    for literal in ("sk-live-4f9a8b7c6d5e4f3a",
+                    "sk-live-4f9a8b7c6d5e4f3a2b1c",
+                    "AKIAABCDEFGHIJKLMNOP",
+                    "sekret-api-key-123",
+                    "0123456789abcdef0123456789abcdef_Q3",
+                    "0123456789abcdef0123456789abcdef"):
+        pattern = literal + r"\b"
+        assert f"'''{pattern}'''" in text
+        assert re.search(pattern, literal)
+        assert not re.search(pattern, literal + "X")

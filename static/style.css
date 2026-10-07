@@ -2307,7 +2307,121 @@ body.bg-pattern-sparkles {
     .hwfit-header .hwfit-sortable { cursor: pointer; transition: color .12s; }
     .hwfit-header .hwfit-sortable:hover { color: var(--fg); text-decoration: underline dotted; }
     .hwfit-header .hwfit-sort-active { color: var(--fg); font-weight: 600; }
-    /* Welcome screen — centered in available space above input bar */
+    /* The Aegean scene belongs to the untouched welcome state. It is decorative
+       text in the existing chat canvas, below every control and theme surface. */
+    .welcome-scenery {
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+      overflow: hidden;
+      pointer-events: none;
+      user-select: none;
+      opacity: 1;
+      transition: opacity .25s ease;
+      font-family: 'Fira Code', var(--font-family, monospace);
+      font-variant-ligatures: none;
+    }
+    .chat-container:not(.welcome-active) .welcome-scenery { display: none; }
+    body:not(.welcome-ready) .welcome-scenery { opacity: 0; }
+    .welcome-scenery pre {
+      position: absolute;
+      margin: 0;
+      padding: 0;
+      border: 0;
+      border-radius: 0;
+      background: transparent !important;
+      box-shadow: none;
+      min-height: 0;
+      width: max-content;
+      max-width: none;
+      white-space: pre;
+      word-break: normal;
+      overflow: visible;
+      line-height: 1.12;
+      letter-spacing: 0;
+    }
+    .scenery-olympus {
+      top: 12%;
+      left: 50%;
+      transform: translateX(-50%);
+      color: color-mix(in srgb, var(--fg) 25%, transparent);
+      font-size: clamp(7px, .78vw, 11px);
+      mask-image: linear-gradient(90deg, transparent, black 15%, black 85%, transparent);
+    }
+    .scenery-temple {
+      top: 19%;
+      right: 10%;
+      color: color-mix(in srgb, var(--fg) 30%, transparent);
+      font-size: clamp(8px, .86vw, 12px);
+    }
+    .scenery-sea {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: clamp(34px, 7vh, 80px);
+      height: 220px;
+      display: flex;
+      justify-content: center;
+      align-items: flex-end;
+      overflow: hidden;
+    }
+    .welcome-scenery .scenery-warship {
+      position: relative;
+      z-index: 1;
+      color: color-mix(in srgb, var(--fg) 48%, var(--red));
+      opacity: .78;
+      font-size: clamp(9px, 1.15vw, 16px);
+      animation: scenery-sail 8s ease-in-out infinite alternate;
+    }
+    .welcome-scenery .scenery-wave {
+      left: 50%;
+      bottom: 0;
+      color: color-mix(in srgb, var(--fg) 28%, var(--red));
+      font-size: clamp(9px, 1.15vw, 16px);
+      mask-image: linear-gradient(90deg, transparent, black 12%, black 88%, transparent);
+    }
+    .scenery-wave-back {
+      opacity: .45;
+      animation: scenery-wave-back 9s ease-in-out infinite alternate;
+    }
+    .scenery-wave-front {
+      opacity: .6;
+      animation: scenery-wave-front 11s ease-in-out infinite alternate;
+    }
+    @keyframes scenery-sail {
+      from { transform: translate(-7px, 1px) rotate(-.3deg); }
+      to { transform: translate(7px, -2px) rotate(.3deg); }
+    }
+    @keyframes scenery-wave-back {
+      from { transform: translateX(calc(-50% - 11px)); }
+      to { transform: translateX(calc(-50% + 11px)); }
+    }
+    @keyframes scenery-wave-front {
+      from { transform: translateX(calc(-50% + 12px)); }
+      to { transform: translateX(calc(-50% - 12px)); }
+    }
+    .welcome-scenery[data-paused="true"] .scenery-warship,
+    .welcome-scenery[data-paused="true"] .scenery-wave { animation-play-state: paused; }
+    @media (prefers-reduced-motion: reduce) {
+      .welcome-scenery .scenery-warship,
+      .welcome-scenery .scenery-wave { animation: none; }
+      .scenery-wave-back, .scenery-wave-front { transform: translateX(-50%); }
+    }
+    @media (max-width: 768px) {
+      .scenery-olympus { top: 18%; left: 44%; }
+      .scenery-temple { top: 23%; right: 45px; opacity: .7; }
+      .scenery-sea { bottom: 145px; height: 135px; }
+      .welcome-scenery .scenery-warship,
+      .welcome-scenery .scenery-wave { font-size: 9px; }
+      .chat-container.welcome-active:has(.chat-input-bar:focus-within) .welcome-scenery { opacity: 0; }
+    }
+    @media (max-height: 500px) {
+      .scenery-olympus, .scenery-temple { display: none; }
+      .scenery-sea { bottom: 18px; height: 100px; opacity: .45; }
+    }
+    #welcome-screen { z-index: 1; }
+    .chat-container.welcome-active .chat-input-bar { position: relative; z-index: 2; }
+    /* Welcome screen - centered in available space above input bar */
     #welcome-screen {
       position:absolute;
       top:40%;
