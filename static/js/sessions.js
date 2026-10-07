@@ -3055,7 +3055,19 @@ function _initDropdownDismiss() {
     // Esc must dismiss both the parent dropdown AND the Move-to-folder
     // submenu in one keypress — previously only the dropdown closed and
     // the submenu was left orphaned on screen.
-    document.querySelectorAll('.session-dropdown-menu, .session-folder-submenu').forEach(d => d.style.display = 'none');
+    //
+    // `B-NEW-7`. Only a menu that is open: one opens with an inline
+    // `display: block` over the stylesheet's `none`. Writing `none` onto every
+    // menu — two per chat row, each list render making fresh ones with no
+    // inline style — changed `<body>`'s children on the first Escape after a
+    // render, and `keyboard-shortcuts.js` reads such a change as "this Escape
+    // closed something" (`escapeClaim` → `'closed'`), so the first Escape
+    // during a streaming reply stopped nothing. Measured on `cdf040f` in
+    // Chromium once the thinking fold no longer took the key: 20 menus
+    // `'' → 'none'` on Escape #1, the reply went on, Escape #2 stopped it.
+    document.querySelectorAll('.session-dropdown-menu, .session-folder-submenu').forEach((d) => {
+      if (d.style.display && d.style.display !== 'none') d.style.display = 'none';
+    });
   });
 }
 

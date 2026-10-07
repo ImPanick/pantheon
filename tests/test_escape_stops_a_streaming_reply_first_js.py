@@ -10,10 +10,20 @@ and the reply went on (6 → 25 → 43 words), **Escape #2 stopped it**. The
 `keyboard-shortcuts.js`, on `window` in the bubble phase, after every other
 listener (`B945`, `CHAT-M-1`) — never heard it.
 
+With the fold out of the way the first Escape still stopped nothing in
+Chromium. Traced on `cdf040f` (a diff of `<body>`'s children between the stop's
+capture snapshot and its decision): `sessions.js`' `_initDropdownDismiss` wrote
+`display: none` onto every chat row's menu on every Escape — twenty of them,
+fresh from the list render that the new reply's chat caused, closed by the
+stylesheet with no inline style — and the stop reads any such change as "this
+Escape closed something" (`escapeClaim` → `'closed'`). The rule now writes only
+onto a menu that is open. Both halves are driven below.
+
 Driven here, not read (`Law 20`): the real arbiter and its helpers, cut out of
 `static/js/ui.js` with the cut `tests/test_escape_closes_the_workbench_panel_before_the_window_js.py`
 makes, registered as `ui.js` registers them (capture and bubble on
-`document`), and the real `static/js/keyboard-shortcuts.js` with its real
+`document`), `sessions.js`' `_initDropdownDismiss` as the page wires it, and the
+real `static/js/keyboard-shortcuts.js` with its real
 `initKeyboardShortcuts`, in the event model
 `tests/test_escape_stops_the_reply_only_when_it_closed_nothing_js.py` built
 (keys travel window → document → target → document → window, both phases).
@@ -31,9 +41,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from test_tool_effect_surfaces_js import _run  # noqa: E402
 from test_escape_closes_the_workbench_panel_before_the_window_js import _arbiter  # noqa: E402
 from test_escape_stops_the_reply_only_when_it_closed_nothing_js import _SHIM as _STOP_SHIM  # noqa: E402
+from tests.helpers.js_source import js_definition  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 JS = ROOT / "static" / "js"
+_SESSIONS_JS = (JS / "sessions.js").read_text(encoding="utf-8")
+_DROPDOWN_DISMISS = js_definition(_SESSIONS_JS, _SESSIONS_JS.index("function _initDropdownDismiss("))
 
 pytestmark = pytest.mark.skipif(not shutil.which("node"), reason="node binary not on PATH")
 
@@ -85,6 +98,12 @@ const dismissTopMenu = () => false;
 %s
 document.addEventListener('keydown', escapeArbiter, true);
 document.addEventListener('keydown', escapeLeavesField);
+// `sessions.js`' Escape rule for the chat rows' menus, as the page wires it.
+%s
+_initDropdownDismiss();
+/** A chat row's menu as a list render leaves it on `<body>`: closed by the
+ *  stylesheet, no inline `display`. */
+const rowMenu = (cls = 'dropdown session-dropdown session-dropdown-menu') => document.body.append(new El('div', '', cls));
 
 // The chat: the send button in its streaming state, a reply's live reasoning
 // drawn open under its header.
@@ -113,7 +132,7 @@ def box(tmp_path_factory):
 
 
 def _go(box, script):
-    return _run(box, _PREAMBLE % _arbiter(), script)
+    return _run(box, _PREAMBLE % (_arbiter(), _DROPDOWN_DISMISS), script)
 
 
 def test_the_first_escape_stops_the_reply_and_leaves_the_thinking_open(box):
@@ -163,3 +182,34 @@ def test_a_window_on_screen_is_still_the_first_thing_escape_closes(box):
     """)
     assert o["first"] == {"stops": 0, "folds": 0, "closed": ["tasks-modal"]}
     assert o["second"] == {"stops": 1, "folds": 0, "open": True}
+
+
+def test_menus_a_list_render_left_closed_do_not_hold_the_first_escape(box):
+    """The second half, found on the drive: with the fold out of the way the
+    first Escape still stopped nothing in Chromium, because `sessions.js`
+    wrote `display: none` onto every chat row's menu — twenty fresh ones after
+    the reply's own chat appeared in the list — and the stop reads a change on
+    `<body>` as "this Escape closed something". Closed menus are left alone."""
+    o = _go(box, """
+        const menus = [rowMenu(), rowMenu('dropdown session-folder-submenu'), rowMenu(), rowMenu('dropdown session-folder-submenu')];
+        composer.focus();
+        press(composer);
+        out({ stops, folds, open: open(), styles: menus.map((m) => m.style.display || '') });
+    """)
+    assert o == {"stops": 1, "folds": 0, "open": True, "styles": ["", "", "", ""]}
+
+
+def test_an_open_chat_menu_is_the_first_escape_and_the_stop_the_second(box):
+    """One layer per press still: a chat row's menu that is open closes on the
+    first Escape and the reply goes on; the next Escape stops it."""
+    o = _go(box, """
+        const shut = rowMenu();
+        const opened = rowMenu(); opened.style.display = 'block';
+        composer.focus();
+        press(composer);
+        const first = { stops, opened: opened.style.display, shut: shut.style.display || '' };
+        press(composer);
+        out({ first, second: { stops } });
+    """)
+    assert o["first"] == {"stops": 0, "opened": "none", "shut": ""}
+    assert o["second"] == {"stops": 1}
