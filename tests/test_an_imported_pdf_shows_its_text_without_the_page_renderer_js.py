@@ -35,6 +35,8 @@ pytestmark = pytest.mark.skipif(not shutil.which("node"), reason="node binary no
 
 ROOT = Path(__file__).resolve().parents[1]
 DOCJS = (ROOT / "static" / "js" / "document.js").read_text(encoding="utf-8")
+#: `P23-08` (DOCS-M-6): the one line above the text.
+TEXT_ONLY_NOTE = "Shown as text. Page view needs an optional component (PyMuPDF) that an admin can install."
 
 
 def _cut(signature: str) -> str:
@@ -100,8 +102,9 @@ def test_with_no_page_renderer_the_pdf_opens_as_its_text(live, no_pymupdf):  # n
     doc = _import_pdf(live, "Signed lease – 2026.pdf", "PDFSENTINEL the tenant pays rent")
     shown = _pane(live, doc["id"], doc["current_content"])
     assert "Failed to load PDF view" not in shown["text"]
-    from src.pdf_runtime import PDF_VIEWER_PYMUPDF_MISSING
-    assert shown["note"] == "Showing the text read from this PDF. " + PDF_VIEWER_PYMUPDF_MISSING
+    # `P23-08` (DOCS-M-6) shortened the line: the server's `pip install …`
+    # sentence was one only the admin could act on.
+    assert shown["note"] == TEXT_ONLY_NOTE
     assert shown["role"] == "note"
     page = shown["page"]
     assert "PDFSENTINEL the tenant pays rent" in page
@@ -123,7 +126,7 @@ def test_a_pdf_with_no_text_says_so_in_place_of_a_page(live, no_pymupdf):  # noq
     doc = _import_pdf(live, "Scan.pdf", "x")
     shown = _pane(live, doc["id"], '<!-- pdf_source upload_id="u1" -->\n\n')
     assert shown["page"] == "No text could be read from this PDF."
-    assert shown["note"].startswith("Showing the text read from this PDF.")
+    assert shown["note"] == TEXT_ONLY_NOTE
 
 
 def test_any_other_failure_is_still_said_as_a_failure(live, no_pymupdf):  # noqa: F811
