@@ -112,6 +112,24 @@ const BASE = process.argv[2];
   out.openArchive = await state();
   await page.click('#doclib-close');
   await settle(800);
+  // Settings: each switch's line says documents go and where the archive is.
+  const line = (sel) => page.evaluate((sel) => {
+    const chk = document.querySelector(sel);
+    const row = chk && chk.closest('.vis-row, .admin-toggle-row');
+    const sub = row && row.querySelector('.vis-keeps, .admin-toggle-sub');
+    return sub ? sub.textContent : null;
+  }, sel);
+  // Agent Tools by its nav: a link to an admin panel followed at load lands on
+  // Account before the admin check answers (filed with `B1194`'s note).
+  await boot('/');
+  await page.click('#user-bar-settings'); await settle(800);
+  await page.click('#settings-modal [data-settings-tab="tools"]');
+  await page.waitForSelector('#adm-featureToggles [data-adm-feature="document_editor"]', { state: 'attached', timeout: 30000 })
+    .catch(async () => { out.debugTools = await page.evaluate(() => ({ path: location.pathname,
+      html: (document.getElementById('adm-featureToggles') || {}).innerHTML })); });
+  out.everyoneLine = await line('#adm-featureToggles [data-adm-feature="document_editor"]');
+  await boot('/settings/appearance');
+  out.browserLine = await line('#settings-modal [data-ui-key="tool-library"]');
 
   // ── back on: the Library as before ─────────────────────────────────────
   out.on = (await page.request.post(BASE + '/api/auth/features', { data: { document_editor: true } })).status();
@@ -176,6 +194,12 @@ def test_the_librarys_own_url_says_where_the_archive_is_and_its_button_goes_ther
     }
     assert drive["followed"]["open"] is True and drive["followed"]["active"] == "archive"
     assert drive["openArchive"]["open"] is True and drive["openArchive"]["active"] == "archive"
+
+
+def test_settings_says_the_switches_hide_documents_and_where_the_archive_is(drive):
+    assert drive["everyoneLine"] == ("Off hides documents and the Document editor button. " + GUIDE), (
+        drive.get("debugTools"))
+    assert drive["browserLine"] == "Off hides documents. " + GUIDE
 
 
 def test_switched_back_on_the_library_is_as_before(drive):

@@ -430,6 +430,22 @@ def test_the_library_switched_off_opens_as_the_chat_archive_without_its_document
     assert out["toasts"] == []
 
 
+def test_an_archive_that_did_not_load_says_so_with_one_source_not_asked(window_sandbox):
+    """`P9-08`'s rule — every source failing is "The archive did not load.",
+    not "Part of …" — holds when the archived documents are not asked for."""
+    out = _run(window_sandbox, _WIN_PREAMBLE, """
+        const real = globalThis.fetch;
+        globalThis.fetch = async (url) => String(url).includes('/archived') || String(url).includes('/research/')
+          ? { ok: false, status: 500, json: async () => ({ detail: 'down' }), text: async () => 'down' }
+          : real(url);
+        V.applyToolVisibility({ features: { document_editor: false } }, document);
+        L.openLibrary({ tab: 'archive' });
+        await tick();
+        console.log(JSON.stringify({ said: win().querySelector('#doclib-arc-grid').textContent }));
+    """)
+    assert out["said"] == "The archive did not load."
+
+
 def test_the_library_door_itself_is_refused_with_the_guide(window_sandbox):
     out = _run(window_sandbox, _WIN_PREAMBLE, """
         V.applyToolVisibility({ features: { document_editor: false } }, document);
