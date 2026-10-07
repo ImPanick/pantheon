@@ -71,7 +71,10 @@ const wait = async (page, fn, ms) => {
     api: seen.filter(r => r.url.startsWith('/api/')).length,
   };
 
-  // Offline: the app draws from the cache, on `/` and on a window's URL.
+  // Offline: the app draws from the cache, on `/` and on a window's URL. A
+  // page error from here on is the app's own requests failing with no network
+  // (recorded apart; the worker's job is that the page runs at all).
+  out.onlineErrors = out.errors.slice();
   await context.setOffline(true);
   out.offline = {};
   for (const path of ['/', '/tasks']) {
@@ -83,6 +86,7 @@ const wait = async (page, fn, ms) => {
     }
   }
   await context.setOffline(false);
+  out.offlineErrors = out.errors.slice(out.onlineErrors.length);
 
   // Signed out, the server's redirect still wins over the cached app.
   await context.clearCookies();
@@ -155,5 +159,13 @@ def test_a_signed_out_visit_still_lands_on_the_login_page(drive):
     assert drive["signedOut"] == "/login"
 
 
-def test_the_drive_raised_no_page_error(drive):
-    assert drive["errors"] == [], drive["errors"]
+def test_the_drive_raised_no_page_error_online(drive):
+    assert drive["onlineErrors"] == [], drive["onlineErrors"]
+
+
+def test_offline_the_early_requests_raise_no_unhandled_error(drive):
+    """`PERF-M-9`'s early fetch rejects with no network before any module
+    awaits it; it is marked handled where it is made (the module that awaits it
+    still sees the failure). Found by this drive: one `TypeError: Failed to
+    fetch` per offline load, from the inline script."""
+    assert drive["offlineErrors"] == [], drive["offlineErrors"]

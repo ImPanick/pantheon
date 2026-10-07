@@ -3780,8 +3780,9 @@
 
 <!-- `P23-07` (PERF-M-9): ask for the chat list, and for the chat the address names, while the modules below are still
      downloading — they waited for all of them (measured: `/api/sessions` at DOMContentLoaded, ~1 s, `/api/history` after
-     it). `sessions.js` takes a promise only when its URL is the one it would ask for; otherwise it asks itself. -->
-<script>(function(){try{var e=window.__pantheonEarly={},o=location.origin,a=function(u){e[new URL(u,location.href).href]=fetch(u,{credentials:'same-origin'});};if(!sessionStorage.getItem('pan-prefetch-sessions'))a(o+'/api/sessions');var h=location.hash.slice(1);if(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(h))a(o+'/api/history/'+h+'?limit='+(innerWidth<=768?8:24));}catch(_){}})();</script>
+     it). `sessions.js` takes a promise only when its URL is the one it would ask for; otherwise it asks itself. A
+     failure (offline) is marked handled here and still reaches the module that awaits it. -->
+<script>(function(){try{var e=window.__pantheonEarly={},o=location.origin,a=function(u){var p=fetch(u,{credentials:'same-origin'});p.catch(function(){});e[new URL(u,location.href).href]=p;};if(!sessionStorage.getItem('pan-prefetch-sessions'))a(o+'/api/sessions');var h=location.hash.slice(1);if(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(h))a(o+'/api/history/'+h+'?limit='+(innerWidth<=768?8:24));}catch(_){}})();</script>
 <!-- Load modules in this order -->
 <script type="module" src="/static/js/storage.js"></script>
 <script type="module" src="/static/js/ui.js"></script>
