@@ -642,7 +642,7 @@ def _same(rel, new: bytes, old: bytes) -> bool:
 
 
 def _palettes():
-    """The sixteen built-in palettes as (name, bg, brand colour) — read from
+    """Every built-in palette as (name, bg, brand colour) — read from
     `static/js/theme.js` itself, so the sheet cannot show a palette that is not
     shipped. The brand colour is the palette's `advanced.brandColor` if it sets
     one (`gpt` does), else its red (`computeAdvancedDefaults`)."""
@@ -716,12 +716,15 @@ def contact_sheet():
         label(d, (x + 8, 206), "maskable, 80% safe circle", bg, small)
     sections.append(im)
 
-    # The sixteen palettes, painted the way the app paints them: the palette's
+    # Every palette, painted the way the app paints them: the palette's
     # brand colour on its background, at the welcome screen's 1.8rem (≈29 px)
     # and at a 16 px tab.
     pal = _palettes()
     cell_w, cell_h, per_row = (W - 2 * pad) // 8, 92, 8
-    im, d = band(pad + 2 * cell_h + pad // 2, "#808080")
+    # As many rows as there are palettes: the band was two rows high for the
+    # sixteen, and main's seven new ones (#14) were drawn off its bottom edge.
+    rows = -(-len(pal) // per_row)
+    im, d = band(pad + rows * cell_h + pad // 2, "#808080")
     for i, (name, bg, brand) in enumerate(pal):
         cx = pad + (i % per_row) * cell_w
         cy = pad // 2 + (i // per_row) * cell_h
