@@ -48477,6 +48477,10 @@ body:has(:is(.modal, .research-overlay):not(.hidden):not(.modal-minimized) .moda
   background: color-mix(in srgb, var(--fg) 4%, transparent);
 }
 #cookbook-modal .forge-hubs-off-door {
+  /* The global `button` height and `.modal-body button` margin would make one line two. */
+  height: auto;
+  margin: 0;
+  vertical-align: baseline;
   background: none;
   border: 0;
   padding: 0;
