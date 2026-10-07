@@ -48142,3 +48142,32 @@ button.task-card-toggle {
 /* What actually pushed the panel 30 px past the phone: the Admin switch's own checkbox took the form's
    `min-width: 120px` for text boxes (measured: `#adm-newIsAdmin` 297–417 in a 390 px window). */
 .admin-add-form .admin-switch input { min-width: 0; }
+
+/* fx-chat's `B-NEW-6` (CHAT-M-3's look, CHAT-U-15): a tool row the person denied, or one waiting for their answer,
+   has a look of its own — a shape and a weight first (`P8-34`'s rule), a hue on top: denied is a hollow red dot and
+   a struck-through name (it did not run); waiting is a dashed dot and the row in italics. The classes come from
+   `agentThread.js` `nodeClassName` (`P23-04`). And Plan mode is its chip and pill only: the composer's dashed tinted
+   border is taken back to the composer's own. */
+.agent-thread-node.denied .agent-thread-dot {
+  background: var(--bg);
+  border-color: var(--color-error);
+}
+.agent-thread-node.denied .agent-thread-tool,
+.agent-thread-node.denied .agent-thread-icon {
+  color: var(--color-error);
+}
+.agent-thread-node.denied .agent-thread-tool { text-decoration: line-through; text-decoration-thickness: 2px; }
+.agent-thread-node.waiting .agent-thread-dot {
+  background: var(--bg);
+  border: 2px dashed var(--warn);
+}
+.agent-thread-node.waiting .agent-thread-header { font-style: italic; }
+body.plan-mode-active .chat-input-bar {
+  border-style: solid;
+  border-color: var(--input-border, var(--border));
+  background: var(--input-bg, var(--panel));
+}
+
+/* fx-chat's `B-NEW-5` (CHAT-U-21): the temperature slider's words sit under it, clear of the thumb — at 1.0
+   "Balanced" was under the thumb itself. */
+.preset-temp-hints { margin-top: 4px; }

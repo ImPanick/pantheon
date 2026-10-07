@@ -639,3 +639,40 @@ def test_the_documents_windows_on_a_phone(tmp_path):
     assert r["atts"] == "nowrap" and r["second"][0] == r["second"][1], r   # DOCS-M-7: one row, sideways
     assert r["source"]["top"] < 30 and r["source"]["left"] < 20, r         # CHAT-U-9: top-left, off the send button
     assert r["check"] <= r["width"] and r["pageWide"] <= r["width"], r     # SET-M-21: nothing past the phone's edge
+
+
+# ── fx-chat's CSS halves: B-NEW-5, B-NEW-6 ──────────────────────────────────
+
+_CHAT_ROWS = """
+<div class="agent-thread-node" id="done"><span class="agent-thread-dot" id="done-dot"></span>
+  <div class="agent-thread-header"><span class="agent-thread-tool" id="done-tool">read</span></div></div>
+<div class="agent-thread-node denied" id="denied"><span class="agent-thread-dot" id="denied-dot"></span>
+  <div class="agent-thread-header"><span class="agent-thread-tool" id="denied-tool">shell</span></div></div>
+<div class="agent-thread-node waiting" id="waiting"><span class="agent-thread-dot" id="waiting-dot"></span>
+  <div class="agent-thread-header" id="waiting-head"><span class="agent-thread-tool">shell</span></div></div>
+<div class="chat-input-bar" id="bar"></div>
+<div class="preset-temp-hints" id="hints"><span>Precise</span><span>Balanced</span><span>Creative</span></div>
+"""
+_CHAT_STEPS = r"""
+  return await page.evaluate(() => {
+    const cs = (id) => getComputedStyle(document.getElementById(id));
+    const plain = { style: cs('bar').borderTopStyle, bg: cs('bar').backgroundColor };
+    document.body.classList.add('plan-mode-active');
+    const plan = { style: cs('bar').borderTopStyle, bg: cs('bar').backgroundColor };
+    return {
+      done: [cs('done-dot').backgroundColor, cs('done-tool').textDecorationLine],
+      denied: [cs('denied-dot').backgroundColor, cs('denied-tool').textDecorationLine],
+      waiting: [cs('waiting-dot').borderTopStyle, cs('waiting-head').fontStyle],
+      plain, plan, hintsTop: cs('hints').marginTop,
+    };
+  });
+"""
+
+
+def test_a_denied_or_waiting_tool_row_looks_its_own_and_plan_mode_leaves_the_composer(tmp_path):
+    r = _drive(tmp_path, html=_page(_CHAT_ROWS), steps=_CHAT_STEPS, viewport=(1440, 900))["result"]
+    assert r["denied"][1] == "line-through" and r["denied"][0] != r["done"][0], r
+    assert r["done"][1] == "none", r
+    assert r["waiting"] == ["dashed", "italic"], r
+    assert r["plan"] == r["plain"], r          # CHAT-U-15: the chip and the pill say Plan; the composer does not
+    assert r["hintsTop"] == "4px", r           # CHAT-U-21: the words clear the thumb
