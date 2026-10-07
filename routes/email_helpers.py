@@ -1320,6 +1320,15 @@ def _coerce_imap_timeout_seconds(raw: str | None) -> int:
 
 _IMAP_TIMEOUT_SECONDS = _coerce_imap_timeout_seconds(os.environ.get("PANTHEON_IMAP_TIMEOUT_SECONDS"))
 
+# `P23-07` (`PERF-M-10`). How long opening a connection may take — the TCP
+# connect, the TLS handshake and the server's greeting — apart from the reads
+# after it. imaplib takes one timeout for all of it, so a mail server on an
+# address that drops packets was reported after the whole 30 s (measured on
+# `32df791`: `GET /api/email/unread-state` 30.0 s, `GET /api/email/list`
+# 30.0 s). A reachable server has greeted well inside five seconds; the reads
+# that follow keep the full timeout (a large mailbox's UID SEARCH can be slow).
+_IMAP_CONNECT_SECONDS = 5
+
 
 def _open_imap_connection(
     host: str,
@@ -1331,6 +1340,8 @@ def _open_imap_connection(
 ):
     """Open an IMAP connection using the configured security mode."""
     port = int(port or 993)
+    full = timeout
+    timeout = min(full, _IMAP_CONNECT_SECONDS) if full else _IMAP_CONNECT_SECONDS
     if starttls:
         conn = imaplib.IMAP4(host, port, timeout=timeout)
         try:
@@ -1352,7 +1363,7 @@ def _open_imap_connection(
     else:
         conn = imaplib.IMAP4(host, port, timeout=timeout)
     try:
-        conn.sock.settimeout(timeout)
+        conn.sock.settimeout(full)   # the session's reads: the full timeout
     except Exception:
         pass
     # Raise the IMAP line-length limit from the default 1 MB to 50 MB so that

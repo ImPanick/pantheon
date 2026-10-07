@@ -125,14 +125,16 @@ def test_with_the_gate_down_too_it_is_the_clients_sentence_as_before(app, stoppe
     gate.close()
     got = _status(app)
     assert got["state"] == "down"
-    assert got["sentence"] == (f"The workstation at {url} did not answer (ConnectError). "
+    # `P23-07` (`PERF-U-7`): the client's sentence no longer carries the
+    # exception's class name.
+    assert got["sentence"] == (f"The workstation at {url} did not answer. "
                                "Is it running?")
 
 
 def test_without_a_gate_it_is_the_clients_sentence_as_before(app, stopped):
     url, token = stopped
     switch_on_at(app, url, token)
-    assert _status(app)["sentence"].endswith("did not answer (ConnectError). Is it running?")
+    assert _status(app)["sentence"].endswith("did not answer. Is it running?")
 
 
 def test_a_gate_in_front_of_another_host_says_nothing_about_this_one(app, tmp_path, monkeypatch):
