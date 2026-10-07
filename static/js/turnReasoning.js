@@ -111,16 +111,38 @@ function _innerOf(fold) {
   return fold && fold.querySelector ? fold.querySelector('.thinking-content-inner') : null;
 }
 
-function _partsIn(folds) {
-  return folds.map((f) => { const i = _innerOf(f); return i ? String(i.innerHTML || '') : ''; })
-    .filter((h) => h.trim());
+/** `node` is inside `root` — a parent walk, so it reads the same in every DOM
+ *  this runs in. */
+function _within(node, root) {
+  for (let p = node; p; p = p.parentNode) if (p === root) return true;
+  return false;
+}
+
+/** A fold's reasoning as parts: the renderer's nodes, moved into a
+ *  `.thinking-round` of their own — or, from a fold this module filled, the
+ *  parts already in it. Nodes, not markup: nothing is rendered twice. */
+function _takeParts(fold) {
+  const inner = _innerOf(fold);
+  if (!inner) return [];
+  const kids = Array.from(inner.childNodes || []);
+  if (kids.length && kids.every((k) => _hasClass(k, ROUND_PART))) return kids;
+  if (!kids.some((k) => String(k.textContent || '').trim())) return [];
+  const part = (inner.ownerDocument || document).createElement('div');
+  part.className = ROUND_PART;
+  for (const k of kids) part.appendChild(k);
+  return [part];
+}
+
+function _fill(fold, parts) {
+  const inner = _innerOf(fold);
+  if (inner) inner.replaceChildren(...parts);
 }
 
 /**
  * Move the reasoning of `from` — a step that only thought — into `to`, the
  * next bubble of the same turn, and hide `from`. The fold itself moves (its
- * header, its id, whether it is open); the steps' parts are kept as the markup
- * the renderer gave them. The time the turn started moves with it, so the one
+ * header, its id, whether it is open), and each step's reasoning in it stays
+ * the renderer's nodes. The time the turn started moves with it, so the one
  * bubble a turn shows says when. Returns whether anything moved.
  */
 export function carryTurnReasoning(from, to) {
@@ -133,10 +155,14 @@ export function carryTurnReasoning(from, to) {
   }
   if (n !== from || !to.querySelector || !to.querySelector('.body')) return false;
   const folds = _folds(from);
-  const parts = from._turnReasoningParts ? from._turnReasoningParts.slice() : _partsIn(folds);
+  const parts = from._turnReasoningParts
+    ? from._turnReasoningParts.slice()
+    : folds.reduce((all, f) => all.concat(_takeParts(f)), []);
   if (!parts.length) return false;
+  folds.slice(1).forEach((f) => f.remove());
   from.style.display = 'none';
-  const stamp = from.querySelector('.role .role-timestamp');
+  const fromRole = from.querySelector('.role');
+  const stamp = fromRole ? fromRole.querySelector('.role-timestamp') : null;
   const role = to.querySelector('.role');
   const moved = !!(stamp && role && !role.querySelector('.role-timestamp'));
   if (moved) role.appendChild(stamp);
@@ -172,17 +198,15 @@ export function settleTurnReasoning(bubble) {
     if (home && shell) home.insertBefore(shell, home.firstChild);
     const fromRole = from.querySelector('.role');
     if (carried.stamp && fromRole) fromRole.appendChild(carried.stamp);
-    const inner = _innerOf(shell);
-    if (inner) inner.innerHTML = carried.parts.map((p) => `<div class="${ROUND_PART}">${p}</div>`).join('');
+    if (shell) _fill(shell, carried.parts);
     from._turnReasoningParts = carried.parts.slice();
     return false;
   }
   const own = _folds(bubble).filter((f) => f !== shell);
-  const holds = (f) => !!(f && typeof body.contains === 'function' && body.contains(f));
   let ownParts;
-  if (own.length) ownParts = _partsIn(own);
+  if (own.length) ownParts = own.reduce((all, f) => all.concat(_takeParts(f)), []);
   // Settled before and not drawn over since: the fold already holds them.
-  else if (holds(shell)) ownParts = bubble._ownReasoning || [];
+  else if (_within(shell, body)) ownParts = bubble._ownReasoning || [];
   else ownParts = [];
   bubble._ownReasoning = ownParts;
   const parts = carried.parts.concat(ownParts);
@@ -208,11 +232,10 @@ export function settleTurnReasoning(bubble) {
     if (own.length) {
       if (fold !== own[0]) own[0].parentNode.insertBefore(fold, own[0]);
       own.forEach((f) => { if (f !== fold) f.remove(); });
-    } else if (!holds(fold)) {
+    } else if (!_within(fold, body)) {
       body.insertBefore(fold, body.firstChild);
     }
-    const inner = _innerOf(fold);
-    if (inner) inner.innerHTML = parts.map((p) => `<div class="${ROUND_PART}">${p}</div>`).join('');
+    _fill(fold, parts);
   }
   bubble._turnReasoningParts = parts;
   return true;
