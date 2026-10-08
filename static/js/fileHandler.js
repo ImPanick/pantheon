@@ -8,6 +8,8 @@
 import uiModule from './ui.js';
 import spinnerModule from './spinner.js';
 import { attachmentKind, KIND_LABELS } from './contextUsage.js';
+import { drawHand } from './attachHand.js';
+import { registerMenuDismiss } from './escMenuStack.js';
 
 let pendingFiles = [];
 let uploaded = [];
@@ -185,8 +187,6 @@ export function carryPending(fromKey, toKey) {
 }
 
 const MAX_FILES = 10;
-const MAX_VISIBLE = 3;
-let _expanded = false;
 
 function _isMobileViewport() {
   return window.matchMedia && window.matchMedia('(max-width: 768px)').matches;
@@ -234,7 +234,8 @@ async function _openMobileCropper(file) {
       <div class="attach-crop-panel" role="dialog" aria-modal="true" aria-label="Crop image">
         <div class="attach-crop-stage">
           <img class="attach-crop-img" alt="">
-          <div class="attach-crop-box"><span class="attach-crop-handle"></span></div>
+          <div class="attach-crop-box" tabindex="0" role="group" aria-label="Crop area"
+               aria-keyshortcuts="ArrowLeft ArrowRight ArrowUp ArrowDown Shift+ArrowRight Shift+ArrowDown Enter"><span class="attach-crop-handle"></span></div>
         </div>
         <div class="attach-crop-actions">
           <button type="button" class="attach-crop-btn" data-action="cancel">Cancel</button>
@@ -265,12 +266,32 @@ async function _openMobileCropper(file) {
       crop.x = Math.max(0, Math.min(1 - crop.w, crop.x));
       crop.y = Math.max(0, Math.min(1 - crop.h, crop.y));
     }
+    // `B-NEW-1`. The hand's card menu offers Crop on any screen and from the
+    // keyboard, and this cropper was only ever met on a phone, by a finger:
+    // Escape did nothing, the focus stayed behind it, and the box took no keys.
+    // Now Escape is Cancel (on the Escape stack, so it closes this and nothing
+    // behind it), the focus starts on the box and goes back where it was, the
+    // arrows move the box, Shift+arrows size it, and Enter is Use crop.
+    const opener = document.activeElement;
+    let release = () => {};
+    let done = false;
     function finish(value) {
+      if (done) return;
+      done = true;
+      release();
       overlay.remove();
       window.removeEventListener('resize', applyCrop);
+      if (opener && opener !== document.body && opener.isConnected !== false
+          && typeof opener.focus === 'function') {
+        try { opener.focus(); } catch (_) { /* it went with a redraw */ }
+      }
       resolve(value);
     }
-    requestAnimationFrame(applyCrop);
+    release = registerMenuDismiss(() => finish(null));
+    requestAnimationFrame(() => {
+      applyCrop();
+      try { box.focus(); } catch (_) { /* no focus to move */ }
+    });
     img.addEventListener('load', applyCrop);
     window.addEventListener('resize', applyCrop);
 
@@ -301,10 +322,21 @@ async function _openMobileCropper(file) {
     });
     box.addEventListener('pointerup', () => { drag = null; });
     box.addEventListener('pointercancel', () => { drag = null; });
+    box.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); useCrop(); return; }
+      const step = { ArrowLeft: [-0.02, 0], ArrowRight: [0.02, 0], ArrowUp: [0, -0.02], ArrowDown: [0, 0.02] }[e.key];
+      if (!step) return;
+      e.preventDefault();
+      if (e.shiftKey) { crop.w += step[0]; crop.h += step[1]; } else { crop.x += step[0]; crop.y += step[1]; }
+      clampCrop();
+      applyCrop();
+    });
 
     overlay.querySelector('[data-action="cancel"]').addEventListener('click', () => finish(null));
     overlay.querySelector('[data-action="original"]').addEventListener('click', () => finish(file));
-    overlay.querySelector('[data-action="crop"]').addEventListener('click', async () => {
+    overlay.querySelector('[data-action="crop"]').addEventListener('click', () => useCrop());
+    async function useCrop() {
+      if (done) return;
       clampCrop();
       const canvas = document.createElement('canvas');
       const sx = Math.round(crop.x * imgProbe.naturalWidth);
@@ -321,7 +353,7 @@ async function _openMobileCropper(file) {
       const ext = type.includes('jpeg') ? 'jpg' : (type.split('/')[1] || 'png');
       const base = (file.name || 'image').replace(/\.[^.]+$/, '');
       finish(new File([blob], `${base}-cropped.${ext}`, { type, lastModified: Date.now() }));
-    });
+    }
   });
 }
 
@@ -626,9 +658,14 @@ export function openPicker() {
 }
 
 /**
- * Render the attachment strip with pending files.
- * 1-3 files: show individual chips.
- * 4+  files: collapse into a single "N files" badge (click to expand).
+ * Render the attachment strip with pending files — as a hand of cards
+ * (`B-NEW-1`, `static/js/attachHand.js`).
+ *
+ * It was a row of chips that took its own height out of the chat, and past
+ * three files a "N files" pill whose × removed them all. The hand keeps every
+ * one of those: each file's thumbnail or name, a × per file (on the card that
+ * is hovered or selected, and Remove in its menu), and Remove all (in the
+ * menu) — and gives the chat its height back.
  */
 export function renderAttachStrip() {
   _syncBucket();
@@ -639,69 +676,48 @@ export function renderAttachStrip() {
   // what this message is going to spend, and the count of files still waiting
   // to be measured is part of what it says.
   renderContextMeter();
-  if (pendingFiles.length === 0) {
-    _expanded = false;
-    if (window._updateSendBtnIcon) window._updateSendBtnIcon();
-    return;
-  }
-
-  const total = pendingFiles.length;
-  const collapsed = total > MAX_VISIBLE && !_expanded;
-
-  if (collapsed) {
-    // Single compact badge: "5 files ×"
-    const badge = document.createElement('div');
-    badge.className = 'thumb thumb-collapsed';
-    const label = document.createElement('span');
-    label.textContent = total + ' file' + (total > 1 ? 's' : '');
-    label.className = 'thumb-collapsed-label';
-    badge.appendChild(label);
-    badge.title = pendingFiles.map(f => f.name || 'pasted-image').join('\n');
-    badge.style.cursor = 'pointer';
-    badge.addEventListener('click', (e) => {
-      if (e.target.closest('.thumb-collapsed-x')) return;
-      _expanded = true;
-      renderAttachStrip();
-    });
-    const x = document.createElement('button');
-    x.className = 'thumb-collapsed-x';
-    x.textContent = '\u00d7';
-    x.title = 'Remove all';
-    x.addEventListener('click', (e) => { e.stopPropagation(); clearPending(); });
-    badge.appendChild(x);
-    strip.appendChild(badge);
-  } else {
-    // Show individual chips
-    for (let idx = 0; idx < total; idx++) {
-      strip.appendChild(_createChip(pendingFiles[idx], idx));
-    }
-  }
+  // Drawn with an empty list too, so a selection or an open menu that belonged
+  // to a file that has just gone goes with it.
+  drawHand(strip, pendingFiles, _handHost);
   if (window._updateSendBtnIcon) window._updateSendBtnIcon();
 }
 
-function _createChip(f, idx) {
-  const chip = document.createElement('div');
-  chip.className = 'thumb';
-  const isImage = f.type?.startsWith('image/') || /\.(png|jpg|jpeg|gif|webp|svg|bmp)$/i.test(f.name || '');
-  if (isImage) {
-    chip.classList.add('thumb-image');  // lets CSS overlay the remove-X on the corner (mobile)
-    const img = document.createElement('img');
-    img.className = 'thumb-img';
-    img.src = _getPreviewUrl(f);
-    img.alt = f.name || 'image';
-    chip.appendChild(img);
-  } else {
-    const span = document.createElement('span');
-    span.textContent = f.name || 'pasted-image';
-    chip.appendChild(span);
-  }
-  const x = document.createElement('button');
-  x.textContent = '\u00d7';
-  x.setAttribute('aria-label', 'Remove attachment');
-  x.addEventListener('click', (e) => { e.stopPropagation(); removePending(idx); });
-  chip.appendChild(x);
-  return chip;
+/**
+ * `B-NEW-1`. Crop a waiting image with the composer's own cropper — the one a
+ * phone opens on attach — and keep the result in its place in the hand.
+ * Cancel and Original both leave the file as it was.
+ */
+async function _cropPending(f) {
+  if (!_isCroppableImage(f)) return false;
+  let out = null;
+  try { out = await _openMobileCropper(f); } catch (_) { out = null; }
+  if (!out || out === f) return false;
+  _syncBucket();
+  // Looked up after the await: the file may have been removed, sent, or left
+  // behind in another chat while the cropper was open.
+  const idx = pendingFiles.indexOf(f);
+  if (idx < 0) return false;
+  _revokePreviewUrl(f);
+  pendingFiles.splice(idx, 1, out);
+  renderAttachStrip();
+  return true;
 }
+
+// What the hand may do to the pending set. Read through functions, never
+// captured: `pendingFiles` is a different array after every chat switch.
+const _handHost = {
+  files: () => { _syncBucket(); return pendingFiles; },
+  previewUrl: (f) => _getPreviewUrl(f),
+  wireName: (f) => _wireName(f),
+  remove: (idx) => removePending(idx),
+  clear: () => clearPending(),
+  canCrop: (f) => _isCroppableImage(f),
+  crop: (f) => _cropPending(f),
+  redraw: () => renderAttachStrip(),
+  apiBase: () => API_BASE,
+  toast: (msg) => uiModule.showToast(msg),
+  error: (msg) => uiModule.showError(msg),
+};
 
 /**
  * Remove a pending file by index

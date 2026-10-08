@@ -4318,9 +4318,18 @@ function startPantheonApp() {
   
   attachStrip.addEventListener('drop', async (e) => {
     e.preventDefault();
+    // `B-NEW-1`. The strip is inside `#chat-container`, whose own drop handler
+    // adds the same files: a file dropped on an attachment went in twice
+    // (driven on `0345288` and with the hand of cards alike). This one answers.
+    e.stopPropagation();
+    _hideDropHighlight();
     attachStrip.style.backgroundColor = '';
-    
+
     const files = Array.from(e.dataTransfer.files);
+    // fx5-vision (`B-NEW-9`) at the merge with fx5-cards: this handler now
+    // answers for the strip, so a Library card dropped on the cards themselves
+    // is attached here as it is on the rest of the chat.
+    if (files.length === 0 && await attachDroppedDocuments(e.dataTransfer)) return;
     if (files.length === 0) return;
     await fileHandlerModule.addFiles(files);
 
