@@ -159,8 +159,9 @@ const SPY = `
     // eleven times (fx5-green): Playwright starts Chromium with
     // `--disable-dev-shm-usage`, so its shared memory is files in TMPDIR, and
     // the reloaded tab held them — measured 2,409 MB in 1,215 files at the
-    // peak, on a disk with 3 GB free. In the full run the disk ran out first
-    // and the page never started (`waitForFunction` timed out, 26 errors).
+    // peak, on a disk with 3 GB free. In the full run the disk ran out first:
+    // a reload's module loads failed `net::ERR_INSUFFICIENT_RESOURCES`, the
+    // page never started (`waitForFunction` timed out) and all 26 errored.
     const reduce = await first.context().newPage();
     reduce.on('pageerror', (e) => out.errors.push(String((e && e.message) || e)));
     await reduce.goto(BASE + '/', { waitUntil: 'load' });
