@@ -146,6 +146,9 @@ operator should know at a glance.
   off at every door. The rest of `P23` is in the release notes, *What is new*.
 - **Settings → Forge** (`B1229`): the *Hugging Face and Ollama* switch, and a
   door to where each setting for serving a model already lives.
+- **The attachment tray is a hand of cards** (`B1292`): small cards fanned at the
+  composer's edge, each with a menu (Preview, Crop, Save to Gallery, Remove), in
+  place of a full-width band that took its height from the chat.
 
 #### Changed — read this before upgrading
 - **There is always a sign-in** (`D-2026-10-07-02` §2 — the owner: *"there is always
@@ -238,6 +241,15 @@ operator should know at a glance.
 - **The Library and Mail** (`P23-08`): Reply, Compose and Create leave no empty
   chat or *Untitled* behind; the scheduled Tidy never proposes an unsent draft; a
   failed send names the server it could not reach.
+- **Every attachment reaches the model, or says why not** (`B1278`–`B1280`,
+  `B1284`–`B1286`): a picture in a new chat's first message reaches the model
+  (it was dropped); a recording goes as its transcript when the server has
+  speech-to-text; an email or a document open beside the chat reaches a
+  Chat-mode turn; a Library document dropped on the chat is attached; a file the
+  model was not given whole is said under its card.
+- **A hidden Library keeps the archive** (`B1194`, `D-2026-10-07-02` §3): with
+  documents switched off, archived chats keep their door, Chats → *manage*, and
+  a Library reached anyway says where they are.
 
 ---
 
