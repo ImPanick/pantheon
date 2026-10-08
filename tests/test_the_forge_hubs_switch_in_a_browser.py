@@ -252,8 +252,14 @@ def drive(world, tmp_path_factory):
     stop = threading.Event()
 
     def mirror():   # the proxy's log, where the node script can read it
+        # Written aside and renamed over, so a read never meets the file half
+        # written (fx5-green: `write_text` truncates first, and the drive's
+        # `JSON.parse` met an empty file — "Unexpected end of JSON input" —
+        # once its wait ran long).
+        aside = work / "seen.json.part"
         while not stop.is_set():
-            seen_file.write_text(json.dumps(sorted(set(world["proxy"].seen))))
+            aside.write_text(json.dumps(sorted(set(world["proxy"].seen))))
+            os.replace(aside, seen_file)
             time.sleep(0.2)
 
     seen_file.write_text("[]")
