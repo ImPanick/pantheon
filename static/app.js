@@ -6,14 +6,14 @@
 import Storage from './js/storage.js';
 import uiModule from './js/ui.js';
 import workspaceModule from './js/workspace.js';
-import fileHandlerModule from './js/fileHandler.js?v=20261007p23';
+import fileHandlerModule from './js/fileHandler.js?v=20261008rel';
 import modelsModule from './js/models.js?v=20260715startupcalm2';
 import ragModule from './js/rag.js';
 import presetsModule from './js/presets.js';
 import searchModule from './js/search.js';
-import chatModule from './js/chat.js?v=20261007p23';
-import compareModule from './js/compare/index.js?v=20261007p23';
-import documentModule from './js/document.js?v=20261007approvalp23';
+import chatModule from './js/chat.js?v=20261008rel';
+import compareModule from './js/compare/index.js?v=20261008rel';
+import documentModule from './js/document.js?v=20261008approvalrel';
 import searchChatModule from './js/search-chat.js';
 import { makeWindowDraggable } from './js/windowDrag.js';
 import {
@@ -23,20 +23,20 @@ import {
   settleSessionHydration
 } from './js/startupShell.js';
 import markdownModule from './js/markdown.js';
-import chatRenderer from './js/chatRenderer.js?v=20261007p23';
+import chatRenderer from './js/chatRenderer.js?v=20261008rel';
 import sessionModule from './js/sessions.js';
-import memoryModule from './js/memory.js?v=20261007p23';
+import memoryModule from './js/memory.js?v=20261008rel';
 import voiceRecorderModule from './js/voiceRecorder.js';
 import censorModule from './js/censor.js';
 import galleryModule from './js/gallery.js?v=20260708match1';
 import { UI_VIS_DEFAULT_OFF, resolveVisibility, applyToolVisibility, guardRouteOpener, installToolDoorGuard, onToolVisibilityApplied, toolShown, whenToolVisibilityReady } from './js/ui_visibility.js';
-import tasksModule from './js/tasks.js?v=20261007p23';
+import tasksModule from './js/tasks.js?v=20261008rel';
 import calendarModule from './js/calendar.js';
 import notesModule from './js/notes.js';
-import adminModule from './js/admin.js?v=20261007p23';
-import settingsModule from './js/settings.js?v=20261007p23';
+import adminModule from './js/admin.js?v=20261008rel';
+import settingsModule from './js/settings.js?v=20261008rel';
 // Eagerly bind unified minimize/restore behavior across all tool modals.
-import * as WindowManager from './js/modalManager.js?v=20261007p23';
+import * as WindowManager from './js/modalManager.js?v=20261008rel';
 // `P23-01`. One back stack: Back = Escape = `←`, the URL names the top window.
 import backStack from './js/backStack.js';
 // `P20-05`. The workstation screen window: loaded here for its one delegated
@@ -54,7 +54,7 @@ import themeModule from './js/theme.js';
 // unversioned so this can't recur.
 import cookbookModule from './js/cookbook.js';
 import groupModule from './js/group.js';
-import * as researchPanelModule from './js/research/panel.js?v=20261007p23';
+import * as researchPanelModule from './js/research/panel.js?v=20261008rel';
 import ttsModule from './js/tts-ai.js';
 import spinnerModule from './js/spinner.js';
 import { initKeyboardShortcuts, KEYBIND_DEFAULTS, formatKeybind, ariaKeyshortcuts } from './js/keyboard-shortcuts.js';
@@ -999,7 +999,7 @@ function initializeEventListeners() {
     toolCookbookBtn.addEventListener('click', async () => {
       if (!cookbookModule) return;
       // Try minimized→restore or open→minimize via the manager first
-      const Modals = await import('./js/modalManager.js?v=20261007p23');
+      const Modals = await import('./js/modalManager.js?v=20261008rel');
       if (Modals.toggle('cookbook-modal')) return;
       if (_raiseIfOpen('cookbook-modal')) return;
       // Not registered yet → fresh open
@@ -1024,7 +1024,7 @@ function initializeEventListeners() {
   if (toolGalleryBtn) {
     toolGalleryBtn.addEventListener('click', async () => {
       if (!galleryModule) return;
-      const Modals = await import('./js/modalManager.js?v=20261007p23');
+      const Modals = await import('./js/modalManager.js?v=20261008rel');
       if (Modals.toggle('gallery-modal')) return;
       if (galleryModule.isGalleryOpen() && _raiseIfOpen('gallery-modal')) return;
       galleryModule.openGallery();
@@ -1059,7 +1059,7 @@ function initializeEventListeners() {
   const toolWorkbenchBtn = el('tool-workbench-btn');
   if (toolWorkbenchBtn) {
     toolWorkbenchBtn.addEventListener('click', async () => {
-      const Modals = await import('./js/modalManager.js?v=20261007p23');
+      const Modals = await import('./js/modalManager.js?v=20261008rel');
       if (Modals.toggle('workbench-modal')) return;
       try {
         const wb = await import('./js/workbench/workbench.js');
@@ -1077,7 +1077,7 @@ function initializeEventListeners() {
   if (toolCalendarBtn) {
     toolCalendarBtn.addEventListener('click', async () => {
       if (!calendarModule) return;
-      const Modals = await import('./js/modalManager.js?v=20261007p23');
+      const Modals = await import('./js/modalManager.js?v=20261008rel');
       // toggle returns true when a registered modal was minimized/restored;
       // returns false when nothing is registered → open fresh.
       if (Modals.toggle('calendar-modal')) return;

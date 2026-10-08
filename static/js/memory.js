@@ -8,10 +8,10 @@ import spinnerModule from './spinner.js';
 import { makeWindowDraggable } from './windowDrag.js';
 import { snapModalToZone } from './tileManager.js';
 import { topPortalZ } from './toolWindowZOrder.js';
-import { setBackgroundWork } from './modalManager.js?v=20261007p23';
+import { setBackgroundWork } from './modalManager.js?v=20261008rel';
 import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
 // C-NAV (`P23-01` builds it): `register(id, { getTab, setTab })`.
-import * as Modals from './modalManager.js?v=20261007p23';
+import * as Modals from './modalManager.js?v=20261008rel';
 // C-ERR: a refused response is read once, by the one reader.
 import { readRefusal } from './workbench/refusal.js';
 

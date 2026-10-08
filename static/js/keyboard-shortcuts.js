@@ -278,7 +278,7 @@ export function initKeyboardShortcuts(modules) {
   const _openSettings = async () => {
     _launchFromKeyboard();
     try {
-      const Modals = await import('./modalManager.js?v=20261007p23');
+      const Modals = await import('./modalManager.js?v=20261008rel');
       if (Modals.windowState('settings-modal') !== 'closed') { Modals.showWindow('settings-modal'); return; }
     } catch (_) { /* opened below */ }
     if (settingsModule) settingsModule.open();

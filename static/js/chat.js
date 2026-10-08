@@ -11,19 +11,19 @@ import uiModule from './ui.js';
 // `P23-04` (C-ERR). A refused response is read once, by the one helper.
 import { readRefusal } from './workbench/refusal.js';
 import sessionModule from './sessions.js';
-import chatRenderer, { buildDiffHtml } from './chatRenderer.js?v=20261007p23';
-import chatStream from './chatStream.js?v=20261007p23';
+import chatRenderer, { buildDiffHtml } from './chatRenderer.js?v=20261008rel';
+import chatStream from './chatStream.js?v=20261008rel';
 import { addAITTSButton } from './tts-ai.js';
 import { prefersReducedMotion } from './motion.js';
 import markdownModule from './markdown.js';
 import spinnerModule from './spinner.js';
 import presetsModule from './presets.js';
-import fileHandlerModule from './fileHandler.js?v=20261007p23';
+import fileHandlerModule from './fileHandler.js?v=20261008rel';
 import searchModule from './search.js';
-import documentModule from './document.js?v=20261007approvalp23';
-import * as emailInbox from './emailInbox.js?v=20261007approvalp23';
+import documentModule from './document.js?v=20261008approvalrel';
+import * as emailInbox from './emailInbox.js?v=20261008approvalrel';
 import codeRunnerModule from './codeRunner.js';
-import slashCommands, { initSlashCommands, isCommand, handleSlashCommand, handleSetupInput, handleSetupWizard, typewriterInto } from './slashCommands.js?v=20261007approvalp23';
+import slashCommands, { initSlashCommands, isCommand, handleSlashCommand, handleSetupInput, handleSetupWizard, typewriterInto } from './slashCommands.js?v=20261008approvalrel';
 import createResearchSynapse from './researchSynapse.js';
 import { createStreamRenderer } from './streamingRenderer.js';
 import { applyAgentThreadNode, verifierCardOptions, blockedCardOptions,
@@ -62,7 +62,7 @@ import * as contextUsage from './contextUsage.js';
 // `P10-06`. The context panel closes through the one popup registry, like
 // every other popup appended to <body> (see `_openContextPanel`).
 import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
-import queuePanel from './queuePanel.js?v=20261007p23';
+import queuePanel from './queuePanel.js?v=20261008rel';
 import { runStatusLabel } from './runStatus.js';
 import { playIcon, stopIcon } from './icons.js';
 import {
@@ -8776,7 +8776,7 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
   // `app.js:32` already imports `tasks.js` at boot, so this resolves from cache.
   let _activitySourceHandle = null;
   function _registerQueueActivitySource() {
-    import('./tasks.js?v=20261007p23').then((mod) => {
+    import('./tasks.js?v=20261008rel').then((mod) => {
       if (!mod || typeof mod.registerActivitySource !== 'function') return;
       mod.registerActivitySource('chat-queue', () => getQueueActivityEntries('all'));
       _activitySourceHandle = mod;
