@@ -112,6 +112,13 @@ filed seventeen, so the open count still rose by two, and *done %* is still belo
 
 **Direction as of 2026-10-07, at `P23`'s close: the open count is rising.**
 
+Re-measured 2026-10-08, after `D-2026-10-07-02`'s lanes and the owner's two reports: 188 filed, 127 closed —
+**a ratio of 1.480**, open 312 → 373, done 72.1 % → 71.4 %. The wave closed fifteen rows — eleven of the thirty-one it
+filed, plus `B1181` (withdrawn by the ruling), `B1194`, `B1254` and `B1259` — and filed twenty that stay open, two of
+them the owner's. None is a gate; `B1296` is the closest, and § 7 says what would make it one.
+
+**Direction as of 2026-10-08: the open count is rising.**
+
 ### A second number, which is the one that moves
 
 Of the last 40 `B` rows filed — `B360` through `B455`, four waves of sweeps plus
@@ -585,17 +592,21 @@ weakest one in this document: it means nobody adjudicated them individually.
 | `B1168` | tracked | defect | at phone width the §13 tag sits on the composer's corner; nothing interactive is under it (measured) and the offer itself is right |
 | `B1175` | tracked | security | a non-admin's loopback passed `require_admin`; one gate deep — the dispatcher refused `app_api` to a non-admin, so no person's assistant reached it — and closed the day it was filed (2026-10-03): the gate asks about the person named |
 | `B1179` | landed | security | Forge's read tools looped back naming nobody, so a non-admin's assistant read the admin's Forge state the person is refused and ran `ssh` to a host it named; met 2026-10-03 — the dispatcher binds the person a tool call acts for and every tool loopback names them, the shell's own gate asks about a named person, and the read tools say a refusal |
-| `B1181` | tracked | defect | fails closed: on a no-login install the shell's own gate refuses everyone, so the Forge cannot stop a scheduled serve — a cost, not a hole; opening that gate is the owner's call |
+| `B1181` | tracked | defect | fails closed: on a no-login install the shell's own gate refused everyone; **withdrawn 2026-10-07** by `D-2026-10-07-02` §2 — there is always a sign-in, so the configuration is gone, and the Forge's shell answers its admin, her loopback and the lifecycle loop on every install (fx4-auth) |
 | `P23-03` | tracked | doors | one table for what each tool's switches hide; the server's own refusals (`require_feature`, the privileges) are the controls and stand as they were — the row is the doors agreeing with them, and the rule flagged it on the table's privilege column |
 | `P23-06` | tracked | display | display and motion; the rule flagged it on *dead end* — two phone dead ends found by driving and fixed in the same row |
 | `B1191` | tracked | decision | a switch for everyone and per person on the tools that have only *Show in this browser*; the switches that exist hold, and what "off" means for work that runs without its window is the owner's call |
 | `B1195` | tracked | decision | the person's Gallery switch hides the window while the routes that list a person's own gallery do not ask for `can_generate_images`; making or editing an image does (`require_privilege`), so the capability the switch names holds — whether it should also hide a person's own pictures is the owner's call |
 | `B1198` | tracked | tidy | two buttons on a user row that belong behind ⋯; the rule flagged it on *Privileges*, the name of the button beside them |
 | `B1207` | tracked | owner | the §13 link's tooltip and accessible name say different things; the link and what it offers are right (`P0-17`, `B1165`), and the tooltip is the owner's own words |
-| `B1229` | tracked | decision | opening the Forge refreshed the model catalog from huggingface.co — and ollama.com — with nothing switched on; **closed 2026-10-07** on the owner's ruling (`D-2026-10-07-01` §2): one admin switch, off by default, asked at every request, so the 0.2.0 notes' *nothing reaches the public internet* holds — the one way round it, a serve of a model not on disk, is `B1259` and the notes say so |
+| `B1229` | tracked | decision | opening the Forge refreshed the model catalog from huggingface.co — and ollama.com — with nothing switched on; **closed 2026-10-07** on the owner's ruling (`D-2026-10-07-01` §2): one admin switch, off by default, asked at every request, so the 0.2.0 notes' *nothing reaches the public internet* holds — a serve of a model not on disk fetched nothing either once `B1259` closed (2026-10-08) |
 | `B1231` | tracked | owner | SQLite's write-ahead log by default, on a share that may not hold it; **closed 2026-10-07** (fx3-forge): forced on Linux, the database is put back on the rollback journal at start and keeps working — the owner's Windows install is still the one place to see it for real, and safe either way |
-| `B1259` | tracked | decision | a *serve* of a model not on disk lets the engine fetch it from Hugging Face or Ollama with the Forge's switch off — a person's act on a model they named; whether the switch also stops the engine's own fetch is the owner's `Law 16` call, and the 0.2.0 notes name it as the one way round the switch, so no published sentence is false |
+| `B1259` | tracked | decision | a *serve* of a model not on disk let the engine fetch it with the Forge's switch off; **closed 2026-10-08** on the owner's ruling (`D-2026-10-07-02` §1): with the switch off a fetch-by-design command is refused and every other serve runs offline, stopping on a repo that is not on disk (fx4-models) |
 | `B1264` | tracked | claim | `SECURITY.md` says no release is tagged — true on this tree, false on the commit `v0.2.0` goes on; `B452`'s class, so the release commit carries the change, and `tests/test_security_documents_are_true.py` goes red the day the tag exists if it does not; a gate the moment the tag is pushed without it |
+| `B1270` | tracked | decision | an upgraded no-sign-in install's owner-less tasks, notes, calendar rows and allow-rules reach no one after `claim_ownerless.py` — nothing is exposed (it fails closed) and nothing is deleted; widening the script or offering the rows to the first admin is the owner's call; the rule read *privilege* in a function's name |
+| `B1271` | tracked | security | branches only an anonymous `require_user` reached are unreachable from a request since `D-2026-10-07-02` §2; `require_privilege`'s pass-through needs an app assembled with no auth manager, which the real app never is — dead code to remove or comment, not a door |
+| `B1273` | tracked | defect | a documents poller asks for a Tidy plan with documents switched off and is refused 403, swallowed; the rule read *is false* in the row's code expression `toolShown('library') is false` |
+| `B1296` | tracked | claim | `v0.2.0` is tagged on `bbd66a3` while `[0.2.0]` and its notes describe work merged after it; true once the tag is re-cut on the released commit, a claim gate if `v0.2.0` is published on `bbd66a3` with these notes — the integrator's to settle before the tag is pushed |
 
 ---
 

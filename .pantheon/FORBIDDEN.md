@@ -211,7 +211,8 @@ stop — the only way to stay banned is to keep asking while it is telling you.
 | `WEB_FETCH_HARD_MAX_BYTES` | Resource exhaustion via a model-chosen byte count. |
 | Auth rate limiters | Credential stuffing. |
 | `require_admin` | Privilege escalation. On the agent's loopback it asks about the person the request names (`X-Pantheon-Owner`), as that person's own request is asked; only a loopback naming nobody is Pantheon itself (`B1175`, 2026-10-03 — tightened, never lifted). |
-| Host-Docker flag off · localhost bypass off | Host root-equivalence; auth bypass. |
+| Host-Docker flag off | Host root-equivalence. |
+| There is always authentication (`D-2026-10-07-02` §2): `AuthMiddleware` installed unconditionally, and `app.py`'s `AUTH_EXEMPT_EXACT` / `AUTH_EXEMPT_PREFIXES` / `AUTH_EXEMPT_PATTERNS` are the whole list of what answers before a sign-in. No variable, setting or mode serves the app or its API to an unsigned request; `AUTH_ENABLED`, `LOCALHOST_BYPASS` and `PANTHEON_SINGLE_USER` are read only to say they are ignored. What an admin toggles is registration (`signup_enabled`, off by default). | Unauthenticated access. `tests/test_there_is_always_authentication.py` boots the real app with each old variable set. |
 | Outbound-email confirmation on by default | Prompt injection → real sent mail. |
 | The plan-mode read-only allowlist (25 tools) | Fail-safe by construction — a newly added tool is blocked by default. Shell is excluded deliberately, with a written rationale. |
 | The approval store's seal, TTL, single-use consumption and owner binding | Dismissing a card retires it but preserves the taint, so it cannot launder an action. |
