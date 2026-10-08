@@ -135,10 +135,28 @@ def test_readme_native_quickstart_uses_loopback():
     assert "0.0.0.0` only when you intentionally want" in docs
 
 
-def test_readme_warns_auth_enabled_for_network_access():
-    readme = Path("README.md").read_text(encoding="utf-8")
-    assert "Keep `AUTH_ENABLED=true` for any network-accessible deployment." in readme
-    assert "Keep `LOCALHOST_BYPASS=false` outside local development." in readme
+def test_readme_says_there_is_always_a_sign_in():
+    # Was `test_readme_warns_auth_enabled_for_network_access`, which pinned the
+    # advice "Keep `AUTH_ENABLED=true` for any network-accessible deployment." and
+    # "Keep `LOCALHOST_BYPASS=false` outside local development." fx4-auth removed
+    # both on purpose (`D-2026-10-07-02` §2, the owner: "there is always
+    # authentication. What's toggleable is registration."): neither variable opens
+    # anything now, so advice to keep them set a way would tell an operator a
+    # switch exists. What the test protects is the same — the README's Security
+    # section tells an operator how the instance is guarded before it is exposed —
+    # so it pins what the README says now: a sign-in always, registration the
+    # admin's switch and off on a new install, and the old variables ignored. The
+    # behaviour itself is driven by `tests/test_there_is_always_authentication.py`
+    # (this reads the README, `Law 20`: it tests the file). (fx5-green, B-NEW-6.)
+    readme = " ".join(Path("README.md").read_text(encoding="utf-8").split())
+    security = readme.split("## Security", 1)[1].split("## ", 1)[0]
+    assert "There is always a sign-in." in security
+    assert "The first run asks for the admin account" in security
+    assert "the admin's switch — Settings → Users, off on a new install." in security
+    assert "(`AUTH_ENABLED=false`, or `LOCALHOST_BYPASS=true`) asks for one now: those variables are ignored" in security
+    # No advice that reads as if sign-in could be switched off.
+    assert "Keep `AUTH_ENABLED=true`" not in readme
+    assert "Keep `LOCALHOST_BYPASS=false`" not in readme
 
 
 def test_ollama_cookbook_runner_does_not_force_public_bind():
