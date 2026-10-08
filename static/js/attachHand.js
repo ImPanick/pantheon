@@ -54,7 +54,10 @@ const MOVE_SLOP = 10;
 // What `POST /api/gallery/upload` takes for a picture (its `IMAGE_EXTS`), so
 // the menu does not offer a save the route will refuse.
 const GALLERY_EXTS = ['png', 'jpg', 'jpeg', 'webp', 'gif'];
-const TEXT_KINDS = ['code', 'text', 'spreadsheet'];
+// Read as text in the preview: code and prose, and the two sheets that are text
+// (an .xlsx is a zip, and would print as noise).
+const TEXT_KINDS = ['code', 'text'];
+const TEXT_SHEETS = ['csv', 'tsv'];
 const TEXT_PREVIEW_BYTES = 64 * 1024;
 
 let _strip = null;
@@ -510,7 +513,7 @@ export function openPreview(f) {
       audio.controls = true;
       audio.src = url;
       body.appendChild(audio);
-    } else if (TEXT_KINDS.includes(kind) && f && typeof f.slice === 'function') {
+    } else if ((TEXT_KINDS.includes(kind) || TEXT_SHEETS.includes(_ext(name))) && f && typeof f.slice === 'function') {
       const pre = _el('pre', 'hand-preview-text', '…');
       pre.tabIndex = 0;   // a long file scrolls from the keyboard too
       body.appendChild(pre);
