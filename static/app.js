@@ -4250,6 +4250,39 @@ function startPantheonApp() {
     }
   }
 
+  // fx5-vision (`B-NEW-9`). A Library document dropped on the chat goes with
+  // the next message the way a dropped file does: its text, as a file in the
+  // composer (so it is a card that can be removed, and its size is said if it
+  // is cut). `application/x-pantheon-documents` is what a Library card's drag
+  // carries (`documentFolders.startDocumentDrag`). True when it took the drop.
+  async function attachDroppedDocuments(dt) {
+    let ids = [];
+    try { ids = JSON.parse((dt && dt.getData('application/x-pantheon-documents')) || '[]'); } catch (_) { ids = []; }
+    if (!Array.isArray(ids) || !ids.length) return false;
+    const EXT = { markdown: '.md', python: '.py', javascript: '.js', typescript: '.ts', json: '.json',
+      csv: '.csv', html: '.html', yaml: '.yaml', sql: '.sql', xml: '.xml', css: '.css', shell: '.sh' };
+    const files = [];
+    for (const id of ids.slice(0, 10)) {
+      try {
+        const r = await fetch(`${API_BASE}/api/document/${encodeURIComponent(id)}`, { credentials: 'same-origin' });
+        if (!r.ok) continue;
+        const d = await r.json();
+        const title = String(d.title || 'Document').replace(/[\\/:*?"<>|]+/g, ' ').trim() || 'Document';
+        files.push(new File([String(d.current_content ?? d.content ?? '')],
+          title + (EXT[String(d.language || '').toLowerCase()] || '.txt'), { type: 'text/plain' }));
+      } catch (_) { /* that one is said below as not attached */ }
+    }
+    if (files.length) await fileHandlerModule.addFiles(files, { skipCrop: true });
+    const missed = Math.min(ids.length, 10) - files.length;
+    if (files.length) {
+      uiModule.showToast(`Attached ${files.length} document${files.length > 1 ? 's' : ''}`);
+    }
+    if (missed > 0) {
+      uiModule.showError(`${missed} document${missed > 1 ? 's' : ''} could not be attached.`);
+    }
+    return true;
+  }
+
   chatContainer.addEventListener('dragover', (e) => {
     e.preventDefault();
     e.stopPropagation();
@@ -4261,6 +4294,10 @@ function startPantheonApp() {
     e.stopPropagation();
     _hideDropHighlight();
     const files = Array.from(e.dataTransfer.files);
+    // fx5-vision (`B-NEW-9`): a Library card dragged onto the chat carries
+    // document ids, not files, and was dropped on the floor here — no card, no
+    // word, and the next message went without it (measured in Chromium).
+    if (files.length === 0 && await attachDroppedDocuments(e.dataTransfer)) return;
     if (files.length === 0) return;
     await fileHandlerModule.addFiles(files);
     uiModule.showToast(`Added ${files.length} file${files.length > 1 ? 's' : ''} to chat`);

@@ -317,6 +317,8 @@ function _setReachNote(el, att) {
   line.style.cssText = 'flex-basis:100%;font-size:12px;line-height:1.35;margin-top:4px;'
     + 'color:var(--color-muted-alt, var(--fg));white-space:normal;max-width:300px;';
   line.textContent = note;
+  // A file card is one row (icon, name, size); the sentence goes under it.
+  if (el.classList && el.classList.contains('attach-card')) el.style.flexWrap = 'wrap';
   if (!old) el.appendChild(line);
 }
 
@@ -4490,6 +4492,15 @@ export function addMessage(role, content, modelName, metadata) {
         .replace(/\n*\[PDF content\]:[\s\S]*?(?=\n*\[PDF content\]|\n*=== File:|$)/g, '')
         .replace(/\n*\[Image attached: [^\]]+\]/g, '')
         .replace(/\n*\[Attached (?:document|non-text) file\]/g, '')
+        // fx5-vision (`B-NEW-7`): the brackets the model is handed about an
+        // attachment — not read, not heard, a document's or a PDF's text, a
+        // transcript, a cut — are said to the person once, under the
+        // attachment (`reach_note`). A reload drew them in the bubble as well,
+        // and the live bubble never did.
+        .replace(/\n*\[(?:Attached file|Attached document|PDF attached|Form attached): [^\]]*\]/g, '')
+        .replace(/\n*\[(?:Document|PDF) content — [^\]]*\]:[\s\S]*?(?=\n*\[(?:Document|PDF) content — |\n*\[Recording attached: |\n*=== File:|$)/g, '')
+        .replace(/\n*\[Recording attached: [^\]]*\](?::\n[\s\S]*?(?=\n*\[Recording attached: |\n*=== File:|$))?/g, '')
+        .replace(/\n*\[Attachment (?:content truncated|omitted from inline context): [^\]]*\]/g, '')
         .trim();
     }
 
