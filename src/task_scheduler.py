@@ -6904,8 +6904,8 @@ class TaskScheduler:
         return self._chain_refusal(db, start_id, max_depth, owner) is not None
 
     def _resolve_defaults(self, db, owner):
-        """The configured model for scheduled work: Settings → Background
-        Tasks, else Utility, else the default chat model — each used only
+        """The configured model for scheduled work: Settings → Agent Tools →
+        *Model for scheduled tasks*, else Utility, else the default chat model — each used only
         while its endpoint lists it (`src/task_endpoint.resolve_task_endpoint`).
 
         `D-2026-10-07-02` §1. This used to answer the model of the owner's

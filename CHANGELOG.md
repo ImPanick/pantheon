@@ -185,8 +185,11 @@ operator should know at a glance.
   with *Retry* instead of its old names; a saved default, or a task's or
   workflow step's model, that its endpoint no longer lists is not used — the
   model menu says so, and the run records why it did not run; a task with no
-  model takes Settings → Background Tasks (else Utility, else the default chat
-  model) — it took the model of its owner's newest chat. A pinned model name the
+  model takes Settings → Agent Tools → *Model for scheduled tasks* (else Utility,
+  else the default chat model) — it took the model of its owner's newest chat;
+  and a run whose configured model is not listed says which and why. A send
+  refused for want of a model keeps its message: *Pick a model* opens the
+  menu, and the message goes once one is picked. A pinned model name the
   endpoint does not list stays in Added Models, marked *not listed*, and is
   offered when it is. `POST /api/v1/chat` with an `api_key` and
   `POST /api/session/openai` now need a `model`.
