@@ -831,9 +831,19 @@ async function _pick(m) {
       finishSwitch();
       return;
     } else if (!currentSessionId) {
-      // No session yet — create one with this model
+      // No session yet — create one with this model. What is in the message
+      // box is the person's and stays (`D-2026-10-07-02` §1): a send refused
+      // for want of a model keeps its message, and picking one is the next
+      // step — driven (fx4-models, 8751), the pick emptied the box, because
+      // the note had hidden the welcome and showing it again clears a draft.
+      const _ta = document.getElementById('message');
+      const _draft = (_ta && _ta.value && window.__pantheonComposerUserEdited) ? _ta.value : '';
       try {
         await _deps.createDirectChat(m.url, m.mid, m.endpointId);
+        if (_draft && _ta && !_ta.value) {
+          _ta.value = _draft;
+          _ta.dispatchEvent(new Event('input', { bubbles: true }));
+        }
       } catch (e) {
         uiModule.showError('Failed to start chat: ' + e);
         finishSwitch();

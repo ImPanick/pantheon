@@ -355,6 +355,55 @@ def test_pick_a_model_leaves_the_menu_open(sandbox):
     assert out == {"menuOpen": True, "note": False}
 
 
+def _pick_script(body: str) -> str:
+    return """
+        globalThis.Event = class Event { constructor(type, init) { this.type = type; this.bubbles = !!(init || {}).bubbles; } };
+        globalThis.window.innerWidth = 1440;
+        const ta = document.createElement('textarea'); ta.id = 'message'; ta.value = ''; document.body.appendChild(ta);
+        const inputs = []; ta.addEventListener('input', () => inputs.push(ta.value));
+        let pending = null; let created = [];
+        // The real `createDirectChat` empties the box when it shows the
+        // welcome again after the note hid it (`chatRenderer.showWelcomeScreen`).
+        const _deps = { getCurrentSessionId: () => null, getSessions: () => [], getPendingChat: () => pending,
+                        setPendingChat: (v) => { pending = v; },
+                        createDirectChat: async (url, mid, ep) => { created.push(mid); ta.value = ''; } };
+        let _defaultPendingSeq = 0;
+        const API_BASE = '';
+        const _pushRecent = () => {}; const _pickerModelKey = (m) => m.mid; const _close = () => {};
+        const updateModelPicker = () => {};
+        const uiModule = { showToast() {}, showError(e) { throw new Error(e); } };
+        %s
+        %s
+    """ % (_picker("async function _pick("), body)
+
+
+def test_picking_a_model_keeps_the_message_a_refused_send_kept(sandbox):
+    """Driven on 8751: refused for want of a model, *Pick a model*, alpha-7b —
+    and the message box was empty; Enter sent nothing. The note had hidden the
+    welcome, and the new chat's welcome cleared the box as a stale draft."""
+    out = _run(sandbox, _PRE, _pick_script("""
+        ta.value = 'Say hello, and tell me the backup status';
+        globalThis.window.__pantheonComposerUserEdited = true;
+        await _pick({ mid: 'alpha-7b', url: 'http://h/v1/chat/completions', endpointId: 'office', display: 'alpha-7b' });
+        console.log(JSON.stringify({ value: ta.value, inputs, created }));
+    """))
+    assert out["created"] == ["alpha-7b"]
+    assert out["value"] == "Say hello, and tell me the backup status"
+    assert out["inputs"] == ["Say hello, and tell me the backup status"], "the send button and the box's height were not told"
+
+
+def test_picking_a_model_with_an_untouched_box_leaves_it_empty(sandbox):
+    """Only what the person typed comes back: a box nobody edited (a restored
+    draft from another chat, issue #1343's case) is left to the new chat's rule."""
+    out = _run(sandbox, _PRE, _pick_script("""
+        ta.value = 'left over';
+        globalThis.window.__pantheonComposerUserEdited = false;
+        await _pick({ mid: 'alpha-7b', url: 'http://h/v1/chat/completions', endpointId: 'office', display: 'alpha-7b' });
+        console.log(JSON.stringify({ value: ta.value, inputs }));
+    """))
+    assert out == {"value": "", "inputs": []}
+
+
 def test_with_no_model_a_member_is_told_who_adds_one_and_given_no_door(sandbox):
     out = _run(sandbox, _PRE, _say("""
         globalThis.window._isAdmin = false;
