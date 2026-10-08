@@ -36,14 +36,17 @@ below will walk past the other three:
 
 | where | how | sites |
 |---|---|---|
-| `core/middleware.require_admin` | the real one: honours `auth_disabled()`, honours the internal-tool token, raises 403 | 107 |
+| `core/middleware.require_admin` | the real one: honours the internal-tool token (and asks about the person it names, `B1175`), raises 403 — it honoured `auth_disabled()` too until there was none (`D-2026-10-07-02` §2) | 107 |
 | `routes/auth_routes.py` | `_get_current_user(request)` + `auth_manager.is_admin(user)`, written out inline | 22 of rule C's 43 — all but one a hard 403; the exception is the scrub decision in `GET /api/auth/settings` |
 | `routes/shell_routes.py:_require_admin` | its own reimplementation, with its own rules — it also refuses the literal user `api`, which the real one does not | 1 of rule C's 43, called from 6 routes |
 | `owner_is_admin_or_single_user` | a policy helper that answers the same question a different way | 8 of rule C's 43, across 6 files |
 
-Only the first consults `auth_disabled()`. Measured by calling both with
-`AUTH_ENABLED=false` and no session: `core.middleware.require_admin` returns, and
-`routes/shell_routes.py:_require_admin` raises `403 Admin only`. `B543` is that.
+Only the first consulted `auth_disabled()`. Measured by calling both with
+`AUTH_ENABLED=false` and no session: `core.middleware.require_admin` returned, and
+`routes/shell_routes.py:_require_admin` raised `403 Admin only`. `B543` was that, and
+`B1181` its cost; both ended with auth-off itself (`D-2026-10-07-02` §2) — today both
+refuse a request with nobody on it, and the shell's also refuses when the app holds no
+auth manager.
 
 Rule C of the checker counts the second and fourth rows directly — every `is_admin(...)`
 and `owner_is_admin_or_single_user(...)` call outside `require_admin` itself — and ratchets
@@ -276,7 +279,7 @@ routes: 6
 
 The largest file in the fifteen and the one that matters most. Every row below whose gate ends `+ is_admin` is admin-gated **by hand** — `_get_current_user` + `auth_manager.is_admin`, written out — rather than by `require_admin`. That is why a `require_admin` audit sees nothing in this file, and why `B543` exists.
 
-**The four role routes at the bottom are the exception, deliberately** (`P11-02`). They gate with `core.middleware.require_admin`, which is the only one of the four implementations that consults `auth_disabled()` — the hand-rolled one refuses the single operator of an auth-disabled box. They are also the reason § A's superuser tier moved from 37 to 41 and this file's count from 35 to 39. Rule C's ratchet did not move: `require_admin` is not one of the gates it counts, which is the point.
+**The four role routes at the bottom are the exception, deliberately** (`P11-02`). They gate with `core.middleware.require_admin`, which was the only one of the four implementations that consulted `auth_disabled()` — the hand-rolled one refused the single operator of an auth-disabled box (moot since `D-2026-10-07-02` §2: there is always authentication). They are also the reason § A's superuser tier moved from 37 to 41 and this file's count from 35 to 39. Rule C's ratchet did not move: `require_admin` is not one of the gates it counts, which is the point.
 
 routes: 39
 

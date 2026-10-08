@@ -5,9 +5,11 @@ listed under **Diverged from Odysseus**, which satisfies AGPL-3.0 §5(a).
 
 **Upgrading an existing instance?** Read
 [Changed — read this before upgrading](#changed--read-this-before-upgrading) first. It is
-the only section that can change what your host does without you editing anything: three
-switches — `AUTH_ENABLED`, `PANTHEON_SINGLE_USER` and the `use_rag` field on
-`POST /api/chat_stream` — used to ignore values meaning *no*, and now honour them.
+the only section that can change what your host does without you editing anything. In
+`0.2.0` the first entry is the one to read: **there is always a sign-in** — an install that
+ran without one asks for one now. (In `0.1.0`, three switches — `AUTH_ENABLED`,
+`PANTHEON_SINGLE_USER` and the `use_rag` field on `POST /api/chat_stream` — stopped ignoring
+values meaning *no*; the first two are now ignored altogether.)
 
 **Coming from Odysseus?** The [0.2.0 release notes](docs/release-notes/0.2.0.md)
 name every rename you have to follow — each environment variable, command, path,
@@ -146,6 +148,29 @@ operator should know at a glance.
   door to where each setting for serving a model already lives.
 
 #### Changed — read this before upgrading
+- **There is always a sign-in** (`D-2026-10-07-02` §2 — the owner: *"there is always
+  authentication. What's toggleable is registration. We keep it this way."*).
+  - **An install that ran without a sign-in now asks for one.** `AUTH_ENABLED=false`
+    (or `0`/`no`/`off`), `LOCALHOST_BYPASS=true` and `PANTHEON_SINGLE_USER` no longer
+    let anything in unsigned; each is ignored and named once in the log at start —
+    remove it from `.env`. The app comes up behind its sign-in page rather than
+    refusing to start.
+  - **The first run asks for the admin account** — on the sign-in page when no account
+    exists, in the terminal on a native install (`setup.py`). A Docker container's
+    first boot made `admin` and printed a temporary password to the container log
+    (unless `PANTHEON_ADMIN_PASSWORD` named one); sign in with that. Lost it, and
+    `admin` is the only account? Set `PANTHEON_ADMIN_PASSWORD`, move `data/auth.json`
+    aside and restart.
+  - **Registration is off by default.** Whether people may make their own accounts is
+    one switch, Settings → Users → *People can sign themselves up*; off, the sign-in
+    page offers no sign-up and `POST /api/auth/signup` says so. An admin adds people
+    under *Add User* either way.
+  - **What the no-sign-in install made has no owner**, and a signed-in person is not
+    shown owner-less chats. Give them to the admin once, after the first sign-in:
+    `python scripts/claim_ownerless.py <admin>` (Docker: `docker compose exec pantheon
+    python scripts/claim_ownerless.py admin`) — chats, documents, gallery images,
+    comparisons, memories and skills. It does not reach scheduled tasks: an owner-less
+    task that runs a shell, SSH or a serve is refused until an admin makes it again.
 - **If you run a modified copy of Pantheon for other people, point the source
   link at your own source.** An unmodified install now offers this repository's;
   a modified one owes its users *its* source (AGPL-3.0 §13). Set
