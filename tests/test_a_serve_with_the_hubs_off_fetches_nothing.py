@@ -109,7 +109,8 @@ def forge(tmp_path, monkeypatch):
 
 @pytest.mark.parametrize("cmd", [
     "llama-server -hf Qwen/Qwen3-8B-GGUF --host 0.0.0.0 --port 8080",
-    "llama-server --hf-repo Qwen/Qwen3-8B-GGUF --hf-file q4.gguf --port 8080",
+    "llama-server --hf-repo=Qwen/Qwen3-8B-GGUF --port 8080",
+    "llama-server --hf-file q4.gguf -m q4.gguf --port 8080",
     "ollama pull qwen2.5:7b",
     "ollama run qwen2.5:7b",
 ])
@@ -170,10 +171,14 @@ def test_a_vllm_serve_runs_offline_and_stops_on_a_model_not_on_disk(forge, tmp_p
     assert ran.stdout.splitlines() == ["HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 EXIT="]
 
 
-def test_a_model_served_from_a_path_on_disk_is_not_checked_against_the_hub(forge):
+@pytest.mark.parametrize("cmd", [
+    "llama-server --model /home/u/.cache/huggingface/hub/models--Qwen--Qwen3-8B-GGUF/snapshots/a/q4.gguf --port 8080",
+    "vllm serve /srv/models/Qwen/Qwen3-8B-GGUF --port 8000",
+])
+def test_a_model_served_from_a_path_on_disk_is_not_checked_against_the_hub(forge, cmd):
+    """A path that holds the repo's name is a model on disk, not a hub id."""
     forge.hubs(False)
-    cmd = "llama-server --model /srv/models/qwen3-8b-q4.gguf --port 8080"
-    forge.serve("qwen3-8b-q4", cmd)
+    forge.serve("Qwen/Qwen3-8B-GGUF", cmd)
     text = forge.scripts()[0].read_text()
     assert "export HF_HUB_OFFLINE=1" in text
     assert "is not on this machine" not in text

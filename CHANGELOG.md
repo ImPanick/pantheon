@@ -176,6 +176,25 @@ operator should know at a glance.
   Docker Desktop on Windows or macOS can be one — Pantheon puts the database
   back on the rollback journal at start, keeps running, and says so once in the
   log. `PANTHEON_SQLITE_JOURNAL_MODE=delete` in `.env` skips the check.
+- **A model is offered only while an endpoint lists it** (`D-2026-10-07-02` §1,
+  `B1259`). Names come from a server's own model list or a provider's own list
+  call on a key that answered — no built-in list stands in. **What you may
+  notice after upgrading:** an Anthropic endpoint added without a key (or with
+  one Anthropic refuses) offers nothing until a key answers — it listed ten
+  built-in `claude-*` names; an endpoint that stops answering shows one line
+  with *Retry* instead of its old names; a saved default, or a task's or
+  workflow step's model, that its endpoint no longer lists is not used — the
+  model menu says so, and the run records why it did not run; a task with no
+  model takes Settings → Background Tasks (else Utility, else the default chat
+  model) — it took the model of its owner's newest chat. A pinned model name the
+  endpoint does not list stays in Added Models, marked *not listed*, and is
+  offered when it is. `POST /api/v1/chat` with an `api_key` and
+  `POST /api/session/openai` now need a `model`.
+- **With *Hugging Face and Ollama* off, serving a model does not fetch it**
+  (`B1259`): `llama-server -hf …`, `ollama pull` and `ollama run` are refused
+  with the switch's sentence, and every other serve runs with
+  `HF_HUB_OFFLINE=1` and stops, saying so, on a repo id that is not in that
+  machine's Hugging Face cache.
 
 #### Fixed
 - *Import from device* in the Documents panel opens a file picker again, and a

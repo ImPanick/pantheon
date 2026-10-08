@@ -32,9 +32,11 @@ from typing import Dict, List, Optional
 
 class ListServer:
     def __init__(self, models: List[str], *, anthropic_key: Optional[str] = None,
-                 port: int = 0, reply: str = "Hello from the fixture."):
+                 port: int = 0, reply: str = "Hello from the fixture.", loading: bool = False):
         self.models = list(models)
         self.anthropic_key = anthropic_key
+        # llama.cpp's answer while it loads a model: 503, "Loading model".
+        self.loading = loading
         self.reply = reply
         self.asked: List[Dict[str, str]] = []
         self.port = port
@@ -63,6 +65,8 @@ class ListServer:
                                      "authorization": self.headers.get("authorization", "")})
                 if not self.path.rstrip("/").endswith("/models"):
                     return self._send(404, {"error": "not found"})
+                if server.loading:
+                    return self._send(503, {"error": {"message": "Loading model", "code": 503}})
                 if server.anthropic_key is not None:
                     if (self.headers.get("x-api-key") != server.anthropic_key
                             or not self.headers.get("anthropic-version")):

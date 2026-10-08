@@ -201,6 +201,24 @@ def test_a_pinned_name_the_endpoint_does_not_list_is_not_offered(world):
     assert {r["id"]: r["is_listed"] for r in rows} == {"alpha-7b": True, "typed-by-hand": False}
 
 
+def test_a_launch_name_the_server_does_not_list_is_not_offered(world):
+    """The Forge pins the name it launched; a server that lists an alias
+    offers the alias. The base offered both, the pin unlisted."""
+    srv = world.serve(["served-alias"])
+    world.add("forge", srv.base, name="Qwen3-8B", endpoint_kind="local",
+              cached_models=json.dumps(["served-alias"]),
+              pinned_models=json.dumps(["Qwen/Qwen3-8B"]))
+    item = world.item(world.client(), "forge")
+    assert item["models"] + item["models_extra"] == ["served-alias"]
+
+
+def test_a_server_still_loading_its_model_says_so(world):
+    srv = world.serve(["alpha-7b"], loading=True)
+    world.add("office", srv.base, name="Office LLM", endpoint_kind="local")
+    item = world.item(world.client(), "office", retry="office")
+    assert item["models"] == [] and item["down_line"] == "Office LLM is loading its model."
+
+
 # ── a provider's own list call ──────────────────────────────────────────────
 
 def test_anthropic_offers_what_its_list_call_answers_for_a_key_that_answered(world, monkeypatch):
