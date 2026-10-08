@@ -25,6 +25,7 @@ DOM shim (`tests/test_tool_effect_surfaces_js.py`).
 """
 from __future__ import annotations
 
+import json
 import shutil
 from pathlib import Path
 
@@ -402,6 +403,64 @@ def test_picking_a_model_with_an_untouched_box_leaves_it_empty(sandbox):
         console.log(JSON.stringify({ value: ta.value, inputs }));
     """))
     assert out == {"value": "", "inputs": []}
+
+
+def _refused_send(status: int, detail: str) -> str:
+    """The live send's refused-response arm (`handleChatSubmit`'s `if
+    (!res.ok)` after its `/api/chat_stream` POST — not `resumeStream`'s look-
+    alike), cut out whole and run with the shipped `readRefusal` (C-ERR)."""
+    src = (JS / "chat.js").read_text(encoding="utf-8")
+    code = blank_text(src, "js")
+    start = code.index("export async function handleChatSubmit(")
+    handler = js_definition(src, start)
+    hcode = code[start:start + len(handler)]
+    post = hcode.index("/api/chat_stream`")
+    arm = js_definition(handler, hcode.index("if (!res.ok) {", post))
+    refusal = (JS / "workbench" / "refusal.js").read_text(encoding="utf-8")
+    refusal_fns = "\n".join(js_definition(refusal, refusal.index(h)).replace("export ", "", 1)
+                            for h in ("export function refusalText(", "export async function readRefusal("))
+    return """
+        const said = []; const switched = [];
+        const res = { ok: false, status: %d, headers: { get: () => 'application/json' },
+                      json: async () => ({ detail: %s }), text: async () => JSON.stringify({ detail: %s }),
+                      clone() { return this; } };
+        const holder = { querySelector: () => ({}), remove() {} };
+        const clearResponseTimeout = () => {};
+        const sessionModule = { getSessions: () => [], getCurrentSessionId: () => null, loadSessions: async () => {} };
+        globalThis.window.dispatchEvent = () => true;
+        const agentBtn = { classList: { remove: () => switched.push('agent off'), add() {} }, closest: () => null };
+        const chatBtn = { classList: { add: () => switched.push('chat on'), remove() {} } };
+        document.getElementById = (id) => (id === 'mode-agent-btn' ? agentBtn : id === 'mode-chat-btn' ? chatBtn : null);
+        const Storage = { KEYS: { TOGGLES: 't' }, getJSON: () => ({}), setJSON() {} };
+        const typewriterInto = (_el, text) => said.push(text);
+        const enableResearchBtn = () => {};
+        %s
+        async function run() { %s }
+        await run();
+        console.log(JSON.stringify({ said, switched }));
+    """ % (status, json.dumps(detail), json.dumps(detail), refusal_fns, arm)
+
+
+@pytest.mark.parametrize("status, detail", [
+    (409, "qwen3-tool isn't listed by Office LLM now. Pick another from the model menu."),
+    (503, "vllm-auto isn't answering. Pick another from the model menu."),
+])
+def test_a_refusal_naming_a_tool_or_auto_model_keeps_its_why(sandbox, status, detail):
+    """The live send's old guess — any error holding "tool" or "auto" is a
+    model that cannot take agent tools, so switch to Chat — swapped a model
+    refusal's sentence for "This model doesn't support agent tools" and
+    flipped the mode, whenever the model's or endpoint's name held either
+    word."""
+    out = _run(sandbox, _PRE, _refused_send(status, detail))
+    assert out == {"said": [detail], "switched": []}
+
+
+def test_a_tool_error_from_the_model_still_switches_to_chat(sandbox):
+    """The guess stays for what it was for: a server that refuses tool calls."""
+    out = _run(sandbox, _PRE, _refused_send(
+        400, '"auto" tool choice requires --enable-auto-tool-choice and --tool-call-parser to be set'))
+    assert out["said"] == ["This model doesn't support agent tools — switched to Chat mode. Try again."]
+    assert out["switched"] == ["agent off", "chat on"]
 
 
 def test_with_no_model_a_member_is_told_who_adds_one_and_given_no_door(sandbox):

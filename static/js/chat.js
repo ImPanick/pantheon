@@ -3371,8 +3371,12 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
             if (_url) window.dispatchEvent(new CustomEvent('pantheon:endpoint-unanswered', { detail: { url: _url } }));
           } catch (_) {}
         }
-        // Auto-switch to chat mode for tool-related errors
-        if (errText.includes('tool') || errText.includes('auto')) {
+        // Auto-switch to chat mode for tool-related errors — not for a model
+        // refusal (409 not listed, 503 not answering, `D-2026-10-07-02` §1):
+        // its sentence names a model and an endpoint, and a name holding
+        // "tool" or "auto" ("qwen3-tool") swapped the why for this one.
+        if (res.status !== 409 && res.status !== 503
+            && (errText.includes('tool') || errText.includes('auto'))) {
           errText = 'This model doesn\'t support agent tools — switched to Chat mode. Try again.';
           const _ab = document.getElementById('mode-agent-btn');
           const _cb = document.getElementById('mode-chat-btn');
