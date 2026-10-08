@@ -48551,3 +48551,19 @@ body:has(:is(.modal, .research-overlay):not(.hidden):not(.modal-minimized) .moda
   flex-shrink: 0;
   white-space: nowrap;
 }
+/* An open model menu is seen while its chip is tucked away. The chip fades
+   out while the message box is busy (`app.js`: `model-picker-autohide` from 23
+   characters, `picker-auto-hidden` on a phone with any text; plan mode) and
+   took its open menu with it, so the note's "Pick a model" opened a menu no
+   one could see or press (driven, 390×844 with the message kept). */
+.chat-input-top > .model-picker-wrap:has(> .model-picker-menu:not(.hidden)) {
+  opacity: 1;
+  pointer-events: auto;
+  transform: none;
+}
+/* …and its chip stays out of the way: drawn, it sat over the kept message. */
+.chat-input-top > .model-picker-wrap.model-picker-autohide:has(> .model-picker-menu:not(.hidden)) > .model-picker-btn,
+.chat-input-top > .model-picker-wrap.picker-auto-hidden:has(> .model-picker-menu:not(.hidden)) > .model-picker-btn,
+body.plan-mode-active .chat-input-top > .model-picker-wrap:has(> .model-picker-menu:not(.hidden)) > .model-picker-btn {
+  visibility: hidden;
+}
