@@ -213,13 +213,15 @@ def _update_script(items: str, body: str) -> str:
         %s
         %s
         %s
-    """ % (items, _picker("function _modelExists("), _picker("function _forgetDefaultChat("),
-           _picker("function updateModelPicker("), body)
+        %s
+    """ % (items, _picker("function _modelExists("), _picker("function _notListedReason("),
+           _picker("function _forgetDefaultChat("), _picker("function updateModelPicker("), body)
 
 
 def test_a_cached_default_the_loaded_list_does_not_offer_is_not_used(sandbox):
     out = _run(sandbox, _PRE, _update_script(
-        "[{ endpoint_id: 'office', url: 'http://h/v1/chat/completions', models: ['alpha-7b'] }]", """
+        "[{ endpoint_id: 'office', endpoint_name: 'Office LLM', url: 'http://h/v1/chat/completions',"
+        " models: ['alpha-7b'] }]", """
         localStorage.setItem('pantheon-default-chat-cache', JSON.stringify(
           { endpoint_id: 'office', endpoint_url: 'http://h/v1/chat/completions', model: 'gone-70b' }));
         updateModelPicker();
@@ -227,9 +229,26 @@ def test_a_cached_default_the_loaded_list_does_not_offer_is_not_used(sandbox):
           cache: localStorage.getItem('pantheon-default-chat-cache') }));
     """))
     assert out["label"] == "Select model" and out["pending"] is None
-    assert out["title"] == "gone-70b isn't answering. Pick another from the model menu."
+    assert out["title"] == "gone-70b isn't listed by Office LLM now. Pick another from the model menu."
     assert out["cache"] is None, "the page kept a default nothing lists"
     assert out["ensured"] == 0, "it went looking for another model in the default's place"
+
+
+def test_a_cached_default_on_an_endpoint_that_is_not_answering_says_the_endpoints_line(sandbox):
+    """The tooltip says what the send says — the endpoint's line — not that
+    the model "isn't answering" (driven on 8751: the two disagreed)."""
+    out = _run(sandbox, _PRE, _update_script(
+        "[{ endpoint_id: 'demo', endpoint_name: 'Demo model', url: 'http://d/v1/chat/completions',"
+        " models: [], offline: true, down_line: 'Demo model isn\\'t answering.' },"
+        " { endpoint_id: 'office', endpoint_name: 'Office LLM', url: 'http://h/v1/chat/completions',"
+        " models: ['alpha-7b'] }]", """
+        localStorage.setItem('pantheon-default-chat-cache', JSON.stringify(
+          { endpoint_id: 'demo', endpoint_url: 'http://d/v1/chat/completions', model: 'scripted-demo' }));
+        updateModelPicker();
+        console.log(JSON.stringify({ label: label.textContent, title: label.title, pending }));
+    """))
+    assert out["label"] == "Select model" and out["pending"] is None
+    assert out["title"] == "Demo model isn't answering. Pick another from the model menu."
 
 
 def test_a_cached_default_that_is_listed_is_used(sandbox):

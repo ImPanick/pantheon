@@ -1491,6 +1491,13 @@ def endpoint_down_line(ep: Any) -> str:
         return f"{name} is loading its model."
     if state.get("answered"):
         return f"{name} lists no models."
+    # A list call answered 401/403 did answer: it refused the credential.
+    # Driven (fx4-models, 8751): an Anthropic key Anthropic refuses read
+    # "isn't answering", which says the wrong why.
+    if str(state.get("error") or "").startswith(("HTTP 401", "HTTP 403")):
+        if getattr(ep, "api_key", None) or getattr(ep, "provider_auth_id", None):
+            return f"{name} refused its key."
+        return f"{name} wants a key."
     return f"{name} isn't answering."
 
 

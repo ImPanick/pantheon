@@ -48544,3 +48544,10 @@ body:has(:is(.modal, .research-overlay):not(.hidden):not(.modal-minimized) .moda
   font-size: 10px;
   color: var(--color-muted-alt);
 }
+/* The composer's note when a send has no model (`chat.js` `_sayNoModel`): a
+   reason as long as "Demo model (scripted) isn't answering. Pick another
+   from the model menu." squeezed its button onto two lines (driven, 1440). */
+#chat-history .no-model-note .no-model-add {
+  flex-shrink: 0;
+  white-space: nowrap;
+}

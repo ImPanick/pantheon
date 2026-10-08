@@ -191,6 +191,26 @@ async function _ensureDefaultPendingChat() {
   }
 }
 
+/** `D-2026-10-07-02` §1: why the saved default is not offered, in the words
+ *  the server uses (`routes/model_routes.unusable_model_sentence`): its
+ *  endpoint's line when that endpoint offers nothing ("Demo model isn't
+ *  answering."), else the model is not listed by it. Driven (fx4-models,
+ *  8751): the tooltip said "scripted-demo isn't answering" while the send
+ *  said "Demo model (scripted) isn't answering" — a model does not answer. */
+export function _notListedReason(model, endpointId = '', url = '') {
+  const pick = 'Pick another from the model menu.';
+  const short = String(model || '').split('/').pop() || 'That model';
+  const items = (window.modelsModule && window.modelsModule.getCachedItems) ? window.modelsModule.getCachedItems() : [];
+  const bare = (u) => String(u || '').replace(/\/+$/, '');
+  const item = items.find((it) => (endpointId && it.endpoint_id === endpointId))
+    || items.find((it) => url && bare(it.url) && bare(it.url) === bare(url));
+  if (!item) return `${short} isn't listed now. ${pick}`;
+  const name = item.endpoint_name || 'its endpoint';
+  const listed = (item.models || []).concat(item.models_extra || []);
+  if (item.offline || !listed.length) return `${item.down_line || `${name} isn't answering.`} ${pick}`;
+  return `${short} isn't listed by ${name} now. ${pick}`;
+}
+
 /** `D-2026-10-07-02` §1: drop a cached default that is not listed now, and
  *  keep the sentence that says why (the picker's label tooltip, the send). */
 export function _forgetDefaultChat(reason = '') {
@@ -1020,7 +1040,7 @@ export function updateModelPicker() {
     // server's `/api/default-chat` check follows).
     if (cachedDefault && cachedDefault.endpoint_url && cachedDefault.model
         && !_modelExists(cachedDefault.model, cachedDefault.endpoint_url)) {
-      _forgetDefaultChat(`${String(cachedDefault.model).split('/').pop()} isn't answering. Pick another from the model menu.`);
+      _forgetDefaultChat(_notListedReason(cachedDefault.model, cachedDefault.endpoint_id, cachedDefault.endpoint_url));
       cachedDefault = null;
     }
     if (cachedDefault && cachedDefault.endpoint_url && cachedDefault.model) {
@@ -1059,7 +1079,7 @@ export function updateModelPicker() {
     if (_pendingChat.source === 'default' && items.length && !allAvailable.includes(modelId)) {
       // `D-2026-10-07-02` §1: the saved default is not listed now. Say so
       // (the label's tooltip, and a send) instead of quietly using another.
-      _forgetDefaultChat(`${String(modelId).split('/').pop()} isn't answering. Pick another from the model menu.`);
+      _forgetDefaultChat(_notListedReason(modelId, _pendingChat.endpointId, _pendingChat.url));
       modelId = null;
     } else if (allAvailable.length > 0 && !allAvailable.includes(modelId)) {
       // A fallback pick no longer available — switch to first available

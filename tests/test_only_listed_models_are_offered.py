@@ -236,9 +236,12 @@ def test_anthropic_offers_what_its_list_call_answers_for_a_key_that_answered(wor
                                                               "claude-fixture-sonnet"]
 
 
-@pytest.mark.parametrize("key", ["wrong-key", ""])
-def test_anthropic_offers_nothing_when_its_list_call_is_refused(world, monkeypatch, key):
-    """With no key the base answered ten built-in `claude-*` names."""
+@pytest.mark.parametrize("key,line", [("wrong-key", "Anthropic refused its key."),
+                                      ("", "Anthropic wants a key.")])
+def test_anthropic_offers_nothing_when_its_list_call_is_refused(world, monkeypatch, key, line):
+    """With no key the base answered ten built-in `claude-*` names. The line
+    says the why: the list call answered, refusing the key (or asking for
+    one) — not "isn't answering"."""
     srv = world.serve(["claude-fixture-sonnet"], anthropic_key="good")
     point_hosts_at(monkeypatch, {"api.anthropic.com": srv.port})
     c = world.client()
@@ -249,7 +252,7 @@ def test_anthropic_offers_nothing_when_its_list_call_is_refused(world, monkeypat
     assert made.json()["models"] == []
     item = world.item(c, made.json()["id"])
     assert item["models"] == [] and item["offline"] is True
-    assert item["down_line"] == "Anthropic isn't answering."
+    assert item["down_line"] == line
 
 
 def test_a_curated_host_whose_listing_fails_lists_nothing(world, monkeypatch):
