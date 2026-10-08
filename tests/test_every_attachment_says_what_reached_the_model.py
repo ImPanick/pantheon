@@ -103,6 +103,8 @@ def send(tmp_path, monkeypatch):
             return True
 
     real_get = S.get_setting
+    heard: list = []
+    _send_heard = heard
 
     def _send(files, model="gemma-4-26b-a4b", vision=True, stt=None, describer=None):
         # Settings → Vision's switch, as `preprocess_message` reads it.
@@ -111,8 +113,9 @@ def send(tmp_path, monkeypatch):
         monkeypatch.setattr(ch, "analyze_image_with_vl_result",
                             describer or (lambda path, owner=None: {"text": "[No vision model configured — set one in Settings → Vision]", "model": ""}))
         import services.stt as stt_mod
+        heard.clear()
         monkeypatch.setattr(stt_mod, "get_stt_service",
-                            lambda: SimpleNamespace(transcribe=lambda audio: stt))
+                            lambda: SimpleNamespace(transcribe=lambda audio: heard.append(len(audio)) or stt))
         infos = {}
         for n, (name, raw, mime) in enumerate(files):
             p = tmp_path / f"f{n}-{name}"
@@ -125,6 +128,7 @@ def send(tmp_path, monkeypatch):
             "What does it say?", list(infos), sess, auto_opened_docs=[], allow_tool_preprocessing=True))
         S._invalidate_caches()
         return content, {m["name"]: m for m in meta}
+    _send.heard = _send_heard
     return _send
 
 
@@ -241,3 +245,12 @@ def test_a_picture_the_model_sees_needs_no_note(send):
     content, meta = send([("cat.jpg", _jpeg(), "image/jpeg")])
     assert isinstance(content, list) and any(p.get("type") == "image_url" for p in content)
     assert not meta["cat.jpg"].get("reach_note")
+
+
+def test_a_video_is_not_sent_to_speech_to_text(send):
+    """A `.webm` the browser calls a video is not a recording, even where the
+    server could transcribe one."""
+    content, meta = send([("clip.webm", b"\x1aE\xdf\xa3" + b"\x00" * 64, "video/webm")], stt="should not appear")
+    assert send.heard == [], "the video was handed to speech-to-text"
+    assert "should not appear" not in _text(content)
+    assert meta["clip.webm"]["reach_note"] == "Not read: the model can't be given a video."

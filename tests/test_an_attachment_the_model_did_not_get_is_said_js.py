@@ -89,6 +89,23 @@ def test_the_live_event_marks_the_cards_the_bubble_already_drew(card_sandbox):  
     assert out["again"] == 1 and out["notes"][0] == [ZIP_NOTE], "replaced, never stacked"
 
 
+def test_a_picture_is_found_by_its_id_and_a_new_sentence_replaces_the_old(card_sandbox):  # noqa: F811
+    """A picture's preview carries only its upload id (no name), so the event
+    must find it by id; and a later event's sentence replaces the earlier one."""
+    # `previewUrl` keeps the skeleton (and its spinner, which the shim cannot
+    # walk) out of the preview; the lookup under test is the same.
+    pic = {"id": "p1.jpg", "name": "cat.jpg", "mime": "image/jpeg", "size": 645, "previewUrl": "blob:x"}
+    out = _cards(card_sandbox, """
+        const wrap = cr.buildAttachCards([%s]);
+        cr.markAttachmentReach(wrap, [Object.assign({}, %s, { reach_note: 'first' })]);
+        cr.markAttachmentReach(wrap, [Object.assign({}, %s, { reach_note: 'Not seen: second.' })]);
+        const el = wrap.children[0];
+        console.log(JSON.stringify({ kind: el.className,
+          notes: el.children.filter((k) => k.className === 'attach-reach-note').map((k) => k.textContent) }));
+    """ % (json.dumps(pic), json.dumps(pic), json.dumps(pic)))
+    assert out == {"kind": "attach-image-preview", "notes": ["Not seen: second."]}
+
+
 def test_a_reloaded_bubble_says_it_once_not_in_the_models_words(card_sandbox):  # noqa: F811
     saved = ("What does the attachment say?\n\n[Attached file: bundle.zip — contents not read. "
              "No extractor covers this file type, so nothing from the file is in this message. "
