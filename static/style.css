@@ -48567,3 +48567,19 @@ body:has(:is(.modal, .research-overlay):not(.hidden):not(.modal-minimized) .moda
 body.plan-mode-active .chat-input-top > .model-picker-wrap:has(> .model-picker-menu:not(.hidden)) > .model-picker-btn {
   visibility: hidden;
 }
+/* `B1194` (`D-2026-10-07-02` §3). *manage* under Chats is the chat archive's
+   own door — the only one in the sidebar while the Library is switched off,
+   and the guide line names it ("Archived chats are under Chats → manage.").
+   With no hover to reveal it, a touch screen drew it as an empty 13px box at
+   35% opacity (driven at 390×844). There, its word is shown. */
+@media (hover: none) {
+  #sessions-section .chats-manage-btn { opacity: 0.75 !important; }
+  #sessions-section .chats-manage-btn .list-item-plus-label {
+    max-width: 80px;
+    padding-right: 4px;
+    opacity: 1;
+  }
+}
+/* Settings → Appearance: what the Library's switch takes and leaves, on its
+   own line under the row's name (beside "Off for everyone" it ran together). */
+.vis-label .vis-keeps { display: block; margin: 2px 0 0; }

@@ -13,6 +13,7 @@ import spinnerModule from './spinner.js';
 import { topPortalZ } from './toolWindowZOrder.js';
 import { chevronIcon } from './icons.js';
 import backStack from './backStack.js';   // `P23-01`
+import { onToolVisibilityApplied, toolShown } from './ui_visibility.js';   // `B1194`
 
 const API_BASE = window.location.origin;
 
@@ -1829,12 +1830,8 @@ export async function loadSessions() {
     sessions = _normalizeSessionsList(fetched);
     renderSessionList();
 
-    const sessionsSection = uiModule.el('sessions-section');
-    if (sessions.length === 0) {
-      sessionsSection.classList.add('hidden');
-    } else {
-      sessionsSection.classList.remove('hidden');
-    }
+    _chatsListKnown = true;
+    _syncChatsSection();
 
     const activeSessions = sessions.filter(s => !s.archived);
     // "Transient" sessions = the singleton Assistant chat + any task-output
@@ -3426,12 +3423,29 @@ function _arcRenderLoadMore() {
 }
 
 
+// `B1194` (`D-2026-10-07-02` §3). The Chats section goes when there are no
+// chats, and *manage* under its header is the chat archive's own door. With
+// the Library switched off that door is the sidebar's only way to archived
+// chats — driven at :8753, a person whose chats were all archived had no
+// Chats section and so no door — so the header stays, empty, while the Library
+// is off; asked again when the switches change (they can arrive after the list).
+let _chatsListKnown = false;
+function _syncChatsSection() {
+  if (!_chatsListKnown) return;
+  const section = uiModule.el('sessions-section');
+  if (section) section.classList.toggle('hidden', sessions.length === 0 && toolShown('library'));
+}
+onToolVisibilityApplied(() => _syncChatsSection());
+
 // ── Unified Library Modal (Chats / Documents / Archive) ──
 
 const _lib = { tab: 'chats', search: '', sort: 'recent', debounce: null, selectMode: false, selected: new Set() };
 
 export function openLibrary(defaultTab) {
-  if (window.pantheonToolDoor && !window.pantheonToolDoor('library')) return;   // `P23-03`: the Library's door
+  // `P23-03`: the Library's door. `B1194`: asked for the tab it opens — the
+  // chat archive's tabs (*manage*'s Chats, the guide's Archive) open with the
+  // Library switched off; its documents do not.
+  if (window.pantheonToolDoor && !window.pantheonToolDoor('library', { tab: defaultTab || 'documents' })) return;
   // Delegate everything to the document module's library (has tabs for Chats/Documents/Archive)
   if (window.documentModule && window.documentModule.openLibrary) {
     window.documentModule.openLibrary({ tab: defaultTab || 'documents' });

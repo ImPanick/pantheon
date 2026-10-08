@@ -29,7 +29,7 @@ import memoryModule from './js/memory.js?v=20261007p23';
 import voiceRecorderModule from './js/voiceRecorder.js';
 import censorModule from './js/censor.js';
 import galleryModule from './js/gallery.js?v=20260708match1';
-import { UI_VIS_DEFAULT_OFF, resolveVisibility, applyToolVisibility, guardRouteOpener, installToolDoorGuard, onToolVisibilityApplied, toolShown } from './js/ui_visibility.js';
+import { UI_VIS_DEFAULT_OFF, resolveVisibility, applyToolVisibility, guardRouteOpener, installToolDoorGuard, onToolVisibilityApplied, toolShown, whenToolVisibilityReady } from './js/ui_visibility.js';
 import tasksModule from './js/tasks.js?v=20261007p23';
 import calendarModule from './js/calendar.js';
 import notesModule from './js/notes.js';
@@ -1249,7 +1249,9 @@ function initializeEventListeners() {
     'calendar-modal': () => calendarModule && calendarModule.openCalendar(),
     'gallery-modal':  () => document.getElementById('tool-gallery-btn')?.click(),
     'tasks-modal':    () => document.getElementById('tool-tasks-btn')?.click(),
-    'doclib-modal':   () => sessionModule && sessionModule.openLibrary && sessionModule.openLibrary(),
+    // `B1194`: on its tab — a reload of the chat archive (`/library/archive`)
+    // reopens the archive, which opens with the Library switched off.
+    'doclib-modal':   (tab) => sessionModule && sessionModule.openLibrary && sessionModule.openLibrary(tab || undefined),
     'notes-panel':    () => notesModule && notesModule.openPanel(),
     'email-lib-modal': () => document.querySelector('#email-section .section-header-flex')?.click(),
     'research-overlay': () => researchPanelModule.openPanel(),
@@ -1269,6 +1271,17 @@ function initializeEventListeners() {
     getTab: () => document.querySelector('#workbench-rooms [data-room][aria-selected="true"]')?.dataset?.room || null,
     setTab: (room) => { if (room) document.querySelector(`#workbench-rooms [data-room="${CSS.escape(room)}"]`)?.click(); },
   });
+  // `B1194`. The Library's tab, so the chat archive has a URL of its own
+  // (`/library/archive`) that its door — not the Library's — answers. A tab the
+  // window was drawn without (Documents, with the Library switched off) is not
+  // there to press.
+  WindowManager.setTabHooks('doclib-modal', {
+    getTab: () => document.querySelector('#doclib-modal [data-doclib-tab].active')?.dataset?.doclibTab || null,
+    setTab: (tab) => {
+      const b = tab && document.querySelector(`#doclib-modal [data-doclib-tab="${CSS.escape(tab)}"]`);
+      if (b && !b.classList.contains('active')) b.click();
+    },
+  });
   backStack.init();
 
   const _linked = backStack.windowForPath(urlPath);
@@ -1279,8 +1292,15 @@ function initializeEventListeners() {
     || (_linked && _routeOpen['/' + backStack.ROUTES[_linked.id]] && !_linked.tab
       ? _routeOpen['/' + backStack.ROUTES[_linked.id]] : null)
     || (_linked ? () => backStack.openWindows([_linked]) : null));
-  const _opener = () => {
+  const _opener = async () => {
     try {
+      // `B1194`. A reload reopens the windows its entry names through their
+      // own doors, and a door asks the switches — unknown is on, so before
+      // `/api/auth/features` and `/api/auth/status` answered, a window came
+      // back as if nothing were switched off (driven at :8753: `/library/archive`
+      // reloaded with the Library off drew its Documents tab, whose list
+      // answered 403). Links already wait (`guardRouteOpener`).
+      await whenToolVisibilityReady();
       if (!backStack.restoreFromHistory() && _deepLink) _deepLink();
     } finally {
       backStack.ready();
@@ -1321,7 +1341,9 @@ function initializeEventListeners() {
     });
   }
 
-  // Manage Chats — opens Full Library modal (decoupled from Chats accordion toggle)
+  // Manage Chats — opens Full Library modal (decoupled from Chats accordion toggle).
+  // `B1194`: the chat archive's own door — on the Chats tab, which opens with
+  // the Library switched off (the window then has Chats, Research, Archive).
   const chatsLibraryBtn = el('chats-library-btn');
   if (chatsLibraryBtn) {
     chatsLibraryBtn.addEventListener('click', (e) => {

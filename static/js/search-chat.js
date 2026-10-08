@@ -46,7 +46,7 @@ import settingsModule from './settings.js?v=20261007p23';
 import { doorShown, isMinimized, listWindows, showWindow } from './modalManager.js?v=20261007p23';
 import { openSkillsWindow } from './skills.js';
 import { slashCatalog, insertSlashToken, loadSkillEntries, mergeSkillEntries } from './slashAutocomplete.js';
-import { toolKeyFor, toolShown, viewerIsAdmin } from './ui_visibility.js';
+import { toolKeyFor, toolShown, toolGuide, viewerIsAdmin } from './ui_visibility.js';
 import { SETTINGS_GROUPS, searchSettingsPanels } from './settings/registry.js';
 import { controlTextFor } from './settings/search.js';
 import { topPortalZ } from './toolWindowZOrder.js';
@@ -284,12 +284,24 @@ function _toolEntries(terms) {
   const out = [];
   for (const w of listWindows()) {
     const door = _DOOR_FUNCTIONS[w.id];
-    if (!w.door && !door) continue;
     // `P23-03`. A window whose tool is switched off is not offered — Skills
     // with the Brain taken away, Email hidden in this browser — whatever its
-    // door function would do (`ui_visibility.js`, the one table).
+    // door function would do (`ui_visibility.js`, the one table). Asked before
+    // the shown-door test below (`B1194`): a switched-off tool's doors are
+    // hidden, so that test skipped it before what it keeps could be offered.
     const tool = toolKeyFor({ window: w.id });
-    if (tool && !toolShown(tool)) continue;
+    if (tool && !toolShown(tool)) {
+      // `B1194`. What the switches leave standing is still offered, by its own
+      // name and where it lives: "library" or "archive" finds *Archived chats*
+      // with the Library switched off, and opens the archive.
+      const kept = toolGuide(tool);
+      if (kept && _wordsMatch(terms, `${w.label} ${kept.label} ${w.id.split('-')[0]}`)) {
+        out.push({ kind: 'tool', key: 'tool:' + w.id + ':kept', label: kept.label,
+          detail: kept.where, run: kept.open, blocked: null });
+      }
+      continue;
+    }
+    if (!w.door && !door) continue;
     if (!w.door && _DOOR_SHOWN[w.id] && !_DOOR_SHOWN[w.id]()) continue;
     // The id's first word as well as the label, so the names people learned
     // still find the tool: "cookbook" finds Forge, "memory" finds Brain.

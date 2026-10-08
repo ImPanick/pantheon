@@ -211,7 +211,7 @@ def _users_case(users_payload: dict) -> str:
         js_binding(src, "NON_ADMIN_RETIRED_PRIVS") + ";",
         # `P23-03`: each switch names the Tools entry it hides, read from the
         # one table.
-        f"import {{ toolsHiddenBy }} from {json.dumps(UI_VIS_JS.as_uri())};",
+        f"import {{ toolsHiddenBy, hidesLine }} from {json.dumps(UI_VIS_JS.as_uri())};",
         "function _hidesLine(which) " + js_function(src, "function _hidesLine"),
         "async function loadUsers() " + js_function(src, "async function loadUsers"),
         f"const PAYLOAD = {json.dumps(users_payload)};",

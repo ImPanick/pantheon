@@ -14,7 +14,7 @@ import { MCP_PRESETS } from './settings/mcpPresets.js';
 import { readRefusal } from './workbench/refusal.js';
 // `P23-03`: the one table — each switch below names the Tools entry it hides.
 // Same specifier as `app.js` (no query): one instance of the table's state.
-import { toolsHiddenBy, toolVisibilityState } from './ui_visibility.js';
+import { hidesLine, toolVisibilityState } from './ui_visibility.js';
 
 let initialized = false;
 let modalEl = null;
@@ -2873,15 +2873,13 @@ const featureLabels = {
 
 /** `P23-03` (SET-U-1). "Off hides Brain." — the Tools entries (and composer
  *  buttons) a switch takes away, read from the one table, so a row cannot
- *  claim something the applier does not do. Empty when it hides nothing. */
+ *  claim something the applier does not do. Empty when it hides nothing.
+ *  `B1194`: the sentence moved into the table's module (`hidesLine`), so
+ *  Settings → Appearance says the Library's in the same words — and it says
+ *  what a switch leaves standing: *Document editor* hides documents, never
+ *  the chat archive. */
 function _hidesLine(which) {
-  const hit = toolsHiddenBy(which);
-  if (!hit.length) return '';
-  const tools = hit.filter(t => !t.chip).map(t => t.label);
-  const chips = hit.filter(t => t.chip).map(t => `the ${t.label} button`);
-  const names = [...tools, ...chips];
-  const list = names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : names[0];
-  return `Off hides ${list}.`;
+  return hidesLine(which);
 }
 
 /**

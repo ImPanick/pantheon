@@ -1381,6 +1381,14 @@ async function _cmdOpen(args, ctx) {
   // pressed a `display:none` button, so `/open gallery` opened a Gallery its
   // admin had switched off, to a window of 403s. The names it answers to that
   // are not commands of their own are mapped here; the rest are the table's.
+  // `B1194` (`D-2026-10-07-02` §3). The archive is not the Library's to take
+  // away: `/open archive` opens the Library window on its Archive tab — the
+  // chat archive's own door, which opens with the Library switched off. (It
+  // pressed the Library's row, which opened on Documents.)
+  if (target === 'archive' && sessionModule && typeof sessionModule.openLibrary === 'function') {
+    sessionModule.openLibrary('archive');
+    return true;
+  }
   const tool = { documents: 'library', docs: 'library', archive: 'library', theme: 'theme' }[target]
     || { slash: target };
   // `B-NEW-2`: refused, it says so in the door's toast and saves nothing (the

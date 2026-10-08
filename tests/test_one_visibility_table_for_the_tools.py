@@ -430,7 +430,7 @@ def test_the_palette_does_not_offer_a_hidden_tools_window(tmp_path):
     src = PALETTE_JS.read_text(encoding="utf-8")
     body = js_function(src, "function _toolEntries")
     out = _node(tmp_path, """
-        const { toolKeyFor, toolShown } = V;
+        const { toolKeyFor, toolShown, toolGuide } = V;
         const listWindows = () => [
           { id: 'skills-modal', label: 'Skills', door: false, doors: [], state: 'closed' },
           { id: 'gallery-modal', label: 'Gallery', door: true, doors: [], state: 'closed' },
@@ -567,7 +567,7 @@ def _switch_case(tmp_path: Path, script: str) -> dict:
     from tests.helpers.js_source import js_binding
     return _node(tmp_path, f"""
         const {{ readRefusal }} = await import({json.dumps(REFUSAL_JS.as_uri())});
-        const {{ toolsHiddenBy }} = V;
+        const {{ toolsHiddenBy, hidesLine }} = V;
         const said = {{ toasts: [], errors: [] }};
         const uiModule = {{ showToast: (m) => said.toasts.push(m), showError: (m) => said.errors.push(m) }};
         let answer = null;
@@ -640,7 +640,10 @@ def test_each_switch_names_the_tools_entry_it_hides(tmp_path):
     """)
     assert out == {
         "memory": "Off hides Brain.",
-        "docs": "Off hides Library and the Document editor button.",
+        # `B1194` (`D-2026-10-07-02` §3): the Library's switches take documents,
+        # not the chat archive, and the line says where the archive is.
+        "docs": "Off hides documents and the Document editor button. "
+                "Archived chats are under Chats → manage.",
         "web": "Off hides the Web search button.",
         "filter": "",
         "images": "Off hides Gallery.",
@@ -667,7 +670,7 @@ def test_the_users_list_offers_no_revoke_on_the_only_admin_and_a_privileges_butt
             "const uiModule = { esc, showError: () => {}, showToast: () => {} };",
             "function chevronIcon() { return '<svg></svg>'; }",
             "function el(id) { return document.getElementById(id); }",
-            f"import {{ toolsHiddenBy }} from {json.dumps(UI_VIS.as_uri())};",
+            f"import {{ toolsHiddenBy, hidesLine }} from {json.dumps(UI_VIS.as_uri())};",
             js_binding(src, "PRIV_LABELS") + ";",
             js_binding(src, "NON_ADMIN_RETIRED_PRIVS") + ";",
             _admin_fn("_hidesLine"),
