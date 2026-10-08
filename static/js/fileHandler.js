@@ -9,6 +9,7 @@ import uiModule from './ui.js';
 import spinnerModule from './spinner.js';
 import { attachmentKind, KIND_LABELS } from './contextUsage.js';
 import { drawHand } from './attachHand.js';
+import { registerMenuDismiss } from './escMenuStack.js';
 
 let pendingFiles = [];
 let uploaded = [];
@@ -173,7 +174,8 @@ async function _openMobileCropper(file) {
       <div class="attach-crop-panel" role="dialog" aria-modal="true" aria-label="Crop image">
         <div class="attach-crop-stage">
           <img class="attach-crop-img" alt="">
-          <div class="attach-crop-box"><span class="attach-crop-handle"></span></div>
+          <div class="attach-crop-box" tabindex="0" role="group" aria-label="Crop area"
+               aria-keyshortcuts="ArrowLeft ArrowRight ArrowUp ArrowDown Shift+ArrowRight Shift+ArrowDown Enter"><span class="attach-crop-handle"></span></div>
         </div>
         <div class="attach-crop-actions">
           <button type="button" class="attach-crop-btn" data-action="cancel">Cancel</button>
@@ -204,12 +206,32 @@ async function _openMobileCropper(file) {
       crop.x = Math.max(0, Math.min(1 - crop.w, crop.x));
       crop.y = Math.max(0, Math.min(1 - crop.h, crop.y));
     }
+    // `B-NEW-1`. The hand's card menu offers Crop on any screen and from the
+    // keyboard, and this cropper was only ever met on a phone, by a finger:
+    // Escape did nothing, the focus stayed behind it, and the box took no keys.
+    // Now Escape is Cancel (on the Escape stack, so it closes this and nothing
+    // behind it), the focus starts on the box and goes back where it was, the
+    // arrows move the box, Shift+arrows size it, and Enter is Use crop.
+    const opener = document.activeElement;
+    let release = () => {};
+    let done = false;
     function finish(value) {
+      if (done) return;
+      done = true;
+      release();
       overlay.remove();
       window.removeEventListener('resize', applyCrop);
+      if (opener && opener !== document.body && opener.isConnected !== false
+          && typeof opener.focus === 'function') {
+        try { opener.focus(); } catch (_) { /* it went with a redraw */ }
+      }
       resolve(value);
     }
-    requestAnimationFrame(applyCrop);
+    release = registerMenuDismiss(() => finish(null));
+    requestAnimationFrame(() => {
+      applyCrop();
+      try { box.focus(); } catch (_) { /* no focus to move */ }
+    });
     img.addEventListener('load', applyCrop);
     window.addEventListener('resize', applyCrop);
 
@@ -240,10 +262,21 @@ async function _openMobileCropper(file) {
     });
     box.addEventListener('pointerup', () => { drag = null; });
     box.addEventListener('pointercancel', () => { drag = null; });
+    box.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); useCrop(); return; }
+      const step = { ArrowLeft: [-0.02, 0], ArrowRight: [0.02, 0], ArrowUp: [0, -0.02], ArrowDown: [0, 0.02] }[e.key];
+      if (!step) return;
+      e.preventDefault();
+      if (e.shiftKey) { crop.w += step[0]; crop.h += step[1]; } else { crop.x += step[0]; crop.y += step[1]; }
+      clampCrop();
+      applyCrop();
+    });
 
     overlay.querySelector('[data-action="cancel"]').addEventListener('click', () => finish(null));
     overlay.querySelector('[data-action="original"]').addEventListener('click', () => finish(file));
-    overlay.querySelector('[data-action="crop"]').addEventListener('click', async () => {
+    overlay.querySelector('[data-action="crop"]').addEventListener('click', () => useCrop());
+    async function useCrop() {
+      if (done) return;
       clampCrop();
       const canvas = document.createElement('canvas');
       const sx = Math.round(crop.x * imgProbe.naturalWidth);
@@ -260,7 +293,7 @@ async function _openMobileCropper(file) {
       const ext = type.includes('jpeg') ? 'jpg' : (type.split('/')[1] || 'png');
       const base = (file.name || 'image').replace(/\.[^.]+$/, '');
       finish(new File([blob], `${base}-cropped.${ext}`, { type, lastModified: Date.now() }));
-    });
+    }
   });
 }
 

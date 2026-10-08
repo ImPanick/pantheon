@@ -582,6 +582,72 @@ def test_save_to_gallery_uses_the_gallerys_own_route_and_says_what_happened(sand
 
 
 @needs_node
+def test_crop_is_a_keyboard_dialog_on_the_escape_stack(sandbox):
+    """Crop is the composer's own cropper, which until the card menu offered it
+    was only ever met on a phone, by a finger: Escape did nothing, the focus
+    stayed behind it, and the crop box took no keys. Every action on a card has
+    to work from the keyboard, so the cropper does now."""
+    out = _drive(sandbox, f"""
+        const {{ installHtmlParsing }} = await import('./dom.js');
+        installHtmlParsing();
+        globalThis.requestAnimationFrame = (f) => setTimeout(f, 0);
+        globalThis.addEventListener = () => {{}};
+        globalThis.removeEventListener = () => {{}};
+        // A picture that loads, and a canvas that records the cut it is asked for.
+        const cuts = [];
+        globalThis.Image = class {{
+          constructor() {{ this.naturalWidth = 1000; this.naturalHeight = 500; }}
+          set src(v) {{ this._src = v; setTimeout(() => this.onload && this.onload(), 0); }}
+          get src() {{ return this._src; }}
+        }};
+        const make = document.createElement;
+        document.createElement = (tag) => {{
+          const n = make(tag);
+          if (String(tag).toLowerCase() === 'canvas') {{
+            n.getContext = () => ({{ drawImage: (...a) => cuts.push(a.slice(1, 5)) }});
+            n.toBlob = (cb, type) => cb(new Blob(['png'], {{ type }}));
+          }}
+          return n;
+        }};
+        const overlay = () => document.body.childNodes.find((n) => String(n.className).includes('attach-crop-overlay'));
+        const crop = async () => {{
+          fire(btn(0), 'keydown', {{ key: 'ContextMenu' }});
+          await tick();
+          fire(menu().node.childNodes.find((b) => b.dataset.action === 'crop'), 'click', {{ detail: 0 }});
+          await tick(8);
+          return overlay().querySelector('.attach-crop-box');
+        }};
+        await add(aFile('harbour.png', 'image/png'), {NOTES});
+        keyboardFocus(btn(0));
+        const box = await crop();
+        const opened = {{ stack: _openMenuCount(), active: active(), label: box.getAttribute('aria-label') }};
+        dismissTopMenu();
+        const escaped = {{ gone: !overlay(), cards: hand().cards.map((c) => c.label), active: active(),
+                          stack: _openMenuCount() }};
+        const box2 = await crop();
+        for (const key of ['ArrowRight', 'ArrowRight', 'ArrowDown']) fire(box2, 'keydown', {{ key }});
+        fire(box2, 'keydown', {{ key: 'ArrowLeft', shiftKey: true }});
+        fire(box2, 'keydown', {{ key: 'Enter' }});
+        await tick(8);
+        say({{ opened, escaped, cut: cuts[0], after: hand().cards.map((c) => c.label), active: active(),
+              stack: _openMenuCount(), gone: !overlay() }});
+    """)
+    assert out["opened"] == {"stack": 1, "active": "Crop area", "label": "Crop area"}, (
+        "the cropper is not on the Escape stack, or the focus stayed behind it"
+    )
+    assert out["escaped"] == {"gone": True, "cards": ["harbour.png, 1 of 2", "notes.md, 2 of 2"],
+                              "active": "harbour.png, 1 of 2", "stack": 0}, out["escaped"]
+    assert out["cut"] == [120, 50, 820, 420], (
+        "the arrows did not move the box (two right, one down) or Shift+Left did not narrow it"
+    )
+    assert out["after"] == ["harbour-cropped.png, 1 of 2", "notes.md, 2 of 2"], (
+        "the cropped picture did not take the original's place in the hand"
+    )
+    assert out["active"] == "harbour-cropped.png, 1 of 2", "the keyboard lost its place after the crop"
+    assert out["gone"] and out["stack"] == 0
+
+
+@needs_node
 def test_the_send_still_dims_and_spins_every_card(sandbox):
     out = _drive(sandbox, f"""
         await add({CAT}, {NOTES});

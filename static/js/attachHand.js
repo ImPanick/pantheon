@@ -358,7 +358,7 @@ export function actionsFor(f) {
   const image = isImageFile(f);
   const out = [{ id: 'preview', label: 'Preview', run: () => openPreview(f) }];
   if (image && typeof _host.canCrop === 'function' && _host.canCrop(f)) {
-    out.push({ id: 'crop', label: 'Crop', run: () => _host.crop(f) });
+    out.push({ id: 'crop', label: 'Crop', run: (kb) => _crop(f, kb) });
   }
   const sentAs = typeof _host.wireName === 'function' ? _host.wireName(f) : displayName(f);
   if (image && GALLERY_EXTS.includes(_ext(sentAs)) && toolShown('gallery')) {
@@ -367,6 +367,14 @@ export function actionsFor(f) {
   out.push({ id: 'remove', label: 'Remove', run: (kb) => _remove(f, kb) });
   if (n > 1) out.push({ id: 'remove-all', label: 'Remove all', run: (kb) => _removeAll(kb) });
   return out;
+}
+
+async function _crop(f, fromKeyboard) {
+  const i = _files().indexOf(f);
+  const changed = await _host.crop(f);
+  // A crop puts a new card where the old one was; the keyboard goes with it.
+  // (Cancelled, the cropper hands the focus back to the card itself.)
+  if (changed && fromKeyboard && i >= 0) _focusCard(i);
 }
 
 function _remove(f, fromKeyboard) {
