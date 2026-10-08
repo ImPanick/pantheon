@@ -706,7 +706,8 @@ def test_the_hand_keeps_to_the_palette_and_the_global_focus_ring():
 
 def test_reduced_motion_deals_the_hand_without_the_slide():
     still = [s for s, b, a in _rules(_section())
-             if a == "@media (prefers-reduced-motion: reduce)" and "transition: none" in " ".join(b.split())]
+             if a == "@media (prefers-reduced-motion: reduce)"
+             and _decls(b).get("transition-duration") == "0.01ms"]
     assert any(".hand-card" in s for s in still), still
     dealt = _rule(".attach-hand .hand-card.hand-card-new", "@starting-style")
     assert dealt["translate"] == "0 28px" and dealt["opacity"] == "0"

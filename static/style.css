@@ -48970,8 +48970,10 @@ body.plan-mode-active .chat-input-top > .model-picker-wrap:has(> .model-picker-m
   }
   .hand-menu-item { min-height: 40px; }
 }
+/* Dealt without the slide. `0.01ms`, not `none`, for `P1-12`'s reason: a
+   transition that never runs never sends `transitionend`. */
 @media (prefers-reduced-motion: reduce) {
   .attach-hand .hand-card,
   .attach-hand .hand-card-lift,
-  .attach-hand .hand-card-x { transition: none; }
+  .attach-hand .hand-card-x { transition-duration: 0.01ms; }
 }
