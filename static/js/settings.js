@@ -2391,7 +2391,8 @@ function _syncToolSwitchWhy(chk, key) {
     why = document.createElement('span');
     why.className = 'vis-hint vis-why';
     var label = row.querySelector('.vis-label');
-    if (label) label.appendChild(why);
+    // Beside the name, before the line under it (`B1194`'s `.vis-keeps`).
+    if (label) label.insertBefore(why, label.querySelector('.vis-keeps'));
   }
   why.textContent = off === 'everyone' ? 'Off for everyone'
     : off === 'admin' ? 'Admins only' : 'Off for your account';
