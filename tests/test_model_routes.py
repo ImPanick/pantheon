@@ -61,7 +61,6 @@ with preserve_import_state("core.database", "src.database", "core.session_manage
         _default_endpoint_needs_assignment,
         _PROVIDER_CURATED,
     )
-    from src.llm_core import ANTHROPIC_MODELS
 
 
 # ── speech endpoint settings ──
@@ -291,10 +290,12 @@ class TestProbeZaiCoding:
         assert "glm-5.1" in result
         assert "custom-finetune" in result
 
-    def test_probe_appends_curated_on_partial_response(self, monkeypatch):
-        """When /models returns a partial list, curated-only models are appended."""
+    def test_probe_never_appends_curated_names(self, monkeypatch):
+        """`D-2026-10-07-02` §1 (fx4-models): what /models listed, nothing
+        more. This was `test_probe_appends_curated_on_partial_response`, which
+        pinned the coding plan's curated names being added to its listing —
+        names the provider had not listed, offered in the picker."""
         self._patch(monkeypatch)
-        # Server only returns one model; the curated list has more
         server_models = [{"id": "glm-5.1"}]
 
         def fake_get(url, headers=None, timeout=None, verify=None, **kwargs):
@@ -303,11 +304,7 @@ class TestProbeZaiCoding:
 
         monkeypatch.setattr(model_routes.httpx, "get", fake_get)
         result = _probe_endpoint("https://z.ai/api/coding", "key")
-        assert "glm-5.1" in result
-        # At least one curated model should be appended
-        coding_curated = _PROVIDER_CURATED.get("zai-coding", [])
-        appended = [m for m in coding_curated if m in result and m != "glm-5.1"]
-        assert len(appended) > 0, "curated-only models should be appended"
+        assert result == ["glm-5.1"]
 
     def test_probe_does_not_use_base_zai_curated(self, monkeypatch):
         """The coding endpoint must use zai-coding, NOT the base zai list."""
@@ -607,7 +604,10 @@ class TestSetupProbeSafety:
 
         assert _probe_endpoint("https://api.groq.com/openai/v1", "bad-key") == []
 
-    def test_unkeyed_probe_can_still_use_curated_fallback(self, monkeypatch):
+    def test_unkeyed_probe_that_fails_lists_nothing(self, monkeypatch):
+        """`D-2026-10-07-02` §1 (fx4-models): a listing that fails offers no
+        names. This was `test_unkeyed_probe_can_still_use_curated_fallback`,
+        which pinned eight Groq names answered for a listing that failed."""
         monkeypatch.setattr(endpoint_resolver, "resolve_url", lambda url: url, raising=False)
         monkeypatch.setattr(model_routes, "_normalize_base", lambda url: url.rstrip("/"))
 
@@ -616,7 +616,9 @@ class TestSetupProbeSafety:
 
         monkeypatch.setattr(model_routes.httpx, "get", fake_get)
 
-        assert _probe_endpoint("https://api.groq.com/openai/v1") == _PROVIDER_CURATED["groq"]
+        outcome = {}
+        assert _probe_endpoint("https://api.groq.com/openai/v1", outcome=outcome) == []
+        assert outcome.get("error") and not outcome.get("answered")
 
     def test_google_probe_uses_native_paginated_models_api(self, monkeypatch):
         monkeypatch.setattr(endpoint_resolver, "resolve_url", lambda url: url, raising=False)
@@ -746,7 +748,11 @@ class TestSetupProbeSafety:
         assert _probe_endpoint("https://ollama.com/api", "ollama-key") == ["gpt-oss:120b", "qwen3:235b"]
         assert seen == [("https://ollama.com/api/tags", {"Authorization": "Bearer ollama-key"})]
 
-    def test_unkeyed_anthropic_probe_can_use_curated_fallback(self, monkeypatch):
+    def test_unkeyed_anthropic_probe_that_fails_lists_nothing(self, monkeypatch):
+        """`D-2026-10-07-02` §1 (fx4-models): this was
+        `test_unkeyed_anthropic_probe_can_use_curated_fallback`, which pinned
+        ten built-in `claude-*` names (`ANTHROPIC_MODELS`, now gone) answered
+        for a listing that failed."""
         monkeypatch.setattr(endpoint_resolver, "resolve_url", lambda url: url, raising=False)
         monkeypatch.setattr(model_routes, "_normalize_base", lambda url: url.rstrip("/"))
 
@@ -755,7 +761,7 @@ class TestSetupProbeSafety:
 
         monkeypatch.setattr(model_routes.httpx, "get", fake_get)
 
-        assert _probe_endpoint("https://api.anthropic.com/v1") == ANTHROPIC_MODELS
+        assert _probe_endpoint("https://api.anthropic.com/v1") == []
 
 def test_ollama_endpoint_error_message_includes_troubleshooting():
     msg = model_routes._model_endpoint_error_message(
@@ -1412,8 +1418,11 @@ def test_post_creates_endpoint_with_pinned_models(monkeypatch):
     )
 
     assert result["pinned_models"] == ["deploy-1", "deploy-2"]
-    assert result["models"] == ["deploy-1", "deploy-2"]
-    assert result["online"] is True
+    # `D-2026-10-07-02` §1 (fx4-models): pinned names are stored, not
+    # offered, until the endpoint lists them — and a pin alone does not make
+    # an endpoint that listed nothing "online". This asserted both.
+    assert result["models"] == []
+    assert result["online"] is False
     # Persisted onto the created row.
     assert len(db.added) == 1
     assert json.loads(db.added[0].pinned_models) == ["deploy-1", "deploy-2"]
@@ -1460,8 +1469,10 @@ def test_post_dedupe_existing_merges_and_returns_pinned(monkeypatch):
     # Incoming pin merged onto the existing pins (no clobber, order preserved).
     assert json.loads(existing.pinned_models) == ["old-pin", "new-pin"]
     assert result["pinned_models"] == ["old-pin", "new-pin"]
-    # models = cached + pinned - hidden, visible merged list.
-    assert result["models"] == ["m1", "old-pin", "new-pin"]
+    # `D-2026-10-07-02` §1 (fx4-models): an API endpoint offers its pinned
+    # names that it listed — none here (it listed only `m1`, unpinned). This
+    # asserted the pins offered unlisted: `["m1", "old-pin", "new-pin"]`.
+    assert result["models"] == []
     # No new row created on the dedupe path.
     assert db.added == []
 
@@ -1897,7 +1908,7 @@ def test_background_refresh_deduplicates_same_base_url(monkeypatch):
     calls = []
     probe_done = threading.Event()
 
-    def fake_probe(base_url, api_key=None, timeout=2):
+    def fake_probe(base_url, api_key=None, timeout=2, outcome=None):
         calls.append(base_url)
         probe_done.set()
         return ["live-model"]
@@ -1913,7 +1924,11 @@ def test_background_refresh_deduplicates_same_base_url(monkeypatch):
     assert json.loads(ep2.cached_models) == ["live-model"]
 
 
-def test_background_refresh_failure_keeps_existing_cached_models(monkeypatch):
+def test_background_refresh_failure_offers_nothing_it_listed_before(monkeypatch):
+    """`D-2026-10-07-02` §1 (fx4-models): was
+    `test_background_refresh_failure_keeps_existing_cached_models`, which
+    pinned a failed listing keeping the names it listed before — how a dead
+    server's models stayed on offer. The answer stands from the next read."""
     ep = _route_ep(
         "local",
         "http://127.0.0.1:8000/v1",
@@ -1935,12 +1950,15 @@ def test_background_refresh_failure_keeps_existing_cached_models(monkeypatch):
 
     monkeypatch.setattr(model_routes, "_probe_endpoint", fake_probe)
 
-    result = _route_endpoint(router, "/api/models")(_route_request(), refresh=True)
+    _route_endpoint(router, "/api/models")(_route_request(), refresh=True)
 
     assert probe_done.wait(2)
     assert _wait_for(lambda: db.commits > 0)
-    assert result["items"][0]["models"] == ["cached-model"]
-    assert json.loads(ep.cached_models) == ["cached-model"]
+    assert ep.cached_models is None
+    after = _route_endpoint(router, "/api/models")(_route_request(), refresh=False)
+    assert after["items"][0]["models"] == []
+    assert after["items"][0]["offline"] is True
+    assert after["items"][0]["down_line"] == "local isn't answering."
 
 
 def test_api_models_auth_gate_fails_closed_on_unexpected_error(monkeypatch):
@@ -1987,7 +2005,7 @@ def test_explicit_proxy_test_fetches_models_with_long_timeout(monkeypatch):
     calls = []
     returned = ["NVIDIA NIM/openai/gpt-oss-120b", "mistral/mistral-small-2603"]
 
-    def fake_probe(base_url, api_key=None, timeout=2):
+    def fake_probe(base_url, api_key=None, timeout=2, outcome=None):
         calls.append({"base_url": base_url, "api_key": api_key, "timeout": timeout})
         return returned
 
@@ -2025,7 +2043,7 @@ def test_explicit_proxy_add_fetches_and_caches_models_with_long_timeout(monkeypa
     calls = []
     returned = ["NVIDIA NIM/openai/gpt-oss-120b", "mistral/mistral-small-2603"]
 
-    def fake_probe(base_url, api_key=None, timeout=2):
+    def fake_probe(base_url, api_key=None, timeout=2, outcome=None):
         calls.append({"base_url": base_url, "api_key": api_key, "timeout": timeout})
         return returned
 
@@ -2081,7 +2099,7 @@ def test_manual_refresh_uses_long_timeout_and_saves_full_model_list(monkeypatch)
     calls = []
     refreshed = ["cached-model", "mistral/mistral-small-2603", "provider/nested/model/id"]
 
-    def fake_probe(base_url, api_key=None, timeout=2):
+    def fake_probe(base_url, api_key=None, timeout=2, outcome=None):
         calls.append({"base_url": base_url, "api_key": api_key, "timeout": timeout})
         return refreshed
 
@@ -2125,7 +2143,7 @@ def test_manual_refresh_defaults_to_proxy_long_timeout(monkeypatch):
 
     timeouts = []
 
-    def fake_probe(base_url, api_key=None, timeout=2):
+    def fake_probe(base_url, api_key=None, timeout=2, outcome=None):
         timeouts.append(timeout)
         return ["cached-model", "new-model"]
 
@@ -2143,7 +2161,11 @@ def test_manual_refresh_defaults_to_proxy_long_timeout(monkeypatch):
     assert json.loads(ep.cached_models) == ["cached-model", "new-model"]
 
 
-def test_manual_refresh_timeout_keeps_cached_models_and_warns(monkeypatch):
+def test_manual_refresh_timeout_offers_nothing_and_says_why(monkeypatch):
+    """`D-2026-10-07-02` §1 (fx4-models): was
+    `test_manual_refresh_timeout_keeps_cached_models_and_warns` ("kept cached
+    models"). A listing that times out takes the names away; the warning is
+    the endpoint's one line."""
     ep = _route_ep(
         "proxy",
         "http://100.117.136.97:34521/v1",
@@ -2159,7 +2181,7 @@ def test_manual_refresh_timeout_keeps_cached_models_and_warns(monkeypatch):
     monkeypatch.setattr(model_routes, "SessionLocal", lambda: db)
     monkeypatch.setattr(model_routes, "require_admin", lambda request: None)
 
-    def fake_probe(base_url, api_key=None, timeout=2):
+    def fake_probe(base_url, api_key=None, timeout=2, outcome=None):
         raise httpx.TimeoutException("timed out")
 
     monkeypatch.setattr(model_routes, "_probe_endpoint", fake_probe)
@@ -2173,8 +2195,8 @@ def test_manual_refresh_timeout_keeps_cached_models_and_warns(monkeypatch):
         refresh_timeout=60,
     )
 
-    assert [m["id"] for m in result] == ["cached-model"]
-    assert json.loads(ep.cached_models) == ["cached-model"]
-    assert db.commits == 0
+    assert result == []
+    assert ep.cached_models is None
+    assert db.commits == 1
     assert response.headers["X-Model-Refresh-Status"] == "failed"
-    assert "kept cached models" in response.headers["X-Model-Refresh-Warning"]
+    assert response.headers["X-Model-Refresh-Warning"] == "proxy isn't answering."

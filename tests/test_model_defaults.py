@@ -42,6 +42,15 @@ class _FakeQuery:
                 self._include_shared = False
         return self
 
+    def all(self):
+        """Every endpoint the owner filter lets through (fx4-models: the
+        last-resort default now walks them for one that lists a model)."""
+        if not self._user:
+            return list(self._endpoints)
+        return [ep for ep in self._endpoints
+                if getattr(ep, 'owner', None) == self._user
+                or (self._include_shared and getattr(ep, 'owner', None) is None)]
+
     def first(self):
         """Return first endpoint respecting owner filter"""
         if not self._endpoints:
@@ -113,6 +122,10 @@ def _run_get_default_chat_test(monkeypatch, share_defaults_enabled, second_endpo
             is_enabled=True
         )
     ]
+
+    # `D-2026-10-07-02` §1 (fx4-models): a default is used while its endpoint
+    # lists it, so the global endpoint lists the global default here.
+    endpoints[0].cached_models = '["qwen-3.6"]'
 
     # When testing fallback scenario, removes the primary endpoint
     if second_endpoint_only:
@@ -188,6 +201,7 @@ def test_get_default_chat_does_not_read_legacy_fallbacks(monkeypatch):
         base_url="http://global-endpoint:8000/v1",
         is_enabled=True,
     )
+    endpoint.cached_models = '["qwen-3.6"]'   # it lists the default (fx4-models)
     fake_db = _make_db_session([endpoint], user="regular_user")
     monkeypatch.setattr(model_routes, "SessionLocal", lambda: fake_db)
     monkeypatch.setattr(model_routes, "_normalize_base", lambda url: url)

@@ -254,7 +254,7 @@ def test_providers_requires_admin_before_discovery_and_cache(monkeypatch):
         def __init__(self):
             self.calls = 0
 
-        def get_providers(self):
+        def get_providers(self, **_kw):   # `list_models` (fx4-models, `B1259`)
             self.calls += 1
             return {"providers": [{"host": "internal.example"}]}
 
@@ -321,6 +321,7 @@ def test_default_chat_does_not_auto_pick_shared_endpoint_for_fresh_user(monkeypa
         "endpoint_id": "",
         "endpoint_url": "",
         "model": "",
+        "reason": "",   # fx4-models: nothing to say — no endpoint of theirs
     }
 
 

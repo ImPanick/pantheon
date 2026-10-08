@@ -233,7 +233,24 @@ async function _fetchModelEndpoints() {
 }
 
 function _endpointLabel(ep) {
+  // `D-2026-10-07-02` §1: an enabled endpoint whose listing failed is
+  // "down" — it offers no models until it answers.
+  if (ep.status === 'down') return ep.name + ' (not answering)';
   return ep.name + (ep.online ? '' : ' (offline)');
+}
+
+/* `D-2026-10-07-02` §1. A saved model the endpoint does not list now is said
+   where it is set: kept as the select's value (so nothing is saved over it
+   unasked) and labelled, never shown as an ordinary choice. The select used
+   to fall to its first option and look as if that were the setting. */
+function _appendUnlistedOption(selectEl, value) {
+  if (!selectEl || !value) return;
+  if (Array.from(selectEl.options).some(function(o) { return o.value === value; })) return;
+  const opt = document.createElement('option');
+  opt.value = value;
+  opt.textContent = String(value).split('/').pop() + ' (not listed now)';
+  opt.dataset.unlisted = '1';
+  selectEl.appendChild(opt);
 }
 
 function _fillEndpointSelect(selectEl, endpoints, selected, keepBlank) {
@@ -317,6 +334,7 @@ function _fillModelSelect(selectEl, models, selected, keepBlank) {
     opt.textContent = String(m).split('/').pop();
     selectEl.appendChild(opt);
   });
+  _appendUnlistedOption(selectEl, previous);
   if (previous && Array.from(selectEl.options).some(function(o) { return o.value === previous; })) {
     selectEl.value = previous;
   } else if (blankText !== null) {
@@ -375,6 +393,7 @@ function _bindFallbackWidget(opts) {
         selectEl.appendChild(o);
       });
     }
+    _appendUnlistedOption(selectEl, selected);   // `D-2026-10-07-02` §1
     if (selected) selectEl.value = selected;
   }
 
@@ -861,15 +880,15 @@ async function initImageSettings() {
       });
     });
     sortModelIds(imageModels).forEach(mid => { const opt = document.createElement('option'); opt.value = mid; opt.textContent = mid; modelSel.appendChild(opt); });
-    // Hardcoded fallbacks shown as "(not detected)" so users know what to
-    // download/serve to enable inpaint here.
-    ['stable-diffusion-3.5-medium', 'stable-diffusion-inpainting'].forEach(mid => {
-      if (!imageModels.includes(mid)) { const opt = document.createElement('option'); opt.value = mid; opt.textContent = mid + ' (not detected)'; modelSel.appendChild(opt); }
-    });
+    // `D-2026-10-07-02` §1: two built-in names used to be offered here,
+    // `stable-diffusion-3.5-medium` and `stable-diffusion-inpainting`, marked
+    // "(not detected)" — choices nothing had listed. Only listed models now;
+    // a saved one that is not listed is labelled below.
   } catch (e) { console.warn('Failed to load models for image settings', e); }
   try {
     const settingsRes = await fetch('/api/auth/settings', { credentials: 'same-origin' });
     const settings = await settingsRes.json();
+    _appendUnlistedOption(modelSel, settings.image_model || '');
     if (settings.image_model) modelSel.value = settings.image_model;
     if (settings.image_quality) qualSel.value = settings.image_quality;
     if (enabledToggle) enabledToggle.checked = settings.image_gen_enabled === true;
@@ -932,6 +951,7 @@ async function initVisionSettings() {
   try {
     const settingsRes = await fetch('/api/auth/settings', { credentials: 'same-origin' });
     const settings = await settingsRes.json();
+    _appendUnlistedOption(vlSel, settings.vision_model || '');   // `D-2026-10-07-02` §1
     if (settings.vision_model) vlSel.value = settings.vision_model;
     _syncModelLogo(vlSel);
     if (enabledToggle) enabledToggle.checked = settings.vision_enabled !== false;

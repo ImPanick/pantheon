@@ -124,6 +124,10 @@ async def test_scheduled_task_honors_global_disabled_tools(monkeypatch):
         captured["run_id"] = run_id
         return "done"
 
+    # fx4-models (`D-2026-10-07-02` §1): the model gate needs an endpoint table
+    # this direct call does not have; it is driven in
+    # `test_a_run_names_why_it_did_not_run.py`.
+    monkeypatch.setattr(TaskScheduler, "_usable_route", lambda self, db, task, url, model: (url, model))
     scheduler = TaskScheduler(session_manager=None)
     scheduler._run_agent_loop = _capture
 

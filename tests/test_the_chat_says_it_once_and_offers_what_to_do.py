@@ -304,6 +304,10 @@ def test_the_picker_dims_an_endpoint_that_did_not_answer_even_before_it_loaded(s
         return js_definition(src, code.index(anchor))
 
     listener = cut("(ev) => {\n      const base = String((ev && ev.detail && ev.detail.url)")
+    # fx4-models (`D-2026-10-07-02` §1): the endpoint that did not answer is
+    # one line now, not its models dimmed — "Pantheon will only ever show
+    # models successfully enumerated". This asserted `office-llm` offered with
+    # `stale: true`. The mark is still kept by address, before the list loads.
     out = _run(sandbox, _PRE, """
         let _localProbe = {}, _localProbeFetchedAt = 123;
         const _unansweredBases = new Set();
@@ -314,13 +318,16 @@ def test_the_picker_dims_an_endpoint_that_did_not_answer_even_before_it_loaded(s
         %s
         const onUnanswered = %s;
         onUnanswered({ detail: { url: 'http://127.0.0.1:9' } });   // the list is still empty
-        items = [{ endpoint_id: 'e1', url: 'http://127.0.0.1:9/v1', models: ['office-llm'], category: 'local' },
+        items = [{ endpoint_id: 'e1', endpoint_name: 'office', url: 'http://127.0.0.1:9/v1', models: ['office-llm'], category: 'local' },
                  { endpoint_id: 'e2', url: 'http://127.0.0.1:90/v1', models: ['other'], category: 'local' }];
-        const rows = _getAllModels().map((r) => [r.mid, r.stale, r.staleReason]);
+        const first = _readPicker();
+        const rows = first.models.map((r) => r.mid);
+        const down = first.down.map((d) => d.line);
         _unansweredBases.clear();   // what the refresh's probe does
-        const after = _getAllModels().map((r) => [r.mid, r.stale]);
-        console.log(JSON.stringify({ rows, after, refetch: _localProbeFetchedAt }));
-    """ % (cut("function _unansweredFor("), cut("function _getAllModels("), listener))
-    assert out["rows"] == [["office-llm", True, "not answering"], ["other", False, ""]]
-    assert out["after"] == [["office-llm", False], ["other", False]]
+        const after = _readPicker().models.map((r) => r.mid);
+        console.log(JSON.stringify({ rows, down, after, refetch: _localProbeFetchedAt }));
+    """ % (cut("function _unansweredFor("), cut("function _readPicker("), listener))
+    assert out["rows"] == ["other"]
+    assert out["down"] == ["office isn't answering."]
+    assert out["after"] == ["office-llm", "other"]
     assert out["refetch"] == 0, "the refresh button must ask again"

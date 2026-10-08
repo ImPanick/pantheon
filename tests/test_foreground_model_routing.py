@@ -34,6 +34,10 @@ def _collect(gen):
     return asyncio.run(_run())
 
 
+# The real chat model gate, held before any test stubs it (fx4-models).
+_REAL_MODEL_GATE = chat_routes._require_usable_model
+
+
 class _EmptyQuery:
     def filter(self, *args, **kwargs):
         return self
@@ -191,6 +195,11 @@ def _chat_stream_endpoint(
     monkeypatch.setattr(chat_routes, "effective_user", lambda request: "alice")
     monkeypatch.setattr(chat_routes, "_clear_orphaned_session_endpoint", lambda *args, **kwargs: False)
     monkeypatch.setattr(chat_routes, "_recover_empty_session_model", lambda *args, **kwargs: False)
+    # fx4-models (`D-2026-10-07-02` §1): the gate that refuses a model no
+    # endpoint lists; this harness routes a stand-in session with no endpoint
+    # table, as it stubs the gates beside it. Driven in
+    # `test_a_chat_with_no_usable_model_says_why.py`.
+    monkeypatch.setattr(chat_routes, "_require_usable_model", lambda *args, **kwargs: None)
     monkeypatch.setattr(chat_routes, "_enforce_chat_privileges", lambda *args, **kwargs: None)
     monkeypatch.setattr(chat_routes, "resolve_session_auth", lambda *args, **kwargs: None)
     monkeypatch.setattr(chat_routes, "get_session_mode", lambda session_id: "chat")
@@ -475,12 +484,16 @@ async def test_chat_stream_rejects_missing_selected_endpoint_before_fallback(
         captured,
         endpoint_url=endpoint_url,
     )
+    # fx4-models: the refusal this pins is the model gate's now
+    # (`D-2026-10-07-02` §1), so the gate runs for real here. It said
+    # "Selected model endpoint is not configured".
+    monkeypatch.setattr(chat_routes, "_require_usable_model", _REAL_MODEL_GATE)
 
     with pytest.raises(HTTPException) as exc:
         await endpoint(_RouteRequest(mode))
 
     assert exc.value.status_code == 400
-    assert "not configured" in str(exc.value.detail)
+    assert str(exc.value.detail) == "No model yet. Models are added in Settings → Added Models."
     assert captured == {}
 
 
@@ -1158,6 +1171,11 @@ def _chat_endpoint(
     monkeypatch.setattr(chat_routes, "effective_user", lambda request: owner)
     monkeypatch.setattr(chat_routes, "_clear_orphaned_session_endpoint", lambda *args, **kwargs: False)
     monkeypatch.setattr(chat_routes, "_recover_empty_session_model", lambda *args, **kwargs: False)
+    # fx4-models (`D-2026-10-07-02` §1): the gate that refuses a model no
+    # endpoint lists; this harness routes a stand-in session with no endpoint
+    # table, as it stubs the gates beside it. Driven in
+    # `test_a_chat_with_no_usable_model_says_why.py`.
+    monkeypatch.setattr(chat_routes, "_require_usable_model", lambda *args, **kwargs: None)
     monkeypatch.setattr(chat_routes, "_enforce_chat_privileges", lambda *args, **kwargs: None)
     monkeypatch.setattr(chat_routes, "build_chat_context", fake_build_context)
     monkeypatch.setattr(chat_routes, "clean_thinking_for_save", lambda reply, metadata: (reply, metadata))

@@ -261,10 +261,26 @@ async function _refreshDefaultChat() {
       _defaultChat = d;
       try {
         window.__pantheonDefaultChat = d;
+        window.__pantheonDefaultChatReason = '';
         localStorage.setItem('pantheon-default-chat-cache', JSON.stringify(d));
       } catch (_) {}
       return d;
     }
+    // `D-2026-10-07-02` §1. No usable default now (none saved, or its endpoint
+    // does not list it): the copy this page painted from at load must not be
+    // used — it is the one place a model nothing lists could still come from.
+    _defaultChat = null;
+    try {
+      window.__pantheonDefaultChat = null;
+      window.__pantheonDefaultChatReason = String((d && d.reason) || '');
+      localStorage.removeItem('pantheon-default-chat-cache');
+    } catch (_) {}
+    // The picker drops a pending chat it opened on that copy (`modelPicker.js`).
+    try {
+      document.dispatchEvent(new CustomEvent('pantheon:default-chat-unusable', {
+        detail: { reason: String((d && d.reason) || '') },
+      }));
+    } catch (_) {}
   } catch (_) {}
   return null;
 }

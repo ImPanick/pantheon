@@ -218,9 +218,14 @@ if app_module.AUTH_ENABLED:
     agent_loop.stream_llm_with_fallback = _model
     agent_loop.estimate_tokens = lambda *a, **k: 10
     task_endpoint.resolve_task_candidates = lambda **kw: []
-    from core.database import ScheduledTask, SessionLocal, TaskRun
+    from core.database import ModelEndpoint, ScheduledTask, SessionLocal, TaskRun
     from src.task_scheduler import TaskScheduler
     _db = SessionLocal()
+    # fx4-models (`D-2026-10-07-02` §1): a task runs on a model an endpoint
+    # lists; the scripted model's address lists it here (nothing connects).
+    _db.add(ModelEndpoint(id="probe-scripted", name="Scripted", is_enabled=True,
+                          base_url="http://127.0.0.1:9/v1", endpoint_kind="local",
+                          cached_models='["scripted"]'))
     for tid, who in (("bobs-task", MEMBER), ("adas-task", ADMIN)):
         _db.add(ScheduledTask(id=tid, owner=who, name="Forge check", task_type="llm",
                               prompt="List the serve presets.", status="active",

@@ -30,6 +30,24 @@ export function init(apiBase) {
 export async function refreshModels(force = false, opts = {}) {
   const cacheOnly = !!(opts && opts.cacheOnly);
   const hasCache = _cachedItems.length > 0;
+  // `D-2026-10-07-02` §1. Retry on an endpoint that is not answering: the
+  // server asks that endpoint for its models now and answers the fresh list.
+  const retry = String((opts && opts.retry) || '');
+  if (retry) {
+    const _seq = ++_fetchSeq;
+    _fetchInflight = null;
+    try {
+      const res = await fetch(`${API_BASE}/api/models?retry=${encodeURIComponent(retry)}`, { credentials: 'same-origin' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      if (_seq < _fetchSeq) return;
+      _lastFetchTime = Date.now();
+      _cachedItems = data.items || [];
+    } catch (e) {
+      console.error(e);
+    }
+    return;
+  }
 
   // Skip network fetch if cache is fresh and not forced.
   // Cache-only is used for cheap picker/settings opens, but it must not turn a

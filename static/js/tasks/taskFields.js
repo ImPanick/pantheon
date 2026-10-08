@@ -1501,7 +1501,7 @@ ${(isNode && taskType === 'research') ? '' : `
       if (curKey && modelSel.value !== curKey) {
         const opt = document.createElement('option');
         opt.value = curKey;
-        opt.textContent = `${existing.model} (unlisted endpoint)`;
+        opt.textContent = `${existing.model} (not listed now)`;  // `D-2026-10-07-02` §1
         opt.selected = true;
         modelSel.appendChild(opt);
       }

@@ -109,6 +109,10 @@ def task_db(monkeypatch, tmp_path):
     db = factory()
     db.add(ScheduledTask(id="wf", owner="alice", name="Morning", task_type="workflow",
                          tz_name="Europe/London"))
+    # fx4-models (`D-2026-10-07-02` §1): a step runs on a model an endpoint
+    # lists; the stand-ins below name `m` at this address.
+    db.add(cdb.ModelEndpoint(id="ep-m", name="Local", is_enabled=True, endpoint_kind="local",
+                             base_url="http://127.0.0.1:9/v1", cached_models='["m"]'))
     db.commit()
     yield db
     db.close()

@@ -275,6 +275,10 @@ async def test_the_payload_reaches_the_model_as_untrusted_data(task_db, monkeypa
     monkeypatch.setattr(agent_loop, "stream_agent_loop", fake_stream, raising=False)
     monkeypatch.setattr("src.tool_index.get_tool_index", lambda: None)
 
+    # fx4-models (`D-2026-10-07-02` §1): the model gate needs an endpoint table
+    # this direct call does not have; it is driven in
+    # `test_a_run_names_why_it_did_not_run.py`.
+    monkeypatch.setattr(TaskScheduler, "_usable_route", lambda self, db, task, url, model: (url, model))
     sched = _scheduler()
     sched._state_for("r9")["trigger"] = eb.build_trigger(
         eb.TRIGGER_SOURCE_EVENT, eb.EVENT_DOCUMENT_UPDATED,
@@ -322,6 +326,10 @@ async def test_a_run_with_no_trigger_is_unchanged(task_db, monkeypatch):
     monkeypatch.setattr(agent_loop, "stream_agent_loop", fake_stream, raising=False)
     monkeypatch.setattr("src.tool_index.get_tool_index", lambda: None)
 
+    # fx4-models (`D-2026-10-07-02` §1): the model gate needs an endpoint table
+    # this direct call does not have; it is driven in
+    # `test_a_run_names_why_it_did_not_run.py`.
+    monkeypatch.setattr(TaskScheduler, "_usable_route", lambda self, db, task, url, model: (url, model))
     sched = _scheduler()
     task = SimpleNamespace(
         id="t1", name="Nightly", prompt="do the thing", owner=None, max_steps=3,

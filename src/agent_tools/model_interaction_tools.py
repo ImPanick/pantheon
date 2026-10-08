@@ -124,13 +124,20 @@ async def list_models(content: str, session_id: Optional[str] = None, owner: Opt
     """List all available models across configured endpoints.
 
     Content = optional filter keyword.
+
+    `D-2026-10-07-02` §1 (`B1259`): the names each endpoint's listing answered
+    — the picker's own list (`offered_models`), an endpoint that lists nothing
+    asked once (`ensure_listed`). It used to answer Anthropic with a built-in
+    list of ten `claude-*` names, and an endpoint that did not answer with a
+    row reading `(endpoint offline)` — a line shaped exactly like a model the
+    agent could then ask for. An endpoint that does not answer is said in a
+    sentence, under no model.
     """
-    import json
-    import httpx
     from src.database import SessionLocal, ModelEndpoint
-    from src.llm_core import _detect_provider, ANTHROPIC_MODELS
+    from src.llm_core import _detect_provider
     from src.auth_helpers import owner_filter
-    from src.endpoint_resolver import resolve_endpoint_runtime, build_headers, build_models_url
+    from src.endpoint_resolver import ensure_listed, normalize_base
+    from routes.model_routes import endpoint_down_line, offered_models
 
     keyword = content.strip().lower() if content.strip() else None
 
@@ -144,52 +151,31 @@ async def list_models(content: str, session_id: Optional[str] = None, owner: Opt
             return {"results": "No enabled model endpoints configured."}
 
         result_lines = []
+        down_lines = []
         total_models = 0
 
         for ep in endpoints:
-            try:
-                base, api_key = resolve_endpoint_runtime(ep, owner=owner)
-            except Exception:
+            base = normalize_base(getattr(ep, "base_url", "") or "")
+            model_ids = offered_models(ep) or await asyncio.to_thread(ensure_listed, ep)
+            if not model_ids:
+                down_lines.append(f"- {endpoint_down_line(ep)}")
                 continue
-            provider = _detect_provider(base)
-            headers = build_headers(api_key, base)
-
-            model_ids = []
-            if provider == "anthropic":
-                model_ids = list(ANTHROPIC_MODELS)
-            else:
-                try:
-                    models_url = build_models_url(base)
-                    if models_url:
-                        r = httpx.get(models_url, headers=headers, timeout=5)
-                        r.raise_for_status()
-                        data = r.json()
-                        model_ids = [m.get("id") for m in (data.get("data") or []) if m.get("id")]
-                        if not model_ids:
-                            model_ids = [
-                                m.get("name") or m.get("model")
-                                for m in (data.get("models") or [])
-                                if m.get("name") or m.get("model")
-                            ]
-                    else:
-                        model_ids = json.loads(ep.cached_models or "[]")
-                except Exception:
-                    model_ids = ["(endpoint offline)"]
 
             if keyword:
                 model_ids = [m for m in model_ids if keyword in m.lower() or keyword in (ep.name or "").lower()]
 
             if model_ids:
-                result_lines.append(f"\n**{ep.name or base}** ({provider}):")
+                result_lines.append(f"\n**{ep.name or base}** ({_detect_provider(base)}):")
                 for mid in model_ids:
                     result_lines.append(f"  - `{mid}`")
                     total_models += 1
 
+        tail = ("\n\nNot offering models now:\n" + "\n".join(down_lines)) if down_lines else ""
         if not result_lines:
-            return {"results": "No models found" + (f" matching '{keyword}'" if keyword else "") + "."}
+            return {"results": "No models found" + (f" matching '{keyword}'" if keyword else "") + "." + tail}
 
         header = f"Available models ({total_models} total):"
-        return {"results": header + "\n".join(result_lines)}
+        return {"results": header + "\n".join(result_lines) + tail}
     except Exception as e:
         logger.error(f"list_models failed: {e}")
         return {"error": str(e)}

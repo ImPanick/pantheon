@@ -46,6 +46,17 @@ def make_db(monkeypatch, path):
                            poolclass=NullPool)
     cdb.Base.metadata.create_all(engine)
     factory = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+    # fx4-models (`D-2026-10-07-02` §1): a run uses a model only while an
+    # endpoint lists it. The world's scripted model answers at
+    # `http://127.0.0.1:9/v1` (the far end is stubbed, nothing connects), so
+    # that endpoint is registered here with the names it lists — the two
+    # model names the walker tests' steps and tasks name.
+    _db = factory()
+    _db.add(cdb.ModelEndpoint(id="walker-world", name="Scripted world", is_enabled=True,
+                              base_url="http://127.0.0.1:9/v1", endpoint_kind="local",
+                              cached_models='["scripted", "m"]'))
+    _db.commit()
+    _db.close()
     monkeypatch.setattr(cdb, "SessionLocal", factory)
     monkeypatch.setenv("BACKGROUND_TASK_FOREGROUND_GATE", "0")
     import src.task_scheduler as ts

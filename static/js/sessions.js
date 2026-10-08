@@ -2374,16 +2374,9 @@ let _pendingChat = null; // { url, modelId, endpointId }
 let _pendingMaterializePromise = null;
 
 async function _getPreferredDefaultChat() {
+  // `D-2026-10-07-02` §1: the server says whether the saved default is listed
+  // now; the page's cached copy is used only when it cannot be asked.
   let dc = null;
-  try {
-    dc = window.__pantheonDefaultChat || null;
-  } catch (_) {}
-  if (!dc || !dc.endpoint_url || !dc.model) {
-    try {
-      dc = JSON.parse(localStorage.getItem('pantheon-default-chat-cache') || 'null');
-    } catch (_) {}
-  }
-  if (dc && dc.endpoint_url && dc.model) return dc;
   try {
     const dcRes = await fetch(`${API_BASE}/api/default-chat`);
     dc = await dcRes.json();
@@ -2394,8 +2387,17 @@ async function _getPreferredDefaultChat() {
       } catch (_) {}
       return dc;
     }
+    try {
+      window.__pantheonDefaultChat = null;
+      window.__pantheonDefaultChatReason = String((dc && dc.reason) || '');
+      localStorage.removeItem('pantheon-default-chat-cache');
+    } catch (_) {}
+    return null;
   } catch (_) {}
-  return null;
+  try {
+    dc = window.__pantheonDefaultChat || JSON.parse(localStorage.getItem('pantheon-default-chat-cache') || 'null');
+  } catch (_) {}
+  return (dc && dc.endpoint_url && dc.model) ? dc : null;
 }
 
 export function createDirectChat(url, modelId, endpointId, opts = {}) {

@@ -345,7 +345,7 @@ FUNCTION_TOOL_SCHEMAS = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "model": {"type": "string", "description": "Model name (e.g. 'qwen3-32b') or model@endpoint_name"},
+                    "model": {"type": "string", "description": "A model name list_models answered, or model@endpoint_name"},
                     "message": {"type": "string", "description": "The message to send to the model"}
                 },
                 "required": ["model", "message"]
@@ -821,7 +821,7 @@ FUNCTION_TOOL_SCHEMAS = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "model": {"type": "string", "description": "Teacher model name (e.g. 'claude-sonnet-4') or 'auto' for configured default"},
+                    "model": {"type": "string", "description": "A model name list_models answered, or 'auto' for the configured teacher"},
                     "problem": {"type": "string", "description": "Describe the problem or question you need help with"}
                 },
                 "required": ["problem"]

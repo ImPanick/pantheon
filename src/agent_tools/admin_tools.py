@@ -1092,6 +1092,12 @@ async def do_manage_settings(content: str, owner: Optional[str] = None) -> Dict:
                     s[f"{prefix}_endpoint_id"] = resolved["endpoint_id"]
                     s[key] = resolved["model"]
                     value = resolved["model"]
+                elif str(value or "").strip():
+                    # `D-2026-10-07-02` §1: a model is set only when an
+                    # endpoint lists it (`cached_models` holds the latest
+                    # listing that answered). It used to be stored as typed.
+                    return {"error": f"No endpoint lists {value} now, so nothing changed. "
+                                     "Call list_models for the names that are.", "exit_code": 1}
             save_settings(s)
             if key.endswith("_model") and s.get(f"{key[:-6]}_endpoint_id"):
                 return {"response": f"Set {key} = {value} (endpoint {s.get(f'{key[:-6]}_endpoint_id')}).", "exit_code": 0}

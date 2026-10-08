@@ -2337,7 +2337,7 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
    * from a sender called "…" listing three options, and the message was
    * thrown away.
    */
-  export function _sayNoModel(doc = document) {
+  export function _sayNoModel(doc = document, { reason = '' } = {}) {
     const box = doc.getElementById('chat-history');
     if (!box) return null;
     const prior = box.querySelector('.no-model-note');
@@ -2348,18 +2348,30 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
     note.setAttribute('role', 'status');
     note.style.cssText = 'display:flex; align-items:center; gap:10px; padding:10px 0;';
     const text = doc.createElement('span');
-    text.textContent = 'No model yet.';
-    const add = doc.createElement('button');
-    add.type = 'button';
-    add.className = 'no-model-add';
-    add.textContent = 'Add a model';
-    add.addEventListener('click', () => {
-      note.remove();
-      const door = doc.getElementById('model-picker-add-models-btn');
-      if (door) door.click();
-    });
+    // `D-2026-10-07-02` §1: "Started a chat with no model fails clearly, and
+    // states why." A saved default that is not listed now says so (`reason`,
+    // the server's sentence) and opens the model menu; with no model at all
+    // a member is told who adds one — the door is an admin's.
+    const member = !reason && typeof window !== 'undefined' && window._isAdmin === false;
+    text.textContent = reason || (member ? 'No model yet. An admin adds models in Settings → Added Models.' : 'No model yet.');
     note.appendChild(text);
-    note.appendChild(add);
+    if (!member) {
+      const add = doc.createElement('button');
+      add.type = 'button';
+      add.className = 'no-model-add';
+      add.textContent = reason ? 'Pick a model' : 'Add a model';
+      add.addEventListener('click', (ev) => {
+        // The menu closes on a click outside it (`modelPicker.js`), and this
+        // click reaches the document after the menu has opened — driven
+        // (fx4-models, 8751): "Pick a model" removed the note and showed
+        // nothing. It stops here.
+        if (ev && ev.stopPropagation) ev.stopPropagation();
+        note.remove();
+        const door = doc.getElementById(reason ? 'model-picker-btn' : 'model-picker-add-models-btn');
+        if (door) door.click();
+      });
+      note.appendChild(add);
+    }
     box.appendChild(note);
     try { uiModule.scrollHistory(); } catch (_) {}
     return note;
@@ -2506,29 +2518,35 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
       // Auto-create a session using default chat config. Always fetch fresh
       // so that a recent Settings change takes effect without a page reload.
       try {
-        let dc = (typeof window !== 'undefined' && window.__pantheonDefaultChat) || null;
-        if (!dc || !dc.endpoint_url || !dc.model) {
-          try {
-            dc = JSON.parse(localStorage.getItem('pantheon-default-chat-cache') || 'null');
-          } catch (_) {}
-        }
+        // `D-2026-10-07-02` §1: the server says whether the saved default is
+        // listed now — asked every time, as the comment above promises; the
+        // page's cached copy is only what a failed ask falls back to.
+        let dc = null;
         try {
-          if (!dc || !dc.endpoint_url || !dc.model) {
-            _sendPerf.mark('default_chat_fetch_begin');
-            const dcRes = await fetch('/api/default-chat');
-            dc = await dcRes.json();
-            _sendPerf.mark('default_chat_fetch_done');
-            if (dc && dc.endpoint_url && dc.model) {
-              try {
-                window.__pantheonDefaultChat = dc;
-                localStorage.setItem('pantheon-default-chat-cache', JSON.stringify(dc));
-              } catch (_) {}
-            }
+          _sendPerf.mark('default_chat_fetch_begin');
+          const dcRes = await fetch('/api/default-chat');
+          dc = await dcRes.json();
+          _sendPerf.mark('default_chat_fetch_done');
+          if (dc && dc.endpoint_url && dc.model) {
+            try {
+              window.__pantheonDefaultChat = dc;
+              localStorage.setItem('pantheon-default-chat-cache', JSON.stringify(dc));
+            } catch (_) {}
+          } else {
+            try {
+              window.__pantheonDefaultChat = null;
+              localStorage.removeItem('pantheon-default-chat-cache');
+            } catch (_) {}
           }
         } catch (_) {
           dc = (typeof window !== 'undefined' && window.__pantheonDefaultChat) || null;
         }
-        if (dc.endpoint_url && dc.model) {
+        if (dc && dc.reason && !dc.model) {
+          _sayNoModel(document, { reason: dc.reason });
+          _releaseSendFlag();
+          return;
+        }
+        if (dc && dc.endpoint_url && dc.model) {
           _sendPerf.mark('direct_chat_create_begin');
           await sessionModule.createDirectChat(dc.endpoint_url, dc.model, dc.endpoint_id, { source: 'default' });
           _sendPerf.mark('direct_chat_create_done');
@@ -3340,16 +3358,25 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
           if (sessionModule) await sessionModule.loadSessions();
           return;
         }
-        let errText = `Error ${res.status}`;
-        try {
-          const errBody = await res.text();
-          // Parse nested JSON error if present
-          const m = errBody.match(/"message"\s*:\s*"([^"]+)"/);
-          if (m) errText = m[1].replace(/\\"/g, '"');
-          else if (errBody.length < 200) errText = errBody;
-        } catch {}
-        // Auto-switch to chat mode for tool-related errors
-        if (errText.includes('tool') || errText.includes('auto')) {
+        // C-ERR: the refusal's sentence, read once — it was the raw body,
+        // so a refused send drew `{"detail":"…"}` (`D-2026-10-07-02` §1's
+        // "fails clearly, and states why" is that sentence).
+        const _refusal = await readRefusal(res, `The server refused this message (${res.status}).`);
+        let errText = _refusal.sentence;
+        if (res.status === 503) {
+          // Not answering: the picker shows the endpoint's line, with Retry.
+          try {
+            const _cur = sessionModule.getSessions().find(x => x.id === sessionModule.getCurrentSessionId());
+            const _url = (_cur && _cur.endpoint_url) || '';
+            if (_url) window.dispatchEvent(new CustomEvent('pantheon:endpoint-unanswered', { detail: { url: _url } }));
+          } catch (_) {}
+        }
+        // Auto-switch to chat mode for tool-related errors — not for a model
+        // refusal (409 not listed, 503 not answering, `D-2026-10-07-02` §1):
+        // its sentence names a model and an endpoint, and a name holding
+        // "tool" or "auto" ("qwen3-tool") swapped the why for this one.
+        if (res.status !== 409 && res.status !== 503
+            && (errText.includes('tool') || errText.includes('auto'))) {
           errText = 'This model doesn\'t support agent tools — switched to Chat mode. Try again.';
           const _ab = document.getElementById('mode-agent-btn');
           const _cb = document.getElementById('mode-chat-btn');

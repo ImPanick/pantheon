@@ -244,6 +244,10 @@ def _install_sync_chat_stubs(monkeypatch):
     endpoint_resolver.build_chat_url = lambda base_url: f"{base_url}/chat/completions"
     endpoint_resolver.build_models_url = lambda base_url: f"{base_url}/models"
     endpoint_resolver.build_headers = lambda api_key, base_url: {"Authorization": f"Bearer {api_key}"}
+    # fx4-models (`D-2026-10-07-02` §1): the route asks an endpoint that lists
+    # nothing once more; these endpoints' listings are given on the rows.
+    endpoint_resolver.ensure_listed = lambda ep: []
+    endpoint_resolver.usable_model_problem = lambda *a, **k: ""
 
     llm_core = types.ModuleType("src.llm_core")
     llm_core.llm_call_async = _llm_call_async
@@ -372,6 +376,8 @@ async def test_api_chat_fallback_trusts_configured_local_endpoint(monkeypatch):
         base_url="http://localhost:11434/v1",
         api_key="configured-key",
     )
+    # It lists the model the caller names (fx4-models, `D-2026-10-07-02` §1).
+    local_endpoint.cached_models = '["local-model"]'
     db = _DB([local_endpoint])
     calls = []
 

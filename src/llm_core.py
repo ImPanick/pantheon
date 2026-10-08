@@ -616,12 +616,13 @@ def _set_cached_response(
         _response_model_cache.pop(cache_key, None)
 
 # ── Anthropic native API adapter ──
-
-ANTHROPIC_MODELS = [
-    "claude-opus-4-20250514", "claude-opus-4",
-    "claude-sonnet-4-20250514", "claude-sonnet-4", "claude-sonnet-4-5-20250929", "claude-sonnet-4-5",
-    "claude-haiku-4-20250514", "claude-haiku-4", "claude-haiku-3-5-20241022", "claude-haiku-3-5",
-]
+#
+# `D-2026-10-07-02` §1 (`B1259`). `ANTHROPIC_MODELS`, ten `claude-*` names
+# written here, stood in for Anthropic's own list wherever a listing was not
+# made or did not answer: `list_model_ids`, the agent's `list_models` and
+# `chat_with_model`, an unkeyed probe, and `/ping`'s count. Anthropic answers
+# `GET /v1/models` for a key (`build_models_url` → `/v1/models`, `x-api-key`
+# from `build_headers`), and that answer is the only list now.
 
 
 def _is_ollama_native_url(url: str) -> bool:
@@ -2184,8 +2185,6 @@ def list_model_ids(
     if cached:
         return cached
     provider = _detect_provider(base_chat_url)
-    if provider == "anthropic":
-        return list(ANTHROPIC_MODELS)
     try:
         h = {}
         if headers:
