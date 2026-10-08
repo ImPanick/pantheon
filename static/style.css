@@ -48615,8 +48615,8 @@ body.plan-mode-active .chat-input-top > .model-picker-wrap:has(> .model-picker-m
   --hand-card-w: 52px;
   --hand-card-h: 68px;
   --hand-left: 12px;
-  --hand-step: 14px;
-  --hand-tilt: 3.5deg;
+  --hand-step: 18px;
+  --hand-tilt: 4deg;
   --hand-lift: 10px;
   --hand-h: calc(var(--hand-card-h) + 18px);
   --hand-step-now: var(--hand-step);
@@ -48631,9 +48631,10 @@ body.plan-mode-active .chat-input-top > .model-picker-wrap:has(> .model-picker-m
   pointer-events: none;
   container-type: inline-size;
 }
-/* "+N" spreads the hand across the width it has, the message box's. */
+/* "+N" spreads the hand across the width it has, the message box's, short of
+   the right-hand 60px or so where the scroll-to-bottom button (▼) sits. */
 .attach-strip.attach-hand.hand-open {
-  --hand-step-now: clamp(10px, calc((100cqw - var(--hand-card-w) - var(--hand-left) - 84px) / var(--hand-gaps, 1)), 44px);
+  --hand-step-now: clamp(10px, calc((100cqw - var(--hand-card-w) - var(--hand-left) - 124px) / var(--hand-gaps, 1)), 44px);
   --hand-tilt-now: calc(12deg / var(--hand-gaps, 1));
 }
 .attach-hand .hand-card {
@@ -48832,7 +48833,7 @@ body.plan-mode-active .chat-input-top > .model-picker-wrap:has(> .model-picker-m
 .attach-hand .hand-more {
   position: absolute;
   bottom: 8px;
-  left: calc(var(--hand-left) + var(--hand-card-w) + var(--hand-last, 0) * var(--hand-step-now) + 20px);
+  left: calc(var(--hand-left) + var(--hand-card-w) + var(--hand-last, 0) * var(--hand-step-now) + 26px);
   z-index: 50;
   height: 22px;
   min-width: 30px;
@@ -48957,7 +48958,7 @@ body.plan-mode-active .chat-input-top > .model-picker-wrap:has(> .model-picker-m
     --hand-card-w: 46px;
     --hand-card-h: 60px;
     --hand-left: 8px;
-    --hand-step: 12px;
+    --hand-step: 15px;
   }
   /* A finger's worth of ×. */
   .attach-hand .hand-card-x {
