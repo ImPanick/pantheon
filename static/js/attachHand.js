@@ -35,7 +35,8 @@
 // Gallery is `POST /api/gallery/upload`, the route the Gallery's own upload
 // uses; Remove and Remove all are the old strip's × and its pill's ×. The image
 // editor is not offered: it has no way to hand an edit back to the composer, so
-// from here it would edit a copy the message never sends (`B-NEW-2`).
+// from here it would edit a copy the message never sends (filed with this row
+// in the fx5-cards handoff).
 //
 // No DOM is assumed beyond what `fileHandler.js`'s node harnesses give it:
 // every call into the page is one the shims in `tests/` answer.
