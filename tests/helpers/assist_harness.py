@@ -112,6 +112,7 @@ def build_world(monkeypatch, tmp_path, *, admin="alice", integrations=(), chat=N
     if workstation:
         import src.workflow_effects as we
         monkeypatch.setattr(we, "workstation_why", lambda owner: None)
+    import routes.task.task_routes as task_routes
     import src.agent_tools as agent_tools
     import src.integrations as integrations_mod
     import src.task_action_policy as tap
@@ -129,6 +130,18 @@ def build_world(monkeypatch, tmp_path, *, admin="alice", integrations=(), chat=N
     monkeypatch.setattr(tool_security, "owner_is_admin_or_single_user", is_admin)
     monkeypatch.setattr(ts, "owner_has_admin_task_privileges", is_admin)
     monkeypatch.setattr(tap, "owner_has_admin_task_privileges", is_admin)
+    # `task_routes` imports `owner_has_admin_task_privileges` by name, so it holds
+    # whatever `tap` held when the module was first imported. Patching only `tap`
+    # left the routes' copy to import order (fx5-green, measured in the full run):
+    # when this world was the first to import `task_routes`, the routes kept THIS
+    # test's `is_admin` for the rest of the session, past its monkeypatch; when an
+    # earlier file (`test_a_chain_becomes_a_workflow_and_the_chain_stays.py`)
+    # imported it first, the routes kept the real check, which answers from the
+    # shared auth manager — nobody here is in it — so the task routes' resume, dry
+    # run and webhook refused alice (403 "requires admin privileges"). The module
+    # is imported above, before `tap` is patched, so it binds the real function,
+    # and its own name is patched here and restored with the rest.
+    monkeypatch.setattr(task_routes, "owner_has_admin_task_privileges", is_admin)
     listed = [dict(i) for i in integrations]
     monkeypatch.setattr(integrations_mod, "load_integrations", lambda: [dict(i) for i in listed])
     s = recording_scheduler()

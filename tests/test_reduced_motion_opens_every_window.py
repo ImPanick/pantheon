@@ -150,11 +150,20 @@ const SPY = `
     page.evaluate(fn, arg),
     new Promise((res) => setTimeout(() => res('no answer'), 5000)),
   ]);
-  const reduce = await open('reduce');
-  out.reduceMatches = await ask(reduce, () => matchMedia('(prefers-reduced-motion: reduce)').matches);
+  const first = await open('reduce');
+  out.reduceMatches = await ask(first, () => matchMedia('(prefers-reduced-motion: reduce)').matches);
   for (const door of DOORS) {
     // Each window opened first on a fresh page, the way a person meets it —
     // with others open the stack's height hides a window pushed back down.
+    // A new tab for each door, the last one closed, not one tab reloaded
+    // eleven times (fx5-green): Playwright starts Chromium with
+    // `--disable-dev-shm-usage`, so its shared memory is files in TMPDIR, and
+    // the reloaded tab held them — measured 2,409 MB in 1,215 files at the
+    // peak, on a disk with 3 GB free. In the full run the disk ran out first:
+    // a reload's module loads failed `net::ERR_INSUFFICIENT_RESOURCES`, the
+    // page never started (`waitForFunction` timed out) and all 26 errored.
+    const reduce = await first.context().newPage();
+    reduce.on('pageerror', (e) => out.errors.push(String((e && e.message) || e)));
     await reduce.goto(BASE + '/', { waitUntil: 'load' });
     await reduce.waitForFunction(() => window.__pantheonAppStarted === true, null, { timeout: 90000 });
     await reduce.waitForTimeout(600);
@@ -169,6 +178,8 @@ const SPY = `
       return { writes: window.__zn, values: window.__zv, top: top ? top.id : null,
                transition: top ? getComputedStyle(top).transitionDuration.split(',')[0].trim() : null };
     });
+    // Closed with a deadline too: a tab spinning in microtasks is the regression.
+    await Promise.race([reduce.close(), new Promise((res) => setTimeout(res, 5000))]);
   }
   // The same door with motion allowed, for the baseline the row measured.
   const motion = await open('no-preference');

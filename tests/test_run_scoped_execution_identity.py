@@ -53,6 +53,20 @@ def task_db(monkeypatch, tmp_path):
     )
     cdb.Base.metadata.create_all(engine)
     factory = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+    # fx4-models (`D-2026-10-07-02` §1): a run uses its model only while an
+    # endpoint lists it, so the world registers the endpoint the tasks below
+    # name, listing the three models they run on (the far end is
+    # `stream_agent_loop`, stubbed; nothing connects). Without it every run
+    # here ends `error` — "model-alpha's endpoint is gone" — before a step, and
+    # the per-run model and step log this file measures are never written.
+    # The world lists the model rather than the gate being stubbed, so the run
+    # still goes through `_usable_route` as a real one does.
+    _db = factory()
+    _db.add(cdb.ModelEndpoint(id="ep-concurrent", name="Endpoint", is_enabled=True,
+                              endpoint_kind="local", base_url="http://endpoint/v1",
+                              cached_models='["model-alpha", "model-beta", "model-gamma"]'))
+    _db.commit()
+    _db.close()
     monkeypatch.setattr(cdb, "SessionLocal", factory)
     return factory
 
