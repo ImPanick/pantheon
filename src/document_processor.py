@@ -1332,6 +1332,37 @@ def analyze_image_with_vl(image_path: str, owner: str | None = None) -> str:
     return analyze_image_with_vl_result(image_path, owner=owner).get("text", "")
 
 
+#: The four raster types every vision API in use takes, by their signatures.
+_IMAGE_SIGNATURES = (
+    (b"\x89PNG\r\n\x1a\n", "image/png"),
+    (b"\xff\xd8\xff", "image/jpeg"),
+    (b"GIF87a", "image/gif"),
+    (b"GIF89a", "image/gif"),
+)
+_IMAGE_EXT_TYPES = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+                    ".gif": "image/gif", ".webp": "image/webp"}
+
+
+def image_media_type(raw: bytes, ext: str = "", declared: str = "") -> str:
+    """The registered media type of a picture: what its first bytes say, then
+    its extension, then the type it was uploaded with — `image/jpg` (no such
+    type) read as `image/jpeg`. fx5-vision: the label a provider is handed with
+    a person's picture, so Anthropic's path can take it."""
+    head = bytes(raw[:12]) if raw else b""
+    for signature, media_type in _IMAGE_SIGNATURES:
+        if head.startswith(signature):
+            return media_type
+    if head[:4] == b"RIFF" and head[8:12] == b"WEBP":
+        return "image/webp"
+    by_ext = _IMAGE_EXT_TYPES.get((ext or "").lower())
+    if by_ext:
+        return by_ext
+    declared = (declared or "").split(";", 1)[0].strip().lower()
+    if declared == "image/jpg":
+        return "image/jpeg"
+    return declared if declared.startswith("image/") and declared != "image/" else "image/png"
+
+
 def build_user_content(
     text: str,
     attachment_ids: list[str] | None,
@@ -1421,14 +1452,16 @@ def build_user_content(
         if is_image:
             try:
                 with open(path, "rb") as image_file:
-                    encoded_string = base64.b64encode(image_file.read()).decode("utf-8")
-                # Extensionless uploads (e.g. a pasted screenshot) have no ext,
-                # so fall back to the resolved MIME subtype rather than emitting
-                # an invalid "data:image/;base64," with an empty subtype.
-                image_format = ext[1:] or (mime.split("/", 1)[1] if mime.startswith("image/") else "png")
+                    raw_image = image_file.read()
+                encoded_string = base64.b64encode(raw_image).decode("utf-8")
+                # fx5-vision: the label is what the bytes are. It was
+                # `image/<extension>`, so every `.jpg` — every phone photo —
+                # went out as `data:image/jpg`, a type no registry names, which
+                # Anthropic's `media_type` refuses (`image/jpeg`, `image/png`,
+                # `image/gif`, `image/webp` only).
                 content.append({
                     "type": "image_url",
-                    "image_url": {"url": f"data:image/{image_format};base64,{encoded_string}"},
+                    "image_url": {"url": f"data:{image_media_type(raw_image, ext, mime)};base64,{encoded_string}"},
                 })
             except Exception as e:
                 logger.error(f"Failed to encode image {fid}: {e}")

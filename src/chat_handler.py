@@ -15,7 +15,7 @@ from src.constants import (
     UPLOAD_DIR,
 )
 from core.models import ChatMessage
-from src.chat_helpers import extract_urls, model_supports_vision
+from src.chat_helpers import extract_urls, vision_answer
 from src.document_processor import build_user_content, analyze_image_with_vl_result
 from src.file_names import upload_display_name  # `P21-03`
 from src.youtube_handler import (
@@ -211,11 +211,15 @@ class ChatHandler:
             from src.settings import get_setting
             vision_enabled = get_setting("vision_enabled", True)
             if vision_enabled:
+                # fx5-vision (`B-NEW-2`): the picture goes to the model unless
+                # something that knows said it cannot see — its endpoint. A
+                # name the list does not know is unknown, not text-only, and a
+                # refusal from the model is said in the chat (`chatStreamErrors`).
                 main_is_vision = await asyncio.to_thread(
-                    model_supports_vision,
+                    vision_answer,
                     sess.model or "",
                     getattr(sess, "endpoint_url", "") or "",
-                )
+                ) is not False
 
         if effective_att_ids and vision_enabled:
             meta_by_id = {m["id"]: m for m in attachment_meta}

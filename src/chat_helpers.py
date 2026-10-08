@@ -418,16 +418,32 @@ def endpoint_supports_vision(endpoint_url: str, model_name: str) -> Optional[boo
     return None
 
 
-def model_supports_vision(model_name: str, endpoint_url: str = "") -> bool:
-    """Whether a model accepts images: the endpoint's own answer where it gives
-    one (`endpoint_supports_vision` — LM Studio, Ollama, OpenRouter, llama.cpp),
-    the name list otherwise. The one question a person's attachment and a tool's
-    picture both ask (`src/chat_handler.py`, `src/tool_result_images.py`)."""
+def vision_answer(model_name: str, endpoint_url: str = "") -> Optional[bool]:
+    """Whether a model accepts images, as far as anything that knows has said:
+    the endpoint's own answer where it gives one (`endpoint_supports_vision` —
+    LM Studio, Ollama, OpenRouter, llama.cpp), True where the name list names a
+    family that sees, and None — unknown — otherwise.
+
+    fx5-vision (`B-NEW-2`). A name the list does not know is not a model that
+    cannot see: `D-2026-10-07-02` §1 rules out deciding what a model is from a
+    list written in the code, and a person's picture was swapped for the line
+    *"[No vision model configured — set one in Settings → Vision]"* on exactly
+    that guess (measured on `0345288`: a model listed as `text-box-7b` on a
+    server that says nothing about pictures was sent none)."""
     if endpoint_url:
         advertised = endpoint_supports_vision(endpoint_url, model_name or "")
         if advertised is not None:
             return advertised
-    return is_vision_model(model_name)
+    return True if is_vision_model(model_name) else None
+
+
+def model_supports_vision(model_name: str, endpoint_url: str = "") -> bool:
+    """Whether a model accepts images: the endpoint's own answer where it gives
+    one (`endpoint_supports_vision` — LM Studio, Ollama, OpenRouter, llama.cpp),
+    the name list otherwise. The question a tool's picture asks
+    (`src/tool_result_images.py`); a person's own attachment asks
+    `vision_answer`, which sends the picture when nothing knows (fx5-vision)."""
+    return bool(vision_answer(model_name, endpoint_url))
 
 
 def validate_message(message: str) -> str:

@@ -1779,6 +1779,12 @@ def _convert_openai_content_to_anthropic(content):
                     media_type = header.split(";")[0].replace("data:", "")
                 except (ValueError, IndexError):
                     continue
+                # fx5-vision: `image/jpg` names no type, and Anthropic takes
+                # only `image/jpeg`/`png`/`gif`/`webp` — a picture labelled so
+                # (a `.jpg` before the label was fixed, a tool's own label) was
+                # a refused request, not a picture.
+                if media_type.lower() == "image/jpg":
+                    media_type = "image/jpeg"
                 converted.append({
                     "type": "image",
                     "source": {
