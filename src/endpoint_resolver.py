@@ -435,6 +435,84 @@ def build_headers(api_key: Optional[str], base: str) -> Dict[str, str]:
     return headers
 
 
+def _configured_entry(setting_prefix: str, owner: Optional[str] = None,
+                      *, has_fallback: bool = False) -> Tuple[str, str]:
+    """`(endpoint_id, model)` the settings name for `setting_prefix`, or
+    `("", "")`: its own pair; else, for task/research/auto-naming, the Utility
+    model's; else — unless the caller brought its own fallback — the default
+    chat model's. The one reading of that order (`Law 7`): `resolve_endpoint`
+    dispatches on it and `configured_model_problem` says why it could not."""
+    try:
+        from src.settings import get_user_setting, load_settings
+        settings = load_settings()
+    except Exception:
+        return "", ""
+
+    owner_str = owner or ""
+    def _stg(key: str) -> str:
+        return (get_user_setting(key, owner_str, settings.get(key, "")) or "").strip()
+
+    ep_id = _stg(f"{setting_prefix}_endpoint_id")
+    model = _stg(f"{setting_prefix}_model")
+
+    # Fall back to utility model for task/research/auto-naming if not specifically configured.
+    if not ep_id and setting_prefix not in ("utility", "default"):
+        ep_id = _stg("utility_endpoint_id")
+        model = _stg("utility_model")
+
+    # If the endpoint is STILL not configured, but the caller provided a
+    # valid fallback (e.g. the active session model), use that immediately.
+    # This prevents background tasks from jumping to the global default_model
+    # when the user is mid-conversation with a different model.
+    if not ep_id and has_fallback:
+        return "", ""
+
+    # Unset Utility (or anything else that didn't have a fallback) means "same as Default Chat Model".
+    if not ep_id:
+        ep_id = _stg("default_endpoint_id")
+        model = _stg("default_model")
+
+    return (ep_id, model) if ep_id else ("", "")
+
+
+def configured_model_problem(setting_prefix: str, owner: Optional[str] = None,
+                             *, then: str = "Pick a model for this task.") -> str:
+    """Why the model the settings name for `setting_prefix` cannot be used
+    now, as one sentence — or `""` when nothing is configured, or it can.
+
+    `D-2026-10-07-02` §1: "fails clearly, and states why." `resolve_endpoint`
+    answers no model when the configured one is not listed (it is neither used
+    nor swapped); a run with no model of its own recorded *"No model yet"* for
+    that — false when a default is set and its server is down. This names
+    what happened: *"Demo model isn't answering."*, *"gone-70b isn't listed
+    by Office LLM now."*, or that the endpoint is gone.
+    """
+    ep_id, model = _configured_entry(setting_prefix, owner)
+    if not ep_id:
+        return ""
+    from routes.model_routes import unusable_model_sentence
+
+    db = SessionLocal()
+    try:
+        q = db.query(ModelEndpoint).filter(
+            ModelEndpoint.id == ep_id, ModelEndpoint.is_enabled == True  # noqa: E712
+        )
+        if owner:
+            from src.auth_helpers import owner_filter
+            q = owner_filter(q, ModelEndpoint, owner)
+        ep = q.first()
+        if ep is None:
+            return unusable_model_sentence(None, model, then)
+        if model and model in _endpoint_hidden_models(ep):
+            model = ""
+        listed = _endpoint_enabled_models(ep)
+        if not listed or (model and model not in listed):
+            return unusable_model_sentence(ep, model, then, listed=listed)
+        return ""
+    finally:
+        db.close()
+
+
 def resolve_endpoint(
     setting_prefix: str,
     fallback_url: Optional[str] = None,
@@ -454,36 +532,8 @@ def resolve_endpoint(
     Returns:
         (endpoint_url, model, headers) — resolved or fallback values.
     """
-    try:
-        from src.settings import get_user_setting, load_settings
-        settings = load_settings()
-    except Exception:
-        return fallback_url, fallback_model, fallback_headers
-
-    owner_str = owner or ""
-    def _stg(key: str) -> str:
-        return (get_user_setting(key, owner_str, settings.get(key, "")) or "").strip()
-
-    ep_id = _stg(f"{setting_prefix}_endpoint_id")
-    model = _stg(f"{setting_prefix}_model")
-
-    # Fall back to utility model for task/research/auto-naming if not specifically configured.
-    if not ep_id and setting_prefix not in ("utility", "default"):
-        ep_id = _stg("utility_endpoint_id")
-        model = _stg("utility_model")
-
-    # If the endpoint is STILL not configured, but the caller provided a
-    # valid fallback (e.g. the active session model), use that immediately.
-    # This prevents background tasks from jumping to the global default_model
-    # when the user is mid-conversation with a different model.
-    if not ep_id and fallback_url and fallback_model:
-        return fallback_url, fallback_model, fallback_headers
-
-    # Unset Utility (or anything else that didn't have a fallback) means "same as Default Chat Model".
-    if not ep_id:
-        ep_id = _stg("default_endpoint_id")
-        model = _stg("default_model")
-
+    ep_id, model = _configured_entry(setting_prefix, owner,
+                                     has_fallback=bool(fallback_url and fallback_model))
     if not ep_id:
         return fallback_url, fallback_model, fallback_headers
 

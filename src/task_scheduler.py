@@ -6932,13 +6932,14 @@ class TaskScheduler:
         none takes the configured chain (`_resolve_defaults`). A step that
         names a model but not an endpoint runs where that model is listed.
         """
-        from src.endpoint_resolver import NoUsableModel, NO_MODEL_FOR_RUN, usable_model_problem
+        from src.endpoint_resolver import (NoUsableModel, NO_MODEL_FOR_RUN, configured_model_problem,
+                                           usable_model_problem)
         try:
             from src.workflow_document import WorkflowNodeTask
-            then = ("Pick another model for this step." if isinstance(task, WorkflowNodeTask)
-                    else "Pick another model for this task.")
+            what = "step" if isinstance(task, WorkflowNodeTask) else "task"
         except Exception:
-            then = "Pick another model for this task."
+            what = "task"
+        then = f"Pick another model for this {what}."
         owner = getattr(task, "owner", None)
         if model and not endpoint_url:
             endpoint_url = self._endpoint_listing(db, owner, model)
@@ -6948,7 +6949,12 @@ class TaskScheduler:
         if not endpoint_url or not model:
             endpoint_url, model = self._resolve_defaults(db, owner)
             if not endpoint_url or not model:
-                raise NoUsableModel(NO_MODEL_FOR_RUN)
+                # A configured model that is not listed now says so — what
+                # happened to it — not "No model yet", which is true only
+                # when none is configured (`D-2026-10-07-02` §1).
+                raise NoUsableModel(
+                    configured_model_problem("task", owner or None, then=f"Pick a model for this {what}.")
+                    or NO_MODEL_FOR_RUN)
             return endpoint_url, model
         problem = usable_model_problem(endpoint_url, model, owner=owner, then=then, db=db)
         if problem:

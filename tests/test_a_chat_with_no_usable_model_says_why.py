@@ -256,9 +256,10 @@ def test_a_task_with_no_model_does_not_borrow_the_newest_chats(scheduler_world):
 
 
 def test_a_configured_task_model_nothing_lists_is_not_used_or_swapped(scheduler_world):
-    """Settings → Background Tasks names a model the endpoint does not list
-    (pinned there, even): the resolver does not hand it out, and does not
-    pick another of the endpoint's models in its place."""
+    """Settings → Model for scheduled tasks names a model the endpoint does
+    not list (pinned there, even): the resolver does not hand it out, does not
+    pick another of the endpoint's models in its place, and the run says which
+    model and why — not "No model yet", when one is configured."""
     import src.settings as S
     db = scheduler_world.factory()
     from core.database import ModelEndpoint as ME
@@ -271,7 +272,45 @@ def test_a_configured_task_model_nothing_lists_is_not_used_or_swapped(scheduler_
     S.save_settings(s)
     status, error = _run_task(scheduler_world)
     assert status == "error"
-    assert error == "No model yet. An admin adds one in Settings → Added Models."
+    assert error == "gone-70b isn't listed by Scripted world now. Pick a model for this task."
+
+
+@pytest.mark.parametrize("what", ["task", "step"])
+def test_a_default_model_whose_server_is_not_answering_is_said_for_a_run_with_none(scheduler_world, what):
+    """No model of its own, and the default chat model's endpoint is not
+    answering: the run is not sent, and records that — the base recorded
+    "No model yet", true only when nothing is configured."""
+    import time
+    import routes.model_routes as model_routes
+    import src.settings as S
+    from core.database import ModelEndpoint as ME
+    db = scheduler_world.factory()
+    db.query(ME).filter(ME.id == "walker-world").first().cached_models = None
+    db.commit()
+    db.close()
+    # Its listing failed a moment ago: not asked again (no socket opened here).
+    model_routes._LISTING_STATE["walker-world"] = {"ok": False, "at": time.time(), "answered": False,
+                                                   "loading": False, "error": "no answer"}
+    s = S.load_settings()
+    s.update(default_endpoint_id="walker-world", default_model="scripted")
+    S.save_settings(s)
+    if what == "task":
+        status, error = _run_task(scheduler_world)
+        assert status == "error"
+    else:
+        from src import workflow_document as wd
+        from src.endpoint_resolver import NoUsableModel
+        trigger = SimpleNamespace(id="wf", owner="alice", tz_name=None, session_id=None)
+        step = wd.node_stand_in(trigger, "Morning", {"id": "n1", "kind": "llm", "label": "Draft",
+                                                    "config": {"prompt": "Draft."}})
+        db = scheduler_world.factory()
+        try:
+            with pytest.raises(NoUsableModel) as exc:
+                scheduler_world.s._usable_route(db, step, step.endpoint_url, step.model)
+        finally:
+            db.close()
+        error = str(exc.value)
+    assert error == f"Scripted world isn't answering. Pick a model for this {what}."
 
 
 def test_a_workflow_step_naming_a_model_nothing_lists_says_so_for_the_step(scheduler_world):
