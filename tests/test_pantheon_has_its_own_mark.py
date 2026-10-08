@@ -303,7 +303,6 @@ def test_every_branding_asset_anything_names_is_served(tmp_path):
     urls = _referenced_urls()
     env = os.environ.copy()
     env.update({
-        "AUTH_ENABLED": "false",
         "CHROMADB_CONNECT_TIMEOUT": "0.01",
         "CHROMADB_HOST": "127.0.0.1",
         "CHROMADB_PORT": "9",
@@ -316,9 +315,10 @@ def test_every_branding_asset_anything_names_is_served(tmp_path):
     probe = textwrap.dedent("""
         import io, json, sys
         import app as app_module
+        from tests.helpers.signed_in import sign_in
         from fastapi.testclient import TestClient
         from PIL import Image
-        client = TestClient(app_module.app)
+        client = sign_in(app_module, TestClient(app_module.app))  # the install's admin (`D-2026-10-07-02` §2)
         out = {}
         for url in json.loads(sys.argv[1]):
             r = client.get(url)

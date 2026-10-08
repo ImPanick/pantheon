@@ -26,6 +26,7 @@ import pytest
 from src import integrations as integrations_mod
 from src import workflow_effects as fx
 from src.workstation_access import NOT_PERMITTED_SENTENCE, OFF_SENTENCE
+from tests.helpers.signed_in import ADMIN, signed_in
 
 KEY = "sekret-api-key-123"
 BASE = "http://feeds.lan:8080"
@@ -41,7 +42,9 @@ def world(monkeypatch, tmp_path):
     from src.mcp_manager import McpManager
     from tests.helpers.sqlite_db import make_temp_sqlite
 
-    monkeypatch.setenv("AUTH_ENABLED", "false")
+    # The single-user owner is its first account, an admin (`D-2026-10-07-02`
+    # §2: there is always authentication — it was `AUTH_ENABLED=false` and nobody).
+    signed_in(monkeypatch, tmp_path / "auth", admin=ADMIN, members=("bob",))
     monkeypatch.setattr(integrations_mod, "load_integrations", lambda: [
         {"id": "intg-1", "name": "Miniflux", "enabled": True, "base_url": BASE, "auth_type": "header",
          "api_key": KEY, "preset": "miniflux", "description": "My feeds"},
@@ -72,7 +75,7 @@ def world(monkeypatch, tmp_path):
     invalidate_skill_cache()
     sm = SkillsManager(str(tmp_path))
     sm.add_skill(name="print-queue", description="Clear the print queue", procedure=["x"],
-                 status="published")
+                 owner=ADMIN, status="published")
     sm.add_skill(name="bobs-skill", description="not hers", procedure=["x"], owner="bob",
                  status="published")
 
@@ -92,7 +95,7 @@ def _kinds(palette):
 
 def test_every_kind_is_listed_once_with_its_words_and_ports(world):
     from src.workflow_document import NODE_KINDS
-    palette = fx.build_palette(None)
+    palette = fx.build_palette(ADMIN)
     kinds = _kinds(palette)
     assert [k["kind"] for k in palette["kinds"]] == list(NODE_KINDS)
     assert (kinds["llm"]["word"], kinds["llm"]["hint"]) == (
@@ -104,7 +107,7 @@ def test_every_kind_is_listed_once_with_its_words_and_ports(world):
 
 
 def test_an_integrations_key_and_address_never_reach_the_palette(world):
-    palette = fx.build_palette(None)
+    palette = fx.build_palette(ADMIN)
     text = json.dumps(palette)
     assert KEY not in text and "other-key" not in text
     assert BASE not in text and "feeds.lan" not in text
@@ -115,12 +118,12 @@ def test_an_integrations_key_and_address_never_reach_the_palette(world):
 
 def test_with_no_integration_switched_on_http_is_greyed_and_says_where(world, monkeypatch):
     monkeypatch.setattr(integrations_mod, "load_integrations", lambda: [])
-    http = _kinds(fx.build_palette(None))["http"]
+    http = _kinds(fx.build_palette(ADMIN))["http"]
     assert (http["available"], http["why"]) == (False, fx.NO_INTEGRATIONS_SENTENCE)
 
 
 def test_an_mcp_tools_arguments_are_classified_from_its_schema(world):
-    tools = {t["qualified_name"]: t for t in fx.build_palette(None)["mcp_tools"]}
+    tools = {t["qualified_name"]: t for t in fx.build_palette(ADMIN)["mcp_tools"]}
     assert list(tools) == ["mcp__chat__send_message"]          # the switched-off one is not offered
     args = tools["mcp__chat__send_message"]["args"]
     assert args["text"]["mapping"] == "value"
@@ -133,7 +136,7 @@ def test_an_mcp_tools_arguments_are_classified_from_its_schema(world):
 
 def test_each_setting_says_whether_another_step_may_fill_it(world):
     from src import workflow_slots as ws
-    kinds = _kinds(fx.build_palette(None))
+    kinds = _kinds(fx.build_palette(ADMIN))
     assert kinds["llm"]["slots"]["prompt"]["mapping"] == "value"
     assert kinds["llm"]["slots"]["model"] == {"mapping": "never", "why": ws.WHY_WHAT}
     assert kinds["http"]["slots"]["path"]["mapping"] == "never"
@@ -163,11 +166,11 @@ def test_a_person_who_is_not_an_admin_is_offered_what_their_agent_reaches(world,
 
 
 def test_code_is_greyed_with_the_workstations_own_sentence(world, monkeypatch):
-    assert _kinds(fx.build_palette(None))["code"]["available"] is True
-    assert fx.build_palette(None)["workstation"] == {"available": True, "why": ""}
+    assert _kinds(fx.build_palette(ADMIN))["code"]["available"] is True
+    assert fx.build_palette(ADMIN)["workstation"] == {"available": True, "why": ""}
 
     world.settings["workstation_enabled"] = False
-    palette = fx.build_palette(None)
+    palette = fx.build_palette(ADMIN)
     assert (_kinds(palette)["code"]["available"], _kinds(palette)["code"]["why"]) == (False, OFF_SENTENCE)
     assert palette["workstation"] == {"available": False, "why": OFF_SENTENCE}
 
@@ -184,14 +187,12 @@ def test_code_is_greyed_with_the_workstations_own_sentence(world, monkeypatch):
             return {"can_use_workstation": False}
 
     world.settings["workstation_enabled"] = True
-    monkeypatch.setenv("AUTH_ENABLED", "true")
-    monkeypatch.setattr(src.auth_helpers, "_auth_disabled", lambda: False)
     monkeypatch.setattr(core.auth, "AuthManager", _Auth)
     assert _kinds(fx.build_palette("bob"))["code"]["why"] == NOT_PERMITTED_SENTENCE
 
 
 def test_the_skills_offered_are_the_persons_own(world):
-    palette = fx.build_palette(None)
+    palette = fx.build_palette(ADMIN)
     assert palette["skills"] == [{"name": "print-queue", "description": "Clear the print queue"}]
     assert _kinds(palette)["skill"]["available"] is True
 
@@ -199,15 +200,15 @@ def test_the_skills_offered_are_the_persons_own(world):
 def test_with_no_skill_the_skill_step_is_greyed(world):
     from services.memory.skills import SkillsManager
     import src.constants as constants
-    SkillsManager(constants.DATA_DIR).delete_skill("print-queue")
-    skill = _kinds(fx.build_palette(None))["skill"]
+    SkillsManager(constants.DATA_DIR).delete_skill("print-queue", owner=ADMIN)
+    skill = _kinds(fx.build_palette(ADMIN))["skill"]
     assert (skill["available"], skill["why"]) == (False, fx.NO_SKILLS_SENTENCE)
 
 
 def test_the_limits_and_the_operators_are_the_walkers_and_the_rules(world):
     from src import workflow_runs
     from src.workflow_logic import OPERATORS, OPERATOR_WORDS
-    palette = fx.build_palette(None)
+    palette = fx.build_palette(ADMIN)
     assert palette["limits"] == {"foreach_max_items": workflow_runs.foreach_max_items(None),
                                  "wait_max_hours": workflow_runs.wait_max_hours(),
                                  "parallel_steps": workflow_runs.WORKFLOW_PARALLEL_STEPS}
@@ -216,7 +217,7 @@ def test_the_limits_and_the_operators_are_the_walkers_and_the_rules(world):
 
 def test_the_resources_a_document_is_checked_against(world):
     from src.workflow_document import WorkflowResources
-    res = fx.workflow_resources(None)
+    res = fx.workflow_resources(ADMIN)
     assert isinstance(res, WorkflowResources)
     assert set(res.integrations) == {"intg-1", "intg-2"}
     assert res.integrations["intg-2"]["enabled"] is False
@@ -228,7 +229,7 @@ def test_the_resources_a_document_is_checked_against(world):
     assert res.workstation_why is None
 
     world.settings["workstation_enabled"] = False
-    assert fx.workflow_resources(None).workstation_why == OFF_SENTENCE
+    assert fx.workflow_resources(ADMIN).workstation_why == OFF_SENTENCE
 
 
 def test_a_person_who_is_not_an_admin_reaches_no_integration_and_no_mcp_tool(world, monkeypatch):

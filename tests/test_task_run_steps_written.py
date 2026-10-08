@@ -192,7 +192,6 @@ async def test_the_step_log_reaches_the_wire(task_db, monkeypatch):
     import routes.task_routes as task_routes
 
     monkeypatch.setattr(task_routes, "SessionLocal", task_db)
-    monkeypatch.setenv("AUTH_ENABLED", "false")
     _seed(task_db)
 
     db = task_db()

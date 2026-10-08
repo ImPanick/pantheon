@@ -1,6 +1,6 @@
 # Security Policy
 
-Pantheon is a self-hosted AI workspace with privileged local capabilities. Please do not run it as a public, unauthenticated service.
+Pantheon is a self-hosted AI workspace with privileged local capabilities. It always asks for a sign-in — there is no configuration that serves it without one (`D-2026-10-07-02` §2) — and it is still not meant to face the public internet directly.
 
 ## AI assistance
 
@@ -31,7 +31,7 @@ The more of this you have, the faster it moves. Send what you have; do not wait 
 
 - **The version and the revision.** The version is what `GET /api/version` returns on the instance (see *Supported Versions* below); the revision, from the repository root: `git show -s --abbrev=12 --format='%h (%cs)' HEAD`. Send both — between releases, many commits report the same version.
 - **Install method** — Docker, manual Python, Windows native, macOS app.
-- **The configuration that matters.** At minimum `AUTH_ENABLED`, `LOCALHOST_BYPASS`, whether the instance is reachable beyond localhost, and what sits in front of it.
+- **The configuration that matters.** At minimum: whether registration is on (Settings → Users → *People can sign themselves up*), how many accounts are admins, whether the instance is reachable beyond localhost, and what sits in front of it. Since 0.2.0 `AUTH_ENABLED` and `LOCALHOST_BYPASS` change nothing — sign-in is always on — so a report whose reproduction needs either to be set is a report about a version before 0.2.0; say which.
 - **Reproduction steps**, and what an attacker gets at the end of them.
 - **The starting privilege.** Anonymous, an authenticated non-admin, a chat-scoped API token, or an admin session — these are four different findings and [`THREAT_MODEL.md`](THREAT_MODEL.md) treats them differently.
 - **Which boundary it crosses**, if you can name one from [`THREAT_MODEL.md`](THREAT_MODEL.md). If it crosses none, say so anyway; the threat model may be the thing that is wrong.
@@ -53,7 +53,7 @@ Once a report is confirmed: the fix lands on `main`, the advisory is published w
 These are not vulnerabilities in this project, and saying so up front saves you the work:
 
 - **What an authenticated admin can do by design.** Shell, Python execution, file read/write, mail, MCP and model serving are admin capabilities on purpose — [`THREAT_MODEL.md`](THREAT_MODEL.md) states that boundary and does not try to defend it. An admin session running a shell command is the product working.
-- **A deployment this file told you not to build.** `AUTH_ENABLED=false` on a network-exposed instance, `LOCALHOST_BYPASS=true` behind a proxy, ChromaDB or Ollama published to the internet — see *Deployment Guidance* below.
+- **A deployment this file told you not to build.** Registration left on for a network-exposed instance, ChromaDB or Ollama published to the internet — see *Deployment Guidance* below. (A way to reach Pantheon's app or API **without a sign-in** is never this: it is in scope, whatever the configuration.)
 - **The Known Gaps already listed in [`THREAT_MODEL.md`](THREAT_MODEL.md).** They are on the record. A *new* way to reach one of them, or a consequence worse than the one written down, is in scope and worth reporting.
 - **Third-party dependency advisories**, which belong upstream — with one exception worth sending: if this repository's use of a dependency makes a flaw reachable when it otherwise would not be, that is ours. See *Dependencies* below.
 
@@ -98,14 +98,14 @@ Stated here rather than left for you to find in a scan.
 
 ## Deployment Guidance
 
-- Keep `AUTH_ENABLED=true` for any network-accessible deployment.
-- Keep `LOCALHOST_BYPASS=false` outside local development.
+- Sign-in is always on; there is no switch for it. `AUTH_ENABLED` and `LOCALHOST_BYPASS` are ignored since 0.2.0 and named once in the log if set (`D-2026-10-07-02` §2) — remove them from `.env`. What answers before a sign-in is exactly `app.py`'s `AUTH_EXEMPT_EXACT`, `AUTH_EXEMPT_PREFIXES` and `AUTH_EXEMPT_PATTERNS`: the sign-in page `/login` and the `/static` assets it loads; `/api/auth/login`, `logout` and `status`; `/api/auth/setup` (which refuses once any account exists) and `/api/auth/signup` (which refuses while registration is off); the public reads `/api/auth/features`, `/api/auth/settings` (secrets scrubbed) and `/api/auth/integrations/presets`; `/api/health` and `/api/version`; and `/api/tasks/{id}/webhook/{token}`, whose token is its credential. A bearer API token is a sign-in of its own, a CORS preflight carries no credentials by design, and the agent's own loopback carries a per-process token and is asked about the person it names ([`THREAT_MODEL.md`](THREAT_MODEL.md)).
+- The first run asks for the admin account: in the terminal on a native install (`setup.py`), on the sign-in page when no account exists. A Docker container's first boot makes `admin` and prints a temporary password to the container log unless `PANTHEON_ADMIN_PASSWORD` names one — change it after the first sign-in. Until that account exists, whoever reaches the sign-in page first can claim it, so keep a fresh instance on loopback (`APP_BIND=127.0.0.1`, the default) until it has one.
 - Leave `SECURE_COOKIES` unset unless you need to override it: session cookies are marked `Secure` whenever the request arrives over HTTPS. Set `SECURE_COOKIES=true` to force it on (for a proxy Pantheon cannot see the scheme of), or `SECURE_COOKIES=false` to force it off while you still serve plain HTTP alongside HTTPS.
 - Use HTTPS when exposing the app beyond localhost.
 - Put the authenticated Pantheon web/API entrypoint behind a trusted reverse proxy or private access layer such as Cloudflare Access, Tailscale, or a VPN.
 - Keep ChromaDB, SearXNG, ntfy, Ollama, vLLM, llama.cpp, databases, and raw model/provider APIs internal-only.
 - Protect `.env`, `data/`, `logs/`, uploads, generated media, backups, auth/session files, database files, API keys, and model/provider tokens.
-- Disable open signup unless you intentionally want new accounts.
+- Leave registration off unless you intentionally want strangers to make accounts. It is the one sign-in switch an admin has — Settings → Users → *People can sign themselves up* — and it is off on a new install; an admin adds people under *Add User* either way.
 - Keep demo/test users non-admin, and remove them entirely on serious deployments.
 - Give admin accounts strong passwords and enable 2FA where possible.
 - Leave high-risk agent tools restricted to admins: shell, Python, file read/write, email send/read, MCP, app API, task/skill/memory management, settings, tokens, and model serving.

@@ -1,9 +1,11 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""_owner_filter must separate single-user mode from anonymous callers.
+"""_owner_filter separated single-user mode from anonymous callers.
 
-When AUTH_ENABLED=false, get_current_user returns None and gallery routes should
-stay all-visible. When AUTH_ENABLED=true and no current user resolves, the same
-None means an anonymous caller and gallery queries must fail closed.
+When AUTH_ENABLED=false, get_current_user returned None and gallery routes
+stayed all-visible; with auth on, the same None meant an anonymous caller and
+gallery queries failed closed. There is always authentication now
+(`D-2026-10-07-02` §2), so None is an anonymous caller whatever the variable
+says, and every query for it fails closed.
 """
 import tempfile
 import uuid
@@ -34,13 +36,14 @@ def _seed(*owners):
         db.close()
 
 
-def test_none_user_returns_all_rows(monkeypatch):
+def test_none_user_sees_nothing_whatever_auth_enabled_says(monkeypatch):
+    """Single-user mode returned every row here (3) until `D-2026-10-07-02` §2.
+    `AUTH_ENABLED=false` is ignored now: nobody sees nothing."""
     monkeypatch.setenv("AUTH_ENABLED", "false")
     _seed(None, None, "alice")
     db = _TS()
     try:
-        n = _owner_filter(db.query(GalleryImage), None).count()
-        assert n == 3  # old code returned 0
+        assert _owner_filter(db.query(GalleryImage), None).count() == 0
     finally:
         db.close()
 

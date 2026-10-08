@@ -71,8 +71,13 @@ def task_db(engine_and_db):
 
 
 @pytest.fixture()
-def client(task_db, monkeypatch):
+def client(task_db, monkeypatch, tmp_path):
     import routes.task.task_routes as task_routes
+    from tests.helpers.signed_in import signed_in
+    # alice is the install's admin, signed in. Before `D-2026-10-07-02` §2 an
+    # install with no account answered every owner as an admin, which is what
+    # this fixture leaned on.
+    signed_in(monkeypatch, tmp_path / "auth", admin="alice", members=())
     monkeypatch.setattr(task_routes, "SessionLocal", task_db)
     for name in list(ba.BUILTIN_ACTIONS):
         async def recorder(**kwargs):

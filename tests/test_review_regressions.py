@@ -1264,10 +1264,11 @@ def test_presetup_does_not_grant_admin_tools_when_auth_enabled(monkeypatch):
     assert "python" in blocked
 
 
-def test_single_user_mode_keeps_full_tool_access_when_auth_disabled(monkeypatch):
-    """Intentional single-user mode (AUTH_ENABLED=false) keeps full tool
-    access even with no admin user — this is the default local/self-host UX
-    and must not regress."""
+def test_auth_enabled_false_no_longer_grants_nobody_the_tools_before_setup(monkeypatch):
+    """Intentional single-user mode (AUTH_ENABLED=false) kept full tool access
+    for nobody, with no admin user, until `D-2026-10-07-02` §2: there is always
+    authentication. The variable is ignored, so this is the pre-setup window
+    above with it set — and the server-execution tools stay blocked."""
     monkeypatch.setenv("AUTH_ENABLED", "false")
     auth_mod = _install_core_auth_stub(monkeypatch)
 
@@ -1284,18 +1285,15 @@ def test_single_user_mode_keeps_full_tool_access_when_auth_disabled(monkeypatch)
         owner_is_admin_or_single_user,
     )
 
-    assert owner_is_admin_or_single_user(None) is True
-    assert blocked_tools_for_owner(None) == set()
+    assert owner_is_admin_or_single_user(None) is False
+    assert {"bash", "python"} <= blocked_tools_for_owner(None)
 
 
-def test_auth_disabled_configured_mode_keeps_full_tool_access(monkeypatch):
-    """AUTH_ENABLED=false is still intentional single-user mode after setup.
-
-    Once an admin account exists, AuthManager.is_configured becomes true. The
-    tool gate must still honor explicit auth-disabled mode before requiring an
-    owner/admin match, otherwise agent mode hides email/MCP/local tools from the
-    operator.
-    """
+def test_auth_enabled_false_after_setup_asks_who_the_owner_is(monkeypatch):
+    """AUTH_ENABLED=false after setup once skipped the owner/admin match. It is
+    ignored now (`D-2026-10-07-02` §2): the tool gate asks whether the owner is
+    an admin, and nobody — or an account that is not one — is not. The
+    operator is the install's admin and gets every tool by name."""
     monkeypatch.setenv("AUTH_ENABLED", "false")
     auth_mod = _install_core_auth_stub(monkeypatch)
 
@@ -1303,7 +1301,7 @@ def test_auth_disabled_configured_mode_keeps_full_tool_access(monkeypatch):
         is_configured = True
 
         def is_admin(self, username):
-            return False
+            return username == "operator"
 
     monkeypatch.setattr(auth_mod, "AuthManager", lambda: FakeAuth())
 
@@ -1312,8 +1310,11 @@ def test_auth_disabled_configured_mode_keeps_full_tool_access(monkeypatch):
         owner_is_admin_or_single_user,
     )
 
-    assert owner_is_admin_or_single_user(None) is True
-    assert blocked_tools_for_owner(None) == set()
+    assert owner_is_admin_or_single_user(None) is False
+    assert owner_is_admin_or_single_user("bob") is False
+    assert {"bash", "python"} <= blocked_tools_for_owner(None)
+    assert owner_is_admin_or_single_user("operator") is True
+    assert blocked_tools_for_owner("operator") == set()
 
 
 @pytest.mark.asyncio

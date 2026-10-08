@@ -8,10 +8,10 @@ queries treat None as the single-user mode, i.e. blanket access to every
 account's notes: list everything, read/update/delete/pin/archive any row,
 reorder globally.
 
-require_user() already encodes the correct policy — 401 when auth is
-configured, while the documented anonymous modes (AUTH_ENABLED=false,
-LOCALHOST_BYPASS on loopback, unconfigured first-run) still pass — and
-fire-reminder in the same file already used it. The CRUD routes now resolve
+require_user() already encodes the correct policy — 401 for a request with
+no identity (the anonymous modes it once let through, AUTH_ENABLED=false,
+LOCALHOST_BYPASS on loopback and an unconfigured first run, are gone since
+`D-2026-10-07-02` §2) — and fire-reminder in the same file already used it. The CRUD routes now resolve
 the owner through it too.
 
 Test transport note: these drive the ASGI app through ``httpx.ASGITransport``
@@ -168,10 +168,12 @@ async def test_api_token_pseudo_user_is_rejected(env):
     assert r.status_code == 403
 
 
-async def test_auth_disabled_keeps_single_user_mode_working(monkeypatch, tmp_path):
-    """AUTH_ENABLED=false is the operator's explicit anonymous mode: no
-    identity must still mean full single-user access (issue #622 contract),
-    even with a stale configured auth.json on disk."""
+async def test_auth_enabled_false_is_no_anonymous_mode_any_more(monkeypatch, tmp_path):
+    """AUTH_ENABLED=false was the operator's explicit anonymous mode: no
+    identity meant full single-user access (issue #622 contract), even with a
+    stale configured auth.json on disk. There is always authentication now
+    (`D-2026-10-07-02` §2): the variable is ignored, and a request with no
+    identity is refused before any note is read or written."""
     factory = _temp_db(tmp_path)
     monkeypatch.setattr(nr, "SessionLocal", factory)
     monkeypatch.setenv("AUTH_ENABLED", "false")
@@ -184,6 +186,11 @@ async def test_auth_disabled_keeps_single_user_mode_working(monkeypatch, tmp_pat
     db.close()
 
     async with _client(app) as c:
-        assert [n["id"] for n in (await c.get("/api/notes")).json()["notes"]] == ["n1"]
-        assert (await c.put("/api/notes/n1", json={"title": "still mine"})).status_code == 200
-        assert (await c.post("/api/notes/n1/pin")).status_code == 200
+        assert (await c.get("/api/notes")).status_code == 401
+        assert (await c.put("/api/notes/n1", json={"title": "still mine"})).status_code == 401
+        assert (await c.post("/api/notes/n1/pin")).status_code == 401
+    db = factory()
+    try:
+        assert db.query(Note).filter(Note.id == "n1").one().title == "solo"
+    finally:
+        db.close()

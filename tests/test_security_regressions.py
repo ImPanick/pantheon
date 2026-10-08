@@ -584,10 +584,13 @@ def test_inprocess_pollers_gate(monkeypatch):
         assert _inprocess_pollers_enabled() is True, f"{on!r} should enable"
 
 
-def test_require_user_accepts_loopback_when_unconfigured(monkeypatch):
-    """First-run mode (no users set up yet) must still let loopback
-    callers through — otherwise the install can't bootstrap. Public
-    callers in the same mode are rejected."""
+def test_require_user_refuses_loopback_when_unconfigured(monkeypatch):
+    """First-run mode (no users set up yet) once let a loopback caller
+    through as nobody. The install bootstraps through the sign-in page's
+    first-run form (`/api/auth/setup`, exempt from the middleware), not
+    through `require_user`, so the answer is a refusal (`D-2026-10-07-02`
+    §2: there is always authentication)."""
+    from fastapi import HTTPException
     drop_for_fresh_import(monkeypatch, "src.auth_helpers")   # `B1020`: restored at teardown
     from src import auth_helpers  # noqa: WPS433
 
@@ -610,14 +613,16 @@ def test_require_user_accepts_loopback_when_unconfigured(monkeypatch):
         app = _App()
         client = _LoopClient()
 
-    assert auth_helpers.require_user(_LoopReq()) == ""
+    with pytest.raises(HTTPException) as exc:
+        auth_helpers.require_user(_LoopReq())
+    assert exc.value.status_code == 401
 
 
-def test_require_user_accepts_anyone_when_auth_disabled(monkeypatch):
-    """AUTH_ENABLED=false must let unauthenticated callers through from
-    any host — including the docker bridge / reverse proxy / LAN — so
-    the frontend's global 401 redirect doesn't bounce the user to /login
-    despite the operator turning auth off (issue #622)."""
+def test_require_user_refuses_anyone_unsigned_when_auth_enabled_is_false(monkeypatch):
+    """AUTH_ENABLED=false let unauthenticated callers through from any host
+    (issue #622) until `D-2026-10-07-02` §2. There is always authentication:
+    the variable is ignored and the caller is refused."""
+    from fastapi import HTTPException
     monkeypatch.setenv("AUTH_ENABLED", "false")
     drop_for_fresh_import(monkeypatch, "src.auth_helpers")   # `B1020`: restored at teardown
     from src import auth_helpers  # noqa: WPS433
@@ -643,14 +648,16 @@ def test_require_user_accepts_anyone_when_auth_disabled(monkeypatch):
         app = _App()
         client = _DockerClient()
 
-    assert auth_helpers.require_user(_Req()) == ""
+    with pytest.raises(HTTPException) as exc:
+        auth_helpers.require_user(_Req())
+    assert exc.value.status_code == 401
 
 
-def test_require_user_localhost_bypass_admits_loopback(monkeypatch):
-    """LOCALHOST_BYPASS=true is the dev-only switch that admits loopback
-    callers without an auth cookie. require_user must mirror the auth
-    middleware so routes don't 401 a caller the middleware already let
-    through."""
+def test_require_user_localhost_bypass_admits_nobody(monkeypatch):
+    """LOCALHOST_BYPASS=true admitted a loopback caller without an auth cookie
+    until `D-2026-10-07-02` §2. It is ignored now, by the middleware and by
+    `require_user` alike."""
+    from fastapi import HTTPException
     monkeypatch.setenv("AUTH_ENABLED", "true")
     monkeypatch.setenv("LOCALHOST_BYPASS", "true")
     drop_for_fresh_import(monkeypatch, "src.auth_helpers")   # `B1020`: restored at teardown
@@ -675,7 +682,9 @@ def test_require_user_localhost_bypass_admits_loopback(monkeypatch):
         app = _App()
         client = _LoopClient()
 
-    assert auth_helpers.require_user(_LoopReq()) == ""
+    with pytest.raises(HTTPException) as exc:
+        auth_helpers.require_user(_LoopReq())
+    assert exc.value.status_code == 401
 
 
 def test_require_user_localhost_bypass_still_rejects_lan(monkeypatch):
@@ -771,7 +780,10 @@ def test_require_admin_rejects_unconfigured_public_api(monkeypatch):
     assert exc.value.status_code == 403
 
 
-def test_require_admin_allows_when_auth_explicitly_disabled(monkeypatch):
+def test_require_admin_refuses_nobody_when_auth_enabled_is_false(monkeypatch):
+    """`AUTH_ENABLED=false` returned here for everyone until
+    `D-2026-10-07-02` §2."""
+    from fastapi import HTTPException
     from core.middleware import require_admin
 
     monkeypatch.setenv("AUTH_ENABLED", "false")
@@ -789,10 +801,13 @@ def test_require_admin_allows_when_auth_explicitly_disabled(monkeypatch):
         state = _State()
         app = _App()
 
-    assert require_admin(_Req()) is None
+    with pytest.raises(HTTPException) as exc:
+        require_admin(_Req())
+    assert exc.value.status_code == 403
 
 
-def test_require_admin_uses_central_auth_disabled_parser(monkeypatch):
+def test_require_admin_refuses_nobody_however_auth_enabled_is_spelled(monkeypatch):
+    from fastapi import HTTPException
     from core.middleware import require_admin
 
     monkeypatch.setenv("AUTH_ENABLED", " false ")
@@ -810,7 +825,9 @@ def test_require_admin_uses_central_auth_disabled_parser(monkeypatch):
         state = _State()
         app = _App()
 
-    assert require_admin(_Req()) is None
+    with pytest.raises(HTTPException) as exc:
+        require_admin(_Req())
+    assert exc.value.status_code == 403
 
 
 def test_internal_tool_owner_header_logic_requires_known_user():

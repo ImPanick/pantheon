@@ -86,8 +86,6 @@ class _Auth:
 @pytest.fixture
 def people(monkeypatch):
     import core.auth
-    import src.auth_helpers
-    monkeypatch.setattr(src.auth_helpers, "_auth_disabled", lambda: False)
     monkeypatch.setattr(core.auth, "AuthManager", _Auth)
 
 
@@ -740,10 +738,10 @@ def test_with_the_workstation_off_every_tool_runs_here_as_before(ws, settings, p
     if "workstation_route_tools" in switch:
         _on(settings, ws)
     settings.update(switch)
-    import src.auth_helpers
-    for owner in ("boss", None):
-        # `None` is the single-user owner: auth switched off by the operator.
-        monkeypatch.setattr(src.auth_helpers, "_auth_disabled", lambda: owner is None)
+    # `boss` is the admin. `None` — the single-user owner, auth switched off by
+    # the operator — was a second pass here until `D-2026-10-07-02` §2: there
+    # is always authentication, and a single-user install's owner is `boss`.
+    for owner in ("boss",):
         root = tmp_path / f"off-{owner}"
         root.mkdir()
         root = Path(os.path.realpath(root))
@@ -928,7 +926,6 @@ async def test_the_chat_route_lets_the_workstation_grant_stand_for_can_use_bash(
         def get_privileges(self, username):
             return dict(privs)
 
-    monkeypatch.setattr(src.auth_helpers, "_auth_disabled", lambda: False)
     monkeypatch.setattr(core.auth, "AuthManager", _AliceAuth)
     request = _RouteRequest("agent", privileges=dict(privs))
     request._form["compare_mode"] = "false"

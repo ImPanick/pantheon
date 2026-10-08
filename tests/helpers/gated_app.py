@@ -1,13 +1,14 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""The real app with `AUTH_ENABLED=true`, asked something by three callers.
+"""The real app, signed in or not, asked something by three callers.
 
 `B540`, `B541`, `B370`. Each of those rows is a question about who the real
 app answers — a caller with no session, a signed-in account that is not an
 admin, and the admin — and `Law 20` says the way to answer it is to drive the
 real route through the real `AuthMiddleware` and the real `require_admin`, not
 to read a handler for the word `require_admin`. Half of each answer lives in
-`app.py`'s middleware, which only exists when `AUTH_ENABLED` is true at import,
-so the app is booted out of process exactly as
+`app.py`'s middleware — installed whatever the environment says since
+`D-2026-10-07-02` §2 (it once existed only when `AUTH_ENABLED` was true at
+import) — so the app is booted out of process exactly as
 `tests/test_static_mount_is_not_a_second_front_door.py` (`B262`) and
 `tests/helpers/served_pages.py` (`B212`) boot it.
 
@@ -29,6 +30,9 @@ The caller's probe body runs after that preamble with ``app_module``,
 asks — a probe that lets a hardware detection or an SSH session really run is
 measuring the machine it runs on. Whatever it puts in ``RESULT`` comes back as
 JSON.
+
+The names and the password are `tests/helpers/signed_in.py`'s, the in-process
+half of the same question: one way for a test to be a person.
 """
 import json
 import os
@@ -37,11 +41,9 @@ import sys
 import textwrap
 from pathlib import Path
 
-_REPO = Path(__file__).resolve().parents[2]
+from tests.helpers.signed_in import ADMIN, MEMBER, PASSWORD
 
-ADMIN = "ada"
-MEMBER = "bob"
-PASSWORD = "correct-horse-battery"
+_REPO = Path(__file__).resolve().parents[2]
 
 _PREAMBLE = f'''
 import json, os, sys
@@ -51,9 +53,11 @@ from routes.auth_routes import SESSION_COOKIE
 
 ADMIN, MEMBER = {ADMIN!r}, {MEMBER!r}
 _auth = app_module.auth_manager
-assert _auth.setup(ADMIN, {PASSWORD!r})
-assert _auth.create_user(MEMBER, {PASSWORD!r})
-_tokens = {{name: _auth.create_session_trusted(name) for name in (ADMIN, MEMBER)}}
+_tokens = {{}}
+if ACCOUNTS:
+    assert _auth.setup(ADMIN, {PASSWORD!r})
+    assert _auth.create_user(MEMBER, {PASSWORD!r})
+    _tokens = {{name: _auth.create_session_trusted(name) for name in (ADMIN, MEMBER)}}
 
 def client(who=None, **kwargs):
     """A test client for `who` — `None` is a caller carrying no cookie."""
@@ -66,11 +70,14 @@ CALLERS = (("anonymous", None), ("member", MEMBER), ("admin", ADMIN))
 
 RESULT = {{
     # The premise every assertion rests on: the gate is on, and the two
-    # accounts are what their names say. A probe that booted with auth off
-    # would find every route open and prove nothing.
+    # accounts are what their names say. A probe whose app answered a caller
+    # with no session would find every route open and prove nothing — so the
+    # gate is asked, not read off a flag: a stranger and this machine itself,
+    # each with no session, are refused the chat list.
     "premise": {{
-        "auth_enabled": bool(app_module.AUTH_ENABLED),
-        "localhost_bypass": bool(app_module.LOCALHOST_BYPASS),
+        "auth_enabled": TestClient(app_module.app).get("/api/sessions").status_code == 401,
+        "localhost_bypass": TestClient(app_module.app, client=("127.0.0.1", 50000))
+                            .get("/api/sessions").status_code != 401,
         "admin_is_admin": bool(_auth.is_admin(ADMIN)),
         "member_is_admin": bool(_auth.is_admin(MEMBER)),
     }},
@@ -80,18 +87,21 @@ RESULT = {{
 _EPILOGUE = '\nprint("RESULT=" + json.dumps(RESULT, sort_keys=True))\n'
 
 
-def gated_app_probe(tmp_path, body: str, env_overrides: dict | None = None) -> dict:
-    """Boot the real app gated, run ``body`` with three callers, return ``RESULT``.
+def gated_app_probe(tmp_path, body: str, env_overrides: dict | None = None, *,
+                    accounts: bool = True) -> dict:
+    """Boot the real app, run ``body`` with three callers, return ``RESULT``.
 
-    ``env_overrides`` is applied last — `B1175` boots the same app with
-    ``AUTH_ENABLED=false`` to show a no-login install's owner keeps what it had;
-    ``RESULT["premise"]`` says which app was booted, so a case reads it."""
+    ``env_overrides`` is applied last — `tests/test_there_is_always_authentication.py`
+    boots the same app with each old no-sign-in variable set, to show it is
+    ignored; ``RESULT["premise"]`` says what the booted app answered, so a case
+    reads it. ``accounts=False`` boots a first run: no account exists, and
+    ``client(who)`` is only ``client(None)``."""
     env = os.environ.copy()
     env.update({
+        # Not incidental, though ignored since `D-2026-10-07-02` §2: a tree
+        # that honoured either again would answer a caller with no session,
+        # and the premise above would say so.
         "AUTH_ENABLED": "true",
-        # Not incidental. `_is_trusted_loopback` is false for the test client's
-        # host, but a tree that turned this on by default would answer every
-        # request without ever consulting the session.
         "LOCALHOST_BYPASS": "false",
         "CHROMADB_CONNECT_TIMEOUT": "0.01",
         "CHROMADB_HOST": "127.0.0.1",
@@ -103,7 +113,7 @@ def gated_app_probe(tmp_path, body: str, env_overrides: dict | None = None) -> d
         "PYTHON_DOTENV_DISABLED": "1",
     })
     env.update(env_overrides or {})
-    source = _PREAMBLE + textwrap.dedent(body) + _EPILOGUE
+    source = f"ACCOUNTS = {bool(accounts)!r}\n" + _PREAMBLE + textwrap.dedent(body) + _EPILOGUE
     result = subprocess.run([sys.executable, "-c", source], cwd=str(_REPO), env=env,
                             capture_output=True, text=True, timeout=600, check=False)
     assert result.returncode == 0, result.stderr[-4000:]

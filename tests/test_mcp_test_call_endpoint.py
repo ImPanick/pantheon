@@ -297,8 +297,7 @@ def test_a_non_admin_cannot_reach_it():
         async def json(self):
             return {"tool": "echo"}
 
-    with mock.patch("routes.mcp.mcp_routes.SessionLocal", _db()), \
-            mock.patch("core.middleware.auth_disabled", return_value=False):
+    with mock.patch("routes.mcp.mcp_routes.SessionLocal", _db()):
         with pytest.raises(HTTPException) as caught:
             asyncio.run(endpoint(server_id="abcd1234", request=_Stranger()))
     assert caught.value.status_code == 403

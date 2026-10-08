@@ -21,9 +21,10 @@ Settings has three routes, and who may call each is the row:
                                  is nothing to tamper with. The panel asks
                                  first.
 
-**Gated with `require_user` and `require_admin`, nothing hand-rolled.** Only
-`require_admin` honours `auth_disabled()` (`B543`), and a further way of asking
-"is this an admin" is what `.pantheon/check-auth-map.py` rule C ratchets. The
+**Gated with `require_user` and `require_admin`, nothing hand-rolled.** A
+further way of asking "is this an admin" is what `.pantheon/check-auth-map.py`
+rule C ratchets. (`require_admin` also once honoured an auth-off install,
+`B543`; there is none now, `D-2026-10-07-02` §2.) The
 status answer needs to know whether to include the admin's view, so it asks
 `require_admin` and treats a 403 as "no" (`_caller_is_admin`); both sites are
 mapped in `.pantheon/P11-AUTH-MAP.md`. `require_user` refuses a bearer API

@@ -210,8 +210,10 @@ def test_the_held_sites_are_still_held_and_still_mean_what_they_meant(monkeypatc
     `PANTHEON_SINGLE_USER` were not narrow, they were *wrong* — an operator
     typed the disabling value and the switch stayed on. Those two are corrected
     with a release note, and the behaviour they have now is asserted in
-    `tests/test_env_boundaries.py` rather than here. The remaining seven are
-    held, and the direction of each is what this pins."""
+    `tests/test_env_boundaries.py` rather than here. The remaining seven were
+    held; `LOCALHOST_BYPASS` has since left the list too — it opens nothing
+    under any spelling (`D-2026-10-07-02` §2, the test below) — so six are, and
+    the direction of each is what this pins."""
     import src.caldav_sync
     monkeypatch.setenv("PANTHEON_ALLOW_PRIVATE_CALDAV", "on")
     assert os.environ.get("PANTHEON_ALLOW_PRIVATE_CALDAV", "0").lower() \
@@ -221,18 +223,27 @@ def test_the_held_sites_are_still_held_and_still_mean_what_they_meant(monkeypatc
         in {"1", "true", "yes"}
 
 
-def test_localhost_bypass_is_still_deaf_to_everything_but_true(monkeypatch):
-    """`.pantheon/FORBIDDEN.md` Part 2 names this control. Widening it would turn
-    an auth bypass ON for every host already carrying `LOCALHOST_BYPASS=1`."""
-    import src.auth_helpers
-    for raw in ("1", "yes", "on"):
+def test_localhost_bypass_opens_nothing_whatever_it_says(monkeypatch):
+    """`.pantheon/FORBIDDEN.md` Part 2 names this control: *localhost bypass
+    off*. It was held to the literal `true` (`B91`) because widening it would
+    have turned an auth bypass ON for every host carrying `LOCALHOST_BYPASS=1`.
+    `D-2026-10-07-02` §2 closed it for every spelling — there is always
+    authentication — so the question is no longer which word opens it but
+    whether any does: a request from this machine with nobody on it is refused
+    under each, `true` included."""
+    from types import SimpleNamespace
+    from fastapi import HTTPException
+    from src.auth_helpers import require_user
+    for raw in ("1", "yes", "on", "true", "TRUE"):
         monkeypatch.setenv("LOCALHOST_BYPASS", raw)
-        assert os.getenv("LOCALHOST_BYPASS", "false").lower() != "true"
-    monkeypatch.setenv("LOCALHOST_BYPASS", "true")
-    assert os.getenv("LOCALHOST_BYPASS", "false").lower() == "true"
-    assert "env-spelling" in open(src.auth_helpers.__file__, encoding="utf-8").read(), (
-        "and the hold carries its reason where a reader will find it"
-    )
+        loopback = SimpleNamespace(
+            state=SimpleNamespace(current_user=None, api_token=False),
+            app=SimpleNamespace(state=SimpleNamespace(
+                auth_manager=SimpleNamespace(is_configured=True))),
+            client=SimpleNamespace(host="127.0.0.1"))
+        with pytest.raises(HTTPException) as caught:
+            require_user(loopback)
+        assert caught.value.status_code == 401, raw
 
 
 # ── B90: a stored False that beats a truthy environment ────────────────────

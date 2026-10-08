@@ -459,10 +459,10 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
     #
     # They gate with `core.middleware.require_admin` rather than this module's
     # inline `_get_current_user(...) + is_admin(...)` pattern, on purpose.
-    # Only `require_admin` consults `auth_disabled()` (`B543`,
-    # `.pantheon/P11-AUTH-MAP.md`), so the inline one refuses the single
-    # operator of an auth-disabled box access to their own role catalogue; and
-    # `check-auth-map.py`'s rule C ratchets the count of admin decisions taken
+    # `require_admin` is the one gate that knows the internal-tool loopback and
+    # the person it names (`B1175`) — it was also the only one that consulted
+    # an auth-off install (`B543`) until there was none (`D-2026-10-07-02` §2);
+    # and `check-auth-map.py`'s rule C ratchets the count of admin decisions taken
     # some other way, which may fall and may not rise. Both reasons point the
     # same way.
 

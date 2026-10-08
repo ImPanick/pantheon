@@ -1,12 +1,12 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression tests for auth-disabled document access (PR #4623).
 
-Validates that the _auth_disabled() bypass in _verify_doc_owner and
-list_documents restores single-user / no-auth mode WITHOUT weakening the
-authenticated path.  Three pinned directions:
+Validated that the _auth_disabled() bypass in _verify_doc_owner and
+list_documents restored single-user / no-auth mode without weakening the
+authenticated path. `D-2026-10-07-02` §2 retired that mode — there is always
+authentication — so the first direction is reversed. Three pinned directions:
 
-  1. AUTH_DISABLED + None user -> list_documents + doc read SUCCEEDS
-     (the bug being fixed).
+  1. AUTH_ENABLED=false + None user -> still refused: the variable is ignored.
   2. AUTH_ENABLED  + None user -> still 403.
   3. AUTH_ENABLED  + wrong owner -> _verify_doc_owner still raises 404/403.
 
@@ -95,66 +95,63 @@ def _seed(owner="alice"):
         db.close()
 
 
-# ------------------------------------------------------ 1. auth DISABLED +
-#                                                      None user -> succeeds
+# ------------------------------------------------------ 1. AUTH_ENABLED=false
+#                                                 + None user -> still refused
+#
+# Until `D-2026-10-07-02` §2 these four asserted the PR #4623 bypass: with
+# `AUTH_ENABLED=false` a request with nobody on it read every document. There
+# is always authentication now, so the variable changes nothing and each of
+# the four refuses exactly as section 2 does with the variable unset.
 
 
 @pytest.mark.asyncio
-async def test_list_documents_allows_none_user_when_auth_disabled(monkeypatch):
-    """AUTH_ENABLED=false + user=None must NOT raise 403 on list_documents."""
+async def test_list_documents_refuses_none_user_when_auth_enabled_is_false(monkeypatch):
     monkeypatch.setenv("AUTH_ENABLED", "false")
     previous = _bind_test_db()
     try:
         list_docs = _endpoint("GET", "/api/documents/{session_id}")
-        session_id, doc_id = _seed()
-
-        # Must succeed — this is the bug fix.
-        rows = await list_docs(_req(None), session_id)
-        ids = [row["id"] for row in rows]
-        assert doc_id in ids, "own doc must be visible in auth-disabled mode"
+        session_id, _doc_id = _seed()
+        with pytest.raises(HTTPException) as exc:
+            await list_docs(_req(None), session_id)
+        assert exc.value.status_code == 403
     finally:
         droutes.SessionLocal = previous
 
 
 @pytest.mark.asyncio
-async def test_get_document_allows_none_user_when_auth_disabled(monkeypatch):
-    """AUTH_ENABLED=false + user=None must NOT raise 403 on get_document."""
+async def test_get_document_refuses_none_user_when_auth_enabled_is_false(monkeypatch):
     monkeypatch.setenv("AUTH_ENABLED", "false")
     previous = _bind_test_db()
     try:
         get_doc = _endpoint("GET", "/api/document/{doc_id}")
         _session_id, doc_id = _seed()
-
-        # Must succeed — _verify_doc_owner bypasses when auth is disabled.
-        result = await get_doc(_req(None), doc_id)
-        assert result["id"] == doc_id
+        with pytest.raises(HTTPException) as exc:
+            await get_doc(_req(None), doc_id)
+        assert exc.value.status_code == 403
     finally:
         droutes.SessionLocal = previous
 
 
-def test_verify_doc_owner_allows_none_user_when_auth_disabled(monkeypatch):
-    """_verify_doc_owner with user=None + AUTH_ENABLED=false must pass."""
+def test_verify_doc_owner_refuses_none_user_when_auth_enabled_is_false(monkeypatch):
     monkeypatch.setenv("AUTH_ENABLED", "false")
     _session_id, doc_id = _seed()
     db = _TS()
     try:
         doc = db.query(Document).filter(Document.id == doc_id).first()
-        # Must NOT raise — the bypass allows single-user access.
-        _verify_doc_owner(db, doc, None)
+        with pytest.raises(HTTPException) as exc:
+            _verify_doc_owner(db, doc, None)
+        assert exc.value.status_code == 403
     finally:
         db.close()
 
 
-def test_owner_session_filter_noops_for_none_user_when_auth_disabled(monkeypatch):
-    """_owner_session_filter with user=None + AUTH_ENABLED=false returns query unchanged."""
+def test_owner_session_filter_shows_none_user_nothing_when_auth_enabled_is_false(monkeypatch):
     monkeypatch.setenv("AUTH_ENABLED", "false")
     _session_id, doc_id = _seed()
     db = _TS()
     try:
         q = db.query(Document).filter(Document.id == doc_id)
-        result = _owner_session_filter(q, None)
-        # Filter was a no-op; document is still reachable.
-        assert result.first().id == doc_id
+        assert _owner_session_filter(q, None).first() is None
     finally:
         db.close()
 

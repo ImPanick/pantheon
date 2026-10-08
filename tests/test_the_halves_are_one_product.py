@@ -44,6 +44,7 @@ from tests.helpers.walker_harness import (  # noqa: E402
     app_for, arrow, client_for, make_db, node, records_of, recording_scheduler, row, runs_of,
     seed_workflow,
 )
+from tests.helpers.signed_in import signed_in  # noqa: E402
 
 ENDPOINT = dict(model="scripted", endpoint_url="http://127.0.0.1:9/v1")
 SEND = "mcp__chat__send_message"
@@ -235,13 +236,14 @@ def test_the_save_door_asks_the_step_a_for_each_repeats(factory, monkeypatch):
 # ── Test this step: the plan of an HTTP step ──────────────────────────────────
 
 @pytest.mark.asyncio
-async def test_testing_an_http_step_shows_the_documents_own_plan(factory, monkeypatch):
+async def test_testing_an_http_step_shows_the_documents_own_plan(factory, monkeypatch, tmp_path):
     """It said "Would send this task's prompt to a model, with tools." for an
     HTTP, MCP or Code step: the route asked `dry_run_plan(task_type=kind)`."""
     import src.integrations as integrations
     from src import workflow_document as wd
     from src import workflow_effects as we
-    monkeypatch.setenv("AUTH_ENABLED", "false")
+    # `root` is the install's admin, signed in (`D-2026-10-07-02` §2).
+    signed_in(monkeypatch, tmp_path / "auth", admin="root", members=())
     monkeypatch.setattr(integrations, "load_integrations", lambda: [
         {"id": "int1", "name": "Miniflux", "enabled": True, "base_url": "http://miniflux.lan",
          "api_key": "k", "preset": "miniflux", "description": ""}])
@@ -272,7 +274,8 @@ def loop_world(monkeypatch, tmp_path):
     from src.task_scheduler import TaskScheduler
 
     factory = make_db(monkeypatch, tmp_path / "ai.db")
-    monkeypatch.setenv("AUTH_ENABLED", "false")
+    # `root` is the install's admin, signed in (`D-2026-10-07-02` §2).
+    signed_in(monkeypatch, tmp_path / "auth", admin="root", members=())
     tool_approval_store._pending.clear()
     script, seen, executed = [], [], []
 

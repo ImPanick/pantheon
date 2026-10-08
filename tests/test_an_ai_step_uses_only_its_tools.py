@@ -21,6 +21,7 @@ import src.agent_loop as al
 from src.agent_tools import ToolBlock
 from src.tool_execution import NO_TOOL_SECURITY_CONTEXT, execute_tool_block
 from src.tool_policy import ToolPolicy
+from tests.helpers.signed_in import signed_in
 
 STEP_TOOLS = {"web_search", "web_fetch"}
 
@@ -314,9 +315,10 @@ def chat_mcp(monkeypatch):
     engine.dispose()
 
 
-def test_an_admin_picks_from_the_built_ins_and_the_switched_on_mcp_tools(monkeypatch, chat_mcp):
+def test_an_admin_picks_from_the_built_ins_and_the_switched_on_mcp_tools(monkeypatch, chat_mcp, tmp_path):
     from src.workflow_effects import ai_tool_choices
-    monkeypatch.setenv("AUTH_ENABLED", "false")
+    # `local` is the install's admin, signed in (`D-2026-10-07-02` §2).
+    signed_in(monkeypatch, tmp_path / "auth", admin="local", members=())
     choices = {c["name"]: c for c in ai_tool_choices("local")}
     assert choices["web_search"] == {"name": "web_search", "label": "web search", "kind": "builtin"}
     assert "bash" in choices
@@ -325,10 +327,10 @@ def test_an_admin_picks_from_the_built_ins_and_the_switched_on_mcp_tools(monkeyp
     assert "mcp__chat__delete_channel" not in choices
 
 
-def test_a_tool_switched_off_for_everyone_is_not_offered(monkeypatch, chat_mcp):
+def test_a_tool_switched_off_for_everyone_is_not_offered(monkeypatch, chat_mcp, tmp_path):
     import src.settings as settings
     from src.workflow_effects import ai_tool_choices
-    monkeypatch.setenv("AUTH_ENABLED", "false")
+    signed_in(monkeypatch, tmp_path / "auth", admin="local", members=())
     real = settings.get_setting
     monkeypatch.setattr(settings, "get_setting", lambda key, default=None: (
         ["web_fetch", "mcp__chat__send_message"] if key == "disabled_tools" else real(key, default)))

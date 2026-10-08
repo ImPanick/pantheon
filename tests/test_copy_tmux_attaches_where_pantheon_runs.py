@@ -260,6 +260,11 @@ def test_the_container_command_runs_as_the_uid_whose_socket_holds_the_session():
 
 
 def _client(monkeypatch, *, in_container=True, auth=None):
+    """The shell routes, asked by a person the app knows. ``auth`` is the set
+    of admins; ``None`` is the single-user install — its one account, `ada`,
+    the admin — who asks unless a request names someone else in
+    ``x-test-user``. (It was `AUTH_ENABLED=false` and nobody until
+    `D-2026-10-07-02` §2: there is always authentication.)"""
     pytest.importorskip("starlette.testclient")
     from fastapi import FastAPI
     from starlette.testclient import TestClient
@@ -268,16 +273,14 @@ def _client(monkeypatch, *, in_container=True, auth=None):
 
     monkeypatch.setattr(tmux_attach, "running_in_container", lambda: in_container)
     app = FastAPI()
-    if auth is None:
-        monkeypatch.setenv("AUTH_ENABLED", "false")
-    else:
-        monkeypatch.delenv("AUTH_ENABLED", raising=False)
-        app.state.auth_manager = SimpleNamespace(is_configured=True, is_admin=lambda u: u in auth)
+    default = "ada" if auth is None else None
+    admins = {"ada"} if auth is None else auth
+    app.state.auth_manager = SimpleNamespace(is_configured=True, is_admin=lambda u: u in admins)
 
-        @app.middleware("http")
-        async def _who(request, call_next):
-            request.state.current_user = request.headers.get("x-test-user")
-            return await call_next(request)
+    @app.middleware("http")
+    async def _who(request, call_next):
+        request.state.current_user = request.headers.get("x-test-user", default)
+        return await call_next(request)
 
     app.include_router(setup_shell_routes())
     return TestClient(app, raise_server_exceptions=False)

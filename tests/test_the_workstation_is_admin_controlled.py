@@ -608,15 +608,23 @@ def test_reset_resets_the_callers_home_and_nobody_elses(app, ws):
 
 # ── one person, one account ──────────────────────────────────────────────────
 
-def test_no_login_mode_is_one_account_whichever_spelling_arrives(app, ws, monkeypatch):
+def test_auth_enabled_false_is_no_login_mode_any_more(app, ws, monkeypatch):
+    """`AUTH_ENABLED=false` was no-login mode: every spelling of nobody — and
+    `ada` too — was one account, the single-user owner's, and a request with
+    nobody on it was the admin. There is always authentication now
+    (`D-2026-10-07-02` §2): with the variable still set, ada is her own account,
+    nobody is still the nobody account (never a person's), and a request with
+    nobody on it is refused the workstation."""
     from src.owner_identity import DEFAULT_LOCAL_OWNER
     monkeypatch.setenv("AUTH_ENABLED", "false")
-    spellings = {wa.account_of(o) for o in (None, "", "  ", DEFAULT_LOCAL_OWNER, "ada")}
-    assert spellings == {account_for(None)}
+    nobody = {wa.account_of(o) for o in (None, "", "  ", DEFAULT_LOCAL_OWNER)}
+    assert nobody == {account_for(None)}
+    assert wa.account_of(ADMIN) != account_for(None)
     switch_on(app, ws)
-    status = as_user(app, None).get("/api/workstation/status").json()
+    assert as_user(app, None).get("/api/workstation/status").status_code == 401
+    status = as_user(app, ADMIN).get("/api/workstation/status").json()
     assert status["is_admin"] is True and status["may_use"] is True
-    assert status["you"]["account"] == account_for(None)
+    assert status["you"]["account"] == wa.account_of(ADMIN)
     assert status["state"] == wa.STATE_UP
 
 
@@ -625,9 +633,9 @@ def test_with_auth_on_two_people_are_two_accounts(monkeypatch):
     monkeypatch.setenv("AUTH_ENABLED", "true")
     assert wa.account_of(ALLOWED) != wa.account_of(ALSO)
     assert wa.account_of(" cy ") == wa.account_of(ALLOWED)
-    # The reserved local bucket is no login's (`RESERVED_AUTH_USERNAMES`), so
-    # with auth on it is still the single-user account, never an account of
-    # its own that a later switch to no-login mode would strand.
+    # The reserved local bucket was no login's (`RESERVED_AUTH_USERNAMES`), so
+    # it is the nobody account, never an account of its own that a person
+    # could be handed.
     assert wa.account_of(DEFAULT_LOCAL_OWNER) == account_for(None)
 
 

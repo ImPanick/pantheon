@@ -606,8 +606,7 @@ def test_a_non_admin_cannot_write_one():
         async def json(self):
             return {"overrides": {"wipe": {"read_only": True}}}
 
-    with mock.patch("routes.mcp.mcp_routes.SessionLocal", Factory), \
-            mock.patch("core.middleware.auth_disabled", return_value=False):
+    with mock.patch("routes.mcp.mcp_routes.SessionLocal", Factory):
         with pytest.raises(HTTPException) as caught:
             asyncio.run(endpoint(server_id="srv1", request=_Stranger()))
     assert caught.value.status_code == 403

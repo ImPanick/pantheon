@@ -8,7 +8,8 @@ This page keeps the detailed install, deployment, troubleshooting, and configura
 
 Defaults work out of the box: clone, run, then configure models/search/email
 inside **Settings**. Only edit `.env` for deployment-level overrides like
-`APP_BIND`, `APP_PORT`, `AUTH_ENABLED`, `DATABASE_URL`, or a pre-seeded admin password.
+`APP_BIND`, `APP_PORT`, `DATABASE_URL`, or a pre-seeded admin password. (Sign-in is always on;
+there is no `.env` switch for it since 0.2.0.)
 
 On first setup, Pantheon creates an admin account (`admin` unless
 `PANTHEON_ADMIN_USER` is set) and prints a temporary password in the terminal.
@@ -131,8 +132,9 @@ PANTHEON_HOST=0.0.0.0 ./start-macos.sh
 The script also reads `.env` at startup, so `APP_BIND=0.0.0.0` and `APP_PORT`
 set there are picked up automatically without a command-line override each run.
 
-Keep `AUTH_ENABLED=true` (the default) before binding outside loopback. Do not
-expose this port directly to the public internet. To build a clickable app wrapper:
+Make the admin account before binding outside loopback — until it exists, whoever
+reaches the sign-in page first creates it. Do not expose this port directly to the
+public internet. To build a clickable app wrapper:
 
 ```bash
 ./build-macos-app.sh
@@ -478,8 +480,8 @@ powershell -ExecutionPolicy Bypass -File .\launch-windows.ps1 -BindHost 0.0.0.0
 ```
 
 The manual `uvicorn` command takes the same address as `--host 0.0.0.0`. Bind
-outside loopback only for a trusted LAN/VPN such as Tailscale: keep
-`AUTH_ENABLED=true` and do not expose the port directly to the public internet.
+outside loopback only for a trusted LAN/VPN such as Tailscale, once the admin account
+exists, and do not expose the port directly to the public internet.
 
 **Requirements:** Python 3.11+. The core app (chat, agent, memory, documents,
 email, calendar, deep research) runs fully native. For full **Forge** background
@@ -520,7 +522,8 @@ To expose Pantheon on a local network or Tailscale with HTTPS:
 ### Common self-host traps (30-second fixes)
 A grab-bag of small gotchas that otherwise turn into long debugging sessions.
 
-- **`AUTH_ENABLED=false` is ignored / you're still forced to log in (Windows).** If you edited `.env` in Notepad it may have saved a UTF-8 **BOM**, turning the first key into `﻿AUTH_ENABLED` so it is never matched. Pantheon loads `.env` with `encoding="utf-8-sig"` to tolerate a leading BOM, but the safe fix is to re-save `.env` as **UTF-8 without BOM** (VS Code: *Save with Encoding → UTF-8*).
+- **You're asked to sign in although `.env` says `AUTH_ENABLED=false`.** That is the product since 0.2.0: there is always a sign-in, and the variable is ignored (the log says so once at start). The first run asks for the admin account. Whether other people may make their own accounts is Settings → Users → *People can sign themselves up*, off by default.
+- **The first setting in `.env` is ignored (Windows).** If you edited `.env` in Notepad it may have saved a UTF-8 **BOM**, turning the first key into `﻿APP_BIND` (say) so it is never matched. Pantheon loads `.env` with `encoding="utf-8-sig"` to tolerate a leading BOM, but the safe fix is to re-save `.env` as **UTF-8 without BOM** (VS Code: *Save with Encoding → UTF-8*).
 - **macOS: the app isn't at `http://localhost:7000`.** macOS AirPlay Receiver usually holds port `7000`, so the macOS start script serves on **`7860`** instead — open `http://localhost:7860`. To use `7000`, free it (System Settings → General → AirDrop & Handoff → turn off *AirPlay Receiver*) and set `APP_PORT=7000`.
 - **Copy buttons do nothing over a plain-HTTP Tailscale/LAN URL.** Browsers only expose the clipboard API (`navigator.clipboard`) on **secure origins** — HTTPS, or `localhost`. Over `http://100.x.y.z:7860` it is blocked. Serve over HTTPS (see *HTTPS + LAN/Tailscale exposure* above); `localhost` is exempt, so copy still works on the host itself.
 - **Self-hosted ntfy reminders don't reach your phone.** Two things: (1) the bundled ntfy binds to loopback by default — to reach it from your phone set `NTFY_BIND` to your host/Tailscale IP and `NTFY_BASE_URL` to the same server URL in `.env`, then recreate the ntfy container (see the `NTFY_*` block in `.env.example`); (2) in the ntfy **Android** app, subscribe to the topic with **Instant delivery** enabled — non-`ntfy.sh` servers don't get instant push otherwise.
@@ -574,8 +577,7 @@ current limitation and the planned integration direction.
 ## Security Notes
 Pantheon is a self-hosted workspace with powerful local tools: shell access, file uploads, model downloads, web research, email/calendar integrations, and API tokens. Treat it like an admin console.
 
-- Keep `AUTH_ENABLED=true` for any network-accessible deployment.
-- Keep `LOCALHOST_BYPASS=false` outside local development.
+- Sign-in is always on (`D-2026-10-07-02` §2); `AUTH_ENABLED` and `LOCALHOST_BYPASS` are ignored. Make the admin account before the instance is reachable from anywhere but this machine, and leave registration (Settings → Users) off unless you want strangers to make accounts.
 - Leave `SECURE_COOKIES` unset unless you need to override it: session cookies are marked `Secure` whenever the request arrives over HTTPS. Use `SECURE_COOKIES=true` to force it on for a proxy whose scheme Pantheon cannot see, or `SECURE_COOKIES=false` to force it off while you still serve plain HTTP alongside HTTPS.
 - Do not expose it directly to the public internet without HTTPS and a trusted reverse proxy or private access layer.
 - Keep `.env`, `data/`, `logs/`, databases, uploads, generated media, backups, auth/session files, API keys, and model/provider tokens out of Git and private shares. They are ignored by default.
@@ -604,7 +606,7 @@ Pantheon serves plain HTTP on its app port. Docker Compose binds Pantheon and th
 3. Put the authenticated Pantheon web/API entrypoint behind that layer.
 4. Keep raw service and model ports internal-only.
 
-Cloudflare Access, Tailscale, Caddy, nginx, and Traefik can all fit this pattern; none are required by Pantheon. If your access layer reaches Pantheon on the same host, proxy to `http://127.0.0.1:7000` and keep `AUTH_ENABLED=true` and `LOCALHOST_BYPASS=false`. Any proxy that forwards `X-Forwarded-Proto: https` gets `Secure` session cookies without configuration, so `SECURE_COOKIES` only needs setting when you want to override that — force it on for a proxy that forwards no scheme at all, or off while you still serve plain HTTP.
+Cloudflare Access, Tailscale, Caddy, nginx, and Traefik can all fit this pattern; none are required by Pantheon. If your access layer reaches Pantheon on the same host, proxy to `http://127.0.0.1:7000`; a request the proxy forwards from loopback signs in like any other. Any proxy that forwards `X-Forwarded-Proto: https` gets `Secure` session cookies without configuration, so `SECURE_COOKIES` only needs setting when you want to override that — force it on for a proxy that forwards no scheme at all, or off while you still serve plain HTTP.
 `ALLOWED_ORIGINS` lists exact permitted origins for cross-origin browser/API clients; ordinary same-origin reverse-proxy access usually does not need a special CORS entry.
 
 #### Faster over the network: HTTP/2
@@ -786,9 +788,10 @@ Case does not matter and surrounding spaces are ignored. Anything else — an em
 word not in those lists — means *not set*, and the switch keeps its documented default: a
 variable you never set and a variable you set to nothing are the same thing.
 
-Nine switches keep their own older rule because changing them would flip a running deployment.
-They are listed at the top of `.env.example`, and `AUTH_ENABLED` is the one to know: only the
-literal `false` disables authentication, so `AUTH_ENABLED=0` leaves it **on**.
+Six switches keep their own older rule because changing them would flip a running deployment.
+They are listed at the top of `.env.example`. `AUTH_ENABLED`, `LOCALHOST_BYPASS` and
+`PANTHEON_SINGLE_USER` are not switches any more: there is always a sign-in, and each is ignored
+(named once in the log if set).
 
 Key settings:
 
@@ -805,8 +808,8 @@ Key settings:
 | `APP_PORT` | `7000` | Docker Compose host port for the web UI. |
 | `APP_DATA_DIR` | `./data` | Docker Compose host directory for application data volumes. |
 | `APP_LOGS_DIR` | `./logs` | Docker Compose host directory for application logs. |
-| `AUTH_ENABLED` | `true` | Enable/disable login |
-| `LOCALHOST_BYPASS` | `false` | Development-only auth bypass for loopback requests. Keep false for shared/network deployments. |
+| `AUTH_ENABLED` | — | Ignored since 0.2.0: sign-in is always on. Named once in the log if set. |
+| `LOCALHOST_BYPASS` | — | Ignored since 0.2.0: a request from this machine signs in like any other. Named once in the log if set. |
 | `ALLOWED_ORIGINS` | `http://localhost,http://127.0.0.1` | Comma-separated exact permitted origins for cross-origin browser/API clients. |
 | `SECURE_COOKIES` | derived from the request scheme | Marks session cookies `Secure` on HTTPS requests. Set true to force it on, false to force it off. |
 | `DATABASE_URL` | `sqlite:///./data/app.db` | Database connection string |

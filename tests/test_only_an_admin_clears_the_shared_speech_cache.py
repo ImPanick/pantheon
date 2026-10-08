@@ -112,17 +112,19 @@ class _Service:
         self.cleared += 1
 
 
-def test_a_no_login_install_still_clears_it(monkeypatch):
-    """The other single-user shape: `AUTH_ENABLED=false`, no accounts at all,
-    no middleware. The route is driven over HTTP with nothing in front of it,
-    which is exactly what that install runs."""
+def test_auth_enabled_false_no_longer_clears_it_for_nobody(monkeypatch):
+    """The other single-user shape was `AUTH_ENABLED=false`, no accounts at all,
+    no middleware — and this cleared the cache for whoever asked. There is
+    always authentication now (`D-2026-10-07-02` §2): the same request, with
+    nothing in front of the route and the variable still set, is refused, and a
+    single-user install's owner clears it as the admin it is (above)."""
     monkeypatch.setenv("AUTH_ENABLED", "false")
     service = _Service()
     app = FastAPI()
     app.include_router(setup_tts_routes(service))
     res = TestClient(app).post("/api/tts/clear-cache")
-    assert res.status_code == 200, res.text
-    assert service.cleared == 1
+    assert res.status_code == 403, res.text
+    assert service.cleared == 0
 
 
 def test_the_gate_is_the_handler_s_own_and_not_only_the_middleware_s(monkeypatch):

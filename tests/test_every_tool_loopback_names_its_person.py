@@ -186,11 +186,11 @@ def tool(label, owner):
 
 
 WHO = {"bob": MEMBER, "ada": ADMIN, "nobody": None, "local owner": "__pantheon_local__"}
-RESULT["auth_enabled"] = bool(app_module.AUTH_ENABLED)
+RESULT["auth_enabled"] = RESULT["premise"]["auth_enabled"]
 RESULT["tools"] = {label: {name: tool(name, who) for name in TOOLS}
                    for label, who in WHO.items()}
 
-if app_module.AUTH_ENABLED:
+if RESULT["auth_enabled"]:
     # The reference answer: what each person gets in person.
     def in_person(who):
         c = client(who)
@@ -326,9 +326,12 @@ def gated(tmp_path_factory):
 
 
 @pytest.fixture(scope="module")
-def no_login(tmp_path_factory):
+def auth_enabled_false(tmp_path_factory):
+    """The same app booted with `AUTH_ENABLED=false` — a no-login install until
+    `D-2026-10-07-02` §2, the gated one now."""
     return gated_app_probe(tmp_path_factory.mktemp("b1179-off"), _PROBE,
-                           env_overrides={"AUTH_ENABLED": "false"})
+                           env_overrides={"AUTH_ENABLED": "false",
+                                          "BACKGROUND_TASK_FOREGROUND_GATE": "0"})
 
 
 def test_the_app_is_gated_and_bob_is_refused_the_forge_in_person(gated):
@@ -465,15 +468,27 @@ def test_a_call_naming_nobody_is_still_pantheon_itself(gated):
         ["GET", "/api/cookbook/state", 403, "__pantheon_local__"]]
 
 
-def test_a_no_login_install_keeps_what_it_had(no_login):
-    """`AUTH_ENABLED=false`: no middleware, `require_admin` passes, and whoever
-    a tool call names reads the Forge as before."""
-    assert no_login["auth_enabled"] is False
-    for label in ("bob", "nobody", "local owner"):
-        for name in ("list_serve_presets", "list_cookbook_servers", "list_downloads"):
-            row = no_login["tools"][label][name]
-            assert row["out"]["exit_code"] == 0, (label, name, row["out"])
-            assert {r[2] for r in row["reached"]} == {200}, (label, name, row["reached"])
+def test_auth_enabled_false_is_the_gated_install(auth_enabled_false):
+    """`AUTH_ENABLED=false` was no middleware and a `require_admin` that passed,
+    so whoever a tool call named read the Forge — and the shell's own gate
+    refused everyone (`B1181`). There is always authentication now
+    (`D-2026-10-07-02` §2): with the variable set, bob's assistant is refused
+    where bob is, ada's reads, the lifecycle loop — naming nobody — still
+    reaches the shell at window-end, and the shell answers ada and her
+    loopback, exactly as on the gated install above."""
+    off = auth_enabled_false
+    assert off["auth_enabled"] is True
+    for name in ("list_serve_presets", "list_cookbook_servers", "list_downloads"):
+        bob = off["tools"]["bob"][name]
+        assert bob["out"]["exit_code"] == 1 and bob["reached"][0][2] == 403, (name, bob)
+        ada = off["tools"]["ada"][name]
+        assert ada["out"]["exit_code"] == 0 and {r[2] for r in ada["reached"]} == {200}, (name, ada)
+    assert off["in_person"]["ada"]["POST /api/shell/exec"] == 200
+    assert off["in_person"]["bob"]["POST /api/shell/exec"] == 403
+    assert off["raw_shell"]["ada"]["out"] == 200 and off["raw_shell"]["nobody"]["out"] == 200
+    assert off["raw_shell"]["bob"]["out"] == 403
+    stop = [r for r in off["lifecycle"]["unbound"]["reached"] if r[1] == "/api/shell/exec"]
+    assert stop and {r[2] for r in stop} == {200}, off["lifecycle"]["unbound"]
 
 
 # ── the binding itself, in process ───────────────────────────────────────────

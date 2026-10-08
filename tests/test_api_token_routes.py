@@ -476,7 +476,11 @@ def test_delete_token_rejects_non_owner(monkeypatch, token_routes_mod):
     invalidator.assert_not_called()
 
 
-def test_update_token_owner_check_skipped_when_auth_disabled(monkeypatch, token_routes_mod):
+def test_update_token_refuses_nobody_whatever_auth_enabled_says(monkeypatch, token_routes_mod):
+    """Under `AUTH_ENABLED=false` the admin gate passed a request with nobody on
+    it, and the owner check — which asks only when someone is named — was
+    skipped, so nobody renamed alice's token. The variable is ignored now
+    (`D-2026-10-07-02` §2): the gate refuses nobody before the row is read."""
     monkeypatch.setenv("AUTH_ENABLED", "false")
     mod = token_routes_mod
     monkeypatch.setattr(mod, "get_current_user", lambda req: None)
@@ -489,13 +493,20 @@ def test_update_token_owner_check_skipped_when_auth_disabled(monkeypatch, token_
     fake_session.query.return_value.filter.return_value.first.return_value = token
     monkeypatch.setattr(mod, "get_db_session", lambda: _db_ctx(fake_session))
 
-    req = _bob_patch_request(MagicMock(), {"name": "renamed-in-single-user"})
+    req = _req(None, is_admin=True, invalidator=MagicMock())
+
+    async def _json():
+        return {"name": "renamed-by-nobody"}
+
+    req.json = _json
     update_token = _get_handler(mod, "PATCH", "/tokens/{token_id}")
-    resp = asyncio.run(update_token(request=req, token_id="tok123"))
-    assert resp["name"] == "renamed-in-single-user"
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(update_token(request=req, token_id="tok123"))
+    assert exc.value.status_code == 403
+    assert token.name == "original"
 
 
-def test_delete_token_owner_check_skipped_when_auth_disabled(monkeypatch, token_routes_mod):
+def test_delete_token_refuses_nobody_whatever_auth_enabled_says(monkeypatch, token_routes_mod):
     monkeypatch.setenv("AUTH_ENABLED", "false")
     mod = token_routes_mod
     monkeypatch.setattr(mod, "get_current_user", lambda req: None)
@@ -509,9 +520,11 @@ def test_delete_token_owner_check_skipped_when_auth_disabled(monkeypatch, token_
     invalidator = MagicMock()
     req = _req("", is_admin=True, invalidator=invalidator)
     delete_token = _get_handler(mod, "DELETE", "/tokens/{token_id}")
-    resp = delete_token(request=req, token_id="tok123")
-    assert resp == {"status": "deleted"}
-    fake_session.delete.assert_called_once_with(fake_token)
+    with pytest.raises(HTTPException) as exc:
+        delete_token(request=req, token_id="tok123")
+    assert exc.value.status_code == 403
+    fake_session.delete.assert_not_called()
+    invalidator.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

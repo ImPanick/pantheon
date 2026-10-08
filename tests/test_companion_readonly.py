@@ -280,7 +280,7 @@ def test_models_route_unresolved_owner_returns_only_shared_rows(monkeypatch):
     assert _endpoint_names(endpoints) == ["shared-endpoint"]
 
 
-def test_models_route_auth_disabled_does_not_widen_ownerless_api_token(monkeypatch):
+def test_models_route_auth_enabled_false_does_not_widen_ownerless_api_token(monkeypatch):
     monkeypatch.setenv("AUTH_ENABLED", "false")
     rows = [
         _ep(1, "alice-endpoint", "alice"),
@@ -303,7 +303,7 @@ def test_models_route_auth_disabled_does_not_widen_ownerless_api_token(monkeypat
     assert _endpoint_names(endpoints) == ["shared-endpoint"]
 
 
-def test_models_route_auth_disabled_keeps_cookie_owner_scoped(monkeypatch):
+def test_models_route_auth_enabled_false_keeps_cookie_owner_scoped(monkeypatch):
     monkeypatch.setenv("AUTH_ENABLED", "false")
     rows = [
         _ep(1, "alice-endpoint", "alice"),
@@ -339,7 +339,10 @@ def test_models_route_auth_enabled_anonymous_returns_only_shared_rows(monkeypatc
     assert _endpoint_names(endpoints) == ["shared-endpoint"]
 
 
-def test_models_route_auth_disabled_returns_all_enabled_rows(monkeypatch):
+def test_models_route_auth_enabled_false_no_longer_returns_all_enabled_rows(monkeypatch):
+    """The stock route's single-user all-endpoints view, for an anonymous cookie
+    caller under `AUTH_ENABLED=false`, went with auth-off (`D-2026-10-07-02` §2):
+    the variable is ignored and the caller gets the shared rows, as with it on."""
     monkeypatch.setenv("AUTH_ENABLED", "false")
     rows = [
         _ep(1, "alice-endpoint", "alice"),
@@ -354,11 +357,7 @@ def test_models_route_auth_disabled_returns_all_enabled_rows(monkeypatch):
         _request(api_token=False, current_user=None),
     )
 
-    assert _endpoint_names(endpoints) == [
-        "alice-endpoint",
-        "shared-endpoint",
-        "bob-endpoint",
-    ]
+    assert _endpoint_names(endpoints) == ["shared-endpoint"]
 
 
 def test_models_route_filters_hidden_models_and_secret_fields(monkeypatch):

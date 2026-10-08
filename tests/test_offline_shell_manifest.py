@@ -526,7 +526,6 @@ def test_a_conditional_request_is_actually_cheap_on_this_server(tmp_path):
     """
     env = os.environ.copy()
     env.update({
-        "AUTH_ENABLED": "false",
         "CHROMADB_CONNECT_TIMEOUT": "0.01",
         "CHROMADB_HOST": "127.0.0.1",
         "CHROMADB_PORT": "9",
@@ -545,8 +544,11 @@ def test_a_conditional_request_is_actually_cheap_on_this_server(tmp_path):
         import json
         import app as app_module
         from fastapi.testclient import TestClient
+        from tests.helpers.signed_in import sign_in
 
-        client = TestClient(app_module.app)
+        # Signed in, as the install's admin: `/` is a person's page
+        # (`D-2026-10-07-02` §2; this booted with `AUTH_ENABLED=false` until then).
+        client = sign_in(app_module, TestClient(app_module.app))
         out = {}
         for label, url in [
             ("js", "/static/app.js?v=20260815toolapproval4"),
@@ -1174,11 +1176,13 @@ def test_the_login_page_is_read_for_what_it_references(installed):
 
 @_needs_node
 def test_a_precache_entry_that_redirects_is_not_stored_under_the_url_asked_for():
-    """`B122`'s cost guard. `/login` is the first entry that can redirect:
-    `app.py:972` sends it to `/` with a 302 when `AUTH_ENABLED` is false, and
+    """`B122`'s cost guard. `/login` was the first entry that could redirect:
+    `app.py` sent it to `/` with a 302 when `AUTH_ENABLED` was false, and
     `fetch` follows that by default. Storing the result under `/login` would
-    put a second 283 KB copy of the app shell in every auth-disabled
-    deployment's cache and answer a navigation to `/login` with it.
+    have put a second 283 KB copy of the app shell in every auth-disabled
+    deployment's cache. `/login` always serves the sign-in page now
+    (`D-2026-10-07-02` §2); the guard stays for any entry that redirects, and
+    this drives it with one that does.
     """
     out = _run({"op": "walk", "seeds": ["/", "/login"], "files": {
         "/": "the app shell",

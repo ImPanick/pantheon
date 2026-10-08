@@ -84,9 +84,9 @@ async def _load_import_body(request: Request, limit: int):
     absent on chunked bodies, so the streamed byte count is the real control.
 
     This bounds an *already authorized* request — ``require_admin`` runs before
-    it and is not replaced by it. The ceiling matters most where
-    ``require_admin`` short-circuits (AUTH_ENABLED=false), because there it is
-    the only thing between /api/import and an unbounded read.
+    it and is not replaced by it. It mattered most where ``require_admin`` once
+    short-circuited (AUTH_ENABLED=false, gone since `D-2026-10-07-02` §2); it
+    still bounds what an admin, or a loopback acting for one, may send.
     """
     stream = getattr(request, "stream", None)
     if stream is None:

@@ -242,17 +242,33 @@ async def test_the_same_oversized_body_from_an_admin_gets_the_cap(monkeypatch):
 
 
 async def test_the_cap_still_applies_when_the_admin_gate_short_circuits(monkeypatch):
-    """`AUTH_ENABLED=0` makes `require_admin` return for everyone. That is
-    exactly where the ceiling is the only thing between /api/import and an
-    unbounded read, so it must not be conditional on the gate having bitten."""
+    """`require_admin` returns at once for Pantheon's own loopback, the one
+    that names nobody. That is where the ceiling is the only thing between
+    /api/import and an unbounded read, so it must not be conditional on the
+    gate having bitten. (`AUTH_ENABLED=0` short-circuited it for everyone until
+    `D-2026-10-07-02` §2; the test after this one says what it does now.)"""
+    from core.middleware import INTERNAL_TOOL_HEADER, INTERNAL_TOOL_TOKEN
+    monkeypatch.setattr(br, "BACKUP_IMPORT_MAX_BYTES", 64)
+    endpoint = _import_endpoint()
+    req = _StreamedRequest([b"x" * 4096], user=None,
+                           headers={INTERNAL_TOOL_HEADER: INTERNAL_TOOL_TOKEN})
+    with pytest.raises(HTTPException) as exc:
+        await endpoint(req)
+    assert exc.value.status_code == 413
+    assert req.started is True
+
+
+async def test_auth_enabled_0_no_longer_short_circuits_the_admin_gate(monkeypatch):
+    """`AUTH_ENABLED=0` is ignored: a caller with nobody on it is refused by the
+    gate before a byte of the body is read."""
     monkeypatch.setenv("AUTH_ENABLED", "0")
     monkeypatch.setattr(br, "BACKUP_IMPORT_MAX_BYTES", 64)
     endpoint = _import_endpoint()
     req = _StreamedRequest([b"x" * 4096], user=None, auth_manager=None)
     with pytest.raises(HTTPException) as exc:
         await endpoint(req)
-    assert exc.value.status_code == 413
-    assert req.started is True
+    assert exc.value.status_code == 403
+    assert req.started is False
 
 
 async def test_the_413_is_not_laundered_into_invalid_json(monkeypatch):

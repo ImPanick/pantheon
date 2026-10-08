@@ -256,10 +256,12 @@ _BOOT = textwrap.dedent(
     """
     import json, sqlite3
     import app as app_module
+    from tests.helpers.signed_in import sign_in
     from fastapi.testclient import TestClient
     DB = __DB__
     out = {}
     with TestClient(app_module.app) as client:
+        sign_in(app_module, client)  # the install's admin: there is always authentication (`D-2026-10-07-02` §2)
         out["journal_mode"] = sqlite3.connect(DB).execute("PRAGMA journal_mode").fetchone()[0]
         if __WRITE__:
             r = client.post("/api/email/accounts", json={
@@ -280,7 +282,6 @@ def two_boots_on_a_share(tmp_path_factory) -> list:
     Path(f"{db}-shm").mkdir()      # the forced failure, before the first boot
     env = os.environ.copy()
     env.update({
-        "AUTH_ENABLED": "false",
         "CHROMADB_CONNECT_TIMEOUT": "0.01",
         "CHROMADB_HOST": "127.0.0.1",
         "CHROMADB_PORT": "9",

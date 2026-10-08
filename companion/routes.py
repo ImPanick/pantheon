@@ -24,7 +24,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse
 
 from core.middleware import require_admin
-from src.auth_helpers import _auth_disabled, get_current_user
+from src.auth_helpers import get_current_user
 
 from companion import pairing as _pairing
 
@@ -114,9 +114,9 @@ def setup_companion_routes() -> APIRouter:
         The stock /api/models route scopes to get_current_user, which for a
         bearer token is the sandboxed pseudo-user "api" (owns nothing). Here we
         scope to the token's real owner instead, plus legacy null-owner shared
-        rows -- the same rule as owner_filter. Explicit auth-disabled mode keeps
-        the stock route's single-user all-endpoints view. Read-only; never
-        returns api_key material.
+        rows -- the same rule as owner_filter. Read-only; never returns
+        api_key material. (An auth-off install's all-endpoints view went with
+        auth-off itself, `D-2026-10-07-02` §2.)
         """
         require_models_scope(request)
         import json as _json
@@ -125,11 +125,6 @@ def setup_companion_routes() -> APIRouter:
         from src.endpoint_resolver import build_chat_url
 
         owner = token_owner(request)
-        single_user_mode = (
-            owner is None
-            and not getattr(request.state, "api_token", False)
-            and _auth_disabled()
-        )
         out = []
         db = SessionLocal()
         try:
@@ -140,7 +135,7 @@ def setup_companion_routes() -> APIRouter:
             if owner:
                 q = q.filter((ModelEndpoint.owner == owner) | (ModelEndpoint.owner == None))  # noqa: E711
             for ep in q.all():
-                if not single_user_mode and not owner_can_see(ep.owner, owner):
+                if not owner_can_see(ep.owner, owner):
                     continue
                 try:
                     model_ids = _json.loads(ep.cached_models) if ep.cached_models else []

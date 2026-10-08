@@ -173,11 +173,13 @@ _PROBE = textwrap.dedent(
     """
     import json, sqlite3, threading, time
     import app as app_module
+    from tests.helpers.signed_in import sign_in
     from fastapi.testclient import TestClient
     DB = __DB__
     ACCOUNT = {"name": "probe", "imap_host": "x", "imap_user": "x", "imap_password": "x", "smtp_host": "x"}
     out = {}
     with TestClient(app_module.app) as client:
+        sign_in(app_module, client)  # the install's admin: there is always authentication (`D-2026-10-07-02` §2)
         out["journal_mode"] = sqlite3.connect(DB).execute("PRAGMA journal_mode").fetchone()[0]
         held = threading.Event()
         def hold():
@@ -216,7 +218,6 @@ def held_lock_on_the_real_app(tmp_path_factory) -> dict:
     db = tmp / "app.db"
     env = os.environ.copy()
     env.update({
-        "AUTH_ENABLED": "false",
         "CHROMADB_CONNECT_TIMEOUT": "0.01",
         "CHROMADB_HOST": "127.0.0.1",
         "CHROMADB_PORT": "9",

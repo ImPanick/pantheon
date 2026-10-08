@@ -365,15 +365,14 @@ issue — that is the fastest way to put it in front of someone.
 
 ## Security
 
-- Keep `AUTH_ENABLED=true` for any network-accessible deployment.
-- Keep `LOCALHOST_BYPASS=false` outside local development.
+- There is always a sign-in. The first run asks for the admin account; whether other people may
+  make their own accounts is the admin's switch — Settings → Users, off on a new install.
 - Don't expose raw model or service ports publicly.
 
 If you are upgrading rather than installing, read
 [Changed — read this before upgrading](CHANGELOG.md#changed--read-this-before-upgrading)
-first. `AUTH_ENABLED=0`, `=no` and `=off` used to leave authentication **on**; they turn it off
-now, which is what an operator who typed them meant and is not what their instance has been
-doing.
+first. An install that ran without a sign-in (`AUTH_ENABLED=false`, or `LOCALHOST_BYPASS=true`)
+asks for one now: those variables are ignored, and named once in the log if set.
 
 This fork removes restrictions, so it's worth naming the ones it doesn't. About thirty controls
 are on a never-lift list: authentication, CSRF posture, the approval store's seal, path-traversal

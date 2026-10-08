@@ -7,7 +7,9 @@ Three rows, one question asked from three sides.
 `AUTH_ENABLED=0` left authentication **enabled**, and `PANTHEON_SINGLE_USER=false`
 left single-user mode **on** — and the second was worse than the row knew,
 because the value was read into a module constant nothing consulted, so no
-spelling turned it off at all (filed as `B150`).
+spelling turned it off at all (filed as `B150`). Both were then retired as
+switches by `D-2026-10-07-02` §2 — there is always authentication — and what
+remains of `B96` here is which values are named when Pantheon says so.
 
 `B97` is *whose string is this*: 16 truthiness sites outside the environment,
 three vocabularies between them, and two private half-helpers neither reachable
@@ -25,7 +27,6 @@ first by value and a reload is not undoable).
 """
 import importlib.util
 import json
-import logging
 import os
 import subprocess
 import sys
@@ -81,126 +82,95 @@ def repo(tmp_path):
 
 
 # ══ B96 — the two switches that meant the opposite ═════════════════════════
+#
+# `B96` made `AUTH_ENABLED=0/no/off` disable authentication and
+# `PANTHEON_SINGLE_USER=false/no/off` turn single-user mode off — each switch
+# finally meant what the operator typed. `D-2026-10-07-02` §2 then retired both
+# as switches: there is always authentication, so neither turns anything off
+# or on. What `B96` bought survives in one place — the vocabulary still decides
+# which values are *named* when Pantheon says, once at start, that a switch is
+# ignored (`src/owner_identity.ignored_auth_switches`) — and that is what is
+# driven here. The refusals themselves are driven, through the real app and
+# every gate, in `tests/test_there_is_always_authentication.py`.
 
 AUTH_OFF_SPELLINGS = ("0", "false", "no", "off", " OFF ", "False")
 AUTH_ON_SPELLINGS = ("1", "true", "yes", "on", "", "   ", "maybe", "enabled")
 
 
 @pytest.mark.parametrize("raw", AUTH_OFF_SPELLINGS)
-def test_every_disabling_spelling_of_auth_enabled_disables_auth(monkeypatch, raw):
-    """The row's headline. Measured 2026-09-15 before the fix: `AUTH_ENABLED=0`
-    left authentication ENABLED, because only the literal `false` disabled it.
-    An operator typed the disabling value and the switch was on."""
+def test_every_disabling_spelling_of_auth_enabled_is_named_as_ignored(monkeypatch, raw):
+    """Every value `B96` taught to mean *off* is a value an operator wrote to
+    turn sign-in off, so each is named — `0` as much as `false`."""
     import src.owner_identity as O
-    monkeypatch.setattr(O, "_warned_auth_spelling", True)
     monkeypatch.setenv("AUTH_ENABLED", raw)
-    assert O.auth_disabled() is True, raw
+    assert O.ignored_auth_switches().get("AUTH_ENABLED") == raw
 
 
 @pytest.mark.parametrize("raw", AUTH_ON_SPELLINGS)
-def test_auth_stays_on_for_every_other_value(monkeypatch, raw):
-    """`Law 1`, and the direction this switch has to fail in: blank, unset and a
-    word outside the vocabulary all keep authentication. Nothing that was
-    authenticated becomes unauthenticated by accident."""
+def test_every_other_value_of_auth_enabled_is_not_news(monkeypatch, raw):
+    """`Law 1`'s direction kept: blank, unset and a word outside the vocabulary
+    asked for nothing, and nothing is said about them."""
     import src.owner_identity as O
     monkeypatch.setenv("AUTH_ENABLED", raw)
-    assert O.auth_disabled() is False, raw
+    assert "AUTH_ENABLED" not in O.ignored_auth_switches(), raw
 
 
-def test_auth_unset_keeps_authentication(monkeypatch):
+def test_auth_unset_is_not_news(monkeypatch):
     import src.owner_identity as O
     monkeypatch.delenv("AUTH_ENABLED", raising=False)
-    assert O.auth_disabled() is False
+    assert "AUTH_ENABLED" not in O.ignored_auth_switches()
 
 
-def test_the_upgrade_says_so_before_it_does_it(monkeypatch, caplog):
-    """`B96` requires the change announced. The three spellings whose meaning
-    changed warn; the one that already worked is silent, so the log fires only
-    on hosts this actually affects."""
+@pytest.mark.parametrize("raw", ("0", "false", "no", "off", "FALSE", "", "nonsense"))
+def test_single_user_off_or_unset_is_not_news(monkeypatch, raw):
+    """`PANTHEON_SINGLE_USER` defaulted ON, so unset was every install: only an
+    operator who wrote an on-word for it asked for the anonymous fallback."""
     import src.owner_identity as O
-    for raw in ("0", "no", "off"):
-        monkeypatch.setattr(O, "_warned_auth_spelling", False)
-        monkeypatch.setenv("AUTH_ENABLED", raw)
-        with caplog.at_level(logging.WARNING, logger="src.owner_identity"):
-            caplog.clear()
-            assert O.auth_disabled() is True
-        assert any("AUTH_ENABLED" in r.message for r in caplog.records), raw
-
-    monkeypatch.setattr(O, "_warned_auth_spelling", False)
-    monkeypatch.setenv("AUTH_ENABLED", "false")
-    with caplog.at_level(logging.WARNING, logger="src.owner_identity"):
-        caplog.clear()
-        assert O.auth_disabled() is True
-    assert not caplog.records, "`false` already disabled auth — nothing changed for it"
-
-
-@pytest.mark.parametrize("raw", ("0", "false", "no", "off", "FALSE"))
-def test_every_disabling_spelling_of_single_user_turns_it_off(monkeypatch, raw):
-    """The second switch. Before the fix only the literal `0` was recognised,
-    so `PANTHEON_SINGLE_USER=false` left single-user mode on."""
-    import routes.calendar_routes as C
     monkeypatch.setenv("PANTHEON_SINGLE_USER", raw)
-    assert C._single_user_mode() is False, raw
+    assert "PANTHEON_SINGLE_USER" not in O.ignored_auth_switches(), raw
 
 
-@pytest.mark.parametrize("raw", ("1", "true", "yes", "on", "", "nonsense"))
-def test_single_user_stays_on_for_everything_else(monkeypatch, raw):
-    import routes.calendar_routes as C
+@pytest.mark.parametrize("raw", ("1", "true", "yes", "on"))
+def test_single_user_on_is_named_as_ignored(monkeypatch, raw):
+    import src.owner_identity as O
     monkeypatch.setenv("PANTHEON_SINGLE_USER", raw)
-    assert C._single_user_mode() is True, raw
+    assert O.ignored_auth_switches().get("PANTHEON_SINGLE_USER") == raw
 
 
 class _AnonymousRequest:
-    """A request that resolved to no user — the state `_require_user` falls
-    back for. `require_user` is monkeypatched to return `""`, which is what it
-    genuinely returns in all three anonymous modes."""
+    """A request no person is on — what `_require_user` once filed under
+    `FALLBACK_OWNER` while single-user mode was on."""
     cookies: dict = {}
     headers: dict = {}
 
+    class state:
+        current_user = None
+        api_token = False
 
-def test_the_single_user_switch_is_actually_consulted(monkeypatch):
-    """**The half the row did not know about.** `_SINGLE_USER_MODE` was computed
-    at import and referenced nowhere in the tree, so the documented
-    `PANTHEON_SINGLE_USER=0` did nothing: an unauthenticated calendar write
-    landed on `FALLBACK_OWNER` whatever the operator set. Driven through
-    `_require_user`, which is the one place the fallback is handed out."""
+
+@pytest.mark.parametrize("raw", ("1", "true", "0", "false", ""))
+def test_the_calendar_has_no_fallback_owner_for_nobody(monkeypatch, raw):
+    """**The half `B96` found** — `_SINGLE_USER_MODE` read and never consulted
+    (`B150`) — **and its end**: whatever `PANTHEON_SINGLE_USER` says, a calendar
+    request with nobody on it is refused rather than written under
+    `FALLBACK_OWNER` (`D-2026-10-07-02` §2). Driven through the real
+    `require_user`, not a stand-in for it."""
     from fastapi import HTTPException
     import routes.calendar_routes as C
-    monkeypatch.setattr(C, "require_user", lambda request: "")
-    monkeypatch.setattr(C, "_warned_single_user_spelling", True)
-
-    monkeypatch.setenv("PANTHEON_SINGLE_USER", "1")
-    assert C._require_user(_AnonymousRequest()) == C.FALLBACK_OWNER
-
-    monkeypatch.setenv("PANTHEON_SINGLE_USER", "false")
+    monkeypatch.setenv("PANTHEON_SINGLE_USER", raw)
     with pytest.raises(HTTPException) as caught:
         C._require_user(_AnonymousRequest())
     assert caught.value.status_code == 401
 
-    monkeypatch.setenv("PANTHEON_SINGLE_USER", "0")
-    with pytest.raises(HTTPException):
-        C._require_user(_AnonymousRequest())
-
 
 def test_an_authenticated_caller_is_untouched_by_the_switch(monkeypatch):
-    """`Law 1`. The switch governs the anonymous fallback and nothing else."""
+    """`Law 1`. A person is answered as themselves whatever the variable says."""
     import routes.calendar_routes as C
-    monkeypatch.setattr(C, "require_user", lambda request: "ada")
-    monkeypatch.setenv("PANTHEON_SINGLE_USER", "0")
-    assert C._require_user(_AnonymousRequest()) == "ada"
-
-
-def test_the_single_user_upgrade_says_so_too(monkeypatch, caplog):
-    from fastapi import HTTPException
-    import routes.calendar_routes as C
-    monkeypatch.setattr(C, "require_user", lambda request: "")
-    monkeypatch.setattr(C, "_warned_single_user_spelling", False)
-    monkeypatch.setenv("PANTHEON_SINGLE_USER", "false")
-    with caplog.at_level(logging.WARNING, logger="routes.calendar_routes"):
-        caplog.clear()
-        with pytest.raises(HTTPException):
-            C._require_user(_AnonymousRequest())
-    assert any("PANTHEON_SINGLE_USER" in r.message for r in caplog.records)
+    req = _AnonymousRequest()
+    req.state = type("state", (), {"current_user": "ada", "api_token": False})
+    for raw in ("0", "1"):
+        monkeypatch.setenv("PANTHEON_SINGLE_USER", raw)
+        assert C._require_user(req) == "ada"
 
 
 # ══ B97 — four boundaries, four owners, deliberately not one rule ══════════

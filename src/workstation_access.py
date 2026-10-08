@@ -142,11 +142,10 @@ _STATUS_TIMEOUT_S = 10.0
 # ── who ───────────────────────────────────────────────────────────────────────
 
 def workstation_owner(owner: Optional[str]) -> Optional[str]:
-    """The owner the workstation knows this person as. `None` is the
-    single-user owner: auth switched off, or any spelling of nobody."""
-    from src.owner_identity import DEFAULT_LOCAL_OWNER, auth_disabled, normalize_owner
-    if auth_disabled():
-        return None
+    """The owner the workstation knows this person as. `None` is any spelling
+    of nobody — the reserved local owner an auth-off install once wrote
+    included (`D-2026-10-07-02` §2: there is no such install now)."""
+    from src.owner_identity import DEFAULT_LOCAL_OWNER, normalize_owner
     name = normalize_owner(owner)
     if name is None or name.lower() == DEFAULT_LOCAL_OWNER.lower():
         return None
@@ -165,9 +164,7 @@ def may_use(owner: Optional[str], *, auth_manager: Any = None) -> bool:
     a tool asks without one and gets the manager over the shipped auth file,
     which is what the first version of this function did."""
     try:
-        from src.owner_identity import auth_disabled, normalize_owner
-        if auth_disabled():
-            return True
+        from src.owner_identity import normalize_owner
         name = normalize_owner(owner)
         if not name:
             return False

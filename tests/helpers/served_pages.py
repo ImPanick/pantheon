@@ -56,7 +56,12 @@ from src.constants import STATIC_DIR
 
 SAME_ORIGIN_REF = re.compile(r"""(?:src|href)\s*=\s*["'](/(?!/)[^"'\s>]*)["']""")
 
-client = TestClient(app_module.app)
+from tests.helpers.signed_in import sign_in
+
+# Signed in as the install's admin: every page this app serves, it serves to a
+# person (`D-2026-10-07-02` §2). The probe booted with `AUTH_ENABLED=false`
+# until there was no such thing.
+client = sign_in(app_module, TestClient(app_module.app))
 
 urls = []
 for route in app_module.app.routes:
@@ -162,7 +167,6 @@ def probe_served_surface(tmp_path) -> dict:
         return json.loads(_SURFACE_JSON)
     env = os.environ.copy()
     env.update({
-        "AUTH_ENABLED": "false",
         "CHROMADB_CONNECT_TIMEOUT": "0.01",
         "CHROMADB_HOST": "127.0.0.1",
         "CHROMADB_PORT": "9",

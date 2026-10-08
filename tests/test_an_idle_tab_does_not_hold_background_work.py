@@ -198,10 +198,12 @@ _ROUTE_PROBE = textwrap.dedent(
     """
     import json
     import app as app_module
+    from tests.helpers.signed_in import sign_in
     import src.interactive_gate as ig
     from fastapi.testclient import TestClient
     out = {}
     with TestClient(app_module.app) as client:
+        sign_in(app_module, client)  # the install's admin: there is always authentication (`D-2026-10-07-02` §2)
         r = client.post("/api/activity/heartbeat", content=b'{"idle":true}',
                         headers={"Content-Type": "application/json"})
         out["idle"] = [r.status_code, r.json(), ig._LAST_BROWSER_ACTIVITY > 0]
@@ -216,7 +218,7 @@ _ROUTE_PROBE = textwrap.dedent(
 def test_the_route_is_the_gates_answer(tmp_path):
     env = os.environ.copy()
     env.update({
-        "AUTH_ENABLED": "false", "CHROMADB_CONNECT_TIMEOUT": "0.01", "CHROMADB_HOST": "127.0.0.1",
+        "CHROMADB_CONNECT_TIMEOUT": "0.01", "CHROMADB_HOST": "127.0.0.1",
         "CHROMADB_PORT": "9", "DATABASE_URL": f"sqlite:///{tmp_path / 'app.db'}",
         "PANTHEON_DATA_DIR": str(tmp_path), "PANTHEON_DISABLE_MCP": "1",
         "PYTHONPATH": str(_REPO), "PYTHON_DOTENV_DISABLED": "1",

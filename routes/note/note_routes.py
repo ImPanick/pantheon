@@ -607,12 +607,12 @@ def setup_note_routes(task_scheduler=None, upload_handler=None):
         # require_user, not bare get_current_user: a request that reaches
         # these owner-scoped routes with NO identity (auth-middleware
         # regression, SSRF from a sibling service) must fail closed (401)
-        # when auth is configured — not be treated as the single-user mode
-        # and handed blanket access to every account's notes. The documented
-        # anonymous modes (AUTH_ENABLED=false, LOCALHOST_BYPASS on loopback,
-        # unconfigured first-run) still resolve to None, the single-user
-        # path. fire_reminder below already gated this way; the CRUD routes
-        # did not.
+        # — not be treated as the single-user mode and handed blanket access
+        # to every account's notes. The anonymous modes that once resolved to
+        # None here (AUTH_ENABLED=false, LOCALHOST_BYPASS on loopback, an
+        # unconfigured first run) are gone: there is always authentication
+        # (`D-2026-10-07-02` §2). fire_reminder below already gated this way;
+        # the CRUD routes did not.
         return require_user(request) or None
 
     def _reserve_note_uploads(owner: Optional[str], *values) -> None:

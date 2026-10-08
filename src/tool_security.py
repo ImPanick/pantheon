@@ -542,24 +542,19 @@ def is_public_blocked_tool(tool_name: Optional[str]) -> bool:
 
 
 def owner_is_admin_or_single_user(owner: Optional[str]) -> bool:
-    """Return True for admins, or in intentional single-user mode.
+    """Return True for admins.
 
-    Single-user mode means the operator explicitly disabled auth
-    (``AUTH_ENABLED=false``) — the local/self-host default where the owner has
-    full access to their own box.
+    The name keeps "single user" from when an auth-off install's nobody was
+    answered as its owner (`AUTH_ENABLED=false`). There is no such install now
+    (`D-2026-10-07-02` §2): a single-user install's owner is its first account,
+    which is an admin, and is answered as one by name.
 
-    The pre-setup window (auth ENABLED but no admin created yet) is treated as
-    NON-admin: returning True there would hand server-execution tools
-    (``bash``/``python``) to any caller before setup completes. The auth
-    middleware already 401s ``/api/`` requests pre-setup, so this is
-    defense-in-depth for callers that bypass it (e.g. trusted loopback).
+    The pre-setup window (no admin created yet) is treated as NON-admin:
+    returning True there would hand server-execution tools (``bash``/``python``)
+    to any caller before setup completes. The auth middleware already 401s
+    ``/api/`` requests pre-setup, so this is defense-in-depth.
     """
     try:
-        from src.auth_helpers import _auth_disabled
-
-        if _auth_disabled():
-            return True
-
         from src.auth_manager_access import shared_auth_manager  # `P23-07` (`PERF-M-15`)
 
         auth = shared_auth_manager()

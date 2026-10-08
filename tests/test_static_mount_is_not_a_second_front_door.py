@@ -106,7 +106,9 @@ assets = sorted({urljoin("http://testserver/login", ref)
                  for ref in ASSET.findall(login.text)})
 
 out = {
-    "auth_enabled": bool(app_module.AUTH_ENABLED),
+    # Asked of the gate rather than read off a flag (there has been no flag
+    # since `D-2026-10-07-02` §2): a caller with no session is refused the API.
+    "auth_enabled": client.get("/api/sessions").status_code == 401,
     "owned": dict(owned) if owned else None,
     "direct": {u: direct(client, u) for u in urls + variants},
     "followed": {u: followed(client, u) for u in urls},
@@ -124,12 +126,10 @@ print("RESULT=" + json.dumps(out, sort_keys=True))
 
 @pytest.fixture(scope="module")
 def gated(tmp_path_factory) -> dict:
-    """The real app with `AUTH_ENABLED=true`, asked what it hands a caller with
-    no session.
+    """The real app, asked what it hands a caller with no session.
 
-    Out of process because `AUTH_ENABLED` is read once at import and importing
-    `app` pulls the whole application up — the same shape as every other probe
-    in this suite.
+    Out of process because importing `app` pulls the whole application up —
+    the same shape as every other probe in this suite.
     """
     tmp_path = tmp_path_factory.mktemp("gated_surface")
     env = os.environ.copy()

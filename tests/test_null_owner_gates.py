@@ -153,13 +153,16 @@ def test_gallery_owner_filter_blocks_anonymous(monkeypatch):
     assert out is fake_q.filter.return_value
 
 
-def test_gallery_owner_filter_allows_single_user_mode(monkeypatch):
+def test_gallery_owner_filter_blocks_anonymous_whatever_auth_enabled_says(monkeypatch):
+    """Single-user mode (`AUTH_ENABLED=false`) left nobody's gallery query whole
+    until `D-2026-10-07-02` §2; the variable is ignored, and it is filtered to
+    nothing as with it unset."""
     monkeypatch.setenv("AUTH_ENABLED", "false")
     from routes.gallery_routes import _owner_filter
     fake_q = MagicMock()
     out = _owner_filter(fake_q, user=None)
-    fake_q.filter.assert_not_called()
-    assert out is fake_q
+    fake_q.filter.assert_called_once_with(False)
+    assert out is fake_q.filter.return_value
 
 
 def test_gallery_owner_filter_passes_user():

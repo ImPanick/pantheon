@@ -11,7 +11,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 from starlette.routing import get_route_path
 
-from src.owner_identity import INTERNAL_TOOL_USER, auth_disabled
+from src.owner_identity import INTERNAL_TOOL_USER
 
 
 # Per-process token that lets the in-app tool layer hit admin-gated
@@ -112,9 +112,8 @@ def _internal_request_person(request: Request):
 
 def require_admin(request: Request):
     """Raise 403 if the current user isn't an admin.
-    Allows access when auth is explicitly disabled, or when the request is the
-    in-process internal-tool loopback and names no person (Pantheon itself: the
-    scheduler, the Forge lifecycle loop).
+    Allows access when the request is the in-process internal-tool loopback and
+    names no person (Pantheon itself: the scheduler, the Forge lifecycle loop).
 
     `B1175`. **The assistant acts with its person's privileges, never more.**
     A loopback that names a person (`X-Pantheon-Owner`, which `app_api`, the
@@ -129,17 +128,18 @@ def require_admin(request: Request):
     first, so the hole was one gate deep, not open; this is the route's own
     control holding under it. The adversary (`Law 17`): text a non-admin's
     assistant reads — a mail, a page, a document — steering it to an admin
-    route. An auth-off install passes (`auth_disabled`), and a single-user
-    install's owner is its admin. `FORBIDDEN.md` Part 2 lists this control:
-    tightened, never lifted.
+    route. A single-user install's owner is its first account, the admin.
+    `FORBIDDEN.md` Part 2 lists this control: tightened, never lifted.
+
+    `D-2026-10-07-02` §2: there is always authentication, so there is no
+    auth-off install to pass. Until 2026-10-07 `AUTH_ENABLED=false` returned
+    here for everyone, a caller with no session included.
     """
     internal, person = _internal_request_person(request)
     if internal and person is None:
         return
 
     auth_mgr = getattr(request.app.state, "auth_manager", None)
-    if auth_disabled():
-        return
     if not auth_mgr or not auth_mgr.is_configured:
         raise HTTPException(403, "Admin only")
     user = person if internal else getattr(request.state, "current_user", None)

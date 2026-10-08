@@ -14,7 +14,6 @@ from src.request_models import SessionResponse
 from core.database import Session as DbSession, SessionLocal, Document, GalleryImage, utcnow_naive
 from src.auth_helpers import (
     effective_user,
-    _auth_disabled,
     owner_filter,
     is_delegated_credential,
     require_chat_api_token_scope,
@@ -104,16 +103,15 @@ def _reject_compact_during_active_run(session_id: str) -> None:
 
 
 def _verify_session_owner(request: Request, session_id: str, session_manager=None):
-    """Verify the current user owns the session, honoring single-user modes.
+    """Verify the current user owns the session.
 
-    Authenticated requests must match the stored DB or in-memory owner. When
-    auth is disabled and no user is present, treat the app as single-user mode:
-    verify that the session exists, but do not compare its stored owner. This
-    keeps QA/dev instances with AUTH_ENABLED=false from rejecting owner-stamped
-    rows created while auth was previously enabled.
+    Authenticated requests must match the stored DB or in-memory owner. A
+    request with no person on it is refused: there is always authentication
+    (`D-2026-10-07-02` §2), so the auth-off install that once skipped the owner
+    comparison is not a configuration any more.
     """
     user = effective_user(request)
-    if not user and not _auth_disabled():
+    if not user:
         raise HTTPException(401, "Authentication required")
     db = SessionLocal()
     try:
@@ -1132,7 +1130,6 @@ def setup_session_routes(
         """
         from src.llm_core import llm_call
         user = effective_user(request)
-        single_user_mode = not user and _auth_disabled()
         user_sessions = session_manager.get_sessions_for_user(user)
 
         # Delete empty and throwaway sessions before sorting
@@ -1151,11 +1148,10 @@ def setup_session_routes(
         }
         _THROWAWAY_MAX_MESSAGES = 4  # only delete if <= this many messages
         try:
+            # Only the caller's own chats. An auth-off install once sorted
+            # everyone's here when nobody was signed in (`D-2026-10-07-02` §2).
             rows_q = db.query(DbSession).filter(DbSession.archived == False)
-            if user:
-                rows_q = rows_q.filter(DbSession.owner == user)
-            elif not single_user_mode:
-                rows_q = rows_q.filter(DbSession.owner == user)
+            rows_q = rows_q.filter(DbSession.owner == user)
             rows = rows_q.limit(2000).all()
             folder_map = {r.id: r.folder for r in rows}
             # Precompute per-session message counts in TWO aggregate queries
@@ -1377,10 +1373,7 @@ def setup_session_routes(
         try:
             for sid, folder_name in assignments.items():
                 db_session_q = db.query(DbSession).filter(DbSession.id == sid)
-                if user:
-                    db_session_q = db_session_q.filter(DbSession.owner == user)
-                elif not single_user_mode:
-                    db_session_q = db_session_q.filter(DbSession.owner == user)
+                db_session_q = db_session_q.filter(DbSession.owner == user)
                 db_session = db_session_q.first()
                 if db_session:
                     db_session.folder = folder_name

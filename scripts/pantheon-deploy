@@ -74,9 +74,12 @@ SERVICE = "pantheon"
 # answers.py` re-measures it, so a route that changes contract fails in the
 # suite rather than at 2am on a deployment.
 #
-# Sets, not single numbers, because two of these legitimately differ by
-# configuration: with `AUTH_ENABLED=false` (or `LOCALHOST_BYPASS=true`, which
-# the probe's requests do come from) the redirects become 200s.
+# Sets, not single numbers, because two of these differed by configuration:
+# with `AUTH_ENABLED=false` (or `LOCALHOST_BYPASS=true`, which the probe's
+# requests do come from) the redirects became 200s. Neither variable does
+# anything since 0.2.0 — there is always a sign-in (`D-2026-10-07-02` §2) — so
+# an unsigned probe now always meets the 302; the 200 stays accepted so a probe
+# run against an older install still reads it right.
 ROUTES = (
     ("/api/health", (200,), "the healthcheck's own route; auth-exempt"),
     ("/api/version", (200,), "auth-exempt"),

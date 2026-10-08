@@ -23,7 +23,7 @@ from pydantic import BaseModel
 from core.database import SessionLocal
 from src import document_folders as folders
 from src.auth_helpers import (
-    _auth_disabled, get_current_user, request_is_a_person, require_privilege,
+    get_current_user, request_is_a_person, require_privilege,
 )
 
 
@@ -63,7 +63,7 @@ def _scope(user: Optional[str]):
     """The owner every query is scoped to — `_owner_session_filter`'s rule."""
     if user:
         return user
-    if user == "" or _auth_disabled():
+    if user == "":
         return folders.EVERY_OWNER
     raise HTTPException(403, "Authentication required")
 

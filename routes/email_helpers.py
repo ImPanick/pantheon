@@ -35,7 +35,7 @@ from fastapi import Query, HTTPException, Request
 from pydantic import BaseModel
 from typing import Optional, List
 
-from src.auth_helpers import _auth_disabled, get_current_user
+from src.auth_helpers import get_current_user
 from src.file_names import display_name, mime_attachment_disposition, stored_name  # `B1000`
 from src.secret_storage import decrypt as _decrypt
 
@@ -508,29 +508,17 @@ def _apply_email_style_mechanics(text: str) -> str:
 
 def _require_auth(request: Request) -> str:
     """Defense-in-depth: reject unauthenticated callers even if upstream
-    middleware was bypassed (e.g. localhost-bypass, SSRF from a sibling
-    service). Mirrors core.middleware.require_admin's resolution path.
+    middleware was bypassed (an SSRF from a sibling service).
 
-    v2 review HIGH-13: previously fell open whenever auth_manager wasn't
-    `is_configured`, exposing IMAP creds and SMTP send to any network
-    caller on a half-configured deploy. Now: anonymous callers in
-    unconfigured mode are only honoured if they're coming from
-    localhost; everyone else gets 401.
+    v2 review HIGH-13: this once fell open whenever auth_manager wasn't
+    `is_configured`, exposing IMAP creds and SMTP send to any network caller
+    on a half-configured deploy, and then still answered an anonymous loopback
+    caller before setup and anyone at all under `AUTH_ENABLED=false`. There is
+    always authentication (`D-2026-10-07-02` §2): a person, or 401.
     """
     u = get_current_user(request)
     if u:
         return u
-    if _auth_disabled():
-        return ""
-    auth_mgr = getattr(request.app.state, "auth_manager", None)
-    if auth_mgr is not None and getattr(auth_mgr, "is_configured", False):
-        raise HTTPException(401, "Not authenticated")
-    # Unconfigured / first-run mode: only allow loopback callers. Public
-    # network traffic must authenticate even before auth is set up.
-    client = getattr(request, "client", None)
-    host = (client.host if client else "") or ""
-    if host in ("127.0.0.1", "::1", "localhost"):
-        return ""
     raise HTTPException(401, "Not authenticated")
 
 

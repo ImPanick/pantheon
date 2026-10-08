@@ -84,16 +84,18 @@ def _script_src(csp: str) -> str:
     raise AssertionError(f"no script-src in {csp!r}")
 
 
-def _probe(tmp_path, auth_enabled: str, paths) -> dict:
+def _probe(tmp_path, paths, *, signed_in: bool) -> dict:
     """Ask the real app for each path's body and headers, out of process.
 
     Same shape as `test_offline_shell_manifest`'s probes, and for the same
     reason: importing `app` pulls the whole application up, and the subject
     here is what goes on the wire rather than what a function returns.
+    ``signed_in`` asks as the install's admin (`tests/helpers/signed_in.py`);
+    the app shell is a person's page (`D-2026-10-07-02` §2 — this booted with
+    `AUTH_ENABLED=false` for it until then).
     """
     env = os.environ.copy()
     env.update({
-        "AUTH_ENABLED": auth_enabled,
         "CHROMADB_CONNECT_TIMEOUT": "0.01",
         "CHROMADB_HOST": "127.0.0.1",
         "CHROMADB_PORT": "9",
@@ -109,8 +111,11 @@ def _probe(tmp_path, auth_enabled: str, paths) -> dict:
         import sys
         import app as app_module
         from fastapi.testclient import TestClient
+        from tests.helpers.signed_in import sign_in
 
         client = TestClient(app_module.app)
+        if sys.argv[2] == "signed-in":
+            sign_in(app_module, client)
         out = {}
         for path in json.loads(sys.argv[1]):
             res = client.get(path, follow_redirects=False)
@@ -122,7 +127,8 @@ def _probe(tmp_path, auth_enabled: str, paths) -> dict:
         print("RESULT=" + json.dumps(out))
         """
     )
-    result = subprocess.run([sys.executable, "-c", probe, json.dumps(list(paths))],
+    result = subprocess.run([sys.executable, "-c", probe, json.dumps(list(paths)),
+                             "signed-in" if signed_in else "nobody"],
                             cwd=str(_REPO), env=env, capture_output=True,
                             text=True, timeout=300, check=False)
     assert result.returncode == 0, result.stderr
@@ -133,15 +139,14 @@ def _probe(tmp_path, auth_enabled: str, paths) -> dict:
 
 @pytest.fixture(scope="module")
 def shell(tmp_path_factory) -> dict:
-    return _probe(tmp_path_factory.mktemp("csp_shell"), "false",
-                  ["/", "/api/health", "/static/style.css"])
+    return _probe(tmp_path_factory.mktemp("csp_shell"),
+                  ["/", "/api/health", "/static/style.css"], signed_in=True)
 
 
 @pytest.fixture(scope="module")
 def login(tmp_path_factory) -> dict:
-    # `/` redirects to `/login` with auth on; `/login` redirects to `/` with it
-    # off (`app.py`), so the login page can only be measured in this mode.
-    return _probe(tmp_path_factory.mktemp("csp_login"), "true", ["/login"])
+    # What a caller with no session is sent to, measured as that caller.
+    return _probe(tmp_path_factory.mktemp("csp_login"), ["/login"], signed_in=False)
 
 
 @pytest.mark.parametrize("page", ["/", "/login"])

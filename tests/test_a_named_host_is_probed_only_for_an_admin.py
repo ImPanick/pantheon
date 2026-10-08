@@ -185,17 +185,24 @@ def _detect(host="", ssh_port="", platform="", fresh=False):
             "available_ram_gb": 8, "backend": "cpu_x86"}
 
 
-def test_a_no_login_install_still_reads_its_hardware(monkeypatch):
-    """`AUTH_ENABLED=false`: no accounts, no middleware, and the owner's Forge
-    still sees the box it runs on."""
+def test_a_single_user_install_still_reads_its_hardware(monkeypatch, tmp_path):
+    """A single-user install's owner — its first account, the admin, signed in —
+    still sees the box the Forge runs on. Before `D-2026-10-07-02` §2 this was
+    `AUTH_ENABLED=false`, nobody and no middleware; with the variable still set,
+    nobody is refused now."""
     import services.hwfit.hardware as hardware
+    from tests.helpers.signed_in import ADMIN, as_person, people
     monkeypatch.setattr(hardware, "detect_system", _detect)
     monkeypatch.setenv("AUTH_ENABLED", "false")
-    app = FastAPI()
+    manager = people(tmp_path / "auth", members=())
+    app = as_person(FastAPI(), ADMIN, auth_manager=manager)
     app.include_router(setup_hwfit_routes())
     res = TestClient(app).get("/api/hwfit/system")
     assert res.status_code == 200, res.text
     assert res.json()["total_ram_gb"] == 8
+    nobody = as_person(FastAPI(), None, auth_manager=manager)
+    nobody.include_router(setup_hwfit_routes())
+    assert TestClient(nobody).get("/api/hwfit/system").status_code == 403
 
 
 def test_the_gate_is_the_router_s_own_and_not_only_the_middleware_s(monkeypatch):

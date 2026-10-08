@@ -46,6 +46,9 @@ services:
       - CHROMADB_HOST=chromadb
       - CHROMADB_PORT=8000
       - DATABASE_URL=${DATABASE_URL:-sqlite:///./data/app.db}
+      # Ignored since 0.2.0: there is always a sign-in (`D-2026-10-07-02` §2).
+      # Passed through only so a value left in `.env` is named once in the log.
+      # Who may make their own account is Settings > Users, off by default.
       - AUTH_ENABLED=${AUTH_ENABLED:-true}
       - LOCALHOST_BYPASS=${LOCALHOST_BYPASS:-false}
       - COMPANION_BASE_URL=${COMPANION_BASE_URL:-}
@@ -127,7 +130,7 @@ services:
     #
     # The probe is an HTTP request this app answered, not a process check.
     # `/api/health` is in `app.py`'s `AUTH_EXEMPT_EXACT`, so it answers 200
-    # with the default `AUTH_ENABLED=true`; parsing the body is what makes a
+    # before anyone signs in; parsing the body is what makes a
     # login redirect or an error page *fail* the check rather than pass it.
     # `127.0.0.1`, not `localhost`: uvicorn binds `0.0.0.0`, which is IPv4
     # only, and `localhost` can resolve to `::1` first.

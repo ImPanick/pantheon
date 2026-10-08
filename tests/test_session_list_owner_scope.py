@@ -81,14 +81,15 @@ def test_list_sessions_excludes_other_users_sessions(monkeypatch):
     assert bob_id not in returned_ids
 
 
-def test_auto_sort_skip_llm_cleans_owner_stamped_sessions_when_auth_disabled(monkeypatch):
+def _auto_sort_one_throwaway_of_alices(monkeypatch, caller):
+    """Seed one old throwaway chat owned by alice, run `POST /api/sessions/auto-sort`
+    (`skip_llm`) as ``caller`` and return (result, whether the chat survived)."""
     import routes.session_routes as sr
     from unittest.mock import MagicMock
 
     _stub_multipart_if_missing(monkeypatch)
-    monkeypatch.setenv("AUTH_ENABLED", "false")
     monkeypatch.setattr(sr, "SessionLocal", _TS)
-    monkeypatch.setattr(sr, "effective_user", lambda request: None)
+    monkeypatch.setattr(sr, "effective_user", lambda request: caller)
 
     sid = str(uuid.uuid4())
     old_time = cdb.utcnow_naive() - timedelta(hours=2)
@@ -127,12 +128,26 @@ def test_auto_sort_skip_llm_cleans_owner_stamped_sessions_when_auth_disabled(mon
     endpoint = next(r.endpoint for r in router.routes
                     if getattr(r, "path", "") == "/api/sessions/auto-sort"
                     and "POST" in getattr(r, "methods", set()))
-
     result = endpoint(request=MagicMock(), skip_llm=True)
-
-    assert result["deleted_throwaway"] == 1
     db = _TS()
     try:
-        assert db.query(DbSession).filter(DbSession.id == sid).first() is None
+        survived = db.query(DbSession).filter(DbSession.id == sid).first() is not None
     finally:
         db.close()
+    return result, survived
+
+
+def test_auto_sort_skip_llm_cleans_the_persons_own_throwaway_chat(monkeypatch):
+    result, survived = _auto_sort_one_throwaway_of_alices(monkeypatch, "alice")
+    assert result["deleted_throwaway"] == 1
+    assert not survived
+
+
+def test_auto_sort_for_nobody_touches_nobodys_chats_whatever_auth_enabled_says(monkeypatch):
+    """Under `AUTH_ENABLED=false` a caller with nobody on it sorted — and
+    deleted from — everyone's chats (single-user mode). The variable is ignored
+    now (`D-2026-10-07-02` §2): nobody owns no chat, so alice's is left alone."""
+    monkeypatch.setenv("AUTH_ENABLED", "false")
+    result, survived = _auto_sort_one_throwaway_of_alices(monkeypatch, None)
+    assert result["deleted_throwaway"] == 0
+    assert survived

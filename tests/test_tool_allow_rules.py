@@ -610,26 +610,13 @@ def test_route_refuses_a_bearer_api_token_on_every_verb(client):
 # ── the run and the route have to mean the same owner ───────────────────────
 
 
-@pytest.fixture()
-def no_login_client(monkeypatch):
-    """The explicit no-login deployment: `AUTH_ENABLED=false`, nobody signed in.
-
-    `require_user` lets the request through with `""`, and the owner is then
-    whatever `storage_owner_for_request` resolves — which is the reserved local
-    bucket, not the legacy NULL one.
-    """
-    monkeypatch.setenv("AUTH_ENABLED", "false")
-
+def _allow_rule_client(person):
+    """The chat routes behind what `AuthMiddleware` leaves on a request:
+    ``person`` signed in, or nobody (`tests/helpers/signed_in.as_person`)."""
     from routes import chat_routes
+    from tests.helpers.signed_in import as_person
 
-    app = FastAPI()
-
-    @app.middleware("http")
-    async def _anonymous(request, call_next):
-        request.state.current_user = None
-        request.state.api_token = False
-        return await call_next(request)
-
+    app = as_person(FastAPI(), person)
     app.include_router(
         chat_routes.setup_chat_routes(
             SimpleNamespace(),  # session_manager
@@ -640,30 +627,29 @@ def no_login_client(monkeypatch):
             SimpleNamespace(),  # upload_handler
         )
     )
-    yield TestClient(app)
+    return TestClient(app)
 
 
-@pytest.mark.parametrize("run_owner", [None, ""])
-def test_a_rule_written_in_no_login_mode_is_the_rule_the_run_reads(
-    no_login_client, run_owner
-):
+@pytest.mark.parametrize("run_owner", [ALICE, f" {ALICE} "])
+def test_a_rule_a_person_writes_is_the_rule_their_run_reads(run_owner):
     """The two halves have to name the same owner, and refutation found them
-    not doing so: a run carried `owner=None` while the route filed rules under
-    the reserved local bucket, so every rule was written, listed, and reported
-    saved — and never once read. Nothing tested that they agree, which is the
-    only reason that shipped.
+    not doing so: in the no-login mode a run carried `owner=None` while the
+    route filed rules under the reserved local bucket, so every rule was
+    written, listed, and reported saved — and never once read. There is no
+    no-login mode now (`D-2026-10-07-02` §2); the agreement still has to hold
+    for a person, and is asked here as it was asked then — by the route that
+    writes and the lookup the run makes.
     """
     import src.agent_loop as agent_loop
-    from src.owner_identity import DEFAULT_LOCAL_OWNER
 
-    created = no_login_client.post(
+    created = _allow_rule_client(ALICE).post(
         "/api/tool-allow-rules",
         json={"tool_name": "bash", "match_kind": MATCH_PREFIX, "pattern": "git log"},
     )
     assert created.status_code == 200, created.text
-    assert created.json()["owner"] == DEFAULT_LOCAL_OWNER
+    assert created.json()["owner"] == ALICE
 
-    lookup = agent_loop._resolve_allow_rule_lookup(run_owner, "sess-no-login")
+    lookup = agent_loop._resolve_allow_rule_lookup(run_owner, "sess-a-person")
 
     assert lookup is not None, "the run found no rules the route had just written"
     assert lookup("bash", "git log --oneline") is True
@@ -672,3 +658,15 @@ def test_a_rule_written_in_no_login_mode_is_the_rule_the_run_reads(
         rung=TrustRung.ALLOW_LISTED, allow_rule_lookup=lookup
     )
     assert context.decision_for("bash", "git log --oneline").allowed is True
+
+
+def test_nobody_files_a_rule_whatever_auth_enabled_says(monkeypatch):
+    """`AUTH_ENABLED=false` once filed a signed-out request's rule under the
+    reserved local owner. It is ignored now, and a request with nobody on it
+    is refused before anything is written."""
+    monkeypatch.setenv("AUTH_ENABLED", "false")
+    refused = _allow_rule_client(None).post(
+        "/api/tool-allow-rules",
+        json={"tool_name": "bash", "match_kind": MATCH_PREFIX, "pattern": "git log"},
+    )
+    assert refused.status_code == 401, refused.text

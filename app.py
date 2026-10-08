@@ -43,8 +43,8 @@ if os.name == "nt":
 from dotenv import load_dotenv
 # encoding="utf-8-sig" tolerates a UTF-8 BOM in .env — a common Windows gotcha
 # when the file is saved from Notepad. Without this, the first key parses as
-# "﻿AUTH_ENABLED" instead of "AUTH_ENABLED", so AUTH_ENABLED=false (etc.)
-# is silently ignored and the user is unexpectedly forced to log in (issue #142).
+# "﻿APP_BIND" instead of "APP_BIND", so whatever the file sets first is
+# silently ignored (issue #142, which met it on `AUTH_ENABLED`).
 # utf-8-sig reads plain UTF-8 (no BOM) identically, so this is safe everywhere.
 load_dotenv(encoding="utf-8-sig")
 
@@ -95,7 +95,7 @@ from src.app_helpers import (
 )
 from src.env_flags import env_flag
 from src.generated_images import GENERATED_IMAGE_HEADERS, resolve_generated_image_path
-from src.owner_identity import auth_disabled
+from src.owner_identity import warn_ignored_auth_switches
 from starlette.responses import RedirectResponse
 
 # ========= LOGGING =========
@@ -327,267 +327,262 @@ register_shared_auth_manager(auth_manager)
 # changing. With no roles defined the provider answers `None` for every key and
 # the layers below decide exactly as they did (`Law 1`).
 install_role_layer(auth_manager)
-AUTH_ENABLED = not auth_disabled()
-# env-spelling: `B91` holds this one. Widening to the shared vocabulary would
-# turn an AUTH BYPASS on for every host already carrying `LOCALHOST_BYPASS=1`,
-# where it does nothing today — an upgrade that silently unlocks loopback.
-# `.pantheon/FORBIDDEN.md` Part 2 lists this control. Moves only with a release
-# note and the same change made at `src/auth_helpers.py` in the same commit.
-LOCALHOST_BYPASS = os.getenv("LOCALHOST_BYPASS", "false").lower() == "true"
-if LOCALHOST_BYPASS:
-    logger.warning("LOCALHOST_BYPASS is enabled, loopback requests bypass authentication. Do not expose this instance to a network.")
+# `D-2026-10-07-02` §2 — the owner, verbatim: *"there is always authentication.
+# What's toggleable is registration. We keep it this way."* So `AuthMiddleware`
+# below is installed unconditionally. Until 2026-10-07 it existed only when
+# `AUTH_ENABLED` was on, and `LOCALHOST_BYPASS=true` waved a direct loopback
+# request past it; an operator who still sets either is told once, here, that
+# it changed nothing (`src/owner_identity.py`, which says why the answer is to
+# ignore and log rather than to refuse to start). What answers before a sign-in
+# is exactly what `_is_auth_exempt` names, the internal-tool loopback, and a
+# CORS preflight; a bearer token is a sign-in of its own.
+warn_ignored_auth_switches(logger)
 
-if AUTH_ENABLED:
-    AUTH_EXEMPT_EXACT = {
-        "/api/auth/setup",
-        "/api/auth/signup",
-        "/api/auth/login",
-        "/api/auth/logout",
-        "/api/auth/status",
-        "/api/auth/features",
-        "/api/auth/settings",
-        "/api/auth/integrations/presets",
-        "/api/health",
-        "/api/version",
-        "/login",
-    }
-    # **What `/static` hands a caller with no session, written down (`B370`).**
-    # Assets: the stylesheet, the modules, the fonts, the icons, the manifest —
-    # the login page loads them before anyone is signed in, so the prefix has
-    # to be exempt (`B262`). **No document.** Every HTML document under the
-    # mount is a page a route serves, listed in `ROUTE_OWNED_STATIC_PAGES`
-    # below, and the mount answers a request for one with a 302 to that route,
-    # which stands behind this middleware like any page. So the only documents
-    # an anonymous caller is handed are the routes named in `AUTH_EXEMPT_EXACT`
-    # above — `/login`, which is the point. Measured 2026-10-02 before this:
-    # three developer sandboxes under the mount (`wave-variants.html`,
-    # `whirlpool-variants.html`, `modal-control-variants.html`) answered 200
-    # with no cookie while `/`, `/docs` and `/backgrounds` answered
-    # `302 → /login`. `.pantheon/check-auth-map.py` rule F fails the build if a
-    # document lands under `static/` without a route.
-    AUTH_EXEMPT_PREFIXES = ["/static"]
-    # Dynamic paths whose own handler proves identity via a path-embedded
-    # secret instead of the session/bearer auth. The route handler at
-    # routes/task_routes.py validates the per-task `webhook_token` itself
-    # and returns 404 on mismatch, so the path is the credential — the
-    # UI labels these URLs "no auth needed" precisely because external
-    # callers (Zapier, n8n, curl) can't supply a session cookie. Without
-    # this exemption AuthMiddleware rejects every POST with 401 before
-    # the token is ever checked.
-    import re as _re
-    AUTH_EXEMPT_PATTERNS = [
-        _re.compile(r"^/api/tasks/[^/]+/webhook/[^/]+/?$"),
-    ]
+AUTH_EXEMPT_EXACT = {
+    "/api/auth/setup",
+    "/api/auth/signup",
+    "/api/auth/login",
+    "/api/auth/logout",
+    "/api/auth/status",
+    "/api/auth/features",
+    "/api/auth/settings",
+    "/api/auth/integrations/presets",
+    "/api/health",
+    "/api/version",
+    "/login",
+}
+# **What `/static` hands a caller with no session, written down (`B370`).**
+# Assets: the stylesheet, the modules, the fonts, the icons, the manifest —
+# the login page loads them before anyone is signed in, so the prefix has
+# to be exempt (`B262`). **No document.** Every HTML document under the
+# mount is a page a route serves, listed in `ROUTE_OWNED_STATIC_PAGES`
+# below, and the mount answers a request for one with a 302 to that route,
+# which stands behind this middleware like any page. So the only documents
+# an anonymous caller is handed are the routes named in `AUTH_EXEMPT_EXACT`
+# above — `/login`, which is the point. Measured 2026-10-02 before this:
+# three developer sandboxes under the mount (`wave-variants.html`,
+# `whirlpool-variants.html`, `modal-control-variants.html`) answered 200
+# with no cookie while `/`, `/docs` and `/backgrounds` answered
+# `302 → /login`. `.pantheon/check-auth-map.py` rule F fails the build if a
+# document lands under `static/` without a route.
+AUTH_EXEMPT_PREFIXES = ["/static"]
+# Dynamic paths whose own handler proves identity via a path-embedded
+# secret instead of the session/bearer auth. The route handler at
+# routes/task_routes.py validates the per-task `webhook_token` itself
+# and returns 404 on mismatch, so the path is the credential — the
+# UI labels these URLs "no auth needed" precisely because external
+# callers (Zapier, n8n, curl) can't supply a session cookie. Without
+# this exemption AuthMiddleware rejects every POST with 401 before
+# the token is ever checked.
+import re as _re
+AUTH_EXEMPT_PATTERNS = [
+    _re.compile(r"^/api/tasks/[^/]+/webhook/[^/]+/?$"),
+]
 
-    def _is_auth_exempt(path: str) -> bool:
-        if path in AUTH_EXEMPT_EXACT:
-            return True
-        if any(path_is_route_or_child(path, p) for p in AUTH_EXEMPT_PREFIXES):
-            return True
-        return any(p.match(path) for p in AUTH_EXEMPT_PATTERNS)
-
-    # In-memory token cache: prefix → list[(token_id, token_hash, owner, scopes)]. The DB
-    # query was running on every API-bearer request and scanning bcrypt
-    # checks linearly. With this cache, we hit the DB only when the cache
-    # version bumps (token created/revoked) — see _token_cache_invalidate
-    # in app.state, called by routes/api_token_routes.
-    _token_cache: dict = {}
-    _token_cache_lock = _asyncio.Lock()
-    _token_cache_dirty = True
-
-    def _token_cache_invalidate():
-        nonlocal_dict = app.state.__dict__
-        nonlocal_dict["_token_cache_dirty"] = True
-    app.state.invalidate_token_cache = _token_cache_invalidate
-    # Same setter, reachable without a `Request`. Routes keep using
-    # `app.state.invalidate_token_cache` exactly as before; the agent's tool
-    # layer runs inside the model loop and has no request to reach through, so
-    # before this line its `manage_tokens delete` left the revoked token
-    # authenticating out of the cache until the next restart (`B43`).
-    _register_token_cache_invalidator(_token_cache_invalidate)
-    app.state._token_cache = _token_cache
-    app.state._token_cache_dirty = True
-
-    def _refresh_token_cache():
-        """Rebuild the prefix→[(id,hash)] map from the DB."""
-        from collections import defaultdict
-        new_map = defaultdict(list)
-        db = SessionLocal()
-        try:
-            rows = db.query(ApiToken).filter(ApiToken.is_active == True).all()
-            for r in rows:
-                owner_key = normalize_known_username(auth_manager.users, getattr(r, "owner", None))
-                if not owner_key:
-                    logger.warning(
-                        "Ignoring active API token '%s' for unknown auth user '%s'",
-                        getattr(r, "id", ""),
-                        getattr(r, "owner", None),
-                    )
-                    continue
-                scopes = [s.strip() for s in (getattr(r, "scopes", "") or "chat").split(",") if s.strip()]
-                new_map[r.token_prefix].append((r.id, r.token_hash, owner_key, scopes))
-        finally:
-            db.close()
-        _token_cache.clear()
-        _token_cache.update(new_map)
-        app.state._token_cache_dirty = False
-
-    # Headers that prove a request was forwarded by a proxy/tunnel (cloudflared,
-    # nginx, Caddy, Tailscale Funnel, …). cloudflared connects to the app FROM
-    # 127.0.0.1, so without this check every tunneled request would look like
-    # loopback and could bypass auth.
-    _PROXY_FWD_HEADERS = (
-        "cf-connecting-ip", "cf-ray", "cf-visitor",
-        "x-forwarded-for", "x-forwarded-host", "x-real-ip", "forwarded",
-    )
-
-    def _is_trusted_loopback(request: Request) -> bool:
-        """True ONLY for a DIRECT loopback connection with no proxy/tunnel
-        forwarding headers. A bare ``client.host in ('127.0.0.1','::1')`` check is
-        unsafe behind a Cloudflare tunnel / reverse proxy: those connect from
-        loopback, so a remote visitor would otherwise inherit local trust and
-        slip past LOCALHOST_BYPASS or spoof the internal-tool path. Pantheon's own
-        in-process agent loopback calls carry none of these headers, so they still
-        qualify."""
-        host = request.client.host if request.client else None
-        if host not in ("127.0.0.1", "::1"):
-            return False
-        for _h in _PROXY_FWD_HEADERS:
-            if request.headers.get(_h):
-                return False
+def _is_auth_exempt(path: str) -> bool:
+    if path in AUTH_EXEMPT_EXACT:
         return True
+    if any(path_is_route_or_child(path, p) for p in AUTH_EXEMPT_PREFIXES):
+        return True
+    return any(p.match(path) for p in AUTH_EXEMPT_PATTERNS)
 
-    class AuthMiddleware(BaseHTTPMiddleware):
-        async def dispatch(self, request: Request, call_next):
-            path = get_application_route_path(request.scope)
-            # A genuine CORS preflight (OPTIONS + Access-Control-Request-Method)
-            # carries no credentials by design and must reach CORSMiddleware to be
-            # answered. AuthMiddleware is the outermost middleware, so gating the
-            # preflight on auth 401s it before CORS can respond -- which blocks
-            # every cross-origin browser/WebView client before the real request
-            # is sent. Let real preflights through (only OPTIONS w/ the ACRM
-            # header; never a credentialed request).
-            if is_cors_preflight(request.method, request.headers):
-                return await call_next(request)
-            if _is_auth_exempt(path):
-                return await call_next(request)
-            # In-process internal-tool token bypass. Used by the agent
-            # tool layer when it HTTP-loopbacks to admin-gated routes
-            # (no admin cookie available in that context). Restricted to
-            # loopback clients + matching token to keep it locked down.
-            try:
-                from core.middleware import INTERNAL_TOOL_HEADER, INTERNAL_TOOL_TOKEN as _ITT, INTERNAL_TOOL_USER
-                _hdr = request.headers.get(INTERNAL_TOOL_HEADER)
-                if _hdr and secrets.compare_digest(_hdr, _ITT) and _is_trusted_loopback(request):
-                    # Impersonation: when the agent's loopback call sets
-                    # X-Pantheon-Owner, attribute the request to that user only
-                    # if they exist. Authorization checks remain separate; this
-                    # is just owner attribution for notes/calendar/etc.
-                    _impersonate = (request.headers.get("X-Pantheon-Owner") or "").strip()
-                    _auth_mgr = getattr(request.app.state, "auth_manager", None) or auth_manager
-                    if _impersonate and _impersonate in getattr(_auth_mgr, "users", {}):
-                        request.state.current_user = _impersonate
-                    else:
-                        request.state.current_user = INTERNAL_TOOL_USER
-                    request.state.api_token = False
-                    return await call_next(request)
-            except Exception as _e:
-                logger.warning("Internal tool auth header check failed", exc_info=_e)
-            # Allow DIRECT localhost requests (internal service calls from
-            # heartbeats etc.). Tunnel/proxy-forwarded requests are excluded by
-            # _is_trusted_loopback so LOCALHOST_BYPASS can't be abused over a
-            # Cloudflare tunnel / reverse proxy. Keep LOCALHOST_BYPASS=false for
-            # network-exposed deployments regardless.
-            if LOCALHOST_BYPASS and _is_trusted_loopback(request):
-                return await call_next(request)
-            if not auth_manager.is_configured:
-                # No users yet — redirect to login for first-time setup
-                if not path.startswith("/api/"):
-                    return RedirectResponse(
-                        url=with_asgi_root_path(request.scope, "/login"),
-                        status_code=302,
-                    )
-                return JSONResponse(status_code=401, content={"error": "Setup required"})
+# In-memory token cache: prefix → list[(token_id, token_hash, owner, scopes)]. The DB
+# query was running on every API-bearer request and scanning bcrypt
+# checks linearly. With this cache, we hit the DB only when the cache
+# version bumps (token created/revoked) — see _token_cache_invalidate
+# in app.state, called by routes/api_token_routes.
+_token_cache: dict = {}
+_token_cache_lock = _asyncio.Lock()
+_token_cache_dirty = True
 
-            # --- Bearer token auth (API tokens for external integrations) ---
-            auth_header = request.headers.get("authorization", "")
-            # `bearer_credential` knows every prefix this build accepts, which
-            # is one today and two the moment `P0-31`'s rename lands: tokens
-            # already pasted into a scrape config or a paired phone were minted
-            # under the old prefix and have to keep working. It also matches the
-            # scheme case-insensitively, as RFC 7235 requires — that widens what
-            # is *offered* to the bcrypt check below and nothing else.
-            raw_token = _bearer_credential(auth_header)
-            if raw_token is not None:
-                # Sanity check: tokens are a 4-char prefix + 43 chars of base64
-                if len(raw_token) < 12 or len(raw_token) > 100:
-                    return JSONResponse(status_code=401, content={"error": "Invalid API token"})
-                prefix = raw_token[:8]
-                try:
-                    if app.state._token_cache_dirty:
-                        async with _token_cache_lock:
-                            if app.state._token_cache_dirty:
-                                await _asyncio.to_thread(_refresh_token_cache)
-                    candidates = list(_token_cache.get(prefix, ()))
-                    matched_id = None
-                    matched_owner = None
-                    matched_scopes = []
-                    for tid, thash, owner, scopes in candidates:
-                        if _bcrypt.checkpw(raw_token.encode(), thash.encode()):
-                            matched_id = tid
-                            matched_owner = owner
-                            matched_scopes = scopes or []
-                            break
-                    if matched_id:
-                        # Update last_used_at off the hot path. Doing it
-                        # inline used to keep the request open across an
-                        # extra commit; do it fire-and-forget instead.
-                        async def _touch_last_used(tid: str):
-                            def _do():
-                                _db = SessionLocal()
-                                try:
-                                    _db.query(ApiToken).filter(ApiToken.id == tid).update(
-                                        {"last_used_at": datetime.utcnow()}
-                                    )
-                                    _db.commit()
-                                finally:
-                                    _db.close()
-                            try:
-                                await _asyncio.to_thread(_do)
-                            except Exception as _e:
-                                logger.debug("Failed to update token last_used_at", exc_info=_e)
-                        _asyncio.create_task(_touch_last_used(matched_id))
-                        # Keep bearer-token callers out of normal cookie/user
-                        request.state.current_user = "api"
-                        request.state.api_token = True
-                        request.state.api_token_id = matched_id
-                        request.state.api_token_owner = matched_owner
-                        request.state.api_token_scopes = matched_scopes
-                        return await call_next(request)
-                except Exception:
-                    logger.warning("API token auth error", exc_info=False)
-                # Invalid bearer token — reject immediately
-                return JSONResponse(status_code=401, content={"error": "Invalid API token"})
+def _token_cache_invalidate():
+    nonlocal_dict = app.state.__dict__
+    nonlocal_dict["_token_cache_dirty"] = True
+app.state.invalidate_token_cache = _token_cache_invalidate
+# Same setter, reachable without a `Request`. Routes keep using
+# `app.state.invalidate_token_cache` exactly as before; the agent's tool
+# layer runs inside the model loop and has no request to reach through, so
+# before this line its `manage_tokens delete` left the revoked token
+# authenticating out of the cache until the next restart (`B43`).
+_register_token_cache_invalidator(_token_cache_invalidate)
+app.state._token_cache = _token_cache
+app.state._token_cache_dirty = True
 
-            # --- Cookie-based session auth ---
-            token = request.cookies.get(SESSION_COOKIE)
-            if not auth_manager.validate_token(token):
-                if path.startswith("/api/"):
-                    return JSONResponse(status_code=401, content={"error": "Not authenticated"})
+def _refresh_token_cache():
+    """Rebuild the prefix→[(id,hash)] map from the DB."""
+    from collections import defaultdict
+    new_map = defaultdict(list)
+    db = SessionLocal()
+    try:
+        rows = db.query(ApiToken).filter(ApiToken.is_active == True).all()
+        for r in rows:
+            owner_key = normalize_known_username(auth_manager.users, getattr(r, "owner", None))
+            if not owner_key:
+                logger.warning(
+                    "Ignoring active API token '%s' for unknown auth user '%s'",
+                    getattr(r, "id", ""),
+                    getattr(r, "owner", None),
+                )
+                continue
+            scopes = [s.strip() for s in (getattr(r, "scopes", "") or "chat").split(",") if s.strip()]
+            new_map[r.token_prefix].append((r.id, r.token_hash, owner_key, scopes))
+    finally:
+        db.close()
+    _token_cache.clear()
+    _token_cache.update(new_map)
+    app.state._token_cache_dirty = False
+
+# Headers that prove a request was forwarded by a proxy/tunnel (cloudflared,
+# nginx, Caddy, Tailscale Funnel, …). cloudflared connects to the app FROM
+# 127.0.0.1, so without this check every tunneled request would look like
+# loopback and could bypass auth.
+_PROXY_FWD_HEADERS = (
+    "cf-connecting-ip", "cf-ray", "cf-visitor",
+    "x-forwarded-for", "x-forwarded-host", "x-real-ip", "forwarded",
+)
+
+def _is_trusted_loopback(request: Request) -> bool:
+    """True ONLY for a DIRECT loopback connection with no proxy/tunnel
+    forwarding headers. A bare ``client.host in ('127.0.0.1','::1')`` check is
+    unsafe behind a Cloudflare tunnel / reverse proxy: those connect from
+    loopback, so a remote visitor would otherwise inherit local trust and
+    spoof the internal-tool path. Pantheon's own
+    in-process agent loopback calls carry none of these headers, so they still
+    qualify."""
+    host = request.client.host if request.client else None
+    if host not in ("127.0.0.1", "::1"):
+        return False
+    for _h in _PROXY_FWD_HEADERS:
+        if request.headers.get(_h):
+            return False
+    return True
+
+class AuthMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        path = get_application_route_path(request.scope)
+        # A genuine CORS preflight (OPTIONS + Access-Control-Request-Method)
+        # carries no credentials by design and must reach CORSMiddleware to be
+        # answered. AuthMiddleware is the outermost middleware, so gating the
+        # preflight on auth 401s it before CORS can respond -- which blocks
+        # every cross-origin browser/WebView client before the real request
+        # is sent. Let real preflights through (only OPTIONS w/ the ACRM
+        # header; never a credentialed request).
+        if is_cors_preflight(request.method, request.headers):
+            return await call_next(request)
+        if _is_auth_exempt(path):
+            return await call_next(request)
+        # In-process internal-tool token bypass. Used by the agent
+        # tool layer when it HTTP-loopbacks to admin-gated routes
+        # (no admin cookie available in that context). Restricted to
+        # loopback clients + matching token to keep it locked down.
+        try:
+            from core.middleware import INTERNAL_TOOL_HEADER, INTERNAL_TOOL_TOKEN as _ITT, INTERNAL_TOOL_USER
+            _hdr = request.headers.get(INTERNAL_TOOL_HEADER)
+            if _hdr and secrets.compare_digest(_hdr, _ITT) and _is_trusted_loopback(request):
+                # Impersonation: when the agent's loopback call sets
+                # X-Pantheon-Owner, attribute the request to that user only
+                # if they exist. Authorization checks remain separate; this
+                # is just owner attribution for notes/calendar/etc.
+                _impersonate = (request.headers.get("X-Pantheon-Owner") or "").strip()
+                _auth_mgr = getattr(request.app.state, "auth_manager", None) or auth_manager
+                if _impersonate and _impersonate in getattr(_auth_mgr, "users", {}):
+                    request.state.current_user = _impersonate
+                else:
+                    request.state.current_user = INTERNAL_TOOL_USER
+                request.state.api_token = False
+                return await call_next(request)
+        except Exception as _e:
+            logger.warning("Internal tool auth header check failed", exc_info=_e)
+        # A direct loopback request is not a sign-in. `LOCALHOST_BYPASS=true`
+        # let one through here until 2026-10-07 (`D-2026-10-07-02` §2); the
+        # variable is ignored now, and said so at start.
+        if not auth_manager.is_configured:
+            # No users yet — the sign-in page asks for the admin account
+            # (`/api/auth/setup`, exempt above). Nothing else answers.
+            if not path.startswith("/api/"):
                 return RedirectResponse(
                     url=with_asgi_root_path(request.scope, "/login"),
                     status_code=302,
                 )
+            return JSONResponse(status_code=401, content={"error": "Setup required"})
 
-            # Attach current username to request state for downstream routes
-            request.state.current_user = auth_manager.get_username_for_token(token)
-            request.state.api_token = False
-            return await call_next(request)
+        # --- Bearer token auth (API tokens for external integrations) ---
+        auth_header = request.headers.get("authorization", "")
+        # `bearer_credential` knows every prefix this build accepts, which
+        # is one today and two the moment `P0-31`'s rename lands: tokens
+        # already pasted into a scrape config or a paired phone were minted
+        # under the old prefix and have to keep working. It also matches the
+        # scheme case-insensitively, as RFC 7235 requires — that widens what
+        # is *offered* to the bcrypt check below and nothing else.
+        raw_token = _bearer_credential(auth_header)
+        if raw_token is not None:
+            # Sanity check: tokens are a 4-char prefix + 43 chars of base64
+            if len(raw_token) < 12 or len(raw_token) > 100:
+                return JSONResponse(status_code=401, content={"error": "Invalid API token"})
+            prefix = raw_token[:8]
+            try:
+                if app.state._token_cache_dirty:
+                    async with _token_cache_lock:
+                        if app.state._token_cache_dirty:
+                            await _asyncio.to_thread(_refresh_token_cache)
+                candidates = list(_token_cache.get(prefix, ()))
+                matched_id = None
+                matched_owner = None
+                matched_scopes = []
+                for tid, thash, owner, scopes in candidates:
+                    if _bcrypt.checkpw(raw_token.encode(), thash.encode()):
+                        matched_id = tid
+                        matched_owner = owner
+                        matched_scopes = scopes or []
+                        break
+                if matched_id:
+                    # Update last_used_at off the hot path. Doing it
+                    # inline used to keep the request open across an
+                    # extra commit; do it fire-and-forget instead.
+                    async def _touch_last_used(tid: str):
+                        def _do():
+                            _db = SessionLocal()
+                            try:
+                                _db.query(ApiToken).filter(ApiToken.id == tid).update(
+                                    {"last_used_at": datetime.utcnow()}
+                                )
+                                _db.commit()
+                            finally:
+                                _db.close()
+                        try:
+                            await _asyncio.to_thread(_do)
+                        except Exception as _e:
+                            logger.debug("Failed to update token last_used_at", exc_info=_e)
+                    _asyncio.create_task(_touch_last_used(matched_id))
+                    # Keep bearer-token callers out of normal cookie/user
+                    request.state.current_user = "api"
+                    request.state.api_token = True
+                    request.state.api_token_id = matched_id
+                    request.state.api_token_owner = matched_owner
+                    request.state.api_token_scopes = matched_scopes
+                    return await call_next(request)
+            except Exception:
+                logger.warning("API token auth error", exc_info=False)
+            # Invalid bearer token — reject immediately
+            return JSONResponse(status_code=401, content={"error": "Invalid API token"})
 
-    app.add_middleware(AuthMiddleware)
-    logger.info("Auth middleware enabled (AUTH_ENABLED=true)")
-else:
-    logger.info("Auth middleware disabled (set AUTH_ENABLED=true to enable)")
+        # --- Cookie-based session auth ---
+        token = request.cookies.get(SESSION_COOKIE)
+        if not auth_manager.validate_token(token):
+            if path.startswith("/api/"):
+                return JSONResponse(status_code=401, content={"error": "Not authenticated"})
+            return RedirectResponse(
+                url=with_asgi_root_path(request.scope, "/login"),
+                status_code=302,
+            )
+
+        # Attach current username to request state for downstream routes
+        request.state.current_user = auth_manager.get_username_for_token(token)
+        request.state.api_token = False
+        return await call_next(request)
+
+app.add_middleware(AuthMiddleware)
+logger.info("Auth middleware enabled")
 
 # ========= STATIC FILES =========
 os.makedirs(STATIC_DIR, exist_ok=True)
@@ -1348,8 +1343,8 @@ for _sandbox_file, _sandbox_route in DEVELOPER_SANDBOX_PAGES.items():
 
 @app.get("/login")
 async def serve_login(request: Request):
-    if not AUTH_ENABLED:
-        return RedirectResponse(url="/", status_code=302)
+    # Always the sign-in page: with no account yet it asks for the admin
+    # account. It redirected to `/` while auth could be off (`D-2026-10-07-02`).
     return serve_html_with_nonce(request, route_owned_page("login.html"))
 
 
