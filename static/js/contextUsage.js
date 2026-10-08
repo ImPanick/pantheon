@@ -106,6 +106,9 @@ function _formatBytes(n) {
   if (v >= 1024) return `${Math.round(v / 1024)} KB`;
   return `${v} B`;
 }
+// `B-NEW-1`. The composer's card preview says a file's size the way the
+// context panel lists it — this function, not a fourth copy of it.
+export const formatBytes = _formatBytes;
 
 function _share(tokens, total) {
   if (!total || !Number.isFinite(Number(tokens))) return '';

@@ -48583,3 +48583,394 @@ body.plan-mode-active .chat-input-top > .model-picker-wrap:has(> .model-picker-m
 /* Settings → Appearance: what the Library's switch takes and leaves, on its
    own line under the row's name (beside "Off for everyone" it ran together). */
 .vis-label .vis-keeps { display: block; margin: 2px 0 0; }
+
+/* ===========================================================================
+   `B-NEW-1` (fx5-cards) — the composer's attachments are a hand of cards.
+
+   `.attach-strip` was a block in the composer's column, so it took its own
+   height out of the chat: 57px for one image, 68 for three files, 42 for the
+   "7 files" pill, at 1440×900 and 390×844 alike (measured on `0345288`), and
+   the end of the reply sat behind a band of empty page. The owner, from a
+   phone, 2026-10-08: *"a massive blank space blocking view"*.
+
+   It keeps its place in the column and gives the height back: a negative top
+   margin equal to its height, so the chat runs down to the message box and
+   only the cards sit over it. The strip itself is transparent and lets every
+   pointer through; each card takes its own. Its height still counts for
+   `--composer-clearance` (`init.js`), so a minimised window's chip waits above
+   the cards instead of under them.
+
+   The `.attach-strip` and `.attach-strip:empty` blocks above are untouched —
+   `tests/test_composer_and_attach_strip_rules.py` pins them — and this one
+   applies only once `attachHand.js` has added `.attach-hand`. Each card keeps
+   `.thumb`, so the upload's dimming and its whirlpool (`uploadPending`) still
+   find it; the declarations below out-rank the chip rules `.thumb` carries.
+
+   Every colour is the palette's own five (`--bg`, `--fg`, `--panel`,
+   `--border`, `--red`), so all twenty-three stay legible; no `--accent`, and
+   focus is the global ring. Motion is a transform: nothing reflows when a card
+   lifts, and `prefers-reduced-motion` deals the hand without the slide.
+   =========================================================================== */
+.attach-strip.attach-hand {
+  --hand-card-w: 52px;
+  --hand-card-h: 68px;
+  --hand-left: 12px;
+  --hand-step: 14px;
+  --hand-tilt: 3.5deg;
+  --hand-lift: 10px;
+  --hand-h: calc(var(--hand-card-h) + 18px);
+  --hand-step-now: var(--hand-step);
+  --hand-tilt-now: var(--hand-tilt);
+  position: relative;
+  z-index: 3;
+  height: var(--hand-h);
+  min-height: 0;
+  margin-top: calc(-1 * var(--hand-h));
+  padding: 0;
+  background: transparent;
+  pointer-events: none;
+  container-type: inline-size;
+}
+/* "+N" spreads the hand across the width it has, the message box's. */
+.attach-strip.attach-hand.hand-open {
+  --hand-step-now: clamp(10px, calc((100cqw - var(--hand-card-w) - var(--hand-left) - 84px) / var(--hand-gaps, 1)), 44px);
+  --hand-tilt-now: calc(12deg / var(--hand-gaps, 1));
+}
+.attach-hand .hand-card {
+  position: absolute;
+  left: var(--hand-left);
+  bottom: 4px;
+  width: var(--hand-card-w);
+  height: var(--hand-card-h);
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  display: block;
+  z-index: var(--z, 1);
+  pointer-events: auto;
+  /* The pivot sits below the card, so a fan opens at the top like a hand. */
+  transform-origin: 50% 150%;
+  transform: translateX(calc(var(--slot, 0) * var(--hand-step-now))) rotate(calc(var(--slot, 0) * var(--hand-tilt-now)));
+  transition: transform 0.2s cubic-bezier(0.2, 0.8, 0.3, 1), translate 0.26s cubic-bezier(0.2, 0.8, 0.3, 1), opacity 0.2s ease;
+  -webkit-touch-callout: none;
+  user-select: none;
+}
+/* Dealt: a new card slides up into the hand, once. */
+@starting-style {
+  .attach-hand .hand-card.hand-card-new {
+    translate: 0 28px;
+    opacity: 0;
+  }
+}
+.attach-hand .hand-card-lift {
+  position: absolute;
+  inset: 0;
+  transition: transform 0.16s cubic-bezier(0.2, 0.8, 0.3, 1);
+}
+.attach-hand .hand-card-btn {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 4px 3px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--fg);
+  font: inherit;
+  font-size: 10px;
+  line-height: 1.2;
+  overflow: hidden;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.32);
+  touch-action: manipulation;
+  -webkit-touch-callout: none;
+  user-select: none;
+  transition: box-shadow 0.16s ease, border-color 0.16s ease;
+}
+.attach-hand .hand-card.hand-card-image .hand-card-btn { padding: 0; }
+/* A file with no picture is a page with its corner turned. */
+.attach-hand .hand-card:not(.hand-card-image) .hand-card-btn::before {
+  content: '';
+  position: absolute;
+  top: -1px;
+  right: -1px;
+  border-style: solid;
+  border-width: 0 11px 11px 0;
+  border-color: transparent var(--bg) color-mix(in srgb, var(--fg) 30%, var(--panel)) transparent;
+}
+.attach-hand .hand-card-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  object-fit: cover;
+  border-radius: 0;
+  pointer-events: none;
+  -webkit-user-drag: none;
+}
+.attach-hand .hand-card-glyph,
+.hand-preview .hand-card-glyph {
+  max-width: 100%;
+  padding: 2px 5px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--fg) 14%, transparent);
+  color: var(--fg);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+.attach-hand .hand-card-name {
+  display: block;
+  max-width: 100%;
+  font-size: 9.5px;
+  color: var(--fg);
+  opacity: 0.85;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Up: hovered, focused or selected — a little higher, a little bigger, and in
+   front of the rest. Hover only where there is a pointer that hovers: on a
+   phone a tapped card would otherwise stay up. */
+.attach-hand .hand-card.is-selected,
+.attach-hand .hand-card:focus-within { z-index: 40; }
+.attach-hand .hand-card.is-selected > .hand-card-lift,
+.attach-hand .hand-card:focus-within > .hand-card-lift {
+  transform: translateY(calc(-1 * var(--hand-lift))) scale(1.06);
+}
+.attach-hand .hand-card.is-selected .hand-card-btn,
+.attach-hand .hand-card:focus-within .hand-card-btn {
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.38);
+}
+.attach-hand .hand-card.is-selected .hand-card-btn {
+  border-color: var(--fg);
+  box-shadow: 0 0 0 1px var(--fg), 0 8px 18px rgba(0, 0, 0, 0.38);
+}
+@media (hover: hover) {
+  .attach-hand .hand-card:hover { z-index: 41; }
+  .attach-hand .hand-card:hover > .hand-card-lift {
+    transform: translateY(calc(-1 * var(--hand-lift))) scale(1.06);
+  }
+  .attach-hand .hand-card:hover .hand-card-btn { box-shadow: 0 8px 18px rgba(0, 0, 0, 0.38); }
+}
+/* The count, on the front card. */
+.attach-hand .hand-count {
+  position: absolute;
+  top: -7px;
+  left: -7px;
+  z-index: 2;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  box-sizing: border-box;
+  border-radius: 9px;
+  background: var(--fg);
+  color: var(--bg);
+  box-shadow: 0 0 0 2px var(--bg);
+  font-size: 10.5px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+  pointer-events: none;
+}
+/* The ×: on the card that is up. */
+.attach-hand .hand-card-x {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  z-index: 3;
+  width: 22px;
+  height: 22px;
+  min-width: 0;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid color-mix(in srgb, var(--fg) 45%, var(--border));
+  border-radius: 50%;
+  background: var(--panel);
+  color: var(--fg);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+  opacity: 0;
+  transform: scale(0.6);
+  pointer-events: none;
+  transition: opacity 0.12s ease, transform 0.12s ease;
+}
+.attach-hand .hand-card.is-selected .hand-card-x,
+.attach-hand .hand-card:focus-within .hand-card-x {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+@media (hover: hover) {
+  .attach-hand .hand-card:hover .hand-card-x {
+    opacity: 1;
+    transform: none;
+    pointer-events: auto;
+  }
+}
+.attach-hand .hand-card-x:hover { border-color: var(--red); }
+/* "+N": past five, the rest wait behind the last card. */
+.attach-hand .hand-more {
+  position: absolute;
+  bottom: 8px;
+  left: calc(var(--hand-left) + var(--hand-card-w) + var(--hand-last, 0) * var(--hand-step-now) + 20px);
+  z-index: 50;
+  height: 22px;
+  min-width: 30px;
+  margin: 0;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--panel);
+  color: var(--fg);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 20px;
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+  pointer-events: auto;
+}
+/* While the message sends, the cards are the upload's (`uploadPending`) — and
+   they stay where they are: `.attach-strip.attach-uploading .thumb` makes a
+   chip `position: relative`, which would drop every card into a row. */
+.attach-strip.attach-hand.attach-uploading .hand-card {
+  position: absolute;
+  pointer-events: none;
+}
+/* The card's menu. Appended to <body>, positioned above the card by script. */
+.hand-menu {
+  position: fixed;
+  min-width: 160px;
+  padding: 4px;
+  box-sizing: border-box;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+.hand-menu-item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 30px;
+  margin: 0;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--fg);
+  font: inherit;
+  font-size: 0.8rem;
+  text-align: left;
+  cursor: pointer;
+}
+.hand-menu-item:hover { background: color-mix(in srgb, var(--fg) 10%, transparent); }
+/* Preview: the chat's own lightbox (`.attach-lightbox`), with a × to close. */
+.hand-preview { cursor: default; }
+.hand-preview .hand-preview-img { cursor: zoom-out; }
+.hand-preview .hand-preview-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--panel);
+  color: var(--fg);
+  font: inherit;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+.hand-preview .hand-preview-doc {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: min(720px, 100%);
+  max-height: 100%;
+  padding: 18px;
+  box-sizing: border-box;
+  background: var(--panel);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+}
+.hand-preview .hand-preview-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.hand-preview .hand-preview-name {
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hand-preview .hand-preview-meta {
+  font-size: 12px;
+  color: var(--fg);
+  opacity: 0.8;
+}
+.hand-preview .hand-preview-text {
+  flex: 1 1 auto;
+  min-height: 0;
+  margin: 0;
+  padding: 10px;
+  overflow: auto;
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.hand-preview .hand-preview-audio { width: 100%; }
+@media (max-width: 768px) {
+  .attach-strip.attach-hand {
+    --hand-card-w: 46px;
+    --hand-card-h: 60px;
+    --hand-left: 8px;
+    --hand-step: 12px;
+  }
+  /* A finger's worth of ×. */
+  .attach-hand .hand-card-x {
+    top: -10px;
+    right: -10px;
+    width: 26px;
+    height: 26px;
+    font-size: 16px;
+  }
+  .hand-menu-item { min-height: 40px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .attach-hand .hand-card,
+  .attach-hand .hand-card-lift,
+  .attach-hand .hand-card-x { transition: none; }
+}

@@ -8,6 +8,7 @@
 import uiModule from './ui.js';
 import spinnerModule from './spinner.js';
 import { attachmentKind, KIND_LABELS } from './contextUsage.js';
+import { drawHand } from './attachHand.js';
 
 let pendingFiles = [];
 let uploaded = [];
@@ -125,8 +126,6 @@ export function getAttachmentSessionKey() {
 }
 
 const MAX_FILES = 10;
-const MAX_VISIBLE = 3;
-let _expanded = false;
 
 function _isMobileViewport() {
   return window.matchMedia && window.matchMedia('(max-width: 768px)').matches;
@@ -566,9 +565,14 @@ export function openPicker() {
 }
 
 /**
- * Render the attachment strip with pending files.
- * 1-3 files: show individual chips.
- * 4+  files: collapse into a single "N files" badge (click to expand).
+ * Render the attachment strip with pending files — as a hand of cards
+ * (`B-NEW-1`, `static/js/attachHand.js`).
+ *
+ * It was a row of chips that took its own height out of the chat, and past
+ * three files a "N files" pill whose × removed them all. The hand keeps every
+ * one of those: each file's thumbnail or name, a × per file (on the card that
+ * is hovered or selected, and Remove in its menu), and Remove all (in the
+ * menu) — and gives the chat its height back.
  */
 export function renderAttachStrip() {
   _syncBucket();
@@ -579,69 +583,48 @@ export function renderAttachStrip() {
   // what this message is going to spend, and the count of files still waiting
   // to be measured is part of what it says.
   renderContextMeter();
-  if (pendingFiles.length === 0) {
-    _expanded = false;
-    if (window._updateSendBtnIcon) window._updateSendBtnIcon();
-    return;
-  }
-
-  const total = pendingFiles.length;
-  const collapsed = total > MAX_VISIBLE && !_expanded;
-
-  if (collapsed) {
-    // Single compact badge: "5 files ×"
-    const badge = document.createElement('div');
-    badge.className = 'thumb thumb-collapsed';
-    const label = document.createElement('span');
-    label.textContent = total + ' file' + (total > 1 ? 's' : '');
-    label.className = 'thumb-collapsed-label';
-    badge.appendChild(label);
-    badge.title = pendingFiles.map(f => f.name || 'pasted-image').join('\n');
-    badge.style.cursor = 'pointer';
-    badge.addEventListener('click', (e) => {
-      if (e.target.closest('.thumb-collapsed-x')) return;
-      _expanded = true;
-      renderAttachStrip();
-    });
-    const x = document.createElement('button');
-    x.className = 'thumb-collapsed-x';
-    x.textContent = '\u00d7';
-    x.title = 'Remove all';
-    x.addEventListener('click', (e) => { e.stopPropagation(); clearPending(); });
-    badge.appendChild(x);
-    strip.appendChild(badge);
-  } else {
-    // Show individual chips
-    for (let idx = 0; idx < total; idx++) {
-      strip.appendChild(_createChip(pendingFiles[idx], idx));
-    }
-  }
+  // Drawn with an empty list too, so a selection or an open menu that belonged
+  // to a file that has just gone goes with it.
+  drawHand(strip, pendingFiles, _handHost);
   if (window._updateSendBtnIcon) window._updateSendBtnIcon();
 }
 
-function _createChip(f, idx) {
-  const chip = document.createElement('div');
-  chip.className = 'thumb';
-  const isImage = f.type?.startsWith('image/') || /\.(png|jpg|jpeg|gif|webp|svg|bmp)$/i.test(f.name || '');
-  if (isImage) {
-    chip.classList.add('thumb-image');  // lets CSS overlay the remove-X on the corner (mobile)
-    const img = document.createElement('img');
-    img.className = 'thumb-img';
-    img.src = _getPreviewUrl(f);
-    img.alt = f.name || 'image';
-    chip.appendChild(img);
-  } else {
-    const span = document.createElement('span');
-    span.textContent = f.name || 'pasted-image';
-    chip.appendChild(span);
-  }
-  const x = document.createElement('button');
-  x.textContent = '\u00d7';
-  x.setAttribute('aria-label', 'Remove attachment');
-  x.addEventListener('click', (e) => { e.stopPropagation(); removePending(idx); });
-  chip.appendChild(x);
-  return chip;
+/**
+ * `B-NEW-1`. Crop a waiting image with the composer's own cropper — the one a
+ * phone opens on attach — and keep the result in its place in the hand.
+ * Cancel and Original both leave the file as it was.
+ */
+async function _cropPending(f) {
+  if (!_isCroppableImage(f)) return false;
+  let out = null;
+  try { out = await _openMobileCropper(f); } catch (_) { out = null; }
+  if (!out || out === f) return false;
+  _syncBucket();
+  // Looked up after the await: the file may have been removed, sent, or left
+  // behind in another chat while the cropper was open.
+  const idx = pendingFiles.indexOf(f);
+  if (idx < 0) return false;
+  _revokePreviewUrl(f);
+  pendingFiles.splice(idx, 1, out);
+  renderAttachStrip();
+  return true;
 }
+
+// What the hand may do to the pending set. Read through functions, never
+// captured: `pendingFiles` is a different array after every chat switch.
+const _handHost = {
+  files: () => { _syncBucket(); return pendingFiles; },
+  previewUrl: (f) => _getPreviewUrl(f),
+  wireName: (f) => _wireName(f),
+  remove: (idx) => removePending(idx),
+  clear: () => clearPending(),
+  canCrop: (f) => _isCroppableImage(f),
+  crop: (f) => _cropPending(f),
+  redraw: () => renderAttachStrip(),
+  apiBase: () => API_BASE,
+  toast: (msg) => uiModule.showToast(msg),
+  error: (msg) => uiModule.showError(msg),
+};
 
 /**
  * Remove a pending file by index
