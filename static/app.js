@@ -4267,7 +4267,7 @@ function startPantheonApp() {
         const r = await fetch(`${API_BASE}/api/document/${encodeURIComponent(id)}`, { credentials: 'same-origin' });
         if (!r.ok) continue;
         const d = await r.json();
-        const title = String(d.title || 'Document').replace(/[\\/:*?"<>|]+/g, ' ').trim() || 'Document';
+        const title = String(d.title || 'Document').replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim() || 'Document';
         files.push(new File([String(d.current_content ?? d.content ?? '')],
           title + (EXT[String(d.language || '').toLowerCase()] || '.txt'), { type: 'text/plain' }));
       } catch (_) { /* that one is said below as not attached */ }
