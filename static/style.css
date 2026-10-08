@@ -48971,9 +48971,16 @@ body.plan-mode-active .chat-input-top > .model-picker-wrap:has(> .model-picker-m
   .hand-menu-item { min-height: 40px; }
 }
 /* Dealt without the slide. `0.01ms`, not `none`, for `P1-12`'s reason: a
-   transition that never runs never sends `transitionend`. */
+   transition that never runs never sends `transitionend`. And a new card
+   starts where it lands: this comes after the `@starting-style` above at the
+   same weight, so it wins there too — measured in Chromium, the first frame
+   drew the card 28px low and transparent until it did. */
 @media (prefers-reduced-motion: reduce) {
   .attach-hand .hand-card,
   .attach-hand .hand-card-lift,
   .attach-hand .hand-card-x { transition-duration: 0.01ms; }
+  .attach-hand .hand-card.hand-card-new {
+    translate: none;
+    opacity: 1;
+  }
 }

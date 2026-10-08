@@ -762,3 +762,11 @@ def test_reduced_motion_deals_the_hand_without_the_slide():
     assert any(".hand-card" in s for s in still), still
     dealt = _rule(".attach-hand .hand-card.hand-card-new", "@starting-style")
     assert dealt["translate"] == "0 28px" and dealt["opacity"] == "0"
+    # The starting style is overridden by order, so the reduced rule must come
+    # after it in the sheet and carry the same weight.
+    landed = _rule(".attach-hand .hand-card.hand-card-new", "@media (prefers-reduced-motion: reduce)")
+    assert landed == {"translate": "none", "opacity": "1"}, (
+        "under reduced motion a new card still starts 28px low and invisible"
+    )
+    order = [a for s, _, a in _rules(_section()) if s == ".attach-hand .hand-card.hand-card-new"]
+    assert order == ["@starting-style", "@media (prefers-reduced-motion: reduce)"], order
