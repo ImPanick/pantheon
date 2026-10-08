@@ -298,6 +298,29 @@ def test_a_default_model_whose_server_is_not_answering_is_said_for_a_run_with_no
 
 
 @pytest.mark.parametrize("what", ["task", "step"])
+def test_a_default_endpoint_with_no_model_named_that_is_not_answering_is_said(scheduler_world, what):
+    """The default names an endpoint and leaves the model to it ("the first it
+    lists"), and that endpoint is not answering: the run says so — not "No
+    model yet", which is true only when nothing is configured. (The case a
+    model-only check misses: closes the mutation survivor "a down endpoint is
+    not a problem" in `configured_model_problem`.)"""
+    import time
+    import routes.model_routes as model_routes
+    import src.settings as S
+    from core.database import ModelEndpoint as ME
+    db = scheduler_world.factory()
+    db.query(ME).filter(ME.id == "walker-world").first().cached_models = None
+    db.commit()
+    db.close()
+    model_routes._LISTING_STATE["walker-world"] = {"ok": False, "at": time.time(), "answered": False,
+                                                   "loading": False, "error": "no answer"}
+    s = S.load_settings()
+    s.update(default_endpoint_id="walker-world", default_model="")
+    S.save_settings(s)
+    _then_expect(scheduler_world, what, f"Scripted world isn't answering. Pick a model for this {what}.")
+
+
+@pytest.mark.parametrize("what", ["task", "step"])
 def test_a_default_model_whose_endpoint_is_gone_is_said_for_a_run_with_none(scheduler_world, what):
     import src.settings as S
     s = S.load_settings()

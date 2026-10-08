@@ -262,6 +262,34 @@ def test_a_cached_default_that_is_listed_is_used(sandbox):
     assert out["label"] == "alpha-7b" and out["pending"]["source"] == "default"
 
 
+@pytest.mark.parametrize("items, expected", [
+    ("[{ endpoint_id: 'demo', endpoint_name: 'Demo model', url: 'http://d/v1/chat/completions',"
+     " models: [], offline: true, down_line: 'Demo model isn\\'t answering.' },"
+     " { endpoint_id: 'office', endpoint_name: 'Office LLM', url: 'http://h/v1/chat/completions',"
+     " models: ['alpha-7b'] }]",
+     "Demo model isn't answering. Pick another from the model menu."),
+    ("[{ endpoint_id: 'demo', endpoint_name: 'Demo model', url: 'http://d/v1/chat/completions',"
+     " models: ['other-3b'] }]",
+     "scripted-demo isn't listed by Demo model now. Pick another from the model menu."),
+])
+def test_a_default_already_chosen_that_the_list_stops_offering_says_why(sandbox, items, expected):
+    """The composer opened on the saved default (a pending chat, `source:
+    'default'`) and the model list that loads next does not offer it: it is
+    dropped, nothing is put in its place, and the label's tooltip says why in
+    the server's words — the endpoint's line, or that it no longer lists the
+    model. (Closes the mutation survivor "pending-default path keeps the old
+    words": only the page's cached copy was driven before.)"""
+    out = _run(sandbox, _PRE, _update_script(items, """
+        pending = { url: 'http://d/v1/chat/completions', modelId: 'scripted-demo', endpointId: 'demo', source: 'default' };
+        updateModelPicker();
+        console.log(JSON.stringify({ label: label.textContent, title: label.title, pending, ensured,
+          reason: globalThis.window.__pantheonDefaultChatReason }));
+    """))
+    assert out["label"] == "Select model" and out["pending"] is None
+    assert out["title"] == expected and out["reason"] == expected
+    assert out["ensured"] == 0, "it went looking for another model in the default's place"
+
+
 def test_the_boot_check_drops_the_pages_copy_when_the_server_says_the_default_is_not_listed(sandbox):
     out = _run(sandbox, _PRE, """
         let _defaultChat = null;
