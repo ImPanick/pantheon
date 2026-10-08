@@ -142,7 +142,7 @@ def build_world(monkeypatch, tmp_path, *, admin="alice", integrations=(), chat=N
     # is imported above, before `tap` is patched, so it binds the real function,
     # and its own name is patched here and restored with the rest.
     monkeypatch.setattr(task_routes, "owner_has_admin_task_privileges", is_admin)
-    listed =[dict(i) for i in integrations]
+    listed = [dict(i) for i in integrations]
     monkeypatch.setattr(integrations_mod, "load_integrations", lambda: [dict(i) for i in listed])
     s = recording_scheduler()
     return SimpleNamespace(factory=factory, s=s, chat=chat, integrations=listed,

@@ -197,11 +197,19 @@ const proxySeen = async () => JSON.parse(require('fs').readFileSync(process.argv
   // Back to the Forge, and ask it to rescan: the refresh goes out again.
   await page.click('#settings-modal .modal-back-btn');
   await page.waitForTimeout(800);
+  const answeredBefore = refreshes.length;
   await page.evaluate(() => document.getElementById('hwfit-hw-refresh-btn').click());
-  const until = Date.now() + 30000;
+  // Both halves of what this step measures: the rescan's answer read (the
+  // `response` listener above) and the proxy hearing from huggingface.co. The
+  // server starts the refresh's thread before it ranks the rows it answers
+  // with (`P23-07`), so the proxy can hear first: waiting on the proxy alone
+  // read `onRefreshes` as [] whenever the answer came more than ~0.1 s after
+  // (fx5-green: measured 122 ms to spare on an idle machine; the full run
+  // under load on `0345288` read []; the answer held 2 s reproduces it).
+  const until = Date.now() + 60000;
   while (Date.now() < until) {
     const seen = await proxySeen();
-    if (seen.includes('huggingface.co')) break;
+    if (seen.includes('huggingface.co') && refreshes.length > answeredBefore) break;
     await page.waitForTimeout(500);
   }
   out.onRefreshes = refreshes.slice(out.offRefreshes.length);
