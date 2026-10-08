@@ -354,6 +354,26 @@ def test_before_the_first_account_this_machine_is_nobody_too(monkeypatch, tmp_pa
     assert _refused(lambda: _require_auth(_nobody(blank))) == 401
 
 
+def test_before_the_first_account_nobody_has_an_admins_tasks(monkeypatch, tmp_path):
+    """`owner_has_admin_task_privileges` answered every owner — nobody included —
+    as an admin until the first account existed, so an install that had run
+    without a sign-in kept running its owner-less shell, SSH and serve tasks, and
+    a task webhook could start one. Nobody is an admin before setup now, as
+    `owner_is_admin_or_single_user` already answered."""
+    import core.auth
+    from core.auth import AuthManager
+    from src.task_action_policy import owner_has_admin_task_privileges
+    from src.tool_security import owner_is_admin_or_single_user
+    for name, raw in EVERY_OLD_DOOR.items():
+        monkeypatch.setenv(name, raw)
+    blank = AuthManager(auth_path=str(tmp_path / "auth.json"))
+    monkeypatch.setattr(core.auth, "_SHARED_AUTH_MANAGER", blank)
+    assert blank.is_configured is False
+    for owner in (None, "", ADMIN, "internal-tool-ish"):
+        assert owner_has_admin_task_privileges(owner) is False, owner
+        assert owner_is_admin_or_single_user(owner) is False, owner
+
+
 def test_require_admin_wants_an_admin(every_door_open):
     from core.middleware import require_admin
     assert _refused(lambda: require_admin(_nobody(every_door_open))) == 403

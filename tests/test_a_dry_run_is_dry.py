@@ -37,6 +37,7 @@ import core.database as cdb  # noqa: E402
 import src.builtin_actions as ba  # noqa: E402
 from core.database import ScheduledTask, TaskRun  # noqa: E402
 from src.task_scheduler import TaskScheduler  # noqa: E402
+from tests.helpers.signed_in import ADMIN, signed_in  # noqa: E402
 
 
 _REAL_DATABASE_ATTRS = {
@@ -60,6 +61,11 @@ def task_db(monkeypatch, tmp_path):
     cdb.Base.metadata.create_all(engine)
     factory = sessionmaker(bind=engine, autoflush=False, autocommit=False)
     monkeypatch.setattr(cdb, "SessionLocal", factory)
+    # The tasks are the install's admin's, signed in. They were nobody's until
+    # `D-2026-10-07-02` §2, which an install with no account answered as an
+    # admin's; nobody is not an admin now, so a shell or SSH task of theirs
+    # would be refused before it could be planned.
+    signed_in(monkeypatch, tmp_path / "auth", members=())
     return factory
 
 
@@ -68,10 +74,10 @@ def _seed(factory, *, action="tidy_sessions", task_type="action", prompt=None,
     db = factory()
     try:
         db.add(ScheduledTask(
-            id="sub", owner=None, name="downstream", task_type="action",
+            id="sub", owner=ADMIN, name="downstream", task_type="action",
             action="tidy_sessions", trigger_type="webhook", status="active"))
         db.add(ScheduledTask(
-            id="t1", owner=None, name="A task", prompt=prompt,
+            id="t1", owner=ADMIN, name="A task", prompt=prompt,
             task_type=task_type, action=action, trigger_type="schedule",
             schedule="daily", scheduled_time="09:00", status="active",
             output_target="session", run_count=7))

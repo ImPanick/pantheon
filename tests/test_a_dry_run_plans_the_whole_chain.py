@@ -98,8 +98,12 @@ def scheduler(calls):
 
 
 @pytest.fixture()
-def client(task_db, scheduler, monkeypatch):
+def client(task_db, scheduler, monkeypatch, tmp_path):
     import routes.task.task_routes as task_routes
+    from tests.helpers.signed_in import signed_in
+    # alice is the install's admin, bob is not (`D-2026-10-07-02` §2: before it,
+    # an install with no account answered every owner as an admin).
+    signed_in(monkeypatch, tmp_path / "auth", admin="alice", members=("bob",))
     monkeypatch.setattr(task_routes, "SessionLocal", task_db)
     app = FastAPI()
 

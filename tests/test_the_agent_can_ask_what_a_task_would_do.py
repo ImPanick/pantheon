@@ -47,6 +47,7 @@ import src.task_scheduler as ts  # noqa: E402
 from core.database import ScheduledTask, TaskRun  # noqa: E402
 from src.task_scheduler import TaskScheduler  # noqa: E402
 from src.tools.system import do_manage_tasks  # noqa: E402
+from tests.helpers.signed_in import ADMIN, signed_in  # noqa: E402
 
 _REAL_DATABASE_ATTRS = {
     "Base": cdb.Base,
@@ -71,6 +72,10 @@ def task_db(monkeypatch, tmp_path):
     cdb.Base.metadata.create_all(engine)
     factory = sessionmaker(bind=engine, autoflush=False, autocommit=False)
     monkeypatch.setattr(cdb, "SessionLocal", factory)
+    # The person asking is the install's admin, signed in; alice and bob are
+    # not admins. (The asker was nobody until `D-2026-10-07-02` §2, answered as
+    # an admin by an install with no account.)
+    signed_in(monkeypatch, tmp_path / "auth", members=("alice", "bob"))
     return factory
 
 
@@ -112,7 +117,7 @@ def scheduler(monkeypatch, calls):
     return s
 
 
-def _seed(factory, *, task_id="t1", owner=None, task_type="action",
+def _seed(factory, *, task_id="t1", owner=ADMIN, task_type="action",
           action="summarize_emails", prompt="some prompt", status="active"):
     db = factory()
     try:
@@ -153,7 +158,7 @@ def _runs(factory, task_id="t1"):
         db.close()
 
 
-def _ask(args, owner=None):
+def _ask(args, owner=ADMIN):
     return do_manage_tasks(json.dumps(args), owner=owner)
 
 
@@ -335,7 +340,8 @@ def test_the_route_answers_a_dry_run_with_the_run_that_holds_the_plan(
     serves, and its plan is the one the agent is told."""
     import routes.task.task_routes as task_routes
     monkeypatch.setattr(task_routes, "SessionLocal", task_db)
-    app = FastAPI()
+    from tests.helpers.signed_in import as_person
+    app = as_person(FastAPI(), ADMIN)   # the admin's browser, as `AuthMiddleware` leaves it
     app.include_router(task_routes.setup_task_routes(scheduler))
     _seed(task_db, action="ssh_command", prompt="shutdown -h now")
 
