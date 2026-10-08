@@ -411,6 +411,7 @@ class _Handler(BaseHTTPRequestHandler):
     conversations = None  # the script; `CONVERSATIONS` unless DemoModel is given one
     max_model_len = None  # served the way vLLM serves a model (`_vllm_refusal`), when set
     refuse_images = None  # (status, message): a server that takes no pictures (fx5-vision)
+    transcript = None     # what `/audio/transcriptions` answers, when set (fx5-vision)
     model_id = MODEL_ID   # the name it lists and answers under
 
     def log_message(self, *args):  # quiet
@@ -434,6 +435,17 @@ class _Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         n = int(self.headers.get("Content-Length") or 0)
+        if self.path.rstrip("/").endswith("/audio/transcriptions"):
+            # fx5-vision: an OpenAI-compatible speech-to-text answer, when the
+            # test gave the model one to say (`transcript`); it records that it
+            # was asked, as the chat requests are recorded.
+            self.rfile.read(n)
+            if self.log is not None:
+                self.log.append({"stream": False, "transcription": True, "conv": None, "messages": [],
+                                 "images": [], "roles": []})
+            if self.transcript is None:
+                return self._json(404, {"error": {"message": "not found"}})
+            return self._json(200, {"text": self.transcript})
         try:
             body = json.loads(self.rfile.read(n) or b"{}")
         except ValueError:
@@ -602,7 +614,7 @@ class DemoModel:
     def __init__(self, port: int = 0, pace: float = 0.0, log: Optional[list] = None,
                  conversations: Optional[List[Dict[str, Any]]] = None,
                  max_model_len: Optional[int] = None, model_id: str = MODEL_ID,
-                 refuse_images: Optional[tuple] = None):
+                 refuse_images: Optional[tuple] = None, transcript: Optional[str] = None):
         """`conversations` replaces the showcase's script (a test plays its own
         through the same model); `log` receives every request it is sent;
         `max_model_len` serves it the way vLLM serves a model with that window
@@ -612,11 +624,13 @@ class DemoModel:
         gives it that family's name. The showcase keeps `MODEL_ID`.
         `refuse_images` — `(status, message)` — answers any request carrying a
         picture with that error, the way a server with no vision does
-        (fx5-vision)."""
+        (fx5-vision); `transcript` is what it answers as an OpenAI-compatible
+        speech-to-text server (`/audio/transcriptions`)."""
         handler = type("Handler", (_Handler,), {"pace": pace, "log": log, "progress": _Progress(),
                                                 "conversations": conversations,
                                                 "max_model_len": max_model_len,
                                                 "refuse_images": refuse_images,
+                                                "transcript": transcript,
                                                 "model_id": model_id})
         self.httpd = ThreadingHTTPServer(("127.0.0.1", port), handler)
         self.httpd.daemon_threads = True
