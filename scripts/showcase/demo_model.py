@@ -308,6 +308,40 @@ def _text(content: Any) -> str:
     return str(content or "")
 
 
+def images_sent(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Every picture a request carried, as the model would decode it.
+
+    fx5-vision (`B-NEW-1`, the owner 2026-10-08: *"attaching an image to the
+    chat, doesnt actually feed said image to the LLM"*). A model that records
+    what it was sent is how that was measured: each OpenAI `image_url` part with
+    a `data:` URL is decoded here, so a test compares the bytes the person
+    attached with the bytes the model got — `{message, mime, bytes, sha256}`,
+    `message` being the index of the message that carried it. A part whose URL
+    is not a decodable `data:` URL is listed with `bytes` 0, never skipped.
+    """
+    import base64
+    import hashlib
+
+    out: List[Dict[str, Any]] = []
+    for n, m in enumerate(messages or []):
+        content = m.get("content") if isinstance(m, dict) else None
+        if not isinstance(content, list):
+            continue
+        for part in content:
+            if not isinstance(part, dict) or part.get("type") != "image_url":
+                continue
+            url = str((part.get("image_url") or {}).get("url") or "")
+            head, _, data = url.partition(",")
+            mime = head[5:].split(";", 1)[0] if head.startswith("data:") else ""
+            try:
+                raw = base64.b64decode(data, validate=True) if head.endswith(";base64") else b""
+            except ValueError:
+                raw = b""
+            out.append({"message": n, "role": m.get("role"), "mime": mime, "bytes": len(raw),
+                        "sha256": hashlib.sha256(raw).hexdigest() if raw else ""})
+    return out
+
+
 def _find_turn(messages: List[Dict[str, Any]], conversations: Optional[List[Dict[str, Any]]] = None):
     """The scripted turn this request belongs to, whether it is the turn's first
     request, and what it carries.
@@ -376,6 +410,8 @@ class _Handler(BaseHTTPRequestHandler):
     progress = None   # a `_Progress`, one per DemoModel
     conversations = None  # the script; `CONVERSATIONS` unless DemoModel is given one
     max_model_len = None  # served the way vLLM serves a model (`_vllm_refusal`), when set
+    refuse_images = None  # (status, message): a server that takes no pictures (fx5-vision)
+    transcript = None     # what `/audio/transcriptions` answers, when set (fx5-vision)
     model_id = MODEL_ID   # the name it lists and answers under
 
     def log_message(self, *args):  # quiet
@@ -399,6 +435,17 @@ class _Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         n = int(self.headers.get("Content-Length") or 0)
+        if self.path.rstrip("/").endswith("/audio/transcriptions"):
+            # fx5-vision: an OpenAI-compatible speech-to-text answer, when the
+            # test gave the model one to say (`transcript`); it records that it
+            # was asked, as the chat requests are recorded.
+            self.rfile.read(n)
+            if self.log is not None:
+                self.log.append({"stream": False, "transcription": True, "conv": None, "messages": [],
+                                 "images": [], "roles": []})
+            if self.transcript is None:
+                return self._json(404, {"error": {"message": "not found"}})
+            return self._json(200, {"text": self.transcript})
         try:
             body = json.loads(self.rfile.read(n) or b"{}")
         except ValueError:
@@ -406,15 +453,27 @@ class _Handler(BaseHTTPRequestHandler):
         messages = body.get("messages") or []
         system = " ".join(_text(m.get("content")) for m in messages if m.get("role") == "system")
         conv, turn, first, ctx = _find_turn(messages, self.conversations)
+        # fx5-vision: the pictures this request carried, for the log and for a
+        # scripted `say` that answers with what it was actually sent.
+        ctx["images"] = images_sent(messages)
         if self.log is not None:
             # The whole request as it arrived, beside the summary: a model that
             # records what it is sent is how `B1069` was measured and is held.
             self.log.append({"stream": bool(body.get("stream")), "tools": len(body.get("tools") or []),
                              "roles": [m.get("role") for m in messages],
                              "conv": (conv or {}).get("key"), "first": first,
-                             "messages": messages,
+                             "messages": messages, "images": ctx["images"],
                              "max_tokens": body.get("max_completion_tokens") or body.get("max_tokens"),
                              "temperature": body.get("temperature")})
+        if self.refuse_images and ctx["images"]:
+            # fx5-vision: a text-only server sent a picture answers with an
+            # error before a token, as llama-server without a projector and LM
+            # Studio do; the status and words are the test's to choose.
+            status, words = self.refuse_images
+            if self.log is not None:
+                self.log[-1]["refused"] = words
+            return self._json(status, {"error": {"message": words, "type": "invalid_request_error",
+                                                 "code": status}})
         refused = self._vllm_refusal(body)
         if refused:
             if self.log is not None:
@@ -479,7 +538,11 @@ class _Handler(BaseHTTPRequestHandler):
                                                         "arguments": json.dumps(args)}}
                                           for n, (name, args) in enumerate(calls)]})
             return self._stream(deltas, finish="tool_calls")
-        deltas += [{"content": w} for w in _words(step.get("say") or "Done.")]
+        said = step.get("say")
+        # A streamed `say` may read what it was sent too (fx5-vision: a reply
+        # that says how many pictures arrived, so a drive reads it on screen).
+        said = said(ctx) if callable(said) else said
+        deltas += [{"content": w} for w in _words(said or "Done.")]
         return self._stream(deltas, finish="stop")
 
     def _vllm_refusal(self, body: Dict[str, Any]) -> Optional[str]:
@@ -550,17 +613,24 @@ class DemoModel:
 
     def __init__(self, port: int = 0, pace: float = 0.0, log: Optional[list] = None,
                  conversations: Optional[List[Dict[str, Any]]] = None,
-                 max_model_len: Optional[int] = None, model_id: str = MODEL_ID):
+                 max_model_len: Optional[int] = None, model_id: str = MODEL_ID,
+                 refuse_images: Optional[tuple] = None, transcript: Optional[str] = None):
         """`conversations` replaces the showcase's script (a test plays its own
         through the same model); `log` receives every request it is sent;
         `max_model_len` serves it the way vLLM serves a model with that window
         (`_Handler._vllm_refusal`, `B1029`); `model_id` is the name it lists and
         answers under — a test that needs Pantheon to treat it as one model
         family or another (a `pantheon-qwen3` finetune, `B1090`)
-        gives it that family's name. The showcase keeps `MODEL_ID`."""
+        gives it that family's name. The showcase keeps `MODEL_ID`.
+        `refuse_images` — `(status, message)` — answers any request carrying a
+        picture with that error, the way a server with no vision does
+        (fx5-vision); `transcript` is what it answers as an OpenAI-compatible
+        speech-to-text server (`/audio/transcriptions`)."""
         handler = type("Handler", (_Handler,), {"pace": pace, "log": log, "progress": _Progress(),
                                                 "conversations": conversations,
                                                 "max_model_len": max_model_len,
+                                                "refuse_images": refuse_images,
+                                                "transcript": transcript,
                                                 "model_id": model_id})
         self.httpd = ThreadingHTTPServer(("127.0.0.1", port), handler)
         self.httpd.daemon_threads = True

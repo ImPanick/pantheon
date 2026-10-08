@@ -37,7 +37,9 @@ def test_no_site_promotes_a_turn_without_saying_why():
     # `Law 13`, made structural rather than remembered: the assignment *is* the
     # recording. A bare `auto_escalated = True` is the shape this row removed.
     assert "auto_escalated = True" not in _ROUTES
-    assert _ROUTES.count("auto_escalated = _escalate(") == 6, (
+    # Seven since fx5-vision (`B-NEW-8`): an email or document open beside a
+    # Chat-mode turn promotes it, and says which.
+    assert _ROUTES.count("auto_escalated = _escalate(") == 7, (
         "a promotion site was added or removed — check it records a reason"
     )
 

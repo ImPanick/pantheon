@@ -262,6 +262,7 @@ export function buildAttachCards(attachments) {
         label.textContent = att.name;
         imgWrap.appendChild(label);
       }
+      _setReachNote(imgWrap, att);
       attachWrap.appendChild(imgWrap);
     } else {
       // Non-image file card
@@ -290,10 +291,53 @@ export function buildAttachCards(attachments) {
         sizeSpan.textContent = _formatSize(att.size);
         card.appendChild(sizeSpan);
       }
+      _setReachNote(card, att);
       attachWrap.appendChild(card);
     }
   }
   return attachWrap;
+}
+
+/**
+ * fx5-vision (`B-NEW-7`). The one sentence a person reads under an attachment
+ * the model did not get whole — cut to fit, not read, not heard, not seen —
+ * the server's `reach_note`, beside the bracket the model was given. Without
+ * it the bubble showed the file as sent and the reply was the only way to
+ * find out (the owner, 2026-10-08: *"Ensure … that ALL attachments … reach the
+ * model"*). Text only, never markup; one per attachment, replaced not stacked.
+ */
+function _setReachNote(el, att) {
+  if (!el) return;
+  const old = Array.from(el.children || []).find((c) => c.className === 'attach-reach-note') || null;
+  const note = att && typeof att.reach_note === 'string' ? att.reach_note.trim() : '';
+  if (!note) { if (old) old.remove(); return; }
+  const line = old || document.createElement('div');
+  line.className = 'attach-reach-note';
+  line.setAttribute('role', 'note');
+  line.style.cssText = 'flex-basis:100%;font-size:12px;line-height:1.35;margin-top:4px;'
+    + 'color:var(--color-muted-alt, var(--fg));white-space:normal;max-width:300px;';
+  line.textContent = note;
+  // A file card is one row (icon, name, size); the sentence goes under it.
+  if (el.classList && el.classList.contains('attach-card')) el.style.flexWrap = 'wrap';
+  if (!old) el.appendChild(line);
+}
+
+/** The live half: the `attachments` event names each file's id (and name), and
+ *  each one the model did not get whole gets its sentence on the card or
+ *  picture the bubble already drew for it. */
+export function markAttachmentReach(cardsEl, attachments) {
+  if (!cardsEl || !Array.isArray(attachments)) return 0;
+  let n = 0;
+  for (const att of attachments) {
+    if (!att) continue;
+    let el = null;
+    if (att.id) el = cardsEl.querySelector('[data-file-id="' + String(att.id).replace(/"/g, '\\"') + '"]');
+    if (!el && att.name) el = cardsEl.querySelector('.attach-card[data-name="' + String(att.name).replace(/"/g, '\\"') + '"]');
+    if (!el) continue;
+    _setReachNote(el, att);
+    if (att.reach_note) n += 1;
+  }
+  return n;
 }
 
 // Re-render the attachment cards of an already-rendered message. Used to swap
@@ -4448,6 +4492,15 @@ export function addMessage(role, content, modelName, metadata) {
         .replace(/\n*\[PDF content\]:[\s\S]*?(?=\n*\[PDF content\]|\n*=== File:|$)/g, '')
         .replace(/\n*\[Image attached: [^\]]+\]/g, '')
         .replace(/\n*\[Attached (?:document|non-text) file\]/g, '')
+        // fx5-vision (`B-NEW-7`): the brackets the model is handed about an
+        // attachment — not read, not heard, a document's or a PDF's text, a
+        // transcript, a cut — are said to the person once, under the
+        // attachment (`reach_note`). A reload drew them in the bubble as well,
+        // and the live bubble never did.
+        .replace(/\n*\[(?:Attached file|Attached document|PDF attached|Form attached): [^\]]*\]/g, '')
+        .replace(/\n*\[(?:Document|PDF) content — [^\]]*\]:[\s\S]*?(?=\n*\[(?:Document|PDF) content — |\n*\[Recording attached: |\n*=== File:|$)/g, '')
+        .replace(/\n*\[Recording attached: [^\]]*\](?::\n[\s\S]*?(?=\n*\[Recording attached: |\n*=== File:|$))?/g, '')
+        .replace(/\n*\[Attachment (?:content truncated|omitted from inline context): [^\]]*\]/g, '')
         .trim();
     }
 
@@ -4700,6 +4753,7 @@ const chatRenderer = {
   addMessage,
   buildAttachCards,
   updateMessageAttachments,
+  markAttachmentReach,
 };
 
 export default chatRenderer;

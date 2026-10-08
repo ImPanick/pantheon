@@ -4608,8 +4608,15 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
                 }
               } else if (json.type === 'attachments') {
                 if (_isBg) continue;
-                // Update user bubble — replace file chips with image previews
-                const _ub = document.querySelector('#chat-history .msg-user:last-of-type');
+                // Update user bubble — replace file chips with image previews.
+                // fx5-vision: was `.msg-user:last-of-type`, which matches the
+                // last *div* in the history — by now this reply's own holder —
+                // so the lookup answered null and nothing below ever ran
+                // (measured in Chromium: the event arrived, the bubble did
+                // not change). The bubble this send drew is the one to update.
+                const _ub = (_userMsgEl && _userMsgEl.isConnected)
+                  ? _userMsgEl
+                  : [...document.querySelectorAll('#chat-history .msg-user')].pop();
                 if (_ub) {
                   const _aw = _ub.querySelector('.attach-cards');
                   if (_aw) {
@@ -4659,13 +4666,18 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
                         if (_card) _card.replaceWith(_iw); else _aw.appendChild(_iw);
                       } else {
                         const _card = _aw.querySelector('.attach-card[data-name="' + (_att.name || '').replace(/"/g, '\\"') + '"]');
-                        if (_card && _att.id) {
+                        // A card the upload already stamped keeps the click
+                        // `buildAttachCards` gave it (open in the document viewer).
+                        if (_card && _att.id && !_card.dataset.fileId) {
                           _card.dataset.fileId = _att.id;
                           _card.style.cursor = 'pointer';
                           _card.onclick = () => window.open(API_BASE + '/api/upload/' + _att.id, '_blank');
                         }
                       }
                     }
+                    // fx5-vision (`B-NEW-7`): what the model did not get whole
+                    // is said under the attachment, as the saved bubble says it.
+                    chatRenderer.markAttachmentReach(_aw, json.data);
                   }
                   // Caption / OCR text is no longer rendered as an inline
                   // collapsible on the user bubble — the user can view/edit

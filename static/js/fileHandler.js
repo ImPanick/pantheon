@@ -99,7 +99,26 @@ function _syncBucket() {
   _buckets.set(_activeKey, _snapshot());
   _restore(_buckets.get(key) || {});
   _activeKey = key;
+  // fx5-vision (`B-NEW-1`). A swap is drawn, whoever asked. A swap that only a
+  // getter noticed used to leave the strip showing the set just stashed, and
+  // that is what the owner photographed: the picture's thumbnail still in the
+  // composer while the reply streamed, and the model saying there was none.
+  // A strip that shows a file the send will not take is the worst way to be
+  // wrong, so the late redraw `B893` accepted is not accepted here.
+  _queueRedraw();
   return true;
+}
+
+let _redrawQueued = false;
+function _queueRedraw() {
+  if (_redrawQueued) return;
+  _redrawQueued = true;
+  // After the caller's own synchronous work, once: `renderAttachStrip` asks
+  // `_syncBucket` again, and a getter mid-send must not redraw under its feet.
+  Promise.resolve().then(() => {
+    _redrawQueued = false;
+    try { renderAttachStrip(); } catch (_) { /* no composer on this page */ }
+  });
 }
 
 /** Register how this module learns which chat is current. Called once, at wiring. */
@@ -122,6 +141,47 @@ export function syncSession() {
 export function getAttachmentSessionKey() {
   _syncBucket();
   return _activeKey;
+}
+
+/**
+ * fx5-vision (`B-NEW-1`, the owner 2026-10-08: *"attaching an image to the chat,
+ * doesnt actually feed said image to the LLM … It shows the attached image but
+ * the LLM literally says 'there's no image'"*). The files held under `fromKey`
+ * become `toKey`'s: the same composer, under the name its chat has now.
+ *
+ * A new chat has no id until something creates it — its first send, mostly —
+ * so what a person attaches there is held under `''`. `sessions.js`
+ * `materializePendingSession` then made the chat and set the current id, and
+ * the next read here swapped the working set to that id's empty bucket: the
+ * picture stayed behind under `''`, `uploadPending` found nothing, the message
+ * went with no `attachments`, and the strip — never redrawn — kept the
+ * thumbnail. Measured on `0345288` in Chromium (fx5-vision, 8761) on every
+ * first message of a new chat: file picker, paste, drop, two pictures, Chat
+ * and Agent, 1440 and 390; every second message was fine.
+ *
+ * Only into a chat holding nothing pending — a chat's own files are never
+ * merged with another's (`B893`). Returns true when something moved.
+ */
+export function carryPending(fromKey, toKey) {
+  const from = String(fromKey || '');
+  const to = String(toKey || '');
+  if (from === to) return false;
+  const held = _activeKey === from ? { pendingFiles } : _buckets.get(from);
+  if (!held || !(held.pendingFiles || []).length) return false;
+  const dest = _activeKey === to ? { pendingFiles } : _buckets.get(to);
+  if (dest && (dest.pendingFiles || []).length) return false;
+  if (_activeKey === from) {
+    // The composer on screen: it keeps everything, only its key changes.
+    _activeKey = to;
+  } else if (_activeKey === to) {
+    _restore(_buckets.get(from));
+  } else {
+    _buckets.set(to, _buckets.get(from));
+  }
+  _buckets.delete(from);
+  if (_activeKey === to) _buckets.delete(to);
+  _queueRedraw();
+  return true;
 }
 
 const MAX_FILES = 10;
@@ -997,6 +1057,7 @@ const fileHandlerModule = {
   setSessionResolver,
   syncSession,
   getAttachmentSessionKey,
+  carryPending,
 };
 
 export default fileHandlerModule;

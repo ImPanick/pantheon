@@ -15,7 +15,7 @@ from src.constants import (
     UPLOAD_DIR,
 )
 from core.models import ChatMessage
-from src.chat_helpers import extract_urls, model_supports_vision
+from src.chat_helpers import extract_urls, vision_answer
 from src.document_processor import build_user_content, analyze_image_with_vl_result
 from src.file_names import upload_display_name  # `P21-03`
 from src.youtube_handler import (
@@ -211,11 +211,15 @@ class ChatHandler:
             from src.settings import get_setting
             vision_enabled = get_setting("vision_enabled", True)
             if vision_enabled:
+                # fx5-vision (`B-NEW-2`): the picture goes to the model unless
+                # something that knows said it cannot see — its endpoint. A
+                # name the list does not know is unknown, not text-only, and a
+                # refusal from the model is said in the chat (`chatStreamErrors`).
                 main_is_vision = await asyncio.to_thread(
-                    model_supports_vision,
+                    vision_answer,
                     sess.model or "",
                     getattr(sess, "endpoint_url", "") or "",
-                )
+                ) is not False
 
         if effective_att_ids and vision_enabled:
             meta_by_id = {m["id"]: m for m in attachment_meta}
@@ -285,14 +289,58 @@ class ChatHandler:
                         if _m is not None:
                             _m["vision"] = vl_desc
                             _m["vision_model"] = vl_model
+                            # fx5-vision (`B-NEW-7`): the endpoint said this model
+                            # cannot see, so the person is told what it got instead.
+                            _who = (sess.model or "This model").split("/")[-1]
+                            if not vl_desc or vl_desc.startswith("["):
+                                _m["reach"] = "not_seen"
+                                _m["reach_note"] = (
+                                    f"Not seen: {_who} can't see pictures, and no vision "
+                                    "model is set to describe them (Settings → Vision).")
+                            else:
+                                _m["reach"] = "described"
+                                _m["reach_note"] = (
+                                    f"{_who} can't see pictures; it was given a description.")
 
+        # fx5-vision (`B-NEW-7`): pictures switched off in Settings were taken
+        # out below with nothing said — not to the model, not to the person.
+        if effective_att_ids and not vision_enabled:
+            meta_by_id = {m["id"]: m for m in attachment_meta}
+            for att_id in effective_att_ids:
+                file_info = files_by_id.get(att_id)
+                if file_info and self.upload_handler.is_image_file(
+                    file_info["name"], file_info.get("mime", "")
+                ):
+                    _name = upload_display_name(file_info) or file_info["name"]
+                    enhanced_message = (
+                        f"{enhanced_message}\n\n[Image attached: {_name} — not sent: "
+                        "pictures are switched off in this server's settings.]")
+                    _m = meta_by_id.get(att_id)
+                    if _m is not None:
+                        _m["reach"] = "not_sent"
+                        _m["reach_note"] = "Not sent: pictures are switched off (Settings → Vision)."
+
+        # fx5-vision (`B-NEW-7`): a recording reaches a model as its transcript,
+        # asked for here, off the event loop, from the STT service the voice
+        # recorder uses — and only when that service transcribes on this server.
+        transcripts = await self._transcribe_recordings(effective_att_ids, files_by_id)
+
+        reach: Dict[str, Dict[str, str]] = {}
         user_content = build_user_content(
             enhanced_message, effective_att_ids, UPLOAD_DIR, self.upload_handler,
             session_id=getattr(sess, "id", None),
             auto_opened_docs=auto_opened_docs,
             owner=owner,
             resolved_uploads=files_by_id,
+            reach=reach,
+            transcripts=transcripts,
         )
+        if reach:
+            for _m in attachment_meta:
+                _said = reach.get(_m.get("id"))
+                if _said and not _m.get("reach_note"):
+                    _m["reach"] = _said["state"]
+                    _m["reach_note"] = _said["note"]
 
         # Strip image_url entries for text-only models (VL description is already in the text)
         if not vision_enabled and isinstance(user_content, list):
@@ -318,6 +366,40 @@ class ChatHandler:
             text_for_context = user_content
 
         return enhanced_message, user_content, text_for_context, youtube_transcripts, attachment_meta
+
+    async def _transcribe_recordings(self, att_ids, files_by_id) -> Dict[str, str]:
+        """`{attachment id: transcript}` for every recording the server's
+        speech-to-text answered. Empty when it transcribes nothing here (no
+        provider, or the browser's own) — the attachment then says so."""
+        out: Dict[str, str] = {}
+        recordings = []
+        for att_id in att_ids or []:
+            fi = files_by_id.get(att_id)
+            if not fi:
+                continue
+            mime = fi.get("mime", "") or ""
+            if mime.startswith("video/") or self.upload_handler.is_image_file(fi.get("name", ""), mime):
+                continue
+            if self.upload_handler.is_audio_file(fi.get("name", ""), mime):
+                recordings.append((att_id, fi))
+        if not recordings:
+            return out
+        try:
+            from services.stt import get_stt_service
+            stt = get_stt_service()
+        except Exception:
+            return out
+        for att_id, fi in recordings:
+            try:
+                with open(fi["path"], "rb") as fh:
+                    audio = fh.read()
+                text = await asyncio.to_thread(stt.transcribe, audio)
+            except Exception as e:
+                logger.warning("Transcribing attachment %s failed: %s", att_id, e)
+                text = None
+            if text and str(text).strip():
+                out[att_id] = str(text).strip()
+        return out
 
     # ------------------------------------------------------------------
     # Session helpers

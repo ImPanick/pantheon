@@ -329,6 +329,14 @@ function _queueInsteadOfSteering(reason) {
   return queued;
 }
 
+/** Whether the composer holds a file the send would take (fx5-vision). */
+function _composerHoldsFiles() {
+  try {
+    const fh = window.fileHandlerModule;
+    return !!(fh && typeof fh.getPendingCount === 'function' && fh.getPendingCount() > 0);
+  } catch (_) { return false; }
+}
+
 function _clearComposerAfterSteer(input) {
   if (!input) return;
   input.value = '';
@@ -377,6 +385,15 @@ export async function submitSteer(text) {
   const sid = _steerSessionId();
   if (!sid) {
     _queueInsteadOfSteering('No active chat to steer');
+    return false;
+  }
+  // fx5-vision (`B-NEW-3`). A steer is words only — `/api/chat/steer` takes
+  // text — so a picture in the composer stayed in the tray while its words
+  // steered the run without it (measured on `0345288` in Chromium: the steer
+  // posted `{"text": …}` alone and the thumbnail stayed). The queue carries
+  // attachments, so a message with a picture waits for the run instead.
+  if (_composerHoldsFiles()) {
+    _queueInsteadOfSteering("A picture can't steer a running reply");
     return false;
   }
   const input = _steerComposer();

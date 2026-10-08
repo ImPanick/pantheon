@@ -1750,6 +1750,22 @@ def setup_chat_routes(
         elif chat_mode == "chat" and _explicit_web_intent:
             chat_mode = "agent"
             auto_escalated = _escalate("the message asks for something on the web")
+        # fx5-vision (`B-NEW-8`). An email or a document open beside the chat is
+        # what "summarize this" means, and Chat mode is given neither — its
+        # call has no tools and no document access. Measured on `0345288`
+        # through this route: `active_email_uid` / `active_doc_id` in Chat mode
+        # reached the model as nothing at all, in Agent mode as the reader's
+        # header and preview / the document's text. The page promotes a turn
+        # with a document open (`chat.js`) but not one with an email open, and
+        # not in incognito; here both promote, and the person is told why.
+        if chat_mode == "chat" and not tool_approval_id and (
+                str(form_data.get("active_email_uid", "") or "").strip()
+                or str(form_data.get("active_doc_id", "") or "").strip()):
+            chat_mode = "agent"
+            auto_escalated = _escalate(
+                "an email is open beside the chat"
+                if str(form_data.get("active_email_uid", "") or "").strip()
+                else "a document is open beside the chat")
         active_doc_id = form_data.get("active_doc_id", "").strip()
         logger.info(f"[doc-inject] chat_mode={chat_mode}, active_doc_id={active_doc_id!r}")
 

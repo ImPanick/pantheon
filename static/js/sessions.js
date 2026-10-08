@@ -2538,6 +2538,14 @@ export async function materializePendingSession() {
     }
     _pendingChat = null;
     currentSessionId = payload.id;
+    // fx5-vision (`B-NEW-1`). The pending chat IS this chat now, so what its
+    // composer holds is this chat's. Without this the first message of every
+    // new chat lost its pictures: they stayed under the no-chat key, the send
+    // read the new id's empty set, and the model was sent no picture.
+    try {
+      const fh = window.fileHandlerModule;
+      if (fh && typeof fh.carryPending === 'function') fh.carryPending('', payload.id);
+    } catch (_) {}
     if (!isIncognito) {
       Storage.set('lastSessionId', payload.id);
       history.replaceState(null, '', '#' + payload.id);
