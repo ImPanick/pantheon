@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""fx5-vision `B-NEW-7` — every kind of attachment reaches the model, or the person is told.
+"""fx5-vision `B1284` — every kind of attachment reaches the model, or the person is told.
 
 The owner, 2026-10-08, widening the image row: *"Ensure not just images reach
 model -- that ALL attachments and any 'attachable' context reaches the model."*

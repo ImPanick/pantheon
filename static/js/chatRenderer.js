@@ -299,7 +299,7 @@ export function buildAttachCards(attachments) {
 }
 
 /**
- * fx5-vision (`B-NEW-7`). The one sentence a person reads under an attachment
+ * fx5-vision (`B1284`). The one sentence a person reads under an attachment
  * the model did not get whole — cut to fit, not read, not heard, not seen —
  * the server's `reach_note`, beside the bracket the model was given. Without
  * it the bubble showed the file as sent and the reply was the only way to
@@ -4492,7 +4492,7 @@ export function addMessage(role, content, modelName, metadata) {
         .replace(/\n*\[PDF content\]:[\s\S]*?(?=\n*\[PDF content\]|\n*=== File:|$)/g, '')
         .replace(/\n*\[Image attached: [^\]]+\]/g, '')
         .replace(/\n*\[Attached (?:document|non-text) file\]/g, '')
-        // fx5-vision (`B-NEW-7`): the brackets the model is handed about an
+        // fx5-vision (`B1284`): the brackets the model is handed about an
         // attachment — not read, not heard, a document's or a PDF's text, a
         // transcript, a cut — are said to the person once, under the
         // attachment (`reach_note`). A reload drew them in the bubble as well,

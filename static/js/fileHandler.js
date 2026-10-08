@@ -101,7 +101,7 @@ function _syncBucket() {
   _buckets.set(_activeKey, _snapshot());
   _restore(_buckets.get(key) || {});
   _activeKey = key;
-  // fx5-vision (`B-NEW-1`). A swap is drawn, whoever asked. A swap that only a
+  // fx5-vision (`B1278`). A swap is drawn, whoever asked. A swap that only a
   // getter noticed used to leave the strip showing the set just stashed, and
   // that is what the owner photographed: the picture's thumbnail still in the
   // composer while the reply streamed, and the model saying there was none.
@@ -146,7 +146,7 @@ export function getAttachmentSessionKey() {
 }
 
 /**
- * fx5-vision (`B-NEW-1`, the owner 2026-10-08: *"attaching an image to the chat,
+ * fx5-vision (`B1278`, the owner 2026-10-08: *"attaching an image to the chat,
  * doesnt actually feed said image to the LLM … It shows the attached image but
  * the LLM literally says 'there's no image'"*). The files held under `fromKey`
  * become `toKey`'s: the same composer, under the name its chat has now.
@@ -266,7 +266,7 @@ async function _openMobileCropper(file) {
       crop.x = Math.max(0, Math.min(1 - crop.w, crop.x));
       crop.y = Math.max(0, Math.min(1 - crop.h, crop.y));
     }
-    // `B-NEW-1`. The hand's card menu offers Crop on any screen and from the
+    // `B1292`. The hand's card menu offers Crop on any screen and from the
     // keyboard, and this cropper was only ever met on a phone, by a finger:
     // Escape did nothing, the focus stayed behind it, and the box took no keys.
     // Now Escape is Cancel (on the Escape stack, so it closes this and nothing
@@ -659,7 +659,7 @@ export function openPicker() {
 
 /**
  * Render the attachment strip with pending files — as a hand of cards
- * (`B-NEW-1`, `static/js/attachHand.js`).
+ * (`B1292`, `static/js/attachHand.js`).
  *
  * It was a row of chips that took its own height out of the chat, and past
  * three files a "N files" pill whose × removed them all. The hand keeps every
@@ -683,7 +683,7 @@ export function renderAttachStrip() {
 }
 
 /**
- * `B-NEW-1`. Crop a waiting image with the composer's own cropper — the one a
+ * `B1292`. Crop a waiting image with the composer's own cropper — the one a
  * phone opens on attach — and keep the result in its place in the hand.
  * Cancel and Original both leave the file as it was.
  */

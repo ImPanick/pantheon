@@ -5,13 +5,13 @@ The owner, 2026-10-08: *"It shows the attached image but the LLM literally says
 'there's no image'."* Two more doors, measured on `0345288` in Chromium (8761,
 a fake OpenAI-compatible server recording what it is sent):
 
-* **`B-NEW-3`, Steer now with a picture.** A steer is words only
+* **`B1280`, Steer now with a picture.** A steer is words only
   (`/api/chat/steer` takes `{text}`), and `submitSteer` posted the words and
   left the picture in the composer's tray: the agent was steered to "look at
   this picture" with none, the owner's screenshot again (Agent is working, the
   thumbnail in the tray). A message with a picture now goes to the queue — which
   uploads it with the message — and the toast says why.
-* **`B-NEW-2`'s other half.** A picture now goes to a model nothing has said is
+* **`B1279`'s other half.** A picture now goes to a model nothing has said is
   blind; a server that cannot see answers with an error (measured through the
   real route: `event: error` `{"status": 400, "text": "local endpoint returned
   HTTP 400: image input is not supported - hint: …"}` in Chat and in Agent mode),
@@ -83,7 +83,7 @@ def test_a_refusal_that_names_no_picture_keeps_the_general_sentence():
     assert out["text"] == "The model didn't answer (HTTP 400)."
 
 
-# ── Steer now, with a picture in the composer (`B-NEW-3`) ────────────────────
+# ── Steer now, with a picture in the composer (`B1280`) ────────────────────
 
 _STEER_WITH = """
     globalThis.__sid = 'sess-a';

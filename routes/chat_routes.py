@@ -1750,7 +1750,7 @@ def setup_chat_routes(
         elif chat_mode == "chat" and _explicit_web_intent:
             chat_mode = "agent"
             auto_escalated = _escalate("the message asks for something on the web")
-        # fx5-vision (`B-NEW-8`). An email or a document open beside the chat is
+        # fx5-vision (`B1285`). An email or a document open beside the chat is
         # what "summarize this" means, and Chat mode is given neither — its
         # call has no tools and no document access. Measured on `0345288`
         # through this route: `active_email_uid` / `active_doc_id` in Chat mode

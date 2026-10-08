@@ -4250,7 +4250,7 @@ function startPantheonApp() {
     }
   }
 
-  // fx5-vision (`B-NEW-9`). A Library document dropped on the chat goes with
+  // fx5-vision (`B1286`). A Library document dropped on the chat goes with
   // the next message the way a dropped file does: its text, as a file in the
   // composer (so it is a card that can be removed, and its size is said if it
   // is cut). `application/x-pantheon-documents` is what a Library card's drag
@@ -4294,7 +4294,7 @@ function startPantheonApp() {
     e.stopPropagation();
     _hideDropHighlight();
     const files = Array.from(e.dataTransfer.files);
-    // fx5-vision (`B-NEW-9`): a Library card dragged onto the chat carries
+    // fx5-vision (`B1286`): a Library card dragged onto the chat carries
     // document ids, not files, and was dropped on the floor here — no card, no
     // word, and the next message went without it (measured in Chromium).
     if (files.length === 0 && await attachDroppedDocuments(e.dataTransfer)) return;
@@ -4318,7 +4318,7 @@ function startPantheonApp() {
   
   attachStrip.addEventListener('drop', async (e) => {
     e.preventDefault();
-    // `B-NEW-1`. The strip is inside `#chat-container`, whose own drop handler
+    // `B1292`. The strip is inside `#chat-container`, whose own drop handler
     // adds the same files: a file dropped on an attachment went in twice
     // (driven on `0345288` and with the hand of cards alike). This one answers.
     e.stopPropagation();

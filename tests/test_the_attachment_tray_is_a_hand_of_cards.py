@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""`B-NEW-1` — the attachment tray was a full-width band that hid the end of the chat.
+"""`B1292` — the attachment tray was a full-width band that hid the end of the chat.
 
 The owner, 2026-10-08, from a phone: *"The images or attachments sent to the
 chat have a massive blank space blocking view."* `#attach-strip` was a block in

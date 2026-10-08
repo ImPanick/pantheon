@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""fx5-vision `B-NEW-7`/`B-NEW-9` — the page says what the model did not get, once.
+"""fx5-vision `B1284`/`B1286` — the page says what the model did not get, once.
 
 The owner, 2026-10-08: *"Ensure not just images reach model -- that ALL
 attachments and any 'attachable' context reaches the model."*
@@ -128,7 +128,7 @@ def test_a_reloaded_bubble_says_it_once_not_in_the_models_words(card_sandbox):  
     assert text.count("Not read: there is no reader for .zip files") == 1
 
 
-# ── a Library document dropped on the chat (`B-NEW-9`) ──────────────────────
+# ── a Library document dropped on the chat (`B1286`) ──────────────────────
 
 def _drop_source() -> str:
     src = APP.read_text(encoding="utf-8")

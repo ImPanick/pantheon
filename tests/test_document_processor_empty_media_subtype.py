@@ -51,7 +51,7 @@ def test_extensionless_image_uses_mime_subtype(tmp_path):
 
 
 def test_extensionless_audio_is_named_and_not_sent_as_a_data_url(tmp_path):
-    """fx5-vision (`B-NEW-7`) moved this pin. A recording went out as
+    """fx5-vision (`B1284`) moved this pin. A recording went out as
     `{"type": "audio", "audio": {"url": "data:audio/mpeg;…"}}`, a part no chat
     API takes (OpenAI's is `input_audio`; llama-server, LM Studio and vLLM
     refuse an unknown type, Ollama's native path drops it) and with no words,

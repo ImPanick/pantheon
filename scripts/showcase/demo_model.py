@@ -311,7 +311,7 @@ def _text(content: Any) -> str:
 def images_sent(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Every picture a request carried, as the model would decode it.
 
-    fx5-vision (`B-NEW-1`, the owner 2026-10-08: *"attaching an image to the
+    fx5-vision (`B1278`, the owner 2026-10-08: *"attaching an image to the
     chat, doesnt actually feed said image to the LLM"*). A model that records
     what it was sent is how that was measured: each OpenAI `image_url` part with
     a `data:` URL is decoded here, so a test compares the bytes the person

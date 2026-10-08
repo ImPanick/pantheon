@@ -48585,7 +48585,7 @@ body.plan-mode-active .chat-input-top > .model-picker-wrap:has(> .model-picker-m
 .vis-label .vis-keeps { display: block; margin: 2px 0 0; }
 
 /* ===========================================================================
-   `B-NEW-1` (fx5-cards) — the composer's attachments are a hand of cards.
+   `B1292` (fx5-cards) — the composer's attachments are a hand of cards.
 
    `.attach-strip` was a block in the composer's column, so it took its own
    height out of the chat: 57px for one image, 68 for three files, 42 for the

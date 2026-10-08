@@ -4675,7 +4675,7 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
                         }
                       }
                     }
-                    // fx5-vision (`B-NEW-7`): what the model did not get whole
+                    // fx5-vision (`B1284`): what the model did not get whole
                     // is said under the attachment, as the saved bubble says it.
                     chatRenderer.markAttachmentReach(_aw, json.data);
                   }

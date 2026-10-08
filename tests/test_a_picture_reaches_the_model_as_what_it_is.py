@@ -3,11 +3,11 @@
 
 The owner, 2026-10-08: *"attaching an image to the chat, doesnt actually feed
 said image to the LLM."* The cause of the report was in the page
-(`B-NEW-1`, `tests/test_a_new_chats_first_message_takes_its_pictures_js.py`);
+(`B1278`, `tests/test_a_new_chats_first_message_takes_its_pictures_js.py`);
 checking the rest of the way to the model (Law 3) found two more ways a
 picture did not arrive as a picture, both measured on `0345288`:
 
-* **`B-NEW-2`, the name list decided a model could not see.** With nothing from
+* **`B1279`, the name list decided a model could not see.** With nothing from
   the endpoint, `model_supports_vision` fell back to a list of model names, and a
   name the list did not know was text-only: the picture was taken out of the
   message and replaced with *"[No vision model configured — set one in Settings →
@@ -149,7 +149,7 @@ def test_a_picture_labelled_image_jpg_elsewhere_is_sent_to_anthropic_as_jpeg():
     assert source == {"type": "base64", "media_type": "image/jpeg", "data": data}
 
 
-# ── who decides whether the model sees it (`B-NEW-2`) ───────────────────────
+# ── who decides whether the model sees it (`B1279`) ───────────────────────
 
 def test_a_model_nothing_knows_about_is_sent_the_picture(net, tmp_path, monkeypatch):
     """Measured on the base: a name the list does not know, on an endpoint

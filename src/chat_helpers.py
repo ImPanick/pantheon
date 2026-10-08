@@ -424,7 +424,7 @@ def vision_answer(model_name: str, endpoint_url: str = "") -> Optional[bool]:
     LM Studio, Ollama, OpenRouter, llama.cpp), True where the name list names a
     family that sees, and None — unknown — otherwise.
 
-    fx5-vision (`B-NEW-2`). A name the list does not know is not a model that
+    fx5-vision (`B1279`). A name the list does not know is not a model that
     cannot see: `D-2026-10-07-02` §1 rules out deciding what a model is from a
     list written in the code, and a person's picture was swapped for the line
     *"[No vision model configured — set one in Settings → Vision]"* on exactly

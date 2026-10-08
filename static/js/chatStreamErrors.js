@@ -38,7 +38,7 @@ export function unreachableUrl(err) {
   return m ? m[1].replace(/[.,;]+$/, '') : '';
 }
 
-/** fx5-vision (`B-NEW-2`). A refusal whose words are about a picture: what
+/** fx5-vision (`B1279`). A refusal whose words are about a picture: what
  *  llama-server without a projector, LM Studio, OpenAI and vLLM say when a
  *  model that takes no images is sent one. Only the provider's own words
  *  decide it — a refusal that names no picture keeps the general sentence. */

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""fx5-vision `B-NEW-1` — a picture attached in a new chat went nowhere.
+"""fx5-vision `B1278` — a picture attached in a new chat went nowhere.
 
 The owner, 2026-10-08, from a phone (`/work/notes/owner-shots/bug1-image-not-seen.jpg`):
 *"attaching an image to the chat, doesnt actually feed said image to the LLM …

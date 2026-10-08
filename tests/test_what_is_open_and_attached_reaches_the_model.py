@@ -1,10 +1,10 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""fx5-vision `B-NEW-7`/`B-NEW-8` — through the real route, what the model and the page are sent.
+"""fx5-vision `B1284`/`B1285` — through the real route, what the model and the page are sent.
 
 The owner, 2026-10-08: *"Ensure not just images reach model -- that ALL
 attachments and any 'attachable' context reaches the model."*
 
-**`B-NEW-8`, measured on the tree before this wave** (this checkout's `app.py`,
+**`B1285`, measured on the tree before this wave** (this checkout's `app.py`,
 `/api/chat_stream`, a recording model): an email open in the reader
 (`active_email_uid`) and a document open in the editor (`active_doc_id`) reached
 the model in Agent mode — the reader's header and preview, the document's text —
@@ -13,7 +13,7 @@ document access. The page promotes a turn with a document open (`chat.js`), but
 not with an email open, and not in incognito; the route promotes both now and
 says why in the turn's `auto_escalated` event.
 
-**`B-NEW-7` end to end**: a recording reaches the model as its transcript when
+**`B1284` end to end**: a recording reaches the model as its transcript when
 the server's speech-to-text is an endpoint that answers (the scripted model plays
 an OpenAI-compatible `/audio/transcriptions`), and the page is sent each
 attachment's `reach_note` in the `attachments` event, the sentence it draws under
@@ -109,7 +109,7 @@ def _promoted(events):
     return [r for e in events if e.get("type") == "auto_escalated" for r in e.get("reasons", [])]
 
 
-# ── `B-NEW-8`: what is open beside the chat ────────────────────────────────
+# ── `B1285`: what is open beside the chat ────────────────────────────────
 
 def test_a_document_open_beside_a_chat_mode_turn_reaches_the_model(world):
     client, _ep, _log = world
@@ -146,7 +146,7 @@ def test_agent_mode_was_already_given_both(world):
     assert "UID: 7" in sent
 
 
-# ── `B-NEW-7`: a recording, and what the page is told ─────────────────────
+# ── `B1284`: a recording, and what the page is told ─────────────────────
 
 def test_a_recording_reaches_the_model_as_its_transcript(world):
     client, ep, log = world

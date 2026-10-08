@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // static/js/attachHand.js
 //
-// `B-NEW-1` (fx5-cards). The composer's attachments, drawn as a hand of cards.
+// `B1292` (fx5-cards). The composer's attachments, drawn as a hand of cards.
 //
 // The owner, 2026-10-08, from a phone: *"The images or attachments sent to the
 // chat have a massive blank space blocking view."* The strip above the message

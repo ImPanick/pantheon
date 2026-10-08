@@ -1367,7 +1367,7 @@ _VIDEO_EXTS = frozenset({".mp4", ".mov", ".m4v", ".mkv", ".avi", ".webm", ".wmv"
 
 
 def _text_reach(extracted: str, display_name: str, sent: int, total: int) -> dict | None:
-    """fx5-vision (`B-NEW-7`). What the person is told about a file whose text
+    """fx5-vision (`B1284`). What the person is told about a file whose text
     the model was given — nothing when it was given whole. Read from the same
     brackets the model was handed, so the two cannot disagree (`Law 7`)."""
     text = extracted or ""
@@ -1416,7 +1416,7 @@ def build_user_content(
     such doc so the chat route can emit a `doc_update` SSE event and the
     frontend can switch to the new doc immediately.
 
-    fx5-vision (`B-NEW-7`). `reach`, when given, is filled with
+    fx5-vision (`B1284`). `reach`, when given, is filled with
     `{attachment id: {"state", "note"}}` for every attachment the model did not
     get whole: the one sentence the person is shown under that attachment,
     beside the bracket the model is given. `transcripts` maps an audio
@@ -1519,7 +1519,7 @@ def build_user_content(
                     content.insert(0, {"type": "text", "text": "[Image attached but could not be processed]"})
 
         elif is_audio:
-            # fx5-vision (`B-NEW-7`). This sent `{"type": "audio", "audio":
+            # fx5-vision (`B1284`). This sent `{"type": "audio", "audio":
             # {"url": "data:audio/…"}}` — a part no chat API names (OpenAI's is
             # `input_audio`; llama-server, LM Studio and vLLM refuse an unknown
             # type, Ollama's native path drops it, Anthropic's refuses it) — and

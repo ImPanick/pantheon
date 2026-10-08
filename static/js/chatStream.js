@@ -387,7 +387,7 @@ export async function submitSteer(text) {
     _queueInsteadOfSteering('No active chat to steer');
     return false;
   }
-  // fx5-vision (`B-NEW-3`). A steer is words only — `/api/chat/steer` takes
+  // fx5-vision (`B1280`). A steer is words only — `/api/chat/steer` takes
   // text — so a picture in the composer stayed in the tray while its words
   // steered the run without it (measured on `0345288` in Chromium: the steer
   // posted `{"text": …}` alone and the thumbnail stayed). The queue carries

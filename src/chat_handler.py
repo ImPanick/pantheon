@@ -211,7 +211,7 @@ class ChatHandler:
             from src.settings import get_setting
             vision_enabled = get_setting("vision_enabled", True)
             if vision_enabled:
-                # fx5-vision (`B-NEW-2`): the picture goes to the model unless
+                # fx5-vision (`B1279`): the picture goes to the model unless
                 # something that knows said it cannot see — its endpoint. A
                 # name the list does not know is unknown, not text-only, and a
                 # refusal from the model is said in the chat (`chatStreamErrors`).
@@ -289,7 +289,7 @@ class ChatHandler:
                         if _m is not None:
                             _m["vision"] = vl_desc
                             _m["vision_model"] = vl_model
-                            # fx5-vision (`B-NEW-7`): the endpoint said this model
+                            # fx5-vision (`B1284`): the endpoint said this model
                             # cannot see, so the person is told what it got instead.
                             _who = (sess.model or "This model").split("/")[-1]
                             if not vl_desc or vl_desc.startswith("["):
@@ -302,7 +302,7 @@ class ChatHandler:
                                 _m["reach_note"] = (
                                     f"{_who} can't see pictures; it was given a description.")
 
-        # fx5-vision (`B-NEW-7`): pictures switched off in Settings were taken
+        # fx5-vision (`B1284`): pictures switched off in Settings were taken
         # out below with nothing said — not to the model, not to the person.
         if effective_att_ids and not vision_enabled:
             meta_by_id = {m["id"]: m for m in attachment_meta}
@@ -320,7 +320,7 @@ class ChatHandler:
                         _m["reach"] = "not_sent"
                         _m["reach_note"] = "Not sent: pictures are switched off (Settings → Vision)."
 
-        # fx5-vision (`B-NEW-7`): a recording reaches a model as its transcript,
+        # fx5-vision (`B1284`): a recording reaches a model as its transcript,
         # asked for here, off the event loop, from the STT service the voice
         # recorder uses — and only when that service transcribes on this server.
         transcripts = await self._transcribe_recordings(effective_att_ids, files_by_id)

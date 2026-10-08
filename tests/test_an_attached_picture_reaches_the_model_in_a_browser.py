@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""fx5-vision `B-NEW-1` — an attached picture reaches the model, driven end to end.
+"""fx5-vision `B1278` — an attached picture reaches the model, driven end to end.
 
 The owner, 2026-10-08, from a phone: *"attaching an image to the chat, doesnt
 actually feed said image to the LLM … It shows the attached image but the LLM
@@ -490,7 +490,7 @@ def test_a_second_message_in_agent_mode_still_sends_its_picture(drive):
     assert seen["reply"] == "Sent 1 picture."
 
 
-# ── what decides whether the model gets it (`B-NEW-2`) ──────────────────────
+# ── what decides whether the model gets it (`B1279`) ──────────────────────
 
 def test_after_switching_to_a_model_nothing_knows_about_it_is_sent_the_picture(drive):
     seen = _ok(drive, "i")
@@ -523,7 +523,7 @@ def test_new_chat_does_not_show_the_last_chats_picture(drive):
 
 
 def test_steer_now_with_a_picture_sends_it_after_the_run(drive):
-    """`B-NEW-3`: the message waits in the queue with its picture."""
+    """`B1280`: the message waits in the queue with its picture."""
     seen = _ok(drive, "l")
     assert any("A picture can't steer a running reply" in t for t in seen["toastsAtSteer"]), seen
     asked = _asked(drive, "l2")
@@ -532,7 +532,7 @@ def test_steer_now_with_a_picture_sends_it_after_the_run(drive):
     assert seen["reply"] == "Sent 1 picture." and seen["tray"] == 0
 
 
-# ── fx5-vision wave 2: every kind, every attachable context (`B-NEW-7`, `B-NEW-9`) ──
+# ── fx5-vision wave 2: every kind, every attachable context (`B1284`, `B1286`) ──
 
 def _said(entry):
     msgs = entry["messages"]
