@@ -410,6 +410,7 @@ class _Handler(BaseHTTPRequestHandler):
     progress = None   # a `_Progress`, one per DemoModel
     conversations = None  # the script; `CONVERSATIONS` unless DemoModel is given one
     max_model_len = None  # served the way vLLM serves a model (`_vllm_refusal`), when set
+    refuse_images = None  # (status, message): a server that takes no pictures (fx5-vision)
     model_id = MODEL_ID   # the name it lists and answers under
 
     def log_message(self, *args):  # quiet
@@ -452,6 +453,15 @@ class _Handler(BaseHTTPRequestHandler):
                              "messages": messages, "images": ctx["images"],
                              "max_tokens": body.get("max_completion_tokens") or body.get("max_tokens"),
                              "temperature": body.get("temperature")})
+        if self.refuse_images and ctx["images"]:
+            # fx5-vision: a text-only server sent a picture answers with an
+            # error before a token, as llama-server without a projector and LM
+            # Studio do; the status and words are the test's to choose.
+            status, words = self.refuse_images
+            if self.log is not None:
+                self.log[-1]["refused"] = words
+            return self._json(status, {"error": {"message": words, "type": "invalid_request_error",
+                                                 "code": status}})
         refused = self._vllm_refusal(body)
         if refused:
             if self.log is not None:
@@ -591,17 +601,22 @@ class DemoModel:
 
     def __init__(self, port: int = 0, pace: float = 0.0, log: Optional[list] = None,
                  conversations: Optional[List[Dict[str, Any]]] = None,
-                 max_model_len: Optional[int] = None, model_id: str = MODEL_ID):
+                 max_model_len: Optional[int] = None, model_id: str = MODEL_ID,
+                 refuse_images: Optional[tuple] = None):
         """`conversations` replaces the showcase's script (a test plays its own
         through the same model); `log` receives every request it is sent;
         `max_model_len` serves it the way vLLM serves a model with that window
         (`_Handler._vllm_refusal`, `B1029`); `model_id` is the name it lists and
         answers under — a test that needs Pantheon to treat it as one model
         family or another (a `pantheon-qwen3` finetune, `B1090`)
-        gives it that family's name. The showcase keeps `MODEL_ID`."""
+        gives it that family's name. The showcase keeps `MODEL_ID`.
+        `refuse_images` — `(status, message)` — answers any request carrying a
+        picture with that error, the way a server with no vision does
+        (fx5-vision)."""
         handler = type("Handler", (_Handler,), {"pace": pace, "log": log, "progress": _Progress(),
                                                 "conversations": conversations,
                                                 "max_model_len": max_model_len,
+                                                "refuse_images": refuse_images,
                                                 "model_id": model_id})
         self.httpd = ThreadingHTTPServer(("127.0.0.1", port), handler)
         self.httpd.daemon_threads = True

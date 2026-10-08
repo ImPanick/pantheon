@@ -38,11 +38,23 @@ export function unreachableUrl(err) {
   return m ? m[1].replace(/[.,;]+$/, '') : '';
 }
 
+/** fx5-vision (`B-NEW-2`). A refusal whose words are about a picture: what
+ *  llama-server without a projector, LM Studio, OpenAI and vLLM say when a
+ *  model that takes no images is sent one. Only the provider's own words
+ *  decide it — a refusal that names no picture keeps the general sentence. */
+const PICTURE_REFUSAL = /\bimages?\b|\bimage_url\b|multimodal|\bvision\b|mmproj/i;
+
 export function replyErrorSentence(err, model = '') {
   const message = String((err && err.message) || '');
   const name = String(model || '').split('/').pop();
   if (/^cannot reach\b/i.test(message)) return `${name || 'The model'} isn't answering.`;
   const status = Number(err && err.status);
+  // fx5-vision: a picture is sent to a model whose endpoint says nothing about
+  // pictures, so a model that cannot see says so here — never a reply that
+  // claims there was no picture.
+  if (Number.isInteger(status) && status >= 400 && PICTURE_REFUSAL.test(message)) {
+    return `${name || 'The model'} refused the picture (HTTP ${status}).`;
+  }
   if (Number.isInteger(status) && status >= 400) return `The model didn't answer (HTTP ${status}).`;
   return "The model didn't answer.";
 }
