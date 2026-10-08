@@ -733,7 +733,7 @@ def test_a_file_dropped_on_a_card_is_added_once(tmp_path):
 
 # ── the stylesheet ──────────────────────────────────────────────────────────
 
-_MARK = "`B-NEW-1` (fx5-cards) — the composer's attachments are a hand of cards."
+_MARK = "(fx5-cards) — the composer's attachments are a hand of cards."
 
 
 def _section():
