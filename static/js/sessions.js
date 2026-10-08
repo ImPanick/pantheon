@@ -2426,10 +2426,6 @@ export function createDirectChat(url, modelId, endpointId, opts = {}) {
   _skipAutoSelect = true;
   _suppressNextSessionLoading = true;
   currentSessionId = null;
-  // fx5-vision (`B-NEW-1`): New chat is a switch path `B893` did not wire. A
-  // picture left in the last chat's composer stayed on screen here, over a
-  // working set that no longer held it, and the first message went without it.
-  _syncAttachmentsToSession();
   try { window.__pantheonLastSelectedSessionId = ''; } catch (_) {}
   Storage.remove('lastSessionId');
   history.replaceState(null, '', window.location.pathname);
