@@ -323,6 +323,29 @@ def test_chat_with_model_resolves_only_a_listed_name(world, monkeypatch):
     assert model == "claude-fixture-sonnet" and url.endswith("/v1/messages")
 
 
+def test_the_agent_cannot_set_a_default_model_nothing_lists(world, monkeypatch):
+    """`manage_settings` stored a typed model name as the default whether or
+    not anything listed it; now it is set only to a listed one."""
+    import core.database as cdb
+    import src.settings as S
+    from src.agent_tools.admin_tools import do_manage_settings
+
+    monkeypatch.setattr(cdb, "SessionLocal", world.db)
+    srv = world.serve(["alpha-7b"])
+    world.add("office", srv.base, name="Office LLM", endpoint_kind="local",
+              cached_models=json.dumps(["alpha-7b"]))
+    refused = asyncio.run(do_manage_settings(json.dumps(
+        {"action": "set", "key": "default_model", "value": "gone-70b"})))
+    assert refused.get("exit_code") == 1
+    assert refused["error"] == ("No endpoint lists gone-70b now, so nothing changed. "
+                                "Call list_models for the names that are.")
+    assert S.load_settings().get("default_model", "") == ""
+    done = asyncio.run(do_manage_settings(json.dumps(
+        {"action": "set", "key": "default_model", "value": "alpha-7b"})))
+    assert done.get("exit_code") == 0, done
+    assert (S.load_settings()["default_model"], S.load_settings()["default_endpoint_id"]) == ("alpha-7b", "office")
+
+
 # ── the API ─────────────────────────────────────────────────────────────────
 
 def _api_app(router):
