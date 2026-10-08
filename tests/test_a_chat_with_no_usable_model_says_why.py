@@ -294,6 +294,19 @@ def test_a_default_model_whose_server_is_not_answering_is_said_for_a_run_with_no
     s = S.load_settings()
     s.update(default_endpoint_id="walker-world", default_model="scripted")
     S.save_settings(s)
+    _then_expect(scheduler_world, what, f"Scripted world isn't answering. Pick a model for this {what}.")
+
+
+@pytest.mark.parametrize("what", ["task", "step"])
+def test_a_default_model_whose_endpoint_is_gone_is_said_for_a_run_with_none(scheduler_world, what):
+    import src.settings as S
+    s = S.load_settings()
+    s.update(default_endpoint_id="removed-endpoint", default_model="scripted")
+    S.save_settings(s)
+    _then_expect(scheduler_world, what, f"scripted's endpoint is gone. Pick a model for this {what}.")
+
+
+def _then_expect(scheduler_world, what, expected):
     if what == "task":
         status, error = _run_task(scheduler_world)
         assert status == "error"
@@ -310,7 +323,7 @@ def test_a_default_model_whose_server_is_not_answering_is_said_for_a_run_with_no
         finally:
             db.close()
         error = str(exc.value)
-    assert error == f"Scripted world isn't answering. Pick a model for this {what}."
+    assert error == expected
 
 
 def test_a_workflow_step_naming_a_model_nothing_lists_says_so_for_the_step(scheduler_world):
