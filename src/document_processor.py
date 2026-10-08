@@ -1363,6 +1363,38 @@ def image_media_type(raw: bytes, ext: str = "", declared: str = "") -> str:
     return declared if declared.startswith("image/") and declared != "image/" else "image/png"
 
 
+_VIDEO_EXTS = frozenset({".mp4", ".mov", ".m4v", ".mkv", ".avi", ".webm", ".wmv", ".flv", ".mpeg", ".mpg", ".3gp"})
+
+
+def _text_reach(extracted: str, display_name: str, sent: int, total: int) -> dict | None:
+    """fx5-vision (`B-NEW-7`). What the person is told about a file whose text
+    the model was given — nothing when it was given whole. Read from the same
+    brackets the model was handed, so the two cannot disagree (`Law 7`)."""
+    text = extracted or ""
+    if "[Attachment omitted from inline context:" in text:
+        return {"state": "omitted", "note": (
+            f"Not sent: earlier attachments filled this message's room for files "
+            f"({total:,} characters).")}
+    if ("[Attachment content truncated:" in text or "[Truncated]" in text
+            or "[PDF content truncated]" in text or "truncated for inline context" in text):
+        return {"state": "cut", "note": (
+            f"Too long to send whole: the model was given the start of it "
+            f"({sent:,} characters).")}
+    if "— contents not read." in text:
+        return {"state": "not_read", "note": (
+            "Not read: there is no reader for this kind of file, so the model was "
+            "not given what is in it.")}
+    if "[Attached document:" in text:
+        gap = text.split("—", 1)[-1].strip().rstrip("]").strip()
+        if "markitdown" in gap:
+            ext = os.path.splitext(display_name or "")[1].lower() or "these"
+            return {"state": "not_read", "note": (
+                f"Not read: {ext} files need markitdown, an optional install on this "
+                "server.")}
+        return {"state": "not_read", "note": "Not read: no text was found in it."}
+    return None
+
+
 def build_user_content(
     text: str,
     attachment_ids: list[str] | None,
@@ -1373,6 +1405,8 @@ def build_user_content(
     owner: str | None = None,
     resolved_uploads: dict[str, Dict[str, Any]] | None = None,
     budget_report: dict | None = None,
+    reach: dict | None = None,
+    transcripts: dict | None = None,
 ) -> str | List[Dict[str, Any]]:
     """Build user content with attachments (text, images, audio, documents).
 
@@ -1381,8 +1415,17 @@ def build_user_content(
     editor. When `auto_opened_docs` is supplied, an entry is appended for each
     such doc so the chat route can emit a `doc_update` SSE event and the
     frontend can switch to the new doc immediately.
+
+    fx5-vision (`B-NEW-7`). `reach`, when given, is filled with
+    `{attachment id: {"state", "note"}}` for every attachment the model did not
+    get whole: the one sentence the person is shown under that attachment,
+    beside the bracket the model is given. `transcripts` maps an audio
+    attachment's id to its speech-to-text transcript (`ChatHandler` asks the
+    STT service before this runs, off the event loop).
     """
     content = [{"type": "text", "text": text}]
+    if reach is not None:
+        reach.clear()
     # `P12-04` / `P12-03`. Resolved once for the whole turn and threaded into
     # every processor below, not resolved per file: a settings save or a role
     # change landing between the first attachment and the last would otherwise
@@ -1429,7 +1472,9 @@ def build_user_content(
         display_name = upload_display_name(upload_info, path)
 
         is_image = upload_handler.is_image_file(display_name, mime)
-        is_audio = False if is_image else upload_handler.is_audio_file(display_name, mime)
+        # fx5-vision: a `.webm` is as often a video as a voice note, and the
+        # extension alone sent a video down the recording arm.
+        is_audio = False if (is_image or mime.startswith("video/")) else upload_handler.is_audio_file(display_name, mime)
         # `B76`. Two questions, kept apart. The registers answer "which
         # extractor", and they are good at that. They were also answering "read
         # it at all", and at that they were wrong 26 times over: a `.toml` is
@@ -1465,26 +1510,44 @@ def build_user_content(
                 })
             except Exception as e:
                 logger.error(f"Failed to encode image {fid}: {e}")
+                if reach is not None:
+                    reach[fid] = {"state": "not_read",
+                                  "note": "Not sent: the picture could not be read."}
                 if content and content[0]["type"] == "text":
                     content[0]["text"] += "\n\n[Image attached but could not be processed]"
                 else:
                     content.insert(0, {"type": "text", "text": "[Image attached but could not be processed]"})
 
         elif is_audio:
-            try:
-                with open(path, "rb") as audio_file:
-                    encoded_string = base64.b64encode(audio_file.read()).decode("utf-8")
-                audio_format = ext[1:] or (mime.split("/", 1)[1] if mime.startswith("audio/") else "mpeg")
-                content.append({
-                    "type": "audio",
-                    "audio": {"url": f"data:audio/{audio_format};base64,{encoded_string}"},
-                })
-            except Exception as e:
-                logger.error(f"Failed to encode audio {fid}: {e}")
-                if content and content[0]["type"] == "text":
-                    content[0]["text"] += "\n\n[Audio attached but could not be processed]"
-                else:
-                    content.insert(0, {"type": "text", "text": "[Audio attached but could not be processed]"})
+            # fx5-vision (`B-NEW-7`). This sent `{"type": "audio", "audio":
+            # {"url": "data:audio/…"}}` — a part no chat API names (OpenAI's is
+            # `input_audio`; llama-server, LM Studio and vLLM refuse an unknown
+            # type, Ollama's native path drops it, Anthropic's refuses it) — and
+            # said nothing in words, so the model was not even told a recording
+            # was attached and the saved message showed none. Measured on
+            # `0345288` through the real route: a `.wav` and an `.mp3` reached
+            # the recording model as that part and no text. A recording reaches
+            # a model as words: its transcript, when the server's speech-to-text
+            # gave one; otherwise the model and the person are told it was not.
+            said = ((transcripts or {}).get(fid) or "").strip()
+            if said:
+                # `P12-04`: a transcript is text, and spends the same budget.
+                said, inline_attachment_remaining = _fit_inline_attachment_text(
+                    f"\n\n[Recording attached: {display_name} — transcript]:\n{said}",
+                    inline_attachment_remaining, display_name, inline_attachment_total)
+                content[0]["text"] += said
+                if reach is not None:
+                    reach[fid] = {"state": "transcribed",
+                                  "note": "The model was given a transcript of it."}
+            else:
+                content[0]["text"] += (
+                    f"\n\n[Recording attached: {display_name} — not heard. This server "
+                    f"turns no speech into text, so nothing from the recording is in "
+                    f"this message.]")
+                if reach is not None:
+                    reach[fid] = {"state": "not_heard", "note": (
+                        "Not heard: the model can't be given a recording, and this server "
+                        "has no speech-to-text set up.")}
 
         elif is_doc or decoded_as_text:
             if mime == "application/pdf":
@@ -1648,6 +1711,11 @@ def build_user_content(
                 budget_report["remaining_chars"] = inline_attachment_remaining
                 budget_report["used_chars"] = (
                     inline_attachment_total - inline_attachment_remaining)
+            if reach is not None:
+                _said = _text_reach(extracted_text, display_name,
+                                    _before - inline_attachment_remaining, inline_attachment_total)
+                if _said:
+                    reach[fid] = _said
             if content and content[0]["type"] == "text":
                 content[0]["text"] += extracted_text
             else:
@@ -1702,8 +1770,17 @@ def build_user_content(
                 content[0]["text"] += f"\n\n{banner}"
             else:
                 content.insert(0, {"type": "text", "text": banner})
+            if reach is not None:
+                if text_refusal_reason(path) == ENCODING_UNIDENTIFIED:
+                    _note = "Not read: its text is in an encoding that could not be identified."
+                elif mime.startswith("video/") or ext in _VIDEO_EXTS:
+                    _note = "Not read: the model can't be given a video."
+                else:
+                    _note = (f"Not read: there is no reader for {ext or 'this kind of'} files, "
+                             "so the model was not given what is in it.")
+                reach[fid] = {"state": "not_read", "note": _note}
 
-    has_media = any(item.get("type") in ["image_url", "audio"] for item in content if isinstance(item, dict))
+    has_media = any(item.get("type") == "image_url" for item in content if isinstance(item, dict))
     if not has_media and content:
         combined_text = ""
         for item in content:
