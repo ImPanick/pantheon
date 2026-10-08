@@ -76,6 +76,11 @@ WORDS = {
     "m0": "M: hello there.",
     "m": "M: is anything attached?",
     "l2": "L: steer, look at this picture.",
+    # fx5-vision wave 2: every kind and every attachable context.
+    "f": "F: what does the report say?",
+    "n": "N: what do these attachments say?",
+    "g": "G: what does the document say?",
+    "h": "Let’s discuss this photo.",
 }
 SCRIPT = [{"key": k, "title": "Pictures", "turns": [{"user": w, "steps": [{"say": _say}]}]}
           for k, w in WORDS.items()]
@@ -284,6 +289,66 @@ async function scenario(browser, name, { mode = 'chat', size = [1440, 900], them
     return { toastsAtSteer: steered.toasts };
   });
 
+  // fx5-vision wave 2 — a PDF on the first message of a new chat, Agent mode.
+  await scenario(browser, 'f', { mode: 'agent' }, async (page) => {
+    await pick(page, C.vision);
+    await attach(page, C.pdf);
+    await send(page, C.words.f);
+  });
+  // A zip and a long text: each card says what the model did not get, live and after a reload.
+  await scenario(browser, 'n', { mode: 'chat' }, async (page) => {
+    await pick(page, C.vision);
+    await page.setInputFiles('#file-input', [C.zip, C.big]);
+    await page.waitForTimeout(600);
+    await send(page, C.words.n);
+    const notes = () => page.evaluate(() => {
+      const u = [...document.querySelectorAll('.msg-user')].pop();
+      return u ? { notes: [...u.querySelectorAll('.attach-reach-note')].map((x) => x.textContent),
+                   brackets: /\[Attached file:|contents not read/.test(u.innerText) } : null;
+    });
+    const live = await notes();
+    await page.reload({ waitUntil: 'load' });
+    await page.waitForFunction(() => window.__pantheonAppStarted === true, null, { timeout: 90000 });
+    await page.waitForTimeout(3000);
+    return { live, reloaded: await notes() };
+  });
+  // A Library document dragged onto the chat beside the Library window.
+  await scenario(browser, 'g', { mode: 'chat' }, async (page) => {
+    await pick(page, C.vision);
+    await page.evaluate(() => document.getElementById('tool-library-btn').click());
+    await page.waitForTimeout(2500);
+    const card = page.locator(`.doclib-card[data-doc-id="${C.libraryDoc}"]`).first();
+    await card.dragTo(page.locator('#chat-container'), { force: true, targetPosition: { x: 110, y: 420 } });
+    await page.waitForTimeout(1200);
+    const afterDrop = await state(page);
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(600);
+    await send(page, C.words.g);
+    return { trayAfterDrop: afterDrop.tray, toastsAfterDrop: afterDrop.toasts };
+  });
+  // The Gallery's Discuss on a picture: a new chat, the picture, the first message.
+  await scenario(browser, 'h', { mode: 'chat' }, async (page) => {
+    await pick(page, C.vision);
+    await page.evaluate(() => document.getElementById('tool-gallery-btn').click());
+    await page.waitForTimeout(3000);
+    await page.locator(`.gallery-card[data-id="${C.galleryId}"]`).first().click();
+    await page.waitForTimeout(1500);
+    await page.locator('#gallery-chat-photo-btn').click();
+    await page.waitForTimeout(2500);
+    const prefilled = await page.evaluate(() => document.getElementById('message').value);
+    const before = await state(page);
+    const n0 = await page.evaluate(() => document.querySelectorAll('.msg-ai').length);
+    await page.press('#message', 'Enter');
+    const t0 = Date.now();
+    while (Date.now() - t0 < 30000) {
+      await page.waitForTimeout(400);
+      const n = await page.evaluate(() => document.querySelectorAll('.msg-ai').length);
+      if (n > n0 && /Sent (no|\d+) picture/.test(await lastReply(page))) break;
+    }
+    await page.waitForTimeout(800);
+    return { prefilled, trayBefore: before.tray };
+  });
+
   console.log(JSON.stringify(out));
   await browser.close();
 })().catch((e) => { console.error(e); process.exit(1); });
@@ -323,7 +388,19 @@ def drive(tmp_path_factory):
                 seed._ok(client.post("/api/model-endpoints", data={
                     "name": name, "base_url": m.base_url, "supports_tools": "true",
                     "require_models": "true"}), name)
+            lib = seed._ok(client.post("/api/document", json={
+                "title": "Launch plan", "language": "markdown",
+                "content": "# Launch plan\n\nThe code word is MARKLIBQ7."}), "library document")
+            gal = seed._ok(client.post("/api/gallery/upload", files={"file": ("garden.jpg", square, "image/png")}),
+                           "gallery picture")
+            from test_attachment_extension_registers import _minimal_pdf
+            (work / "report.pdf").write_bytes(_minimal_pdf("MARKPDFQ7"))
+            (work / "bundle.zip").write_bytes(b"PK\x05\x06" + b"\x00" * 18)
+            (work / "big.txt").write_text("MARKBIGQ7 " + "lorem ipsum dolor " * 4000)
             config = {
+                "pdf": str(work / "report.pdf"), "zip": str(work / "bundle.zip"), "big": str(work / "big.txt"),
+                "libraryDoc": lib.get("id") or (lib.get("document") or {}).get("id"),
+                "galleryId": gal.get("id"),
                 "base": server.base, "user": seed.PERSON["username"], "password": password,
                 "vision": VISION, "unknown": UNKNOWN, "refusing": REFUSING, "words": {**WORDS, "l": SLOW},
                 "cat": str(work / "cat.jpg"),
@@ -354,10 +431,18 @@ def _pictures_in_turn(entry):
     return [i["sha256"] for i in demo_model.images_sent(msgs) if i["message"] == last_user]
 
 
+# A PDF opens in the document viewer, whose frame is sandboxed without
+# `allow-same-origin`; something in it reads `navigator.serviceWorker`, which
+# Chromium answers with this error. It predates this file and is not about
+# what reaches the model (filed by fx5-vision); every other page error fails.
+_KNOWN = ("Service worker is disabled because the context is sandboxed",)
+
+
 def _ok(drive, key):
     seen = drive["seen"][key]
     assert not seen.get("crash"), seen
-    assert seen["errors"] == [], seen["errors"]
+    errors = [e for e in seen["errors"] if not any(k in e for k in _KNOWN)]
+    assert errors == [], errors
     return seen
 
 
@@ -445,3 +530,44 @@ def test_steer_now_with_a_picture_sends_it_after_the_run(drive):
     assert asked, "the queued message never went"
     assert _pictures_in_turn(asked[0]) == [drive["sha"]["cat"]]
     assert seen["reply"] == "Sent 1 picture." and seen["tray"] == 0
+
+
+# ── fx5-vision wave 2: every kind, every attachable context (`B-NEW-7`, `B-NEW-9`) ──
+
+def _said(entry):
+    msgs = entry["messages"]
+    last_user = max(i for i, m in enumerate(msgs) if m.get("role") == "user")
+    return demo_model._text(msgs[last_user].get("content"))
+
+
+def test_a_pdf_on_a_new_chats_first_message_reaches_the_model_in_agent_mode(drive):
+    _ok(drive, "f")
+    asked = _asked(drive, "f")
+    assert asked and "MARKPDFQ7" in _said(asked[0]), "the PDF's text never reached the model"
+
+
+def test_each_card_says_what_the_model_did_not_get_live_and_after_a_reload(drive):
+    seen = _ok(drive, "n")
+    asked = _asked(drive, "n")
+    assert asked and "MARKBIGQ7" in _said(asked[0])
+    for when in ("live", "reloaded"):
+        notes = seen[when]["notes"]
+        assert any(n.startswith("Not read: there is no reader for .zip files") for n in notes), (when, notes)
+        assert any(n.startswith("Too long to send whole:") for n in notes), (when, notes)
+        assert seen[when]["brackets"] is False, (when, "the model's bracket is drawn in the bubble")
+
+
+def test_a_library_document_dropped_on_the_chat_reaches_the_model(drive):
+    seen = _ok(drive, "g")
+    assert seen["trayAfterDrop"] == 1, "the dropped document did not land in the composer"
+    asked = _asked(drive, "g")
+    assert asked and "MARKLIBQ7" in _said(asked[0])
+    assert seen["tray"] == 0
+
+
+def test_the_gallerys_discuss_sends_the_picture_with_the_first_message(drive):
+    seen = _ok(drive, "h")
+    assert seen["prefilled"] == "Let\u2019s discuss this photo." and seen["trayBefore"] == 1
+    asked = _asked(drive, "h")
+    assert asked and len(_pictures_in_turn(asked[0])) == 1, "the photo never reached the model"
+    assert seen["reply"] == "Sent 1 picture."
