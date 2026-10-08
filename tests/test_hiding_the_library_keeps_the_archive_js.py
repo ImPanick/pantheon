@@ -434,7 +434,7 @@ import uiModule, { toasts } from './ui.js';
 window.uiModule = uiModule;   // as `app.js` hands it to the page
 const V = await import('./ui_visibility.js');
 const L = await import('./documentLibrary.js');
-L.initLibrary({ apiBase: '', esc: (s) => String(s), getDocs: () => new Map(), isOpen: () => false });
+L.initLibrary({ apiBase: '', esc: uiModule.esc, getDocs: () => new Map(), isOpen: () => false });
 const win = () => document.getElementById('doclib-modal');
 const tabs = () => win() ? win().querySelectorAll('[data-doclib-tab]').map((b) => b.dataset.doclibTab) : null;
 const panels = () => win() ? win().querySelectorAll('[data-doclib-panel]').map((p) => p.dataset.doclibPanel) : null;
@@ -522,9 +522,9 @@ def test_the_agents_open_sessions_opens_the_chats_tab(tmp_path):
     (tmp_path / "sessions.js").write_text(
         "export function openLibrary(tab) { globalThis.__asked.push(tab === undefined ? null : tab); }\n")
     entry = tmp_path / "case.mjs"
-    entry.write_text(textwrap.dedent(f"""
+    entry.write_text(esc_source() + textwrap.dedent(f"""
         globalThis.__asked = [];
-        const uiModule = {{ esc: (s) => String(s) }};
+        const uiModule = {{ esc }};
         function handleUIControl(uiData) {body}
         handleUIControl({{ ui_event: 'open_panel', panel: 'sessions' }});
         await new Promise((r) => setTimeout(r, 50));
