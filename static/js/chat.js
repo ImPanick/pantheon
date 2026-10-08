@@ -2360,7 +2360,12 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
       add.type = 'button';
       add.className = 'no-model-add';
       add.textContent = reason ? 'Pick a model' : 'Add a model';
-      add.addEventListener('click', () => {
+      add.addEventListener('click', (ev) => {
+        // The menu closes on a click outside it (`modelPicker.js`), and this
+        // click reaches the document after the menu has opened — driven
+        // (fx4-models, 8751): "Pick a model" removed the note and showed
+        // nothing. It stops here.
+        if (ev && ev.stopPropagation) ev.stopPropagation();
         note.remove();
         const door = doc.getElementById(reason ? 'model-picker-btn' : 'model-picker-add-models-btn');
         if (door) door.click();

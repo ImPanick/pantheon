@@ -335,6 +335,26 @@ def test_a_default_that_is_not_listed_says_why_and_opens_the_menu(sandbox):
     assert out["opened"] == ["menu"]
 
 
+def test_pick_a_model_leaves_the_menu_open(sandbox):
+    """Driven on 8751 (Chromium, 1440 and 390): *Pick a model* removed the
+    note and nothing opened. The press opened the menu, then went on up to the
+    document, where the picker's outside-click closer (`modelPicker.js`
+    `_initModelPickerDropdown`: a click outside `#model-picker-wrap` closes an
+    open menu) shut it again. Modelled here: the press's event reaches that
+    closer unless the note's handler stops it."""
+    out = _run(sandbox, _PRE, _say("""
+        let menuOpen = false;
+        btn.click = () => { menuOpen = true; };
+        const outsideClickCloses = () => { menuOpen = false; };
+        _sayNoModel(document, { reason: "Office LLM isn't answering. Pick another from the model menu." });
+        const ev = { stopped: false, stopPropagation() { this.stopped = true; } };
+        box.querySelector('.no-model-add').listeners.click[0](ev);
+        if (!ev.stopped) outsideClickCloses();   // it bubbled on to the document
+        console.log(JSON.stringify({ menuOpen, note: !!box.querySelector('.no-model-note') }));
+    """))
+    assert out == {"menuOpen": True, "note": False}
+
+
 def test_with_no_model_a_member_is_told_who_adds_one_and_given_no_door(sandbox):
     out = _run(sandbox, _PRE, _say("""
         globalThis.window._isAdmin = false;
