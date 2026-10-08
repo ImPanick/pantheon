@@ -308,6 +308,40 @@ def _text(content: Any) -> str:
     return str(content or "")
 
 
+def images_sent(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Every picture a request carried, as the model would decode it.
+
+    fx5-vision (`B-NEW-1`, the owner 2026-10-08: *"attaching an image to the
+    chat, doesnt actually feed said image to the LLM"*). A model that records
+    what it was sent is how that was measured: each OpenAI `image_url` part with
+    a `data:` URL is decoded here, so a test compares the bytes the person
+    attached with the bytes the model got — `{message, mime, bytes, sha256}`,
+    `message` being the index of the message that carried it. A part whose URL
+    is not a decodable `data:` URL is listed with `bytes` 0, never skipped.
+    """
+    import base64
+    import hashlib
+
+    out: List[Dict[str, Any]] = []
+    for n, m in enumerate(messages or []):
+        content = m.get("content") if isinstance(m, dict) else None
+        if not isinstance(content, list):
+            continue
+        for part in content:
+            if not isinstance(part, dict) or part.get("type") != "image_url":
+                continue
+            url = str((part.get("image_url") or {}).get("url") or "")
+            head, _, data = url.partition(",")
+            mime = head[5:].split(";", 1)[0] if head.startswith("data:") else ""
+            try:
+                raw = base64.b64decode(data, validate=True) if head.endswith(";base64") else b""
+            except ValueError:
+                raw = b""
+            out.append({"message": n, "role": m.get("role"), "mime": mime, "bytes": len(raw),
+                        "sha256": hashlib.sha256(raw).hexdigest() if raw else ""})
+    return out
+
+
 def _find_turn(messages: List[Dict[str, Any]], conversations: Optional[List[Dict[str, Any]]] = None):
     """The scripted turn this request belongs to, whether it is the turn's first
     request, and what it carries.
@@ -406,13 +440,16 @@ class _Handler(BaseHTTPRequestHandler):
         messages = body.get("messages") or []
         system = " ".join(_text(m.get("content")) for m in messages if m.get("role") == "system")
         conv, turn, first, ctx = _find_turn(messages, self.conversations)
+        # fx5-vision: the pictures this request carried, for the log and for a
+        # scripted `say` that answers with what it was actually sent.
+        ctx["images"] = images_sent(messages)
         if self.log is not None:
             # The whole request as it arrived, beside the summary: a model that
             # records what it is sent is how `B1069` was measured and is held.
             self.log.append({"stream": bool(body.get("stream")), "tools": len(body.get("tools") or []),
                              "roles": [m.get("role") for m in messages],
                              "conv": (conv or {}).get("key"), "first": first,
-                             "messages": messages,
+                             "messages": messages, "images": ctx["images"],
                              "max_tokens": body.get("max_completion_tokens") or body.get("max_tokens"),
                              "temperature": body.get("temperature")})
         refused = self._vllm_refusal(body)
@@ -479,7 +516,11 @@ class _Handler(BaseHTTPRequestHandler):
                                                         "arguments": json.dumps(args)}}
                                           for n, (name, args) in enumerate(calls)]})
             return self._stream(deltas, finish="tool_calls")
-        deltas += [{"content": w} for w in _words(step.get("say") or "Done.")]
+        said = step.get("say")
+        # A streamed `say` may read what it was sent too (fx5-vision: a reply
+        # that says how many pictures arrived, so a drive reads it on screen).
+        said = said(ctx) if callable(said) else said
+        deltas += [{"content": w} for w in _words(said or "Done.")]
         return self._stream(deltas, finish="stop")
 
     def _vllm_refusal(self, body: Dict[str, Any]) -> Optional[str]:
