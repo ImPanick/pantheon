@@ -4281,8 +4281,13 @@ function startPantheonApp() {
   
   attachStrip.addEventListener('drop', async (e) => {
     e.preventDefault();
+    // `B-NEW-1`. The strip is inside `#chat-container`, whose own drop handler
+    // adds the same files: a file dropped on an attachment went in twice
+    // (driven on `0345288` and with the hand of cards alike). This one answers.
+    e.stopPropagation();
+    _hideDropHighlight();
     attachStrip.style.backgroundColor = '';
-    
+
     const files = Array.from(e.dataTransfer.files);
     if (files.length === 0) return;
     await fileHandlerModule.addFiles(files);

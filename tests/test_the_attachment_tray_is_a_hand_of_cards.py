@@ -46,16 +46,19 @@ does for this sheet).
 import json
 import re
 import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
 
 from test_tool_effect_surfaces_js import _make_sandbox, _run  # noqa: E402
 from tests.helpers.esc_stub import ui_default_stub
+from tests.helpers.js_source import js_definition
 from tests.helpers.source_text import blank
 
 ROOT = Path(__file__).resolve().parents[1]
 FILE_HANDLER = ROOT / "static" / "js" / "fileHandler.js"
+APP_JS = ROOT / "static" / "app.js"
 STYLE = ROOT / "static" / "style.css"
 
 needs_node = pytest.mark.skipif(not shutil.which("node"), reason="node binary not on PATH")
@@ -612,6 +615,54 @@ def test_the_hand_follows_the_chat_and_a_selection_does_not(sandbox):
     assert out["backInA"] == [["cat.jpg, 1 of 2", "false"], ["notes.md, 2 of 2", "false"]], (
         "chat A's cards did not come back, or came back still selected from before the switch"
     )
+
+
+# ── the drop ────────────────────────────────────────────────────────────────
+
+_DROP = r"""
+const strip = { listeners: {}, style: {}, addEventListener(t, f) { (this.listeners[t] ||= []).push(f); } };
+const chatContainer = { listeners: {}, style: {}, addEventListener(t, f) { (this.listeners[t] ||= []).push(f); } };
+const added = [];
+const toasts = [];
+let hidden = 0;
+const fileHandlerModule = { addFiles: async (fs) => { added.push(fs.map((f) => f.name)); } };
+const uiModule = { showToast: (m) => toasts.push(m) };
+const _hideDropHighlight = () => { hidden += 1; };
+new Function('attachStrip', 'chatContainer', 'fileHandlerModule', 'uiModule', '_hideDropHighlight',
+  STRIP + ';\n' + CONTAINER + ';')(strip, chatContainer, fileHandlerModule, uiModule, _hideDropHighlight);
+// A drop on a card: the card has no handler of its own, so the event reaches
+// the strip and then, unless something stops it, the container it sits in.
+let stopped = false;
+const ev = { dataTransfer: { files: [{ name: 'brief.pdf' }] }, preventDefault() {},
+             stopPropagation() { stopped = true; } };
+for (const host of [strip, chatContainer]) {
+  if (stopped) break;
+  for (const f of host.listeners.drop || []) await f(ev);
+}
+console.log(JSON.stringify({ added, toasts, hidden }));
+"""
+
+
+@needs_node
+def test_a_file_dropped_on_a_card_is_added_once(tmp_path):
+    """The drag-and-drop path still feeds the hand, and once.
+
+    `#attach-strip` sits inside `#chat-container`, and both answer a drop with
+    `addFiles`; the strip's did not stop the event, so a file dropped on an
+    attachment was added twice — driven in Chromium on `0345288` (a chip) and
+    on the hand (a card) alike. Both real handlers, cut out of `app.js`."""
+    src = APP_JS.read_text(encoding="utf-8")
+    strip = js_definition(src, src.index("attachStrip.addEventListener('drop'"))
+    container = js_definition(src, src.index("chatContainer.addEventListener('drop'"))
+    script = tmp_path / "drop.mjs"
+    script.write_text("const STRIP = %s;\nconst CONTAINER = %s;\n%s" % (
+        json.dumps(strip), json.dumps(container), _DROP))
+    proc = subprocess.run(["node", str(script)], capture_output=True, text=True, timeout=30)
+    assert proc.returncode == 0, proc.stderr
+    out = json.loads(proc.stdout.strip().splitlines()[-1])
+    assert out["added"] == [["brief.pdf"]], f"one drop added {out['added']}"
+    assert out["toasts"] == ["Added 1 file to chat"], out["toasts"]
+    assert out["hidden"] == 1, "the container's drop highlight is left on"
 
 
 # ── the stylesheet ──────────────────────────────────────────────────────────
