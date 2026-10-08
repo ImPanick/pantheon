@@ -346,7 +346,9 @@ export function showToast(msg, durationOrOpts) {
     } else {
       btn.textContent = actionLabel;
     }
-    btn.style.cssText = 'padding:2px 10px;border:1px solid var(--fg);border-radius:4px;background:none;color:var(--fg);cursor:pointer;font-size:12px;pointer-events:auto;display:inline-flex;align-items:center;';
+    // `white-space:nowrap` (`B1194`): a two-word action ("Open archive") broke
+    // onto two lines beside a long sentence; the sentence wraps, the button not.
+    btn.style.cssText = 'padding:2px 10px;border:1px solid var(--fg);border-radius:4px;background:none;color:var(--fg);cursor:pointer;font-size:12px;pointer-events:auto;display:inline-flex;align-items:center;white-space:nowrap;';
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       e.preventDefault();

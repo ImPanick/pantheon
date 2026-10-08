@@ -48505,3 +48505,17 @@ body:has(:is(.modal, .research-overlay):not(.hidden):not(.modal-minimized) .moda
 #settings-modal .forge-settings-doors > li:first-child { border-top: 0; }
 #settings-modal .forge-settings-doors > li > span { min-width: 0; overflow-wrap: anywhere; }
 #settings-modal .forge-settings-doors > li > button { flex-shrink: 0; white-space: nowrap; }
+
+/* `B1194` (`D-2026-10-07-02` §3). *manage* under Chats is the chat archive's
+   own door — the only one in the sidebar while the Library is switched off,
+   and the guide line names it ("Archived chats are under Chats → manage.").
+   With no hover to reveal it, a touch screen drew it as an empty 13px box at
+   35% opacity (driven at 390×844). There, its word is shown. */
+@media (hover: none) {
+  #sessions-section .chats-manage-btn { opacity: 0.75 !important; }
+  #sessions-section .chats-manage-btn .list-item-plus-label {
+    max-width: 80px;
+    padding-right: 4px;
+    opacity: 1;
+  }
+}

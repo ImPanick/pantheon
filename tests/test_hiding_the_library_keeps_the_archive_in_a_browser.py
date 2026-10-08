@@ -66,7 +66,8 @@ const BASE = process.argv[2];
     const t = document.getElementById('toast');
     if (!t || !t.classList.contains('show')) return null;
     const b = [...t.querySelectorAll('button')].find((x) => !x.classList.contains('toast-close-btn'));
-    return { text: (t.querySelector('span') || t).textContent, button: b ? b.textContent.trim() : null };
+    return { text: (t.querySelector('span') || t).textContent, button: b ? b.textContent.trim() : null,
+      oneLine: b ? getComputedStyle(b).whiteSpace === 'nowrap' : null };
   });
   const manage = async () => {
     await page.hover('#sessions-section .section-header-flex');
@@ -151,6 +152,27 @@ const BASE = process.argv[2];
   await boot('/settings/appearance');
   out.browserLine = await line('#settings-modal [data-ui-key="tool-library"]');
 
+  // A touch screen has no hover: *manage* — the archive's door — shows its word.
+  {
+    const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+    await phone.request.post(BASE + '/api/auth/login', { data: { ...creds, remember: true } });
+    const pp = await phone.newPage();
+    await pp.goto(BASE + '/', { waitUntil: 'load' });
+    await pp.waitForFunction(() => window.__pantheonAppStarted === true, null, { timeout: 90000 });
+    await pp.waitForTimeout(2000);
+    await pp.click('#hamburger-btn'); await pp.waitForTimeout(800);
+    out.phoneManage = await pp.evaluate(() => {
+      const b = document.getElementById('chats-library-btn');
+      const l = b.querySelector('.list-item-plus-label');
+      const r = l.getBoundingClientRect();
+      return { word: l.textContent.trim(), width: Math.round(r.width), labelOpacity: getComputedStyle(l).opacity,
+        buttonOpacity: getComputedStyle(b).opacity, section: !document.getElementById('sessions-section').classList.contains('hidden') };
+    });
+    await pp.click('#chats-library-btn'); await pp.waitForTimeout(1200);
+    out.phoneOpened = await pp.evaluate(() => !!document.getElementById('doclib-modal'));
+    await phone.close();
+  }
+
   // ── back on: the Library as before ─────────────────────────────────────
   out.on = (await page.request.post(BASE + '/api/auth/features', { data: { document_editor: true } })).status();
   await boot('/');
@@ -220,9 +242,20 @@ def test_the_librarys_own_url_says_where_the_archive_is_and_its_button_goes_ther
         "text": "Library is switched off for everyone. An admin can turn it back on in "
                 "Settings → Agent Tools. " + GUIDE,
         "button": "Open archive",
+        "oneLine": True,
     }
     assert drive["followed"]["open"] is True and drive["followed"]["active"] == "archive"
     assert drive["openArchive"]["open"] is True and drive["openArchive"]["active"] == "archive"
+
+
+def test_on_a_touch_screen_manage_shows_its_word(drive):
+    """No hover: *manage* was an empty 13px box at 35% opacity — the
+    archive's only sidebar door with the Library off, named by the guide."""
+    m = drive["phoneManage"]
+    assert m["section"] is True and m["word"] == "manage"
+    assert m["width"] > 20 and float(m["labelOpacity"]) == 1.0, m
+    assert float(m["buttonOpacity"]) >= 0.7, m
+    assert drive["phoneOpened"] is True
 
 
 def test_settings_says_the_switches_hide_documents_and_where_the_archive_is(drive):
