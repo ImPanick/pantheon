@@ -236,15 +236,56 @@ def test_a_carry_into_a_chat_with_its_own_files_is_refused(sandbox):
 
 def test_a_carry_of_a_stashed_set_lands_in_the_chat_on_screen(sandbox):
     """The order the two can happen in: the current id already moved and a
-    getter already swapped to its empty set before the carry ran."""
+    getter already swapped to its empty set — and drew it — before the carry
+    ran. The carry draws what it brought, and leaves nothing behind."""
     out = _drive(sandbox, """
         newChat();
         await fh.addFiles([aPicture('cat.jpg')]);
         currentSessionId = 'chat-new';
         const before = fh.getPendingCount();
+        await tick(); await tick();
+        const shownBefore = shown();
         const moved = fh.carryPending('', 'chat-new');
         const after = fh.getPendingInfo().map((f) => f.name);
         await tick(); await tick();
-        console.log(JSON.stringify({ before, moved, after, shown: shown() }));
+        const shownAfter = shown();
+        newChat();
+        const inNext = fh.getPendingCount();
+        console.log(JSON.stringify({ before, shownBefore, moved, after, shownAfter, inNext }));
     """)
-    assert out == {"before": 0, "moved": True, "after": ["cat.jpg"], "shown": 1}
+    assert out == {"before": 0, "shownBefore": 0, "moved": True, "after": ["cat.jpg"],
+                   "shownAfter": 1, "inNext": 0}
+
+
+def test_a_picture_kept_while_looking_at_another_chat_goes_and_does_not_come_back(sandbox):
+    """Attach in a new chat, glance at another chat, come back, send: the set
+    left the no-chat key once and came back, and the carry must not leave that
+    copy behind for the next new chat."""
+    out = _drive(sandbox, """
+        newChat();
+        await fh.addFiles([aPicture('cat.jpg')]);
+        currentSessionId = 'chat-a';
+        const inA = fh.getPendingCount();
+        currentSessionId = null;
+        const back = fh.getPendingCount();
+        replyWith({ files: [{ id: 'u-cat', name: 'cat.jpg' }], rejected: [] });
+        await materializePendingSession();
+    """ + _SEND + """
+        newChat();
+        const inNext = fh.getPendingCount();
+        console.log(JSON.stringify({ inA, back, ids, inNext }));
+    """)
+    assert out == {"inA": 0, "back": 1, "ids": ["u-cat"], "inNext": 0}
+
+
+def test_no_chat_is_the_same_key_however_it_is_written(sandbox):
+    """`getCurrentSessionId()` answers `null` for a chat not made yet; the
+    composer's key for it is `''`. A caller passing either moves the set."""
+    out = _drive(sandbox, """
+        newChat();
+        await fh.addFiles([aPicture('cat.jpg')]);
+        currentSessionId = 'chat-new';
+        const moved = fh.carryPending(null, 'chat-new');
+        console.log(JSON.stringify({ moved, pending: fh.getPendingCount() }));
+    """)
+    assert out == {"moved": True, "pending": 1}
