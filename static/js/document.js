@@ -9906,6 +9906,52 @@ import { chevronIcon, playIcon } from './icons.js';
     if (uiModule) uiModule.showToast('Exported as HTML');
   }
 
+  /**
+   * `B-NEW-3`. What html2canvas is allowed to see of this page.
+   *
+   * The owner, 2026-10-09: *"exporting it from the docs as a pdf doesnt work,
+   * only markdown and docx works."* Measured on `99134cf` in Chromium, driving
+   * this menu item on the owner's own exported transcript: html2canvas threw
+   * `Attempting to parse an unsupported color function "color"` and no file was
+   * ever produced. The colour is `color(srgb 0.611765 0.870588 0.94902 / 0.05)`
+   * — Chromium's computed form of one of `static/style.css`'s 1,802
+   * `color-mix(in srgb, …)` declarations — on `.code-block-header`, the strip
+   * `markdown.js` puts on every fenced code block. The vendored rasteriser
+   * knows `rgb`/`rgba`/`hsl`/`hsla` and named colours and throws on anything
+   * else, `static/lib/**` is byte-identical by `FORBIDDEN.md` Part 1, and the
+   * throw escaped (nothing awaited `save()`), so the person got the
+   * "Exporting PDF…" toast and nothing else. Markdown and Word never
+   * rasterise, which is exactly why they worked.
+   *
+   * html2canvas clones the document before it parses it. Dropping the page's
+   * stylesheets from that clone and giving it the export's own plain rules
+   * means no element can carry a colour it cannot read. Measured after:
+   * the same document exports in 5.8 s.
+   */
+  function _plainStylesForPdfClone(clonedDoc) {
+    try {
+      clonedDoc.querySelectorAll('link[rel="stylesheet"], style').forEach((n) => n.remove());
+      const s = clonedDoc.createElement('style');
+      s.textContent = [
+        'body{background:#fff;color:#000;font-family:sans-serif}',
+        'h1,h2,h3,h4{color:#000;margin:0.6em 0 0.3em}',
+        'p,li,td,th{color:#000}',
+        'a{color:#0b5bd3}',
+        'pre,code{font-family:monospace;color:#000}',
+        'pre{background:#f4f4f4;border:1px solid #ddd;border-radius:4px;padding:8px;'
+          + 'white-space:pre-wrap;word-break:break-word}',
+        'blockquote{border-left:3px solid #ccc;margin:0.5em 0;padding-left:10px;color:#333}',
+        'table{border-collapse:collapse}td,th{border:1px solid #ccc;padding:3px 6px}',
+        'img{max-width:100%}',
+      ].join('');
+      clonedDoc.head.appendChild(s);
+    } catch (e) {
+      // A clone we could not reach is still worth rasterising; the colour
+      // throw below is what this guards, and it reports itself.
+      console.warn('Could not plain-style the PDF clone:', e);
+    }
+  }
+
   async function exportAsPdf() {
     if (!activeDocId) return;
     const textarea = document.getElementById('doc-editor-textarea');
@@ -9935,14 +9981,23 @@ import { chevronIcon, playIcon } from './icons.js';
     // immediately, without loading KaTeX, when there is nothing pending.
     await markdownModule.renderMath(container);
     const baseName = _getExportBaseName();
-    window.html2pdf().set({
-      margin: 10,
-      filename: baseName + '.pdf',
-      image: { type: 'jpeg', quality: 0.95 },
-      html2canvas: { scale: 2 },
-      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-    }).from(container).save();
     if (uiModule) uiModule.showToast('Exporting PDF...');
+    // `B-NEW-3`: awaited, and a failure says so in one sentence. This was
+    // fire-and-forget, so the one failure it had — a colour the rasteriser
+    // cannot read — reached nobody but the console.
+    try {
+      await window.html2pdf().set({
+        margin: 10,
+        filename: baseName + '.pdf',
+        image: { type: 'jpeg', quality: 0.95 },
+        html2canvas: { scale: 2, onclone: _plainStylesForPdfClone },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+      }).from(container).save();
+    } catch (e) {
+      const why = (e && e.message) ? e.message : String(e);
+      if (uiModule) uiModule.showError('PDF export failed: ' + why + ' — Export Markdown or Word instead.');
+      else alert('PDF export failed: ' + why);
+    }
   }
 
   async function exportAsDocx() {

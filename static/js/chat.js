@@ -5439,7 +5439,19 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
           _appendViewReportLink(footerTarget, streamSessionId);
         }
         // Also store raw on the footer target so copy/TTS work
-	        if (footerTarget !== holder) footerTarget.dataset.raw = accumulated;
+        //
+        // `B-NEW-2`: this is the turn's whole text on a second bubble, so a
+        // walk that reads `dataset.raw` off every bubble reads the turn twice
+        // — measured in the owner's own export, the same reasoning byte for
+        // byte under two model headings
+        // (`/work/notes/owner-shots/2026-10-09-osrs-chat-export.md` 52-76,
+        // 78-102). The copy says it is one (`app.js` `_serializeChatTranscript`
+        // skips a copy of something already written out). The assignment
+        // itself stays: Copy, TTS and regenerate read it here.
+	        if (footerTarget !== holder) {
+	          footerTarget.dataset.raw = accumulated;
+	          footerTarget.dataset.rawEcho = '1';
+	        }
 		        try {
 		          const _endToggles = Storage.loadToggleState();
 		          if (_endToggles.plan_mode && accumulated) {
