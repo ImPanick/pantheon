@@ -14,6 +14,7 @@ import { topPortalZ } from './toolWindowZOrder.js';
 import { chevronIcon } from './icons.js';
 import backStack from './backStack.js';   // `P23-01`
 import { onToolVisibilityApplied, toolShown } from './ui_visibility.js';   // `B1194`
+import approvalModeModule from './approvalMode.js';   // `D-2026-10-09-01` §2
 
 const API_BASE = window.location.origin;
 
@@ -2618,6 +2619,13 @@ export function setCurrentSessionId(id) {
   _sessionNavToken++;
   currentSessionId = id;
   _syncAttachmentsToSession();
+  // `D-2026-10-09-01` §2. The approval mode is per chat, so it is read here —
+  // the one place that knows which chat is open (`Law 7`). Reading it on every
+  // switch, including to no chat at all, is what stops the composer chip and
+  // the header badge carrying the previous chat's state onto this one, which
+  // would be the cross-chat leak the ruling forbids showing up in the UI even
+  // though the server never had it.
+  try { approvalModeModule.load(id); } catch (_) {}
   try { window.__pantheonLastSelectedSessionId = id || ''; } catch (_) {}
   if (!id) {
     _suppressNextSessionLoading = true;

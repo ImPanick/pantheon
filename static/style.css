@@ -4224,6 +4224,38 @@ body.bg-pattern-sparkles {
       margin-left: 6px;
     }
     .chat-meta-count:empty { display: none; }
+    /* `D-2026-10-09-01` §2 — Auto-approve, said in the chat's own header.
+       *"While Auto is on the chat says so, in a place the person cannot
+       miss."* One scoped block; `[hidden]` is the only state, written by
+       `static/js/approvalMode.js`, so a chat in Manual approve costs this
+       nothing at all.
+
+       `var(--red)` and not `var(--accent)`: the composer chip gets its
+       on-state from `.tool-indicator.active`, which is `var(--red)`, and the
+       badge has to be the same colour as the chip or the chat is saying one
+       thing in two colours. It also keeps the `--accent` census where
+       `tests/test_accent_fallback_semantics_css.py` pins it. Legible in all
+       sixteen palettes because every term is a theme token or a mix with one
+       (`D-2026-09-14-03`); no border-radius guesswork — the pill shape is the
+       `.chat-meta-count` ramp plus padding. */
+    .chat-auto-approve-badge {
+      font-size: 11px;
+      font-weight: 600;
+      line-height: 1;
+      padding: 3px 7px;
+      margin-left: 7px;
+      border: 1px solid color-mix(in srgb, var(--red) 40%, transparent);
+      border-radius: 999px;
+      background: color-mix(in srgb, var(--red) 12%, transparent);
+      color: var(--red);
+      white-space: nowrap;
+      cursor: pointer;
+      vertical-align: 1px;
+    }
+    .chat-auto-approve-badge:hover {
+      background: color-mix(in srgb, var(--red) 20%, transparent);
+    }
+    .chat-auto-approve-badge[hidden] { display: none; }
     /* Session cost indicator (next to chevron in header) */
     .session-cost-display {
       font-size: inherit;
