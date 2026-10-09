@@ -278,20 +278,29 @@ def relevance_report(query: str, results, fetched=None) -> dict:
         nine words that made it a question about a video game were in none of
         the five results, and nothing said so.
 
-    ``fetched`` is `comprehensive_web_search`'s fetched-page rows. **The
-    verdict is measured on the page text where there is page text**, and falls
-    back to the title and snippet for a result that was not fetched.
+    ``fetched`` is `comprehensive_web_search`'s fetched-page rows. **Each
+    result is measured on the better of its two readings** — its fetched page
+    text, and its title plus snippet — because either can be the poorer
+    evidence and neither is reliably the richer.
 
-    Why: SearXNG's parse is ``"snippet": r.get("content", "")`` and a good many
-    of its engines return no content at all, so a snippet-only verdict called
-    three genuinely on-topic pages a miss. Measured — the OSRS wiki, the Jagex
-    news post and the game's own front page, with empty snippets, scored
-    **2 of 9** and the block told the model *"these results do not match the
-    query"* while handing it three pages that answered it. The fetched content
-    is assembled forty lines above this call in `core.py` and was unused; it is
-    the strongest evidence in the block, and a verdict that ignores it is a
-    false `weak` waiting to happen — the owner's defect with the signs
-    reversed.
+    Why the page text is read at all: SearXNG's parse is
+    ``"snippet": r.get("content", "")`` and a good many of its engines return
+    no content, so a snippet-only verdict called three genuinely on-topic pages
+    a miss. Measured — the OSRS wiki, the Jagex news post and the game's own
+    front page, with empty snippets, scored **2 of 9** and the block told the
+    model *"these results do not match the query"* while handing it three pages
+    that answered it. That is the owner's defect with the signs reversed, and
+    the content was assembled forty lines above this call and unused.
+
+    Why the snippet is still read: `content.py` extracts boilerplate from a
+    good many real pages — it carries a `THIN_CONTENT_CHARS` fallback for
+    exactly that — so reading the page *instead of* the snippet made things
+    worse, not better. Measured on the first pass of this change: two results
+    whose titles and snippets carry all nine of the owner's query terms scored
+    **0 of 9, verdict `none`** as soon as their bodies came back as a cookie
+    notice. Taking the better of the two cannot score a result below what it
+    scored before, and off-topic content still does not rescue a bad match,
+    because in that case the snippet is off-topic too.
 
     `rank_search_results` has always computed a per-result score and returned
     bare rows, discarding it one line before the output was built. This is that
@@ -312,13 +321,21 @@ def relevance_report(query: str, results, fetched=None) -> dict:
     best_hits = 0
     covered_anywhere = set()
     for row in rows:
-        # The page if it was fetched, the snippet if it was not. Not both: a
-        # result contributes one reading, so "the closest result matches N of M"
-        # stays a statement about one page.
-        text = bodies.get(row.get("url")) or _result_text(row)
-        hits = [t for t in terms if _has_word(text, t)]
-        covered_anywhere.update(hits)
-        best_hits = max(best_hits, len(hits))
+        # One result, two readings, and the result scores the better of them —
+        # so "the closest result matches N of M" is still a statement about one
+        # result, and neither a missing snippet nor a boilerplate page can drag
+        # it below what the other reading already proved.
+        readings = [_result_text(row)]
+        body = bodies.get(row.get("url"))
+        if body:
+            readings.append(body)
+        row_best = []
+        for text in readings:
+            hits = [t for t in terms if _has_word(text, t)]
+            covered_anywhere.update(hits)
+            if len(hits) > len(row_best):
+                row_best = hits
+        best_hits = max(best_hits, len(row_best))
 
     coverage = best_hits / len(terms)
     if coverage >= _STRONG_COVERAGE:

@@ -256,6 +256,65 @@ def test_content_that_is_off_topic_does_not_rescue_a_bad_match(path):
     assert "Relevance: weak" in _header(out) or "Relevance: none" in _header(out)
 
 
+# A result whose title and snippet are exactly on topic. `content.py` returns
+# boilerplate for a good many real pages — it has a `THIN_CONTENT_CHARS`
+# fallback for precisely that — so the page text can be *worse* evidence than
+# the snippet the engine wrote.
+GOOD_SNIPPETS = [
+    {"title": "Fractured Archive raid details and release date - Old School RuneScape",
+     "url": "https://secure.runescape.com/m=news/fractured-archive",
+     "snippet": ("Our new raid, the Fractured Archive, arrives October 20th. Here are "
+                 "the details on the bosses you will fight and the mechanics of each room.")},
+    {"title": "Fractured Archive - OSRS Wiki",
+     "url": "https://oldschool.runescape.wiki/w/Fractured_Archive",
+     "snippet": ("The Fractured Archive is a raid in Old School RuneScape released on "
+                 "October 20th. It scales for teams of one to five players.")},
+]
+
+
+def test_a_fetched_page_of_boilerplate_does_not_beat_its_own_snippet():
+    """The evidence is the **better** of the two readings, never whichever one
+    happens to exist.
+
+    Caught by measuring the end state rather than trusting the cases above: a
+    first pass read the page text *instead* of the snippet wherever a page had
+    been fetched, so two results whose titles and snippets carry every one of
+    the nine query terms scored **0 of 9, verdict `none`** the moment their
+    fetched bodies came back as boilerplate. That is a worse answer than the
+    snippet-only verdict it was meant to improve on.
+    """
+    report = relevance_report(
+        OWNER_QUERY, GOOD_SNIPPETS,
+        fetched=[{"url": r["url"], "content": "cookie notice. accept all. " * 40}
+                 for r in GOOD_SNIPPETS],
+    )
+    assert report["verdict"] == "strong", report
+    assert report["matched"] == 9, report
+    assert report["missing"] == [], report
+
+
+def test_a_page_of_boilerplate_in_the_real_path_is_not_called_a_miss(path):
+    path["results"] = [dict(r) for r in GOOD_SNIPPETS]
+    path["bodies"] = {"": "cookie notice. accept all. enable javascript. " * 40}
+
+    out = core.comprehensive_web_search(OWNER_QUERY, max_pages=2)
+    head = _header(out)
+    assert "Relevance: strong" in head, head
+    assert "These results do not match the query" not in out
+
+
+def test_a_result_is_never_measured_as_worse_than_its_snippet_alone():
+    """The property behind the two cases above, over both fixtures."""
+    for rows in (GOOD_SNIPPETS, SNIPPETLESS_GOOD, OWNER_RESULTS):
+        snippets_only = relevance_report(OWNER_QUERY, rows)
+        for body in ("", "boilerplate " * 50, ON_TOPIC_BODY):
+            with_content = relevance_report(
+                OWNER_QUERY, rows,
+                fetched=[{"url": r["url"], "content": body} for r in rows])
+            assert with_content["matched"] >= snippets_only["matched"], (
+                rows[0]["url"], body[:20], with_content, snippets_only)
+
+
 def test_a_term_only_the_fetched_page_mentions_is_not_reported_missing(path):
     path["results"] = [dict(r) for r in SNIPPETLESS_GOOD]
     path["bodies"] = {"runescape": ON_TOPIC_BODY}
