@@ -2816,3 +2816,41 @@ library should guide archives."*
    Pantheon offers, so `B1181`'s premise is withdrawn rather than fixed.
 3. **A hidden Library guides to the archive** (`B1194`). Hiding the Library takes documents away, not the chat
    archive: the archive keeps a door of its own, and a hidden Library reached anyway says where archived chats are.
+
+## D-2026-10-09-01 — a chat's approval mode, agents that act, and the phone's missing controls
+
+**Asked**, 2026-10-09, after the day's seven fix lanes. The owner, verbatim:
+
+> **1.** Yes, and if the user enabled full automation; it will skip asking and just run the command. These should be
+> per-chat session scoped. Much like your "permission" - with Auto and manual approve..
+> **2.** Agents should agent.
+> Also, on mobile there's no way to change between agent and chat mode. (Screenshot attached) - need more controls
+> for the mobile side.
+
+1. **A person's own saved material does not arm the blocked-effect gate** (`B1324`, and `B1328` with it — the owner's
+   "Yes" to the question asked that day). One pinned memory made every agent run ask before a privileged effect, and
+   the card called the person's own note *external context*. The gate's subject is content that arrived from outside
+   — a web page, a fetched document, an email, a tool's output. The person's own memory, their own notes and their
+   own installed skills are not that, and saying they are made the gate's verdict constant on any install that uses
+   memory, which is a verdict that says nothing (`Law 10`).
+2. **A chat has an approval mode, and the person sets it per chat.** Two settings, in the chat the person is in:
+   **Manual approve** — today's ladder, where a stop condition raises a card and waits — and **Auto** — the agent
+   runs the step without asking. It is the person's own act, per chat, like a permission mode; a new chat starts at
+   the install's default, which is **Manual approve**, and an admin decides whether a person may turn Auto on at all.
+   While Auto is on the chat says so, in a place the person cannot miss.
+
+   **What Auto gives up, written down rather than glossed.** The blocked-effect gate exists because a page or a tool
+   result can carry an instruction (`FORBIDDEN.md` Part 2: *prompt injection → privileged action*). With Auto on, in
+   that chat, a privileged effect that follows outside content runs without a person seeing it first. That is the
+   trade the owner is making deliberately and per chat, and it is the only control this decision moves: the approval
+   store's seal, TTL, single-use consumption and owner binding, the MCP command/arg/env validation, the SSRF
+   validators, `OutboundHostLimiter` and `require_admin` are untouched, and every effect is still recorded. Auto is
+   never a default, never install-wide, and never inherited by a new chat.
+3. **Agents act** (`B1327`). Between the two wordings of the agent's *bias toward action* rules, the one that pushes
+   the model to do the work and report is the one that ships. An agent that asks a question it could have answered,
+   or stops to check something it was told to do, is the defect — not the risk the asking was meant to avoid.
+   Approval is the gate's job, and §2 is where a person says how much of it they want.
+4. **The phone gets the controls the desktop has.** The Agent/Chat toggle is dropped below a 340 px chat bar and
+   nothing replaces it, so on a phone there is no way to reach the mode at all. Every control that decides what a
+   turn does — the mode, the approval mode of §2, the model, the context reading, Plan, Web, Shell, the persona —
+   is reachable on a phone, by a person using one thumb.
