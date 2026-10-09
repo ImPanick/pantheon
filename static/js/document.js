@@ -16,7 +16,7 @@ import { langIcon } from './langIcons.js';
 import spinnerModule from './spinner.js';
 import { openLibrary, closeLibrary, isLibraryOpen, initLibrary, importFileAsDocuments } from './documentLibrary.js';
 import signatureModule from './signature.js';
-import * as Modals from './modalManager.js?v=20261009tools';
+import * as Modals from './modalManager.js?v=20261009agency';
 import { bindMenuDismiss, dismissOrRemove, registerMenuDismiss } from './escMenuStack.js';
 import { _matchesCombo } from './keyboard-shortcuts.js';   // H20: Find reads the registry
 import { topPortalZ } from './toolWindowZOrder.js';
@@ -4138,7 +4138,7 @@ import { chevronIcon, playIcon } from './icons.js';
             leadingIcon: 'check',
             action: 'View Message',
             onAction: () => {
-              import('./emailLibrary.js?v=20261009approvaltools').then(mod => {
+              import('./emailLibrary.js?v=20261009approvalagency').then(mod => {
                 const open = mod.openEmailLibrary || (mod.default && mod.default.openEmailLibrary);
                 if (open) open({
                   account_id: data.account_id || activeAccountId || null,

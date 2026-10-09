@@ -4,7 +4,7 @@
 
 import uiModule from './ui.js';
 import markdownModule from './markdown.js';
-import chatRenderer from './chatRenderer.js?v=20261009tools';
+import chatRenderer from './chatRenderer.js?v=20261009agency';
 import spinnerModule from './spinner.js';
 import { providerLogo } from './providers.js';
 import { PROMPT_TEMPLATES, getUserTemplates } from './presets.js';

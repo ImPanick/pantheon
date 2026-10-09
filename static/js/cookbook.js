@@ -3274,7 +3274,7 @@ function _renderRecipes() {
 
 // ── Public API ──
 
-import * as Modals from './modalManager.js?v=20261009tools';
+import * as Modals from './modalManager.js?v=20261009agency';
 import { chevronIcon, playIcon } from './icons.js';
 
 let _rendered = false;

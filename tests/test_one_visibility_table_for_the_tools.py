@@ -334,7 +334,7 @@ def test_the_slash_catalogue_does_not_offer_a_hidden_tool(tmp_path):
         "export const LEGACY_ALIASES = { memories: { parent: 'brain', sub: 'list' } };\n")
     text = (tmp_path / "js" / "slashAutocomplete.js").read_text()
     (tmp_path / "js" / "slashAutocomplete.js").write_text(
-        text.replace("./slashCommands.js?v=20261009approvaltools", "./slashCommands.js"))
+        text.replace("./slashCommands.js?v=20261009approvalagency", "./slashCommands.js"))
     out = _node(tmp_path, """
         globalThis.document = { addEventListener() {}, getElementById: () => null };
         const T = await import('./js/ui_visibility.js');
