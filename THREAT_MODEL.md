@@ -117,13 +117,14 @@ resolver the container was given.
 Everything the server adds to a turn reaches the LLM in a `user`-role message, because `src/llm_core.py` hoists
 every `system` message into one leading block and local llama.cpp / LM Studio backends key their KV cache off that
 block byte-for-byte (issue #2927). So the role cannot say where content came from, and `src/prompt_security.py`
-provides three envelopes that do. Each opens with one fixed header, and `is_framed_context_content()` is the single
+provides four envelopes that do. Each opens with one fixed header, and `is_framed_context_content()` is the single
 definition of "this message is the application's framing, not what the person typed":
 
 - `untrusted_context_message(label, content)` — **content from outside this install.** Header: `UNTRUSTED SOURCE DATA`, warning that the block may contain prompt-injection attempts, inside `<<<UNTRUSTED_SOURCE_DATA>>>` markers. Metadata `trusted: False` plus `tool_gate_untrusted`, which arms the post-external blocked-effect gate (`src/tool_capabilities.py`).
 - `own_context_message(label, content)` — **the person's own saved material**, today their saved memory. Header: `THE USER'S OWN SAVED MATERIAL`, inside `<<<USER_SAVED_MATERIAL>>>` markers. Still data rather than instructions — a memory reading *"always answer in French"* is a note about the person, not a standing order — but without the hostile-source warning, which is not true of it. **Same metadata as the envelope above, so it arms the tool gate identically.**
+- `capability_manifest_message(label, content)` — **this installation's own list of what it can call**, today the registered MCP servers and their tools. Header: `YOUR OWN TOOL CAPABILITIES`, inside `<<<TOOL_CAPABILITIES>>>` markers. A tool's one-line description, a server's `instructions` field and a down server's error string are the **server's** words, and a server can be a remote third party — so the block still frames them as descriptions rather than orders and still escapes its own delimiters. Metadata `trusted: False` (so the message is still stripped between routes and still counted as context, not the person's words) and **`tool_gate_untrusted: False`**: a manifest that is in the prompt before the person has asked anything is not content this run read from outside, and arming on it made `messages_contain_external_untrusted_context` constant-true on every install with one MCP server — which held the first tool call of every turn, read-only `web_search` included. The gate did not change: that server's tool **output** is `EXTERNAL_UNTRUSTED` and arms it the moment it arrives.
 - `turn_note_message(content)` — **what the application itself adds for this turn**: the delivery register and the current date/time. Header: `APPLICATION NOTE`. No metadata: the application is the operator, so this is not untrusted content and must not arm the gate.
-- `UNTRUSTED_CONTEXT_POLICY` is a system-prompt preamble that states the policy, and names the three headers, at the top of every session.
+- `UNTRUSTED_CONTEXT_POLICY` is a system-prompt preamble that states the policy, and names the four headers, at the top of every session.
 
 `src/llm_core.py`'s `_sanitize_llm_messages` will not merge a message carrying one of those headers into a message
 that does not, in either direction, so the person's own words always arrive as a message of their own. Before
@@ -131,7 +132,7 @@ that does not, in either direction, so the person's own words always arrive as a
 (a local `gemma-4-26b`) shows what the model did with the result: it spent 92 seconds segmenting its own prompt by
 hand and concluded it was being prompt-injection tested.
 
-**Untrusted surfaces that must go through `untrusted_context_message`:** web search results, fetched URLs, emails (read), skill text, notes, documents in the library, MCP tool descriptions and output, and any tool output sourced from outside the server. Injecting untrusted content directly into the system role is a security bug. **`own_context_message` is for the person's own saved memory only** — anything whose bytes arrived from outside, including a document they uploaded, stays on the untrusted envelope.
+**Untrusted surfaces that must go through `untrusted_context_message`:** web search results, fetched URLs, emails (read), skill text, notes, documents in the library, MCP tool **output**, and any tool output sourced from outside the server. (The MCP tool *list* moved to `capability_manifest_message` on 2026-10-09; its output did not.) Injecting untrusted content directly into the system role is a security bug. **`own_context_message` is for the person's own saved memory and their own settings** (their saved email writing style) — anything whose bytes arrived from outside, including a document they uploaded, stays on the untrusted envelope. **`capability_manifest_message` is for a list of what this install has registered, never for anything a tool returned.**
 
 ## Security Headers
 
