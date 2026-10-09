@@ -240,7 +240,7 @@ def test_the_earlier_person_turn_is_also_its_own_message(monkeypatch):
 
 def test_every_user_message_is_either_the_person_or_a_named_block(monkeypatch):
     """`Law 10`. No third category: a `user` message is the person's words, or
-    it opens with one of the three headers that say what it is."""
+    it opens with one of the framing headers that say what it is."""
     messages, _ = _turn(monkeypatch)
     for text in _user_texts(messages):
         if text in (PERSON_SAID, EARLIER_TURN):
@@ -468,8 +468,12 @@ def test_no_per_turn_content_reaches_the_system_prefix(monkeypatch):
 
 def test_the_system_prefix_tells_the_model_where_the_person_is(monkeypatch):
     """One static sentence, in the one message that may be static, naming the
-    three headers — because the KV-cache rule forces everything else into
-    `user` turns and the model cannot otherwise know which is which."""
+    framing headers — because the KV-cache rule forces everything else into
+    `user` turns and the model cannot otherwise know which is which.
+
+    `fx7-agent` added a fourth (`YOUR OWN TOOL CAPABILITIES`) without removing
+    any, so the three asserted below are unchanged; the count came out of the
+    prose because a count in prose is a copy that goes stale (`Law 6`)."""
     messages, _ = _turn(monkeypatch)
     sys_text = _consolidated_system_text(messages)
     assert "UNTRUSTED SOURCE DATA" in sys_text
