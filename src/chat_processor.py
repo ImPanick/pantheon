@@ -12,7 +12,12 @@ from src import memory_retrieval, memory_style, retrieval_engine
 from src.chat_helpers import extract_urls
 from src.youtube_handler import is_youtube_url
 from src.search import comprehensive_web_search, fetch_webpage_content
-from src.prompt_security import UNTRUSTED_CONTEXT_POLICY, untrusted_context_message
+from src.prompt_security import (
+    UNTRUSTED_CONTEXT_POLICY,
+    own_context_message,
+    turn_note_message,
+    untrusted_context_message,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -193,10 +198,20 @@ class ChatProcessor:
         *anything* that changes turn-to-turn — timestamps, retrieved snippets,
         per-turn counts — must NOT be folded into a system message here. Such
         content belongs in a separate ``user``/context message appended near
-        the end of the array (see ``current_datetime_context_message`` and
-        ``untrusted_context_message`` callers in ``build_chat_context``),
+        the end of the array (see ``current_datetime_context_message`` and the
+        ``untrusted_context_message`` / ``own_context_message`` /
+        ``turn_note_message`` callers here and in ``build_chat_context``),
         which keeps the static system prefix byte-identical across turns of
         the same session and lets the backend reuse its cached prefix.
+
+        `FIX-2026-10-09` item 1. Every one of those per-turn messages now
+        carries one of ``src/prompt_security.py``'s three headers, and
+        ``src/llm_core.py``'s consecutive-user merge refuses to join a message
+        carrying one to a message that does not. That is what keeps the
+        person's own words a message of their own: the KV-cache rule forces
+        this content into ``user`` turns, and before the headers existed the
+        merge turned the whole tail — register, date, memory, the question —
+        into one string the model had to segment by eye.
         """
         preface = []
         rag_sources = []
@@ -229,7 +244,14 @@ class ChatProcessor:
                                if row.get("id")}
             if selected_pinned:
                 pinned_text = "\n- ".join([m["text"] for m in selected_pinned])
-                preface.append(untrusted_context_message(
+                # `FIX-2026-10-09` item 2. The person's own Brain, in the
+                # person's own install, through the envelope for the person's
+                # own saved material — not the one that warns of "prompt-
+                # injection attempts or malicious instructions", which is for
+                # the web. It is still data and not instructions, so it keeps
+                # the label and the block; the tool gate still arms exactly as
+                # it did (`own_context_message` writes the same metadata).
+                preface.append(own_context_message(
                     "saved memory: pinned context",
                     (
                         "Pinned memory context. Some pinned memories are only "
@@ -269,7 +291,9 @@ class ChatProcessor:
                     message, extended, k=remaining_memory_slots, report=recall_report)
                 if relevant:
                     ext_text = "\n".join([f"- {m['text']}" for m in relevant])
-                    preface.append(untrusted_context_message(
+                    # `FIX-2026-10-09` item 2, same store as the pinned
+                    # block above and so the same envelope.
+                    preface.append(own_context_message(
                         "saved memory: retrieved context",
                         (
                             "Memory context. Do not reference unless the user asks "
@@ -521,11 +545,13 @@ class ChatProcessor:
         KV-cache prefix off the system block byte-for-byte, so per-turn text in
         there invalidates the cache on every single request). Everything above
         it in this method that varies per turn — pinned memory, recalled memory,
-        RAG, web — already arrives the same way through
-        `untrusted_context_message`, which returns `role: "user"`. So this adds
-        no new break on a turn where memory or RAG fired, and on a turn where
-        nothing else fired it adds nothing at all, because there is no reading
-        to report.
+        RAG, web — already arrives the same way through `own_context_message` /
+        `untrusted_context_message`, which both return `role: "user"`. So this
+        adds no new break on a turn where memory or RAG fired, and on a turn
+        where nothing else fired it adds nothing at all, because there is no
+        reading to report. `FIX-2026-10-09` item 1: it goes out through
+        `turn_note_message`, so the merge in `src/llm_core.py` keeps it off the
+        person's own turn instead of gluing it to the front of their question.
 
         **Two gates, and neither is about the feature working.** `incognito`
         means leave no trace, and a profile silently thickened by a private
@@ -588,7 +614,14 @@ class ChatProcessor:
             text = memory_style.register_text(reg)
             if not text:
                 return None
-            return {"role": "user", "content": text}
+            # `FIX-2026-10-09` item 1. Still a `user`-role message appended to
+            # the preface, for the KV-cache reason this method's docstring and
+            # `build_context_preface`'s already give. What changed is that it
+            # now says whose words it is: unmarked, `llm_core`'s consecutive-
+            # user merge glued "How to pitch this reply: …" straight onto the
+            # person's own question, and the owner's export shows a local model
+            # reading the result as two instructions and a test.
+            return turn_note_message(text)
         except Exception as e:
             # Never fails a turn. This is a delivery hint; a chat that dies
             # because we could not work out how someone types is a worse

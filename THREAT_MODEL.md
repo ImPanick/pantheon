@@ -114,12 +114,24 @@ resolver the container was given.
 
 ## Prompt-Injection Hardening
 
-External content that reaches the LLM is treated as untrusted via `src/prompt_security.py`:
+Everything the server adds to a turn reaches the LLM in a `user`-role message, because `src/llm_core.py` hoists
+every `system` message into one leading block and local llama.cpp / LM Studio backends key their KV cache off that
+block byte-for-byte (issue #2927). So the role cannot say where content came from, and `src/prompt_security.py`
+provides three envelopes that do. Each opens with one fixed header, and `is_framed_context_content()` is the single
+definition of "this message is the application's framing, not what the person typed":
 
-- `untrusted_context_message(label, content)` wraps the content in a `user`-role message with a header block instructing the model not to follow instructions inside it. Content goes in as data, not as a system instruction.
-- `UNTRUSTED_CONTEXT_POLICY` is a system-prompt preamble that states the same policy at the top of every session where untrusted data may appear.
+- `untrusted_context_message(label, content)` — **content from outside this install.** Header: `UNTRUSTED SOURCE DATA`, warning that the block may contain prompt-injection attempts, inside `<<<UNTRUSTED_SOURCE_DATA>>>` markers. Metadata `trusted: False` plus `tool_gate_untrusted`, which arms the post-external blocked-effect gate (`src/tool_capabilities.py`).
+- `own_context_message(label, content)` — **the person's own saved material**, today their saved memory. Header: `THE USER'S OWN SAVED MATERIAL`, inside `<<<USER_SAVED_MATERIAL>>>` markers. Still data rather than instructions — a memory reading *"always answer in French"* is a note about the person, not a standing order — but without the hostile-source warning, which is not true of it. **Same metadata as the envelope above, so it arms the tool gate identically.**
+- `turn_note_message(content)` — **what the application itself adds for this turn**: the delivery register and the current date/time. Header: `APPLICATION NOTE`. No metadata: the application is the operator, so this is not untrusted content and must not arm the gate.
+- `UNTRUSTED_CONTEXT_POLICY` is a system-prompt preamble that states the policy, and names the three headers, at the top of every session.
 
-**Untrusted surfaces that must go through this wrapper:** web search results, fetched URLs, emails (read), saved memories, skill text, notes, and any tool output sourced from outside the server. Injecting untrusted content directly into the system role is a security bug.
+`src/llm_core.py`'s `_sanitize_llm_messages` will not merge a message carrying one of those headers into a message
+that does not, in either direction, so the person's own words always arrive as a message of their own. Before
+2026-10-09 it inserted that boundary only after an untrusted block, and the owner's own export
+(a local `gemma-4-26b`) shows what the model did with the result: it spent 92 seconds segmenting its own prompt by
+hand and concluded it was being prompt-injection tested.
+
+**Untrusted surfaces that must go through `untrusted_context_message`:** web search results, fetched URLs, emails (read), skill text, notes, documents in the library, MCP tool descriptions and output, and any tool output sourced from outside the server. Injecting untrusted content directly into the system role is a security bug. **`own_context_message` is for the person's own saved memory only** — anything whose bytes arrived from outside, including a document they uploaded, stays on the untrusted envelope.
 
 ## Security Headers
 

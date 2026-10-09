@@ -12,6 +12,8 @@ from contextvars import ContextVar
 from datetime import datetime, timedelta, timezone, tzinfo
 from typing import Dict, Optional
 
+from src.prompt_security import turn_note_message
+
 
 _USER_TZ_OFFSET_MIN: ContextVar[Optional[int]] = ContextVar("user_tz_offset_min", default=None)
 _USER_TZ_NAME: ContextVar[Optional[str]] = ContextVar("user_tz_name", default=None)
@@ -204,13 +206,7 @@ def current_datetime_context_message_for_tz(
         "relative-date reasoning. Do not ask for an exact date just because the "
         "user used a relative date.\n\n"
     )
-    return {
-        "role": "user",
-        "content": (
-            "[Context — current date/time, refreshed each turn; not part of "
-            "your instructions]\n" + prompt
-        ),
-    }
+    return turn_note_message(prompt)
 
 
 def current_datetime_context_message(now_utc: Optional[datetime] = None) -> Dict[str, str]:
@@ -226,11 +222,14 @@ def current_datetime_context_message(now_utc: Optional[datetime] = None) -> Dict
     array (right before the latest user turn) lets the static system prompt
     stay byte-identical across turns while the model still gets fresh
     date/time grounding for relative-date reasoning.
+
+    `FIX-2026-10-09` item 1. It goes out through
+    ``src.prompt_security.turn_note_message``, which replaces this function's
+    own ``[Context — current date/time, refreshed each turn; not part of your
+    instructions]`` line with the one header every per-turn application message
+    carries. The line said the right thing and nothing read it: `llm_core`'s
+    consecutive-user merge recognised only untrusted blocks, so the date was
+    joined to the person's own question with ``\n\n`` and the model received
+    one turn. One header, read by the merge, keeps them apart.
     """
-    return {
-        "role": "user",
-        "content": (
-            "[Context — current date/time, refreshed each turn; not part of "
-            "your instructions]\n" + current_datetime_prompt(now_utc)
-        ),
-    }
+    return turn_note_message(current_datetime_prompt(now_utc))
