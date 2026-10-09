@@ -1706,12 +1706,28 @@ class McpManager:
     _cached_prompt_desc = None
     _cached_prompt_desc_key = None
 
-    def get_tool_descriptions_for_prompt(self, disabled_map: Optional[Dict[str, set]] = None) -> str:
-        """Generate text describing MCP tools for the agent system prompt. Cached."""
+    def get_tool_descriptions_for_prompt(
+        self,
+        disabled_map: Optional[Dict[str, set]] = None,
+        channel: str = "native",
+    ) -> str:
+        """Generate text describing MCP tools for the agent system prompt. Cached.
+
+        `channel` is how THIS turn can reach these tools, and it is a parameter
+        because the manager cannot know (`B-NEW`). The first line used to read
+        *"These tools are called via native function calling"* on every turn,
+        including the turns that carry no `tools` array at all — a local
+        OpenAI-compatible endpoint left on Auto, which is every one of them
+        until an admin opens the Settings row. Measured on this tree, that turn
+        got this block, naming every MCP tool, and `tools_sent=0`: the prompt
+        named the tools and then named the one channel the request had shut.
+        `fenced` and `both` say what the turn can actually do.
+        """
         cache_key = (
             frozenset((k, frozenset(v)) for k, v in (disabled_map or {}).items()),
             len(self._tools),
             self._generation,
+            channel,
         )
         if self._cached_prompt_desc is not None and self._cached_prompt_desc_key == cache_key:
             return self._cached_prompt_desc
@@ -1729,7 +1745,19 @@ class McpManager:
         if not tools:
             return ""
 
-        lines = ["\n\nYou also have access to external MCP tool servers. These tools are called via native function calling:"]
+        _how = {
+            "native": "These tools are called via native function calling",
+            "fenced": (
+                "Call one by writing a fenced code block with the tool's full "
+                "name as the language tag and its JSON arguments as the body"
+            ),
+            "both": (
+                "Call one with a native function call, or with a fenced code "
+                "block whose language tag is the tool's full name and whose "
+                "body is its JSON arguments — this turn accepts either"
+            ),
+        }.get(channel, "These tools are called via native function calling")
+        lines = [f"\n\nYou also have access to external MCP tool servers. {_how}:"]
         by_server = {}
         for t in tools:
             # Skip builtin Python servers — they're already in the agent prompt

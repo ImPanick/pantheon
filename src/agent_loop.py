@@ -888,11 +888,16 @@ When referencing app entities by id, use clickable markdown anchors:
 """
 
 _DOMAIN_RULES = {
+    # `B-NEW`. The "Research X" sentence moved out of this block and into
+    # `_TOOL_GATED_RULE_LINES` below, where it ships only on a turn that can
+    # actually call `trigger_research`. It sat here, on a block gated by
+    # `web_search`/`web_fetch`, and so reached every turn with web tools on
+    # whether or not the deep-research tool was in the request — which is the
+    # defect the owner's export records.
     "web": """\
 ## Web rules
 - For web lookup/search/latest/current requests, use `web_search` or `web_fetch`.
-- Do not use shell, Python, curl, requests, or scraping code for web lookup unless web tools are unavailable or already failed.
-- "Research X" means `trigger_research`, not a one-off `web_search`, unless the user explicitly asks for a quick lookup.""",
+- Do not use shell, Python, curl, requests, or scraping code for web lookup unless web tools are unavailable or already failed.""",
     "documents": """\
 ## Document rules
 - For long code/content (>15 lines), use `create_document` instead of pasting into chat.
@@ -967,14 +972,107 @@ _WORKSPACE_TERMINUS_TOOLS = (
     | {"manage_skills", "ask_teacher", "web_search", "web_fetch", "ask_user", "update_plan"}
 )
 
+_PROMISED_TOOL_RE = re.compile(r"`([a-z][a-z0-9_]{2,40})`")
+
+# `B-NEW`. A rule that **directs the model to one tool** belongs to that tool,
+# not to the domain block it reads well in. The line pruner below drops a line
+# whose names are all unavailable, and that is right for a rule about tools the
+# turn happens not to have; it cannot judge this shape, where the unavailable
+# tool is the instruction's object and an available one is only the contrast
+# ("use `trigger_research`, not `web_search`"). So the gate is data, not a
+# guess: `{tool: (domain, line)}` — the line ships when the domain's block
+# ships **and** the tool is in this turn's set.
+_TOOL_GATED_RULE_LINES: Dict[str, tuple] = {
+    "trigger_research": (
+        "web",
+        '- "Research X" means `trigger_research`, not a one-off `web_search`, '
+        "unless the user explicitly asks for a quick lookup.",
+    ),
+}
+
+
+def prune_rules_to_available_tools(text: str, available: set) -> str:
+    """Drop every rule LINE whose only tool names are ones this turn cannot call.
+
+    `B-NEW`, and it is `H09`'s guard applied to the prose instead of the list.
+    `H09` made the compact prompt's *"## Available tools"* list name only
+    schema-backed tools. The rule blocks beside that list were never checked,
+    and they are where the owner's model went wrong. Measured with the showcase
+    harness against a recording OpenAI-compatible server, `gemma-4-26b`, agent
+    mode, web search on — the export's own setup: the request carried 30 tool
+    schemas and the prompt backticked **eleven** tool names that were not among
+    them, `trigger_research` the first of them, because
+    `_DOMAIN_RULES["web"]` is gated on `web_search`/`web_fetch` and its third
+    line reads *"'Research X' means `trigger_research`"* with nothing gating
+    that name at all. The model's reasoning in
+    `/work/notes/owner-shots/2026-10-09-osrs-chat-export.md` names the
+    consequence: it looked for a `trigger_research` tool *"not explicitly in
+    the tool list but implied by the system prompt's mention of 'Research X'"*,
+    spent the turn deciding what it was being asked, and answered from memory.
+
+    A line goes only when **every** tool name on it is unavailable. A line that
+    names one tool the turn has and one it does not is still a rule the model
+    can follow for the half it has, and rewriting prose is not a thing a filter
+    can do honestly. A line naming no tool at all is untouched: most of the
+    prompt is that, and a filter that quietly ate it would be a worse bug than
+    the one this fixes.
+
+    `available` is the turn's own tool set, not the whole register, so the same
+    rule block says different things on two turns — which is the point.
+    """
+    if not text:
+        return text
+    known = _known_tool_names_cached()
+    kept = []
+    for line in text.split("\n"):
+        named = {n for n in _PROMISED_TOOL_RE.findall(line) if n in known}
+        if named and not (named & available):
+            continue
+        kept.append(line)
+    return "\n".join(kept)
+
+
+_known_tool_names_cache: Optional[frozenset] = None
+
+
+def _known_tool_names_cached() -> frozenset:
+    """`src.tool_policy.known_tool_names()` once per process.
+
+    A backtick in prompt prose is not evidence of a tool name — `fix`, `true`
+    and `week` all appear that way — so the pruner only judges a word the
+    register knows. Cached because it is read for every line of every rule
+    block on every prompt build, and the register does not change at runtime.
+    """
+    global _known_tool_names_cache
+    if _known_tool_names_cache is None:
+        try:
+            from src.tool_policy import known_tool_names
+            _known_tool_names_cache = frozenset(known_tool_names())
+        except Exception as exc:
+            # Fails OPEN, deliberately: an empty register prunes nothing, which
+            # is this function's behaviour before the row. Pruning everything
+            # on an import error would take the whole prompt away (`P3-17`).
+            logger.warning("Could not read the tool register for prompt pruning: %s", exc)
+            _known_tool_names_cache = frozenset()
+    return _known_tool_names_cache
+
+
 def _domain_rules_for_tools(tool_names: set) -> list[str]:
     names = set(tool_names or set())
     rules = []
     for domain, domain_tools in _DOMAIN_TOOL_MAP.items():
-        if names & domain_tools:
-            rules.append(_DOMAIN_RULES[domain])
+        if not (names & domain_tools):
+            continue
+        block = prune_rules_to_available_tools(_DOMAIN_RULES[domain], names)
+        extra = [
+            line for tool, (owning_domain, line) in _TOOL_GATED_RULE_LINES.items()
+            if owning_domain == domain and tool in names
+        ]
+        if extra:
+            block = block + "\n" + "\n".join(extra)
+        rules.append(block)
     if names & {"create_session", "list_sessions", "manage_session", "manage_documents", "manage_notes", "manage_calendar", "manage_tasks", "manage_skills", "manage_research"}:
-        rules.append(_LINK_RULES)
+        rules.append(prune_rules_to_available_tools(_LINK_RULES, names))
     return rules
 
 # Each tool section is keyed by tool name(s) it covers.
@@ -1290,18 +1388,67 @@ def _compact_tool_line(name: str, section: str) -> str:
 def _compact_prompt_applies(is_api_model: bool) -> bool:
     """Whether this route gets the compact (native-tools) system prompt. `B39`.
 
-    It is `is_api_model` and nothing else, and the point of writing that as a
-    function is that **the same predicate gates the schemas**:
-    `_tool_schemas_for_route` sends `FUNCTION_TOOL_SCHEMAS` when
-    `route_state["is_api_model"]` and otherwise sends nothing. The compact
-    prompt's first sentence is *"Only the tool schemas provided by the API are
-    available for this turn"*, so it is true exactly when that branch is taken
-    and false otherwise. Two predicates that must agree are easier to keep in
-    step when one of them has a name.
+    It is `is_api_model` and nothing else. The compact prompt's first sentence
+    is *"Only the tool schemas provided by the API are available for this
+    turn… do not write tool syntax in chat"*, so it may only be sent on a
+    route whose fenced channel really is shut — which is `is_api_model` and
+    not `schemas_offered` (`B-NEW`, below). A route that gets **both** channels
+    gets the full prompt, which is the shape the `B39` comment already
+    describes as correct for a `gpt-oss` model on llama.cpp.
 
     They disagreed for Ollama, which was the whole of `B39`.
     """
     return bool(is_api_model)
+
+
+def tool_schema_offer(
+    endpoint_supports: Optional[bool],
+    endpoint_url: str,
+    model: str,
+) -> str:
+    """Whether this route's request carries a `tools` array, as an enum.
+
+    `native` — the schemas are the only channel (the compact prompt, the fenced
+    parser shut). `both` — the schemas are sent **and** the fenced prompt and
+    parser stay live, because nothing has told us which channel this server
+    answers on. `fenced` — no `tools` key at all.
+
+    `D-2026-10-07-02` §1 is why this is a separate question from
+    `resolve_tool_transport`. That function answers *"does this route behave
+    like an API model"* and its bottom rung reads a **list of model-name
+    substrings** (`"gemma"`, `"qwen3"`, `"llama-3.1"`, …). Measured on this
+    tree, with the showcase harness pointed at a recording OpenAI-compatible
+    server on loopback and an endpoint added through the Settings form (so
+    `supports_tools` is `None`, the form's own default):
+
+      * `gemma-4-26b` — the name matches, so 30 schemas were sent;
+      * `local-unknown-1`, the same server, the same turn, same everything —
+        the name matches nothing, so **`tools_sent=0`** while the loop's own
+        log recorded 15 selected tools on the same line. Not a tool refused:
+        a tool selected, then dropped on the way to the request.
+
+    A name is not a capability. The decision's words are that capability comes
+    from what a server or a provider actually reported and *unknown means offer
+    the tools and let the server answer*, so the only answers that keep
+    `fenced` here are the two where something did report:
+
+      * the endpoint row says `supports_tools = False` — a person said so;
+      * the URL is an Ollama surface — `B39`'s measured policy, by URL and not
+        by name, and it stays until somebody re-measures Ollama's tool
+        streaming. Widening it would be guessing in the other direction.
+
+    Everything else is offered the schemas. Where the endpoint declared True
+    that is `native` and nothing about the route changes; where nobody declared
+    anything it is `both`, which costs the full prompt instead of the compact
+    one and leaves the model two ways to call a tool instead of none.
+    """
+    if endpoint_supports is False:
+        return "fenced"
+    if _is_ollama_native_url(endpoint_url or "") or _is_ollama_openai_compat_url(endpoint_url or ""):
+        return "fenced"
+    if endpoint_supports is True:
+        return "native"
+    return "both"
 
 
 def _schema_backed_tool_names() -> frozenset:
@@ -1397,7 +1544,11 @@ def _assemble_prompt(tool_names: set, disabled_tools: set = None, compact: bool 
             "Only the tool schemas provided by the API are available for this turn. "
             "Use native tool calls when action is needed; do not write tool syntax or tool instructions in chat.",
             "## Available tools\n" + ("\n".join(tool_lines) if tool_lines else "none"),
-            _API_AGENT_RULES,
+            # `B-NEW`. The base rules name tools too — `manage_memory`,
+            # `manage_notes`, `manage_rag`, `write_file` — and on a turn that
+            # has none of them those lines are instructions the model cannot
+            # carry out. Same guard as the list above it (`H09`).
+            prune_rules_to_available_tools(_API_AGENT_RULES, included),
         ]
         parts.extend(_domain_rules_for_tools(included))
         return "\n\n".join(parts)
@@ -1416,7 +1567,12 @@ def _assemble_prompt(tool_names: set, disabled_tools: set = None, compact: bool 
     for name, _default_section in TOOL_SECTIONS.items():
         if name not in _fenced:
             continue
-        section = _section_text(name, _default_section)
+        # `B-NEW`. A tool's own section names other tools in its prose — the
+        # `web_search` section ends "use `trigger_research` instead" — and that
+        # is the same promise the domain rules were making, in a block that
+        # ships because a *different* tool is available. Same guard.
+        section = prune_rules_to_available_tools(
+            _section_text(name, _default_section), included)
         if section.startswith("```") or section.startswith("-"):
             if section.startswith("- "):
                 one_liners.append(section)
@@ -1429,7 +1585,7 @@ def _assemble_prompt(tool_names: set, disabled_tools: set = None, compact: bool 
     if one_liners:
         parts.append("## Additional tools\n" + "\n".join(one_liners))
 
-    parts.append(_AGENT_RULES)
+    parts.append(prune_rules_to_available_tools(_AGENT_RULES, included))
     parts.extend(_domain_rules_for_tools(included))
     return "\n\n".join(parts)
 
@@ -1547,13 +1703,20 @@ def _endpoint_lookup_keys(endpoint_url: str) -> List[str]:
     return keys
 
 
-def _agent_route_tool_mode(
+def _endpoint_declared_supports(
     endpoint_url: str,
     model: str,
     owner: Optional[str] = None,
     headers: Optional[Dict] = None,
-) -> tuple[bool, bool, bool]:
-    """Resolve tool transport behavior for the currently active model route."""
+) -> Optional[bool]:
+    """The `supports_tools` an endpoint row declares for this route, or `None`.
+
+    Split out of `_agent_route_tool_mode` so the two questions a route asks of
+    that one value — *what transport does this behave like* and *does the
+    request carry a `tools` array* — are answered from **one** lookup rather
+    than two (`Law 7`, `Law 14`). `_agent_route_tool_mode` keeps its signature
+    and its 3-tuple; the loop reads this and calls both resolvers.
+    """
 
     endpoint_supports: Optional[bool] = None
     try:
@@ -1601,7 +1764,45 @@ def _agent_route_tool_mode(
     except Exception as exc:
         logger.debug("endpoint supports_tools lookup failed: %s", exc)
 
-    return resolve_tool_transport(endpoint_supports, endpoint_url, model)
+    return endpoint_supports
+
+
+def _agent_route_tool_mode(
+    endpoint_url: str,
+    model: str,
+    owner: Optional[str] = None,
+    headers: Optional[Dict] = None,
+) -> tuple[bool, bool, bool]:
+    """Resolve tool transport behavior for the currently active model route."""
+    return resolve_tool_transport(
+        _endpoint_declared_supports(endpoint_url, model, owner, headers),
+        endpoint_url,
+        model,
+    )
+
+
+def _agent_route_schema_offer(
+    endpoint_url: str,
+    model: str,
+    owner: Optional[str] = None,
+    headers: Optional[Dict] = None,
+) -> str:
+    """`tool_schema_offer` for the live route — the endpoint row looked up.
+
+    A sibling of `_agent_route_tool_mode` rather than a fourth element of its
+    tuple: that tuple is a published shape (`P3-22`'s Settings panel, four test
+    files, and the loop's own monkeypatch seam) and widening it would move all
+    of them for a value three of them do not want. Both read the same row and
+    both answer from a table that exists once — `resolve_tool_transport` and
+    `tool_schema_offer` — so the cost of the separate call is one more small
+    indexed SELECT per route build, and the thing it buys is that neither
+    answer is ever re-derived from the other (`Law 7`).
+    """
+    return tool_schema_offer(
+        _endpoint_declared_supports(endpoint_url, model, owner, headers),
+        endpoint_url,
+        model,
+    )
 
 
 def resolve_tool_transport(
@@ -1770,9 +1971,43 @@ _EXPLICIT_WORKSPACE_REFERENCE_RE = re.compile(
 _LOCAL_COMPUTER_REFERENCE_RE = re.compile(
     r"\b(?:on|from|in|using|with)\s+(?:this|my|the)\s+(?:computer|machine|pc|laptop|device|system)\b"
     r"|\b(?:local|host)\s+(?:computer|machine|files?|system)\b"
-    r"|\b(?:on|from)\s+(?!this\b|my\b|the\b|a\b|an\b)(?:[a-z][a-z0-9_.-]{1,31})\b",
+    # Group 1 is the named machine, and it is the only group in the pattern:
+    # `_looks_like_local_computer_request` reads `m.lastindex` to tell this
+    # alternative from the two explicit ones above it.
+    r"|\b(?:on|from)\s+(?!this\b|my\b|the\b|a\b|an\b)([a-z][a-z0-9_.-]{1,31})\b",
     re.IGNORECASE,
 )
+
+# `B-NEW`. The third alternative above is for a **named machine** — "on
+# gpu-box", "from cybertooth" — and `[a-z][a-z0-9_.-]{1,31}` after "on"/"from"
+# matches any word in the language. Measured on the owner's own question
+# (`/work/notes/owner-shots/2026-10-09-osrs-chat-export.md`): *"…Raids
+# releasing **on October** 20th…"* matched, so `_looks_like_local_computer_request`
+# returned True, so the loop logged `[tool-rag] Workspace file/terminal
+# request; using Pantheon Terminus toolset` and **replaced** the selected tool
+# set with `_WORKSPACE_TERMINUS_TOOLS`. `trigger_research` had just been
+# selected by name (`[tool-rag] Keyword fallback selected: ['trigger_research']`)
+# and is not in that set, while `web_search` is — so the request lost the tool
+# and kept the prompt rule that names it. That is the model's own complaint in
+# the export, in one line of regex.
+#
+# A date is never a machine. This is the smallest honest narrowing: the word
+# after "on"/"from" may not be a month or a weekday, and may not be followed by
+# a day number. Nothing that was a machine name stops being one — "on gpu-box",
+# "on cybertooth", "from workstation" all still match — and a named host that
+# is genuinely called `may` or `march` is still reachable by the first two
+# alternatives or by naming the task ("on the machine called march").
+_NOT_A_MACHINE_AFTER_ON = frozenset({
+    "january", "february", "march", "april", "may", "june", "july",
+    "august", "september", "october", "november", "december",
+    "jan", "feb", "mar", "apr", "jun", "jul", "aug", "sep", "sept",
+    "oct", "nov", "dec",
+    "monday", "tuesday", "wednesday", "thursday", "friday", "saturday",
+    "sunday", "mon", "tue", "tues", "wed", "thu", "thur", "thurs", "fri",
+    "sat", "sun",
+    "today", "tomorrow", "yesterday", "tonight", "now", "then",
+})
+_DATE_AFTER_WORD_RE = re.compile(r"^\s*\d", re.ASCII)
 
 
 def _looks_like_workspace_coding_request(text: str) -> bool:
@@ -1792,7 +2027,21 @@ def _looks_like_workspace_coding_request(text: str) -> bool:
 
 def _looks_like_local_computer_request(text: str) -> bool:
     text = str(text or "")
-    return bool(text.strip() and _LOCAL_COMPUTER_REFERENCE_RE.search(text))
+    if not text.strip():
+        return False
+    for m in _LOCAL_COMPUTER_REFERENCE_RE.finditer(text):
+        word = (m.group(1) or "").lower() if m.lastindex else ""
+        if not word:
+            # One of the first two alternatives: an explicit "this computer" /
+            # "local machine". Those say what they mean.
+            return True
+        if word in _NOT_A_MACHINE_AFTER_ON:
+            continue
+        if _DATE_AFTER_WORD_RE.match(text[m.end():]):
+            # "on Thursday 20th", "from Friday 3" — a date, whatever the word.
+            continue
+        return True
+    return False
 
 
 def _explicitly_references_missing_workspace(text: str, workspace: Optional[str]) -> bool:
@@ -2853,8 +3102,15 @@ def _build_system_prompt(
     active_email: Optional[Dict[str, str]] = None,
     workspace: Optional[str] = None,
     context_report: Optional[Dict[str, Any]] = None,
+    schema_offer: str = "native",
 ) -> List[Dict]:
     """Build agent system prompt, inject MCP/document context, merge consecutive system msgs.
+
+    `schema_offer` is `tool_schema_offer`'s answer for this route, and the MCP
+    block below is the one part of the prompt that has to know it: that block
+    tells the model how to call an MCP tool, and before `B-NEW` it said *"via
+    native function calling"* on every turn, including the turns whose request
+    carries no `tools` key.
 
     `context_report`, when given, is filled in with what this call put in front
     of the model — currently `skill_index`, the list behind the "Available
@@ -3219,14 +3475,24 @@ def _build_system_prompt(
         except Exception:
             pass
 
+    # `B-NEW`. Both blocks name tools — `get_workspace`, `list_cookbook_servers`,
+    # `todowrite`, `apply_patch` — and they are appended whenever the turn's
+    # tool set touches `_WORKSPACE_TERMINUS_TOOLS`, which `web_search` and
+    # `web_fetch` are members of. Measured on the owner's own question with web
+    # search on: the request carried 23 schemas and these two blocks were the
+    # last place the prompt still named tools that were not among them. Same
+    # line guard as the rules and the sections.
+    _avail_for_rules = set(relevant_tools or set())
     if workspace and not suppress_local_context:
-        agent_prompt += _workspace_coding_rules(workspace)
+        agent_prompt += prune_rules_to_available_tools(
+            _workspace_coding_rules(workspace), _avail_for_rules)
     elif (
         relevant_tools
         and not suppress_local_context
-        and (set(relevant_tools) & _WORKSPACE_TERMINUS_TOOLS)
+        and (_avail_for_rules & _WORKSPACE_TERMINUS_TOOLS)
     ):
-        agent_prompt += _local_computer_rules()
+        agent_prompt += prune_rules_to_available_tools(
+            _local_computer_rules(), _avail_for_rules)
 
     # When creating email documents, instruct the AI on the format
     if relevant_tools and not suppress_local_context and (_EMAIL_TOOL_HINTS & set(relevant_tools)):
@@ -3399,7 +3665,8 @@ def _build_system_prompt(
     # MCP tool descriptions — sourced from external servers, must not be in system role.
     if mcp_mgr:
         try:
-            _mcp_desc = mcp_mgr.get_tool_descriptions_for_prompt(mcp_disabled_map or {})
+            _mcp_desc = mcp_mgr.get_tool_descriptions_for_prompt(
+                mcp_disabled_map or {}, channel=schema_offer)
             if _mcp_desc:
                 _mcp_desc_message = untrusted_context_message(
                     "MCP tools",
@@ -5474,6 +5741,13 @@ async def stream_agent_loop(
             # Non-English queries are flagged low_signal by the English-only
             # intent classifier, but fastembed retrieval works across languages.
             logger.info("[tool-rag] Low-signal query; will run RAG retrieval")
+    # `B-NEW`. Whether the selector that produced `_relevant_tools` could see
+    # the MCP tool names at all. Only vector retrieval over a freshly indexed
+    # MCP collection can; `ToolIndex.select_without_embeddings` is built-in
+    # keywords and nothing else, so a set it produced is evidence about the
+    # built-ins and says nothing about MCP. `_tool_schemas_for_route` reads
+    # this before it filters the MCP schemas by that set.
+    _mcp_retrieval_ran = False
     if not guide_only and not _relevant_tools and _allowed_tools is None:
         try:
             from src.tool_index import get_tool_index, ALWAYS_AVAILABLE
@@ -5490,12 +5764,14 @@ async def stream_agent_loop(
                 tool_idx = None
                 _relevant_tools = set(ALWAYS_AVAILABLE)
             if tool_idx:
+                _mcp_indexed = False
                 if mcp_mgr:
                     try:
                         await asyncio.wait_for(
                             asyncio.to_thread(tool_idx.index_mcp_tools, mcp_mgr, _mcp_disabled_map),
                             timeout=_TOOL_SELECTION_TIMEOUT_SECONDS,
                         )
+                        _mcp_indexed = True
                     except asyncio.TimeoutError:
                         logger.warning(
                             "[tool-rag] MCP tool indexing exceeded %.1fs; continuing without reindex",
@@ -5507,6 +5783,7 @@ async def stream_agent_loop(
                             asyncio.to_thread(tool_idx.get_tools_for_query, _retrieval_query, 8),
                             timeout=_TOOL_SELECTION_TIMEOUT_SECONDS,
                         )
+                        _mcp_retrieval_ran = _mcp_indexed
                         logger.info(f"[tool-rag] Retrieved tools for query: {sorted(_relevant_tools - ALWAYS_AVAILABLE)}")
                     except asyncio.TimeoutError:
                         # Leave _relevant_tools unset so the keyword fallback
@@ -5538,6 +5815,9 @@ async def stream_agent_loop(
         from src.tool_index import ALWAYS_AVAILABLE, ToolIndex
         _relevant_tools = ToolIndex.select_without_embeddings(
             _retrieval_query, set(ALWAYS_AVAILABLE))
+        # This selector cannot see an MCP tool name, so whatever retrieval knew
+        # a moment ago no longer describes the set being carried forward.
+        _mcp_retrieval_ran = False
         logger.info(f"[tool-rag] Keyword fallback selected: {sorted(_relevant_tools - ALWAYS_AVAILABLE)}")
 
     # If deterministic domain detection fired, seed the corresponding domain
@@ -5913,6 +6193,16 @@ async def stream_agent_loop(
             owner,
             headers=candidate_headers,
         )
+        # `B-NEW`. Two questions of the one endpoint row: the transport this
+        # route behaves like, and whether the request carries a `tools` array
+        # at all. The second used to be the first, so a model whose **name**
+        # was not on an allowlist got no schemas — see `tool_schema_offer`.
+        _schema_offer = _agent_route_schema_offer(
+            candidate_url,
+            candidate_model,
+            owner,
+            headers=candidate_headers,
+        )
         _prompt_report: Dict[str, Any] = {}
         route_messages, route_mcp_schemas = _build_system_prompt(
             _strip_agent_injected_messages(compacted_source),
@@ -5964,6 +6254,7 @@ async def stream_agent_loop(
             active_email=active_email,
             workspace=workspace,
             context_report=_prompt_report,
+            schema_offer=_schema_offer,
         )
         # `P4-16`. Up to a dozen procedures enter a request and until now
         # nothing said which. One source since `B60`: this loop is the only
@@ -6015,6 +6306,7 @@ async def stream_agent_loop(
             "mcp_schemas": route_mcp_schemas,
             "relevant_tools": route_tools,
             "is_api_model": is_api,
+            "schema_offer": _schema_offer,
             "is_ollama_native": is_native_ollama,
             "ollama_openai_compat": is_ollama_compat,
             "pan_qwen_finetune_model": is_ody,
@@ -6043,6 +6335,11 @@ async def stream_agent_loop(
     mcp_schemas = _route_state["mcp_schemas"]
     _relevant_tools = _route_state["relevant_tools"]
     _is_api_model = _route_state["is_api_model"]
+    # `B-NEW`. Carried as a loop local for the same reason `_is_api_model` is:
+    # the per-round `_active_route_state` below is rebuilt from these, and a
+    # key that lives only in the pre-loop state is a key `_tool_schemas_for_route`
+    # never sees after round 1.
+    _schema_offer = _route_state["schema_offer"]
     _is_ollama_native = _route_state["is_ollama_native"]
     _ollama_openai_compat = _route_state["ollama_openai_compat"]
     if approved_plan and approved_plan.strip() and not guide_only:
@@ -6236,7 +6533,7 @@ async def stream_agent_loop(
         route_relevant_tools = route_state["relevant_tools"]
         if _force_answer:
             return []
-        if route_state["is_api_model"]:
+        if route_state["is_api_model"] or route_state.get("schema_offer") in ("native", "both"):
             if route_relevant_tools:
                 schema_names = set(route_relevant_tools)
                 if _needs_admin:
@@ -6245,10 +6542,30 @@ async def stream_agent_loop(
                     schema for schema in FUNCTION_TOOL_SCHEMAS
                     if schema.get("function", {}).get("name") in schema_names
                 ]
-                mcp_filtered = [
-                    schema for schema in route_mcp_schemas
-                    if schema.get("function", {}).get("name") in route_relevant_tools
-                ]
+                # `B-NEW`. MCP schemas used to be filtered by the same selected
+                # set as the built-ins, and the selector that runs when the
+                # embedding backend is down — `ToolIndex.select_without_embeddings`,
+                # the path a native install meets, since ChromaDB never starts
+                # there — has **no knowledge of MCP tools at all**: it is
+                # built-in keyword hints and structural signals only. So every
+                # MCP tool was dropped from the request whenever retrieval fell
+                # back, in silence. Measured on this tree with one registered
+                # MCP server and the owner's own question: 30 schemas sent,
+                # `mcp=[]`, while `/api/mcp/tools` listed the two tools.
+                #
+                # The filter stays wherever retrieval could actually see the
+                # names (`mcp_retrieval_ran`), because then an operator with
+                # fifty MCP tools gets the eight that matched. Where it could
+                # not, an MCP tool is not a tool retrieval ranked out — it is a
+                # tool retrieval never met, and a person who registered a
+                # server registered it to be reachable.
+                if _mcp_retrieval_ran:
+                    mcp_filtered = [
+                        schema for schema in route_mcp_schemas
+                        if schema.get("function", {}).get("name") in route_relevant_tools
+                    ]
+                else:
+                    mcp_filtered = list(route_mcp_schemas)
                 schemas = base_schemas + mcp_filtered
             else:
                 base_schemas = FUNCTION_TOOL_SCHEMAS if _needs_admin else [
@@ -6762,6 +7079,7 @@ async def stream_agent_loop(
             "mcp_schemas": mcp_schemas,
             "relevant_tools": _relevant_tools,
             "is_api_model": _is_api_model,
+            "schema_offer": _schema_offer,
             "is_ollama_native": _is_ollama_native,
             "ollama_openai_compat": _ollama_openai_compat,
             "pan_qwen_finetune_model": _pan_qwen_finetune_model,
@@ -7213,6 +7531,7 @@ async def stream_agent_loop(
                             mcp_schemas = answering_state["mcp_schemas"]
                             _relevant_tools = answering_state["relevant_tools"]
                             _is_api_model = answering_state["is_api_model"]
+                            _schema_offer = answering_state.get("schema_offer", _schema_offer)
                             _is_ollama_native = answering_state["is_ollama_native"]
                             _ollama_openai_compat = answering_state["ollama_openai_compat"]
                             _pan_qwen_finetune_model = answering_state["pan_qwen_finetune_model"]

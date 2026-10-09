@@ -37,6 +37,57 @@ _TOOL_BLOCK_RE = re.compile(
     re.IGNORECASE,
 )
 
+# `B-NEW`. The fenced channel could not carry an MCP tool call. `_TOOL_BLOCK_RE`
+# above is built once at import from the static `TOOL_TAGS` set, and an MCP tool
+# name is minted at runtime from the server's id, so no ```mcp__… fence has ever
+# matched it. Measured on this tree with one registered MCP server:
+# `parse_tool_blocks` returned `[]` for ```mcp__47a5fba5__lookup_raid and
+# `[ToolBlock('web_search', …)]` for the same shape with a built-in name.
+#
+# That is the shape the fenced prompt asks for, and the fenced channel is the
+# ONLY live channel on any route where native schemas are withheld — an Ollama
+# endpoint, or (before `tool_schema_offer`) a local OpenAI-compatible server
+# whose model name was not on an allowlist. Both channels shut, every MCP tool
+# named in the prompt: the owner's report, in two regexes.
+#
+# No registry is needed to match it. `mcp__{server_id}__{tool_name}` is a fixed
+# shape (`FORBIDDEN.md` Part 1), and `split_mcp_tool_name` — the one parser for
+# it — is what decides whether a match is really one, so this pattern stays
+# deliberately loose and the name rule stays in one place (`Law 7`).
+_MCP_TOOL_BLOCK_RE = re.compile(
+    r"```(mcp__[A-Za-z0-9][A-Za-z0-9._-]*__[A-Za-z0-9][A-Za-z0-9._-]*)"
+    r"[ \t]*\r?\n([\s\S]*?)```",
+)
+
+
+def _fenced_mcp_tool_call(m) -> Optional[Tuple[str, str]]:
+    """Classify an `_MCP_TOOL_BLOCK_RE` match: (qualified_name, json_args).
+
+    Shared by `parse_tool_blocks` and `strip_tool_blocks` for the same reason
+    `_fenced_tool_call` is: a fence that does not execute is never stripped.
+    """
+    from src.mcp_manager import split_mcp_tool_name
+
+    name = m.group(1)
+    if split_mcp_tool_name(name) is None:
+        return None
+    body = (m.group(2) or "").strip()
+    if not body:
+        # A no-arg MCP tool is a real shape; `{}` is what the dispatcher wants.
+        return name, "{}"
+    try:
+        parsed = json.loads(body)
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(parsed, dict):
+        return None
+    return name, json.dumps(parsed)
+
+
+def _strip_executed_mcp_fence(m) -> str:
+    return "" if _fenced_mcp_tool_call(m) is not None else m.group(0)
+
+
 # Tags whose fenced content is raw code, not JSON args. Same-line text after
 # these tags is Markdown fence metadata on a real language (```bash {title=
 # "setup"}), never inline tool args — only the classic tag-then-newline form
@@ -1312,6 +1363,18 @@ def parse_tool_blocks(text: str, skip_fenced: bool = False) -> List[ToolBlock]:
     # XML patterns below catch it.
     text = _normalize_dsml(text)
 
+    # Pattern 1b: a fenced MCP call, ```mcp__{server}__{tool} + JSON body.
+    # Not gated on `skip_fenced`'s illustrative-example reasoning the way
+    # Pattern 1 is: a native-tools model writes ```bash examples in prose all
+    # the time, and has never once written a fully-qualified `mcp__…__…` fence
+    # tag by accident. Dropping it would lose a real call (`B-NEW`), which is
+    # the same judgement Patterns 2-5 already make for explicit markup.
+    for m in _MCP_TOOL_BLOCK_RE.finditer(text):
+        call = _fenced_mcp_tool_call(m)
+        if call is None:
+            continue
+        blocks.append(ToolBlock(call[0], call[1]))
+
     # Pattern 1: fenced code blocks (skipped when `skip_fenced` — see docstring).
     if not skip_fenced:
         for m in _TOOL_BLOCK_RE.finditer(text):
@@ -1461,6 +1524,23 @@ def parse_tool_blocks(text: str, skip_fenced: bool = False) -> List[ToolBlock]:
         if block:
             blocks.append(block)
 
+    # Pattern 4e: a bare {"name": …, "arguments": {…}} object as the whole
+    # reply, with no wrapper at all. `B-NEW`: this is the Hermes/Qwen shape
+    # without its `<tool_call>` tags, and local servers emit it when their
+    # chat template's tool section does not fire. Measured on this tree before
+    # the change: `{"name":"web_search","arguments":{…}}` parsed (Pattern 6
+    # recognises it, for web tools only), `{"name":"manage_notes",…}` returned
+    # `[]`, and `{"name":"mcp__<id>__lookup_raid",…}` returned `[]`.
+    # `_parse_json_tool_call_body` is the existing strict reader for exactly
+    # this body (`Law 14`), so this is that reader with no wrapper required;
+    # its own rules — a string `name`, `arguments` an object when present, and
+    # `function_call_to_tool_block` refusing a name it does not know — are what
+    # keep an ordinary JSON reply from being read as a call.
+    if not blocks:
+        block = _parse_json_tool_call_body(text)
+        if block:
+            blocks.append(block)
+
     # Pattern 6: local text-model web_search call leaked as prose + bare JSON.
     if not blocks and not skip_fenced:
         raw_web_json = _parse_raw_web_json_lookup(text)
@@ -1497,7 +1577,11 @@ def strip_tool_blocks(text: str, skip_fenced: bool = False) -> str:
     # Keep the executed-vs-illustrative fence distinction (only strip fences
     # that actually dispatched; leave example fences from native models inert
     # but visible), then remove [TOOL_CALL]{...}[/TOOL_CALL] markup.
-    cleaned = text if skip_fenced else _TOOL_BLOCK_RE.sub(_strip_executed_fence, text)
+    # `B-NEW`. An executed MCP fence is stripped on the same terms, and never
+    # gated on `skip_fenced` — Pattern 1b is not either, and a fence that ran
+    # must not also be shown (the mirror `_fenced_tool_call` already keeps).
+    cleaned = _MCP_TOOL_BLOCK_RE.sub(_strip_executed_mcp_fence, text)
+    cleaned = cleaned if skip_fenced else _TOOL_BLOCK_RE.sub(_strip_executed_fence, cleaned)
     # Forward-only removal mirrors parse_tool_blocks: _strip_delimited pairs each
     # opener with a later closer and stops when none is reachable, so untrusted
     # output can't drive the O(n^2) lazy-rescan (ReDoS); see _iter_delimited.
