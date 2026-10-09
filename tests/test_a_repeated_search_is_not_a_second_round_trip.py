@@ -223,6 +223,22 @@ def test_both_orchestrators_share_one_cache_entry(cached, monkeypatch):
         "the two orchestrators keep separate caches — the same search for the "
         "same count and filter must be one entry"
     )
+    core.searxng_search_results(REFERENCE_QUERY)
+    assert rec.count == 1, "the entry does not read back through the key it was written with"
+
+
+def test_the_other_orchestrator_also_serves_its_own_repeat(cached, monkeypatch):
+    """A seam both halves use is one that reads what it writes. Asserted on
+    `searxng_search_results` by itself, because reading it back through the
+    *other* orchestrator cannot tell a wrong read key from a right one."""
+    rec = _CountingProvider()
+    rec.install(monkeypatch)
+
+    first = core.searxng_search_results(REFERENCE_QUERY)
+    assert rec.count == 1
+    second = core.searxng_search_results(REFERENCE_QUERY)
+    assert rec.count == 1, f"the repeat went to the provider again: {rec.calls}"
+    assert [r["url"] for r in second] == [r["url"] for r in first]
 
 
 def test_the_key_is_derived_in_one_place(cached, monkeypatch):
@@ -233,23 +249,46 @@ def test_the_key_is_derived_in_one_place(cached, monkeypatch):
     assert (cached / f"{key}.cache").exists(), sorted(p.name for p in cached.iterdir())
 
 
+# A pair the ranker demonstrably reorders: the shop page comes back first from
+# the provider and ranks second (no query terms in the title, a `.com`), the
+# docs page comes back second and ranks first (every term, a `.gov`). Without a
+# set the ranker moves, "the cache holds what the provider said" and "the cache
+# holds what the ranker said" are the same assertion.
+REORDERED = [
+    {"title": "unrelated shop page", "url": "https://shop.example.com/x",
+     "snippet": "buy things"},
+    {"title": "python asyncio tutorial reference",
+     "url": "https://docs.python.gov/asyncio",
+     "snippet": "A full python asyncio tutorial reference with examples and detail."},
+]
+
+
 def test_ranking_is_not_frozen_into_the_cache(cached, monkeypatch):
     """A cached entry holds what the provider said, not what the ranker made of
     it — so a ranking fix applies to entries written before it."""
-    rec = _CountingProvider()
+    rec = _CountingProvider(results=list(REORDERED))
     rec.install(monkeypatch)
-    core.comprehensive_web_search(REFERENCE_QUERY, max_pages=2)
+    out = core.comprehensive_web_search(REFERENCE_QUERY, max_pages=2)
+
+    provider_order = [r["url"] for r in REORDERED]
+    ranked_order = [r["url"] for r in core.rank_search_results(REFERENCE_QUERY, REORDERED)]
+    assert ranked_order != provider_order, "the fixture no longer exercises ranking"
 
     key = core._search_cache_key(REFERENCE_QUERY, 5, None)
     stored = json.loads((cached / f"{key}.cache").read_text(encoding="utf-8"))
-    assert [r["url"] for r in stored["data"]] == [r["url"] for r in GOOD_RESULTS]
+    assert [r["url"] for r in stored["data"]] == provider_order, (
+        "the cache stored the ranked order, so a ranking fix will not reach this entry"
+    )
 
     calls = []
     real_rank = core.rank_search_results
     monkeypatch.setattr(core, "rank_search_results",
                         lambda q, r: calls.append(q) or real_rank(q, r))
-    core.comprehensive_web_search(REFERENCE_QUERY, max_pages=2)
+    second = core.comprehensive_web_search(REFERENCE_QUERY, max_pages=2)
     assert calls == [REFERENCE_QUERY], "a cache hit skipped ranking"
+    # and the served block is in ranked order, not the order on disk
+    sources = [ln.strip() for ln in second.splitlines() if ln.startswith("    http")]
+    assert sources == ranked_order, sources
 
 
 # ----------------------------------------------------------------------
