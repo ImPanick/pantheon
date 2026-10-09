@@ -754,21 +754,47 @@ _AGENT_PREAMBLE = """\
 You are an AI assistant with tool access. Only the tools listed below are available for this turn.
 To use a tool, write a fenced code block with the tool name as the language tag. The block executes automatically and you see the output."""
 
-_AGENT_RULES = """\
+# `B1327` / `D-2026-10-09-01` §3 — *"Agents should agent."* The owner chose,
+# between the two wordings `B1309` found, the one that pushes the model to do
+# the work and report. One definition, interpolated into BOTH rule sets below,
+# because the measured defect is the same on the fenced path and the native one
+# — a turn that ends on a question ends the same way on either — and two copies
+# of a product decision are two things that can drift (`Law 7`).
+#
+# Measured on `a5ee5f8`, five multi-step tasks against a recording
+# OpenAI-compatible model with a registered MCP server (port 8792, the recipe
+# in `/work/notes/fx6-tools.md`): **0 of 5 finished the work**; four ended with
+# the model asking whether to take the next step it had already been told to
+# take, one ended with a plan and a "let me know". The three condensed lines
+# this replaces — *"After a tool succeeds, do not second-guess it"*, *"After a
+# tool fails, retry with a concrete fix"*, *"Finish only when the user's
+# concrete request is actually done"* — said the same three things in a register
+# that measurement found too weak. Dropped from the dead copy's wording: *"you
+# have plenty of rounds"* (`agent_max_rounds` is settable to 1 —
+# `AGENT_MAX_ROUNDS_RANGE = (1, 200)` — so the clause can be false), and
+# *BIAS TOWARD ACTION*'s scoping to *"on edit requests"* (the ruling is general,
+# and three of the five measured stalls were not edits).
+_ACT_RULES = """\
+- BIAS TOWARD ACTION. When the user tells you to do something — "edit out X", "remove the Y paragraph", "change Z", "read these three files", "look it up" — JUST DO IT with your best interpretation. Do not ask for clarification on minor ambiguity, and do not ask permission to take the next step of a job you were already given. Make the obvious call, do the work, then say what you did; the user can undo or re-prompt if it was wrong.
+- DO NOT HAND THE WORK BACK AS A QUESTION. Ending a turn with "Do you want me to …?", "Should I …?" or "Let me know if you'd like me to …" about a step the user already asked for is a failure, not caution: take the step and report the result. A question belongs at a real fork with no obvious answer, or before an act that cannot be undone — and holding an act that needs a person is the approval gate's job, not yours.
+- At a real fork, ask with `ask_user` and its options. A question in prose ends your turn with nothing done and no buttons to press.
+- AFTER A TOOL SUCCEEDS, do not second-guess it. The success line (`Document edited: "X" (v2, 1 edit(s))`) means it worked. Reply with ONE short confirmation unless more work remains — no re-checking, no replaying the diff in your head, no validation theater.
+- AFTER A TOOL FAILS (timeout, error, "Unknown action", "not found"), DO NOT GO SILENT. Retry with a concrete fix — correct the arguments, run a diagnostic, split it into smaller steps — or say plainly what is blocking you and what you would try next. A failed tool is not a stopping condition; only a finished job is.
+- YOU DECLARE WHEN THE JOB IS DONE — not a timer. Keep taking concrete steps while the task still needs them, and do not quit just because you have made a few calls. There are exactly three ways to end a turn: (1) DONE — before you declare it, check that every concrete thing the user asked for actually exists or succeeded (file written, edit applied, command exited clean, the answer actually in your reply); then stop calling tools and write the final answer, which IS your "done" signal; (2) BLOCKED — you genuinely cannot proceed (a capability is missing, permission denied, data you cannot obtain), so say plainly what is blocking you, in a sentence or two, and stop; (3) keep going with the single most useful next step. The only wrong moves are trailing off mid-task without one of these, asking a question you could have answered, and repeating a call you already ran.
+"""
+
+_AGENT_RULES = f"""\
 ## Base rules
 - Only use tools when needed. For casual messages like "test", "yo", "thanks", answer normally.
 - If a needed tool/domain is missing from this turn, say what is missing briefly instead of pretending.
 - If the user explicitly says "this workspace" or "current workspace" but no active workspace is set, do not inspect or edit random home-folder files. Tell them to set one with `/workspace pick` or `/workspace set /absolute/path`.
-- After a tool succeeds, do not second-guess it; reply with one short confirmation unless more work remains.
-- After a tool fails, retry with a concrete fix or state what is blocking you.
-- Finish only when the user's concrete request is actually done, or clearly state that you are blocked.
-- User identity facts/preferences ("my name is X", "call me X", "I live in X") use `manage_memory`, not contacts.
+{_ACT_RULES}- User identity facts/preferences ("my name is X", "call me X", "I live in X") use `manage_memory`, not contacts.
 - Working memory (long/large tasks): on multi-step or large-data work, journal progress and findings to `manage_notes` as you go. When a tool returns a large result you must retain, store it via `manage_rag` (action=add_text) or `write_file` and retrieve it later with `manage_rag` (action=search) instead of holding it all in context. Use `manage_memory` ONLY for durable facts about the USER — those are auto-extracted, so do NOT also copy them into notes. Route to these existing tools only; do NOT invent a new store.
 - Every tool this prompt names is available for this turn. Do not tell the user a listed tool is unavailable, and do not look for one that is not listed.
 - The tool tags above execute automatically when you write them. To SHOW a code example instead of running it, tag the block ```shell, ```sh, ```py and so on. Several tool blocks in one reply is fine.
 """
 
-_API_AGENT_RULES = """\
+_API_AGENT_RULES = f"""\
 ## Base rules
 - Prefer native tool/function calling when tools are needed.
 - Only call tools when they materially help answer the request. For casual messages like "test", "yo", "thanks", answer normally.
@@ -776,10 +802,7 @@ _API_AGENT_RULES = """\
 - If a needed tool/domain is missing from this turn, say what is missing briefly instead of pretending.
 - If the user explicitly says "this workspace" or "current workspace" but no active workspace is set, do not inspect or edit random home-folder files. Tell them to set one with `/workspace pick` or `/workspace set /absolute/path`.
 - Keep answers concise unless the user asks for depth.
-- After a tool succeeds, do not second-guess it; reply with one short confirmation unless more work remains.
-- After a tool fails, retry with a concrete fix or state what is blocking you.
-- Finish only when the user's concrete request is actually done, or clearly state that you are blocked.
-- User identity facts/preferences ("my name is X", "call me X", "I live in X") use `manage_memory`, not contacts.
+{_ACT_RULES}- User identity facts/preferences ("my name is X", "call me X", "I live in X") use `manage_memory`, not contacts.
 - Working memory (long/large tasks): on multi-step or large-data work, journal progress and findings to `manage_notes` as you go. When a tool returns a large result you must retain, store it via `manage_rag` (action=add_text) or `write_file` and retrieve it later with `manage_rag` (action=search) instead of holding it all in context. Use `manage_memory` ONLY for durable facts about the USER — those are auto-extracted, so do NOT also copy them into notes. Route to these existing tools only; do NOT invent a new store.
 - Every tool this prompt names is available for this turn. Do not tell the user a listed tool is unavailable, and do not look for one that is not listed.
 """
@@ -1199,8 +1222,8 @@ If the user asks for a reminder/alarm before the event, pass `reminder_minutes` 
     "search_chats": "- ```search_chats``` — Search past session transcripts for direct conversation evidence. Use when user asks 'did we discuss X?', 'find the conversation about Y', or when prior chat context is more appropriate than persistent memory.",
     "pipeline": "- ```pipeline``` — Run a multi-step AI pipeline. Args (JSON) with ordered steps, each specifying a model and prompt. Use for complex workflows.",
     "ui_control": "- ```ui_control``` — Control the UI: toggle tools on/off, OPEN PANELS, open email reply drafts, switch models, change themes. Commands: `toggle <name> on/off` (names: bash/shell, web/search, research, incognito, document_editor/documents), `open_panel <name>` (panels: documents, gallery, email, sessions, notes, memories/brain, skills, settings, cookbook), `open_email_reply <uid> <folder> <reply|reply-all|ai-reply> <body text>` (opens an email compose document pre-filled with body, DOES NOT send; use this for normal “write/draft a reply saying X” requests), `set_mode agent/chat`, `switch_model <name>`, `set_theme <preset>`, `create_theme <name> <bg> <fg> <panel> <border> <accent>` (optional key=val for advanced colors AND background effects: bgPattern=<none|dots|synapse|rain|constellations|perlin-flow|petals|sparkles|embers>, bgEffectColor=#RRGGBB, bgEffectIntensity=<num>, bgEffectSize=<num>, frosted=true|false). \"open documents\" / \"open library\" / \"show gallery\" / \"open inbox\" / \"open notes\" / \"open cookbook\" all map to `open_panel <name>`. Built-in theme presets: dark, light, midnight, paper, cyberpunk, retrowave, forest, ocean, ume, copper, terminal, organs, lavender, gpt, claude, cute, guild, codehost, grove, notebook, channel, video, mintchat. For any other vibe/name, use create_theme.",
-    "ask_user": "- ```ask_user``` — Ask the user a multiple-choice question when the task is genuinely ambiguous and the answer changes what you do next (pick an approach, confirm an assumption, choose a target). Args (JSON): {\"question\": \"...\", \"options\": [{\"label\": \"...\", \"description\": \"...\"?}, ...], \"multi\": false?}. 2-6 options. The user gets clickable buttons; calling this ENDS your turn and their choice comes back as your next message. Prefer sensible defaults — only ask when you truly can't proceed well without their input.",
-    "update_plan": "- ```update_plan``` — While executing an approved plan, write the plan back: tick steps done or revise them. Args (JSON): {\"plan\": \"- [x] done step\\n- [ ] next step\"}. Always pass the COMPLETE checklist, not a diff. Call it after finishing each step (mark it `- [x]`) and whenever the user asks to change the plan. The user's docked plan window updates live. Does nothing if there's no active plan.",
+    "ask_user": "- ```ask_user``` — Ask the user a multiple-choice question when the task is genuinely ambiguous and the answer changes what you do next (pick an approach, confirm an assumption, choose a target). Args (JSON): {\"question\": \"...\", \"options\": [{\"label\": \"...\", \"description\": \"...\"?}, ...], \"multi\": false?}. 2-6 options. The user gets clickable buttons; calling this ENDS your turn and their choice comes back as your next message. Prefer sensible defaults — only ask when you truly can't proceed well without their input. LOOK BEFORE YOU ASK: if any tool in this turn's list would answer the question, call it instead — a question whose answer a tool would have printed is the defect, not the caution. Never use this to ask permission for a step the user already asked for; take the step. Holding an act that needs a person is the approval gate's job, not this tool's.",
+    "update_plan": "- ```update_plan``` — While executing an approved plan, write the plan back: tick steps done or revise them. Args (JSON): {\"plan\": \"- [x] done step\\n- [ ] next step\"}. Always pass the COMPLETE checklist, not a diff. Call it after finishing each step (mark it `- [x]`) and whenever the user asks to change the plan. The user's docked plan window updates live. Does nothing if there's no active plan. Writing the plan is not doing the work: after this call, take the next unchecked step in the same turn.",
     "list_served_models": "- ```list_served_models``` — Show what the Forge (LLM-serving subsystem) is currently running. NO args. Use this for ANY 'what's running' / 'what's serving' / 'show my cookbook' / 'is anything up' query. DO NOT shell out (`ps aux`, `docker ps`, etc.) — this tool is the source of truth. Failed serve tasks include recent logs plus diagnosis/retry suggestions; use those suggestions to call `serve_model` again with an adjusted command when appropriate.",
     "stop_served_model": "- ```stop_served_model``` — Stop a running model server. Args (JSON): {\"session_id\": \"<from list_served_models>\"}. Use for 'kill my cookbook' / 'stop the model' / 'shut down vLLM'.",
     "tail_serve_output": "- ```tail_serve_output``` — Read the actual tmux stderr/traceback of a CURRENTLY failing cookbook task. Args (JSON): {\"session_id\": \"<from list_served_models>\", \"tail\": 150?}. **Use ONLY after** you just launched something via `serve_model` AND `list_served_models` reports YOUR new task as `crashed`/`error`. DO NOT use it on old stopped/completed download tasks (they're historical noise — won't predict whether a new launch succeeds). DO NOT call it before launching a fresh attempt. When you do call it, bump `tail` to 400+ only if the visible error references 'see root cause above'.",
@@ -6496,6 +6519,26 @@ async def stream_agent_loop(
     # that *can't* call the tool from looping forever.
     _intent_nudge_count = 0
     _MAX_INTENT_NUDGES = 2
+    # `B-NEW`. The intent supervisor's mirror image. It catches a turn that
+    # announced an action and did not take it; this catches a turn that **asked
+    # whether to take it**. Measured on `a5ee5f8` over five multi-step tasks
+    # (port 8792, a recording model, a registered MCP server): four of the five
+    # ended with "Do you want me to …?" / "Should I …?" / "Let me know if you'd
+    # like me to …" and no tool call, and nothing in the loop looked at it — the
+    # intent regex matches "let me"/"I'll"/"I should", not "should I". Zero of
+    # the five finished the work. `D-2026-10-09-01` §3: an agent that asks a
+    # question it could have answered is the defect.
+    _handback_nudges = 0
+    _MAX_HANDBACK_NUDGES = 1
+    _handback_phrases: list = []
+    # `B-NEW`. `ask_user` called before anything has been looked at. The tool
+    # stays, and so does its turn-ending contract; what changes is that the
+    # FIRST such question on a turn where nothing has run yet buys one round of
+    # looking. If the model asks again, the card ships and the turn ends as it
+    # always did — the cost of a genuine fork is one round, and the gain is the
+    # case the owner's ruling names.
+    _ask_first_nudges = 0
+    _MAX_ASK_FIRST_NUDGES = 1
     # `P4-10`. Every action announced without a call this turn, in order, so
     # the stop can quote what the model kept saying rather than a fixed line.
     _intent_phrases: list = []
@@ -6530,6 +6573,25 @@ async def stream_agent_loop(
         r"\b[^.\n]{0,140}",
         re.IGNORECASE,
     )
+    # `B-NEW`. A turn handed back as a question: the model offering to take a
+    # step instead of taking it. Every arm needs a verb after the offer, so an
+    # innocuous sign-off ("let me know if you need anything else") does not
+    # match — it names no action for the model to take.
+    _HANDBACK_RE = re.compile(
+        r"(?:do|would)\s+you\s+(?:want|like)\s+(?:me|us)\s+to\s+\w+"
+        r"|want\s+me\s+to\s+\w+"
+        r"|(?:shall|should|can|may)\s+i\s+\w+"
+        r"|let\s+me\s+know\s+(?:if|whether)\s+"
+        r"(?:you(?:'d|\u2019d| would)?\s+(?:like|want|prefer)|i\s+should|you\s+want)"
+        r"|(?:just\s+)?say\s+the\s+word"
+        r"|i\s+(?:can|could)\s+\w[^.?!\n]{0,90}\bif\s+(?:you|that|you'?d)\b",
+        re.IGNORECASE,
+    )
+    # How much of the end of a round counts as "ended on a question". A
+    # hand-back is the last thing the model writes; the same phrase in the
+    # middle of a long answer is an aside.
+    _HANDBACK_TAIL = 400
+
     _awaiting_user = False  # set by ask_user → end the turn and wait for a choice
 
     _doc_stream_create_completed = False
@@ -8046,6 +8108,67 @@ async def stream_agent_loop(
                 _agent_stops.append(_stop)
                 yield f"data: {json.dumps(_stop)}\n\n"
                 break
+
+            # ── Question-instead-of-work supervisor ──────────────────
+            # `B-NEW`. The intent supervisor above catches "Let me check the
+            # logs" with no call. This catches its mirror: "Do you want me to
+            # check the logs?" — a step the user already asked for, handed back
+            # as a question, with no call and nothing done. `D-2026-10-09-01`
+            # §3 ruled that the asking, not the acting, is the defect, so the
+            # loop pushes once and lets the model do it.
+            #
+            # Exempt, for the same reason the intent nudge is: plan mode, where
+            # proposing un-taken actions IS the job, and `guide_only`. Also
+            # exempt on a force-answer round, where the loop itself asked for
+            # prose and no more calls. A turn with no tool it could have used
+            # is exempt too: there, a question is the only move left.
+            _handback_tail = _intent_text[-_HANDBACK_TAIL:] if _intent_text else ""
+            _handback_match = _HANDBACK_RE.search(_handback_tail) if _handback_tail else None
+            _has_other_tools = (
+                _relevant_tools is None
+                or bool(set(_relevant_tools) - {"ask_user", "update_plan"})
+            )
+            _looks_like_handback = (
+                not guide_only
+                and not plan_mode
+                and not _force_answer
+                and _handback_match is not None
+                and _has_other_tools
+            )
+            if _looks_like_handback and _handback_nudges < _MAX_HANDBACK_NUDGES:
+                _handback_nudges += 1
+                _handback_phrase = _handback_match.group(0).strip()
+                _handback_phrases.append(_handback_phrase)
+                logger.info(
+                    "[agent] question-instead-of-work nudge #%d on round %d: %r",
+                    _handback_nudges, round_num, _handback_phrase,
+                )
+                messages.append(_in_turn({
+                    "role": "system",
+                    "content": (
+                        f"You ended the turn by asking \"{_handback_phrase}\" instead "
+                        "of doing it. The user already asked for this, so the "
+                        "question is answered by taking the step: make the call "
+                        "now and report what it returned. If it is genuinely a "
+                        "fork with no obvious answer, or an act that cannot be "
+                        "undone, ask with the `ask_user` tool and its options "
+                        "rather than ending a turn on a question in prose."
+                    ),
+                }))
+                _step = _next_step_frame(round_num)   # `B906`
+                if _step:
+                    yield _step
+                continue
+            if _looks_like_handback:
+                # Pushed once and it asked again: that is its answer. The turn
+                # ends the way it did before this supervisor existed — no new
+                # stop kind, because nothing went wrong that the model's own
+                # words on screen do not already say.
+                logger.info(
+                    "[agent] question-instead-of-work: asked again after %d nudge(s) "
+                    "on round %d: %r",
+                    _handback_nudges, round_num, _handback_match.group(0).strip(),
+                )
             break  # no tools — done
 
         # ── Loop-breaker (Terminus-style stall detector) ──────────────
@@ -8148,6 +8271,58 @@ async def stream_agent_loop(
                 ),
             }))
             full_response += "\n\n"
+            _step = _next_step_frame(round_num)   # `B906`
+            if _step:
+                yield _step
+            continue
+
+        # ── A question asked before anything was looked at ───────────
+        # `B-NEW`. `ask_user` ends the turn, by design, and it still does. What
+        # this catches is the one case the owner's ruling names outright: the
+        # turn's FIRST action is a question, nothing has been run yet, and the
+        # turn has tools that could have answered it. Measured on `a5ee5f8`:
+        # "List what Forge is serving and tail the output of the one that is
+        # running" ended on round 1 with `ask_user` *"Which server would you
+        # like me to look at?"* — before `list_served_models` had been called
+        # even once, so the options were a guess about a list the tool would
+        # have printed. One round of looking, once per turn; ask again and the
+        # card ships exactly as before.
+        #
+        # Not the gate: a privileged effect is still held by the approval path,
+        # which this does not touch. This only declines to end the turn on the
+        # model's own question.
+        if (tool_blocks
+                and not plan_mode
+                and not guide_only
+                and not _force_answer
+                and total_tool_calls == 0
+                # `B1069`'s resumed turn runs its approved call OUTSIDE this
+                # loop, so the counter above can still read 0 while a tool
+                # result is already in the transcript. `tool_events` holds both
+                # paths, and "nothing has been looked at" has to mean both.
+                and not tool_events
+                and _ask_first_nudges < _MAX_ASK_FIRST_NUDGES
+                and all(b.tool_type == "ask_user" for b in tool_blocks)
+                and (_relevant_tools is None
+                     or bool(set(_relevant_tools) - {"ask_user", "update_plan"}))):
+            _ask_first_nudges += 1
+            logger.info(
+                "[agent] ask-before-looking nudge on round %d: %d ask_user call(s) "
+                "with no tool result yet this turn",
+                round_num, len(tool_blocks),
+            )
+            messages.append(_in_turn({
+                "role": "system",
+                "content": (
+                    "You asked the user a question as the first thing this turn, "
+                    "before running anything. Look first: use the tools you have "
+                    "to answer it yourself, then do the work the user asked for "
+                    "and report the result. If after looking it is still a real "
+                    "fork with no obvious answer, or an act that cannot be "
+                    "undone, ask then — with the options the tools showed you."
+                ),
+            }))
+            tool_blocks = []
             _step = _next_step_frame(round_num)   # `B906`
             if _step:
                 yield _step
