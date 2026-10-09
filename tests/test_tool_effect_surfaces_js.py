@@ -170,6 +170,13 @@ export class Node {
   }
   dispatchEvent(ev) { (this.listeners[ev.type] || []).slice().forEach((fn) => fn(ev)); return true; }
   focus() { this.focused = true; }
+  // Added 2026-10-09 by `D-2026-10-09-01` §4. The phone's turn sheet changes
+  // nothing itself: every row CLICKS the composer control that already owns
+  // the state, so the mode's persistence and the tools' mutual exclusions run
+  // once and in one place (`Law 7`). Same terms as `replaceChildren` and
+  // `insertBefore` above: the browser has `click()`, so a shim without it
+  // makes the module throw on a method rather than fail an assertion.
+  click() { this.dispatchEvent(new globalThis.Event('click')); }
   scrollIntoView() { this.scrolledIntoView = true; }
   // Added 2026-09-18 by `P4-06`/`P4-07`/`P4-14`. `displayMetrics` positions the
   // Message Stats popup against the footer it hangs off, so the real module
