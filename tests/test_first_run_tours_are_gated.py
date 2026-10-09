@@ -145,7 +145,7 @@ def sandbox(tmp_path_factory):
 _PREAMBLE = """
 import { installDom, openModal, byId, bySelector, El } from './dom.js';
 installDom();
-const slash = await import('./slashCommands.js?v=20261008approvalrel');
+const slash = await import('./slashCommands.js?v=20261009approvalturn');
 const ui = await import('./ui.js');
 const tours = await import('./tourAutoplay.js');
 const settle = () => new Promise(r => setTimeout(r, 0));

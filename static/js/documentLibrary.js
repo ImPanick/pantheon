@@ -1400,7 +1400,7 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
     // the editor's way, one press from coming back with its folder, search
     // and scroll as they were.
     try {
-      const Modals = await import('./modalManager.js?v=20261008rel');
+      const Modals = await import('./modalManager.js?v=20261009turn');
       if (!Modals.minimize('doclib-modal')) closeLibrary();
     } catch (_) { closeLibrary(); }
     // Orphaned doc (session deleted) — just open in editor without switching session

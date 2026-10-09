@@ -11,7 +11,7 @@
  *
  * Usage from a tool module:
  *
- *   import * as Modals from './modalManager.js?v=20261008rel';
+ *   import * as Modals from './modalManager.js?v=20261009turn';
  *
  *   // After building the modal element and adding it to the body:
  *   Modals.register('gallery-modal', {
