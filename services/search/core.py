@@ -448,11 +448,12 @@ def comprehensive_web_search(
 
     # Fetch content in parallel
     fetched_content = []
-    # Why a page is missing from FETCHED PAGE CONTENT. `_empty_result` has
-    # carried an `error` since it was written and every caller dropped it, so
-    # the block said "fetched 3 pages" of five and never which two, or why —
-    # the owner's 2026-10-09 search fetched 3 of 5 and the two silent ones were
-    # the bot-blocked IMDb and YouTube pages.
+    # Why a page is missing from FETCHED PAGE CONTENT. `_empty_result`
+    # (`content.py:161`) has carried an `error` since it was written and every
+    # caller dropped it, so the block said "fetched 3 pages" of five and never
+    # which two, or why. The owner's 2026-10-09 search is the case: 3 of 5, and
+    # *which* two failed is not recoverable from the export — which is the
+    # defect, not a detail of it.
     not_fetched = []
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         future_to_url = {
