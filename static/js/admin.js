@@ -622,10 +622,17 @@ async function loadEndpoints() {
       const tt = ep.tool_transport || {};
       const declared = tt.declared === true ? 'true' : (tt.declared === false ? 'false' : '');
       const usesNative = tt.resolved === 'native';
-      const doing = tt.resolved
-        ? (usesNative ? 'native tool calling' : 'the fenced prompt')
-        : 'an answer it could not work out';
-      const forModel = (tt.model_dependent && tt.sample_model)
+      // `B-NEW`. `offer` says whether the request carries tool schemas at all,
+      // and for an endpoint nobody has declared the answer is now "both" — the
+      // schemas go and the fenced prompt stays, because nothing has told
+      // Pantheon which channel this server answers on. Saying only "the fenced
+      // prompt" there would describe the prompt and contradict the request.
+      const doing = tt.offer === 'both'
+        ? 'both — native schemas and the fenced prompt'
+        : (tt.resolved
+          ? (usesNative ? 'native tool calling' : 'the fenced prompt')
+          : 'an answer it could not work out');
+      const forModel = (tt.model_dependent && tt.sample_model && tt.offer !== 'both')
         ? ` for ${esc(tt.sample_model)}` : '';
       const toolsHint = declared
         ? `Using ${doing} — you told it so.`

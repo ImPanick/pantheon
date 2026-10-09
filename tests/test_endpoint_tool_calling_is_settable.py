@@ -176,7 +176,7 @@ def test_both_definitions_say_which_question_they_answer():
 
 def test_the_panel_is_told_what_the_agent_will_do():
     auto = _tool_transport_view(_Row(None, "http://localhost:11434/v1"), ["qwen3:8b"])
-    assert auto == {"declared": None, "resolved": "fenced",
+    assert auto == {"declared": None, "resolved": "fenced", "offer": "fenced",
                     "sample_model": "qwen3:8b", "model_dependent": True}
 
     told = _tool_transport_view(_Row(True, "http://localhost:11434/v1"), ["qwen3:8b"])
@@ -186,6 +186,23 @@ def test_the_panel_is_told_what_the_agent_will_do():
         "a declared endpoint answers the same for every model, and the panel "
         "must not name one as though it had a say"
     )
+
+
+def test_the_panel_says_when_both_channels_are_live():
+    """`B-NEW`. `resolved` answers "which prompt, which parser"; `offer`
+    answers "does the request carry a `tools` array", and for an endpoint
+    nobody has declared those are now different answers — schemas go AND the
+    fenced prompt stays. A panel that showed only the first would read
+    "fenced" beside a request carrying every schema, which is the exact
+    disagreement `P3-22` exists to end."""
+    view = _tool_transport_view(_Row(None, "http://127.0.0.1:8080/v1"), ["some-local-build"])
+    assert view["resolved"] == "fenced"
+    assert view["offer"] == "both"
+    # Declared, and Ollama, keep one answer each.
+    assert _tool_transport_view(_Row(True, "http://127.0.0.1:8080/v1"), ["m"])["offer"] == "native"
+    assert _tool_transport_view(_Row(False, "http://127.0.0.1:8080/v1"), ["m"])["offer"] == "fenced"
+    assert _tool_transport_view(
+        _Row(None, "http://localhost:11434/v1"), ["qwen3:8b"])["offer"] == "fenced"
 
 
 def test_the_view_agrees_with_the_resolver_it_reports_on():
