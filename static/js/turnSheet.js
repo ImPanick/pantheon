@@ -72,12 +72,29 @@ export function isRendered(node) {
   return true;
 }
 
+// A click this sheet makes itself is not an outside click. The rows drive the
+// composer's own buttons, which sit OUTSIDE the sheet, and the dismissal
+// wrapper's outside-click listener is on `document` in the capture phase — so
+// without this the first row tapped closed the sheet under the thumb (measured
+// 2026-10-09: tapping Chat switched the mode and shut the sheet, so Agent could
+// not be tapped back). The dispatch is synchronous, so the flag is still up
+// while that listener runs.
+let _driving = 0;
+
 function _click(node) {
   if (!node) return false;
-  if (typeof node.click === 'function') node.click();
-  else node.dispatchEvent(new Event('click'));
+  _driving += 1;
+  try {
+    if (typeof node.click === 'function') node.click();
+    else node.dispatchEvent(new Event('click'));
+  } finally {
+    _driving -= 1;
+  }
   return true;
 }
+
+/** True while a row is clicking a composer control on the sheet's behalf. */
+export function isDriving() { return _driving > 0; }
 
 /** The approval control the sibling lane landed, or null. */
 export function approvalControl(doc) {
@@ -243,7 +260,7 @@ export function openSheet(doc) {
     _close = null;
     layer.classList.add('hidden');
     if (chip) chip.setAttribute('aria-expanded', 'false');
-  });
+  }, (ev) => !_driving && !sheet.contains(ev.target));
   return true;
 }
 
@@ -291,12 +308,20 @@ export function flipSwitch(doc, rowId) {
 }
 
 /** Hand off to a control that already exists, closing the sheet first so the
- *  menu it opens is not drawn underneath it. */
-function _handOff(doc, id) {
+ *  menu it opens is not drawn underneath it.
+ *
+ *  The click is made on the NEXT task, not in this one. The tap that reached
+ *  the row is still propagating, and the menus it hands off to each close
+ *  themselves on a document click landing outside them — so opening the model
+ *  picker inside the row's own handler opened it and then the same tap closed
+ *  it again (measured 2026-10-09: the sheet closed, the picker did not appear).
+ *  `initOverflowMenu` defers its own outside-click listener for the same
+ *  reason. */
+export function handOff(doc, id) {
   closeSheet(doc);
   const target = _el(doc, id);
   if (!target) return false;
-  _click(target);
+  setTimeout(() => _click(target), 0);
   return true;
 }
 
@@ -331,20 +356,30 @@ export function initTurnSheet(doc) {
   }
 
   const model = _el(d, 'turn-row-model');
-  if (model) model.addEventListener('click', () => _handOff(d, 'model-picker-btn'));
+  if (model) model.addEventListener('click', () => handOff(d, 'model-picker-btn'));
   const ctx = _el(d, 'turn-row-context');
-  if (ctx) ctx.addEventListener('click', () => _handOff(d, 'chat-context-pill'));
+  if (ctx) ctx.addEventListener('click', () => handOff(d, 'chat-context-pill'));
   const persona = _el(d, 'turn-row-persona');
-  if (persona) persona.addEventListener('click', () => _handOff(d, 'overflow-preset-btn'));
+  if (persona) persona.addEventListener('click', () => handOff(d, 'overflow-preset-btn'));
 
   // The composer's controls change from a dozen places (a slash command, the
   // tour, a 409 falling back to Chat, Nobody mode, the feature table). The
   // page is read rather than told, the way `backStack.js` reads its windows.
+  const watch = ['mode-agent-btn', 'mode-chat-btn', 'plan-toggle-btn', 'web-toggle-btn',
+    'bash-toggle-btn', 'character-indicator-btn', 'character-indicator-name',
+    'model-picker-label', 'chat-context-pill', 'chat-context-pill-label',
+    'agent-limits-hint'];
+  // Pressed anywhere — the chip on the bar, the palette, the tour, a `/toggle
+  // mode` — the control's own handler runs first (this listener is added after
+  // `app.js` bound them) and the chip is redrawn from what it left behind.
+  for (const id of watch) {
+    const node = _el(d, id);
+    if (node && node.tagName === 'BUTTON') node.addEventListener('click', () => paint(d));
+  }
+  // And for a change nobody clicked: a 409 writing `.active` straight onto the
+  // buttons, `applyModeToToggles` half a second after a mode change, the
+  // context wheel filling in when a turn ends.
   if (typeof MutationObserver !== 'undefined') {
-    const watch = ['mode-agent-btn', 'mode-chat-btn', 'plan-toggle-btn', 'web-toggle-btn',
-      'bash-toggle-btn', 'character-indicator-btn', 'character-indicator-name',
-      'model-picker-label', 'chat-context-pill', 'chat-context-pill-label',
-      'agent-limits-hint'];
     const obs = new MutationObserver(() => paint(d));
     for (const id of watch) {
       const node = _el(d, id);
@@ -363,5 +398,5 @@ export function initTurnSheet(doc) {
 }
 
 export default { initTurnSheet, paint, readTurn, openSheet, closeSheet, toggleSheet,
-  setMode, setApproval, flipSwitch, isOpen, isRendered, approvalControl,
-  SWITCH_ROWS, APPROVAL_CONTROLS };
+  setMode, setApproval, flipSwitch, handOff, isOpen, isDriving, isRendered,
+  approvalControl, SWITCH_ROWS, APPROVAL_CONTROLS };
