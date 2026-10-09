@@ -119,6 +119,13 @@ them the owner's. None is a gate; `B1296` is the closest, and § 7 says what wou
 
 **Direction as of 2026-10-08: the open count is rising.**
 
+Re-measured 2026-10-09, after the owner ran the pushed `v0.2.0` and reported two things: 206 filed, 133 closed —
+**a ratio of 1.549**, open 314 → 387, done 72.5 % → 71.3 %. Seven lanes answered the two reports; the wave closed
+twenty-six rows and filed fourteen that stay open, two of them the owner's. None is a gate. The one row that touches
+a `FORBIDDEN.md` Part 2 control is `B1308`, and § 7 says what it narrowed, what it did not, and what the residual is.
+
+**Direction as of 2026-10-09: the open count is rising.**
+
 ### A second number, which is the one that moves
 
 Of the last 40 `B` rows filed — `B360` through `B455`, four waves of sweeps plus
@@ -607,6 +614,9 @@ weakest one in this document: it means nobody adjudicated them individually.
 | `B1271` | tracked | security | branches only an anonymous `require_user` reached are unreachable from a request since `D-2026-10-07-02` §2; `require_privilege`'s pass-through needs an app assembled with no auth manager, which the real app never is — dead code to remove or comment, not a door |
 | `B1273` | tracked | defect | a documents poller asks for a Tidy plan with documents switched off and is refused 403, swallowed; the rule read *is false* in the row's code expression `toolShown('library') is false` |
 | `B1296` | tracked | claim | `v0.2.0` is tagged on `bbd66a3` while `[0.2.0]` and its notes describe work merged after it; true once the tag is re-cut on the released commit, a claim gate if `v0.2.0` is published on `bbd66a3` with these notes — the integrator's to settle before the tag is pushed |
+| `B1308` | tracked | security | registering any MCP server armed the post-external approval gate for every turn, so the first MCP call of every turn waited for a click; **closed 2026-10-09** by narrowing what counts as *post-external* — the gate's own mechanism and `untrusted_context_message` are byte-identical (`FORBIDDEN.md` Part 2 untouched) and a tool **manifest** no longer arms it, while everything that genuinely came from outside still does, asserted as ten parametrised sources each of which still refuses `bash`, with the adversary named (`Law 17`): the first **result** from a hostile MCP server arms the run and `bash`, `write_file`, `send_email` and `manage_settings` are all refused. Read against the four tests and not a gate: the control holds in the direction it exists for, the narrowing is measured and asserted both ways, guard-marker escaping got wider rather than narrower, and the server prose that no longer arms on its own reaches the prompt only because an admin registered that server (`require_admin` on `/api/mcp/servers`). The residual, written down rather than argued away: a hostile tool **description** no longer arms the gate by itself — it sits inside guard markers in a block that says to read a description as a description, and the server's first output arms the run |
+| `B1324` | tracked | decision | the person's own saved memory arms that gate, so every agent run with one pinned memory asks before a privileged effect and the card calls it external context; over-arming, so it fails closed, and the owner's call — a memory can be laundered in by an agent calling `manage_memory add`, which is itself a gated write, which is why `B1300` held the behaviour byte-for-byte rather than changing it while rewording a header |
+| `B1328` | tracked | decision | an installed skill arms that gate for the same reason the MCP manifest did; the same over-arming shape as `B1324` and the same fail-closed direction, and harder than the manifest was, because skill text is editable through `manage_skills`, which an agent can call — so it wants one answer together with memory and integration prompt text rather than a second one |
 
 ---
 

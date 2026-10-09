@@ -99,7 +99,42 @@ One file per version, for the person deciding whether to upgrade.
 
 ## [Unreleased]
 
-_Nothing yet. Entries land here and move down when a version is cut._
+The first fixes from `v0.2.0` in use: the owner ran the release on their own install and reported
+two things on 2026-10-09. Both are fixed here, and these entries move under a version heading when
+the next one is cut.
+
+### Fixed
+
+- **The model can tell where your message begins.** Everything Pantheon adds to a turn — the
+  delivery register, the date and time — had to be a `user` message, and nothing marked it, so it
+  was glued to your words. A model sent that spent 92 seconds deciding which part of its prompt was
+  the question, called the turn a *"prompt injection"* test and answered the wrong thing. What the
+  application adds now says so, and your own saved memory no longer arrives under the warning
+  written for hostile web pages.
+- **Tools and MCP servers reach the model.** A model whose *name* Pantheon did not recognise was
+  sent no tools at all; every MCP tool was dropped from the request whenever the embedding backend
+  was down; one MCP tool with a schema a strict local server cannot read refused the whole request,
+  taking the others with it; the prompt named eleven tools the request withheld; two of the five
+  tool-call shapes a local server writes were dropped; and a registered server that is not running
+  is now named to the model with its own error instead of being silently absent.
+- **The first tool call of a turn no longer waits for a click.** Registering any MCP server put the
+  run into *"external untrusted context has already influenced this run"* before you had asked
+  anything, because the list of what your install can call was wrapped as if it had been fetched
+  from outside. A tool list is not a web page. Everything that genuinely comes from outside — a
+  tool's output, a web result, a fetched page, mail, a document, a skill — still holds the next
+  privileged effect, and a hostile MCP result still refuses `bash`.
+- **A web search searches what you asked.** The query was broken into capitalised words and OR-ed
+  back together, so *"Old School RuneScape Fractured Archive raid details"* matched pages holding
+  only the word *Old* — the owner's search returned a film, IMDb, a dictionary and a clothing shop.
+  The query goes out as written, the block says which provider answered and what was sent, and a
+  search whose results do not match says so instead of letting the model answer from memory.
+- **Export writes the whole chat.** Every item in the chat's Export menu read the page on screen,
+  so an export held the top of the chat and stopped. The menu asks the server, which has had the
+  whole thing all along, and the Markdown it writes carries each turn's reasoning. A document's
+  *Export as PDF* failed silently on one of this page's own colours and works now.
+- **One typed message is one message.** A resend trimmed the chat by counting the bubbles on
+  screen, so on a chat longer than one page the message was stored twice and sent to the model
+  twice — which is what the owner's own exported chat shows.
 
 ---
 
