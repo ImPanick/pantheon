@@ -732,3 +732,28 @@ def test_the_catalogue_offers_it_where_the_other_toggles_are():
     block = source[toggle:source.index("\n  },", toggle)]
     assert "'mode':" in block, "/toggle has no mode subcommand"
     assert "_cmdToggleMode" in block, "the mode subcommand is wired to something else"
+
+
+def test_the_tour_points_at_whichever_control_the_bar_is_showing():
+    """A click-to-continue step pointed at a `display: none` control waits for
+    a click that can never come. `querySelector` finds one, so the Agent-mode
+    step hung the first-run tour on any phone narrow enough to drop the
+    segmented toggle — and this row widened the bar at which that happens.
+
+    `Law 20` option 2: both assertions are scoped to the one function that owns
+    them, resolved out of the module, never grepped file-wide.
+    """
+    source = SLASH.read_text(encoding="utf-8")
+    body = js_function(source, "function showStep")
+    assert "checkVisibility" in body, (
+        "showStep still highlights a control the page is not showing")
+    assert "resolve('skip')" in body, "a step with nothing to point at must be skipped"
+
+    tour = js_function(source, "export async function runFirstRunTour") if (
+        "export async function runFirstRunTour" in source) else source
+    start = tour.index("const steps = [")
+    steps = tour[start:tour.index("];", start)]
+    mode_step = [line for line in steps.splitlines() if "mode-agent-btn" in line]
+    assert mode_step, "the tour no longer names the mode control"
+    assert "#turn-chip" in mode_step[0], (
+        "the tour names only the segmented toggle, which no phone shows")

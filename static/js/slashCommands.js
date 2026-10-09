@@ -2393,7 +2393,13 @@ async function _cmdDemo(args, ctx) {
 
       // Support multiple selectors (comma-separated)
       const sels = sel.split(',').map(s => s.trim());
-      const targets = sels.map(s => document.querySelector(s)).filter(Boolean);
+      // Rendered, not merely present. `querySelector` finds a `display: none`
+      // control, and a click-to-continue step pointed at one waits for a click
+      // that can never come — which is what the Agent-mode step did on a phone,
+      // where the chat bar's container query drops `.mode-toggle`
+      // (`D-2026-10-09-01` §4). A step with nothing to point at is skipped.
+      const targets = sels.map(s => document.querySelector(s)).filter(
+        (n) => n && (typeof n.checkVisibility === 'function' ? n.checkVisibility() : true));
       if (!targets.length) return resolve('skip');
 
       const clickMode = mode === 'click';
@@ -2587,8 +2593,19 @@ async function _cmdDemo(args, ctx) {
     { sel: '#sidebar-new-chat-btn', text: 'Start a new chat. <b>Click it.</b>', mode: 'click',
       before() { if (sidebar?.classList.contains('hidden')) sidebar.classList.remove('hidden'); } },
     { sel: '#model-picker-btn',   text: 'Pick a model.', advanceOnClick: true },
-    { sel: '#mode-agent-btn',     text: '<b>Agent mode</b> lets the model use tools.', mode: 'click' },
-    { sel: '#web-toggle-btn',     text: '<b>Web search</b>, built in.', mode: 'click' },
+    // Whichever of the two the bar is showing: the segmented toggle on a wide
+    // bar, `#turn-chip` on a phone, where it opens the turn sheet the mode
+    // lives in (`D-2026-10-09-01` §4). The filter above picks the rendered one.
+    { sel: '#mode-agent-btn, #turn-chip',
+      text: '<b>Agent mode</b> lets the model use tools.', mode: 'click' },
+    { sel: '#web-toggle-btn',     text: '<b>Web search</b>, built in.', mode: 'click',
+      // The chip opens a sheet over the composer, and the next three steps are
+      // under it. Closed through the dismissal the sheet registered, so its
+      // Escape-stack entry goes with it rather than being stranded.
+      before() {
+        const sheet = document.getElementById('turn-sheet');
+        if (sheet && typeof sheet._dismiss === 'function') sheet._dismiss();
+      } },
     { sel: '#overflow-plus-btn',  text: 'More tools. <b>Click to peek.</b>',
       advanceOnClick: true, pulseNext: true, afterDelay: 2200 },
     { sel: '#message',            text: 'Write here; drop files to attach them. <b>/help</b> lists the commands.',
