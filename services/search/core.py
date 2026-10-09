@@ -21,8 +21,8 @@ from .cache import (
     generate_cache_key,
     cleanup_cache,
 )
-from .query import _cache_duration_for_query
-from .ranking import rank_search_results
+from .query import _cache_duration_for_query, build_enhanced_query
+from .ranking import rank_search_results, relevance_report
 from .providers import (
     searxng_search_api,
     brave_search,
@@ -204,12 +204,19 @@ def searxng_search_results(query: str, count: int = 10, time_filter: str = None)
 
     provider_chain = _build_provider_chain(search_provider)
 
+    # The sent query is derived once, here, for every provider in the chain
+    # (`Law 7`). It used to be derived inside `_brave_search_impl`, which was
+    # its only caller — so the same search went out as two different strings
+    # depending on a setting. `query` stays the person's words, because the
+    # cache key, the analytics row and the ranking are all about what they asked.
+    sent_query = build_enhanced_query(query, time_filter)
+
     results: List[dict] = []
     for provider_name in provider_chain:
         for attempt in range(2):
             try:
                 logger.info(f"Attempting {provider_name} search (attempt {attempt + 1})")
-                results = _call_provider(provider_name, query, count, time_filter)
+                results = _call_provider(provider_name, sent_query, count, time_filter)
                 if results:
                     logger.info(f"{provider_name} search succeeded with {len(results)} results")
                     break
@@ -286,6 +293,33 @@ def invalidate_search_cache(query: Optional[str] = None) -> None:
             logger.info(f"No cache entry found for query '{query}'.")
 
 
+def _relevance_lines(report: dict) -> str:
+    """The match, in words a model can act on and a person can check.
+
+    One line always, plus two when the match is bad — the measured fraction and
+    the query words no result mentioned. `Law 5`: the number carries its scope
+    ("1 of 9 query terms"), never a bare adjective.
+    """
+    verdict = report.get("verdict", "none")
+    matched = report.get("matched", 0)
+    terms = report.get("terms", 0)
+    pct = round(report.get("best_coverage", 0.0) * 100)
+    head = (
+        f"Relevance: {verdict} — the closest result matches "
+        f"{matched} of {terms} query terms ({pct}%)."
+    )
+    lines = [head]
+    missing = report.get("missing") or []
+    if missing:
+        lines.append("No result mentions: " + ", ".join(missing))
+    if verdict in ("weak", "none"):
+        lines.append(
+            "These results do not match the query. Tell the person the search did not "
+            "find it rather than answering from general knowledge."
+        )
+    return "\n".join(lines)
+
+
 # ----------------------------------------------------------------------
 # Comprehensive web search (with advanced filtering)
 # ----------------------------------------------------------------------
@@ -320,16 +354,24 @@ def comprehensive_web_search(
 
     provider_chain = _build_provider_chain(search_provider)
 
+    # One derivation of the sent string for the whole chain (`Law 7`), and it is
+    # reported in the block below: the owner's 2026-10-09 search could not be
+    # diagnosed from its own transcript because nothing recorded either the
+    # provider that answered or the string that went out.
+    sent_query = build_enhanced_query(query, time_filter)
+
     search_results = []
     provider_attempts = {}
+    answered_by = None
     for provider_name in provider_chain:
         last_err = None
         empty = False
         for attempt in range(2):
             try:
-                search_results = _call_provider(provider_name, query, fetch_count, time_filter)
+                search_results = _call_provider(provider_name, sent_query, fetch_count, time_filter)
                 if search_results:
                     provider_attempts[provider_name] = f"ok ({len(search_results)})"
+                    answered_by = provider_name
                     logger.info(f"Comprehensive search: {provider_name} returned {len(search_results)} results")
                     break
                 empty = True
@@ -439,10 +481,21 @@ def comprehensive_web_search(
         output_parts.append("```")
         output_parts.append("")
 
+    # `Law 10` — what the model is handed says how good the match was, in
+    # measured terms. The owner's 2026-10-09 search returned five results about
+    # a film, a dictionary and a clothing shop; this header said
+    # "Searched 5 results, fetched 3 pages" and nothing else, and the model
+    # answered from general knowledge rather than saying the search had missed.
+    relevance = relevance_report(query, search_results)
+
     output_parts.append("=" * 70)
     output_parts.append("WEB SEARCH RESULTS AND FETCHED CONTENT")
     output_parts.append(f"Query: {query}")
+    output_parts.append(f"Query as sent: {sent_query}")
+    if answered_by:
+        output_parts.append(f"Provider: {answered_by}")
     output_parts.append(f"Searched {len(search_results)} results, fetched {len(fetched_content)} pages")
+    output_parts.append(_relevance_lines(relevance))
     output_parts.append("=" * 70)
     output_parts.append("")
 
@@ -514,6 +567,18 @@ def comprehensive_web_search(
         "4. If the information is time-sensitive, pay attention to the age of the results\n"
         "5. Be explicit if the search results don't contain sufficient information to fully answer the question"
     )
+    if relevance["verdict"] in ("weak", "none"):
+        # The one case where instruction 5 is not enough: the results are
+        # measurably about something else, and the honest answer is to say the
+        # search missed. The owner's turn invented raid strategy from five
+        # pages about an M. Night Shyamalan film.
+        instructions += (
+            "\n6. The Relevance line above says these results do not match the query. "
+            "Say that the search did not find what was asked for, and name what is missing. "
+            "Do not answer from general knowledge as though the results supported it, and "
+            "do not describe the irrelevant results as if they were on topic. Offer a "
+            "different search instead."
+        )
     output_parts.append(instructions)
 
     result = "\n".join(output_parts)

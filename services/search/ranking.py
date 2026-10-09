@@ -163,3 +163,123 @@ def rank_search_results(query: str, results: List[dict]) -> List[dict]:
 
     ranked.sort(key=lambda x: x[0], reverse=True)
     return [r for _, r in ranked]
+
+
+# ----------------------------------------------------------------------
+# How well did the results match? (the 2026-10-09 owner report, items 4 and 5)
+# ----------------------------------------------------------------------
+# An enum, not a boolean: `relevant: false` reads both as "the results are not
+# relevant" and "the relevance check did not apply", and the thing downstream of
+# it is a language model (`Law 10`).
+RELEVANCE_VERDICTS = ("strong", "partial", "weak", "none")
+
+# Coverage is the fraction of the query's *subject* terms that appear in a
+# result's title or snippet. The boundaries are the measured gap between the
+# owner's five results (best coverage 1/9 = 0.11) and a result set that answers
+# the same question (9/9 = 1.0); `partial` is where a result shares the subject
+# but not the specifics, which is worth reading and worth saying.
+_STRONG_COVERAGE = 0.6
+_PARTIAL_COVERAGE = 0.35
+
+# Words that carry no subject. Counting them makes a short question look like a
+# bad match ("who is the CEO of Jagex" is 6 tokens and 2 of them are the point).
+_FILLER_TERMS = frozenset({
+    # question words — `_detect_question_type` names the same six
+    "who", "what", "when", "where", "why", "how", "which", "whose", "whom",
+    # articles, conjunctions, prepositions, auxiliaries
+    "a", "an", "the", "and", "or", "but", "if", "of", "in", "on", "at", "to",
+    "for", "from", "by", "with", "about", "into", "over", "after", "before",
+    "is", "are", "was", "were", "be", "been", "being", "am", "do", "does",
+    "did", "has", "have", "had", "can", "could", "will", "would", "shall",
+    "should", "may", "might", "must", "it", "its", "this", "that", "these",
+    "those", "i", "me", "my", "we", "us", "our", "you", "your", "he", "she",
+    "they", "them", "their", "there", "here", "as", "so", "than", "then",
+    "up", "out", "off", "down", "not", "no", "any", "all", "some", "more",
+    "most", "very", "just", "also", "like", "get", "got", "want", "need",
+})
+
+
+def subject_terms(query: str) -> List[str]:
+    """The words that make a query *this* query, in order, de-duplicated.
+
+    Tokenised the way `rank_search_results` tokenises (``\\b\\w+\\b``), minus
+    `_FILLER_TERMS`. A query made of nothing but filler falls back to its own
+    tokens so coverage is never divided by zero.
+    """
+    if not isinstance(query, str):
+        return []
+    tokens = [t.lower() for t in re.findall(r"\b\w+\b", query)]
+    terms = [t for t in tokens if t not in _FILLER_TERMS]
+    if not terms:
+        terms = tokens
+    seen = set()
+    out = []
+    for t in terms:
+        if t not in seen:
+            seen.add(t)
+            out.append(t)
+    return out
+
+
+def _result_text(result) -> str:
+    if not isinstance(result, dict):
+        return ""
+    return f"{result.get('title') or ''} {result.get('snippet') or ''}".lower()
+
+
+def relevance_report(query: str, results) -> dict:
+    """Measure how well ``results`` match ``query``. Never raises.
+
+    Returns ``{"verdict", "best_coverage", "matched", "terms", "missing"}``:
+
+      * ``verdict``   one of `RELEVANCE_VERDICTS`.
+      * ``best_coverage``  the best single result's share of the subject terms,
+        0.0-1.0, because the model reads the best result rather than the mean.
+      * ``matched`` / ``terms``  that share as the integers behind it, so the
+        block can print *"1 of 9"* rather than an adjective (`Law 5`).
+      * ``missing``  subject terms that appear in **no** result's title or
+        snippet — the most useful line of the lot. For the owner's search it is
+        `school, runescape, fractured, archive, raid, details, 20th`: six of the
+        nine words that made it a question about a video game were in none of
+        the five results, and nothing said so.
+
+    `rank_search_results` has always computed a per-result score and returned
+    bare rows, discarding it one line before the output was built. This is that
+    measurement, kept.
+    """
+    terms = subject_terms(query)
+    rows = [r for r in (results or []) if isinstance(r, dict)]
+    if not terms or not rows:
+        return {
+            "verdict": "none",
+            "best_coverage": 0.0,
+            "matched": 0,
+            "terms": len(terms),
+            "missing": list(terms),
+        }
+
+    best_hits = 0
+    covered_anywhere = set()
+    for row in rows:
+        text = _result_text(row)
+        hits = [t for t in terms if _has_word(text, t)]
+        covered_anywhere.update(hits)
+        best_hits = max(best_hits, len(hits))
+
+    coverage = best_hits / len(terms)
+    if coverage >= _STRONG_COVERAGE:
+        verdict = "strong"
+    elif coverage >= _PARTIAL_COVERAGE:
+        verdict = "partial"
+    elif best_hits > 0:
+        verdict = "weak"
+    else:
+        verdict = "none"
+
+    return {
+        "verdict": verdict,
+        "best_coverage": coverage,
+        "matched": best_hits,
+        "terms": len(terms),
+        "missing": [t for t in terms if t not in covered_anywhere],
+    }
