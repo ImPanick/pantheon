@@ -7447,7 +7447,7 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
     return `Sending removes the ${counted.length} messages below.`;
   }
 
-  /** `B-NEW-4` (fx7-dup). The user bubbles that stand for a stored row.
+  /** `B1323` (fx7-dup). The user bubbles that stand for a stored row.
    *
    *  A queued request is drawn as `.msg msg-user msg-user-queued` from the
    *  browser's own queue (`_createQueuedBubble`) and has no row in
@@ -7470,7 +7470,7 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
     return text.replace(/\s*\[\d+ attachment\(s\)\]$/, '');
   }
 
-  /** `B-NEW-4` (fx7-dup). The cut an edit / resend / regenerate asks for, said
+  /** `B1323` (fx7-dup). The cut an edit / resend / regenerate asks for, said
    *  the way the server can check it.
    *
    *  It used to be a number: the clicked bubble's index among
@@ -7478,14 +7478,14 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
    *  `/api/session/{id}/truncate`, which indexes the **stored rows**. Those two
    *  counts are not the same. Measured on `3b40a4e` in Chromium, a two-turn
    *  agent chat: the last user bubble was DOM index 3 and row index 2, because
-   *  an agent turn draws two `.msg` for one saved assistant row (`B-NEW-2`'s
+   *  an agent turn draws two `.msg` for one saved assistant row (`B1332`'s
    *  footer copy — `data-raw-echo` live, `.msg-continuation` on reload). The
    *  cut therefore kept the very message it was asked to drop, the resend saved
    *  a second copy, and one typed message became two rows: one bubble while the
    *  turn was on screen, two after a reload, and two copies of the person's
    *  words in the next prompt — which is what the owner's 2026-10-09 export
    *  shows. A queued bubble, the page the view holds of a longer chat
-   *  (`B-NEW-1`) and a `hidden` compaction row each break the same arithmetic.
+   *  (`B1331`) and a `hidden` compaction row each break the same arithmetic.
    *
    *  So the browser names WHICH user message — counted back from the newest,
    *  among the bubbles that stand for a row — and what it says, and the server
@@ -7503,7 +7503,7 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
     };
   }
 
-  /** `B-NEW-4` (fx7-dup). One door to the trim the three re-send flows need.
+  /** `B1323` (fx7-dup). One door to the trim the three re-send flows need.
    *  `{ ok: true }`, or `{ ok: false, sentence }` — and on a refusal nothing
    *  was removed, so the caller must not send either. */
   async function _truncateFromUserMessage(sessionId, cut) {
@@ -7529,7 +7529,7 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
    *  chat to it first, so it is not asked twice. */
   function _retryLastTurn() {
     const box = document.getElementById('chat-history');
-    // `B-NEW-4`: a queued bubble is not a message this chat holds, and Retry
+    // `B1323`: a queued bubble is not a message this chat holds, and Retry
     // must not send one in place of the reply that failed.
     const users = _storedUserBubbles(box);
     const last = users[users.length - 1];
@@ -7596,7 +7596,7 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
       if (!sessionId) return;
 
       try {
-        // `B-NEW-4`: the boundary is this message, not where it sits on screen
+        // `B1323`: the boundary is this message, not where it sits on screen
         // — the edit box has replaced the body, so its words are passed in.
         const truncated = await _truncateFromUserMessage(
           sessionId, _userMessageCut(userMsgElement, currentText));
@@ -7690,7 +7690,7 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
       if (replaceFromHere) {
         // Regenerate flows intentionally trim history to this point before
         // resubmitting. The plain "Resend message" action must not do this.
-        // `B-NEW-4`: by this message's identity. As a count of bubbles the
+        // `B1323`: by this message's identity. As a count of bubbles the
         // trim missed by one on any chat with an agent turn in it, kept the
         // message it was asked to drop, and the resend below stored a second
         // copy of it.
@@ -7809,7 +7809,7 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
     }
 
     try {
-      // `B-NEW-4`: the user message this reply answered, by its identity. As
+      // `B1323`: the user message this reply answered, by its identity. As
       // `userIndex` — its position among the `.msg` elements — the trim missed
       // the row it meant on any chat with an agent turn above it.
       const truncated = await _truncateFromUserMessage(

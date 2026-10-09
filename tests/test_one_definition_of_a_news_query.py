@@ -194,7 +194,7 @@ def test_a_news_query_is_cached_briefly_and_a_reference_query_is_not():
         "Old School RuneScape Fractured Archive raid details October 20th"
     ) == timedelta(hours=24)
     # The longest duration the function can return is the one the cleanup pass
-    # is given, so a 24-hour entry is not swept at one hour (`B-NEW` below).
+    # is given, so a 24-hour entry is not swept at one hour (`B1316`).
     assert query.MAX_CACHE_DURATION == timedelta(hours=24)
 
 

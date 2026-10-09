@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""fx7-dup (`B-NEW-4`) — which message a resend cuts the chat back to.
+"""fx7-dup (`B1323`) — which message a resend cuts the chat back to.
 
 The owner's own export holds their one typed message twice
 (`/work/notes/owner-shots/2026-10-09-osrs-chat-export.md`, lines 1 and 4) and
@@ -12,7 +12,7 @@ failed reply (`_retryLastTurn` → `resendUserMessage(…, {replaceFromHere})`),
 *Edit* a message, and *Regenerate* a reply. Each posted `keep_count` taken from
 the clicked bubble's index among `#chat-history`'s `.msg` elements, and that is
 not an index into the stored rows: an agent turn draws **two** `.msg` for one
-saved reply (`B-NEW-2`'s footer copy — `data-raw-echo` while it streams,
+saved reply (`B1332`'s footer copy — `data-raw-echo` while it streams,
 `.msg-continuation` after a reload). One bubble too many, and the trim kept the
 very message it was asked to drop; the resend then stored a second copy of it.
 

@@ -70,7 +70,7 @@ def _escape_guard_markers(text: str) -> str:
     # (`tests/test_the_person_s_words_are_their_own_message.py`).
     text = text.replace(OWN_MATERIAL_OPEN, "<<<_USER_SAVED_MATERIAL>>>")
     text = text.replace(OWN_MATERIAL_CLOSE, "<<<_END_USER_SAVED_MATERIAL>>>")
-    # `fx7-agent` / `B-NEW-8`. The fourth envelope's markers, for the same
+    # `fx7-agent` / `B1308`. The fourth envelope's markers, for the same
     # reason: a tool description an MCP server advertises is the server's own
     # prose, and a server can be a remote third party, so it must not be able
     # to close the manifest block and continue outside it. Escaping both ways
@@ -246,7 +246,7 @@ def own_context_message(
 
 # ── What this installation can call ─────────────────────────────────────────
 #
-# `fx7-agent`, closing `fx6-tools`'s `B-NEW-8`. The MCP tool list went through
+# `fx7-agent`, closing `fx6-tools`'s `B1308`. The MCP tool list went through
 # `untrusted_context_message`, and `src/tool_capabilities.py`'s
 # `external_untrusted_context_sources` therefore returned `['MCP tools']` for a
 # turn that had read nothing from anywhere. Measured on this tree before the

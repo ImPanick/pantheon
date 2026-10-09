@@ -186,7 +186,7 @@ def _cut_text_key(value: Any) -> str:
 
 
 def _resolve_user_message_cut(session, spec: Dict[str, Any]):
-    """`B-NEW-4` (fx7-dup). A user message's identity -> a `keep_count`.
+    """`B1323` (fx7-dup). A user message's identity -> a `keep_count`.
 
     `spec` is `{"index_from_end": n, "text": "..."}`: the n-th user message
     counting back from the newest one a reader can see, and what it says.
@@ -436,13 +436,13 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
     async def truncate_session(request: Request, session_id: str):
         """Cut a session's history back to a boundary.
 
-        `B-NEW-4` (fx7-dup). `keep_count` is an index into **this session's
+        `B1323` (fx7-dup). `keep_count` is an index into **this session's
         stored rows**, and the three callers in `static/js/chat.js` — edit a
         message, resend it, regenerate the reply — each counted `.msg` elements
         in `#chat-history` instead. Those are not the same number: measured on
         `3b40a4e`, an agent turn draws two `.msg` for one saved assistant row
-        (`B-NEW-2`'s footer copy), a queued bubble is drawn with no row at all,
-        the view holds one page of a longer chat (`B-NEW-1`), and a `hidden`
+        (`B1332`'s footer copy), a queued bubble is drawn with no row at all,
+        the view holds one page of a longer chat (`B1331`), and a `hidden`
         compaction row is stored but never drawn. One bubble too many and the
         cut keeps the very message it was asked to drop, so the resend saves a
         second copy — which is how one typed message became two rows, two

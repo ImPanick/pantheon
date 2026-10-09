@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""fx7-dup (`B-NEW-4`) — one typed message, one row, one copy in the prompt.
+"""fx7-dup (`B1323`) — one typed message, one row, one copy in the prompt.
 
 The owner's own export holds their message twice
 (`/work/notes/owner-shots/2026-10-09-osrs-chat-export.md`, lines 1 and 4) and
@@ -10,7 +10,7 @@ Nothing but a browser shows why. The number that was wrong was a count of
 `.msg` elements in `#chat-history`, and the reason it was wrong is that an
 agent turn is drawn as **two** `.msg` for one saved reply: a holder that is
 hidden when its round only thought, and the `.msg-continuation` bubble the
-turn's footer sits under (`B-NEW-2`). No sandbox draws a chat; only the real
+turn's footer sits under (`B1332`). No sandbox draws a chat; only the real
 renderer does. So this file boots the real app against a **recording**
 OpenAI-compatible model and drives Retry and Edit in headless Chromium, then
 reads three things and compares them: what was typed, what is in
@@ -370,7 +370,7 @@ async function idle(page) {
   out.live = await snap(page);
 
   // What a person sees next time they open the chat, which is what the export
-  // reads as well (`B-NEW-1`: the export is the server's history now).
+  // reads as well (`B1331`: the export is the server's history now).
   await page.reload({ waitUntil: 'load' });
   await page.waitForFunction(() => window.__pantheonAppStarted === true, null, { timeout: 60000 });
   await page.waitForTimeout(1200);

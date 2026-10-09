@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""fx7-dup (`B-NEW-4`) — one typed message is one row, through the real route.
+"""fx7-dup (`B1323`) — one typed message is one row, through the real route.
 
 The owner's own export (`/work/notes/owner-shots/2026-10-09-osrs-chat-export.md`,
 lines 1 and 4) holds their *"Research: Find out the ins and outs of the new
@@ -14,7 +14,7 @@ web search, through `/api/chat_stream` and through `/api/chat` (8 cases). What
 stored the second copy was the **trim** that Retry, *Edit* and *Regenerate* do
 before re-sending: each posted `keep_count` = the clicked bubble's index among
 `#chat-history`'s `.msg` elements. That is not a row index. An agent turn draws
-two `.msg` for one saved reply (`B-NEW-2`'s footer copy), so a two-turn agent
+two `.msg` for one saved reply (`B1332`'s footer copy), so a two-turn agent
 chat drew six bubbles for four rows and the trim ran one row late — keeping the
 message it was asked to drop, after which the resend stored a second copy of
 it. Measured: `chat_messages` held the typed text twice, a reload drew two
@@ -195,7 +195,7 @@ def test_a_chat_with_no_user_message_yet_is_refused():
 
 
 def test_the_same_words_twice_are_two_messages_and_the_newest_one_wins():
-    """Two sends of the same text are two turns — the rule `B-NEW-2` set for a
+    """Two sends of the same text are two turns — the rule `B1332` set for a
     reply holds for a question. `index_from_end` says which, and the text check
     cannot tell them apart, so the count has to."""
     session = _session(("user", "again"), ("assistant", "ok"),

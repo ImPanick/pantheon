@@ -730,7 +730,7 @@ def _load_mcp_disabled_map() -> Dict[str, set]:
 # System prompt that tells the LLM about available tools.
 # Always injected — the LLM decides whether to use them.
 #
-# `fx7-agent`, closing `fx6-tools`'s `B-NEW-9`. `_AGENT_PREAMBLE`,
+# `fx7-agent`, closing `fx6-tools`'s `B1309`. `_AGENT_PREAMBLE`,
 # `_AGENT_RULES` and `_API_AGENT_RULES` were each defined TWICE here and the
 # second definition won, so ~118 lines of guidance above this point had never
 # reached a model from these constants. `Law 13`: it was not broken, it passed
@@ -1986,7 +1986,7 @@ def _local_computer_rules() -> str:
 def _turn_is_machine_targeted(messages: List[Dict], available: set) -> bool:
     """Whether `_local_computer_rules()` belongs in front of the model.
 
-    `fx7-agent`, closing `fx6-tools`'s `B-NEW-11`. The gate used to be
+    `fx7-agent`, closing `fx6-tools`'s `B1310`. The gate used to be
     `available & _WORKSPACE_TERMINUS_TOOLS` — and `web_search` and `web_fetch`
     are members of that set, so an ordinary web question was told *"The user
     referred to this computer/local machine or a named computer. Treat this as
@@ -3645,7 +3645,7 @@ def _build_system_prompt(
             _mcp_desc = mcp_mgr.get_tool_descriptions_for_prompt(
                 mcp_disabled_map or {}, channel=schema_offer)
             if _mcp_desc:
-                # `fx7-agent`, closing `fx6-tools`'s `B-NEW-8`. This went
+                # `fx7-agent`, closing `fx6-tools`'s `B1308`. This went
                 # through `untrusted_context_message`, so
                 # `external_untrusted_context_sources` named `MCP tools` on
                 # every turn of any install with a registered server and the

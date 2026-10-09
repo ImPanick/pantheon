@@ -28,7 +28,7 @@ def test_resend_message_does_not_truncate_by_default():
     assert "const replaceFromHere = Boolean(opts && opts.replaceFromHere);" in body
 
     guard_idx = body.index("if (replaceFromHere)")
-    # fx7-dup (`B-NEW-4`): the trim is still inside the guard, but it is no
+    # fx7-dup (`B1323`): the trim is still inside the guard, but it is no
     # longer a `fetch` written out here — `_truncateFromUserMessage` is the one
     # door the three re-send flows share, and it is what names the message to
     # cut at instead of counting bubbles. The property this case has always

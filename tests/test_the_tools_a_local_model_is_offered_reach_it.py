@@ -484,7 +484,7 @@ def test_a_parsed_call_reaches_the_tool_not_the_floor(monkeypatch):
     used to say *"the MCP tool list is wrapped as external untrusted context,
     which arms the post-external gate, so the call waits for the person"* — and
     that was measured and true on `a3aad8c`. It was also the defect
-    `B-NEW-8` filed: a manifest of what an install has registered is in the
+    `B1308` filed: a manifest of what an install has registered is in the
     prompt before the person has asked anything, so arming on it held the first
     tool call of **every** turn on any install with MCP. The list now rides in
     `capability_manifest_message`, which does not arm the gate, so a turn that
@@ -518,7 +518,7 @@ def test_a_call_after_a_web_result_still_waits_for_the_person(monkeypatch):
     Round 1 searches the web; that result is external content this run read, so
     the gate arms. Round 2's MCP call is then held **as that tool, with those
     arguments**, and the person gets a card naming it — which is what the case
-    above asserted before `B-NEW-8` moved the manifest out of the way.
+    above asserted before `B1308` moved the manifest out of the way.
     """
     _base(monkeypatch, _mcp_manager())
     events, _sent = _drive(

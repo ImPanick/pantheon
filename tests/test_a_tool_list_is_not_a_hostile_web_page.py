@@ -5,7 +5,7 @@
 used"* and filed five more. Three of those are still inside the complaint and
 are the subject of this file:
 
-* **`B-NEW-8`** — the MCP tool list was injected through
+* **`B1308`** — the MCP tool list was injected through
   `untrusted_context_message`, so `messages_contain_external_untrusted_context`
   returned True for that block **alone** and every turn on an install with one
   registered MCP server began already "externally influenced". The first tool
@@ -14,10 +14,10 @@ are the subject of this file:
   `FORBIDDEN.md` Part 2 and does not lift; its premise is what was wrong.
 * **`fx6-turn`'s two open envelope rows** — the agent loop's third saved-memory
   injection and the person's own email writing style.
-* **`B-NEW-11`** — `_local_computer_rules()` shipped on any turn whose tool set
+* **`B1310`** — `_local_computer_rules()` shipped on any turn whose tool set
   touched `_WORKSPACE_TERMINUS_TOOLS`, and `web_search` is a member.
-* **`B-NEW-9`** — three prompt constants defined twice, second definition wins.
-* **`B-NEW-12`** — two prose lines naming a tool the turn may not have.
+* **`B1309`** — three prompt constants defined twice, second definition wins.
+* **`B1311`** — two prose lines naming a tool the turn may not have.
 
 Every case drives the code: the real envelopes, the real
 `external_untrusted_context_sources`, the real `ToolRunSecurityContext`, the
@@ -127,7 +127,7 @@ def _system_text(messages):
 
 
 def test_the_mcp_tool_list_does_not_arm_the_effect_gate():
-    """`B-NEW-8`. The whole defect, in one assertion.
+    """`B1308`. The whole defect, in one assertion.
 
     Measured on `3b40a4e`: `external_untrusted_context_sources` returned
     `['MCP tools']` for a turn that had read nothing, so the first tool call of
@@ -416,7 +416,7 @@ def test_the_email_style_block_still_arms_the_gate():
     assert messages_contain_external_untrusted_context([message]) is True
 
 
-# ── C. `B-NEW-11` — an ordinary web question is not about this computer ─────
+# ── C. `B1310` — an ordinary web question is not about this computer ─────
 
 
 TERMINUS_HEADING = "## Pantheon Terminus local-machine mode"
@@ -424,7 +424,7 @@ MACHINE_FRAMING = "Treat this as a machine-targeted agent task, not ordinary cha
 
 
 def test_a_web_only_turn_is_not_told_it_is_about_this_computer():
-    """`B-NEW-11`. Measured on the owner's own question, web search on."""
+    """`B1310`. Measured on the owner's own question, web search on."""
     text = _system_text(_prompt(tools=("web_search", "web_fetch", "trigger_research")))
 
     assert TERMINUS_HEADING not in text
@@ -492,7 +492,7 @@ def test_a_workspace_turn_still_gets_the_workspace_block():
     assert TERMINUS_HEADING not in text, "the two blocks are still exclusive"
 
 
-# ── D. `B-NEW-9` — one definition of each prompt constant ───────────────────
+# ── D. `B1309` — one definition of each prompt constant ───────────────────
 
 
 DOUBLY_DEFINED = ("_AGENT_PREAMBLE", "_AGENT_RULES", "_API_AGENT_RULES")
@@ -513,7 +513,7 @@ def _module_level_assignments(path: Path) -> dict:
 
 @pytest.mark.parametrize("name", DOUBLY_DEFINED)
 def test_each_prompt_constant_is_defined_exactly_once(name):
-    """`B-NEW-9`. Measured on `3b40a4e`: each of the three twice, second wins,
+    """`B1309`. Measured on `3b40a4e`: each of the three twice, second wins,
     so roughly 118 lines of guidance had never reached a model."""
     counts = _module_level_assignments(AGENT_LOOP_SRC)
     assert counts.get(name) == 1, f"{name} defined {counts.get(name)} times"
@@ -613,11 +613,11 @@ def test_the_dead_copys_app_api_warnings_are_not_reintroduced():
         assert path in blocked, path
 
 
-# ── E. `B-NEW-12` — no prose line names only tools the turn lacks ───────────
+# ── E. `B1311` — no prose line names only tools the turn lacks ───────────
 
 
 def test_no_prompt_line_names_only_tools_this_turn_cannot_call():
-    """`B-NEW-12`. The register's own count of prompt promises, per line.
+    """`B1311`. The register's own count of prompt promises, per line.
 
     `prune_rules_to_available_tools` keeps a line that names one available tool
     and one absent one, by design. Both lines that did so were split so each
