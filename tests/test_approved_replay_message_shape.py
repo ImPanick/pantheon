@@ -53,29 +53,45 @@ def test_replay_appends_no_empty_assistant_turn():
     assert _empty_assistant_turns(_replay_messages()) == []
 
 
-def test_replay_payload_is_a_single_non_empty_user_turn_for_anthropic():
-    # Asserting the whole sequence rather than scanning a slice: once the empty
-    # spacer is gone the payload is one message, so a "no offenders in
-    # chat[:-1]" check would pass without inspecting anything.
+def test_replay_payload_has_no_empty_content_message_for_anthropic():
+    """The constraint this file exists for, asserted over the whole payload.
+
+    `FIX-2026-10-09` item 1 corrected this case's premise. It used to read
+    `== ["user"]`, because the sanitizer glued the person's request and the
+    sealed tool output into one message; the merge now refuses to join the
+    application's framing to the person's words, so the payload is
+    user / assistant / user. **What this file protects is unchanged**: Anthropic
+    rejects a non-final assistant message with empty content, and the boundary
+    the merge inserts carries text, so no message in the payload is empty.
+    """
     sanitized = llm_core._sanitize_llm_messages(_replay_messages())
     payload = llm_core._build_anthropic_payload(
         "claude-sonnet-5", sanitized, 0.2, 512
     )
     chat = payload["messages"]
-    assert [message["role"] for message in chat] == ["user"]
+    assert [message["role"] for message in chat] == ["user", "assistant", "user"]
     assert all(str(message.get("content") or "").strip() for message in chat)
 
 
-def test_replay_merges_tool_output_after_the_request_with_its_fence_intact():
-    # Dropping the empty assistant turn leaves two adjacent user messages, which
-    # the sanitizer merges. Pin that shape: the tool output must still sit
-    # behind its untrusted fence and must not precede the operator's request.
+def test_replay_keeps_the_request_and_the_tool_output_in_separate_turns():
+    """`FIX-2026-10-09` item 1. The operator asked; a tool answered; the model
+    must be able to tell which is which.
+
+    Was: the two adjacent user messages were merged with `\n\n`, so the
+    request and an `UNTRUSTED SOURCE DATA` block arrived as one turn — the
+    shape the owner's export shows a local model reading as a prompt-injection
+    test. Now a boundary separates them and the order still holds.
+    """
     sanitized = llm_core._sanitize_llm_messages(_replay_messages())
-    user_turns = [m for m in sanitized if m.get("role") == "user"]
-    assert len(user_turns) == 1
-    merged = user_turns[0]["content"]
-    assert merged.index("run the command") < merged.index("UNTRUSTED SOURCE DATA")
-    assert merged.index("UNTRUSTED SOURCE DATA") < merged.index("hello")
+    assert [m.get("role") for m in sanitized] == [
+        "system", "user", "assistant", "user",
+    ]
+    request, boundary, output = sanitized[1], sanitized[2], sanitized[3]
+    assert request["content"] == "run the command and summarise it"
+    assert "UNTRUSTED SOURCE DATA" not in request["content"]
+    assert boundary["content"].strip()
+    assert output["content"].startswith("UNTRUSTED SOURCE DATA")
+    assert output["content"].index("UNTRUSTED SOURCE DATA") < output["content"].index("hello")
 
 
 def test_a_round_with_prose_still_appends_its_assistant_turn():

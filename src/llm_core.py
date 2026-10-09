@@ -16,6 +16,10 @@ from contextlib import asynccontextmanager
 from fastapi import HTTPException
 from typing import Optional, Dict, List, Tuple
 from src.model_context import get_context_length, DEFAULT_CONTEXT, is_local_endpoint
+from src.prompt_security import (
+    is_framed_context_content,
+    is_untrusted_context_content,
+)
 from src.rate_limiter import outbound as _outbound
 from src.rate_limiter import parse_retry_after as _retry_after
 from src.rate_limiter import parse_reset_header as _reset_after
@@ -1934,19 +1938,22 @@ def _as_content_blocks(content) -> List[Dict]:
 
 
 def _is_untrusted_context_content(content) -> bool:
-    if isinstance(content, str):
-        return (
-            content.startswith("UNTRUSTED SOURCE DATA\n")
-            or "<<<UNTRUSTED_SOURCE_DATA>>>" in content
-        )
-    if isinstance(content, list):
-        return any(
-            isinstance(block, dict)
-            and block.get("type") == "text"
-            and _is_untrusted_context_content(block.get("text") or "")
-            for block in content
-        )
-    return False
+    """Whether this content is an `untrusted_context_message` body.
+
+    `FIX-2026-10-09` item 1 / `Law 7`. The shapes moved to
+    `src/prompt_security.py`, beside the envelope that writes them, so a new
+    envelope cannot be added without this and the merge below seeing it. The
+    name stays because five tests and `_sanitize_llm_messages` use it, and
+    renaming a working seam to advertise a refactor is churn.
+    """
+    return is_untrusted_context_content(content)
+
+
+def _is_framed_context_content(content) -> bool:
+    """Whether this message is Pantheon's own framing rather than the person's
+    words — an untrusted block, the person's own saved material, or an
+    application note. See `src/prompt_security.py`."""
+    return is_framed_context_content(content)
 
 
 _REFERENCE_CONTEXT_BOUNDARY = "Reference context received."
@@ -2064,7 +2071,29 @@ def _sanitize_llm_messages(messages: List[Dict]) -> List[Dict]:
 
         last = merged[-1]
         if last.get("role") == "user" and item.get("role") == "user":
-            if _is_untrusted_context_content(last.get("content")):
+            # `FIX-2026-10-09` item 1. **Never merge across the application's own
+            # framing**, in either direction. This used to ask only whether the
+            # EARLIER message was an untrusted block, so everything else
+            # Pantheon adds as a `user` turn — the delivery register, the
+            # date/time, a research injection — was glued to the person's words
+            # with `\n\n` and arrived as one turn.
+            #
+            # Measured on the owner's export
+            # (`/work/notes/owner-shots/2026-10-09-osrs-chat-export.md`): a
+            # local `gemma-4-26b` received `"How to pitch this reply: …\n\n
+            # Research: …"` plus `"[current date/time]\n\n Why are you
+            # searching …"`, spent 92 seconds trying to segment it by hand
+            # (lines 110-115) and answered the wrong question.
+            #
+            # Asked of BOTH sides because framing is appended after the person's
+            # turn as well as before it (`build_chat_context` inserts the
+            # date/time ahead of the latest turn; the agent loop appends tool
+            # context after it). Two genuine consecutive person turns still
+            # merge — those are both the person's words.
+            if (
+                _is_framed_context_content(last.get("content"))
+                or _is_framed_context_content(item.get("content"))
+            ):
                 merged.append({"role": "assistant", "content": _REFERENCE_CONTEXT_BOUNDARY})
                 merged.append(item)
                 continue
