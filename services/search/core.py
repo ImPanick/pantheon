@@ -21,7 +21,11 @@ from .cache import (
     generate_cache_key,
     cleanup_cache,
 )
-from .query import _cache_duration_for_query, build_enhanced_query
+from .query import (
+    MAX_CACHE_DURATION,
+    _cache_duration_for_query,
+    build_enhanced_query,
+)
 from .ranking import rank_search_results, relevance_report
 from .providers import (
     searxng_search_api,
@@ -162,6 +166,121 @@ def _build_provider_chain(primary: str) -> List[str]:
 
 
 # ----------------------------------------------------------------------
+# The search cache, as one seam both orchestrators use (`Law 7`)
+# ----------------------------------------------------------------------
+# Measured on `3b40a4e`: `searxng_search_results` was the only reader and
+# writer of the search cache and had **no production caller anywhere** — only
+# the two package `__init__` re-exports and three test files. Everything a
+# person touches goes through `comprehensive_web_search`, which did not touch
+# the cache at all, so every web search in the product was a fresh round trip
+# while the cache code ran never. With a fake provider at 120 ms: the live path
+# cost 1 provider call and ~121 ms on every repeat; the unreachable function
+# cost 1 call then 0, and 121 ms then 0.6 ms.
+#
+# The decision (`Law 1`/`Law 14`): wire it to the path that exists rather than
+# remove it. The **content** half of the same pipeline has cached for two hours
+# the whole time (`content.py:195`, reached from `comprehensive_web_search`), so
+# this extends scaffolding that is already here and already proven on the live
+# path; what was missing was the cheap half, which is the half with somebody
+# else's provider quota behind it.
+#
+# `_SEARCH_SWEEP_AGE` is the longest TTL `_cache_duration_for_query` can
+# return. It used to be `timedelta(hours=1)` while the write path stamped a
+# reference query with 24 hours, and measured, the entry was deleted by the
+# next search once its index timestamp was 90 minutes old — one hour was the
+# real ceiling and the news/reference split had never had any effect. The
+# expiry in the entry's own file is the one source of truth for when it dies.
+_SEARCH_SWEEP_AGE = MAX_CACHE_DURATION
+
+
+def _search_cache_key(query: str, count: int, time_filter) -> str:
+    """The cache key, derived in one place.
+
+    `invalidate_search_cache` rebuilt this inline and hardcoded `|10|None`,
+    which never matched what the write path stored — the key shape living in two
+    functions is exactly how that happened.
+    """
+    return generate_cache_key(f"{query}|{count}|{time_filter}")
+
+
+def _read_search_cache(query: str, count: int, time_filter) -> Optional[dict]:
+    """A live cache entry for this search, or None.
+
+    Returns ``{"results": [...], "provider": str|None, "age_seconds": float}``.
+    `results` is what the provider said, **before ranking**: a cached ordering
+    would freeze whatever `rank_search_results` did on the day it was written,
+    so ranking runs on every read instead. A corrupt or expired entry is
+    removed and reads as a miss — a search must never fail because of its cache.
+    """
+    cache_key = _search_cache_key(query, count, time_filter)
+    cache_file = SEARCH_CACHE_DIR / f"{cache_key}.cache"
+    if not cache_file.exists():
+        return None
+    try:
+        with open(cache_file, "r", encoding="utf-8") as f:
+            cached_data = json.load(f)
+        expiry_raw = cached_data.get("expiry")
+        expiry = datetime.fromisoformat(expiry_raw) if expiry_raw else None
+        if expiry and datetime.now() < expiry:
+            results = cached_data.get("data") or []
+            if not results:
+                raise ValueError("cached entry holds no results")
+            written_raw = cached_data.get("timestamp")
+            try:
+                age = (datetime.now() - datetime.fromisoformat(written_raw)).total_seconds()
+            except Exception:
+                age = 0.0
+            logger.debug("Search cache hit for query: %s", query)
+            return {
+                "results": results,
+                # Absent on entries written before the provider was recorded.
+                "provider": cached_data.get("provider"),
+                "age_seconds": max(age, 0.0),
+            }
+    except Exception as e:
+        logger.warning(f"Failed to read search cache for {query}: {e}")
+    cache_file.unlink(missing_ok=True)
+    search_cache_index.pop(cache_key, None)
+    return None
+
+
+def _write_search_cache(query: str, count: int, time_filter, results: List[dict],
+                        provider: Optional[str]) -> None:
+    """Store a successful search. Never raises into the search path."""
+    cache_key = _search_cache_key(query, count, time_filter)
+    cache_file = SEARCH_CACHE_DIR / f"{cache_key}.cache"
+    try:
+        expiry = datetime.now() + _cache_duration_for_query(query)
+        with open(cache_file, "w", encoding="utf-8") as f:
+            json.dump({
+                "timestamp": datetime.now().isoformat(),
+                "expiry": expiry.isoformat(),
+                "provider": provider,
+                "data": results,
+            }, f)
+        search_cache_index[cache_key] = datetime.now()
+        cleanup_cache(SEARCH_CACHE_DIR, search_cache_index, _SEARCH_SWEEP_AGE)
+    except Exception as e:
+        logger.warning(f"Failed to write search cache for {query}: {e}")
+
+
+def _cache_note(age_seconds: float) -> str:
+    """How the block says results are not fresh. Short, and with a number.
+
+    The owner's export could not say which provider answered or when; a block
+    that silently serves a cached answer would be the same gap again.
+    """
+    minutes = int(age_seconds // 60)
+    if minutes < 1:
+        return " (cached, under a minute old)"
+    if minutes == 1:
+        return " (cached, 1 min old)"
+    if minutes < 120:
+        return f" (cached, {minutes} min old)"
+    return f" (cached, {minutes // 60} h old)"
+
+
+# ----------------------------------------------------------------------
 # Unified search with caching and retry
 # ----------------------------------------------------------------------
 def searxng_search_results(query: str, count: int = 10, time_filter: str = None) -> list[dict]:
@@ -173,28 +292,11 @@ def searxng_search_results(query: str, count: int = 10, time_filter: str = None)
     if count == 10:
         count = result_count
 
-    cache_key = generate_cache_key(f"{query}|{count}|{time_filter}")
-    cache_file = SEARCH_CACHE_DIR / f"{cache_key}.cache"
-
-    # Check cache
-    if cache_file.exists():
-        try:
-            with open(cache_file, "r", encoding="utf-8") as f:
-                cached_data = json.load(f)
-            expiry_raw = cached_data.get("expiry")
-            expiry = datetime.fromisoformat(expiry_raw) if expiry_raw else None
-            if expiry and datetime.now() < expiry:
-                logger.debug(f"Search cache hit for query: {query}")
-                results = cached_data["data"]
-                _record_query(query, bool(results), cache_hit=True)
-                return results
-            else:
-                cache_file.unlink(missing_ok=True)
-                search_cache_index.pop(cache_key, None)
-        except Exception as e:
-            logger.warning(f"Failed to read search cache for {query}: {e}")
-            cache_file.unlink(missing_ok=True)
-            search_cache_index.pop(cache_key, None)
+    cached = _read_search_cache(query, count, time_filter)
+    if cached is not None:
+        _record_query(query, True, cache_hit=True, provider=cached["provider"])
+        # Ranked on read, not on write: see `_read_search_cache`.
+        return rank_search_results(query, cached["results"])
 
     logger.debug(f"Search cache miss for query: {query}")
 
@@ -212,12 +314,14 @@ def searxng_search_results(query: str, count: int = 10, time_filter: str = None)
     sent_query = build_enhanced_query(query, time_filter)
 
     results: List[dict] = []
+    answered_by: Optional[str] = None
     for provider_name in provider_chain:
         for attempt in range(2):
             try:
                 logger.info(f"Attempting {provider_name} search (attempt {attempt + 1})")
                 results = _call_provider(provider_name, sent_query, count, time_filter)
                 if results:
+                    answered_by = provider_name
                     logger.info(f"{provider_name} search succeeded with {len(results)} results")
                     break
             except RateLimitError as e:
@@ -239,25 +343,12 @@ def searxng_search_results(query: str, count: int = 10, time_filter: str = None)
             break
 
     success = bool(results)
-    _record_query(query, success, cache_hit=False)
+    _record_query(query, success, cache_hit=False, provider=answered_by)
 
     if success:
+        _write_search_cache(query, count, time_filter, results, answered_by)
         results = rank_search_results(query, results)
-        try:
-            expiry = datetime.now() + _cache_duration_for_query(query)
-            cache_data = {
-                "timestamp": datetime.now().isoformat(),
-                "expiry": expiry.isoformat(),
-                "data": results,
-            }
-            with open(cache_file, "w", encoding="utf-8") as f:
-                json.dump(cache_data, f)
-            search_cache_index[cache_key] = datetime.now()
-            cleanup_cache(SEARCH_CACHE_DIR, search_cache_index, timedelta(hours=1))
-        except Exception as e:
-            logger.warning(f"Failed to write search cache for {query}: {e}")
-
-    if not success:
+    else:
         logger.error(f"All search providers failed for query: {query}")
 
     return results
@@ -277,10 +368,11 @@ def invalidate_search_cache(query: Optional[str] = None) -> None:
         search_cache_index.clear()
         logger.info("All search cache entries have been cleared.")
     else:
-        # Match the key the write path stores: searxng_search_results replaces
-        # the caller's default count with the configured _get_result_count()
+        # Match the key the write path stores: both orchestrators replace the
+        # caller's default count with the configured _get_result_count()
         # (default 5), so a hardcoded "|10|None" never matched a real entry.
-        cache_key = generate_cache_key(f"{query}|{_get_result_count()}|None")
+        # The shape is `_search_cache_key`'s now, so it cannot drift again.
+        cache_key = _search_cache_key(query, _get_result_count(), None)
         cache_file = SEARCH_CACHE_DIR / f"{cache_key}.cache"
         if cache_file.exists():
             try:
@@ -334,8 +426,15 @@ def comprehensive_web_search(
     language: Optional[str] = None,
     min_content_length: int = 0,
     return_sources: bool = False,
+    fetch_content: bool = True,
 ):
-    """Perform comprehensive web search with content fetching and advanced filtering."""
+    """Perform comprehensive web search with content fetching and advanced filtering.
+
+    ``fetch_content=False`` returns the search results and the block without
+    fetching any page. It is the consumer `SearchService`'s constructor flag
+    never had (`Law 13`): that method asked for ten pages, this function
+    fetched all ten, and the caller read none of them.
+    """
     logger.info(f"Starting comprehensive search for: {query}")
     if time_filter:
         logger.info(f"Applying time filter: {time_filter}")
@@ -352,18 +451,28 @@ def comprehensive_web_search(
     # Use configured result count (at least max_pages for content fetching)
     fetch_count = max(result_count, max_pages)
 
-    provider_chain = _build_provider_chain(search_provider)
-
     # One derivation of the sent string for the whole chain (`Law 7`), and it is
     # reported in the block below: the owner's 2026-10-09 search could not be
     # diagnosed from its own transcript because nothing recorded either the
     # provider that answered or the string that went out.
     sent_query = build_enhanced_query(query, time_filter)
 
+    # The cache, on the path people actually use. `fetch_count` and
+    # `time_filter` are what change the provider's answer, so they are the key
+    # with the query; the domain/content-type/language filters and
+    # `min_content_length` shape what happens *after* the provider and are not.
     search_results = []
     provider_attempts = {}
     answered_by = None
-    for provider_name in provider_chain:
+    provider_note = ""
+    cached = _read_search_cache(query, fetch_count, time_filter)
+    if cached is not None:
+        search_results = cached["results"]
+        answered_by = cached["provider"]
+        provider_note = _cache_note(cached["age_seconds"])
+
+    provider_chain = _build_provider_chain(search_provider)
+    for provider_name in ([] if search_results else provider_chain):
         last_err = None
         empty = False
         for attempt in range(2):
@@ -386,6 +495,7 @@ def comprehensive_web_search(
             provider_attempts[provider_name] = "empty"
 
     if not search_results:
+        _record_query(query, False, cache_hit=False, provider=None)
         tally = ", ".join(f"{p}:{r}" for p, r in provider_attempts.items()) or "no providers configured"
         any_errors = any(r.startswith("error") for r in provider_attempts.values())
         if any_errors:
@@ -398,6 +508,9 @@ def comprehensive_web_search(
             )
         logger.warning(msg)
         return (msg, []) if return_sources else msg
+
+    if cached is None:
+        _write_search_cache(query, fetch_count, time_filter, search_results, answered_by)
 
     search_results = rank_search_results(query, search_results)
 
@@ -428,9 +541,21 @@ def comprehensive_web_search(
                 return False
         return True
 
-    filtered_urls = [r["url"] for r in search_results[:max_pages] if url_passes_filters(r["url"])]
-    if not filtered_urls:
+    # Filter first, then take the budget. The slice used to run **before** the
+    # filter — `search_results[:max_pages]` then `if url_passes_filters(...)` —
+    # so a result excluded by `domain_blacklist` / `domain_whitelist` /
+    # `content_type` / `language` cost a page instead of yielding to the next
+    # result that passes. Measured: five results, `max_pages=3`, one domain
+    # blacklisted gave **two** fetched pages with two passing results sitting
+    # unread at [4] and [5]. The caller asked for three and the filter it
+    # supplied quietly reduced that to two.
+    passing_urls = [r["url"] for r in search_results if url_passes_filters(r.get("url", ""))]
+    filtered_urls = passing_urls[:max_pages]
+    if not passing_urls:
         logger.warning("All URLs filtered out by advanced criteria")
+        # The search itself worked; the caller's filters excluded every result.
+        _record_query(query, True, cache_hit=cached is not None,
+                      provider=None if cached is not None else answered_by)
         msg = "No suitable results after applying filters."
         return (msg, []) if return_sources else msg
 
@@ -458,7 +583,7 @@ def comprehensive_web_search(
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         future_to_url = {
             executor.submit(fetch_webpage_content, url, 8, retry_attempt=0): url
-            for url in filtered_urls
+            for url in (filtered_urls if fetch_content else [])
         }
         for future in as_completed(future_to_url):
             url = future_to_url[future]
@@ -500,15 +625,42 @@ def comprehensive_web_search(
     # a film, a dictionary and a clothing shop; this header said
     # "Searched 5 results, fetched 3 pages" and nothing else, and the model
     # answered from general knowledge rather than saying the search had missed.
-    relevance = relevance_report(query, search_results)
+    # Measured on the page text where a page was fetched, which is the
+    # strongest evidence in the block and was being ignored: a result set with
+    # no engine snippets scored as a miss while the content answered the
+    # question. See `ranking.relevance_report`.
+    relevance = relevance_report(query, search_results, fetched=fetched_content)
+
+    # One analytics row per search, written where every fact about it is known:
+    # whether it came from cache, which provider answered and how well the
+    # results matched. `_record_query`'s only two call sites used to be inside
+    # `searxng_search_results`, which nothing calls, so the counters sat at
+    # their defaults however much searching a person did — and the fx6 lane
+    # could not say which provider had answered the owner because nobody had
+    # ever written it down. `Law 16`: the destination is the operator's own
+    # `DATA_DIR`, so this is telemetry and not phoning home.
+    # `provider` is recorded only when a provider was actually called: a cache
+    # hit is already counted as a hit, and crediting the provider again would
+    # make `pantheon_search_provider_answers` count something other than round
+    # trips, which is the number an operator watching a quota needs.
+    _record_query(query, True, cache_hit=cached is not None,
+                  provider=None if cached is not None else answered_by,
+                  verdict=relevance.get("verdict"))
 
     output_parts.append("=" * 70)
     output_parts.append("WEB SEARCH RESULTS AND FETCHED CONTENT")
     output_parts.append(f"Query: {query}")
     output_parts.append(f"Query as sent: {sent_query}")
     if answered_by:
-        output_parts.append(f"Provider: {answered_by}")
-    output_parts.append(f"Searched {len(search_results)} results, fetched {len(fetched_content)} pages")
+        output_parts.append(f"Provider: {answered_by}{provider_note}")
+    if fetch_content:
+        output_parts.append(
+            f"Searched {len(search_results)} results, fetched {len(fetched_content)} pages")
+    else:
+        # Not "fetched 0 pages": zero reads as a failure, and the caller asked
+        # for none (`Law 10`).
+        output_parts.append(
+            f"Searched {len(search_results)} results, content fetching disabled")
     for idx, url, reason in not_fetched:
         label = f"[{idx}]" if idx else "[-]"
         output_parts.append(f"Not fetched {label} {url} — {reason}")
