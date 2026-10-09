@@ -6519,7 +6519,7 @@ async def stream_agent_loop(
     # that *can't* call the tool from looping forever.
     _intent_nudge_count = 0
     _MAX_INTENT_NUDGES = 2
-    # `B-NEW`. The intent supervisor's mirror image. It catches a turn that
+    # `B1327`. The intent supervisor's mirror image. It catches a turn that
     # announced an action and did not take it; this catches a turn that **asked
     # whether to take it**. Measured on `a5ee5f8` over five multi-step tasks
     # (port 8792, a recording model, a registered MCP server): four of the five
@@ -6531,7 +6531,7 @@ async def stream_agent_loop(
     _handback_nudges = 0
     _MAX_HANDBACK_NUDGES = 1
     _handback_phrases: list = []
-    # `B-NEW`. `ask_user` called before anything has been looked at. The tool
+    # `B1327`. `ask_user` called before anything has been looked at. The tool
     # stays, and so does its turn-ending contract; what changes is that the
     # FIRST such question on a turn where nothing has run yet buys one round of
     # looking. If the model asks again, the card ships and the turn ends as it
@@ -6573,7 +6573,7 @@ async def stream_agent_loop(
         r"\b[^.\n]{0,140}",
         re.IGNORECASE,
     )
-    # `B-NEW`. A turn handed back as a question: the model offering to take a
+    # `B1327`. A turn handed back as a question: the model offering to take a
     # step instead of taking it. Every arm needs a verb after the offer, so an
     # innocuous sign-off ("let me know if you need anything else") does not
     # match — it names no action for the model to take.
@@ -8110,7 +8110,7 @@ async def stream_agent_loop(
                 break
 
             # ── Question-instead-of-work supervisor ──────────────────
-            # `B-NEW`. The intent supervisor above catches "Let me check the
+            # `B1327`. The intent supervisor above catches "Let me check the
             # logs" with no call. This catches its mirror: "Do you want me to
             # check the logs?" — a step the user already asked for, handed back
             # as a question, with no call and nothing done. `D-2026-10-09-01`
@@ -8277,7 +8277,7 @@ async def stream_agent_loop(
             continue
 
         # ── A question asked before anything was looked at ───────────
-        # `B-NEW`. `ask_user` ends the turn, by design, and it still does. What
+        # `B1327`. `ask_user` ends the turn, by design, and it still does. What
         # this catches is the one case the owner's ruling names outright: the
         # turn's FIRST action is a question, nothing has been run yet, and the
         # turn has tools that could have answered it. Measured on `a5ee5f8`:
