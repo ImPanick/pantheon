@@ -3,7 +3,18 @@
 
 Re-measured 2026-09-18, scope `static/index.html`'s `.chat-input-left` block:
 **seven** `input-icon-btn tool-indicator` buttons and **two** bare-icon toggles
-(`#web-toggle-btn`, `#bash-toggle-btn`), exactly as the row says. What the row
+(`#web-toggle-btn`, `#bash-toggle-btn`), exactly as the row says.
+
+**Re-measured again 2026-10-09** (`fx8-census`, after `D-2026-10-09-01`):
+**eight** indicators and the same two toggles, so the component's population is
+**eleven** rather than ten. The arrival is `#approval-mode-btn` — §2's per-chat
+approval mode, put beside Plan / Web / Shell because it is the same kind of
+switch — and it wears `.tool-chip` + `.tool-chip-label` already. That is the
+only thing that moved, and the reason it is written down here rather than
+silently accepted: `_chips()` below is a list of ids, so a new chip that is not
+added to it escapes every "wears the component" assertion in this file while
+the count assertion is the only thing that notices. The count noticing is what
+this row's `Law 6` clause is for. What the row
 does not say is where the hand-styling lived: **every one of the seven label
 spans carried its own `style="font-size:11px;margin-left:2px…"` attribute** —
 seven copies of one type ramp, two of them with a differing `max-width`, none
@@ -74,6 +85,10 @@ def _chips():
         "workspace-indicator-btn", "doc-indicator-btn", "rag-indicator-btn",
         "research-toggle-btn", "group-toggle-btn", "character-indicator-btn",
         "compare-indicator-btn",
+        # `D-2026-10-09-01` §2, measured into the strip 2026-10-09. Listed so
+        # the four assertions below cover it; without the entry it is a chip
+        # nothing in this file checks.
+        "approval-mode-btn",
     }
     return [(i, b) for i, b in _buttons() if i in wanted]
 
@@ -84,12 +99,18 @@ def _chips():
 def test_the_strip_still_holds_the_nine_the_row_counted():
     """Re-measured, not carried (`Law 6`). If the strip gains or loses a chip
     the row's arithmetic is stale and the next agent should be told so here
-    rather than discovering it in a diff."""
+    rather than discovering it in a diff.
+
+    It did, on 2026-10-09: seven indicators became **eight** and the nine the
+    row counted became **eleven** counting the plan chip that donated the
+    geometry, because `D-2026-10-09-01` §2 put `#approval-mode-btn` in the
+    strip. Discovered here rather than in a diff, which is what this case is
+    for."""
     strip = _strip()
     assert strip.count('class="input-icon-btn tool-indicator"') \
-        + strip.count('class="input-icon-btn tool-indicator ') == 7, \
-        "the seven tool indicators are no longer seven"
-    assert len(_chips()) == 10, [i for i, _ in _chips()]
+        + strip.count('class="input-icon-btn tool-indicator ') == 8, \
+        "the eight tool indicators are no longer eight"
+    assert len(_chips()) == 11, [i for i, _ in _chips()]
 
 
 # ── One component ───────────────────────────────────────────────────────────

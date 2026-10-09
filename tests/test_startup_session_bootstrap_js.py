@@ -77,6 +77,14 @@ _IMPORT_REWRITES = {
     "import { onToolVisibilityApplied, toolShown } from './ui_visibility.js';   // `B1194`": (
         "import { onToolVisibilityApplied, toolShown } from './ui_visibility.mjs';   // `B1194`"
     ),
+    # `D-2026-10-09-01` §2 — `setCurrentSessionId` reads the chat's approval
+    # mode, so `sessions.js` imports the module that owns it. The three cases
+    # below ERRORED rather than failed when it arrived (`ERR_MODULE_NOT_FOUND`
+    # for `approvalMode.js`), which is the shape `test_the_rewrite_table_covers
+    # _every_import_sessions_js_has` now catches with a sentence instead.
+    "import approvalModeModule from './approvalMode.js';   // `D-2026-10-09-01` §2": (
+        "import approvalModeModule from './approvalMode.mjs';   // `D-2026-10-09-01` §2"
+    ),
 }
 
 # Modules with no dependencies of their own, copied into the sandbox whole
@@ -94,6 +102,9 @@ _VERBATIM = {
     "backStack.mjs": _REPO / "static" / "js" / "backStack.js",
     # `B1194`. No imports of its own; the real table.
     "ui_visibility.mjs": _REPO / "static" / "js" / "ui_visibility.js",
+    # `D-2026-10-09-01` §2. No imports of its own, and every top-level
+    # reference to `window` is guarded, so the real module loads under node.
+    "approvalMode.mjs": _REPO / "static" / "js" / "approvalMode.js",
 }
 
 _STUBS = {
@@ -416,3 +427,48 @@ def test_401_keeps_global_auth_redirect_contract(results):
     assert results["authRedirect"] == "/login"
     assert results["authAddedError"] is False
     assert results["sessionIds"] == ["existing"]
+
+
+def test_the_rewrite_table_covers_every_import_sessions_js_has():
+    """The reason the three cases above ERRORED rather than failed on
+    `8586638`.
+
+    `D-2026-10-09-01` §2 gave `sessions.js` a thirteenth static import
+    (`./approvalMode.js`) and this fixture rewrites imports by exact line. An
+    import it does not know is copied into the sandbox unchanged, so node
+    resolves it against a directory holding only the stubs — `ERR_MODULE_NOT
+    _FOUND`, raised at fixture setup, which pytest reports as three *errors*
+    with the module's name buried in a node stack trace. Nothing said "the
+    rewrite table is short of one line".
+
+    This says it. Every relative import in `sessions.js` is a key of
+    `_IMPORT_REWRITES`, and the next one added fails here, by name, before the
+    harness runs.
+    """
+    source = _SESSIONS.read_text(encoding="utf-8")
+    lines = [l for l in source.splitlines()
+             if re.match(r"\s*import\b", l) and re.search(r"from\s*'\./", l)]
+    assert len(lines) >= 13, f"only {len(lines)} relative imports found — the scan stopped looking"
+    # A key is matched as a PREFIX, because that is how the fixture applies it
+    # (`source.replace(original, replacement, 1)`): the `agentStops` line ends
+    # in a `// `B941`` comment the key does not carry, and an equality check
+    # calls a rewrite that works missing.
+    missing = [l for l in lines
+               if not any(l.strip().startswith(k) for k in _IMPORT_REWRITES)]
+    assert not missing, (
+        "sessions.js imports a module this fixture does not rewrite, so the "
+        "sandbox cannot resolve it:\n  " + "\n  ".join(missing)
+        + "\n\nAdd the line to `_IMPORT_REWRITES` and the module to `_VERBATIM` "
+          "(no imports of its own) or `_STUBS`.")
+
+
+def test_every_rewrite_target_exists_in_the_sandbox():
+    """The other half: a rewrite that points at a name nothing writes is the
+    same `ERR_MODULE_NOT_FOUND` one step later."""
+    written = set(_STUBS) | set(_VERBATIM)
+    for original, replacement in _IMPORT_REWRITES.items():
+        target = re.search(r"from\s*'\./([A-Za-z0-9_.-]+)'", replacement)
+        assert target, replacement
+        assert target.group(1) in written, (
+            f"{original.strip()} is rewritten to {target.group(1)}, which "
+            "neither `_STUBS` nor `_VERBATIM` puts in the sandbox")

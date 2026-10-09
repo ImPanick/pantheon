@@ -834,6 +834,25 @@ def test_the_chevron_the_table_draws_names_no_colour():
 # one of them sets `stroke-linecap="round"` — so the check below is exact string
 # equality rather than a segment-set comparison, and a future edit that reaches
 # for a sixth spelling fails instead of joining the spread.
+#
+# **Re-measured 2026-10-09 (`fx8-census`): the shell holds THIRTEEN**, and the
+# four that arrived are `D-2026-10-09-01` §4's phone controls —
+# `#turn-chip`'s UP caret (`static/index.html:1764`) and the RIGHT chevron on
+# the three turn-sheet rows that open another control, Model, Context and
+# Persona (`1822`, `1828`, `1847`, all `class="turn-row-chevron"`). The
+# direction census moves with them: `down 4, up 3, left 1, right 1` becomes
+# `down 4, up 4, left 1, right 4`.
+#
+# This is the census moving legitimately and not the rule breaking, and the
+# difference is worth stating because the two look the same from the failure
+# message. All four are in the shell, which is the one place this family is
+# allowed to be spelled; all four are *exactly* a value `chevronPoints()`
+# exports, so nothing joined the spread; and all four carry
+# `aria-hidden="true"`. A row's chevron is decoration beside a label on a
+# `<button>`, so `summary::after` (`P5-05`) does not reach it and neither can
+# `icons.js` — markup cannot import a table. `turnSheet.js` itself spells none,
+# which `test_the_shell_is_the_only_place_left_that_spells_one` asserts one
+# line above the count.
 
 SHELL = ROOT / "static" / "index.html"
 
@@ -861,10 +880,13 @@ def test_the_shell_cannot_spell_a_chevron_the_table_does_not():
     **This fails on the tree as it stood before this row** (`Law 9`): two of the
     nine spelled `6 15 12 9 18 15`, which is not any value `chevronPoints()`
     returns, and seven of the nine carried no `aria-hidden`.
+
+    Thirteen since 2026-10-09; the four that arrived and why they are the
+    census moving rather than the rule breaking are above `_shell_chevrons`.
     """
     table = _h("chevrons", "[]")["points"]
     found = _shell_chevrons()
-    assert len(found) == 9, [(l, p) for l, p, _ in found]
+    assert len(found) == 13, [(l, p) for l, p, _ in found]
     by_direction = collections.Counter()
     for line, points, attrs in found:
         matches = [d for d, p in table.items() if p == points]
@@ -879,7 +901,9 @@ def test_the_shell_cannot_spell_a_chevron_the_table_does_not():
         assert attrs.get("aria-hidden") == "true", (
             f"static/index.html:{line} announces a decorative chevron"
         )
-    assert by_direction == {"down": 4, "up": 3, "left": 1, "right": 1}, by_direction
+    # Re-measured 2026-10-09: `+1 up` (`#turn-chip`'s caret) and `+3 right`
+    # (the three turn-sheet rows that open another control).
+    assert by_direction == {"down": 4, "up": 4, "left": 1, "right": 4}, by_direction
 
 
 def test_the_shell_is_the_only_place_left_that_spells_one():
@@ -887,11 +911,13 @@ def test_the_shell_is_the_only_place_left_that_spells_one():
 
     `B230` moved 57 sites and left the shell, and said so. If a module grows a
     literal again this fails in `test_the_tree_holds_exactly_one_chevron`; if
-    the shell's count moves, it fails here — so "nine, in one file, and that
-    file is markup" stays a fact rather than a note somebody wrote once.
+    the shell's count moves, it fails here — so "thirteen, in one file, and
+    that file is markup" stays a fact rather than a note somebody wrote once.
+    It was nine until 2026-10-09 and the count is re-measured, not carried
+    (`Law 6`): what moved it is recorded above `_shell_chevrons`.
     """
     assert _census(_chevron_polylines) == []
-    assert len(_shell_chevrons()) == 9
+    assert len(_shell_chevrons()) == 13
     login = ROOT / "static" / "login.html"
     assert _chevron_polylines(login.read_text(encoding="utf-8")) == [], (
         "the login page has grown a chevron; it is a third place to keep in step"

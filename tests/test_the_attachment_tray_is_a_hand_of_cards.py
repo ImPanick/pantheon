@@ -736,11 +736,35 @@ def test_a_file_dropped_on_a_card_is_added_once(tmp_path):
 _MARK = "(fx5-cards) — the composer's attachments are a hand of cards."
 
 
+#: A block banner in `static/style.css`: a line-initial comment whose first
+#: characters are a rule of `=` or `─`. 130 of them divide the sheet, and the
+#: hand's own is one.
+_BANNER = re.compile(r"^/\*[ \t]*(?:=|\u2500|-){2,}", re.M)
+
+
 def _section():
-    """The hand's block of `static/style.css`, comments blanked, offsets kept."""
+    """The hand's block of `static/style.css`, comments blanked, offsets kept.
+
+    **Bounded at its own end, which it was not** (`fx8-census`, 2026-10-09).
+    This returned `blank(STYLE)[start:]` — the marker to the END OF FILE — and
+    was green only because the hand's block happened to be the last one in a
+    49,000-line sheet. `D-2026-10-09-01` §4 appended the phone's turn controls
+    after it, and `test_the_hand_keeps_to_the_palette_and_the_global_focus_ring`
+    then reported `--color-muted-alt`, `--ease-signature`, `--green` and
+    `--warn` as *the hand* reaching outside its five colours. Not one of them
+    is in the hand's block; all four are 40-plus lines past its end.
+
+    That is `B41`'s lesson in the mirror — an assertion about the right string
+    in the wrong scope — and it fails the wrong way round: a rule written to
+    stop THIS block drifting fired on a block it has no opinion about, and
+    would have fired on any other appended after it. So the end is measured
+    too: the next block banner, or the end of the sheet when the hand is last
+    again.
+    """
     raw = STYLE.read_text(encoding="utf-8")
     start = raw.index(_MARK)
-    return blank(STYLE)[start:]
+    nxt = _BANNER.search(raw, raw.index("\n", start))
+    return blank(STYLE)[start:nxt.start() if nxt else len(raw)]
 
 
 def _rules(css):
@@ -807,6 +831,37 @@ def test_a_card_lifts_with_a_transform_and_nothing_reflows():
         assert "translateY(" in decls["transform"], sel
     hover = [a for s, _, a in _rules(_section()) if s == ".attach-hand .hand-card:hover > .hand-card-lift"]
     assert hover == ["@media (hover: hover)"], "a tapped card on a phone would stay up"
+
+
+def test_the_hands_block_ends_where_the_hand_ends():
+    """The scope the three stylesheet rules below are asserted in.
+
+    Fails on the tree as it stood (`Law 20`): `_section()` ran to the end of
+    the file, so the phone's turn controls (`D-2026-10-09-01` §4, appended
+    after the hand) were inside *the hand's block* and their `--warn`,
+    `--green`, `--color-muted-alt` and `--ease-signature` were read as the
+    hand's. A scope with no end is not a scope.
+    """
+    css = _section()
+    raw = STYLE.read_text(encoding="utf-8")
+    start = raw.index(_MARK)
+    # The hand's own first and last rules are inside it. (`_MARK` itself is
+    # not: `_section` blanks comments, and the marker lives in one.)
+    assert ".attach-hand" in css, "the section does not reach the hand's first rule"
+    assert ".hand-card" in css and "0.01ms" in css, (
+        "the section stops short of the hand's end — the reduced-motion deal "
+        "is the last rule it wrote")
+    nxt = _BANNER.search(raw, raw.index("\n", start))
+    assert nxt, (
+        "no block banner follows the hand, so this scope cannot be bounded by "
+        "one; the next block was appended without a banner")
+    assert len(css) == nxt.start() - start, "the section is not bounded at it"
+    # And nothing from the block that follows is read as the hand's.
+    for stranger in (".turn-chip", ".turn-sheet", ".turn-row"):
+        assert stranger in raw, f"{stranger} left the sheet; re-pick the witness"
+        assert stranger not in css, (
+            f"{stranger} is not the hand's, and the hand's block has "
+            "swallowed the block that owns it")
 
 
 def test_the_hand_keeps_to_the_palette_and_the_global_focus_ring():

@@ -229,7 +229,14 @@ def test_an_id_read_by_an_inline_script_is_not_an_orphan():
 def test_the_itemisation_is_complete_and_current():
     """The row's `Law 9` requirement. If the list moves, this says which way —
     a new orphan is markup someone added and nothing reads, and a departure
-    means someone wired one up and the entry should go."""
+    means someone wired one up and the entry should go.
+
+    It earned its keep on 2026-10-09: `D-2026-10-09-01` §4's phone sheet
+    arrived with `#turn-row-mode`, and this reported it as newly unreached.
+    Every other row in that sheet is drawn from the composer control it drives
+    and the Mode row was not, so with Agent mode switched off the sheet offered
+    a mode nobody could take — found here, fixed in `static/js/turnSheet.js`,
+    and the itemisation did not move (`fx8-census`)."""
     found = set(unreached_ids())
     assert found == ITEMISED, {
         "newly unreached": sorted(found - ITEMISED),

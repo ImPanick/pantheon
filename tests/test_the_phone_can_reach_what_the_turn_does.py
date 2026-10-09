@@ -52,6 +52,7 @@ from pathlib import Path
 import pytest
 
 from test_tool_effect_surfaces_js import _make_sandbox, _run  # noqa: E402
+from tests.helpers.css_rules import css_rules, decl
 from tests.helpers.js_source import js_function
 from tests.helpers.source_text import blank
 
@@ -67,39 +68,17 @@ pytestmark = pytest.mark.skipif(not shutil.which("node"), reason="node binary no
 
 # ── the stylesheet, resolved rule by rule ───────────────────────────────────
 # A stylesheet cannot be driven under node, so this follows `Law 20`'s second
-# option in the shape `tests/test_one_focus_ring_css.py` set for this file:
-# find the rule first, then assert inside it.
+# option: find the rule first, then assert inside it.
+#
+# Through the suite's walker, not a copy of it. The first draft of this file
+# wrote its own `_rules` — the twenty-ninth hand-rolled brace balancer in
+# `tests/` — and `tests/test_one_js_function_extractor.py` caught it, which is
+# what that tripwire is for. `tests/helpers/css_rules.py` is the one walk now
+# (`Law 7`, `Law 14`), and it checks the premise a brace walk over a stylesheet
+# needs rather than assuming it.
 
-def _rules(css: str):
-    """`(selector, body)` for every rule, at-rules walked into."""
-    out, i, n = [], 0, len(css)
-    while i < n:
-        brace = css.find("{", i)
-        if brace < 0:
-            break
-        selector = css[i:brace].strip()
-        depth, j = 1, brace + 1
-        while j < n and depth:
-            if css[j] == "{":
-                depth += 1
-            elif css[j] == "}":
-                depth -= 1
-            j += 1
-        body = css[brace + 1:j - 1]
-        if selector.startswith("@") and "{" in body:
-            out.extend((f"{selector} {{ {sel}", sub) for sel, sub in _rules(body))
-        else:
-            out.append((selector, body))
-        i = j
-    return out
-
-
-ALL_RULES = _rules(CSS)
-
-
-def _decl(body: str, prop: str):
-    m = re.search(rf"(?:^|[{{;])\s*{re.escape(prop)}\s*:\s*([^;}}]+)", body, re.M)
-    return m.group(1).strip() if m else None
+ALL_RULES = css_rules(CSS)
+_decl = decl
 
 
 def _rules_for(selector_fragment: str, at: str = ""):
@@ -503,6 +482,82 @@ def test_a_control_the_page_is_not_showing_is_not_drawn(sandbox, preamble):
     assert out["inChat"]["flipped"] is False, "a hidden control was flipped anyway"
     assert out["inChat"]["calls"] == ["mode:chat"], "Shell was clicked while hidden"
     assert out["inAgent"] == {"hidden": False, "flipped": True}
+
+
+def test_the_mode_row_follows_the_mode_control_like_every_other_row(sandbox, preamble):
+    """The Mode row was the one row that did not (`fx8-census`, 2026-10-09).
+
+    Every other row here is drawn from the composer control it drives — Shell
+    goes with `#bash-toggle-btn`, Approval with the chip an admin grants, Model
+    with `#model-picker-wrap` — and `#turn-row-mode` was read by nothing, which
+    `tests/test_orphan_ids_in_markup.py` reported as a new orphan id: markup
+    someone added that nothing reads. The miss was not cosmetic. What takes a
+    mode away is the visibility table (`ui_visibility.js`: `agent` carries
+    `composer: ['mode-agent-btn']` and privilege `can_use_agent`, and the
+    applier writes `display: none` on that one button), and with Agent mode
+    switched off this sheet still offered Agent / Chat and pressing Agent
+    clicked a hidden button — the dead control the module's own header says it
+    does not draw (`Law 15`).
+
+    It mirrors the composer rather than hiding the row: the composer hides the
+    Agent button and keeps Chat, so the sheet hides the Agent option and keeps
+    Chat, and the row goes only when both are gone. Hiding the row on Agent
+    alone would strand a phone in Agent mode with no way back — the owner's
+    original complaint rebuilt — and nothing client-side forces Chat when the
+    privilege is withdrawn.
+
+    And the case that matters most is the one that must NOT hide anything: the
+    container query drops `.mode-toggle` from a narrow bar through the
+    *stylesheet*, which is the whole reason this sheet exists, and
+    `isRendered` reads the inline `display`, the `hidden` attribute and the
+    feature table — never a computed style.
+    """
+    out = _case(sandbox, preamble, """
+      sheet.initTurnSheet(document);
+      tap('turn-chip');
+      // Nothing inline, nothing `hidden`: the state of a 360px phone, where
+      // the stylesheet has taken the toggle off the bar.
+      const onAPhone = {row: el('turn-row-mode').hidden,
+                        agent: el('turn-mode-agent').hidden,
+                        chat: el('turn-mode-chat').hidden,
+                        inline: el('mode-agent-btn').style.display || ''};
+      // What `applyToolVisibility` writes when an admin switches Agent mode
+      // off or this person has no `can_use_agent`.
+      el('mode-agent-btn').style.display = 'none';
+      sheet.paint(document);
+      calls.length = 0;
+      const denied = {row: el('turn-row-mode').hidden,
+                      agent: el('turn-mode-agent').hidden,
+                      chat: el('turn-mode-chat').hidden,
+                      // The chip still says what the page IS (`Law 10`).
+                      says: el('turn-chip-mode').textContent,
+                      pressed: sheet.setMode(document, 'agent'),
+                      toChat: sheet.setMode(document, 'chat'),
+                      calls: calls.slice()};
+      // Both gone — a page with no mode control at all — and the row goes.
+      el('mode-chat-btn').style.display = 'none';
+      sheet.paint(document);
+      const neither = el('turn-row-mode').hidden;
+      el('mode-agent-btn').style.display = '';
+      el('mode-chat-btn').style.display = '';
+      sheet.paint(document);
+      say({onAPhone, denied, neither,
+           restored: {row: el('turn-row-mode').hidden,
+                      agent: el('turn-mode-agent').hidden}});
+    """)
+    assert out["onAPhone"] == {"row": False, "agent": False, "chat": False, "inline": ""}, (
+        "the Mode row is hidden on the phone the sheet was built for")
+    assert out["denied"]["agent"] is True, (
+        "Agent mode is not this person's and the sheet offers it anyway")
+    assert out["denied"]["row"] is False and out["denied"]["chat"] is False, (
+        "the whole row went, so a chat left in Agent mode cannot reach Chat")
+    assert out["denied"]["says"] == "Agent", "the chip stopped saying what the page is"
+    assert out["denied"]["pressed"] is False, "the row clicked a button the page is not showing"
+    assert out["denied"]["toChat"] is True and out["denied"]["calls"] == ["mode:chat"], (
+        f"Chat is still the way out: {out['denied']['calls']}")
+    assert out["neither"] is True, "no mode control at all, and the row is still drawn"
+    assert out["restored"] == {"row": False, "agent": False}, (
+        "the row and its option do not come back with the controls")
 
 
 def test_a_reading_nobody_has_taken_says_so(sandbox, preamble):

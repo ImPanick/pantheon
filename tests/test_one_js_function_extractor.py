@@ -558,8 +558,17 @@ def test_no_new_hand_rolled_js_function_cutter_appears():
     """
     offenders = []
     for rel in _tracked_tests():
+        # The two files that OWN a balanced walk are exempt; everybody else
+        # imports one. `helpers/css_rules.py` joined them in `fx8-census`:
+        # `D-2026-10-09-01` §4 needed the at-rule a declaration sits inside,
+        # which the innermost-rule regex cannot give, and wrote the
+        # twenty-ninth copy of the walk to get it. One walk, in a helper, is
+        # the same answer `B876` gave for JavaScript — not a twenty-ninth
+        # entry in `STILL_BALANCES_BY_HAND` below, which is a list of sites
+        # waiting for a row and not a place to add one.
         if rel in STILL_BALANCES_BY_HAND or rel.endswith(
-                ("test_one_js_function_extractor.py", "helpers/js_source.py")):
+                ("test_one_js_function_extractor.py", "helpers/js_source.py",
+                 "helpers/css_rules.py")):
             continue
         for line, name in _hand_balancers(rel):
             offenders.append(f"{rel}:{line}  {name}")
@@ -584,3 +593,59 @@ def test_the_allow_list_has_no_stale_entries():
 def test_the_rule_is_not_a_tautology():
     assert len(_tracked_tests()) > 200
     assert len(STILL_BALANCES_BY_HAND) >= 27
+
+
+# ── the walker this file's rule sent to a helper ────────────────────────────
+# `tests/helpers/css_rules.py` is exempt above, so it is driven here: the
+# exemption and the evidence for it live in one file. A stylesheet needs the
+# same walk one layer down — "which at-rule is this declaration inside" cannot
+# be answered by the innermost-rule regex `([^{}]+)\{([^{}]*)\}` that
+# `tests/test_one_focus_ring_css.py` uses — and `D-2026-10-09-01` §4 wrote the
+# twenty-ninth hand-rolled copy of it before this row moved the walk here.
+
+
+def test_the_css_walker_returns_innermost_rules_with_their_at_rule():
+    from tests.helpers.css_rules import css_rules
+    rules = css_rules(
+        ".a { color: red }\n"
+        "@container chatbar (max-width: 420px) { .b { display: none } .c { top: 0 } }\n"
+        "@media print { @supports (x: 1) { .d { left: 0 } } }\n"
+    )
+    assert rules[0] == (".a", " color: red ")
+    assert rules[1][0] == "@container chatbar (max-width: 420px) { .b"
+    assert rules[2][0] == "@container chatbar (max-width: 420px) { .c"
+    # Nesting is followed to any depth, so `"@" not in selector` really means
+    # unconditional — `static/style.css` reaches brace depth 3 (measured
+    # 2026-10-09: six at-rules sit inside another).
+    assert rules[3][0] == "@media print { @supports (x: 1) { .d"
+    assert [s for s, _ in rules if "@" not in s] == [".a"]
+
+
+def test_the_css_walker_refuses_what_it_cannot_balance():
+    from tests.helpers.css_rules import css_rules
+    with pytest.raises(AssertionError, match="unbalanced braces"):
+        css_rules(".a { color: red ")
+
+
+def test_the_css_walker_checks_its_one_premise_rather_than_assuming_it():
+    """`B290`'s defect, in the other language: a brace inside a string literal
+    makes a brace walk silently wrong. None exists in `static/style.css`
+    (measured 2026-10-09, 49,257 lines), and the day one does this says so
+    instead of returning a rule that is not there."""
+    from tests.helpers.css_rules import css_rules
+    with pytest.raises(AssertionError, match="string literal"):
+        css_rules('.a::after { content: "{" }')
+    # And the ordinary quoted string is not mistaken for one.
+    assert css_rules('.a::after { content: "x" }')[0][0] == ".a::after"
+
+
+def test_the_css_walker_reads_the_sheet_the_suite_ships():
+    from tests.helpers.css_rules import css_rules, decl
+    from tests.helpers.source_text import blank
+    rules = css_rules(blank(ROOT / "static" / "style.css"))
+    assert len(rules) > 5000, f"only {len(rules)} rules — the walk stopped early"
+    turn = [sel for sel, _ in rules if ".turn-chip" in sel]
+    assert turn, "the phone's chip has no rule; re-pick the witness"
+    base = [b for sel, b in rules if sel.strip() == ".turn-chip" and "@" not in sel]
+    assert base and decl(base[0], "display") == "none", (
+        "the chip is not off by default — the witness this walk is checked by")
