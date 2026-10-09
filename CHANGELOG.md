@@ -6,7 +6,9 @@ listed under **Diverged from Odysseus**, which satisfies AGPL-3.0 §5(a).
 **Upgrading an existing instance?** Read
 [Changed — read this before upgrading](#changed--read-this-before-upgrading) first. It is
 the only section that can change what your host does without you editing anything. In
-`0.2.0` the first entry is the one to read: **there is always a sign-in** — an install that
+`[Unreleased]` the entry to read is **a chat can be set to Auto** — a new privilege and a
+per-chat setting that decide whether the agent asks before a privileged effect. In
+`0.2.0` it is **there is always a sign-in** — an install that
 ran without one asks for one now. (In `0.1.0`, three switches — `AUTH_ENABLED`,
 `PANTHEON_SINGLE_USER` and the `use_rag` field on `POST /api/chat_stream` — stopped ignoring
 values meaning *no*; the first two are now ignored altogether.)
@@ -100,8 +102,49 @@ One file per version, for the person deciding whether to upgrade.
 ## [Unreleased]
 
 The first fixes from `v0.2.0` in use: the owner ran the release on their own install and reported
-two things on 2026-10-09. Both are fixed here, and these entries move under a version heading when
+two things on 2026-10-09, then ruled on the two questions those fixes raised and reported a third
+thing (`D-2026-10-09-01`). All of it is here, and these entries move under a version heading when
 the next one is cut.
+
+### Added
+
+- **The phone gets every control that decides a turn.** On a phone the Agent/Chat toggle was
+  dropped below a 340 px chat bar and nothing took its place — a 360×800 phone makes that bar
+  exactly 340 px — so there was no way to reach Agent or Chat mode at all, and no menu, palette
+  or slash command named it either. A chip in the composer now says which mode you are in and
+  opens one sheet holding Mode, Approval, Model, Context, Plan, Web, Shell and Persona, each
+  showing its current value, each a thumb-sized row. Escape, a tap outside and the phone's Back
+  button all close it. `/toggle mode [agent|chat]` is the same control, typed.
+
+### Changed — read this before upgrading
+
+- **A chat can be set to Auto, and then it does not ask.** Every chat has an approval mode:
+  *Manual approve*, which is what chats do today and what every chat still starts at, or *Auto*,
+  where the agent runs a step that would have raised an approval card. **Read what Auto gives up
+  before you grant it.** That card exists because a web page, a fetched document, an email or a
+  tool's output can carry an instruction, so in a chat set to Auto a privileged effect that
+  follows outside content runs without a person seeing it first — with **no exception list**,
+  including effects that delete. It is set **per chat**: never a default, never install-wide,
+  never inherited, and a new chat is always *Manual approve*. Turning it on needs the **new
+  `can_auto_approve` privilege**, which is **off** for every account except admins (grant it in
+  Settings → Users) — so **no existing account gains anything on upgrade** — and it is refused to
+  a bearer token and to the agent's own loopback, so a chat cannot put itself into Auto. While
+  Auto is on the chat says so, in the composer and in the header, and every step it ran without
+  asking is recorded on the run and in the stored event. **What Auto does not change:** nothing is
+  validated less. The approval store's seal, expiry and single use, the checks on what an MCP
+  server may be told to run, the outbound address and host limits and the admin-only routes all
+  behave exactly as before. Auto changes whether you are asked, and nothing else.
+- **Your own saved material no longer puts a run into *external untrusted context*.** One pinned
+  memory, one note or one installed skill used to arm the approval gate from the first token of
+  every agent turn, so the turn's first privileged effect waited for a click and the card
+  described your own note as content that came from outside — on any install that uses memory,
+  that verdict was always on, and a verdict that is always on says nothing. It no longer arms.
+  Everything that genuinely arrived from outside still does, and the write that could launder a
+  hostile page into your memory or your skills — `manage_memory add`, `manage_skills add` — is
+  itself a gated effect, asked in the run that read the page, while it can still be traced to it.
+  **If you were relying on that**: a chat left on *Manual approve*, which is the default, still
+  asks before every privileged effect that follows anything from outside; what is gone is the
+  arming that a non-empty memory store did on its own.
 
 ### Fixed
 
@@ -135,6 +178,13 @@ the next one is cut.
 - **One typed message is one message.** A resend trimmed the chat by counting the bubbles on
   screen, so on a chat longer than one page the message was stored twice and sent to the model
   twice — which is what the owner's own exported chat shows.
+- **The agent does the work instead of asking whether to.** Measured over five multi-step tasks
+  against the same model: **none finished**, and four ended by asking whether to take a step they
+  had already been told to take. **Four of five finish now**, and none ends on a question the
+  agent asked. A turn that offers to do something and then stops gets one push to do it, and a
+  first action that is a question with nothing yet looked at buys one round of looking. `ask_user`
+  still raises its card once anything has been run, asked twice, or asked on a turn with no other
+  tool, and plan mode may still end on a question.
 
 ---
 
