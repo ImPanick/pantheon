@@ -205,7 +205,7 @@ class ChatProcessor:
         the same session and lets the backend reuse its cached prefix.
 
         `FIX-2026-10-09` item 1. Every one of those per-turn messages now
-        carries one of ``src/prompt_security.py``'s three headers, and
+        carries one of ``src/prompt_security.py``'s framing headers, and
         ``src/llm_core.py``'s consecutive-user merge refuses to join a message
         carrying one to a message that does not. That is what keeps the
         person's own words a message of their own: the KV-cache rule forces

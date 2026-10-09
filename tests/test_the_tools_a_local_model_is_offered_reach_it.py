@@ -475,18 +475,60 @@ def test_the_owners_turn_reaches_the_mcp_tool_and_answers(monkeypatch, emitted):
     assert "Archivist" in sent[1]["prompt"]
 
 
-def test_a_parsed_call_reaches_the_approval_gate_not_the_floor(monkeypatch):
-    """The product's real shape with an MCP server registered: the MCP tool
-    list is wrapped as external untrusted context, which arms the post-external
-    gate (`FORBIDDEN.md` Part 2), so the call waits for the person. What this
-    pins is that it waits **as that tool, with those arguments** — before this
-    row a fenced MCP call reached nothing at all, so there was no card either.
+def test_a_parsed_call_reaches_the_tool_not_the_floor(monkeypatch):
+    """What this row exists to pin: a fenced MCP call is parsed and dispatched
+    **as that tool, with those arguments** — before it, such a call reached
+    nothing at all.
+
+    `fx7-agent` corrected the premise, not the assertion (`Law 3`). This case
+    used to say *"the MCP tool list is wrapped as external untrusted context,
+    which arms the post-external gate, so the call waits for the person"* — and
+    that was measured and true on `a3aad8c`. It was also the defect
+    `B-NEW-8` filed: a manifest of what an install has registered is in the
+    prompt before the person has asked anything, so arming on it held the first
+    tool call of **every** turn on any install with MCP. The list now rides in
+    `capability_manifest_message`, which does not arm the gate, so a turn that
+    has read nothing from outside reaches its tool. The held-with-a-card half
+    is the case below, under a cause that actually happened.
     """
+    dispatched = []
     _base(monkeypatch, _mcp_manager())
     events, _sent = _drive(
         monkeypatch,
         ["```mcp__osrs__lookup_raid\n" + json.dumps(MCP_CALL) + "\n```", "Done."],
         message="Look up the Fractured Archive raid with the osrs-wiki tools.",
+        relevant_tools={"web_search", "ask_user"},
+        dispatched=dispatched,
+        tool_output=json.dumps({"bosses": ["The Archivist"]}),
+    )
+    assert [b.tool_type for b in dispatched] == ["mcp__osrs__lookup_raid"], (
+        "the fenced MCP call reached neither the tool nor the gate")
+    assert json.loads(dispatched[0].content) == MCP_CALL
+    ran = [e for e in events if e.get("type") == "tool_output"
+           and e.get("tool") == "mcp__osrs__lookup_raid"]
+    assert ran, "the tool ran and the stream said nothing about it"
+    assert "Archivist" in str(ran[0].get("output"))
+    assert "Waiting for an exact user approval" not in str(ran[0].get("output")), (
+        "a turn that read nothing from outside must not need a click")
+
+
+def test_a_call_after_a_web_result_still_waits_for_the_person(monkeypatch):
+    """`FORBIDDEN.md` Part 2, with the cause the gate is written for.
+
+    Round 1 searches the web; that result is external content this run read, so
+    the gate arms. Round 2's MCP call is then held **as that tool, with those
+    arguments**, and the person gets a card naming it — which is what the case
+    above asserted before `B-NEW-8` moved the manifest out of the way.
+    """
+    _base(monkeypatch, _mcp_manager())
+    events, _sent = _drive(
+        monkeypatch,
+        [
+            "```web_search\nfractured archive raid\n```",
+            "```mcp__osrs__lookup_raid\n" + json.dumps(MCP_CALL) + "\n```",
+            "Done.",
+        ],
+        message="Search for the Fractured Archive raid, then look it up with the osrs-wiki tools.",
         relevant_tools={"web_search", "ask_user"},
     )
     held = [e for e in events if e.get("type") == "tool_output"
