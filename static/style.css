@@ -49154,19 +49154,32 @@ body.plan-mode-active .chat-input-top > .model-picker-wrap:has(> .model-picker-m
   color: var(--color-muted-alt);
 }
 .turn-row-help[hidden] { display: none; }
+/* A row holding a segmented control stacks: *Manual approve* does not fit
+   beside its label and half a 360px row, and measured 2026-10-09 it ran over
+   *Auto* when it tried. Label on its line, the control full width under it. */
+.turn-row-seg {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  padding-bottom: 10px;
+}
 /* The segmented control in a row is the same `.mode-toggle` the desktop
    composer uses — one look, one stylesheet block (`Law 7`) — grown to a
    thumb's height. */
 .turn-row .turn-seg {
-  flex: 1 1 auto;
+  flex: 0 0 auto;
+  width: 100%;
   height: 44px;
   min-width: 0;
 }
 .turn-row .turn-seg .mode-toggle-btn {
   flex: 1 1 0;
+  min-width: 0;
   min-height: 44px;
   padding: 0 8px;
   font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .turn-row-switch .turn-switch {
   flex: 0 0 auto;

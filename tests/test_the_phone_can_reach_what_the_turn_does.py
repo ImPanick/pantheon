@@ -577,53 +577,78 @@ def test_a_row_that_opens_something_hands_off_and_closes_first(sandbox, preamble
 
 
 def test_the_approval_slot_stays_shut_until_its_control_exists(sandbox, preamble):
-    """`D-2026-10-09-01` §2 is the sibling lane's. Until its control is on the
-    page this row shows nothing rather than inventing an approval state."""
+    """`D-2026-10-09-01` §2 is the sibling lane's. With no control on the page
+    — and with one an admin has not granted, which is drawn `display: none` —
+    this row shows nothing rather than inventing an approval state."""
     out = _case(sandbox, preamble, """
       sheet.initTurnSheet(document);
       const without = {hidden: el('turn-row-approval').hidden,
                        read: sheet.readTurn(document).approval,
                        set: sheet.setApproval(document, 'auto'),
                        flag: el('turn-chip-approval').hidden};
-      say(without);
+      // The chip exists but the person may not set it: `approvalMode.render`
+      // draws `display: none` until an admin grants `can_auto_approve`.
+      const chip = document.createElement('button');
+      chip.id = 'approval-mode-btn';
+      chip.setAttribute('aria-pressed', 'false');
+      chip.style.display = 'none';
+      document.body.appendChild(chip);
+      sheet.paint(document);
+      say({without, ungranted: {hidden: el('turn-row-approval').hidden,
+                                read: sheet.readTurn(document).approval}});
     """)
-    assert out == {"hidden": True, "read": None, "set": False, "flag": True}
+    assert out["without"] == {"hidden": True, "read": None, "set": False, "flag": True}
+    assert out["ungranted"] == {"hidden": True, "read": None}
 
 
-def test_the_approval_row_drives_the_sibling_lanes_control_when_it_lands(sandbox, preamble):
+def test_the_approval_row_presses_the_chats_own_control(sandbox, preamble):
+    """The shape `fx8-approval` shipped: `#approval-mode-btn` plus
+    `window.approvalModeModule`, whose own comment calls it *"the same door
+    `fx8-mobile` drives"*. The row presses that chip — it never writes an
+    approval state of its own — and the sheet gets out of the way, because
+    turning Auto on asks one question first."""
     out = _case(sandbox, preamble, """
-      // The shape `/work/notes/fx8-approval.md` is expected to land.
-      const host = document.createElement('div');
-      host.id = 'chat-approval-toggle';
-      const manual = document.createElement('button');
-      manual.setAttribute('data-approval', 'manual'); manual.classList.add('active');
-      const auto = document.createElement('button');
-      auto.setAttribute('data-approval', 'auto');
-      host.appendChild(manual); host.appendChild(auto);
-      document.body.appendChild(host);
-      let mode = 'manual';
-      const seen = [];
-      window.__pantheonGetApprovalMode = () => mode;
-      window.__pantheonSetApprovalMode = (m) => { seen.push(m); mode = m; };
+      let auto = false;
+      const presses = [];
+      const chip = document.createElement('button');
+      chip.id = 'approval-mode-btn';
+      chip.setAttribute('aria-pressed', 'false');
+      chip.addEventListener('click', () => {
+        presses.push('toggle');
+        auto = !auto;
+        chip.setAttribute('aria-pressed', auto ? 'true' : 'false');
+        chip.classList.toggle('active', auto);
+      });
+      document.body.appendChild(chip);
+      window.approvalModeModule = { isAuto: () => auto };
       sheet.initTurnSheet(document);
       const manualFirst = {hidden: el('turn-row-approval').hidden,
                            auto: el('turn-approval-auto').getAttribute('aria-checked'),
+                           manual: el('turn-approval-manual').getAttribute('aria-checked'),
                            flag: el('turn-chip-approval').hidden,
                            label: el('turn-chip').getAttribute('aria-label')};
       tap('turn-chip');
       tap('turn-approval-auto');
-      say({manualFirst, seen,
-           onAuto: {auto: el('turn-approval-auto').getAttribute('aria-checked'),
-                    manual: el('turn-approval-manual').getAttribute('aria-checked'),
-                    flag: el('turn-chip-approval').hidden,
-                    label: el('turn-chip').getAttribute('aria-label')}});
+      const sameTick = {presses: presses.slice(), open: sheet.isOpen(document)};
+      await tick();
+      const after = {presses: presses.slice(),
+                     auto: el('turn-approval-auto').getAttribute('aria-checked'),
+                     flag: el('turn-chip-approval').hidden,
+                     label: el('turn-chip').getAttribute('aria-label')};
+      // Pressing the mode it is already in asks the chip for nothing.
+      tap('turn-chip');
+      tap('turn-approval-auto');
+      await tick();
+      say({manualFirst, sameTick, after, idle: presses.slice()});
     """)
-    assert out["manualFirst"] == {"hidden": False, "auto": "false", "flag": True,
-                                  "label": "This turn: Agent mode"}
-    assert out["seen"] == ["auto"]
+    assert out["manualFirst"] == {"hidden": False, "auto": "false", "manual": "true",
+                                  "flag": True, "label": "This turn: Agent mode"}
+    # The sheet is out of the way before the control is pressed.
+    assert out["sameTick"] == {"presses": [], "open": False}
     # Auto is the state a person must not miss: it is on the chip, unopened.
-    assert out["onAuto"] == {"auto": "true", "manual": "false", "flag": False,
-                             "label": "This turn: Agent mode, Auto approval"}
+    assert out["after"] == {"presses": ["toggle"], "auto": "true", "flag": False,
+                            "label": "This turn: Agent mode, Auto approval"}
+    assert out["idle"] == ["toggle"], "the row pressed the chip to set the mode it was in"
 
 
 def test_every_control_that_decides_a_turn_has_a_row(sandbox, preamble):

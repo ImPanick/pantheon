@@ -46,15 +46,20 @@ export const SWITCH_ROWS = [
   { row: 'turn-row-shell', btn: 'bash-toggle-btn' },
 ];
 
-/** Selectors and setters the sibling lane `fx8-approval` may land. The first
- *  one found is the control this sheet's Approval row drives; until one is on
- *  the page the row stays hidden rather than inventing an approval state.
- *  `/work/notes/fx8-approval.md` names the one that ships. */
+/** The chat's approval mode (`D-2026-10-09-01` §2) is the lane `fx8-approval`
+ *  built: `#approval-mode-btn` in the composer, `window.approvalModeModule`
+ *  behind it (`static/js/approvalMode.js`, which says in as many words that it
+ *  is "the same door `fx8-mobile` drives"). The chip is `display: none` until
+ *  an admin has granted the person `can_auto_approve`, so a row here follows
+ *  it: no dead switch to discover (`Law 15`).
+ *
+ *  The other spellings are kept as a fallback only — the first control found
+ *  is the one driven, and with none of them on the page the row stays hidden
+ *  rather than inventing an approval state. */
 export const APPROVAL_CONTROLS = [
+  '#approval-mode-btn',
   '#chat-approval-toggle',
-  '#approval-mode-toggle',
   '[data-approval-mode]',
-  '.approval-mode-toggle',
 ];
 
 function _el(doc, id) { return doc.getElementById(id) || null; }
@@ -96,13 +101,27 @@ function _click(node) {
 /** True while a row is clicking a composer control on the sheet's behalf. */
 export function isDriving() { return _driving > 0; }
 
-/** The approval control the sibling lane landed, or null. */
+/** The approval control, when this person has one. A control the page is not
+ *  showing is a control an admin has not granted, so it is not offered here
+ *  either. */
 export function approvalControl(doc) {
   for (const sel of APPROVAL_CONTROLS) {
     const found = doc.querySelector(sel);
-    if (found) return found;
+    if (found && isRendered(found)) return found;
   }
   return null;
+}
+
+/** `'auto'` / `'manual'` for a control, read from the module that owns the
+ *  state where there is one and from the control itself otherwise. */
+function _approvalOf(ctl) {
+  try {
+    const mod = typeof window !== 'undefined' && window.approvalModeModule;
+    if (mod && typeof mod.isAuto === 'function') return mod.isAuto() ? 'auto' : 'manual';
+  } catch (_) { /* fall through to the control */ }
+  if (ctl.getAttribute('aria-pressed') === 'true') return 'auto';
+  if (ctl.classList && ctl.classList.contains('active')) return 'auto';
+  return ctl.getAttribute('data-approval-mode') === 'auto' ? 'auto' : 'manual';
 }
 
 /** What the turn is, read off the composer — never off a copy. */
@@ -133,21 +152,7 @@ export function readTurn(doc) {
     };
   }
   const ctl = approvalControl(doc);
-  if (ctl) {
-    let auto = null;
-    try {
-      if (typeof window !== 'undefined' && typeof window.__pantheonGetApprovalMode === 'function') {
-        auto = String(window.__pantheonGetApprovalMode()) === 'auto';
-      }
-    } catch (_) { auto = null; }
-    if (auto === null) {
-      const el = ctl.querySelector ? ctl.querySelector('[data-approval="auto"]') : null;
-      if (el) auto = el.classList.contains('active') || el.getAttribute('aria-checked') === 'true';
-      else auto = ctl.getAttribute('data-approval-mode') === 'auto'
-        || String(ctl.value || '') === 'auto';
-    }
-    out.approval = auto ? 'auto' : 'manual';
-  }
+  if (ctl) out.approval = _approvalOf(ctl);
   return out;
 }
 
@@ -283,23 +288,21 @@ export function setMode(doc, mode) {
   return true;
 }
 
+/** Press the chat's own approval control, when the mode asked for is not the
+ *  one it is already in.
+ *
+ *  Handed off like the model picker rather than driven in place: turning Auto
+ *  on asks first — one sentence saying what is given up (`D-2026-10-09-01`
+ *  §2) — and a question put over the sheet, with the sheet's own outside-tap
+ *  dismissal underneath it, is two layers answering the same tap. The chip
+ *  carries the answer afterwards, which is where a person cannot miss it. */
 export function setApproval(doc, mode) {
   const ctl = approvalControl(doc);
   if (!ctl) return false;
-  let done = false;
-  try {
-    if (typeof window !== 'undefined' && typeof window.__pantheonSetApprovalMode === 'function') {
-      window.__pantheonSetApprovalMode(mode);
-      done = true;
-    }
-  } catch (_) { done = false; }
-  if (!done) {
-    const own = ctl.querySelector ? ctl.querySelector(`[data-approval="${mode}"]`) : null;
-    if (own) { _click(own); done = true; }
-    else if (ctl.tagName === 'BUTTON' || ctl.tagName === 'INPUT') { _click(ctl); done = true; }
-  }
-  paint(doc);
-  return done;
+  if (_approvalOf(ctl) === mode) { closeSheet(doc); return true; }
+  closeSheet(doc);
+  setTimeout(() => { _click(ctl); paint(doc); }, 0);
+  return true;
 }
 
 export function flipSwitch(doc, rowId) {
@@ -373,7 +376,9 @@ export function initTurnSheet(doc) {
   const watch = ['mode-agent-btn', 'mode-chat-btn', 'plan-toggle-btn', 'web-toggle-btn',
     'bash-toggle-btn', 'character-indicator-btn', 'character-indicator-name',
     'model-picker-label', 'chat-context-pill', 'chat-context-pill-label',
-    'agent-limits-hint'];
+    // The sibling lane's chip (`D-2026-10-09-01` §2). Absent until it merges;
+    // `_el` answers null and nothing here minds.
+    'agent-limits-hint', 'approval-mode-btn'];
   // Pressed anywhere — the chip on the bar, the palette, the tour, a `/toggle
   // mode` — the control's own handler runs first (this listener is added after
   // `app.js` bound them) and the chip is redrawn from what it left behind.

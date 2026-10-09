@@ -1779,7 +1779,7 @@
           <button type="button" class="turn-sheet-close" id="turn-sheet-close" aria-label="Close">✖</button>
         </div>
 
-        <div class="turn-row" id="turn-row-mode">
+        <div class="turn-row turn-row-seg" id="turn-row-mode">
           <span class="turn-row-label" id="turn-label-mode">Mode</span>
           <div class="mode-toggle turn-seg" id="turn-mode-seg" role="radiogroup" aria-labelledby="turn-label-mode">
             <button type="button" class="mode-toggle-btn active" id="turn-mode-agent" role="radio" aria-checked="true">Agent</button>
@@ -1792,7 +1792,7 @@
              lane `fx8-approval`'s control. This row is its slot: it stays
              hidden until that control is on the page, and then it drives it —
              it never keeps an approval state of its own. -->
-        <div class="turn-row" id="turn-row-approval" hidden>
+        <div class="turn-row turn-row-seg" id="turn-row-approval" hidden>
           <span class="turn-row-label" id="turn-label-approval">Approval</span>
           <div class="mode-toggle turn-seg" id="turn-approval-seg" role="radiogroup" aria-labelledby="turn-label-approval">
             <button type="button" class="mode-toggle-btn active" id="turn-approval-manual" role="radio" aria-checked="true">Manual approve</button>
