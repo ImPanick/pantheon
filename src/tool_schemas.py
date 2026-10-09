@@ -70,7 +70,12 @@ FUNCTION_TOOL_SCHEMAS = [
         "type": "function",
         "function": {
             "name": "web_search",
-            "description": "Quick single web lookup for a fact or current event mid-task. NOT for 'research X' / 'do research on X' — those are deep-research jobs; use trigger_research instead.",
+            # `B-NEW`. This named `trigger_research` on every turn, including
+            # the turns whose `tools` array does not carry it — a schema
+            # description is read by the model exactly like the prompt is. The
+            # routing rule lives once now, in `agent_loop._TOOL_GATED_RULE_LINES`,
+            # gated on the tool being present.
+            "description": "Quick single web lookup for a fact or current event mid-task. NOT for 'research X' / 'do research on X' — those are a separate deep-research job, not a quick lookup — this turn's own tool list says whether that job's tool is available.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -85,7 +90,8 @@ FUNCTION_TOOL_SCHEMAS = [
         "type": "function",
         "function": {
             "name": "web_fetch",
-            "description": "Fetch and read the text content of a specific URL the user names (e.g. 'check example.com', 'what's on this page <url>'). Use when you already have a concrete URL/domain. NOT for open-ended searches (use web_search) or 'research X' jobs (use trigger_research). Downloads are size-budgeted; a '[partial content: ...]' notice in the result means the body was cut short and you can re-call with full=true for the rest.",
+            # `B-NEW`, as `web_search` above.
+            "description": "Fetch and read the text content of a specific URL the user names (e.g. 'check example.com', 'what's on this page <url>'). Use when you already have a concrete URL/domain. NOT for open-ended searches (use web_search), and not for 'research X' jobs. Downloads are size-budgeted; a '[partial content: ...]' notice in the result means the body was cut short and you can re-call with full=true for the rest.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -807,7 +813,12 @@ FUNCTION_TOOL_SCHEMAS = [
                     "integration": {"type": "string", "description": "Integration name or ID (e.g. 'Miniflux', 'Gitea')"},
                     "method": {"type": "string", "enum": ["GET", "POST", "PUT", "PATCH", "DELETE"], "description": "HTTP method"},
                     "path": {"type": "string", "description": "API endpoint path (e.g. '/v1/entries?status=unread&limit=20')"},
-                    "body": {"type": "object", "description": "JSON request body (for POST/PUT/PATCH)"}
+                    # `additionalProperties: true` because the keys really are
+                    # the caller's: without it a schema-to-grammar converter
+                    # reads an object with no declared properties as "only `{}`
+                    # is valid" and the model can never send a body (`B-NEW`).
+                    "body": {"type": "object", "additionalProperties": True,
+                             "description": "JSON request body (for POST/PUT/PATCH)"}
                 },
                 "required": ["integration", "method", "path"]
             }
@@ -908,7 +919,11 @@ FUNCTION_TOOL_SCHEMAS = [
                     "name": {"type": "string", "description": "Server name (for add)"},
                     "command": {"type": "string", "description": "Command to run e.g. npx (for add)"},
                     "args": {"type": "array", "items": {"type": "string"}, "description": "Command arguments (for add)"},
-                    "env": {"type": "object", "description": "Environment variables (for add)"}
+                    # An open object: the names are the server's, not ours
+                    # (`B-NEW`). `FORBIDDEN.md` Part 2's env validation is what
+                    # decides what may actually be set, and it is untouched.
+                    "env": {"type": "object", "additionalProperties": True,
+                            "description": "Environment variables (for add)"}
                 },
                 "required": ["action"]
             }
@@ -986,7 +1001,11 @@ FUNCTION_TOOL_SCHEMAS = [
                     "name": {"type": "string", "description": "The folder's new name, one level, no '/' (for rename_folder)"},
                     "contents": {"type": "string", "enum": ["move_up", "delete"],
                                  "description": "What happens to what is in a folder being removed: move_up moves it up a level, delete deletes the documents with it (for remove_folder; required when the folder is not empty)"},
-                    "steps": {"type": "array", "items": {"type": "object"},
+                    # Each step's keys depend on its own `action`, so the
+                    # object is open and says so (`B-NEW`): a converter reads an
+                    # object with no declared properties as "only `{}`".
+                    "steps": {"type": "array",
+                              "items": {"type": "object", "additionalProperties": True},
                               "description": "For reorganise: folder actions in order, each an object with its own action (create_folder, rename_folder, move_folder, move, remove_folder, delete) and arguments"},
                     "plan_id": {"type": "string", "description": "The plan to apply (for apply_plan, only after the person chose 'Apply the plan')"}
                 },
@@ -1196,8 +1215,11 @@ FUNCTION_TOOL_SCHEMAS = [
                     "action": {"type": "string", "enum": ["call", "endpoints"], "description": "'call' to hit an endpoint, 'endpoints' to list what's available"},
                     "path": {"type": "string", "description": "Endpoint path starting with /api/ (e.g. '/api/cookbook/gpus', '/api/gallery/list', '/api/calendar/events')"},
                     "method": {"type": "string", "enum": ["GET", "POST", "PUT", "PATCH", "DELETE"], "description": "HTTP method (default GET)"},
-                    "body": {"type": "object", "description": "JSON request body for POST/PUT/PATCH"},
-                    "query": {"type": "object", "description": "Querystring params as a key-value object"},
+                    # Open objects, declared as such — see `api_call` (`B-NEW`).
+                    "body": {"type": "object", "additionalProperties": True,
+                             "description": "JSON request body for POST/PUT/PATCH"},
+                    "query": {"type": "object", "additionalProperties": True,
+                              "description": "Querystring params as a key-value object"},
                     "filter": {"type": "string", "description": "For action=endpoints: substring to filter paths/summaries (e.g. 'cookbook', 'gallery')"}
                 },
                 "required": ["action"]
@@ -1962,3 +1984,204 @@ def mcp_tool_schema(name: str) -> dict:
         f"{name!r} has no entry in FUNCTION_TOOL_SCHEMAS — an MCP server "
         f"cannot derive a schema for a tool this register does not declare."
     )
+
+
+# ── A shape every strict server accepts (`B-NEW`) ───────────────────────────
+#
+# An MCP tool's `parameters` is the server's own `inputSchema`, copied into the
+# request untouched (`src/mcp_manager.get_all_openai_schemas`, and `P8-48` is
+# deliberate that the parameters are never overridden — the server enforces its
+# schema whatever the model is told). That is right about authority and wrong
+# about transport: a local OpenAI-compatible server validates the whole `tools`
+# array before it runs anything, and **one** tool it cannot read costs the
+# request, not the tool.
+#
+# Measured with the showcase harness against a recording server on loopback,
+# with a registered stdio MCP server serving one ordinary tool and one whose
+# `inputSchema` had no `type`, a union `"type": ["string","null"]`, an `array`
+# with no `items`, a `required` naming a property that does not exist and an
+# unknown keyword: Pantheon sent all of it verbatim, and a 400 from the server
+# ended the turn — `event: error`, `local endpoint returned HTTP 400: Invalid
+# 'tools[1].function.parameters'`. Every other tool in that array, built-in and
+# MCP, went down with it.
+#
+# So the schema is NORMALISED, not replaced, and never narrowed: an unreadable
+# constraint becomes a looser one the server can parse (an object with no
+# properties becomes an open object, an array with no items an array of
+# anything), never a tighter one. The MCP server still validates the call it
+# receives, so this changes what the model is *told* and nothing about what it
+# is *allowed*.
+#
+# What each rule is for, because "strict" is three different parsers:
+#   * llama.cpp converts the schema to a GBNF grammar. A node with no `type`
+#     and no combinator has no rule; a union `type` list is not handled; an
+#     `array` with no `items` has nothing to repeat.
+#   * vLLM (xgrammar/outlines) and LM Studio reject unknown keywords outright
+#     rather than ignoring them.
+#   * every validator refuses a `required` name that is not in `properties`,
+#     and it is unsatisfiable anyway — the model cannot produce a valid call.
+_STRICT_SCHEMA_KEYWORDS = frozenset({
+    "type", "properties", "required", "items", "enum", "const", "description",
+    "title", "default", "additionalProperties", "oneOf", "anyOf", "allOf",
+    "$ref", "$defs", "definitions", "minimum", "maximum", "exclusiveMinimum",
+    "exclusiveMaximum", "minLength", "maxLength", "pattern", "minItems",
+    "maxItems", "uniqueItems", "format", "prefixItems", "examples",
+    "multipleOf", "minProperties", "maxProperties", "$schema",
+})
+_STRICT_SCHEMA_TYPES = frozenset({
+    "object", "array", "string", "number", "integer", "boolean", "null",
+})
+_COMBINATORS = frozenset({"oneOf", "anyOf", "allOf", "$ref", "const", "enum"})
+
+
+def strict_schema_problems(node, path: str = "parameters") -> list:
+    """Every reason a strict local server could refuse this schema, as sentences.
+
+    Read by `sanitize_tool_parameters` for one tool and by
+    `.pantheon/check-mcp-schemas.py` for the whole register, so the rule exists
+    once (`Law 7`). Returns `[]` for a schema all three parsers can read.
+    """
+    problems: list = []
+    if not isinstance(node, dict):
+        return [f"{path}: not a JSON object ({type(node).__name__})"]
+    for key in node:
+        if key not in _STRICT_SCHEMA_KEYWORDS and not str(key).startswith("x-"):
+            problems.append(f"{path}: unknown keyword {key!r}")
+    declared = node.get("type")
+    if isinstance(declared, list):
+        problems.append(f"{path}: union type {declared!r} (a grammar cannot branch on it)")
+        members = [t for t in declared if isinstance(t, str)]
+    elif declared is None:
+        members = []
+        # `{}`, or a node carrying nothing but annotations, is the universal
+        # schema — "any JSON here" — and every converter has a rule for it.
+        # Calling that a problem would push `manage_settings`' `value`, which
+        # really does take any JSON, into a narrower type it does not have.
+        # A node with `properties` or `required` and no `type` is the other
+        # thing entirely: a shape whose author meant "object" and did not say
+        # so, and that is the one a grammar cannot build.
+        if not (_COMBINATORS & set(node)) and (
+            set(node) & {"properties", "required", "additionalProperties",
+                         "items", "prefixItems", "minProperties",
+                         "maxProperties", "minItems", "maxItems"}
+        ):
+            problems.append(f"{path}: 'properties'/'required' with no 'type'")
+    else:
+        members = [declared] if isinstance(declared, str) else []
+        if not isinstance(declared, str):
+            problems.append(f"{path}: 'type' is {declared!r}")
+    for member in members:
+        if member not in _STRICT_SCHEMA_TYPES:
+            problems.append(f"{path}: unknown type {member!r}")
+    if "object" in members and "properties" not in node and "additionalProperties" not in node:
+        problems.append(f"{path}: an object with neither 'properties' nor 'additionalProperties'")
+    if "array" in members and "items" not in node and "prefixItems" not in node:
+        problems.append(f"{path}: an array with no 'items'")
+    required = node.get("required")
+    if isinstance(required, list):
+        props = node.get("properties")
+        props = props if isinstance(props, dict) else {}
+        for name in required:
+            if not isinstance(name, str):
+                problems.append(f"{path}: 'required' holds {name!r}, which is not a name")
+            elif name not in props:
+                problems.append(f"{path}: 'required' names {name!r}, which is not a property")
+    elif required is not None:
+        problems.append(f"{path}: 'required' is {type(required).__name__}, not an array")
+    for key in ("properties", "$defs", "definitions"):
+        sub = node.get(key)
+        if isinstance(sub, dict):
+            for name, child in sub.items():
+                problems.extend(strict_schema_problems(child, f"{path}.{key}.{name}"))
+    for key in ("items", "additionalProperties", "contains", "propertyNames"):
+        if isinstance(node.get(key), dict):
+            problems.extend(strict_schema_problems(node[key], f"{path}.{key}"))
+    for key in ("oneOf", "anyOf", "allOf", "prefixItems"):
+        if isinstance(node.get(key), list):
+            for i, child in enumerate(node[key]):
+                problems.extend(strict_schema_problems(child, f"{path}.{key}[{i}]"))
+    return problems
+
+
+def sanitize_tool_parameters(node, _top: bool = True):
+    """`node`, rewritten into a shape every strict server can read.
+
+    Only ever loosens. The caller keeps the original — this is what goes in the
+    request's `tools` array, not what the tool is validated against.
+    """
+    if not isinstance(node, dict):
+        return {"type": "object", "properties": {}} if _top else {}
+    out = {}
+    for key, value in node.items():
+        if key in _STRICT_SCHEMA_KEYWORDS or str(key).startswith("x-"):
+            out[key] = value
+    declared = out.get("type")
+    if isinstance(declared, list):
+        # The first member a grammar can build, and `null` is never it: a
+        # nullable field is expressed by leaving the name out of `required`,
+        # which the next block below does.
+        usable = [t for t in declared if isinstance(t, str) and t in _STRICT_SCHEMA_TYPES and t != "null"]
+        out["type"] = usable[0] if usable else "string"
+    elif isinstance(declared, str):
+        if declared not in _STRICT_SCHEMA_TYPES:
+            out["type"] = "string"
+    elif declared is not None:
+        out["type"] = "string"
+    elif not (_COMBINATORS & set(out)):
+        # No type. At the top level the OpenAI tool shape requires an object,
+        # and a node carrying `properties` or `required` meant one. Anything
+        # else — `{}`, a description on its own — is the universal schema and
+        # is left exactly as it is: narrowing it would take a capability away.
+        if _top or (set(out) & {"properties", "required", "additionalProperties",
+                                "minProperties", "maxProperties"}):
+            out["type"] = "object"
+        elif set(out) & {"items", "prefixItems", "minItems", "maxItems"}:
+            out["type"] = "array"
+        else:
+            return out
+    if out.get("type") == "object":
+        props = out.get("properties")
+        if not isinstance(props, dict):
+            props = {} if "properties" in out else None
+        if props is None and "additionalProperties" not in out:
+            # An object whose keys the server never declared: say so as a shape
+            # a grammar can build rather than as an object with no members,
+            # which every converter reads as "only `{}` is valid".
+            out["additionalProperties"] = True
+            out["properties"] = {}
+        else:
+            out["properties"] = {
+                name: sanitize_tool_parameters(child, _top=False)
+                for name, child in (props or {}).items()
+            }
+    elif isinstance(out.get("properties"), dict):
+        out["properties"] = {
+            name: sanitize_tool_parameters(child, _top=False)
+            for name, child in out["properties"].items()
+        }
+    if out.get("type") == "array" and "items" not in out and "prefixItems" not in out:
+        out["items"] = {}
+    for key in ("items", "additionalProperties", "contains", "propertyNames"):
+        if isinstance(out.get(key), dict):
+            out[key] = sanitize_tool_parameters(out[key], _top=False)
+    for key in ("oneOf", "anyOf", "allOf", "prefixItems"):
+        if isinstance(out.get(key), list):
+            out[key] = [sanitize_tool_parameters(child, _top=False) for child in out[key]]
+    for key in ("$defs", "definitions"):
+        if isinstance(out.get(key), dict):
+            out[key] = {name: sanitize_tool_parameters(child, _top=False)
+                        for name, child in out[key].items()}
+    required = out.get("required")
+    if isinstance(required, list):
+        props = out.get("properties")
+        props = props if isinstance(props, dict) else {}
+        kept = [n for n in required if isinstance(n, str) and n in props]
+        if kept:
+            out["required"] = kept
+        else:
+            out.pop("required", None)
+    elif required is not None:
+        out.pop("required", None)
+    if _top and out.get("type") != "object":
+        return {"type": "object", "properties": {}}
+    return out

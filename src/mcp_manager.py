@@ -869,6 +869,9 @@ class McpManager:
         self._connect_tasks: Dict[str, Any] = {}
         # Tracking updates to tools/connections for RAG indexing / prompt cache
         self._generation = 0
+        # Qualified names whose schema `_servable_parameters` had to normalise,
+        # so the warning is one line per tool rather than one per request.
+        self._rewritten_schemas: set = set()
 
     # ------------------------------------------------------------------
     # `B880` — one task owns a connection's AsyncExitStack, start to finish.
@@ -1352,7 +1355,22 @@ class McpManager:
 
         session = self._sessions.get(server_id)
         if not session:
-            return {"error": f"MCP server not connected: {server_id}", "exit_code": 1}
+            # `B-NEW`. This said `MCP server not connected: 47a5fba5`, and the
+            # id is a mint of this module's own (`B870`) that appears in no
+            # surface a person reads. The error goes into the chat as the tool's
+            # output, so it names the server the way the operator does and says
+            # what state it is in.
+            conn = (self._connections or {}).get(server_id) or {}
+            name = str(conn.get("name") or "").strip()
+            detail = str(conn.get("error") or "").strip()
+            label = f"“{name}”" if name else f"id {server_id}"
+            if not conn:
+                return {"error": f"MCP server {label} is not connected (no server with "
+                                 f"that id is registered), so {tool_name!r} cannot be "
+                                 f"called.", "exit_code": 1}
+            return {"error": f"MCP server {label} is not connected"
+                             + (f" ({detail})" if detail else " (not running)")
+                             + f", so {tool_name!r} cannot be called.", "exit_code": 1}
 
         try:
             result = await self._do_call(session, tool_name, arguments, timeout)
@@ -1556,12 +1574,55 @@ class McpManager:
                     "function": {
                         "name": qualified,
                         "description": f"[MCP:{label}] {description}",
-                        "parameters": tool.get("input_schema", {"type": "object", "properties": {}}),
+                        "parameters": self._servable_parameters(
+                            qualified, tool.get("input_schema")),
                     },
                 }
                 schemas.append(schema)
 
         return schemas
+
+    def _servable_parameters(self, qualified: str, input_schema) -> Dict:
+        """An MCP tool's `inputSchema`, in a shape a strict server can read.
+
+        `B-NEW`. This used to be `tool.get("input_schema", {...})` — the
+        server's object, copied into the request verbatim. `P8-48` is right
+        that the parameters are the server's and are never overridden: the
+        server enforces its own schema whatever the model is told. It is a
+        statement about authority, and the transport has a separate problem.
+        llama.cpp converts the whole `tools` array to a grammar, vLLM and LM
+        Studio validate it, and **one** tool none of them can read costs the
+        request rather than the tool.
+
+        Measured with the showcase harness: a registered stdio server serving
+        one ordinary tool and one whose schema had no `type`, a union
+        `["string","null"]`, an `array` with no `items`, a `required` naming a
+        property that does not exist and an unknown keyword. Pantheon sent all
+        of it; a 400 ended the turn and took every other tool in the array —
+        built-in and MCP — with it.
+
+        `sanitize_tool_parameters` only ever loosens, so this never narrows what
+        a server will accept, and it is logged rather than silent: an operator
+        whose server ships a schema Pantheon had to rewrite should be able to
+        find that out from the log (`check-silent-failures.py`'s rule).
+        """
+        from src.tool_schemas import sanitize_tool_parameters, strict_schema_problems
+
+        raw = input_schema if isinstance(input_schema, dict) else None
+        if raw is None and input_schema is not None:
+            logger.warning(
+                "MCP tool %s declared an inputSchema that is not an object (%s); "
+                "offering it with no parameters", qualified, type(input_schema).__name__)
+        problems = strict_schema_problems(raw if raw is not None else {})
+        if not problems:
+            return raw if raw is not None else {"type": "object", "properties": {}}
+        cleaned = sanitize_tool_parameters(raw)
+        if qualified not in self._rewritten_schemas:
+            self._rewritten_schemas.add(qualified)
+            logger.warning(
+                "MCP tool %s has a schema a strict local server can refuse; "
+                "offering a normalised copy. %s", qualified, "; ".join(problems[:6]))
+        return cleaned
 
     def get_all_tools(
         self,
@@ -1742,7 +1803,17 @@ class McpManager:
         # that writes a description moves `_generation`
         # (`tool_descriptions_changed`), which is in the key.
         tools = self.get_all_tools(disabled_map)
-        if not tools:
+        # `B-NEW`. A server registered and NOT answering used to be invisible
+        # here and everywhere else the model or the person could see. Measured
+        # on this tree: a stdio server whose command exits at once registers
+        # with `status: "error", error: "Connection closed"`, contributes no
+        # tools, and the turn that asks for it carries not one word about it —
+        # the model says it has no such tool and the person is told nothing.
+        # That is the shape `D-2026-10-07-02` rules out for a model endpoint
+        # ("says it is not answering instead of offering what it once
+        # listed"), and the same answer belongs here.
+        down = self._servers_not_answering()
+        if not tools and not down:
             return ""
 
         _how = {
@@ -1771,7 +1842,7 @@ class McpManager:
                 by_server[sn] = []
             by_server[sn].append(t)
 
-        if not by_server:
+        if not by_server and not down:
             return ""
 
         for server_name, server_tools in by_server.items():
@@ -1800,7 +1871,56 @@ class McpManager:
                 args_hint = _format_mcp_params(t.get("input_schema"))
                 lines.append(f"  - {t['qualified_name']}: {desc}{args_hint}")
 
+        if down:
+            lines.append(
+                "\nRegistered MCP servers that are NOT answering right now — "
+                "their tools cannot be called this turn. If the user asks for "
+                "one, say in one sentence that the server is not running and "
+                "name it; do not say the capability does not exist, and do not "
+                "substitute a shell command for it:"
+            )
+            for name, reason in down:
+                lines.append(f"  - {name}: {reason}")
+
         result = "\n".join(lines)
         self._cached_prompt_desc = result
         self._cached_prompt_desc_key = cache_key
         return result
+
+    def _servers_not_answering(self) -> list:
+        """`[(server_name, reason)]` for every registered server with no tools.
+
+        `B-NEW`. Read by the prompt block above and by
+        `mcp_servers_not_answering_sentence`, so one answer to "which servers
+        are down" reaches the model and the person (`Law 7`). Built-in Python
+        servers are excluded for the same reason they are excluded from the
+        schemas and from the block: they are not a thing an operator
+        registered, and `builtin_browser` is the one that is.
+        """
+        out = []
+        for server_id, conn in (self._connections or {}).items():
+            if self.is_builtin(server_id) and server_id != "builtin_browser":
+                continue
+            status = str((conn or {}).get("status") or "")
+            if status == "connected" and self._tools.get(server_id):
+                continue
+            if status in ("connecting", "needs_auth", "needs_oauth"):
+                reason = {
+                    "connecting": "still starting up",
+                    "needs_auth": "waiting for you to authorise it",
+                    "needs_oauth": "waiting for you to authorise it",
+                }[status]
+            else:
+                reason = str((conn or {}).get("error") or "").strip() or (
+                    "not connected" if status != "connected" else "connected but serving no tools")
+            out.append((str((conn or {}).get("name") or server_id), reason))
+        return sorted(out)
+
+    # No person-facing sentence is built here on purpose. `GET /api/mcp/servers`
+    # already answers "which of my servers is down" with the status and the
+    # server's own error, and the Settings panel already shows it, so a second
+    # phrasing of the same fact is a second thing to go stale (`Law 7`). What
+    # was missing was the model's half — this turn's prompt — and the sentence
+    # a person reads *in the chat they are in* while nobody is looking at
+    # Settings. The first is the block above; the second needs a chat surface
+    # and is filed as its own row rather than half-wired here (`Law 13`).

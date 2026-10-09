@@ -1109,7 +1109,7 @@ Or with JSON for fresh news:
 ```web_search
 {"query": "<your query>", "time_filter": "day"}
 ```
-Search the web for a SINGLE quick fact/lookup mid-task. For news / "today" / "latest" queries, pass `time_filter` ("day", "week", "month", or "year"). NOT for "research X" / "do research on X" / "look into X" requests — those mean a multi-source DEEP RESEARCH job: use `trigger_research` instead (it runs in the Deep Research sidebar and produces a full report). web_search = one quick query; trigger_research = a researched report.
+Search the web for a SINGLE quick fact/lookup mid-task. For news / "today" / "latest" queries, pass `time_filter` ("day", "week", "month", or "year"). NOT for "research X" / "do research on X" / "look into X" requests — those mean a multi-source DEEP RESEARCH job, which is a different tool; this turn's own tool list says whether it is available. web_search is one quick query.  (`B-NEW`: this sentence used to name that tool, on every turn, whether or not the request carried it.)
 If this `web_search` tool section is visible, search is available. Do NOT tell the user web/search tools are unavailable.
 Use this instead of `bash`, `curl`, `python`, `requests`, or scraping code for web lookup/search/latest/current requests.""",
 
@@ -1117,7 +1117,7 @@ Use this instead of `bash`, `curl`, `python`, `requests`, or scraping code for w
 ```web_fetch
 <url or domain>
 ```
-Fetch and read the text content of a SPECIFIC URL the user names (e.g. "check example.com", "what does this page say <url>"). A bare domain like `example.com` works (defaults to https). Use this when you already have a concrete URL. For open-ended lookups use `web_search`, and for "research X" jobs use `trigger_research`.""",
+Fetch and read the text content of a SPECIFIC URL the user names (e.g. "check example.com", "what does this page say <url>"). A bare domain like `example.com` works (defaults to https). Use this when you already have a concrete URL. For open-ended lookups use `web_search`; a "research X" job is a different tool and this turn's own tool list says whether it is available.""",
 
     "read_file": """\
 ```read_file
@@ -1222,7 +1222,7 @@ Generate an image. Line 1 = description, line 2 = model name, line 3 = WxH (e.g.
     "manage_webhooks": "- ```manage_webhooks``` — Configure outgoing webhooks (HTTP notifications on events like chat completion). Args (JSON): {\"action\": \"list|add|delete|enable|disable\", ...}",
     "manage_tokens": "- ```manage_tokens``` — Generate or revoke API access tokens for external integrations. Args (JSON): {\"action\": \"list|create|delete\", ...}",
     "manage_documents": "- ```manage_documents``` — List, read/open, delete, or tidy documents in the editor panel, and keep them in folders. Args (JSON): {\"action\": \"list|read|delete|tidy|list_folders|create_folder|rename_folder|move_folder|move|remove_folder|reorganise|apply_plan\", ...}. `list` returns rows like `[Title](#document-<id>) — lang, size, updated 5m ago, in Clients/Acme` sorted MOST-RECENT FIRST; the user clicks the anchor to open; `folder` or `unfiled: true` narrows it. `read` (aliases: view/open/get) takes `document_id` and returns the content. When the user asks \"open/show/read my notes\" or \"what documents do I have\", use this — do NOT shell out, do NOT curl. Folders are paths (`Clients/Acme`); `\"\"` or `Unfiled` is no folder. `list_folders` first; `create_folder` {folder}; `rename_folder` {folder, name}; `move_folder` {folder, to}; `move` {document_ids, to}; `remove_folder` {folder, contents: move_up|delete} — never pick `delete` unless the user said to delete those documents; `reorganise` {steps: [...]} for several at once. `delete` {document_id} or {document_ids} and `tidy` (removes empty, throwaway and duplicate documents) never delete straight away: like more than 5 moves/removals in one call, they come back as a plan and the user is asked — call `apply_plan` {plan_id} only after they choose \"Apply the plan\".",
-    "manage_research": "- ```manage_research``` — List, read/open, or delete saved DEEP RESEARCH results from the Library. Args (JSON): {\"action\": \"list|read|delete\", \"id\": \"<id>\", \"search\": \"...\"}. `list` returns rows like `[query](#research-<id>) — N sources` MOST-RECENT FIRST; the user clicks to open. `read` (aliases: open/view/get) takes `id` and returns the report text + sources. Use when the user says \"open/read/find/delete my research\" or \"that report\". This IS how you read a finished report: when the user refers to a just-completed deep-research job (\"check it out\", \"read that report\", \"summarize the research\") WITHOUT giving an id, call `manage_research` with `action:list` to get the most-recent id, then `action:read` with that id, and answer from the returned text. Do NOT `web_fetch`/`app_api` the `/api/research/report/{id}` URL — that endpoint renders HTML for the browser, not clean text — and do NOT start a fresh `web_search`/`trigger_research` just to read an existing report. To START new research, use trigger_research instead.",
+    "manage_research": "- ```manage_research``` — List, read/open, or delete saved DEEP RESEARCH results from the Library. Args (JSON): {\"action\": \"list|read|delete\", \"id\": \"<id>\", \"search\": \"...\"}. `list` returns rows like `[query](#research-<id>) — N sources` MOST-RECENT FIRST; the user clicks to open. `read` (aliases: open/view/get) takes `id` and returns the report text + sources. Use when the user says \"open/read/find/delete my research\" or \"that report\". This IS how you read a finished report: when the user refers to a just-completed deep-research job (\"check it out\", \"read that report\", \"summarize the research\") WITHOUT giving an id, call `manage_research` with `action:list` to get the most-recent id, then `action:read` with that id, and answer from the returned text. Do NOT `web_fetch`/`app_api` the `/api/research/report/{id}` URL — that endpoint renders HTML for the browser, not clean text — and do NOT start a fresh search or research job just to read an existing report.",
     "manage_settings": "- ```manage_settings``` — View/change the REAL app settings (same ones the Settings panel writes) AND turn tools on/off. Change a setting: `{\"action\":\"set\",\"key\":\"...\",\"value\":\"...\"}` — keys accept friendly aliases, e.g. voice→tts_voice, \"search engine\"→search_provider, \"default model\"→default_model, \"teacher model\"→teacher_model, \"task/background model\"→task_model, \"image quality\"→image_quality, \"reminder channel\"→reminder_channel (browser|email|ntfy), \"agent timeout\"/\"max tool calls\"/\"token budget\". Read: `{\"action\":\"get\",\"key\":\"...\"}`; see all: `{\"action\":\"list\"}`; reset one: `{\"action\":\"reset\",\"key\":\"...\"}`. Use this when the user asks to change ANY preference instead of making them open Settings. Secrets/API keys are read-only (tell them to set those in the panel). Tool toggles: `{\"action\":\"disable_tool|enable_tool\",\"tool\":\"shell\"}` (aliases: shell/search/browser/documents/memory/skills/images/tasks/notes/calendar/email), list disabled: `{\"action\":\"list_tools\"}`.",
     "manage_notes": """\
 ```manage_notes
@@ -6535,7 +6535,13 @@ async def stream_agent_loop(
             return []
         if route_state["is_api_model"] or route_state.get("schema_offer") in ("native", "both"):
             if route_relevant_tools:
-                schema_names = set(route_relevant_tools)
+                # `B-NEW`. `_build_base_prompt` force-includes these two as the
+                # loop's irreducible primitives, so the prompt has always named
+                # them; the schema filter did not, so on a native-tools turn the
+                # prompt offered a tool the request withheld — `Law 13`, the two
+                # halves of one decision. A step's own list still removes them,
+                # in `_filter_route_tool_schemas` below.
+                schema_names = set(route_relevant_tools) | {"ask_user", "update_plan"}
                 if _needs_admin:
                     schema_names |= _ADMIN_PROMPT_FORCE_INCLUDE
                 base_schemas = [

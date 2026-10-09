@@ -43,6 +43,27 @@ The checks:
      `generate_image` are in `TOOL_TAGS` and reached through the fenced
      channel, which takes no schema — that is the legitimate shape, and this
      check is what tells it apart from a missed registration.
+
+  D. Every schema in the register is a shape a **strict local server** can
+     read (`B-NEW`, 2026-10-09). A, B and C are all about the two copies
+     agreeing with each other; none of them asks whether the copy both
+     audiences read is servable, and four of the 74 were not: `api_call.body`,
+     `app_api.body`, `app_api.query` and `manage_mcp.env` declared
+     `{"type": "object"}` with no `properties` and no `additionalProperties`,
+     which a JSON-schema-to-grammar converter reads as *only `{}` is valid* —
+     so the model could never send a request body. `manage_documents.steps`'
+     items were the same shape.
+
+     This matters out of proportion to its size because of how the refusal
+     lands: llama.cpp, LM Studio and vLLM validate or compile the **whole**
+     `tools` array, so one tool none of them can read costs the request. One
+     bad schema, every tool gone, and an `HTTP 400` naming `tools[7]`.
+
+     The rule lives in `src/tool_schemas.strict_schema_problems`, beside the
+     normaliser the MCP boundary runs, so there is one answer to "can a server
+     read this" rather than one here and one there (`Law 7`). An MCP server's
+     own schema is normalised at the boundary rather than policed, because it
+     is not ours to fix; this register is ours.
 """
 import ast
 import asyncio
@@ -86,10 +107,26 @@ def _derived_names(module_name: str) -> set:
     return derived
 
 
+def _strict_problems(schemas: dict) -> list:
+    """Check D — every function schema is servable. See the module docstring."""
+    from src.tool_schemas import strict_schema_problems
+
+    out = []
+    for name in sorted(schemas):
+        for sentence in strict_schema_problems(schemas[name].get("parameters"), "parameters"):
+            out.append(
+                f"E  {name}: {sentence} — a strict local server (llama.cpp, "
+                f"LM Studio, vLLM) can refuse the whole tools array for this"
+            )
+    return out
+
+
 def main() -> int:
     problems = []
     schemas = _function_schemas()
     from src.agent_tools import TOOL_TAGS
+
+    problems.extend(_strict_problems(schemas))
 
     shared = 0
     fenced_only = []
@@ -139,7 +176,8 @@ def main() -> int:
 
     print(f"mcp schemas OK — {shared} shared tools derived from one register, "
           f"{len(fenced_only)} served without a function schema and reachable "
-          f"through the fenced channel")
+          f"through the fenced channel, {len(schemas)} function schemas a "
+          f"strict local server can read")
     return 0
 
 
