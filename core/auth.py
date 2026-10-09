@@ -38,6 +38,15 @@ DEFAULT_PRIVILEGES = {
     "can_use_research": True,
     "can_generate_images": True,
     "can_manage_memory": True,
+    # `D-2026-10-09-01` §2. Whether this person may set a chat to **Auto** —
+    # the approval mode where a stop condition runs the step instead of raising
+    # a card (`src/approval_mode.py`). Off for everyone but admins until an
+    # admin grants it, like `can_use_workstation`: the ruling says *"an admin
+    # decides whether a person may turn Auto on at all"*, and the gate it
+    # relaxes is the post-external blocked-effect gate. Granting it does not
+    # turn anything on — the person still sets the mode per chat, and the
+    # install default stays Manual approve.
+    "can_auto_approve": False,
     "max_messages_per_day": 0,
     "allowed_models": [],
     "allowed_models_restricted": False,

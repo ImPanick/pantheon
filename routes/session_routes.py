@@ -17,6 +17,7 @@ from src.auth_helpers import (
     effective_user,
     owner_filter,
     is_delegated_credential,
+    request_is_a_person,
     require_chat_api_token_scope,
 )
 from src.session_image_cleanup import _generated_image_path_for_cleanup, session_image_refs
@@ -664,6 +665,116 @@ def setup_session_routes(
             result["endpoint_url"] = endpoint_url
         return result
     
+    # ── `D-2026-10-09-01` §2 · this chat's approval mode ────────────────────
+    #
+    # One chat, two values, and the privilege an admin grants before the second
+    # one is reachable. Here rather than in `prefs_routes.py` because the mode
+    # lives on the `sessions` row beside `mode`, and this is the file that owns
+    # that row (`Law 7`).
+    #
+    # **The adversary (`Law 17`) is the assistant itself.** A chat where the
+    # model could switch its own gate off is the plainest self-escalation there
+    # is (`P7-02`), and the model reaches HTTP through `app_api` on the
+    # internal-tool loopback, which `app.py` attributes to the owner and
+    # `require_admin` accepts outright. So the write asks
+    # `request_is_a_person` (`B1005`) — which refuses the loopback and a bearer
+    # token alike, whatever spelling of the path reached it — on top of
+    # `_verify_session_owner` and the privilege.
+    #
+    # `app_api`'s blocklist is deliberately NOT extended, and the reason is its
+    # shape rather than a judgement: `_APP_API_BLOCKLIST_METHOD_PATH` matches by
+    # `startswith`, and this path carries the chat id in the middle, so the only
+    # prefix that would catch it is `POST /api/session` — which would also
+    # refuse chat creation and `inject_messages`, both of which the agent's own
+    # `session_tools` use. `B896`'s own comment is the argument: *"a list of
+    # doors is the wrong shape, because the next writer is not on it"*. The
+    # refusal here is the control, and its 403 detail reaches the model as
+    # `app_api`'s `body`, so it still reads a sentence rather than a bare code.
+
+    @router.get("/session/{sid}/approval-mode")
+    def get_approval_mode(request: Request, sid: str):
+        """This chat's approval mode, and whether this person may change it.
+
+        A read, so a token may have it: a paired client showing the chat should
+        be able to say that the chat is on Auto. `may_set` is the privilege, so
+        a client knows whether to offer the control at all — and it is advisory,
+        because the write asks again (`P2-18`: a display-side gate does not
+        work).
+        """
+        from src.approval_mode import (
+            ApprovalMode, AUTO_LABEL, may_use_auto, mode_for,
+        )
+
+        _verify_session_owner(request, sid)
+        user = effective_user(request)
+        mode = mode_for(
+            sid, user,
+            delegated_credential=is_delegated_credential(request),
+            auth_manager=getattr(request.app.state, "auth_manager", None),
+        )
+        return {
+            "mode": mode.value,
+            "auto": mode is ApprovalMode.AUTO,
+            "label": AUTO_LABEL,
+            "may_set": bool(
+                request_is_a_person(request)
+                and may_use_auto(
+                    user,
+                    auth_manager=getattr(request.app.state, "auth_manager", None),
+                )
+            ),
+        }
+
+    @router.post("/session/{sid}/approval-mode")
+    async def set_approval_mode(request: Request, sid: str):
+        """Set this chat's approval mode to `manual` or `auto`.
+
+        Four refusals, in this order, each with its own sentence:
+
+          1. not this person's chat (`_verify_session_owner`);
+          2. not a person at all — the agent's loopback or a bearer token
+             (`B1005`, `B70`). Turning a gate off is a person's act;
+          3. not a mode this product has;
+          4. Auto, without `can_auto_approve`. Switching **to** `manual` is
+             never refused by the privilege: a person who may not use Auto must
+             still be able to turn it off, and an admin who revokes the
+             privilege leaves chats that `mode_for` already reads as Manual.
+        """
+        from src.approval_mode import (
+            ApprovalMode, AUTO_NOT_ALLOWED_SENTENCE, coerce_approval_mode,
+            may_use_auto, set_mode_for,
+        )
+
+        _verify_session_owner(request, sid)
+        if not request_is_a_person(request):
+            raise HTTPException(
+                403,
+                "Only you can change this chat's approval mode.",
+            )
+        try:
+            body = await request.json()
+        except Exception:
+            body = {}
+        raw = (body or {}).get("mode")
+        wanted = str(raw or "").strip().casefold()
+        # Asked of the enum rather than coerced, because `coerce_approval_mode`
+        # fails closed to `manual` and a typo silently turning Auto off would
+        # read as the control not working (`Law 10`).
+        if wanted not in {m.value for m in ApprovalMode}:
+            raise HTTPException(400, "Approval mode is either 'manual' or 'auto'.")
+        mode = coerce_approval_mode(wanted)
+        user = effective_user(request)
+        if mode is ApprovalMode.AUTO and not may_use_auto(
+            user, auth_manager=getattr(request.app.state, "auth_manager", None),
+        ):
+            raise HTTPException(403, AUTO_NOT_ALLOWED_SENTENCE)
+        if not set_mode_for(sid, mode):
+            raise HTTPException(500, "That did not save. Try again.")
+        logger.info(
+            "[approval] %s set chat %s to %s", user, sid, mode.value,
+        )
+        return {"mode": mode.value, "auto": mode is ApprovalMode.AUTO}
+
     @router.post("/session/{sid}/inject_messages")
     async def inject_messages(request: Request, sid: str):
         """Bulk-inject messages into a session's history (for group chat sync)."""

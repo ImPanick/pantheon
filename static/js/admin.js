@@ -42,6 +42,10 @@ const PRIV_LABELS = {
   can_use_research: 'Deep research',
   can_generate_images: 'Image generation',
   can_manage_memory: 'Brain (memories & skills)',
+  // `D-2026-10-09-01` §2. The label names what it hands out, not the mode's
+  // name: granting this lets the person switch a chat to Auto, where a step
+  // that would raise an approval card runs instead.
+  can_auto_approve: 'Auto-approve (run tool steps in a chat without asking)',
 };
 
 // `B966`, the owner's call (`D-2026-10-01-01`). A privilege this panel no

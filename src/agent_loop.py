@@ -81,6 +81,11 @@ from src.tool_approvals import (
     document_content_digest,
     tool_approval_store,
 )
+# `D-2026-10-09-01` §2. The chat's approval mode. Imported under a name that
+# says which question it answers, beside `resolve_trust_rung`'s, because this
+# module already has a `mode` ('agent'/'chat'/'research') and two things called
+# `mode` in one file is how one of them gets read for the other.
+from src.approval_mode import ApprovalMode, mode_for as approval_mode_for
 from src.tool_utils import _truncate, get_mcp_manager
 from src.agent_stops import (
     ROUNDS_WITHOUT_NEW_INFORMATION,
@@ -5233,6 +5238,22 @@ async def stream_agent_loop(
             _run_rung.value, _raised.value,
         )
         _run_rung = _raised
+    # `D-2026-10-09-01` §2. This chat's approval mode, resolved once beside the
+    # rung and for the same reason: a mode flipped between two blocks of one
+    # model turn would answer them under two different policies. It is read
+    # from the chat's own row, so it is per chat by construction — never
+    # inherited, never global, and never what a new chat starts at — and
+    # `mode_for` lowers it to Manual approve for a bearer token (`B70`) and for
+    # a person whose `can_auto_approve` an admin has since taken away.
+    _approval_mode = approval_mode_for(
+        session_id, owner, delegated_credential=bool(delegated_credential),
+    )
+    _auto_approved = _approval_mode is ApprovalMode.AUTO
+    if _auto_approved:
+        logger.info(
+            "[approval] chat %s is set to Auto; stop conditions run instead of "
+            "raising a card", session_id,
+        )
     run_security = ToolRunSecurityContext(
         external_untrusted_context_seen=(
             bool(external_untrusted_context_seen)
@@ -5246,6 +5267,7 @@ async def stream_agent_loop(
         ),
         delegated_credential=bool(delegated_credential),
         rung=_run_rung,
+        auto_approved=_auto_approved,
         allow_rule_lookup=(
             _resolve_allow_rule_lookup(owner, session_id)
             if rung_consults_allow_rules(_run_rung)
@@ -8175,6 +8197,23 @@ async def stream_agent_loop(
                 block.tool_type,
                 block.content,
             )
+            # `D-2026-10-09-01` §2. *"the run records that it ran under Auto"*.
+            # Resolved once per block beside the six effect keys and spread the
+            # same way, so the live frame and the persisted event cannot
+            # disagree — a step that skipped a card it was owed says so while
+            # it streams and still says so after a reload. Absent, not False,
+            # on a step Auto never touched: the key appears only on the steps
+            # the mode actually changed, which is the thing worth recording.
+            _auto_fields = (
+                {"auto_approved": True} if security_decision.auto_approved else {}
+            )
+            if security_decision.auto_approved:
+                logger.info(
+                    "[agent] %s ran under Auto in session=%s without an approval "
+                    "card (effects: %s)",
+                    block.tool_type, session_id,
+                    ", ".join(security_decision.tripped_effects) or "unranked",
+                )
             _pan_clamped_tool_allowed = (
                 _pan_notes_finetune_mode
                 and block.tool_type in {"manage_notes", "manage_calendar", "manage_tasks"}
@@ -8360,7 +8399,7 @@ async def stream_agent_loop(
                     )
             else:
                 yield (
-                    f'data: {json.dumps({"type": "tool_start", "tool": block.tool_type, "command": cmd_display, "round": round_num, **_command_fields(cmd_display, full_command), **block_effects})}\n\n'
+                    f'data: {json.dumps({"type": "tool_start", "tool": block.tool_type, "command": cmd_display, "round": round_num, **_command_fields(cmd_display, full_command), **block_effects, **_auto_fields})}\n\n'
                 )
 
                 # Streaming progress for long-running tools (bash, python).
@@ -8617,7 +8656,9 @@ async def stream_agent_loop(
             # `P4-09`: `full_command`. It was on `tool_start` and nowhere else, so the
             # card lost the full arguments the moment the tool finished — the
             # rewrite that draws the result had only the truncated line.
-            tool_output_data = {"type": "tool_output", "tool": block.tool_type, "command": cmd_display, "round": round_num, **_command_fields(cmd_display, full_command), "output": output_text, "exit_code": result.get("exit_code"), "status": tool_outcome(result), **_stream_fields(result), **block_effects}
+            # `D-2026-10-09-01` §2: `**_auto_fields` rides here too, so the
+            # finished step says it ran under Auto and not only the start of it.
+            tool_output_data = {"type": "tool_output", "tool": block.tool_type, "command": cmd_display, "round": round_num, **_command_fields(cmd_display, full_command), "output": output_text, "exit_code": result.get("exit_code"), "status": tool_outcome(result), **_stream_fields(result), **block_effects, **_auto_fields}
             if is_doc_tool and "action" in result:
                 tool_output_data.update({
                     "doc_id": result.get("doc_id"),
@@ -8883,6 +8924,9 @@ async def stream_agent_loop(
                 # otherwise have to guess, which is how one surface ends up
                 # disagreeing with another about the same action.
                 **block_effects,
+                # `D-2026-10-09-01` §2, for the same reason one line up: the
+                # record of a step that ran under Auto survives the reload.
+                **_auto_fields,
             }
             if result.get("image_url"):
                 for ik in ("image_url", "image_prompt", "image_model", "image_size", "image_quality"):
