@@ -6,9 +6,9 @@
 
 import spinnerModule from './spinner.js';
 import { styledConfirm, showToast, emptyStateIcon, esc } from './ui.js';  // `B866`: three local `esc` lambdas escaped `& < "` and not `> '`
-import { folderDisplayName, sortedFolders } from './emailInbox.js?v=20261009approvalturn';
-import settingsModule from './settings.js?v=20261009turn';
-import * as Modals from './modalManager.js?v=20261009turn';
+import { folderDisplayName, sortedFolders } from './emailInbox.js?v=20261009approvaltools';
+import settingsModule from './settings.js?v=20261009tools';
+import * as Modals from './modalManager.js?v=20261009tools';
 import { topPortalZ } from './toolWindowZOrder.js';
 import { makeWindowDraggable } from './windowDrag.js';
 import {
@@ -6824,7 +6824,7 @@ function _wireAttachmentHandlers(reader, folder) {
               ownerModal.classList.add('hidden');
             }
           }
-          const docMod = await import('./document.js?v=20261009approvalturn');
+          const docMod = await import('./document.js?v=20261009approvaltools');
           const load = (docMod && docMod.loadDocument) || (docMod && docMod.default && docMod.default.loadDocument);
           if (typeof load === 'function') {
             await load(json.doc_id);

@@ -300,14 +300,14 @@
        real request is discarded and the font fetched a second time. -->
   <link rel="preload" as="font" type="font/woff2" crossorigin href="/static/fonts/FiraCode-Regular.woff2">
   <link rel="preload" as="font" type="font/woff2" crossorigin href="/static/fonts/FiraCode-SemiBold.woff2">
-  <link rel="stylesheet" href="/static/style.css?v=20261009turn">
-  <link rel="modulepreload" href="/static/app.js?v=20261009turn">
+  <link rel="stylesheet" href="/static/style.css?v=20261009tools">
+  <link rel="modulepreload" href="/static/app.js?v=20261009tools">
   <!-- B58. This must carry the SAME query as the <script> tag below, or the
        browser fetches chat.js twice: the cache and the module map are keyed on
        the full URL. It sat at toolapproval4 while the tag moved to
        approvalcontrol1 and then trustladder1 — bumped twice by people who did
        not know this line existed. check-specifiers.py reads it now. -->
-  <link rel="modulepreload" href="/static/js/chat.js?v=20261009turn">
+  <link rel="modulepreload" href="/static/js/chat.js?v=20261009tools">
   <link rel="modulepreload" href="/static/js/ui.js">
   <link rel="modulepreload" href="/static/js/sessions.js">
   <link rel="modulepreload" href="/static/js/markdown.js">
@@ -3801,11 +3801,11 @@
 <script type="module" src="/static/js/markdown.js"></script>
 <script type="module" src="/static/js/dragSort.js"></script>
 <script type="module" src="/static/js/sessions.js"></script>
-<script type="module" src="/static/js/memory.js?v=20261009turn"></script>
+<script type="module" src="/static/js/memory.js?v=20261009tools"></script>
 <script type="module" src="/static/js/skills.js"></script>
 <script type="module" src="/static/js/tourHints.js"></script>
 <script type="module" src="/static/js/tourAutoplay.js"></script>
-<script type="module" src="/static/js/fileHandler.js?v=20261009turn"></script>
+<script type="module" src="/static/js/fileHandler.js?v=20261009tools"></script>
 <script type="module" src="/static/js/voiceRecorder.js"></script>
 <script type="module" src="/static/js/models.js?v=20260715startupcalm2"></script>  <!-- This must come BEFORE app.js -->
 <script type="module" src="/static/js/rag.js"></script>
@@ -3813,21 +3813,21 @@
 <script type="module" src="/static/js/search.js"></script>
 <script type="module" src="/static/js/spinner.js"></script>
 <script type="module" src="/static/js/tts-ai.js"></script>
-<script type="module" src="/static/js/document.js?v=20261009approvalturn"></script>
+<script type="module" src="/static/js/document.js?v=20261009approvaltools"></script>
 <script type="module" src="/static/js/gallery.js?v=20260708match1"></script>
-<script type="module" src="/static/js/chatRenderer.js?v=20261009turn"></script>
+<script type="module" src="/static/js/chatRenderer.js?v=20261009tools"></script>
 <script type="module" src="/static/js/codeRunner.js"></script>
-<script type="module" src="/static/js/chatStream.js?v=20261009turn"></script>
-  <script type="module" src="/static/js/chat.js?v=20261009turn"></script>
+<script type="module" src="/static/js/chatStream.js?v=20261009tools"></script>
+  <script type="module" src="/static/js/chat.js?v=20261009tools"></script>
 <script type="module" src="/static/js/cookbook.js"></script>
 <script src="/static/js/cookbookSchedule.js"></script>
 <script type="module" src="/static/js/search-chat.js"></script>
 <script type="module" src="/static/js/theme.js"></script>
-<script type="module" src="/static/js/welcomeScenery.js?v=20261009turn"></script>
+<script type="module" src="/static/js/welcomeScenery.js?v=20261009tools"></script>
 <script type="module" src="/static/js/censor.js"></script>
-<script type="module" src="/static/js/settings.js?v=20261009turn"></script>
+<script type="module" src="/static/js/settings.js?v=20261009tools"></script>
 <script type="module" src="/static/js/assistant.js"></script>
-<script type="module" src="/static/app.js?v=20261009turn"></script>  <!-- app.js must be LAST -->
+<script type="module" src="/static/app.js?v=20261009tools"></script>  <!-- app.js must be LAST -->
   <script type="module" src="/static/js/init.js?v=20260918a11yfocus1"></script>
 <script type="module" src="/static/js/a11y.js"></script>
 <!-- `P23-07` (PERF-M-1): scope '/' (the server sends Service-Worker-Allowed: /), so the worker controls the app; the

@@ -8,7 +8,7 @@ import markdownModule from './markdown.js';
 import { svgifyEmoji } from './markdown.js';
 import { addAITTSButton } from './tts-ai.js';
 import { providerLogo, providerLabel } from './providers.js';
-import settingsModule from './settings.js?v=20261009turn';
+import settingsModule from './settings.js?v=20261009tools';
 import spinnerModule from './spinner.js';
 import { bindMenuDismiss } from './escMenuStack.js';
 import { loadPanel } from './panels.js';
@@ -1869,7 +1869,7 @@ document.addEventListener('click', function(e) {
       } catch {}
     });
   } else if (kind === 'document') {
-    import('./document.js?v=20261009approvalturn').then(mod => {
+    import('./document.js?v=20261009approvaltools').then(mod => {
       const open = mod.loadDocument
         || mod.openDocument
         || (mod.default && (mod.default.loadDocument || mod.default.openDocument));
@@ -1891,7 +1891,7 @@ document.addEventListener('click', function(e) {
       if (open) open(id);
     }).catch(() => {});
   } else if (kind === 'email') {
-    import('./emailLibrary.js?v=20261009approvalturn').then(mod => {
+    import('./emailLibrary.js?v=20261009approvaltools').then(mod => {
       const open = mod.openEmailLibrary || (mod.default && mod.default.openEmailLibrary);
       if (open) open({ uid: id });
     }).catch(() => {});
@@ -1901,7 +1901,7 @@ document.addEventListener('click', function(e) {
       if (open) open(id);
     }).catch(() => {});
   } else if (kind === 'task') {
-    import('./tasks.js?v=20261009turn').then(mod => {
+    import('./tasks.js?v=20261009tools').then(mod => {
       const open = mod.openTasks || (mod.default && mod.default.openTasks);
       if (open) open(id);
       else { const b = document.getElementById('tool-tasks-btn'); if (b) b.click(); }
@@ -1912,7 +1912,7 @@ document.addEventListener('click', function(e) {
       if (open) open(id);
     }).catch(() => {});
   } else if (kind === 'research') {
-    import('./research/panel.js?v=20261009turn').then(mod => {
+    import('./research/panel.js?v=20261009tools').then(mod => {
       const open = mod.openPanel || (mod.default && mod.default.openPanel);
       if (open) open(id);
     }).catch(() => {});
@@ -2022,7 +2022,7 @@ export function buildImageBubble(imageUrl, prompt, model, size, quality, imageId
         : 'png';
       const base = (prompt || 'generated-image').slice(0, 36).replace(/[^a-zA-Z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'generated-image';
       const file = new File([blob], `${base}.${ext}`, { type: blob.type || 'image/png', lastModified: Date.now() });
-      const mod = await import('./fileHandler.js?v=20261009turn');
+      const mod = await import('./fileHandler.js?v=20261009tools');
       const addFiles = mod.addFiles || (mod.default && mod.default.addFiles);
       if (!addFiles) throw new Error('attachment handler unavailable');
       await addFiles([file], { skipCrop: true });

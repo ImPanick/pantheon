@@ -984,7 +984,7 @@ async function _mergeUserMemories(charName) {
 }
 
 function _reloadMemoryList() {
-  import('./memory.js?v=20261009turn').then(m => {
+  import('./memory.js?v=20261009tools').then(m => {
     if (m.renderMemoryList) m.renderMemoryList();
     if (m.updateMemoryCount) m.updateMemoryCount();
   }).catch(() => {});

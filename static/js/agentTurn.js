@@ -39,7 +39,7 @@ import {
   buildTodoCard,
   demoteSupersededTodoCards,
   safeToolScreenshotSrc,
-} from './chatRenderer.js?v=20261009turn';
+} from './chatRenderer.js?v=20261009tools';
 import { applyAgentThreadNode, agentThreadContent, toolOutputPanesHtml,
          screenshotSummary, approvalOutcome } from './agentThread.js';
 

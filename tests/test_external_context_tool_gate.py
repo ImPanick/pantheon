@@ -1359,11 +1359,11 @@ def test_frontend_tool_approval_uses_opaque_id_and_fixed_decisions():
         )
     ]
     assert all(
-        "20261008approvalrel" not in source
+        "20261009approvalturn" not in source
         for source in approval_module_sources
     )
     assert all(
-        "20261009approvalturn" in source
+        "20261009approvaltools" in source
         for source in approval_module_sources
     )
 
