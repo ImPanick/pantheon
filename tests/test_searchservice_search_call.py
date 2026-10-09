@@ -51,4 +51,10 @@ def test_search_returns_structured_results(monkeypatch):
     assert calls["return_sources"] is True
     assert calls["max_pages"] == 20  # 10 * depth(2)
     assert "max_results" not in calls["kwargs"]
-    assert "fetch_content" not in calls["kwargs"]
+    # `fetch_content` was the other kwarg the broken wrapper invented, and this
+    # line pinned its absence. `fx7-search2` gave `comprehensive_web_search` the
+    # parameter for real, because `SearchService`'s constructor flag had no
+    # consumer at all: measured, `search()` asked for 10 pages and read none of
+    # them. So the pin becomes the stronger one — it is passed, and it carries
+    # the resolved flag rather than a literal.
+    assert calls["kwargs"]["fetch_content"] is True

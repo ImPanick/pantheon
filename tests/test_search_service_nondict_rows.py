@@ -8,7 +8,10 @@ def test_search_skips_non_dict_results(monkeypatch):
     # comprehensive_web_search aggregates external provider + cache results;
     # a malformed row (string/None) made the old loop call r.get and crash,
     # losing the whole search.
-    def fake_search(query, max_pages=10, return_sources=False):
+    # **kwargs so this stub keeps standing in for the real signature as it
+    # grows; `fx7-search2` added `fetch_content`, the consumer SearchService's
+    # constructor flag never had.
+    def fake_search(query, max_pages=10, return_sources=False, **kwargs):
         results = [
             {"url": "https://a.com", "title": "A"},
             "junk-row",

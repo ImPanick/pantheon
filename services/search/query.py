@@ -176,19 +176,98 @@ def build_enhanced_query(query: str, time_filter: str = None) -> str:
 
 
 # ----------------------------------------------------------------------
+# "Is this a news query?" — one definition (`Law 7`)
+# ----------------------------------------------------------------------
+# Three modules answered this three ways on `3b40a4e`, and 12 of a 27-query
+# corpus got different answers depending on which one you asked:
+#
+#   * `providers.py:126` — this set as a tuple, matched as a **substring** of
+#     the lowered query, deciding which SearXNG *category* the search goes to.
+#     So *"Newsom California policy"*, *"newsletter signup best practices"* and
+#     *"how to use newsprint for packing"* were news queries because the
+#     letters `news` sit inside a surname and two common words, and
+#     *"todays-menu at the Blue Moon Inn"* was one because `today` sits inside
+#     `todays`. The index a person's query is searched in was chosen on
+#     orthography — the same mistake `_boost_entities_in_query` made above.
+#   * `ranking.py:49` — the byte-identical set, matched as a **whole token**,
+#     deciding whether news-domain bonuses and penalties move the ordering.
+#   * here — a **different** set, whole-token, deciding the cache duration.
+#
+# Two of the three already agreed exactly, and they are asking the same
+# question, so `NEWS_TERMS` is that set and `is_news_query` is that question.
+# The matcher is whole-token, which is what two of three already did and what
+# the substring match got wrong.
+NEWS_TERMS = frozenset({
+    "news", "nyheter", "headlines", "breaking", "latest", "today", "idag",
+})
+
+# The one deliberate difference, named here rather than discovered later.
+# "Does this query want fresh results" is a different question from "is this
+# query about news", and only the cache duration asks it: a false positive
+# costs one extra provider call, while a false negative serves a day-old answer
+# to someone asking what is happening now. These three terms were live in the
+# old cache set and in neither of the other two, so `Law 1` keeps them —
+# exactly where they were already used and nowhere they were not.
+#
+# The old set also held `"today's"`, which was **unreachable**: the tokeniser
+# below is `\b\w+\b`, which splits `today's` into `today` and `s`, so the
+# literal token could never appear in the set it was matched against. `today`
+# catches the same queries and is in `NEWS_TERMS`.
+_FRESH_ONLY_TERMS = frozenset({"current", "updates", "happening"})
+FRESH_TERMS = NEWS_TERMS | _FRESH_ONLY_TERMS
+
+
+def _query_tokens(query) -> set:
+    """The query's words, lowered. Non-strings tokenise to nothing."""
+    if not isinstance(query, str):
+        return set()
+    return {t.lower() for t in re.findall(r"\b\w+\b", query)}
+
+
+def is_news_query(query) -> bool:
+    """True when the query is about news. The one definition (`Law 7`).
+
+    Cited by `providers._searxng_params` (which SearXNG category) and
+    `ranking.rank_search_results` (whether news-domain scoring applies).
+    Whole-token, never substring.
+    """
+    return bool(_query_tokens(query) & NEWS_TERMS)
+
+
+def wants_fresh_results(query) -> bool:
+    """True when the query wants *fresh* results, which is a wider question.
+
+    `NEWS_TERMS` plus `_FRESH_ONLY_TERMS`. Only `_cache_duration_for_query`
+    asks this, for the reason written on `_FRESH_ONLY_TERMS`.
+    """
+    return bool(_query_tokens(query) & FRESH_TERMS)
+
+
+# Kept name (`Law 1`): the private predicate two test files and any older
+# caller reach for. It is the news question, which is what the name says.
+_is_news_query = is_news_query
+
+
+# ----------------------------------------------------------------------
 # Cache duration helpers
 # ----------------------------------------------------------------------
-def _is_news_query(query: str) -> bool:
-    """Lightweight heuristic to decide if a query is news-oriented."""
-    news_terms = {"news", "latest", "breaking", "today", "today's", "current", "updates", "happening"}
-    if not isinstance(query, str):
-        return False
-    tokens = set(re.findall(r"\b\w+\b", query.lower()))
-    return bool(tokens & news_terms)
+NEWS_CACHE_DURATION = timedelta(minutes=30)
+REFERENCE_CACHE_DURATION = timedelta(hours=24)
+
+# The longest duration `_cache_duration_for_query` can return. The LRU sweep in
+# `core.py` is given this, so it never retires an entry whose own expiry says
+# it has longer to live. Measured on `3b40a4e`: the sweep was handed
+# `timedelta(hours=1)` while the write path stamped a reference query with 24
+# hours, so the entry was deleted by the next search once its index timestamp
+# was 90 minutes old — one hour was the real ceiling and the news/reference
+# split had never had any effect. `Law 7`: the expiry in the file is the one
+# source of truth for when an entry dies, and this is the window the sweep is
+# allowed to disagree with it over, which is none.
+MAX_CACHE_DURATION = REFERENCE_CACHE_DURATION
 
 
 def _cache_duration_for_query(query: str) -> timedelta:
-    """News queries -> 30 minutes, reference queries -> 24 hours."""
-    if _is_news_query(query):
-        return timedelta(minutes=30)
-    return timedelta(hours=24)
+    """Fresh-sounding queries -> 30 minutes, reference queries -> 24 hours."""
+    if wants_fresh_results(query):
+        return NEWS_CACHE_DURATION
+    return REFERENCE_CACHE_DURATION

@@ -7,6 +7,8 @@ from datetime import datetime, timezone
 from typing import List, Optional
 from urllib.parse import urlparse
 
+from .query import NEWS_TERMS, is_news_query
+
 logger = logging.getLogger(__name__)
 
 _AGE_FORMATS = ("%Y-%m-%d", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S")
@@ -46,7 +48,12 @@ def recency_score(age_str: Optional[str], now: Optional[datetime] = None) -> flo
     return (30 - days_old) / 23
 
 
-_NEWS_HINTS = {"news", "nyheter", "headlines", "breaking", "latest", "today", "idag"}
+# One definition of "this is a news query", in `services/search/query.py`
+# (`Law 7`). This module's own copy was byte-identical to `providers.py`'s and
+# matched the same way this does — whole tokens — but the two were separate
+# literals and `query.py` held a third, different set. The name stays bound
+# here (`Law 1`); the set it points at is now the only one in the package.
+_NEWS_HINTS = NEWS_TERMS
 _SPORTS_HINTS = {
     "sport", "sports", "soccer", "football", "hockey", "nba", "nfl", "mlb",
     "fifa", "world cup", "championship", "quarterfinal", "eliminates",
@@ -94,7 +101,9 @@ def rank_search_results(query: str, results: List[dict]) -> List[dict]:
     """Rank search results by title relevance, snippet quality, domain authority, and recency."""
     query_terms = [t.lower() for t in re.findall(r"\b\w+\b", query)]
     query_lc = query.lower()
-    is_news_query = any(term in _NEWS_HINTS for term in query_terms)
+    # The one definition (`Law 7`). Same answer as the SearXNG category switch
+    # and the cache, for the same query, which was not true before.
+    is_news = is_news_query(query)
     is_sports_query = bool(_SPORTS_HINT_RE.search(query_lc))
 
     def title_score(title: str) -> float:
@@ -125,7 +134,7 @@ def rank_search_results(query: str, results: List[dict]) -> List[dict]:
         return 0.4
 
     def news_quality_adjustment(title: str, snippet: str, url: str) -> float:
-        if not is_news_query:
+        if not is_news:
             return 0.0
         text = f"{title} {snippet}".lower()
         netloc = _domain(url)
@@ -227,7 +236,33 @@ def _result_text(result) -> str:
     return f"{result.get('title') or ''} {result.get('snippet') or ''}".lower()
 
 
-def relevance_report(query: str, results) -> dict:
+# How much of a fetched page the verdict reads. A long page mentions a lot of
+# words, and the question is whether it is *about* the query, so the window is
+# the head of the document — title, lede and first screens, where an article
+# says what it is. The same 3000 characters `core.py` puts in the block.
+_CONTENT_WINDOW = 3000
+
+
+def _fetched_text_by_url(fetched) -> dict:
+    """``{url: page text}`` from `comprehensive_web_search`'s fetched rows.
+
+    Tolerant by construction: this is called from the output path of a search,
+    and a malformed row must cost its own evidence and nothing else.
+    """
+    out = {}
+    if not isinstance(fetched, (list, tuple)):
+        return out
+    for row in fetched:
+        if not isinstance(row, dict):
+            continue
+        url = row.get("url")
+        body = row.get("content")
+        if isinstance(url, str) and isinstance(body, str) and body:
+            out[url] = body[:_CONTENT_WINDOW].lower()
+    return out
+
+
+def relevance_report(query: str, results, fetched=None) -> dict:
     """Measure how well ``results`` match ``query``. Never raises.
 
     Returns ``{"verdict", "best_coverage", "matched", "terms", "missing"}``:
@@ -237,11 +272,35 @@ def relevance_report(query: str, results) -> dict:
         0.0-1.0, because the model reads the best result rather than the mean.
       * ``matched`` / ``terms``  that share as the integers behind it, so the
         block can print *"1 of 9"* rather than an adjective (`Law 5`).
-      * ``missing``  subject terms that appear in **no** result's title or
-        snippet — the most useful line of the lot. For the owner's search it is
+      * ``missing``  subject terms that appear in **no** result — the most
+        useful line of the lot. For the owner's search it is
         `school, runescape, fractured, archive, raid, details, 20th`: six of the
         nine words that made it a question about a video game were in none of
         the five results, and nothing said so.
+
+    ``fetched`` is `comprehensive_web_search`'s fetched-page rows. **Each
+    result is measured on the better of its two readings** — its fetched page
+    text, and its title plus snippet — because either can be the poorer
+    evidence and neither is reliably the richer.
+
+    Why the page text is read at all: SearXNG's parse is
+    ``"snippet": r.get("content", "")`` and a good many of its engines return
+    no content, so a snippet-only verdict called three genuinely on-topic pages
+    a miss. Measured — the OSRS wiki, the Jagex news post and the game's own
+    front page, with empty snippets, scored **2 of 9** and the block told the
+    model *"these results do not match the query"* while handing it three pages
+    that answered it. That is the owner's defect with the signs reversed, and
+    the content was assembled forty lines above this call and unused.
+
+    Why the snippet is still read: `content.py` extracts boilerplate from a
+    good many real pages — it carries a `THIN_CONTENT_CHARS` fallback for
+    exactly that — so reading the page *instead of* the snippet made things
+    worse, not better. Measured on the first pass of this change: two results
+    whose titles and snippets carry all nine of the owner's query terms scored
+    **0 of 9, verdict `none`** as soon as their bodies came back as a cookie
+    notice. Taking the better of the two cannot score a result below what it
+    scored before, and off-topic content still does not rescue a bad match,
+    because in that case the snippet is off-topic too.
 
     `rank_search_results` has always computed a per-result score and returned
     bare rows, discarding it one line before the output was built. This is that
@@ -258,13 +317,25 @@ def relevance_report(query: str, results) -> dict:
             "missing": list(terms),
         }
 
+    bodies = _fetched_text_by_url(fetched)
     best_hits = 0
     covered_anywhere = set()
     for row in rows:
-        text = _result_text(row)
-        hits = [t for t in terms if _has_word(text, t)]
-        covered_anywhere.update(hits)
-        best_hits = max(best_hits, len(hits))
+        # One result, two readings, and the result scores the better of them —
+        # so "the closest result matches N of M" is still a statement about one
+        # result, and neither a missing snippet nor a boilerplate page can drag
+        # it below what the other reading already proved.
+        readings = [_result_text(row)]
+        body = bodies.get(row.get("url"))
+        if body:
+            readings.append(body)
+        row_best = []
+        for text in readings:
+            hits = [t for t in terms if _has_word(text, t)]
+            covered_anywhere.update(hits)
+            if len(hits) > len(row_best):
+                row_best = hits
+        best_hits = max(best_hits, len(row_best))
 
     coverage = best_hits / len(terms)
     if coverage >= _STRONG_COVERAGE:

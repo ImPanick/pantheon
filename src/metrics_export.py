@@ -381,6 +381,61 @@ def _collect_build(out: _Out) -> None:
     out.add("pantheon_build_info", 1, {"version": APP_VERSION})
 
 
+def _collect_search(out: _Out) -> None:
+    """Web search, as counted on the path people use.
+
+    `fx7-search2`. `services/search/analytics.py` has kept these counters since
+    it was written and nothing ever read them — and nothing ever wrote them
+    either, because `_record_query`'s only two call sites were inside
+    `searxng_search_results`, which has no production caller. Both halves were
+    unreachable, which is why neither had looked wrong. This is the door
+    (`Law 13`), and `comprehensive_web_search` is now the writer.
+
+    `Law 16` clause 4: the destination is the operator's own Prometheus, and a
+    scrape has no destination at all until they ask. **The query text never
+    comes out.** `get_search_stats()` also returns `most_common_queries`, which
+    is what a person typed into a search box; a label carrying that would be
+    both the cardinality explosion Prometheus warns about and the one thing in
+    this file that is nobody else's business.
+
+    Gauges, like everything here: these are lifetime totals read from a local
+    JSON file that an operator may delete, and a `_total` that can go to zero
+    is a counter Prometheus will silently repair the rate of.
+    """
+    from services.search.analytics import get_search_stats
+
+    stats = get_search_stats() or {}
+
+    out.metric("pantheon_search_queries", "gauge",
+               "Searches recorded since the analytics file was created, by outcome.")
+    out.add("pantheon_search_queries", int(stats.get("successful_queries", 0) or 0),
+            {"outcome": "success"})
+    out.add("pantheon_search_queries", int(stats.get("failed_queries", 0) or 0),
+            {"outcome": "failure"})
+
+    out.metric("pantheon_search_cache", "gauge",
+               "Search cache reads since the analytics file was created.")
+    out.add("pantheon_search_cache", int(stats.get("cache_hits", 0) or 0),
+            {"result": "hit"})
+    out.add("pantheon_search_cache", int(stats.get("cache_misses", 0) or 0),
+            {"result": "miss"})
+
+    out.metric("pantheon_search_provider_answers", "gauge",
+               "Provider round trips, by the provider that answered. A search "
+               "served from cache is counted under pantheon_search_cache and "
+               "credited to no provider — this is the number behind a quota.")
+    for name, count in sorted((stats.get("providers") or {}).items()):
+        out.add("pantheon_search_provider_answers", int(count or 0),
+                {"provider": str(name)})
+
+    out.metric("pantheon_search_relevance", "gauge",
+               "Searches by how well the results matched the query "
+               "(strong/partial/weak/none).")
+    for verdict, count in sorted((stats.get("verdicts") or {}).items()):
+        out.add("pantheon_search_relevance", int(count or 0),
+                {"verdict": str(verdict)})
+
+
 _COLLECTORS = (
     ("build", _collect_build),
     ("events", _collect_events),
@@ -388,6 +443,7 @@ _COLLECTORS = (
     ("outbound", _collect_outbound),
     ("queue_depth", _collect_queue_depth),
     ("otlp", _collect_otlp),
+    ("search", _collect_search),
 )
 
 

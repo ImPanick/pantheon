@@ -62,6 +62,14 @@ def _default_analytics() -> Dict[str, Any]:
         "cache_hits": 0,
         "cache_misses": 0,
         "query_patterns": {},
+        # Which provider answered, and how well the results matched. Added
+        # because the fx6-search lane could not say which of six providers had
+        # answered the owner's 2026-10-09 search — nothing in the product wrote
+        # it down, so the diagnosis had to be inferred from a Bing click id in
+        # one result URL. `_load_analytics` merges over these defaults, so a
+        # file written before they existed gains them on the next write.
+        "providers": {},
+        "verdicts": {},
     }
 
 
@@ -95,8 +103,33 @@ def _save_analytics(data: Dict[str, Any]) -> None:
         logger.warning(f"Failed to write analytics file: {e}")
 
 
-def _record_query(query: str, success: bool, cache_hit: bool) -> None:
-    """Update analytics for a single query execution."""
+def _record_query(query: str, success: bool, cache_hit: bool,
+                  provider: str = None, verdict: str = None) -> None:
+    """Update analytics for a single query execution.
+
+    ``provider`` is the one that answered; ``verdict`` is
+    `ranking.relevance_report`'s enum for how well the results matched. Both
+    are keyword-with-default so the two existing callers and the two tests that
+    drive this function directly are unaffected (`Law 1`).
+
+    Called once per search from both orchestrators in
+    `services/search/core.py`. Until `fx7-search2` its only two call sites were
+    inside `searxng_search_results`, which has no production caller, so this
+    function had never run outside a test.
+
+    **It cannot raise.** It is now on the path a person's search takes, and a
+    counter that breaks a search is worse than a counter that stops counting —
+    the same reason `_save_analytics` below swallows its own write errors.
+    """
+    try:
+        _record_query_inner(query, success, cache_hit, provider, verdict)
+    except Exception as e:  # pragma: no cover - defensive
+        logger.warning("Failed to record search analytics: %s: %s", type(e).__name__, e)
+
+
+def _record_query_inner(query: str, success: bool, cache_hit: bool,
+                        provider: str = None, verdict: str = None) -> None:
+    """The body of `_record_query`, so the guard above has something to guard."""
     analytics = _load_analytics()
     analytics["total_queries"] += 1
     if success:
@@ -118,11 +151,25 @@ def _record_query(query: str, success: bool, cache_hit: bool) -> None:
         entry["successes"] += 1
     patterns[query] = entry
 
+    if provider:
+        providers = analytics.setdefault("providers", {})
+        providers[provider] = providers.get(provider, 0) + 1
+    if verdict:
+        verdicts = analytics.setdefault("verdicts", {})
+        verdicts[verdict] = verdicts.get(verdict, 0) + 1
+
     _save_analytics(analytics)
 
 
 def get_search_stats() -> Dict[str, Any]:
-    """Return aggregated search analytics."""
+    """Return aggregated search analytics.
+
+    Read by `src.metrics_export._collect_search`, which is the door this had
+    none of until `fx7-search2` (`Law 13`): the numbers exist, nothing asked
+    for them, so neither half of the feature had ever looked wrong. The
+    scrape carries the **counts only** — `most_common_queries` is a person's
+    own search text and stays in the local file.
+    """
     analytics = _load_analytics()
     total = analytics.get("total_queries", 0) or 1
     success_rate = analytics.get("successful_queries", 0) / total
@@ -146,4 +193,6 @@ def get_search_stats() -> Dict[str, Any]:
         "cache_evictions": cache_metrics["evictions"],
         "runtime_cache_hits": cache_metrics["hits"],
         "runtime_cache_misses": cache_metrics["misses"],
+        "providers": dict(analytics.get("providers") or {}),
+        "verdicts": dict(analytics.get("verdicts") or {}),
     }

@@ -155,8 +155,20 @@ class _Recorder:
 
 
 @pytest.fixture
-def offline(monkeypatch):
-    """No settings, no network, no page fetching, no cache, no analytics file."""
+def offline(monkeypatch, tmp_path):
+    """No settings, no network, no page fetching, no cache, no analytics file.
+
+    `fx7-search2`: "no cache" was a promise this fixture made and did not keep
+    — there was nothing to stub, because the search cache was only reachable
+    through `searxng_search_results`, which nothing calls. It is on the live
+    path now, so every case here gets its own empty cache directory; without
+    one, two cases searching the same query in the same file would see the
+    second served from the first and the recorder would be handed nothing.
+    """
+    cache_dir = tmp_path / "search-cache"
+    cache_dir.mkdir()
+    monkeypatch.setattr(core, "SEARCH_CACHE_DIR", cache_dir, raising=False)
+    core.search_cache_index.clear()
     monkeypatch.setattr(core, "_get_search_settings", lambda: {}, raising=False)
     monkeypatch.setattr(core, "_get_result_count", lambda: 5, raising=False)
     monkeypatch.setattr(core, "_record_query", lambda *a, **k: None, raising=False)
