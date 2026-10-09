@@ -55,7 +55,18 @@ def _extract_entities(query: str) -> Dict[str, List[str]]:
 
 
 def _split_multi_part(query: str) -> List[str]:
-    """Split a query into sub-queries on common conjunctions."""
+    """Split a query into sub-queries on common conjunctions.
+
+    **No longer on the sent-query path** (the 2026-10-09 owner report, item 4).
+    `" and "` in English prose is almost never a boolean operator: measured,
+    this turns *"bread and butter pudding"* into `["bread", "butter pudding"]`
+    and *"rock and roll hall of fame"* into `["rock", "roll hall of fame"]`.
+    `enhance_query` joined the parts with `AND`, so the conjunction was deleted
+    and the person's one subject became two that both had to match. Kept
+    because `Law 1` does not delete what exists, and because a caller that
+    genuinely wants sub-queries (deep research fanning out) is a reasonable
+    future use — it is just not what a single search should do to a sentence.
+    """
     if not isinstance(query, str):
         return []
     parts = re.split(r"\s+and\s+|\s+or\s+|;", query, flags=re.I)
@@ -75,7 +86,27 @@ def _extract_site_filter(query: str) -> Tuple[str, Optional[str]]:
 
 
 def _boost_entities_in_query(base_query: str, entities: Dict[str, List[str]]) -> str:
-    """Append extracted entities to the query using OR to increase relevance."""
+    """Append extracted entities to the query using OR to increase relevance.
+
+    **No longer on the sent-query path** (`B-NEW` / the 2026-10-09 owner report).
+    It is kept because it is public-ish, imported by tests, and `Law 1` does not
+    delete what exists — but `enhance_query` stopped calling it, because what it
+    does is the opposite of what its name says.
+
+    Measured: the owner searched *"Old School RuneScape Fractured Archive raid
+    details October 20th"* and this turned it into
+
+        (Old School RuneScape Fractured Archive raid details October 20th "Old"
+         OR "School" OR "RuneScape" OR "Fractured" OR "Archive" OR "October")
+
+    64 characters in, 140 out — and every capitalised token became an **OR
+    alternative**, so a page containing only the word *Old* satisfies the query.
+    The five results that came back were a Shyamalan film, its IMDb page, its
+    trailer, a dictionary entry for *"old"* and Old Navy. Over a 27-query
+    corpus (see `/work/notes/fx6-search.md`) there was no query it narrowed and
+    none it left alone except those with no capital letter at all — so
+    non-Latin scripts got no "enhancement" and Latin ones got damage.
+    """
     parts = [base_query]
     if entities.get("names"):
         parts.append(" OR ".join(f'"{n}"' for n in entities["names"]))
@@ -85,50 +116,63 @@ def _boost_entities_in_query(base_query: str, entities: Dict[str, List[str]]) ->
 
 
 def enhance_query(original_query: str) -> Tuple[str, Optional[str]]:
-    """Process the original query: site filter, question type boosts, entity extraction."""
+    """Return ``(query_as_sent, site_or_None)`` for a person's query.
+
+    The person's words, with runs of whitespace collapsed. Nothing is added,
+    removed, re-ordered or quoted, and the `site:` token stays where the person
+    put it — engines parse it, and it is reported in the second element so a
+    caller can say what it saw.
+
+    **What this used to do, and why it stopped** (the 2026-10-09 owner report,
+    item 4). Three mechanisms, each measured against a 27-query corpus:
+
+      * `_boost_entities_in_query` OR-appended every capitalised token — see
+        its docstring for the owner's own query, 64 characters in and 140 out.
+      * `_split_multi_part` split on a bare `" and "` / `" or "` / `";"`, so
+        *"bread and butter pudding"* was sent as `(bread) AND (butter pudding)`:
+        the conjunction **deleted** and one dish turned into two queries that
+        have to both match. *"Laurel and Hardy filmography"* became
+        `(Laurel "Laurel") AND (Hardy filmography "Hardy")`.
+      * the question-type keywords OR-appended a bare part-of-speech word, so
+        *"who is the CEO of Jagex"* ended `... OR (person)` — satisfied by any
+        page containing the word *person*.
+
+    It also wrapped the result in parentheses and re-appended the `site:` token
+    it had just stripped, which on the one provider that received any of this
+    (Brave — `build_enhanced_query` was called from `_brave_search_impl` alone)
+    meant the person's own quoted phrases were broken apart and the grouping
+    was literal text.
+
+    `_detect_question_type`, `_extract_entities`, `_split_multi_part` and
+    `_boost_entities_in_query` all survive (`Law 1`) and `_extract_entities` is
+    now put to honest use by `ranking.relevance_report`, which uses the same
+    tokens to measure whether the results came back about the right thing.
+    """
     if not isinstance(original_query, str):
-        original_query = ""
-    query_without_site, site = _extract_site_filter(original_query)
-    sub_queries = _split_multi_part(query_without_site)
-
-    enhanced_subs: List[str] = []
-    for sub in sub_queries:
-        qtype = _detect_question_type(sub)
-        boost_keywords = []
-        if qtype == "who":
-            boost_keywords.append("person")
-        elif qtype == "when":
-            boost_keywords.append("date")
-        elif qtype == "where":
-            boost_keywords.append("location")
-        elif qtype == "why":
-            boost_keywords.append("reason")
-        elif qtype == "how":
-            boost_keywords.append("method")
-        entities = _extract_entities(sub)
-        boosted = _boost_entities_in_query(sub, entities)
-        if boost_keywords:
-            boosted = f'({boosted}) OR ({" OR ".join(boost_keywords)})'
-        enhanced_subs.append(boosted)
-
-    final_query = " AND ".join(f"({s})" for s in enhanced_subs)
-    if site:
-        final_query = f"{final_query} site:{site}"
-    return final_query, site
+        return "", None
+    _, site = _extract_site_filter(original_query)
+    return " ".join(original_query.split()), site
 
 
 def build_enhanced_query(query: str, time_filter: str = None) -> str:
-    """Build an enhanced search query with optional time filtering."""
-    enhanced_query, _ = enhance_query(query)
+    """The one place the string sent to a search engine is derived (`Law 7`).
 
-    if time_filter:
-        time_map = {"day": "d", "week": "w", "month": "m", "year": "y"}
-        if time_filter in time_map:
-            enhanced_query = f"{enhanced_query} after:{time_map[time_filter]}"
-            logger.info(f"Added time filter '{time_filter}' to query")
-
-    logger.info(f"Enhanced query: '{query}' -> '{enhanced_query}'")
-    return enhanced_query
+    ``time_filter`` is accepted and deliberately **not** written into the query
+    text. Every provider takes it as a native parameter — `freshness` (Brave),
+    `time_range` (SearXNG), `timelimit` (DuckDuckGo), `dateRestrict` (Google
+    PSE), `days` (Tavily), `tbs` (Serper) — and `services/search/core.py`
+    passes it to each of them. This function used to *also* append
+    ``after:d`` / ``after:w`` / ``after:m`` / ``after:y``, which no engine
+    parses (Brave has no ``after:`` operator; Google's wants a date, not a
+    letter), so on Brave the filter was applied twice: once correctly as
+    ``freshness`` and once as four characters of literal text inside ``q``.
+    """
+    sent, _ = enhance_query(query)
+    if sent != query:
+        logger.info("Search query as sent: %r (from %r)", sent, query)
+    else:
+        logger.info("Search query as sent: %r", sent)
+    return sent
 
 
 # ----------------------------------------------------------------------
