@@ -60,6 +60,14 @@ def _escape_guard_markers(text: str) -> str:
     """
     text = text.replace(GUARD_OPEN, "<<<_UNTRUSTED_DATA>>>")
     text = text.replace(GUARD_CLOSE, "<<<_END_UNTRUSTED_DATA>>>")
+    # `FIX-2026-10-09` item 2. The second envelope's markers, escaped by the
+    # same function rather than a second one: a memory whose text contained
+    # `<<<END_USER_SAVED_MATERIAL>>>` could otherwise close its own block early
+    # and continue outside it, which is the exact breakout this function exists
+    # to prevent. Found by the new test, not by reading
+    # (`tests/test_the_person_s_words_are_their_own_message.py`).
+    text = text.replace(OWN_MATERIAL_OPEN, "<<<_USER_SAVED_MATERIAL>>>")
+    text = text.replace(OWN_MATERIAL_CLOSE, "<<<_END_USER_SAVED_MATERIAL>>>")
     return text
 
 
