@@ -33,6 +33,7 @@ from src.approval_mode import (
     AUTO_TURN_ON_SENTENCE,
 )
 from test_tool_effect_surfaces_js import _make_sandbox, _run  # noqa: E402
+from tests.helpers.source_text import blank_text  # B290
 
 ROOT = Path(__file__).resolve().parents[1]
 APPROVAL_MODE = ROOT / "static" / "js" / "approvalMode.js"
@@ -356,8 +357,15 @@ def test_the_mode_is_never_written_to_browser_storage():
     # Comments out, because the module's own docstring says the words it must
     # not *call* — a grep over prose would pass for the wrong reason, and
     # `Law 20` says a test that greps a file tests the file.
-    code = re.sub(r"/\*.*?\*/", "", source, flags=re.S)
-    code = re.sub(r"^\s*//.*$", "", code, flags=re.M)
+    #
+    # Through the suite's one blanker, not a pair of regexes (`B290`, and
+    # `tests/test_one_comment_blanker.py` is the tripwire that caught this
+    # file's first draft): `/\*.*?\*/` cannot tell a comment from a string, so
+    # a `'/*'` anywhere in the module eats everything to the next `*/` and the
+    # assertion below passes because the text it searched is gone. `blank_text`
+    # keeps offsets and leaves string bodies alone, so a `window['localStorage']`
+    # is still found.
+    code = blank_text(source, "js")
     for api in ("localStorage", "sessionStorage", "indexedDB", "document.cookie",
                 "Storage.set", "saveToggleState"):
         assert api not in code, api

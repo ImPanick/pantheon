@@ -188,6 +188,34 @@ export function paint(doc) {
       : `This turn: ${modeWord} mode`);
   }
 
+  // The Mode row follows the controls it drives, like every other row here
+  // (`fx8-census`, 2026-10-09 — it was the one row that did not, which is why
+  // `#turn-row-mode` was markup nothing read and
+  // `tests/test_orphan_ids_in_markup.py` reported it as a new orphan).
+  //
+  // What can take a mode away is the visibility table: `agent` is a `chip`
+  // entry with `composer: ['mode-agent-btn']` and privilege `can_use_agent`
+  // (`ui_visibility.js`), and the applier writes `display: none` on that one
+  // button — the composer keeps Chat. So this mirrors the composer rather than
+  // hiding the whole row: the option whose button is gone goes with it, and
+  // the row goes only when BOTH are gone. Hiding the row on Agent alone would
+  // strand a phone in Agent mode with no way back to Chat, which is the owner's
+  // original complaint rebuilt, and nothing client-side forces Chat when the
+  // privilege is withdrawn (the fall-back is the server's 409).
+  //
+  // The container query that drops `.mode-toggle` on a narrow bar does NOT
+  // hide anything here: that is a stylesheet `display`, and `isRendered` reads
+  // the inline one, the `hidden` attribute and the feature table — which is
+  // the whole reason the chip and this sheet exist.
+  const agentOn = isRendered(_el(doc, 'mode-agent-btn'));
+  const chatOn = isRendered(_el(doc, 'mode-chat-btn'));
+  const rowAgent = _el(doc, 'turn-mode-agent');
+  const rowChat = _el(doc, 'turn-mode-chat');
+  if (rowAgent) rowAgent.hidden = !agentOn;
+  if (rowChat) rowChat.hidden = !chatOn;
+  const modeRow = _el(doc, 'turn-row-mode');
+  if (modeRow) modeRow.hidden = !agentOn && !chatOn;
+
   _seg(doc, 'turn-mode-seg', 'turn-mode-agent', 'turn-mode-chat', turn.mode === 'agent');
 
   const help = _el(doc, 'turn-mode-help');
@@ -282,7 +310,10 @@ export function toggleSheet(doc) {
  *  `setMode` — persistence, the research unset, the workspace chip — runs. */
 export function setMode(doc, mode) {
   const btn = _el(doc, mode === 'agent' ? 'mode-agent-btn' : 'mode-chat-btn');
-  if (!btn) return false;
+  // The same refusal `flipSwitch` makes, and for the same reason: a control
+  // the page is not showing is a control an admin has not granted, so pressing
+  // its row must not click it (`fx8-census`, 2026-10-09).
+  if (!isRendered(btn)) return false;
   _click(btn);
   paint(doc);
   return true;
