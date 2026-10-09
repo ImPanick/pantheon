@@ -1246,6 +1246,29 @@ async function _cmdToggleWeb(args, ctx) { const v = (args[0]||'').toLowerCase();
 async function _cmdToggleBash(args, ctx) { const v = (args[0]||'').toLowerCase(); if (v === 'on' || v === 'off') _applyToggle('bash', v); else _quickToggle('bash'); return true; }
 async function _cmdToggleRag(args, ctx) { const v = (args[0]||'').toLowerCase(); if (v === 'on' || v === 'off') _applyToggle('rag', v); else _quickToggle('rag'); return true; }
 async function _cmdToggleResearch(args, ctx) { const v = (args[0]||'').toLowerCase(); if (v === 'on' || v === 'off') _applyToggle('research', v); else _quickToggle('research'); return true; }
+// `D-2026-10-09-01` §4. The Agent/Chat mode had no typed path either — this
+// catalogue offered web, bash, rag, research, doc and sidebar, and nothing for
+// the mode — so on a phone, where the toggle is replaced by `#turn-chip`, this
+// is the keyboard's way to it. It clicks the composer's own buttons so
+// `initModeToggle`'s `setMode` runs once, like every other door (`Law 7`).
+async function _cmdToggleMode(args) {
+  const want = (args[0] || '').toLowerCase();
+  const agentBtn = document.getElementById('mode-agent-btn');
+  const now = agentBtn && agentBtn.classList.contains('active') ? 'agent' : 'chat';
+  let next = now === 'agent' ? 'chat' : 'agent';
+  if (want === 'agent' || want === 'a') next = 'agent';
+  else if (want === 'chat' || want === 'c') next = 'chat';
+  else if (want && want !== 'toggle') {
+    slashReply(`Mode is agent or chat, not "${want}".`);
+    return true;
+  }
+  const btn = document.getElementById(next === 'agent' ? 'mode-agent-btn' : 'mode-chat-btn');
+  if (!btn) { slashReply('No mode control on this page.'); return true; }
+  btn.click();
+  slashReply(next === 'agent' ? 'Agent mode.' : 'Chat mode.');
+  return true;
+}
+
 async function _cmdToggleIncognito(args, ctx) {
   const sessions = sessionModule.getSessions();
   const sess = ctx.sid ? sessions.find(s => s.id === ctx.sid) : null;
@@ -2370,7 +2393,13 @@ async function _cmdDemo(args, ctx) {
 
       // Support multiple selectors (comma-separated)
       const sels = sel.split(',').map(s => s.trim());
-      const targets = sels.map(s => document.querySelector(s)).filter(Boolean);
+      // Rendered, not merely present. `querySelector` finds a `display: none`
+      // control, and a click-to-continue step pointed at one waits for a click
+      // that can never come — which is what the Agent-mode step did on a phone,
+      // where the chat bar's container query drops `.mode-toggle`
+      // (`D-2026-10-09-01` §4). A step with nothing to point at is skipped.
+      const targets = sels.map(s => document.querySelector(s)).filter(
+        (n) => n && (typeof n.checkVisibility === 'function' ? n.checkVisibility() : true));
       if (!targets.length) return resolve('skip');
 
       const clickMode = mode === 'click';
@@ -2564,8 +2593,19 @@ async function _cmdDemo(args, ctx) {
     { sel: '#sidebar-new-chat-btn', text: 'Start a new chat. <b>Click it.</b>', mode: 'click',
       before() { if (sidebar?.classList.contains('hidden')) sidebar.classList.remove('hidden'); } },
     { sel: '#model-picker-btn',   text: 'Pick a model.', advanceOnClick: true },
-    { sel: '#mode-agent-btn',     text: '<b>Agent mode</b> lets the model use tools.', mode: 'click' },
-    { sel: '#web-toggle-btn',     text: '<b>Web search</b>, built in.', mode: 'click' },
+    // Whichever of the two the bar is showing: the segmented toggle on a wide
+    // bar, `#turn-chip` on a phone, where it opens the turn sheet the mode
+    // lives in (`D-2026-10-09-01` §4). The filter above picks the rendered one.
+    { sel: '#mode-agent-btn, #turn-chip',
+      text: '<b>Agent mode</b> lets the model use tools.', mode: 'click' },
+    { sel: '#web-toggle-btn',     text: '<b>Web search</b>, built in.', mode: 'click',
+      // The chip opens a sheet over the composer, and the next three steps are
+      // under it. Closed through the dismissal the sheet registered, so its
+      // Escape-stack entry goes with it rather than being stranded.
+      before() {
+        const sheet = document.getElementById('turn-sheet');
+        if (sheet && typeof sheet._dismiss === 'function') sheet._dismiss();
+      } },
     { sel: '#overflow-plus-btn',  text: 'More tools. <b>Click to peek.</b>',
       advanceOnClick: true, pulseNext: true, afterDelay: 2200 },
     { sel: '#message',            text: 'Write here; drop files to attach them. <b>/help</b> lists the commands.',
@@ -5864,6 +5904,7 @@ const COMMANDS = {
     help: 'Toggle features on/off',
     default: '_show',
     subs: {
+      'mode':      { handler: _cmdToggleMode,      alias: ['agent','m'],       help: 'Agent or Chat mode',      usage: '/toggle mode [agent|chat]' },
       'web':       { handler: _cmdToggleWeb,       alias: ['search','s','w'],  help: 'Toggle web search',       usage: '/toggle web' },
       'bash':      { handler: _cmdToggleBash,      alias: ['b','shell'],       help: 'Toggle bash/shell',       usage: '/toggle bash' },
       'rag':       { handler: _cmdToggleRag,       alias: ['docs','r'],       help: 'Toggle document search', usage: '/toggle rag' },

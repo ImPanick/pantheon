@@ -3044,13 +3044,23 @@ body.bg-pattern-sparkles {
       margin-top: 4px;
     }
     /* Progressive shrinkage: as the chat input bar gets narrow, sacrifice
-       chrome before the typing area. First the Agent/Chat toggle drops out,
-       then the model picker — textarea + send button always stay. Container
-       queries so it responds to *bar width*, not viewport width (the bar
-       can be in a split pane). */
+       chrome before the typing area. First the Agent/Chat toggle is REPLACED
+       by `#turn-chip`, then the model picker drops — textarea + send button
+       always stay. Container queries so it responds to *bar width*, not
+       viewport width (the bar can be in a split pane).
+       `D-2026-10-09-01` §4: the toggle used to drop at 340px and nothing took
+       its place, so on a phone the mode could not be reached at all (measured
+       2026-10-09: a 360px viewport makes this bar exactly 340px). The swap now
+       happens at 420px — a 390px viewport gives a 370px bar, where the toggle
+       fitted but stood 34px tall against the 44px a thumb needs — and the chip
+       that replaces it is smaller than it (124.5px → ~76px measured), says the
+       mode without anything being opened, and opens `#turn-sheet` with the
+       rest of what decides a turn. The typing area is on its own row above and
+       is not touched. */
     .chat-input-bar { container-type: inline-size; container-name: chatbar; }
-    @container chatbar (max-width: 340px) {
+    @container chatbar (max-width: 420px) {
       .chat-input-right .mode-toggle { display: none !important; }
+      .chat-input-right .turn-chip { display: inline-flex; }
     }
     @container chatbar (max-width: 260px) {
       #model-picker-wrap { display: none !important; }
@@ -12370,7 +12380,9 @@ body.fullwidth-chat .chat-history {
    the bar narrows: below 660px, where it would otherwise push the Plan / Web /
    Shell chips into the + menu (measured: at a 626px bar the long form folded
    Plan away) — a control outranks a sentence about it. The mode toggle itself
-   drops out at 340px. No motion. */
+   is replaced by `#turn-chip` at 420px (`D-2026-10-09-01` §4), and the turn
+   sheet's Mode row carries this same sentence there, read from this element so
+   it is not written twice. No motion. */
 .agent-limits-hint {
   flex: 0 1 auto;
   min-width: 0;
@@ -49022,4 +49034,223 @@ body.plan-mode-active .chat-input-top > .model-picker-wrap:has(> .model-picker-m
     translate: none;
     opacity: 1;
   }
+}
+
+/* ── `D-2026-10-09-01` §4 — the phone's turn controls ──────────────────────
+   The owner, 2026-10-09: *"on mobile there's no way to change between agent
+   and chat mode… need more controls for the mobile side."* Measured in
+   Chromium with touch emulation that day: at 360×800 the chat bar is 340px, so
+   the container query above resolved `.mode-toggle` to `display: none` and the
+   composer row held `^`, Plan, Web, Shell and send — no mode, and no other
+   door to it anywhere on a phone. At 390×844 the toggle was on screen at 34px
+   tall and the model picker at 22px, both under a thumb's 44px.
+
+   `#turn-chip` takes the toggle's place on a narrow bar (it is hidden
+   everywhere else, so the desktop is unchanged) and `#turn-sheet` rises from
+   the composer with one row per control that decides what a turn does. No new
+   colour token and no `--accent`: the chip and the rows are drawn from `--fg`,
+   `--panel` and `--border` like the toggle they replace, and the focus ring is
+   the global one. Reduced motion stops the rise. */
+.turn-chip {
+  display: none;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+  min-height: 44px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--fg) 7%, transparent);
+  color: var(--fg);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.turn-chip:hover { background: color-mix(in srgb, var(--fg) 12%, transparent); }
+.turn-chip[aria-expanded="true"] { background: color-mix(in srgb, var(--fg) 14%, transparent); }
+.turn-chip[aria-expanded="true"] svg { transform: rotate(180deg); }
+.turn-chip svg { opacity: 0.6; transition: transform 0.18s var(--ease-signature); }
+/* Auto approval is the one state a person must not miss (`D-2026-10-09-01`
+   §2), so it is a word on the chip, not a hue. `--warn` carries the caution
+   every palette already defines. */
+.turn-chip-flag {
+  padding: 2px 6px;
+  border-radius: 7px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--warn);
+  border: 1px solid color-mix(in srgb, var(--warn) 55%, transparent);
+  background: color-mix(in srgb, var(--warn) 14%, transparent);
+}
+.turn-chip-flag[hidden] { display: none; }
+
+.turn-sheet-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: color-mix(in srgb, var(--bg) 62%, transparent);
+}
+.turn-sheet-layer.hidden { display: none; }
+.turn-sheet {
+  width: 100%;
+  max-width: 520px;
+  max-height: 82vh;
+  overflow-y: auto;
+  box-sizing: border-box;
+  padding: 6px 12px calc(14px + env(safe-area-inset-bottom, 0px));
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-bottom: none;
+  border-radius: 16px 16px 0 0;
+  box-shadow: 0 -6px 28px rgba(0, 0, 0, 0.34);
+  animation: turn-sheet-rise 0.22s var(--ease-signature);
+}
+@keyframes turn-sheet-rise {
+  from { transform: translateY(16px); opacity: 0; }
+  to   { transform: translateY(0); opacity: 1; }
+}
+.turn-sheet-grip {
+  width: 36px;
+  height: 4px;
+  margin: 4px auto 2px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--fg) 22%, transparent);
+}
+.turn-sheet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 2px 2px 6px;
+}
+.turn-sheet-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--fg);
+}
+.turn-sheet-close {
+  min-width: 44px;
+  min-height: 44px;
+  border: none;
+  background: none;
+  color: color-mix(in srgb, var(--fg) 55%, transparent);
+  font-size: 14px;
+  cursor: pointer;
+}
+.turn-sheet-close:hover { color: var(--fg); }
+
+.turn-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 52px;
+  box-sizing: border-box;
+  padding: 6px 8px;
+  border: none;
+  border-top: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  border-radius: 0;
+  background: none;
+  color: var(--fg);
+  font-family: inherit;
+  font-size: 13px;
+  text-align: left;
+}
+.turn-row[hidden] { display: none; }
+.turn-row-open,
+.turn-row-switch { cursor: pointer; }
+.turn-row-open:hover,
+.turn-row-switch:hover { background: color-mix(in srgb, var(--fg) 6%, transparent); }
+.turn-row-open:disabled { cursor: default; }
+.turn-row-open:disabled .turn-row-chevron { opacity: 0.25; }
+.turn-row-label {
+  flex: 0 0 auto;
+  font-weight: 600;
+}
+.turn-row-value {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: right;
+  color: var(--color-muted-alt);
+}
+.turn-row-chevron { flex: 0 0 auto; opacity: 0.5; }
+.turn-row-help {
+  margin: 0;
+  padding: 0 8px 8px;
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--color-muted-alt);
+}
+.turn-row-help[hidden] { display: none; }
+/* A row holding a segmented control stacks: *Manual approve* does not fit
+   beside its label and half a 360px row, and measured 2026-10-09 it ran over
+   *Auto* when it tried. Label on its line, the control full width under it. */
+.turn-row-seg {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  padding-bottom: 10px;
+}
+/* The segmented control in a row is the same `.mode-toggle` the desktop
+   composer uses — one look, one stylesheet block (`Law 7`) — grown to a
+   thumb's height. */
+.turn-row .turn-seg {
+  flex: 0 0 auto;
+  width: 100%;
+  height: 44px;
+  min-width: 0;
+}
+.turn-row .turn-seg .mode-toggle-btn {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 8px;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.turn-row-switch .turn-switch {
+  flex: 0 0 auto;
+  margin-left: auto;
+  width: 44px;
+  height: 26px;
+  border-radius: 13px;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--fg) 10%, transparent);
+  position: relative;
+  transition: background 0.18s ease;
+}
+.turn-row-switch .turn-switch-knob {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--fg) 45%, transparent);
+  transition: transform 0.18s var(--ease-signature), background 0.18s ease;
+}
+.turn-row-switch.on .turn-switch { background: color-mix(in srgb, var(--green) 32%, transparent); }
+.turn-row-switch.on .turn-switch-knob {
+  transform: translateX(18px);
+  background: var(--fg);
+}
+@media (prefers-reduced-motion: reduce) {
+  /* `P1-12`'s reason for 0.01ms rather than `none`: a transition that never
+     runs never sends `transitionend`. */
+  .turn-sheet { animation-duration: 0.01ms; }
+  .turn-chip svg,
+  .turn-row-switch .turn-switch,
+  .turn-row-switch .turn-switch-knob { transition-duration: 0.01ms; }
 }

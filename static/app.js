@@ -40,6 +40,9 @@ import settingsModule from './js/settings.js?v=20261009tools';
 import * as WindowManager from './js/modalManager.js?v=20261009tools';
 // `P23-01`. One back stack: Back = Escape = `←`, the URL names the top window.
 import backStack from './js/backStack.js';
+// `D-2026-10-09-01` §4. The phone's turn controls: the chip that replaces the
+// dropped Agent/Chat toggle on a narrow bar, and the sheet behind it.
+import { initTurnSheet } from './js/turnSheet.js';
 // `P20-05`. The workstation screen window: loaded here for its one delegated
 // listener, which answers every `[data-open-workstation-screen]` door — a
 // workstation tool card's *View screen*, Settings → Workstation's *Open the
@@ -2465,6 +2468,12 @@ function initializeEventListeners() {
 
     updatePlusDot();
   })();
+
+  // `D-2026-10-09-01` §4. Wired after the composer's own controls are bound,
+  // because the sheet drives them by clicking them: the mode toggle, Plan, Web,
+  // Shell, the model picker and the context wheel keep every side effect they
+  // already have, and the sheet keeps no state of its own (`Law 7`).
+  try { initTurnSheet(document); } catch (e) { console.warn('turn sheet init failed:', e); }
 
   // ── Auto-collapse toolbar buttons into overflow when space is tight ──
   (function initToolbarOverflow() {

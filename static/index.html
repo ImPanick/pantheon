@@ -1749,6 +1749,20 @@
             <button type="button" class="mode-toggle-btn active" id="mode-agent-btn" aria-pressed="true" aria-describedby="agent-limits-hint">Agent</button>
             <button type="button" class="mode-toggle-btn" id="mode-chat-btn" aria-pressed="false">Chat</button>
           </div>
+          <!-- `D-2026-10-09-01` §4. On a phone the segmented toggle above is
+               dropped by the chat bar's container query and NOTHING replaced
+               it, so the mode could not be reached at all (measured 2026-10-09:
+               at a 360 px viewport the bar is 340 px and `.mode-toggle` is
+               `display: none`; there is no slash command and no palette row for
+               it either). This chip takes its place on a narrow bar: it SAYS
+               the mode without anything being opened, and it is the door to
+               every other control that decides what a turn does
+               (`#turn-sheet`). Filled by `static/js/turnSheet.js`. -->
+          <button type="button" class="turn-chip" id="turn-chip" aria-haspopup="dialog" aria-expanded="false" aria-controls="turn-sheet" title="This turn">
+            <span class="turn-chip-mode" id="turn-chip-mode">Agent</span>
+            <span class="turn-chip-flag" id="turn-chip-approval" hidden>Auto</span>
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg>
+          </button>
           <button type="submit" form="chat-form" class="send-btn newchat-mode" data-mode="idle" title="Send message">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
           </button>
@@ -1760,6 +1774,80 @@
       <input type="checkbox" id="plan-toggle" style="display:none;">
     </div>
     <form id="chat-form" autocomplete="off" action="javascript:void(0);" style="display:none;"></form>
+
+    <!-- `D-2026-10-09-01` §4 — the turn's settings, where a thumb can reach
+         them. One sheet, rising from the composer, holding every control that
+         decides what a turn does: the mode, the chat's approval mode, the
+         model, the context reading, Plan, Web, Shell and the persona. Each row
+         carries its CURRENT value, so the sheet answers as well as changes.
+         It drives the composer's own controls rather than keeping a second
+         copy of their state (`Law 7`), so a mutual exclusion written once
+         still runs. It sits OUTSIDE `.chat-input-bar` on purpose: that bar is
+         `container-type: inline-size`, which makes it the containing block for
+         a `position: fixed` child (the same trap `#overflow-menu` is portaled
+         out of). Wired by `static/js/turnSheet.js`; Escape, the phone's Back
+         and an outside tap all close it through `escMenuStack.js`. -->
+    <div id="turn-sheet-layer" class="turn-sheet-layer hidden">
+      <div id="turn-sheet" class="turn-sheet" role="dialog" aria-modal="true" aria-labelledby="turn-sheet-title">
+        <div class="turn-sheet-grip" aria-hidden="true"></div>
+        <div class="turn-sheet-head">
+          <h2 class="turn-sheet-title" id="turn-sheet-title">This turn</h2>
+          <button type="button" class="turn-sheet-close" id="turn-sheet-close" aria-label="Close">✖</button>
+        </div>
+
+        <div class="turn-row turn-row-seg" id="turn-row-mode">
+          <span class="turn-row-label" id="turn-label-mode">Mode</span>
+          <div class="mode-toggle turn-seg" id="turn-mode-seg" role="radiogroup" aria-labelledby="turn-label-mode">
+            <button type="button" class="mode-toggle-btn active" id="turn-mode-agent" role="radio" aria-checked="true">Agent</button>
+            <button type="button" class="mode-toggle-btn" id="turn-mode-chat" role="radio" aria-checked="false">Chat</button>
+          </div>
+        </div>
+        <p class="turn-row-help" id="turn-mode-help" hidden></p>
+
+        <!-- The per-chat approval mode (`D-2026-10-09-01` §2) is the sibling
+             lane `fx8-approval`'s control. This row is its slot: it stays
+             hidden until that control is on the page, and then it drives it —
+             it never keeps an approval state of its own. -->
+        <div class="turn-row turn-row-seg" id="turn-row-approval" hidden>
+          <span class="turn-row-label" id="turn-label-approval">Approval</span>
+          <div class="mode-toggle turn-seg" id="turn-approval-seg" role="radiogroup" aria-labelledby="turn-label-approval">
+            <button type="button" class="mode-toggle-btn active" id="turn-approval-manual" role="radio" aria-checked="true">Manual approve</button>
+            <button type="button" class="mode-toggle-btn" id="turn-approval-auto" role="radio" aria-checked="false">Auto</button>
+          </div>
+        </div>
+
+        <button type="button" class="turn-row turn-row-open" id="turn-row-model">
+          <span class="turn-row-label">Model</span>
+          <span class="turn-row-value" id="turn-value-model">Select model</span>
+          <svg class="turn-row-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+        </button>
+
+        <button type="button" class="turn-row turn-row-open" id="turn-row-context">
+          <span class="turn-row-label">Context</span>
+          <span class="turn-row-value" id="turn-value-context">Not measured yet</span>
+          <svg class="turn-row-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+        </button>
+
+        <button type="button" class="turn-row turn-row-switch" id="turn-row-plan" role="switch" aria-checked="false">
+          <span class="turn-row-label">Plan</span>
+          <span class="turn-switch" aria-hidden="true"><span class="turn-switch-knob"></span></span>
+        </button>
+        <button type="button" class="turn-row turn-row-switch" id="turn-row-web" role="switch" aria-checked="false">
+          <span class="turn-row-label">Web</span>
+          <span class="turn-switch" aria-hidden="true"><span class="turn-switch-knob"></span></span>
+        </button>
+        <button type="button" class="turn-row turn-row-switch" id="turn-row-shell" role="switch" aria-checked="false">
+          <span class="turn-row-label">Shell</span>
+          <span class="turn-switch" aria-hidden="true"><span class="turn-switch-knob"></span></span>
+        </button>
+
+        <button type="button" class="turn-row turn-row-open" id="turn-row-persona">
+          <span class="turn-row-label">Persona</span>
+          <span class="turn-row-value" id="turn-value-persona">None</span>
+          <svg class="turn-row-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+        </button>
+      </div>
+    </div>
 
     <!-- Character (custom preset) modal -->
     <div id="custom-preset-modal" class="modal hidden">
