@@ -6,6 +6,7 @@ import json
 import uuid
 from datetime import datetime
 from fastapi import APIRouter, Form, HTTPException, Response, Request, Depends
+from fastapi.responses import StreamingResponse
 import logging
 
 from core.session_manager import SessionManager
@@ -66,6 +67,92 @@ def _content_to_text(content) -> str:
             if isinstance(b, dict) and b.get("text")
         )
     return ""
+
+
+def _thinking_rounds(metadata: dict) -> list:
+    """`B-NEW-2`. The reasoning a reply kept, one entry per agent round.
+
+    A reply saves its reasoning the way `routes/chat_routes._thinking_record`
+    writes it: ``round_thinking`` is each round's part in order, and
+    ``thinking`` is the whole, the rounds joined by a blank line (a Chat-mode
+    reply keeps only the whole). Read the rounds when there are any, else the
+    whole as a single part — never both, or the export says the same reasoning
+    twice (`Law 7`).
+    """
+    rounds = metadata.get("round_thinking")
+    if isinstance(rounds, list):
+        parts = [str(t or "").strip() for t in rounds]
+        if any(parts):
+            return [t for t in parts if t]
+    whole = str(metadata.get("thinking") or "").strip()
+    return [whole] if whole else []
+
+
+def _tool_rows(metadata: dict) -> list:
+    """`B-NEW-2`. The tool calls a reply ran, as the browser was shown them.
+
+    ``tool_events`` holds what `routes/chat_routes._shown_tool_row` kept per
+    call: the tool's name, the round it ran in, the command, and its output —
+    merged in ``output``, split into ``stdout``/``stderr`` where the loop had
+    both (`agentThread.toolOutputPanesHtml` reads the same three). A refused
+    call carries ``blocked`` with the refusal as its output (`P4-20`), and a
+    call that asked for an approval and never ran carries ``ask_user``.
+    """
+    events = metadata.get("tool_events")
+    if not isinstance(events, list):
+        return []
+    rows = []
+    for event in events:
+        if not isinstance(event, dict):
+            continue
+        stderr = event.get("stderr") if isinstance(event.get("stderr"), str) else ""
+        stdout = event.get("stdout") if isinstance(event.get("stdout"), str) else ""
+        merged = event.get("output") if isinstance(event.get("output"), str) else ""
+        primary = stdout if (stderr.strip() and stdout) else merged
+        exit_code = event.get("exit_code")
+        if event.get("blocked"):
+            status = "refused"
+        elif exit_code not in (0, None):
+            status = "failed"
+        else:
+            status = "done"
+        ask = event.get("ask_user")
+        if isinstance(ask, dict) and not ask.get("resolved"):
+            status = "waiting for approval"
+        rows.append({
+            "tool": str(event.get("tool") or "tool"),
+            "round": event.get("round"),
+            "status": status,
+            "exit_code": exit_code,
+            "command": str(event.get("full_command") or event.get("command") or ""),
+            "output": primary or "",
+            "stderr": stderr,
+        })
+    return rows
+
+
+def _transcript_entries(session):
+    """`B-NEW-2`. One entry per saved message — role, text, reasoning, tools.
+
+    The one reader every export format shares (`Law 7`). It is a generator, so
+    a format writes a message and lets it go rather than joining the whole
+    conversation into a second copy in memory before the first byte leaves.
+    """
+    for message in getattr(session, "history", None) or []:
+        metadata = _message_metadata(message)
+        if metadata.get("hidden"):
+            # A compaction summary is context for the model, never a turn the
+            # person had — the chat does not draw it either (`history_routes`).
+            continue
+        yield {
+            "role": _message_role(message),
+            "text": _message_text(message),
+            "thinking": _thinking_rounds(metadata),
+            "tools": _tool_rows(metadata),
+            "model": str(metadata.get("model") or ""),
+            "timestamp": str(metadata.get("timestamp") or ""),
+            "stopped": bool(metadata.get("stopped")),
+        }
 
 
 def _message_role(message) -> str:
@@ -868,9 +955,32 @@ def setup_session_routes(
 
     @router.get("/session/{sid}/export")
     def export_session(request: Request, sid: str, fmt: str = "md", filename: str = ""):
-        """Export conversation history as a downloadable file.
+        """Export the whole conversation as a downloadable file.
 
-        Supported formats: md (markdown), txt (plain text), json, html
+        Supported formats: md (markdown), txt (plain text), json, html.
+
+        `B-NEW-1` / `B-NEW-2`. The owner, 2026-10-09: *"I was trying to export
+        the chat so you have it as a log with internal thoughts/reasoning from
+        the LLM displayed... but it only exports 1 page (top portion of the
+        chat) - never the FULL chat."* Two things were true at once. The chat's
+        Export menu built its own transcript out of `#chat-history`, which
+        holds one page (`sessions.js` asks `/api/history/{sid}` for 24
+        messages on a desktop and 8 on a phone), so the export held that page;
+        and this route, which reads the whole of `session.history`, carried the
+        text of each message and **nothing else** — not the model's reasoning,
+        not a tool call, not its output — which is the part the owner was
+        trying to capture. The menu's items come here now, and every format
+        carries what `_transcript_entries` reads.
+
+        **Streamed, not paged.** `get_session` hydrates the whole history into
+        memory as this session's one copy, so the export's cost was never the
+        rows — it was joining them into a second full copy as one string and
+        handing that to a third as the response body. The body is a generator
+        over `_transcript_entries` instead: one message is formatted, yielded
+        and let go, so a chat of any length exports whole at the cost of its
+        longest message. Paging the response would have meant a second reader
+        of the history with its own offsets, and an export the caller has to
+        stitch back together is an export that can be cut (`Law 14`).
         """
         _verify_session_owner(request, sid)
         try:
@@ -882,79 +992,165 @@ def setup_session_routes(
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         filename = _sanitize_export_filename(filename)
 
+        def _download(stream, media_type: str, ext: str):
+            """One response shape for every format. `FORBIDDEN.md` Part 2: an
+            export is a download — `Content-Disposition: attachment` stays, and
+            the global `X-Content-Type-Options: nosniff` rides with it."""
+            out_name = filename or f"conversation_{safe_name}_{timestamp}.{ext}"
+            return StreamingResponse(
+                stream,
+                media_type=media_type,
+                headers={"Content-Disposition": f"attachment; filename={out_name}"},
+            )
+
         if fmt == "json":
             import json as _json
-            data = {
-                "name": session.name,
-                "model": session.model,
-                "exported": datetime.now().isoformat(),
-                "messages": [{"role": m.role, "content": m.content} for m in session.history],
-            }
-            out_name = filename or f"conversation_{safe_name}_{timestamp}.json"
-            return Response(
-                content=_json.dumps(data, indent=2, ensure_ascii=False),
-                media_type="application/json",
-                headers={"Content-Disposition": f"attachment; filename={out_name}"},
-            )
+
+            def _json_stream():
+                yield "{\n"
+                yield '  "name": ' + _json.dumps(session.name, ensure_ascii=False) + ",\n"
+                yield '  "model": ' + _json.dumps(session.model, ensure_ascii=False) + ",\n"
+                yield '  "exported": ' + _json.dumps(datetime.now().isoformat()) + ",\n"
+                yield '  "messages": [\n'
+                first = True
+                for entry in _transcript_entries(session):
+                    # `Law 1`: `role` and `content` are the two keys this
+                    # format has always carried; the rest are added beside them.
+                    row = {
+                        "role": entry["role"],
+                        "content": entry["text"],
+                    }
+                    if entry["thinking"]:
+                        row["thinking"] = "\n\n".join(entry["thinking"])
+                        row["round_thinking"] = entry["thinking"]
+                    if entry["tools"]:
+                        row["tools"] = entry["tools"]
+                    if entry["model"]:
+                        row["model"] = entry["model"]
+                    if entry["timestamp"]:
+                        row["timestamp"] = entry["timestamp"]
+                    if entry["stopped"]:
+                        row["stopped"] = True
+                    yield ("" if first else ",\n") + "    " + _json.dumps(row, ensure_ascii=False)
+                    first = False
+                yield "\n  ]\n}\n"
+
+            return _download(_json_stream(), "application/json", "json")
 
         if fmt == "txt":
-            lines = []
-            for m in session.history:
-                lines.append(f"[{m.role.upper()}]")
-                lines.append(_content_to_text(m.content))
-                lines.append("")
-            out_name = filename or f"conversation_{safe_name}_{timestamp}.txt"
-            return Response(
-                content="\n".join(lines),
-                media_type="text/plain",
-                headers={"Content-Disposition": f"attachment; filename={out_name}"},
-            )
+            def _txt_stream():
+                for entry in _transcript_entries(session):
+                    yield f"[{(entry['role'] or '').upper()}]\n"
+                    for row in entry["tools"]:
+                        step = f" step {row['round']}" if row["round"] is not None else ""
+                        yield f"[TOOL {row['tool']}{step} — {row['status']}]\n"
+                        if row["command"]:
+                            yield f"  $ {row['command']}\n"
+                        for line in (row["output"] or "").splitlines():
+                            yield f"  {line}\n"
+                        for line in (row["stderr"] or "").splitlines():
+                            yield f"  stderr: {line}\n"
+                    for i, part in enumerate(entry["thinking"], start=1):
+                        label = f" step {i}" if len(entry["thinking"]) > 1 else ""
+                        yield f"[THINKING{label}]\n{part}\n"
+                    if entry["text"]:
+                        yield f"{entry['text']}\n"
+                    yield "\n"
+
+            return _download(_txt_stream(), "text/plain", "txt")
 
         if fmt == "html":
-            safe_title = html.escape(session.name or "")
-            html_parts = [
-                "<!DOCTYPE html><html><head>",
-                f"<meta charset='utf-8'><title>{safe_title}</title>",
-                "<style>body{font-family:monospace;max-width:800px;margin:2rem auto;padding:0 1rem;background:#111;color:#ddd}",
-                ".msg{margin:1rem 0;padding:0.8rem;border-radius:6px;border:1px solid #333}",
-                ".user{background:#1a1a2e}.ai{background:#1a2e1a}",
-                ".role{font-weight:bold;margin-bottom:0.4rem;opacity:0.7;text-transform:uppercase;font-size:0.85em}",
-                "pre{background:#000;padding:0.5rem;border-radius:4px;overflow-x:auto}</style></head><body>",
-                f"<h1>{safe_title}</h1>",
-            ]
-            for m in session.history:
-                cls = "user" if m.role == "user" else "ai"
-                content = _content_to_text(m.content).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-                content = content.replace("\n", "<br>")
-                html_parts.append(f'<div class="msg {cls}"><div class="role">{m.role}</div>{content}</div>')
-            html_parts.append("</body></html>")
-            out_name = filename or f"conversation_{safe_name}_{timestamp}.html"
-            return Response(
-                content="\n".join(html_parts),
-                media_type="text/html",
-                headers={"Content-Disposition": f"attachment; filename={out_name}"},
-            )
+            def _html_stream():
+                safe_title = html.escape(session.name or "")
+                yield (
+                    "<!DOCTYPE html><html><head>"
+                    f"<meta charset='utf-8'><title>{safe_title}</title>"
+                    "<style>body{font-family:monospace;max-width:800px;margin:2rem auto;padding:0 1rem;background:#111;color:#ddd}"
+                    ".msg{margin:1rem 0;padding:0.8rem;border-radius:6px;border:1px solid #333}"
+                    ".user{background:#1a1a2e}.ai{background:#1a2e1a}"
+                    ".role{font-weight:bold;margin-bottom:0.4rem;opacity:0.7;text-transform:uppercase;font-size:0.85em}"
+                    "pre{background:#000;padding:0.5rem;border-radius:4px;overflow-x:auto;white-space:pre-wrap;word-break:break-word}"
+                    # `B-NEW-2`: the reasoning and the tool calls, in the
+                    # export because they are what the owner was capturing.
+                    ".think,.tool{margin:0.5rem 0;border:1px solid #333;border-radius:4px;padding:0.4rem 0.6rem}"
+                    ".think{background:#15151f}.tool{background:#1f1a15}"
+                    ".think>summary,.tool>summary{cursor:pointer;opacity:0.75;font-size:0.85em}"
+                    ".tool-head{font-size:0.85em;opacity:0.8}"
+                    # `B-NEW-3`: this file is what the chat's PDF item prints,
+                    # so it has to read on paper: ink-light, and no message
+                    # split across a page break.
+                    "@media print{body{background:#fff;color:#000;max-width:none;margin:0;font-size:11pt}"
+                    ".msg{break-inside:avoid;border-color:#bbb}.user{background:#f2f2f7}.ai{background:#f1f7f1}"
+                    ".think{background:#f7f7fb}.tool{background:#fbf8f2}pre{background:#f4f4f4;color:#000}"
+                    ".think,.tool{border-color:#ccc}details{display:block}}"
+                    "</style></head><body>"
+                    f"<h1>{safe_title}</h1>"
+                )
+                for entry in _transcript_entries(session):
+                    role = entry["role"]
+                    cls = "user" if role == "user" else "ai"
+                    head = html.escape(role or "")
+                    if entry["model"] and role != "user":
+                        head += " · " + html.escape(entry["model"])
+                    if entry["timestamp"]:
+                        head += " · " + html.escape(entry["timestamp"])
+                    yield f'<div class="msg {cls}"><div class="role">{head}</div>'
+                    for row in entry["tools"]:
+                        step = f" · step {row['round']}" if row["round"] is not None else ""
+                        yield (
+                            '<details class="tool" open><summary>'
+                            + html.escape(f"{row['tool']}{step} — {row['status']}")
+                            + "</summary>"
+                        )
+                        if row["command"]:
+                            yield f'<div class="tool-head"><pre>{html.escape(row["command"])}</pre></div>'
+                        if row["output"]:
+                            yield f"<pre>{html.escape(row['output'])}</pre>"
+                        if row["stderr"]:
+                            yield f"<pre>{html.escape(row['stderr'])}</pre>"
+                        yield "</details>"
+                    for i, part in enumerate(entry["thinking"], start=1):
+                        label = f"Thinking · step {i}" if len(entry["thinking"]) > 1 else "Thinking"
+                        yield (
+                            f'<details class="think" open><summary>{html.escape(label)}</summary>'
+                            f"<pre>{html.escape(part)}</pre></details>"
+                        )
+                    if entry["text"]:
+                        body = html.escape(entry["text"]).replace("\n", "<br>")
+                        yield f"<div>{body}</div>"
+                    if entry["stopped"]:
+                        yield '<div class="role">stopped</div>'
+                    yield "</div>"
+                yield "</body></html>"
+
+            return _download(_html_stream(), "text/html", "html")
 
         # Default: markdown
-        markdown_lines = []
-        markdown_lines.append(f"# Conversation: {session.name}")
-        markdown_lines.append(f"*Exported on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}*")
-        markdown_lines.append(f"*Model: {session.model}*")
-        markdown_lines.append("\n---\n")
-        for message in session.history:
-            role = message.role.upper()
-            content = _content_to_text(message.content)
-            markdown_lines.append(f"### {role}")
-            markdown_lines.append(f"{content}\n")
-            markdown_lines.append("---\n")
-        if len(markdown_lines) > 3:
-            markdown_lines.pop()
-        out_name = filename or f"conversation_{safe_name}_{timestamp}.md"
-        return Response(
-            content="\n".join(markdown_lines),
-            media_type="text/markdown",
-            headers={"Content-Disposition": f"attachment; filename={out_name}"},
-        )
+        def _md_stream():
+            yield f"# Conversation: {session.name}\n"
+            yield f"*Exported on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}*\n"
+            yield f"*Model: {session.model}*\n"
+            yield "\n---\n\n"
+            for entry in _transcript_entries(session):
+                yield f"### {(entry['role'] or '').upper()}\n"
+                for row in entry["tools"]:
+                    step = f" · step {row['round']}" if row["round"] is not None else ""
+                    yield f"**Tool: {row['tool']}**{step} — {row['status']}\n\n"
+                    if row["command"]:
+                        yield f"```\n{row['command']}\n```\n\n"
+                    if row["output"]:
+                        yield f"```\n{row['output']}\n```\n\n"
+                    if row["stderr"]:
+                        yield f"```\nstderr: {row['stderr']}\n```\n\n"
+                for i, part in enumerate(entry["thinking"], start=1):
+                    label = f"**Thinking · step {i}**" if len(entry["thinking"]) > 1 else "**Thinking**"
+                    yield f"{label}\n\n"
+                    yield "\n".join("> " + line for line in part.splitlines()) + "\n\n"
+                if entry["text"]:
+                    yield f"{entry['text']}\n\n"
+                yield "---\n\n"
+
+        return _download(_md_stream(), "text/markdown", "md")
     
     @router.post("/sessions/save")
     def sessions_save_now(request: Request):

@@ -251,9 +251,40 @@ def test_the_export_options_come_from_the_one_call_site(chain):
     assert opts["margin"] == 10, opts
     assert opts["filename"].endswith(".pdf"), opts
     assert opts["image"] == {"type": "jpeg", "quality": 0.95}, opts
+    # `onclone` is a function and does not survive JSON; it is pinned by
+    # `test_the_rasteriser_is_shown_a_clone_with_none_of_this_pages_styles`.
     assert opts["html2canvas"] == {"scale": 2}, opts
     assert opts["jsPDF"] == {"unit": "mm", "format": "a4",
                              "orientation": "portrait"}, opts
+
+
+def test_the_rasteriser_is_shown_a_clone_with_none_of_this_pages_styles(chain):
+    """`B-NEW-3` (fx6-export). html2canvas reads *computed* styles, and
+    `static/style.css`'s `color-mix(in srgb, …)` rules compute to
+    `color(srgb …)`, which its colour parser cannot read: measured in Chromium
+    on a document with a fenced code block (so `.code-block-header` applies),
+    the export threw `Attempting to parse an unsupported color function
+    "color"` and produced no file at all, while Markdown and Word — which
+    never rasterise — worked. The bundle is vendored byte-identical
+    (`FORBIDDEN.md` Part 1), so the fix is what the clone is allowed to carry.
+
+    Driven here, not read: the `onclone` the real call site passes is called on
+    a clone and what it did is reported.
+    """
+    hook = chain["onclone"]
+    assert hook["type"] == "function", (
+        "exportAsPdf passes html2canvas no `onclone`, so the clone keeps this "
+        f"page's stylesheets and the colour it cannot parse: {hook}"
+    )
+    assert "error" not in hook, hook
+    assert hook["removed"] == ["link", "style"], \
+        "the page's own stylesheets must not reach the clone"
+    assert hook["added"] == 1, "the clone is given the export's own rules"
+    assert "color-mix(" not in hook["rules"] and "color(srgb" not in hook["rules"], \
+        "the rules the clone is given must be ones the rasteriser can read"
+    assert "white-space:pre-wrap" in hook["rules"], \
+        "without the page's stylesheet a <pre> falls back to the UA's "\
+        "`white-space: pre`, and long lines run off the page"
 
 
 def test_pdf_export_passes_a_node_and_keeps_it(chain):

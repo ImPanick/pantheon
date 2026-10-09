@@ -55,6 +55,8 @@ class El {
   }
   set innerHTML(v) { this._html = String(v); }
   get innerHTML() { return this._html; }
+  set textContent(v) { this._text = String(v); }
+  get textContent() { return this._text || ''; }
   appendChild(c) { this.childNodes.push(c); return c; }
   removeChild(c) {
     const i = this.childNodes.indexOf(c);
@@ -224,6 +226,36 @@ driveCallSite().then(function () {
     // the whole point of recording the branch rather than asserting on a throw.
     out.string = { reached: false, error: String((err && err.message) || err) };
   });
+}).then(function () {
+  // `B-NEW-3` (fx6-export). The call site also hands html2canvas an `onclone`,
+  // because the rasteriser reads *computed* styles and `static/style.css`'s
+  // `color-mix(in srgb, …)` rules compute to `color(srgb …)`, which it cannot
+  // parse — measured in Chromium: `Attempting to parse an unsupported color
+  // function "color"`, and no file. A function does not survive JSON, so what
+  // is reported is that it is one, and what it does to a clone.
+  const opts = (out.callSite && out.callSite.options) || {};
+  const onclone = opts.html2canvas && opts.html2canvas.onclone;
+  out.onclone = { type: typeof onclone };
+  if (typeof onclone === 'function') {
+    // The smallest clone the hook touches: two page stylesheets and a head.
+    const removed = [];
+    const head = new El('head');
+    const clone = {
+      querySelectorAll: (sel) => (sel.indexOf('stylesheet') >= 0
+        ? [{ remove() { removed.push('link'); } }, { remove() { removed.push('style'); } }]
+        : []),
+      createElement: (t) => new El(t),
+      head: head,
+    };
+    try {
+      onclone(clone);
+      out.onclone.removed = removed;
+      out.onclone.added = head.childNodes.length;
+      out.onclone.rules = head.childNodes.length ? head.childNodes[0].textContent : '';
+    } catch (err) {
+      out.onclone.error = String((err && err.message) || err);
+    }
+  }
 }).then(finish, function (err) {
   out.ok = false;
   out.error = String((err && err.message) || err);

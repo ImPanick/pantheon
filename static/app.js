@@ -493,12 +493,53 @@ function initializeEventListeners() {
     }
   }
 
+  /**
+   * `B-NEW-1`. The whole chat, from the server, in one of the formats
+   * `GET /api/session/{sid}/export` writes (`md`, `txt`, `json`, `html`).
+   *
+   * The Export menu built its own transcript out of `#chat-history`, and the
+   * chat renders a page at a time (`sessions.js`: 24 messages on a desktop, 8
+   * on a phone), so every item exported that page — the owner's *"it only
+   * exports 1 page … never the FULL chat"*. The server has the whole of
+   * `session.history`; this is how the menu asks for it. Returns the text, or
+   * `null` when there is nothing to ask about or the server refused — the
+   * caller then falls back to the rendered page rather than exporting nothing.
+   */
+  async function _fetchWholeChat(fmt) {
+    const sessionId = sessionModule.getCurrentSessionId();
+    if (!sessionId) return null;
+    try {
+      const res = await fetch(`${API_BASE}/api/session/${sessionId}/export?fmt=${encodeURIComponent(fmt)}`);
+      if (!res.ok) return null;
+      const text = await res.text();
+      return text.trim() ? text : null;
+    } catch (err) {
+      console.warn('Whole-chat export failed; falling back to the page:', err);
+      return null;
+    }
+  }
+
   // Serialize the current chat history into a plain-text transcript.
   // Includes user messages, assistant rounds, and agent tool calls in DOM order.
+  //
+  // `B-NEW-1`: this reads the rendered page, which is one page of the chat, so
+  // it is the fallback for when the server cannot be reached — never the
+  // export itself. `_fetchWholeChat` is the export.
   function _serializeChatTranscript() {
     const box = document.getElementById('chat-history');
     if (!box) return '';
     const parts = [];
+    // `B-NEW-2`. One turn, one entry. A multi-round agent turn draws more than
+    // one bubble, and `chat.js` writes the turn's whole text onto the bubble
+    // the footer ends up under as well as onto the first one, so Copy and TTS
+    // work there (`chat.js` ~`:5443`). A walk that reads `dataset.raw` off
+    // every bubble therefore wrote one reply out twice, byte for byte, under
+    // two model headings — measured in the owner's own export
+    // (`/work/notes/owner-shots/2026-10-09-osrs-chat-export.md`, lines 52-76
+    // and 78-102). The copy says it is a copy (`data-raw-echo`), and a copy of
+    // something already written out adds nothing. It is still written when
+    // nothing else carried it, so a turn can never be lost to this.
+    const written = new Set();
     for (const child of box.children) {
       if (child.classList?.contains('msg')) {
         const isUser = child.classList.contains('msg-user');
@@ -518,7 +559,10 @@ function initializeEventListeners() {
         // the outer .msg in the main renderer; keep body.dataset.raw as a legacy
         // fallback for older/reused render paths.
         const text = (child.dataset?.raw || body?.dataset?.raw || body?.innerText || body?.textContent || '').trim();
-        if (text) parts.push(`${label}: ${text}`);
+        if (!text) continue;
+        if (child.dataset?.rawEcho === '1' && written.has(text)) continue;
+        written.add(text);
+        parts.push(`${label}: ${text}`);
       } else if (child.classList?.contains('agent-thread')) {
         const lines = ['[Tool calls]'];
         for (const n of child.querySelectorAll('.agent-thread-node')) {
@@ -546,11 +590,33 @@ function initializeEventListeners() {
     exportCopyBtn.addEventListener('click', async (e) => {
       e.stopPropagation();
       exportMenu.classList.remove('open');
-      const transcript = _serializeChatTranscript();
+      // `B-NEW-1`: the whole chat with its reasoning and tool calls, not the
+      // page on screen. The rendered page is the fallback.
+      const transcript = (await _fetchWholeChat('txt')) || _serializeChatTranscript();
       // A new/empty chat has nothing to copy — don't write an empty string and
       // falsely report "Copied".
       if (!transcript.trim()) { uiModule.showToast('Nothing to copy yet'); return; }
       await uiModule.copyToClipboard(transcript);
+    });
+  }
+
+  // Export: download the whole chat as a file (`B-NEW-1`).
+  // The server's four formats existed and only `/export` in the composer could
+  // reach them; this is the same route, from the menu the owner was using.
+  const exportFileBtn = el('export-file-btn');
+  if (exportFileBtn) {
+    exportFileBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      exportMenu.classList.remove('open');
+      const sessionId = sessionModule.getCurrentSessionId();
+      if (!sessionId) { uiModule.showToast('Nothing to export yet'); return; }
+      // An attachment response: the browser saves it, nothing navigates.
+      const a = document.createElement('a');
+      a.href = `${API_BASE}/api/session/${sessionId}/export?fmt=md`;
+      a.rel = 'noopener';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
     });
   }
 
@@ -568,14 +634,60 @@ function initializeEventListeners() {
     });
   }
 
+  /**
+   * `B-NEW-1`. Print the whole chat.
+   *
+   * `window.print()` prints the page, and the page holds one page of the chat,
+   * so the PDF held that. The server's `fmt=html` export is the whole
+   * conversation — reasoning and tool calls included — as a self-contained
+   * document with its own print styles, so it goes into a frame of its own and
+   * that frame is what prints. Returns false when the server could not be
+   * asked, so the caller can fall back to printing the page.
+   */
+  async function _printWholeChat(sessionName) {
+    const html = await _fetchWholeChat('html');
+    if (!html) return false;
+    document.getElementById('export-print-frame')?.remove();
+    const frame = document.createElement('iframe');
+    frame.id = 'export-print-frame';
+    frame.title = sessionName;
+    frame.setAttribute('aria-hidden', 'true');
+    // Off-screen rather than display:none — a frame with no box does not lay
+    // out, and a frame that has not laid out prints blank.
+    frame.style.cssText = 'position:fixed;left:-10000px;top:0;width:816px;height:1056px;border:0;';
+    document.body.appendChild(frame);
+    const doc = frame.contentDocument;
+    if (!doc) { frame.remove(); return false; }
+    doc.open();
+    doc.write(html);
+    doc.close();
+    const win = frame.contentWindow;
+    const done = () => frame.remove();
+    try {
+      win.addEventListener('afterprint', done, { once: true });
+      win.focus();
+      win.print();
+    } catch (err) {
+      console.warn('Printing the chat failed:', err);
+      frame.remove();
+      return false;
+    }
+    // Headless browsers and some print paths never fire `afterprint`; the
+    // frame must not be left in the page either way.
+    setTimeout(done, 60000);
+    return true;
+  }
+
   // Export: PDF
   const exportPdfBtn = el('export-pdf-btn');
   if (exportPdfBtn) {
-    exportPdfBtn.addEventListener('click', (e) => {
+    exportPdfBtn.addEventListener('click', async (e) => {
       e.stopPropagation();
       exportMenu.classList.remove('open');
       const meta = sessionModule.getSessions().find(s => s.id === sessionModule.getCurrentSessionId());
       const sessionName = meta ? meta.name : 'Pantheon Chat';
+      // `B-NEW-1`: the whole chat first; the page only if the server refused.
+      if (await _printWholeChat(sessionName)) return;
       const originalTitle = document.title;
       document.title = sessionName;
       const chatHistory = document.getElementById('chat-history');
@@ -601,7 +713,10 @@ function initializeEventListeners() {
       exportMenu.classList.remove('open');
       try {
         const sessionId = sessionModule.getCurrentSessionId();
-        const texts = _serializeChatTranscript();
+        // `B-NEW-1`: the whole chat as markdown, reasoning and tool calls
+        // included — this is the door the owner went through ("i had to 'save
+        // to documents'"), and it saved the page it could see.
+        const texts = (await _fetchWholeChat('md')) || _serializeChatTranscript();
         const meta = sessionModule.getSessions().find(s => s.id === sessionId);
         const title = meta?.name || 'Untitled';
         const res = await fetch(`${API_BASE}/api/document`, {
