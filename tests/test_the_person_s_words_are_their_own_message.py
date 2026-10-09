@@ -326,18 +326,28 @@ def test_memory_off_puts_no_memory_block_in_the_turn(monkeypatch):
 
 # ── 3. the post-external tool gate still arms ──────────────────────────────
 
-def test_saved_memory_still_arms_the_blocked_effect_gate(monkeypatch):
-    """`FORBIDDEN.md` Part 2. Re-wording a header must not disarm anything:
-    `own_context_message` writes the same metadata `untrusted_context_message`
-    does, so `src/tool_capabilities.py` sees what it always saw."""
+def test_saved_memory_does_not_arm_the_blocked_effect_gate(monkeypatch):
+    """`D-2026-10-09-01` §1 (`B1324`). This case pinned the old answer.
+
+    `FIX-2026-10-09` item 2 re-worded the header and deliberately left the gate
+    arming, because changing it was a security-policy question for the owner.
+    The owner answered: a pinned memory is not content that arrived from
+    outside, and arming on it made the verdict constant on any install that
+    uses memory (`Law 10`).
+
+    The boundary is what must not move, and it does not: `trusted: False`, so
+    `_strip_agent_injected_messages` still strips it, `src/context_budget.py`
+    still counts it as retrieved context and the merge still breaks before the
+    person's own words. What moves is one flag.
+    """
     _, ctx = _turn(monkeypatch)
     memory = [m for m in ctx.preface
               if (m.get("metadata") or {}).get("source") == "saved memory: pinned context"]
     assert len(memory) == 1
     assert memory[0]["metadata"]["trusted"] is False
-    assert memory[0]["metadata"]["tool_gate_untrusted"] is True
-    assert messages_contain_external_untrusted_context(ctx.preface)
-    assert "saved memory: pinned context" in external_untrusted_context_sources(ctx.preface)
+    assert memory[0]["metadata"]["tool_gate_untrusted"] is False
+    assert not messages_contain_external_untrusted_context(ctx.preface)
+    assert external_untrusted_context_sources(ctx.preface) == []
 
 
 def test_outside_content_keeps_the_untrusted_envelope_and_arms_the_gate():
