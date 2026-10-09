@@ -260,7 +260,12 @@ export function openSheet(doc) {
     _close = null;
     layer.classList.add('hidden');
     if (chip) chip.setAttribute('aria-expanded', 'false');
-  }, (ev) => !_driving && !sheet.contains(ev.target));
+    // Two anchors count as inside (`bindMenuDismiss` asks for exactly this
+    // override): a click the sheet made on the composer's own control, and the
+    // chip itself — the outside-click listener runs in the capture phase, so
+    // without the second one a press on the chip closed the sheet before the
+    // chip's own handler ran and that handler then opened it straight back.
+  }, (ev) => !_driving && !sheet.contains(ev.target) && !(chip && chip.contains(ev.target)));
   return true;
 }
 

@@ -298,6 +298,20 @@ export function seed(markup) {
   hint.hidden = true;
   return document;
 }
+/** A browser's click, as far as this file needs one: the capture-phase
+ *  listeners on `document` run BEFORE the control's own handler. The shim
+ *  dispatches to one node and stops, so without this the sheet's
+ *  outside-click guard could not be driven at all. */
+function browserish(node) {
+  node.click = () => {
+    const ev = new Event('click');
+    ev.target = node;
+    document.dispatchEvent(ev);
+    node.dispatchEvent(ev);
+  };
+  return node;
+}
+
 /** Wire the composer's real behaviour, in miniature: the two mode buttons and
  *  the three tool chips each own their `.active`, as `app.js` does. */
 export function wireComposer(calls) {
@@ -311,10 +325,10 @@ export function wireComposer(calls) {
     chat.setAttribute('aria-pressed', String(m === 'chat'));
     document.getElementById('bash-toggle-btn').style.display = m === 'chat' ? 'none' : '';
   };
-  agent.addEventListener('click', () => setMode('agent'));
-  chat.addEventListener('click', () => setMode('chat'));
+  browserish(agent).addEventListener('click', () => setMode('agent'));
+  browserish(chat).addEventListener('click', () => setMode('chat'));
   for (const id of ['plan-toggle-btn', 'web-toggle-btn', 'bash-toggle-btn']) {
-    const b = document.getElementById(id);
+    const b = browserish(document.getElementById(id));
     b.addEventListener('click', () => {
       calls.push('tool:' + id);
       b.classList.toggle('active', !b.classList.contains('active'));
@@ -322,7 +336,7 @@ export function wireComposer(calls) {
   }
   for (const id of ['model-picker-btn', 'chat-context-pill', 'overflow-preset-btn']) {
     const b = document.getElementById(id);
-    if (b) b.addEventListener('click', () => calls.push('open:' + id));
+    if (b) browserish(b).addEventListener('click', () => calls.push('open:' + id));
   }
   setMode('agent');
   calls.length = 0;
@@ -340,7 +354,8 @@ _PREAMBLE = (
     "const calls = [];\n"
     "seed(MARKUP); wireComposer(calls);\n"
     "const el = (id) => document.getElementById(id);\n"
-    "const tap = (id) => el(id).dispatchEvent(new Event('click'));\n"
+    "const tap = (id) => { const n = el(id); const ev = new Event('click');\n"
+    "  ev.target = n; document.dispatchEvent(ev); n.dispatchEvent(ev); };\n"
 )
 
 
@@ -409,6 +424,24 @@ def test_a_click_the_sheet_makes_itself_is_not_an_outside_click(sandbox, preambl
     """)
     assert out["afterRow"] is True, "a row of the sheet closed the sheet"
     assert out["afterOutside"] is False, "a tap outside no longer closes the sheet"
+
+
+def test_pressing_the_chip_again_closes_the_sheet(sandbox, preamble):
+    """The outside-click listener is in the capture phase, so the chip has to
+    count as inside: otherwise it closed the sheet and the chip's own handler
+    opened it straight back, and the sheet could never be put away from the
+    control that opened it."""
+    out = _case(sandbox, preamble, """
+      sheet.initTurnSheet(document);
+      tap('turn-chip');
+      const first = sheet.isOpen(document);
+      await tick();   // the outside-click listener is attached a tick later
+      tap('turn-chip');
+      say({first, second: sheet.isOpen(document),
+           menus: stack._openMenuCount(),
+           expanded: el('turn-chip').getAttribute('aria-expanded')});
+    """)
+    assert out == {"first": True, "second": False, "menus": 0, "expanded": "false"}
 
 
 def test_the_mode_row_drives_the_composers_own_buttons(sandbox, preamble):
