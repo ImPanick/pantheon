@@ -8258,6 +8258,11 @@ async def stream_agent_loop(
                 and not guide_only
                 and not _force_answer
                 and total_tool_calls == 0
+                # `B1069`'s resumed turn runs its approved call OUTSIDE this
+                # loop, so the counter above can still read 0 while a tool
+                # result is already in the transcript. `tool_events` holds both
+                # paths, and "nothing has been looked at" has to mean both.
+                and not tool_events
                 and _ask_first_nudges < _MAX_ASK_FIRST_NUDGES
                 and all(b.tool_type == "ask_user" for b in tool_blocks)
                 and (_relevant_tools is None

@@ -368,3 +368,27 @@ def test_the_verifier_tells_the_model_to_fix_the_work_not_to_ask(monkeypatch):
     injected = "\n".join(_system_text(r) for r in requests)
     assert "Fix these now using tools" in injected, injected[-600:]
     assert "the third file was never read" in injected
+
+
+def test_a_turn_making_distinct_calls_is_not_cut_short(monkeypatch):
+    """The brief's fourth suspect, answered rather than assumed: does the
+    force-answer salvage cut a turn that was still working?
+
+    No. The loop-breaker needs four circling rounds, fifteen identical calls,
+    or four rounds that bring nothing new (`ROUNDS_WITHOUT_NEW_INFORMATION`);
+    five *distinct* calls are progress and ride through. Measured the same way
+    on the booted product: across the five tasks the deepest turn used 5 of 50
+    rounds and no `loop_breaker_triggered` or `no_new_information` frame was
+    emitted once.
+    """
+    _patch_common(monkeypatch)
+    calls = [f'```update_plan\n{{"plan": "- [x] step {n}"}}\n```' for n in range(1, 6)]
+    _, events = _run(
+        monkeypatch, calls + ["Done: all five steps."],
+        relevant_tools={"update_plan"}, max_rounds=8,
+    )
+    assert not any(e.get("type") in ("loop_breaker_triggered", "no_new_information",
+                                     "rounds_exhausted")
+                   for e in events), [e.get("type") for e in events]
+    assert sum(1 for e in events
+               if e.get("type") == "tool_start" and e.get("tool") == "update_plan") == 5
