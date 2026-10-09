@@ -171,6 +171,68 @@ def _merged_reply_metadata(meta1: dict, meta2: dict) -> dict:
     return merged
 
 
+def _cut_text_key(value: Any) -> str:
+    """One spelling for comparing a bubble's words with a stored row's.
+
+    The browser has the user's text as the bubble carries it — `dataset.raw`,
+    or the rendered body with the `[N attachment(s)]` suffix taken off — and
+    the row has whatever was persisted. Whitespace and length are where those
+    two drift without disagreeing, so both sides are normalised the same way
+    and only the first 400 characters are compared.
+    """
+    if not isinstance(value, str):
+        value = "" if value is None else str(value)
+    return " ".join(value.split())[:400]
+
+
+def _resolve_user_message_cut(session, spec: Dict[str, Any]):
+    """`B-NEW-4` (fx7-dup). A user message's identity -> a `keep_count`.
+
+    `spec` is `{"index_from_end": n, "text": "..."}`: the n-th user message
+    counting back from the newest one a reader can see, and what it says.
+    Returns `(keep_count, None)`, or `(None, "<one sentence>")` when the
+    session does not hold what the caller described — in which case nothing is
+    cut. The index is read in the space the chat is *displayed* in, because
+    that is the only space the browser can count: `/api/history` leaves a
+    `hidden` compaction row out, so this skips those rows too, and then
+    converts back to an index into the stored list, which is what
+    `truncate_messages` slices.
+    """
+    try:
+        index_from_end = int(spec.get("index_from_end"))
+    except (TypeError, ValueError):
+        return None, "That message could not be located in this chat."
+    if index_from_end < 0:
+        return None, "That message could not be located in this chat."
+
+    history = list(getattr(session, "history", None) or [])
+    user_positions = []
+    for position, message in enumerate(history):
+        metadata = getattr(message, "metadata", None)
+        if metadata is None and isinstance(message, dict):
+            metadata = message.get("metadata")
+        if (metadata or {}).get("hidden"):
+            continue
+        if _message_role(message) == "user":
+            user_positions.append(position)
+
+    if index_from_end >= len(user_positions):
+        return None, "That message is no longer in this chat — reload and try again."
+    position = user_positions[len(user_positions) - 1 - index_from_end]
+
+    expected = _cut_text_key(spec.get("text"))
+    if expected:
+        stored = _cut_text_key(_history_display_content(_message_text(history[position])))
+        # Either may be the shorter of the two: the browser strips an
+        # attachment suffix the row keeps, and the row may hold more than the
+        # bubble drew. A prefix match in either direction is the same message;
+        # anything else means the caller is counting a different chat.
+        if not (stored.startswith(expected) or expected.startswith(stored)):
+            return None, "This chat has changed since that message was drawn — reload and try again."
+
+    return position, None
+
+
 def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
     router = APIRouter(tags=["history"])
 
@@ -372,12 +434,50 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
 
     @router.post("/api/session/{session_id}/truncate")
     async def truncate_session(request: Request, session_id: str):
+        """Cut a session's history back to a boundary.
+
+        `B-NEW-4` (fx7-dup). `keep_count` is an index into **this session's
+        stored rows**, and the three callers in `static/js/chat.js` — edit a
+        message, resend it, regenerate the reply — each counted `.msg` elements
+        in `#chat-history` instead. Those are not the same number: measured on
+        `3b40a4e`, an agent turn draws two `.msg` for one saved assistant row
+        (`B-NEW-2`'s footer copy), a queued bubble is drawn with no row at all,
+        the view holds one page of a longer chat (`B-NEW-1`), and a `hidden`
+        compaction row is stored but never drawn. One bubble too many and the
+        cut keeps the very message it was asked to drop, so the resend saves a
+        second copy — which is how one typed message became two rows, two
+        bubbles after a reload, and two copies in the prompt.
+
+        So a caller now names the boundary the way the server can check it:
+        `from_user_message` = which user message, counted back from the newest,
+        and what it says. The server finds it among its own rows and refuses
+        when it cannot (nothing is cut, and the caller sends nothing), rather
+        than cutting at a number it has no way to verify. `keep_count` still
+        works — it is the right shape for a caller that really does know the
+        row index (`Law 1`).
+        """
         _verify_session_owner(request, session_id)
         try:
             body = await request.json()
-            keep_count = body.get("keep_count", 0)
+            spec = body.get("from_user_message")
+            if isinstance(spec, dict):
+                try:
+                    session = session_manager.get_session(session_id)
+                except KeyError:
+                    raise HTTPException(404, "Session not found")
+                keep_count, refusal = _resolve_user_message_cut(session, spec)
+                if refusal:
+                    # 409: the session is not in the state the caller described.
+                    # Nothing is removed, so the caller must not send either.
+                    raise HTTPException(409, refusal)
+            elif "keep_count" in body:
+                keep_count = body.get("keep_count", 0)
+            else:
+                raise HTTPException(400, "keep_count or from_user_message is required")
             result = session_manager.truncate_messages(session_id, keep_count)
             return {"status": "ok", "kept": keep_count, "truncated": result}
+        except HTTPException:
+            raise
         except KeyError:
             raise HTTPException(404, "Session not found")
         except Exception as e:

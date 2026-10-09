@@ -7447,12 +7447,91 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
     return `Sending removes the ${counted.length} messages below.`;
   }
 
+  /** `B-NEW-4` (fx7-dup). The user bubbles that stand for a stored row.
+   *
+   *  A queued request is drawn as `.msg msg-user msg-user-queued` from the
+   *  browser's own queue (`_createQueuedBubble`) and has no row in
+   *  `chat_messages` at all, so counting it makes every count that follows
+   *  wrong. `editRemovesNote` above already skips `.msg-continuation` for the
+   *  same reason on the assistant side. */
+  function _storedUserBubbles(box) {
+    if (!box) return [];
+    return Array.from(box.querySelectorAll('.msg-user'))
+      .filter((el) => el && el.classList && !el.classList.contains('msg-user-queued'));
+  }
+
+  /** The user's own words as the bubble carries them: `dataset.raw` is the
+   *  stripped original, and the rendered body also holds the "View image
+   *  description" fold, which is why `raw` wins. Same extraction the three
+   *  re-send flows already do on their own bubble. */
+  function _userBubbleText(el) {
+    const bodyEl = el ? el.querySelector('.body') : null;
+    const text = ((el && el.dataset && el.dataset.raw) || (bodyEl ? bodyEl.textContent : '') || '').trim();
+    return text.replace(/\s*\[\d+ attachment\(s\)\]$/, '');
+  }
+
+  /** `B-NEW-4` (fx7-dup). The cut an edit / resend / regenerate asks for, said
+   *  the way the server can check it.
+   *
+   *  It used to be a number: the clicked bubble's index among
+   *  `#chat-history`'s `.msg` elements, posted as `keep_count` to
+   *  `/api/session/{id}/truncate`, which indexes the **stored rows**. Those two
+   *  counts are not the same. Measured on `3b40a4e` in Chromium, a two-turn
+   *  agent chat: the last user bubble was DOM index 3 and row index 2, because
+   *  an agent turn draws two `.msg` for one saved assistant row (`B-NEW-2`'s
+   *  footer copy — `data-raw-echo` live, `.msg-continuation` on reload). The
+   *  cut therefore kept the very message it was asked to drop, the resend saved
+   *  a second copy, and one typed message became two rows: one bubble while the
+   *  turn was on screen, two after a reload, and two copies of the person's
+   *  words in the next prompt — which is what the owner's 2026-10-09 export
+   *  shows. A queued bubble, the page the view holds of a longer chat
+   *  (`B-NEW-1`) and a `hidden` compaction row each break the same arithmetic.
+   *
+   *  So the browser names WHICH user message — counted back from the newest,
+   *  among the bubbles that stand for a row — and what it says, and the server
+   *  finds it among its own rows. `text` is passed in only where the bubble no
+   *  longer holds it (the edit box has replaced the body by then). */
+  function _userMessageCut(userMsgElement, text) {
+    const box = document.getElementById('chat-history');
+    if (!box || !userMsgElement) return null;
+    const bubbles = _storedUserBubbles(box);
+    const at = bubbles.indexOf(userMsgElement);
+    if (at < 0) return null;
+    return {
+      index_from_end: bubbles.length - 1 - at,
+      text: text === undefined ? _userBubbleText(userMsgElement) : String(text || ''),
+    };
+  }
+
+  /** `B-NEW-4` (fx7-dup). One door to the trim the three re-send flows need.
+   *  `{ ok: true }`, or `{ ok: false, sentence }` — and on a refusal nothing
+   *  was removed, so the caller must not send either. */
+  async function _truncateFromUserMessage(sessionId, cut) {
+    const nowhere = 'Could not work out where to restart this chat. Reload and try again.';
+    if (!sessionId || !cut) return { ok: false, sentence: nowhere };
+    try {
+      const res = await fetch(`${API_BASE}/api/session/${sessionId}/truncate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ from_user_message: cut }),
+      });
+      if (res.ok) return { ok: true };
+      const refusal = await readRefusal(res, 'Could not restart this chat from that message. Try again.');
+      return { ok: false, sentence: refusal.sentence };
+    } catch (err) {
+      return { ok: false, sentence: 'Could not reach Pantheon to restart this chat. Try again.' };
+    }
+  }
+
   /** `P23-04` (CHAT-M-13). *Retry* on a failed reply: the chat's last
    *  message is sent again in its place — the Regenerate path, which trims the
    *  chat to it first, so it is not asked twice. */
   function _retryLastTurn() {
     const box = document.getElementById('chat-history');
-    const users = box ? Array.from(box.querySelectorAll('.msg-user')) : [];
+    // `B-NEW-4`: a queued bubble is not a message this chat holds, and Retry
+    // must not send one in place of the reply that failed.
+    const users = _storedUserBubbles(box);
     const last = users[users.length - 1];
     if (last) resendUserMessage(last, { replaceFromHere: true });
   }
@@ -7516,17 +7595,14 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
       const sessionId = sessionModule.getCurrentSessionId();
       if (!sessionId) return;
 
-      const keepCount = msgIndex;
       try {
-        const truncated = await fetch(`${API_BASE}/api/session/${sessionId}/truncate`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ keep_count: keepCount })
-        });
+        // `B-NEW-4`: the boundary is this message, not where it sits on screen
+        // — the edit box has replaced the body, so its words are passed in.
+        const truncated = await _truncateFromUserMessage(
+          sessionId, _userMessageCut(userMsgElement, currentText));
         if (!truncated.ok) {
           // `P23-04` (C-ERR): nothing was removed, so nothing is sent.
-          const refusal = await readRefusal(truncated, 'Could not edit that message. Try again.');
-          uiModule.showError(refusal.sentence);
+          uiModule.showError(truncated.sentence);
           bodyEl.innerHTML = originalHTML;
           return;
         }
@@ -7614,12 +7690,16 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
       if (replaceFromHere) {
         // Regenerate flows intentionally trim history to this point before
         // resubmitting. The plain "Resend message" action must not do this.
-        const keepCount = msgIndex;
-        await fetch(`${API_BASE}/api/session/${sessionId}/truncate`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ keep_count: keepCount })
-        });
+        // `B-NEW-4`: by this message's identity. As a count of bubbles the
+        // trim missed by one on any chat with an agent turn in it, kept the
+        // message it was asked to drop, and the resend below stored a second
+        // copy of it.
+        const truncated = await _truncateFromUserMessage(
+          sessionId, _userMessageCut(userMsgElement));
+        if (!truncated.ok) {
+          if (uiModule && uiModule.showError) uiModule.showError(truncated.sentence);
+          return;
+        }
 
         // Drop the AI replies after the user message but KEEP the user bubble
         // itself (so its photo stays visible). Then suppress the new user
@@ -7728,14 +7808,19 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
       variants.push({ raw: oldRaw, html: oldHtml, label: 'original' });
     }
 
-    const keepCount = userIndex;
-
     try {
-      await fetch(`${API_BASE}/api/session/${sessionId}/truncate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ keep_count: keepCount })
-      });
+      // `B-NEW-4`: the user message this reply answered, by its identity. As
+      // `userIndex` — its position among the `.msg` elements — the trim missed
+      // the row it meant on any chat with an agent turn above it.
+      const truncated = await _truncateFromUserMessage(
+        sessionId, _userMessageCut(userMsgEl));
+      if (!truncated.ok) {
+        // Nothing was removed, so nothing is sent — and the attachments this
+        // regen had claimed go back, or they would ride the next send.
+        _pendingRegenAttachments = null;
+        if (uiModule) uiModule.showError(truncated.sentence);
+        return;
+      }
 
       for (let i = allMsgs.length - 1; i > aiIndex; i--) {
         allMsgs[i].remove();
