@@ -11,6 +11,7 @@ import time
 from services.search import get_search_config, comprehensive_web_search, PROVIDER_INFO
 from services.search.core import _call_provider
 from services.search.providers import _get_provider_key, _get_search_instance
+from services.search.query import build_enhanced_query
 
 logger = logging.getLogger(__name__)
 
@@ -105,9 +106,15 @@ def setup_search_routes(config) -> APIRouter:
             return {"results": [], "provider": provider, "error": "Unknown provider"}
         t0 = time.time()
         try:
-            results = _call_provider(provider, query, min(count, 20))
+            # This route reaches `_call_provider` without going through either
+            # orchestrator, so it derives the sent query itself — the same one
+            # place every other caller uses (`Law 7`). Before this it was the
+            # third different answer to "what string goes to the engine".
+            sent = build_enhanced_query(query)
+            results = _call_provider(provider, sent, min(count, 20))
             elapsed = round(time.time() - t0, 2)
-            return {"results": results, "provider": provider, "time": elapsed}
+            return {"results": results, "provider": provider, "query_sent": sent,
+                    "time": elapsed}
         except Exception as e:
             elapsed = round(time.time() - t0, 2)
             logger.error(f"Search provider {provider} failed: {e}")

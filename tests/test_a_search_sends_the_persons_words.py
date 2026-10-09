@@ -378,6 +378,11 @@ def test_no_provider_derives_its_own_query_string(monkeypatch):
         monkeypatch.setenv(var, "k")
     monkeypatch.setenv("GOOGLE_PSE_CX", "cx")
 
+    # A query the derivation *would* change if a provider ran it again: the
+    # whitespace collapse is the one thing `enhance_query` still does, so a
+    # provider that re-derives its own string is visible in the bytes.
+    ragged = "  bread   and \n butter  "
+
     for fn in (
         providers.searxng_search_api,
         providers.brave_search,
@@ -385,11 +390,41 @@ def test_no_provider_derives_its_own_query_string(monkeypatch):
         providers.tavily_search,
         providers.serper_search,
     ):
-        wire.clear()
-        fn(OWNER_QUERY, 5)
-        assert wire, f"{fn.__name__} made no request"
-        for url, sent in wire:
-            assert sent == OWNER_QUERY, f"{fn.__name__} sent {sent!r} to {url}"
+        for given in (OWNER_QUERY, ragged):
+            wire.clear()
+            fn(given, 5)
+            assert wire, f"{fn.__name__} made no request"
+            for url, sent in wire:
+                assert sent == given, (
+                    f"{fn.__name__} sent {sent!r} to {url} after being given {given!r}; "
+                    "a provider must pass on the string it was handed, not re-derive it"
+                )
+
+
+def test_core_hands_the_provider_the_derived_string_not_the_raw_one(offline):
+    """The seam itself: `comprehensive_web_search` derives the sent query once
+    and passes *that* down the chain. Driven with a ragged query so the derived
+    and raw strings differ."""
+    rec = _Recorder()
+    rec.install(offline)
+
+    core.comprehensive_web_search("  bread   and \n butter  ", max_pages=3)
+
+    assert rec.last_query == "bread and butter", (
+        "the provider was handed the raw query, so nothing downstream can trust "
+        "the 'Query as sent' line"
+    )
+
+
+def test_the_block_reports_the_string_the_provider_was_given(offline):
+    """`Query as sent` is the string that went out, not a second guess at it."""
+    rec = _Recorder()
+    rec.install(offline)
+
+    out = core.comprehensive_web_search("  bread   and \n butter  ", max_pages=3)
+
+    assert "Query as sent: bread and butter" in out
+    assert rec.last_query == "bread and butter"
 
 
 # ----------------------------------------------------------------------
@@ -430,3 +465,54 @@ def test_a_non_string_query_still_returns_a_string(offline):
     assert build_enhanced_query(None) == ""
     assert build_enhanced_query(123) == ""
     assert enhance_query(None) == ("", None)
+
+
+# ----------------------------------------------------------------------
+# 7. The routes, driven
+# ----------------------------------------------------------------------
+def _search_client(monkeypatch, recorder):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    import routes.search.search_routes as sr
+
+    monkeypatch.setattr(sr, "_call_provider", recorder, raising=False)
+    app = FastAPI()
+    app.include_router(sr.setup_search_routes(None))
+    return TestClient(app)
+
+
+def test_the_search_query_route_sends_the_derived_string(monkeypatch):
+    """`POST /api/search/query` reaches `_call_provider` without either
+    orchestrator, so it derives the sent query itself (`Law 7`) and says which
+    string it used."""
+    seen = []
+
+    def _rec(provider_name, query, count, time_filter=None):
+        seen.append((provider_name, query))
+        return []
+
+    client = _search_client(monkeypatch, _rec)
+
+    body = client.post(
+        "/api/search/query",
+        json={"query": "  bread   and \n butter  ", "provider": "brave"},
+    ).json()
+
+    assert seen == [("brave", "bread and butter")]
+    assert body["query_sent"] == "bread and butter"
+
+
+def test_the_standalone_search_route_reports_the_match(offline, monkeypatch):  # noqa: F811
+    """`POST /api/search` is Compare mode's shared pre-search. Its context
+    string is the same block the model reads, relevance line included."""
+    rec = _Recorder(results=OWNER_RESULTS)
+    rec.install(offline)
+    client = _search_client(monkeypatch, lambda *a, **k: [])
+
+    body = client.post("/api/search", json={"query": OWNER_QUERY}).json()
+
+    assert rec.last_query == OWNER_QUERY
+    assert "Relevance: weak" in body["context"]
+    assert "do not match" in body["context"]
+    assert body["sources"], "the source list is unchanged"

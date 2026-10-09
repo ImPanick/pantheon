@@ -448,6 +448,12 @@ def comprehensive_web_search(
 
     # Fetch content in parallel
     fetched_content = []
+    # Why a page is missing from FETCHED PAGE CONTENT. `_empty_result` has
+    # carried an `error` since it was written and every caller dropped it, so
+    # the block said "fetched 3 pages" of five and never which two, or why —
+    # the owner's 2026-10-09 search fetched 3 of 5 and the two silent ones were
+    # the bot-blocked IMDb and YouTube pages.
+    not_fetched = []
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         future_to_url = {
             executor.submit(fetch_webpage_content, url, 8, retry_attempt=0): url
@@ -463,9 +469,16 @@ def comprehensive_web_search(
                     # arbitrary, so the block label cannot be recomputed later.
                     result["source_index"] = _url_index.get(url)
                     fetched_content.append(result)
+                else:
+                    reason = (result.get("error") or "").strip()
+                    if not reason:
+                        reason = "no readable text" if result.get("success") else "fetch failed"
+                    not_fetched.append((_url_index.get(url), url, reason))
             except Exception as e:
                 logger.error(f"Exception while fetching {url}: {str(e)}")
+                not_fetched.append((_url_index.get(url), url, f"{type(e).__name__}: {e}"))
 
+    not_fetched.sort(key=lambda row: row[0] or len(search_results) + 1)
     logger.info(f"Successfully fetched content from {len(fetched_content)} pages")
 
     # Format results
@@ -495,6 +508,9 @@ def comprehensive_web_search(
     if answered_by:
         output_parts.append(f"Provider: {answered_by}")
     output_parts.append(f"Searched {len(search_results)} results, fetched {len(fetched_content)} pages")
+    for idx, url, reason in not_fetched:
+        label = f"[{idx}]" if idx else "[-]"
+        output_parts.append(f"Not fetched {label} {url} — {reason}")
     output_parts.append(_relevance_lines(relevance))
     output_parts.append("=" * 70)
     output_parts.append("")

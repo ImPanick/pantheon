@@ -212,6 +212,84 @@ def test_return_sources_shape_is_unchanged(offline):  # noqa: F811
 
 
 # ----------------------------------------------------------------------
+# A page that could not be fetched says so
+# ----------------------------------------------------------------------
+def _fetcher(outcomes):
+    """A `fetch_webpage_content` stand-in. `outcomes` maps a URL substring to
+    either text (a successful fetch) or a `(False, error)` pair."""
+
+    def _fetch(url, *a, **k):
+        base = {"url": url, "title": "T", "content": "", "success": False, "error": ""}
+        for frag, outcome in outcomes.items():
+            if frag in url:
+                if isinstance(outcome, tuple):
+                    base["error"] = outcome[1]
+                    return base
+                base["success"] = True
+                base["content"] = outcome
+                return base
+        base["error"] = "not configured"
+        return base
+
+    return _fetch
+
+
+def test_a_page_that_could_not_be_fetched_is_named_with_its_reason(offline):  # noqa: F811
+    """The owner's search fetched 3 of 5 and the block never said which two
+    were missing. `_empty_result` has always carried an `error`; nothing read
+    it."""
+    rec = _Recorder(results=GOOD_RESULTS)
+    rec.install(offline)
+    offline.setattr(
+        core,
+        "fetch_webpage_content",
+        _fetcher({
+            "secure.runescape.com": "The Fractured Archive opens on October 20th." * 8,
+            "oldschool.runescape.wiki": (False, "HTTP 403"),
+        }),
+    )
+
+    out = core.comprehensive_web_search(OWNER_QUERY, max_pages=5)
+
+    assert "fetched 1 pages" in out
+    assert "Not fetched" in out, "a page that failed is still invisible in the block"
+    assert "oldschool.runescape.wiki" in out.split("SEARCH RESULTS SUMMARY")[0]
+    assert "HTTP 403" in out, "the reason the fetch failed was discarded"
+    # And the page that worked is not listed as missing.
+    assert out.count("Not fetched") == 1
+
+
+def test_a_fetch_with_no_readable_text_says_that_rather_than_failing(offline):  # noqa: F811
+    rec = _Recorder(results=GOOD_RESULTS)
+    rec.install(offline)
+
+    def _empty_ok(url, *a, **k):
+        return {"url": url, "title": "T", "content": "", "success": True, "error": ""}
+
+    offline.setattr(core, "fetch_webpage_content", _empty_ok)
+
+    out = core.comprehensive_web_search(OWNER_QUERY, max_pages=5)
+
+    assert "no readable text" in out
+    assert "fetch failed" not in out
+
+
+def test_every_page_fetching_cleanly_adds_no_not_fetched_lines(offline):  # noqa: F811
+    rec = _Recorder(results=GOOD_RESULTS)
+    rec.install(offline)
+    offline.setattr(
+        core,
+        "fetch_webpage_content",
+        _fetcher({"runescape": "The Fractured Archive raid opens October 20th. " * 10}),
+    )
+
+    out = core.comprehensive_web_search(OWNER_QUERY, max_pages=5)
+
+    assert "Not fetched" not in out
+    assert "fetched 2 pages" in out
+
+
+# ----------------------------------------------------------------------
 # The cache keeps the person's words, not the enhanced string
 # ----------------------------------------------------------------------
 def test_the_cache_duration_reads_the_persons_query(offline):  # noqa: F811
