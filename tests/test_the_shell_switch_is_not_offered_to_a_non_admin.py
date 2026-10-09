@@ -257,6 +257,12 @@ def test_users_offers_no_shell_switch_and_says_where_the_shell_is(auth, tmp_path
         keys = [k for kind, k in items]
         assert items[keys.index("can_use_browser") + 1] == ("sentence", SENTENCE), items
         assert items[keys.index("can_use_browser") + 2] == ("switch", "can_use_workstation"), items
+        # `D-2026-10-09-01` §2 appends `can_auto_approve` — *"an admin decides
+        # whether a person may turn Auto on at all"*. It goes last so the order
+        # this case already pinned does not move, and it is here rather than
+        # merely allowed through, because the panel's list is this file's
+        # subject: a privilege that stops being offered is the defect.
         assert [k for kind, k in items if kind == "switch"] == [
             "can_use_agent", "can_use_browser", "can_use_workstation", "can_use_documents",
-            "can_use_research", "can_generate_images", "can_manage_memory"]
+            "can_use_research", "can_generate_images", "can_manage_memory",
+            "can_auto_approve"]

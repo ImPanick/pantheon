@@ -9,6 +9,7 @@ run-local integrity gates before dispatch.
 from __future__ import annotations
 
 import json
+import logging
 import uuid
 from dataclasses import dataclass, field
 from enum import Enum
@@ -28,6 +29,8 @@ from src.run_limits import (
     loop_cap_request,
     owner_set_cap_raise,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class ToolEffect(str, Enum):
@@ -1480,6 +1483,22 @@ class ToolGateDecision:
     # never re-derives an ordering that lives in this module (`P7-06`).
     tripped_effects: tuple[str, ...] = ()
     classification: str = TOOL_CLASSIFICATION_RECOGNISED
+    # `D-2026-10-09-01` §2. True on an `allowed=True` decision that a stop
+    # condition would otherwise have refused, in a chat set to **Auto**. It is
+    # how the run records that it ran without asking: `src/agent_loop.py` puts
+    # it on the `tool_start` frame and on the persisted `tool_event`, beside
+    # the six effect keys, so a live card and a reloaded one both say so.
+    #
+    # An enum would be wrong here: this is not "which mode is the chat in", it
+    # is "did this action skip a card it was owed". A step Auto never touched
+    # — an untainted run at the default rung — carries False, which is the
+    # truth about that step (`Law 10`).
+    #
+    # `tripped_effects` is populated on these decisions too, so the record
+    # names what the person was not asked about rather than only that they
+    # were not asked. `reason` is NOT: it is the refusal sentence and every
+    # reader of it is behind `if not decision.allowed`.
+    auto_approved: bool = False
 
 
 _EXTERNAL_MESSAGE_SOURCES = frozenset(
@@ -1610,6 +1629,21 @@ class ToolRunSecurityContext:
     # B70. Driven by a bearer API token rather than a person at a browser.
     # Privileged tools are refused outright and no approval can lift it.
     delegated_credential: bool = False
+    # `D-2026-10-09-01` §2. This chat is set to **Auto**: a stop condition does
+    # not raise a card, the step runs, and the decision says it ran under Auto.
+    # Resolved once per run by the caller, from the chat's own row
+    # (`src/approval_mode.mode_for`) — this module reads no setting and no
+    # database, exactly as it reads no rung setting (`resolve_trust_rung` is
+    # the caller's).
+    #
+    # It is one flag and not a rung, because it is not a rung: the ladder is a
+    # nest of stop-condition sets and `validate_trust_ladder` enforces that
+    # every rung holds `FLOOR_STOP_CONDITIONS`. A fourth rung that dropped
+    # `AFTER_UNTRUSTED` would make the ladder not a ladder and would lift the
+    # floor for every chat at once. Auto sits beside the ladder, per chat, and
+    # the ladder is unchanged — which is also what makes "turn Auto off and the
+    # chat is exactly as it was" true by construction.
+    auto_approved: bool = False
 
     def __post_init__(self) -> None:
         """`P7-08`. A run that starts tainted still has to be able to say so.
@@ -1712,16 +1746,27 @@ class ToolRunSecurityContext:
         return self.gate_is_armed or self_escalation_for(tool_name, content) is not None
 
     def decision_for(self, tool_name: Any, content: Any = None) -> ToolGateDecision:
-        # `P7-13`. Every question below is asked of this set — the rung's stop
-        # conditions from `TRUST_LADDER` — and never of the rung's name, so the
-        # ladder that says which rung is stricter is the gate that enforces it.
-        asks = stop_conditions(self.rung)
-        # B70. Checked before the bypasses below, because neither may lift it,
-        # and kept independent of `external_untrusted_context_seen` so it holds
-        # on a run where that gate never arms and raises no prompt to bypass.
-        # `B995`: the non-admin policy plus what only a token is refused, the
-        # same set `delegated_credential_blocked_tools()` withholds up front.
+        """Whether this action runs, or waits for the person.
+
+        `D-2026-10-09-01` §2 wraps the ladder rather than entering it: B70's
+        refusal is asked first and is never lifted, then the ladder answers
+        exactly as it always has, and only then does a chat in **Auto** turn a
+        refusal into a run. Three properties follow from that order and each
+        one is a case in
+        `tests/test_a_chat_decides_whether_it_asks.py`:
+
+          * a tool a bearer token may not call is still refused in Auto, with
+            the same sentence and `not_available` (`FORBIDDEN.md` Part 2);
+          * what Auto allows is exactly what Manual would have refused, so
+            turning it off restores the chat byte-for-byte;
+          * the effects the gate tripped on travel on the allowed decision, so
+            the run can record what the person was not asked about.
+        """
         if self.delegated_credential and is_delegated_credential_blocked_tool(tool_name):
+            # B70. First, because no approval lifts it and Auto is not an
+            # approval. `src/approval_mode.mode_for` already answers MANUAL for
+            # a delegated run, so this is the second of two independent
+            # controls rather than the only one.
             return ToolGateDecision(
                 False,
                 (
@@ -1730,10 +1775,48 @@ class ToolRunSecurityContext:
                 ),
                 classification=TOOL_CLASSIFICATION_UNAVAILABLE,
             )
+        decision = self._ladder_decision_for(tool_name, content)
+        if decision.allowed or not self.auto_approved:
+            return decision
+        # The owner's deliberate trade, and the only line that makes it:
+        # *"With Auto on, in that chat, a privileged effect that follows
+        # outside content runs without a person seeing it first."* There is no
+        # exception list here on purpose — a destructive effect runs too. If one
+        # should not, that is a row for the owner, not a quiet `if`.
+        #
+        # Nothing about the refusal is discarded except the refusal: the
+        # effects that tripped and how well the tool is understood ride along
+        # so the record names them, and `reason` is dropped because it is the
+        # refusal sentence and the step is not being refused.
+        logger.info(
+            "[approval] auto-approved %s in a chat set to Auto (would have asked: %s)",
+            tool_name, decision.reason,
+        )
+        return ToolGateDecision(
+            True,
+            None,
+            tripped_effects=decision.tripped_effects,
+            classification=decision.classification,
+            auto_approved=True,
+        )
+
+    def _ladder_decision_for(self, tool_name: Any, content: Any = None) -> ToolGateDecision:
+        """The trust ladder's own answer — `P7-02`, `P7-03`, `P7-04`, `P7-13`.
+
+        Split out of `decision_for` by `D-2026-10-09-01` §2 and otherwise
+        unchanged, so "what does Manual approve do" has one answer and Auto is
+        visibly a wrapper around it rather than a second gate (`Law 7`).
+        """
+        # `P7-13`. Every question below is asked of this set — the rung's stop
+        # conditions from `TRUST_LADDER` — and never of the rung's name, so the
+        # ladder that says which rung is stricter is the gate that enforces it.
+        asks = stop_conditions(self.rung)
         # `P7-02`. Before the bypass and before the untainted exit, because
         # both exist to let the assistant *act* without asking, and neither is
         # a person choosing to give it more to act with. Below B70, whose
-        # refusal no approval lifts — this one an approval does, once.
+        # refusal no approval lifts — this one an approval does, once. (B70 is
+        # asked by `decision_for` before it calls this, so "below" still holds:
+        # `D-2026-10-09-01` §2 only moved the line it is written on.)
         escalation = self_escalation_for(tool_name, content)
         if escalation is not None and StopCondition.MORE_REACH in asks:
             return self._self_escalation_decision(escalation)

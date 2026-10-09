@@ -529,6 +529,12 @@ class Session(TimestampMixin, Base):
     total_input_tokens = Column(Integer, default=0)
     total_output_tokens = Column(Integer, default=0)
     mode = Column(String, nullable=True)  # 'agent', 'chat', or 'research'
+    # `D-2026-10-09-01` §2. This chat's approval mode — 'manual' or 'auto'
+    # (`src/approval_mode.ApprovalMode`). NULL is the install default, which is
+    # Manual approve, and that is what makes the scope right by construction: a
+    # new chat is a new row with no value here, so Auto is never inherited from
+    # another chat and never what a chat starts at.
+    approval_mode = Column(String, nullable=True)
     crew_member_id = Column(String, nullable=True)  # links to crew_members.id
 
     # Relationship to chat messages
@@ -2418,6 +2424,36 @@ def _migrate_add_mode_column():
         except Exception:
             pass
 
+def _migrate_add_approval_mode_column():
+    """Add the `approval_mode` column to sessions if it isn't there.
+
+    `D-2026-10-09-01` §2, shaped exactly like `_migrate_add_mode_column` above.
+    An existing install's chats come back NULL, which reads as Manual approve —
+    the ruling's default — so an upgrade changes no chat's behaviour.
+    """
+    import sqlite3
+    db_path = DATABASE_URL.replace("sqlite:///", "")
+    if not os.path.exists(db_path):
+        return
+    conn = None
+    try:
+        conn = sqlite3.connect(db_path)
+        cursor = conn.execute("PRAGMA table_info(sessions)")
+        columns = [row[1] for row in cursor.fetchall()]
+        if "approval_mode" not in columns:
+            conn.execute("ALTER TABLE sessions ADD COLUMN approval_mode TEXT")
+            conn.commit()
+            logging.getLogger(__name__).info(
+                "Migrated: added 'approval_mode' column to sessions")
+    except Exception as e:
+        logging.getLogger(__name__).warning(
+            f"Migration check for approval_mode failed: {e}")
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
 def _migrate_add_folder_column():
     """Add folder column to sessions table if it doesn't exist."""
     import sqlite3
@@ -3370,6 +3406,7 @@ def init_db():
     _migrate_add_folder_column()
     _migrate_add_token_columns()
     _migrate_add_mode_column()
+    _migrate_add_approval_mode_column()
     _migrate_add_multiuser_owner_columns()
     _migrate_add_gallery_caption_column()
     _migrate_add_api_token_scopes_column()
@@ -4029,6 +4066,42 @@ def set_session_mode(session_id: str, mode: str) -> bool:
         return True
     except Exception:
         logger.warning("Failed to persist mode %r for session %s", mode, session_id)
+        return False
+
+def get_session_approval_mode(session_id: str):
+    """Return a chat's persisted `approval_mode`, or None if unset/unknown.
+
+    `D-2026-10-09-01` §2. Best-effort in the shape of `get_session_mode` above:
+    never raises, so the agent loop can ask on a hot path without guarding it,
+    and None — an unknown chat, an unmigrated column, a locked database — reads
+    as the install default through `src/approval_mode.coerce_approval_mode`,
+    which is Manual approve. The one direction a failure here can go is "ask
+    the person".
+    """
+    try:
+        with get_db_session() as db:
+            return db.query(Session.approval_mode).filter(
+                Session.id == session_id).scalar()
+    except Exception:
+        logger.warning("Failed to read approval_mode for session %s", session_id)
+        return None
+
+def set_session_approval_mode(session_id: str, mode: str) -> bool:
+    """Persist a chat's `approval_mode`. Best-effort, returns success.
+
+    `D-2026-10-09-01` §2. `set_session_mode`'s shape: routed through
+    `get_db_session()` so a write that fails mid-flight still returns the
+    connection to the pool. The caller (`src/approval_mode.set_mode_for`) has
+    already coerced the value and the route has already checked the privilege.
+    """
+    try:
+        with get_db_session() as db:
+            db.query(Session).filter(Session.id == session_id).update(
+                {"approval_mode": mode})
+        return True
+    except Exception:
+        logger.warning(
+            "Failed to persist approval_mode %r for session %s", mode, session_id)
         return False
 
 def get_session_by_id(session_id: str):

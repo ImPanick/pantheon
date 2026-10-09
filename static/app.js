@@ -25,6 +25,7 @@ import {
 import markdownModule from './js/markdown.js';
 import chatRenderer from './js/chatRenderer.js?v=20261009tools';
 import sessionModule from './js/sessions.js';
+import approvalModeModule from './js/approvalMode.js';   // `D-2026-10-09-01` §2
 import memoryModule from './js/memory.js?v=20261009tools';
 import voiceRecorderModule from './js/voiceRecorder.js';
 import censorModule from './js/censor.js';
@@ -2056,6 +2057,18 @@ function initializeEventListeners() {
     chatBtn.addEventListener('click', () => setMode('chat'));
 	    setMode(currentMode);
 	  })();
+
+  // `D-2026-10-09-01` §2. This chat's approval mode, wired beside Plan mode
+  // because it is the same shape of control: one composer chip, `aria-pressed`
+  // for the state, the server as the only place the state lives. The chat id
+  // is passed as a getter rather than read from a global, so `sessions.js`
+  // stays the one thing that knows which chat is open (`Law 7`).
+  (function initApprovalMode() {
+    approvalModeModule.init(
+      () => (sessionModule && sessionModule.getCurrentSessionId
+        ? sessionModule.getCurrentSessionId() : null),
+    );
+  })();
 
   (function initPlanToggle() {
     const btn = el('plan-toggle-btn');

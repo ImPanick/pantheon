@@ -158,13 +158,41 @@ def untrusted_context_message(
 # so this keeps a labelled, delimited block. What it drops is the hostile-source
 # warning, which was never true of it.
 #
-# What it does NOT change is the tool gate. `arm_tool_gate` still defaults to
-# `True` and the metadata still carries `trusted: False`, so
-# `src/tool_capabilities.py`'s `external_untrusted_context_sources` arms the
-# post-external blocked-effect gate on exactly the messages it armed on before
-# (`FORBIDDEN.md` Part 2). Whether the person's own saved material *should* arm
-# that gate is a security-policy question for the owner, not a side effect of
-# rewording a header; it is filed rather than decided here.
+# ── The gate: the owner decided it, 2026-10-09 (`D-2026-10-09-01` §1) ───────
+#
+# `FIX-2026-10-09` item 2 left `arm_tool_gate` defaulting to `True` and filed
+# the question (`B1324`, and `B1328` for skills). The owner's ruling: *"The
+# gate's subject is content that arrived from outside — a web page, a fetched
+# document, an email, a tool's output. The person's own memory, their own notes
+# and their own installed skills are not that, and saying they are made the
+# gate's verdict constant on any install that uses memory, which is a verdict
+# that says nothing (`Law 10`)."*
+#
+# So the default is `False`. Measured on `a5ee5f8` before the change, in
+# process: one pinned memory made `messages_contain_external_untrusted_context`
+# True from the first token of every agent run, `external_untrusted_context_
+# sources` named it to the person as *"saved memory: pinned context"*, and the
+# run's first privileged effect waited for a card — the same shape `B1308`
+# fixed for the MCP manifest, from a different store.
+#
+# **The gate is `FORBIDDEN.md` Part 2 and has not lifted.** `trusted: False`
+# stays — load-bearing, because `_strip_agent_injected_messages` strips the
+# message on it, `src/context_budget.py` counts it as retrieved context rather
+# than the person's words, and `_sanitize_llm_messages` keeps the boundary. The
+# block stays labelled and delimited and still reads as data, not instructions.
+# What is dropped is the claim that this run has been influenced by content
+# from outside, which a pinned memory is not.
+#
+# **The laundering path the owner was asked about, and where it is answered.**
+# A memory or a skill *can* be written by an agent that read a hostile page —
+# `manage_memory add`, `manage_skills add`. Both are privileged effects in
+# `src/tool_capabilities.py`'s registry, so the gate asks at the **write**, in
+# the run that read the page, while the taint is still attributable. What it no
+# longer does is ask about every effect in every *later* run because the store
+# is non-empty. `arm_tool_gate` is still a keyword, so a caller with a reason
+# can ask for the old behaviour; the skill tester and a workflow's skill step
+# keep it through `untrusted_context_message` (`P8-18`), where the skill is the
+# thing being tested rather than the person's background material.
 OWN_MATERIAL_HEADER = (
     "THE USER'S OWN SAVED MATERIAL\n"
     "The following is reference material the user keeps in this application — "
@@ -211,15 +239,20 @@ def own_context_message(
     content: Any,
     *,
     provenance_origin: str | None = None,
-    arm_tool_gate: bool = True,
+    arm_tool_gate: bool = False,
 ) -> Dict[str, Any]:
     """Return an LLM message holding the person's own saved material.
 
     The same structure as `untrusted_context_message` — only the hardcoded
     header appears before the open marker, and both the label and the body sit
-    inside the delimited block — and the same metadata, so the post-external
-    tool gate behaves identically. The difference is the header: this one does
-    not accuse the person's own memory of being an attack.
+    inside the delimited block — and the same `trusted: False`, so every
+    boundary, strip and budget rule behaves identically. Two things differ: the
+    header, which does not accuse the person's own memory of being an attack,
+    and `tool_gate_untrusted`, which is **False** by the owner's ruling
+    (`D-2026-10-09-01` §1) because this material did not arrive from outside.
+
+    `arm_tool_gate` is a keyword so a caller with a reason can still ask for
+    the old behaviour; nothing does.
     """
     safe_label = _sanitize_label(label)
     text = "" if content is None else str(content)
