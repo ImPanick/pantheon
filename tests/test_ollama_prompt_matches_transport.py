@@ -93,14 +93,40 @@ def test_the_call_site_uses_the_named_predicate():
 
 
 def test_the_schema_gate_and_the_prompt_gate_read_the_same_flag():
-    """Belt and braces on the invariant, at the level of the source: the schema
-    branch keys off `is_api_model` and so must the prompt. If someone changes
-    one gate to consult something else, the two can silently drift apart again
-    without either being obviously wrong on its own."""
-    src = SOURCE.read_text(encoding="utf-8")
-    assert 'if route_state["is_api_model"]:' in src, (
-        "the schema gate moved — re-derive the invariant before editing this test"
-    )
+    """The invariant, restated for `tool_schema_offer` (`B-NEW`).
+
+    This asserted the source text `if route_state["is_api_model"]:` — that the
+    schema branch and the prompt branch read the one flag. They no longer do,
+    deliberately: *"does this request carry a `tools` array"* and *"is the
+    fenced channel shut"* are different questions, and answering them with one
+    flag is what sent **zero** tools to a local OpenAI-compatible server whose
+    model name was not on an allowlist (`tool_schema_offer`'s docstring has the
+    measurement).
+
+    What still has to hold is the thing the old assertion was protecting: the
+    compact prompt claims the schemas are the *only* channel, so it may only be
+    sent where the fenced parser really is shut. That is a property of the two
+    functions, so it is asserted by calling them rather than by reading the
+    file (`Law 20`).
+    """
+    # `both` — nobody declared anything: schemas are offered AND the fenced
+    # prompt stays, because the compact prompt's claim would be false.
+    assert A.tool_schema_offer(None, "http://127.0.0.1:8080/v1", "some-local-build") == "both"
+    assert A._compact_prompt_applies(
+        A.resolve_tool_transport(None, "http://127.0.0.1:8080/v1", "some-local-build")[0]
+    ) is False
+    # `native` — the endpoint declared it: compact, and the fence is shut.
+    assert A.tool_schema_offer(True, "http://127.0.0.1:8080/v1", "some-local-build") == "native"
+    assert A._compact_prompt_applies(
+        A.resolve_tool_transport(True, "http://127.0.0.1:8080/v1", "some-local-build")[0]
+    ) is True
+    # `fenced` — declared False, or Ollama: no `tools` key, full prompt.
+    for declared, url in ((False, "http://127.0.0.1:8080/v1"),
+                          (None, "http://127.0.0.1:11434/v1")):
+        assert A.tool_schema_offer(declared, url, "qwen3:8b") == "fenced"
+        assert A._compact_prompt_applies(
+            A.resolve_tool_transport(declared, url, "qwen3:8b")[0]
+        ) is False
 
 
 def test_the_compact_prompt_still_claims_native_tools():

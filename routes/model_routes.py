@@ -1590,7 +1590,7 @@ def _tool_transport_view(row, models) -> Dict[str, Any]:
     whether the sample below had any say. An endpoint that declares an answer
     gives the same one for every model it serves.
     """
-    from src.agent_loop import resolve_tool_transport
+    from src.agent_loop import resolve_tool_transport, tool_schema_offer
 
     declared = getattr(row, "supports_tools", None)
     sample = (models or [""])[0] or ""
@@ -1598,17 +1598,28 @@ def _tool_transport_view(row, models) -> Dict[str, Any]:
         is_api, _native, _compat = resolve_tool_transport(
             declared, getattr(row, "base_url", "") or "", sample
         )
+        offer = tool_schema_offer(declared, getattr(row, "base_url", "") or "", sample)
     except Exception as exc:
         # Never take the endpoint list down for a badge (`P3-17`: and never
         # quietly, either — an admin looking at a blank field deserves a log).
         logger.warning("Could not resolve tool transport for endpoint %s: %s",
                        getattr(row, "id", "?"), exc)
-        return {"declared": declared, "resolved": None, "sample_model": sample,
-                "model_dependent": declared is None}
+        return {"declared": declared, "resolved": None, "offer": None,
+                "sample_model": sample, "model_dependent": declared is None}
     return {
         "declared": declared,
         "resolved": "native" if is_api else "fenced",
+        # `B-NEW`. `resolved` answers "which prompt and which parser", and that
+        # is no longer the same question as "does the request carry a `tools`
+        # array": an endpoint nobody has declared now gets **both** channels.
+        # Shown as its own field rather than folded into `resolved`, because an
+        # admin reading "fenced" and a request carrying 23 schemas is exactly
+        # the kind of disagreement `P3-22` exists to end (`Law 10`).
+        "offer": offer,
         "sample_model": sample,
+        # `offer` does not depend on the model at all; `resolved` still does
+        # while nothing is declared. Kept as it was so the hint beside the
+        # select keeps meaning what it meant.
         "model_dependent": declared is None,
     }
 
