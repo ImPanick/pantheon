@@ -12,6 +12,7 @@ from bs4 import BeautifulSoup
 
 from src.constants import SEARXNG_INSTANCE, REQUEST_TIMEOUT, WEB_FETCH_USER_AGENT
 from .analytics import RateLimitError, error_logger
+from .query import NEWS_TERMS, is_news_query
 
 logger = logging.getLogger(__name__)
 
@@ -123,7 +124,16 @@ def _safesearch_for(provider: str) -> Optional[str]:
 
 # ── SearXNG ──
 
-_NEWS_HINTS = ("news", "nyheter", "headlines", "breaking", "latest", "today", "idag")
+# One definition of "this is a news query", in `services/search/query.py`
+# (`Law 7`). This module held the same seven terms as a tuple and matched them
+# as a **substring** of the lowered query, so the SearXNG *category* a person's
+# search went to was decided by the letters `news` inside `Newsom`,
+# `newsletter` and `newsprint`, and `today` inside `todays`. Measured over a
+# 27-query corpus, that mis-fired on 4 of them and disagreed with
+# `ranking.py`'s byte-identical set on every one, because that one matched
+# whole tokens. The name stays bound here (`Law 1`) and now points at the set
+# every consumer reads.
+_NEWS_HINTS = NEWS_TERMS
 
 # Default general engines (google/duckduckgo/brave/startpage/wikipedia) are
 # routinely rate-limited / CAPTCHA-blocked on this instance and return nothing.
@@ -162,33 +172,34 @@ def _widen_engines_allowed() -> bool:
         return env_flag("SEARXNG_WIDEN_ENGINES", False)
 
 
-def searxng_search_api(query: str, count: Optional[int] = None, categories: str = "general",
-                       time_filter: Optional[str] = None) -> List[dict]:
-    """Search using SearXNG JSON API. Returns list of {title, url, snippet}."""
-    count = count if count is not None else _get_result_count()
-    instance = _get_search_instance()
-    api_key = ""
-    headers = {"User-Agent": WEB_FETCH_USER_AGENT}
-    if api_key:
-        headers["Authorization"] = f"Bearer {api_key}"
-    # News/fresh queries do badly in the 'general' category — it favours
-    # encyclopedic/tourism pages, ignores recency, and (with no language pin)
-    # bleeds in foreign-language results. When the agent layer detected
-    # freshness (time_filter) or the query reads like a news lookup, switch to
-    # the 'news' category, constrain recency, and pin language to English so a
-    # search like "Canada latest news" returns actual news instead of Wikipedia.
-    # Pin English for ALL searches — without it, SearXNG geolocates / mixes
-    # languages and brand-ambiguous terms bleed in foreign SEO pages (e.g.
-    # "Odyssey" → Honda Japan, "Trojan" → Japanese malware blogs, "Polyphemus"
-    # → Chinese math forums). The news path already did this; general didn't.
+def _searxng_params(query: str, time_filter: Optional[str] = None,
+                    categories: str = "general") -> dict:
+    """The query parameters a SearXNG search is sent with.
+
+    Pulled out of `searxng_search_api` so "which category does this query go
+    to" can be asked without a network call — it is the most consequential
+    decision in this module and it had no test, which is how the substring
+    news match survived (`Law 20`: call the thing).
+
+    News/fresh queries do badly in the 'general' category — it favours
+    encyclopedic/tourism pages, ignores recency, and (with no language pin)
+    bleeds in foreign-language results. When the agent layer detected freshness
+    (``time_filter``) or the query reads like a news lookup, switch to the
+    'news' category, constrain recency, and pin language to English so a search
+    like "Canada latest news" returns actual news instead of Wikipedia.
+
+    English is pinned for ALL searches — without it, SearXNG geolocates / mixes
+    languages and brand-ambiguous terms bleed in foreign SEO pages (e.g.
+    "Odyssey" → Honda Japan, "Trojan" → Japanese malware blogs, "Polyphemus"
+    → Chinese math forums). The news path already did this; general didn't.
+    """
     params = {
         "q": query,
         "format": "json",
         "language": "en",
         "safesearch": _safesearch_for("searxng"),
     }
-    q_lc = query.lower()
-    is_news = time_filter is not None or any(h in q_lc for h in _NEWS_HINTS)
+    is_news = time_filter is not None or is_news_query(query)
     if is_news and categories == "general":
         params["categories"] = "news"
         if time_filter in ("day", "week", "month", "year"):
@@ -201,6 +212,20 @@ def searxng_search_api(query: str, count: Optional[int] = None, categories: str 
         # set returns 0 on this instance — see _GENERAL_ENGINES).
         if categories == "general" and _GENERAL_ENGINES:
             params["engines"] = _GENERAL_ENGINES
+    return params
+
+
+def searxng_search_api(query: str, count: Optional[int] = None, categories: str = "general",
+                       time_filter: Optional[str] = None) -> List[dict]:
+    """Search using SearXNG JSON API. Returns list of {title, url, snippet}."""
+    count = count if count is not None else _get_result_count()
+    instance = _get_search_instance()
+    api_key = ""
+    headers = {"User-Agent": WEB_FETCH_USER_AGENT}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    params = _searxng_params(query, time_filter=time_filter, categories=categories)
+    is_news = params.get("categories") == "news" and categories == "general"
     try:
         def _parse_results(results):
             return [
