@@ -28,12 +28,18 @@ def test_resend_message_does_not_truncate_by_default():
     assert "const replaceFromHere = Boolean(opts && opts.replaceFromHere);" in body
 
     guard_idx = body.index("if (replaceFromHere)")
-    truncate_idx = body.index("/api/session/${sessionId}/truncate")
+    # fx7-dup (`B-NEW-4`): the trim is still inside the guard, but it is no
+    # longer a `fetch` written out here — `_truncateFromUserMessage` is the one
+    # door the three re-send flows share, and it is what names the message to
+    # cut at instead of counting bubbles. The property this case has always
+    # pinned is unchanged: nothing destructive above the guard.
+    truncate_idx = body.index("_truncateFromUserMessage(")
     hide_idx = body.index("_hideUserBubble = true;")
 
     assert guard_idx < truncate_idx
     assert guard_idx < hide_idx
     assert "/truncate" not in body[:guard_idx]
+    assert "_truncateFromUserMessage(" not in body[:guard_idx]
     assert "_hideUserBubble = true;" not in body[:guard_idx]
 
 
