@@ -1022,7 +1022,7 @@ def prune_rules_to_available_tools(text: str, available: set) -> str:
     """
     if not text:
         return text
-    known = _known_tool_names_cached()
+    known = _known_tool_names_for_pruning()
     kept = []
     for line in text.split("\n"):
         named = {n for n in _PROMISED_TOOL_RE.findall(line) if n in known}
@@ -1032,29 +1032,36 @@ def prune_rules_to_available_tools(text: str, available: set) -> str:
     return "\n".join(kept)
 
 
-_known_tool_names_cache: Optional[frozenset] = None
-
-
-def _known_tool_names_cached() -> frozenset:
-    """`src.tool_policy.known_tool_names()` once per process.
+def _known_tool_names_for_pruning() -> frozenset:
+    """`src.tool_policy.known_tool_names()`, asked once per rule block.
 
     A backtick in prompt prose is not evidence of a tool name — `fix`, `true`
     and `week` all appear that way — so the pruner only judges a word the
-    register knows. Cached because it is read for every line of every rule
-    block on every prompt build, and the register does not change at runtime.
+    register knows.
+
+    **Not cached for the life of the process, and that is the point.**
+    `known_tool_names()` is import-order-sensitive by its own admission
+    (`B830`, documented at `src/tool_policy.py:363`): in a process that reaches
+    `tool_policy` before `src.agent_loop`, the first call raises inside the
+    `tool_schemas`/`agent_tools` cycle, swallows it and answers **82** instead
+    of 85, dropping `host_shell` and `manage_rag`. The first call here happens
+    while `agent_loop` is still importing — `AGENT_SYSTEM_PROMPT` is built at
+    module level — so a process-lifetime cache would pin that degraded answer
+    for every prompt the install ever builds, and two tools would never be
+    pruned on. Measured on this tree: 10.5µs a call, 85 names; one call per
+    rule block instead of one per line is the right granularity and has no
+    staleness to go wrong.
+
+    Fails OPEN: an empty register prunes nothing, which is this function's
+    behaviour before the row. Pruning everything on an import error would take
+    the whole prompt away (`P3-17`).
     """
-    global _known_tool_names_cache
-    if _known_tool_names_cache is None:
-        try:
-            from src.tool_policy import known_tool_names
-            _known_tool_names_cache = frozenset(known_tool_names())
-        except Exception as exc:
-            # Fails OPEN, deliberately: an empty register prunes nothing, which
-            # is this function's behaviour before the row. Pruning everything
-            # on an import error would take the whole prompt away (`P3-17`).
-            logger.warning("Could not read the tool register for prompt pruning: %s", exc)
-            _known_tool_names_cache = frozenset()
-    return _known_tool_names_cache
+    try:
+        from src.tool_policy import known_tool_names
+        return frozenset(known_tool_names())
+    except Exception as exc:
+        logger.warning("Could not read the tool register for prompt pruning: %s", exc)
+        return frozenset()
 
 
 def _domain_rules_for_tools(tool_names: set) -> list[str]:
