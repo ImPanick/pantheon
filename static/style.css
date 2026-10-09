@@ -4256,6 +4256,13 @@ body.bg-pattern-sparkles {
       background: color-mix(in srgb, var(--red) 20%, transparent);
     }
     .chat-auto-approve-badge[hidden] { display: none; }
+    /* The composer chip is a toggle while it is off and a clearable indicator
+       while it is on, so the clear affordance appears with the on-state —
+       measured in Chromium at 1400x900 on `dark` and `light`: the off chip was
+       drawing an X that cleared nothing. The chip is otherwise entirely
+       `.tool-chip` + `.tool-indicator` (`P5-12`), which is why this is two
+       lines and not a chip of its own. */
+    #approval-mode-btn:not(.active) > .tool-indicator-x { display: none; }
     /* Session cost indicator (next to chevron in header) */
     .session-cost-display {
       font-size: inherit;

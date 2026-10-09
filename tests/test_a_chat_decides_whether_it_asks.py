@@ -261,6 +261,15 @@ def test_a_new_chat_starts_at_the_install_default():
     assert am.mode_for(fresh, "joseph", auth_manager=_allow()) is am.ApprovalMode.MANUAL
 
 
+@pytest.mark.parametrize("missing", [None, "", 0, False])
+def test_a_turn_with_no_chat_to_read_is_manual_approve(missing):
+    """There is no row, so there is no Auto. The welcome screen before the
+    first message, a skill test, an unattended audit — every surface that runs
+    a turn without a chat answers the install default, and none of them is a
+    place a person could have set anything."""
+    assert am.mode_for(missing, "joseph", auth_manager=_allow()) is am.ApprovalMode.MANUAL
+
+
 def test_auto_in_one_chat_does_not_reach_another():
     """The adversary is the other chat. Set A to Auto; B is still Manual."""
     a, b = _chat(), _chat()
