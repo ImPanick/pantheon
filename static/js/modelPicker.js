@@ -4,7 +4,7 @@
 
 import { providerLogo } from './providers.js';
 import uiModule from './ui.js';
-import settingsModule from './settings.js?v=20261009agency';
+import settingsModule from './settings.js?v=20261009census';
 import { sortModelObjects } from './modelSort.js';
 import spinnerModule from './spinner.js';
 import { chevronIcon } from './icons.js';

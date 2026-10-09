@@ -45,18 +45,18 @@ import { ROOM_NAMES } from './rooms.js';
 import { makeWindowDraggable } from '../windowDrag.js';
 import { registerMenuDismiss } from '../escMenuStack.js';
 import * as EscStack from '../escMenuStack.js';
-import * as Modals from '../modalManager.js?v=20261009agency';
+import * as Modals from '../modalManager.js?v=20261009census';
 // `P22-04`. The step renderer the Tasks card draws a plan with, for the
 // canvas's full plan. Spelled exactly as `app.js` imports `tasks.js` — a
 // different spelling is a second module instance (`runStatus.js`'s header) —
 // so this is the instance already on the page, and the cache-buster moves with
 // the other importers.
-import { renderRunSteps } from '../tasks.js?v=20261009agency';
+import { renderRunSteps } from '../tasks.js?v=20261009census';
 // `P22-21`. A door that is not the Tasks window's — Settings → Integrations,
 // the Brain — opens the Workbench without handing in the schedule words; the
 // Tasks module's own (`scheduleLabel`) are used then. A namespace import, so a
 // page whose `tasks.js` has no default export still links.
-import * as Tasks from '../tasks.js?v=20261009agency';
+import * as Tasks from '../tasks.js?v=20261009census';
 
 export const WORKBENCH_ID = 'workbench-modal';
 
@@ -122,7 +122,7 @@ function mountIntegrationsRoom(panel, opts = {}) {
   if (form && typeof MutationObserver === 'function') {
     new MutationObserver(watch).observe(form, { attributes: true, attributeFilter: ['style'], childList: true });
   }
-  const ready = import('../settings.js?v=20261009agency').then((mod) => {
+  const ready = import('../settings.js?v=20261009census').then((mod) => {
     const s = mod.default || mod;
     if (typeof s.initUnifiedIntegrations === 'function') return s.initUnifiedIntegrations();
     return null;

@@ -3,7 +3,7 @@
 // Lightweight popup that surfaces the existing /command registry as users
 // type. Reads COMMANDS from slashCommands.js — no command logic lives here.
 
-import { COMMANDS, LEGACY_ALIASES } from './slashCommands.js?v=20261009approvalagency';
+import { COMMANDS, LEGACY_ALIASES } from './slashCommands.js?v=20261009approvalcensus';
 import { topPortalZ } from './toolWindowZOrder.js';
 // `P23-03`. Same specifier `app.js` imports it by (no query), so this is the
 // page's one instance of the table and its state.
