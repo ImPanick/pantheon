@@ -78,4 +78,9 @@ regexes = [
   # The same test uses the sequence by itself as a synthetic staging key and
   # checks the path lookup. The boundary keeps it distinct from `_Q3` above.
   '''0123456789abcdef0123456789abcdef\b''',
+  # `tests/test_the_backup_carries_tasks_and_workflows.py` seeds this fixed
+  # token into temporary SQLite databases and checks that export/import keeps
+  # the same webhook URL. Its suffix is ascending hex, not an issued secret.
+  # Both boundaries keep this fixture from excusing a longer credential.
+  '''\btok-0123456789abcdef\b''',
 ]

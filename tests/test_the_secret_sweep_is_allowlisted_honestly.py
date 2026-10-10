@@ -43,9 +43,9 @@ def _allowlisted_literals() -> list[str]:
     assert block, "no allowlist regexes in .gitleaks.toml"
     found = re.findall(r"'''(.*?)'''", block.group(1), re.S)
     assert found, "the allowlist block parsed to nothing"
-    # A trailing word boundary keeps a shorter token from excusing a longer
-    # one with the same prefix. It is a regex assertion, not part of the token.
-    return [f.strip().removesuffix(r"\b") for f in found]
+    # Word boundaries keep a fixture from excusing a longer token. These
+    # are regex assertions, not part of the allowlisted literal.
+    return [f.strip().removeprefix(r"\b").removesuffix(r"\b") for f in found]
 
 
 def _uncommented_lines() -> list[str]:
@@ -121,6 +121,7 @@ def test_no_allowlisted_literal_looks_like_a_real_credential(literal):
         "AKIAABCDEFGHIJKLMNOP",  # sequential sample AWS key
         "sekret-api-key-123",   # deliberately misspelled test key
         "0123456789abcdef0123456789abcdef",  # repeated ascending hex
+        "tok-0123456789abcdef",  # ascending hex backup round-trip fixture
     )
     assert any(m in literal for m in fake_markers), (
         f"{literal!r} does not carry any of the markers that make the existing "
@@ -193,3 +194,13 @@ def test_the_new_token_exceptions_do_not_cover_longer_credentials():
         assert f"'''{pattern}'''" in text
         assert re.search(pattern, literal)
         assert not re.search(pattern, literal + "X")
+
+
+def test_the_backup_fixture_exception_does_not_cover_other_tokens():
+    """Only the fixed backup fixture is exempt, not a longer credential."""
+    literal = "tok-0123456789abcdef"
+    pattern = rf"\b{literal}\b"
+    assert "'''" + pattern + "'''" in _config()
+    assert re.search(pattern, f'webhook_token="{literal}"')
+    assert not re.search(pattern, "X" + literal)
+    assert not re.search(pattern, literal + "X")
