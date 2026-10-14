@@ -133,6 +133,18 @@ def builtin_tool_names() -> List[str]:
     )
 
 
+def split_name(qualified: str):
+    """`split_mcp_tool_name`, re-exported so a test asks the product's own rule.
+
+    `FORBIDDEN.md` Part 1 owns the `mcp__{server_id}__{tool_name}` shape and
+    `src/mcp_manager.py` owns the rule that decides whether a string is one.
+    A second regex here would be a second rule (`Law 7`).
+    """
+    from src.mcp_manager import split_mcp_tool_name
+
+    return split_mcp_tool_name(qualified)
+
+
 def mcp_tool_names(mcp_mgr) -> List[str]:
     """Every registered MCP tool, under its protected qualified name.
 
@@ -168,6 +180,31 @@ def skill_names(data_dir: str, owner: Optional[str], *, active_toolsets=None) ->
     except Exception:
         return []
     return sorted({str(s.get("name")) for s in idx if s.get("name")})
+
+
+def tools_with_no_prompt_section() -> List[str]:
+    """Register names that `TOOL_SECTIONS` has no prose for.
+
+    This is not a style complaint. `_build_base_prompt` computes
+    `active_toolsets = set(TOOL_SECTIONS) - disabled` and hands it to
+    `SkillsManager.index_for`, which drops any skill whose
+    `requires_toolsets` is not wholly inside it. So a tool with no prompt
+    section cannot be the declared requirement of **any** indexed skill, on
+    any install, for anybody — and the skill is dropped in silence.
+
+    Measured on `0bd089d`: 74 names in the register, 61 sections, so 13 names
+    are in this list. A tool added tomorrow with a schema and no prose joins
+    it with nobody editing this file.
+    """
+    from src.agent_loop import TOOL_SECTIONS
+
+    return sorted(set(builtin_tool_names()) - set(TOOL_SECTIONS.keys()))
+
+
+def skill_toolset_blocker(requires: Sequence[str]) -> List[str]:
+    """Which of a skill's declared toolsets would exclude it from the index."""
+    missing = set(tools_with_no_prompt_section())
+    return sorted(name for name in (requires or []) if name in missing)
 
 
 @dataclass
@@ -470,6 +507,9 @@ class ProbeWorld:
     mcp_script: str
     managers: Dict[str, Any] = field(default_factory=dict)
     features: Dict[str, Any] = field(default_factory=dict)
+    #: The `AuthManager` holding this world's two accounts, registered as the
+    #: process's shared one for the length of the probe.
+    auth: Any = None
 
     def owner(self, cell: Cell) -> str:
         return ADMIN_USER if cell.admin else PLAIN_USER
@@ -478,20 +518,28 @@ class ProbeWorld:
         return self.managers.get(cell.mcp)
 
 
-def _seed_accounts(data_dir: str) -> None:
-    """A real admin and a real non-admin, through `AuthManager`'s own doors.
+def _seed_accounts(data_dir: str):
+    """A real admin and a real non-admin, through the tree's own `signed_in`.
 
-    Without this the install is in its pre-setup window, where
+    `Law 14`: `tests/helpers/signed_in.py` is already the one way a test in
+    this tree is a person (`D-2026-10-07-02` §2), and it is the only way that
+    makes *every* policy check answer about the same people —
+    `owner_is_admin_or_single_user` in the loop and `_owner_is_admin` in the
+    dispatcher both ask `shared_auth_manager()`.
+
+    Without the registration the install is in its pre-setup window, where
     `owner_is_admin_or_single_user` answers False for everybody and the
-    non-admin policy holds two thirds of the register — true, and not the
-    thing being measured.
+    non-admin policy holds two thirds of the register. Measured while building
+    this harness: an `auth.json` written beside the probe's data directory and
+    *not* registered gave an admin the admin tool list from the loop and
+    `Public tool policy blocked owner='probe-admin'` from the dispatcher —
+    offered and refused in the same run, which is precisely the defect shape
+    this file exists to detect, arriving from the harness instead of the
+    product.
     """
-    from core.auth import AuthManager
+    from tests.helpers.signed_in import people
 
-    auth = AuthManager(os.path.join(data_dir, "auth.json"))
-    if not auth.is_configured:
-        auth.setup(ADMIN_USER, "probe-password-1")
-    auth.create_user(PLAIN_USER, "probe-password-2", is_admin=False)
+    return people(data_dir, admin=ADMIN_USER, members=(PLAIN_USER,))
 
 
 def _seed_skills(data_dir: str) -> None:
@@ -528,13 +576,28 @@ async def probe_world(scratch: str, *, mcp_states: Sequence[str] = MCP_STATES):
     a fresh `asyncio.run` cancels the owner mid-handshake. A booted server has
     one loop for its life, so the harness has one too.
     """
+    import core.auth
+    from src import constants
+
     data_dir = os.path.join(scratch, "data")
     os.makedirs(data_dir, exist_ok=True)
-    _seed_accounts(data_dir)
-    _seed_skills(data_dir)
+    manager = _seed_accounts(data_dir)
+    # `src/constants.py` resolves `DATA_DIR` at import, so a process that was
+    # started with `PANTHEON_DATA_DIR` already set (which is what
+    # `scripts/tool-suite-matrix.py` does, and what an install does) needs
+    # nothing here. A test session is not started that way, so the two values
+    # the product reads at call time are pointed at this world and put back
+    # afterwards: the data directory, and the shared auth manager. Anything
+    # that binds a path at import time is left alone rather than reached into.
+    saved_data_dir = constants.DATA_DIR
+    saved_auth = getattr(core.auth, "_SHARED_AUTH_MANAGER", None)
+    constants.DATA_DIR = data_dir
+    core.auth.register_shared_auth_manager(manager)
     script = write_mcp_server(os.path.join(scratch, "mcp"))
+    _seed_skills(data_dir)
     endpoint = ProbeEndpoint()
-    world = ProbeWorld(data_dir=data_dir, endpoint=endpoint, mcp_script=script)
+    world = ProbeWorld(data_dir=data_dir, endpoint=endpoint, mcp_script=script,
+                       auth=manager)
     try:
         for state in mcp_states:
             world.managers[state] = await build_mcp_manager(state, script)
@@ -547,6 +610,8 @@ async def probe_world(scratch: str, *, mcp_states: Sequence[str] = MCP_STATES):
                 except Exception:
                     pass
         endpoint.stop()
+        constants.DATA_DIR = saved_data_dir
+        core.auth.register_shared_auth_manager(saved_auth)
 
 
 # ── the five reply shapes a local server actually emits ─────────────────────
@@ -1056,17 +1121,38 @@ def minimal_args(tool: str, *, mcp_mgr=None) -> dict:
     return args
 
 
+#: `answered` the dispatcher ran it and a result came back; `refused` a
+#: readable sentence came back instead; `held` the approval gate or a privilege
+#: gate stopped it, with its sentence (a **pass** — `FORBIDDEN.md` Part 2);
+#: `nudged` the loop declined to dispatch on purpose and told the model why;
+#: `dropped` nothing parsed, nothing ran and nobody was told.
+CALL_VERDICTS = ("answered", "refused", "held", "nudged", "dropped")
+
+
 @dataclass
 class CallRow:
     tool: str
     kind: str
     shape: str
-    verdict: str          # answered | refused | held | dropped
+    verdict: str          # one of CALL_VERDICTS
     detail: str = ""
+
+
+#: The loop's own words when it declines to dispatch a first-act `ask_user`
+#: and tells the model to look first instead (`_MAX_ASK_FIRST_NUDGES`). Matched
+#: on the sentence the loop appends to `messages`, so the probe reads the
+#: product's decision rather than guessing at it from an absence.
+ASK_FIRST_NUDGE = "You asked the user a question as the first thing this turn"
 
 
 def _call_verdict(record: TurnRecord, tool: str) -> Tuple[str, str]:
     """Read the loop's own events for what became of the call."""
+    for request in record.requests[1:]:
+        if ASK_FIRST_NUDGE in (request.get("prompt") or ""):
+            # Not dropped: deliberately not dispatched, with an instruction
+            # back to the model. `ask_user` as the first act of a turn, before
+            # anything has been looked at, is held on purpose.
+            return "nudged", ASK_FIRST_NUDGE
     saw_block = any(name == tool for name, _ in record.dispatched)
     blocked = [ev for ev in record.events if ev.get("type") == "tool_blocked"]
     outputs = [ev for ev in record.events if ev.get("type") == "tool_output"]
@@ -1109,6 +1195,90 @@ async def call_report(world: ProbeWorld, cell: Cell, inventory: Inventory, *,
             rows.append(CallRow(tool=tool, kind=inventory.kind(tool), shape=shape,
                                 verdict=verdict, detail=detail))
     return rows
+
+
+@dataclass
+class BootReport:
+    """What `connect_all_enabled` leaves behind when one server is dead."""
+
+    registered: int
+    raised: str
+    connected: List[str]
+    tools: List[str]
+    statuses: Dict[str, Any]
+
+    @property
+    def verdict(self) -> str:
+        if self.raised:
+            return "aborted"
+        return "completed"
+
+
+async def boot_connect_report(scratch: str) -> BootReport:
+    """Register three stdio servers — two that answer, one that exits at once —
+    and run the product's own boot connect over them.
+
+    This is a separate question from the matrix's `mcp=down` cell, which hands
+    the loop a manager already in that state. The question here is what boot
+    does: `connect_all_enabled` gathers one task per enabled server with no
+    `return_exceptions`, and `_connect_with_timeout` catches
+    `asyncio.TimeoutError` only — so whatever `connect_server` lets through
+    reaches the gather. Reported as a number rather than asserted, because
+    `src/mcp_manager.py` is not this lane's file: when it is fixed, `verdict`
+    changes from `aborted` to `completed` and `tools` stops being empty.
+    """
+    import json as _json
+
+    from core.database import McpServer, SessionLocal
+    from src.mcp_manager import McpManager
+
+    script = write_mcp_server(os.path.join(scratch, "boot-mcp"))
+    rows = [("probe-good-1", sys.executable, [script]),
+            ("probe-dead-1", "/bin/false", []),
+            ("probe-good-2", sys.executable, [script])]
+    db = SessionLocal()
+    try:
+        for server_id, command, args in rows:
+            if db.query(McpServer).filter(McpServer.id == server_id).first():
+                continue
+            db.add(McpServer(id=server_id, name=server_id, transport="stdio",
+                             command=command, args=_json.dumps(args),
+                             env=_json.dumps({"PANTHEON_TOOL_SUITE_PROBE": "1"}),
+                             is_enabled=True))
+        db.commit()
+    finally:
+        db.close()
+    mgr = McpManager()
+    raised = ""
+    try:
+        await mgr.connect_all_enabled()
+    except BaseException as exc:              # noqa: BLE001 — the measurement
+        raised = f"{type(exc).__name__}: {exc}"
+    statuses = {}
+    try:
+        statuses = mgr.get_all_statuses() or {}
+    except Exception:
+        pass
+    report = BootReport(
+        registered=len(rows), raised=raised,
+        connected=sorted(sid for sid, st in statuses.items()
+                         if (st or {}).get("status") == "connected"),
+        tools=mcp_tool_names(mgr), statuses=statuses,
+    )
+    try:
+        await mgr.disconnect_all()
+    except BaseException:                     # noqa: BLE001
+        pass
+    db = SessionLocal()
+    try:
+        for server_id, _c, _a in rows:
+            row = db.query(McpServer).filter(McpServer.id == server_id).first()
+            if row is not None:
+                db.delete(row)
+        db.commit()
+    finally:
+        db.close()
+    return report
 
 
 async def unknown_name_control(world: ProbeWorld, cell: Cell) -> CallRow:
