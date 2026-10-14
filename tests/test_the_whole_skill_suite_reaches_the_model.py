@@ -61,8 +61,7 @@ OWNER = "tester"
 PROCEDURE_QUESTION = "What is our procedure when a brand new client signs?"
 #: Read out of the shipped note rather than restated, so rewording the note
 #: cannot leave these cases asserting a string nothing sends (`Law 7`).
-_MATCHED_CUT_PHRASE = "further matched procedure(s) were left out of this block"
-assert _MATCHED_CUT_PHRASE in skill_injection.MATCHED_TRUNCATION_NOTE
+_MATCHED_CUT_PHRASE = skill_injection.MATCHED_CAP_PHRASE
 OUTAGE_QUESTION = "Production is down. Give me the incident runbook for this outage."
 GREETING = "hey"
 
@@ -630,3 +629,47 @@ def test_the_receipt_names_only_the_skills_whose_lines_fitted(store, monkeypatch
     assert dropped, "the budget did not bind, so this asserts nothing"
     for name in dropped:
         assert not _named_in_index(block, name)
+
+
+@pytest.mark.parametrize("budget", [4000, 900])
+def test_a_cut_of_one_procedure_does_not_claim_others_were_dropped(budget):
+    """`Law 10`. One matched skill cut at a line boundary is not *"0 further
+    procedures were left out"*, which is what a single note template said."""
+    long_skill = {"name": "incident-runbook", "description": "d",
+                  "procedure": [LONG_STEP * 6 for _ in range(10)]}
+    report: dict = {}
+    block = skill_injection.render_matched_skills_block(
+        [long_skill], budget_chars=budget, report=report)
+    assert skill_injection.MATCHED_CAP_PHRASE in block
+    assert skill_injection.MATCHED_CUT_WHAT_SHORT in block
+    assert "0 further matched procedure" not in block
+    assert len(block) <= budget
+    assert report["skill_bodies_truncated"] is True
+    assert report["skill_bodies_applied"] == ["incident-runbook"]
+
+
+def test_a_budget_too_small_for_the_note_still_ships_the_note():
+    """The floor, stated: the heading, the preamble and the note are ~470
+    characters, and `context_skill_body_chars` can be set as low as 200. A
+    heading with nothing under it says the match found nothing, which is a worse
+    answer than a short procedure — the same call `P8-21` made for the
+    catalogue's last surviving entry."""
+    report: dict = {}
+    block = skill_injection.render_matched_skills_block(
+        [{"name": "incident-runbook", "description": "d",
+          "procedure": [LONG_STEP * 6 for _ in range(10)]}],
+        budget_chars=300, report=report)
+    assert skill_injection.MATCHED_CAP_PHRASE in block
+    assert report["skill_bodies_truncated"] is True
+    assert "### incident-runbook" in block
+
+
+def test_a_cut_that_dropped_whole_procedures_counts_them():
+    bodies = [{"name": f"p{i}", "description": "d",
+               "procedure": [LONG_STEP * 4 for _ in range(6)]} for i in range(4)]
+    report: dict = {}
+    block = skill_injection.render_matched_skills_block(
+        bodies, budget_chars=6000, report=report)
+    assert report["skill_bodies_omitted"] > 0
+    assert f"{report['skill_bodies_omitted']} further matched procedure" in block
+    assert len(report["skill_bodies_applied"]) == 4 - report["skill_bodies_omitted"]

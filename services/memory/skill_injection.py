@@ -89,17 +89,21 @@ MATCHED_PREAMBLE_NO_FETCH = (
 #: characters (~7,085 tokens) and twelve rendered 257,813 (~77,347), inside no
 #: budget at all, leaving `context_compactor.trim_for_context` to drop whatever
 #: it reached first with no note to the model or the person.
+#: The one phrase every form of the note carries, so a reader — a model, a
+#: person or a test — has one thing to look for.
+MATCHED_CAP_PHRASE = ("the matched-skill text is capped so it cannot crowd out "
+                      "the conversation")
 MATCHED_TRUNCATION_NOTE = (
-    "\n_{omitted} further matched procedure(s) were left out of this block, and "
-    "any procedure above may be cut short: the matched-skill text is capped so "
-    "it cannot crowd out the conversation. Fetch one in full with "
-    "`manage_skills` action=view name=<name>._"
+    "\n_{what}: " + MATCHED_CAP_PHRASE
+    + ". Fetch one in full with `manage_skills` action=view name=<name>._"
 )
-MATCHED_TRUNCATION_NOTE_NO_FETCH = (
-    "\n_{omitted} further matched procedure(s) were left out of this block, and "
-    "any procedure above may be cut short: the matched-skill text is capped so "
-    "it cannot crowd out the conversation._"
-)
+MATCHED_TRUNCATION_NOTE_NO_FETCH = "\n_{what}: " + MATCHED_CAP_PHRASE + "._"
+#: `Law 10`: "0 further procedures were left out" is not what happened when a
+#: single matched procedure was cut at a line boundary, and a note that says the
+#: wrong one of the two is worse than a shorter note.
+MATCHED_CUT_WHAT_OMITTED = ("{omitted} further matched procedure(s) were left out "
+                            "of this block, and any procedure above may be cut short")
+MATCHED_CUT_WHAT_SHORT = "The procedure above is cut short"
 
 #: The fields `render_skill_index_block` actually reads. `status` only decides
 #: whether the `*(draft)*` badge is drawn; its value is never printed.
@@ -312,6 +316,12 @@ def render_matched_skills_block(skills: Optional[Sequence[Dict]],
     and `skill_bodies_applied` — the names of the skills whose text actually
     reached the model, which is what `P4-16`'s receipt needs and what it could
     not say before (`B1363`).
+
+    The floor: the heading, the preamble and the note are ~470 characters, and
+    `context_skill_body_chars` may be set as low as 200, so a budget under that
+    yields a block slightly over it rather than a heading with nothing beneath
+    — the same call `P8-21` made for the catalogue's last surviving entry, for
+    the same reason (an empty heading states that the match found nothing).
     """
     entries = [s for s in (skills or []) if isinstance(s, dict) and s.get("name")]
     if not entries:
@@ -333,7 +343,9 @@ def render_matched_skills_block(skills: Optional[Sequence[Dict]],
     def assemble(bodies: List[str], omitted: int, cut: bool) -> str:
         parts = list(head) + bodies
         if omitted or cut:
-            parts.append(note_tpl.format(omitted=omitted))
+            what = (MATCHED_CUT_WHAT_OMITTED.format(omitted=omitted) if omitted
+                    else MATCHED_CUT_WHAT_SHORT)
+            parts.append(note_tpl.format(what=what))
         return "\n".join(parts)
 
     bodies = [_render_one_body(s) for s in entries]
