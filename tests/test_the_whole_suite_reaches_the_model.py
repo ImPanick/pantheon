@@ -454,6 +454,24 @@ def test_a_small_window_narrows_the_turn_and_keeps_what_it_named(monkeypatch):
     assert {"ask_user", "update_plan", "manage_memory"} <= offered
 
 
+def test_a_word_the_product_maps_to_a_tool_is_the_request_naming_it(monkeypatch):
+    """Rule 4's third form. `_KEYWORD_HINTS` is the product's own word-to-tool
+    table, so *"Research: find out…"* naming `trigger_research` is the request
+    naming a tool and not a ranking of it — pinned, not a tier below. Measured
+    on the tightest room there is: an endpoint that reports no window."""
+    _base(monkeypatch, _mcp_manager(), window=0)
+    _events, sent = _drive(monkeypatch, ["Nothing to do."])
+    offered = set(sent[0]["tools"])
+    assert "trigger_research" in offered, (
+        "the tool the keyword selector picked for this question by name was "
+        "budgeted away")
+    _base(monkeypatch, _mcp_manager(), window=0)
+    _events, sent = _drive(monkeypatch, ["Nothing to do."],
+                           message="check my inbox and archive what I have read")
+    offered = set(sent[0]["tools"])
+    assert {"list_emails", "archive_email"} <= offered, sorted(offered)
+
+
 def test_a_workflow_step_still_gets_only_its_own_tools(monkeypatch):
     """`P22-16`. The step's own list is the selection; the suite never widens
     past it."""

@@ -1079,12 +1079,23 @@ def plan_turn_tool_suite(
     room = tool_suite_room(window, get_setting_fn or get_setting)
 
     domains = [str(d) for d in (domains or ())]
-    pinned = set(ALWAYS_AVAILABLE) | {"ask_user", "update_plan"}
+    # Rule 4: *"If the person's words name a tool, a domain or an MCP server,
+    # it is in the set whatever else happens."* All three are here, and the
+    # third is the keyword selector: `_KEYWORD_HINTS` is the product's own
+    # word-to-tool table, so *"Research: find out…"* naming `trigger_research`
+    # is the request naming a tool, not a ranking of it. Measured, which is why
+    # it is pinned rather than a tier below: on an endpoint that reports no
+    # window the conservative room is 2,400 tokens, the loop's primitives and
+    # the web domain spend most of it, and the owner's own question lost the one
+    # tool the selector had picked for it by name —
+    # `tests/test_the_tools_a_local_model_is_offered_reach_it.py::test_the_owners_question_keeps_the_tool_it_selected`
+    # went red, which is `B1330`'s symptom arriving by a different road.
+    keyword_picks = ToolIndex.select_without_embeddings(query or "", set()) & candidates
+    pinned = set(ALWAYS_AVAILABLE) | {"ask_user", "update_plan"} | keyword_picks
     pinned |= names_the_request_pins(query, candidates, mcp_tools=mcp_by_server or {})
     for domain in domains:
         pinned |= _DOMAIN_TOOL_MAP.get(domain, set())
     pinned &= candidates
-    keyword_picks = ToolIndex.select_without_embeddings(query or "", set()) & candidates
 
     return plan_tool_suite(
         candidates,
