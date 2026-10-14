@@ -51,7 +51,9 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / ".pantheon"))
 
+import src.agent_loop as agent_loop  # noqa: E402
 from src.tool_index import ALWAYS_AVAILABLE, ToolIndex  # noqa: E402
+from src.tool_policy import turn_tool_access  # noqa: E402
 
 _EVAL = ROOT / ".pantheon" / "retrieval_eval.py"
 _CORPUS = ROOT / ".pantheon" / "fixtures" / "tool_selection_probe.json"
@@ -95,8 +97,13 @@ def _fallback_block() -> ast.If:
     return found[0]
 
 
-def _run_fallback(query: str) -> set:
-    """Execute the real fallback branch for one query and return its selection."""
+def _run_fallback(query: str, disabled=None) -> set:
+    """Execute the real fallback branch for one query and return its selection.
+
+    `disabled` is the turn's cap (`B-NEW-3`, fx11-cap). Empty by default, which
+    is the admin turn every case below is about; the one case that passes a cap
+    is the one measuring that the branch's floor honours it.
+    """
     import logging
 
     block = _fallback_block()
@@ -112,9 +119,33 @@ def _run_fallback(query: str) -> set:
         "_allowed_tools": None,
         "_retrieval_query": query,
         "logger": logging.getLogger("test-fallback"),
+        # `B-NEW-3` (fx11-cap): the branch's floor is
+        # `ALWAYS_AVAILABLE` minus what this turn may not call, so the scope
+        # carries the turn's cap and the helper that asks it. The helper is the
+        # product's own — extracted code calling a stubbed floor would be
+        # measuring the stub.
+        "disabled_tools": turn_tool_access(disabled or set()),
+        "_always_available_for_turn": agent_loop._always_available_for_turn,
     }
     exec(compile(module, "<agent_loop-fallback>", "exec"), scope, scope)
     return set(scope["_relevant_tools"] or ())
+
+
+def test_the_fallback_floor_is_what_this_turn_may_call():
+    """`B-NEW-3` (fx11-cap). The branch seeded its floor with the whole of
+    `ALWAYS_AVAILABLE`, and `manage_memory` is in `NON_ADMIN_BLOCKED_TOOLS` —
+    so on every anonymous, non-admin and token-driven turn this selector
+    returned a name the turn could not call, and the only things that noticed
+    were `B1327`'s two gates reading the overlap (`B1366`)."""
+    from src.tool_security import NON_ADMIN_BLOCKED_TOOLS
+
+    assert "manage_memory" in NON_ADMIN_BLOCKED_TOOLS
+    admin = _run_fallback("what did i say about the deadline")
+    capped = _run_fallback("what did i say about the deadline",
+                           disabled=NON_ADMIN_BLOCKED_TOOLS)
+    assert "manage_memory" in admin
+    assert "manage_memory" not in capped
+    assert not (capped & set(NON_ADMIN_BLOCKED_TOOLS)), sorted(capped)
 
 
 @pytest.mark.parametrize("query", [

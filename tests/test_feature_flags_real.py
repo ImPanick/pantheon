@@ -156,8 +156,12 @@ def test_the_feature_denylist_reaches_the_same_gate_plan_mode_uses(monkeypatch):
     src = (ROOT / "src" / "agent_loop.py").read_text(encoding="utf-8")
     tree = ast.parse(src)
     targets = set()
+    # `B-NEW-4` (fx11-cap). `disabled_tools` is a `TurnToolAccess` now, so the
+    # same contribution is spelled `withhold(..., because=...)` — the point of
+    # the type being that the reason is recorded. `update` is still accepted
+    # because it still works and still means the same thing.
     for node in ast.walk(tree):
-        if isinstance(node, ast.Call) and getattr(node.func, "attr", "") == "update":
+        if isinstance(node, ast.Call) and getattr(node.func, "attr", "") in ("update", "withhold"):
             arg = node.args[0] if node.args else None
             if isinstance(arg, ast.Call):
                 inner = getattr(arg.func, "id", None) or getattr(arg.func, "attr", None)
@@ -165,6 +169,19 @@ def test_the_feature_denylist_reaches_the_same_gate_plan_mode_uses(monkeypatch):
                     targets.add((getattr(node.func.value, "id", None), inner))
     assert ("disabled_tools", "feature_disabled_tools") in targets
     assert ("disabled_tools", "plan_mode_disabled_tools") in targets
+    # And the property itself, driven rather than read (`Law 20`): the set the
+    # loop builds is the one the dispatcher's refusal reads, so a feature's
+    # tools are refused by name and not only hidden.
+    from src.tool_policy import TurnToolAccess, WITHHELD_BY_FEATURE
+    from src.tool_security import feature_disabled_tools
+
+    off = feature_disabled_tools({"gallery": False})
+    access = TurnToolAccess(off, because=WITHHELD_BY_FEATURE)
+    assert "generate_image" in off
+    assert all(access.blocks(name) for name in off), sorted(off)
+    # A per-turn clamp cannot hand a switched-off feature back (`H05`).
+    access.difference_update(off)
+    assert set(access) == set(off)
 
 
 # ── the HTTP surface ────────────────────────────────────────────────────────

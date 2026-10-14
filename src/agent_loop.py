@@ -53,12 +53,23 @@ from src.tool_security import (
     email_tool_policy_names,
     plan_mode_disabled_tools,
     feature_disabled_tools,
+    setting_disabled_tools,
 )
 from src.tool_policy import (
     CONFIRM_TOOLS_DIRECTIVE,
     GUIDE_ONLY_DIRECTIVE,
     WEB_TOOL_NAMES,
     ToolPolicy,
+    TurnToolAccess,
+    WITHHELD_BY_CALLER,
+    WITHHELD_BY_FEATURE,
+    WITHHELD_BY_PLAN_MODE,
+    WITHHELD_BY_POLICY,
+    WITHHELD_BY_PRIVILEGE,
+    WITHHELD_BY_STEP_TOOLS,
+    WITHHELD_BY_TURN,
+    WITHHELD_BY_WORKSTATION,
+    turn_tool_access,
 )
 from src.tool_capabilities import (
     DEFAULT_TRUST_RUNG,
@@ -938,6 +949,35 @@ _WORKSPACE_TERMINUS_TOOLS = (
 _CANNOT_LOOK = frozenset({"ask_user", "update_plan"})
 
 
+def _always_available_for_turn(disabled_tools) -> set:
+    """`tool_index.ALWAYS_AVAILABLE`, minus what this turn may not call.
+
+    `B-NEW-3` (fx11-cap). `ALWAYS_AVAILABLE` is `{manage_memory, ask_user,
+    update_plan}` and four selection sites pinned it into `_relevant_tools`
+    unconditionally. **`manage_memory` is in `NON_ADMIN_BLOCKED_TOOLS`**, so on
+    every anonymous, non-admin and token-driven turn the selection set held a
+    name the turn could not call — measured on `747cda6` by driving the loop
+    with real accounts from `tests/helpers/signed_in.people`: the cap was 53
+    names for an anonymous visitor and for a registered non-admin, 54 for a
+    delegated credential, and `manage_memory` was in all three.
+
+    **The cap is right and the pin was wrong, and the direction matters.**
+    `manage_memory` writes the long-term memory every later turn is fed
+    (`tool_security.NON_ADMIN_BLOCKED_REASONS`), and `FORBIDDEN.md` Part 2 —
+    as amended by `D-2026-10-09-01` — names it a **privileged effect** at the
+    write, which is where the memory-laundering path is gated. A pin that
+    reaches past that would widen what a non-admin may run, so the pin becomes
+    privilege-aware instead (`Law 1`).
+
+    Nothing reaches the model that did not reach it before: `_assemble_prompt`
+    and `_tool_schemas_for_route` already subtracted the same names. What
+    changes is that `relevant_tools` and the turn's cap stop overlapping, which
+    is the overlap `B1366`'s two gates were reading.
+    """
+    from src.tool_index import ALWAYS_AVAILABLE
+    return turn_tool_access(disabled_tools).allowed_among(ALWAYS_AVAILABLE)
+
+
 def _turn_has_something_to_look_with(
     relevant_tools: Optional[Iterable[str]],
     disabled_tools: Optional[Iterable[str]] = None,
@@ -970,7 +1010,11 @@ def _turn_has_something_to_look_with(
     """
     if relevant_tools is None:
         return True
-    return bool(set(relevant_tools) - _CANNOT_LOOK - set(disabled_tools or ()))
+    # `B-NEW-4` (fx11-cap). The subtraction is the turn's own predicate now
+    # (`TurnToolAccess.allowed_among`), so this gate and the prompt cannot
+    # disagree about a name with two spellings.
+    return bool(turn_tool_access(disabled_tools).allowed_among(relevant_tools)
+                - _CANNOT_LOOK)
 
 
 # ── `B-NEW` (fx9-suite). The whole suite, and what it costs ──────────────────
@@ -1803,7 +1847,9 @@ def fenced_tool_names(tool_names: set, disabled_tools: set = None,
     """
     if compact:
         return frozenset()
-    included = set(tool_names or set()) - set(disabled_tools or set())
+    # `B-NEW-4` (fx11-cap). One predicate for the receipt, the prompt, the
+    # schema list and the dispatcher.
+    included = turn_tool_access(disabled_tools).allowed_among(tool_names or set())
     return frozenset(name for name in TOOL_SECTIONS if name in included)
 
 
@@ -1846,8 +1892,10 @@ def _assemble_prompt(tool_names: set, disabled_tools: set = None, compact: bool 
     default, so the module-level `AGENT_SYSTEM_PROMPT` and every existing caller
     are byte-identical.
     """
-    disabled = disabled_tools or set()
-    included = tool_names - disabled
+    # `B-NEW-4` (fx11-cap). `included = tool_names - disabled` was this
+    # module's own copy of the predicate, and the only one of the thirteen that
+    # the loop's gates were reading through (`B1366`). One call now.
+    included = turn_tool_access(disabled_tools).allowed_among(tool_names)
 
     if compact:
         # `H09`. This list is read by a model that has just been told "only the
@@ -4584,7 +4632,7 @@ def _skill_active_toolsets(disabled_tools) -> list:
     [bash]` was correctly withheld from the catalogue of a turn without `bash`
     and pasted into the same message in full.
     """
-    return list(set(TOOL_SECTIONS.keys()) - set(disabled_tools or ()))
+    return list(turn_tool_access(disabled_tools).allowed_among(TOOL_SECTIONS.keys()))
 
 
 def _skill_body_tool_in_prompt(relevant_tools, disabled_tools, needs_admin: bool) -> bool:
@@ -4607,7 +4655,7 @@ def _skill_body_tool_in_prompt(relevant_tools, disabled_tools, needs_admin: bool
     predicate, called from the index renderer's call site and the matched
     renderer's with the same three arguments (`Law 7`).
     """
-    if "manage_skills" in set(disabled_tools or ()):
+    if turn_tool_access(disabled_tools).blocks("manage_skills"):
         return False
     if needs_admin and "manage_skills" in _ADMIN_PROMPT_FORCE_INCLUDE:
         return True
@@ -4690,9 +4738,14 @@ def _build_base_prompt(
     """
     from src.tool_index import ALWAYS_AVAILABLE
 
-    disabled = set(disabled_tools or [])
-    if not get_setting("image_gen_enabled", False):
-        disabled.add("generate_image")
+    # `B-NEW-2` (fx11-cap). The rule lives in
+    # `tool_security.setting_disabled_tools` and `stream_agent_loop` already
+    # put its answer in the turn's set, so this is a no-op on every production
+    # path and still the answer for a direct caller (several tests call this
+    # function). It no longer *invents* a denylist the loop does not share:
+    # `turn_tool_access` hands back the loop's own object when there is one.
+    disabled = turn_tool_access(disabled_tools)
+    disabled.withhold(setting_disabled_tools(get_setting), because=WITHHELD_BY_FEATURE)
 
     if relevant_tools is not None:
         # RAG mode: trust the relevant_tools set as already-composed.
@@ -4702,7 +4755,14 @@ def _build_base_prompt(
         # ALWAYS_AVAILABLE back in here used to silently undo those
         # drops. Only force-include the irreducible loop primitives
         # (ask_user, update_plan) as belt-and-suspenders.
-        tool_names = set(relevant_tools) | {"ask_user", "update_plan"}
+        # `B-NEW-3` (fx11-cap). The pin is privilege-aware, for the same
+        # reason `_always_available_for_turn` is: plan mode caps `update_plan`
+        # (it writes the plan, and `PLAN_MODE_READONLY_TOOLS` does not name
+        # it), so an unconditional union put a name in `tool_names` that the
+        # subtraction two lines down then removed — `relevant_tools` and the
+        # cap overlapping again, inside the reader that does the subtracting.
+        # Nothing reaches the model that did not before.
+        tool_names = set(relevant_tools) | disabled.allowed_among({"ask_user", "update_plan"})
         if needs_admin:
             tool_names |= _ADMIN_PROMPT_FORCE_INCLUDE
         agent_prompt = _assemble_prompt(
@@ -6189,7 +6249,14 @@ async def stream_agent_loop(
                         _stale_steers, session_id)
     mcp_mgr = get_mcp_manager()
     prep_timings: Dict[str, float] = {}
-    disabled_tools = set(disabled_tools or [])
+    # `B-NEW-4` (fx11-cap). **The turn's one answer to "what can this turn
+    # call?"** Ten writers fed this set and thirteen readers each wrote the
+    # subtraction out again; `TurnToolAccess` is still a `set`, so every one of
+    # those operations is unchanged, and it now carries the predicate
+    # (alias-aware, the dispatcher's rule) and **why** each name is withheld —
+    # so a per-turn clamp cannot lift a privilege cap. The measurement and the
+    # three defects are in `src/tool_policy.py` above the class.
+    disabled_tools = TurnToolAccess(disabled_tools or [], because=WITHHELD_BY_CALLER)
     route_descriptors = list(route_descriptors or [])
     while len(route_descriptors) < 1 + len(fallbacks or []):
         route_descriptors.append({})
@@ -6200,7 +6267,8 @@ async def stream_agent_loop(
     if not isinstance(requested_endpoint_cost_tracked, bool):
         requested_endpoint_cost_tracked = None
     if tool_policy:
-        disabled_tools.update(tool_policy.all_disabled_names())
+        disabled_tools.withhold(tool_policy.all_disabled_names(),
+                                because=WITHHELD_BY_POLICY)
         if tool_policy.disable_mcp:
             mcp_mgr = None
     guide_only = bool(tool_policy and tool_policy.mode == "guide_only")
@@ -6218,7 +6286,11 @@ async def stream_agent_loop(
         # is the non-admin policy regardless of who minted it.
         public_blocked_tools = set(public_blocked_tools) | delegated_credential_blocked_tools()
     if public_blocked_tools:
-        disabled_tools.update(public_blocked_tools)
+        # `B-NEW-1` (fx11-cap). Recorded as a **privilege**, which is the one
+        # reason no later clamp may lift: `lift()` refuses it, so the
+        # `pantheon-qwen3` notes clamp below can no longer hand a non-admin or
+        # an anonymous visitor `manage_calendar` and `manage_tasks` (`Law 1`).
+        disabled_tools.withhold(public_blocked_tools, because=WITHHELD_BY_PRIVILEGE)
         # MCP tools are namespaced dynamically, so hide all MCP schemas for
         # public/non-admin users rather than trying to enumerate every tool.
         mcp_mgr = None
@@ -6230,7 +6302,15 @@ async def stream_agent_loop(
     # callable. Contributed into the same denylist `plan_mode` uses rather than
     # as a second gate, so it inherits `execute_tool_block`'s enforcement, the
     # prompt cache key below, and one set of tests (`Law 14`).
-    disabled_tools.update(feature_disabled_tools())
+    disabled_tools.withhold(feature_disabled_tools(), because=WITHHELD_BY_FEATURE)
+    # `B-NEW-2` (fx11-cap). The settings half of the same question, in the
+    # turn's own set rather than in a local copy of it inside
+    # `_build_base_prompt` — which is where `generate_image` used to enter, so
+    # the prompt withheld it and the native schema list, which filters by this
+    # set, sent it anyway. One definition (`tool_security.setting_disabled_tools`),
+    # read here and there.
+    disabled_tools.withhold(setting_disabled_tools(get_setting),
+                            because=WITHHELD_BY_FEATURE)
 
     # `P20-04`. The workstation's screen is offered only to a turn whose person
     # the workstation would answer: switched on, with an address, and this
@@ -6238,16 +6318,17 @@ async def stream_agent_loop(
     # otherwise, through the same denylist every other per-turn rule feeds, so
     # the schema, the prompt and the dispatcher agree (`Law 14`). A token-driven
     # run is not offered it either (`B70`; `unavailable_reason` says why).
-    if "computer" not in disabled_tools and _computer_unavailable_reason(
+    if disabled_tools.allows("computer") and _computer_unavailable_reason(
             owner, delegated_credential=bool(delegated_credential)):
-        disabled_tools.add("computer")
+        disabled_tools.withhold({"computer"}, because=WITHHELD_BY_WORKSTATION)
 
     if plan_mode:
         # Plan mode: investigate read-only, propose a plan, don't execute. The
         # route also unions the read-only-disabled set, but enforce here too so
         # the loop is safe regardless of caller. MCP stays available but is
         # filtered to read-only tools below (after the disabled map is loaded).
-        disabled_tools.update(plan_mode_disabled_tools())
+        disabled_tools.withhold(plan_mode_disabled_tools(),
+                                because=WITHHELD_BY_PLAN_MODE)
 
     uploaded_files = uploaded_files or []
     _upload_msg = _uploaded_files_context_message(uploaded_files)
@@ -6295,10 +6376,15 @@ async def stream_agent_loop(
     _active_document_relevant = _turn_targets_active_document(_intent, _last_user, active_document)
     _active_email_draft_relevant = _active_document_relevant and _is_email_document_obj(active_document)
     if _active_email_draft_relevant:
-        disabled_tools.update({
+        # `B-NEW-4` (fx11-cap). Both spellings are still named, because they
+        # are what this writer has always written and `Law 1` keeps a working
+        # path working — but the readers are alias-aware now, so a future
+        # entry in one spelling withholds the other everywhere rather than
+        # only at the dispatcher.
+        disabled_tools.withhold({
             "list_email_accounts", "list_emails", "read_email", "scan_email_unsubscribes",
             "mcp__email__list_emails", "mcp__email__read_email", "mcp__email__scan_email_unsubscribes",
-        })
+        }, because=WITHHELD_BY_TURN)
     _prompt_active_document = active_document if _active_document_relevant else None
     # `B-NEW` (fx10-intent). **The short-circuit kept, and measured, rather
     # than removed.** The brief's question was whether this path still earns a
@@ -6645,7 +6731,7 @@ async def stream_agent_loop(
         _mcp_block_map, _mcp_block_q = mcp_mgr.plan_mode_blocked_mcp()
         for _sid, _names in _mcp_block_map.items():
             _mcp_disabled_map.setdefault(_sid, set()).update(_names)
-        disabled_tools.update(_mcp_block_q)
+        disabled_tools.withhold(_mcp_block_q, because=WITHHELD_BY_PLAN_MODE)
     # `P22-16`. A workflow AI step's own tool list (`ToolPolicy.allowed_tools`).
     # Every known name outside it joins the denylist, and every MCP tool
     # outside it the per-server map, because those two are what the prompt,
@@ -6656,12 +6742,15 @@ async def stream_agent_loop(
     _allowed_tools = tool_policy.allowed_tools if tool_policy is not None else None
     if _allowed_tools is not None:
         from src.tool_policy import known_tool_names as _known_tool_names
-        disabled_tools.update(n for n in _known_tool_names() if tool_policy.outside_allowed(n))
+        disabled_tools.withhold(
+            (n for n in _known_tool_names() if tool_policy.outside_allowed(n)),
+            because=WITHHELD_BY_STEP_TOOLS)
         if mcp_mgr:
             for _mcp_tool in mcp_mgr.get_all_tools(_mcp_disabled_map, overrides={}):
                 if tool_policy.outside_allowed(_mcp_tool["qualified_name"]):
                     _mcp_disabled_map.setdefault(_mcp_tool["server_id"], set()).add(_mcp_tool["name"])
-                    disabled_tools.add(_mcp_tool["qualified_name"])
+                    disabled_tools.withhold({_mcp_tool["qualified_name"]},
+                                            because=WITHHELD_BY_STEP_TOOLS)
         logger.info("[tool-rag] step's own tools only: %s", sorted(_allowed_tools))
 
     def _within_allowed(names) -> Set[str]:
@@ -6692,7 +6781,7 @@ async def stream_agent_loop(
             # tools (intersection with the plan-mode read-only allowlist) so the
             # agent can investigate; write/shell tools stay out until the request
             # actually calls for them (RAG retrieval adds those on a real ask).
-            _relevant_tools = set(ALWAYS_AVAILABLE)
+            _relevant_tools = _always_available_for_turn(disabled_tools)
             from src.tool_security import PLAN_MODE_READONLY_TOOLS
             _relevant_tools |= (_DOMAIN_TOOL_MAP["files"] & PLAN_MODE_READONLY_TOOLS)
             logger.info("[tool-rag] Low-signal but workspace active; including read-only file tools")
@@ -6805,7 +6894,13 @@ async def stream_agent_loop(
                 if _retrieval_query:
                     try:
                         _relevant_tools = await asyncio.wait_for(
-                            asyncio.to_thread(tool_idx.get_tools_for_query, _retrieval_query, 8),
+                            asyncio.to_thread(
+                                tool_idx.get_tools_for_query, _retrieval_query, 8,
+                                # `B-NEW-3` (fx11-cap). The index's own floor
+                                # is `ALWAYS_AVAILABLE`; hand it the capped one
+                                # so retrieval cannot reintroduce a name this
+                                # turn may not call.
+                                _always_available_for_turn(disabled_tools)),
                             timeout=_TOOL_SELECTION_TIMEOUT_SECONDS,
                         )
                         _mcp_retrieval_ran = _mcp_indexed
@@ -6839,7 +6934,7 @@ async def stream_agent_loop(
         # `Law 13`/`Law 14`: one rule, one place.
         from src.tool_index import ALWAYS_AVAILABLE, ToolIndex
         _relevant_tools = ToolIndex.select_without_embeddings(
-            _retrieval_query, set(ALWAYS_AVAILABLE))
+            _retrieval_query, _always_available_for_turn(disabled_tools))
         # This selector cannot see an MCP tool name, so whatever retrieval knew
         # a moment ago no longer describes the set being carried forward.
         _mcp_retrieval_ran = False
@@ -6866,7 +6961,8 @@ async def stream_agent_loop(
             _relevant_tools.add("ui_control")
         if "web" in (_intent.get("domains") or set()):
             _relevant_tools.update(WEB_TOOL_NAMES)
-            _blocked_web_tools = sorted(WEB_TOOL_NAMES & disabled_tools)
+            _blocked_web_tools = sorted(
+                t for t in WEB_TOOL_NAMES if disabled_tools.blocks(t))
             if _blocked_web_tools:
                 logger.info(
                     "[agent-intent] web domain selected but search tools remain disabled=%s",
@@ -6913,18 +7009,16 @@ async def stream_agent_loop(
     # inspect files whose inline text was truncated or omitted.
     if not guide_only and uploaded_files:
         if _relevant_tools is None:
-            from src.tool_index import ALWAYS_AVAILABLE
-            _relevant_tools = set(ALWAYS_AVAILABLE)
+            _relevant_tools = _always_available_for_turn(disabled_tools)
         _relevant_tools.update({"read_file", "grep", "ls", "manage_documents"})
 
     # Per-request forced tools are stronger than retrieval. Explicit search
     # settings make web tools visible even when tool RAG misses them;
     # route-level disabled_tools decides what remains allowed.
     if not guide_only and forced_tools:
-        forced_set = {t for t in forced_tools if t not in disabled_tools}
+        forced_set = disabled_tools.allowed_among(forced_tools)
         if _relevant_tools is None:
-            from src.tool_index import ALWAYS_AVAILABLE
-            _relevant_tools = set(ALWAYS_AVAILABLE)
+            _relevant_tools = _always_available_for_turn(disabled_tools)
         _relevant_tools.update(forced_set)
 
     if not guide_only and _relevant_tools is not None:
@@ -6988,6 +7082,22 @@ async def stream_agent_loop(
                         )
         except Exception as _e:
             logger.debug(f"[tool-rag] skill-aware tool include skipped: {_e}")
+
+    # `B-NEW-3` (fx11-cap). **The invariant, in one place.** Everything above
+    # widens `_relevant_tools` — the selector's floor, the intent's domains,
+    # the cookbook and UI additions, the open document, uploads, forced tools,
+    # the browser expansion, a skill's `requires_toolsets` — and not one of
+    # them asked whether the turn may call what it was adding, because the
+    # subtraction happened later inside `_assemble_prompt`. So a name could be
+    # in `relevant_tools` and in the cap at once and the only things that
+    # noticed were `B1366`'s two gates, after the fact. Asked here, once, where
+    # the set is final for the primary route. Nothing reaches the model that
+    # did not before: the prompt and the schema list already subtracted these.
+    if _relevant_tools is not None:
+        _capped_out = sorted(set(_relevant_tools) - disabled_tools.allowed_among(_relevant_tools))
+        if _capped_out:
+            logger.info("[tool-access] selected but not callable this turn: %s", _capped_out)
+            _relevant_tools = disabled_tools.allowed_among(_relevant_tools)
 
     _intent_domains = set(_intent.get("domains") or set())
     _base_relevant_tools = None if _relevant_tools is None else set(_relevant_tools)
@@ -7074,6 +7184,12 @@ async def stream_agent_loop(
             # declared tools, this route's own clamp — for every route a turn
             # can take (the first, a fallback, the one that answers).
             route_tools = _within_allowed(route_tools)
+            # `B-NEW-3` (fx11-cap). And never a name this turn cannot call.
+            # The three clamps above build `route_tools` from a literal, so
+            # Site A's answer does not cover them: the notes clamp's literal is
+            # where an anonymous visitor was offered `manage_calendar` and
+            # `manage_tasks`.
+            route_tools = disabled_tools.allowed_among(route_tools)
         return route_tools
 
     (
@@ -7087,14 +7203,23 @@ async def stream_agent_loop(
     if _pan_doc_finetune_mode and _relevant_tools is not None:
         logger.info("[agent-intent] pantheon doc finetune tool clamp=%s", sorted(_relevant_tools))
     elif _pan_notes_finetune_mode and _relevant_tools is not None:
-        disabled_tools.difference_update({
-            "manage_notes", "manage_calendar", "manage_tasks",
-        })
+        # `B-NEW-1` (fx11-cap). The clamp lifts the names a per-turn rule or an
+        # unattributed writer withheld, and `lift()` refuses a privilege, a
+        # policy, a switched-off feature, plan mode or a step's own list.
+        # Measured on `747cda6`: this line was a bare `difference_update` on a
+        # plain set, so on a `pantheon-qwen3` notes turn a non-admin's cap went
+        # 52 -> 50 and `manage_calendar`/`manage_tasks` were named in the
+        # prompt and sent as schemas to an anonymous visitor, with every call
+        # refused by the dispatcher's own gate (`is_public_blocked_tool`, the
+        # second of `B533`'s two). Nothing an admin gets changes: for an admin
+        # none of the three is withheld, so none is lifted.
+        disabled_tools.lift({"manage_notes", "manage_calendar", "manage_tasks"},
+                            because="pantheon-qwen3 notes clamp")
         logger.info("[agent-intent] pantheon notes finetune tool clamp=%s", sorted(_relevant_tools))
     elif _pan_general_no_tool_mode:
         try:
             from src.tool_policy import known_tool_names
-            disabled_tools.update(known_tool_names())
+            disabled_tools.withhold(known_tool_names(), because=WITHHELD_BY_TURN)
         except Exception as exc:
             # `P3-17`, and this one fails **open**: the set being built is
             # `disabled_tools`, so an import that quietly does nothing leaves
@@ -7643,7 +7768,10 @@ async def stream_agent_loop(
                 # prompt offered a tool the request withheld — `Law 13`, the two
                 # halves of one decision. A step's own list still removes them,
                 # in `_filter_route_tool_schemas` below.
-                schema_names = set(route_relevant_tools) | {"ask_user", "update_plan"}
+                # `B-NEW-3` (fx11-cap): the same pin, capped the same way, so
+                # the prompt's list and the schema list stay one decision.
+                schema_names = set(route_relevant_tools) | disabled_tools.allowed_among(
+                    {"ask_user", "update_plan"})
                 if _needs_admin:
                     schema_names |= _ADMIN_PROMPT_FORCE_INCLUDE
                 base_schemas = [
@@ -7685,10 +7813,14 @@ async def stream_agent_loop(
             if route_state["pan_qwen_finetune_model"]:
                 schemas = []
             if disabled_tools:
+                # `B-NEW-4` (fx11-cap). The dispatcher asked every
+                # policy-equivalent spelling and this filter asked the literal
+                # name; one predicate now, so a tool refused at the call cannot
+                # be sent as a schema.
                 schemas = [
                     schema for schema in schemas
-                    if schema.get("function", {}).get("name") not in disabled_tools
-                    and schema.get("name") not in disabled_tools
+                    if disabled_tools.allows(schema.get("function", {}).get("name"))
+                    and disabled_tools.allows(schema.get("name"))
                 ]
             return _filter_route_tool_schemas(schemas)
 
@@ -8652,9 +8784,11 @@ async def stream_agent_loop(
                                 # candidate's notes mode must re-enable the
                                 # personal managers in the shared execution
                                 # blocklist, or its tool calls are rejected.
-                                disabled_tools.difference_update({
-                                    "manage_notes", "manage_calendar", "manage_tasks",
-                                })
+                                # `B-NEW-1` (fx11-cap): same rule as the
+                                # primary route's clamp, same refusal.
+                                disabled_tools.lift(
+                                    {"manage_notes", "manage_calendar", "manage_tasks"},
+                                    because="pantheon-qwen3 notes clamp (answering route)")
                             data["pinned_for_run"] = True
                         _compaction_frame = _committed_compaction_frame(candidate_index)   # `B921`
                         if _compaction_frame:
@@ -8940,7 +9074,7 @@ async def stream_agent_loop(
             tc.get("name") in ("create_document", "update_document")
             for tc in native_tool_calls
         )
-        if not has_doc_tool and session_id and "create_document" not in (disabled_tools or set()):
+        if not has_doc_tool and session_id and disabled_tools.allows("create_document"):
             _code_block_re = re.compile(r'```(\w*)\n([\s\S]*?)```')
             for m in _code_block_re.finditer(round_response):
                 lang_tag = m.group(1).lower()
@@ -9241,8 +9375,7 @@ async def stream_agent_loop(
             reason = (f"calling {_runaway} with identical arguments over and over" if _runaway
                       else "repeating the same tool calls without new progress" if _stuck_rounds >= 4
                       else "bringing nothing new round after round")
-            _off = [t for t in ("web_search", "bash")
-                    if disabled_tools and t in disabled_tools]
+            _off = [t for t in ("web_search", "bash") if disabled_tools.blocks(t)]
             # `P4-10`. Which tool, how many times, with what, and what to do
             # next — instead of one fixed sentence for both conditions. The
             # arguments are quoted only through `safe_arguments`, which
@@ -9419,9 +9552,10 @@ async def stream_agent_loop(
                 tool_policy
                 and any(tool_policy.blocks(name) for name in policy_names)
             )
-            blocked_by_disabled_tools = bool(
-                disabled_tools and not policy_names.isdisjoint(disabled_tools)
-            )
+            # `B-NEW-4` (fx11-cap). This was the only one of the thirteen
+            # readers that honoured `email_tool_policy_names`; it is now the
+            # same call every other reader makes.
+            blocked_by_disabled_tools = disabled_tools.blocks(block.tool_type)
             if (
                 (blocked_by_tool_policy or blocked_by_disabled_tools)
                 and not _pan_clamped_tool_allowed
@@ -9509,7 +9643,8 @@ async def stream_agent_loop(
                         name for name in _tool_names_sent if name
                     )
                     approval_selected_tools.add(block.tool_type)
-                    approval_selected_tools.difference_update(disabled_tools)
+                    approval_selected_tools = disabled_tools.allowed_among(
+                        approval_selected_tools)
                     pending_approval = tool_approval_store.create(
                         owner=owner,
                         session_id=session_id,

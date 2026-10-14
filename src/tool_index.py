@@ -674,7 +674,13 @@ class ToolIndex:
         self, query: str, k: int = 8, always_include: Optional[Set[str]] = None
     ) -> Set[str]:
         """Get the set of tool names to include for a given user query."""
-        base = set(always_include or ALWAYS_AVAILABLE)
+        # `B-NEW-3` (fx11-cap). `is not None`, not `or`: an **empty**
+        # `always_include` is a caller saying "this turn's privileges allow
+        # none of the floor", and `or` read that as "no preference" and handed
+        # back the uncapped `ALWAYS_AVAILABLE`. `select_without_embeddings`
+        # below already asks it this way; two siblings, one of them widening
+        # on a falsy value (`Law 7`).
+        base = set(ALWAYS_AVAILABLE if always_include is None else always_include)
         retrieved = self.retrieve(query, k=k)
         base.update(retrieved)
         return self.select_without_embeddings(query, base)

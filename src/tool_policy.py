@@ -411,6 +411,249 @@ def known_tool_names() -> Set[str]:
     return names
 
 
+# ── `B-NEW-4` (fx11-cap). One answer to "what can this turn call?" ──────────
+#
+# `stream_agent_loop` built a plain `set` named `disabled_tools` and then wrote
+# to it from **ten** places — `ToolPolicy.all_disabled_names()`,
+# `blocked_tools_for_owner(owner)`, `delegated_credential_blocked_tools()`,
+# `feature_disabled_tools()`, the workstation gate, `plan_mode_disabled_tools()`,
+# the open email draft, plan mode's MCP block queue, a workflow step's own list
+# (twice) and a `pantheon-qwen3` clamp — and read it in **thirteen**, each of
+# which wrote the predicate out again. Measured on `747cda6`, driving the real
+# loop with `relevant_tools={"ask_user","update_plan"}` and real accounts from
+# `tests/helpers/signed_in.people`:
+#
+#     privilege                 cap   what else was true
+#     anonymous                  53   `manage_memory` capped; it is in
+#                                     `tool_index.ALWAYS_AVAILABLE`, which four
+#                                     selection sites pin unconditionally
+#     registered non-admin       53   identical
+#     admin                       2   `computer`, `generate_image`
+#     delegated credential       54   + `manage_documents` (`B995`)
+#     plan mode (admin)          56
+#     guide-only (admin)         85
+#
+# Three things that set could not say, and each of them was a defect:
+#
+#   1. **Only one of the thirteen readers honoured `email_tool_policy_names`.**
+#      The dispatcher asked every policy-equivalent spelling; the prompt and the
+#      schema filter asked the literal name — which is why the open-email-draft
+#      writer has to spell `list_emails` and `mcp__email__list_emails` by hand.
+#   2. **Nothing recorded WHY a name was withheld**, so a later clamp could lift
+#      a privilege cap. `_pan_notes_finetune_mode`'s
+#      `difference_update({manage_notes, manage_calendar, manage_tasks})` did
+#      exactly that: on a `pantheon-qwen3` notes turn a non-admin's cap went
+#      from 52 names to **50**, and `manage_calendar` and `manage_tasks` were
+#      named in the prompt and sent as schemas to an anonymous visitor. The
+#      dispatcher's own gate (`is_public_blocked_tool`, the second of `B533`'s
+#      two) still refused every call — so what shipped was two tools offered and
+#      then refused, which is what *"intermittent"* looks like from outside.
+#   3. **A name could be in `relevant_tools` and in the cap at once** and
+#      nothing noticed, because the subtraction happened later inside
+#      `_assemble_prompt`. `B1366` had to add a helper for two gates that were
+#      reading the overlap.
+#
+# So: the set is still a `set` — every `in`, `-`, `.update()` and
+# `.difference_update()` in the loop keeps working byte for byte — and it now
+# carries the predicate and the reasons. `lift()` is the `Law 1` guarantee
+# expressed as a property of the type rather than as a thing thirteen call
+# sites have to remember: **a privilege, a policy, a switched-off feature, plan
+# mode and a step's own list cannot be lifted by a later clamp.**
+
+#: Why a name is withheld from a turn. An enum rather than a flag (`Law 10`):
+#: "it is withheld" and "it is withheld because this person may not use it" are
+#: different facts and only the second one is unliftable.
+WITHHELD_BY_CALLER = "caller"
+WITHHELD_BY_POLICY = "tool_policy"
+WITHHELD_BY_PRIVILEGE = "privilege"
+WITHHELD_BY_FEATURE = "feature"
+WITHHELD_BY_WORKSTATION = "workstation"
+WITHHELD_BY_PLAN_MODE = "plan_mode"
+WITHHELD_BY_STEP_TOOLS = "step_tools"
+WITHHELD_BY_TURN = "turn"
+#: A name added through the plain `set` API with no reason given. Liftable,
+#: because every `.update()` that predates this type behaved that way and
+#: `Law 1` says a working path survives.
+WITHHELD_UNATTRIBUTED = "unattributed"
+
+WITHHELD_REASONS = frozenset({
+    WITHHELD_BY_CALLER, WITHHELD_BY_POLICY, WITHHELD_BY_PRIVILEGE,
+    WITHHELD_BY_FEATURE, WITHHELD_BY_WORKSTATION, WITHHELD_BY_PLAN_MODE,
+    WITHHELD_BY_STEP_TOOLS, WITHHELD_BY_TURN, WITHHELD_UNATTRIBUTED,
+})
+
+#: The reasons a later clamp may lift. Everything outside this set is a
+#: privilege decision (`blocked_tools_for_owner`, `B70`'s token cap), a policy
+#: the route composed, a capability an admin switched off (`H05`), plan mode's
+#: read-only allowlist or a workflow step's own list (`P22-16`) — and
+#: `FORBIDDEN.md` Part 2 holds three of those five.
+LIFTABLE_REASONS = frozenset({WITHHELD_BY_TURN, WITHHELD_UNATTRIBUTED})
+
+
+class TurnToolAccess(set):
+    """The names this turn withholds, and the one predicate that reads them.
+
+    A `set`, so it is a drop-in for the `disabled_tools` every caller of
+    `stream_agent_loop` already passes and for the ~40 plain set operations
+    inside it. What it adds:
+
+    * :meth:`blocks` / :meth:`allows` / :meth:`allowed_among` — **one**
+      predicate, asked of every policy-equivalent spelling
+      (`tool_security.email_tool_policy_names`), so the prompt, the schema
+      list and the dispatcher cannot answer differently for one name;
+    * :meth:`withhold` with a ``because``, and :meth:`reasons_for`;
+    * :meth:`lift`, which removes a name only when every reason it is withheld
+      for is liftable — so a per-turn clamp cannot widen a privilege cap.
+
+    ``discard``, ``remove``, ``difference_update`` and ``-=`` route through
+    :meth:`lift`, so a call site that predates this type gets the guarantee
+    without being rewritten.
+    """
+
+    def __init__(self, names=(), *, because=WITHHELD_UNATTRIBUTED):
+        super().__init__()
+        self._why: dict = {}
+        self.withhold(names, because=because)
+
+    # ── the predicate, in one place ────────────────────────────────────────
+    @staticmethod
+    def _spellings(tool_name):
+        """Every policy-equivalent spelling of a name, the dispatcher's rule.
+
+        Imported at call time: `src.tool_security` imports nothing from here,
+        but this module is reached from `src.agent_loop`, which both import.
+        """
+        try:
+            from src.tool_security import email_tool_policy_names
+            return email_tool_policy_names(tool_name)
+        except Exception as exc:                                  # pragma: no cover
+            # `P3-17`, and it fails **closed on nothing**: the literal name is
+            # still asked, which is what every reader but the dispatcher did
+            # before this existed.
+            _logger.debug("TurnToolAccess: alias lookup unavailable (%s)", exc)
+            return frozenset((tool_name,))
+
+    def blocks(self, tool_name) -> bool:
+        """Whether this turn withholds ``tool_name`` under any of its spellings."""
+        if not tool_name:
+            return False
+        return not self._spellings(tool_name).isdisjoint(self)
+
+    def allows(self, tool_name) -> bool:
+        return not self.blocks(tool_name)
+
+    def allowed_among(self, names) -> set:
+        """The subset of ``names`` this turn can call — the answer to the
+        question every reader was asking with its own subtraction."""
+        return {n for n in (names or ()) if self.allows(n)}
+
+    def reasons_for(self, tool_name) -> frozenset:
+        """Why ``tool_name`` is withheld, over every spelling. Empty when it is
+        not withheld at all."""
+        out: set = set()
+        for spelling in self._spellings(tool_name):
+            out |= self._why.get(spelling, set())
+        return frozenset(out)
+
+    def withheld_for(self, because) -> set:
+        """The names withheld for this reason."""
+        return {name for name, why in self._why.items() if because in why}
+
+    # ── the writers ───────────────────────────────────────────────────────
+    def withhold(self, names, *, because=WITHHELD_UNATTRIBUTED) -> set:
+        """Withhold ``names`` for ``because``. Returns the names newly added."""
+        if because not in WITHHELD_REASONS:
+            raise ValueError(f"unknown withholding reason: {because!r}")
+        added = set()
+        for name in (names or ()):
+            if not isinstance(name, str) or not name:
+                continue
+            if name not in self:
+                added.add(name)
+            super().add(name)
+            self._why.setdefault(name, set()).add(because)
+        return added
+
+    def lift(self, names, *, because=WITHHELD_BY_TURN) -> set:
+        """Stop withholding ``names``, but **only** the ones whose every reason
+        is liftable. Returns what was actually lifted; what was refused is
+        logged with the reason, because a clamp that silently did nothing is
+        how the opposite defect would arrive.
+
+        ``because`` is who is asking, and it is recorded in the log line. It
+        does not widen the rule: a privilege entry is unliftable whoever asks.
+        """
+        lifted, refused = set(), {}
+        for name in (names or ()):
+            if name not in self:
+                continue
+            why = self._why.get(name, {WITHHELD_UNATTRIBUTED})
+            if why - LIFTABLE_REASONS:
+                refused[name] = sorted(why - LIFTABLE_REASONS)
+                continue
+            super().discard(name)
+            self._why.pop(name, None)
+            lifted.add(name)
+        if refused:
+            _logger.info(
+                "[tool-access] %s may not lift %s", because,
+                ", ".join(f"{n} ({'+'.join(r)})" for n, r in sorted(refused.items())),
+            )
+        return lifted
+
+    # ── the plain `set` API, so nothing in the loop has to change ─────────
+    def add(self, name) -> None:
+        self.withhold((name,))
+
+    def update(self, *others) -> None:
+        for other in others:
+            self.withhold(other)
+
+    def discard(self, name) -> None:
+        self.lift((name,), because="discard")
+
+    def remove(self, name) -> None:
+        if name not in self:
+            raise KeyError(name)
+        self.lift((name,), because="remove")
+
+    def difference_update(self, *others) -> None:
+        for other in others:
+            self.lift(other, because="difference_update")
+
+    def clear(self) -> None:
+        self.lift(set(self), because="clear")
+
+    def __ior__(self, other):
+        self.withhold(other)
+        return self
+
+    def __isub__(self, other):
+        self.lift(other, because="-=")
+        return self
+
+    def copy(self) -> "TurnToolAccess":
+        twin = TurnToolAccess()
+        for name, why in self._why.items():
+            for because in why:
+                twin.withhold((name,), because=because)
+        return twin
+
+
+def turn_tool_access(disabled_tools, *, because=WITHHELD_UNATTRIBUTED) -> TurnToolAccess:
+    """This turn's access, from whatever the caller handed in.
+
+    The object itself when it is already one — so no reason is lost and a
+    reader cannot accidentally make a privilege entry liftable — and a new one
+    around a plain set or `None` otherwise. Every reader in `src/agent_loop.py`
+    goes through this, which is what makes the predicate single (`Law 7`) while
+    the dozens of existing callers that pass a plain set keep working.
+    """
+    if isinstance(disabled_tools, TurnToolAccess):
+        return disabled_tools
+    return TurnToolAccess(disabled_tools or (), because=because)
+
+
 def build_effective_tool_policy(
     *,
     disabled_tools: Optional[Iterable[str]] = None,
