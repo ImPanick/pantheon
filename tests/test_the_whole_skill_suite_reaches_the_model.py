@@ -420,3 +420,80 @@ def test_a_hostile_skill_still_cannot_close_its_own_block(store, tmp_path):
     body, _ = _prompt("hostile obey me never")
     block = _skills_block(body)
     assert block.count("<<<END_USER_SAVED_MATERIAL>>>") == 1
+
+
+# ── 7. the footer pill, driven under node ───────────────────────────────────
+
+import shutil  # noqa: E402
+import textwrap  # noqa: E402
+
+from tests.helpers.esc_stub import ui_default_stub  # noqa: E402  (`B874`)
+from test_tool_effect_surfaces_js import (  # noqa: E402
+    _CARD_SHIM, _CARD_STUBS, _make_sandbox, _run,
+)
+
+_ROOT = Path(__file__).resolve().parents[1]
+_CHAT_RENDERER = _ROOT / "static" / "js" / "chatRenderer.js"
+
+_JS_STUBS = dict(_CARD_STUBS, **{
+    "ui.js": ui_default_stub(
+        "showToast: () => {}, copyToClipboard: () => {},\n"
+        "showError: () => {}, el: (id) => document.getElementById(id),\n"
+        "debounce: (f) => f, autoResize: () => {}, scrollHistory: () => {},\n"
+        "formatBytes: (n) => String(n),"),
+})
+
+
+@pytest.fixture(scope="module")
+def js_sandbox(tmp_path_factory):
+    if not shutil.which("node"):
+        pytest.skip("node binary not on PATH")
+    return _make_sandbox(tmp_path_factory.mktemp("fx9skills"), _CHAT_RENDERER,
+                         _CARD_SHIM, _JS_STUBS)
+
+
+def _footer(js_sandbox, rows):
+    script = textwrap.dedent("""
+        import { document, Node, history } from './shim.js';
+        const { createMsgFooter } = await import('./chatRenderer.js');
+        const wrap = history.appendChild(new Node('div'));
+        wrap.className = 'msg msg-ai';
+        const body = wrap.appendChild(new Node('div'));
+        body.className = 'body';
+        body.textContent = 'Here it is.';
+        wrap._skillsInjected = %s;
+        wrap.appendChild(createMsgFooter(wrap));
+        const pill = wrap.querySelector('.skills-used-pill');
+        console.log(JSON.stringify({
+          aria: pill ? pill.getAttribute('aria-label') : null,
+          title: pill ? pill.title : null,
+        }));
+    """) % json.dumps(rows)
+    return _run(js_sandbox, "", script)
+
+
+def test_the_pill_says_which_skill_was_applied(js_sandbox):
+    """`B1363`. "Shown" was one word for two claims: a catalogue line and a
+    procedure pasted in whole under *"follow them step by step"*."""
+    out = _footer(js_sandbox, [
+        {"name": "rotate-logs", "category": "ops", "applied": True},
+        {"name": "greet-a-new-client", "category": "sales", "applied": False},
+    ])
+    assert out["aria"] == "2 skills available, 1 applied"
+    assert "rotate-logs (ops) — applied" in out["title"]
+    assert "greet-a-new-client (sales)\n" in out["title"] + "\n"
+
+
+def test_the_pill_says_nothing_extra_when_no_body_was_applied(js_sandbox):
+    out = _footer(js_sandbox, [{"name": "rotate-logs", "category": "ops"}])
+    assert out["aria"] == "1 skill available"
+    assert "applied" not in out["title"]
+
+
+def test_the_pill_still_names_the_teacher(js_sandbox):
+    """`Law 1`. `P4-16`'s own claim, kept beside the new one."""
+    out = _footer(js_sandbox, [
+        {"name": "teacher-log-fix", "category": "ops", "applied": True,
+         "source": "teacher-escalation", "teacher_model": "big-model"},
+    ])
+    assert out["aria"] == "1 skill available, 1 applied, 1 written by the teacher"
