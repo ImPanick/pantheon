@@ -4476,12 +4476,41 @@ def _build_system_prompt(
             logger.debug(f"skill injection failed (non-fatal): {_sk_err}")
 
     # Integration descriptions — user-editable fields, must not be in system role.
+    #
+    # `B1340` / `D-2026-10-14-01` §2, and the fourth store to make this move
+    # after memory, notes and installed skills (`B1324`/`B1328`,
+    # `D-2026-10-09-01` §1). This went through `untrusted_context_message`,
+    # which writes `tool_gate_untrusted: True`, so on any install with one
+    # enabled integration `messages_contain_external_untrusted_context` was
+    # True from the first token of **every** turn and the run's first
+    # privileged effect waited for a click — the constant verdict `B1324` was
+    # filed for, reached by a different door.
+    #
+    # The block is the person's own material: Pantheon writes the sentence
+    # (*"You have access to the following API integrations via the api_call
+    # tool"*) and the `id`, `name` and `description` come from the person's own
+    # `load_integrations()`. `D-2026-10-09-01` §1's principle — *the gate's
+    # subject is content that arrived from outside* — therefore applies, and
+    # the ruling extends it here explicitly rather than by a lane's reading.
+    #
+    # The laundering question §1 asked about memory and skills was asked again
+    # here before this changed, and the answer is the same: the write is
+    # gated. `POST /api/integrations` and `PUT /api/integrations/{id}` are the
+    # only writers (`routes/auth_routes.py`), both refuse a non-admin 403, and
+    # the agent's own route to them is `app_api`, which `_APP_API_BLOCKLIST_*`
+    # does **not** block — but `app_api` carries `ToolEffect.ADMIN_CHANGE`,
+    # which is in `POST_EXTERNAL_BLOCKED_EFFECTS`. So an agent that read a
+    # hostile page and tried to write an integration description meets the
+    # gate at the **write**, in the run that read the page, while the taint is
+    # still attributable — which is exactly where §1 put it. Nothing about the
+    # envelope changes otherwise: same delimiters, same `user` role,
+    # `trusted: False`.
     if not suppress_local_context:
         try:
             from src.integrations import get_integrations_prompt
             _integ_prompt = get_integrations_prompt()
             if _integ_prompt:
-                _integ_message = untrusted_context_message(
+                _integ_message = own_context_message(
                     "integrations",
                     _integ_prompt,
                 )
@@ -5800,10 +5829,28 @@ PLAN_MODE_DIRECTIVE = (
     "effect). Do not execute. Do not end with 'Done' or anything implying the work "
     "is finished. End your turn with the checklist.\n"
     "\n"
-    "IF THE REQUEST IS AMBIGUOUS, ASK. `ask_user` is available in plan mode and is "
-    "read-only — it pauses and waits for a person. A plan built on a guess about "
-    "what was meant is worse than a question, because the guess is invisible once "
-    "the plan is approved. Ask first, then plan."
+    # `B1345` / `D-2026-10-14-01` §3. This paragraph used to end *"Ask first,
+    # then plan."* — the same ask-before-looking shape `B1327` fixed for
+    # execution turns (`D-2026-10-09-01` §3: *"An agent that asks a question it
+    # could have answered … is the defect"*), stated as policy in the one mode
+    # whose own prompt, four paragraphs up, hands the model the read-only tools
+    # and tells it to ground the plan with them. Plan mode is an allowlist of
+    # 25 read-only tools, not a denylist, so a question asked on round 1 is a
+    # question asked before reading the file that would have answered it.
+    #
+    # `B1327` left it exactly as it was and exempted plan mode from both new
+    # supervisors, because proposing un-taken actions IS the job here and
+    # narrowing a mode the owner's ruling did not mention is not a lane's call.
+    # The owner has now ruled on it. `ask_user` is unchanged and still
+    # available; what changed is which the model is told to reach for first.
+    "IF THE REQUEST IS AMBIGUOUS, GROUND IT FIRST, THEN ASK. Use the read-only "
+    "tools above to answer what they can answer — the files, the code, the "
+    "project, the web. Then ask about what they could not tell you. `ask_user` "
+    "is available in plan mode and is read-only — it pauses and waits for a "
+    "person — so a question that the repository would have answered costs the "
+    "person a round trip for nothing, and a plan built on a guess about what "
+    "was meant is still worse than a question, because the guess is invisible "
+    "once the plan is approved. Look first, then ask, then plan."
 )
 
 

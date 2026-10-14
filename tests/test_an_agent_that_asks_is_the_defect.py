@@ -291,6 +291,56 @@ def test_plan_mode_may_end_on_a_question(monkeypatch):
     assert len(requests) == 1, _system_text(requests[-1])
 
 
+def test_plan_mode_is_told_to_ground_the_plan_before_asking(monkeypatch):
+    """`B1345` / `D-2026-10-14-01` §3, asserted through the shipped prompt.
+
+    The directive used to end *"Ask first, then plan."* while the same prompt,
+    four paragraphs up, hands the model 25 read-only tools and tells it to
+    ground the plan with them — the ask-before-looking shape `B1327` fixed for
+    execution turns, stated as policy in the one mode that stated it.
+
+    `B1345`'s own `Verify:` line named `test_plan_mode_may_end_on_a_question`
+    above as the case that would redden on this change. It does not and should
+    not: that case holds the **supervisor exemption**, which the ruling leaves
+    alone, and the directive's wording was in fact guarded by nothing. This is
+    that guard, and it reads the real assembled system text rather than the
+    constant (`Law 20`), because what matters is what the model is sent.
+    """
+    _patch_common(monkeypatch)
+    requests, _ = _run(monkeypatch, [HANDBACK], plan_mode=True)
+    system = _system_text(requests[-1])
+
+    # Plan mode is really on — otherwise this case measures nothing.
+    assert "PLAN MODE" in system, system[:400]
+    # Ground first, then ask.
+    assert "GROUND IT FIRST, THEN ASK" in system, system
+    assert "Look first, then ask, then plan." in system, system
+    # The instruction it replaced is gone, in both its halves.
+    assert "Ask first, then plan." not in system
+    # And nothing was taken away: the tool is still offered, and the reason a
+    # guess is worse than a question is still stated.
+    assert "`ask_user` is available in plan mode" in system
+    assert "invisible" in system
+
+
+def test_plan_mode_still_keeps_its_read_only_tools_and_its_exemption(monkeypatch):
+    """The other half of §3's narrowness, so the change cannot creep.
+
+    The ruling moves one paragraph of wording. It does not touch the allowlist
+    that makes grounding possible in the first place, and it does not remove
+    `ask_user` from it — if either moved, "ground it first" would be an order
+    the mode cannot carry out.
+    """
+    from src.tool_security import PLAN_MODE_READONLY_TOOLS
+
+    assert "ask_user" in PLAN_MODE_READONLY_TOOLS
+    for name in ("read_file", "grep", "glob", "ls"):
+        assert name in PLAN_MODE_READONLY_TOOLS, name
+    # The mutating tools the directive promises are disabled still are.
+    for name in ("bash", "python", "write_file", "edit_file", "send_email"):
+        assert name not in PLAN_MODE_READONLY_TOOLS, name
+
+
 ASK_BLOCK = ('```ask_user\n'
              '{"question": "Which server would you like me to look at?", '
              '"options": [{"label": "The running one"}, {"label": "All of them"}]}\n'
