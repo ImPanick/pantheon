@@ -975,6 +975,19 @@ def _suite_prompt_token_costs() -> Dict[str, int]:
         from src.context_budget import _text_tokens
         for name, default in TOOL_SECTIONS.items():
             out[name] = _text_tokens(_section_text(name, default))
+        # `B-NEW` (fx10-channel). A tool with no section is not free any more:
+        # the full prompt names it with one register-derived line so a fenced
+        # route can reach it at all, and a line nobody charges for is a budget
+        # that under-counts in the one direction that is not safe to be wrong
+        # in (`_suite_prompt_token_costs`' own argument, applied to the fifteen
+        # names it used to score 0).
+        for entry in FUNCTION_TOOL_SCHEMAS:
+            name = (entry.get("function") or {}).get("name")
+            if not name or name in out:
+                continue
+            line = _register_tool_line(name)
+            if line:
+                out[name] = _text_tokens(line)
     except Exception as exc:
         logger.warning("[tool-suite] prompt-section costs unavailable: %s", exc)
     return out
@@ -1522,6 +1535,89 @@ def _section_text(name: str, default: str) -> str:
     return val if isinstance(val, str) and val.strip() else default
 
 
+#: How much of a register description a fenced one-liner carries, and how many
+#: argument names it lists. Bounded for the same reason the MCP hint is
+#: (`_MCP_HINT_MAX`): the prompt pays for every character on every turn.
+_REGISTER_TOOL_DESC_MAX = 220
+_REGISTER_TOOL_ARGS_MAX = 10
+
+
+def _register_tool_line(name: str) -> str:
+    """A fenced-channel one-liner for an offered tool with **no prompt section**.
+
+    `B-NEW` (fx10-channel). `TOOL_SECTIONS` has 61 entries for a 74-name
+    register, and the full prompt is assembled by walking `TOOL_SECTIONS` — so
+    fifteen tools the person's privileges allow, the selector offers and
+    `TOOL_TAGS` can carry had **nothing** that named them in the only channel a
+    fenced route has. Measured on `b6a1bbf` with `fenced_route_reach` (one turn
+    per tool, naming the tool outright, against an Ollama URL that carries no
+    `tools` array): for an admin, 69 of the suite's 76 tools named in the
+    prompt, 1 held and **6 reachable by neither channel** — `edit_image`,
+    `host_shell`, `list_cookbook_servers`, `manage_bg_jobs`,
+    `scan_email_unsubscribes` and `unsubscribe_email`, every one of them a name
+    with no section. (The other nine section-less tools were backticked
+    incidentally by rules prose — *"Prefer `grep`, `glob`, and `ls` over shell
+    equivalents when available"* carries three of them — which is luck rather
+    than a channel.)
+
+    The line is **derived from a register the product already keeps**, never
+    hand-written (`Law 7`): `FUNCTION_TOOL_SCHEMAS` holds this tool's
+    description and its argument names, and for the five fenced-only email
+    tools that have no function schema — `draft_email`, `draft_email_reply`,
+    `ai_draft_email_reply`, `download_attachment`, `search_emails` —
+    `src/tool_index.BUILTIN_TOOL_DESCRIPTIONS` holds the text agent-mode
+    retrieval already embeds for them. `mcp_servers/email_server.py` says of
+    those five that *"Pantheon reaches them through the fenced channel, which
+    takes no schema"*; measured on `b6a1bbf`, the fenced channel is this
+    prompt and **it named eleven of the sixteen email tools**, so the claim was
+    half true and this is the other half.
+
+    `""` for a name with no fence tag, because the fenced prompt may only name
+    a tool the fenced channel can actually carry — that is `H09`'s guard for
+    the compact prompt, pointed the other way: there a name needs a schema,
+    here it needs a tag. `""` for a name no register describes, because a
+    selector's set is not a licence to invent a tool.
+    """
+    if name not in TOOL_TAGS:
+        return ""
+    fn = None
+    for entry in FUNCTION_TOOL_SCHEMAS:
+        candidate = entry.get("function") or {}
+        if candidate.get("name") == name:
+            fn = candidate
+            break
+    if fn is None:
+        try:
+            from src.tool_index import BUILTIN_TOOL_DESCRIPTIONS
+        except Exception:                                 # noqa: BLE001
+            return ""
+        indexed = re.sub(
+            r"\s+", " ", str(BUILTIN_TOOL_DESCRIPTIONS.get(name) or "")).strip()
+        if not indexed:
+            return ""
+        if len(indexed) > _REGISTER_TOOL_DESC_MAX:
+            indexed = indexed[:_REGISTER_TOOL_DESC_MAX - 1].rstrip() + "…"
+        return f"- ```{name}``` — {indexed}"
+    override = get_builtin_overrides().get(name)
+    if isinstance(override, str) and override.strip():
+        # An operator who wrote their own words for this tool gets them here
+        # too, on the same terms `_section_text` gives the sectioned tools.
+        text = override.strip().replace("\n", " ")
+        return text if text.startswith("- ") else f"- ```{name}``` — {text}"
+    desc = re.sub(r"\s+", " ", str(fn.get("description") or "")).strip()
+    if len(desc) > _REGISTER_TOOL_DESC_MAX:
+        desc = desc[:_REGISTER_TOOL_DESC_MAX - 1].rstrip() + "…"
+    params = fn.get("parameters") or {}
+    props = params.get("properties") if isinstance(params, dict) else None
+    required = set(params.get("required") or []) if isinstance(params, dict) else set()
+    names = [str(k) for k in (props or {})][:_REGISTER_TOOL_ARGS_MAX]
+    args = ", ".join(f"{n}*" if n in required else n for n in names)
+    line = f"- ```{name}``` — {desc or name.replace('_', ' ')}"
+    if args:
+        line += f" Args (JSON): {{{args}}} (* = required)"
+    return line
+
+
 def _compact_tool_line(name: str, section: str) -> str:
     """One-line fenced-tool usage hint for compact/local prompts."""
     text = (section or "").strip()
@@ -1780,6 +1876,31 @@ def _assemble_prompt(tool_names: set, disabled_tools: set = None, compact: bool 
                 one_liners.append(section)
             else:
                 full_blocks.append(section)
+
+    # `B-NEW` (fx10-channel). **The prompt names what this turn is offering.**
+    # The walk above is over `TOOL_SECTIONS`, which holds 61 of the register's
+    # 74 names, so a tool with no section could not be named here however
+    # firmly it was offered — and on a fenced route this prompt is the only
+    # channel a tool arrives by. Measured on `b6a1bbf`: 6 of an admin's 76
+    # tools reachable by neither channel, all six section-less. They go in the same
+    # "Additional tools" list as the sectioned one-liners rather than a block
+    # of their own (`Law 14`), and `_register_tool_line` derives each line from
+    # the schema register so nothing here is a second statement of what a tool
+    # takes (`Law 7`).
+    _sectionless = []
+    for name in sorted(included - set(TOOL_SECTIONS)):
+        line = _register_tool_line(name)
+        if line:
+            one_liners.append(line)
+        elif name in _schema_backed_tool_names():
+            # A schema the model is shown with no way to call it on this
+            # channel: loud rather than silent, the way `H09` is.
+            _sectionless.append(name)
+    if _sectionless:
+        logger.warning(
+            "fx10: offered with a schema and no fenced tag, so unnameable in "
+            "the fenced prompt: %s", ", ".join(_sectionless),
+        )
 
     if full_blocks:
         parts.append("\n\n".join(full_blocks))
