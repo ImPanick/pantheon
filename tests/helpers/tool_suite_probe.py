@@ -53,7 +53,7 @@ import subprocess
 import sys
 import threading
 import time
-from contextlib import contextmanager
+from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass, field, replace
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Set, Tuple
@@ -380,12 +380,65 @@ async def build_mcp_manager(state: str, script_path: str):
 
     mgr = McpManager()
     if state == "up":
-        await mgr.connect_server("probe", "suite-probe", "stdio",
-                                 command=sys.executable, args=[script_path], env={})
+        # A non-empty `env` is deliberate: `_connect_stdio` passes
+        # `{**os.environ, **env}` when there is one and `None` — the SDK's
+        # five-variable `get_default_environment()` — when there is not
+        # (`P8-42`). A child interpreter starting from five variables under
+        # CPU contention is how this handshake was seen to die mid-initialize.
+        env = {"PANTHEON_TOOL_SUITE_PROBE": "1"}
+        last = ""
+        for attempt in range(4):
+            try:
+                if await mgr.connect_server("probe", "suite-probe", "stdio",
+                                            command=sys.executable,
+                                            args=[script_path], env=env):
+                    break
+                last = str(mgr.get_server_status("probe"))
+            except asyncio.CancelledError:
+                # anyio cancels `stdio_client`'s scope when the child's
+                # transport goes, and `connect_server` only catches
+                # `Exception`, so the relayed cancellation arrives here.
+                # Measured on this machine (2 CPUs shared by six agents): the
+                # handshake dies mid-`initialize` on roughly one start in
+                # three, and succeeds on the next. Re-raised on the last
+                # attempt rather than swallowed — a run that cannot start its
+                # own MCP server must say so, not report an empty MCP column.
+                last = "the handshake was cancelled mid-initialize"
+                if attempt == 3:
+                    raise
+            except Exception as exc:          # noqa: BLE001 — reported below
+                last = f"{type(exc).__name__}: {exc}"
+            await asyncio.sleep(0.4 * (attempt + 1))
+        else:
+            raise RuntimeError(
+                "the probe's own MCP server would not start, so this run can "
+                f"say nothing about MCP: {last}")
     else:
-        # A command that exits at once: registered, never answers.
-        await mgr.connect_server("probe", "suite-probe", "stdio",
-                                 command="/bin/false", args=[], env={})
+        # A command that exits at once: registered, never answers. This is the
+        # state a person's install is in when the command is wrong or the
+        # dependency is missing, and `fx6-tools`' `B-NEW-7` is about what the
+        # model is told then.
+        #
+        # `except BaseException` is not laziness. Measured here on `0bd089d`,
+        # roughly half of these registrations end with
+        # `asyncio.CancelledError: Cancelled via cancel scope …` escaping
+        # `connect_server` — anyio cancels `stdio_client`'s scope when the
+        # child exits during `initialize()`, and `connect_server` catches
+        # `Exception`, which a `CancelledError` is not. The other half come
+        # back `False` with `status: error, error: "Connection closed"`. Both
+        # are the same install state, so the probe records it the same way;
+        # that the product's own boot path does **not** is filed as a defect
+        # rather than smoothed over here.
+        try:
+            await mgr.connect_server("probe", "suite-probe", "stdio",
+                                     command="/bin/false", args=[],
+                                     env={"PANTHEON_TOOL_SUITE_PROBE": "1"})
+        except BaseException:                 # noqa: BLE001 — see above
+            mgr._connections["probe"] = {
+                "status": "error", "name": "suite-probe",
+                "error": "Connection closed",
+            }
+            mgr._tools["probe"] = []
     return mgr
 
 
@@ -465,9 +518,16 @@ def _seed_skills(data_dir: str) -> None:
             pass
 
 
-@contextmanager
-def probe_world(scratch: str, *, mcp_states: Sequence[str] = MCP_STATES):
-    """Build the world, hand it over, tear every process down by its own handle."""
+@asynccontextmanager
+async def probe_world(scratch: str, *, mcp_states: Sequence[str] = MCP_STATES):
+    """Build the world, hand it over, tear every process down by its own handle.
+
+    **Async, and one event loop for the whole probe.** An `McpManager` stdio
+    session is owned by a task on the loop that opened it (`_open_owned`,
+    `B880`); opening it on a throwaway loop and then driving the agent loop on
+    a fresh `asyncio.run` cancels the owner mid-handshake. A booted server has
+    one loop for its life, so the harness has one too.
+    """
     data_dir = os.path.join(scratch, "data")
     os.makedirs(data_dir, exist_ok=True)
     _seed_accounts(data_dir)
@@ -475,23 +535,17 @@ def probe_world(scratch: str, *, mcp_states: Sequence[str] = MCP_STATES):
     script = write_mcp_server(os.path.join(scratch, "mcp"))
     endpoint = ProbeEndpoint()
     world = ProbeWorld(data_dir=data_dir, endpoint=endpoint, mcp_script=script)
-    loop = asyncio.new_event_loop()
     try:
         for state in mcp_states:
-            world.managers[state] = loop.run_until_complete(
-                build_mcp_manager(state, script))
+            world.managers[state] = await build_mcp_manager(state, script)
         yield world
     finally:
         for mgr in world.managers.values():
             if mgr is not None:
                 try:
-                    loop.run_until_complete(mgr.disconnect_all())
+                    await mgr.disconnect_all()
                 except Exception:
                     pass
-        try:
-            loop.close()
-        except Exception:
-            pass
         endpoint.stop()
 
 
@@ -631,7 +685,7 @@ def _pantheon_prompt(messages: Sequence[dict], injected: Set[str]) -> str:
     )
 
 
-def drive_turn(world: ProbeWorld, cell: Cell, text: str, *,
+async def drive_turn(world: ProbeWorld, cell: Cell, text: str, *,
                script: Optional[Sequence[Any]] = None,
                dispatch: str = "boundary",
                wire: bool = False,
@@ -686,14 +740,19 @@ def drive_turn(world: ProbeWorld, cell: Cell, text: str, *,
         dispatched.append((getattr(block, "tool_type", "?"), getattr(block, "content", "")))
         return await real_execute(block, *a, **k)
 
+    from src.tool_utils import get_mcp_manager, set_mcp_manager
+
     saved_stream = al.stream_llm_with_fallback
     saved_exec = al.execute_tool_block
-    saved_mcp = al.get_mcp_manager
+    saved_mcp = get_mcp_manager()
     if not wire:
         al.stream_llm_with_fallback = scripted
     al.execute_tool_block = recording_real if dispatch == "real" else boundary
-    mgr = world.manager(cell)
-    al.get_mcp_manager = lambda: mgr
+    # `set_mcp_manager` is `app.py`'s own registration door, and both readers —
+    # `agent_loop` for the schemas and `tool_execution` for the call — go
+    # through `tool_utils._mcp_manager`, so registering it here is what a
+    # booted server does rather than a second accessor this harness invented.
+    set_mcp_manager(world.manager(cell))
 
     # Chat mode and Agent mode are one route and one loop: `routes/chat_routes.py`
     # passes `agent_mode=(chat_mode == "agent")` into `build_chat_context`, and
@@ -730,11 +789,11 @@ def drive_turn(world: ProbeWorld, cell: Cell, text: str, *,
 
     started = time.time()
     try:
-        chunks = asyncio.run(collect())
+        chunks = await collect()
     finally:
         al.stream_llm_with_fallback = saved_stream
         al.execute_tool_block = saved_exec
-        al.get_mcp_manager = saved_mcp
+        set_mcp_manager(saved_mcp)
     elapsed = time.time() - started
 
     events = []
@@ -760,41 +819,92 @@ def drive_turn(world: ProbeWorld, cell: Cell, text: str, *,
 
 # ── question 1: does every tool reach the model? ────────────────────────────
 
-def naming_turn(tool: str, *, inventory: Optional[Inventory] = None) -> str:
-    """A turn whose text names the tool outright — the best case there is.
+#: How much of a tool's own prose the probe turn carries. Long enough to hold
+#: every keyword hint the tool has, short enough to still be a thing a person
+#: could type.
+NAMING_TURN_CHARS = 700
 
-    Deliberately not a paraphrase. The question is not whether retrieval ranks
-    a tool for a vague request; it is whether a tool can reach the model *at
-    all* in this configuration. A turn that says the name and asks for the
-    tool's own job is the turn on which a `missing` verdict cannot be explained
-    away.
+
+def naming_turn(tool: str, *, mcp_mgr=None) -> str:
+    """The most favourable turn this tool can have, built from the tool itself.
+
+    The question is not whether retrieval ranks a tool for a vague request; it
+    is whether the tool can reach the model **at all** in this configuration.
+    So the turn says the name, and then quotes the tool's own two descriptions
+    — `BUILTIN_TOOL_DESCRIPTIONS` (the text agent-mode retrieval embeds) and
+    the schema's own `description` (what the model is shown) — because those
+    hold every keyword any selector could key on. Measured on `0bd089d`: using
+    only the first sentence put `bulk_email`, `computer`, `list_cached_models`
+    and `trigger_research` in the missing column when the full text reaches
+    them, so a short query over-reports. A tool still missing on **this** turn
+    is missing because nothing in the product can select it, which is a finding
+    and not a wording accident.
     """
     from src.tool_index import BUILTIN_TOOL_DESCRIPTIONS
+    from src.tool_schemas import FUNCTION_TOOL_SCHEMAS
 
-    described = (BUILTIN_TOOL_DESCRIPTIONS.get(tool) or "").strip()
-    first_sentence = described.split(".")[0][:160] if described else ""
-    plain = tool.replace("_", " ")
-    if tool.startswith("mcp__"):
-        return (f"Use the MCP tool `{tool}` now. Call {tool} to do its job on "
-                f"this request.")
-    if first_sentence:
-        return f"Use the `{tool}` tool now: {first_sentence}. Call {tool}."
-    return f"Use the `{tool}` tool now — {plain}. Call {tool}."
+    parts = []
+    indexed = (BUILTIN_TOOL_DESCRIPTIONS.get(tool) or "").strip()
+    if indexed:
+        parts.append(indexed)
+    for entry in FUNCTION_TOOL_SCHEMAS:
+        fn = entry.get("function") or {}
+        if fn.get("name") == tool and fn.get("description"):
+            parts.append(str(fn["description"]).strip())
+            break
+    if tool.startswith("mcp__") and mcp_mgr is not None:
+        for schema in mcp_mgr.get_all_openai_schemas() or []:
+            fn = schema.get("function") or {}
+            if fn.get("name") == tool and fn.get("description"):
+                parts.append(str(fn["description"]).strip())
+                break
+    prose = " ".join(parts)[:NAMING_TURN_CHARS] or tool.replace("_", " ")
+    return f"Use the `{tool}` tool now. {prose} Call `{tool}` to do it."
+
+
+def bare_naming_turn(tool: str) -> str:
+    """The shortest favourable turn: the person names the tool and nothing else.
+
+    The brief's own words for what must never happen: *"it never silently drops
+    a tool the request named."* This is that turn.
+    """
+    return f"Use the `{tool}` tool now. Call `{tool}` to do it."
+
+
+#: The verdicts, as an enum rather than a boolean (`Law 10`).
+REACH_VERDICTS = ("reached", "prompt_only", "held", "missing")
 
 
 @dataclass
 class ReachRow:
     tool: str
     kind: str
-    verdict: str                  # reached | held | missing
+    verdict: str                  # reached | prompt_only | held | missing
     channels: List[str]           # the request shapes that carried it
+    turn: str = ""                # which favourable turn got it there
     gate: Optional[str] = None
     sentence: Optional[str] = None
 
 
-def reach_report(world: ProbeWorld, cell: Cell, inventory: Inventory, *,
+async def reach_report(world: ProbeWorld, cell: Cell, inventory: Inventory, *,
                  names: Optional[Sequence[str]] = None) -> List[ReachRow]:
-    """For every tool: `reached`, `held` (with the gate's sentence), or `missing`."""
+    """For every tool, the strongest verdict any favourable turn earns it.
+
+    Two turns per tool, because one is not a fair question. `named` is the bare
+    name — the request naming the tool, which is the case the brief says must
+    never be silently dropped. `described` adds the tool's own prose, which is
+    what any keyword selector could possibly key on. Measured on `0bd089d`,
+    neither dominates: the short turn misses `bulk_email` and `trigger_research`
+    (no keyword hint fires on a bare name), the long one misses the whole email
+    family (its prose trips `_looks_like_local_computer_request`, and the
+    Terminus clamp **replaces** the turn's tool set). A tool missing on both is
+    missing because nothing in the product selects it.
+
+    `prompt_only` is its own verdict and not a pass: the prompt named the tool
+    on a route whose request carries a `tools` array that did not. That is the
+    `Law 13` split the model complains about in the owner's export — it looks
+    for a tool the prompt promised and the request withheld.
+    """
     from src.settings import load_features
 
     try:
@@ -804,23 +914,35 @@ def reach_report(world: ProbeWorld, cell: Cell, inventory: Inventory, *,
     rows: List[ReachRow] = []
     for tool in (names if names is not None else inventory.tools):
         gate = gate_holding(tool, admin=cell.admin, features=features)
-        record = drive_turn(world, cell, naming_turn(tool))
-        shapes = record.shapes(cell.model)
-        carried = [shape for shape in REQUEST_SHAPES if tool in set(shapes[shape])]
-        if carried:
+        best: Tuple[int, str, List[str]] = (-1, "", [])
+        for label, text in (("named", bare_naming_turn(tool)),
+                            ("described", naming_turn(tool, mcp_mgr=world.manager(cell)))):
+            record = await drive_turn(world, cell, text)
+            shapes = record.shapes(cell.model)
+            carried = [s for s in REQUEST_SHAPES if tool in set(shapes[s])]
+            native = [s for s in carried if s != "fenced"]
+            has_array = bool(record.first.get("tools"))
+            rank = 2 if native else (1 if (carried and has_array) else
+                                     (2 if carried else 0))
+            if rank > best[0]:
+                best = (rank, label, carried)
+        rank, label, carried = best
+        if rank == 2:
             verdict = "reached"
+        elif rank == 1:
+            verdict = "prompt_only"
         elif gate is not None:
             verdict = "held"
         else:
             verdict = "missing"
         rows.append(ReachRow(tool=tool, kind=inventory.kind(tool), verdict=verdict,
-                             channels=carried,
+                             channels=carried, turn=label,
                              gate=gate.name if gate else None,
                              sentence=gate.sentence if gate else None))
     return rows
 
 
-def skill_reach(world: ProbeWorld, cell: Cell, inventory: Inventory) -> List[ReachRow]:
+async def skill_reach(world: ProbeWorld, cell: Cell, inventory: Inventory) -> List[ReachRow]:
     """A skill reaches the model when the catalogue the loop injects names it.
 
     Driven through the loop, because `suppress_skills`, the low-signal
@@ -830,7 +952,7 @@ def skill_reach(world: ProbeWorld, cell: Cell, inventory: Inventory) -> List[Rea
     rows: List[ReachRow] = []
     if not inventory.skills:
         return rows
-    record = drive_turn(
+    record = await drive_turn(
         world, cell,
         "Follow the relevant saved skill for this: triage my email, sweep the "
         "project folder, dig on the web and keep notes about what you find.")
@@ -864,13 +986,74 @@ DESTRUCTIVE = frozenset({
     "web_search", "write_file",
 })
 
-#: An argument a tool's own schema will accept enough of to route. Empty is the
-#: default: a handler that refuses a missing argument with its own sentence has
-#: still *run*, which is the thing being proven, and nothing happens.
+#: Arguments the probe would rather name itself than derive, because the
+#: derived placeholder would do something. Everything else comes from the
+#: tool's own schema (`minimal_args`).
 CALL_ARGS: Dict[str, dict] = {
     "mcp__probe__probe_echo": {"text": "probe"},
     "mcp__probe__probe_inventory": {"kind": "all"},
 }
+
+#: A value per JSON type that a schema-to-grammar converter and a handler will
+#: both accept. Deliberately inert strings — `probe` is not a path, a URL or a
+#: command.
+_PLACEHOLDERS = {
+    "string": "probe", "integer": 1, "number": 1, "boolean": False,
+    "array": [], "object": {},
+}
+
+
+def minimal_args(tool: str, *, mcp_mgr=None) -> dict:
+    """The smallest argument object this tool's **own schema** calls complete.
+
+    `src/tool_schemas.py` refuses a native call that omits a required argument
+    (`_REQUIRED_NATIVE_TOOL_ARGS`, and `function_call_to_tool_block` returns
+    `None`), and a handler refuses one its action needs. Either is a correct
+    refusal, and probing with `{}` would measure the probe's own omission
+    rather than Pantheon's routing. So the arguments are read from the register
+    the model is shown: every `required` property gets a placeholder of its
+    declared type, an `enum` gets its first member, and nothing else is sent.
+    """
+    if tool in CALL_ARGS:
+        return dict(CALL_ARGS[tool])
+    params: dict = {}
+    if tool.startswith("mcp__"):
+        if mcp_mgr is not None:
+            for schema in mcp_mgr.get_all_openai_schemas() or []:
+                fn = schema.get("function") or {}
+                if fn.get("name") == tool:
+                    params = fn.get("parameters") or {}
+                    break
+    else:
+        from src.tool_schemas import FUNCTION_TOOL_SCHEMAS
+
+        for entry in FUNCTION_TOOL_SCHEMAS:
+            fn = entry.get("function") or {}
+            if fn.get("name") == tool:
+                params = fn.get("parameters") or {}
+                break
+    props = (params or {}).get("properties") or {}
+    required = list((params or {}).get("required") or [])
+    try:
+        from src.tool_schemas import _REQUIRED_NATIVE_TOOL_ARGS
+
+        for group in [_REQUIRED_NATIVE_TOOL_ARGS.get(tool) or ()]:
+            if group and not any(name in required for name in group):
+                required.append(group[0])
+    except Exception:
+        pass
+    args: dict = {}
+    for name in required:
+        spec = props.get(name) or {}
+        enum = spec.get("enum")
+        if isinstance(enum, list) and enum:
+            args[name] = enum[0]
+            continue
+        declared = spec.get("type")
+        if isinstance(declared, list):
+            declared = next((d for d in declared if d != "null"), "string")
+        args[name] = _PLACEHOLDERS.get(declared, "probe")
+    return args
 
 
 @dataclass
@@ -906,18 +1089,19 @@ def _call_verdict(record: TurnRecord, tool: str) -> Tuple[str, str]:
     return "dropped", "no ToolBlock reached the dispatcher"
 
 
-def call_report(world: ProbeWorld, cell: Cell, inventory: Inventory, *,
+async def call_report(world: ProbeWorld, cell: Cell, inventory: Inventory, *,
                 shapes: Sequence[str] = REPLY_SHAPES,
                 names: Optional[Sequence[str]] = None,
                 real: bool = False) -> List[CallRow]:
     """For every tool and every reply shape: was the call parsed, routed, answered?"""
     rows: List[CallRow] = []
     for tool in (names if names is not None else inventory.tools):
-        args = CALL_ARGS.get(tool, {})
-        drive_real = real and tool not in DESTRUCTIVE and not tool.startswith("mcp__")
+        args = minimal_args(tool, mcp_mgr=world.manager(cell))
+        drive_real = real and tool not in DESTRUCTIVE
         for shape in shapes:
             step = reply_shapes(tool, args)[shape]
-            record = drive_turn(world, cell, naming_turn(tool),
+            record = await drive_turn(world, cell,
+                                naming_turn(tool, mcp_mgr=world.manager(cell)),
                                 script=[step, "Done."],
                                 dispatch="real" if drive_real else "boundary",
                                 max_rounds=3)
@@ -927,11 +1111,11 @@ def call_report(world: ProbeWorld, cell: Cell, inventory: Inventory, *,
     return rows
 
 
-def unknown_name_control(world: ProbeWorld, cell: Cell) -> CallRow:
+async def unknown_name_control(world: ProbeWorld, cell: Cell) -> CallRow:
     """The control that must never be stood down: a name nobody registered is
     refused, not silently dropped and not routed."""
     bogus = "definitely_not_a_pantheon_tool"
-    record = drive_turn(world, cell, "Do the thing.",
+    record = await drive_turn(world, cell, "Do the thing.",
                         script=[reply_shapes(bogus, {})["native"], "Done."],
                         max_rounds=3)
     routed = any(name == bogus for name, _ in record.dispatched)
@@ -1021,6 +1205,10 @@ class CellResult:
         return sum(1 for r in self.reach if r.verdict == "held")
 
     @property
+    def prompt_only(self) -> List[str]:
+        return [r.tool for r in self.reach if r.verdict == "prompt_only"]
+
+    @property
     def missing(self) -> List[str]:
         return [r.tool for r in self.reach if r.verdict == "missing"]
 
@@ -1038,7 +1226,7 @@ class CellResult:
         return f"{counts} ({distinct} distinct sets)"
 
 
-def run_cell(world: ProbeWorld, cell: Cell, *, repeats: int = 5,
+async def run_cell(world: ProbeWorld, cell: Cell, *, repeats: int = 5,
              reach: bool = True, calls: bool = False,
              call_names: Optional[Sequence[str]] = None,
              real_calls: bool = False) -> CellResult:
@@ -1048,23 +1236,23 @@ def run_cell(world: ProbeWorld, cell: Cell, *, repeats: int = 5,
                                owner=world.owner(cell))
     offered_repeats = []
     for _ in range(repeats):
-        record = drive_turn(world, cell, ORDINARY_TURN)
+        record = await drive_turn(world, cell, ORDINARY_TURN)
         offered_repeats.append(sorted(record.offered()))
     turns = {}
     for label, text in SAMPLE_TURNS.items():
-        turns[label] = sorted(drive_turn(world, cell, text).offered())
+        turns[label] = sorted((await drive_turn(world, cell, text)).offered())
     result = CellResult(
         cell=cell, suite=inventory.total, builtins=len(inventory.builtins),
         mcp=len(inventory.mcp), skills=len(inventory.skills),
         repeats=offered_repeats, turns=turns,
     )
     if reach:
-        result.reach = reach_report(world, cell, inventory)
-        result.skill_rows = skill_reach(world, cell, inventory)
+        result.reach = await reach_report(world, cell, inventory)
+        result.skill_rows = await skill_reach(world, cell, inventory)
     if calls:
-        result.calls = call_report(world, cell, inventory, names=call_names,
-                                   real=real_calls)
-        result.control = unknown_name_control(world, cell)
+        result.calls = await call_report(world, cell, inventory, names=call_names,
+                                         real=real_calls)
+        result.control = await unknown_name_control(world, cell)
     result.seconds = time.time() - started
     return result
 
@@ -1092,8 +1280,8 @@ def commit_sha() -> str:
 def render_table(results: Sequence[CellResult]) -> str:
     """The matrix, as the brief asks for it. Every number here was measured."""
     head = ("| cell | suite | ordinary turn | spread over 6 turns | reached by name | "
-            "held (gate) | missing | identical over repeats |")
-    rule = "|---|---|---|---|---|---|---|---|"
+            "prompt only | held (gate) | missing | identical over repeats |")
+    rule = "|---|---|---|---|---|---|---|---|---|"
     lines = [head, rule]
     for res in results:
         counts = res.ordinary_counts
@@ -1109,7 +1297,7 @@ def render_table(results: Sequence[CellResult]) -> str:
             spread = f"{sizes[0]}–{sizes[-1]}, {distinct} distinct sets"
         lines.append(
             f"| {res.cell.id} | {res.suite} | {span}/{res.builtins + res.mcp} | "
-            f"{spread} | {res.reached} | {res.held} | {miss} | "
+            f"{spread} | {res.reached} | {len(res.prompt_only)} | {res.held} | {miss} | "
             f"{'yes' if res.identical else 'NO — ' + ', '.join(res.drift[:4])} |")
     return "\n".join(lines)
 

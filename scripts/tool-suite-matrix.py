@@ -78,24 +78,30 @@ def _child(args) -> int:
         cells = [c for c in cells if _in_quick(c)]
     if args.cells:
         cells = [c for c in cells if all(bit in c.id for bit in args.cells.split())]
-    rows = []
-    with probe.probe_world(scratch) as world:
-        if args.embeddings == "up":
-            # Build the index before the first turn, the way a booted server
-            # does: `get_tool_index()` is called at startup there, and a cold
-            # 1.5-second race on the very first chat message is `B1330`'s
-            # subject, not this harness's.
-            from src.tool_index import get_tool_index
-            get_tool_index()
-        for cell in cells:
-            result = probe.run_cell(
-                world, cell, repeats=args.repeats,
-                reach=not args.no_reach,
-                calls=args.calls,
-                real_calls=args.real_calls,
-            )
-            rows.append(_row_json(result))
-            print("ROW " + json.dumps(rows[-1]), flush=True)
+    async def sweep():
+        rows = []
+        async with probe.probe_world(scratch) as world:
+            if args.embeddings == "up":
+                # Build the index before the first turn, the way a booted
+                # server does: `get_tool_index()` runs at startup there, and a
+                # cold 1.5-second race on the very first chat message is
+                # `B1330`'s subject rather than this harness's.
+                import asyncio as _aio
+                from src.tool_index import get_tool_index
+                await _aio.to_thread(get_tool_index)
+            for cell in cells:
+                result = await probe.run_cell(
+                    world, cell, repeats=args.repeats,
+                    reach=not args.no_reach,
+                    calls=args.calls,
+                    real_calls=args.real_calls,
+                )
+                rows.append(_row_json(result))
+                print("ROW " + json.dumps(rows[-1]), flush=True)
+        return rows
+
+    import asyncio
+    asyncio.run(sweep())
     return 0
 
 
@@ -123,7 +129,8 @@ def _row_json(result) -> dict:
         "identical": result.identical, "drift": result.drift,
         "reach": [
             {"tool": r.tool, "kind": r.kind, "verdict": r.verdict,
-             "channels": r.channels, "gate": r.gate, "sentence": r.sentence}
+             "channels": r.channels, "turn": r.turn,
+             "gate": r.gate, "sentence": r.sentence}
             for r in result.reach
         ],
         "skill_reach": [
@@ -166,6 +173,8 @@ class _Row:
     reached = property(lambda self: sum(1 for r in self.reach if r.verdict == "reached"))
     held = property(lambda self: sum(1 for r in self.reach if r.verdict == "held"))
     missing = property(lambda self: [r.tool for r in self.reach if r.verdict == "missing"])
+    prompt_only = property(
+        lambda self: [r.tool for r in self.reach if r.verdict == "prompt_only"])
 
 
 def main(argv=None) -> int:
@@ -234,6 +243,7 @@ def main(argv=None) -> int:
                     print(f"  {data['cell']['id']}: "
                           f"ordinary {min(row.ordinary_counts)}–{max(row.ordinary_counts)}"
                           f"/{row.builtins + row.mcp}, reached {row.reached}, "
+                          f"prompt-only {len(row.prompt_only)}, "
                           f"held {row.held}, missing {len(row.missing)}, "
                           f"{'identical' if row.identical else 'VARIES'}"
                           f"  [{data['seconds']}s]", flush=True)
@@ -268,6 +278,11 @@ def _summary(rows: list[dict], seconds: float) -> str:
         for entry in row["reach"]:
             if entry["verdict"] == "missing":
                 missing[entry["tool"]] = missing.get(entry["tool"], 0) + 1
+    prompt_only: dict[str, int] = {}
+    for row in rows:
+        for entry in row["reach"]:
+            if entry["verdict"] == "prompt_only":
+                prompt_only[entry["tool"]] = prompt_only.get(entry["tool"], 0) + 1
     skills_missing = {e["tool"] for r in rows for e in r["skill_reach"]
                       if e["verdict"] == "missing"}
     dropped = sorted({f"{e['tool']}/{e['shape']}" for r in rows for e in r["calls"]
@@ -284,6 +299,9 @@ def _summary(rows: list[dict], seconds: float) -> str:
     if missing:
         worst = sorted(missing.items(), key=lambda kv: -kv[1])[:12]
         lines.append("  " + ", ".join(f"{n} ({c} cells)" for n, c in worst))
+    lines.append(f"tools the prompt named while the request withheld them "
+                 f"(prompt_only) in at least one cell: {len(prompt_only)}"
+                 + (f" — {', '.join(sorted(prompt_only)[:8])}" if prompt_only else ""))
     lines.append(f"skills that did not reach the model in some cell: {len(skills_missing)}"
                  + (f" — {', '.join(sorted(skills_missing)[:6])}" if skills_missing else ""))
     lines.append(f"tool/shape pairs whose call was DROPPED: {len(dropped)}"
