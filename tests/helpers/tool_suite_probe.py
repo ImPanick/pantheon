@@ -1186,8 +1186,19 @@ class CallRow:
 ASK_FIRST_NUDGE = "You asked the user a question as the first thing this turn"
 
 
-def _call_verdict(record: TurnRecord, tool: str) -> Tuple[str, str]:
-    """Read the loop's own events for what became of the call."""
+def _call_verdict(record: TurnRecord, tool: str,
+                  emitted: str = "") -> Tuple[str, str]:
+    """Read the loop's own events for what became of the call.
+
+    `emitted` is the content the scripted model wrote. It is subtracted from
+    the reply text before that text counts as a refusal: when a fenced or
+    bare-JSON call is **not** parsed, the loop has nothing to execute and
+    streams the model's own words straight through, so the person reads the
+    unparsed call itself. Measured while building this harness: without this,
+    making `_MCP_TOOL_BLOCK_RE` unmatchable — fx6's `B-NEW-6` put back —
+    reddened nothing, because the dropped fence was echoed to the person and
+    read as "the person was told something".
+    """
     for request in record.requests[1:]:
         if ASK_FIRST_NUDGE in (request.get("prompt") or ""):
             # Not dropped: deliberately not dispatched, with an instruction
@@ -1221,6 +1232,10 @@ def _call_verdict(record: TurnRecord, tool: str) -> Tuple[str, str]:
     # file tool on an install with no workspace. Reading only `tool_output`
     # would file that as a silent drop, which is the opposite of what happened.
     said = "".join(str(ev.get("delta") or "") for ev in record.events).strip()
+    if emitted:
+        for fragment in (emitted, emitted.strip()):
+            said = said.replace(fragment, "")
+        said = said.strip()
     if said:
         return "refused", said[:160]
     return "dropped", "no ToolBlock reached the dispatcher and the person was told nothing"
@@ -1242,7 +1257,8 @@ async def call_report(world: ProbeWorld, cell: Cell, inventory: Inventory, *,
                                 script=[step, "Done."],
                                 dispatch="real" if drive_real else "boundary",
                                 max_rounds=3)
-            verdict, detail = _call_verdict(record, tool)
+            verdict, detail = _call_verdict(
+                record, tool, emitted=step if isinstance(step, str) else "")
             rows.append(CallRow(tool=tool, kind=inventory.kind(tool), shape=shape,
                                 verdict=verdict, detail=detail))
     return rows

@@ -404,7 +404,7 @@ def test_ask_user_is_held_on_purpose_first_and_dispatches_after_a_tool(scratch):
             ask = probe.reply_shapes("ask_user", probe.minimal_args("ask_user"))["native"]
             first = await probe.drive_turn(world, cell, "Decide what to do here.",
                                            script=[ask, "Done."], max_rounds=3)
-            verdict, detail = probe._call_verdict(first, "ask_user")
+            verdict, detail = probe._call_verdict(first, "ask_user")  # native: no echo
             assert verdict == "nudged", (verdict, detail)
 
             plan = probe.reply_shapes("update_plan",
