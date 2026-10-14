@@ -4709,27 +4709,89 @@ def _record_fenced_channel(tool_names, disabled, compact, owner) -> None:
         pass   # a receipt is never worth a failed run
 
 
+def _suite_tally(tool_suite, names, disabled_tools) -> Optional[Dict[str, Any]]:
+    """This turn's suite numbers, taken **after** every clamp. One answer.
+
+    `B-NEW-1` (agent:`fx11-order`). Two records say how many tools a turn had —
+    the receipt `src.events.record_run_config` stores and the partial-suite
+    sentence `_suite_notice_for` writes into the prompt — and each computed it
+    itself, from a different pair of sets. They agreed on every turn except the
+    one where a writer runs across the planner, and then they disagreed by 79.
+
+    `plan_turn_tool_suite` is called at the top of selection and computes
+    `candidates = (selectable_tool_names() | mcp) - disabled_tools`. The
+    `pantheon-qwen3` general-no-tool clamp writes `known_tool_names()` into
+    `disabled_tools` **after** it. Measured on `bbe6958` by driving the real
+    loop with `model="pantheon-qwen3-8b"`, `emb=down mcp=up win=large
+    mode=agent`, and spying on the planner, this function and the receipt:
+
+        who     plan   cap at plan   cap at prompt   receipt   notice
+        admin   81/81  2             85              0/81      0 of 2
+        user    31/31  53            85              0/31      —
+
+    The receipt's `candidates` is documented as *"every name the person's
+    privileges allow this turn"*; the turn's cap withheld 85 of them before the
+    prompt was built. `Law 10` — in the one record an operator reads to find
+    out why a tool was withheld — and `Law 7`, because the predicate was
+    written twice and only one copy asked the live cap.
+
+    So: one function, asked by both, and the cap it is given is the object the
+    clamps have already written to. Returns sorted lists rather than counts so
+    the receipt can store names and the notice can count them.
+
+    * `candidates` — the plan's candidates that the cap still allows. This is
+      the denominator both records now state.
+    * `offered` — those of them in `names` (the route's selection for the
+      receipt, the prompt's own list for the notice: two different facts about
+      one turn, which is why only the denominator is shared).
+    * `withheld` — `candidates - offered`, the names this route held back.
+    * `capped_after_plan` — the names the plan counted that the turn's own cap
+      withheld before the prompt was built. `Law 1`: the old receipt listed
+      these under `withheld` and they are not lost, they are named. Empty on
+      every turn where nothing writes to the cap across the planner, which is
+      every turn but a `pantheon-qwen3` general-no-tool one.
+    * `reason` — the plan's when the plan is what narrowed, `"route"` when
+      something after it did.
+    """
+    if tool_suite is None:
+        return None
+    access = turn_tool_access(disabled_tools)
+    planned = set(tool_suite.candidates)
+    # The denominator is what the person may use on THIS prompt, so a tool the
+    # prompt itself switches off (`generate_image` when image generation is
+    # off) is in neither half rather than reading as withheld.
+    candidates = access.allowed_among(planned)
+    offered = candidates & set(names or ())
+    reason = tool_suite.reason if len(offered) >= len(tool_suite.offered) else "route"
+    return {
+        "offered": sorted(offered),
+        "candidates": sorted(candidates),
+        "withheld": sorted(candidates - offered),
+        "capped_after_plan": sorted(planned - candidates),
+        "reason": reason,
+    }
+
+
 def _suite_notice_for(tool_suite, tool_names, disabled) -> str:
     """`_partial_suite_notice` for the names this route actually ships.
 
-    `B-NEW` (fx9-suite). The denominator is the plan's `candidates` — every tool
-    the person's privileges allowed this turn — and the numerator is what
-    survived every clamp between the plan and this prompt. `reason` is the
-    plan's when the plan is what narrowed, and `"route"` when something after it
-    did.
+    `B-NEW` (fx9-suite). The denominator is what the person may call on this
+    turn and the numerator is what survived every clamp between the plan and
+    this prompt. `B-NEW-1` (agent:`fx11-order`): both come from `_suite_tally`
+    now, so this sentence and the run receipt cannot state two numbers for one
+    turn. Measured unchanged on every cell where the cap does not grow across
+    the planner, which is every cell but a `pantheon-qwen3` general-no-tool
+    one — and on that one the prompt is replaced wholesale by
+    `_minimal_pantheon_general_messages`, so the sentence never reaches the
+    model there at all (`Law 3`: the lane brief said it did).
     """
-    if tool_suite is None:
-        return ""
     try:
-        # The denominator is what the person may use on THIS prompt, so a tool
-        # the prompt itself switches off (`generate_image` when image
-        # generation is off) is in neither half rather than reading as withheld.
-        candidates = set(tool_suite.candidates) - set(disabled or ())
-        if not candidates:
+        tally = _suite_tally(tool_suite, tool_names, disabled)
+        if not tally:
             return ""
-        offered = candidates & set(tool_names or ())
-        reason = tool_suite.reason if len(offered) >= len(tool_suite.offered) else "route"
-        return _partial_suite_notice(len(offered), len(candidates), reason)
+        return _partial_suite_notice(len(tally["offered"]),
+                                     len(tally["candidates"]),
+                                     tally["reason"])
     except Exception as exc:
         logger.debug("[tool-suite] notice skipped: %s", exc)
         return ""
@@ -6843,11 +6905,20 @@ async def stream_agent_loop(
     # them is in a log line (`Law 10`).
     _selection_saw_mcp_names = False
     if not guide_only and not _relevant_tools and _allowed_tools is None:
-        try:
-            _tool_suite = plan_turn_tool_suite(
+        def _plan_the_suite(*, conservative: bool):
+            """The plan, once. `conservative` reads no window at all.
+
+            `Law 7` — the nine arguments are written once, so the retry below
+            cannot drift from the first attempt. An empty url and model make
+            `budget_context_for_model` answer 0, which is
+            `tool_suite_room`'s documented *"window unknown"* branch
+            (`basis="window_unknown"`, conservative room) and not a window read
+            off the model's name (`D-2026-10-07-02` §1).
+            """
+            return plan_turn_tool_suite(
                 _retrieval_query or _last_user,
-                endpoint_url=endpoint_url,
-                model=model,
+                endpoint_url="" if conservative else endpoint_url,
+                model="" if conservative else model,
                 disabled_tools=disabled_tools,
                 domains=(_intent.get("domains") or set()),
                 mcp_names=_suite_mcp_names,
@@ -6855,25 +6926,65 @@ async def stream_agent_loop(
                 mcp_by_server=_suite_mcp_servers,
                 within_allowed=_within_allowed,
             )
-            _relevant_tools = set(_tool_suite.offered)
-            _selection_saw_mcp_names = True
+
+        def _log_the_plan(label):
             logger.info(
-                "[tool-suite] offered %d/%d tools reason=%s cost=%s room=%s "
+                "[tool-suite] %soffered %d/%d tools reason=%s cost=%s room=%s "
                 "window=%s window_known=%s%s",
+                label,
                 len(_tool_suite.offered), len(_tool_suite.candidates),
                 _tool_suite.reason, _tool_suite.cost, _tool_suite.room,
                 _tool_suite.window, _tool_suite.window_known,
                 (" withheld=" + ",".join(_tool_suite.withheld[:40]))
                 if _tool_suite.partial else "",
             )
+
+        try:
+            _tool_suite = _plan_the_suite(conservative=False)
+            _relevant_tools = set(_tool_suite.offered)
+            _selection_saw_mcp_names = True
+            _log_the_plan("")
         except Exception as exc:
-            # `P3-17`, and it fails back onto the path that was here before:
-            # the selectors below still run, so a turn is never left with no
-            # tools because the planner could not read a window.
+            # `B-NEW-3` (agent:`fx11-order`). This said it *"fails back onto the
+            # path that was here before: the selectors below still run"*, and
+            # both halves of that sentence were written for the regime where
+            # retrieval chose the turn. **There is one selector below, not
+            # several** — `_TOOL_RETRIEVAL_SELECTS_THE_TURN` is `False`, so the
+            # vector block is skipped and only the deterministic keyword
+            # fallback runs — and that fallback is the floor, not a plan.
+            # Measured on `bbe6958` with this planner raising, the probe's
+            # ordinary turn, `emb=down mcp=up win=large mode=agent`: an admin
+            # went from **81 offered / 76 schemas** to **4 offered / 6
+            # schemas** (`ask_user`, `manage_memory`, `manage_skills`,
+            # `update_plan`) and a non-admin from 31 to 2 — and because
+            # `_tool_suite` was `None`, the suite receipt was not written at
+            # all, so the turn that narrowed hardest was the one that recorded
+            # nothing (`Law 10`).
+            #
+            # So the planner is asked once more with no window to read, which
+            # is its own conservative branch and the answer the product already
+            # considers correct for an endpoint that reports nothing (10 of 81
+            # on this turn, `reason=window_unknown`, recorded as such).
+            # `Law 1`: the keyword path is still the last resort and still runs
+            # when this retry fails too; nothing is widened, because the
+            # candidates the retry draws from are the same cap complement the
+            # first attempt used.
             logger.warning("[tool-suite] suite planning failed, falling back to selection: %s", exc)
             _tool_suite = None
             _selection_saw_mcp_names = False
             _relevant_tools = None
+            try:
+                _tool_suite = _plan_the_suite(conservative=True)
+                _relevant_tools = set(_tool_suite.offered)
+                _selection_saw_mcp_names = True
+                _log_the_plan("conservative retry ")
+            except Exception as retry_exc:
+                logger.warning(
+                    "[tool-suite] the conservative retry failed too; the keyword "
+                    "selector is this turn's set: %s", retry_exc)
+                _tool_suite = None
+                _selection_saw_mcp_names = False
+                _relevant_tools = None
 
     if (_TOOL_RETRIEVAL_SELECTS_THE_TURN and not guide_only
             and not _relevant_tools and _allowed_tools is None):
@@ -7303,12 +7414,23 @@ async def stream_agent_loop(
     if _tool_suite is not None and _relevant_tools is not None:
         try:
             from src.events import record_run_config as _record_run_config
-            _final = set(_tool_suite.candidates) & set(_relevant_tools)
+            # `B-NEW-1` (agent:`fx11-order`). The numerator was re-taken here
+            # and the denominator was not, so the record was half pre-clamp and
+            # half post-clamp — and on a `pantheon-qwen3` general-no-tool turn
+            # the two halves were 79 apart (plan 81/81 against a cap of 2; the
+            # cap holds 85 by the time the prompt is built). `_suite_tally` is
+            # the one answer and the prompt's own notice asks it too, so the
+            # two records of this turn cannot state two numbers (`Law 7`).
+            _tally = _suite_tally(_tool_suite, _relevant_tools, disabled_tools)
             _record = _tool_suite.as_record()
-            _record["offered"] = len(_final)
-            _record["withheld"] = sorted(set(_tool_suite.candidates) - _final)
-            if len(_final) < len(_tool_suite.offered):
-                _record["reason"] = "route"
+            _record["offered"] = len(_tally["offered"])
+            _record["candidates"] = len(_tally["candidates"])
+            _record["withheld"] = _tally["withheld"]
+            # `Law 1`: the names the clamp withheld after the plan were in the
+            # old `withheld` list and are still recorded — under a key that
+            # says which of the two things they are.
+            _record["capped_after_plan"] = _tally["capped_after_plan"]
+            _record["reason"] = _tally["reason"]
             _record_run_config(suite=_record, session_id=session_id, owner=owner)
         except Exception as _exc:
             logger.debug("[tool-suite] receipt skipped: %s", _exc)

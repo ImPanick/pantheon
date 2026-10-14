@@ -722,6 +722,17 @@ def record_run_config(*, sampling: Optional[Dict[str, Any]] = None,
             "offered": int(suite.get("offered") or 0),
             "candidates": int(suite.get("candidates") or 0),
             "withheld": sorted({str(n) for n in (suite.get("withheld") or []) if n}),
+            # `B-NEW-1` (agent:`fx11-order`). **The two are different facts and
+            # the field names say which.** `withheld` is what this route held
+            # back from the tools the turn could call; `capped_after_plan` is
+            # what the turn's own cap withheld *after* the suite was planned —
+            # a `pantheon-qwen3` general-no-tool turn is planned against a cap
+            # of 2 and answered against one of 85. Folding the second into the
+            # first is how `candidates: 81, withheld: 81` came to be stored for
+            # a turn on which the person could call two tools (`Law 10`). Empty
+            # on every turn where nothing writes to the cap across the planner.
+            "capped_after_plan": sorted(
+                {str(n) for n in (suite.get("capped_after_plan") or []) if n}),
             "reason": str(suite.get("reason") or ""),
             "room_tokens": int(suite.get("room_tokens") or 0),
             "cost_tokens": int(suite.get("cost_tokens") or 0),

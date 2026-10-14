@@ -81,6 +81,20 @@ WINDOW_MODELS = {
     "small": "suite-probe-small",
 }
 
+#: The `pantheon-qwen3` finetune, under its own name and the same three windows
+#: (`fx11-order`). `src/agent_loop._is_pantheon_qwen_model` is a prefix test on
+#: the model's **name**, which is the whole of how a turn reaches the three
+#: finetune modes — so a probe that cannot name the model cannot reach them at
+#: all, and `B-NEW-1` (fx11-order) lives in exactly one of them. The windows are
+#: `WINDOW_TOKENS`' so the endpoint reports a real one and the planner's `room`
+#: is not the `window_unknown` branch (`D-2026-10-07-02` §1: a window is read
+#: from the endpoint, never from the name).
+FINETUNE_MODELS = {
+    "large": "pantheon-qwen3-8b",
+    "medium": "pantheon-qwen3-8b-medium",
+    "small": "pantheon-qwen3-8b-small",
+}
+
 
 @dataclass(frozen=True)
 class Cell:
@@ -336,7 +350,8 @@ class _ProbeHandler(BaseHTTPRequestHandler):
             self._json(200, {"object": "list", "data": [
                 {"id": name, "object": "model", "context_length": tokens,
                  "max_model_len": tokens}
-                for window, name in WINDOW_MODELS.items()
+                for table in (WINDOW_MODELS, FINETUNE_MODELS)
+                for window, name in table.items()
                 for tokens in (WINDOW_TOKENS[window],)
             ]})
             return
@@ -802,6 +817,8 @@ async def drive_turn(world: ProbeWorld, cell: Cell, text: str, *,
                wire: bool = False,
                max_rounds: Optional[int] = None,
                url: Optional[str] = None,
+               model: Optional[str] = None,
+               plan_mode: bool = False,
                disabled_tools: Optional[Set[str]] = None) -> TurnRecord:
     """Run one turn of the product's own loop in this cell. Nothing is stubbed
     except the model, and `dispatch="real"` removes even the dispatcher stub.
@@ -809,6 +826,14 @@ async def drive_turn(world: ProbeWorld, cell: Cell, text: str, *,
     `script` is what the model says, in order: a string is text, anything else
     is fed to the loop's own stream reader as a `data:` frame (so the five
     reply shapes are driven through the code that reads them, not around it).
+
+    `model` overrides `cell.model` (`fx11-order`), because the three
+    `pantheon-qwen3` finetune modes are reached by the model's **name** and by
+    nothing else; `FINETUNE_MODELS` carries the names the probe endpoint
+    declares a window for. `plan_mode` is `stream_agent_loop`'s own flag, and
+    on a finetune route it is the one state that stands the fixed prompt down
+    while the finetune clamps still run — the turn where the partial-suite
+    notice actually reaches the model.
 
     `dispatch="boundary"` records the `ToolBlock` the loop handed
     `execute_tool_block` and answers with a canned result — the seam
@@ -887,7 +912,7 @@ async def drive_turn(world: ProbeWorld, cell: Cell, text: str, *,
         out = []
         async for chunk in al.stream_agent_loop(
             url or world.endpoint.url,
-            cell.model,
+            model or cell.model,
             turn,
             max_rounds=max_rounds or (len(steps) + 1),
             owner=world.owner(cell),
@@ -895,6 +920,7 @@ async def drive_turn(world: ProbeWorld, cell: Cell, text: str, *,
             tool_policy=ToolPolicy(),
             context_length=WINDOW_TOKENS[cell.window],
             prompt_type="agent" if cell.mode == "agent" else None,
+            plan_mode=plan_mode,
         ):
             out.append(chunk)
         return out
@@ -1601,6 +1627,127 @@ async def offer_channel_gap(world: ProbeWorld, cell: Cell,
         disabled=sorted(disabled),
         array=sorted(record.offered()),
         prompt_named=sorted(prompt_tool_names(record.first.get("prompt", ""))),
+    )
+
+
+@dataclass
+class SuiteOrder:
+    """One turn's suite plan, the cap it was planned against, and the records.
+
+    `fx11-order`. `OfferGap` above answers *what reached the model*; this
+    answers *what the turn said about itself*, which is a different question
+    and the one `Law 10` is about. Four readings of one turn:
+
+    * `plan_*` — what `plan_turn_tool_suite` returned, and the size of the
+      `disabled_tools` it was handed **at the moment it ran**.
+    * `cap_at_prompt` — the same object when the prompt was built, after every
+      clamp. A number larger than `cap_at_plan` means a writer ran across the
+      planner.
+    * `notice` / `notice_reached_model` — the partial-suite sentence
+      `_suite_notice_for` computed, and whether the prompt the model was
+      actually sent contains it. The two are different facts on a finetune
+      route, which replaces the assembled prompt wholesale.
+    * `receipt` — the `suite` payload `src.events.record_run_config` stored.
+    """
+
+    plan_candidates: int = 0
+    plan_offered: int = 0
+    plan_reason: str = ""
+    plan_withheld: List[str] = field(default_factory=list)
+    plan_partial: bool = False
+    cap_at_plan: int = 0
+    cap_at_prompt: int = 0
+    cap_at_prompt_names: List[str] = field(default_factory=list)
+    prompt_tool_names: List[str] = field(default_factory=list)
+    notice: str = ""
+    notice_reached_model: bool = False
+    receipt: Dict[str, Any] = field(default_factory=dict)
+    array: List[str] = field(default_factory=list)
+    prompt: str = ""
+
+    @property
+    def notice_numbers(self):
+        """`(offered, total)` as the notice states them, or `None`."""
+        m = re.search(r"You have (\d+) of your (\d+) tools", self.notice or "")
+        return (int(m.group(1)), int(m.group(2))) if m else None
+
+    @property
+    def receipt_numbers(self):
+        """`(offered, candidates)` as the receipt stores them, or `None`."""
+        if not self.receipt:
+            return None
+        return (int(self.receipt.get("offered") or 0),
+                int(self.receipt.get("candidates") or 0))
+
+
+async def suite_order(world: ProbeWorld, cell: Cell, text: str = "", *,
+                      model: Optional[str] = None,
+                      plan_mode: bool = False) -> SuiteOrder:
+    """Drive one real turn and read the plan, the cap, the notice and the receipt.
+
+    Spied at the three seams the product itself writes through —
+    `plan_turn_tool_suite`, `_assemble_prompt` and
+    `src.events.record_run_config` — and every one put back in a `finally`.
+    `disabled_tools` is read by `len()` at each seam rather than copied,
+    because it is one mutated object and its size is the measurement.
+    """
+    import src.agent_loop as al
+    import src.events as events
+
+    seen: Dict[str, Any] = {}
+    real_plan = al.plan_turn_tool_suite
+    real_asm = al._assemble_prompt
+    real_record = events.record_run_config
+
+    def plan_spy(*a, **k):
+        out = real_plan(*a, **k)
+        seen["plan"] = out
+        seen["cap_at_plan"] = len(set(k.get("disabled_tools") or ()))
+        return out
+
+    def asm_spy(tool_names, disabled_tools=None, compact=False, suite_notice=""):
+        seen["cap_at_prompt"] = len(set(disabled_tools or ()))
+        seen["cap_at_prompt_names"] = sorted(set(disabled_tools or ()))
+        seen["prompt_tool_names"] = sorted(set(tool_names))
+        if suite_notice:
+            seen["notice"] = suite_notice
+        return real_asm(tool_names, disabled_tools, compact, suite_notice)
+
+    def record_spy(**k):
+        if k.get("suite") is not None:
+            seen["receipt"] = json.loads(json.dumps(k["suite"]))
+        return real_record(**k)
+
+    al.plan_turn_tool_suite = plan_spy
+    al._assemble_prompt = asm_spy
+    events.record_run_config = record_spy
+    try:
+        record = await drive_turn(world, cell, text or ORDINARY_TURN,
+                                  model=model, plan_mode=plan_mode)
+    finally:
+        al.plan_turn_tool_suite = real_plan
+        al._assemble_prompt = real_asm
+        events.record_run_config = real_record
+
+    plan = seen.get("plan")
+    prompt = record.first.get("prompt", "") or ""
+    notice = seen.get("notice", "")
+    head = notice.split("\n")[0] if notice else ""
+    return SuiteOrder(
+        plan_candidates=len(plan.candidates) if plan else 0,
+        plan_offered=len(plan.offered) if plan else 0,
+        plan_reason=getattr(plan, "reason", "") if plan else "",
+        plan_withheld=list(getattr(plan, "withheld", ())) if plan else [],
+        plan_partial=bool(getattr(plan, "partial", False)) if plan else False,
+        cap_at_plan=int(seen.get("cap_at_plan") or 0),
+        cap_at_prompt=int(seen.get("cap_at_prompt") or 0),
+        cap_at_prompt_names=list(seen.get("cap_at_prompt_names") or []),
+        prompt_tool_names=list(seen.get("prompt_tool_names") or []),
+        notice=notice,
+        notice_reached_model=bool(head and head in prompt),
+        receipt=dict(seen.get("receipt") or {}),
+        array=sorted(record.offered()),
+        prompt=prompt,
     )
 
 
