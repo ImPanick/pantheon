@@ -89,6 +89,11 @@ def _child(args) -> int:
                 import asyncio as _aio
                 from src.tool_index import get_tool_index
                 await _aio.to_thread(get_tool_index)
+            boot = await probe.boot_connect_report(scratch)
+            print("BOOT " + json.dumps({
+                "verdict": boot.verdict, "registered": boot.registered,
+                "raised": boot.raised, "connected": boot.connected,
+                "tools": boot.tools}), flush=True)
             for cell in cells:
                 result = await probe.run_cell(
                     world, cell, repeats=args.repeats,
@@ -208,6 +213,7 @@ def main(argv=None) -> int:
     owned_scratch = not args.scratch
     scratch = args.scratch or tempfile.mkdtemp(prefix="tool-suite-matrix-")
     rows: list[dict] = []
+    boots: list[dict] = []
     failures = []
     try:
         from tests.helpers.tool_suite_probe import EMBEDDINGS, commit_sha, render_table
@@ -236,6 +242,16 @@ def main(argv=None) -> int:
                                     stderr=subprocess.PIPE, text=True)
             assert proc.stdout is not None
             for line in proc.stdout:
+                if line.startswith("BOOT "):
+                    boot = json.loads(line[5:])
+                    boots.append(boot)
+                    print(f"  boot connect over {boot['registered']} registered stdio "
+                          f"servers (one dead): {boot['verdict']}, "
+                          f"{len(boot['connected'])} connected, "
+                          f"{len(boot['tools'])} MCP tools"
+                          + (f", raised {boot['raised']}" if boot["raised"] else ""),
+                          flush=True)
+                    continue
                 if line.startswith("ROW "):
                     data = json.loads(line[4:])
                     rows.append(data)
@@ -255,7 +271,7 @@ def main(argv=None) -> int:
         seconds = time.time() - started
         print("\n" + render_table([_Row(r) for r in rows]))
         print()
-        print(_summary(rows, seconds))
+        print(_summary(rows, seconds, boots))
         if args.json:
             with open(args.json, "w", encoding="utf-8") as fh:
                 json.dump({"commit": commit_sha(), "seconds": round(seconds, 1),
@@ -269,7 +285,7 @@ def main(argv=None) -> int:
             shutil.rmtree(scratch, ignore_errors=True)
 
 
-def _summary(rows: list[dict], seconds: float) -> str:
+def _summary(rows: list[dict], seconds: float, boots: list[dict] | None = None) -> str:
     from tests.helpers.tool_suite_probe import commit_sha
 
     varying = [r["cell"]["id"] for r in rows if not r["identical"]]
@@ -306,6 +322,12 @@ def _summary(rows: list[dict], seconds: float) -> str:
                  + (f" — {', '.join(sorted(skills_missing)[:6])}" if skills_missing else ""))
     lines.append(f"tool/shape pairs whose call was DROPPED: {len(dropped)}"
                  + (f" — {', '.join(dropped[:8])}" if dropped else ""))
+    for boot in (boots or []):
+        lines.append(
+            f"boot connect over {boot['registered']} registered stdio servers, one of "
+            f"them dead: {boot['verdict']} — {len(boot['connected'])} connected, "
+            f"{len(boot['tools'])} MCP tools reached the model"
+            + (f" (raised {boot['raised']})" if boot["raised"] else ""))
     if controls:
         lines.append(f"unknown-name control (a call to a name nobody registered must be "
                      f"refused, never routed): {len(controls) - len(bad_control)}"
