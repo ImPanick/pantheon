@@ -278,6 +278,71 @@ def test_a_skill_reaches_the_model_through_the_catalogue_the_loop_injects(scratc
     _run(go())
 
 
+def test_a_fenced_route_has_only_the_prompt_so_the_prompt_is_measured(scratch):
+    """An Ollama endpoint that has not declared `supports_tools` sends no array.
+
+    `B39`'s measured policy, by URL and not by model name, which `fx6-tools`
+    left exactly as it found it. On that route a tool reaches the model only if
+    the prompt names it, so the harness measures the prompt as a channel in its
+    own right.
+
+    `tools_with_no_prompt_section()` is **not** a ceiling on that, and the
+    first version of this case assumed it was. Measured: `api_call` and
+    `manage_rag` have no `TOOL_SECTIONS` entry and are still backticked by the
+    rules blocks, so a tool can be named in the prompt without having a section
+    of its own. The two facts are separate — the missing section is what hides
+    a skill that requires the tool (`index_for`'s `active_toolsets`), not what
+    hides the tool.
+
+    The assertion is the arithmetic, not the score: the route carries no array
+    and every tool gets exactly one of the three verdicts. The score for
+    `0bd089d` is in `/work/notes/fx9-proof.md`.
+    """
+
+    async def go():
+        cell = probe.Cell(embeddings="down", mcp="absent")
+        async with probe.probe_world(os.path.join(scratch, "fenced"),
+                                     mcp_states=("absent",)) as world:
+            inventory = probe.suite_inventory(world.manager(cell),
+                                              data_dir=world.data_dir,
+                                              owner=world.owner(cell))
+            report = await probe.fenced_route_reach(world, cell, inventory)
+            assert report.offered_array == 0, (
+                "a route Pantheon treats as fenced still carried a tools array")
+            buckets = [set(report.named_in_prompt), set(report.missing),
+                       set(report.held)]
+            assert set().union(*buckets) == set(inventory.tools)
+            for i, left in enumerate(buckets):
+                for right in buckets[i + 1:]:
+                    assert left.isdisjoint(right), sorted(left & right)
+
+    _run(go())
+
+
+def test_the_inventory_separates_the_skills_stored_from_the_skills_indexed(scratch):
+    """A skill in the store and not in the index reaches nobody.
+
+    Reporting only `index_for` would hide it, so the inventory carries both and
+    the gap is a number. Measured on `0bd089d`: four written, three indexed.
+    """
+
+    async def go():
+        cell = probe.Cell(embeddings="down", mcp="absent")
+        async with probe.probe_world(os.path.join(scratch, "skill-gap"),
+                                     mcp_states=("absent",)) as world:
+            inventory = probe.suite_inventory(world.manager(cell),
+                                              data_dir=world.data_dir,
+                                              owner=world.owner(cell))
+            assert set(inventory.skills) <= set(inventory.skills_stored)
+            for name in set(inventory.skills_stored) - set(inventory.skills):
+                requires = next(t for n, _c, t, _b in probe.PROBE_SKILLS if n == name)
+                assert probe.skill_toolset_blocker(requires), (
+                    f"{name} is in the store, out of the index, and no gate "
+                    f"accounts for it")
+
+    _run(go())
+
+
 # ── question 2: callable, in all five shapes a server emits ─────────────────
 
 CALLABLE_SAMPLE = [
@@ -415,8 +480,9 @@ def test_a_call_to_a_name_nobody_registered_is_not_routed(scratch):
         async with probe.probe_world(os.path.join(scratch, "control"),
                                      mcp_states=("absent",)) as world:
             row = await probe.unknown_name_control(world, cell)
-            assert row.verdict != "routed"
+            assert row.verdict != "routed", row.detail
             assert "dispatched" not in row.detail
+            assert row.verdict in probe.CALL_VERDICTS
 
     _run(go())
 

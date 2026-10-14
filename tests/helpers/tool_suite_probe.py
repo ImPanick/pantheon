@@ -207,11 +207,34 @@ def skill_toolset_blocker(requires: Sequence[str]) -> List[str]:
     return sorted(name for name in (requires or []) if name in missing)
 
 
+def skills_in_store(data_dir: str, owner: Optional[str]) -> List[str]:
+    """Every skill the store holds for this person, before any gate.
+
+    The counterpart to `skill_names`, which is the **indexed** list the prompt
+    gets. A skill in the store and not in the index is either switched off by
+    its package (`P8-51`) or excluded by `requires_toolsets`; the difference
+    between these two lists is how many skills nobody can reach, and reporting
+    only the index would hide it.
+    """
+    try:
+        from services.memory.skills import SkillsManager
+    except Exception:
+        return []
+    try:
+        return sorted({str(s.get("name")) for s in SkillsManager(data_dir).load(owner=owner)
+                       if s.get("name")})
+    except Exception:
+        return []
+
+
 @dataclass
 class Inventory:
     builtins: List[str]
     mcp: List[str]
     skills: List[str]
+    #: Every skill in the store, indexed or not. `skills` is what reaches the
+    #: prompt; the gap between the two is reported rather than hidden.
+    skills_stored: List[str] = field(default_factory=list)
 
     @property
     def tools(self) -> List[str]:
@@ -237,6 +260,7 @@ def suite_inventory(mcp_mgr=None, *, data_dir: Optional[str] = None,
         builtins=builtin_tool_names(),
         mcp=mcp_tool_names(mcp_mgr),
         skills=skill_names(data_dir, owner) if data_dir else [],
+        skills_stored=skills_in_store(data_dir, owner) if data_dir else [],
     )
 
 
@@ -755,6 +779,7 @@ async def drive_turn(world: ProbeWorld, cell: Cell, text: str, *,
                dispatch: str = "boundary",
                wire: bool = False,
                max_rounds: Optional[int] = None,
+               url: Optional[str] = None,
                disabled_tools: Optional[Set[str]] = None) -> TurnRecord:
     """Run one turn of the product's own loop in this cell. Nothing is stubbed
     except the model, and `dispatch="real"` removes even the dispatcher stub.
@@ -839,7 +864,7 @@ async def drive_turn(world: ProbeWorld, cell: Cell, text: str, *,
     async def collect():
         out = []
         async for chunk in al.stream_agent_loop(
-            world.endpoint.url,
+            url or world.endpoint.url,
             cell.model,
             turn,
             max_rounds=max_rounds or (len(steps) + 1),
@@ -1126,7 +1151,7 @@ def minimal_args(tool: str, *, mcp_mgr=None) -> dict:
 #: gate stopped it, with its sentence (a **pass** — `FORBIDDEN.md` Part 2);
 #: `nudged` the loop declined to dispatch on purpose and told the model why;
 #: `dropped` nothing parsed, nothing ran and nobody was told.
-CALL_VERDICTS = ("answered", "refused", "held", "nudged", "dropped")
+CALL_VERDICTS = ("answered", "refused", "held", "nudged", "dropped", "routed")
 
 
 @dataclass
@@ -1172,7 +1197,17 @@ def _call_verdict(record: TurnRecord, tool: str) -> Tuple[str, str]:
         text = str(ev.get("output") or ev.get("result") or "")
         if text:
             return "refused", text[:160]
-    return "dropped", "no ToolBlock reached the dispatcher"
+    # Nothing ran. A sentence the person reads is still a refusal, and the
+    # product has refusals that arrive as ordinary reply text rather than as a
+    # tool event — `_explicitly_references_missing_workspace` ends the turn
+    # with *"No active workspace is set. Use `/workspace pick` …"* before the
+    # model is called at all, which is a correct answer to a request for a
+    # file tool on an install with no workspace. Reading only `tool_output`
+    # would file that as a silent drop, which is the opposite of what happened.
+    said = "".join(str(ev.get("delta") or "") for ev in record.events).strip()
+    if said:
+        return "refused", said[:160]
+    return "dropped", "no ToolBlock reached the dispatcher and the person was told nothing"
 
 
 async def call_report(world: ProbeWorld, cell: Cell, inventory: Inventory, *,
@@ -1195,6 +1230,63 @@ async def call_report(world: ProbeWorld, cell: Cell, inventory: Inventory, *,
             rows.append(CallRow(tool=tool, kind=inventory.kind(tool), shape=shape,
                                 verdict=verdict, detail=detail))
     return rows
+
+
+#: An Ollama-shaped URL. `tool_schema_offer` answers `fenced` for it by URL and
+#: not by model name (`B39`'s measured policy, which `fx6-tools` left exactly as
+#: it found it), and port 11434 is the discriminator
+#: (`_is_ollama_openai_compat_url`). Nothing has to be listening: the model is
+#: scripted, so no request leaves the process.
+FENCED_ROUTE_URL = "http://127.0.0.1:11434/v1"
+
+
+@dataclass
+class FencedReport:
+    """What a route with no `tools` array at all can reach."""
+
+    offered_array: int
+    named_in_prompt: List[str]
+    missing: List[str]
+    held: List[str]
+
+    @property
+    def reached(self) -> int:
+        return len(self.named_in_prompt)
+
+
+async def fenced_route_reach(world: ProbeWorld, cell: Cell,
+                             inventory: Inventory) -> FencedReport:
+    """On a fenced route the prompt is the only channel, so measure the prompt.
+
+    The matrix's cells all run an OpenAI-compatible route, where a tool can
+    reach the model through the `tools` array. An Ollama endpoint that has not
+    declared `supports_tools` carries **no array at all** (`B39`), so every
+    tool in the suite either appears in the prompt or cannot be called on that
+    install. One turn per tool, the bare name — the turn the brief says must
+    never be silently dropped.
+    """
+    from src.settings import load_features
+
+    try:
+        features = load_features()
+    except Exception:
+        features = {}
+    named: List[str] = []
+    missing: List[str] = []
+    held: List[str] = []
+    array_sizes: List[int] = []
+    for tool in inventory.tools:
+        record = await drive_turn(world, cell, bare_naming_turn(tool),
+                                  url=FENCED_ROUTE_URL)
+        array_sizes.append(len(record.first.get("tools") or []))
+        if tool in prompt_tool_names(record.first.get("prompt", "")):
+            named.append(tool)
+        elif gate_holding(tool, admin=cell.admin, features=features) is not None:
+            held.append(tool)
+        else:
+            missing.append(tool)
+    return FencedReport(offered_array=max(array_sizes or [0]),
+                        named_in_prompt=named, missing=missing, held=held)
 
 
 @dataclass
@@ -1289,11 +1381,16 @@ async def unknown_name_control(world: ProbeWorld, cell: Cell) -> CallRow:
                         script=[reply_shapes(bogus, {})["native"], "Done."],
                         max_rounds=3)
     routed = any(name == bogus for name, _ in record.dispatched)
-    said = " ".join(str(ev.get("output") or ev.get("reason") or "")
-                    for ev in record.events
-                    if ev.get("type") in ("tool_output", "tool_blocked"))
     if routed:
-        return CallRow(bogus, "control", "native", "dropped", "an unknown name was dispatched")
+        return CallRow(bogus, "control", "native", "routed",
+                       "an unknown name was dispatched")
+    # Not routed is the control. What the *person* was told is the second
+    # question, and it is asked of every surface a person reads: the tool
+    # events and the reply text.
+    said = " ".join(
+        str(ev.get("output") or ev.get("reason") or ev.get("message") or ev.get("delta") or "")
+        for ev in record.events
+        if ev.get("type") in ("tool_output", "tool_blocked") or "delta" in ev).strip()
     return CallRow(bogus, "control", "native",
                    "refused" if said else "dropped", said[:160])
 
