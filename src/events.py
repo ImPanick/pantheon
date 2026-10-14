@@ -673,6 +673,7 @@ def record_run_config(*, sampling: Optional[Dict[str, Any]] = None,
                       tools: Optional[Iterable[Any]] = None,
                       fenced: Optional[Iterable[str]] = None,
                       skills: Optional[Iterable[Dict[str, Any]]] = None,
+                      suite: Optional[Dict[str, Any]] = None,
                       session_id: Optional[str] = None,
                       owner: Optional[str] = None) -> bool:
     """The three things a run did that nothing kept (`P4-25`).
@@ -709,6 +710,25 @@ def record_run_config(*, sampling: Optional[Dict[str, Any]] = None,
         # for this turn (the compact prompt forbids tool syntax in chat), which
         # is a different fact from `None`, meaning nobody looked.
         payload["fenced"] = sorted({str(n) for n in fenced if n})
+    if suite is not None:
+        # `B-NEW` (fx9-suite). **What this turn did NOT offer, and why.** The
+        # three keys above say what the model was shown; none of them could say
+        # whether that was everything the person's privileges allow. A turn
+        # offering eleven of seventy-four and a turn offering seventy-four of
+        # seventy-four looked identical here, so "the model said it had no such
+        # tool" was unanswerable from the record. Names, not hashes: a withheld
+        # tool has no schema in this request to fingerprint.
+        payload["suite"] = {
+            "offered": int(suite.get("offered") or 0),
+            "candidates": int(suite.get("candidates") or 0),
+            "withheld": sorted({str(n) for n in (suite.get("withheld") or []) if n}),
+            "reason": str(suite.get("reason") or ""),
+            "room_tokens": int(suite.get("room_tokens") or 0),
+            "cost_tokens": int(suite.get("cost_tokens") or 0),
+            "window": int(suite.get("window") or 0),
+            "window_known": bool(suite.get("window_known")),
+            "over_room": bool(suite.get("over_room")),
+        }
     if skills is not None:
         payload["skills"] = [
             {"name": str(s.get("name") or "")[:200],
