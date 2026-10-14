@@ -15,7 +15,7 @@ import re
 import time
 import logging
 from dataclasses import dataclass
-from typing import Any, AsyncGenerator, List, Dict, Optional, Set
+from typing import Any, AsyncGenerator, Iterable, List, Dict, Optional, Set
 from urllib.parse import urlparse
 
 from src.llm_core import (
@@ -908,6 +908,158 @@ _WORKSPACE_TERMINUS_TOOLS = (
     | {"manage_skills", "ask_teacher", "web_search", "web_fetch", "ask_user", "update_plan"}
 )
 
+# ── `B-NEW` (fx9-suite). The whole suite, and what it costs ──────────────────
+
+_SCHEMA_TOKEN_COSTS: Optional[Dict[str, int]] = None
+
+
+def _builtin_schema_token_costs() -> Dict[str, int]:
+    """`{tool: tokens}` for every built-in function schema.
+
+    Measured with `context_budget.tool_schema_tokens`, the one estimator the
+    context wheel's `tools` category and the trimmer already use, so the
+    selector's arithmetic and the meter's agree (`Law 7`). On `0bd089d`: 74
+    schemas, 73,280 characters, **21,830 tokens** — not the ~18,300 a chars/4
+    estimate gives. Cached: the schemas are a module-level literal.
+    """
+    global _SCHEMA_TOKEN_COSTS
+    if _SCHEMA_TOKEN_COSTS is None:
+        from src.context_budget import tool_schema_tokens
+        _SCHEMA_TOKEN_COSTS = {
+            name: tool_schema_tokens(schema)
+            for schema in FUNCTION_TOOL_SCHEMAS
+            if (name := (schema.get("function") or {}).get("name"))
+        }
+    return _SCHEMA_TOKEN_COSTS
+
+
+def _suite_mcp_tools(mcp_mgr, mcp_disabled_map) -> tuple:
+    """Every enabled MCP tool, its cost, and which server serves it.
+
+    `B-NEW` rule 5: an MCP tool is in the suite by default, not a candidate that
+    must win a lottery. Returns `(names, costs, by_server)`; `by_server` is keyed
+    on the server's own **name and its id**, so a person who says either pins
+    that server's tools (rule 4). `mcp__{server_id}__{tool_name}` is read and
+    never rewritten (`FORBIDDEN.md` Part 1).
+    """
+    names: Set[str] = set()
+    costs: Dict[str, int] = {}
+    by_server: Dict[str, Set[str]] = {}
+    if not mcp_mgr:
+        return names, costs, by_server
+    try:
+        from src.context_budget import tool_schema_tokens
+        for tool in mcp_mgr.get_all_tools(mcp_disabled_map or {}, overrides={}) or []:
+            if tool.get("is_disabled"):
+                continue
+            qualified = tool.get("qualified_name")
+            if not qualified:
+                continue
+            names.add(qualified)
+            for key in (tool.get("server_name"), tool.get("server_id")):
+                if key:
+                    by_server.setdefault(str(key), set()).add(qualified)
+        for schema in mcp_mgr.get_all_openai_schemas(mcp_disabled_map or {}, overrides={}) or []:
+            name = (schema.get("function") or {}).get("name")
+            if name:
+                costs[str(name)] = tool_schema_tokens(schema)
+    except Exception as exc:
+        # `P3-17`. Fails **open** in the direction that costs nothing: with no
+        # MCP list the suite is the built-ins, which is what it was before.
+        logger.warning("[tool-suite] MCP tool list unavailable: %s", exc)
+    return names, costs, by_server
+
+
+def plan_turn_tool_suite(
+    query: str,
+    *,
+    endpoint_url: str,
+    model: str,
+    disabled_tools: Optional[Set[str]] = None,
+    domains: Iterable[str] = (),
+    mcp_names: Iterable[str] = (),
+    mcp_costs: Optional[Dict[str, int]] = None,
+    mcp_by_server: Optional[Dict[str, Set[str]]] = None,
+    within_allowed=None,
+    get_setting_fn=None,
+):
+    """This turn's tool set: the whole suite, or a deterministic part of it.
+
+    **The measured defect this replaces.** `src/tool_index.ALWAYS_AVAILABLE` is
+    three tools; everything else reached a turn only by winning a top-8 vector
+    retrieval inside `_TOOL_SELECTION_TIMEOUT_SECONDS` (1.5s), with the keyword
+    selector as the fallback. About eleven of seventy-four were offered and
+    *which* eleven depended on whether the embedding backend answered — measured
+    on `0bd089d` as a `tools` array that varied run to run for one question.
+    That was the owner's *"the LLM's use of tools is still very much
+    intermittent… even with its own MCP's provided"*.
+
+    Now: every name the person's privileges allow is a candidate — the
+    built-ins, every registered MCP tool, the skill-invoking tools — and the
+    whole set is offered whenever it fits the model's **proven** window with
+    working room left. The window is read the way Pantheon already reads it
+    (`model_context.budget_context_for_model`, which answers 0 rather than a
+    bare 128K fallback, and `context_budget.agent_input_budget` —
+    `CHAT-M-4`'s work) and **never from the model's name**
+    (`D-2026-10-07-02` §1). An unknown window takes the conservative branch and
+    the returned `reason` says so.
+
+    Privileges are untouched: `disabled_tools` already carries
+    `blocked_tools_for_owner`, the delegated-credential cap, the feature flags,
+    plan mode, the tool policy and the per-turn hides, and the candidates are
+    that set's complement — so a tool the person may not use is still not
+    offered, and `_tool_schemas_for_route` filters by `disabled_tools` again
+    afterwards.
+    """
+    from src.context_budget import tool_suite_room
+    from src.model_context import budget_context_for_model
+    from src.tool_index import (
+        ALWAYS_AVAILABLE,
+        ToolIndex,
+        names_the_request_pins,
+        plan_tool_suite,
+    )
+    from src.tool_policy import known_tool_names
+
+    disabled = set(disabled_tools or ())
+    mcp_names = {str(n) for n in (mcp_names or ())}
+    candidates = (set(known_tool_names()) | mcp_names) - disabled
+    if within_allowed is not None:
+        candidates = set(within_allowed(candidates))
+
+    costs = dict(_builtin_schema_token_costs())
+    costs.update(mcp_costs or {})
+
+    def cost(name: str) -> int:
+        # A name with no function schema costs the `tools` array nothing; its
+        # prose is accounted for by the prompt assembly that ships it.
+        return int(costs.get(name, 0))
+
+    window = budget_context_for_model(endpoint_url or "", model or "", fallback=0)
+    room = tool_suite_room(window, get_setting_fn or get_setting)
+
+    domains = [str(d) for d in (domains or ())]
+    pinned = set(ALWAYS_AVAILABLE) | {"ask_user", "update_plan"}
+    pinned |= names_the_request_pins(query, candidates, mcp_tools=mcp_by_server or {})
+    for domain in domains:
+        pinned |= _DOMAIN_TOOL_MAP.get(domain, set())
+    pinned &= candidates
+    keyword_picks = ToolIndex.select_without_embeddings(query or "", set()) & candidates
+
+    return plan_tool_suite(
+        candidates,
+        cost=cost,
+        room=room["room"],
+        window=room["window"],
+        window_known=room["window_known"],
+        pinned=pinned,
+        mcp=mcp_names & candidates,
+        keyword_picks=keyword_picks,
+        domains=domains,
+        domain_map=_DOMAIN_TOOL_MAP,
+    )
+
+
 _PROMISED_TOOL_RE = re.compile(r"`([a-z][a-z0-9_]{2,40})`")
 
 # `B-NEW`. A rule that **directs the model to one tool** belongs to that tool,
@@ -1443,8 +1595,45 @@ def fenced_tool_names(tool_names: set, disabled_tools: set = None,
     return frozenset(name for name in TOOL_SECTIONS if name in included)
 
 
-def _assemble_prompt(tool_names: set, disabled_tools: set = None, compact: bool = False) -> str:
-    """Build the system prompt with only the specified tools included."""
+#: `B-NEW` (fx9-suite). What a turn says when its tool set is not the whole
+#: suite. It names **no tool** — the whole point of `B-NEW-4` is that a prompt
+#: naming a tool the request withholds sends the model looking for it — and it
+#: gives the model the one move that is better than concluding the capability
+#: does not exist. `{n}` offered of `{total}`; `{why}` is one clause.
+_PARTIAL_SUITE_NOTICE = (
+    "## This turn's tool set is partial\n"
+    "You have {n} of your {total} tools this turn — {why}. The rest exist and "
+    "you are not being told which they are, because naming a tool you cannot "
+    "call this turn is worse than not naming it. If the job needs something "
+    "that is not listed above, say in one sentence what you need and why, and "
+    "stop there. Do not conclude the capability does not exist, and do not "
+    "substitute a shell command for a tool you were not given."
+)
+_PARTIAL_SUITE_WHY = {
+    "window": "the whole set does not fit this model's context window",
+    "window_unknown": "this endpoint did not report its context window, so the "
+                      "set was kept conservative",
+    "route": "this route was narrowed to the tools its task needs",
+}
+
+
+def _partial_suite_notice(offered: int, total: int, reason: str) -> str:
+    """The notice, or `""` when the turn carries everything it could."""
+    if total <= 0 or offered >= total:
+        return ""
+    why = _PARTIAL_SUITE_WHY.get(str(reason or ""), _PARTIAL_SUITE_WHY["route"])
+    return _PARTIAL_SUITE_NOTICE.format(n=offered, total=total, why=why)
+
+
+def _assemble_prompt(tool_names: set, disabled_tools: set = None, compact: bool = False,
+                     suite_notice: str = "") -> str:
+    """Build the system prompt with only the specified tools included.
+
+    `suite_notice` is `_partial_suite_notice`'s sentence when this turn carries
+    part of the suite rather than all of it (`B-NEW`, fx9-suite). Empty by
+    default, so the module-level `AGENT_SYSTEM_PROMPT` and every existing caller
+    are byte-identical.
+    """
     disabled = disabled_tools or set()
     included = tool_names - disabled
 
@@ -1493,10 +1682,14 @@ def _assemble_prompt(tool_names: set, disabled_tools: set = None, compact: bool 
             # carry out. Same guard as the list above it (`H09`).
             prune_rules_to_available_tools(_API_AGENT_RULES, included),
         ]
+        if suite_notice:
+            parts.insert(2, suite_notice)
         parts.extend(_domain_rules_for_tools(included))
         return "\n\n".join(parts)
 
     parts = [_AGENT_PREAMBLE]
+    if suite_notice:
+        parts.append(suite_notice)
 
     # Collect full-block tool sections (with examples)
     full_blocks = []
@@ -1566,6 +1759,23 @@ _ADMIN_SCHEMA_NAMES = frozenset([
     "ask_teacher", "list_models", "search_chats",
 ])
 _TOOL_SELECTION_TIMEOUT_SECONDS = 1.5
+
+# `B-NEW` (fx9-suite). **Whether the vector index decides which tools a turn is
+# offered.** It did, through a top-8 retrieval inside the timeout above, and
+# that is the whole of the owner's *"intermittent"*: the answer depended on
+# whether an embedding backend answered in 1.5 seconds. `plan_turn_tool_suite`
+# answers it deterministically now.
+#
+# Off rather than deleted (`Law 1`), and measured rather than assumed
+# (`.pantheon/retrieval_eval.py --kind tools` on `0bd089d`, 29 fixture probes,
+# 81 tools in the surface): the deterministic selector scores **recall 0.97 /
+# refusal 0.93** against the embedding path's **0.83 / 0.83**. The vector lane
+# is not a better judge of which tools a request needs — it is a judge that
+# sometimes does not answer. The index stays reachable and used elsewhere:
+# `ToolIndex.retrieve` / `get_tools_for_query` for the Personal Assistant's
+# check-ins (`src/task_scheduler.py`), `app.py`'s warmup, and the eval harness.
+# Set this True to put it back in front of the turn's offer.
+_TOOL_RETRIEVAL_SELECTS_THE_TURN = False
 
 
 def _is_ollama_openai_compat_url(endpoint_url: str) -> bool:
@@ -3095,6 +3305,7 @@ def _build_system_prompt(
     workspace: Optional[str] = None,
     context_report: Optional[Dict[str, Any]] = None,
     schema_offer: str = "native",
+    tool_suite=None,
 ) -> List[Dict]:
     """Build agent system prompt, inject MCP/document context, merge consecutive system msgs.
 
@@ -3125,7 +3336,15 @@ def _build_system_prompt(
         _ov_sig = _hl.sha256(_json.dumps(get_builtin_overrides() or {}, sort_keys=True).encode()).hexdigest()
     except Exception:
         _ov_sig = ""
-    cache_key = (frozenset(disabled_tools or []), bool(mcp_mgr), needs_admin, _rt_key, compact, _ov_sig, owner, suppress_local_context, suppress_skills)
+    # `B-NEW` (fx9-suite). The suite's denominator and the reason it narrowed
+    # are in the key: the prompt carries a "N of M tools" notice derived from
+    # them, so two turns with the same selected set and different candidate
+    # sets are two different prompts.
+    _suite_key = (
+        (len(tool_suite.candidates), tool_suite.reason, len(tool_suite.offered))
+        if tool_suite is not None else None
+    )
+    cache_key = (frozenset(disabled_tools or []), bool(mcp_mgr), needs_admin, _rt_key, compact, _ov_sig, owner, suppress_local_context, suppress_skills, _suite_key)
     if _cached_base_prompt and _cached_base_prompt_key == cache_key and not active_document:
         agent_prompt = _cached_base_prompt
         # Skill index is user-editable (name + description), so it must never
@@ -3137,6 +3356,7 @@ def _build_system_prompt(
             suppress_local_context=suppress_local_context,
             suppress_skills=suppress_skills,
             context_report=context_report,
+            tool_suite=tool_suite,
         )
     else:
         agent_prompt, _skill_index_block = _build_base_prompt(
@@ -3150,6 +3370,7 @@ def _build_system_prompt(
             suppress_local_context=suppress_local_context,
             suppress_skills=suppress_skills,
             context_report=context_report,
+            tool_suite=tool_suite,
         )
         if not active_document:
             _cached_base_prompt = agent_prompt
@@ -3834,6 +4055,29 @@ def _record_fenced_channel(tool_names, disabled, compact, owner) -> None:
         pass   # a receipt is never worth a failed run
 
 
+def _suite_notice_for(tool_suite, tool_names, disabled) -> str:
+    """`_partial_suite_notice` for the names this route actually ships.
+
+    `B-NEW` (fx9-suite). The denominator is the plan's `candidates` — every tool
+    the person's privileges allowed this turn — and the numerator is what
+    survived every clamp between the plan and this prompt. `reason` is the
+    plan's when the plan is what narrowed, and `"route"` when something after it
+    did.
+    """
+    if tool_suite is None:
+        return ""
+    try:
+        candidates = set(tool_suite.candidates)
+        if not candidates:
+            return ""
+        offered = candidates & (set(tool_names or ()) - set(disabled or ()))
+        reason = tool_suite.reason if len(offered) >= len(tool_suite.offered) else "route"
+        return _partial_suite_notice(len(offered), len(candidates), reason)
+    except Exception as exc:
+        logger.debug("[tool-suite] notice skipped: %s", exc)
+        return ""
+
+
 def _build_base_prompt(
     disabled_tools,
     mcp_mgr,
@@ -3845,11 +4089,20 @@ def _build_base_prompt(
     suppress_local_context: bool = False,
     suppress_skills: bool = False,
     context_report: Optional[Dict[str, Any]] = None,
+    tool_suite=None,
 ):
     """Build the agent prompt with only relevant tools included.
 
-    If relevant_tools is provided (from RAG retrieval), only those tools
-    are shown with full descriptions. Otherwise falls back to full prompt.
+    If relevant_tools is provided, only those tools are shown with full
+    descriptions. Otherwise falls back to full prompt.
+
+    `tool_suite` is this turn's `ToolSuite` (`plan_turn_tool_suite`). The notice
+    is computed from `tool_suite.candidates` against the names this route
+    actually ships, not from the plan's own counts, so a route that narrowed
+    further after the plan ran — a workflow step's own list, the Terminus
+    toolset, a `pantheon-qwen3` finetune clamp — reports what it really carries
+    (`Law 10`). One computation for the prompt and the schema list, so the two
+    cannot disagree (`Law 13`).
     """
     from src.tool_index import ALWAYS_AVAILABLE
 
@@ -3868,7 +4121,9 @@ def _build_base_prompt(
         tool_names = set(relevant_tools) | {"ask_user", "update_plan"}
         if needs_admin:
             tool_names |= _ADMIN_PROMPT_FORCE_INCLUDE
-        agent_prompt = _assemble_prompt(tool_names, disabled, compact=compact)
+        agent_prompt = _assemble_prompt(
+            tool_names, disabled, compact=compact,
+            suite_notice=_suite_notice_for(tool_suite, tool_names, disabled))
         _record_fenced_channel(tool_names, disabled, compact, owner)
     else:
         # Fallback: full prompt (RAG unavailable). Every tool with a section is
@@ -5798,7 +6053,61 @@ async def stream_agent_loop(
     # built-ins and says nothing about MCP. `_tool_schemas_for_route` reads
     # this before it filters the MCP schemas by that set.
     _mcp_retrieval_ran = False
+
+    # `B-NEW` (fx9-suite). **The whole suite, by default.** Narrowing is the
+    # exception now: `plan_turn_tool_suite` offers every tool the person's
+    # privileges allow — built-ins, every registered MCP tool, the
+    # skill-invoking tools — whenever the set fits this model's proven window
+    # with working room left, and narrows by a declared order when it does not.
+    # Same input, same tools, every time: no top-k over a vector score, no 1.5s
+    # race, and no embedding availability in the answer.
+    _suite_mcp_names, _suite_mcp_costs, _suite_mcp_servers = _suite_mcp_tools(
+        mcp_mgr, _mcp_disabled_map)
+    _tool_suite = None
+    # `B-NEW` (fx9-suite). Whether the selector that produced this turn's set
+    # had every MCP tool's **name** in front of it. `_mcp_retrieval_ran` above
+    # answers that for vector retrieval; the suite planner enumerates them
+    # itself (rule 5 — an MCP tool is in the suite by default, not a candidate),
+    # so when it ran, a withheld MCP tool is a decision and not an absence, and
+    # `_tool_schemas_for_route` may filter the MCP schemas by the set. Separate
+    # from `_mcp_retrieval_ran` because the two are different facts and one of
+    # them is in a log line (`Law 10`).
+    _selection_saw_mcp_names = False
     if not guide_only and not _relevant_tools and _allowed_tools is None:
+        try:
+            _tool_suite = plan_turn_tool_suite(
+                _retrieval_query or _last_user,
+                endpoint_url=endpoint_url,
+                model=model,
+                disabled_tools=disabled_tools,
+                domains=(_intent.get("domains") or set()),
+                mcp_names=_suite_mcp_names,
+                mcp_costs=_suite_mcp_costs,
+                mcp_by_server=_suite_mcp_servers,
+                within_allowed=_within_allowed,
+            )
+            _relevant_tools = set(_tool_suite.offered)
+            _selection_saw_mcp_names = True
+            logger.info(
+                "[tool-suite] offered %d/%d tools reason=%s cost=%s room=%s "
+                "window=%s window_known=%s%s",
+                len(_tool_suite.offered), len(_tool_suite.candidates),
+                _tool_suite.reason, _tool_suite.cost, _tool_suite.room,
+                _tool_suite.window, _tool_suite.window_known,
+                (" withheld=" + ",".join(_tool_suite.withheld[:40]))
+                if _tool_suite.partial else "",
+            )
+        except Exception as exc:
+            # `P3-17`, and it fails back onto the path that was here before:
+            # the selectors below still run, so a turn is never left with no
+            # tools because the planner could not read a window.
+            logger.warning("[tool-suite] suite planning failed, falling back to selection: %s", exc)
+            _tool_suite = None
+            _selection_saw_mcp_names = False
+            _relevant_tools = None
+
+    if (_TOOL_RETRIEVAL_SELECTS_THE_TURN and not guide_only
+            and not _relevant_tools and _allowed_tools is None):
         try:
             from src.tool_index import get_tool_index, ALWAYS_AVAILABLE
             try:
@@ -5807,12 +6116,23 @@ async def stream_agent_loop(
                     timeout=_TOOL_SELECTION_TIMEOUT_SECONDS,
                 )
             except asyncio.TimeoutError:
+                # `B1330`. This set `_relevant_tools = set(ALWAYS_AVAILABLE)`,
+                # and a non-empty `_relevant_tools` makes the deterministic
+                # keyword fallback below SKIP — so under CPU pressure a turn
+                # lost the tool the keyword selector would have picked by name
+                # (measured: 21 tools with `trigger_research` became 20
+                # without it, by slowing `get_tool_index` to 1.9s and driving
+                # the real loop with the owner's own question). The sibling
+                # branch twelve lines down already leaves it unset for exactly
+                # this reason and says so in its own comment: the same defect
+                # was in two places and fixed in one (`Law 11`, `P17-14`'s
+                # pattern). `ALWAYS_AVAILABLE` is already the fallback's floor.
                 logger.warning(
-                    "[tool-rag] Tool index init exceeded %.1fs; falling back to always-available tools",
+                    "[tool-rag] Tool index init exceeded %.1fs; falling back to keyword tool selection",
                     _TOOL_SELECTION_TIMEOUT_SECONDS,
                 )
                 tool_idx = None
-                _relevant_tools = set(ALWAYS_AVAILABLE)
+                _relevant_tools = None
             if tool_idx:
                 _mcp_indexed = False
                 if mcp_mgr:
@@ -6145,6 +6465,27 @@ async def stream_agent_loop(
     if _relevant_tools is not None:
         logger.info("[agent-intent] selected_tools=%s", sorted(_relevant_tools)[:50])
 
+    # `B-NEW` (fx9-suite). **The turn records which tools it withheld and why**,
+    # where the run is already recorded (`run_config`, `P4-25`/`P17-12`). The
+    # record is taken here rather than inside the planner because this is where
+    # the set is final for the primary route: every widening (the intent's
+    # domains, the open document, uploads, forced tools, the browser expansion,
+    # a skill's declared tools) and every clamp (the Terminus toolset, a
+    # `pantheon-qwen3` finetune mode, a workflow step's own list) has run. A
+    # receipt is never worth a failed run, so the whole thing is guarded.
+    if _tool_suite is not None and _relevant_tools is not None:
+        try:
+            from src.events import record_run_config as _record_run_config
+            _final = set(_tool_suite.candidates) & set(_relevant_tools)
+            _record = _tool_suite.as_record()
+            _record["offered"] = len(_final)
+            _record["withheld"] = sorted(set(_tool_suite.candidates) - _final)
+            if len(_final) < len(_tool_suite.offered):
+                _record["reason"] = "route"
+            _record_run_config(suite=_record, session_id=session_id, owner=owner)
+        except Exception as _exc:
+            logger.debug("[tool-suite] receipt skipped: %s", _exc)
+
     prep_timings["tool_selection"] = time.time() - _t1
 
     yield _agent_prep_frame(prep_timings, running="prompt_build")   # `P4-08`
@@ -6254,6 +6595,8 @@ async def stream_agent_loop(
             headers=candidate_headers,
         )
         _prompt_report: Dict[str, Any] = {}
+        # `B-NEW` (fx9-suite). The plan goes to the prompt as well as to the
+        # schema list, so a turn that carries part of the suite says so.
         route_messages, route_mcp_schemas = _build_system_prompt(
             _strip_agent_injected_messages(compacted_source),
             candidate_model,
@@ -6305,6 +6648,7 @@ async def stream_agent_loop(
             workspace=workspace,
             context_report=_prompt_report,
             schema_offer=_schema_offer,
+            tool_suite=_tool_suite,
         )
         # `P4-16`. Up to a dozen procedures enter a request and until now
         # nothing said which. One source since `B60`: this loop is the only
@@ -6648,13 +6992,14 @@ async def stream_agent_loop(
                 # MCP server and the owner's own question: 30 schemas sent,
                 # `mcp=[]`, while `/api/mcp/tools` listed the two tools.
                 #
-                # The filter stays wherever retrieval could actually see the
-                # names (`mcp_retrieval_ran`), because then an operator with
-                # fifty MCP tools gets the eight that matched. Where it could
-                # not, an MCP tool is not a tool retrieval ranked out — it is a
-                # tool retrieval never met, and a person who registered a
-                # server registered it to be reachable.
-                if _mcp_retrieval_ran:
+                # The filter stays wherever the selector could actually see the
+                # names — vector retrieval over a freshly indexed MCP collection
+                # (`_mcp_retrieval_ran`), or the suite planner, which enumerates
+                # them itself (`_selection_saw_mcp_names`, `B-NEW` fx9-suite).
+                # Where neither did, an MCP tool is not a tool a selector ranked
+                # out — it is a tool the selector never met, and a person who
+                # registered a server registered it to be reachable.
+                if _mcp_retrieval_ran or _selection_saw_mcp_names:
                     mcp_filtered = [
                         schema for schema in route_mcp_schemas
                         if schema.get("function", {}).get("name") in route_relevant_tools

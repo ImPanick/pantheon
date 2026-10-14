@@ -11,7 +11,8 @@ import logging
 import hashlib
 import re
 import time
-from typing import Dict, List, Optional, Set
+from dataclasses import dataclass, field
+from typing import Callable, Dict, FrozenSet, Iterable, List, Optional, Sequence, Set, Tuple
 
 from src.embedding_lanes import (
     LANE_CUSTOM,
@@ -168,8 +169,96 @@ BUILTIN_TOOL_DESCRIPTIONS: Dict[str, str] = {
 }
 
 
+_schema_description_cache: Optional[Dict[str, str]] = None
+
+
+def schema_descriptions() -> Dict[str, str]:
+    """`{tool: description}` from `FUNCTION_TOOL_SCHEMAS` — the words the model
+    itself reads about each tool.
+
+    `B1343`. Cached because `src/tool_schemas.py` and `src/agent_tools/__init__.py`
+    import each other, so this is a lazy import by necessity; said out loud on
+    failure for the reason `tool_policy.known_tool_names` says it (`B830`): a
+    caller reading a short mapping has no other way to know it is short. The
+    only caller is `index_builtin_tools`, which runs at warmup or on a request,
+    long after imports have settled.
+    """
+    global _schema_description_cache
+    if _schema_description_cache is not None:
+        return _schema_description_cache
+    out: Dict[str, str] = {}
+    try:
+        from src.tool_schemas import FUNCTION_TOOL_SCHEMAS
+        for schema in FUNCTION_TOOL_SCHEMAS:
+            fn = schema.get("function") or {}
+            name = fn.get("name")
+            if name:
+                out[str(name)] = str(fn.get("description") or "")
+        _schema_description_cache = out
+    except Exception as exc:
+        logger.warning(
+            "tool_index: FUNCTION_TOOL_SCHEMAS unavailable, indexing the retrieval "
+            "descriptions alone (%s)", exc)
+    return out
+
+
+def builtin_index_text(name: str, schema_desc: Optional[Dict[str, str]] = None) -> str:
+    """The text retrieval embeds for one built-in tool.
+
+    `B1343`. A built-in tool's description existed in **three** places for three
+    audiences — `agent_loop.TOOL_SECTIONS` (the fenced prompt),
+    `tool_schemas.FUNCTION_TOOL_SCHEMAS` (the native schema a model reads) and
+    `BUILTIN_TOOL_DESCRIPTIONS` above (the text embedded for retrieval) — and
+    nothing tied any of the three to any other, so `B1327` could change what the
+    model reads about `ask_user` and leave the index describing the old one.
+
+    The row left the decision open ("whether retrieval should read the schema
+    description rather than a third copy"). It reads **both**, schema first: the
+    schema's words are what the tool now is, and `BUILTIN_TOOL_DESCRIPTIONS`
+    carries retrieval-shaped extras the schema has no business carrying (the
+    synonyms and "use this for 'what's running'" hints a person types). Deriving
+    rather than replacing is `Law 1`: nothing a previous row wrote for the
+    embedding is lost, and an edit to either half moves this text and the
+    fingerprint below with it.
+    """
+    desc = BUILTIN_TOOL_DESCRIPTIONS.get(name, "")
+    schema = (schema_desc if schema_desc is not None else schema_descriptions()).get(name, "")
+    parts = [f"Tool: {name}"]
+    if schema:
+        parts.append(schema)
+    if desc and desc.strip() != schema.strip():
+        parts.append(desc)
+    return "\n".join(parts)
+
+
+def builtin_index_fingerprint(schema_desc: Optional[Dict[str, str]] = None) -> str:
+    """A hash of the built-in tool index's names **and** their text.
+
+    `B1343`. Was `sha256(",".join(sorted(BUILTIN_TOOL_DESCRIPTIONS.keys())))` —
+    the keys and nothing else — so by its own value an edited description was
+    the same index as the one before it. (Re-measured, `Law 3`: the field was
+    also **read nowhere**, so the row's stated consequence — "the selector goes
+    on retrieving against the old words" — did not happen; `index_builtin_tools`
+    re-upserts freshly-encoded documents on every call. The defect was a cache
+    key with no cache, and both halves are fixed here: the key covers the text,
+    and it is read.)
+    """
+    schema_desc = schema_desc if schema_desc is not None else schema_descriptions()
+    payload = "\n\n".join(
+        f"{name}\x00{builtin_index_text(name, schema_desc)}"
+        for name in sorted(BUILTIN_TOOL_DESCRIPTIONS)
+    )
+    return hashlib.sha256(payload.encode()).hexdigest()
+
+
 class ToolIndex:
     """ChromaDB-backed tool index for RAG-based tool selection."""
+
+    #: `B1343`. A class-level default so `index_builtin_tools` can read it on an
+    #: instance built past `__init__` (`ToolIndex.__new__`, which the lane tests
+    #: use), rather than the method having to guard an attribute of its own
+    #: class.
+    _fingerprint: str = ""
 
     def __init__(self):
         self._lanes = build_embedding_lanes(COLLECTION_NAME)
@@ -203,8 +292,20 @@ class ToolIndex:
         docs = []
         ids = []
         metadatas = []
-        for name, desc in BUILTIN_TOOL_DESCRIPTIONS.items():
-            doc_text = f"Tool: {name}\n{desc}"
+        # `B1343`. One text per tool, derived from the schema the model reads,
+        # and one fingerprint over the names AND that text.
+        _schema_desc = schema_descriptions()
+        _fp = builtin_index_fingerprint(_schema_desc)
+        if _fp and _fp == self._fingerprint:
+            # The field used to be written and read nowhere. Read: a second call
+            # in one process re-encodes 81 descriptions for an index that has
+            # not moved. A changed description changes the hash, so this can
+            # never serve stale words — which is the half of `B1343` the old
+            # key-only hash could not promise.
+            logger.debug("Built-in tool index unchanged (fingerprint %s)", _fp[:12])
+            return
+        for name in BUILTIN_TOOL_DESCRIPTIONS:
+            doc_text = builtin_index_text(name, _schema_desc)
             docs.append(doc_text)
             ids.append(f"builtin_{name}")
             metadatas.append({"tool_name": name, "tool_type": "builtin"})
@@ -241,10 +342,8 @@ class ToolIndex:
         if not indexed:
             self._healthy = False
             raise RuntimeError("Builtin tool indexing failed in all embedding lanes")
-        self._fingerprint = hashlib.sha256(
-            ",".join(sorted(BUILTIN_TOOL_DESCRIPTIONS.keys())).encode()
-        ).hexdigest()
-        logger.info(f"Indexed {len(docs)} built-in tools")
+        self._fingerprint = _fp
+        logger.info(f"Indexed {len(docs)} built-in tools (fingerprint {_fp[:12]})")
 
     def index_mcp_tools(self, mcp_mgr, disabled_map: Optional[Dict] = None):
         """Index MCP tool descriptions. Call after MCP servers connect/disconnect."""
@@ -684,6 +783,272 @@ class ToolIndex:
         if contact_only_signal and "manage_contact" in base:
             base.discard("manage_memory")
         return base
+
+
+# ── `B-NEW` (fx9-suite). The whole suite by default, narrowed deterministically
+#
+# **What the tree did before this.** `ALWAYS_AVAILABLE` above is three tools.
+# Everything else — the sixteen email tools, calendar, notes, tasks, documents,
+# files, shell, web, research, skills **and every registered MCP tool** —
+# reached a turn only by winning a **top-8 vector retrieval** inside a 1.5s
+# timeout (`src/agent_loop.py`, `_TOOL_SELECTION_TIMEOUT_SECONDS`), with the
+# keyword selector above as the fallback when the embedding backend was slow,
+# down or absent. So about eleven of seventy-four were offered and *which*
+# eleven depended on whether an embedding lookup answered in time. Measured on
+# `0bd089d` across twenty runs of one question: the `tools` array varied with
+# embeddings up/down and MCP up/down. That variation was the owner's
+# "intermittent".
+#
+# **What it does now.** A turn offers every tool the person's privileges allow
+# — built-ins, every registered MCP tool, the skill-invoking tools — whenever
+# the set fits the model's proven window with working room left
+# (`src/context_budget.tool_suite_room`). When it does not fit, `plan_tool_suite`
+# narrows by a **declared order** and nothing else: no vector score, no race, no
+# embedding availability in the answer. Same input, same tools, every time.
+#
+# **Why the vector index does not decide this any more.** Measured with
+# `.pantheon/retrieval_eval.py --kind tools` on `0bd089d` (29 fixture probes, 81
+# tools in the surface): the deterministic selector scores **recall 0.97 /
+# refusal 0.93** against the embedding path's **0.83 / 0.83**, offering 5.8
+# tools per query against 7.8. The vector lane is not a better judge of which
+# tools a request needs — it is a judge that sometimes does not answer, which is
+# strictly worse. It stays reachable (`ToolIndex.retrieve`,
+# `get_tools_for_query`, the Assistant path in `src/task_scheduler.py`, app
+# warmup, the eval harness) and off for the chat/agent turn's offer, behind one
+# declared switch (`agent_loop._TOOL_RETRIEVAL_SELECTS_THE_TURN`) rather than
+# deleted blind (`Law 1`).
+
+#: The order the lowest tier is filled in when a window cannot hold everything.
+#: Declared, not scored: the domains a person asks about most, then the ones a
+#: turn reaches for after it has already started working. A name in no domain
+#: sorts after every domain, alphabetically, so the order is total.
+SUITE_DOMAIN_ORDER: Tuple[str, ...] = (
+    "web",
+    "files",
+    "documents",
+    "email",
+    "notes_calendar_tasks",
+    "contacts",
+    "sessions",
+    "integrations",
+    "ui",
+    "settings",
+    "cookbook",
+)
+
+#: Why a turn's set is not the whole suite. `Law 10`: the turn records one of
+#: these rather than leaving a short list to be read as "that is all there is".
+SUITE_REASON_WHOLE = "whole_suite"
+SUITE_REASON_WINDOW = "window"
+SUITE_REASON_WINDOW_UNKNOWN = "window_unknown"
+
+
+@dataclass(frozen=True)
+class ToolSuite:
+    """What this turn offers, what it held back, and why.
+
+    `candidates` is every name the person's privileges allow this turn — the
+    denominator. `offered` is the set the request and the prompt are both built
+    from, so the two cannot disagree (`Law 13`). `withheld` is sorted, so a
+    receipt of it is stable.
+    """
+
+    candidates: FrozenSet[str] = field(default_factory=frozenset)
+    offered: FrozenSet[str] = field(default_factory=frozenset)
+    withheld: Tuple[str, ...] = ()
+    partial: bool = False
+    reason: str = SUITE_REASON_WHOLE
+    room: int = 0
+    cost: int = 0
+    window: int = 0
+    window_known: bool = True
+    pinned: Tuple[str, ...] = ()
+    over_room: bool = False
+
+    def as_record(self) -> Dict[str, object]:
+        """The shape the run receipt stores (`src/events.record_run_config`)."""
+        return {
+            "offered": len(self.offered),
+            "candidates": len(self.candidates),
+            "withheld": list(self.withheld),
+            "reason": self.reason,
+            "room_tokens": int(self.room),
+            "cost_tokens": int(self.cost),
+            "window": int(self.window),
+            "window_known": bool(self.window_known),
+            "over_room": bool(self.over_room),
+        }
+
+
+def names_the_request_pins(
+    text: str,
+    candidates: Iterable[str],
+    *,
+    mcp_tools: Optional[Dict[str, Iterable[str]]] = None,
+) -> Set[str]:
+    """Tools the person's own words named, which are never withheld.
+
+    `B-NEW` rule 4. A request that says *"use web search"*, *"call
+    mcp__weather__lookup_raid"* or *"ask my weather server"* has named what it
+    wants, and a budget is not a reason to answer *"I do not have that tool"*.
+    Matched on word boundaries, in the request's own text, against:
+
+    * a candidate's name as written (`web_search`);
+    * the same name with its underscores as spaces (*"web search"*), because a
+      person types the words and not the identifier;
+    * a fully-qualified MCP name (`mcp__{server_id}__{tool_name}` —
+      `FORBIDDEN.md` Part 1, matched, never rewritten);
+    * an MCP **server**'s name or id, which pins every tool that server serves.
+
+    `mcp_tools` maps a server's name *and* its id to the qualified names it
+    serves. Pure text and a dict: no store, no index, no network.
+    """
+    body = str(text or "")
+    if not body.strip():
+        return set()
+    low = body.lower()
+    pinned: Set[str] = set()
+
+    def mentions(token: str) -> bool:
+        token = str(token or "").strip().lower()
+        if len(token) < 2:
+            return False
+        return re.search(rf"(?<![a-z0-9_]){re.escape(token)}(?![a-z0-9_])", low) is not None
+
+    for name in candidates or ():
+        name = str(name or "")
+        if not name:
+            continue
+        if mentions(name):
+            pinned.add(name)
+            continue
+        spaced = name.replace("_", " ")
+        if spaced != name and len(spaced) >= 5 and spaced.lower() in low:
+            pinned.add(name)
+    for server, tools in (mcp_tools or {}).items():
+        if mentions(server):
+            pinned.update(str(t) for t in (tools or ()) if t)
+    return pinned
+
+
+def suite_priority_order(
+    candidates: Iterable[str],
+    *,
+    pinned: Iterable[str] = (),
+    mcp: Iterable[str] = (),
+    keyword_picks: Iterable[str] = (),
+    domains: Iterable[str] = (),
+    domain_map: Optional[Dict[str, Set[str]]] = None,
+    domain_order: Sequence[str] = SUITE_DOMAIN_ORDER,
+) -> List[str]:
+    """Every candidate, once, in the order a short window fills them.
+
+    The tiers, and why each one is a decision somebody made rather than a score:
+
+    1. **pinned** — `ALWAYS_AVAILABLE`, the loop's irreducible primitives, and
+       every tool the request itself named (an exact tool name, a domain whose
+       words the turn's own deterministic intent classifier matched, or an MCP
+       server the person mentioned). These are never withheld, whatever else
+       happens, so they are first and the caller takes them unconditionally.
+    2. **MCP** — a person who registered a server registered it to be reached.
+       It is not a candidate that must win a lottery.
+    3. **the request's own words** — `select_without_embeddings`, the keyword and
+       structural selector above. Pure text, always answers, and measured better
+       than the embedding path on the product's own probe corpus.
+    4. **the turn's intent domains**, in the order the classifier reported them
+       (sorted, so two runs of one turn agree).
+    5. **everything else**, by `domain_order` then by name.
+
+    Returns a list, not a set: the order *is* the answer.
+    """
+    pool = set(candidates or ())
+    out: List[str] = []
+    seen: Set[str] = set()
+
+    def take(names: Iterable[str]) -> None:
+        for name in sorted(n for n in names if n in pool and n not in seen):
+            seen.add(name)
+            out.append(name)
+
+    take(pinned)
+    take(mcp)
+    take(keyword_picks)
+    dmap = domain_map or {}
+    for domain in sorted(str(d) for d in (domains or ())):
+        take(dmap.get(domain) or ())
+    for domain in domain_order:
+        take(dmap.get(domain) or ())
+    take(pool)
+    return out
+
+
+def plan_tool_suite(
+    candidates: Iterable[str],
+    *,
+    cost: Callable[[str], int],
+    room: int,
+    window: int = 0,
+    window_known: bool = True,
+    pinned: Iterable[str] = (),
+    mcp: Iterable[str] = (),
+    keyword_picks: Iterable[str] = (),
+    domains: Iterable[str] = (),
+    domain_map: Optional[Dict[str, Set[str]]] = None,
+    domain_order: Sequence[str] = SUITE_DOMAIN_ORDER,
+) -> ToolSuite:
+    """Decide this turn's tool set: the whole suite, or a deterministic part.
+
+    `cost(name)` is the tokens that name's definition spends in the window —
+    `src/context_budget.tool_schema_tokens` on its schema, 0 for a name that has
+    no schema (a fenced-only tool costs the prompt, which the prompt's own
+    assembly accounts for). `room` is `tool_suite_room(...)["room"]`.
+
+    The whole suite wins whenever it fits: no narrowing, no notice, nothing to
+    explain. When it does not fit, the walk is `suite_priority_order` and a name
+    whose cost would cross `room` is skipped and the walk continues — skipping
+    rather than stopping offers strictly more tools and is just as
+    deterministic. `pinned` is taken before the budget is consulted at all,
+    because a tool the request named is never withheld; when the pinned set
+    alone crosses `room`, `over_room` says so instead of a pinned tool being
+    dropped (`Law 10`).
+    """
+    pool = {str(n) for n in (candidates or ()) if n}
+    pinned_in = {str(n) for n in (pinned or ()) if str(n) in pool}
+    whole_cost = sum(int(cost(name) or 0) for name in pool)
+    room = max(0, int(room or 0))
+    if whole_cost <= room:
+        return ToolSuite(
+            candidates=frozenset(pool), offered=frozenset(pool), withheld=(),
+            partial=False, reason=SUITE_REASON_WHOLE, room=room, cost=whole_cost,
+            window=int(window or 0), window_known=bool(window_known),
+            pinned=tuple(sorted(pinned_in)),
+        )
+
+    order = suite_priority_order(
+        pool, pinned=pinned_in, mcp=mcp, keyword_picks=keyword_picks,
+        domains=domains, domain_map=domain_map, domain_order=domain_order,
+    )
+    offered: Set[str] = set()
+    spent = 0
+    for name in order:
+        price = int(cost(name) or 0)
+        if name in pinned_in:
+            offered.add(name)
+            spent += price
+            continue
+        if spent + price > room:
+            continue
+        offered.add(name)
+        spent += price
+    return ToolSuite(
+        candidates=frozenset(pool), offered=frozenset(offered),
+        withheld=tuple(sorted(pool - offered)),
+        partial=bool(pool - offered),
+        reason=SUITE_REASON_WINDOW if window_known else SUITE_REASON_WINDOW_UNKNOWN,
+        room=room, cost=spent, window=int(window or 0),
+        window_known=bool(window_known), pinned=tuple(sorted(pinned_in)),
+        over_room=spent > room,
+    )
 
 
 # ── Singleton ──

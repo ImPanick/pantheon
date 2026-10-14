@@ -768,6 +768,83 @@ def _classify(msg: dict, index: int, history: bool) -> tuple[str, str]:
     return "conversation", role or "user"
 
 
+# ── `B-NEW` (fx9-suite). What a tool definition costs, and what the window
+# can spend on tool definitions ───────────────────────────────────────────────
+#
+# The measurement this wave is built on, re-taken here with the product's own
+# estimator rather than chars/4. `src/tool_schemas.FUNCTION_TOOL_SCHEMAS` on
+# `0bd089d`: **74 tools, 73,280 characters** of JSON (`len(json.dumps(...))`,
+# which is what `FIX-2026-10-14.md` counted) and **21,830 tokens** by
+# `model_context.estimate_tokens` — not the ~18,300 a chars/4 estimate gives,
+# which is 19% low. Every figure this module hands the selector is this one
+# estimator, because the selector's answer has to agree with the trimmer's and
+# with what the context wheel draws (`Law 7`).
+#
+# The share: a request may spend `TOOL_SUITE_SHARE` of the model's **proven**
+# window on tool definitions. 0.4 was chosen against the measurement rather
+# than by feel, with the whole suite costing schemas + the prompt prose the
+# same set drags in (`_assemble_prompt`, measured on `0bd089d`: 11,991 tokens
+# for all 61 tool sections on the full/fenced prompt, 2,807 compact):
+#
+#     window    agent_input_budget   0.4 share   whole suite (native/both)
+#     128,000   108,800              51,200      24,637 / 33,821   → fits
+#      32,000    27,200              12,800      24,637 / 33,821   → narrows
+#       8,192     6,963               3,276      24,637 / 33,821   → narrows hard
+#
+# So 128k carries the whole suite with the window's other 60% untouched, 32k
+# carries roughly forty tools instead of eleven, and 8k carries about ten —
+# deterministically, and saying which it left out. A share large enough to fit
+# the suite at 32k would leave a 32k turn 5,370 tokens for the conversation,
+# which is not working room; `FIX-2026-10-14.md`'s own words are that 18,300
+# tokens is "affordable on a 128k window and real on an 8k one".
+TOOL_SUITE_SHARE = 0.4
+
+
+def tool_schema_tokens(schemas) -> int:
+    """What one tool schema, or a list of them, costs in the window.
+
+    One rule for the three callers that need it: the context wheel's `tools`
+    category (`measure_request_segments` below), the suite planner that decides
+    whether the whole set fits, and the test that measures it. A second
+    computation would answer a different number than the meter draws (`Law 7`).
+    """
+    if isinstance(schemas, dict):
+        schemas = [schemas]
+    total = 0
+    for schema in schemas or []:
+        if not isinstance(schema, dict):
+            continue
+        total += _text_tokens(_json.dumps(schema, ensure_ascii=False, sort_keys=True))
+    return total
+
+
+def tool_suite_room(context_length: int, get_setting, *,
+                    share: float = TOOL_SUITE_SHARE) -> dict:
+    """How many tokens of tool definitions this turn may carry, and on what.
+
+    `context_length` is the **proven** window and nothing else — pass what
+    `model_context.budget_context_for_model` returned, which is 0 when the
+    endpoint reported no window and the model is not in the known table. 0 is
+    not "assume 128k": it takes the conservative branch and says so, the same
+    rule `compute_input_token_budget` already applies to the trim budget
+    (#4122), and `D-2026-10-07-02` §1's rule that a capability is never read
+    off a model's name is why nothing here looks at `model`.
+
+    Returns `{"room", "window", "window_known", "budget", "basis"}` — `Law 10`:
+    the caller records which branch answered, so a narrowed turn can say
+    whether it narrowed against a measured window or an unknown one.
+    """
+    window = _int_or_zero(context_length)
+    budget = agent_input_budget(window, get_setting)
+    if window > 0:
+        return {"room": max(0, int(window * share)), "window": window,
+                "window_known": True, "budget": budget, "basis": "proven_window"}
+    # Unknown window: scale off the conservative default the trimmer uses, not
+    # off the bare 128K fallback. `agent_input_budget(0, …)` is that default.
+    return {"room": max(0, int(budget * share)), "window": 0,
+            "window_known": False, "budget": budget, "basis": "window_unknown"}
+
+
 def measure_request_segments(messages, tools=None, *, history: bool = False) -> dict:
     """Split one request into the categories above, in tokens.
 
@@ -846,7 +923,7 @@ def measure_request_segments(messages, tools=None, *, history: bool = False) -> 
         if not isinstance(schema, dict):
             continue
         fn = schema.get("function") if isinstance(schema.get("function"), dict) else schema
-        tokens = _text_tokens(_json.dumps(schema, ensure_ascii=False, sort_keys=True))
+        tokens = tool_schema_tokens(schema)
         totals["tools"] += tokens
         items["tools"].append({"name": str((fn or {}).get("name") or "tool"),
                                "tokens": tokens})
