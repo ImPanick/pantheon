@@ -7260,8 +7260,12 @@ async def stream_agent_loop(
                     #
                     # `B1354` (agent:`fx11-reach`). "Executable" is the point,
                     # and `known_tool_names()` is not that set: a skill whose
-                    # `requires_toolsets` named `vault_get` put a name in this
-                    # turn's offer that no channel carries. The offer register
+                    # `requires_toolsets` named `builtin_browser` — a server
+                    # id, not a tool — put a name in this turn's offer that no
+                    # channel carries. (`vault_get` was this comment's example
+                    # until `D-2026-10-14-01` §4 made it callable; the rule is
+                    # asked of the register at runtime, so the ruling changed
+                    # the answer here with no edit to this line.) The offer register
                     # is `selectable_tool_names()`, which is this one's routable
                     # half; the skill is still indexed and still runs, it just
                     # cannot conjure a tool the model could not call.
