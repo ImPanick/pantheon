@@ -406,23 +406,29 @@ def test_an_ordinary_non_admin_turn_offers_nothing_it_cannot_carry(scratch):
     _run(go())
 
 
-def test_a_skill_opened_by_name_cannot_unlock_an_uncallable_tool(scratch):
+def test_a_skill_opened_by_name_cannot_unlock_an_uncallable_tool(scratch, caplog):
     """A skill's `requires_toolsets` names join the turn's set after being
     checked against a register, and `known_tool_names()` was that register — so
     a skill declaring `requires_toolsets: [grep, vault_get]` put an uncallable
     name in the offer.
 
     Driven rather than grepped (`Law 20`): a real skill in the store, the model
-    scripted to call `manage_skills action=view` for it, and the **next**
-    round's offer read out of `_assemble_prompt`. `grep` arrives, `vault_get`
-    does not.
+    scripted to call `manage_skills action=view` for it, and the **next
+    round's request** read back. `grep` arrives in the array; `vault_get` is
+    named in neither the loop's own unlock line nor the request.
+
+    **The window is `small` on purpose, and that is the measurement.** On a
+    131k window the whole suite is already offered, so `_new` is empty, nothing
+    is logged and the array cannot move — a case written there passes whatever
+    the filter does. Measured on this tree: `small` offers 9 tools on round 1,
+    the unlock logs `['grep']`, and round 2 carries 10.
     """
+    import logging
 
     async def go():
-        import src.agent_loop as al
         from services.memory.skills import SkillsManager
 
-        cell = probe.Cell(embeddings="down", mcp="absent", window="large",
+        cell = probe.Cell(embeddings="down", mcp="absent", window="small",
                           mode="chat", privilege="admin")
         async with probe.probe_world(os.path.join(scratch, "skill-unlock"),
                                      mcp_states=("absent",)) as world:
@@ -437,53 +443,86 @@ def test_a_skill_opened_by_name_cannot_unlock_an_uncallable_tool(scratch):
                 source="user",
                 owner=probe.ADMIN_USER,
             )
-            rounds = []
-            real = al._assemble_prompt
+            return await probe.drive_turn(
+                world, cell, "Follow the probe-vault-reach skill.",
+                script=[probe.reply_shapes(
+                    "manage_skills",
+                    {"action": "view", "name": "probe-vault-reach"})["native"],
+                    "Done."],
+                max_rounds=3)
 
-            def spy(tool_names, disabled_tools=None, compact=False, suite_notice=""):
-                rounds.append(set(tool_names))
-                return real(tool_names, disabled_tools, compact, suite_notice)
-
-            al._assemble_prompt = spy
-            try:
-                record = await probe.drive_turn(
-                    world, cell, "Follow the probe-vault-reach skill.",
-                    script=[probe.reply_shapes(
-                        "manage_skills",
-                        {"action": "view", "name": "probe-vault-reach"})["native"],
-                        "Done."],
-                    max_rounds=3)
-            finally:
-                al._assemble_prompt = real
-            assert ("manage_skills", '{"action": "view", "name": "probe-vault-reach"}'
-                    ) in [(t, c) for t, c in record.dispatched], record.dispatched
-            unlocked = set().union(*rounds) if rounds else set()
-            assert "grep" in unlocked, "the skill's callable tool still arrives"
-            assert "vault_get" not in unlocked, (
-                "a skill unlocked a name no channel carries")
-
-    _run(go())
+    with caplog.at_level(logging.INFO, logger="src.agent_loop"):
+        record = _run(go())
+    assert ("manage_skills", '{"action": "view", "name": "probe-vault-reach"}'
+            ) in record.dispatched, record.dispatched
+    unlocked = [m for m in caplog.messages if "unlocked tools for next round" in m]
+    assert unlocked, "the skill's own unlock never ran, so this case measures nothing"
+    assert "'grep'" in unlocked[-1], unlocked[-1]
+    assert "vault_get" not in unlocked[-1], (
+        f"a skill unlocked a name no channel carries: {unlocked[-1]}")
+    assert len(record.requests) >= 2, record.requests
+    first, second = set(record.requests[0]["tools"]), set(record.requests[1]["tools"])
+    assert second - first == {"grep"}, sorted(second - first)
+    assert "vault_get" not in second
 
 
 # ── what is NOT closed here, with the number it costs ──────────────────────
 
 def test_the_fenced_only_names_are_counted_and_named_by_their_registers():
-    """`fenced_only` is reported, not asserted away. Seven names have a fence
-    tag and no function schema, so on a native-tools route they are in no
-    channel at all — which is the owner's *"intermittent"* arriving as *"which
-    model did you pick"*. Five are the email drafting set (`P17-06`), one is
-    `generate_image` (`.pantheon/check-mcp-schemas.py` rule C calls it *"the
-    legitimate shape"*) and one is `manage_research`, which nothing explains.
-    Filed as `B-NEW-3` (agent:`fx11-reach`); the count is pinned here so a
-    silent eighth is a red test.
-    """
-    from src.agent_tools import TOOL_TAGS
-    import src.agent_loop as al
+    """`fenced_only` is reported, not asserted away.
 
-    fenced_only = sorted(set(TOOL_TAGS) - set(al._schema_backed_tool_names()))
-    assert fenced_only == [
-        "ai_draft_email_reply", "download_attachment", "draft_email",
-        "draft_email_reply", "generate_image", "manage_research", "search_emails",
-    ], fenced_only
+    On `747cda6` **seven** names had a fence tag and no function schema, so on
+    a native-tools route they were in no channel at all — the owner's
+    *"intermittent"* arriving as *"which model did you pick"*. Six of the seven
+    are declared that by name and stay: the five email drafting tools
+    (`P17-06`, and `mcp_servers/email_server.py`'s `list_tools` says of exactly
+    those five that *"Pantheon reaches them through the fenced channel, which
+    takes no schema"*) and `generate_image`, which
+    `.pantheon/check-mcp-schemas.py` rule C calls *"the legitimate shape"*.
+    The seventh, `manage_research`, was named by none of them, and `B-NEW-3`
+    gave it a schema — so this count is **six**.
+
+    Pinned as the set rather than the number so a silent seventh is a red test,
+    and the five email tools are read from `BUILTIN_EMAIL_TOOLS` rather than
+    retyped (`FORBIDDEN.md` Part 1 owns those names).
+    """
+    import src.agent_loop as al
+    from src.agent_tools import TOOL_TAGS
+    from src.tool_security import BUILTIN_EMAIL_TOOLS
+
+    fenced_only = set(TOOL_TAGS) - set(al._schema_backed_tool_names())
+    assert fenced_only == (BUILTIN_EMAIL_TOOLS & fenced_only) | {"generate_image"}
+    assert len(fenced_only & BUILTIN_EMAIL_TOOLS) == 5, sorted(fenced_only)
+    assert len(fenced_only) == 6, sorted(fenced_only)
     report = probe.channel_report(probe.offerable_names())
-    assert sorted(report.fenced_only) == fenced_only, report.fenced_only
+    assert sorted(report.fenced_only) == sorted(fenced_only), report.fenced_only
+
+
+def test_manage_research_is_callable_on_a_native_route_too():
+    """`B-NEW-3` (agent:`fx11-reach`). It had a fence tag, a prompt section, a
+    dispatch arm and no schema, and nothing in the tree said why — so *"open my
+    research report"* worked on a llama.cpp endpoint and failed on an API
+    model. Both channels now, and nothing else about the tool moved: the
+    `deep_research` feature flag still hides it, `TOOL_CAPABILITIES` still
+    carries its delete effect, and the handler's own three actions are what the
+    schema declares."""
+    import json as _json
+
+    import src.agent_loop as al
+    from src.tool_capabilities import TOOL_CAPABILITIES
+    from src.tool_security import feature_disabled_tools
+    from src.tool_schemas import function_call_to_tool_block
+
+    assert "manage_research" in al._schema_backed_tool_names()
+    block = function_call_to_tool_block(
+        "manage_research", _json.dumps({"action": "read", "id": "abc"}))
+    assert block is not None and block.tool_type == "manage_research"
+    assert _json.loads(block.content) == {"action": "read", "id": "abc"}
+    # The compact prompt may name it now, by the same `H09` guard that kept it
+    # out before.
+    assert "- `manage_research`" in al._assemble_prompt(
+        {"manage_research"}, set(), compact=True)
+    # And nothing about who may run it, or what it costs the gate, changed.
+    assert feature_disabled_tools({"deep_research": False}) == {
+        "trigger_research", "manage_research"}
+    assert "manage_research" in TOOL_CAPABILITIES

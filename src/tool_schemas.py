@@ -1264,6 +1264,69 @@ FUNCTION_TOOL_SCHEMAS = [
             }
         }
     },
+    # `B-NEW-3` (agent:`fx11-reach`). **`manage_research` had a fence tag, a
+    # prompt section, a dispatch arm and no schema, and nothing in the tree said
+    # why.** Seven built-ins are fenced-channel-only; six of them are blessed as
+    # that by name — the five email drafting tools (`P17-06`,
+    # `mcp_servers/email_server.py`'s `list_tools`) and `generate_image`
+    # (`.pantheon/check-mcp-schemas.py` rule C, *"that is the legitimate
+    # shape"*). `manage_research` is named by none of them, and `H09`'s own
+    # comment reads it as an accident rather than a design: *"the only members
+    # of `TOOL_SECTIONS` with no `FUNCTION_TOOL_SCHEMAS` entry … both channels
+    # closed, both names offered"*. `H09` closed the advertisement; this closes
+    # the channel.
+    #
+    # Measured on `747cda6`: on a native-tools route — any endpoint whose
+    # `supports_tools` an admin declared, and every provider route — the
+    # request's array carried no `manage_research`, the compact prompt omitted
+    # it by `H09`'s guard, and the fenced parser is shut by that prompt's own
+    # first sentence. So *"open my research report"* worked on a llama.cpp
+    # endpoint and failed on an API model, which is the owner's *"intermittent"*
+    # arriving as *"which model did you pick"*.
+    #
+    # Nothing here is new prose and no gate moves (`Law 1`): the description is
+    # `src/tool_index.BUILTIN_TOOL_DESCRIPTIONS`' own sentence for this tool,
+    # the arguments are the three `do_manage_research` documents in its own
+    # docstring (`{"action": "list|read|delete", "id": "<id>", "search": "..."}`),
+    # the action aliases are the ones that function already accepts, and the
+    # `deep_research` feature flag, `TOOL_CAPABILITIES`' delete effect and the
+    # post-external gate are all exactly where they were. `action` is not
+    # `required` because the handler defaults it to `list`.
+    {
+        "type": "function",
+        "function": {
+            "name": "manage_research",
+            "description": (
+                "List, read/open, or delete saved DEEP RESEARCH results from the "
+                "Library. action='list' returns clickable [query](#research-<id>) "
+                "rows (most-recent first). action='read' (aka open/view/get) with "
+                "id returns the report + sources. action='delete' with id removes "
+                "it. Use this for ANY 'open/read/find/delete my research / that "
+                "report / the research on X' request. NOTE: this is for EXISTING "
+                "research; to START new research use trigger_research."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "action": {
+                        "type": "string",
+                        "enum": ["list", "read", "open", "view", "get", "delete"],
+                        "description": "What to do. Defaults to list.",
+                    },
+                    "id": {
+                        "type": "string",
+                        "description": "The research id from action='list'. "
+                                       "Required for read and delete.",
+                    },
+                    "search": {
+                        "type": "string",
+                        "description": "Filter the list by query text.",
+                    },
+                },
+                "required": []
+            }
+        }
+    },
     {
         "type": "function",
         "function": {
