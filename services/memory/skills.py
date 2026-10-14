@@ -1461,29 +1461,36 @@ class SkillsManager:
     # Index — the lightweight summary injected into the system prompt
     # ----------------------------------------------------------------------
 
-    def index_for(
+    def injectable_skills(
         self,
         owner: Optional[str] = None,
         *,
         active_toolsets: Optional[List[str]] = None,
         platform: Optional[str] = None,
     ) -> List[Dict]:
-        """Return the `[{name, description, category, status}]` list the
-        agent sees in its system prompt.
+        """Every skill this turn may put in front of the model, whole.
 
-        Includes:
-          - All published skills.
-          - Drafts written by the teacher-escalation loop
-            (`source == "teacher-escalation"`). The whole point of
-            the teacher loop is for the student to find the new
-            procedure on the very next turn — waiting for a manual
-            publish click defeats the loop.
+        `B1361` (`fx9-skills`, 2026-10-14). *"May the model see this skill"* had
+        **two** answers and they disagreed. `index_for` — the catalogue — applied
+        four gates: published-or-teacher-draft, `platforms`, `requires_toolsets`,
+        `fallback_for_toolsets`. The matched-skill injection in
+        `agent_loop._build_system_prompt` passed `load_active()` straight to
+        `get_relevant_skills`, which applies **none** of them, so the same
+        message carried a catalogue that withheld a skill and a body that pasted
+        its whole procedure in under *"a procedure proven to work. Follow them
+        step by step."* Measured on `0bd089d` with six installed skills: a user's
+        `half-written-thing` draft and a `needs-bash-only` skill whose
+        `requires_toolsets: [bash]` was switched off were both withheld from the
+        catalogue and both injected as bodies — the second undoing exactly the
+        gate `B60` went to the trouble of honouring.
 
-        Excludes user-created drafts (status=draft, source != teacher-
-        escalation) — those are work-in-progress and pollute the
-        prompt with half-finished procedures.
+        So the gates live here once and the catalogue is this list's projection
+        (`Law 7`). `get_relevant_skills` keeps its own looser rule, because its
+        other callers — `GET /api/skills/search` and `manage_skills
+        action=search` — are a *person* searching their own store, where a draft
+        is exactly what they are looking for. What narrowed is the prompt.
         """
-        out = []
+        out: List[Dict] = []
         for s in self.load_active(owner=owner):
             status = s.get("status")
             # Published + None (pre-status legacy) always included.
@@ -1507,6 +1514,39 @@ class SkillsManager:
             fb = s.get("fallback_for_toolsets") or []
             if fb and active_toolsets and any(t in active_toolsets for t in fb):
                 continue
+            out.append(s)
+        return out
+
+    def index_for(
+        self,
+        owner: Optional[str] = None,
+        *,
+        active_toolsets: Optional[List[str]] = None,
+        platform: Optional[str] = None,
+    ) -> List[Dict]:
+        """Return the `[{name, description, category, status}]` list the
+        agent sees in its system prompt.
+
+        Includes:
+          - All published skills.
+          - Drafts written by the teacher-escalation loop
+            (`source == "teacher-escalation"`). The whole point of
+            the teacher loop is for the student to find the new
+            procedure on the very next turn — waiting for a manual
+            publish click defeats the loop.
+
+        Excludes user-created drafts (status=draft, source != teacher-
+        escalation) — those are work-in-progress and pollute the
+        prompt with half-finished procedures.
+
+        `B1361`. The four gates above are `injectable_skills`' now, and this is
+        its projection: the catalogue and the matched bodies cannot disagree
+        about which skills exist, because there is one list.
+        """
+        out = []
+        for s in self.injectable_skills(owner=owner, active_toolsets=active_toolsets,
+                                        platform=platform):
+            status = s.get("status")
             out.append({
                 "name": s["name"],
                 "description": s.get("description") or s.get("title", ""),

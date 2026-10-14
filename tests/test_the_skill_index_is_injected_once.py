@@ -181,10 +181,28 @@ def test_suppression_covers_the_matched_procedures_as_well_as_the_catalogue(
     assert _skill_messages(messages) == []
 
 
-def test_the_loop_keeps_its_own_low_signal_read(skills, monkeypatch):
-    # `suppress_skills` carries what only the route knows. The loop's own
-    # intent read is the other half, and dropping it would put a catalogue in
-    # front of a model answering "do the thing".
+@pytest.mark.parametrize("question, expect_catalogue, why", [
+    ("hey", False, "a greeting pulls no catalogue — the case this gate was written for"),
+    ("   ", False, "an empty turn pulls no catalogue"),
+    ("do the thing", True,
+     "`B1359`: a request that named no TOOL domain was being told its own "
+     "procedures do not exist"),
+])
+def test_the_loop_keeps_a_low_signal_read_of_its_own(
+        skills, monkeypatch, question, expect_catalogue, why):
+    # `suppress_skills` carries what only the route knows; the loop's own read
+    # is the other half and it is still here.
+    #
+    # `B1359` corrected this case's premise (`Law 3`). It asserted that
+    # *"do the thing"* gets no catalogue, because `_classify_agent_request`
+    # found no tool domain in it and `_skills_suppressed` read that verdict as
+    # "no skills". That verdict is about which **tools** to retrieve. Measured
+    # live on port 8802 with a published `greet-a-new-client` skill installed:
+    # *"What is our procedure when a brand new client signs?"* reached the model
+    # twenty times out of twenty with no catalogue and no skill at all. The
+    # loop's half is now `_skills_may_ship_for_turn` — empty or a greeting — and
+    # what this file exists to protect is unchanged: ONE index per request, and
+    # a gate of the loop's own beside the route's four.
     monkeypatch.setattr(agent_loop, "get_setting", lambda k, d=None: d, raising=False)
     monkeypatch.setattr(agent_loop, "get_mcp_manager", lambda: None, raising=False)
     monkeypatch.setattr(agent_loop, "estimate_tokens", lambda *a, **k: 10, raising=False)
@@ -205,14 +223,14 @@ def test_the_loop_keeps_its_own_low_signal_read(skills, monkeypatch):
     async def drain():
         async for _ in agent_loop.stream_agent_loop(
             "http://local.test/v1", "small-local-model",
-            [{"role": "user", "content": "do the thing"}],
+            [{"role": "user", "content": question}],
             max_rounds=1, relevant_tools={"bash"}, suppress_skills=False,
         ):
             pass
 
     asyncio.run(drain())
     assert seen.get("messages"), "no request was built, so this asserts nothing"
-    assert _skill_messages(seen["messages"]) == []
+    assert bool(_skill_messages(seen["messages"])) is expect_catalogue, why
 
 
 @pytest.mark.parametrize("kwargs, expected, why", [

@@ -165,6 +165,14 @@ def test_the_prompt_builder_asks_the_resolver_and_honours_a_role(monkeypatch):
         # which is `load()` less what a switched-off package or group holds.
         load_active = load
 
+        # `B1361`: and the matched-body half now reads `injectable_skills`,
+        # which is `load_active()` less the four gates the catalogue applies —
+        # one list for both halves of the message. A double that answers the
+        # store's questions keeps working; this one just learned the new one.
+        def injectable_skills(self, owner=None, *, active_toolsets=None,
+                              platform=None):
+            return self.load_active(owner=owner)
+
         def get_relevant_skills(self, text, skills=None, threshold=None,
                                 max_items=None, min_confidence=None):
             seen["max_items"] = max_items

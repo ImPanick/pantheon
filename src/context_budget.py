@@ -312,12 +312,37 @@ def context_budget_report(owner=None, *, ceiling_default=None) -> dict:
 # today and exists to bound the growth rather than to cut anybody's library.
 SKILL_INDEX_BUDGET = "context_skill_index_chars"
 
+# `B1362` (`fx9-skills`, 2026-10-14). The catalogue's twin, for the other half of
+# the same message: the **bodies** of the skills a turn matched, which
+# `agent_loop._build_system_prompt` pasted in whole with no bound of any kind.
+# `skill_max_injected` caps the COUNT (default 3, max 12) and nothing capped the
+# size, so the two together were a promise that a turn would carry at most twelve
+# procedures of any length at all.
+#
+# **Measured on `0bd089d`** through the real builder, with one 14-step procedure
+# whose steps are a realistic paragraph each: **23,606 characters, 7,085 tokens**
+# for one matched skill; at the `skill_max_injected` ceiling of twelve,
+# **257,813 characters, 77,347 tokens** — against a default
+# `agent_input_token_budget` of 6,000. Nothing cut it on the way out, so the
+# first thing that noticed was `context_compactor.trim_for_context`, which drops
+# from the front of the conversation and therefore spent the person's earlier
+# turns on it, logging a line nobody reads and telling the model nothing.
+#
+# 12,000 characters, the same as the catalogue, is ~3,600 tokens by
+# `model_context.estimate_tokens` — it holds the two or three procedures
+# `skill_max_injected`'s default asks for at the measured median skill size and
+# binds only on the long ones, which are exactly the ones that were crowding the
+# window out.
+SKILL_BODY_BUDGET = "context_skill_body_chars"
+
 PROMPT_BUDGETS: dict[str, int] = {
     SKILL_INDEX_BUDGET: 12000,
+    SKILL_BODY_BUDGET: 12000,
 }
 
 PROMPT_BUDGET_LABELS: dict[str, str] = {
     SKILL_INDEX_BUDGET: "Skills catalogue listed in the system prompt",
+    SKILL_BODY_BUDGET: "Matched skill procedures pasted into the prompt",
 }
 
 MIN_PROMPT_BUDGET_CHARS = 200

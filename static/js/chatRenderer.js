@@ -2421,14 +2421,22 @@ export function createMsgFooter(msgElement) {
     pill.className = 'skills-used-pill';
     pill.type = 'button';
     const taught = skills.filter(s => s.source === 'teacher-escalation').length;
+    // `B1363`. "Shown" is two different claims and the pill made one of them.
+    // A skill in the catalogue is a line the model was given; an *applied*
+    // skill had its whole procedure pasted into the turn under "follow them
+    // step by step". The second is what a person wants to know when the answer
+    // is wrong, and nothing said it.
+    const applied = skills.filter(s => s.applied).length;
     const label = skills.length === 1 ? '1 skill' : `${skills.length} skills`;
     pill.innerHTML = SKILL_PILL_ICON
       + `<span class="skills-used-pill-text">${esc(label)}</span>`;
     pill.title = skills
-      .map(s => `${s.name}${s.category ? ` (${s.category})` : ''}`)
+      .map(s => `${s.name}${s.category ? ` (${s.category})` : ''}${s.applied ? ' — applied' : ''}`)
       .join('\n');
-    pill.setAttribute('aria-label',
-      taught ? `${label} available, ${taught} written by the teacher` : `${label} available`);
+    const parts = [`${label} available`];
+    if (applied) parts.push(`${applied} applied`);
+    if (taught) parts.push(`${taught} written by the teacher`);
+    pill.setAttribute('aria-label', parts.join(', '));
     bindFooterPopover(pill, 'skills-used-detail', (detail, closeDetail) => {
       skills.forEach(s => {
         const row = document.createElement('div');
@@ -2447,6 +2455,7 @@ export function createMsgFooter(msgElement) {
         // when the answer turns out to be wrong.
         text.textContent = s.name
           + (s.status === 'draft' ? ' (draft)' : '')
+          + (s.applied ? ' — applied' : '')
           + (teacherWritten && s.teacher_model ? ` — taught by ${s.teacher_model}` : '')
           + (teacherWritten && !s.teacher_model ? ' — teacher-written' : '');
         row.appendChild(badge);

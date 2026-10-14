@@ -2420,6 +2420,35 @@ def _is_casual_low_signal(text: str) -> bool:
     return len(tail_words) <= 2
 
 
+def _skills_may_ship_for_turn(last_user: str) -> bool:
+    """The loop's half of `B60`'s question, asked about the request.
+
+    `B1359` (`fx9-skills`, 2026-10-14). This was `not _intent["low_signal"]`,
+    and `_classify_agent_request` sets `low_signal` when *"no **tool** domain
+    matched"* — a verdict about which tools to retrieve, not about whether the
+    person's own procedures exist. So *"What is our procedure when a brand new
+    client signs?"* — the exact shape of question a skill answers — matched no
+    domain regex, came back low-signal, and reached the model with **no
+    catalogue and no skill at all**. Measured live on 8802, twenty identical
+    turns, twenty times out of twenty: `tools_sent=3`, no skills message, while
+    the install held a published `greet-a-new-client` whose description is *"How
+    this company welcomes a brand new client."* *"Production is down. Give me
+    the incident runbook for this outage."* did the same.
+
+    What the old gate was written for survives and is all that survives: an
+    empty turn and a greeting. Both tests are the ones
+    `_classify_agent_request`'s own first branch uses, read from there rather
+    than restated (`Law 7`), so "hey" still pulls no catalogue and the route's
+    four gates (`routes/chat_helpers.skills_may_ship` — incognito, the
+    preference, `allow_tool_preprocessing`, its own casual read) still decide
+    the other half.
+    """
+    text = str(last_user or "").strip()
+    if not text or bool(_LOW_SIGNAL_RE.match(text)) or _is_casual_low_signal(text):
+        return False
+    return True
+
+
 def _is_contextual_retry_continuation(messages: List[Dict], text: str) -> bool:
     """Treat "try again / it failed" as a continuation only for active tool work.
 
@@ -3797,14 +3826,9 @@ def _build_system_prompt(
             last_user = _extract_last_user_message(messages)
             # Respect the user's skills-enabled toggle (mirrors memory_enabled).
             # When off, don't inject relevant skills into the prompt.
-            _skills_on = True
-            _prefs = {}
-            try:
-                from routes.prefs_routes import _load_for_user as _load_prefs
-                _prefs = _load_prefs(owner) or {}
-                _skills_on = _prefs.get("skills_enabled", True)
-            except Exception:
-                pass
+            # `B1360`: one reader of these preferences, not three.
+            _prefs = _skill_prefs(owner)
+            _skills_on = bool(_prefs.get("skills_enabled", True))
             if last_user and _skills_on:
                 from services.memory.skills import SkillsManager
                 from src.constants import DATA_DIR
@@ -3841,7 +3865,16 @@ def _build_system_prompt(
                 relevant_skills = sm.get_relevant_skills(
                     last_user,
                     # `P8-51`: switched-off packages and groups stay out.
-                    skills=sm.load_active(owner=owner),
+                    #
+                    # `B1361`. This was `sm.load_active(owner=owner)`, which
+                    # applies the package/group switches and **none** of the four
+                    # gates the catalogue applies, so the same message withheld a
+                    # skill by name and pasted its whole procedure in below.
+                    # `injectable_skills` is the one list; `index_for` is its
+                    # projection (`Law 7`).
+                    skills=sm.injectable_skills(
+                        owner=owner,
+                        active_toolsets=_skill_active_toolsets(disabled_tools)),
                     threshold=0.25,
                     max_items=_skill_max_injected,
                     min_confidence=_skill_min_conf,
@@ -3864,7 +3897,21 @@ def _build_system_prompt(
                 except Exception:
                     pass   # a receipt is never worth a failed run
 
+                # `B1362`. The eleven `lines.append(…)` calls that used to build
+                # this text are now `skill_injection.render_matched_skills_block`
+                # — the module that already owns the catalogue's wording — so the
+                # bodies get the budget and the cut-note the catalogue has had
+                # since `P8-21`. The wording is carried over unchanged; see that
+                # function's docstring for what was measured.
+                from services.memory.skill_injection import (
+                    render_matched_skills_block,
+                )
                 lines = [""]
+                if isinstance(context_report, dict):
+                    context_report.setdefault("skill_bodies_chars", 0)
+                    context_report.setdefault("skill_bodies_truncated", False)
+                    context_report.setdefault("skill_bodies_omitted", 0)
+                    context_report.setdefault("skill_bodies_applied", [])
                 if relevant_skills:
                     # Bump the "uses" counter on every skill we actually surface
                     # to the agent — otherwise every skill shows "0 times" no
@@ -3874,30 +3921,24 @@ def _build_system_prompt(
                             sm.record_use(_sk.get('name', ''), owner=owner)
                         except Exception:
                             pass
-                    lines.append("## Relevant skills for this request")
-                    lines.append("These skills are matched to your current request. Each is a "
-                                 "procedure proven to work. Follow them step by step. To see "
-                                 "the full SKILL.md (more detail, pitfalls, verification "
-                                 "steps), call `manage_skills` with action='view' and the "
-                                 "skill name.")
-                    for sk in relevant_skills:
-                        src_tag = ""
-                        if sk.get("source") == "teacher-escalation":
-                            tm = sk.get("teacher_model") or "teacher"
-                            src_tag = f" _(learned from {tm})_"
-                        lines.append(f"\n### {sk.get('name','?')}{src_tag}")
-                        if sk.get("description"):
-                            lines.append(sk["description"])
-                        if sk.get("when_to_use"):
-                            lines.append(f"_When to use:_ {sk['when_to_use']}")
-                        proc = sk.get("procedure") or []
-                        if proc:
-                            lines.append("Procedure:")
-                            for i, step in enumerate(proc, 1):
-                                lines.append(f"  {i}. {step}")
-                        pitfalls = sk.get("pitfalls") or []
-                        if pitfalls:
-                            lines.append("Pitfalls: " + "; ".join(pitfalls))
+                    _body_report: Dict[str, Any] = {}
+                    _matched_text = render_matched_skills_block(
+                        relevant_skills, owner=owner, report=_body_report,
+                        can_fetch=_skill_body_tool_in_prompt(
+                            relevant_tools, disabled_tools, needs_admin),
+                    )
+                    if _matched_text:
+                        lines.append(_matched_text)
+                    if isinstance(context_report, dict):
+                        context_report.update(_body_report)
+                        # `B1363`. The receipt said *"N skills available"* and
+                        # could not say which one's procedure the turn was told
+                        # to follow step by step. The renderer knows, because it
+                        # is the thing that decided what fitted.
+                        _applied = set(_body_report.get("skill_bodies_applied") or [])
+                        for _row in context_report.get("skill_index") or []:
+                            if isinstance(_row, dict) and _row.get("name") in _applied:
+                                _row["applied"] = True
                 # SECURITY: do NOT concatenate the skills block into the
                 # trusted system role. Skill content (name, description,
                 # when_to_use, procedure, pitfalls) is user-editable via
@@ -4087,6 +4128,91 @@ _ADMIN_PROMPT_FORCE_INCLUDE = {
     "send_to_session", "pipeline", "ask_teacher", "list_models",
 }
 
+def _skill_prefs(owner) -> dict:
+    """This person's skills preferences, or `{}` when they cannot be read.
+
+    `B1360`. Read in three places that each had their own `try`/`except pass`
+    copy: the catalogue's gate, the matched bodies' gate and the tool-set gate.
+    Three copies of a read is three chances for one of them to answer
+    differently from the others, which is how `B60` happened.
+    """
+    try:
+        from routes.prefs_routes import _load_for_user as _load_prefs
+        return _load_prefs(owner) or {}
+    except Exception:
+        return {}
+
+
+def _skills_pref_enabled(owner) -> bool:
+    """The person's standing `skills_enabled` switch, defaulting on."""
+    return bool(_skill_prefs(owner).get("skills_enabled", True))
+
+
+def _skill_body_tool_offered(last_user: str, *, suppress_skills: bool,
+                             owner=None, data_dir: Optional[str] = None) -> bool:
+    """Whether `manage_skills` goes into this turn's selected tool set.
+
+    `B1360`. The same three questions the loop's tool-set gate asks, in one
+    place a test can reach: may the catalogue ship at all, has this person left
+    skills switched on, and do they have a skill installed. It answers what is
+    *offered*; `disabled_tools` at the route still decides what may be *run*,
+    and `_skill_body_tool_in_prompt` is the predicate that reads both.
+    """
+    if bool(suppress_skills) or not _skills_may_ship_for_turn(last_user):
+        return False
+    if not _skills_pref_enabled(owner):
+        return False
+    try:
+        from services.memory.skills import SkillsManager
+        from src.constants import DATA_DIR
+        return bool(SkillsManager(data_dir or DATA_DIR).load_active(owner=owner))
+    except Exception:
+        return False
+
+
+def _skill_active_toolsets(disabled_tools) -> list:
+    """The `active_toolsets` both halves of the skills message gate on.
+
+    `B1361`. One expression, two call sites: the catalogue's
+    (`_build_base_prompt`) and the matched bodies'
+    (`_build_system_prompt`). Before this, only the catalogue computed it and
+    the bodies gated on nothing, so a skill declaring `requires_toolsets:
+    [bash]` was correctly withheld from the catalogue of a turn without `bash`
+    and pasted into the same message in full.
+    """
+    return list(set(TOOL_SECTIONS.keys()) - set(disabled_tools or ()))
+
+
+def _skill_body_tool_in_prompt(relevant_tools, disabled_tools, needs_admin: bool) -> bool:
+    """Would a `manage_skills action=view` issued on this turn actually run?
+
+    `B1360` (`fx9-skills`, 2026-10-14). Both halves of the skills message told
+    the model to fetch a procedure with `manage_skills action=view`, and neither
+    half had any idea whether that tool was in the turn's set. Measured live on
+    8802: the model did exactly as instructed and the product answered
+    `tool_blocked` / *"Tool is disabled for this request."* — on a turn whose
+    system prompt also said *"Every tool this prompt names is available for this
+    turn… do not look for one that is not listed."* (`B-NEW-9`'s kept line).
+
+    Three ways the answer is no, and **none of them is lifted here**: the route
+    puts `manage_skills` in `disabled_tools` on an explicit web turn and in
+    incognito (`routes/chat_routes.py`), a person without `can_manage_memory`
+    never gets it, and tool selection may simply not have picked it. This
+    reproduces `_build_base_prompt`'s own `tool_names` rule for this one name so
+    the block's wording and the prompt's tool list cannot disagree — one
+    predicate, called from the index renderer's call site and the matched
+    renderer's with the same three arguments (`Law 7`).
+    """
+    if "manage_skills" in set(disabled_tools or ()):
+        return False
+    if needs_admin and "manage_skills" in _ADMIN_PROMPT_FORCE_INCLUDE:
+        return True
+    if relevant_tools is None:
+        # The fallback prompt names every tool that has a section.
+        return "manage_skills" in TOOL_SECTIONS
+    return "manage_skills" in set(relevant_tools)
+
+
 def _record_fenced_channel(tool_names, disabled, compact, owner) -> None:
     """Write the fenced half of the offer. Guarded: a receipt never fails a run.
 
@@ -4220,26 +4346,54 @@ def _build_base_prompt(
             from services.memory.skill_injection import render_skill_index_block
             from src.constants import DATA_DIR
             _sm = SkillsManager(DATA_DIR)
-            active_tools = list(set(TOOL_SECTIONS.keys()) - set(disabled or []))
+            active_tools = _skill_active_toolsets(disabled)
             skill_idx = _sm.index_for(owner=owner, active_toolsets=active_tools)
-            if skill_idx:
-                # `P8-06`. The block used to be built here and only here, which
-                # is why `GET /api/skills/index` — the endpoint that exists to
-                # show a user what the model can see — could return the list and
-                # never the text. One renderer, two callers, no second copy of a
-                # prompt string to fall out of step (`Law 7`).
-                skill_index_block = render_skill_index_block(skill_idx)
-                skill_index_used = [
-                    {
-                        "name": _s.get("name", ""),
-                        "category": _s.get("category", "general"),
-                        "status": _s.get("status", "published"),
-                        "source": _s.get("source", ""),
-                        "teacher_model": _s.get("teacher_model", ""),
-                        "via": "agent",
-                    }
-                    for _s in skill_idx
-                ]
+            # `P8-06`. The block used to be built here and only here, which
+            # is why `GET /api/skills/index` — the endpoint that exists to
+            # show a user what the model can see — could return the list and
+            # never the text. One renderer, two callers, no second copy of a
+            # prompt string to fall out of step (`Law 7`).
+            #
+            # `B1364`. `owner` and `report` were both missing here, and
+            # `routes/skills_routes.py` — the preview endpoint whose whole job
+            # is showing what the model sees — passes both. So the person's own
+            # `context_skill_index_chars` (role profile, instance setting)
+            # bounded the preview and **not** the injection, and
+            # `skill_index_chars` / `skill_index_truncated` were only ever
+            # measured on the path that does not inject:
+            # `context_window_report`'s skills segment read `measured: False` on
+            # every real turn. One budget, measured where it is spent — and
+            # rendered unconditionally, so an empty catalogue reports 0 rather
+            # than reporting nothing (`Law 10`).
+            skill_index_block = render_skill_index_block(
+                skill_idx, owner=owner, report=context_report,
+                can_fetch=_skill_body_tool_in_prompt(
+                    relevant_tools, disabled, needs_admin),
+            )
+            # `B1365`. This read `skill_idx` — the list handed to the renderer —
+            # so when the catalogue was cut to fit its budget the receipt still
+            # named every entry, and the footer pill told the person their model
+            # had been shown skills whose lines never left this function. The
+            # renderer reports what survived; this is that list.
+            _listed = (context_report or {}).get("skill_index_listed")
+            _survivors = (set(_listed) if isinstance(_listed, list)
+                          else {_s.get("name") for _s in skill_idx})
+            skill_index_used = [
+                {
+                    "name": _s.get("name", ""),
+                    "category": _s.get("category", "general"),
+                    "status": _s.get("status", "published"),
+                    "source": _s.get("source", ""),
+                    "teacher_model": _s.get("teacher_model", ""),
+                    # `B1363`. Whether this skill's **body** reached the model,
+                    # not merely its index line. Filled in by the matched
+                    # renderer's call site, which is the only place that knows.
+                    "applied": False,
+                    "via": "agent",
+                }
+                for _s in skill_idx
+                if _s.get("name") in _survivors
+            ]
         except Exception as _e:
             # Skill index is a soft enhancement — never fail prompt assembly on it.
             logger.debug(f"Skill-index injection skipped: {_e}")
@@ -4282,11 +4436,17 @@ def _merge_injected_skills(*lists) -> list:
                 via = item.pop("via", "")
                 item["name"] = name
                 item["via"] = [via] if via else []
+                item["applied"] = bool(entry.get("applied"))
                 merged[name] = item
                 continue
             via = entry.get("via", "")
             if via and via not in existing["via"]:
                 existing["via"].append(via)
+            # `B1363`. "Was this skill's procedure put in front of the model" is
+            # true if any contributing site says so — the same rule `via` uses,
+            # for the same reason: the merge must not lose what one site knew.
+            if entry.get("applied"):
+                existing["applied"] = True
     return sorted(merged.values(), key=lambda e: (e.get("category", ""), e["name"]))
 
 
@@ -5709,11 +5869,16 @@ async def stream_agent_loop(
     # `B60`. The whole answer to "may the skills index ship this turn", in one
     # name. The caller contributes what only it knows (the user's preference,
     # `incognito`, `allow_tool_preprocessing`, its own low-signal predicate) and
-    # this loop contributes what only it knows (`_intent.low_signal`;
-    # `guide_only` rides `suppress_local_context` alongside). A second copy of
-    # the index used to enforce the first half and ship anyway when this half
-    # said no, and vice versa.
-    _skills_suppressed = bool(suppress_skills) or _low_signal_turn
+    # this loop contributes what only it knows (`guide_only` rides
+    # `suppress_local_context` alongside). A second copy of the index used to
+    # enforce the first half and ship anyway when this half said no, and vice
+    # versa.
+    #
+    # `B1359`. This loop's half was `_low_signal_turn` — "no tool domain
+    # matched" — which withheld the catalogue from exactly the questions a
+    # catalogue answers. `_skills_may_ship_for_turn` asks about the request
+    # instead; its docstring carries the measurement.
+    _skills_suppressed = bool(suppress_skills) or not _skills_may_ship_for_turn(_last_user)
     _casual_low_signal_turn = _is_casual_low_signal(_last_user)
     _existing_conversation = _user_turn_count(messages) > 1
     _active_document_relevant = _turn_targets_active_document(_intent, _last_user, active_document)
@@ -6336,23 +6501,26 @@ async def stream_agent_loop(
     # (grep, read_file, ...) that aren't in its schema list. Keep the schemas
     # in lockstep: manage_skills is callable whenever any skill is indexed,
     # and a matched skill's declared requires_toolsets ride along with it.
-    # `B60` deliberately does NOT widen this gate. It decides whether
-    # `manage_skills` is offered as a *tool*, which is a different question from
-    # whether the catalogue ships, and it already honours the preference two
-    # lines down. Widening it to `_skills_suppressed` would add incognito to it
-    # — arguably right, since `manage_skills add` writes — but there is no seam
-    # in this harness that can observe the tool list, and shipping a behaviour
-    # change no test can see is how the thing this bug is about got in.
-    if not guide_only and _relevant_tools is not None and not _low_signal_turn:
+    # `B60` deliberately did NOT widen this gate, for a stated reason: *"there
+    # is no seam in this harness that can observe the tool list"*.
+    #
+    # `B1360` builds that seam and closes the gap. The gate was
+    # `not _low_signal_turn` while the catalogue's was `_skills_suppressed`, so
+    # the two disagreed in both directions: a procedure question got the
+    # catalogue and not the tool it names (measured live on 8802 — the model
+    # called `manage_skills action=view` and the product answered *"Tool is
+    # disabled for this request."*), and an incognito turn could be offered the
+    # tool with no catalogue to use it on. **One answer now**, so the tool that
+    # loads a body is offered exactly when the catalogue that names it ships.
+    # This is not a widening: incognito and the explicit-web turn both still put
+    # `manage_skills` in `disabled_tools` at the route, `can_manage_memory` still
+    # withholds it, and `_skills_suppressed` is a superset of the old gate's
+    # greeting case.
+    if not guide_only and _relevant_tools is not None and not _skills_suppressed:
         try:
             from services.memory.skills import SkillsManager
             from src.constants import DATA_DIR
-            _skills_on = True
-            try:
-                from routes.prefs_routes import _load_for_user as _load_prefs
-                _skills_on = (_load_prefs(owner) or {}).get("skills_enabled", True)
-            except Exception:
-                pass
+            _skills_on = _skills_pref_enabled(owner)
             _sm = SkillsManager(DATA_DIR)
             _owner_skills = _sm.load_active(owner=owner) if _skills_on else []
             if _owner_skills:
@@ -6363,8 +6531,19 @@ async def stream_agent_loop(
                     # schemas without a prompt-prose section.
                     from src.tool_policy import known_tool_names
                     _known = known_tool_names()
+                    # `B1361`. This matched over `load_active`, so a skill the
+                    # turn will never be shown — a user's half-written draft, or
+                    # one whose own `requires_toolsets` are switched off — could
+                    # still pull tools into the selection. Offering
+                    # `manage_skills` keys off "has any skill at all" above,
+                    # because `view` by exact name opens a draft too; this pass
+                    # is about the skills whose procedures may actually arrive,
+                    # which is the one list the catalogue reads.
                     for _sk in _sm.get_relevant_skills(
-                        _retrieval_query, skills=_owner_skills,
+                        _retrieval_query,
+                        skills=_sm.injectable_skills(
+                            owner=owner,
+                            active_toolsets=_skill_active_toolsets(disabled_tools)),
                         threshold=0.25, max_items=3,
                     ):
                         _relevant_tools.update(
