@@ -1536,12 +1536,14 @@ def _register_tool_line(name: str) -> str:
     `TOOL_TAGS` can carry had **nothing** that named them in the only channel a
     fenced route has. Measured on `b6a1bbf` with `fenced_route_reach` (one turn
     per tool, naming the tool outright, against an Ollama URL that carries no
-    `tools` array): for an admin, 68 of 79 named in the prompt, 1 held and
-    **7 reachable by neither channel** — `edit_image`, `host_shell`,
-    `list_cookbook_servers`, `ls`, `manage_bg_jobs`, `scan_email_unsubscribes`
-    and `unsubscribe_email`, every one of them a name with no section. (The
-    other eight section-less tools were backticked incidentally by rules prose,
-    which is luck rather than a channel.)
+    `tools` array): for an admin, 69 of the suite's 76 tools named in the
+    prompt, 1 held and **6 reachable by neither channel** — `edit_image`,
+    `host_shell`, `list_cookbook_servers`, `manage_bg_jobs`,
+    `scan_email_unsubscribes` and `unsubscribe_email`, every one of them a name
+    with no section. (The other nine section-less tools were backticked
+    incidentally by rules prose — *"Prefer `grep`, `glob`, and `ls` over shell
+    equivalents when available"* carries three of them — which is luck rather
+    than a channel.)
 
     The line is **derived from a register the product already keeps**, never
     hand-written (`Law 7`): `FUNCTION_TOOL_SCHEMAS` holds this tool's
@@ -1864,8 +1866,8 @@ def _assemble_prompt(tool_names: set, disabled_tools: set = None, compact: bool 
     # The walk above is over `TOOL_SECTIONS`, which holds 61 of the register's
     # 74 names, so a tool with no section could not be named here however
     # firmly it was offered — and on a fenced route this prompt is the only
-    # channel a tool arrives by. Measured on `b6a1bbf`: 7 of an admin's 79
-    # reachable by neither channel, all seven section-less. They go in the same
+    # channel a tool arrives by. Measured on `b6a1bbf`: 6 of an admin's 76
+    # tools reachable by neither channel, all six section-less. They go in the same
     # "Additional tools" list as the sectioned one-liners rather than a block
     # of their own (`Law 14`), and `_register_tool_line` derives each line from
     # the schema register so nothing here is a second statement of what a tool

@@ -2044,6 +2044,9 @@ class McpManager:
             reason = re.sub(r"\s+", " ", reason).strip()
             if len(reason) > _MCP_PROMPT_DOWN_REASON_MAX:
                 reason = reason[:_MCP_PROMPT_DOWN_REASON_MAX - 1].rstrip() + "…"
+            # The name is the operator's own word, not a hostile input, so it
+            # is only collapsed and given a generous ceiling — enough for any
+            # name a person types, short of a line that is really a payload.
             name = re.sub(r"\s+", " ", str((conn or {}).get("name") or server_id)).strip()
             out.append((name[:_MCP_TOKEN_MAX * 2], reason))
         return sorted(out)
