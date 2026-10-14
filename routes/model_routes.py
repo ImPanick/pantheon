@@ -1609,7 +1609,7 @@ def _tool_transport_view(row, models) -> Dict[str, Any]:
     return {
         "declared": declared,
         "resolved": "native" if is_api else "fenced",
-        # `B-NEW`. `resolved` answers "which prompt and which parser", and that
+        # `B1301`. `resolved` answers "which prompt and which parser", and that
         # is no longer the same question as "does the request carry a `tools`
         # array": an endpoint nobody has declared now gets **both** channels.
         # Shown as its own field rather than folded into `resolved`, because an

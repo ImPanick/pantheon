@@ -270,7 +270,7 @@ def test_an_address_that_names_a_chat_skips_the_welcome_hero(tmp_path, hash, hid
 
 
 def test_the_pickers_forge_door_never_writes_a_dead_address(sandbox):
-    """fx-back's `B-NEW-1` (P23-01, NAV-M-9's second half), in this lane's
+    """`P23-04` (fx-back's hand-off row 1, P23-01, NAV-M-9's second half), in this lane's
     file: with neither Forge door on the page the picker wrote `#cookbook`,
     which nothing reads — it stuck in the address and opened nothing."""
     src = (JS / "modelPicker.js").read_text(encoding="utf-8")

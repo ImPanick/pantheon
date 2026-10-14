@@ -646,7 +646,7 @@ def test_the_documents_windows_on_a_phone(tmp_path):
     assert r["check"] <= r["width"] and r["pageWide"] <= r["width"], r     # SET-M-21: nothing past the phone's edge
 
 
-# ── fx-chat's CSS halves: B-NEW-5, B-NEW-6 ──────────────────────────────────
+# ── `P23-06`: fx-chat's CSS halves, hand-off rows 5 and 6 ───────────────────
 
 _CHAT_ROWS = """
 <div class="agent-thread-node" id="done"><span class="agent-thread-dot" id="done-dot"></span>
@@ -683,7 +683,7 @@ def test_a_denied_or_waiting_tool_row_looks_its_own_and_plan_mode_leaves_the_com
     assert r["hintsTop"] == "4px", r           # CHAT-U-21: the words clear the thumb
 
 
-# ── fx-back's B-NEW-3: the opener beneath, dimmed and inert ─────────────────
+# ── fx-back's B1221: the opener beneath, dimmed and inert ───────────────────
 
 _OPENER = """
 <div id="memory-modal" class="modal" style="display:flex"><div class="modal-content memory-modal-content" id="brain">

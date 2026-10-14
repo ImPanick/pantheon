@@ -255,7 +255,7 @@ def test_the_workspace_is_never_bound_on_this_machine(ws, settings, people, home
         # Read from the dispatcher `_call` drives, and patched into the
         # registry that dispatcher imports when it runs: the same objects in a
         # clean process, and still the right ones after a test file that swaps
-        # `sys.modules` (`B-NEW` in the `ws-shell` note).
+        # `sys.modules` (`B983`, filed by `ws-shell`).
         seen.append(hands.te.get_active_workspace())
         return {"output": "ok", "exit_code": 0}
 

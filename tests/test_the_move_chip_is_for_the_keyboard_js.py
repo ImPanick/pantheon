@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-r"""`B-NEW-10` — the window's move chip shows for a keyboard, not after a click.
+r"""`B1246` — the window's move chip shows for a keyboard, not after a click.
 
 A tool window's header holds a move handle (`windowDrag.js`, `P10-06`) that
 draws *Move: arrow keys · Resize: Shift + arrows* over the title bar whenever

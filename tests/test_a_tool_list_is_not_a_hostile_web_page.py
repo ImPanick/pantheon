@@ -725,7 +725,7 @@ def test_the_link_rules_name_every_anchor_kind_the_browser_handles():
 def test_a_tool_the_prompt_lists_is_never_called_unavailable(constant):
     """The dead copy's most on-point line, kept and generalised.
 
-    It is true of the product only since `H09` and `B-NEW-4` made the list name
+    It is true of the product only since `H09` and `B1304` made the list name
     callable tools; on `99134cf` it would have been a lie.
     """
     from src import agent_loop

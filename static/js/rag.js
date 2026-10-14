@@ -38,7 +38,7 @@ export async function loadPersonalDocs() {
 
   try {
     const res = await fetch(`${API_BASE}/api/personal`, { credentials: 'same-origin' });
-    // `B-NEW-8` (P23 round 2). Every `/api/personal` route is `require_admin`.
+    // `B1244` (P23 round 2). Every `/api/personal` route is `require_admin`.
     // A non-admin's RAG tab offered *Drop files here or click to upload* above
     // the refusal, and the refusal was thrown and then `console.error`ed
     // (`Error: Admin only at loadPersonalDocs`, measured on `a936b5c` as
@@ -170,7 +170,7 @@ export async function uploadRagFiles(fileList) {
   }
 }
 
-/** `B-NEW-8`. The drop zone is offered only to someone the list answered. Its
+/** `B1244`. The drop zone is offered only to someone the list answered. Its
  *  markup carries an inline `display:block`, which a `hidden` attribute does
  *  not beat. */
 function _offerUpload(on) {

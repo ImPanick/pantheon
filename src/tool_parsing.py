@@ -37,7 +37,7 @@ _TOOL_BLOCK_RE = re.compile(
     re.IGNORECASE,
 )
 
-# `B-NEW`. The fenced channel could not carry an MCP tool call. `_TOOL_BLOCK_RE`
+# `B1306`. The fenced channel could not carry an MCP tool call. `_TOOL_BLOCK_RE`
 # above is built once at import from the static `TOOL_TAGS` set, and an MCP tool
 # name is minted at runtime from the server's id, so no ```mcp__… fence has ever
 # matched it. Measured on this tree with one registered MCP server:
@@ -1367,7 +1367,7 @@ def parse_tool_blocks(text: str, skip_fenced: bool = False) -> List[ToolBlock]:
     # Not gated on `skip_fenced`'s illustrative-example reasoning the way
     # Pattern 1 is: a native-tools model writes ```bash examples in prose all
     # the time, and has never once written a fully-qualified `mcp__…__…` fence
-    # tag by accident. Dropping it would lose a real call (`B-NEW`), which is
+    # tag by accident. Dropping it would lose a real call (`B1306`), which is
     # the same judgement Patterns 2-5 already make for explicit markup.
     for m in _MCP_TOOL_BLOCK_RE.finditer(text):
         call = _fenced_mcp_tool_call(m)
@@ -1525,7 +1525,7 @@ def parse_tool_blocks(text: str, skip_fenced: bool = False) -> List[ToolBlock]:
             blocks.append(block)
 
     # Pattern 4e: a bare {"name": …, "arguments": {…}} object as the whole
-    # reply, with no wrapper at all. `B-NEW`: this is the Hermes/Qwen shape
+    # reply, with no wrapper at all. `B1306`: this is the Hermes/Qwen shape
     # without its `<tool_call>` tags, and local servers emit it when their
     # chat template's tool section does not fire. Measured on this tree before
     # the change: `{"name":"web_search","arguments":{…}}` parsed (Pattern 6
@@ -1577,7 +1577,7 @@ def strip_tool_blocks(text: str, skip_fenced: bool = False) -> str:
     # Keep the executed-vs-illustrative fence distinction (only strip fences
     # that actually dispatched; leave example fences from native models inert
     # but visible), then remove [TOOL_CALL]{...}[/TOOL_CALL] markup.
-    # `B-NEW`. An executed MCP fence is stripped on the same terms, and never
+    # `B1306`. An executed MCP fence is stripped on the same terms, and never
     # gated on `skip_fenced` — Pattern 1b is not either, and a fence that ran
     # must not also be shown (the mirror `_fenced_tool_call` already keeps).
     cleaned = _MCP_TOOL_BLOCK_RE.sub(_strip_executed_mcp_fence, text)

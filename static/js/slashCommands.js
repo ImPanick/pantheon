@@ -1414,7 +1414,7 @@ async function _cmdOpen(args, ctx) {
   }
   const tool = { documents: 'library', docs: 'library', archive: 'library', theme: 'theme' }[target]
     || { slash: target };
-  // `B-NEW-2`: refused, it says so in the door's toast and saves nothing (the
+  // `B1238`: refused, it says so in the door's toast and saves nothing (the
   // `open` row carries `noUserBubble`, so the command is not echoed either).
   if (window.pantheonToolDoor && !window.pantheonToolDoor(tool)) return true;
   const clickFirst = (...ids) => {
@@ -4236,7 +4236,7 @@ async function _cmdTourBrain(args, ctx) {
     { sel: '.memory-tab-panel[data-memory-panel="rag"]',
       text: '<b>RAG</b> — files Pantheon can quote. Turn it on in the chat bar.',
       before: () => _tab('rag') },
-    // fx-brain's B-NEW-3: the skill confidence bar moved to Skills › Settings
+    // `P23-05` (fx-brain's Brain tour): the skill confidence bar moved to Skills › Settings
     // (`BRAIN-U-10`); the Brain's Settings holds memory extraction only.
     { sel: '.memory-tab-panel[data-memory-panel="settings"]',
       text: '<b>Settings</b> — whether memories are picked out of chats on their own.',
@@ -6104,7 +6104,7 @@ const COMMANDS = {
     category: 'Settings',
     help: 'Open the Settings panel',
     handler: _cmdSettings,
-    // The `SET-M-22` rule, found driving `B-NEW-2` (round 2): opening the
+    // The `SET-M-22` rule, found driving `B1238` (round 2): opening the
     // window is the answer. It echoed "/settings tools" and saved it, and from
     // the welcome screen each `/settings appearance` made a new chat in the
     // sidebar to hold it (measured as `guest`: 0 → 1 → 2 chats). Its one chat
@@ -6118,7 +6118,7 @@ const COMMANDS = {
     hidden: true,
     help: 'Open a tool panel',
     handler: _cmdOpen,
-    // `B-NEW-2`, the `SET-M-22` rule: opening the window is the answer, so
+    // `B1238`, the `SET-M-22` rule: opening the window is the answer, so
     // `/open notes` leaves no "/open notes" bubble, and a refused
     // `/open gallery` leaves nothing at all. Its two chat answers ("Open
     // what?…", "I don't know how to open "x" yet.") read without the echo.
@@ -6449,7 +6449,7 @@ async function handleSlashCommand(input, { echo = true, persist = true } = {}) {
     let cmdKey = _resolveCommand(rawCmd);
     let cmdDef = cmdKey ? COMMANDS[cmdKey] : null;
     // `P23-03` (SET-M-2): a command for a tool switched off says why (`ui_visibility.js`).
-    // `B-NEW-2`: in the door's own toast, as the URL and the sidebar say it, and
+    // `B1238`: in the door's own toast, as the URL and the sidebar say it, and
     // nothing in the chat. Said through `slashReply` it was saved as an
     // assistant message on every try (measured on `a936b5c`: six `/gallery`
     // tries, six rows in the chat's history); it runs before the echo, so the

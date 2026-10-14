@@ -444,7 +444,7 @@ function initPersistentChat() {
 }
 
 /**
- * `B-NEW-9` (P23 round 2). The chat area's one line when the page could not
+ * `B1245` (P23 round 2). The chat area's one line when the page could not
  * reach Pantheon at all.
  *
  * `P23-07`'s worker draws the shell offline (sidebar, composer, the address
@@ -517,7 +517,7 @@ export async function loadPresets(showError) {
     }
     setTimeout(() => { _syncCharIndicator(); }, 0);
   } catch (error) {
-    // `B-NEW-9`: the request never reached the server — the page's news, said
+    // `B1245`: the request never reached the server — the page's news, said
     // once in the chat area, not this loader's toast.
     if (!reached) {
       console.warn('Presets not loaded: Pantheon could not be reached.', error);

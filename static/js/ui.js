@@ -1728,7 +1728,7 @@ if (!window._odyEscExpandGuard) {
   //      Notes keeps its own layered Escape (`notes.js`).
   //   6. nothing open: the phone drawer, then the document pane (to its chip),
   //      then — unless a reply is streaming, when the key is its Stop
-  //      (`B-NEW-7`) — an open thinking block.
+  //      (`B1243`) — an open thinking block.
   const _OWN_ESCAPE_DIALOGS = ['styled-confirm-overlay', 'styled-prompt-overlay'];
   const _openById = (id) => {
     const n = document.getElementById(id);
@@ -1808,7 +1808,7 @@ if (!window._odyEscExpandGuard) {
       dm.closePanel('down');
       return;
     }
-    // `B-NEW-7`. A reply streaming into the chat: this Escape is its Stop
+    // `B1243`. A reply streaming into the chat: this Escape is its Stop
     // (`keyboard-shortcuts.js`, on `window` after every listener — `CHAT-M-1`),
     // so the key goes on unclaimed. The reply's live reasoning is drawn open,
     // and this rule folded it first: measured on `a936b5c`, Escape #1 folded

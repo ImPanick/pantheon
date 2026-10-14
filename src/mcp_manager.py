@@ -1473,7 +1473,7 @@ class McpManager:
 
         session = self._sessions.get(server_id)
         if not session:
-            # `B-NEW`. This said `MCP server not connected: 47a5fba5`, and the
+            # `B1307`. This said `MCP server not connected: 47a5fba5`, and the
             # id is a mint of this module's own (`B870`) that appears in no
             # surface a person reads. The error goes into the chat as the tool's
             # output, so it names the server the way the operator does and says
@@ -1705,7 +1705,7 @@ class McpManager:
     def _servable_parameters(self, qualified: str, input_schema) -> Dict:
         """An MCP tool's `inputSchema`, in a shape a strict server can read.
 
-        `B-NEW`. This used to be `tool.get("input_schema", {...})` — the
+        `B1303`. This used to be `tool.get("input_schema", {...})` — the
         server's object, copied into the request verbatim. `P8-48` is right
         that the parameters are the server's and are never overridden: the
         server enforces its own schema whatever the model is told. It is a
@@ -1936,7 +1936,7 @@ class McpManager:
         """Generate text describing MCP tools for the agent system prompt. Cached.
 
         `channel` is how THIS turn can reach these tools, and it is a parameter
-        because the manager cannot know (`B-NEW`). The first line used to read
+        because the manager cannot know (`B1304`). The first line used to read
         *"These tools are called via native function calling"* on every turn,
         including the turns that carry no `tools` array at all — a local
         OpenAI-compatible endpoint left on Auto, which is every one of them
@@ -1964,7 +1964,7 @@ class McpManager:
         # that writes a description moves `_generation`
         # (`tool_descriptions_changed`), which is in the key.
         tools = self.get_all_tools(disabled_map)
-        # `B-NEW`. A server registered and NOT answering used to be invisible
+        # `B1307`. A server registered and NOT answering used to be invisible
         # here and everywhere else the model or the person could see. Measured
         # on this tree: a stdio server whose command exits at once registers
         # with `status: "error", error: "Connection closed"`, contributes no

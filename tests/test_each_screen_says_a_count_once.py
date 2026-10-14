@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""`B-NEW-5` (P23 round 2, `fx2-doors`) — a screen says a count once.
+"""`B1241` (P23 round 2, `fx2-doors`) — a screen says a count once.
 
 `P23-00`'s fourth sentence — *no screen says the same thing twice* — failed on
 the merged tree (`a936b5c`, the acceptance drive's `s4-*` shots). Measured

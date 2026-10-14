@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-r"""`B-NEW-7` — one Escape stops a streaming reply, even with its thinking open.
+r"""`B1243` — one Escape stops a streaming reply, even with its thinking open.
 
 Measured on `a936b5c` (`/work/notes/p23-acceptance.md`) and again on `cdf040f`
 in Chromium, the paced scripted model, the caret in the message box: a reply

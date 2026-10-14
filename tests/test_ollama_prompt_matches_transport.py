@@ -93,7 +93,7 @@ def test_the_call_site_uses_the_named_predicate():
 
 
 def test_the_schema_gate_and_the_prompt_gate_read_the_same_flag():
-    """The invariant, restated for `tool_schema_offer` (`B-NEW`).
+    """The invariant, restated for `tool_schema_offer` (`B1301`).
 
     This asserted the source text `if route_state["is_api_model"]:` — that the
     schema branch and the prompt branch read the one flag. They no longer do,

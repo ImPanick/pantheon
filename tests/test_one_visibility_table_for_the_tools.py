@@ -292,7 +292,7 @@ def test_a_link_to_a_hidden_tool_waits_for_the_switches_then_says_why(tmp_path):
 def test_open_by_name_refuses_a_hidden_tool_in_the_chat(tmp_path):
     """SET-M-2 (slash half): `/open gallery` pressed a `display:none` button.
 
-    Round 2 (`B-NEW-2`): the refusal is the door's toast, as at the URL and the
+    Round 2 (`B1238`): the refusal is the door's toast, as at the URL and the
     sidebar — said through `slashReply` it was saved into the chat as an
     assistant message on every try. Nothing is said in the chat now."""
     src = SLASH_JS.read_text(encoding="utf-8")
@@ -369,7 +369,7 @@ export default { COMMANDS };
 
 
 def test_the_slash_popup_asks_the_table_each_time_it_opens(tmp_path):
-    """`B-NEW-1`. Measured on `a936b5c` in Chromium: with Gallery off (a fresh
+    """`B1237`. Measured on `a936b5c` in Chromium: with Gallery off (a fresh
     page or a live switch), typing `/gal` listed `/gallery Open Gallery` and
     `/tour-gallery`, while `slashCatalog()`, Ctrl+K and the dispatcher had all
     dropped it — the popup filtered its list once, when the message box was

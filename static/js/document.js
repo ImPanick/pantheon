@@ -171,7 +171,7 @@ import { chevronIcon, playIcon } from './icons.js';
       const back = returnTo && (sessionModule.getSessions?.() || [])
         .some(s => String(s.id) === returnTo && !s.archived);
       if (back) {
-        // `B-NEW-6`: a replace, so no history entry names the chat just deleted.
+        // `B1242`: a replace, so no history entry names the chat just deleted.
         await sessionModule.selectSession?.(returnTo, { replace: true });
       } else {
         // The way the person's own New chat goes (`app.js`
@@ -9936,7 +9936,7 @@ import { chevronIcon, playIcon } from './icons.js';
     await markdownModule.renderMath(container);
     const baseName = _getExportBaseName();
     if (uiModule) uiModule.showToast('Exporting PDF...');
-    // `B-NEW-3`: awaited, and a failure says so in one sentence. This was
+    // `B1322`: awaited, and a failure says so in one sentence. This was
     // fire-and-forget, so the one failure it had — a colour the rasteriser
     // cannot read — reached nobody but the console.
     try {
@@ -9955,7 +9955,7 @@ import { chevronIcon, playIcon } from './icons.js';
   }
 
   /**
-   * `B-NEW-3`. What html2canvas is allowed to see of this page.
+   * `B1322`. What html2canvas is allowed to see of this page.
    *
    * The owner, 2026-10-09: *"exporting it from the docs as a pdf doesnt work,
    * only markdown and docx works."* Measured on `99134cf` in Chromium, driving

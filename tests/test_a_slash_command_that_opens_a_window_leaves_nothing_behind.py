@@ -32,7 +32,7 @@ the merged tree (`a936b5c`) the dispatcher cases here failed with
 without the global it now reads. The product was right (a page always has a
 `window`; the acceptance drive saw `/notes` open and `/gallery` refused); the
 harness now loads the real `ui_visibility.js` beside the dispatcher. And
-`B-NEW-2`: a command for a tool switched off said its refusal through
+`B1238`: a command for a tool switched off said its refusal through
 `slashReply`, which saved it into the chat as an assistant message on every
 try; it now says it once in the door's toast, and the chat keeps nothing — no
 echo, no reply, nothing saved (`test_a_refused_command_leaves_nothing_in_the_chat`).
@@ -226,7 +226,7 @@ _OFF = {
 
 @pytest.mark.parametrize("name", sorted(_OFF))
 def test_a_refused_command_leaves_nothing_in_the_chat(tmp_path, name):
-    """`B-NEW-2`. Measured on `a936b5c`: with Gallery off, `/gallery` + Enter
+    """`B1238`. Measured on `a936b5c`: with Gallery off, `/gallery` + Enter
     said *Gallery is switched off for everyone…* through `slashReply`, which
     saved it; six tries left six assistant rows in the chat's history."""
     out = _dispatch(tmp_path, [_command_row(name)], """
@@ -247,7 +247,7 @@ def test_a_refused_command_leaves_nothing_in_the_chat(tmp_path, name):
 
 
 def test_settings_opens_without_an_echo_or_a_chat_to_hold_it(tmp_path):
-    """Found driving `B-NEW-2` at `:8732`: `/settings tools` echoed and was
+    """Found driving `B1238` at `:8732`: `/settings tools` echoed and was
     saved into the chat, and a guest on the welcome screen got a new chat in
     the sidebar for each `/settings appearance` (0 → 1 → 2). The real
     `settings` row and `_cmdSettings` behind the real dispatcher: Settings
@@ -264,7 +264,7 @@ def test_settings_opens_without_an_echo_or_a_chat_to_hold_it(tmp_path):
 
 def test_open_by_name_opens_without_an_echo_and_refuses_without_a_trace(tmp_path):
     """`/open notes` is a window opening like `/notes` (`SET-M-22`), and
-    `/open gallery` with Gallery off is refused like `/gallery` (`B-NEW-2`):
+    `/open gallery` with Gallery off is refused like `/gallery` (`B1238`):
     the real `open` row and its real handler behind the real dispatcher."""
     out = _dispatch(tmp_path, [_command_row("open")], """
         await handleSlashCommand('/open notes');

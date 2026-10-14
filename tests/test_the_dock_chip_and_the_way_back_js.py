@@ -150,7 +150,7 @@ def test_the_chip_close_is_a_real_button_named_for_the_window(mm):
         document.activeElement = document.body;
         // Enter on Restore: the browser reads the focus that follows as a
         // keyboard's (`:focus-visible`). After a click it does not, and the
-        // window takes the focus instead (`B-NEW-10`,
+        // window takes the focus instead (`B1246`,
         // `tests/test_the_move_chip_is_for_the_keyboard_js.py`).
         t.handle.matches = (sel) => sel === ':focus-visible';
         press(chip.querySelector('.minimized-dock-restore'));

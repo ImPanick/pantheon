@@ -199,7 +199,7 @@ export function mountAutomations(host, opts = {}) {
   host.classList.add('wf-room', 'wb-room');
 
   const shelf = _el('nav', 'wf-shelf');
-  // `B-NEW-5` (round 2): the column has no visible heading. The tab above it
+  // `B1241` (round 2): the column has no visible heading. The tab above it
   // says *Automations*, and a `wf-shelf-head` saying it again sat under the
   // tab (measured on `a936b5c`; a phone already hid it). The landmark keeps
   // the name for a screen reader.

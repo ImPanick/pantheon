@@ -438,7 +438,7 @@ def test_save_to_documents_saves_the_whole_chat(driven):
 # ── a document exports as PDF ──────────────────────────────────────────────
 
 def test_a_document_with_a_code_block_exports_as_pdf(driven):
-    """`B-NEW-3`. On `99134cf` this item produced no file at all and said
+    """`B1322`. On `99134cf` this item produced no file at all and said
     nothing: html2canvas threw `Attempting to parse an unsupported color
     function "color"` on `.code-block-header`'s computed background, and
     nothing awaited the call."""

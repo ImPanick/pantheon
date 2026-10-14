@@ -189,7 +189,7 @@ def test_the_panel_is_told_what_the_agent_will_do():
 
 
 def test_the_panel_says_when_both_channels_are_live():
-    """`B-NEW`. `resolved` answers "which prompt, which parser"; `offer`
+    """`B1301`. `resolved` answers "which prompt, which parser"; `offer`
     answers "does the request carry a `tools` array", and for an endpoint
     nobody has declared those are now different answers — schemas go AND the
     fenced prompt stays. A panel that showed only the first would read

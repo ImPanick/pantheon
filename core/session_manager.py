@@ -450,7 +450,7 @@ class SessionManager:
         return self.sessions[session_id]
 
     # `P23-07` (`PERF-M-14`, the session half `fx-chat` filed as its
-    # `B-NEW-3`). `get_session` cost four statements a call — the metadata
+    # `B1201`). `get_session` cost four statements a call — the metadata
     # refresh read the row and counted the messages, then `_touch_session` read
     # the row again and wrote `last_accessed` — and the routes call it several
     # times a request (the context route four), so every chat open wrote the

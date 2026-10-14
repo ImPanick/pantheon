@@ -455,7 +455,7 @@ def test_off_is_said_and_nothing_is_called(app, ws):
 
 
 def test_the_admin_is_told_what_off_costs_once(app, ws):
-    """`B-NEW-5` (P23 round 2). Settings → Workstation said what off costs
+    """`B1241` (P23 round 2). Settings → Workstation said what off costs
     twice, 40 px apart (measured on `a936b5c`): the status card's *The
     workstation is off. Nothing calls it, and the agent's shell, Python and file
     tools run inside Pantheon as they always have.* above the switch's own line

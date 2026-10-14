@@ -288,7 +288,7 @@ function _initModelPickerDropdown() {
         if (window.cookbookModule && typeof window.cookbookModule.open === 'function') {
           window.cookbookModule.open();
         } else {
-          // `P23-04` (fx-back's B-NEW-1): no `#cookbook` fallback — nothing
+          // `P23-04` (fx-back's hand-off row 1): no `#cookbook` fallback — nothing
           // reads that hash, so it stuck in the address and opened nothing.
           const btn = document.getElementById('tool-cookbook-btn') || document.getElementById('rail-cookbook');
           if (btn) btn.click();

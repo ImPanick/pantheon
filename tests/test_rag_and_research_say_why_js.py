@@ -91,7 +91,7 @@ def test_a_dead_index_says_why_under_the_heading(box):
 
 
 def test_a_non_admins_rag_tab_offers_no_upload_and_logs_nothing(box):
-    """`B-NEW-8` (P23 round 2). Measured on `a936b5c` as `guest`: the RAG tab
+    """`B1244` (P23 round 2). Measured on `a936b5c` as `guest`: the RAG tab
     offered *Drop files here or click to upload* above *Admin only*, and the
     console logged `Error: Admin only at loadPersonalDocs` — the refusal was
     thrown, then `console.error`ed. Every `/api/personal` route is

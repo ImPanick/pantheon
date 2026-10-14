@@ -147,7 +147,7 @@ def test_readme_says_there_is_always_a_sign_in():
     # so it pins what the README says now: a sign-in always, registration the
     # admin's switch and off on a new install, and the old variables ignored. The
     # behaviour itself is driven by `tests/test_there_is_always_authentication.py`
-    # (this reads the README, `Law 20`: it tests the file). (fx5-green, B-NEW-6.)
+    # (this reads the README, `Law 20`: it tests the file). (fx5-green, B1283.)
     readme = " ".join(Path("README.md").read_text(encoding="utf-8").split())
     security = readme.split("## Security", 1)[1].split("## ", 1)[0]
     assert "There is always a sign-in." in security

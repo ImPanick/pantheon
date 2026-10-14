@@ -498,7 +498,7 @@ function initializeEventListeners() {
   }
 
   /**
-   * `B-NEW-1`. The whole chat, from the server, in one of the formats
+   * `B1320`. The whole chat, from the server, in one of the formats
    * `GET /api/session/{sid}/export` writes (`md`, `txt`, `json`, `html`).
    *
    * The Export menu built its own transcript out of `#chat-history`, and the
@@ -526,14 +526,14 @@ function initializeEventListeners() {
   // Serialize the current chat history into a plain-text transcript.
   // Includes user messages, assistant rounds, and agent tool calls in DOM order.
   //
-  // `B-NEW-1`: this reads the rendered page, which is one page of the chat, so
+  // `B1320`: this reads the rendered page, which is one page of the chat, so
   // it is the fallback for when the server cannot be reached — never the
   // export itself. `_fetchWholeChat` is the export.
   function _serializeChatTranscript() {
     const box = document.getElementById('chat-history');
     if (!box) return '';
     const parts = [];
-    // `B-NEW-2`. One turn, one entry. A multi-round agent turn draws more than
+    // `B1321`. One turn, one entry. A multi-round agent turn draws more than
     // one bubble, and `chat.js` writes the turn's whole text onto the bubble
     // the footer ends up under as well as onto the first one, so Copy and TTS
     // work there (`chat.js` ~`:5443`). A walk that reads `dataset.raw` off
@@ -594,7 +594,7 @@ function initializeEventListeners() {
     exportCopyBtn.addEventListener('click', async (e) => {
       e.stopPropagation();
       exportMenu.classList.remove('open');
-      // `B-NEW-1`: the whole chat with its reasoning and tool calls, not the
+      // `B1320`: the whole chat with its reasoning and tool calls, not the
       // page on screen. The rendered page is the fallback.
       const transcript = (await _fetchWholeChat('txt')) || _serializeChatTranscript();
       // A new/empty chat has nothing to copy — don't write an empty string and
@@ -604,7 +604,7 @@ function initializeEventListeners() {
     });
   }
 
-  // Export: download the whole chat as a file (`B-NEW-1`).
+  // Export: download the whole chat as a file (`B1320`).
   // The server's four formats existed and only `/export` in the composer could
   // reach them; this is the same route, from the menu the owner was using.
   const exportFileBtn = el('export-file-btn');
@@ -639,7 +639,7 @@ function initializeEventListeners() {
   }
 
   /**
-   * `B-NEW-1`. Print the whole chat.
+   * `B1320`. Print the whole chat.
    *
    * `window.print()` prints the page, and the page holds one page of the chat,
    * so the PDF held that. The server's `fmt=html` export is the whole
@@ -690,7 +690,7 @@ function initializeEventListeners() {
       exportMenu.classList.remove('open');
       const meta = sessionModule.getSessions().find(s => s.id === sessionModule.getCurrentSessionId());
       const sessionName = meta ? meta.name : 'Pantheon Chat';
-      // `B-NEW-1`: the whole chat first; the page only if the server refused.
+      // `B1320`: the whole chat first; the page only if the server refused.
       if (await _printWholeChat(sessionName)) return;
       const originalTitle = document.title;
       document.title = sessionName;
@@ -717,7 +717,7 @@ function initializeEventListeners() {
       exportMenu.classList.remove('open');
       try {
         const sessionId = sessionModule.getCurrentSessionId();
-        // `B-NEW-1`: the whole chat as markdown, reasoning and tool calls
+        // `B1320`: the whole chat as markdown, reasoning and tool calls
         // included — this is the door the owner went through ("i had to 'save
         // to documents'"), and it saved the page it could see.
         const texts = (await _fetchWholeChat('md')) || _serializeChatTranscript();
@@ -2831,7 +2831,7 @@ function initializeEventListeners() {
         const welcomeSub = el('welcome-sub');
         if (welcomeSub) {
           if (!welcomeSub.dataset.originalText) welcomeSub.dataset.originalText = welcomeSub.textContent;
-          // `P23-05` (fx-chat's B-NEW-9): the heading says *Nobody*; the line
+          // `P23-05` (fx-chat's hand-off row 9): the heading says *Nobody*; the line
           // under it says what that means, once, and does not joke.
           welcomeSub.textContent = 'No memory, nothing saved.';
           welcomeSub.style.display = '';
@@ -4463,7 +4463,7 @@ function startPantheonApp() {
     attachStrip.style.backgroundColor = '';
 
     const files = Array.from(e.dataTransfer.files);
-    // fx5-vision (`B-NEW-9`) at the merge with fx5-cards: this handler now
+    // fx5-vision (`B1286`) at the merge with fx5-cards: this handler now
     // answers for the strip, so a Library card dropped on the cards themselves
     // is attached here as it is on the rest of the chat.
     if (files.length === 0 && await attachDroppedDocuments(e.dataTransfer)) return;

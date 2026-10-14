@@ -29,9 +29,9 @@
 //   * a reload restores the windows the entry names, opener and tab included;
 //   * a user chat switch pushes an entry with the same windows and the new
 //     `#chat` (`chatSwitched`), so Back is the previous chat (CHAT-U-1) — or
-//     the welcome screen the first chat was opened from (`B-NEW-4`); a chat
+//     the welcome screen the first chat was opened from (`B1240`); a chat
 //     picked in the phone drawer keeps the drawer's entry as its own
-//     (`B-NEW-3`).
+//     (`B1239`).
 //
 // The stack is read off the page, not told: one `MutationObserver` watches the
 // tool windows' own `class`/`style` and their arrival and removal, so a window
@@ -124,7 +124,7 @@ const _hashNow = () => { const loc = _loc(); return (loc && loc.hash) || ''; };
 
 /** Is the current history entry one this module wrote (in this load or an
  *  earlier one)? `sessions.js` asks before it reads a Back onto an entry with
- *  no `#chat` as "the welcome screen" (`B-NEW-4`): a click on an
+ *  no `#chat` as "the welcome screen" (`B1240`): a click on an
  *  `<a href="#">` also lands on an entry with no chat, a new one, with no
  *  state. */
 export function ownsEntry() {
@@ -249,7 +249,7 @@ function _readPage() {
 }
 
 function _focusHandle(id) {
-  // `B-NEW-10`: the window manager's one rule (`modalManager.focusWindowHandle`)
+  // `B1246`: the window manager's one rule (`modalManager.focusWindowHandle`)
   // — the move handle for a keyboard, the window itself after a pointer, so
   // the handle's *Move: arrow keys* chip is not drawn after a click on `←`.
   if (_hooks.focusWindow) { try { _hooks.focusWindow(id); } catch (_) {} return; }
@@ -291,7 +291,7 @@ const _prefix = (a, b) => a.every((x, i) => b[i] === x);
 const _sameWins = (a, b) => a.length === b.length && a.every((w, i) => w.id === b[i].id
   && (w.from || null) === (b[i].from || null) && (w.tab || null) === (b[i].tab || null)
   && (w.fromTab || null) === (b[i].fromTab || null));
-/** `B-NEW-3`: the `#chat` is not the one this window's entry was pushed over. */
+/** `B1239`: the `#chat` is not the one this window's entry was pushed over. */
 const _chatMoved = (s) => typeof s.chat === 'string' && s.chat !== _hashNow();
 
 function _current() {
@@ -325,7 +325,7 @@ export function sync() {
   // Off an entry this document pushed only, never the first — so this never
   // leaves the app or reloads a page an older document pushed.
   //
-  // `B-NEW-3`. Unless the chat changed while the entry was the current one:
+  // `B1239`. Unless the chat changed while the entry was the current one:
   // the entry beneath names the chat the window opened over, so `back()` lost
   // the switch — measured on `a936b5c` at 390×844, a chat picked in the phone
   // drawer was written onto the drawer's entry, the drawer closed, its entry
@@ -364,7 +364,7 @@ function _expectPop() {
   _expectTimer = setTimeout(() => { if (_expect) { _expect = 0; _switchAfterPop(); _queueSync(); } }, 1500);
 }
 
-/** `B-NEW-3`. A chat switch made while a pop of ours was under way is written
+/** `B1239`. A chat switch made while a pop of ours was under way is written
  *  on the entry the pop lands on — written before, it went with the entry
  *  being taken off. */
 function _switchAfterPop() {
@@ -491,9 +491,9 @@ export function restoreFromHistory() {
  *  switch — from one chat to another, or from the welcome screen — is a push
  *  (Back = the chat or the welcome screen before); the first chat of a load, a
  *  new chat materialising, a switch Back itself made and a chat Pantheon opens
- *  only for a draft (`B-NEW-6`) are a replace.
+ *  only for a draft (`B1242`) are a replace.
  *
- *  `B-NEW-3`. While the entry is the phone drawer's — or a window's that has
+ *  `B1239`. While the entry is the phone drawer's — or a window's that has
  *  just closed — the switch is written onto that entry, and `sync()` keeps it
  *  as the chat's when the window goes, instead of taking it off; a switch made
  *  while a pop of ours is under way waits for the entry the pop lands on. */

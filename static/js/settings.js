@@ -2236,7 +2236,7 @@ async function initAgentSettings() {
       // tell it they moved rather than leave it on the old numbers until the
       // next model or chat change.
       try { document.dispatchEvent(new CustomEvent('pantheon:agent-limits-changed')); } catch (_) {}
-      // `B-NEW-5` (round 2): "Saved", as the other cards say it. The line
+      // `B1241` (round 2): "Saved", as the other cards say it. The line
       // read the fields back ("Unlimited tool calls · 20 steps/message")
       // under the fields that already say it.
       msg.textContent = 'Saved';
@@ -2250,7 +2250,7 @@ async function initAgentSettings() {
   if (supInput) supInput.addEventListener('change', save);
   if (verInput) verInput.addEventListener('change', save);   // H16
   if (ceilInput) ceilInput.addEventListener('change', save);  // P3-21
-  // `B-NEW-5` (round 2): nothing on load — the card's own fields say the
+  // `B1241` (round 2): nothing on load — the card's own fields say the
   // limits; the line beneath them said "Unlimited tool calls · 20
   // steps/message" a second time (measured on `a936b5c`).
   msg.textContent = '';

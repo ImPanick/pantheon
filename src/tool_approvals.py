@@ -434,7 +434,7 @@ class PendingToolApproval:
                     ),
                 },
                 {
-                    # `P23-05` (C-NAMES, fx-chat's B-NEW-4): a chat is a chat; the
+                    # `P23-05` (C-NAMES, fx-chat's B1202): a chat is a chat; the
                     # value `approve` and its scope are untouched.
                     "label": "Allow for this chat",
                     "value": CHAT_SESSION_APPROVAL_DECISION,
