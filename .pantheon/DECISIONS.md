@@ -2854,3 +2854,54 @@ library should guide archives."*
    nothing replaces it, so on a phone there is no way to reach the mode at all. Every control that decides what a
    turn does — the mode, the approval mode of §2, the model, the context reading, Plan, Web, Shell, the persona —
    is reachable on a phone, by a person using one thumb.
+
+## D-2026-10-14-01 — the whole tool surface reaches the model on both channels
+
+**Asked**, 2026-10-14, with the owner's second report of the same symptom: *"The LLM's use of tools is still very
+much intermittent... even with its own MCP's provided. Ensure its capable of using Pantheon's entire suite of
+tooling and skills etc.."* — the same sentence the `fx9`–`fx11` wave was built to answer (`SHIP-LINE.md` § 7).
+Four rows were put to the owner with a recommendation on each; three were ruled as recommended and **one was
+overridden**, which is recorded here as it was given rather than as it was proposed.
+
+1. **`B1357` — the six fenced-channel-only built-ins get function schemas.** Five email drafting tools
+   (`draft_email`, `draft_email_reply`, `ai_draft_email_reply`, `search_emails`, `download_attachment`) and
+   `generate_image` reached the model through the prompt fence and were absent from the request's `tools` array, so
+   whether the person could ask for a reviewable draft depended on which model they had picked. `send_email`, which
+   sends immediately with no review, was reachable on both channels, and its own schema tells the model to prefer
+   `draft_email` — so the prompt ordered a tool one channel could not call, and the cost fell on the side that
+   matters. Both channels, for all six.
+
+2. **`B1340` — integration prompt text is the person's own material.** It moves to `own_context_message`, so it
+   stops arming the post-external blocked-effect gate. This extends `D-2026-10-09-01` §1 to the fourth store that
+   ruling did not enumerate, on that ruling's own principle: *the gate's subject is content that arrived from
+   outside*. An integration's `name` and `description` are typed by the person in their own install, and Pantheon
+   writes the sentence around them. The laundering question is answered where §1 answered it — at the **write** —
+   and the check that nothing can set an integration description on the agent's behalf is part of the work, not an
+   assumption.
+
+3. **`B1345` — plan mode grounds a plan before it asks about it.** `PLAN_MODE_DIRECTIVE` ends *"IF THE REQUEST IS
+   AMBIGUOUS, ASK"* while the same prompt hands the model 25 read-only tools and tells it to ground the plan with
+   them, so a question on round one is a question asked before reading the file that would have answered it. It
+   gains *"ground it with the read-only tools first; ask about what they could not tell you"*. This is
+   `D-2026-10-09-01` §3 applied to the one mode whose prompt states the opposite as policy; `ask_user` stays
+   available and plan mode stays exempt from both supervisors — what changes is which it is told to reach for first.
+
+4. **`B1390` — the three vault tools get both channels** (*overriding the recommendation to retire them*). The lane
+   found `vault_get`, `vault_search` and `vault_unlock` in four registers and in no channel, established the
+   unreachability was deliberate, and proposed withdrawing the offer. The owner ruled the other way: they are a real
+   capability and the model should be able to call them. They gain a `TOOL_TAGS` entry and a function schema, so
+   `dispatch_name_for` routes them and a turn may offer them. Nothing else moves (`Law 1`): `require_admin` on every
+   `/api/vault/*` route, `NON_ADMIN_BLOCKED_TOOLS`, `tool_capabilities`' effects and
+   `agent_stops._CREDENTIAL_TOOLS` are exactly where they were. Two things are written down rather than glossed:
+   `vault_get` returns a secret's plaintext and carries a **read** effect, which the strict rung deliberately does
+   not raise a card for; and `vault_unlock` takes the master password as a tool argument, which a model can only
+   obtain by asking the person for it in chat.
+
+**And the measurement rule this report changes.** The `fx9`–`fx11` wave answered the first report with a curated
+census — 77 tool names, assembled by hand, reported as 76/77. A census cannot find a name its author did not think
+to list, and the owner's words were *entire suite of tooling and skills*. So reachability is asserted as a
+**property over every name in every register** — derived, never listed — in the shape that caught the second
+defect-log leak after the first hand-written sweep missed it. The invariant, measured on `545fb9d` before this
+decision: `known_tool_names()` 85, `selectable_tool_names()` 81, function schemas 75. The six of §1 are exactly
+`selectable − schemas`, and the three of §4 are three of the four in `known − selectable`; the fourth,
+`builtin_browser`, is a server id and not a tool, which is the one exemption the property carries.

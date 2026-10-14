@@ -107,6 +107,15 @@ TOOL_TAGS = {"bash", "python", "web_search", "web_fetch", "read_file", "write_fi
              # not even the "Unknown tool" path ran. No error, no event row, and
              # `strip_tool_blocks` left the raw fence visible in the reply while
              # the agent said it had stored the data.
+             # `B1390` / `D-2026-10-14-01` §4. These three were in four
+             # registers — `tool_security`, `tool_capabilities`, `tool_policy`
+             # and `agent_stops` — and in no tag set, so `dispatch_name_for`
+             # returned `None`, `selectable_tool_names` withheld them and a
+             # call for one was answered with *"The model returned an empty
+             # response."* `fx11-reach` proposed retiring the names; the owner
+             # ruled they should be callable instead. The admin gate, the
+             # blocked-tool set and the credential stop are untouched.
+             "vault_search", "vault_get", "vault_unlock",
              "manage_rag",
              # `P17-11`. A command on the HOST, through the agent the operator
              # started there. Governed by the same "enable shell" toggle as

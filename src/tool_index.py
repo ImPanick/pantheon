@@ -105,6 +105,15 @@ BUILTIN_TOOL_DESCRIPTIONS: Dict[str, str] = {
     "manage_webhooks": "Webhook management: list, add, delete, enable, or disable webhooks.",
     "api_call": "Call a configured API integration by name (Home Assistant, Miniflux, Gitea, Linkding, Jellyfin, RSS reader, git forge, bookmark manager, smart home, or any other registered service). Make a GET/POST/PUT/PATCH/DELETE request to the integration's endpoint path, with an optional JSON body. Use whenever the user asks to query or control one of their connected integrations/services.",
     "manage_tokens": "API token management: list, create, or delete API access tokens.",
+    # `B1390` / `D-2026-10-14-01` §4. These three got a schema and a fence
+    # tag on the owner's ruling, and a tool with a schema and no sentence here
+    # is a tool the retrieval index can never select — `B1357`'s lesson in the
+    # other register. The wording says what each one returns, because the
+    # difference between `vault_search` and `vault_get` is the whole safety
+    # story: one never returns a secret and the other always does.
+    "vault_search": "Search the credential vault by keyword. Returns entry names and URLs only, never passwords. Use first to find which entry to read.",
+    "vault_get": "Retrieve one credential from the vault INCLUDING its secret, by item ID, with a reason that is logged. Passwords, API keys, logins.",
+    "vault_unlock": "Unlock the credential vault with its master password so other vault tools can read it. Only when the person gives the password for this.",
     "manage_documents": "List, read, delete, or tidy documents in the editor panel. action='list' returns clickable rows (most-recent first) so the user can open any doc by clicking. action='read' (aka view/open/get) with document_id returns the content; supports offset=<N> + limit=<N> to page through large docs (response includes next_offset when more remains, so you can keep calling with offset=next_offset). action='delete' with document_id removes a doc (only way to delete); delete and tidy ask the user first, as a plan they approve before apply_plan. Use this for ANY 'show/read/list/open my documents/docs/files/notes' request — never shell or curl. Also organises documents into folders: list_folders, create_folder, rename_folder, move_folder, move (file documents into a folder), remove_folder, reorganise (several steps at once) — sort, tidy, file, group or organise my documents into folders. More than 5 moves at once become a plan the user approves before apply_plan.",
     "manage_research": "List, read/open, or delete saved DEEP RESEARCH results from the Library. action='list' returns clickable [query](#research-<id>) rows (most-recent first). action='read' (aka open/view/get) with id returns the report + sources. action='delete' with id removes it. Use this for ANY 'open/read/find/delete my research / that report / the research on X' request. NOTE: this is for EXISTING research; to START new research use trigger_research.",
     "manage_settings": "Change ANY real app setting (the ones the Settings panel writes) so the user never has to open it: TTS voice/provider/speed, STT, search engine + result count, default/teacher/task/utility/vision/image/research models, image quality, reminder channel (browser/email/ntfy), agent timeout/tool-call budget, and more. action=set with key (friendly aliases ok: voice, 'search engine', 'default model', 'teacher model', 'image quality', 'reminder channel'...) + value; get/list/reset too. Also toggles tools on/off (disable_tool/enable_tool/list_tools). Secrets/API keys are read-only. Use for any 'change my…/set my…/use X for…/turn on…' preference request.",
@@ -314,9 +323,14 @@ class ToolIndex:
             return
 
         # Drop any stale builtin_* entries that aren't in the current
-        # registry (e.g. removed tools like the old vault_* set).
-        # Without this, upsert leaves them in place and RAG keeps
+        # registry. Without this, upsert leaves them in place and RAG keeps
         # surfacing tools that no longer exist.
+        #
+        # This comment used to name *"the old vault_* set"* as the example, and
+        # `B1390` / `D-2026-10-14-01` §4 put those three back: they are in
+        # `BUILTIN_TOOL_DESCRIPTIONS` above, so they are in `ids` and this
+        # prune keeps them. The sentence is corrected rather than left to read
+        # as a claim this tree no longer supports.
         indexed = False
         for lane in self._lanes:
             try:
@@ -493,6 +507,16 @@ class ToolIndex:
              "ui_control"},
         frozenset({"calendar", "event", "meeting", "schedule", "appointment"}):
             {"manage_calendar"},
+        # `B1390` / `D-2026-10-14-01` §4. The vault's three tools are callable
+        # now, so the no-embeddings path needs a route to them for the same
+        # reason the email set above needed one: without a keyword hint the
+        # only way in is a retrieval index this install may not have built.
+        # `vault_search` is listed first in intent — it is the one that cannot
+        # leak a secret, and it returns the `item_id` the other two need.
+        frozenset({"vault", "password", "passwords", "passphrase", "credential",
+                   "credentials", "secret", "secrets", "api key", "api keys",
+                   "bitwarden", "login details"}):
+            {"vault_search", "vault_get", "vault_unlock"},
         # Detached background `bash` jobs (#!bg): check on / read output / kill.
         frozenset({"background job", "background jobs", "bg job", "bg jobs",
                    "background task", "is the job done", "check the job",

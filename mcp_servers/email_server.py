@@ -2176,155 +2176,48 @@ def _download_attachment(uid, index, folder="INBOX", account=None):
 
 @server.list_tools()
 async def list_tools() -> list[Tool]:
-    # `B74`. Eleven of these tools are also declared to Pantheon in
-    # `src/tool_schemas.py`, and each used to be spelled out twice. Those
-    # eleven now derive; the five below it — `download_attachment`,
-    # `draft_email`, `draft_email_reply`, `ai_draft_email_reply` and
-    # `search_emails` — have no function schema and so are still written out
-    # here. That is correct rather than an oversight: all five are in
-    # `TOOL_TAGS` and in `BUILTIN_EMAIL_TOOLS`, so Pantheon reaches them
-    # through the fenced channel, which takes no schema.
-    # `.pantheon/check-mcp-schemas.py` is what keeps that distinction honest.
+    # `B74`, finished by `B1357` / `D-2026-10-14-01` §1. All sixteen now
+    # derive from `src/tool_schemas.FUNCTION_TOOL_SCHEMAS`. Eleven already did;
+    # the other five — `download_attachment`, `draft_email`,
+    # `draft_email_reply`, `ai_draft_email_reply` and `search_emails` — were
+    # written out here because they had no function schema, and the comment
+    # that used to sit in this spot called that *"correct rather than an
+    # oversight"* on the grounds that Pantheon reached them through the fenced
+    # channel, which takes no schema.
     #
-    # The user may have multiple IMAP accounts configured. Every tool accepts an
-    # optional `account` param — match by name (e.g. "work"), email address,
-    # or account id. Leave it out to use the default account. The derived
-    # eleven carry it in their schema; the five below spread it in.
-    ACCOUNT_PROP = {
-        "account": {
-            "type": "string",
-            "description": "Which email account to use (name, email, or id). "
-                           "Omit to use the default account. Use list_email_accounts to discover available accounts.",
-        },
-    }
+    # That was true of the fence and false of the product: with no entry in
+    # that register they were absent from the request's `tools` array, so on a
+    # native-tools route the model could not call them at all, and the owner
+    # read it as *"the LLM's use of tools is still very much intermittent"*.
+    # The schemas below are the ones this file used to hold, lifted into that
+    # register unchanged, so a third-party MCP client pointed at `mcp_servers/`
+    # sees exactly what it saw before.
+    #
+    # `_writing_style_guidance()` is appended here rather than stored there
+    # because it is read at call time from the person's settings and the
+    # register must stay `ast.literal_eval`-parseable. `mcp_tool_schema` deep
+    # copies, so appending cannot reach back into the register.
+    def _with_style(name: str) -> Tool:
+        kwargs = mcp_tool_schema(name)
+        kwargs["description"] = f"{kwargs['description']} {_writing_style_guidance()}"
+        return Tool(**kwargs)
+
     return [
         Tool(**mcp_tool_schema("list_email_accounts")),
         Tool(**mcp_tool_schema("list_emails")),
         Tool(**mcp_tool_schema("scan_email_unsubscribes")),
         Tool(**mcp_tool_schema("unsubscribe_email")),
-        Tool(
-            name="download_attachment",
-            description=(
-                "Download an email attachment to the local disk so you can read it. "
-                "Returns the local file path which you can then read with read_file. "
-                "Use this when you need to review a document, spreadsheet, or other "
-                "file attached to an email."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "uid": {"type": "string", "description": "Email UID from list_emails"},
-                    "index": {"type": "integer", "description": "Attachment index (from read_email's attachments list)"},
-                    "folder": {"type": "string", "description": "IMAP folder (default: INBOX)", "default": "INBOX"},
-                    **ACCOUNT_PROP,
-                },
-                "required": ["uid", "index"],
-            },
-        ),
+        Tool(**mcp_tool_schema("download_attachment")),
         Tool(**mcp_tool_schema("send_email")),
-        Tool(
-            name="draft_email",
-            description=(
-                "Create a new Pantheon email compose draft document. This DOES NOT send. "
-                "Use this as the default way to write an email for the user: it opens "
-                "a reviewable email document with To/Cc/Bcc/Subject/body, and the user "
-                "can edit or press Send in Pantheon. "
-                f"{_writing_style_guidance()}"
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "to": {"type": "string", "description": "Recipient email address(es), comma-separated"},
-                    "subject": {"type": "string", "description": "Email subject line"},
-                    "body": {"type": "string", "description": "Draft body"},
-                    "cc": {"type": "string", "description": "CC address(es), comma-separated (optional)"},
-                    "bcc": {"type": "string", "description": "BCC address(es), comma-separated (optional)"},
-                    "title": {"type": "string", "description": "Optional Pantheon document title"},
-                    **ACCOUNT_PROP,
-                },
-                "required": ["to", "subject", "body"],
-            },
-        ),
+        _with_style("draft_email"),
         Tool(**mcp_tool_schema("reply_to_email")),
-        Tool(
-            name="draft_email_reply",
-            description=(
-                "Create an Pantheon email reply draft document for an existing email UID. "
-                "This DOES NOT send. It threads the draft with In-Reply-To/References, "
-                "prefills the recipient and subject, and stores source email metadata so "
-                "the user can review and send from the normal email composer. "
-                f"{_writing_style_guidance()}"
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "uid": {"type": "string", "description": "Exact Email UID from list_emails/read_email; never invent UID 1"},
-                    "body": {"type": "string", "description": "Draft reply body text"},
-                    "folder": {"type": "string", "description": "IMAP folder (default: INBOX)", "default": "INBOX"},
-                    "reply_all": {"type": "boolean", "description": "Reply to all recipients (default: false)", "default": False},
-                    "title": {"type": "string", "description": "Optional Pantheon document title"},
-                    **ACCOUNT_PROP,
-                },
-                "required": ["uid", "body"],
-            },
-        ),
-        Tool(
-            name="ai_draft_email_reply",
-            description=(
-                "Generate an AI reply using Pantheon' existing AI Reply behavior, "
-                "including Settings > Email > Writing Style, then create an email "
-                "compose document for review. This DOES NOT send and does NOT save "
-                "to the mailbox Drafts folder. Use this when the user asks you to "
-                "write or draft a reply to an email without dictating the exact body."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "uid": {"type": "string", "description": "Exact Email UID from list_emails/read_email; never invent UID 1"},
-                    "folder": {"type": "string", "description": "IMAP folder (default: INBOX)", "default": "INBOX"},
-                    "reply_all": {"type": "boolean", "description": "Reply to all recipients (default: false)", "default": False},
-                    "title": {"type": "string", "description": "Optional Pantheon document title"},
-                    **ACCOUNT_PROP,
-                },
-                "required": ["uid"],
-            },
-        ),
+        _with_style("draft_email_reply"),
+        Tool(**mcp_tool_schema("ai_draft_email_reply")),
         Tool(**mcp_tool_schema("archive_email")),
         Tool(**mcp_tool_schema("delete_email")),
         Tool(**mcp_tool_schema("mark_email_read")),
         Tool(**mcp_tool_schema("bulk_email")),
-        Tool(
-            name="search_emails",
-            description=(
-                "Search emails by free-text query (sender, subject, or body). "
-                "Walks INBOX + Sent + Archive by default so older threads are findable, "
-                "not just recent unread. Use this whenever the user names a person or "
-                "topic that isn't in the most recent inbox slice — e.g. 'Sara Sotheby's', "
-                "'invoice from EY', 'last email about the property'. Returns matching "
-                "emails with their UIDs so you can read_email or reply_to_email."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "query": {
-                        "type": "string",
-                        "description": "Free-text query. Matches FROM, SUBJECT, and body TEXT.",
-                    },
-                    "folders": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "Folders to search (default: INBOX, Sent, Archive)",
-                    },
-                    "max_results": {
-                        "type": "integer",
-                        "description": "Max results per folder (default: 20)",
-                        "default": 20,
-                    },
-                    **ACCOUNT_PROP,
-                },
-                "required": ["query"],
-            },
-        ),
+        Tool(**mcp_tool_schema("search_emails")),
         Tool(**mcp_tool_schema("read_email")),
     ]
 

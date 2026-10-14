@@ -115,18 +115,34 @@ def test_check_f_reports_a_tool_nothing_announces():
 
 
 def test_check_f_would_have_caught_the_five():
-    """Against the real registers, minus the entries this row added."""
+    """Against the real registers, minus the entries this row added.
+
+    The reconstruction now has to remove the five from **both** announcing
+    registers, not just the descriptions. When this case was written they had
+    no `FUNCTION_TOOL_SCHEMAS` entry, so dropping their descriptions was enough
+    to put them back in the silent state; `B1357` / `D-2026-10-14-01` §1 gave
+    all five a schema, which is a second way of being announced, so a
+    description-only rollback no longer reproduces the defect it is quoting.
+    Removing both is what keeps this a measurement of check F rather than of
+    how many registers happen to carry a name today.
+    """
     checker = _checker()
     from src.tool_schemas import FUNCTION_TOOL_SCHEMAS
 
     schemas = {s["function"]["name"] for s in FUNCTION_TOOL_SCHEMAS
                if isinstance(s, dict) and "function" in s}
+    before_schemas = schemas - set(SILENT_FIVE)
     before = {k: v for k, v in BUILTIN_TOOL_DESCRIPTIONS.items()
               if k not in SILENT_FIVE}
     # `prompt_names` is empty because the system prompt names none of the five,
     # which is itself the measurement.
-    assert checker.unannounced(TOOL_TAGS, schemas, before, set()) == sorted(SILENT_FIVE)
+    assert checker.unannounced(TOOL_TAGS, before_schemas, before, set()) == sorted(
+        SILENT_FIVE)
+    # And on today's registers nothing is unannounced — by either channel.
     assert checker.unannounced(TOOL_TAGS, schemas, BUILTIN_TOOL_DESCRIPTIONS, set()) == []
+    # The five are announced by the schema channel alone now, which is the
+    # change the ruling made and the reason the rollback above needs two steps.
+    assert checker.unannounced(TOOL_TAGS, schemas, before, set()) == []
 
 
 def test_check_g_reports_one_name_with_two_live_implementations():

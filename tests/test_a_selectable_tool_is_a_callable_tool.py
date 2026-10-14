@@ -48,12 +48,24 @@ import pytest
 
 from tests.helpers import tool_suite_probe as probe
 
-#: The four names `known_tool_names()` holds and no channel carries, measured
+#: The four names `known_tool_names()` held and no channel carried, measured
 #: on `747cda6`. Quoted so a reader can see what the invariant was built from;
 #: **no assertion below is written against this list** — every one of them asks
 #: the product's own registers, so a fifth name of the same shape fails them
 #: with nobody editing this file (`Law 14`, `Law 20`).
 MEASURED_ON_747CDA6 = ("builtin_browser", "vault_get", "vault_search", "vault_unlock")
+
+#: And the three the owner put back into both channels (`B1390` /
+#: `D-2026-10-14-01` §4). `fx11-reach` recommended retiring these names; the
+#: owner ruled they should be callable instead, so they now have a fence tag
+#: and a function schema and have left the difference below. `builtin_browser`
+#: stays in it and is the only member: it is a **server id**, not a tool —
+#: `FORBIDDEN.md` Part 1 lists it under *built-in MCP server ids* — so there is
+#: nothing for a channel to carry. The difference being exactly one name is
+#: what makes it worth asserting: it was four, the ruling moved three, and a
+#: fifth name of this shape appearing tomorrow reddens the case.
+RULED_CALLABLE_2026_10_14 = ("vault_get", "vault_search", "vault_unlock")
+NOT_A_TOOL = ("builtin_browser",)
 
 
 @pytest.fixture(scope="module")
@@ -111,17 +123,25 @@ def test_the_selectable_register_is_the_routable_half_of_the_known_one():
         n for n in known if dispatch_name_for(n) is None)
 
 
-def test_the_four_names_measured_on_the_base_are_the_difference():
+def test_only_the_server_id_is_known_and_unselectable():
     """`Law 6`: the count, before and after, from the same registers.
 
-    This is the only case that mentions the four by name, and it mentions them
-    as a **measurement of this tree**, not as the rule — the rule is the two
-    cases above, which a fifth name of the same shape would redden.
+    On `747cda6` this difference was `MEASURED_ON_747CDA6`'s four names. The
+    owner's ruling (`B1390` / `D-2026-10-14-01` §4) moved three of them into
+    both channels, so the difference is now the one name that is not a tool at
+    all. Still a measurement of this tree rather than the rule — the rule is
+    the two cases above, which a new name of the same shape would redden.
     """
     from src.tool_policy import known_tool_names, selectable_tool_names
 
-    assert sorted(set(known_tool_names()) - set(selectable_tool_names())) == sorted(
-        MEASURED_ON_747CDA6)
+    difference = set(known_tool_names()) - set(selectable_tool_names())
+    assert sorted(difference) == sorted(NOT_A_TOOL)
+    # The three the ruling moved are on the other side of it now, and a
+    # regression that withheld any one of them reddens here with its name.
+    assert difference.isdisjoint(RULED_CALLABLE_2026_10_14)
+    selectable = set(selectable_tool_names())
+    assert selectable.issuperset(RULED_CALLABLE_2026_10_14), sorted(
+        set(RULED_CALLABLE_2026_10_14) - selectable)
 
 
 def test_a_new_name_with_neither_channel_is_caught(monkeypatch):
@@ -266,18 +286,37 @@ def test_the_vault_routes_are_still_admin_only():
     assert source.count("require_admin(request)") >= 5
 
 
-def test_the_vault_was_already_out_of_the_retrieval_registry():
-    """The evidence that this was a decision and not an oversight, read from
-    the product: `BUILTIN_TOOL_DESCRIPTIONS` is the corpus retrieval embeds,
-    the vault names are not in it, and `index_builtin_tools` actively prunes
-    stale `builtin_*` rows naming *"removed tools like the old vault_* set"*."""
-    import inspect
+def test_the_vault_is_in_the_retrieval_registry_and_survives_the_prune():
+    """`B1390` / `D-2026-10-14-01` §4 reversed this case.
 
+    It used to read the vault's **absence** from `BUILTIN_TOOL_DESCRIPTIONS` as
+    the evidence that unreachability was a decision rather than an oversight.
+    The owner ruled the three should be callable, so the same registers now
+    have to say the opposite — and a schema without a sentence here is a tool
+    the retrieval index can never select, which is `B1357`'s defect in the
+    other register.
+
+    The prune is the half worth driving rather than asserting: it deletes every
+    `builtin_*` row whose id is not in the set built from
+    `BUILTIN_TOOL_DESCRIPTIONS`, so a name with a schema and no description
+    here would be indexed by nothing and swept on the next build.
+    """
     from src import tool_index
 
     for name in ("vault_get", "vault_search", "vault_unlock"):
-        assert name not in tool_index.BUILTIN_TOOL_DESCRIPTIONS
-    assert "old vault_* set" in inspect.getsource(tool_index.ToolIndex.index_builtin_tools)
+        assert name in tool_index.BUILTIN_TOOL_DESCRIPTIONS, name
+        assert tool_index.BUILTIN_TOOL_DESCRIPTIONS[name].strip(), name
+
+    # The id the indexer would write, against the id set the prune keeps.
+    kept = {f"builtin_{n}" for n in tool_index.BUILTIN_TOOL_DESCRIPTIONS}
+    for name in ("vault_get", "vault_search", "vault_unlock"):
+        assert f"builtin_{name}" in kept, name
+
+    # `vault_search` never returns a secret and `vault_get` always does; the
+    # corpus retrieval embeds has to carry that difference, because it is what
+    # a model choosing between them reads.
+    assert "never" in tool_index.BUILTIN_TOOL_DESCRIPTIONS["vault_search"].lower()
+    assert "secret" in tool_index.BUILTIN_TOOL_DESCRIPTIONS["vault_get"].lower()
 
 
 # ── question 4: the owner's own MCP tools ──────────────────────────────────
@@ -434,11 +473,17 @@ def test_a_skill_opened_by_name_cannot_unlock_an_uncallable_tool(scratch, caplog
                                      mcp_states=("absent",)) as world:
             SkillsManager(world.data_dir).add_skill(
                 name="probe-vault-reach",
-                description="Open the vault and grep what it found.",
+                description="Reach the built-in browser and grep what it found.",
                 category="general",
-                when_to_use="Open the vault and grep what it found.",
-                procedure=["Search the vault.", "Grep the result."],
-                requires_toolsets=["grep", "vault_get"],
+                when_to_use="Reach the built-in browser and grep what it found.",
+                procedure=["Open the browser.", "Grep the result."],
+                # `vault_get` was this case's uncallable name until
+                # `D-2026-10-14-01` §4 made it callable. The guard is about a
+                # skill unlocking a name **no channel carries**, so it moves to
+                # the one name that is still in that state — `builtin_browser`,
+                # a server id rather than a tool. Swapping the instance keeps
+                # the case measuring what it was written to measure.
+                requires_toolsets=["grep", "builtin_browser"],
                 status="published",
                 source="user",
                 owner=probe.ADMIN_USER,
@@ -458,44 +503,46 @@ def test_a_skill_opened_by_name_cannot_unlock_an_uncallable_tool(scratch, caplog
     unlocked = [m for m in caplog.messages if "unlocked tools for next round" in m]
     assert unlocked, "the skill's own unlock never ran, so this case measures nothing"
     assert "'grep'" in unlocked[-1], unlocked[-1]
-    assert "vault_get" not in unlocked[-1], (
+    assert "builtin_browser" not in unlocked[-1], (
         f"a skill unlocked a name no channel carries: {unlocked[-1]}")
     assert len(record.requests) >= 2, record.requests
     first, second = set(record.requests[0]["tools"]), set(record.requests[1]["tools"])
     assert second - first == {"grep"}, sorted(second - first)
-    assert "vault_get" not in second
+    assert "builtin_browser" not in second
 
 
 # ── what is NOT closed here, with the number it costs ──────────────────────
 
-def test_the_fenced_only_names_are_counted_and_named_by_their_registers():
-    """`fenced_only` is reported, not asserted away.
+def test_no_name_is_left_on_the_fenced_channel_alone():
+    """`B1357` / `D-2026-10-14-01` §1. This case used to report six.
 
     On `747cda6` **seven** names had a fence tag and no function schema, so on
     a native-tools route they were in no channel at all — the owner's
     *"intermittent"* arriving as *"which model did you pick"*. Six of the seven
-    are declared that by name and stay: the five email drafting tools
-    (`P17-06`, and `mcp_servers/email_server.py`'s `list_tools` says of exactly
-    those five that *"Pantheon reaches them through the fenced channel, which
-    takes no schema"*) and `generate_image`, which
-    `.pantheon/check-mcp-schemas.py` rule C calls *"the legitimate shape"*.
-    The seventh, `manage_research`, was named by none of them, and `B1356`
-    gave it a schema — so this count is **six**.
+    were blessed as that shape by name, in three places: `P17-06`'s note in
+    `src/tool_index.py`, `mcp_servers/email_server.py`'s `list_tools`, and
+    `.pantheon/check-mcp-schemas.py` rule C, which called it *"the legitimate
+    shape"*. `B1356` gave the seventh (`manage_research`) a schema and this
+    case was left reporting the six.
 
-    Pinned as the set rather than the number so a silent seventh is a red test,
-    and the five email tools are read from `BUILTIN_EMAIL_TOOLS` rather than
-    retyped (`FORBIDDEN.md` Part 1 owns those names).
+    The owner reported the same symptom a second time and ruled the six closed,
+    so the assertion is now the **property** rather than a count: no tagged
+    tool is on the fenced channel alone. It is written as the empty set with
+    the offenders named, because a count passes whatever the members are and
+    the next regression here will be one name, not six.
     """
     import src.agent_loop as al
     from src.agent_tools import TOOL_TAGS
-    from src.tool_security import BUILTIN_EMAIL_TOOLS
 
     fenced_only = set(TOOL_TAGS) - set(al._schema_backed_tool_names())
-    assert fenced_only == (BUILTIN_EMAIL_TOOLS & fenced_only) | {"generate_image"}
-    assert len(fenced_only & BUILTIN_EMAIL_TOOLS) == 5, sorted(fenced_only)
-    assert len(fenced_only) == 6, sorted(fenced_only)
+    assert fenced_only == set(), (
+        "these have a fence tag and no function schema, so a native-tools "
+        f"route cannot call them: {sorted(fenced_only)}")
+
+    # Asked a second way, through the probe's own channel report, so the case
+    # does not rest on one register's spelling.
     report = probe.channel_report(probe.offerable_names())
-    assert sorted(report.fenced_only) == sorted(fenced_only), report.fenced_only
+    assert sorted(report.fenced_only) == [], report.fenced_only
 
 
 def test_manage_research_is_callable_on_a_native_route_too():

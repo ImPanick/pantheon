@@ -38,11 +38,23 @@ The checks:
      `mcp_tool_schema(...)` rather than a literal `name=`/`inputSchema=`. A is
      the property; B is what keeps A true the day someone pastes a schema back
      in that happens to match.
-  C. A served tool with no function schema is reachable some other way, or it
-     is a tool nobody can call. The five email drafting tools and
-     `generate_image` are in `TOOL_TAGS` and reached through the fenced
-     channel, which takes no schema — that is the legitimate shape, and this
-     check is what tells it apart from a missed registration.
+  C. **A served tool has a function schema.** No exceptions, since
+     `B1357` / `D-2026-10-14-01` §1. This rule used to bless the five email
+     drafting tools and `generate_image` by name, on the reading that a tool
+     in `TOOL_TAGS` is reached through the fenced channel, which takes no
+     schema — *"that is the legitimate shape"*. The reading was true of the
+     fence and false of the product: with no entry in the register those six
+     were absent from the request's `tools` array, so on a native-tools route
+     the model could not call them at all, and the owner reported it twice as
+     *"the LLM's use of tools is still very much intermittent"*. A tag is
+     therefore no longer an excuse for a missing schema; it is a second
+     channel the same tool should also have.
+
+     A server may append runtime text to a derived description — the email
+     server adds the person's writing-style guidance, which is read at call
+     time and cannot live in an `ast.literal_eval` register. An append is
+     allowed and a rewrite is not: the served description must still *start*
+     with the register's.
 
   D. Every schema in the register is a shape a **strict local server** can
      read (`B1303`, 2026-10-09). A, B and C are all about the two copies
@@ -87,11 +99,23 @@ def _function_schemas() -> dict:
     }
 
 
+_DERIVING_HELPERS = {"_with_style"}
+
+
 def _derived_names(module_name: str) -> set:
     """Names whose `Tool(...)` is built by `mcp_tool_schema`, read with `ast`."""
     source = (ROOT / "mcp_servers" / f"{module_name}.py").read_text(encoding="utf-8")
     derived = set()
     for node in ast.walk(ast.parse(source)):
+        # A deriving helper — `_with_style("x")` in the email server — builds
+        # `Tool(**mcp_tool_schema(name))` and then appends runtime text to the
+        # copy. It is derivation, so the walk counts it; naming the helpers
+        # keeps that an allowlist rather than "any call with a string".
+        if (isinstance(node, ast.Call)
+                and getattr(node.func, "id", "") in _DERIVING_HELPERS
+                and node.args and isinstance(node.args[0], ast.Constant)):
+            derived.add(node.args[0].value)
+            continue
         if not (isinstance(node, ast.Call) and getattr(node.func, "id", "") == "Tool"):
             continue
         for kw in node.keywords:
@@ -129,21 +153,24 @@ def main() -> int:
     problems.extend(_strict_problems(schemas))
 
     shared = 0
-    fenced_only = []
     for module_name in SERVERS:
         module = importlib.import_module(f"mcp_servers.{module_name}")
         derived = _derived_names(module_name)
         for tool in asyncio.run(module.list_tools()):
             if tool.name not in schemas:
-                # C — no function schema. Legitimate only if the fenced channel
-                # can reach it, because that channel carries no schema at all.
-                if tool.name not in TOOL_TAGS:
-                    problems.append(
-                        f"E  {module_name} serves {tool.name!r}, which is in no "
-                        f"function schema and in no tag set — nothing can call it"
-                    )
-                else:
-                    fenced_only.append(tool.name)
+                # C — no function schema, which is now always a problem. A tag
+                # is a second channel, not an excuse for missing the first:
+                # with no entry in the register the tool is absent from the
+                # request's `tools` array and a native-tools route cannot call
+                # it. `B1357` / `D-2026-10-14-01` §1.
+                where = ("it has a fence tag, so it is reachable on local "
+                         "models only — the shape the owner reported as "
+                         "intermittent" if tool.name in TOOL_TAGS
+                         else "it is in no tag set either — nothing can call it")
+                problems.append(
+                    f"E  {module_name} serves {tool.name!r} with no entry in "
+                    f"FUNCTION_TOOL_SCHEMAS; {where}"
+                )
                 continue
 
             shared += 1
@@ -154,10 +181,12 @@ def main() -> int:
                     f"also in FUNCTION_TOOL_SCHEMAS, so use "
                     f"Tool(**mcp_tool_schema({tool.name!r}))"
                 )
-            if tool.description != declared["description"]:
+            served_desc = tool.description or ""
+            if not served_desc.startswith(declared["description"]):
                 problems.append(
-                    f"E  {module_name}:{tool.name} description differs from "
-                    f"FUNCTION_TOOL_SCHEMAS"
+                    f"E  {module_name}:{tool.name} description is not the "
+                    f"register's — a server may append runtime text to it "
+                    f"(the writing-style guidance) but not rewrite it"
                 )
             if tool.inputSchema != declared["parameters"]:
                 problems.append(
@@ -174,10 +203,9 @@ def main() -> int:
               f"servers derive from it.")
         return 1
 
-    print(f"mcp schemas OK — {shared} shared tools derived from one register, "
-          f"{len(fenced_only)} served without a function schema and reachable "
-          f"through the fenced channel, {len(schemas)} function schemas a "
-          f"strict local server can read")
+    print(f"mcp schemas OK — {shared} served tools all derived from one "
+          f"register and all in both channels, {len(schemas)} function "
+          f"schemas a strict local server can read")
     return 0
 
 

@@ -166,12 +166,46 @@ def _dispatch_names(rel: str) -> set:
     return names
 
 
+#: Module-level helpers in a server that build a `Tool` from the register and
+#: then adjust the copy — the email server's `_with_style`, which appends the
+#: person's writing-style guidance at call time. Named rather than inferred, so
+#: this stays an allowlist rather than "any call with a string argument".
+_DERIVING_HELPERS = {"_with_style"}
+
+
 def _mcp_server_tool_names(rel: str) -> set:
-    """Tool names a built-in MCP server declares, from its `Tool(name=...)`."""
+    """Tool names a built-in MCP server declares, however it spells them.
+
+    Three spellings, because a server may write a tool out or derive it:
+
+      * `Tool(name="x", ...)` — written out here;
+      * `Tool(**mcp_tool_schema("x"))` — derived from the one register;
+      * `_with_style("x")` — derived, then given runtime text.
+
+    It read only the first until `B1357` / `D-2026-10-14-01` §1, and that was
+    already wrong before it mattered: eleven of the email server's sixteen
+    tools derived and so were invisible here, and check E only passed because
+    the **five** that were still written out intersected
+    `BUILTIN_EMAIL_TOOLS`. Closing `B1357` made the last five derive, the set
+    went empty, and check E reported the email server as a server *"nothing
+    routes to"* — the checker noticing its own blind spot, one register over
+    from the defect this file exists to catch.
+    """
     names = set()
     for node in ast.walk(_module(rel)):
-        if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
-                and node.func.id == "Tool"):
+        if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)):
+            continue
+        if node.func.id in _DERIVING_HELPERS:
+            if node.args and isinstance(node.args[0], ast.Constant):
+                names.add(node.args[0].value)
+            continue
+        if node.func.id == "mcp_tool_schema":
+            # Covers `Tool(**mcp_tool_schema("x"))` and any wrapper that calls
+            # it, which is what the helpers above do internally.
+            if node.args and isinstance(node.args[0], ast.Constant):
+                names.add(node.args[0].value)
+            continue
+        if node.func.id != "Tool":
             continue
         for kw in node.keywords:
             if kw.arg == "name" and isinstance(kw.value, ast.Constant):

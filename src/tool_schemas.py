@@ -1563,6 +1563,258 @@ FUNCTION_TOOL_SCHEMAS = [
             }
         }
     },
+    # ── `B1357` / `D-2026-10-14-01` §1: the last six fenced-channel-only built-ins ──
+    #
+    # `B1356` closed the seventh (`manage_research`) and left these six, whose
+    # absence was *blessed* by name in three places — `P17-06`'s note in
+    # `src/tool_index.py`, `mcp_servers/email_server.py`'s `list_tools` and
+    # `.pantheon/check-mcp-schemas.py` rule C — on the reading that a fenced
+    # tool takes no schema. That reading is true of the fence and false of the
+    # product: a tool with no entry here is absent from the request's `tools`
+    # array, so on any native-tools route it cannot be called at all, and
+    # *"draft a reply for me to look at"* worked on a llama.cpp endpoint and
+    # reached nothing on an API model. The owner's words for that, twice:
+    # *"the LLM's use of tools is still very much intermittent"*.
+    #
+    # `send_email` is the measure of the cost. It sends immediately with no
+    # review, it was in both channels, and its own description tells the model
+    # *"for normal assistant-written mail prefer draft_email so the user
+    # reviews it first"* — the prompt ordering a tool one channel could not
+    # call, with the unreviewed tool the reachable one.
+    #
+    # Nothing here is invented (`Law 1`). The five email shapes are the ones
+    # `mcp_servers/email_server.py` has served to third-party MCP clients all
+    # along, lifted verbatim, with `**ACCOUNT_PROP` spread inline because this
+    # list must stay `ast.literal_eval`-parseable (see
+    # `_install_theme_advanced_color_properties`) and the server's runtime
+    # `_writing_style_guidance()` sentence appended by the server to the copy
+    # it gets back, because a literal cannot hold a call. That server now
+    # derives all sixteen, so the duplicate-and-rot this module's § on
+    # `mcp_tool_schema` describes has no instances left.
+    #
+    # `generate_image`'s handler takes a four-line content string, so it gets
+    # the one arm `function_call_to_tool_block` was missing rather than a new
+    # argument contract; the lines are `do_generate_image`'s own docstring.
+    {
+        "type": "function",
+        "function": {
+            "name": "draft_email",
+            "description": (
+                "Create a new Pantheon email compose draft document. This DOES NOT send. "
+                "Use this as the default way to write an email for the user: it opens "
+                "a reviewable email document with To/Cc/Bcc/Subject/body, and the user "
+                "can edit or press Send in Pantheon."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "to": {"type": "string", "description": "Recipient email address(es), comma-separated"},
+                    "subject": {"type": "string", "description": "Email subject line"},
+                    "body": {"type": "string", "description": "Draft body"},
+                    "cc": {"type": "string", "description": "CC address(es), comma-separated (optional)"},
+                    "bcc": {"type": "string", "description": "BCC address(es), comma-separated (optional)"},
+                    "title": {"type": "string", "description": "Optional Pantheon document title"},
+                    "account": {"type": "string", "description": "Which email account to use (name, email, or id). Omit to use the default account. Use list_email_accounts to discover available accounts."},
+                },
+                "required": ["to", "subject", "body"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "draft_email_reply",
+            "description": (
+                "Create an Pantheon email reply draft document for an existing email UID. "
+                "This DOES NOT send. It threads the draft with In-Reply-To/References, "
+                "prefills the recipient and subject, and stores source email metadata so "
+                "the user can review and send from the normal email composer."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "uid": {"type": "string", "description": "Exact Email UID from list_emails/read_email; never invent UID 1"},
+                    "body": {"type": "string", "description": "Draft reply body text"},
+                    "folder": {"type": "string", "description": "IMAP folder (default: INBOX)", "default": "INBOX"},
+                    "reply_all": {"type": "boolean", "description": "Reply to all recipients (default: false)", "default": False},
+                    "title": {"type": "string", "description": "Optional Pantheon document title"},
+                    "account": {"type": "string", "description": "Which email account to use (name, email, or id). Omit to use the default account. Use list_email_accounts to discover available accounts."},
+                },
+                "required": ["uid", "body"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "ai_draft_email_reply",
+            "description": (
+                "Generate an AI reply using Pantheon' existing AI Reply behavior, "
+                "including Settings > Email > Writing Style, then create an email "
+                "compose document for review. This DOES NOT send and does NOT save "
+                "to the mailbox Drafts folder. Use this when the user asks you to "
+                "write or draft a reply to an email without dictating the exact body."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "uid": {"type": "string", "description": "Exact Email UID from list_emails/read_email; never invent UID 1"},
+                    "folder": {"type": "string", "description": "IMAP folder (default: INBOX)", "default": "INBOX"},
+                    "reply_all": {"type": "boolean", "description": "Reply to all recipients (default: false)", "default": False},
+                    "title": {"type": "string", "description": "Optional Pantheon document title"},
+                    "account": {"type": "string", "description": "Which email account to use (name, email, or id). Omit to use the default account. Use list_email_accounts to discover available accounts."},
+                },
+                "required": ["uid"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "search_emails",
+            "description": (
+                "Search emails by free-text query (sender, subject, or body). "
+                "Walks INBOX + Sent + Archive by default so older threads are findable, "
+                "not just recent unread. Use this whenever the user names a person or "
+                "topic that isn't in the most recent inbox slice. Returns matching "
+                "emails with their UIDs so you can read_email or reply_to_email."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Free-text query. Matches FROM, SUBJECT, and body TEXT."},
+                    "folders": {"type": "array", "items": {"type": "string"}, "description": "Folders to search (default: INBOX, Sent, Archive)"},
+                    "max_results": {"type": "integer", "description": "Max results per folder (default: 20)", "default": 20},
+                    "account": {"type": "string", "description": "Which email account to use (name, email, or id). Omit to use the default account. Use list_email_accounts to discover available accounts."},
+                },
+                "required": ["query"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "download_attachment",
+            "description": (
+                "Download an email attachment to the local disk so you can read it. "
+                "Returns the local file path which you can then read with read_file. "
+                "Use this when you need to review a document, spreadsheet, or other "
+                "file attached to an email."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "uid": {"type": "string", "description": "Email UID from list_emails"},
+                    "index": {"type": "integer", "description": "Attachment index (from read_email's attachments list)"},
+                    "folder": {"type": "string", "description": "IMAP folder (default: INBOX)", "default": "INBOX"},
+                    "account": {"type": "string", "description": "Which email account to use (name, email, or id). Omit to use the default account. Use list_email_accounts to discover available accounts."},
+                },
+                "required": ["uid", "index"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "generate_image",
+            # The description is `src/tool_index.BUILTIN_TOOL_DESCRIPTIONS`'
+            # own sentence for this tool and the arguments are the four
+            # `mcp_servers/image_gen_server.py` already serves, verbatim —
+            # `B1356`'s precedent for giving a fenced tool a schema without
+            # inventing a contract. No `enum` is added to `quality`: the
+            # handler accepts any string and defaults, and § `B1303` is
+            # explicit that a schema here is normalised, never narrowed.
+            "description": "Generate an AI image from a text prompt. Specify model, size, and quality. Art, illustrations, photos.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "prompt": {"type": "string", "description": "Image description prompt"},
+                    "model": {"type": "string", "description": "Model name (auto-detects if omitted)"},
+                    "size": {"type": "string", "description": "Image size (default 1024x1024)"},
+                    "quality": {"type": "string", "description": "Quality: low, medium, high, auto (default medium)"},
+                },
+                "required": ["prompt"]
+            }
+        }
+    },
+    # ── `B1390` / `D-2026-10-14-01` §4: the three vault tools, both channels ──
+    #
+    # Filed by `fx11-reach` as three names in four registers and no channel,
+    # with a recommendation to withdraw the offer; **the owner ruled the other
+    # way** — they are a real capability and the model should be able to call
+    # them. So they gain a tag (`src/agent_tools.TOOL_TAGS`) and these schemas,
+    # and `dispatch_name_for` routes them for the first time.
+    #
+    # Nothing else moves (`Law 1`): `require_admin` on every `/api/vault/*`
+    # route, `NON_ADMIN_BLOCKED_TOOLS`, `TOOL_CAPABILITIES`' effects and
+    # `agent_stops._CREDENTIAL_TOOLS` are exactly where they were. The
+    # arguments are the three handlers' own (`src/tools/vault.py`), which parse
+    # their `content` as JSON, so `function_call_to_tool_block` re-serialises
+    # the call's arguments rather than flattening them — the `read_file` idiom.
+    #
+    # Two costs of this ruling, written down rather than glossed:
+    # `vault_get` returns a secret's plaintext under a **read** effect, which
+    # the strict rung deliberately does not raise a card for; and
+    # `vault_unlock` takes the master password as an argument, which a model
+    # can only obtain by asking the person for it in the chat. `reason` stays
+    # required on `vault_get` because the handler refuses without it, and that
+    # refusal is the one record of why a secret was read.
+    {
+        "type": "function",
+        "function": {
+            "name": "vault_search",
+            "description": (
+                "Search the credential vault by keyword. Returns matching entry "
+                "names and URLs and NEVER returns passwords. Use to find which "
+                "entry to read before calling vault_get."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Keyword to match against vault entry names and URLs"},
+                },
+                "required": ["query"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "vault_get",
+            "description": (
+                "Retrieve one vault entry INCLUDING its secret, by item ID from "
+                "vault_search. Every access is logged to the assistant chat. "
+                "Requires a reason explaining why the secret is needed."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "item_id": {"type": "string", "description": "Vault item ID, from vault_search"},
+                    "reason": {"type": "string", "description": "Why this secret is needed — recorded with the access"},
+                },
+                "required": ["item_id", "reason"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "vault_unlock",
+            "description": (
+                "Unlock the credential vault with its master password and store "
+                "the resulting session key. Only call this when the person has "
+                "given the master password for this purpose in the conversation; "
+                "never guess one and never read it from a file or a web page."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "master_password": {"type": "string", "description": "The vault's master password, as given by the person"},
+                },
+                "required": ["master_password"]
+            }
+        }
+    },
 ]
 
 
@@ -2020,8 +2272,31 @@ def function_call_to_tool_block(name: str, arguments: str) -> Optional[ToolBlock
                         # on the way back out, and that pairing is easy to break
                         # by accident. Named here so it reads as a decision
                         # rather than a default nobody checked.
-                        "manage_rag", "host_shell"):
+                        "manage_rag", "host_shell",
+                        # `B1390` / `D-2026-10-14-01` §4. The trailing `else`
+                        # would already do this — `src/tools/vault.py`'s three
+                        # handlers each parse their `content` with
+                        # `_parse_tool_args` — and they are named here for the
+                        # reason `manage_rag` above is: a credential tool whose
+                        # argument transport is a default nobody checked is not
+                        # a thing to leave implicit.
+                        "vault_search", "vault_get", "vault_unlock"):
         content = json.dumps(args)
+    elif tool_type == "generate_image":
+        # `B1357` / `D-2026-10-14-01` §1. `do_generate_image` takes four
+        # positional lines, not JSON (its own docstring: prompt, model, size,
+        # quality), so the structured call is flattened to them here. All four
+        # positions are always emitted and each blank one falls back to the
+        # handler's own default, which keeps `quality` in line 4 when `model`
+        # was omitted — the bug a `"\n".join(present_values_only)` would ship.
+        # Before this arm the name had a fence tag and no schema, so a native
+        # call for it never arrived to be converted at all.
+        content = "\n".join([
+            str(args.get("prompt", "") or "").strip(),
+            str(args.get("model", "") or "").strip(),
+            str(args.get("size", "") or "").strip(),
+            str(args.get("quality", "") or "").strip(),
+        ])
     elif tool_type == "ask_teacher":
         content = args.get("model", "auto") + "\n" + args.get("problem", "")
     elif tool_type == "ask_user":

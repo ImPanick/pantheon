@@ -18,6 +18,9 @@ from mcp.types import Tool, TextContent
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.constants import GENERATED_IMAGES_DIR
+# `B1357` / `D-2026-10-14-01` §1: one register, and this server derives
+# from it like the email server does.
+from src.tool_schemas import mcp_tool_schema
 from src.paced_http import guard_environment_reader
 
 # `B1013`: this server is its own process, and its client reads the environment
@@ -30,20 +33,7 @@ server = Server("image_gen")
 @server.list_tools()
 async def list_tools() -> list[Tool]:
     return [
-        Tool(
-            name="generate_image",
-            description="Generate an image using an image-capable model (e.g. gpt-image-1)",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "prompt": {"type": "string", "description": "Image description prompt"},
-                    "model": {"type": "string", "description": "Model name (auto-detects if omitted)"},
-                    "size": {"type": "string", "description": "Image size (default 1024x1024)"},
-                    "quality": {"type": "string", "description": "Quality: low, medium, high, auto (default medium)"},
-                },
-                "required": ["prompt"],
-            },
-        )
+        Tool(**mcp_tool_schema("generate_image"))
     ]
 
 
