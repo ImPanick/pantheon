@@ -933,6 +933,38 @@ def _builtin_schema_token_costs() -> Dict[str, int]:
     return _SCHEMA_TOKEN_COSTS
 
 
+def _suite_prompt_token_costs() -> Dict[str, int]:
+    """`{tool: tokens}` for the prompt prose each tool drags in.
+
+    Offering a tool costs the window **twice**: its function schema in the
+    `tools` array, and its `TOOL_SECTIONS` block in the system prompt. Budgeting
+    only the schemas was measured wrong, and the product's own tests found it:
+    `tests/test_a_local_vllm_is_asked_for_what_it_can_serve.py` drives a real
+    turn against a server whose window is 9,000, and a set sized by schema
+    tokens alone put a prompt in front of it that left no room for the reply at
+    all — the server refused and `window - prompt` came out non-positive.
+    Measured with `_assemble_prompt` on `0bd089d`: the full prompt is 1,005
+    tokens with no tools, 3,348 with eleven, and **11,991 with all 61 sections**.
+    So the prose is a third of what the whole suite costs and it cannot be left
+    out of the arithmetic.
+
+    The **full** prompt's section is charged, not the compact prompt's one-line
+    hint, because the selection is made once and serves every candidate route a
+    turn can take — including the fallback that gets the full prompt. That is
+    the conservative direction, and it is the only one that is safe to be wrong
+    in. Not cached: `_section_text` reads the operator's own overrides, which
+    the Skills UI edits without a restart.
+    """
+    out: Dict[str, int] = {}
+    try:
+        from src.context_budget import _text_tokens
+        for name, default in TOOL_SECTIONS.items():
+            out[name] = _text_tokens(_section_text(name, default))
+    except Exception as exc:
+        logger.warning("[tool-suite] prompt-section costs unavailable: %s", exc)
+    return out
+
+
 def _suite_mcp_tools(mcp_mgr, mcp_disabled_map) -> tuple:
     """Every enabled MCP tool, its cost, and which server serves it.
 
@@ -1027,13 +1059,21 @@ def plan_turn_tool_suite(
     if within_allowed is not None:
         candidates = set(within_allowed(candidates))
 
-    costs = dict(_builtin_schema_token_costs())
-    costs.update(mcp_costs or {})
+    schema_costs = _builtin_schema_token_costs()
+    prose_costs = _suite_prompt_token_costs()
+    mcp_costs = mcp_costs or {}
 
     def cost(name: str) -> int:
-        # A name with no function schema costs the `tools` array nothing; its
-        # prose is accounted for by the prompt assembly that ships it.
-        return int(costs.get(name, 0))
+        """What offering this tool spends: its schema AND its prompt section.
+
+        A built-in with no function schema (seven of them are fenced-channel
+        only, `P17-06`) still costs its prose; an MCP tool costs its schema and
+        no prose, because the MCP prompt block is one line per tool and ships
+        whole whatever the selection is.
+        """
+        return (int(schema_costs.get(name, 0))
+                + int(mcp_costs.get(name, 0))
+                + int(prose_costs.get(name, 0)))
 
     window = budget_context_for_model(endpoint_url or "", model or "", fallback=0)
     room = tool_suite_room(window, get_setting_fn or get_setting)

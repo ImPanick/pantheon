@@ -171,6 +171,21 @@ def test_the_whole_builtin_set_costs_what_the_measurement_says():
         "~18,300 was that estimate")
 
 
+def test_offering_a_tool_costs_its_schema_and_its_prose():
+    """Offering a tool spends the window twice — the schema in the `tools`
+    array and the `TOOL_SECTIONS` block in the prompt — and budgeting only the
+    schemas was measured wrong: a real turn against a 9,000-token window was
+    sent a prompt that left no room for the reply
+    (`tests/test_a_local_vllm_is_asked_for_what_it_can_serve.py`)."""
+    schemas = al._builtin_schema_token_costs()
+    prose = al._suite_prompt_token_costs()
+    assert sum(prose.values()) > 5_000, "the prompt sections cost something real"
+    for name in ("manage_calendar", "list_emails", "bash"):
+        assert prose.get(name, 0) > 0, name
+    # Seven built-ins are fenced-channel only (`P17-06`): no schema, real prose.
+    assert "generate_image" in prose and "generate_image" not in schemas
+
+
 def test_the_context_wheel_and_the_planner_count_a_schema_the_same_way():
     """`Law 7`. The meter the person reads and the arithmetic the selector does
     are one computation; a selector that disagreed with the wheel would make

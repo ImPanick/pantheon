@@ -782,21 +782,27 @@ def _classify(msg: dict, index: int, history: bool) -> tuple[str, str]:
 #
 # The share: a request may spend `TOOL_SUITE_SHARE` of the model's **proven**
 # window on tool definitions. 0.4 was chosen against the measurement rather
-# than by feel, with the whole suite costing schemas + the prompt prose the
-# same set drags in (`_assemble_prompt`, measured on `0bd089d`: 11,991 tokens
-# for all 61 tool sections on the full/fenced prompt, 2,807 compact):
+# than by feel. **Offering a tool costs the window twice** — its schema in the
+# `tools` array and its `TOOL_SECTIONS` block in the system prompt — so the
+# whole suite's price is 21,830 + 9,452 = **31,282 tokens**
+# (`agent_loop._builtin_schema_token_costs` + `_suite_prompt_token_costs`).
+# Leaving the prose out was measured wrong, by the product's own tests: a real
+# turn against a server whose window is 9,000 was sent a prompt that left no
+# room for the reply at all (`tests/test_a_local_vllm_is_asked_for_what_it_can_serve.py`).
 #
-#     window    agent_input_budget   0.4 share   whole suite (native/both)
-#     128,000   108,800              51,200      24,637 / 33,821   → fits
-#      32,000    27,200              12,800      24,637 / 33,821   → narrows
-#       8,192     6,963               3,276      24,637 / 33,821   → narrows hard
+#     window    agent_input_budget   0.4 share   whole suite   decision
+#     128,000   108,800               51,200     31,282        fits — everything
+#      32,000    27,200                12,800     31,282        narrows
+#       9,000     7,650                 3,600     31,282        narrows
+#       8,192     6,963                 3,276     31,282        narrows
+#     unknown     6,000                 2,400     31,282        narrows, and says so
 #
-# So 128k carries the whole suite with the window's other 60% untouched, 32k
-# carries roughly forty tools instead of eleven, and 8k carries about ten —
-# deterministically, and saying which it left out. A share large enough to fit
-# the suite at 32k would leave a 32k turn 5,370 tokens for the conversation,
-# which is not working room; `FIX-2026-10-14.md`'s own words are that 18,300
-# tokens is "affordable on a 128k window and real on an 8k one".
+# So 128k carries the whole suite with the window's other 60% untouched, and a
+# small window carries what it can hold with the rest named in the receipt and
+# the shortfall stated to the model. A share large enough to fit the suite at
+# 32k would leave that turn under 5,000 tokens for the conversation, which is
+# not working room; `FIX-2026-10-14.md`'s own words are that the suite is
+# "affordable on a 128k window and real on an 8k one".
 TOOL_SUITE_SHARE = 0.4
 
 
