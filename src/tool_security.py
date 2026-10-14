@@ -458,6 +458,57 @@ def feature_disabled_tools(features: Optional[dict] = None) -> Set[str]:
     return blocked
 
 
+# `B-NEW-2` (fx11-cap). `image_gen_enabled` is an instance **setting**, not one
+# of the eight feature flags, and it had three readers with two different
+# defaults: `agent_loop._build_base_prompt` (`False`),
+# `routes/chat_routes.py`'s image-session branch (`True`) and
+# `mcp_servers/image_gen_server.py`'s own guard (`True`), against a stored
+# default of `False` in `src/settings.py`. Only the prompt's copy reached the
+# turn's denylist, and it reached a LOCAL copy of it — so measured on `747cda6`
+# with the stored default, `_assemble_prompt` was handed 53 names on an
+# anonymous turn while the loop's own set held 52, `generate_image` was the one
+# that differed, and the native schema list (which filters by the loop's set)
+# carried a schema the prompt had just withheld. `H05`'s rule with the
+# measurement behind it: a capability the instance has switched off is off for
+# the agent too, on every channel.
+#
+# One definition, two callers: `stream_agent_loop` contributes it to the turn's
+# `TurnToolAccess` so the prompt, the schemas and the dispatcher read one set,
+# and `_build_base_prompt` still asks it for a direct caller.
+_SETTING_TOOLS: dict = {
+    # (setting, default) -> the tools that cannot work when it is off.
+    ("image_gen_enabled", False): frozenset({"generate_image"}),
+}
+
+
+def setting_disabled_tools(get_setting_fn=None) -> Set[str]:
+    """Tool names withheld because an instance setting says so.
+
+    `edit_image` is deliberately NOT here. `image_gen_enabled` gates the
+    `image_gen` MCP server's `generate_image` (`mcp_servers/image_gen_server.py`
+    reads it and refuses), and `_build_base_prompt` has only ever withheld
+    `generate_image`; adding its sibling would be a new restriction wearing a
+    bug fix's clothes (`Law 1`).
+
+    Fails **open** on a read error, like `feature_disabled_tools`: a settings
+    store that will not answer must not silently disable half the product.
+    """
+    if get_setting_fn is None:
+        try:
+            from src.settings import get_setting as get_setting_fn
+        except Exception as exc:
+            logger.warning("Unable to read settings for tool gating: %s", exc)
+            return set()
+    blocked: Set[str] = set()
+    for (key, default), names in _SETTING_TOOLS.items():
+        try:
+            if not get_setting_fn(key, default):
+                blocked |= set(names)
+        except Exception as exc:
+            logger.warning("Unable to read setting %s for tool gating: %s", key, exc)
+    return blocked
+
+
 def plan_mode_disabled_tools() -> Set[str]:
     """Tool names to add to the denylist in plan mode.
 
