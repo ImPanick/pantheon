@@ -1394,6 +1394,16 @@ Execute Python code. Use for computation, data processing, scripting. NOT for wr
 Prefer a dedicated tool whenever one fits the job (reading, searching, or writing files); use python only for computation/processing no dedicated tool covers - not for reading or writing files.
 Do NOT use Python/requests for web lookup/search/latest/current requests when `web_search` or `web_fetch` is available.""",
 
+    # `B1398`. The sentence below used to end with a parenthetical recording
+    # `B1304`'s own fix — *"this sentence used to name that tool, on every
+    # turn, whether or not the request carried it"*. `TOOL_SECTIONS` is not a
+    # comment: every character of it is **shipped to the model** as that
+    # tool's prose, so 104 characters of Pantheon's defect history reached the
+    # model on every turn that carried web search, with nothing to read it
+    # (`_PROMISED_TOOL_RE` cannot match a `B` id). `fx11-ids` found it by
+    # `tokenize` + `ast` while closing `B1297`: of the 175 unmapped lane-id
+    # sites in the tree it was the only one that was neither a `#` comment nor
+    # a docstring. The record belongs here, where the register is defined.
     "web_search": """\
 ```web_search
 <search query>
@@ -1402,7 +1412,7 @@ Or with JSON for fresh news:
 ```web_search
 {"query": "<your query>", "time_filter": "day"}
 ```
-Search the web for a SINGLE quick fact/lookup mid-task. For news / "today" / "latest" queries, pass `time_filter` ("day", "week", "month", or "year"). NOT for "research X" / "do research on X" / "look into X" requests — those mean a multi-source DEEP RESEARCH job, which is a different tool; this turn's own tool list says whether it is available. web_search is one quick query.  (`B-NEW`: this sentence used to name that tool, on every turn, whether or not the request carried it.)
+Search the web for a SINGLE quick fact/lookup mid-task. For news / "today" / "latest" queries, pass `time_filter` ("day", "week", "month", or "year"). NOT for "research X" / "do research on X" / "look into X" requests — those mean a multi-source DEEP RESEARCH job, which is a different tool; this turn's own tool list says whether it is available. web_search is one quick query.
 If this `web_search` tool section is visible, search is available. Do NOT tell the user web/search tools are unavailable.
 Use this rather than shell, curl, Python or scraping code for web lookup/search/latest/current requests.""",
 
@@ -1511,7 +1521,12 @@ Generate an image. Line 1 = description, line 2 = model name, line 3 = WxH (e.g.
     "manage_skills": "- ```manage_skills``` — Skill registry (SKILL.md format). Args (JSON): {\"action\": \"list|view|view_ref|search|add|edit|patch|publish|delete\", ...}. `list` returns the index of available skills (published + teacher-escalation drafts); `view name=foo` fetches the full SKILL.md; `view_ref name=foo path=...` loads a reference file under the skill directory. For `add`, provide an explicit kebab-case `name` and only report the exact returned name, because storage may normalize or dedupe it. Use this BEFORE doing domain work — there may already be a procedure (published or draft) that prescribes the correct steps. Drafts written by the teacher loop are authoritative guidance even though they're not yet published.",
     "manage_tasks": "- ```manage_tasks``` — Create and manage scheduled background tasks (recurring AI jobs). Args (JSON): {\"action\": \"list|create|edit|delete|pause|resume|run|dry_run|draft_workflow\", ...}. For steps that run one after another, draft_workflow with {\"description\": \"<the user's words>\"} drafts a workflow, switched off, that a person checks in the Workbench.",
     "manage_endpoints": "- ```manage_endpoints``` — Add, remove, or configure AI model API endpoints. Args (JSON): {\"action\": \"list|add|delete|enable|disable\", ...}. Use when user wants to add a new AI provider.",
-    "manage_mcp": "- ```manage_mcp``` — Manage MCP (Model Context Protocol) tool servers — external tools that extend your capabilities. Args (JSON): {\"action\": \"list|add|delete|enable|disable|reconnect|list_tools\", ...}. `list_tools` returns every MCP tool with the `qualified_name` you must emit to call it, its parameters and whether it is read-only; narrow a long listing with {\"action\": \"list_tools\", \"server_id\": \"<id or server name>\"} and/or {\"tool\": \"<name or mcp__<server_id>__<tool>>\"} (`B871`).",
+    # `B1398`, second instance. The narrowing sentence below ended `` (`B871`) ``
+    # — the id of the row that added it. Found by the property assertion, not by
+    # the `B-NEW` sweep that found the first one: `B871` is a closed row's id
+    # and matches no lane-key pattern, which is exactly why a test over the
+    # register beats a grep for a known string (`Law 20`).
+    "manage_mcp": "- ```manage_mcp``` — Manage MCP (Model Context Protocol) tool servers — external tools that extend your capabilities. Args (JSON): {\"action\": \"list|add|delete|enable|disable|reconnect|list_tools\", ...}. `list_tools` returns every MCP tool with the `qualified_name` you must emit to call it, its parameters and whether it is read-only; narrow a long listing with {\"action\": \"list_tools\", \"server_id\": \"<id or server name>\"} and/or {\"tool\": \"<name or mcp__<server_id>__<tool>>\"}.",
     "manage_webhooks": "- ```manage_webhooks``` — Configure outgoing webhooks (HTTP notifications on events like chat completion). Args (JSON): {\"action\": \"list|add|delete|enable|disable\", ...}",
     "manage_tokens": "- ```manage_tokens``` — Generate or revoke API access tokens for external integrations. Args (JSON): {\"action\": \"list|create|delete\", ...}",
     "manage_documents": "- ```manage_documents``` — List, read/open, delete, or tidy documents in the editor panel, and keep them in folders. Args (JSON): {\"action\": \"list|read|delete|tidy|list_folders|create_folder|rename_folder|move_folder|move|remove_folder|reorganise|apply_plan\", ...}. `list` returns rows like `[Title](#document-<id>) — lang, size, updated 5m ago, in Clients/Acme` sorted MOST-RECENT FIRST; the user clicks the anchor to open; `folder` or `unfiled: true` narrows it. `read` (aliases: view/open/get) takes `document_id` and returns the content. When the user asks \"open/show/read my notes\" or \"what documents do I have\", use this — do NOT shell out, do NOT curl. Folders are paths (`Clients/Acme`); `\"\"` or `Unfiled` is no folder. `list_folders` first; `create_folder` {folder}; `rename_folder` {folder, name}; `move_folder` {folder, to}; `move` {document_ids, to}; `remove_folder` {folder, contents: move_up|delete} — never pick `delete` unless the user said to delete those documents; `reorganise` {steps: [...]} for several at once. `delete` {document_id} or {document_ids} and `tidy` (removes empty, throwaway and duplicate documents) never delete straight away: like more than 5 moves/removals in one call, they come back as a plan and the user is asked — call `apply_plan` {plan_id} only after they choose \"Apply the plan\".",
