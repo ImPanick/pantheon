@@ -1687,6 +1687,49 @@ def _repair_document_function_args(tool_type: str, arguments: str) -> Optional[d
     return None
 
 
+def dispatch_name_for(name: str) -> Optional[str]:
+    """The `tool_type` a call for `name` dispatches as, or `None` if nothing
+    will route it.
+
+    `B-NEW-1` (agent:`fx11-reach`), `Law 7`. This is the one statement of
+    *"will anything route a call for this name"*, and it had no name at all:
+    the rule lived inside `function_call_to_tool_block` as three consecutive
+    checks, so the only way to ask it was to build a call and see whether one
+    came back. `src.tool_policy.selectable_tool_names` needs the same answer to
+    decide what a turn may **offer**, and a second spelling of a routing rule
+    is how a selector comes to offer a name the converter refuses — measured on
+    `747cda6`: `builtin_browser`, `vault_get`, `vault_search` and `vault_unlock`
+    were in `known_tool_names()`, in the suite planner's candidates and in no
+    channel, and a call for any of them was answered with *"The model returned
+    an empty response. Please try again or switch to a different model."*
+
+    The three clauses, in the order the converter has always applied them, and
+    `FORBIDDEN.md` Part 1 owns every spelling in them:
+
+      * a qualified `mcp__{server_id}__{tool_name}` dispatches as itself — the
+        manager answers whether that server is there, and that answer is a
+        sentence at dispatch rather than a silent drop here;
+      * one of the 16 built-in email tool names dispatches as
+        `mcp__email__{name}`, which is how `BUILTIN_EMAIL_TOOLS` has always
+        reached the built-in email server;
+      * anything else dispatches under its `_TOOL_NAME_MAP` spelling if that
+        spelling is in `TOOL_TAGS`, which is the set `parse_tool_blocks` will
+        route.
+
+    `function_call_to_tool_block` asks this rather than restating it, and
+    `tests/test_a_selectable_tool_is_a_callable_tool.py` drives the converter
+    over every name in the register to hold the two equal.
+    """
+    tool_type = _TOOL_NAME_MAP.get(name, name)
+    if isinstance(tool_type, str) and tool_type.startswith("mcp__"):
+        return tool_type
+    if name in BUILTIN_EMAIL_TOOLS:
+        return f"mcp__email__{name}"
+    if tool_type in TOOL_TAGS:
+        return tool_type
+    return None
+
+
 def function_call_to_tool_block(name: str, arguments: str) -> Optional[ToolBlock]:
     """Convert a native function call into a ToolBlock for the existing execution pipeline."""
     tool_type = _TOOL_NAME_MAP.get(name, name)
@@ -1721,16 +1764,21 @@ def function_call_to_tool_block(name: str, arguments: str) -> Optional[ToolBlock
         logger.warning(f"Rejecting empty required arguments for function call {name}: {args!r}")
         return None
 
-    # Allow MCP tools through (namespaced as mcp__serverid__toolname)
-    if tool_type.startswith("mcp__"):
-        content = json.dumps(args) if args else "{}"
-        return ToolBlock(tool_type, content)
-    # Email tools are implemented as MCP — route them to email
-    if name in BUILTIN_EMAIL_TOOLS:
-        return ToolBlock(f"mcp__email__{name}", json.dumps(args) if args else "{}")
-    if tool_type not in TOOL_TAGS:
+    # `B-NEW-1` (agent:`fx11-reach`, `Law 7`). The three checks that were here
+    # — an `mcp__*` name through, one of the 16 built-in email names to
+    # `mcp__email__*`, anything else only if `TOOL_TAGS` has it — are
+    # `dispatch_name_for`'s, asked in the same order and with the same answers.
+    # They were the only statement of *"will anything route this name"* and
+    # the selector could not ask them, which is how a name reached a turn's
+    # offer with no channel behind it.
+    dispatch = dispatch_name_for(name)
+    if dispatch is None:
         logger.warning(f"Unknown function call: {name}")
         return None
+    # MCP tools (namespaced as mcp__serverid__toolname) and the email tools,
+    # which are implemented as MCP, both take the arguments as JSON.
+    if dispatch.startswith("mcp__"):
+        return ToolBlock(dispatch, json.dumps(args) if args else "{}")
 
     # Convert structured args back to the text format each tool expects
     if tool_type == "bash":
