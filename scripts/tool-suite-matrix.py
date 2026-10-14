@@ -88,7 +88,17 @@ def _child(args) -> int:
                 # `B1330`'s subject rather than this harness's.
                 import asyncio as _aio
                 from src.tool_index import get_tool_index
-                await _aio.to_thread(get_tool_index)
+                index = await _aio.to_thread(get_tool_index)
+                if index is None:
+                    # `Law 10`. Without this the `embeddings=up` half silently
+                    # becomes a second copy of `embeddings=down` and the table
+                    # reads as if retrieval had been measured. Say it instead.
+                    print("WARN no embedding lane: the `embeddings=up` rows "
+                          "below are NOT a measurement of retrieval. Point "
+                          "--fastembed-cache at a cache holding "
+                          "bge-small-en-v1.5, or set EMBEDDING_URL.",
+                          file=sys.stderr, flush=True)
+                    print("WARN-NO-EMBEDDINGS", flush=True)
             boot = await probe.boot_connect_report(scratch)
             print("BOOT " + json.dumps({
                 "verdict": boot.verdict, "registered": boot.registered,
@@ -214,6 +224,7 @@ def main(argv=None) -> int:
     scratch = args.scratch or tempfile.mkdtemp(prefix="tool-suite-matrix-")
     rows: list[dict] = []
     boots: list[dict] = []
+    warnings: list[str] = []
     failures = []
     try:
         from tests.helpers.tool_suite_probe import EMBEDDINGS, commit_sha, render_table
@@ -242,6 +253,11 @@ def main(argv=None) -> int:
                                     stderr=subprocess.PIPE, text=True)
             assert proc.stdout is not None
             for line in proc.stdout:
+                if line.startswith("WARN-NO-EMBEDDINGS"):
+                    warnings.append(
+                        f"embeddings={state}: no embedding lane was available, so "
+                        f"those rows are not a measurement of retrieval")
+                    continue
                 if line.startswith("BOOT "):
                     boot = json.loads(line[5:])
                     boots.append(boot)
@@ -277,6 +293,8 @@ def main(argv=None) -> int:
                 json.dump({"commit": commit_sha(), "seconds": round(seconds, 1),
                            "rows": rows}, fh, indent=1)
             print(f"\nrows written to {args.json}")
+        for text in warnings:
+            print("\nWARNING: " + text)
         for text in failures:
             print("\nFAILED: " + text, file=sys.stderr)
         return 1 if failures else 0
