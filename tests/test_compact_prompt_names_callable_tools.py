@@ -25,8 +25,15 @@ the tree ever declared it fenced-only: six of the seven schema-less built-ins
 are blessed by name (`P17-06`'s five email drafting tools and
 `.pantheon/check-mcp-schemas.py` rule C's `generate_image`) and it was named by
 none of them, so `H09`'s reading of it as an accident is the one the evidence
-supports. `generate_image` stays an orphan on purpose and still carries this
-guard. Every case below is unchanged except the two that counted to two.
+supports.
+
+`B1357` / `D-2026-10-14-01` §1 then closed the last one: `generate_image` has a
+schema too, so **no section is an orphan any more** and the compact prompt
+names every tool it lists. That removes this file's two *instances* and leaves
+its *mechanism* cases untouched and load-bearing — a synthetic schemaless
+section is still omitted, and still logged rather than vanishing quietly. Which
+is the right shape for a guard: it was never supposed to depend on a particular
+tool being broken.
 """
 import pytest
 
@@ -38,15 +45,21 @@ def _schema_names():
     return {s["function"]["name"] for s in FUNCTION_TOOL_SCHEMAS if s.get("function")}
 
 
-def test_the_premise_still_holds_a_section_has_no_schema():
-    """Not the fix — the starting condition. If this ever goes to zero the
-    guard below still has to stay, because it is what keeps it at zero.
+def test_no_section_is_an_orphan_any_more():
+    """Not the fix — the starting condition, and it has reached zero.
 
-    It went from two to one on 2026-10-14: `manage_research` has a schema
-    (`B1356`, agent:`fx11-reach`), `generate_image` deliberately does not
-    (`.pantheon/check-mcp-schemas.py` rule C)."""
+    Two orphans when this file was written, one after `B1356` gave
+    `manage_research` a schema, **none** after `B1357` gave `generate_image`
+    one. This case's own docstring predicted this moment: *"If this ever goes
+    to zero the guard below still has to stay, because it is what keeps it at
+    zero."* It does stay — `test_a_new_schemaless_section_is_omitted_too` and
+    `test_omission_is_logged_rather_than_silent` drive a synthetic section and
+    need no broken tool to be meaningful.
+    """
     orphans = set(A.TOOL_SECTIONS) - _schema_names()
-    assert orphans == {"generate_image"}
+    assert orphans == set(), (
+        "a prompt section with no function schema: the compact prompt would "
+        f"have to omit it to stay honest: {sorted(orphans)}")
 
 
 def test_the_compact_prompt_names_no_tool_it_cannot_call():
@@ -60,14 +73,19 @@ def test_the_compact_prompt_names_no_tool_it_cannot_call():
     )
 
 
-def test_the_known_offender_is_gone_from_the_compact_prompt():
-    """`manage_research` is in this list now and that is the point of
-    `B1356`: it is named because it is callable, by the same guard that keeps
-    `generate_image` out because it is not."""
+def test_the_two_former_offenders_are_named_because_they_are_callable_now():
+    """Both of this file's instances have crossed over, and for one reason.
+
+    `manage_research` was omitted from the compact prompt until `B1356` gave it
+    a schema; `generate_image` was omitted until `B1357` did. The guard never
+    changed — it names a tool exactly when the tool is callable — so the right
+    assertion today is that all three are named, and the rule is held by the
+    synthetic cases below rather than by either of these names.
+    """
     prompt = A._assemble_prompt({"generate_image", "manage_research", "bash"},
                                 compact=True)
     assert "- `bash`" in prompt
-    assert "- `generate_image`" not in prompt
+    assert "- `generate_image`" in prompt
     assert "- `manage_research`" in prompt
 
 

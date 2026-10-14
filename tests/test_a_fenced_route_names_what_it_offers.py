@@ -139,11 +139,13 @@ def test_the_fenced_prompt_only_names_what_the_fence_can_carry(monkeypatch, capl
         "an offered tool with no fence tag must be loud, not silent"
 
 
-#: The five email tools with a fence tag, no function schema and no prompt
-#: section. `mcp_servers/email_server.py` says of them that Pantheon "reaches
-#: them through the fenced channel, which takes no schema" — measured on the
-#: base, the fenced channel named eleven of the sixteen email tools and not
-#: these five.
+#: The five email drafting tools. They had a fence tag, no function schema and
+#: no prompt section when this file was written — `mcp_servers/email_server.py`
+#: said of them that Pantheon "reaches them through the fenced channel, which
+#: takes no schema", and measured on the base the fenced channel named eleven
+#: of the sixteen email tools and not these five. `B1357` /
+#: `D-2026-10-14-01` §1 gave all five a schema, so the name is kept for what
+#: they are as a group and no longer describes how their line is built.
 FENCED_ONLY_EMAIL_TOOLS = (
     "ai_draft_email_reply", "download_attachment", "draft_email",
     "draft_email_reply", "search_emails",
@@ -151,16 +153,33 @@ FENCED_ONLY_EMAIL_TOOLS = (
 
 
 @pytest.mark.parametrize("tool", FENCED_ONLY_EMAIL_TOOLS)
-def test_a_fenced_only_email_tool_is_named_too(tool):
-    """No schema to derive from, so the line comes from the register agent-mode
-    retrieval already embeds (`src/tool_index.BUILTIN_TOOL_DESCRIPTIONS`) —
-    not from new prose written here (`Law 7`)."""
+def test_an_email_drafting_tool_is_named_with_its_arguments(tool):
+    """Still named on the fenced channel, and now documented on it.
+
+    This case used to assert the line came from
+    `src/tool_index.BUILTIN_TOOL_DESCRIPTIONS`, which was the only register
+    that described these five. Now that they have schemas they take
+    `_register_tool_line`'s schema branch, and the line gained the
+    `Args (JSON)` list the retrieval fallback cannot produce — so closing
+    `B1357` improved the **fenced** channel too, not just the native one. That
+    is worth asserting rather than merely allowing: on a fenced route a tool
+    named with no argument names is a tool the model has to guess at.
+
+    Still derived, never hand-written (`Law 7`): the words and the argument
+    names both come from the register.
+    """
     from src.tool_policy import known_tool_names
-    from src.tool_index import BUILTIN_TOOL_DESCRIPTIONS
+    from src.tool_schemas import FUNCTION_TOOL_SCHEMAS
+
+    fn = next(e["function"] for e in FUNCTION_TOOL_SCHEMAS
+              if e.get("type") == "function" and e["function"]["name"] == tool)
 
     line = al._register_tool_line(tool)
     assert line.startswith(f"- ```{tool}```"), line
-    assert BUILTIN_TOOL_DESCRIPTIONS[tool][:50] in line
+    assert fn["description"][:50] in line, line
+    assert "Args (JSON):" in line, line
+    for required in fn["parameters"].get("required") or []:
+        assert f"{required}*" in line, (required, line)
     assert tool in prompt_tool_names(_fenced_prompt(set(known_tool_names())))
 
 
@@ -252,16 +271,27 @@ def test_the_suite_budget_charges_the_new_lines():
 
 
 def test_a_name_no_register_describes_gets_no_line(monkeypatch):
-    """Asserted directly because no mutation can reach it: measured on this
-    tree, `TOOL_TAGS` and `src/tool_index.BUILTIN_TOOL_DESCRIPTIONS` hold the
-    same 81 names, so today every fence-taggable tool has a description. The
-    guard is for the day one does not — a selector's set is not a licence to
-    invent a tool."""
+    """Asserted directly because no real name can reach it.
+
+    This used to blank `BUILTIN_TOOL_DESCRIPTIONS` and check `draft_email`,
+    which worked only while that tool had no schema. After `B1357` every
+    tagged built-in has one, so there is no longer a real name that reaches the
+    fallback at all — which is the point of the invariant, and also why this
+    guard now has to build its own case: a **tagged name neither register
+    describes**. The guard is for the day a register loses an entry; a
+    selector's set is not a licence to invent a tool.
+    """
     import src.tool_index as ti
 
+    ghost = "a_tool_no_register_describes"
+    monkeypatch.setattr(al, "TOOL_TAGS", TOOL_TAGS | {ghost})
     monkeypatch.setattr(ti, "BUILTIN_TOOL_DESCRIPTIONS", {})
-    assert al._register_tool_line("draft_email") == ""
-    # A tool with a schema is unaffected: it never reaches the fallback.
+    assert al._register_tool_line(ghost) == ""
+    # And the fallback itself still works for a tagged name that only the
+    # retrieval register describes, which is the state it exists for.
+    monkeypatch.setattr(ti, "BUILTIN_TOOL_DESCRIPTIONS", {ghost: "Does a thing."})
+    assert al._register_tool_line(ghost) == f"- ```{ghost}``` — Does a thing."
+    # A tool with a schema never reaches the fallback either way.
     assert al._register_tool_line("ls").startswith("- ```ls```")
 
 

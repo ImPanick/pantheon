@@ -93,25 +93,49 @@ def test_the_prompt_says_so_too():
 # --- one schema ------------------------------------------------------------
 
 def test_every_shared_tool_serves_exactly_what_pantheon_declares(declared, served):
+    """`B1357` / `D-2026-10-14-01` §1 moved this count from 13 to all of them.
+
+    Six served tools had no function schema and so were not *shared* at all;
+    giving them schemas means every tool these servers serve now derives from
+    the one register, which is what this file has been arguing for since `B74`.
+
+    The description is asserted as a **prefix** rather than an equality,
+    because the email server appends the person's writing-style guidance to its
+    deep copy at call time — text that is read from settings and cannot live in
+    an `ast.literal_eval` register. An append is allowed and a rewrite is not,
+    which is the same rule `.pantheon/check-mcp-schemas.py` applies.
+    """
     shared = [n for n in served if n in declared]
-    assert len(shared) == 13, shared
+    assert len(shared) == len(served), sorted(set(served) - set(shared))
+    assert len(shared) >= 19, shared
     for name in shared:
         module_name, tool = served[name]
-        assert tool.description == declared[name]["description"], f"{module_name}:{name}"
+        assert (tool.description or "").startswith(
+            declared[name]["description"]), f"{module_name}:{name}"
         assert tool.inputSchema == declared[name]["parameters"], f"{module_name}:{name}"
 
 
-def test_a_tool_with_no_function_schema_is_still_reachable(declared, served):
-    """The legitimate shape, told apart from a missed registration.
+def test_no_served_tool_is_fenced_channel_only(declared, served):
+    """This case has been inverted by the owner's ruling.
 
-    `download_attachment`, the three drafting tools, `search_emails` and
-    `generate_image` have no function schema on purpose — they travel the
-    fenced channel, which carries no schema at all. What makes that honest
-    rather than an oversight is that every one of them is in `TOOL_TAGS`.
+    It used to assert that some served tools were *expected* to have no
+    function schema — `download_attachment`, the three drafting tools,
+    `search_emails` and `generate_image` — and called that *"the legitimate
+    shape"*, honest because each was in `TOOL_TAGS`. The reading was true of
+    the fence and false of the product: with no entry in the register they were
+    absent from the request's `tools` array, so a native-tools route could not
+    call them at all, and the owner reported that twice as *"the LLM's use of
+    tools is still very much intermittent"*.
+
+    `B1357` / `D-2026-10-14-01` §1: a tag is a second channel, not an excuse
+    for missing the first. So the expectation is now the empty set, and every
+    served tool is still required to carry a tag as well.
     """
-    fenced = [n for n in served if n not in declared]
-    assert fenced, "expected some server tools to be fenced-channel only"
-    for name in fenced:
+    fenced = sorted(n for n in served if n not in declared)
+    assert fenced == [], (
+        "served with no function schema, so a native-tools route cannot call "
+        f"them: {fenced}")
+    for name in served:
         assert name in TOOL_TAGS, name
 
 
@@ -131,10 +155,14 @@ def test_deriving_a_tool_that_is_not_declared_is_an_error():
     it refuses; `.pantheon/check-mcp-schemas.py` is what decides, because that
     is a question about the whole surface.
     """
-    with pytest.raises(KeyError):
-        mcp_tool_schema("download_attachment")
+    # `download_attachment` was this case's real example until
+    # `D-2026-10-14-01` §1 gave it a schema. Nothing a server serves is
+    # undeclared now, so the refusal is driven with a name no register holds —
+    # which is the only state left that should reach it.
     with pytest.raises(KeyError):
         mcp_tool_schema("no_such_tool_anywhere")
+    with pytest.raises(KeyError):
+        mcp_tool_schema("download_attachment_v2")
 
 
 # --- derived, not merely equal ---------------------------------------------
@@ -155,4 +183,8 @@ def test_every_shared_tool_is_derived_rather_than_retyped(declared, served):
         capture_output=True, text=True, cwd=str(root),
     )
     assert result.returncode == 0, result.stdout + result.stderr
-    assert "13 shared tools derived" in result.stdout
+    # The checker's summary line changed with the ruling: it used to count the
+    # shared subset against a blessed fenced-only remainder, and now reports
+    # that every served tool derives and is in both channels.
+    assert "all derived from one register and all in both channels" in result.stdout
+    assert "served tools" in result.stdout

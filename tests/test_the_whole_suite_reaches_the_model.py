@@ -182,8 +182,18 @@ def test_offering_a_tool_costs_its_schema_and_its_prose():
     assert sum(prose.values()) > 5_000, "the prompt sections cost something real"
     for name in ("manage_calendar", "list_emails", "bash"):
         assert prose.get(name, 0) > 0, name
-    # Seven built-ins are fenced-channel only (`P17-06`): no schema, real prose.
-    assert "generate_image" in prose and "generate_image" not in schemas
+    # `generate_image` was the last built-in with real prose and no schema
+    # (`P17-06` counted seven of these; `B1356` closed one and `B1357` /
+    # `D-2026-10-14-01` §1 closed the remaining six). So it is now the clearest
+    # example of this case's own thesis rather than the exception to it: a tool
+    # offered on both channels is charged on both.
+    assert "generate_image" in prose, sorted(prose)[:5]
+    assert "generate_image" in schemas, sorted(schemas)[:5]
+    assert schemas["generate_image"] > 0 and prose["generate_image"] > 0
+    # And no section is charged prose while costing no schema, which is what
+    # being on one channel only looked like in the budget.
+    prose_only = sorted(n for n in prose if n not in schemas and n in al.TOOL_SECTIONS)
+    assert prose_only == [], prose_only
 
 
 def test_the_context_wheel_and_the_planner_count_a_schema_the_same_way():

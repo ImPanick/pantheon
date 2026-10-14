@@ -1696,15 +1696,24 @@ def _register_tool_line(name: str) -> str:
 
     The line is **derived from a register the product already keeps**, never
     hand-written (`Law 7`): `FUNCTION_TOOL_SCHEMAS` holds this tool's
-    description and its argument names, and for the five fenced-only email
-    tools that have no function schema — `draft_email`, `draft_email_reply`,
-    `ai_draft_email_reply`, `download_attachment`, `search_emails` —
-    `src/tool_index.BUILTIN_TOOL_DESCRIPTIONS` holds the text agent-mode
-    retrieval already embeds for them. `mcp_servers/email_server.py` says of
-    those five that *"Pantheon reaches them through the fenced channel, which
-    takes no schema"*; measured on `b6a1bbf`, the fenced channel is this
-    prompt and **it named eleven of the sixteen email tools**, so the claim was
-    half true and this is the other half.
+    description and its argument names, and `BUILTIN_TOOL_DESCRIPTIONS` is the
+    fallback for a tagged tool that has no schema entry.
+
+    When this function was written, five fenced-only email tools —
+    `draft_email`, `draft_email_reply`, `ai_draft_email_reply`,
+    `download_attachment`, `search_emails` — were the fallback's only users,
+    because `mcp_servers/email_server.py` said of them that *"Pantheon reaches
+    them through the fenced channel, which takes no schema"*. `B1357` /
+    `D-2026-10-14-01` §1 closed that: all five have schemas now, so they take
+    the schema branch like every other tagged tool and their fenced line gained
+    the `Args (JSON)` list it could not have before — the fallback gives a
+    sentence and no argument names, which on a fenced route is the difference
+    between naming a tool and documenting it. **The fallback is kept and is
+    currently unused by any built-in**, because the invariant that makes it
+    unused (every tagged name has a schema) is asserted in
+    `tests/test_the_whole_surface_reaches_the_model.py` rather than guaranteed
+    by construction, and a register that loses an entry should degrade to a
+    worse line rather than to no line.
 
     `""` for a name with no fence tag, because the fenced prompt may only name
     a tool the fenced channel can actually carry — that is `H09`'s guard for
