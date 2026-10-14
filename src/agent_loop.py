@@ -6157,8 +6157,19 @@ async def stream_agent_loop(
                     # schemas without a prompt-prose section.
                     from src.tool_policy import known_tool_names
                     _known = known_tool_names()
+                    # `B1361`. This matched over `load_active`, so a skill the
+                    # turn will never be shown — a user's half-written draft, or
+                    # one whose own `requires_toolsets` are switched off — could
+                    # still pull tools into the selection. Offering
+                    # `manage_skills` keys off "has any skill at all" above,
+                    # because `view` by exact name opens a draft too; this pass
+                    # is about the skills whose procedures may actually arrive,
+                    # which is the one list the catalogue reads.
                     for _sk in _sm.get_relevant_skills(
-                        _retrieval_query, skills=_owner_skills,
+                        _retrieval_query,
+                        skills=_sm.injectable_skills(
+                            owner=owner,
+                            active_toolsets=_skill_active_toolsets(disabled_tools)),
                         threshold=0.25, max_items=3,
                     ):
                         _relevant_tools.update(

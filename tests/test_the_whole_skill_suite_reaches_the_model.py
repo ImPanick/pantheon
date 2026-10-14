@@ -673,3 +673,38 @@ def test_a_cut_that_dropped_whole_procedures_counts_them():
     assert report["skill_bodies_omitted"] > 0
     assert f"{report['skill_bodies_omitted']} further matched procedure" in block
     assert len(report["skill_bodies_applied"]) == 4 - report["skill_bodies_omitted"]
+
+
+def test_a_skill_the_turn_will_never_see_does_not_pull_tools_in(store, tmp_path,
+                                                                monkeypatch):
+    """`B1361`, the tool-set half. The loop adds a matched skill's declared
+    `requires_toolsets` to the selection so a procedure it hands over is
+    callable. It matched over `load_active`, so a user draft the catalogue
+    withholds could pull a tool into the turn for a reason the model is never
+    shown."""
+    _write_skill(tmp_path / "skills", "draft-wants-a-shell", category="ops",
+                 status="draft", source="user",
+                 description="A half-written note about rotating log files on a server.",
+                 when_to_use="not yet", procedure=["tbd"], requires=["bash"])
+    invalidate_skill_cache()
+    question = "rotate the log files on a server, it is half-written"
+    seen = _one_request(monkeypatch, question, relevant_tools={"web_search"},
+                        owner=OWNER)
+    assert "manage_skills" in seen["tools"], "the catalogue's own tool is still offered"
+    assert "bash" not in seen["tools"], (
+        "a draft the turn will never be shown pulled a shell into the tool set"
+    )
+
+
+def test_a_skill_the_turn_does_see_still_pulls_its_tools_in(store, tmp_path,
+                                                            monkeypatch):
+    """`Law 1`: the behaviour this block exists for."""
+    _write_skill(tmp_path / "skills", "published-wants-a-shell", category="ops",
+                 description="Rotate the log files on a server with a shell.",
+                 when_to_use="logs fill the disk", procedure=["run it"],
+                 requires=["bash"])
+    invalidate_skill_cache()
+    question = "rotate the log files on a server with a shell"
+    seen = _one_request(monkeypatch, question, relevant_tools={"web_search"},
+                        owner=OWNER)
+    assert "bash" in seen["tools"]
