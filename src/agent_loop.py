@@ -9822,10 +9822,22 @@ async def stream_agent_loop(
                         _known = _ktn()
                         for _sk in _SkM(_DD).load(owner=owner):
                             if _sk.get("name") == _ms_name:
-                                _new = {
+                                # `B-NEW-5` (fx11-cap). Filtered by the
+                                # turn's cap and by a step's own list, not only
+                                # by `known_tool_names()`. This is the one
+                                # writer to `_relevant_tools` that runs AFTER
+                                # the loop's two "never a name this turn cannot
+                                # call" points, so without this a skill's
+                                # `requires_toolsets` put a capped name back in
+                                # the set mid-run and the log line below said
+                                # it had "unlocked" a tool every call of would
+                                # be refused — `P22-16`'s *"the selection below
+                                # never widens past it"*, through a door that
+                                # opens a round later.
+                                _new = _within_allowed({
                                     t for t in (_sk.get("requires_toolsets") or [])
                                     if t in _known and t not in _relevant_tools
-                                }
+                                }) & disabled_tools.allowed_among(_known)
                                 if _new:
                                     _relevant_tools.update(_new)
                                     _runtime_skill_tools.update(_new)

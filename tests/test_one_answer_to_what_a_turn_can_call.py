@@ -532,3 +532,100 @@ def test_the_caller_s_own_set_is_recorded_as_the_caller_s(monkeypatch, tmp_path)
     access.difference_update({"manage_skills"})
     assert "manage_skills" in access
     assert turn.prompt_cap == turn.cap
+
+
+# ── the one writer that runs after both invariant points ───────────────────
+
+def test_a_skill_cannot_unlock_a_tool_this_turn_may_not_call(monkeypatch, tmp_path, caplog):
+    """`B-NEW-5` (fx11-cap). A skill's `requires_toolsets` are unioned into
+    `_relevant_tools` **mid-run**, after `manage_skills action=view` returns —
+    the one writer that runs after both of the loop's "never a name this turn
+    cannot call" points. It was filtered by `known_tool_names()` and by nothing
+    else, so a capped name went back into the set a round later and the
+    `[tool-rag] skill '…' unlocked tools for next round` line named a tool every
+    call of would be refused. `P22-16`'s *"the selection below never widens
+    past it"*, through a door that opens one round late.
+    """
+    from services.memory.skills import SkillsManager
+
+    data_dir = tmp_path / "data"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    SkillsManager(str(data_dir)).add_skill(
+        name="read-the-logs",
+        description="Read the logs and say what broke.",
+        category="ops",
+        when_to_use="when something broke",
+        procedure=["Run `bash` over the log.", "Say what broke."],
+        requires_toolsets=["bash", "ls"],
+        status="published",
+        source="user",
+        owner=ADMIN,
+    )
+    monkeypatch.setattr("src.constants.DATA_DIR", str(data_dir), raising=False)
+
+    rec = Turn()
+    signed_in(monkeypatch, tmp_path / "auth")
+    monkeypatch.setattr(al, "get_setting", lambda k, d=None: d, raising=False)
+    monkeypatch.setattr(al, "get_mcp_manager", lambda: None, raising=False)
+    monkeypatch.setattr(al, "estimate_tokens", lambda *a, **k: 10, raising=False)
+    monkeypatch.setattr(al, "_skills_pref_enabled", lambda o: False, raising=False)
+
+    real_assemble = al._assemble_prompt
+
+    def assemble_spy(tool_names, disabled_tools=None, compact=False, suite_notice=""):
+        out = real_assemble(tool_names, disabled_tools, compact, suite_notice)
+        rec.prompts.append((set(tool_names or ()), set(disabled_tools or ()), out))
+        return out
+
+    monkeypatch.setattr(al, "_assemble_prompt", assemble_spy, raising=False)
+
+    # The OpenAI `tool_calls` channel, in the shape
+    # `tests/helpers/tool_suite_probe.reply_shapes` calls `native` — a frame fed
+    # to the loop's own reader, so the call is parsed by the product.
+    rounds = iter([
+        {"type": "tool_calls", "calls": [{
+            "name": "manage_skills",
+            "arguments": json.dumps({"action": "view", "name": "read-the-logs"}),
+        }]},
+        {"delta": "Done."},
+    ])
+
+    async def scripted(_c, _messages, **kwargs):
+        yield "data: " + json.dumps(next(rounds, {"delta": "Done."})) + "\n\n"
+        yield "data: [DONE]\n\n"
+
+    monkeypatch.setattr(al, "stream_llm_with_fallback", scripted, raising=False)
+
+    async def boundary(block, *a, **k):
+        return block.tool_type, {"output": "ok: read-the-logs", "exit_code": 0}
+
+    monkeypatch.setattr(al, "execute_tool_block", boundary, raising=False)
+
+    async def collect():
+        async for _chunk in al.stream_agent_loop(
+            "http://127.0.0.1:1/v1", "mistral-7b",
+            [{"role": "user", "content": "read the logs and say what broke"}],
+            max_rounds=3,
+            owner=ADMIN,
+            relevant_tools={"manage_skills", "ask_user", "update_plan"},
+            # The route's own withholding — incognito and the explicit web turn
+            # both do exactly this (`routes/chat_routes.py`).
+            disabled_tools={"bash"},
+        ):
+            pass
+
+    import logging
+
+    with caplog.at_level(logging.INFO, logger="src.agent_loop"):
+        asyncio.run(collect())
+
+    unlocked = [r.getMessage() for r in caplog.records
+                if "unlocked tools for next round" in r.getMessage()]
+    assert unlocked, [r.getMessage() for r in caplog.records][-8:]
+    said = unlocked[-1]
+    # `ls` was not capped, so the unlock still does its job (`Law 1`).
+    assert "'ls'" in said, said
+    # `bash` was — by the route, the way incognito and the explicit web turn
+    # withhold `manage_skills` — so it is neither unlocked nor announced.
+    assert "'bash'" not in said, said
+    assert rec.prompts and "bash" in rec.prompts[0][1]
