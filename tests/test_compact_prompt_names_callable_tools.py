@@ -16,6 +16,17 @@ The row asked for the guard rather than the two instances, so that is what these
 test: a compact list may only name a tool that has a schema. The two current
 offenders are asserted as a *starting* condition, not as the fix, because a fix
 written against those two names would let the third one through.
+
+**2026-10-14 (`B-NEW-3`, agent:`fx11-reach`): the orphan set is one, not two,
+and this file's docstring said what to do about that** — *"if this ever goes to
+zero the guard below still has to stay, because it is what keeps it at zero"*.
+`manage_research` was given a `FUNCTION_TOOL_SCHEMAS` entry, because nothing in
+the tree ever declared it fenced-only: six of the seven schema-less built-ins
+are blessed by name (`P17-06`'s five email drafting tools and
+`.pantheon/check-mcp-schemas.py` rule C's `generate_image`) and it was named by
+none of them, so `H09`'s reading of it as an accident is the one the evidence
+supports. `generate_image` stays an orphan on purpose and still carries this
+guard. Every case below is unchanged except the two that counted to two.
 """
 import pytest
 
@@ -27,11 +38,15 @@ def _schema_names():
     return {s["function"]["name"] for s in FUNCTION_TOOL_SCHEMAS if s.get("function")}
 
 
-def test_the_premise_still_holds_two_sections_have_no_schema():
+def test_the_premise_still_holds_a_section_has_no_schema():
     """Not the fix — the starting condition. If this ever goes to zero the
-    guard below still has to stay, because it is what keeps it at zero."""
+    guard below still has to stay, because it is what keeps it at zero.
+
+    It went from two to one on 2026-10-14: `manage_research` has a schema
+    (`B-NEW-3`, agent:`fx11-reach`), `generate_image` deliberately does not
+    (`.pantheon/check-mcp-schemas.py` rule C)."""
     orphans = set(A.TOOL_SECTIONS) - _schema_names()
-    assert orphans == {"generate_image", "manage_research"}
+    assert orphans == {"generate_image"}
 
 
 def test_the_compact_prompt_names_no_tool_it_cannot_call():
@@ -45,12 +60,15 @@ def test_the_compact_prompt_names_no_tool_it_cannot_call():
     )
 
 
-def test_the_two_known_offenders_are_gone_from_the_compact_prompt():
+def test_the_known_offender_is_gone_from_the_compact_prompt():
+    """`manage_research` is in this list now and that is the point of
+    `B-NEW-3`: it is named because it is callable, by the same guard that keeps
+    `generate_image` out because it is not."""
     prompt = A._assemble_prompt({"generate_image", "manage_research", "bash"},
                                 compact=True)
     assert "- `bash`" in prompt
     assert "- `generate_image`" not in prompt
-    assert "- `manage_research`" not in prompt
+    assert "- `manage_research`" in prompt
 
 
 def test_a_new_schemaless_section_is_omitted_too(monkeypatch):

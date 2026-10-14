@@ -360,8 +360,74 @@ def detect_tool_confirmation_turn(message: object) -> Optional[str]:
     return _first_match(_directive_clauses(message), _CONFIRM_TOOLS_PATTERNS)
 
 
+def selectable_tool_names() -> Set[str]:
+    """The names a turn may **offer** — `known_tool_names()`' routable half.
+
+    `B-NEW-1` (agent:`fx11-reach`). `known_tool_names()` below says what it is
+    for in its own first line: *"prompt hiding and denylisting"*. A denylist
+    register has to be **generous** — a name it misses is a name a guide-only
+    turn fails to hide, and its own comment says enforcement does not depend on
+    the list being complete. An **offer** register has to be **exact** — a name
+    it over-counts is a name the model is shown and can never call. The two
+    requirements point in opposite directions, so one answer cannot serve both
+    (`Law 10`), and `src/agent_loop.plan_turn_tool_suite` was asking the
+    generous one for the exact question: its candidate line read
+    `(set(known_tool_names()) | mcp_names) - disabled`.
+
+    Measured on `747cda6` by driving the real loop and spying on
+    `_assemble_prompt`: an admin's ordinary turn handed the prompt builder
+    **84** names, the request's array carried **73**, the prompt named **79**,
+    and **4** were in neither channel — `builtin_browser`, `vault_get`,
+    `vault_search`, `vault_unlock`. A call for any of the four, in all five
+    reply shapes a local server emits, dispatched **nothing**: the native shape
+    logged `Unknown function call` and the person read *"The model returned an
+    empty response. Please try again or switch to a different model."*, and the
+    other four streamed the model's raw tool syntax into the chat.
+
+    Why those four and no others: `builtin_browser` is a **server id**
+    (`FORBIDDEN.md` Part 1 lists it under *built-in MCP server ids*), earning
+    its place in the denylist register because it is the word the browser
+    toggle accepts (`admin_tools._ALIASES["browser"]`) and the intent marker
+    `_expand_browser_mcp_tools` turns into that server's real qualified tool
+    names — neither of which is an offer. The three `vault_*` names are a real
+    admin capability whose surface is Settings: `require_admin` on every
+    `/api/vault/*` route, and `src/tool_index.py`'s index pruner names them
+    *"removed tools like the old vault_* set"* while `BUILTIN_TOOL_DESCRIPTIONS`
+    has no entry for any of them, so retrieval was never meant to reach them.
+    `Law 1`: nothing about them is removed — the dispatch arms, the
+    `NON_ADMIN_BLOCKED_TOOLS` gate and its sentences, `tool_capabilities`'
+    effects and `agent_stops._CREDENTIAL_TOOLS` are all exactly where they
+    were, and a workflow step or an approved card still runs them. What is
+    withdrawn is the **offer** of a name the model cannot call.
+
+    Derived, never a list: `src.tool_schemas.dispatch_name_for` is the
+    product's own answer to *"will anything route a call for this name"*, so a
+    tool added tomorrow with no schema and no fence tag falls out of here with
+    nobody editing a file. Fails **open** the way its neighbour does — an
+    import that cannot be made answers the generous set, because offering too
+    much is the behaviour before this row and offering nothing would take every
+    tool away (`P3-17`).
+    """
+
+    names = known_tool_names()
+    try:
+        from src.tool_schemas import dispatch_name_for
+    except Exception as exc:
+        # The same `tool_schemas`/`agent_tools` cycle `known_tool_names()`
+        # documents below. Said out loud, not swallowed.
+        _logger.debug("selectable_tool_names: dispatch rule unavailable (%s)", exc)
+        return names
+    return {name for name in names if dispatch_name_for(name) is not None}
+
+
 def known_tool_names() -> Set[str]:
-    """Best-effort set of native tool names for prompt hiding and denylisting."""
+    """Best-effort set of native tool names for prompt hiding and denylisting.
+
+    **Not the set a turn may offer** — that is `selectable_tool_names()` above,
+    and the difference is why this one stays exactly as generous as it is
+    (`Law 1`): a name here is a name a guide-only turn can hide and a denylist
+    can name, whether or not any channel carries a call for it.
+    """
 
     names = set(_COMMON_TOOL_NAMES)
     try:

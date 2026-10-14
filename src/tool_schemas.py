@@ -1264,6 +1264,69 @@ FUNCTION_TOOL_SCHEMAS = [
             }
         }
     },
+    # `B-NEW-3` (agent:`fx11-reach`). **`manage_research` had a fence tag, a
+    # prompt section, a dispatch arm and no schema, and nothing in the tree said
+    # why.** Seven built-ins are fenced-channel-only; six of them are blessed as
+    # that by name — the five email drafting tools (`P17-06`,
+    # `mcp_servers/email_server.py`'s `list_tools`) and `generate_image`
+    # (`.pantheon/check-mcp-schemas.py` rule C, *"that is the legitimate
+    # shape"*). `manage_research` is named by none of them, and `H09`'s own
+    # comment reads it as an accident rather than a design: *"the only members
+    # of `TOOL_SECTIONS` with no `FUNCTION_TOOL_SCHEMAS` entry … both channels
+    # closed, both names offered"*. `H09` closed the advertisement; this closes
+    # the channel.
+    #
+    # Measured on `747cda6`: on a native-tools route — any endpoint whose
+    # `supports_tools` an admin declared, and every provider route — the
+    # request's array carried no `manage_research`, the compact prompt omitted
+    # it by `H09`'s guard, and the fenced parser is shut by that prompt's own
+    # first sentence. So *"open my research report"* worked on a llama.cpp
+    # endpoint and failed on an API model, which is the owner's *"intermittent"*
+    # arriving as *"which model did you pick"*.
+    #
+    # Nothing here is new prose and no gate moves (`Law 1`): the description is
+    # `src/tool_index.BUILTIN_TOOL_DESCRIPTIONS`' own sentence for this tool,
+    # the arguments are the three `do_manage_research` documents in its own
+    # docstring (`{"action": "list|read|delete", "id": "<id>", "search": "..."}`),
+    # the action aliases are the ones that function already accepts, and the
+    # `deep_research` feature flag, `TOOL_CAPABILITIES`' delete effect and the
+    # post-external gate are all exactly where they were. `action` is not
+    # `required` because the handler defaults it to `list`.
+    {
+        "type": "function",
+        "function": {
+            "name": "manage_research",
+            "description": (
+                "List, read/open, or delete saved DEEP RESEARCH results from the "
+                "Library. action='list' returns clickable [query](#research-<id>) "
+                "rows (most-recent first). action='read' (aka open/view/get) with "
+                "id returns the report + sources. action='delete' with id removes "
+                "it. Use this for ANY 'open/read/find/delete my research / that "
+                "report / the research on X' request. NOTE: this is for EXISTING "
+                "research; to START new research use trigger_research."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "action": {
+                        "type": "string",
+                        "enum": ["list", "read", "open", "view", "get", "delete"],
+                        "description": "What to do. Defaults to list.",
+                    },
+                    "id": {
+                        "type": "string",
+                        "description": "The research id from action='list'. "
+                                       "Required for read and delete.",
+                    },
+                    "search": {
+                        "type": "string",
+                        "description": "Filter the list by query text.",
+                    },
+                },
+                "required": []
+            }
+        }
+    },
     {
         "type": "function",
         "function": {
@@ -1687,6 +1750,49 @@ def _repair_document_function_args(tool_type: str, arguments: str) -> Optional[d
     return None
 
 
+def dispatch_name_for(name: str) -> Optional[str]:
+    """The `tool_type` a call for `name` dispatches as, or `None` if nothing
+    will route it.
+
+    `B-NEW-1` (agent:`fx11-reach`), `Law 7`. This is the one statement of
+    *"will anything route a call for this name"*, and it had no name at all:
+    the rule lived inside `function_call_to_tool_block` as three consecutive
+    checks, so the only way to ask it was to build a call and see whether one
+    came back. `src.tool_policy.selectable_tool_names` needs the same answer to
+    decide what a turn may **offer**, and a second spelling of a routing rule
+    is how a selector comes to offer a name the converter refuses — measured on
+    `747cda6`: `builtin_browser`, `vault_get`, `vault_search` and `vault_unlock`
+    were in `known_tool_names()`, in the suite planner's candidates and in no
+    channel, and a call for any of them was answered with *"The model returned
+    an empty response. Please try again or switch to a different model."*
+
+    The three clauses, in the order the converter has always applied them, and
+    `FORBIDDEN.md` Part 1 owns every spelling in them:
+
+      * a qualified `mcp__{server_id}__{tool_name}` dispatches as itself — the
+        manager answers whether that server is there, and that answer is a
+        sentence at dispatch rather than a silent drop here;
+      * one of the 16 built-in email tool names dispatches as
+        `mcp__email__{name}`, which is how `BUILTIN_EMAIL_TOOLS` has always
+        reached the built-in email server;
+      * anything else dispatches under its `_TOOL_NAME_MAP` spelling if that
+        spelling is in `TOOL_TAGS`, which is the set `parse_tool_blocks` will
+        route.
+
+    `function_call_to_tool_block` asks this rather than restating it, and
+    `tests/test_a_selectable_tool_is_a_callable_tool.py` drives the converter
+    over every name in the register to hold the two equal.
+    """
+    tool_type = _TOOL_NAME_MAP.get(name, name)
+    if isinstance(tool_type, str) and tool_type.startswith("mcp__"):
+        return tool_type
+    if name in BUILTIN_EMAIL_TOOLS:
+        return f"mcp__email__{name}"
+    if tool_type in TOOL_TAGS:
+        return tool_type
+    return None
+
+
 def function_call_to_tool_block(name: str, arguments: str) -> Optional[ToolBlock]:
     """Convert a native function call into a ToolBlock for the existing execution pipeline."""
     tool_type = _TOOL_NAME_MAP.get(name, name)
@@ -1721,16 +1827,21 @@ def function_call_to_tool_block(name: str, arguments: str) -> Optional[ToolBlock
         logger.warning(f"Rejecting empty required arguments for function call {name}: {args!r}")
         return None
 
-    # Allow MCP tools through (namespaced as mcp__serverid__toolname)
-    if tool_type.startswith("mcp__"):
-        content = json.dumps(args) if args else "{}"
-        return ToolBlock(tool_type, content)
-    # Email tools are implemented as MCP — route them to email
-    if name in BUILTIN_EMAIL_TOOLS:
-        return ToolBlock(f"mcp__email__{name}", json.dumps(args) if args else "{}")
-    if tool_type not in TOOL_TAGS:
+    # `B-NEW-1` (agent:`fx11-reach`, `Law 7`). The three checks that were here
+    # — an `mcp__*` name through, one of the 16 built-in email names to
+    # `mcp__email__*`, anything else only if `TOOL_TAGS` has it — are
+    # `dispatch_name_for`'s, asked in the same order and with the same answers.
+    # They were the only statement of *"will anything route this name"* and
+    # the selector could not ask them, which is how a name reached a turn's
+    # offer with no channel behind it.
+    dispatch = dispatch_name_for(name)
+    if dispatch is None:
         logger.warning(f"Unknown function call: {name}")
         return None
+    # MCP tools (namespaced as mcp__serverid__toolname) and the email tools,
+    # which are implemented as MCP, both take the arguments as JSON.
+    if dispatch.startswith("mcp__"):
+        return ToolBlock(dispatch, json.dumps(args) if args else "{}")
 
     # Convert structured args back to the text format each tool expects
     if tool_type == "bash":

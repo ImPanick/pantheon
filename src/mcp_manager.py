@@ -1670,7 +1670,9 @@ class McpManager:
         for server_id, tools in self._tools.items():
             # Skip builtin Python servers — they use the code-block tool format
             # But include NPX-based builtins (like browser) which need function calling
-            if self.is_builtin(server_id) and server_id != "builtin_browser":
+            # (`reaches_model_channels` is the one statement of that rule —
+            # `B-NEW-2`, agent:`fx11-reach`, `Law 7`.)
+            if not self.reaches_model_channels(server_id):
                 continue
             conn = self._connections.get(server_id, {})
             server_name = conn.get("name", server_id)
@@ -1861,6 +1863,47 @@ class McpManager:
         from src.builtin_mcp import _BUILTIN_SERVERS
         return server_id in _BUILTIN_SERVERS
 
+    def reaches_model_channels(self, server_id: str) -> bool:
+        """Whether this server's tools are shown to the model under their
+        qualified `mcp__{server_id}__{tool_name}` names.
+
+        `B-NEW-2` (agent:`fx11-reach`), `Law 7`. `is_builtin`'s own docstring
+        above says what this answers and why it matters — *"saying `True` here
+        **mutes a server**"* — and the predicate that does the muting,
+        `is_builtin(id) and id != "builtin_browser"`, was written out at three
+        sites in this file. (`src/task_scheduler.py:4405` is a fourth reader of
+        the same question and deliberately a **different** rule — check-in
+        discovery looks for servers a person registered, so it skips
+        `builtin_browser` too; it is read and left alone rather than folded in
+        here.) A fourth place in `src/agent_loop.py` then asked a *different*
+        question and got a different answer: `src/agent_loop._suite_mcp_tools` builds the turn's
+        MCP candidate list from `get_all_tools`, which keeps every server, while
+        the two channels (`get_all_openai_schemas` and
+        `get_tool_descriptions_for_prompt`) both skip the Python built-ins.
+
+        Measured on `747cda6` with a real stdio server registered under the
+        built-in id `rag`: `_suite_mcp_tools` returned both of its qualified
+        names, the schema channel returned **none** of them, the prompt block
+        named **none** of them, and the cost map — which comes from the schema
+        call — was **empty**, so they were offered for free and callable on
+        nothing. The same holds on a normal boot for `mcp__email__*`,
+        `mcp__rag__*` and `mcp__image_gen__*`, and for any server an operator
+        registers under one of those ids, which is the hazard `is_builtin`
+        already warns about.
+
+        The three Python built-ins are not muted arbitrarily: their tools reach
+        the model under their **bare** names (`manage_rag`, `generate_image`,
+        the 16 built-in email tool names), which have their own schemas and
+        prompt sections. So this returns False for them and the capability is
+        unchanged — it is the duplicate qualified spelling that no channel ever
+        carried. `builtin_browser` is the one built-in an operator can see as a
+        server, and it keeps both channels.
+
+        `FORBIDDEN.md` Part 1: the `mcp__{server_id}__{tool_name}` shape and the
+        five built-in server ids are read here and never rewritten.
+        """
+        return not (self.is_builtin(server_id) and server_id != "builtin_browser")
+
     def tool_descriptions_changed(self) -> None:
         """An operator rewrote what the model is told about a tool (`P8-48`).
 
@@ -1951,7 +1994,8 @@ class McpManager:
         for t in tools:
             # Skip builtin Python servers — they're already in the agent prompt
             # But include NPX-based builtins (like browser) which aren't hardcoded
-            if self.is_builtin(t["server_id"]) and t["server_id"] != "builtin_browser":
+            # (same rule as the schemas above: `reaches_model_channels`.)
+            if not self.reaches_model_channels(t["server_id"]):
                 continue
             if t.get("is_disabled"):
                 continue
@@ -2027,7 +2071,7 @@ class McpManager:
         """
         out = []
         for server_id, conn in (self._connections or {}).items():
-            if self.is_builtin(server_id) and server_id != "builtin_browser":
+            if not self.reaches_model_channels(server_id):
                 continue
             status = str((conn or {}).get("status") or "")
             if status == "connected" and self._tools.get(server_id):

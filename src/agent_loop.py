@@ -1095,6 +1095,20 @@ def _suite_mcp_tools(mcp_mgr, mcp_disabled_map) -> tuple:
     on the server's own **name and its id**, so a person who says either pins
     that server's tools (rule 4). `mcp__{server_id}__{tool_name}` is read and
     never rewritten (`FORBIDDEN.md` Part 1).
+
+    `B-NEW-2` (agent:`fx11-reach`). **A server whose tools no channel carries
+    does not get candidates here.** `get_all_tools` keeps every server, the two
+    channels (`get_all_openai_schemas` for the array,
+    `get_tool_descriptions_for_prompt` for the prompt block) both skip a
+    built-in Python server, and `costs` below comes from the schema call — so
+    measured on `747cda6` with a real stdio server registered under the
+    built-in id `rag`, both of its qualified names were in the suite, in no
+    channel, and at zero token cost. The same held on a normal boot for
+    `mcp__email__*`, `mcp__rag__*` and `mcp__image_gen__*`, whose capability
+    reaches the model under its **bare** names instead (`manage_rag`,
+    `generate_image`, the 16 built-in email tool names, each with its own
+    schema or section). `McpManager.reaches_model_channels` is the one
+    statement of that rule and this asks it rather than restating it (`Law 7`).
     """
     names: Set[str] = set()
     costs: Dict[str, int] = {}
@@ -1105,6 +1119,8 @@ def _suite_mcp_tools(mcp_mgr, mcp_disabled_map) -> tuple:
         from src.context_budget import tool_schema_tokens
         for tool in mcp_mgr.get_all_tools(mcp_disabled_map or {}, overrides={}) or []:
             if tool.get("is_disabled"):
+                continue
+            if not mcp_mgr.reaches_model_channels(str(tool.get("server_id") or "")):
                 continue
             qualified = tool.get("qualified_name")
             if not qualified:
@@ -1173,11 +1189,20 @@ def plan_turn_tool_suite(
         names_the_request_pins,
         plan_tool_suite,
     )
-    from src.tool_policy import known_tool_names
+    from src.tool_policy import selectable_tool_names
 
     disabled = set(disabled_tools or ())
     mcp_names = {str(n) for n in (mcp_names or ())}
-    candidates = (set(known_tool_names()) | mcp_names) - disabled
+    # `B-NEW-1` (agent:`fx11-reach`). This read `known_tool_names()`, whose own
+    # first line says it is for *"prompt hiding and denylisting"* — a register
+    # that is deliberately generous, so it holds four names no channel carries
+    # (`builtin_browser` is a server id; `vault_get`/`vault_search`/
+    # `vault_unlock` have no schema, no section and no fence tag). Measured on
+    # `747cda6`: all four were candidates, all four were offered to
+    # `_assemble_prompt` on an admin's ordinary turn, and a call for any of them
+    # dispatched nothing in all five reply shapes. `selectable_tool_names()` is
+    # the same register's routable half, asked of `dispatch_name_for`.
+    candidates = (set(selectable_tool_names()) | mcp_names) - disabled
     if within_allowed is not None:
         candidates = set(within_allowed(candidates))
 
@@ -7059,8 +7084,16 @@ async def stream_agent_loop(
                     # Validate against every known executable tool, not just
                     # TOOL_SECTIONS — code-nav tools (grep/glob/ls) ship as
                     # schemas without a prompt-prose section.
-                    from src.tool_policy import known_tool_names
-                    _known = known_tool_names()
+                    #
+                    # `B-NEW-1` (agent:`fx11-reach`). "Executable" is the point,
+                    # and `known_tool_names()` is not that set: a skill whose
+                    # `requires_toolsets` named `vault_get` put a name in this
+                    # turn's offer that no channel carries. The offer register
+                    # is `selectable_tool_names()`, which is this one's routable
+                    # half; the skill is still indexed and still runs, it just
+                    # cannot conjure a tool the model could not call.
+                    from src.tool_policy import selectable_tool_names
+                    _known = selectable_tool_names()
                     # `B1361`. This matched over `load_active`, so a skill the
                     # turn will never be shown — a user's half-written draft, or
                     # one whose own `requires_toolsets` are switched off — could
@@ -9818,8 +9851,13 @@ async def stream_agent_loop(
                     try:
                         from services.memory.skills import SkillsManager as _SkM
                         from src.constants import DATA_DIR as _DD
-                        from src.tool_policy import known_tool_names as _ktn
-                        _known = _ktn()
+                        # `B-NEW-1` (agent:`fx11-reach`): the offer register,
+                        # not the denylist one — the same correction as the
+                        # pre-round pass above, and for the same reason. A
+                        # skill opened by name must not unlock a tool whose
+                        # call no channel can carry.
+                        from src.tool_policy import selectable_tool_names as _stn
+                        _known = _stn()
                         for _sk in _SkM(_DD).load(owner=owner):
                             if _sk.get("name") == _ms_name:
                                 # `B-NEW-5` (fx11-cap). Filtered by the

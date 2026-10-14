@@ -1435,6 +1435,175 @@ async def unknown_name_control(world: ProbeWorld, cell: Cell) -> CallRow:
 
 # ── the matrix ─────────────────────────────────────────────────────────────
 
+# ── question 3 (fx11-reach): a selectable name is a callable name ───────────
+#
+# `B-NEW-1` (agent:`fx11-reach`). `fx9-proof`'s inventory is derived from
+# `FUNCTION_TOOL_SCHEMAS` (`builtin_tool_names`), and `fx10-channel`'s fenced
+# count is derived from that inventory, so **neither can see a name that has no
+# schema and no prose** — which is exactly the shape that defect takes. The
+# denominator below is the other register: what the turn's planner may *offer*.
+# Measured on `747cda6`, an admin's ordinary turn handed `_assemble_prompt` 84
+# names, of which 4 were in no channel at all.
+
+#: `both` the request's array and the fenced prompt carry it; `native_only` the
+#: array alone (the fenced prompt cannot name it); `fenced_only` the prompt
+#: alone (no function schema, so a native-tools turn has nothing to call);
+#: `neither` selectable and uncallable. An enum, not a boolean (`Law 10`).
+CHANNEL_VERDICTS = ("both", "native_only", "fenced_only", "neither")
+
+
+@dataclass
+class ChannelRow:
+    """Which of the product's two channels can carry a call for one name."""
+
+    name: str
+    native: bool
+    fenced: bool
+    routed: bool
+
+    @property
+    def verdict(self) -> str:
+        if self.native and self.fenced:
+            return "both"
+        if self.native:
+            return "native_only"
+        if self.fenced:
+            return "fenced_only"
+        return "neither"
+
+
+@dataclass
+class ChannelReport:
+    rows: List[ChannelRow]
+
+    def of(self, verdict: str) -> List[str]:
+        return sorted(r.name for r in self.rows if r.verdict == verdict)
+
+    @property
+    def neither(self) -> List[str]:
+        return self.of("neither")
+
+    @property
+    def fenced_only(self) -> List[str]:
+        return self.of("fenced_only")
+
+    @property
+    def unroutable(self) -> List[str]:
+        """Names the prompt or the array advertises that nothing will route."""
+        return sorted(r.name for r in self.rows
+                      if (r.native or r.fenced) and not r.routed)
+
+
+def offerable_names(mcp_mgr=None, *, disabled: Iterable[str] = ()) -> List[str]:
+    """Every name this turn's planner may put in front of the model.
+
+    `src.agent_loop.plan_turn_tool_suite`'s own candidate line — the built-in
+    register's selectable half plus every enabled MCP tool, minus what the
+    privileges already removed. Asked of the product rather than restated here
+    (`Law 7`): a name added to either register tomorrow is in this list with
+    nobody editing this file.
+    """
+    import src.agent_loop as al
+    from src.tool_policy import selectable_tool_names
+
+    drop = {str(name) for name in (disabled or ())}
+    mcp_names, _costs, _by_server = al._suite_mcp_tools(mcp_mgr, {})
+    return sorted((set(selectable_tool_names()) | set(mcp_names)) - drop)
+
+
+def channel_report(names: Sequence[str], *, mcp_mgr=None) -> ChannelReport:
+    """For each name, which channel carries it — by building the real prompt
+    and by asking the real converters, never by comparing registers.
+
+    `Law 20`: the fenced answer is `_assemble_prompt`'s own output read back
+    through `prompt_tool_names` **and** a fence the real `parse_tool_blocks`
+    routes; the native answer is a `FUNCTION_TOOL_SCHEMAS` entry **and** a call
+    the real `function_call_to_tool_block` converts. A register comparison
+    would pass while either converter refused the name.
+    """
+    import src.agent_loop as al
+    from src.tool_parsing import parse_tool_blocks
+    from src.tool_schemas import function_call_to_tool_block
+
+    offered = set(names)
+    prompt_named = prompt_tool_names(al._assemble_prompt(offered, set(), compact=False))
+    schema_backed = set(al._schema_backed_tool_names())
+    mcp_schema_names = {
+        (schema.get("function") or {}).get("name")
+        for schema in ((mcp_mgr.get_all_openai_schemas() or []) if mcp_mgr else [])
+    }
+    rows: List[ChannelRow] = []
+    for name in sorted(offered):
+        args = minimal_args(name, mcp_mgr=mcp_mgr)
+        converted = function_call_to_tool_block(name, json.dumps(args))
+        fenced_blocks = parse_tool_blocks(reply_shapes(name, args)["fenced"])
+        rows.append(ChannelRow(
+            name=name,
+            native=(name in schema_backed or name in mcp_schema_names)
+                   and converted is not None,
+            fenced=name in prompt_named and bool(fenced_blocks),
+            routed=converted is not None or bool(fenced_blocks),
+        ))
+    return ChannelReport(rows=rows)
+
+
+@dataclass
+class OfferGap:
+    """One real turn's offer, and what of it reached neither channel."""
+
+    offered: List[str]
+    disabled: List[str]
+    array: List[str]
+    prompt_named: List[str]
+
+    @property
+    def effective(self) -> List[str]:
+        """What the prompt and the array were actually built from: the offer
+        minus the names the route disabled after the plan was made."""
+        return sorted(set(self.offered) - set(self.disabled))
+
+    @property
+    def neither(self) -> List[str]:
+        return sorted(set(self.effective) - set(self.array) - set(self.prompt_named))
+
+
+async def offer_channel_gap(world: ProbeWorld, cell: Cell,
+                            text: str = "") -> OfferGap:
+    """Drive one ordinary turn and read the offer out of `_assemble_prompt`.
+
+    The set the loop hands the prompt builder is the only place the turn's
+    whole offer exists — the array is filtered by what has a schema and the
+    prompt by what has prose, so reading either one back cannot tell an
+    unreachable name from a name nobody selected. Spied the way the brief's own
+    measurement spies, and put back in a `finally` whatever happens.
+    """
+    import src.agent_loop as al
+
+    seen: List[Tuple[Set[str], Set[str]]] = []
+    real = al._assemble_prompt
+
+    def spy(tool_names, disabled_tools=None, compact=False, suite_notice=""):
+        seen.append((set(tool_names), set(disabled_tools or ())))
+        return real(tool_names, disabled_tools, compact, suite_notice)
+
+    al._assemble_prompt = spy
+    try:
+        record = await drive_turn(world, cell, text or ORDINARY_TURN)
+    finally:
+        al._assemble_prompt = real
+    offered: Set[str] = set()
+    disabled: Set[str] = set()
+    for names, dis in seen:
+        offered |= names
+        disabled |= dis
+    return OfferGap(
+        offered=sorted(offered),
+        disabled=sorted(disabled),
+        array=sorted(record.offered()),
+        prompt_named=sorted(prompt_tool_names(record.first.get("prompt", ""))),
+    )
+
+
 #: The turn the variance measurement repeats: an ordinary request that names no
 #: tool, trips no keyword list and asks for something a person would actually
 #: ask for. The point is what the suite offers on a *normal* turn.
