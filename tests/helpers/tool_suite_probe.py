@@ -294,6 +294,22 @@ def gate_holding(tool: str, *, admin: bool, features: Optional[dict] = None,
     feature_off = ts.feature_disabled_tools(features) if features is not None else set()
     if tool in feature_off:
         return Gate("feature flag", f"the feature that owns `{tool}` is switched off")
+    if tool == "computer":
+        # `computer` has a per-turn gate of its own, in its own module, with
+        # its own sentence: `computer_tools.unavailable_reason`, which
+        # `stream_agent_loop` adds to `disabled_tools`. Asked here so a tool
+        # withheld because there is no workstation reads as `held` and not as
+        # a gap. Measured while building this harness: without it, `computer`
+        # was the one name missing in all 72 cells, and it was missing because
+        # the install has no workstation, which is correct.
+        try:
+            from src.agent_tools.computer_tools import unavailable_reason
+
+            why = unavailable_reason(None)
+        except Exception as exc:                 # noqa: BLE001
+            why = f"the workstation gate could not be read: {exc}"
+        if why:
+            return Gate("workstation gate", str(why))
     return None
 
 

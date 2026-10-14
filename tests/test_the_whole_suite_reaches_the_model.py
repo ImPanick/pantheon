@@ -462,7 +462,54 @@ def test_a_tool_a_gate_holds_is_held_with_a_sentence_not_silence(scratch):
                 for e in record.events
                 if e.get("type") in ("tool_output", "tool_blocked"))
             assert said.strip(), "a non-admin's `bash` was refused in silence"
-            assert "bash" in said or "admin" in said.lower() or "not available" in said.lower()
+            # The control, stated so that standing the gate down reddens this
+            # case rather than slipping past it: the answer has to say it was
+            # refused and who may do it. Measured: with
+            # `is_public_blocked_tool` forced False, the command RUNS and the
+            # output is its own, which fails both halves.
+            lowered = said.lower()
+            assert "bash" in lowered, said[:200]
+            assert any(word in lowered for word in
+                       ("disabled", "restricted", "admin", "not available",
+                        "requires")), said[:200]
+            # Measured on `0bd089d`: the sentence a non-admin actually reads is
+            # *"Tool 'bash' is disabled by the current request policy."* — the
+            # loop's generic one, because `blocked_tools_for_owner` put the
+            # name in `disabled_tools` before the dispatcher's own refusal,
+            # which would have said *why*. Filed; what is kept here is that it
+            # is a refusal naming the tool and the command did not run.
+            assert "exit_code" not in lowered
+
+    _run(go())
+
+
+def test_the_two_loop_primitives_are_in_the_array_and_not_only_the_prompt(scratch):
+    """`ask_user` and `update_plan` are in the `tools` array on every turn.
+
+    `_build_base_prompt` force-includes both as the loop's irreducible
+    primitives, so the prompt has always named them; fx6's `B-NEW-1` is the
+    half where the schema filter did not, and a native-tools turn named two
+    tools the request withheld (`Law 13`). Pinned directly rather than left to
+    a mutation: taking them back out of `_tool_schemas_for_route`'s
+    `schema_names` changes nothing measurable, because `ALWAYS_AVAILABLE`
+    carries both into the selected set on every path — so the only way to keep
+    this honest is to assert the array itself.
+    """
+
+    async def go():
+        cell = probe.Cell(embeddings="down", mcp="absent")
+        async with probe.probe_world(os.path.join(scratch, "primitives"),
+                                     mcp_states=("absent",)) as world:
+            for text in (probe.ORDINARY_TURN, "Tell me a joke.",
+                         probe.SAMPLE_TURNS["owner"]):
+                record = await probe.drive_turn(world, cell, text)
+                if not record.requests:
+                    continue          # the direct low-signal path: no array at all
+                offered = record.offered()
+                if not offered:
+                    continue
+                for name in ("ask_user", "update_plan"):
+                    assert name in offered, (text[:40], sorted(offered))
 
     _run(go())
 
