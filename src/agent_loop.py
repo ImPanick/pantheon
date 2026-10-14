@@ -2212,7 +2212,11 @@ def admin_intent_in_text(text: str) -> bool:
         return True
     for m in _ADMIN_MENTION_RE.finditer(t):
         before = t[:m.start()]
-        window = " ".join(_ADMIN_WORD_RE.findall(before)[-_ADMIN_GOVERNOR_WORDS:])
+        words = _ADMIN_WORD_RE.findall(before)
+        # `max(0, …)` rather than `words[-N:]`: a window of 0 written that way
+        # is `words[0:]`, the whole sentence, which is the opposite of what the
+        # number says. A constant nobody can set to its own inverse.
+        window = " ".join(words[max(0, len(words) - _ADMIN_GOVERNOR_WORDS):])
         if _ADMIN_ACTION_RE.search(window) or _ADMIN_POSSESSIVE_RE.search(window):
             return True
         if _ADMIN_ACTION_RE.fullmatch(m.group(0)) and _ADMIN_CLAUSE_MARKER_RE.search(before):

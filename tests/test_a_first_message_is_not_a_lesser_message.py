@@ -179,6 +179,31 @@ def test_the_persons_own_second_turn_still_counts():
     assert al._user_turn_count(turn) == 2
 
 
+def test_the_last_user_message_is_the_persons_even_when_ours_comes_after():
+    """`routes/chat_helpers.py:1102` **appends** the date/time note when the
+    array does not end on a user turn, and then it is the last `user`-role
+    message in it. Measured on `b6a1bbf`: `_extract_last_user_message` answered
+    with Pantheon's own note — the text every downstream reader treats as what
+    the person asked, including the intent classifier, the retrieval query and
+    the direct path's whole request."""
+    turn = [{"role": "user", "content": ORDINARY_TURN},
+            {"role": "assistant", "content": "Let me look."},
+            current_datetime_context_message()]
+    assert al._extract_last_user_message(turn) == ORDINARY_TURN
+
+
+def test_admin_intent_reads_the_persons_words_and_not_ours():
+    """The same walk, the same defect, a sharper symptom: measured on
+    `b6a1bbf` this turn is an **admin turn**, because the note Pantheon wrote
+    begins `APPLICATION NOTE` and `note` is in `_ADMIN_KEYWORDS`. A person
+    asking about the weather force-included fifteen management tools off
+    Pantheon's own framing."""
+    turn = [{"role": "user", "content": "what is the weather"},
+            {"role": "assistant", "content": "Sunny."},
+            current_datetime_context_message()]
+    assert al._detect_admin_intent(turn) is False
+
+
 def test_both_modes_count_the_same_first_message_the_same():
     """The whole of mechanism 1: the Chat route inserts the note and the Agent
     route does not, and that must not be the difference between modes."""
