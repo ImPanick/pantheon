@@ -1671,7 +1671,7 @@ class McpManager:
             # Skip builtin Python servers — they use the code-block tool format
             # But include NPX-based builtins (like browser) which need function calling
             # (`reaches_model_channels` is the one statement of that rule —
-            # `B-NEW-2`, agent:`fx11-reach`, `Law 7`.)
+            # `B1355`, agent:`fx11-reach`, `Law 7`.)
             if not self.reaches_model_channels(server_id):
                 continue
             conn = self._connections.get(server_id, {})
@@ -1867,7 +1867,7 @@ class McpManager:
         """Whether this server's tools are shown to the model under their
         qualified `mcp__{server_id}__{tool_name}` names.
 
-        `B-NEW-2` (agent:`fx11-reach`), `Law 7`. `is_builtin`'s own docstring
+        `B1355` (agent:`fx11-reach`), `Law 7`. `is_builtin`'s own docstring
         above says what this answers and why it matters — *"saying `True` here
         **mutes a server**"* — and the predicate that does the muting,
         `is_builtin(id) and id != "builtin_browser"`, was written out at three

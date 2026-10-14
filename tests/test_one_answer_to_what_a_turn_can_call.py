@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""`B-NEW-1` … `B-NEW-4` (fx11-cap): one answer to *"what can this turn call?"*
+"""`B1348` … `B1351` (fx11-cap): one answer to *"what can this turn call?"*
 
 The owner, 2026-10-14: *"The LLM's use of tools is still very much
 intermittent... even with its own MCP's provided."* `fx9`/`fx10` answered the
@@ -29,14 +29,14 @@ and three things that set could not say:
 * the loop's set and the prompt's set were **different sets** —
   `_build_base_prompt` added `generate_image` to a local copy, so the prompt
   withheld a tool the native schema list (which filters by the loop's set) then
-  sent (`B-NEW-2`);
+  sent (`B1349`);
 * nothing recorded **why** a name was withheld, so `_pan_notes_finetune_mode`'s
   `difference_update` lifted a privilege cap: on a `pantheon-qwen3` notes turn
   an anonymous visitor's cap went 52 → 50 and `manage_calendar`/`manage_tasks`
   were named in the prompt and sent as schemas, with every call refused by the
-  dispatcher's own gate (`B-NEW-1`);
+  dispatcher's own gate (`B1348`);
 * a name could be in `relevant_tools` **and** in the cap at once, and only
-  `B1366`'s two gates ever noticed (`B-NEW-3`).
+  `B1366`'s two gates ever noticed (`B1350`).
 
 Everything below drives the product (`Law 20`): the real `stream_agent_loop`,
 real accounts, the model and the dispatcher scripted at the two seams
@@ -296,7 +296,7 @@ def test_the_pin_is_whole_for_an_admin(monkeypatch, tmp_path):
 ])
 def test_a_name_is_never_in_the_turns_selection_and_its_cap_at_once(
         monkeypatch, tmp_path, owner, delegated, plan_mode):
-    """`B-NEW-3`. The invariant, driven at every privilege with a selection set
+    """`B1350`. The invariant, driven at every privilege with a selection set
     that deliberately names capped tools — the brief's own measurement shape.
 
     On `747cda6` an anonymous turn's selection held `manage_skills` while the
@@ -318,7 +318,7 @@ def test_every_name_the_prompt_was_asked_to_describe_is_in_the_prompt(
 
 
 def test_a_per_turn_clamp_cannot_lift_a_privilege_cap(monkeypatch, tmp_path):
-    """`B-NEW-1`. The `pantheon-qwen3` notes clamp, which is a bare
+    """`B1348`. The `pantheon-qwen3` notes clamp, which is a bare
     `difference_update` on `747cda6`.
 
     Measured there: a non-admin's cap went 52 → 50 on this exact turn and
@@ -356,7 +356,7 @@ def test_the_order_the_writers_run_in_is_no_longer_load_bearing_for_a_lift():
     """A lift that runs after a privilege withholding and one that runs before
     it reach the same answer — which is what makes the ten writers' order safe
     for this one operation. (It is still load-bearing for the suite planner's
-    *candidates*, which is `B-NEW-5` in the note, not a thing this fixes.)"""
+    *candidates*, which is `B1353` in the note, not a thing this fixes.)"""
     after = TurnToolAccess({"manage_calendar"}, because=WITHHELD_BY_PRIVILEGE)
     after.lift({"manage_calendar"}, because="clamp")
     before = TurnToolAccess()
@@ -377,7 +377,7 @@ def test_the_order_the_writers_run_in_is_no_longer_load_bearing_for_a_lift():
 ])
 def test_the_prompt_and_the_loop_read_one_set(
         monkeypatch, tmp_path, owner, delegated, plan_mode, image_gen):
-    """`B-NEW-2`. They were two sets. `_build_base_prompt` did
+    """`B1349`. They were two sets. `_build_base_prompt` did
     `disabled = set(disabled_tools or [])` and then added `generate_image` to
     that copy, so on `747cda6` `_assemble_prompt` was handed 53 names on an
     anonymous turn while the loop's own set held 52 — and the native schema
@@ -439,7 +439,7 @@ def test_the_image_setting_has_one_definition():
 
 
 def test_the_one_predicate_is_alias_aware_everywhere(monkeypatch, tmp_path):
-    """`B-NEW-4`. The dispatcher asked every policy-equivalent spelling
+    """`B1351`. The dispatcher asked every policy-equivalent spelling
     (`email_tool_policy_names`) and the prompt and the schema filter asked the
     literal name — which is why the open-email-draft writer spells both by
     hand. One cap entry in the qualified spelling now withholds the bare one
@@ -537,7 +537,7 @@ def test_the_caller_s_own_set_is_recorded_as_the_caller_s(monkeypatch, tmp_path)
 # ── the one writer that runs after both invariant points ───────────────────
 
 def test_a_skill_cannot_unlock_a_tool_this_turn_may_not_call(monkeypatch, tmp_path, caplog):
-    """`B-NEW-5` (fx11-cap). A skill's `requires_toolsets` are unioned into
+    """`B1352` (fx11-cap). A skill's `requires_toolsets` are unioned into
     `_relevant_tools` **mid-run**, after `manage_skills action=view` returns —
     the one writer that runs after both of the loop's "never a name this turn
     cannot call" points. It was filtered by `known_tool_names()` and by nothing

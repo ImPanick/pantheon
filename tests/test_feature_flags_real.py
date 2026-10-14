@@ -156,7 +156,7 @@ def test_the_feature_denylist_reaches_the_same_gate_plan_mode_uses(monkeypatch):
     src = (ROOT / "src" / "agent_loop.py").read_text(encoding="utf-8")
     tree = ast.parse(src)
     targets = set()
-    # `B-NEW-4` (fx11-cap). `disabled_tools` is a `TurnToolAccess` now, so the
+    # `B1351` (fx11-cap). `disabled_tools` is a `TurnToolAccess` now, so the
     # same contribution is spelled `withhold(..., because=...)` — the point of
     # the type being that the reason is recorded. `update` is still accepted
     # because it still works and still means the same thing.

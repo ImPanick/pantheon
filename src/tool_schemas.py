@@ -1264,7 +1264,7 @@ FUNCTION_TOOL_SCHEMAS = [
             }
         }
     },
-    # `B-NEW-3` (agent:`fx11-reach`). **`manage_research` had a fence tag, a
+    # `B1356` (agent:`fx11-reach`). **`manage_research` had a fence tag, a
     # prompt section, a dispatch arm and no schema, and nothing in the tree said
     # why.** Seven built-ins are fenced-channel-only; six of them are blessed as
     # that by name — the five email drafting tools (`P17-06`,
@@ -1754,7 +1754,7 @@ def dispatch_name_for(name: str) -> Optional[str]:
     """The `tool_type` a call for `name` dispatches as, or `None` if nothing
     will route it.
 
-    `B-NEW-1` (agent:`fx11-reach`), `Law 7`. This is the one statement of
+    `B1354` (agent:`fx11-reach`), `Law 7`. This is the one statement of
     *"will anything route a call for this name"*, and it had no name at all:
     the rule lived inside `function_call_to_tool_block` as three consecutive
     checks, so the only way to ask it was to build a call and see whether one
@@ -1827,7 +1827,7 @@ def function_call_to_tool_block(name: str, arguments: str) -> Optional[ToolBlock
         logger.warning(f"Rejecting empty required arguments for function call {name}: {args!r}")
         return None
 
-    # `B-NEW-1` (agent:`fx11-reach`, `Law 7`). The three checks that were here
+    # `B1354` (agent:`fx11-reach`, `Law 7`). The three checks that were here
     # — an `mcp__*` name through, one of the 16 built-in email names to
     # `mcp__email__*`, anything else only if `TOOL_TAGS` has it — are
     # `dispatch_name_for`'s, asked in the same order and with the same answers.

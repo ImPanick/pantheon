@@ -458,7 +458,7 @@ def feature_disabled_tools(features: Optional[dict] = None) -> Set[str]:
     return blocked
 
 
-# `B-NEW-2` (fx11-cap). `image_gen_enabled` is an instance **setting**, not one
+# `B1349` (fx11-cap). `image_gen_enabled` is an instance **setting**, not one
 # of the eight feature flags, and it had three readers with two different
 # defaults: `agent_loop._build_base_prompt` (`False`),
 # `routes/chat_routes.py`'s image-session branch (`True`) and

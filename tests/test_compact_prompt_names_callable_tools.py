@@ -17,7 +17,7 @@ test: a compact list may only name a tool that has a schema. The two current
 offenders are asserted as a *starting* condition, not as the fix, because a fix
 written against those two names would let the third one through.
 
-**2026-10-14 (`B-NEW-3`, agent:`fx11-reach`): the orphan set is one, not two,
+**2026-10-14 (`B1356`, agent:`fx11-reach`): the orphan set is one, not two,
 and this file's docstring said what to do about that** — *"if this ever goes to
 zero the guard below still has to stay, because it is what keeps it at zero"*.
 `manage_research` was given a `FUNCTION_TOOL_SCHEMAS` entry, because nothing in
@@ -43,7 +43,7 @@ def test_the_premise_still_holds_a_section_has_no_schema():
     guard below still has to stay, because it is what keeps it at zero.
 
     It went from two to one on 2026-10-14: `manage_research` has a schema
-    (`B-NEW-3`, agent:`fx11-reach`), `generate_image` deliberately does not
+    (`B1356`, agent:`fx11-reach`), `generate_image` deliberately does not
     (`.pantheon/check-mcp-schemas.py` rule C)."""
     orphans = set(A.TOOL_SECTIONS) - _schema_names()
     assert orphans == {"generate_image"}
@@ -62,7 +62,7 @@ def test_the_compact_prompt_names_no_tool_it_cannot_call():
 
 def test_the_known_offender_is_gone_from_the_compact_prompt():
     """`manage_research` is in this list now and that is the point of
-    `B-NEW-3`: it is named because it is callable, by the same guard that keeps
+    `B1356`: it is named because it is callable, by the same guard that keeps
     `generate_image` out because it is not."""
     prompt = A._assemble_prompt({"generate_image", "manage_research", "bash"},
                                 compact=True)

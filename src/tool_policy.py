@@ -363,7 +363,7 @@ def detect_tool_confirmation_turn(message: object) -> Optional[str]:
 def selectable_tool_names() -> Set[str]:
     """The names a turn may **offer** — `known_tool_names()`' routable half.
 
-    `B-NEW-1` (agent:`fx11-reach`). `known_tool_names()` below says what it is
+    `B1354` (agent:`fx11-reach`). `known_tool_names()` below says what it is
     for in its own first line: *"prompt hiding and denylisting"*. A denylist
     register has to be **generous** — a name it misses is a name a guide-only
     turn fails to hide, and its own comment says enforcement does not depend on
@@ -477,7 +477,7 @@ def known_tool_names() -> Set[str]:
     return names
 
 
-# ── `B-NEW-4` (fx11-cap). One answer to "what can this turn call?" ──────────
+# ── `B1351` (fx11-cap). One answer to "what can this turn call?" ──────────
 #
 # `stream_agent_loop` built a plain `set` named `disabled_tools` and then wrote
 # to it from **ten** places — `ToolPolicy.all_disabled_names()`,

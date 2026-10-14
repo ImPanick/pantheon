@@ -100,7 +100,7 @@ def _fallback_block() -> ast.If:
 def _run_fallback(query: str, disabled=None) -> set:
     """Execute the real fallback branch for one query and return its selection.
 
-    `disabled` is the turn's cap (`B-NEW-3`, fx11-cap). Empty by default, which
+    `disabled` is the turn's cap (`B1350`, fx11-cap). Empty by default, which
     is the admin turn every case below is about; the one case that passes a cap
     is the one measuring that the branch's floor honours it.
     """
@@ -119,7 +119,7 @@ def _run_fallback(query: str, disabled=None) -> set:
         "_allowed_tools": None,
         "_retrieval_query": query,
         "logger": logging.getLogger("test-fallback"),
-        # `B-NEW-3` (fx11-cap): the branch's floor is
+        # `B1350` (fx11-cap): the branch's floor is
         # `ALWAYS_AVAILABLE` minus what this turn may not call, so the scope
         # carries the turn's cap and the helper that asks it. The helper is the
         # product's own — extracted code calling a stubbed floor would be
@@ -132,7 +132,7 @@ def _run_fallback(query: str, disabled=None) -> set:
 
 
 def test_the_fallback_floor_is_what_this_turn_may_call():
-    """`B-NEW-3` (fx11-cap). The branch seeded its floor with the whole of
+    """`B1350` (fx11-cap). The branch seeded its floor with the whole of
     `ALWAYS_AVAILABLE`, and `manage_memory` is in `NON_ADMIN_BLOCKED_TOOLS` —
     so on every anonymous, non-admin and token-driven turn this selector
     returned a name the turn could not call, and the only things that noticed
