@@ -952,7 +952,7 @@ _CANNOT_LOOK = frozenset({"ask_user", "update_plan"})
 def _always_available_for_turn(disabled_tools) -> set:
     """`tool_index.ALWAYS_AVAILABLE`, minus what this turn may not call.
 
-    `B-NEW-3` (fx11-cap). `ALWAYS_AVAILABLE` is `{manage_memory, ask_user,
+    `B1350` (fx11-cap). `ALWAYS_AVAILABLE` is `{manage_memory, ask_user,
     update_plan}` and four selection sites pinned it into `_relevant_tools`
     unconditionally. **`manage_memory` is in `NON_ADMIN_BLOCKED_TOOLS`**, so on
     every anonymous, non-admin and token-driven turn the selection set held a
@@ -1010,7 +1010,7 @@ def _turn_has_something_to_look_with(
     """
     if relevant_tools is None:
         return True
-    # `B-NEW-4` (fx11-cap). The subtraction is the turn's own predicate now
+    # `B1351` (fx11-cap). The subtraction is the turn's own predicate now
     # (`TurnToolAccess.allowed_among`), so this gate and the prompt cannot
     # disagree about a name with two spellings.
     return bool(turn_tool_access(disabled_tools).allowed_among(relevant_tools)
@@ -1096,7 +1096,7 @@ def _suite_mcp_tools(mcp_mgr, mcp_disabled_map) -> tuple:
     that server's tools (rule 4). `mcp__{server_id}__{tool_name}` is read and
     never rewritten (`FORBIDDEN.md` Part 1).
 
-    `B-NEW-2` (agent:`fx11-reach`). **A server whose tools no channel carries
+    `B1355` (agent:`fx11-reach`). **A server whose tools no channel carries
     does not get candidates here.** `get_all_tools` keeps every server, the two
     channels (`get_all_openai_schemas` for the array,
     `get_tool_descriptions_for_prompt` for the prompt block) both skip a
@@ -1193,7 +1193,7 @@ def plan_turn_tool_suite(
 
     disabled = set(disabled_tools or ())
     mcp_names = {str(n) for n in (mcp_names or ())}
-    # `B-NEW-1` (agent:`fx11-reach`). This read `known_tool_names()`, whose own
+    # `B1354` (agent:`fx11-reach`). This read `known_tool_names()`, whose own
     # first line says it is for *"prompt hiding and denylisting"* — a register
     # that is deliberately generous, so it holds four names no channel carries
     # (`builtin_browser` is a server id; `vault_get`/`vault_search`/
@@ -1872,7 +1872,7 @@ def fenced_tool_names(tool_names: set, disabled_tools: set = None,
     """
     if compact:
         return frozenset()
-    # `B-NEW-4` (fx11-cap). One predicate for the receipt, the prompt, the
+    # `B1351` (fx11-cap). One predicate for the receipt, the prompt, the
     # schema list and the dispatcher.
     included = turn_tool_access(disabled_tools).allowed_among(tool_names or set())
     return frozenset(name for name in TOOL_SECTIONS if name in included)
@@ -1917,7 +1917,7 @@ def _assemble_prompt(tool_names: set, disabled_tools: set = None, compact: bool 
     default, so the module-level `AGENT_SYSTEM_PROMPT` and every existing caller
     are byte-identical.
     """
-    # `B-NEW-4` (fx11-cap). `included = tool_names - disabled` was this
+    # `B1351` (fx11-cap). `included = tool_names - disabled` was this
     # module's own copy of the predicate, and the only one of the thirteen that
     # the loop's gates were reading through (`B1366`). One call now.
     included = turn_tool_access(disabled_tools).allowed_among(tool_names)
@@ -4763,7 +4763,7 @@ def _build_base_prompt(
     """
     from src.tool_index import ALWAYS_AVAILABLE
 
-    # `B-NEW-2` (fx11-cap). The rule lives in
+    # `B1349` (fx11-cap). The rule lives in
     # `tool_security.setting_disabled_tools` and `stream_agent_loop` already
     # put its answer in the turn's set, so this is a no-op on every production
     # path and still the answer for a direct caller (several tests call this
@@ -4780,7 +4780,7 @@ def _build_base_prompt(
         # ALWAYS_AVAILABLE back in here used to silently undo those
         # drops. Only force-include the irreducible loop primitives
         # (ask_user, update_plan) as belt-and-suspenders.
-        # `B-NEW-3` (fx11-cap). The pin is privilege-aware, for the same
+        # `B1350` (fx11-cap). The pin is privilege-aware, for the same
         # reason `_always_available_for_turn` is: plan mode caps `update_plan`
         # (it writes the plan, and `PLAN_MODE_READONLY_TOOLS` does not name
         # it), so an unconditional union put a name in `tool_names` that the
@@ -6274,7 +6274,7 @@ async def stream_agent_loop(
                         _stale_steers, session_id)
     mcp_mgr = get_mcp_manager()
     prep_timings: Dict[str, float] = {}
-    # `B-NEW-4` (fx11-cap). **The turn's one answer to "what can this turn
+    # `B1351` (fx11-cap). **The turn's one answer to "what can this turn
     # call?"** Ten writers fed this set and thirteen readers each wrote the
     # subtraction out again; `TurnToolAccess` is still a `set`, so every one of
     # those operations is unchanged, and it now carries the predicate
@@ -6311,7 +6311,7 @@ async def stream_agent_loop(
         # is the non-admin policy regardless of who minted it.
         public_blocked_tools = set(public_blocked_tools) | delegated_credential_blocked_tools()
     if public_blocked_tools:
-        # `B-NEW-1` (fx11-cap). Recorded as a **privilege**, which is the one
+        # `B1348` (fx11-cap). Recorded as a **privilege**, which is the one
         # reason no later clamp may lift: `lift()` refuses it, so the
         # `pantheon-qwen3` notes clamp below can no longer hand a non-admin or
         # an anonymous visitor `manage_calendar` and `manage_tasks` (`Law 1`).
@@ -6328,7 +6328,7 @@ async def stream_agent_loop(
     # as a second gate, so it inherits `execute_tool_block`'s enforcement, the
     # prompt cache key below, and one set of tests (`Law 14`).
     disabled_tools.withhold(feature_disabled_tools(), because=WITHHELD_BY_FEATURE)
-    # `B-NEW-2` (fx11-cap). The settings half of the same question, in the
+    # `B1349` (fx11-cap). The settings half of the same question, in the
     # turn's own set rather than in a local copy of it inside
     # `_build_base_prompt` — which is where `generate_image` used to enter, so
     # the prompt withheld it and the native schema list, which filters by this
@@ -6401,7 +6401,7 @@ async def stream_agent_loop(
     _active_document_relevant = _turn_targets_active_document(_intent, _last_user, active_document)
     _active_email_draft_relevant = _active_document_relevant and _is_email_document_obj(active_document)
     if _active_email_draft_relevant:
-        # `B-NEW-4` (fx11-cap). Both spellings are still named, because they
+        # `B1351` (fx11-cap). Both spellings are still named, because they
         # are what this writer has always written and `Law 1` keeps a working
         # path working — but the readers are alias-aware now, so a future
         # entry in one spelling withholds the other everywhere rather than
@@ -6921,7 +6921,7 @@ async def stream_agent_loop(
                         _relevant_tools = await asyncio.wait_for(
                             asyncio.to_thread(
                                 tool_idx.get_tools_for_query, _retrieval_query, 8,
-                                # `B-NEW-3` (fx11-cap). The index's own floor
+                                # `B1350` (fx11-cap). The index's own floor
                                 # is `ALWAYS_AVAILABLE`; hand it the capped one
                                 # so retrieval cannot reintroduce a name this
                                 # turn may not call.
@@ -7085,7 +7085,7 @@ async def stream_agent_loop(
                     # TOOL_SECTIONS — code-nav tools (grep/glob/ls) ship as
                     # schemas without a prompt-prose section.
                     #
-                    # `B-NEW-1` (agent:`fx11-reach`). "Executable" is the point,
+                    # `B1354` (agent:`fx11-reach`). "Executable" is the point,
                     # and `known_tool_names()` is not that set: a skill whose
                     # `requires_toolsets` named `vault_get` put a name in this
                     # turn's offer that no channel carries. The offer register
@@ -7116,7 +7116,7 @@ async def stream_agent_loop(
         except Exception as _e:
             logger.debug(f"[tool-rag] skill-aware tool include skipped: {_e}")
 
-    # `B-NEW-3` (fx11-cap). **The invariant, in one place.** Everything above
+    # `B1350` (fx11-cap). **The invariant, in one place.** Everything above
     # widens `_relevant_tools` — the selector's floor, the intent's domains,
     # the cookbook and UI additions, the open document, uploads, forced tools,
     # the browser expansion, a skill's `requires_toolsets` — and not one of
@@ -7217,7 +7217,7 @@ async def stream_agent_loop(
             # declared tools, this route's own clamp — for every route a turn
             # can take (the first, a fallback, the one that answers).
             route_tools = _within_allowed(route_tools)
-            # `B-NEW-3` (fx11-cap). And never a name this turn cannot call.
+            # `B1350` (fx11-cap). And never a name this turn cannot call.
             # The three clamps above build `route_tools` from a literal, so
             # Site A's answer does not cover them: the notes clamp's literal is
             # where an anonymous visitor was offered `manage_calendar` and
@@ -7236,7 +7236,7 @@ async def stream_agent_loop(
     if _pan_doc_finetune_mode and _relevant_tools is not None:
         logger.info("[agent-intent] pantheon doc finetune tool clamp=%s", sorted(_relevant_tools))
     elif _pan_notes_finetune_mode and _relevant_tools is not None:
-        # `B-NEW-1` (fx11-cap). The clamp lifts the names a per-turn rule or an
+        # `B1348` (fx11-cap). The clamp lifts the names a per-turn rule or an
         # unattributed writer withheld, and `lift()` refuses a privilege, a
         # policy, a switched-off feature, plan mode or a step's own list.
         # Measured on `747cda6`: this line was a bare `difference_update` on a
@@ -7801,7 +7801,7 @@ async def stream_agent_loop(
                 # prompt offered a tool the request withheld — `Law 13`, the two
                 # halves of one decision. A step's own list still removes them,
                 # in `_filter_route_tool_schemas` below.
-                # `B-NEW-3` (fx11-cap): the same pin, capped the same way, so
+                # `B1350` (fx11-cap): the same pin, capped the same way, so
                 # the prompt's list and the schema list stay one decision.
                 schema_names = set(route_relevant_tools) | disabled_tools.allowed_among(
                     {"ask_user", "update_plan"})
@@ -7846,7 +7846,7 @@ async def stream_agent_loop(
             if route_state["pan_qwen_finetune_model"]:
                 schemas = []
             if disabled_tools:
-                # `B-NEW-4` (fx11-cap). The dispatcher asked every
+                # `B1351` (fx11-cap). The dispatcher asked every
                 # policy-equivalent spelling and this filter asked the literal
                 # name; one predicate now, so a tool refused at the call cannot
                 # be sent as a schema.
@@ -8817,7 +8817,7 @@ async def stream_agent_loop(
                                 # candidate's notes mode must re-enable the
                                 # personal managers in the shared execution
                                 # blocklist, or its tool calls are rejected.
-                                # `B-NEW-1` (fx11-cap): same rule as the
+                                # `B1348` (fx11-cap): same rule as the
                                 # primary route's clamp, same refusal.
                                 disabled_tools.lift(
                                     {"manage_notes", "manage_calendar", "manage_tasks"},
@@ -9585,7 +9585,7 @@ async def stream_agent_loop(
                 tool_policy
                 and any(tool_policy.blocks(name) for name in policy_names)
             )
-            # `B-NEW-4` (fx11-cap). This was the only one of the thirteen
+            # `B1351` (fx11-cap). This was the only one of the thirteen
             # readers that honoured `email_tool_policy_names`; it is now the
             # same call every other reader makes.
             blocked_by_disabled_tools = disabled_tools.blocks(block.tool_type)
@@ -9851,7 +9851,7 @@ async def stream_agent_loop(
                     try:
                         from services.memory.skills import SkillsManager as _SkM
                         from src.constants import DATA_DIR as _DD
-                        # `B-NEW-1` (agent:`fx11-reach`): the offer register,
+                        # `B1354` (agent:`fx11-reach`): the offer register,
                         # not the denylist one — the same correction as the
                         # pre-round pass above, and for the same reason. A
                         # skill opened by name must not unlock a tool whose
@@ -9860,7 +9860,7 @@ async def stream_agent_loop(
                         _known = _stn()
                         for _sk in _SkM(_DD).load(owner=owner):
                             if _sk.get("name") == _ms_name:
-                                # `B-NEW-5` (fx11-cap). Filtered by the
+                                # `B1352` (fx11-cap). Filtered by the
                                 # turn's cap and by a step's own list, not only
                                 # by `known_tool_names()`. This is the one
                                 # writer to `_relevant_tools` that runs AFTER

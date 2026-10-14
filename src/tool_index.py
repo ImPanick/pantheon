@@ -674,7 +674,7 @@ class ToolIndex:
         self, query: str, k: int = 8, always_include: Optional[Set[str]] = None
     ) -> Set[str]:
         """Get the set of tool names to include for a given user query."""
-        # `B-NEW-3` (fx11-cap). `is not None`, not `or`: an **empty**
+        # `B1350` (fx11-cap). `is not None`, not `or`: an **empty**
         # `always_include` is a caller saying "this turn's privileges allow
         # none of the floor", and `or` read that as "no preference" and handed
         # back the uncapped `ALWAYS_AVAILABLE`. `select_without_embeddings`

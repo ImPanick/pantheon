@@ -1437,7 +1437,7 @@ async def unknown_name_control(world: ProbeWorld, cell: Cell) -> CallRow:
 
 # ── question 3 (fx11-reach): a selectable name is a callable name ───────────
 #
-# `B-NEW-1` (agent:`fx11-reach`). `fx9-proof`'s inventory is derived from
+# `B1354` (agent:`fx11-reach`). `fx9-proof`'s inventory is derived from
 # `FUNCTION_TOOL_SCHEMAS` (`builtin_tool_names`), and `fx10-channel`'s fenced
 # count is derived from that inventory, so **neither can see a name that has no
 # schema and no prose** — which is exactly the shape that defect takes. The

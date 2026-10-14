@@ -138,6 +138,19 @@ what the amendment gives up, what it keeps, and what the residual is. The gate i
 
 **Direction as of 2026-10-09, after the ruling: the open count is rising.**
 
+Re-measured 2026-10-14, after the `fx9`–`fx11` wave against the owner's *“the LLM's use of tools is still
+very much intermittent”* report and the tracker pass that reconciled it: 196 filed, 96 closed — **a ratio of
+2.042**, open 294 → 394, done 75.1 % → 71.4 %. The window moved on by one wave, so `P23` has left it and its
+52-row filing is no longer the first term; that is why the ratio rose without any wave getting worse. Seven lanes
+answered the report; the wave filed twenty rows and **eighteen of them were already shipped when the row was
+written** — the fix had landed and the tracker had not, which is the defect this pass exists to close rather than
+a change in the rate. Two stay open: `B1353`, whose premise was re-checked on `bbe6958` and holds, and `B1357`,
+which needs an owner decision about whether six built-in tools should reach the model on both channels. None is a
+gate, and `ship-line.py --check` reads **128 adjudicated, 394 open, nothing unclassified**. No `FORBIDDEN.md`
+Part 2 control was touched by this wave.
+
+**Direction as of 2026-10-14: the open count is rising.**
+
 ### A second number, which is the one that moves
 
 Of the last 40 `B` rows filed — `B360` through `B455`, four waves of sweeps plus

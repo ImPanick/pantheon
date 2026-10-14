@@ -283,7 +283,7 @@ def test_the_vault_was_already_out_of_the_retrieval_registry():
 # ── question 4: the owner's own MCP tools ──────────────────────────────────
 
 def test_a_built_in_servers_tools_are_not_offered_on_channels_that_skip_them(scratch):
-    """`B-NEW-2` (agent:`fx11-reach`). `_suite_mcp_tools` reads
+    """`B1355` (agent:`fx11-reach`). `_suite_mcp_tools` reads
     `get_all_tools`, which keeps every server; the two channels read
     `get_all_openai_schemas` and `get_tool_descriptions_for_prompt`, which both
     skip a built-in Python server — so `mcp__email__*`, `mcp__rag__*` and
@@ -479,7 +479,7 @@ def test_the_fenced_only_names_are_counted_and_named_by_their_registers():
     those five that *"Pantheon reaches them through the fenced channel, which
     takes no schema"*) and `generate_image`, which
     `.pantheon/check-mcp-schemas.py` rule C calls *"the legitimate shape"*.
-    The seventh, `manage_research`, was named by none of them, and `B-NEW-3`
+    The seventh, `manage_research`, was named by none of them, and `B1356`
     gave it a schema — so this count is **six**.
 
     Pinned as the set rather than the number so a silent seventh is a red test,
@@ -499,7 +499,7 @@ def test_the_fenced_only_names_are_counted_and_named_by_their_registers():
 
 
 def test_manage_research_is_callable_on_a_native_route_too():
-    """`B-NEW-3` (agent:`fx11-reach`). It had a fence tag, a prompt section, a
+    """`B1356` (agent:`fx11-reach`). It had a fence tag, a prompt section, a
     dispatch arm and no schema, and nothing in the tree said why — so *"open my
     research report"* worked on a llama.cpp endpoint and failed on an API
     model. Both channels now, and nothing else about the tool moved: the
