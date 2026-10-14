@@ -32,13 +32,73 @@ from .skill_format import Skill
 # The header and the per-entry shape are the prompt contract. They live in one
 # string each so the endpoint and the loop cannot disagree about a comma.
 INDEX_HEADING = "## Available skills"
-INDEX_PREAMBLE = (
-    "Procedures the assistant should consult before doing domain work. "
-    "Fetch the full procedure with `manage_skills` action=view name=<name> "
-    "when one looks relevant. Entries tagged `(draft)` were written by the "
+_INDEX_DRAFT_NOTE = (
+    "Entries tagged `(draft)` were written by the "
     "teacher-escalation loop after a prior failure — treat them as authoritative "
     "guidance; if you follow one and it works, that's a good signal the procedure "
     "is correct."
+)
+INDEX_PREAMBLE = (
+    "Procedures the assistant should consult before doing domain work. "
+    "Fetch the full procedure with `manage_skills` action=view name=<name> "
+    "when one looks relevant. " + _INDEX_DRAFT_NOTE
+)
+
+#: `B1360`. The same catalogue, for a turn that cannot call `manage_skills`.
+#:
+#: The route puts `manage_skills` in `disabled_tools` on an explicit web turn
+#: (`routes/chat_routes.py` — a lookup must not drift into personal tools) and
+#: in incognito, and the person's privileges can withhold it
+#: (`can_manage_memory`). None of that lifts here. What changed is that the
+#: block stops instructing a call that the product will refuse: measured live on
+#: 8802, the model read *"fetch the full procedure with `manage_skills`"*, called
+#: it, and got back `tool_blocked` / *"Tool is disabled for this request."* —
+#: while the same prompt said *"Every tool this prompt names is available for
+#: this turn… do not look for one that is not listed."* (`B-NEW-9`). Two
+#: sentences a model cannot both obey is `Law 10` on the wire.
+INDEX_PREAMBLE_NO_FETCH = (
+    "Procedures the assistant should consult before doing domain work. "
+    "The full text of these cannot be fetched on this turn, so work from the "
+    "lines below and from any procedure quoted in full further down. "
+    + _INDEX_DRAFT_NOTE
+)
+
+#: The matched-skill half of the block. `B1362`. This text was eleven inline
+#: `lines.append(...)` calls in `agent_loop._build_system_prompt`, which is why
+#: it had no budget: a block assembled where nothing measures it is a block
+#: nothing measures. It lives beside the catalogue's renderer now, for the
+#: reason this module exists at all.
+MATCHED_HEADING = "## Relevant skills for this request"
+_MATCHED_LEAD = (
+    "These skills are matched to your current request. Each is a "
+    "procedure proven to work. Follow them step by step."
+)
+MATCHED_PREAMBLE = (
+    _MATCHED_LEAD + " To see the full SKILL.md (more detail, pitfalls, "
+    "verification steps), call `manage_skills` with action='view' and the "
+    "skill name."
+)
+MATCHED_PREAMBLE_NO_FETCH = (
+    _MATCHED_LEAD + " The full SKILL.md cannot be fetched on this turn, so "
+    "what is below is all of it you have."
+)
+
+#: `B1362`. What the model is told when a matched procedure did not fit. The
+#: catalogue has said this since `P8-21`; the bodies said nothing, and they are
+#: the expensive half — measured on `0bd089d`, one long skill rendered 23,606
+#: characters (~7,085 tokens) and twelve rendered 257,813 (~77,347), inside no
+#: budget at all, leaving `context_compactor.trim_for_context` to drop whatever
+#: it reached first with no note to the model or the person.
+MATCHED_TRUNCATION_NOTE = (
+    "\n_{omitted} further matched procedure(s) were left out of this block, and "
+    "any procedure above may be cut short: the matched-skill text is capped so "
+    "it cannot crowd out the conversation. Fetch one in full with "
+    "`manage_skills` action=view name=<name>._"
+)
+MATCHED_TRUNCATION_NOTE_NO_FETCH = (
+    "\n_{omitted} further matched procedure(s) were left out of this block, and "
+    "any procedure above may be cut short: the matched-skill text is capped so "
+    "it cannot crowd out the conversation._"
 )
 
 #: The fields `render_skill_index_block` actually reads. `status` only decides
@@ -94,8 +154,9 @@ def _index_value(entry: Dict) -> tuple:
             str(entry.get("name") or ""))
 
 
-def _render(entries: Sequence[Dict], note: str = "") -> str:
-    lines: List[str] = [INDEX_HEADING, INDEX_PREAMBLE]
+def _render(entries: Sequence[Dict], note: str = "", *, can_fetch: bool = True) -> str:
+    lines: List[str] = [INDEX_HEADING,
+                        INDEX_PREAMBLE if can_fetch else INDEX_PREAMBLE_NO_FETCH]
     by_cat: Dict[str, list] = {}
     for s in entries:
         by_cat.setdefault(s.get("category") or "general", []).append(s)
@@ -111,7 +172,8 @@ def _render(entries: Sequence[Dict], note: str = "") -> str:
 
 def render_skill_index_block(index: Optional[Sequence[Dict]],
                              *, budget_chars: Optional[int] = None,
-                             owner=None, report: Optional[Dict] = None) -> str:
+                             owner=None, report: Optional[Dict] = None,
+                             can_fetch: bool = True) -> str:
     """The exact text injected as the skills catalogue, or `""` for none.
 
     `index` is what `SkillsManager.index_for()` returns. The leading blank line
@@ -134,6 +196,12 @@ def render_skill_index_block(index: Optional[Sequence[Dict]],
     an out-parameter rather than a second return value for the reason
     `_build_base_prompt`'s own `skill_index_used` gives: the stubs in this suite
     pin the return type.
+
+    **`B1360`.** `can_fetch` is whether `manage_skills` is callable on the turn
+    this block is being built for. False swaps the preamble for one that does
+    not instruct a call the product will refuse — see
+    `INDEX_PREAMBLE_NO_FETCH`. The preview endpoint leaves it True, because it
+    is answering *"what can the model see"* and not building a turn.
     """
     entries = [s for s in (index or []) if isinstance(s, dict) and s.get("name")]
     if not entries:
@@ -149,7 +217,7 @@ def render_skill_index_block(index: Optional[Sequence[Dict]],
         except Exception:
             budget_chars = None
 
-    block = _render(entries)
+    block = _render(entries, can_fetch=can_fetch)
     omitted = 0
     if budget_chars and len(block) > int(budget_chars):
         # Cheapest thing that is still correct: rank once, then bisect on how
@@ -161,7 +229,7 @@ def render_skill_index_block(index: Optional[Sequence[Dict]],
         while lo <= hi:
             mid = (lo + hi) // 2
             note = INDEX_TRUNCATION_NOTE.format(omitted=len(ranked) - mid)
-            if len(_render(ranked[:mid], note)) <= int(budget_chars):
+            if len(_render(ranked[:mid], note, can_fetch=can_fetch)) <= int(budget_chars):
                 keep, lo = mid, mid + 1
             else:
                 hi = mid - 1
@@ -173,10 +241,135 @@ def render_skill_index_block(index: Optional[Sequence[Dict]],
         omitted = len(ranked) - keep
         survivors = {id(e) for e in ranked[:keep]}
         block = _render([e for e in entries if id(e) in survivors],
-                        INDEX_TRUNCATION_NOTE.format(omitted=omitted) if omitted else "")
+                        INDEX_TRUNCATION_NOTE.format(omitted=omitted) if omitted else "",
+                        can_fetch=can_fetch)
 
     if isinstance(report, dict):
         report.update({"skill_index_chars": len(block),
                        "skill_index_truncated": bool(omitted),
                        "skill_index_omitted": omitted})
+    return block
+
+
+def _render_one_body(sk: Dict) -> str:
+    """One matched skill, in the shape the prompt has always used.
+
+    `B1362`. Moved verbatim out of `agent_loop._build_system_prompt` — the
+    headings, the `_(learned from X)_` tag, the numbered procedure and the
+    semicolon-joined pitfalls are the wording the model has been reading, and a
+    budget is not an excuse to reword a prompt in the same change.
+    """
+    lines: List[str] = []
+    src_tag = ""
+    if sk.get("source") == "teacher-escalation":
+        tm = sk.get("teacher_model") or "teacher"
+        src_tag = f" _(learned from {tm})_"
+    lines.append(f"\n### {sk.get('name', '?')}{src_tag}")
+    if sk.get("description"):
+        lines.append(str(sk["description"]))
+    if sk.get("when_to_use"):
+        lines.append(f"_When to use:_ {sk['when_to_use']}")
+    proc = sk.get("procedure") or []
+    if proc:
+        lines.append("Procedure:")
+        for i, step in enumerate(proc, 1):
+            lines.append(f"  {i}. {step}")
+    pitfalls = sk.get("pitfalls") or []
+    if pitfalls:
+        lines.append("Pitfalls: " + "; ".join(str(p) for p in pitfalls))
+    return "\n".join(lines)
+
+
+def render_matched_skills_block(skills: Optional[Sequence[Dict]],
+                                *, budget_chars: Optional[int] = None,
+                                owner=None, report: Optional[Dict] = None,
+                                can_fetch: bool = True) -> str:
+    """The matched-skill bodies, bounded, saying so when they were cut.
+
+    `B1362`. These bodies are the expensive half of the skills message and the
+    only half with no budget. Measured on `0bd089d` with the real builder: one
+    long matched skill rendered **23,606 characters (~7,085 tokens)** and twelve
+    rendered **257,813 (~77,347)** — against a default `agent_input_token_budget`
+    of 6,000 — inside no budget anywhere, so the only thing that ever cut them
+    was `context_compactor.trim_for_context`, from the front of the
+    conversation, silently, taking the person's earlier turns with it. The
+    catalogue beside them has been budgeted and has said when it was cut since
+    `P8-21`; this is the same arrangement for the other half.
+
+    Whole skills are dropped first, lowest-ranked last (the caller hands them in
+    best-first, so the tail goes), and the **last** surviving body is cut at a
+    line boundary rather than dropped if that is what it takes to fit — because a
+    procedure's first steps are worth more than nothing, and the note says a
+    procedure above may be short. `report`, when a dict is passed, is filled in
+    with `skill_bodies_chars`, `skill_bodies_truncated`, `skill_bodies_omitted`
+    and `skill_bodies_applied` — the names of the skills whose text actually
+    reached the model, which is what `P4-16`'s receipt needs and what it could
+    not say before (`B1363`).
+    """
+    entries = [s for s in (skills or []) if isinstance(s, dict) and s.get("name")]
+    if not entries:
+        if isinstance(report, dict):
+            report.update({"skill_bodies_chars": 0, "skill_bodies_truncated": False,
+                           "skill_bodies_omitted": 0, "skill_bodies_applied": []})
+        return ""
+
+    if budget_chars is None:
+        try:
+            from src.context_budget import SKILL_BODY_BUDGET, resolve_prompt_budget
+            budget_chars = resolve_prompt_budget(SKILL_BODY_BUDGET, owner)
+        except Exception:
+            budget_chars = None
+
+    head = [MATCHED_HEADING, MATCHED_PREAMBLE if can_fetch else MATCHED_PREAMBLE_NO_FETCH]
+    note_tpl = MATCHED_TRUNCATION_NOTE if can_fetch else MATCHED_TRUNCATION_NOTE_NO_FETCH
+
+    def assemble(bodies: List[str], omitted: int, cut: bool) -> str:
+        parts = list(head) + bodies
+        if omitted or cut:
+            parts.append(note_tpl.format(omitted=omitted))
+        return "\n".join(parts)
+
+    bodies = [_render_one_body(s) for s in entries]
+    block = assemble(bodies, 0, False)
+    applied = [str(s.get("name")) for s in entries]
+    truncated = False
+    omitted = 0
+    if budget_chars and len(block) > int(budget_chars):
+        budget = int(budget_chars)
+        keep = 0
+        # Drop whole bodies from the tail until the head, the note and what is
+        # left fit. `keep == 0` still renders the first body's opening lines:
+        # a heading with nothing under it says the match found nothing, which is
+        # a worse answer than a short procedure (the same call `P8-21` made for
+        # the catalogue's last surviving entry).
+        for n in range(len(bodies), 0, -1):
+            if len(assemble(bodies[:n], len(bodies) - n, False)) <= budget:
+                keep = n
+                break
+        if keep == len(bodies):
+            keep -= 1   # the untruncated form was already over budget
+        omitted = len(bodies) - keep
+        truncated = True
+        applied = [str(s.get("name")) for s in entries[:max(keep, 1)]]
+        if keep == 0:
+            # Cut the single best match at a line boundary.
+            room = budget - len(assemble([], omitted - 1, True))
+            kept_lines: List[str] = []
+            used = 0
+            for line in bodies[0].split("\n"):
+                if used + len(line) + 1 > max(room, 0):
+                    break
+                kept_lines.append(line)
+                used += len(line) + 1
+            if not kept_lines:
+                kept_lines = [bodies[0].split("\n", 2)[1] if "\n" in bodies[0] else bodies[0]]
+            block = assemble(["\n".join(kept_lines)], omitted - 1, True)
+        else:
+            block = assemble(bodies[:keep], omitted, False)
+
+    if isinstance(report, dict):
+        report.update({"skill_bodies_chars": len(block),
+                       "skill_bodies_truncated": bool(truncated),
+                       "skill_bodies_omitted": int(omitted),
+                       "skill_bodies_applied": applied})
     return block

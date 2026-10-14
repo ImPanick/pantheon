@@ -589,6 +589,14 @@ DEFAULT_SETTINGS = {
     # skill. It participated in no budget at all; now it participates in this
     # one. Settings-only, for the same reason the six above are.
     "context_skill_index_chars": None,
+    # `B1362`. The eighth, and the catalogue's twin: the **bodies** of the
+    # skills a turn matched, which `agent_loop` pasted into the prompt whole.
+    # Measured on `0bd089d` — one long matched skill 23,606 characters / 7,085
+    # tokens, twelve 257,813 / 77,347, against a 6,000-token default input
+    # budget — bounded by nothing but the downstream trimmer, which cut the
+    # person's own turns instead and said so to a log file. Settings-only, same
+    # as the seven above.
+    "context_skill_body_chars": None,
     # How many files one `POST /api/upload` may carry (`P12-02`). It was
     # `MAX_FILES_PER_REQUEST = 25` in `src/upload_handler.py`, a constant the
     # route closed over — the "files per request" the row names. The constant
@@ -905,6 +913,10 @@ LIMIT_RANGES: dict[str, tuple[int, int]] = {
     # would render a header promising a catalogue with nothing under it, which
     # tells the model the library is empty.
     "context_skill_index_chars": (200, 2_000_000),
+    # `B1362`. The matched procedures. Same floor and the same reason: the
+    # heading plus the preamble are ~300 characters, so a smaller budget would
+    # ship a heading saying procedures were matched with none under it.
+    "context_skill_body_chars": (200, 2_000_000),
     # `P12-02`. Files per request. The top is starlette's own form-parser cap,
     # which is the real ceiling underneath this one.
     "upload_max_files_per_request": (1, 1000),
