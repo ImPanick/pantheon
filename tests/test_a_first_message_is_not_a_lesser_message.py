@@ -385,6 +385,39 @@ def test_a_real_admin_request_still_gets_the_management_tools(monkeypatch):
     assert "manage_session" in sent[0]["tools"]
 
 
+@pytest.mark.parametrize("text,wants", [
+    ("can you preview this slide for me", False),
+    ("the preview pane is broken", False),
+    ("review this paragraph", True),
+    ("reviewing the budget now", True),
+    ("any suggestions for the intro", True),
+    ("improve the second line", True),
+    ("proofread it", True),
+    ("look over my draft", True),
+    ("check my spelling", True),
+])
+def test_suggestion_mode_reads_words_and_not_substrings(text, wants):
+    """The same substring class in the document path: `review` is inside
+    **preview**, so *"can you preview this slide"* turned the open document
+    into suggestion mode. Anchoring the left edge only keeps every inflection
+    a person types."""
+    assert bool(al._SUGGEST_INTENT_RE.search(text)) is wants
+
+
+def test_the_domain_matchers_already_match_words(monkeypatch):
+    """`Law 3`, recorded rather than assumed: the eleven domain regexes in
+    `_classify_agent_request` are already `\\b`-anchored, so the substring
+    defect this row fixes was in the two keyword *lists*, not in them. The
+    case that proves it both ways: `chat` in "chateau" matched the admin list
+    and never matched the `sessions` domain."""
+    def domains(text):
+        return al._classify_agent_request([{"role": "user", "content": text}], text)["domains"]
+    assert domains("my dog ate the chateau cheese") == set()
+    assert "sessions" in domains("archive chat please")
+    assert domains("serverless is a silly word") == set()
+    assert "cookbook" in domains("is the server running")
+
+
 # ── 4. the prompt promises only what the request carries ─────────────────────
 
 def _named_but_not_offered(prompt: str, offered) -> list:

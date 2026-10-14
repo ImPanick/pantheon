@@ -2168,6 +2168,13 @@ _ADMIN_CLAUSE_MARKER_RE = re.compile(
     re.IGNORECASE,
 )
 _ADMIN_WORD_RE = re.compile(r"[A-Za-z0-9_']+")
+#: The words that mean "give me suggestions on the open document", anchored at
+#: the left edge only so every inflection a person types still matches. See the
+#: comment at its one use site in `_build_base_prompt`.
+_SUGGEST_INTENT_RE = re.compile(
+    r"\b(?:suggest|review|improve|feedback|critique|proofread|check my|look over)",
+    re.IGNORECASE,
+)
 #: How many words before a management noun may carry its verb or possessive.
 #: Four, because *"run that through the pipeline"* is four and nothing measured
 #: in the corpus needed five.
@@ -3838,8 +3845,16 @@ def _build_system_prompt(
                     _content = " ".join(b.get("text", "") for b in _content if isinstance(b, dict))
                 _last_user_msg = _content.lower()
                 break
-        _suggest_keywords = ["suggest", "review", "improve", "feedback", "critique", "proofread", "check my", "look over"]
-        if any(kw in _last_user_msg for kw in _suggest_keywords):
+        # `B-NEW` (fx10-intent). The same substring class as the admin list:
+        # this was `any(kw in _last_user_msg for kw in _suggest_keywords)`, and
+        # `review` is inside **preview** — measured, *"can you preview this
+        # slide"* and *"the preview pane is broken"* both turned the active
+        # document into suggestion mode and told the model to answer in
+        # `<<<FIND>>>`/`<<<SUGGEST>>>` blocks. Matching at a word's **start**
+        # rather than anywhere in it is the smallest narrowing that keeps every
+        # form a person types — "reviewing", "suggestions", "improvements" all
+        # still match, because only the left edge is anchored.
+        if _SUGGEST_INTENT_RE.search(_last_user_msg):
             _doc_message["content"] += (
                 "\n\nTrusted instruction for this turn: the user appears to want "
                 "suggestions for the active editor document. Use suggest_document "
