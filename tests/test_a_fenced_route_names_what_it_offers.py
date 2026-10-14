@@ -251,6 +251,20 @@ def test_the_suite_budget_charges_the_new_lines():
         assert costs.get(name, 0) > 0, name
 
 
+def test_a_name_no_register_describes_gets_no_line(monkeypatch):
+    """Asserted directly because no mutation can reach it: measured on this
+    tree, `TOOL_TAGS` and `src/tool_index.BUILTIN_TOOL_DESCRIPTIONS` hold the
+    same 81 names, so today every fence-taggable tool has a description. The
+    guard is for the day one does not — a selector's set is not a licence to
+    invent a tool."""
+    import src.tool_index as ti
+
+    monkeypatch.setattr(ti, "BUILTIN_TOOL_DESCRIPTIONS", {})
+    assert al._register_tool_line("draft_email") == ""
+    # A tool with a schema is unaffected: it never reaches the fallback.
+    assert al._register_tool_line("ls").startswith("- ```ls```")
+
+
 def test_an_mcp_tool_is_not_given_a_builtin_line():
     """MCP tools have their own block, built by the manager from the server's
     own words (`get_tool_descriptions_for_prompt`). One home each (`Law 7`)."""
