@@ -390,12 +390,19 @@ def test_the_prompt_and_the_loop_read_one_set(
 def test_the_image_tool_follows_the_setting_on_its_only_channel(monkeypatch, tmp_path):
     """The consequence, end to end, on the one name the two sets differed by.
 
-    `generate_image` is one of the two members of `TOOL_SECTIONS` with **no**
-    `FUNCTION_TOOL_SCHEMAS` entry (`H09`), so the fenced prompt is its only
-    channel and `fenced_tool_names` — the receipt's own answer — is where to
+    `generate_image` was one of two members of `TOOL_SECTIONS` with **no**
+    `FUNCTION_TOOL_SCHEMAS` entry (`H09`), so the fenced prompt was its only
+    channel and `fenced_tool_names` — the receipt's own answer — was where to
     look. On `747cda6` the loop's set did not hold it, so every reader that
     read the loop's set (the schema filter, the dispatcher's refusal, the
     receipt) disagreed with the prompt that had just withheld it.
+
+    `B1357` / `D-2026-10-14-01` §1 gave it a schema, so the fenced prompt is no
+    longer its *only* channel and the test name is now historical. What this
+    case measures is unchanged and is the part that matters: **one setting
+    decides both channels.** The compact prompt's line moved with it, from "on
+    neither turn" to "exactly the turn that can call it", which is a stronger
+    statement of the same subject.
     """
     off = run_turn(monkeypatch, tmp_path / "off", owner=ADMIN, image_gen=False,
                    relevant_tools=WIDE)
@@ -409,9 +416,12 @@ def test_the_image_tool_follows_the_setting_on_its_only_channel(monkeypatch, tmp
     assert "generate_image" in al.fenced_tool_names(on.selected, on.cap)
     assert "```generate_image" in al._assemble_prompt(
         on.selected, on.cap, compact=False)
-    # The compact prompt names it on neither turn, because it has no schema to
-    # name (`H09`); that is `fx11-reach`'s subject, not this one.
-    assert "`generate_image`" not in off.text and "`generate_image`" not in on.text
+    # The compact prompt named it on neither turn while it had no schema to
+    # name (`H09`). It has one now, so the compact prompt names it on exactly
+    # the turn whose setting allows it — which is this case's subject reaching
+    # the one channel it previously could not.
+    assert "`generate_image`" not in off.text, off.text[-400:]
+    assert "`generate_image`" in on.text, on.text[-400:]
 
 
 def test_no_schema_is_sent_for_a_tool_this_turn_cannot_call(monkeypatch, tmp_path):
