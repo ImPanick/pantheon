@@ -508,24 +508,9 @@ def test_the_split_rules_still_ship_when_their_tools_do(fragment):
     assert fragment in whole, fragment
 
 
-def test_no_one_tool_prompt_names_more_tools_than_it_used_to():
-    """A census, so the five cannot come back by a new line being written the
-    old way (`Law 20` — it calls `_assemble_prompt`, it does not grep it).
-
-    Measured on `b6a1bbf`: **148 of 148** one-tool prompts (74 schema-backed
-    tools x full and compact) named a schema-backed tool the turn withheld —
-    **551** name-instances, because `manage_memory`'s own section and the
-    working-memory rule shipped on every one of them and between them named
-    `manage_contact`, `manage_notes`, `manage_rag` and `write_file`.
-    After the split: **28 of 148**, 28 instances, and every one is a pair of sibling
-    tools cross-referencing each other — `glob`/`grep`, `web_search`/
-    `web_fetch`, `edit_file`/`write_file`, `edit_document`/`update_document`,
-    `list_sessions`/`manage_session`, `list_downloads`/`list_served_models`.
-    Those two are always in the same `_DOMAIN_TOOL_MAP` family, so the product
-    offers them together and no cell of the matrix sees it; a workflow AI step
-    whose `allowed_tools` is one of a pair does, which is filed rather than
-    guessed at. The bound only goes down.
-    """
+def _one_tool_prompt_census() -> list:
+    """Every one-tool prompt's advertised-but-withheld names, as `(tool,
+    compact, [names])`. One definition, read by both census tests below."""
     schema_backed = set(al._schema_backed_tool_names())
     pinned = {"ask_user", "update_plan", "manage_memory"}
     gaps = []
@@ -536,7 +521,68 @@ def test_no_one_tool_prompt_names_more_tools_than_it_used_to():
             gap = _named_but_not_offered(prompt, included)
             if gap:
                 gaps.append((tool, compact, gap))
-    assert len(gaps) <= 28, [g for g in gaps if len(g[2]) > 1 or g[0] in (
+    return gaps
+
+
+def _domain_families() -> dict:
+    """`{tool: {domain, ...}}` from the product's own `_DOMAIN_TOOL_MAP`."""
+    fam: dict = {}
+    for domain, tools in al._DOMAIN_TOOL_MAP.items():
+        for tool in tools:
+            fam.setdefault(tool, set()).add(domain)
+    return fam
+
+
+def test_every_name_a_one_tool_prompt_advertises_is_a_sibling_of_the_tool():
+    """`B1367`. The census's **property**, which is what the bound below was
+    standing in for.
+
+    A one-tool prompt that names another tool is only harmless when the product
+    never offers the two apart: then no turn can read the cross-reference and
+    find the tool missing. "Never apart" has a definition in the tree —
+    `_DOMAIN_TOOL_MAP`, which is what tool selection pins by domain — so this
+    asserts it rather than listing blessed pairs in prose that drifts.
+
+    Measured on `b4e5fe1`, with the bound at 28 and the pairs written out in a
+    docstring: **29** rows, and **2 of them were not siblings at all**. The
+    `integrations` rule said *"do not use shell, curl, or `app_api`"*, and
+    `app_api` is in the `settings` family while `api_call` is in
+    `integrations` — so every integrations turn read a prohibition naming a
+    tool it did not have. The prose list could not see it; this assertion
+    does. 27 rows now, 9 pairs, every one same-family.
+    """
+    fam = _domain_families()
+    strangers = [
+        (tool, compact, name, sorted(fam.get(tool, ())), sorted(fam.get(name, ())))
+        for tool, compact, names in _one_tool_prompt_census()
+        for name in names
+        if not (fam.get(tool, set()) & fam.get(name, set()))
+    ]
+    assert strangers == [], strangers
+
+
+def test_no_one_tool_prompt_names_more_tools_than_it_used_to():
+    """A census, so the five cannot come back by a new line being written the
+    old way (`Law 20` — it calls `_assemble_prompt`, it does not grep it).
+
+    Measured on `b6a1bbf`: **148 of 148** one-tool prompts (74 schema-backed
+    tools x full and compact) named a schema-backed tool the turn withheld —
+    **551** name-instances, because `manage_memory`'s own section and the
+    working-memory rule shipped on every one of them and between them named
+    `manage_contact`, `manage_notes`, `manage_rag` and `write_file`.
+    After the split: **28 of 148**. Merging `fx10-channel`'s serve-prose
+    rewrite made it 29 — its reflow moved `manage_bg_jobs`' mention of `bash`
+    onto a line that survives the per-tool split — and `B1367`'s `app_api`
+    fix took it to **27**, 27 instances, 9 pairs.
+
+    The pairs are not listed here any more. The test above asserts the property
+    they were standing for — each pair is one `_DOMAIN_TOOL_MAP` family, so the
+    product offers them together and no cell of the matrix sees it — and a list
+    in prose was what let two non-siblings sit in the count unnoticed. This
+    keeps the count as a second line of defence. **The bound only goes down.**
+    """
+    gaps = _one_tool_prompt_census()
+    assert len(gaps) <= 27, [g for g in gaps if len(g[2]) > 1 or g[0] in (
         "serve_model", "tail_serve_output", "manage_memory", "manage_research")]
 
 

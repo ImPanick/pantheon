@@ -141,14 +141,34 @@ def test_update_plan_says_writing_the_plan_is_not_doing_the_work():
 # ── the loop, driven ──────────────────────────────────────────────────────
 
 
-def _patch_common(monkeypatch):
+def _patch_common(monkeypatch, *, skills=False, blocked=()):
     monkeypatch.setattr(al, "get_setting", lambda key, default=None: default, raising=False)
     monkeypatch.setattr(al, "get_mcp_manager", lambda: None, raising=False)
     monkeypatch.setattr(al, "estimate_tokens", lambda *a, **k: 10, raising=False)
+    # `B1366`. Two things this harness used to leave to the environment, and
+    # each of them decided on its own whether `B1327`'s gate fired. Both are
+    # stated here now, because a loop-control test that inherits them is a test
+    # about the container it ran in (`Law 19`).
+    #
+    # `blocked_tools_for_owner(None)` is the **non-admin** cap: measured on
+    # `b4e5fe1` it returned 53 names, `read_file`, `bash` and `manage_skills`
+    # among them. Every turn in this file is the owner's own admin turn — the
+    # privilege the five measured tasks ran at — so the default is an empty cap
+    # and a test that wants the non-admin surface asks for it.
+    monkeypatch.setattr(al, "blocked_tools_for_owner",
+                        lambda owner: set(blocked), raising=False)
+    # `B1360` adds `manage_skills` to the selection set whenever the owner has
+    # **any** active skill, and this tree's `data/` carries 286 of them. So "a
+    # turn with no other tool" was not reachable in this harness at all: the
+    # product put a tool in the set behind the test's back. Off by default, and
+    # the test below that is *about* that interaction turns it on.
+    monkeypatch.setattr(al, "_skills_pref_enabled",
+                        lambda owner: bool(skills), raising=False)
 
 
 def _run(monkeypatch, round_texts, *, results=None, max_rounds=6,
-         relevant_tools=None, plan_mode=False, user="read the three files and tell me which defines it"):
+         relevant_tools=None, plan_mode=False, disabled_tools=None,
+         user="read the three files and tell me which defines it"):
     """Drive the real loop. `round_texts` is what the model writes per round
     (the last entry repeats); `results` maps a tool name to the dict
     `execute_tool_block` returns for it."""
@@ -178,6 +198,9 @@ def _run(monkeypatch, round_texts, *, results=None, max_rounds=6,
         max_rounds=max_rounds,
         relevant_tools=set(relevant_tools) if relevant_tools else {"read_file"},
         plan_mode=plan_mode,
+        # `B1366`. The route's own withholding, which the loop subtracts only
+        # when it assembles the prompt — so a turn can hold a name it cannot use.
+        disabled_tools=set(disabled_tools) if disabled_tools else None,
     )
 
     async def _drain():
@@ -392,3 +415,120 @@ def test_a_turn_making_distinct_calls_is_not_cut_short(monkeypatch):
                    for e in events), [e.get("type") for e in events]
     assert sum(1 for e in events
                if e.get("type") == "tool_start" and e.get("tool") == "update_plan") == 5
+
+
+# ── `B1366`. "Nothing to look with" means the turn's offer ─────────────────
+#
+# `B1327`'s gate above asked `set(relevant_tools) - {"ask_user",
+# "update_plan"}`, and that set is not what the turn offers the model. Measured
+# on `b4e5fe1` by driving the loop with `relevant_tools={"ask_user",
+# "update_plan"}` and nothing else:
+#
+#   gate read            {ask_user, manage_skills, update_plan}
+#   prompt the model got 5,091 chars, string "manage_skills" absent
+#   disabled_tools       53 names, `manage_skills` among them
+#
+# `manage_skills` is added to `relevant_tools` whenever the owner has **any**
+# active skill (`B1360`, 286 of them in `data/`), which is a fact about their
+# library and not about this request; and `disabled_tools` is only subtracted
+# later, inside `_assemble_prompt`. So the turn was pushed to "look first" with
+# nothing to look with, and `ask_user`'s card was withheld for a round the
+# model could do nothing with.
+
+
+def test_the_looking_test_reads_the_turns_offer_not_the_raw_selection():
+    """The predicate, directly: three decisions and the full-suite case."""
+    look = al._turn_has_something_to_look_with
+    # Selection did not run — the turn carries the whole suite.
+    assert look(None) is True
+    assert look(None, {"read_file"}) is True
+    # Only the two tools that cannot look at anything.
+    assert look({"ask_user", "update_plan"}) is False
+    # A tool that can look.
+    assert look({"ask_user", "update_plan", "read_file"}) is True
+    # The same tool, disabled at the route: the prompt will not name it and the
+    # dispatcher would refuse it, so it is not something to look with.
+    assert look({"ask_user", "update_plan", "read_file"}, {"read_file"}) is False
+    # The measured case: injected behind the request's back *and* disabled.
+    assert look({"ask_user", "update_plan", "manage_skills"},
+                {"manage_skills"}) is False
+    # Injected and **not** disabled is a real tool, and still counts.
+    assert look({"ask_user", "update_plan", "manage_skills"}, set()) is True
+
+
+def test_the_two_tools_that_cannot_look_are_named_once():
+    """`Law 7`. The gate reads one definition of "cannot look", not a literal
+    repeated at the call site — which is how `B1360` moved `manage_skills` into
+    the selection set without anything noticing this gate had an opinion."""
+    assert al._CANNOT_LOOK == frozenset({"ask_user", "update_plan"})
+    import inspect
+    gate = inspect.getsource(al.stream_agent_loop)
+    assert "_turn_has_something_to_look_with(_relevant_tools, disabled_tools)" in gate
+    # The old literal is gone from the gate.
+    assert '- {"ask_user", "update_plan"}' not in gate
+
+
+def test_a_disabled_tool_does_not_buy_a_round_of_looking(monkeypatch):
+    """End to end, through the real loop: a turn whose only other tool is
+    disabled ships the card at once, exactly as a turn with no other tool does.
+
+    Red on `b4e5fe1` (2 requests, the nudge fired)."""
+    _patch_common(monkeypatch)
+    requests, events = _run(
+        monkeypatch,
+        [ASK_BLOCK],
+        results={"ask_user": ASK_RESULT},
+        relevant_tools={"ask_user", "update_plan", "read_file"},
+        disabled_tools={"read_file"},
+    )
+    assert any(e.get("type") == "ask_user" for e in events), events
+    assert len(requests) == 1, _system_text(requests[-1])[-400:]
+
+
+def test_an_enabled_tool_still_buys_a_round_of_looking(monkeypatch):
+    """The other direction, so the fix is not a way of switching `B1327` off:
+    the same turn with `read_file` enabled is still pushed to look first."""
+    _patch_common(monkeypatch)
+    requests, _ = _run(
+        monkeypatch,
+        [ASK_BLOCK, READ_CALL, "Done."],
+        results={"ask_user": ASK_RESULT},
+        relevant_tools={"ask_user", "update_plan", "read_file"},
+    )
+    assert len(requests) >= 2, len(requests)
+    assert LOOK_FIRST in _system_text(requests[1]), _system_text(requests[1])[-400:]
+
+
+def test_a_skill_library_is_something_to_look_with(monkeypatch):
+    """The `B1360` interaction, asserted rather than inherited.
+
+    With skills on, `manage_skills` goes into the selection set and is **not**
+    capped for the owner, so the turn really does hold a tool that can answer a
+    procedure question — and the nudge firing is correct. This is the half of
+    the old red that was the product being right; the other half was the gate
+    reading a name the route had disabled."""
+    _patch_common(monkeypatch, skills=True)
+    requests, _ = _run(
+        monkeypatch,
+        [ASK_BLOCK, '```manage_skills\n{"action": "list"}\n```', "Done."],
+        results={"ask_user": ASK_RESULT, "manage_skills": {"output": "no skills"}},
+        relevant_tools={"ask_user", "update_plan"},
+    )
+    assert len(requests) >= 2, len(requests)
+    assert LOOK_FIRST in _system_text(requests[1]), _system_text(requests[1])[-300:]
+
+
+def test_the_same_skill_library_capped_for_this_person_is_not(monkeypatch):
+    """And the cap decides it. `manage_skills` is in the non-admin blocklist,
+    so the same turn at that privilege has nothing to look with and the card
+    ships at once — which is what a non-admin turn measured on `b4e5fe1` was
+    doing while the gate counted the tool anyway."""
+    _patch_common(monkeypatch, skills=True, blocked={"manage_skills"})
+    requests, events = _run(
+        monkeypatch,
+        [ASK_BLOCK],
+        results={"ask_user": ASK_RESULT},
+        relevant_tools={"ask_user", "update_plan"},
+    )
+    assert any(e.get("type") == "ask_user" for e in events), events
+    assert len(requests) == 1, _system_text(requests[-1])[-400:]

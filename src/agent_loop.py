@@ -898,10 +898,16 @@ _DOMAIN_RULES = {
 - Use `resolve_contact` to look up a contact's email or phone number by name. Searches the CardDAV address book and sent email history.
 - Use `manage_contact` to list, add, update, or delete contacts in the address book.
 - Do NOT use `manage_memory` for contact lookups — contact details live in the address book, not memory.""",
+    # `B1367`. The second line here named `app_api` as well. `app_api` lives in
+    # the `settings` domain and `api_call` in `integrations`, so
+    # `_DOMAIN_TOOL_MAP` never offers the two together — an integrations turn
+    # read a prohibition about a tool it did not have, which is 2 of the 29
+    # advertised-but-withheld names the one-tool census counted. `app_api`'s own
+    # rules are in the settings block, the one place that defines them (`Law 7`).
     "integrations": """\
 ## Integration/API rules
 - To query or control a configured service integration (Home Assistant, Miniflux, Gitea, Linkding, Jellyfin, or any other registered service), use `api_call` with the integration name, HTTP method, path, and optional JSON body.
-- Do not use shell, curl, or `app_api` to reach a user's connected integration when `api_call` is available.""",
+- Do not use shell or curl to reach a user's connected integration when `api_call` is available.""",
 }
 
 _DOMAIN_TOOL_MAP = {
@@ -922,6 +928,50 @@ _WORKSPACE_TERMINUS_TOOLS = (
     _DOMAIN_TOOL_MAP["files"]
     | {"manage_skills", "ask_teacher", "web_search", "web_fetch", "ask_user", "update_plan"}
 )
+
+# ── `B1366`. What the turn can actually look with ────────────────────────────
+
+#: The two tools that cannot look at anything. `ask_user` asks the person;
+#: `update_plan` writes the plan. Neither observes anything the model does not
+#: already have, so a turn holding only these has nothing to answer its own
+#: question with.
+_CANNOT_LOOK = frozenset({"ask_user", "update_plan"})
+
+
+def _turn_has_something_to_look_with(
+    relevant_tools: Optional[Iterable[str]],
+    disabled_tools: Optional[Iterable[str]] = None,
+) -> bool:
+    """Whether this turn holds a tool that could answer its own question.
+
+    `B1366`. `B1327`'s ask-before-looking gate asked this of the raw
+    `relevant_tools` set, and that set is not the turn's offer. Two things
+    write to it after selection:
+
+    * `manage_skills` is added whenever the owner has **any** active skill
+      (`B1360`), which is a fact about their library rather than about this
+      request; and
+    * the route's `disabled_tools` is subtracted **later**, inside
+      `_assemble_prompt` (`included = tool_names - disabled`), so a name can
+      sit in `relevant_tools` while the assembled prompt never names it and the
+      dispatcher would refuse the call.
+
+    Measured on `b4e5fe1`, the loop driven with `relevant_tools={"ask_user",
+    "update_plan"}` and nothing else: the gate read
+    `{ask_user, manage_skills, update_plan}` and nudged, while the 5,091-char
+    prompt the model received did not contain the string `manage_skills`
+    anywhere and `disabled_tools` held 53 names — `manage_skills` among them,
+    beside `manage_memory`, `read_file` and `bash`. The turn was told to *"look
+    first"* with nothing to look with, and `ask_user`'s card was withheld for a
+    round for no reason the model could act on.
+
+    `None` means tool selection did not run, so the turn carries the full suite
+    and the answer is yes — the same answer the gate gave before this existed.
+    """
+    if relevant_tools is None:
+        return True
+    return bool(set(relevant_tools) - _CANNOT_LOOK - set(disabled_tools or ()))
+
 
 # ── `B-NEW` (fx9-suite). The whole suite, and what it costs ──────────────────
 
@@ -9088,10 +9138,13 @@ async def stream_agent_loop(
             # is exempt too: there, a question is the only move left.
             _handback_tail = _intent_text[-_HANDBACK_TAIL:] if _intent_text else ""
             _handback_match = _HANDBACK_RE.search(_handback_tail) if _handback_tail else None
-            _has_other_tools = (
-                _relevant_tools is None
-                or bool(set(_relevant_tools) - {"ask_user", "update_plan"})
-            )
+            # `B1366`. The same question the ask-before-looking gate asks, and
+            # it was written out twice with the same wrong set (`Law 7`). Both
+            # read the turn's offer now: `_relevant_tools` minus the route's
+            # own withholding, which the loop otherwise subtracts only when it
+            # assembles the prompt.
+            _has_other_tools = _turn_has_something_to_look_with(
+                _relevant_tools, disabled_tools)
             _looks_like_handback = (
                 not guide_only
                 and not plan_mode
@@ -9267,8 +9320,10 @@ async def stream_agent_loop(
                 and not tool_events
                 and _ask_first_nudges < _MAX_ASK_FIRST_NUDGES
                 and all(b.tool_type == "ask_user" for b in tool_blocks)
-                and (_relevant_tools is None
-                     or bool(set(_relevant_tools) - {"ask_user", "update_plan"}))):
+                # `B1366`. The turn's offer, not the raw selection set: a name
+                # the route disabled, or one the skills rule added behind the
+                # request's back, is not something this turn can look with.
+                and _turn_has_something_to_look_with(_relevant_tools, disabled_tools)):
             _ask_first_nudges += 1
             logger.info(
                 "[agent] ask-before-looking nudge on round %d: %d ask_user call(s) "
