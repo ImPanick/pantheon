@@ -346,14 +346,15 @@ def test_an_unknown_window_narrows_under_its_own_reason():
 
 
 def test_a_skipped_tool_does_not_stop_the_walk():
-    """First-fit by priority, not stop-at-first-miss: a cheap tool after an
+    """First-fit by priority, not stop-at-first-miss: a cheap tool *after* an
     expensive one is still offered, which is strictly more tools for the same
-    determinism."""
-    cost = {"a": 10, "big": 1000, "b": 10}
-    plan = plan_tool_suite(["a", "big", "b"], cost=cost.get, room=100,
-                           window=W8K, keyword_picks=["a", "big", "b"])
-    assert plan.offered == frozenset({"a", "b"})
-    assert plan.withheld == ("big",)
+    determinism. The expensive one is named so it comes FIRST in the order,
+    which is the only arrangement that can tell the two rules apart."""
+    cost = {"aa_expensive": 1000, "bb_cheap": 10, "cc_cheap": 10}
+    plan = plan_tool_suite(list(cost), cost=cost.get, room=100, window=W8K,
+                           keyword_picks=list(cost))
+    assert plan.offered == frozenset({"bb_cheap", "cc_cheap"})
+    assert plan.withheld == ("aa_expensive",)
 
 
 # ── 4. the turn: the real planner, through the real loop ─────────────────────
@@ -540,6 +541,14 @@ def test_the_index_init_timeout_leaves_the_keyword_selector_to_run(monkeypatch):
         return None
 
     monkeypatch.setattr(ti, "get_tool_index", slow_get_tool_index, raising=False)
+    # The branch is reachable only when the suite planner did not answer — the
+    # two configurations being `_TOOL_RETRIEVAL_SELECTS_THE_TURN` and a planner
+    # that raised. Both are driven: the planner raises here so the retrieval
+    # block runs, which is what `B1330` is about.
+    def _planner_down(*a, **k):
+        raise RuntimeError("no window to read")
+
+    monkeypatch.setattr(al, "plan_turn_tool_suite", _planner_down)
     _base(monkeypatch, _mcp_manager())
     _events, sent = _drive(monkeypatch, ["Nothing to do."])
     offered = set(sent[0]["tools"])
@@ -652,6 +661,18 @@ def test_get_tools_for_query_is_still_there_for_the_assistant_path():
     assert callable(ToolIndex.get_tools_for_query)
     assert callable(ti.get_tool_index)
     assert callable(ToolIndex.retrieve)
+
+
+def test_a_withheld_mcp_tool_is_not_in_the_request_either(monkeypatch):
+    """The plan enumerates MCP names itself, so when it narrows, an MCP tool it
+    left out is a decision and the schema filter has to honour it — otherwise
+    the prompt and the request disagree about the same turn (`Law 13`)."""
+    _base(monkeypatch, _mcp_manager(tools=40), window=W8K)
+    _events, sent = _drive(monkeypatch, ["Nothing to do."])
+    mcp = [n for n in sent[0]["tools"] if n.startswith("mcp__")]
+    assert 0 < len(mcp) < 40, (
+        f"{len(mcp)} of 40 MCP schemas reached an 8k request")
+    assert "mcp__osrs__lookup_0" in mcp, "the narrowing was not the declared order"
 
 
 def test_the_mcp_schema_filter_still_ships_every_tool_when_no_selector_saw_them(monkeypatch):
