@@ -43,6 +43,7 @@ from src.context_compactor import (
 from src.settings import get_setting
 from src.prompt_security import (
     capability_manifest_message,
+    is_framed_context_content,
     own_context_message,
     untrusted_context_message,
 )
@@ -789,7 +790,12 @@ _AGENT_RULES = f"""\
 - If a needed tool/domain is missing from this turn, say what is missing briefly instead of pretending.
 - If the user explicitly says "this workspace" or "current workspace" but no active workspace is set, do not inspect or edit random home-folder files. Tell them to set one with `/workspace pick` or `/workspace set /absolute/path`.
 {_ACT_RULES}- User identity facts/preferences ("my name is X", "call me X", "I live in X") use `manage_memory`, not contacts.
-- Working memory (long/large tasks): on multi-step or large-data work, journal progress and findings to `manage_notes` as you go. When a tool returns a large result you must retain, store it via `manage_rag` (action=add_text) or `write_file` and retrieve it later with `manage_rag` (action=search) instead of holding it all in context. Use `manage_memory` ONLY for durable facts about the USER — those are auto-extracted, so do NOT also copy them into notes. Route to these existing tools only; do NOT invent a new store.
+- Working memory (long/large tasks): on multi-step or large-data work, journal progress and findings as you go instead of holding it all in context.
+- Journal that progress to `manage_notes`.
+- When a tool returns a large result you must retain, store it with `manage_rag` (action=add_text) and retrieve it later with action=search.
+- A large result can go to `write_file` instead, and be read back when you need it.
+- Use `manage_memory` ONLY for durable facts about the USER — those are auto-extracted, so do NOT also copy them into notes.
+- Route to the stores this prompt names; do NOT invent a new one.
 - Every tool this prompt names is available for this turn. Do not tell the user a listed tool is unavailable, and do not look for one that is not listed.
 - The tool tags above execute automatically when you write them. To SHOW a code example instead of running it, tag the block ```shell, ```sh, ```py and so on. Several tool blocks in one reply is fine.
 """
@@ -803,7 +809,12 @@ _API_AGENT_RULES = f"""\
 - If the user explicitly says "this workspace" or "current workspace" but no active workspace is set, do not inspect or edit random home-folder files. Tell them to set one with `/workspace pick` or `/workspace set /absolute/path`.
 - Keep answers concise unless the user asks for depth.
 {_ACT_RULES}- User identity facts/preferences ("my name is X", "call me X", "I live in X") use `manage_memory`, not contacts.
-- Working memory (long/large tasks): on multi-step or large-data work, journal progress and findings to `manage_notes` as you go. When a tool returns a large result you must retain, store it via `manage_rag` (action=add_text) or `write_file` and retrieve it later with `manage_rag` (action=search) instead of holding it all in context. Use `manage_memory` ONLY for durable facts about the USER — those are auto-extracted, so do NOT also copy them into notes. Route to these existing tools only; do NOT invent a new store.
+- Working memory (long/large tasks): on multi-step or large-data work, journal progress and findings as you go instead of holding it all in context.
+- Journal that progress to `manage_notes`.
+- When a tool returns a large result you must retain, store it with `manage_rag` (action=add_text) and retrieve it later with action=search.
+- A large result can go to `write_file` instead, and be read back when you need it.
+- Use `manage_memory` ONLY for durable facts about the USER — those are auto-extracted, so do NOT also copy them into notes.
+- Route to the stores this prompt names; do NOT invent a new one.
 - Every tool this prompt names is available for this turn. Do not tell the user a listed tool is unavailable, and do not look for one that is not listed.
 """
 
@@ -851,10 +862,14 @@ _DOMAIN_RULES = {
 ## Forge/model-serving rules
 - Forge is the LLM-serving subsystem.
 - "What's running/serving" starts with `list_served_models`. "What's downloading" uses `list_downloads`.
-- Launch known models manually by checking `list_serve_presets` before raw `serve_model`.
+- Check `list_serve_presets` for a preset before launching a known model.
+- Launch anything the presets do not cover with `serve_model`.
 - Downloads/serves run on a Forge server; pass the named `host` when the user names one.
-- Do not launch model servers manually with bash/ssh/tmux. Use `serve_model`/`serve_preset` so the UI can track and stop them.
-- After a successful serve, verify with `list_served_models`; if an external server is running but invisible, use `adopt_served_model`.""",
+- Do not launch model servers manually with bash/ssh/tmux.
+- Use `serve_preset` so the UI can track and stop what you start.
+- Use `serve_model` so the UI can track and stop what you start.
+- After a successful serve, verify with `list_served_models`.
+- If an external server is running but invisible, use `adopt_served_model`.""",
     "notes_calendar_tasks": """\
 ## Notes/calendar/tasks rules
 - Notes/todos/reminders use `manage_notes`, not memory.
@@ -1360,7 +1375,7 @@ Generate an image. Line 1 = description, line 2 = model name, line 3 = WxH (e.g.
     "ask_teacher": "- ```ask_teacher``` — Escalate a hard question to a more capable model. Line 1 = model name or 'auto', rest = the question. Use when stuck or need expert knowledge.",
     "list_models": "- ```list_models``` — Show all available AI models across all endpoints. Use when user asks what models are available.",
     "manage_session": "- ```manage_session``` — Rename, archive, delete, fork, switch, or `list` chats (the UI calls them 'chats'; 'session' is internal). Line 1 = action (list/switch/rename/archive/unarchive/delete/important/unimportant/truncate/fork), Line 2 = exact chat id from `list_sessions` (or `current` where supported). For delete/archive/truncate, always list first and reuse the exact id; never invent placeholder ids. `switch`/`open` returns a clickable anchor link the user can tap to open the chat — use for \"open my X chat\".",
-    "manage_memory": "- ```manage_memory``` — Manage the user's persistent memory (facts about the USER themselves, their preferences, context that persists across chats). Line 1 = action (list/add/edit/delete/search), rest = content. Use when user says 'remember this' about themselves, states identity facts like 'my name is <name>' / 'call me <name>' / 'I live in <place>', or asks about stored memories. DO NOT use for info about another person (their address, phone, email, birthday) — that goes in `manage_contact`. If the user pastes an address/phone with a name and says 'save this for <person>', use `manage_contact add` with the address arg, NOT manage_memory.",
+    "manage_memory": "- ```manage_memory``` — Manage the user's persistent memory (facts about the USER themselves, their preferences, context that persists across chats). Line 1 = action (list/add/edit/delete/search), rest = content. Use when user says 'remember this' about themselves, states identity facts like 'my name is <name>' / 'call me <name>' / 'I live in <place>', or asks about stored memories. DO NOT use for info about another person (their address, phone, email, birthday).\n  Info about another person goes in `manage_contact`: if the user pastes an address/phone with a name and says 'save this for <person>', use `manage_contact add` with the address arg, NOT manage_memory.",
     "manage_skills": "- ```manage_skills``` — Skill registry (SKILL.md format). Args (JSON): {\"action\": \"list|view|view_ref|search|add|edit|patch|publish|delete\", ...}. `list` returns the index of available skills (published + teacher-escalation drafts); `view name=foo` fetches the full SKILL.md; `view_ref name=foo path=...` loads a reference file under the skill directory. For `add`, provide an explicit kebab-case `name` and only report the exact returned name, because storage may normalize or dedupe it. Use this BEFORE doing domain work — there may already be a procedure (published or draft) that prescribes the correct steps. Drafts written by the teacher loop are authoritative guidance even though they're not yet published.",
     "manage_tasks": "- ```manage_tasks``` — Create and manage scheduled background tasks (recurring AI jobs). Args (JSON): {\"action\": \"list|create|edit|delete|pause|resume|run|dry_run|draft_workflow\", ...}. For steps that run one after another, draft_workflow with {\"description\": \"<the user's words>\"} drafts a workflow, switched off, that a person checks in the Workbench.",
     "manage_endpoints": "- ```manage_endpoints``` — Add, remove, or configure AI model API endpoints. Args (JSON): {\"action\": \"list|add|delete|enable|disable\", ...}. Use when user wants to add a new AI provider.",
@@ -1368,7 +1383,7 @@ Generate an image. Line 1 = description, line 2 = model name, line 3 = WxH (e.g.
     "manage_webhooks": "- ```manage_webhooks``` — Configure outgoing webhooks (HTTP notifications on events like chat completion). Args (JSON): {\"action\": \"list|add|delete|enable|disable\", ...}",
     "manage_tokens": "- ```manage_tokens``` — Generate or revoke API access tokens for external integrations. Args (JSON): {\"action\": \"list|create|delete\", ...}",
     "manage_documents": "- ```manage_documents``` — List, read/open, delete, or tidy documents in the editor panel, and keep them in folders. Args (JSON): {\"action\": \"list|read|delete|tidy|list_folders|create_folder|rename_folder|move_folder|move|remove_folder|reorganise|apply_plan\", ...}. `list` returns rows like `[Title](#document-<id>) — lang, size, updated 5m ago, in Clients/Acme` sorted MOST-RECENT FIRST; the user clicks the anchor to open; `folder` or `unfiled: true` narrows it. `read` (aliases: view/open/get) takes `document_id` and returns the content. When the user asks \"open/show/read my notes\" or \"what documents do I have\", use this — do NOT shell out, do NOT curl. Folders are paths (`Clients/Acme`); `\"\"` or `Unfiled` is no folder. `list_folders` first; `create_folder` {folder}; `rename_folder` {folder, name}; `move_folder` {folder, to}; `move` {document_ids, to}; `remove_folder` {folder, contents: move_up|delete} — never pick `delete` unless the user said to delete those documents; `reorganise` {steps: [...]} for several at once. `delete` {document_id} or {document_ids} and `tidy` (removes empty, throwaway and duplicate documents) never delete straight away: like more than 5 moves/removals in one call, they come back as a plan and the user is asked — call `apply_plan` {plan_id} only after they choose \"Apply the plan\".",
-    "manage_research": "- ```manage_research``` — List, read/open, or delete saved DEEP RESEARCH results from the Library. Args (JSON): {\"action\": \"list|read|delete\", \"id\": \"<id>\", \"search\": \"...\"}. `list` returns rows like `[query](#research-<id>) — N sources` MOST-RECENT FIRST; the user clicks to open. `read` (aliases: open/view/get) takes `id` and returns the report text + sources. Use when the user says \"open/read/find/delete my research\" or \"that report\". This IS how you read a finished report: when the user refers to a just-completed deep-research job (\"check it out\", \"read that report\", \"summarize the research\") WITHOUT giving an id, call `manage_research` with `action:list` to get the most-recent id, then `action:read` with that id, and answer from the returned text. Do NOT `web_fetch`/`app_api` the `/api/research/report/{id}` URL — that endpoint renders HTML for the browser, not clean text — and do NOT start a fresh search or research job just to read an existing report.",
+    "manage_research": "- ```manage_research``` — List, read/open, or delete saved DEEP RESEARCH results from the Library. Args (JSON): {\"action\": \"list|read|delete\", \"id\": \"<id>\", \"search\": \"...\"}. `list` returns rows like `[query](#research-<id>) — N sources` MOST-RECENT FIRST; the user clicks to open. `read` (aliases: open/view/get) takes `id` and returns the report text + sources. Use when the user says \"open/read/find/delete my research\" or \"that report\". This IS how you read a finished report: when the user refers to a just-completed deep-research job (\"check it out\", \"read that report\", \"summarize the research\") WITHOUT giving an id, call `manage_research` with `action:list` to get the most-recent id, then `action:read` with that id, and answer from the returned text. That endpoint renders HTML for the browser, not clean text, so do NOT read the report over HTTP, and do NOT start a fresh search or research job just to read an existing report.\n  In particular, do NOT `web_fetch` the `/api/research/report/{id}` URL.\n  Do NOT `app_api` it either.",
     "manage_settings": "- ```manage_settings``` — View/change the REAL app settings (same ones the Settings panel writes) AND turn tools on/off. Change a setting: `{\"action\":\"set\",\"key\":\"...\",\"value\":\"...\"}` — keys accept friendly aliases, e.g. voice→tts_voice, \"search engine\"→search_provider, \"default model\"→default_model, \"teacher model\"→teacher_model, \"task/background model\"→task_model, \"image quality\"→image_quality, \"reminder channel\"→reminder_channel (browser|email|ntfy), \"agent timeout\"/\"max tool calls\"/\"token budget\". Read: `{\"action\":\"get\",\"key\":\"...\"}`; see all: `{\"action\":\"list\"}`; reset one: `{\"action\":\"reset\",\"key\":\"...\"}`. Use this when the user asks to change ANY preference instead of making them open Settings. Secrets/API keys are read-only (tell them to set those in the panel). Tool toggles: `{\"action\":\"disable_tool|enable_tool\",\"tool\":\"shell\"}` (aliases: shell/search/browser/documents/memory/skills/images/tasks/notes/calendar/email), list disabled: `{\"action\":\"list_tools\"}`.",
     "manage_notes": """\
 ```manage_notes
@@ -1427,9 +1442,9 @@ If the user asks for a reminder/alarm before the event, pass `reminder_minutes` 
     "ui_control": "- ```ui_control``` — Control the UI: toggle tools on/off, OPEN PANELS, open email reply drafts, switch models, change themes. Commands: `toggle <name> on/off` (names: bash/shell, web/search, research, incognito, document_editor/documents), `open_panel <name>` (panels: documents, gallery, email, sessions, notes, memories/brain, skills, settings, cookbook), `open_email_reply <uid> <folder> <reply|reply-all|ai-reply> <body text>` (opens an email compose document pre-filled with body, DOES NOT send; use this for normal “write/draft a reply saying X” requests), `set_mode agent/chat`, `switch_model <name>`, `set_theme <preset>`, `create_theme <name> <bg> <fg> <panel> <border> <accent>` (optional key=val for advanced colors AND background effects: bgPattern=<none|dots|synapse|rain|constellations|perlin-flow|petals|sparkles|embers>, bgEffectColor=#RRGGBB, bgEffectIntensity=<num>, bgEffectSize=<num>, frosted=true|false). \"open documents\" / \"open library\" / \"show gallery\" / \"open inbox\" / \"open notes\" / \"open cookbook\" all map to `open_panel <name>`. Built-in theme presets: dark, light, midnight, paper, cyberpunk, retrowave, forest, ocean, ume, copper, terminal, organs, lavender, gpt, claude, cute, guild, codehost, grove, notebook, channel, video, mintchat. For any other vibe/name, use create_theme.",
     "ask_user": "- ```ask_user``` — Ask the user a multiple-choice question when the task is genuinely ambiguous and the answer changes what you do next (pick an approach, confirm an assumption, choose a target). Args (JSON): {\"question\": \"...\", \"options\": [{\"label\": \"...\", \"description\": \"...\"?}, ...], \"multi\": false?}. 2-6 options. The user gets clickable buttons; calling this ENDS your turn and their choice comes back as your next message. Prefer sensible defaults — only ask when you truly can't proceed well without their input. LOOK BEFORE YOU ASK: if any tool in this turn's list would answer the question, call it instead — a question whose answer a tool would have printed is the defect, not the caution. Never use this to ask permission for a step the user already asked for; take the step. Holding an act that needs a person is the approval gate's job, not this tool's.",
     "update_plan": "- ```update_plan``` — While executing an approved plan, write the plan back: tick steps done or revise them. Args (JSON): {\"plan\": \"- [x] done step\\n- [ ] next step\"}. Always pass the COMPLETE checklist, not a diff. Call it after finishing each step (mark it `- [x]`) and whenever the user asks to change the plan. The user's docked plan window updates live. Does nothing if there's no active plan. Writing the plan is not doing the work: after this call, take the next unchecked step in the same turn.",
-    "list_served_models": "- ```list_served_models``` — Show what the Forge (LLM-serving subsystem) is currently running. NO args. Use this for ANY 'what's running' / 'what's serving' / 'show my cookbook' / 'is anything up' query. DO NOT shell out (`ps aux`, `docker ps`, etc.) — this tool is the source of truth. Failed serve tasks include recent logs plus diagnosis/retry suggestions; use those suggestions to call `serve_model` again with an adjusted command when appropriate.",
+    "list_served_models": "- ```list_served_models``` — Show what the Forge (LLM-serving subsystem) is currently running. NO args. Use this for ANY 'what's running' / 'what's serving' / 'show my cookbook' / 'is anything up' query. DO NOT shell out (`ps aux`, `docker ps`, etc.) — this tool is the source of truth. Failed serve tasks include recent logs plus diagnosis/retry suggestions.\n  Use those suggestions to call `serve_model` again with an adjusted command when appropriate.",
     "stop_served_model": "- ```stop_served_model``` — Stop a running model server. Args (JSON): {\"session_id\": \"<from list_served_models>\"}. Use for 'kill my cookbook' / 'stop the model' / 'shut down vLLM'.",
-    "tail_serve_output": "- ```tail_serve_output``` — Read the actual tmux stderr/traceback of a CURRENTLY failing cookbook task. Args (JSON): {\"session_id\": \"<from list_served_models>\", \"tail\": 150?}. **Use ONLY after** you just launched something via `serve_model` AND `list_served_models` reports YOUR new task as `crashed`/`error`. DO NOT use it on old stopped/completed download tasks (they're historical noise — won't predict whether a new launch succeeds). DO NOT call it before launching a fresh attempt. When you do call it, bump `tail` to 400+ only if the visible error references 'see root cause above'.",
+    "tail_serve_output": "- ```tail_serve_output``` — Read the actual tmux stderr/traceback of a CURRENTLY failing cookbook task. Args (JSON): {\"session_id\": \"<from list_served_models>\", \"tail\": 150?}. **Use ONLY after** a launch you just made AND `list_served_models` reports YOUR new task as `crashed`/`error`.\n  The launch is the one you made with `serve_model`. DO NOT use it on old stopped/completed download tasks (they're historical noise — won't predict whether a new launch succeeds). DO NOT call it before launching a fresh attempt. When you do call it, bump `tail` to 400+ only if the visible error references 'see root cause above'.",
     "download_model": "- ```download_model``` — Download a HuggingFace model. Args (JSON): {\"repo_id\": \"Qwen/Qwen3-8B\", \"host\": \"user@gpu-box\"?, \"include\": \"*Q4_K_M*\"?}.",
     "serve_model": "- ```serve_model``` — Start serving a model with vLLM / SGLang / llama.cpp / Ollama / MLX Image / Diffusers. Args (JSON): {\"repo_id\": \"...\", \"cmd\": \"vllm serve <repo> --port 8000\" or \"python3 -m sglang.launch_server --model-path <repo> --port 30000\" or \"python3 scripts/mlx_image_server.py --model <repo> --port 8100\" or \"python3 scripts/diffusion_server.py --model <repo> --port 8100\", \"host\": \"user@gpu-box\"?}. For MLX image models, use `scripts/mlx_image_server.py`; for non-MLX image/inpaint/diffusion models, use `scripts/diffusion_server.py`. Never use `mlx_lm.server` for image models. After launch, call `list_served_models`; if it returns a diagnosis with an adjusted command, retry with that command.",
     "list_downloads": "- ```list_downloads``` — Show in-progress HuggingFace model downloads (filters Forge tasks/status to downloads only). NO args. Use for 'what's downloading' / 'show my downloads' / 'check download progress'.",
@@ -2078,22 +2093,175 @@ _ADMIN_KEYWORDS = [
     "note", "notes", "todo", "todos", "reminder", "reminders",
 ]
 
+# `B-NEW` (fx10-intent). **A management word mentioned as a thing is not a
+# management request.** `_detect_admin_intent` was `any(kw in content_lower for
+# kw in _ADMIN_KEYWORDS)` — a raw substring over the list above — and `archive`
+# is in that list, so the owner's own question about a raid *"called the
+# fractured archive"* made `needs_admin` True and force-included fifteen
+# management tools (`_ADMIN_PROMPT_FORCE_INCLUDE`) plus `_ADMIN_SCHEMA_NAMES`.
+# It is the same defect class as `"on October"` clamping the toolset
+# (`_NOT_A_MACHINE_AFTER_ON` above), and it gets the same treatment: the
+# smallest honest narrowing, with the stop condition written down.
+#
+# Measured over 92 sentences with the provenance stated in
+# `/work/notes/fx10-intent.md` — the owner's own question, the product's own
+# `.pantheon/fixtures/tool_selection_probe.json` (29, whose `expect` list is
+# the truth column: an admin turn is one whose expected tools are in the
+# force-include set), `tool_suite_probe.SAMPLE_TURNS`, 35 management requests
+# and 20 ordinary English sentences carrying a management word in its other
+# sense:
+#
+#     as shipped                 FALSE+ 20   FALSE- 4
+#     word boundaries only       FALSE+ 12   FALSE- 4
+#     words + the rule below     FALSE+  2   FALSE- 4
+#
+# No true positive was lost. The two that remain are reported rather than
+# chased: *"add a note to remind me to call the dentist"* (`note` fires and the
+# force-include set holds no note tool at all — filed) and *"turn off shell and
+# switch to chat mode"* (`chat` in its UI sense).
+#
+# After `fx9-suite` the asymmetry has flipped, which is why this is worth
+# narrowing now: the suite is offered by default, so a missed management word
+# usually costs nothing — the tool is in the turn anyway — while a false
+# positive spends 5,587 tokens of schema on fifteen management tools and ships
+# the admin framing, and on a narrowed turn that room comes out of the tools
+# the person actually asked for. Nothing here grants anything: whether the
+# caller may run any of them is still decided at execution by
+# `tool_execution._ADMIN_ONLY_TOOLS` and `require_admin`.
+#
+# Three ways a management word is a request rather than a mention:
+#   1. the word is only ever a management word (`endpoint`, `webhook`, `mcp`,
+#      `api key`, `cron`, `second opinion`, `list models`, …);
+#   2. a management verb or the person's own possessive governs it, within four
+#      words before it (*"list my sessions"*, *"revoke that token"*, *"rename
+#      the last twelve chats"*, *"run that through the pipeline"*);
+#   3. the word **is** the verb and stands in verb position — the start of the
+#      turn, or after a clause marker (*"archive this chat"*, *"please delete
+#      that chat"*).
+# A mention is everything else: *"the fractured archive"*, *"the archive of the
+# old bank"*, *"a tidy sum"*, *"the setting sun"*, *"nothing of note"*.
+#: Which `_ADMIN_KEYWORDS` entries are in tier 1. A **filter** over that list,
+#: never a second list of keywords (`Law 7`): an entry here that is not in
+#: `_ADMIN_KEYWORDS` matches nothing, so the set is kept to names that are
+#: there — 13 of the 53, leaving 40 in the mention tier.
+_ADMIN_SELF_SUFFICIENT = frozenset({
+    "endpoint", "endpoints", "api key", "webhook", "webhooks",
+    "mcp", "cron", "second opinion", "list models", "switch model",
+    "change model", "create theme", "admin",
+})
+_ADMIN_ACTION_RE = re.compile(
+    r"\b(?:"
+    r"archiv(?:e|es|ed|ing)|renam(?:e|es|ed|ing)|delet(?:e|es|ed|ing)|"
+    r"remov(?:e|es|ed|ing)|forks?|forked|forking|truncat(?:e|es|ed|ing)|"
+    r"lists?|listing|shows?|opens?|creat(?:e|es|ing)|adds?|registers?|"
+    r"revok(?:e|es|ing)|rotat(?:e|es|ing)|configur(?:e|es|ing)|sets?|"
+    r"set up|setup|chang(?:e|es|ing)|switch(?:es)?|manag(?:e|es|ing)|"
+    r"updat(?:e|es|ing)|enabl(?:e|es|ing)|disabl(?:e|es|ing)|turn (?:on|off)|"
+    r"tid(?:y|ies|ying)|schedul(?:e|es|ing)|writ(?:e|es|ing)|mak(?:e|es|ing)|"
+    r"runs?|rerun|starts?|stops?|kills?|clean(?:s|ed|ing)?"
+    r")\b",
+    re.IGNORECASE,
+)
+_ADMIN_POSSESSIVE_RE = re.compile(r"\b(?:my|our|mine)\b", re.IGNORECASE)
+# Verb position: the start of the turn, or straight after something that ends a
+# clause. Deliberately not "anything that is not a determiner" — an adjective
+# cannot be listed, and *"the fractured archive"* is exactly that shape.
+_ADMIN_CLAUSE_MARKER_RE = re.compile(
+    r"(?:^|[.;:,?!]|\b(?:please|pls|now|then|and|also|you|i|lets?|let's|"
+    r"can|could|would|will|to|go|ok|okay)\b)[\s\"'(]*$",
+    re.IGNORECASE,
+)
+_ADMIN_WORD_RE = re.compile(r"[A-Za-z0-9_']+")
+#: The words that mean "give me suggestions on the open document", anchored at
+#: the left edge only so every inflection a person types still matches. See the
+#: comment at its one use site in `_build_base_prompt`.
+_SUGGEST_INTENT_RE = re.compile(
+    r"\b(?:suggest|review|improve|feedback|critique|proofread|check my|look over)",
+    re.IGNORECASE,
+)
+#: How many words before a management noun may carry its verb or possessive.
+#: Four, because *"run that through the pipeline"* is four and nothing measured
+#: in the corpus needed five.
+_ADMIN_GOVERNOR_WORDS = 4
+
+
+def _admin_keyword_patterns():
+    """The two alternations, built once from `_ADMIN_KEYWORDS` (`Law 7`).
+
+    Longest first so `api key` wins over `key`-like prefixes, and
+    `re.escape`d so a keyword containing a regex metacharacter cannot change
+    the pattern's meaning.
+    """
+    self_suf = sorted((k for k in _ADMIN_KEYWORDS if k in _ADMIN_SELF_SUFFICIENT),
+                      key=len, reverse=True)
+    other = sorted((k for k in _ADMIN_KEYWORDS if k not in _ADMIN_SELF_SUFFICIENT),
+                   key=len, reverse=True)
+    return (
+        re.compile(r"\b(?:" + "|".join(re.escape(k) for k in self_suf) + r")\b",
+                   re.IGNORECASE),
+        re.compile(r"\b(?:" + "|".join(re.escape(k) for k in other) + r")\b",
+                   re.IGNORECASE),
+    )
+
+
+_ADMIN_SELF_SUFFICIENT_RE, _ADMIN_MENTION_RE = _admin_keyword_patterns()
+
+
+def admin_intent_in_text(text: str) -> bool:
+    """Whether this text asks for a management action (see the block above)."""
+    t = str(text or "")
+    if not t.strip():
+        return False
+    if _ADMIN_SELF_SUFFICIENT_RE.search(t):
+        return True
+    for m in _ADMIN_MENTION_RE.finditer(t):
+        before = t[:m.start()]
+        words = _ADMIN_WORD_RE.findall(before)
+        # `max(0, …)` rather than `words[-N:]`: a window of 0 written that way
+        # is `words[0:]`, the whole sentence, which is the opposite of what the
+        # number says. A constant nobody can set to its own inverse.
+        window = " ".join(words[max(0, len(words) - _ADMIN_GOVERNOR_WORDS):])
+        if _ADMIN_ACTION_RE.search(window) or _ADMIN_POSSESSIVE_RE.search(window):
+            return True
+        if _ADMIN_ACTION_RE.fullmatch(m.group(0)) and _ADMIN_CLAUSE_MARKER_RE.search(before):
+            return True
+    return False
+
+
 def _detect_admin_intent(messages: List[Dict]) -> bool:
     """Check if the last user message suggests admin/management tool usage."""
     for msg in reversed(messages):
         if msg.get("role") == "user":
+            # `B-NEW` (fx10-intent). Pantheon's own per-turn additions are
+            # `user`-role messages (#2927), and one of them — the date/time
+            # note — ends up last whenever the latest turn is not a user turn,
+            # so this walk could read Pantheon's framing as the person's words.
+            # Same reader as `_user_turn_count`, same reason (`Law 7`).
+            if is_framed_context_content(msg.get("content")):
+                continue
             content = msg.get("content", "")
             if isinstance(content, list):
                 content = " ".join(b.get("text", "") for b in content if isinstance(b, dict))
-            content_lower = content.lower()
-            return any(kw in content_lower for kw in _ADMIN_KEYWORDS)
+            return admin_intent_in_text(content)
     return False
 
 
 def _extract_last_user_message(messages: List[Dict]) -> str:
-    """Return the most recent user message as plain text."""
+    """Return the most recent user message as plain text.
+
+    `B-NEW` (fx10-intent). Pantheon's own per-turn additions are `user`-role
+    messages (#2927), so this walk could answer with Pantheon's framing instead
+    of the person's words — `routes/chat_helpers.py:1102` appends the date/time
+    note at the **end** of the array whenever the last message is not a user
+    turn, and `_insert_before_latest_user` is only the other branch. Everything
+    downstream reads this as *"what the person asked"*: the intent classifier,
+    the retrieval query, the direct path's whole request. Same reader as
+    `_user_turn_count`, same reason (`Law 7`).
+    """
     for msg in reversed(messages):
         if msg.get("role") == "user":
+            if is_framed_context_content(msg.get("content")):
+                continue
             content = msg.get("content", "")
             if isinstance(content, list):
                 content = " ".join(b.get("text", "") for b in content if isinstance(b, dict))
@@ -2102,11 +2270,42 @@ def _extract_last_user_message(messages: List[Dict]) -> str:
 
 
 def _user_turn_count(messages: List[Dict]) -> int:
-    """Count real user turns in the message list."""
+    """Count real user turns in the message list — the person's, not ours.
+
+    `B-NEW` (fx10-intent). The docstring already said *"real user turns"* and
+    the body counted every `user`-role message, which on this product is not
+    the same set. Four of Pantheon's own per-turn additions ride as
+    **`user`-role** messages on purpose: the text changes every turn and local
+    llama.cpp / LM Studio backends key their KV-cache prefix off the system
+    block byte-for-byte (#2927), so a block that changes cannot live there.
+    `src/prompt_security.py` holds all four and `is_framed_context_content` is
+    their one reader (`FIX-2026-10-09` item 1, `Law 7`), so this asks that
+    rather than inventing a second way to tell.
+
+    Measured on `b6a1bbf`, one ordinary first message:
+    `routes/chat_helpers.py:1102` inserts the date/time note on the **Chat**
+    route and deliberately not on the **Agent** one, so the same message
+    counted **2** in Chat and **1** in Agent. The only caller is
+    `_existing_conversation`, which therefore answered True for a conversation
+    that did not exist — and that accident was the only thing keeping Chat mode
+    out of `_direct_low_signal`'s tool-less path while Agent mode fell in: **0
+    of 76 tools** on an ordinary first message, in 36 of 36 `mode=agent` cells
+    of `scripts/tool-suite-matrix.py`.
+
+    The text test rather than the metadata is `is_framed_context_content`'s own
+    decision, for the reason written there: metadata does not survive a round
+    trip through session history or a provider. The cost is that a person who
+    opens their own message with one of the four header lines is not counted
+    for that turn — one message of history, which is the same trade the
+    boundary logic already makes.
+    """
     count = 0
     for msg in messages or []:
-        if msg.get("role") == "user":
-            count += 1
+        if msg.get("role") != "user":
+            continue
+        if is_framed_context_content(msg.get("content")):
+            continue
+        count += 1
     return count
 
 
@@ -2420,6 +2619,32 @@ def _is_casual_low_signal(text: str) -> bool:
     return len(tail_words) <= 2
 
 
+def _is_small_talk_turn(text: str) -> bool:
+    """True when there is no request in this text at all: a greeting, a thanks,
+    or no words.
+
+    `Law 7`, and the predicate three callers actually wanted. The same
+    three-part test was written out in three places —
+    `_classify_agent_request`'s first branch, `_skills_may_ship_for_turn`, and
+    now `_direct_low_signal` — and the fourth copy was the one that went wrong:
+    `_direct_low_signal` asked `_intent["low_signal"]` instead, which is
+    `not continuation and not domains`, a verdict about **which tools to
+    retrieve** and not about whether the person said anything.
+
+    Those are different facts and the owner's install is the proof. Measured on
+    `b6a1bbf`: *"Can you help me work out what to do about the leaking pipe
+    under the kitchen sink before the weekend?"* matches none of the eleven
+    domain regexes, so it was `low_signal`, so an Agent-mode first turn
+    answered it with **no tools and no system prompt**. So did *"Use the
+    `send_email` tool now."* — a sentence that names a tool — because
+    `send_email` has an underscore and `\\bemails?\\b` does not match inside
+    one. "No recognised domain" was never the same fact as "no tools could
+    help"; this is the fact the direct path needs.
+    """
+    s = str(text or "").strip()
+    return not s or bool(_LOW_SIGNAL_RE.match(s)) or _is_casual_low_signal(s)
+
+
 def _skills_may_ship_for_turn(last_user: str) -> bool:
     """The loop's half of `B60`'s question, asked about the request.
 
@@ -2442,11 +2667,11 @@ def _skills_may_ship_for_turn(last_user: str) -> bool:
     four gates (`routes/chat_helpers.skills_may_ship` — incognito, the
     preference, `allow_tool_preprocessing`, its own casual read) still decide
     the other half.
+
+    `B-NEW` (fx10-intent): the three-part test this spelled out is now
+    `_is_small_talk_turn`, read by this and by two other callers (`Law 7`).
     """
-    text = str(last_user or "").strip()
-    if not text or bool(_LOW_SIGNAL_RE.match(text)) or _is_casual_low_signal(text):
-        return False
-    return True
+    return not _is_small_talk_turn(last_user)
 
 
 def _is_contextual_retry_continuation(messages: List[Dict], text: str) -> bool:
@@ -2510,7 +2735,7 @@ def _classify_agent_request(messages: List[Dict], last_user: str) -> Dict[str, o
     retrieval_query = _recent_context_for_retrieval(messages) if continuation else text
     q = retrieval_query.lower()
 
-    if not text or bool(_LOW_SIGNAL_RE.match(text)) or _is_casual_low_signal(text):
+    if _is_small_talk_turn(text):   # `B-NEW` (fx10-intent), `Law 7`
         return {
             "low_signal": True,
             "continuation": False,
@@ -3628,8 +3853,16 @@ def _build_system_prompt(
                     _content = " ".join(b.get("text", "") for b in _content if isinstance(b, dict))
                 _last_user_msg = _content.lower()
                 break
-        _suggest_keywords = ["suggest", "review", "improve", "feedback", "critique", "proofread", "check my", "look over"]
-        if any(kw in _last_user_msg for kw in _suggest_keywords):
+        # `B-NEW` (fx10-intent). The same substring class as the admin list:
+        # this was `any(kw in _last_user_msg for kw in _suggest_keywords)`, and
+        # `review` is inside **preview** — measured, *"can you preview this
+        # slide"* and *"the preview pane is broken"* both turned the active
+        # document into suggestion mode and told the model to answer in
+        # `<<<FIND>>>`/`<<<SUGGEST>>>` blocks. Matching at a word's **start**
+        # rather than anywhere in it is the smallest narrowing that keeps every
+        # form a person types — "reviewing", "suggestions", "improvements" all
+        # still match, because only the left edge is anchored.
+        if _SUGGEST_INTENT_RE.search(_last_user_msg):
             _doc_message["content"] += (
                 "\n\nTrusted instruction for this turn: the user appears to want "
                 "suggestions for the active editor document. Use suggest_document "
@@ -5880,6 +6113,13 @@ async def stream_agent_loop(
     # instead; its docstring carries the measurement.
     _skills_suppressed = bool(suppress_skills) or not _skills_may_ship_for_turn(_last_user)
     _casual_low_signal_turn = _is_casual_low_signal(_last_user)
+    # `B-NEW` (fx10-intent). **What the direct path is gated on.** It was
+    # `_low_signal_turn` — `not continuation and not domains` — so any request
+    # whose words missed all eleven domain regexes was answered with no tools,
+    # no system prompt and the reply capped at 128 tokens. `_is_small_talk_turn`
+    # asks the only question that path can honestly answer: did the person say
+    # anything at all.
+    _small_talk_turn = _is_small_talk_turn(_last_user)
     _existing_conversation = _user_turn_count(messages) > 1
     _active_document_relevant = _turn_targets_active_document(_intent, _last_user, active_document)
     _active_email_draft_relevant = _active_document_relevant and _is_email_document_obj(active_document)
@@ -5889,8 +6129,33 @@ async def stream_agent_loop(
             "mcp__email__list_emails", "mcp__email__read_email", "mcp__email__scan_email_unsubscribes",
         })
     _prompt_active_document = active_document if _active_document_relevant else None
+    # `B-NEW` (fx10-intent). **The short-circuit kept, and measured, rather
+    # than removed.** The brief's question was whether this path still earns a
+    # place now that `fx9-suite` sizes the suite against the window: if its
+    # only job was keeping a big tool list out of a cheap turn, the budget does
+    # that better. Measured on `b6a1bbf` with the product's own estimator, the
+    # same text through both modes (Chat carries the date/time note, so the old
+    # count sent it down the full path and Agent down this one):
+    #
+    #     "hi"            full path 12,800 prompt + 21,435 schema tokens, 75 tools
+    #                     this path 0 + 0, no system prompt, max_tokens 128
+    #     leaking pipe    full path 13,171 + 21,435, 75 tools   <- what a person asked
+    #                     this path 0 + 0, no tools
+    #
+    # So the path is worth **34,235 tokens on a greeting**, and that is a
+    # saving `tool_suite_room` cannot make: the budget is a fact about the
+    # window, not about the request, so at 128k it offers the whole suite for
+    # "hi" as readily as for a job. The path stays. What it stops doing is
+    # standing in for "no domain regex matched" — on a 9,000-token local model
+    # the same 34,235 tokens is the difference between an answer and a refusal,
+    # which is why `_low_signal_turn` looked like it was doing this job.
+    #
+    # `not _existing_conversation` is kept and is not about cost: this path
+    # sends `[{"role": "user", "content": _last_user}]`, so it throws the
+    # conversation away, and it may only be taken when there is none to throw.
+    # That is why `_user_turn_count` had to be right first.
     _direct_low_signal = (
-        _low_signal_turn
+        _small_talk_turn
         and not _existing_conversation
         and not bool(_intent.get("continuation"))
         and not plan_mode
