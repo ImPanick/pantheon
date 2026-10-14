@@ -37,6 +37,36 @@ def _format_mcp_connection_error(name: str, command: str = "", args: Optional[Li
     return raw_error
 
 
+#: What a person reads when a server's own transport cancelled the handshake.
+#: `B-NEW` (fx10-channel). anyio's own text is `Cancelled via cancel scope
+#: 0x7f…`, which names nothing a person owns and no action they can take, so it
+#: is not what gets stored — `_connect_cancelled_message` keeps it in the log
+#: and puts this in the status the Settings panel and the model's prompt read.
+_CONNECT_CANCELLED_REASON = (
+    "The server stopped during the MCP handshake — its command started and then "
+    "exited. Check the command, its arguments and its environment, then reconnect."
+)
+
+
+def _connect_cancelled_message(name: str, error: BaseException = None) -> str:
+    """The error recorded for a connect the transport cancelled mid-handshake.
+
+    `B-NEW` (fx10-channel). Measured on `b6a1bbf` with three registered stdio
+    servers, one of them `/bin/false`: `anyio` cancels `stdio_client`'s cancel
+    scope when the child exits during `initialize()`, and the resulting
+    `CancelledError` — a `BaseException`, so no `except Exception` in this
+    module saw it — came out of `connect_all_enabled` and took the two working
+    servers with it. The cancellation is this server's failure, so it is
+    recorded as this server's error, in words a person can act on.
+    """
+    raw = str(error or "").strip()
+    logger.error(
+        "MCP server %s: its transport cancelled the handshake (%s)",
+        name, raw or "no detail",
+    )
+    return _CONNECT_CANCELLED_REASON
+
+
 # Caps for rendering untrusted MCP tool schemas into the agent prompt (issue #2660).
 # MCP servers are third-party/user-added, so field names and parameter counts are
 # untrusted input — bound them so an odd or hostile schema cannot distort the prompt.
@@ -409,6 +439,13 @@ _MCP_INSTRUCTIONS_MAX = 2000
 # the prompt pays for every character on every turn and the full text stays
 # readable through `GET /api/mcp/servers` and `manage_mcp list`.
 _MCP_PROMPT_INSTRUCTIONS_MAX = 600
+# How much of a NOT-ANSWERING server's error goes into the system prompt.
+# `B-NEW` (fx10-channel), `Law 17`: the text is the server's own words, it
+# reaches the model one line per server, and a server that cannot connect must
+# not be able to buy more of the window — or more lines of the prompt — by
+# failing loudly. The full error stays readable through
+# `GET /api/mcp/servers`, which is where an operator is actually fixing it.
+_MCP_PROMPT_DOWN_REASON_MAX = 200
 
 
 def summarize_initialize_result(result: Any) -> Dict[str, Any]:
@@ -1040,6 +1077,41 @@ class McpManager:
             if res:
                 self._generation += 1
             return res
+        except asyncio.CancelledError as e:
+            # `B-NEW` (fx10-channel). **One server's failure is one server's
+            # failure.** `asyncio.CancelledError` is a `BaseException`, so the
+            # `except Exception` below never saw it — and anyio raises exactly
+            # that when `stdio_client`'s cancel scope is torn down because the
+            # child exited during `initialize()`. Measured on `b6a1bbf` with
+            # three registered stdio servers, one of them `/bin/false`:
+            # `connect_all_enabled` raised `CancelledError: Cancelled via
+            # cancel scope 7f7b0c2bfb50`, `get_all_statuses()` answered `{}`
+            # and **zero** MCP tools reached the model — both working servers
+            # lost to one broken row.
+            #
+            # This method is the funnel every registration path goes through
+            # (the admin route, `manage_mcp add`, `/reconnect`, `pantheon-mcp`,
+            # `connect_all_enabled` and the built-ins), so the conversion lives
+            # here once rather than in each of them (`Law 14`) — the route that
+            # reconnects one server used to answer a dead command with a 500
+            # for the same reason.
+            #
+            # A cancel actually DELIVERED to this task is a different fact and
+            # keeps propagating: shutdown, an abandoned request, and
+            # `_connect_with_timeout`'s own 20-second `wait_for` all arrive
+            # that way, and swallowing one would trade a broken server for a
+            # hung boot (`Law 17` — the adversary does not get to stall the
+            # install either).
+            current = asyncio.current_task()
+            if current is not None and current.cancelling():
+                raise
+            self._connections[server_id] = {
+                "status": "error",
+                "error": _connect_cancelled_message(name, e),
+                "name": name,
+            }
+            self._generation += 1
+            return False
         except Exception as e:
             logger.error(f"Failed to connect MCP server {name} ({server_id}): {e}")
             error_message = _format_mcp_connection_error(name, command or "", args or [], e)
@@ -1283,6 +1355,25 @@ class McpManager:
 
 
     async def connect_all_enabled(self):
+        """Connect every enabled server. One row's failure is one row's failure.
+
+        `B-NEW` (fx10-channel). This gathered with **no `return_exceptions`**,
+        so the first task to fail ended the await while the others were still
+        shaking hands: measured on `b6a1bbf` over three registered stdio
+        servers, one of them `/bin/false` — `aborted, 0 connected, 0 MCP tools,
+        raised CancelledError`, four runs out of four, with both working
+        servers lost. `connect_server` turns a transport's own cancellation
+        into that server's recorded error now, and this waits for all of them
+        and records whatever still comes back as an exception, so every server
+        ends the boot with a status and a reason (`Law 10`) — which is what
+        `fx6-tools`' `B-NEW-7` prompt block and `GET /api/mcp/servers` both
+        read, so the person and the model are told without a second telling
+        being built (`Law 7`).
+
+        A cancel delivered to THIS task still propagates: `gather` re-raises
+        when the outer future is the one that was cancelled, which is shutdown
+        cancelling the boot connect.
+        """
         db = SessionLocal()
         try:
             servers = db.query(McpServer).filter(McpServer.is_enabled == True).all()
@@ -1292,7 +1383,34 @@ class McpManager:
                 for srv in servers
             ]
 
-            await asyncio.gather(*tasks)
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            for srv, result in zip(servers, results):
+                if not isinstance(result, BaseException):
+                    continue
+                # A row that failed in a way nothing below it recorded. Its
+                # status is the only thing standing between the operator and
+                # a server that is simply not there.
+                existing = self._connections.get(srv.id) or {}
+                if existing.get("status") in ("connected", "needs_auth", "connecting"):
+                    continue
+                if isinstance(result, asyncio.CancelledError):
+                    reason = _connect_cancelled_message(srv.name, result)
+                else:
+                    logger.error(
+                        "Failed to connect MCP server %s (%s): %s",
+                        srv.name, srv.id, result,
+                    )
+                    try:
+                        _args = json.loads(srv.args) if srv.args else []
+                    except (TypeError, ValueError):
+                        _args = []
+                    reason = _format_mcp_connection_error(
+                        srv.name, srv.command or "", _args, result,
+                    )
+                self._connections[srv.id] = {
+                    "status": "error", "error": reason, "name": srv.name,
+                }
+                self._generation += 1
         finally:
             db.close()
 
@@ -1890,12 +2008,22 @@ class McpManager:
     def _servers_not_answering(self) -> list:
         """`[(server_name, reason)]` for every registered server with no tools.
 
-        `B-NEW`. Read by the prompt block above and by
-        `mcp_servers_not_answering_sentence`, so one answer to "which servers
-        are down" reaches the model and the person (`Law 7`). Built-in Python
-        servers are excluded for the same reason they are excluded from the
-        schemas and from the block: they are not a thing an operator
-        registered, and `builtin_browser` is the one that is.
+        `B-NEW`. Read by the prompt block above, so one answer to "which
+        servers are down" reaches the model (`Law 7`); the person's half is
+        `GET /api/mcp/servers`, which carries the same statuses untruncated.
+        Built-in Python servers are excluded for the same reason they are
+        excluded from the schemas and from the block: they are not a thing an
+        operator registered, and `builtin_browser` is the one that is.
+
+        **The reason is one bounded line.** `B-NEW` (fx10-channel), `Law 17`:
+        it is the server's own error text, it goes into the system prompt one
+        line per server, and a server that cannot connect must not be able to
+        take extra lines or extra window by failing loudly — the
+        `@playwright/mcp` message alone carries two blank lines and a shell
+        command, which would have broken the one-line-per-server shape this
+        block promises. Whitespace is collapsed and the text is cut at
+        `_MCP_PROMPT_DOWN_REASON_MAX`, exactly as the handshake's own
+        `instructions` already are.
         """
         out = []
         for server_id, conn in (self._connections or {}).items():
@@ -1913,7 +2041,11 @@ class McpManager:
             else:
                 reason = str((conn or {}).get("error") or "").strip() or (
                     "not connected" if status != "connected" else "connected but serving no tools")
-            out.append((str((conn or {}).get("name") or server_id), reason))
+            reason = re.sub(r"\s+", " ", reason).strip()
+            if len(reason) > _MCP_PROMPT_DOWN_REASON_MAX:
+                reason = reason[:_MCP_PROMPT_DOWN_REASON_MAX - 1].rstrip() + "…"
+            name = re.sub(r"\s+", " ", str((conn or {}).get("name") or server_id)).strip()
+            out.append((name[:_MCP_TOKEN_MAX * 2], reason))
         return sorted(out)
 
     # No person-facing sentence is built here on purpose. `GET /api/mcp/servers`
