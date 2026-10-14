@@ -791,7 +791,7 @@ class ToolIndex:
         return base
 
 
-# ── `B-NEW` (fx9-suite). The whole suite by default, narrowed deterministically
+# ── `B1368` (fx9-suite). The whole suite by default, narrowed deterministically
 #
 # **What the tree did before this.** `ALWAYS_AVAILABLE` above is three tools.
 # Everything else — the sixteen email tools, calendar, notes, tasks, documents,
@@ -894,7 +894,7 @@ def names_the_request_pins(
 ) -> Set[str]:
     """Tools the person's own words named, which are never withheld.
 
-    `B-NEW` rule 4. A request that says *"use web search"*, *"call
+    `B1368` rule 4. A request that says *"use web search"*, *"call
     mcp__weather__lookup_raid"* or *"ask my weather server"* has named what it
     wants, and a budget is not a reason to answer *"I do not have that tool"*.
     Matched on word boundaries, in the request's own text, against:

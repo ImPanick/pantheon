@@ -1017,7 +1017,7 @@ def _turn_has_something_to_look_with(
                 - _CANNOT_LOOK)
 
 
-# ── `B-NEW` (fx9-suite). The whole suite, and what it costs ──────────────────
+# ── `B1368` (fx9-suite). The whole suite, and what it costs ──────────────────
 
 _SCHEMA_TOKEN_COSTS: Optional[Dict[str, int]] = None
 
@@ -1069,7 +1069,7 @@ def _suite_prompt_token_costs() -> Dict[str, int]:
         from src.context_budget import _text_tokens
         for name, default in TOOL_SECTIONS.items():
             out[name] = _text_tokens(_section_text(name, default))
-        # `B-NEW` (fx10-channel). A tool with no section is not free any more:
+        # `B1379` (fx10-channel). A tool with no section is not free any more:
         # the full prompt names it with one register-derived line so a fenced
         # route can reach it at all, and a line nobody charges for is a budget
         # that under-counts in the one direction that is not safe to be wrong
@@ -1090,7 +1090,7 @@ def _suite_prompt_token_costs() -> Dict[str, int]:
 def _suite_mcp_tools(mcp_mgr, mcp_disabled_map) -> tuple:
     """Every enabled MCP tool, its cost, and which server serves it.
 
-    `B-NEW` rule 5: an MCP tool is in the suite by default, not a candidate that
+    `B1368` rule 5: an MCP tool is in the suite by default, not a candidate that
     must win a lottery. Returns `(names, costs, by_server)`; `by_server` is keyed
     on the server's own **name and its id**, so a person who says either pins
     that server's tools (rule 4). `mcp__{server_id}__{tool_name}` is read and
@@ -1664,7 +1664,7 @@ _REGISTER_TOOL_ARGS_MAX = 10
 def _register_tool_line(name: str) -> str:
     """A fenced-channel one-liner for an offered tool with **no prompt section**.
 
-    `B-NEW` (fx10-channel). `TOOL_SECTIONS` has 61 entries for a 74-name
+    `B1379` (fx10-channel). `TOOL_SECTIONS` has 61 entries for a 74-name
     register, and the full prompt is assembled by walking `TOOL_SECTIONS` — so
     fifteen tools the person's privileges allow, the selector offers and
     `TOOL_TAGS` can carry had **nothing** that named them in the only channel a
@@ -1878,8 +1878,8 @@ def fenced_tool_names(tool_names: set, disabled_tools: set = None,
     return frozenset(name for name in TOOL_SECTIONS if name in included)
 
 
-#: `B-NEW` (fx9-suite). What a turn says when its tool set is not the whole
-#: suite. It names **no tool** — the whole point of `B-NEW-4` is that a prompt
+#: `B1368` (fx9-suite). What a turn says when its tool set is not the whole
+#: suite. It names **no tool** — the whole point of `B1304` is that a prompt
 #: naming a tool the request withholds sends the model looking for it — and it
 #: gives the model the one move that is better than concluding the capability
 #: does not exist. `{n}` offered of `{total}`; `{why}` is one clause.
@@ -1913,7 +1913,7 @@ def _assemble_prompt(tool_names: set, disabled_tools: set = None, compact: bool 
     """Build the system prompt with only the specified tools included.
 
     `suite_notice` is `_partial_suite_notice`'s sentence when this turn carries
-    part of the suite rather than all of it (`B-NEW`, fx9-suite). Empty by
+    part of the suite rather than all of it (`B1368`, fx9-suite). Empty by
     default, so the module-level `AGENT_SYSTEM_PROMPT` and every existing caller
     are byte-identical.
     """
@@ -2000,7 +2000,7 @@ def _assemble_prompt(tool_names: set, disabled_tools: set = None, compact: bool 
             else:
                 full_blocks.append(section)
 
-    # `B-NEW` (fx10-channel). **The prompt names what this turn is offering.**
+    # `B1379` (fx10-channel). **The prompt names what this turn is offering.**
     # The walk above is over `TOOL_SECTIONS`, which holds 61 of the register's
     # 74 names, so a tool with no section could not be named here however
     # firmly it was offered — and on a fenced route this prompt is the only
@@ -2070,7 +2070,7 @@ _ADMIN_SCHEMA_NAMES = frozenset([
 ])
 _TOOL_SELECTION_TIMEOUT_SECONDS = 1.5
 
-# `B-NEW` (fx9-suite). **Whether the vector index decides which tools a turn is
+# `B1368` (fx9-suite). **Whether the vector index decides which tools a turn is
 # offered.** It did, through a top-8 retrieval inside the timeout above, and
 # that is the whole of the owner's *"intermittent"*: the answer depended on
 # whether an embedding backend answered in 1.5 seconds. `plan_turn_tool_suite`
@@ -2337,7 +2337,7 @@ _ADMIN_KEYWORDS = [
     "note", "notes", "todo", "todos", "reminder", "reminders",
 ]
 
-# `B-NEW` (fx10-intent). **A management word mentioned as a thing is not a
+# `B1371` (fx10-intent). **A management word mentioned as a thing is not a
 # management request.** `_detect_admin_intent` was `any(kw in content_lower for
 # kw in _ADMIN_KEYWORDS)` — a raw substring over the list above — and `archive`
 # is in that list, so the owner's own question about a raid *"called the
@@ -2476,7 +2476,7 @@ def _detect_admin_intent(messages: List[Dict]) -> bool:
     """Check if the last user message suggests admin/management tool usage."""
     for msg in reversed(messages):
         if msg.get("role") == "user":
-            # `B-NEW` (fx10-intent). Pantheon's own per-turn additions are
+            # `B1371` (fx10-intent). Pantheon's own per-turn additions are
             # `user`-role messages (#2927), and one of them — the date/time
             # note — ends up last whenever the latest turn is not a user turn,
             # so this walk could read Pantheon's framing as the person's words.
@@ -2493,7 +2493,7 @@ def _detect_admin_intent(messages: List[Dict]) -> bool:
 def _extract_last_user_message(messages: List[Dict]) -> str:
     """Return the most recent user message as plain text.
 
-    `B-NEW` (fx10-intent). Pantheon's own per-turn additions are `user`-role
+    `B1371` (fx10-intent). Pantheon's own per-turn additions are `user`-role
     messages (#2927), so this walk could answer with Pantheon's framing instead
     of the person's words — `routes/chat_helpers.py:1102` appends the date/time
     note at the **end** of the array whenever the last message is not a user
@@ -2516,7 +2516,7 @@ def _extract_last_user_message(messages: List[Dict]) -> str:
 def _user_turn_count(messages: List[Dict]) -> int:
     """Count real user turns in the message list — the person's, not ours.
 
-    `B-NEW` (fx10-intent). The docstring already said *"real user turns"* and
+    `B1378` (fx10-intent). The docstring already said *"real user turns"* and
     the body counted every `user`-role message, which on this product is not
     the same set. Four of Pantheon's own per-turn additions ride as
     **`user`-role** messages on purpose: the text changes every turn and local
@@ -2912,7 +2912,7 @@ def _skills_may_ship_for_turn(last_user: str) -> bool:
     preference, `allow_tool_preprocessing`, its own casual read) still decide
     the other half.
 
-    `B-NEW` (fx10-intent): the three-part test this spelled out is now
+    `B1370` (fx10-intent): the three-part test this spelled out is now
     `_is_small_talk_turn`, read by this and by two other callers (`Law 7`).
     """
     return not _is_small_talk_turn(last_user)
@@ -2979,7 +2979,7 @@ def _classify_agent_request(messages: List[Dict], last_user: str) -> Dict[str, o
     retrieval_query = _recent_context_for_retrieval(messages) if continuation else text
     q = retrieval_query.lower()
 
-    if _is_small_talk_turn(text):   # `B-NEW` (fx10-intent), `Law 7`
+    if _is_small_talk_turn(text):   # `B1370` (fx10-intent), `Law 7`
         return {
             "low_signal": True,
             "continuation": False,
@@ -3885,7 +3885,7 @@ def _build_system_prompt(
         _ov_sig = _hl.sha256(_json.dumps(get_builtin_overrides() or {}, sort_keys=True).encode()).hexdigest()
     except Exception:
         _ov_sig = ""
-    # `B-NEW` (fx9-suite). The suite's denominator and the reason it narrowed
+    # `B1368` (fx9-suite). The suite's denominator and the reason it narrowed
     # are in the key: the prompt carries a "N of M tools" notice derived from
     # them, so two turns with the same selected set and different candidate
     # sets are two different prompts.
@@ -4097,7 +4097,7 @@ def _build_system_prompt(
                     _content = " ".join(b.get("text", "") for b in _content if isinstance(b, dict))
                 _last_user_msg = _content.lower()
                 break
-        # `B-NEW` (fx10-intent). The same substring class as the admin list:
+        # `B1371` (fx10-intent). The same substring class as the admin list:
         # this was `any(kw in _last_user_msg for kw in _suggest_keywords)`, and
         # `review` is inside **preview** — measured, *"can you preview this
         # slide"* and *"the preview pane is broken"* both turned the active
@@ -4669,7 +4669,7 @@ def _skill_body_tool_in_prompt(relevant_tools, disabled_tools, needs_admin: bool
     8802: the model did exactly as instructed and the product answered
     `tool_blocked` / *"Tool is disabled for this request."* — on a turn whose
     system prompt also said *"Every tool this prompt names is available for this
-    turn… do not look for one that is not listed."* (`B-NEW-9`'s kept line).
+    turn… do not look for one that is not listed."* (`B1309`'s kept line).
 
     Three ways the answer is no, and **none of them is lifted here**: the route
     puts `manage_skills` in `disabled_tools` on an explicit web turn and in
@@ -4712,7 +4712,7 @@ def _record_fenced_channel(tool_names, disabled, compact, owner) -> None:
 def _suite_tally(tool_suite, names, disabled_tools) -> Optional[Dict[str, Any]]:
     """This turn's suite numbers, taken **after** every clamp. One answer.
 
-    `B-NEW-1` (agent:`fx11-order`). Two records say how many tools a turn had —
+    `B1353` (agent:`fx11-order`). Two records say how many tools a turn had —
     the receipt `src.events.record_run_config` stores and the partial-suite
     sentence `_suite_notice_for` writes into the prompt — and each computed it
     itself, from a different pair of sets. They agreed on every turn except the
@@ -4775,9 +4775,9 @@ def _suite_tally(tool_suite, names, disabled_tools) -> Optional[Dict[str, Any]]:
 def _suite_notice_for(tool_suite, tool_names, disabled) -> str:
     """`_partial_suite_notice` for the names this route actually ships.
 
-    `B-NEW` (fx9-suite). The denominator is what the person may call on this
+    `B1368` (fx9-suite). The denominator is what the person may call on this
     turn and the numerator is what survived every clamp between the plan and
-    this prompt. `B-NEW-1` (agent:`fx11-order`): both come from `_suite_tally`
+    this prompt. `B1353` (agent:`fx11-order`): both come from `_suite_tally`
     now, so this sentence and the run receipt cannot state two numbers for one
     turn. Measured unchanged on every cell where the cap does not grow across
     the planner, which is every cell but a `pantheon-qwen3` general-no-tool
@@ -6452,7 +6452,7 @@ async def stream_agent_loop(
     # instead; its docstring carries the measurement.
     _skills_suppressed = bool(suppress_skills) or not _skills_may_ship_for_turn(_last_user)
     _casual_low_signal_turn = _is_casual_low_signal(_last_user)
-    # `B-NEW` (fx10-intent). **What the direct path is gated on.** It was
+    # `B1370` (fx10-intent). **What the direct path is gated on.** It was
     # `_low_signal_turn` — `not continuation and not domains` — so any request
     # whose words missed all eleven domain regexes was answered with no tools,
     # no system prompt and the reply capped at 128 tokens. `_is_small_talk_turn`
@@ -6473,7 +6473,7 @@ async def stream_agent_loop(
             "mcp__email__list_emails", "mcp__email__read_email", "mcp__email__scan_email_unsubscribes",
         }, because=WITHHELD_BY_TURN)
     _prompt_active_document = active_document if _active_document_relevant else None
-    # `B-NEW` (fx10-intent). **The short-circuit kept, and measured, rather
+    # `B1370` (fx10-intent). **The short-circuit kept, and measured, rather
     # than removed.** The brief's question was whether this path still earns a
     # place now that `fx9-suite` sizes the suite against the window: if its
     # only job was keeping a big tool list out of a cheap turn, the budget does
@@ -6885,7 +6885,7 @@ async def stream_agent_loop(
     # this before it filters the MCP schemas by that set.
     _mcp_retrieval_ran = False
 
-    # `B-NEW` (fx9-suite). **The whole suite, by default.** Narrowing is the
+    # `B1368` (fx9-suite). **The whole suite, by default.** Narrowing is the
     # exception now: `plan_turn_tool_suite` offers every tool the person's
     # privileges allow — built-ins, every registered MCP tool, the
     # skill-invoking tools — whenever the set fits this model's proven window
@@ -6895,7 +6895,7 @@ async def stream_agent_loop(
     _suite_mcp_names, _suite_mcp_costs, _suite_mcp_servers = _suite_mcp_tools(
         mcp_mgr, _mcp_disabled_map)
     _tool_suite = None
-    # `B-NEW` (fx9-suite). Whether the selector that produced this turn's set
+    # `B1368` (fx9-suite). Whether the selector that produced this turn's set
     # had every MCP tool's **name** in front of it. `_mcp_retrieval_ran` above
     # answers that for vector retrieval; the suite planner enumerates them
     # itself (rule 5 — an MCP tool is in the suite by default, not a candidate),
@@ -6945,7 +6945,7 @@ async def stream_agent_loop(
             _selection_saw_mcp_names = True
             _log_the_plan("")
         except Exception as exc:
-            # `B-NEW-3` (agent:`fx11-order`). This said it *"fails back onto the
+            # `B1395` (agent:`fx11-order`). This said it *"fails back onto the
             # path that was here before: the selectors below still run"*, and
             # both halves of that sentence were written for the regime where
             # retrieval chose the turn. **There is one selector below, not
@@ -7403,7 +7403,7 @@ async def stream_agent_loop(
     if _relevant_tools is not None:
         logger.info("[agent-intent] selected_tools=%s", sorted(_relevant_tools)[:50])
 
-    # `B-NEW` (fx9-suite). **The turn records which tools it withheld and why**,
+    # `B1368` (fx9-suite). **The turn records which tools it withheld and why**,
     # where the run is already recorded (`run_config`, `P4-25`/`P17-12`). The
     # record is taken here rather than inside the planner because this is where
     # the set is final for the primary route: every widening (the intent's
@@ -7414,7 +7414,7 @@ async def stream_agent_loop(
     if _tool_suite is not None and _relevant_tools is not None:
         try:
             from src.events import record_run_config as _record_run_config
-            # `B-NEW-1` (agent:`fx11-order`). The numerator was re-taken here
+            # `B1353` (agent:`fx11-order`). The numerator was re-taken here
             # and the denominator was not, so the record was half pre-clamp and
             # half post-clamp — and on a `pantheon-qwen3` general-no-tool turn
             # the two halves were 79 apart (plan 81/81 against a cap of 2; the
@@ -7544,7 +7544,7 @@ async def stream_agent_loop(
             headers=candidate_headers,
         )
         _prompt_report: Dict[str, Any] = {}
-        # `B-NEW` (fx9-suite). The plan goes to the prompt as well as to the
+        # `B1368` (fx9-suite). The plan goes to the prompt as well as to the
         # schema list, so a turn that carries part of the suite says so.
         route_messages, route_mcp_schemas = _build_system_prompt(
             _strip_agent_injected_messages(compacted_source),
@@ -7947,7 +7947,7 @@ async def stream_agent_loop(
                 # The filter stays wherever the selector could actually see the
                 # names — vector retrieval over a freshly indexed MCP collection
                 # (`_mcp_retrieval_ran`), or the suite planner, which enumerates
-                # them itself (`_selection_saw_mcp_names`, `B-NEW` fx9-suite).
+                # them itself (`_selection_saw_mcp_names`, `B1368` fx9-suite).
                 # Where neither did, an MCP tool is not a tool a selector ranked
                 # out — it is a tool the selector never met, and a person who
                 # registered a server registered it to be reachable.

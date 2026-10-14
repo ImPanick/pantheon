@@ -359,14 +359,14 @@ def test_the_general_no_tool_clamp_still_withholds_every_known_tool(measured, wh
 
 
 def test_the_notes_clamp_still_cannot_lift_a_privilege(measured):
-    """`fx11-cap`'s `B-NEW-1`, re-asked here because this lane reorders records
+    """`fx11-cap`'s `B1348`, re-asked here because this lane reorders records
     around that clamp: a non-admin's notes turn is not offered
     `manage_calendar` or `manage_tasks`."""
     order = measured[("notes", "user", "up")]
     # Asked of the cap and of the request, not of `_assemble_prompt`'s first
     # argument: `_ADMIN_PROMPT_FORCE_INCLUDE` puts `manage_tasks` there on any
     # turn whose text trips `_ADMIN_KEYWORDS`, and the prompt builder's own
-    # subtraction is what removes it (`fx11-cap`'s `B-NEW-3`).
+    # subtraction is what removes it (`fx11-cap`'s `B1350`).
     assert {"manage_calendar", "manage_tasks"} <= set(order.cap_at_prompt_names)
     assert "manage_calendar" not in order.array
     assert "manage_tasks" not in order.array

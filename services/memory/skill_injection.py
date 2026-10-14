@@ -54,7 +54,7 @@ INDEX_PREAMBLE = (
 #: 8802, the model read *"fetch the full procedure with `manage_skills`"*, called
 #: it, and got back `tool_blocked` / *"Tool is disabled for this request."* —
 #: while the same prompt said *"Every tool this prompt names is available for
-#: this turn… do not look for one that is not listed."* (`B-NEW-9`). Two
+#: this turn… do not look for one that is not listed."* (`B1309`). Two
 #: sentences a model cannot both obey is `Law 10` on the wire.
 INDEX_PREAMBLE_NO_FETCH = (
     "Procedures the assistant should consult before doing domain work. "

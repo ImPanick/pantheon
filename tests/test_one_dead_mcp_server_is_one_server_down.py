@@ -10,7 +10,7 @@ each, one whose command is `/bin/false`:
     scope 7f7b0c2bfb50
 
 (`scripts/tool-suite-matrix.py --quick --repeats 3`, both embedding states,
-every run; the same verdict `fx9-proof` filed as `B-NEW-3`.) `get_all_statuses()`
+every run; the same verdict `fx9-proof` filed as `B1380`.) `get_all_statuses()`
 came back `{}` — not one of the three servers was recorded, including the two
 that work — so a person with three MCP servers, one of which has a typo in its
 command, got **none** of them and no sentence about any of them.
@@ -171,12 +171,12 @@ def test_the_live_servers_keep_their_tools(server_path, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# Who is told, and what they are told (`fx6-tools` `B-NEW-7`'s telling, reused)
+# Who is told, and what they are told (`fx6-tools` `B1307`'s telling, reused)
 # ---------------------------------------------------------------------------
 
 
 def test_the_model_is_told_which_server_is_down_and_why(server_path, monkeypatch):
-    """The prompt block `B-NEW-7` built, finally reached by a boot failure."""
+    """The prompt block `B1307` built, finally reached by a boot failure."""
     manager = McpManager()
     _raised, _statuses, block = _boot(
         manager, _three_rows(server_path), monkeypatch,

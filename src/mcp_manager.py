@@ -38,7 +38,7 @@ def _format_mcp_connection_error(name: str, command: str = "", args: Optional[Li
 
 
 #: What a person reads when a server's own transport cancelled the handshake.
-#: `B-NEW` (fx10-channel). anyio's own text is `Cancelled via cancel scope
+#: `B1380` (fx10-channel). anyio's own text is `Cancelled via cancel scope
 #: 0x7f…`, which names nothing a person owns and no action they can take, so it
 #: is not what gets stored — `_connect_cancelled_message` keeps it in the log
 #: and puts this in the status the Settings panel and the model's prompt read.
@@ -51,7 +51,7 @@ _CONNECT_CANCELLED_REASON = (
 def _connect_cancelled_message(name: str, error: BaseException = None) -> str:
     """The error recorded for a connect the transport cancelled mid-handshake.
 
-    `B-NEW` (fx10-channel). Measured on `b6a1bbf` with three registered stdio
+    `B1380` (fx10-channel). Measured on `b6a1bbf` with three registered stdio
     servers, one of them `/bin/false`: `anyio` cancels `stdio_client`'s cancel
     scope when the child exits during `initialize()`, and the resulting
     `CancelledError` — a `BaseException`, so no `except Exception` in this
@@ -440,7 +440,7 @@ _MCP_INSTRUCTIONS_MAX = 2000
 # readable through `GET /api/mcp/servers` and `manage_mcp list`.
 _MCP_PROMPT_INSTRUCTIONS_MAX = 600
 # How much of a NOT-ANSWERING server's error goes into the system prompt.
-# `B-NEW` (fx10-channel), `Law 17`: the text is the server's own words, it
+# `B1380` (fx10-channel), `Law 17`: the text is the server's own words, it
 # reaches the model one line per server, and a server that cannot connect must
 # not be able to buy more of the window — or more lines of the prompt — by
 # failing loudly. The full error stays readable through
@@ -1078,7 +1078,7 @@ class McpManager:
                 self._generation += 1
             return res
         except asyncio.CancelledError as e:
-            # `B-NEW` (fx10-channel). **One server's failure is one server's
+            # `B1380` (fx10-channel). **One server's failure is one server's
             # failure.** `asyncio.CancelledError` is a `BaseException`, so the
             # `except Exception` below never saw it — and anyio raises exactly
             # that when `stdio_client`'s cancel scope is torn down because the
@@ -1357,7 +1357,7 @@ class McpManager:
     async def connect_all_enabled(self):
         """Connect every enabled server. One row's failure is one row's failure.
 
-        `B-NEW` (fx10-channel). This gathered with **no `return_exceptions`**,
+        `B1380` (fx10-channel). This gathered with **no `return_exceptions`**,
         so the first task to fail ended the await while the others were still
         shaking hands: measured on `b6a1bbf` over three registered stdio
         servers, one of them `/bin/false` — `aborted, 0 connected, 0 MCP tools,
@@ -1366,7 +1366,7 @@ class McpManager:
         into that server's recorded error now, and this waits for all of them
         and records whatever still comes back as an exception, so every server
         ends the boot with a status and a reason (`Law 10`) — which is what
-        `fx6-tools`' `B-NEW-7` prompt block and `GET /api/mcp/servers` both
+        `fx6-tools`' `B1307` prompt block and `GET /api/mcp/servers` both
         read, so the person and the model are told without a second telling
         being built (`Law 7`).
 
@@ -2052,14 +2052,14 @@ class McpManager:
     def _servers_not_answering(self) -> list:
         """`[(server_name, reason)]` for every registered server with no tools.
 
-        `B-NEW`. Read by the prompt block above, so one answer to "which
+        `B1380`. Read by the prompt block above, so one answer to "which
         servers are down" reaches the model (`Law 7`); the person's half is
         `GET /api/mcp/servers`, which carries the same statuses untruncated.
         Built-in Python servers are excluded for the same reason they are
         excluded from the schemas and from the block: they are not a thing an
         operator registered, and `builtin_browser` is the one that is.
 
-        **The reason is one bounded line.** `B-NEW` (fx10-channel), `Law 17`:
+        **The reason is one bounded line.** `B1380` (fx10-channel), `Law 17`:
         it is the server's own error text, it goes into the system prompt one
         line per server, and a server that cannot connect must not be able to
         take extra lines or extra window by failing loudly — the

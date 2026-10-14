@@ -30,7 +30,7 @@ Three mechanisms, measured on `b6a1bbf` before a line was written:
      the owner's own question about a raid *"called the fractured archive"*
      force-included fifteen management tools.
 
-And `fx9-proof`'s `B-NEW-8`: five schema-backed tools the prompt names while
+And `fx9-proof`'s `B1385`: five schema-backed tools the prompt names while
 the request withholds them, every one of them on a line that also names a tool
 the turn **does** have, which is the one case `prune_rules_to_available_tools`
 cannot see.
@@ -462,7 +462,7 @@ def _named_but_not_offered(prompt: str, offered) -> list:
     "adopt_served_model", "app_api", "manage_memory", "serve_model", "write_file",
 ])
 def test_the_prompt_does_not_promise_a_tool_a_gate_holds(monkeypatch, name):
-    """`fx9-proof` `B-NEW-8`, measured per name: for a non-admin these five
+    """`fx9-proof` `B1385`, measured per name: for a non-admin these five
     were `prompt_only` in every cell of the matrix, each on a line that also
     named a tool the turn did have."""
     _base(monkeypatch, _mcp_manager(), blocked=NON_ADMIN_BLOCKED_TOOLS)

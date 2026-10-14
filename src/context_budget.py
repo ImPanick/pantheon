@@ -793,7 +793,7 @@ def _classify(msg: dict, index: int, history: bool) -> tuple[str, str]:
     return "conversation", role or "user"
 
 
-# ── `B-NEW` (fx9-suite). What a tool definition costs, and what the window
+# ── `B1368` (fx9-suite). What a tool definition costs, and what the window
 # can spend on tool definitions ───────────────────────────────────────────────
 #
 # The measurement this wave is built on, re-taken here with the product's own

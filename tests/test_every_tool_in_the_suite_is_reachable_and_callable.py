@@ -240,7 +240,7 @@ def test_a_registered_mcp_tool_reaches_the_model_in_every_shape(scratch):
 def test_a_down_mcp_server_does_not_cost_the_builtin_suite(scratch):
     """A server that is not answering must not subtract from what is offered.
 
-    `fx6-tools`' `B-NEW-2` is the other direction (MCP tools dropped when
+    `fx6-tools`' `B1302` is the other direction (MCP tools dropped when
     retrieval could not see them). This is the control for it: a dead server is
     allowed to contribute nothing and not allowed to take anything away.
     """
@@ -487,7 +487,7 @@ def test_the_two_loop_primitives_are_in_the_array_and_not_only_the_prompt(scratc
     """`ask_user` and `update_plan` are in the `tools` array on every turn.
 
     `_build_base_prompt` force-includes both as the loop's irreducible
-    primitives, so the prompt has always named them; fx6's `B-NEW-1` is the
+    primitives, so the prompt has always named them; fx6's `B1301` is the
     half where the schema filter did not, and a native-tools turn named two
     tools the request withheld (`Law 13`). Pinned directly rather than left to
     a mutation: taking them back out of `_tool_schemas_for_route`'s

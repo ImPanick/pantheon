@@ -85,7 +85,7 @@ WINDOW_MODELS = {
 #: (`fx11-order`). `src/agent_loop._is_pantheon_qwen_model` is a prefix test on
 #: the model's **name**, which is the whole of how a turn reaches the three
 #: finetune modes — so a probe that cannot name the model cannot reach them at
-#: all, and `B-NEW-1` (fx11-order) lives in exactly one of them. The windows are
+#: all, and `B1353` (fx11-order) lives in exactly one of them. The windows are
 #: `WINDOW_TOKENS`' so the endpoint reports a real one and the planner's `room`
 #: is not the `window_unknown` branch (`D-2026-10-07-02` §1: a window is read
 #: from the endpoint, never from the name).
@@ -508,7 +508,7 @@ async def build_mcp_manager(state: str, script_path: str):
     else:
         # A command that exits at once: registered, never answers. This is the
         # state a person's install is in when the command is wrong or the
-        # dependency is missing, and `fx6-tools`' `B-NEW-7` is about what the
+        # dependency is missing, and `fx6-tools`' `B1307` is about what the
         # model is told then.
         #
         # `except BaseException` is not laziness. Measured here on `0bd089d`,
@@ -1227,7 +1227,7 @@ def _call_verdict(record: TurnRecord, tool: str,
     bare-JSON call is **not** parsed, the loop has nothing to execute and
     streams the model's own words straight through, so the person reads the
     unparsed call itself. Measured while building this harness: without this,
-    making `_MCP_TOOL_BLOCK_RE` unmatchable — fx6's `B-NEW-6` put back —
+    making `_MCP_TOOL_BLOCK_RE` unmatchable — fx6's `B1306` put back —
     reddened nothing, because the dropped fence was echoed to the person and
     read as "the person was told something".
     """

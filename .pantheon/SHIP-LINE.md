@@ -151,6 +151,20 @@ Part 2 control was touched by this wave.
 
 **Direction as of 2026-10-14: the open count is rising.**
 
+Re-measured 2026-10-14 again, after `fx11-order` landed and the second tracker pass gave the `fx9`/`fx10`
+lanes' filed rows ids: 224 filed, 109 closed — **a ratio of 2.055**, open 294 → 409, done 75.1 % → 70.9 %.
+The filing is a reconciliation rather than a rate: of the 50 rows the two passes added (`B1348`–`B1397`),
+**29 had already shipped when the row was written** — seven lanes' fixes that merged without a row — and
+`B1353` shipped after its row existed, so **30 are closed and 20 are open**; three rows that were already here also
+stopped reading `[ ]` (`B1170`, `B1330`, `B1343`). Of the 20 open, **none is a gate** and `ship-line.py --check` reads
+**128 adjudicated, 409 open, nothing unclassified**. Four are a decision rather than lane work, three of them saying
+*“needs the owner”* in so many words: `B1357` (six built-in tools on one channel only), `B1369` (what *“proven window”* should mean),
+`B1375` (a long matched procedure's tail against the person's earlier turns) and `B1390` (whether the three
+`vault_*` tools should be retired or given both channels — a `FORBIDDEN.md` Part 2 question). No Part 2
+control was touched by either pass.
+
+**Direction as of 2026-10-14, after the second tracker pass: the open count is rising.**
+
 ### A second number, which is the one that moves
 
 Of the last 40 `B` rows filed — `B360` through `B455`, four waves of sweeps plus

@@ -497,7 +497,7 @@ def test_a_whole_suite_turn_says_nothing_about_being_partial(monkeypatch):
 
 
 def test_the_partial_notice_names_no_tool():
-    """`B-NEW-4`'s lesson: a prompt that backticks a tool the request withholds
+    """`B1304`'s lesson: a prompt that backticks a tool the request withholds
     sends the model looking for it. The notice says a count and a reason."""
     notice = al._partial_suite_notice(11, 74, "window")
     named = set(BACKTICKED.findall(notice)) & known_tool_names()
@@ -709,7 +709,7 @@ def test_a_withheld_mcp_tool_is_not_in_the_request_either(monkeypatch):
 
 
 def test_the_mcp_schema_filter_still_ships_every_tool_when_no_selector_saw_them(monkeypatch):
-    """`fx6-tools`' `B-NEW-2`, unchanged: a caller-provided set says nothing
+    """`fx6-tools`' `B1302`, unchanged: a caller-provided set says nothing
     about MCP, so the MCP schemas are not filtered by it."""
     _base(monkeypatch, _mcp_manager())
     _events, sent = _drive(monkeypatch, ["Nothing to do."],

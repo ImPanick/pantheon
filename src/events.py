@@ -711,7 +711,7 @@ def record_run_config(*, sampling: Optional[Dict[str, Any]] = None,
         # is a different fact from `None`, meaning nobody looked.
         payload["fenced"] = sorted({str(n) for n in fenced if n})
     if suite is not None:
-        # `B-NEW` (fx9-suite). **What this turn did NOT offer, and why.** The
+        # `B1368` (fx9-suite). **What this turn did NOT offer, and why.** The
         # three keys above say what the model was shown; none of them could say
         # whether that was everything the person's privileges allow. A turn
         # offering eleven of seventy-four and a turn offering seventy-four of
@@ -722,7 +722,7 @@ def record_run_config(*, sampling: Optional[Dict[str, Any]] = None,
             "offered": int(suite.get("offered") or 0),
             "candidates": int(suite.get("candidates") or 0),
             "withheld": sorted({str(n) for n in (suite.get("withheld") or []) if n}),
-            # `B-NEW-1` (agent:`fx11-order`). **The two are different facts and
+            # `B1353` (agent:`fx11-order`). **The two are different facts and
             # the field names say which.** `withheld` is what this route held
             # back from the tools the turn could call; `capped_after_plan` is
             # what the turn's own cap withheld *after* the suite was planned —

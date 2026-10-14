@@ -102,7 +102,7 @@ def test_the_line_is_the_registers_own_words_not_a_second_copy():
 
 
 def test_the_prompt_still_does_not_name_a_tool_this_turn_withholds():
-    """`B-NEW-4`'s rule holds: the new lines are for the OFFERED set only."""
+    """`B1304`'s rule holds: the new lines are for the OFFERED set only."""
     offered = {"ask_user", "update_plan", "ls", "read_file"}
     named = prompt_tool_names(_fenced_prompt(offered))
     assert "ls" in named
@@ -117,7 +117,7 @@ def test_a_disabled_tool_gets_no_line_of_its_own():
     Asserted as *no usage line*, not as *the name appears nowhere*: the rule
     pruner's documented rule is per LINE — *"Prefer `grep`, `glob`, and `ls`
     over shell equivalents when available"* survives on `grep` and `glob`, and
-    rewriting prose is not something a filter can do honestly (`B-NEW-12`).
+    rewriting prose is not something a filter can do honestly (`B1311`).
     What this row controls is whether the tool is advertised as callable.
     """
     prompt = al._assemble_prompt(set(_register_names()), {"host_shell", "ls"},
