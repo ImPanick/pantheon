@@ -1871,9 +1871,12 @@ class McpManager:
         above says what this answers and why it matters — *"saying `True` here
         **mutes a server**"* — and the predicate that does the muting,
         `is_builtin(id) and id != "builtin_browser"`, was written out at three
-        sites in this file plus a fourth in `task_scheduler`'s check-in
-        discovery. A fifth place then asked a *different* question and got a
-        different answer: `src/agent_loop._suite_mcp_tools` builds the turn's
+        sites in this file. (`src/task_scheduler.py:4405` is a fourth reader of
+        the same question and deliberately a **different** rule — check-in
+        discovery looks for servers a person registered, so it skips
+        `builtin_browser` too; it is read and left alone rather than folded in
+        here.) A fourth place in `src/agent_loop.py` then asked a *different*
+        question and got a different answer: `src/agent_loop._suite_mcp_tools` builds the turn's
         MCP candidate list from `get_all_tools`, which keeps every server, while
         the two channels (`get_all_openai_schemas` and
         `get_tool_descriptions_for_prompt`) both skip the Python built-ins.
