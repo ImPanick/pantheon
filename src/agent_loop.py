@@ -4067,10 +4067,13 @@ def _suite_notice_for(tool_suite, tool_names, disabled) -> str:
     if tool_suite is None:
         return ""
     try:
-        candidates = set(tool_suite.candidates)
+        # The denominator is what the person may use on THIS prompt, so a tool
+        # the prompt itself switches off (`generate_image` when image
+        # generation is off) is in neither half rather than reading as withheld.
+        candidates = set(tool_suite.candidates) - set(disabled or ())
         if not candidates:
             return ""
-        offered = candidates & (set(tool_names or ()) - set(disabled or ()))
+        offered = candidates & set(tool_names or ())
         reason = tool_suite.reason if len(offered) >= len(tool_suite.offered) else "route"
         return _partial_suite_notice(len(offered), len(candidates), reason)
     except Exception as exc:
