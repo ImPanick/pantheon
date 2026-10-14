@@ -214,6 +214,91 @@ def test_the_same_question_twenty_times_builds_the_same_block(store):
     assert next(iter(seen)) != ""
 
 
+# ── 1b. the same two gates, through the real loop ───────────────────────────
+
+
+def _one_request(monkeypatch, question, **loop_kwargs):
+    """The request `stream_agent_loop` actually builds, messages and tools.
+
+    The loop's own gate lives here and nowhere `_build_system_prompt` can see,
+    which is why both `B1359` and `B1360` survived a suite that drives the
+    builder: every case above this line would pass with the old gates in place.
+    """
+    monkeypatch.setattr(agent_loop, "get_setting", lambda k, d=None: d, raising=False)
+    monkeypatch.setattr(agent_loop, "get_mcp_manager", lambda: None, raising=False)
+    monkeypatch.setattr(agent_loop, "estimate_tokens", lambda *a, **k: 10, raising=False)
+    monkeypatch.setattr(agent_loop, "blocked_tools_for_owner", lambda o: set(),
+                        raising=False)
+    seen = {}
+
+    async def capture(*a, **k):
+        factory = k.get("candidate_request_factory")
+        if factory is not None:
+            req = await factory(0, "http://local.test/v1", "small-local-model", None) or {}
+            seen["messages"] = req.get("messages") or []
+            # The schemas ride in `kwargs`, which is where `stream_llm` reads
+            # them from — asking the request's top level would assert nothing.
+            _kw = req.get("kwargs") or {}
+            seen["tools"] = [t.get("function", {}).get("name")
+                             for t in (_kw.get("tools") or [])]
+            _sys = [m for m in seen["messages"] if m.get("role") == "system"]
+            seen["prompt_names_tool"] = (
+                "```manage_skills```" in (_sys[0]["content"] if _sys else ""))
+        yield f"data: {json.dumps({'delta': 'Done.'})}\n\n"
+        yield "data: [DONE]\n\n"
+
+    monkeypatch.setattr(agent_loop, "stream_llm_with_fallback", capture, raising=False)
+
+    async def drain():
+        async for _ in agent_loop.stream_agent_loop(
+            "http://local.test/v1", "small-local-model",
+            [{"role": "user", "content": question}],
+            max_rounds=1, **loop_kwargs,
+        ):
+            pass
+
+    asyncio.run(drain())
+    return seen
+
+
+def test_the_loop_itself_ships_the_catalogue_for_a_procedure_question(store, monkeypatch):
+    """`B1359`, through `stream_agent_loop`: the measurement the live drive made
+    on port 8802, as a case. Red on `0bd089d` and on any tree that puts
+    `_low_signal_turn` back in `_skills_suppressed`."""
+    seen = _one_request(monkeypatch, PROCEDURE_QUESTION, relevant_tools={"bash"})
+    assert seen.get("messages"), "no request was built, so this asserts nothing"
+    assert _skills_block(seen["messages"]), (
+        "the loop withheld the catalogue from the question a skill answers"
+    )
+
+
+def test_the_loop_still_withholds_it_from_a_greeting(store, monkeypatch):
+    """`Law 1`."""
+    seen = _one_request(monkeypatch, GREETING, relevant_tools={"bash"})
+    assert seen.get("messages")
+    assert _skills_block(seen["messages"]) == ""
+
+
+def test_the_loop_offers_the_tool_the_catalogue_names(store, monkeypatch):
+    """`B1360`, through `stream_agent_loop`: the catalogue ships and
+    `manage_skills` is in the request's own `tools` array. Red on `0bd089d`,
+    where the two gates disagreed — measured live, the model called the tool the
+    block named and got *"Tool is disabled for this request."*"""
+    seen = _one_request(monkeypatch, PROCEDURE_QUESTION, relevant_tools={"bash"})
+    assert _skills_block(seen["messages"])
+    assert "manage_skills" in seen["tools"]
+    assert seen["prompt_names_tool"] is True
+
+
+def test_the_loop_offers_it_to_nobody_when_the_route_suppressed_skills(store, monkeypatch):
+    """The other direction of one gate: no catalogue, no tool."""
+    seen = _one_request(monkeypatch, PROCEDURE_QUESTION, relevant_tools={"bash"},
+                        suppress_skills=True)
+    assert _skills_block(seen["messages"]) == ""
+    assert "manage_skills" not in seen["tools"]
+    assert seen["prompt_names_tool"] is False
+
+
 # ── 2. the model can actually load one ──────────────────────────────────────
 
 def test_the_tool_that_loads_a_body_is_offered_whenever_the_catalogue_ships(store):
@@ -464,9 +549,16 @@ def _footer(js_sandbox, rows):
         wrap._skillsInjected = %s;
         wrap.appendChild(createMsgFooter(wrap));
         const pill = wrap.querySelector('.skills-used-pill');
+        // The popover's rows are built on the pill's own click handler, so
+        // they exist only after one — the shim has `click()` for exactly this.
+        if (pill) pill.dispatchEvent({ type: 'click',
+          stopPropagation() {}, preventDefault() {} });
+        const rows = document.querySelectorAll('.skills-used-text')
+          .map((n) => n.textContent);
         console.log(JSON.stringify({
           aria: pill ? pill.getAttribute('aria-label') : null,
           title: pill ? pill.title : null,
+          rows,
         }));
     """) % json.dumps(rows)
     return _run(js_sandbox, "", script)
@@ -482,6 +574,7 @@ def test_the_pill_says_which_skill_was_applied(js_sandbox):
     assert out["aria"] == "2 skills available, 1 applied"
     assert "rotate-logs (ops) — applied" in out["title"]
     assert "greet-a-new-client (sales)\n" in out["title"] + "\n"
+    assert out["rows"] == ["rotate-logs — applied", "greet-a-new-client"], out["rows"]
 
 
 def test_the_pill_says_nothing_extra_when_no_body_was_applied(js_sandbox):
