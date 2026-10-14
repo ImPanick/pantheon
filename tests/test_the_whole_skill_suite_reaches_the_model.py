@@ -54,6 +54,10 @@ LONG_STEP = ("Open the vendor console, select the affected tenant, confirm the "
              "region matches the one in the ticket, and copy the correlation id "
              "into the incident channel before touching anything else. ")
 
+#: The six fixture skills are stamped with an owner, because `load(owner=...)`
+#: is a strict ownership filter and `load(owner=None)` filters nothing — so one
+#: store answers both the ordinary cases and the per-person budget ones.
+OWNER = "tester"
 PROCEDURE_QUESTION = "What is our procedure when a brand new client signs?"
 #: Read out of the shipped note rather than restated, so rewording the note
 #: cannot leave these cases asserting a string nothing sends (`Law 7`).
@@ -73,7 +77,7 @@ def _write_skill(root: Path, name, *, category="general", status="published",
     if requires:
         fm.append(f"requires_toolsets: [{', '.join(requires)}]")
     fm += [f"status: {status}", f"confidence: {confidence}", f"source: {source}",
-           "created: 2026-01-01T00:00:00Z", "---", "",
+           f"owner: {OWNER}", "created: 2026-01-01T00:00:00Z", "---", "",
            "## When to Use", f"- {when_to_use}", "", "## Procedure"]
     for i, step in enumerate(procedure or ["do it"], 1):
         fm.append(f"{i}. {step}")
@@ -346,15 +350,21 @@ def test_a_body_the_model_asks_for_comes_back(store):
     that does not exist — in its own sentence."""
     from src.tools.system import do_manage_skills
     ok = asyncio.run(do_manage_skills(
-        json.dumps({"action": "view", "name": "rotate-logs"}), owner=None))
+        json.dumps({"action": "view", "name": "rotate-logs"}), owner=OWNER))
     assert "## Procedure" in ok["results"]
     draft = asyncio.run(do_manage_skills(
-        json.dumps({"action": "view", "name": "half-written-thing"}), owner=None))
+        json.dumps({"action": "view", "name": "half-written-thing"}), owner=OWNER))
     assert "results" in draft
     missing = asyncio.run(do_manage_skills(
-        json.dumps({"action": "view", "name": "no-such-skill"}), owner=None))
+        json.dumps({"action": "view", "name": "no-such-skill"}), owner=OWNER))
+    other = asyncio.run(do_manage_skills(
+        json.dumps({"action": "view", "name": "rotate-logs"}), owner="somebody-else"))
     assert missing.get("exit_code") == 1
     assert "not found" in missing["error"]
+    # A skill somebody else owns is not loadable, and says the same sentence —
+    # the ownership filter is `load`'s, and nothing here widens it.
+    assert other.get("exit_code") == 1
+    assert "not found" in other["error"]
 
 
 # ── 3. one answer to "may the model see this skill" (`Law 7`) ────────────────
@@ -451,15 +461,18 @@ def test_the_injecting_call_site_reads_the_persons_own_budget(store, monkeypatch
     from src.context_budget import SKILL_INDEX_BUDGET
 
     def _role_limit(key, owner=None):
-        if key == SKILL_INDEX_BUDGET and owner == "tight-role":
+        if key == SKILL_INDEX_BUDGET and owner == OWNER:
             return 700
         return None
 
     monkeypatch.setattr(settings, "role_limit", _role_limit)
-    _body, report = _prompt(PROCEDURE_QUESTION, owner="tight-role")
+    _body, report = _prompt(PROCEDURE_QUESTION, owner=OWNER)
+    assert report["skill_index_chars"] > 0, "this person has no skills, so nothing is asserted"
     assert report["skill_index_chars"] <= 700
+    assert report["skill_index_truncated"] is True
     _body2, report2 = _prompt(PROCEDURE_QUESTION, owner=None)
     assert report2["skill_index_chars"] > 700
+    assert report2["skill_index_truncated"] is False
 
 
 # ── 5. the person sees which skills were in play ────────────────────────────
@@ -590,3 +603,30 @@ def test_the_pill_still_names_the_teacher(js_sandbox):
          "source": "teacher-escalation", "teacher_model": "big-model"},
     ])
     assert out["aria"] == "1 skill available, 1 applied, 1 written by the teacher"
+
+
+def test_the_receipt_names_only_the_skills_whose_lines_fitted(store, monkeypatch):
+    """`B1365`. The receipt was built from the list handed to the renderer, so a
+    catalogue cut to its budget still told the person their model had seen every
+    entry — measured on `0bd089d` with the bundled library published, 286 names
+    against a block that holds ~43."""
+    import src.settings as settings
+    from src.context_budget import SKILL_INDEX_BUDGET
+
+    monkeypatch.setattr(
+        settings, "role_limit",
+        lambda key, owner=None: 700 if (key == SKILL_INDEX_BUDGET
+                                        and owner == OWNER) else None)
+    body, report = _prompt(PROCEDURE_QUESTION, owner=OWNER)
+    block = _skills_block(body)
+    assert report["skill_index_truncated"] is True
+    named = {r["name"] for r in report["skill_index"]}
+    assert named == set(report["skill_index_listed"])
+    assert named, "the receipt named nothing at all"
+    for name in named:
+        assert _named_in_index(block, name), f"{name} is on the receipt and not in the block"
+    dropped = {"rotate-logs", "greet-a-new-client", "incident-runbook",
+               "teacher-log-fix", "needs-bash-only"} - named
+    assert dropped, "the budget did not bind, so this asserts nothing"
+    for name in dropped:
+        assert not _named_in_index(block, name)

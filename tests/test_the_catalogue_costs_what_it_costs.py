@@ -155,10 +155,21 @@ def test_the_renderer_reports_what_it_did_to_whoever_asked():
     assert report["skill_index_omitted"] > 0
     assert report["skill_index_chars"] <= PROMPT_BUDGETS[SKILL_INDEX_BUDGET]
 
+    # `B1365`. The report gained a fourth fact — the names that actually
+    # reached the block — because `P4-16`'s receipt was built from the list
+    # handed IN, so a catalogue cut to fit still told the person their model had
+    # seen every entry. Asserted key by key rather than as a whole dict, so the
+    # next true thing the renderer learns to say does not read as a regression.
+    assert sorted(report) == ["skill_index_chars", "skill_index_listed",
+                              "skill_index_omitted", "skill_index_truncated"]
+    assert len(report["skill_index_listed"]) == 300 - report["skill_index_omitted"]
+
     report2: dict = {}
     render_skill_index_block(_index(2, desc_chars=20), report=report2)
-    assert report2 == {"skill_index_chars": report2["skill_index_chars"],
-                       "skill_index_truncated": False, "skill_index_omitted": 0}
+    assert report2["skill_index_truncated"] is False
+    assert report2["skill_index_omitted"] == 0
+    assert report2["skill_index_chars"] > 0
+    assert len(report2["skill_index_listed"]) == 2
 
 
 def test_the_index_carries_the_counters_the_cut_decides_on(tmp_path):

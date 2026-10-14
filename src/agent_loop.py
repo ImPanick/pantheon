@@ -4061,6 +4061,14 @@ def _build_base_prompt(
                 can_fetch=_skill_body_tool_in_prompt(
                     relevant_tools, disabled, needs_admin),
             )
+            # `B1365`. This read `skill_idx` — the list handed to the renderer —
+            # so when the catalogue was cut to fit its budget the receipt still
+            # named every entry, and the footer pill told the person their model
+            # had been shown skills whose lines never left this function. The
+            # renderer reports what survived; this is that list.
+            _listed = (context_report or {}).get("skill_index_listed")
+            _survivors = (set(_listed) if isinstance(_listed, list)
+                          else {_s.get("name") for _s in skill_idx})
             skill_index_used = [
                 {
                     "name": _s.get("name", ""),
@@ -4075,6 +4083,7 @@ def _build_base_prompt(
                     "via": "agent",
                 }
                 for _s in skill_idx
+                if _s.get("name") in _survivors
             ]
         except Exception as _e:
             # Skill index is a soft enhancement — never fail prompt assembly on it.

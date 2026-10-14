@@ -207,7 +207,7 @@ def render_skill_index_block(index: Optional[Sequence[Dict]],
     if not entries:
         if isinstance(report, dict):
             report.update({"skill_index_chars": 0, "skill_index_truncated": False,
-                           "skill_index_omitted": 0})
+                           "skill_index_omitted": 0, "skill_index_listed": []})
         return ""
 
     if budget_chars is None:
@@ -218,6 +218,7 @@ def render_skill_index_block(index: Optional[Sequence[Dict]],
             budget_chars = None
 
     block = _render(entries, can_fetch=can_fetch)
+    listed = [str(e.get("name")) for e in entries]
     omitted = 0
     if budget_chars and len(block) > int(budget_chars):
         # Cheapest thing that is still correct: rank once, then bisect on how
@@ -240,6 +241,7 @@ def render_skill_index_block(index: Optional[Sequence[Dict]],
             keep = 1
         omitted = len(ranked) - keep
         survivors = {id(e) for e in ranked[:keep]}
+        listed = [str(e.get("name")) for e in entries if id(e) in survivors]
         block = _render([e for e in entries if id(e) in survivors],
                         INDEX_TRUNCATION_NOTE.format(omitted=omitted) if omitted else "",
                         can_fetch=can_fetch)
@@ -247,7 +249,12 @@ def render_skill_index_block(index: Optional[Sequence[Dict]],
     if isinstance(report, dict):
         report.update({"skill_index_chars": len(block),
                        "skill_index_truncated": bool(omitted),
-                       "skill_index_omitted": omitted})
+                       "skill_index_omitted": omitted,
+                       # `B1365`. The names that actually reached the block.
+                       # `P4-16`'s receipt was built from the list handed IN,
+                       # so a catalogue cut to fit still told the person their
+                       # model had seen all 286 of them.
+                       "skill_index_listed": listed})
     return block
 
 
