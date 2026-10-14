@@ -844,7 +844,7 @@ When referencing app entities by id, use clickable markdown anchors:
 """
 
 _DOMAIN_RULES = {
-    # `B-NEW`. The "Research X" sentence moved out of this block and into
+    # `B1304`. The "Research X" sentence moved out of this block and into
     # `_TOOL_GATED_RULE_LINES` below, where it ships only on a turn that can
     # actually call `trigger_research`. It sat here, on a block gated by
     # `web_search`/`web_fetch`, and so reached every turn with web tools on
@@ -1260,7 +1260,7 @@ def plan_turn_tool_suite(
 
 _PROMISED_TOOL_RE = re.compile(r"`([a-z][a-z0-9_]{2,40})`")
 
-# `B-NEW`. A rule that **directs the model to one tool** belongs to that tool,
+# `B1304`. A rule that **directs the model to one tool** belongs to that tool,
 # not to the domain block it reads well in. The line pruner below drops a line
 # whose names are all unavailable, and that is right for a rule about tools the
 # turn happens not to have; it cannot judge this shape, where the unavailable
@@ -1280,7 +1280,7 @@ _TOOL_GATED_RULE_LINES: Dict[str, tuple] = {
 def prune_rules_to_available_tools(text: str, available: set) -> str:
     """Drop every rule LINE whose only tool names are ones this turn cannot call.
 
-    `B-NEW`, and it is `H09`'s guard applied to the prose instead of the list.
+    `B1304`, and it is `H09`'s guard applied to the prose instead of the list.
     `H09` made the compact prompt's *"## Available tools"* list name only
     schema-backed tools. The rule blocks beside that list were never checked,
     and they are where the owner's model went wrong. Measured with the showcase
@@ -1768,7 +1768,7 @@ def _compact_prompt_applies(is_api_model: bool) -> bool:
     is *"Only the tool schemas provided by the API are available for this
     turn… do not write tool syntax in chat"*, so it may only be sent on a
     route whose fenced channel really is shut — which is `is_api_model` and
-    not `schemas_offered` (`B-NEW`, below). A route that gets **both** channels
+    not `schemas_offered` (`B1301`, below). A route that gets **both** channels
     gets the full prompt, which is the shape the `B39` comment already
     describes as correct for a `gpt-oss` model on llama.cpp.
 
@@ -1961,7 +1961,7 @@ def _assemble_prompt(tool_names: set, disabled_tools: set = None, compact: bool 
             "Only the tool schemas provided by the API are available for this turn. "
             "Use native tool calls when action is needed; do not write tool syntax or tool instructions in chat.",
             "## Available tools\n" + ("\n".join(tool_lines) if tool_lines else "none"),
-            # `B-NEW`. The base rules name tools too — `manage_memory`,
+            # `B1304`. The base rules name tools too — `manage_memory`,
             # `manage_notes`, `manage_rag`, `write_file` — and on a turn that
             # has none of them those lines are instructions the model cannot
             # carry out. Same guard as the list above it (`H09`).
@@ -1988,7 +1988,7 @@ def _assemble_prompt(tool_names: set, disabled_tools: set = None, compact: bool 
     for name, _default_section in TOOL_SECTIONS.items():
         if name not in _fenced:
             continue
-        # `B-NEW`. A tool's own section names other tools in its prose — the
+        # `B1304`. A tool's own section names other tools in its prose — the
         # `web_search` section ends "use `trigger_research` instead" — and that
         # is the same promise the domain rules were making, in a block that
         # ships because a *different* tool is available. Same guard.
@@ -2625,7 +2625,7 @@ _LOCAL_COMPUTER_REFERENCE_RE = re.compile(
     re.IGNORECASE,
 )
 
-# `B-NEW`. The third alternative above is for a **named machine** — "on
+# `B1305`. The third alternative above is for a **named machine** — "on
 # gpu-box", "from cybertooth" — and `[a-z][a-z0-9_.-]{1,31}` after "on"/"from"
 # matches any word in the language. Measured on the owner's own question
 # (`/work/notes/owner-shots/2026-10-09-osrs-chat-export.md`): *"…Raids
@@ -2723,7 +2723,7 @@ def _turn_is_machine_targeted(messages: List[Dict], available: set) -> bool:
     are members of that set, so an ordinary web question was told *"The user
     referred to this computer/local machine or a named computer. Treat this as
     a machine-targeted agent task, not ordinary chat."* Measured on the owner's
-    own question with web search on (`2026-10-09`, after `B-NEW-5` stopped
+    own question with web search on (`2026-10-09`, after `B1305` stopped
     *"on October"* matching the machine heuristic): the block still shipped,
     **1,045 characters** of it after pruning (~260 tokens), because one web
     tool was available. "A file-or-web tool exists" is not a signal about the
@@ -3860,7 +3860,7 @@ def _build_system_prompt(
 
     `schema_offer` is `tool_schema_offer`'s answer for this route, and the MCP
     block below is the one part of the prompt that has to know it: that block
-    tells the model how to call an MCP tool, and before `B-NEW` it said *"via
+    tells the model how to call an MCP tool, and before `B1304` it said *"via
     native function calling"* on every turn, including the turns whose request
     carries no `tools` key.
 
@@ -4258,7 +4258,7 @@ def _build_system_prompt(
         except Exception:
             pass
 
-    # `B-NEW`. Both blocks name tools — `get_workspace`, `list_cookbook_servers`,
+    # `B1304`. Both blocks name tools — `get_workspace`, `list_cookbook_servers`,
     # `todowrite`, `apply_patch` — and they are appended whenever the turn's
     # tool set touches `_WORKSPACE_TERMINUS_TOOLS`, which `web_search` and
     # `web_fetch` are members of. Measured on the owner's own question with web
@@ -6877,7 +6877,7 @@ async def stream_agent_loop(
             # Non-English queries are flagged low_signal by the English-only
             # intent classifier, but fastembed retrieval works across languages.
             logger.info("[tool-rag] Low-signal query; will run RAG retrieval")
-    # `B-NEW`. Whether the selector that produced `_relevant_tools` could see
+    # `B1302`. Whether the selector that produced `_relevant_tools` could see
     # the MCP tool names at all. Only vector retrieval over a freshly indexed
     # MCP collection can; `ToolIndex.select_without_embeddings` is built-in
     # keywords and nothing else, so a set it produced is evidence about the
@@ -7533,7 +7533,7 @@ async def stream_agent_loop(
             owner,
             headers=candidate_headers,
         )
-        # `B-NEW`. Two questions of the one endpoint row: the transport this
+        # `B1301`. Two questions of the one endpoint row: the transport this
         # route behaves like, and whether the request carries a `tools` array
         # at all. The second used to be the first, so a model whose **name**
         # was not on an allowlist got no schemas — see `tool_schema_offer`.
@@ -7678,7 +7678,7 @@ async def stream_agent_loop(
     mcp_schemas = _route_state["mcp_schemas"]
     _relevant_tools = _route_state["relevant_tools"]
     _is_api_model = _route_state["is_api_model"]
-    # `B-NEW`. Carried as a loop local for the same reason `_is_api_model` is:
+    # `B1301`. Carried as a loop local for the same reason `_is_api_model` is:
     # the per-round `_active_route_state` below is rebuilt from these, and a
     # key that lives only in the pre-loop state is a key `_tool_schemas_for_route`
     # never sees after round 1.
@@ -7917,7 +7917,7 @@ async def stream_agent_loop(
             return []
         if route_state["is_api_model"] or route_state.get("schema_offer") in ("native", "both"):
             if route_relevant_tools:
-                # `B-NEW`. `_build_base_prompt` force-includes these two as the
+                # `B1304`. `_build_base_prompt` force-includes these two as the
                 # loop's irreducible primitives, so the prompt has always named
                 # them; the schema filter did not, so on a native-tools turn the
                 # prompt offered a tool the request withheld — `Law 13`, the two
@@ -7933,7 +7933,7 @@ async def stream_agent_loop(
                     schema for schema in FUNCTION_TOOL_SCHEMAS
                     if schema.get("function", {}).get("name") in schema_names
                 ]
-                # `B-NEW`. MCP schemas used to be filtered by the same selected
+                # `B1302`. MCP schemas used to be filtered by the same selected
                 # set as the built-ins, and the selector that runs when the
                 # embedding backend is down — `ToolIndex.select_without_embeddings`,
                 # the path a native install meets, since ChromaDB never starts

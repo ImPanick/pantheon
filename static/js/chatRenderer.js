@@ -24,7 +24,7 @@ import { buildAllowRuleChooser } from './trustLadder.js';
 import { renderAgentStop, renderAgentNote, withdrawContinueOffers, compactionFromRecord } from './agentStops.js';
 import { applyAgentThreadNode, verifierCardOptions, approvalOutcome,
          blockedCardOptions, toolOutputPanesHtml, screenshotSummary } from './agentThread.js';
-// `B-NEW-11` (fx2-chat). One agent turn, one reply.
+// `B1247` (fx2-chat). One agent turn, one reply.
 import { bubbleParts, isReasoningOnly, reasoningAbove, threadAbove,
          carryTurnReasoning } from './turnReasoning.js';
 import { prepBreakdownRows } from './agentMeter.js';   // P4-08
@@ -3949,7 +3949,7 @@ export function buildStoppedIndicator(doc, onContinue) {
 /** A reply the person stopped, after a reload: *Stopped · Continue* under it.
  *  "Stopped mid-stream" (had content, can continue) and "cancelled before any
  *  content" differ — the latter has no Continue. One builder for a plain reply
- *  and (`B-NEW-11`, fx2-chat) an agent turn's, whose record now keeps its rows. */
+ *  and (`B1247`, fx2-chat) an agent turn's, whose record now keeps its rows. */
 function stoppedLine(wrap, metadata) {
   return buildStoppedIndicator(document, metadata && metadata.cancelled ? null : () => {
     if (window.chatModule) {
@@ -3987,7 +3987,7 @@ export function dropAskedTwin(box, digest) {
 }
 
 // A reply bubble's reasoning and its words, apart: `bubbleParts` in
-// `turnReasoning.js` (fx2-chat, `B-NEW-11` reads bubbles the same way).
+// `turnReasoning.js` (fx2-chat, `B1247` reads bubbles the same way).
 const _bubbleParts = bubbleParts;
 
 /** What a reply bubble says, its reasoning left out; '' for a hidden one. */
@@ -4120,7 +4120,7 @@ export function addMessage(role, content, modelName, metadata) {
         if (roundThinking) return String(roundThinking[r] || '').trim();
         return r === 0 ? String(metadata.thinking || '').trim() : '';
       };
-      // `B-NEW-11` (fx2-chat). One turn, one reply: a step that only thought
+      // `B1247` (fx2-chat). One turn, one reply: a step that only thought
       // hands its reasoning on to the next bubble this reply draws
       // (`carryTurnReasoning`), and its rows go above the bubble that holds it.
       // `ownWraps` are this reply's bubbles. The continuation an approval let
@@ -4242,7 +4242,7 @@ export function addMessage(role, content, modelName, metadata) {
           for (const ev of roundTools) {
             if (ev.approval_digest) dropAskedTwin(box, ev.approval_digest);
           }
-          // `B-NEW-11`. The bubble at the foot only thought: it stays the last
+          // `B1247`. The bubble at the foot only thought: it stays the last
           // thing the turn shows, and the rows go into the thread above it.
           const foot = box.children[box.children.length - 1];
           const thinker = isReasoningOnly(foot)
@@ -4388,7 +4388,7 @@ export function addMessage(role, content, modelName, metadata) {
       if (!pausedAtApproval && firstWrap && firstWrap.classList.contains('msg-ai') && !firstWrap.querySelector('.msg-footer')) {
         footWith(firstWrap, metadata);
       }
-      // `B-NEW-11` (fx2-chat). A turn the person stopped says so under its
+      // `B1247` (fx2-chat). A turn the person stopped says so under its
       // reply, as the live Stop drew it — now that its record keeps its rows,
       // it is drawn here rather than as a plain message. Not under a turn that
       // paused at a card: that one asked, it did not stop.

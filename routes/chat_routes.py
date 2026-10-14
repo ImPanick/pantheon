@@ -265,7 +265,7 @@ def _thinking_record(thinking_response: str, round_thinking: Optional[list] = No
 
 
 def _shown_tool_row(event: Any, approval_digest: str = "") -> Optional[dict]:
-    """`B-NEW-11` (fx2-chat). A tool row the browser was shown, kept the way the
+    """`B1247` (fx2-chat). A tool row the browser was shown, kept the way the
     loop keeps it for a finished reply, so a reply the person stopped reloads
     with its rows and as one reply.
 
@@ -296,7 +296,7 @@ def _shown_tool_row(event: Any, approval_digest: str = "") -> Optional[dict]:
 
 
 def _approval_fingerprint(exact_approval: Any) -> str:
-    """`B-NEW-11`. The fingerprint the loop gives the call an approval let
+    """`B1247`. The fingerprint the loop gives the call an approval let
     through (`approval_digest`, ``exact_approval.pending.digest[:16]`` in
     `src/agent_loop.py`) — the one its row is matched to the row that asked by.
     ``''`` when this run continues no approval."""
@@ -2584,7 +2584,7 @@ def setup_chat_routes(
             full_response = ""
             thinking_response = ""
             _round_thinking: list = []   # `P23-04` (CHAT-M-21): per agent round
-            # `B-NEW-11` (fx2-chat): each round's words, and the rows the
+            # `B1247` (fx2-chat): each round's words, and the rows the
             # browser was shown, kept for a reply the person stops.
             _round_said: list = []
             _shown_rows: list = []
@@ -3276,7 +3276,7 @@ def setup_chat_routes(
                             try:
                                 data = json.loads(chunk[6:])
                                 _agent_notes.observe(data)   # `B915`
-                                # `B-NEW-11`: the rows, for a reply the person stops.
+                                # `B1247`: the rows, for a reply the person stops.
                                 _shown = _shown_tool_row(data, _approval_fingerprint(exact_tool_approval))
                                 if _shown is not None:
                                     _shown_rows.append(_shown)
@@ -3294,7 +3294,7 @@ def setup_chat_routes(
                                     else:
                                         full_response += data["delta"]
                                         _stream_set(session, partial=full_response)
-                                        # `B-NEW-11`: per round, as the reasoning is.
+                                        # `B1247`: per round, as the reasoning is.
                                         _rs = max(int(_agent_rounds or 0), 1)
                                         while len(_round_said) < _rs:
                                             _round_said.append("")
@@ -3523,7 +3523,7 @@ def setup_chat_routes(
                     # outer finally from running and left _active_streams
                     # with a stale entry).
                     try:
-                        # `B-NEW-11` (fx2-chat). A reply stopped while a step was
+                        # `B1247` (fx2-chat). A reply stopped while a step was
                         # still thinking is kept too — it showed its reasoning and
                         # its rows, and the reload draws them — not only one that
                         # had written words. (Stopped with neither, the browser
@@ -3558,7 +3558,7 @@ def setup_chat_routes(
                             # as the chat-mode branch above keeps them.
                             if not _stopped_md2.get("thinking"):
                                 _stopped_md2.update(_thinking_record(thinking_response, _round_thinking))
-                            # `B-NEW-11`: its rounds and its rows, so the reload
+                            # `B1247`: its rounds and its rows, so the reload
                             # draws the turn the person stopped as it was on screen:
                             # the rows, then one reply.
                             _stopped_rounds = max(len(_round_said), len(_round_thinking), 1)

@@ -626,7 +626,7 @@ async function loadEndpoints() {
       const tt = ep.tool_transport || {};
       const declared = tt.declared === true ? 'true' : (tt.declared === false ? 'false' : '');
       const usesNative = tt.resolved === 'native';
-      // `B-NEW`. `offer` says whether the request carries tool schemas at all,
+      // `B1301`. `offer` says whether the request carries tool schemas at all,
       // and for an endpoint nobody has declared the answer is now "both" — the
       // schemas go and the fenced prompt stays, because nothing has told
       // Pantheon which channel this server answers on. Saying only "the fenced

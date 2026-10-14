@@ -30,7 +30,7 @@ const PROMOTED_ALIASES = new Set([
 
 // Every command the popup could ever offer, before the visibility table is
 // asked. `_flatten` asks it; the popup keeps this list and asks at each
-// refresh (`B-NEW-1`, below).
+// refresh (`B1237`, below).
 function _flattenAll() {
   const out = [];
   const seen = new Set();
@@ -264,7 +264,7 @@ export function initSlashAutocomplete(textarea) {
   if (!textarea || textarea._slashAcWired) return;
   textarea._slashAcWired = true;
 
-  // `B-NEW-1`. Every command, not the ones offered at wiring time: this runs
+  // `B1237`. Every command, not the ones offered at wiring time: this runs
   // once, before `/api/auth/features` has answered, so a list filtered here
   // went on offering `/gallery` after Gallery was switched off (on a fresh
   // page and live), and would have kept a tool hidden at wiring time hidden

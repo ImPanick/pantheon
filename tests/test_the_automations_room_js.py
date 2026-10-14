@@ -212,7 +212,7 @@ def test_the_room_opens_on_the_chains_and_lists_every_workflow_on_the_shelf(box)
 
 
 def test_the_shelf_does_not_say_the_tab_again(box):
-    """`B-NEW-5` (P23 round 2). The tab above the room says *Automations*, and
+    """`B1241` (P23 round 2). The tab above the room says *Automations*, and
     the shelf's first line said it again (measured on `a936b5c`, 1440×900; a
     phone already hid it). The shelf keeps the name as its landmark's, for a
     screen reader."""

@@ -71,7 +71,7 @@ def _content_to_text(content) -> str:
 
 
 def _thinking_rounds(metadata: dict) -> list:
-    """`B-NEW-2`. The reasoning a reply kept, one entry per agent round.
+    """`B1321`. The reasoning a reply kept, one entry per agent round.
 
     A reply saves its reasoning the way `routes/chat_routes._thinking_record`
     writes it: ``round_thinking`` is each round's part in order, and
@@ -90,7 +90,7 @@ def _thinking_rounds(metadata: dict) -> list:
 
 
 def _tool_rows(metadata: dict) -> list:
-    """`B-NEW-2`. The tool calls a reply ran, as the browser was shown them.
+    """`B1321`. The tool calls a reply ran, as the browser was shown them.
 
     ``tool_events`` holds what `routes/chat_routes._shown_tool_row` kept per
     call: the tool's name, the round it ran in, the command, and its output —
@@ -133,7 +133,7 @@ def _tool_rows(metadata: dict) -> list:
 
 
 def _transcript_entries(session):
-    """`B-NEW-2`. One entry per saved message — role, text, reasoning, tools.
+    """`B1321`. One entry per saved message — role, text, reasoning, tools.
 
     The one reader every export format shares (`Law 7`). It is a generator, so
     a format writes a message and lets it go rather than joining the whole
@@ -1070,7 +1070,7 @@ def setup_session_routes(
 
         Supported formats: md (markdown), txt (plain text), json, html.
 
-        `B-NEW-1` / `B-NEW-2`. The owner, 2026-10-09: *"I was trying to export
+        `B1320` / `B1321`. The owner, 2026-10-09: *"I was trying to export
         the chat so you have it as a log with internal thoughts/reasoning from
         the LLM displayed... but it only exports 1 page (top portion of the
         chat) - never the FULL chat."* Two things were true at once. The chat's
@@ -1181,13 +1181,13 @@ def setup_session_routes(
                     ".user{background:#1a1a2e}.ai{background:#1a2e1a}"
                     ".role{font-weight:bold;margin-bottom:0.4rem;opacity:0.7;text-transform:uppercase;font-size:0.85em}"
                     "pre{background:#000;padding:0.5rem;border-radius:4px;overflow-x:auto;white-space:pre-wrap;word-break:break-word}"
-                    # `B-NEW-2`: the reasoning and the tool calls, in the
+                    # `B1321`: the reasoning and the tool calls, in the
                     # export because they are what the owner was capturing.
                     ".think,.tool{margin:0.5rem 0;border:1px solid #333;border-radius:4px;padding:0.4rem 0.6rem}"
                     ".think{background:#15151f}.tool{background:#1f1a15}"
                     ".think>summary,.tool>summary{cursor:pointer;opacity:0.75;font-size:0.85em}"
                     ".tool-head{font-size:0.85em;opacity:0.8}"
-                    # `B-NEW-3`: this file is what the chat's PDF item prints,
+                    # `B1322`: this file is what the chat's PDF item prints,
                     # so it has to read on paper: ink-light, and no message
                     # split across a page break.
                     "@media print{body{background:#fff;color:#000;max-width:none;margin:0;font-size:11pt}"

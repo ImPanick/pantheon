@@ -1,19 +1,19 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-r"""`B-NEW-3`, `B-NEW-4`, `B-NEW-6` — Back walks the chats a person opened, and
+r"""`B1239`, `B1240`, `B1242` — Back walks the chats a person opened, and
 never a chat that is gone.
 
 Measured on `a936b5c` (`/work/notes/p23-acceptance.md`) and again on `cdf040f`
 in Chromium with the browser's own Back:
 
-  * **B-NEW-3.** At 390×844 a chat picked in the phone drawer never became a
+  * **B1239.** At 390×844 a chat picked in the phone drawer never became a
     history entry: ☰ → chat A → ☰ → chat B, the URL `/` after each tap, and
     Back left the app (`about:blank`). The switch replaced the URL of the
     drawer's entry, the drawer closed, and the back stack took the drawer's
     entry off with `history.back()` — the entry that now carried the chat.
-  * **B-NEW-4.** At 1440×900 the first chat opened from the welcome screen
+  * **B1240.** At 1440×900 the first chat opened from the welcome screen
     replaced the welcome's entry (`history.length` 2 → 2), so Back from it left
     the app.
-  * **B-NEW-6.** Reply in the mail reader pushed `/email#<helper chat>`; Close
+  * **B1242.** Reply in the mail reader pushed `/email#<helper chat>`; Close
     deleted that chat and pushed `/email#<the chat before>`; the second Back
     landed on `/email#<deleted chat>` and nothing on screen changed.
 
@@ -144,7 +144,7 @@ def _case(box, script, start="/", chat=None):
     return _run(box, _PREAMBLE + boot, script)
 
 
-# ── B-NEW-3 · the phone drawer ─────────────────────────────────────────────
+# ── B1239 · the phone drawer ───────────────────────────────────────────────
 
 def test_two_chats_picked_in_the_phone_drawer_are_two_entries_and_back_walks_them(box):
     """`P23-00`'s third sentence at 390×844: ☰ → A → ☰ → B; Back is A; Back is
@@ -183,7 +183,7 @@ def test_two_chats_picked_in_the_phone_drawer_are_two_entries_and_back_walks_the
 
 
 def test_the_drawer_closed_without_a_pick_still_takes_its_entry_off(box):
-    """The rule `B-NEW-3` changes is narrow: a drawer opened and closed with no
+    """The rule `B1239` changes is narrow: a drawer opened and closed with no
     chat picked goes, entry and all, as it did."""
     o = _case(box, """
         openDrawer(); await step();
@@ -229,7 +229,7 @@ def test_a_window_closed_as_a_chat_opens_gives_its_entry_to_the_chat(box):
     assert o["ourBacks"] == 0
 
 
-# ── B-NEW-4 · the welcome screen ───────────────────────────────────────────
+# ── B1240 · the welcome screen ─────────────────────────────────────────────
 
 def test_the_first_chat_from_the_welcome_screen_is_an_entry_and_back_is_the_welcome_screen(box):
     """At 1440×900: welcome → A → B; Back is A, Back is the welcome screen,
@@ -282,7 +282,7 @@ def test_a_click_on_an_empty_hash_link_keeps_the_chat(box):
     assert o == {"chat": "chatA", "shown": [], "owns": False}
 
 
-# ── B-NEW-6 · the mail's helper chat ───────────────────────────────────────
+# ── B1242 · the mail's helper chat ─────────────────────────────────────────
 
 _MAIL = r"""
 const API_BASE = '';

@@ -70,7 +70,7 @@ FUNCTION_TOOL_SCHEMAS = [
         "type": "function",
         "function": {
             "name": "web_search",
-            # `B-NEW`. This named `trigger_research` on every turn, including
+            # `B1304`. This named `trigger_research` on every turn, including
             # the turns whose `tools` array does not carry it — a schema
             # description is read by the model exactly like the prompt is. The
             # routing rule lives once now, in `agent_loop._TOOL_GATED_RULE_LINES`,
@@ -90,7 +90,7 @@ FUNCTION_TOOL_SCHEMAS = [
         "type": "function",
         "function": {
             "name": "web_fetch",
-            # `B-NEW`, as `web_search` above.
+            # `B1304`, as `web_search` above.
             "description": "Fetch and read the text content of a specific URL the user names (e.g. 'check example.com', 'what's on this page <url>'). Use when you already have a concrete URL/domain. NOT for open-ended searches (use web_search), and not for 'research X' jobs. Downloads are size-budgeted; a '[partial content: ...]' notice in the result means the body was cut short and you can re-call with full=true for the rest.",
             "parameters": {
                 "type": "object",
@@ -816,7 +816,7 @@ FUNCTION_TOOL_SCHEMAS = [
                     # `additionalProperties: true` because the keys really are
                     # the caller's: without it a schema-to-grammar converter
                     # reads an object with no declared properties as "only `{}`
-                    # is valid" and the model can never send a body (`B-NEW`).
+                    # is valid" and the model can never send a body (`B1303`).
                     "body": {"type": "object", "additionalProperties": True,
                              "description": "JSON request body (for POST/PUT/PATCH)"}
                 },
@@ -920,7 +920,7 @@ FUNCTION_TOOL_SCHEMAS = [
                     "command": {"type": "string", "description": "Command to run e.g. npx (for add)"},
                     "args": {"type": "array", "items": {"type": "string"}, "description": "Command arguments (for add)"},
                     # An open object: the names are the server's, not ours
-                    # (`B-NEW`). `FORBIDDEN.md` Part 2's env validation is what
+                    # (`B1303`). `FORBIDDEN.md` Part 2's env validation is what
                     # decides what may actually be set, and it is untouched.
                     "env": {"type": "object", "additionalProperties": True,
                             "description": "Environment variables (for add)"}
@@ -1002,7 +1002,7 @@ FUNCTION_TOOL_SCHEMAS = [
                     "contents": {"type": "string", "enum": ["move_up", "delete"],
                                  "description": "What happens to what is in a folder being removed: move_up moves it up a level, delete deletes the documents with it (for remove_folder; required when the folder is not empty)"},
                     # Each step's keys depend on its own `action`, so the
-                    # object is open and says so (`B-NEW`): a converter reads an
+                    # object is open and says so (`B1303`): a converter reads an
                     # object with no declared properties as "only `{}`".
                     "steps": {"type": "array",
                               "items": {"type": "object", "additionalProperties": True},
@@ -1215,7 +1215,7 @@ FUNCTION_TOOL_SCHEMAS = [
                     "action": {"type": "string", "enum": ["call", "endpoints"], "description": "'call' to hit an endpoint, 'endpoints' to list what's available"},
                     "path": {"type": "string", "description": "Endpoint path starting with /api/ (e.g. '/api/cookbook/gpus', '/api/gallery/list', '/api/calendar/events')"},
                     "method": {"type": "string", "enum": ["GET", "POST", "PUT", "PATCH", "DELETE"], "description": "HTTP method (default GET)"},
-                    # Open objects, declared as such — see `api_call` (`B-NEW`).
+                    # Open objects, declared as such — see `api_call` (`B1303`).
                     "body": {"type": "object", "additionalProperties": True,
                              "description": "JSON request body for POST/PUT/PATCH"},
                     "query": {"type": "object", "additionalProperties": True,
@@ -2097,7 +2097,7 @@ def mcp_tool_schema(name: str) -> dict:
     )
 
 
-# ── A shape every strict server accepts (`B-NEW`) ───────────────────────────
+# ── A shape every strict server accepts (`B1303`) ───────────────────────────
 #
 # An MCP tool's `parameters` is the server's own `inputSchema`, copied into the
 # request untouched (`src/mcp_manager.get_all_openai_schemas`, and `P8-48` is

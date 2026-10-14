@@ -165,6 +165,19 @@ control was touched by either pass.
 
 **Direction as of 2026-10-14, after the second tracker pass: the open count is rising.**
 
+Re-measured 2026-10-14 a third time, after the last of `B1297`'s unmapped comment ids were given real
+ones: 216 filed, 110 closed — **a ratio of 1.964**, open 303 → 409, done 74.6 % → 71.0 %.
+The ratio **fell** from 2.055 without a wave getting better, and the reason is the window rather than the
+work: this pass's own interval is **+1 filed, +1 closed, open unmoved**, and adding it pushed the oldest
+term out, which is the same window effect that pushed the ratio *up* two passes ago (`Law 5` — a
+ten-wave window is a statement about ten waves, not about the newest one). The pass itself closed `B1297`
+and filed one row: **`B1398`**, the single line of its 175 that could not be renumbered, because it lives
+inside `TOOL_SECTIONS["web_search"]` and renumbering a prompt string changes the prompt. It is not a
+gate — 104 characters of a 6,000-token budget and no consumer — and `ship-line.py --check` reads
+**128 adjudicated, 409 open, nothing unclassified**. No `FORBIDDEN.md` Part 2 control was touched.
+
+**Direction as of 2026-10-14, after the third tracker pass: the open count is rising.**
+
 ### A second number, which is the one that moves
 
 Of the last 40 `B` rows filed — `B360` through `B455`, four waves of sweeps plus

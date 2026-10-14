@@ -259,7 +259,7 @@ def test_the_export_options_come_from_the_one_call_site(chain):
 
 
 def test_the_rasteriser_is_shown_a_clone_with_none_of_this_pages_styles(chain):
-    """`B-NEW-3` (fx6-export). html2canvas reads *computed* styles, and
+    """`B1322` (fx6-export). html2canvas reads *computed* styles, and
     `static/style.css`'s `color-mix(in srgb, …)` rules compute to
     `color(srgb …)`, which its colour parser cannot read: measured in Chromium
     on a document with a fenced code block (so `.code-block-header` applies),

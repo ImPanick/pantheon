@@ -227,7 +227,7 @@ driveCallSite().then(function () {
     out.string = { reached: false, error: String((err && err.message) || err) };
   });
 }).then(function () {
-  // `B-NEW-3` (fx6-export). The call site also hands html2canvas an `onclone`,
+  // `B1322` (fx6-export). The call site also hands html2canvas an `onclone`,
   // because the rasteriser reads *computed* styles and `static/style.css`'s
   // `color-mix(in srgb, …)` rules compute to `color(srgb …)`, which it cannot
   // parse — measured in Chromium: `Attempting to parse an unsupported color

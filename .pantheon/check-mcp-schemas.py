@@ -45,7 +45,7 @@ The checks:
      check is what tells it apart from a missed registration.
 
   D. Every schema in the register is a shape a **strict local server** can
-     read (`B-NEW`, 2026-10-09). A, B and C are all about the two copies
+     read (`B1303`, 2026-10-09). A, B and C are all about the two copies
      agreeing with each other; none of them asks whether the copy both
      audiences read is servable, and four of the 74 were not: `api_call.body`,
      `app_api.body`, `app_api.query` and `manage_mcp.env` declared

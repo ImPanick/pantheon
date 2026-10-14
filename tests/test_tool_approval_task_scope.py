@@ -55,7 +55,7 @@ def test_card_offers_task_chat_session_and_deny_without_leaking_private_state():
     ]
     assert [option["label"] for option in payload["options"]] == [
         "Allow for this task",
-        "Allow for this chat",  # P23-05 (C-NAMES; fx-chat's B-NEW-4): the label, not the value
+        "Allow for this chat",  # P23-05 (C-NAMES; fx-chat's B1202): the label, not the value
         "Deny",
     ]
     serialized = json.dumps(payload, sort_keys=True)

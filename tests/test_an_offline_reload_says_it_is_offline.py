@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""`B-NEW-9` (P23 round 2, `fx2-doors`) — an offline reload says it is offline.
+"""`B1245` (P23 round 2, `fx2-doors`) — an offline reload says it is offline.
 
 `P23-07`'s service worker draws the shell offline — sidebar, composer, the
 address kept — and every `/api/` read then rejects. Measured on `a936b5c`

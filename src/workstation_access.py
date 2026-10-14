@@ -112,7 +112,7 @@ OFF_SENTENCE = ("The workstation is switched off. An admin turns it on in "
                 "Settings → Workstation.")
 # The same state, said to the person who can change it. What off costs is said
 # once, under the switch on the same screen (`static/index.html`,
-# `#ws-enabled-why`) — `B-NEW-5` (round 2): this sentence said it as well, 40 px
+# `#ws-enabled-why`) — `B1241` (round 2): this sentence said it as well, 40 px
 # above it ("…Nothing calls it, and the agent's shell, Python and file tools run
 # inside Pantheon as they always have."; Doc 2 § 5, Workstation row).
 ADMIN_OFF_SENTENCE = "The workstation is off."

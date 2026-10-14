@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// turnReasoning.js — one agent turn, one reply (`B-NEW-11`).
+// turnReasoning.js — one agent turn, one reply (`B1247`).
 //
 // fx2-chat (P23 round 2). `P23-04` (CHAT-M-21) kept a turn's reasoning per
 // step and drew it after a reload the way the live stream drew it: each step

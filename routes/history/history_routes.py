@@ -118,7 +118,7 @@ def _paused_at_approval(meta) -> bool:
 
 
 def _stoppable_reply(history) -> Any:
-    """`B-NEW-11` (fx2-chat). The reply a Stop stopped: the last assistant
+    """`B1247` (fx2-chat). The reply a Stop stopped: the last assistant
     message after the person's last message — and not one that paused at an
     approval card, which asked rather than stopped. ``None`` when there is none.
 

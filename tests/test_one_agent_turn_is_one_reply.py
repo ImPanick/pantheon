@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""`B-NEW-11` (fx2-chat, P23 round 2) — one agent turn is one reply.
+"""`B1247` (fx2-chat, P23 round 2) — one agent turn is one reply.
 
 **What was wrong** (measured on `1049a26` by driving the showcase, the seeded
 "Plan the launch week"; `/work/notes/fx2-chat.md`): `P23-04` (CHAT-M-21) kept a

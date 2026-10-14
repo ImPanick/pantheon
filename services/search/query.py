@@ -88,7 +88,7 @@ def _extract_site_filter(query: str) -> Tuple[str, Optional[str]]:
 def _boost_entities_in_query(base_query: str, entities: Dict[str, List[str]]) -> str:
     """Append extracted entities to the query using OR to increase relevance.
 
-    **No longer on the sent-query path** (`B-NEW` / the 2026-10-09 owner report).
+    **No longer on the sent-query path** (`B1314` / the 2026-10-09 owner report).
     It is kept because it is public-ish, imported by tests, and `Law 1` does not
     delete what exists — but `enhance_query` stopped calling it, because what it
     does is the opposite of what its name says.

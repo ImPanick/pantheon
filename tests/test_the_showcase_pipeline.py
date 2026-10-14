@@ -144,7 +144,7 @@ def _spelled(n: int) -> str:
 
 
 def test_the_themes_picture_says_how_many_palettes_it_shows():
-    """`B-NEW-12` (P23 round 2). The scene and the media README called the
+    """`B1248` (P23 round 2). The scene and the media README called the
     Theme window "the sixteen palettes" after main's palettes made it
     twenty-three (`69c26bb`); the picture showed twenty-three. The count is
     read the way the capture reads the palettes (`capture.theme_colours`, out

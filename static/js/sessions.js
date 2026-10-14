@@ -1808,7 +1808,7 @@ export async function loadSessions() {
       if (_sessionsWanted) params.set('limit', String(_sessionsWanted));
       const query = params.toString();
       const url = `${API_BASE}/api/sessions${query ? `?${query}` : ''}`;
-      // `B-NEW-9` (fx2-doors): a request that never reached the server is
+      // `B1245` (fx2-doors): a request that never reached the server is
       // marked, so the catch below leaves it to the chat area's one line.
       const res = await Promise.resolve(_earlyFetch(url) || fetch(url))
         .catch((e) => { if (e && typeof e === 'object') e.unreached = true; throw e; });
@@ -1915,7 +1915,7 @@ export async function loadSessions() {
 
     if (targetId && targetId !== currentSessionId) {
       const showLoading = !suppressSessionLoading && !(_isFirstLoad && !hashId);
-      // `B-NEW-4`: the list's own pick (the hash, the last chat, the newest)
+      // `B1240`: the list's own pick (the hash, the last chat, the newest)
       // is not the person's — it rewrites the entry, never adds one.
       await selectSession(targetId, { keepSidebar: true, showLoading, replace: true });
     } else if (targetId && targetId === currentSessionId) {
@@ -1958,7 +1958,7 @@ export async function loadSessions() {
     }
     return true;
   } catch (error) {
-    // `B-NEW-9` (fx2-doors). Offline (or with Pantheon not answering) this
+    // `B1245` (fx2-doors). Offline (or with Pantheon not answering) this
     // toasted "Could not load chats: Failed to fetch" — hidden on `a936b5c`
     // only because the presets' toast replaced it a moment later. The chat
     // area says it once (`presets.js` `sayUnreachable`); this stays quiet.
@@ -1977,7 +1977,7 @@ export async function loadSessions() {
 }
 
 /**
- * `P23-01` (CHAT-U-1), `B-NEW-4`, `B-NEW-6`. Is this chat switch a new history
+ * `P23-01` (CHAT-U-1), `B1240`, `B1242`. Is this chat switch a new history
  * entry? A person's switch is: from one chat to another (the URL named the
  * chat on screen), or from the welcome screen (no chat on screen, none in the
  * URL) — measured on `a936b5c` at 1440×900, the first chat opened from the
@@ -2763,7 +2763,7 @@ function _onHashChange() {
   const hashId = window.location.hash.replace('#', '');
   if (/^(document|note|image|email|event|task|skill|research)-/.test(hashId) || /^open=notes&note=/.test(hashId)) return;
   if (!hashId) {
-    // `B-NEW-4`. Back (or Forward) onto an entry the back stack wrote with no
+    // `B1240`. Back (or Forward) onto an entry the back stack wrote with no
     // chat in it: the welcome screen the first chat was opened from. Only
     // such an entry — a click on an `<a href="#">` lands on a new one with no
     // state, and the chat stays.
@@ -2778,7 +2778,7 @@ function _onHashChange() {
 }
 window.addEventListener('hashchange', _onHashChange);
 
-/** `B-NEW-4`. The welcome screen again, as Back finds it: no chat selected, the
+/** `B1240`. The welcome screen again, as Back finds it: no chat selected, the
  *  list unlit, the composer empty. A reply still streaming in the chat left
  *  goes on in the background, as it does on any switch. */
 function _welcomeFromHistory() {
@@ -3082,7 +3082,7 @@ function _initDropdownDismiss() {
     // submenu in one keypress — previously only the dropdown closed and
     // the submenu was left orphaned on screen.
     //
-    // `B-NEW-7`. Only a menu that is open: one opens with an inline
+    // `B1243`. Only a menu that is open: one opens with an inline
     // `display: block` over the stylesheet's `none`. Writing `none` onto every
     // menu — two per chat row, each list render making fresh ones with no
     // inline style — changed `<body>`'s children on the first Escape after a

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""`B-NEW-11` (fx2-chat), the server half: an agent turn the person stopped is
+"""`B1247` (fx2-chat), the server half: an agent turn the person stopped is
 kept the way the screen showed it, so its reload is the same one reply.
 
 **What was wrong** (measured on the showcase at `1049a26` + this lane's

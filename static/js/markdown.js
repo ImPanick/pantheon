@@ -685,7 +685,7 @@ export function extractThinkingBlocks(text) {
  * string that only happened to match the text above it. One builder now, so
  * the label is stated once and the fold that opens is the fold that closes.
  */
-// `B-NEW-11` (fx2-chat). A fold is opened by its id (`getElementById` in the
+// `B1247` (fx2-chat). A fold is opened by its id (`getElementById` in the
 // click handler below), and the id was the millisecond plus the block's index —
 // always 0, since the blocks are merged. A reload draws every turn in one tick:
 // measured under node, six folds drawn back to back had two ids between them,

@@ -29,7 +29,7 @@ import { createStreamRenderer } from './streamingRenderer.js';
 import { applyAgentThreadNode, verifierCardOptions, blockedCardOptions,
          toolOutputPanesHtml, agentThreadContent, ensureThreadToggleAll,
          toggleThreadAll, syncThreadToggleAll, TOOL_LABELS } from './agentThread.js';
-// `B-NEW-11` (fx2-chat). One turn, one reply: a step that only thought hands its
+// `B1247` (fx2-chat). One turn, one reply: a step that only thought hands its
 // reasoning on to the next bubble, and its rows go above the bubble that holds it.
 import { reasoningAbove, reasoningAtFoot, carryTurnReasoning, settleTurnReasoning,
          lastShownStep } from './turnReasoning.js';
@@ -3313,7 +3313,7 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
         researchBtn.classList.remove('active');
       }
       box.appendChild(holder);
-      // `B-NEW-11`: the turn an approval lets go on is the turn that paused at
+      // `B1247`: the turn an approval lets go on is the turn that paused at
       // the card — its reasoning is this reply's too, as a reload draws it.
       if (approvalForSend && approvalForSend.decision !== 'deny') {
         carryTurnReasoning(reasoningAbove(holder), holder);
@@ -3809,7 +3809,7 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
           terminalHolder.style.display = 'none';
           roundFinalized = true;
           roundFinalization = { rendered: true, holder: terminalHolder, hasContent: false };
-          // `B-NEW-11`: reasoning it carried goes back to the step it came from.
+          // `B1247`: reasoning it carried goes back to the step it came from.
           settleTurnReasoning(terminalHolder);
           return roundFinalization;
         }
@@ -3817,7 +3817,7 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
         const content = _ensureStreamLayout(body);
         content.style.minHeight = '';
         content.innerHTML = markdownModule.processWithThinking(markdownModule.squashOutsideCode(dt));
-        settleTurnReasoning(terminalHolder);   // `B-NEW-11`: one fold for the turn
+        settleTurnReasoning(terminalHolder);   // `B1247`: one fold for the turn
         if (window.hljs) terminalHolder.querySelectorAll('pre code').forEach((block) => window.hljs.highlightElement(block));
         roundFinalized = true;
         lastContentRoundHolder = terminalHolder;
@@ -5379,7 +5379,7 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
             }
           }
         }
-        // `B-NEW-11`: the last step's render drew its own fold; the turn's is one.
+        // `B1247`: the last step's render drew its own fold; the turn's is one.
         settleTurnReasoning(roundHolder);
 
 
@@ -5422,7 +5422,7 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
 
         // Attach footer to the last visible bubble (roundHolder for multi-round agent, holder for single),
         // with the turn's pills handed to it (`B920`).
-        // `B-NEW-11`: when both are hidden (the first step's reasoning went on,
+        // `B1247`: when both are hidden (the first step's reasoning went on,
         // the last step wrote nothing), the bubble the turn shows takes it.
         const footerTarget = _withTurnPills(
           (roundHolder && roundHolder !== holder && roundHolder.style.display !== 'none') ? roundHolder
@@ -5440,7 +5440,7 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
         }
         // Also store raw on the footer target so copy/TTS work
         //
-        // `B-NEW-2`: this is the turn's whole text on a second bubble, so a
+        // `B1321`: this is the turn's whole text on a second bubble, so a
         // walk that reads `dataset.raw` off every bubble reads the turn twice
         // — measured in the owner's own export, the same reasoning byte for
         // byte under two model headings
@@ -6372,7 +6372,7 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
     newBody.className = 'body';
     newWrap.appendChild(newBody);
     box.appendChild(newWrap);
-    // `B-NEW-11`: the step before, if it only thought, is this bubble's now.
+    // `B1247`: the step before, if it only thought, is this bubble's now.
     carryTurnReasoning(reasoningAbove(newWrap), newWrap);
     return newWrap;
   }
@@ -6384,7 +6384,7 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
    * thread's line reaches up to. Marks the thread as the one being written.
    */
   function _threadForNextCard(box, textAbove) {
-    // `B-NEW-11`: a step that only thought keeps its bubble at the foot of the
+    // `B1247`: a step that only thought keeps its bubble at the foot of the
     // turn, holding the turn's reasoning; its rows go above it.
     const thinker = reasoningAtFoot(box);
     // Find existing thread to append to — check last few children
@@ -6722,7 +6722,7 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
         _showDocumentWritingStatus(contentDiv);
       } else {
         contentDiv.innerHTML = markdownModule.processWithThinking(markdownModule.squashOutsideCode(dt));
-        // `B-NEW-11`: this view draws a step's reasoning shut, as the reload
+        // `B1247`: this view draws a step's reasoning shut, as the reload
         // does, so it joins the turn's one fold as it comes.
         settleTurnReasoning(roundHolder);
       }
@@ -6742,7 +6742,7 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
       const dt = markdownModule.normalizeThinkingMarkup(_streamDisplayText(roundText));
       if (!dt.trim()) {
         roundHolder.style.display = 'none';
-        settleTurnReasoning(roundHolder);   // `B-NEW-11`, as `_finalizeRoundRender`
+        settleTurnReasoning(roundHolder);   // `B1247`, as `_finalizeRoundRender`
         return;
       }
       contentDiv.innerHTML = markdownModule.processWithThinking(markdownModule.squashOutsideCode(dt));

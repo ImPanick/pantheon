@@ -1742,7 +1742,7 @@ export function raiseWindow(id) {
 /** `P23-01` (NAV-M-11/12). Give a window the focus on its move handle — where
  *  a door's own press puts it — when the focus is nowhere in particular.
  *
- *  `B-NEW-10`. The handle draws *Move: arrow keys · Resize: Shift + arrows*
+ *  `B1246`. The handle draws *Move: arrow keys · Resize: Shift + arrows*
  *  over the title bar whenever it has the focus (`style.css`, `P10-06`: "nothing
  *  but a keyboard can focus it"). This function and the back stack's re-raise
  *  (`backStack.js`, through the `focusWindow` hook) focus it after a mouse
@@ -1838,7 +1838,7 @@ backStack.configure({
   closeWindow,
   raise: raiseWindow,
   drawBack: drawBackButton,
-  focusWindow: focusWindowHandle,   // `B-NEW-10`
+  focusWindow: focusWindowHandle,   // `B1246`
 });
 
 /** Inject a minimize (`_`) button next to the close button in a modal.
