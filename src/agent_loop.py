@@ -2140,14 +2140,18 @@ _ADMIN_KEYWORDS = [
 #      that chat"*).
 # A mention is everything else: *"the fractured archive"*, *"the archive of the
 # old bank"*, *"a tidy sum"*, *"the setting sun"*, *"nothing of note"*.
+#: Which `_ADMIN_KEYWORDS` entries are in tier 1. A **filter** over that list,
+#: never a second list of keywords (`Law 7`): an entry here that is not in
+#: `_ADMIN_KEYWORDS` matches nothing, so the set is kept to names that are
+#: there — 13 of the 53, leaving 40 in the mention tier.
 _ADMIN_SELF_SUFFICIENT = frozenset({
-    "endpoint", "endpoints", "api key", "api token", "webhook", "webhooks",
+    "endpoint", "endpoints", "api key", "webhook", "webhooks",
     "mcp", "cron", "second opinion", "list models", "switch model",
     "change model", "create theme", "admin",
 })
 _ADMIN_ACTION_RE = re.compile(
     r"\b(?:"
-    r"archiv(?:e|es|ed|ing)|renam(?:e|es|ed|ing)|rename|delet(?:e|es|ed|ing)|"
+    r"archiv(?:e|es|ed|ing)|renam(?:e|es|ed|ing)|delet(?:e|es|ed|ing)|"
     r"remov(?:e|es|ed|ing)|forks?|forked|forking|truncat(?:e|es|ed|ing)|"
     r"lists?|listing|shows?|opens?|creat(?:e|es|ing)|adds?|registers?|"
     r"revok(?:e|es|ing)|rotat(?:e|es|ing)|configur(?:e|es|ing)|sets?|"
