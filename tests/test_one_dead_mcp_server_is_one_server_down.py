@@ -270,6 +270,54 @@ def test_a_handshake_the_transport_cancels_is_this_servers_error(monkeypatch):
     assert str(status.get("error") or "").strip(), status
 
 
+def test_the_reconnect_route_answers_instead_of_raising(server_path, monkeypatch):
+    """`POST /api/mcp/servers/{id}/reconnect` is the button a person presses
+    after fixing the command. It awaits `connect_server` inside the request
+    task, so a cancellation escaping that call was a 500 with no sentence —
+    the same defect reached by the other door (`routes/mcp/**`)."""
+    import unittest.mock as mock
+
+    from core.database import Base, McpServer
+    from core.middleware import INTERNAL_TOOL_HEADER, INTERNAL_TOOL_TOKEN
+    from routes.mcp.mcp_routes import setup_mcp_routes
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    manager = McpManager()
+    engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
+    Base.metadata.create_all(engine)
+    Factory = sessionmaker(bind=engine)
+    db = Factory()
+    try:
+        db.add(McpServer(id="dead-1", name="Typo server", transport="stdio",
+                         command="/bin/false", args="[]", env="{}", is_enabled=True))
+        db.commit()
+    finally:
+        db.close()
+
+    request = SimpleNamespace(
+        headers={INTERNAL_TOOL_HEADER: INTERNAL_TOOL_TOKEN},
+        state=SimpleNamespace(current_user="admin"),
+        app=SimpleNamespace(state=SimpleNamespace(auth_manager=SimpleNamespace(
+            is_configured=True, is_admin=lambda user: user == "admin"))),
+    )
+    endpoint = None
+    for route in setup_mcp_routes(manager).routes:
+        if (route.path == "/api/mcp/servers/{server_id}/reconnect"
+                and "POST" in getattr(route, "methods", set())):
+            endpoint = route.endpoint
+    assert endpoint is not None
+
+    async def scenario():
+        with mock.patch("routes.mcp.mcp_routes.SessionLocal", Factory):
+            return await endpoint(server_id="dead-1", request=request)
+
+    out = asyncio.run(scenario())
+    assert out["connected"] is False, out
+    assert out["status"] == "error", out
+    assert str(out.get("error") or "").strip(), out
+
+
 def test_a_cancel_delivered_to_the_connecting_task_still_cancels(monkeypatch):
     """`Law 17`'s other direction: shutdown must not be swallowed.
 

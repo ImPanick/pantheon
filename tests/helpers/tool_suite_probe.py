@@ -715,8 +715,14 @@ def request_shapes(tools: Optional[List[dict]], prompt: str, model: str) -> Dict
 
 REQUEST_SHAPES = ("openai", "anthropic", "harmony", "fenced")
 
-_BACKTICKED = re.compile(r"`([a-z][a-z0-9_]{2,60})`")
-_FENCE_TAG = re.compile(r"```([a-z][a-z0-9_]{2,60})")
+# `{1,60}` rather than `{2,60}` (fx10-channel, `Law 3` against the instrument):
+# the old minimum was three characters, so **`ls` could never be found** — it is
+# the register's only two-character name, and this extractor would have reported
+# it `missing` on a prompt that named it outright. Both patterns are filtered
+# against `known_tool_names()` below, so widening them cannot start counting an
+# English word as a tool.
+_BACKTICKED = re.compile(r"`([a-z][a-z0-9_]{1,60})`")
+_FENCE_TAG = re.compile(r"```([a-z][a-z0-9_]{1,60})")
 
 
 def prompt_tool_names(prompt: str) -> Set[str]:
