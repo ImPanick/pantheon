@@ -258,12 +258,35 @@ def _test_file_count_problems() -> list:
     if int(stated.group(1).replace(",", "")) != live:
         problems.append(
             f"tests says {stated.group(1)} test files and `git ls-files` counts "
-            f"{live} — re-run the suite and restate both figures together, "
-            f"because a file count that moved without the passing count is the "
-            f"drift this check exists for")
+            f"{live} — restate the file count (it is one edit; the passing figure "
+            f"below is dated and does not have to move with it)")
     for where, text in (("headline", claim.headline), ("pantheon", claim.pantheon)):
         if str(live) not in text.replace(",", ""):
             problems.append(f"tests: the {where} does not state {live} test files")
+
+    # The passing count is the half that cannot be derived, so it is held to
+    # being **dated and pinned** instead. A figure that names the day and the
+    # commit it was taken at is visibly old when it is old; a bare number is
+    # silently wrong, which is `B1405`'s whole defect. Deliberately a weaker
+    # claim than the file count: adding one test file must not pretend to
+    # re-measure 20,092 tests.
+    if not re.search(r"\b20\d\d-\d\d-\d\d\b", claim.pantheon):
+        problems.append("tests: the passing count names no date — it cannot be "
+                        "derived, so it has to say when it was measured")
+    pinned = re.search(r"`([0-9a-f]{7,40})`", claim.pantheon)
+    if pinned is None:
+        problems.append("tests: the passing count names no commit — a dated figure "
+                        "with no commit cannot be re-run")
+    else:
+        try:
+            seen = subprocess.run(["git", "cat-file", "-e", pinned.group(1) + "^{commit}"],
+                                  cwd=ROOT, capture_output=True, timeout=30)
+            if seen.returncode != 0:
+                problems.append(
+                    f"tests: the passing count is pinned at {pinned.group(1)}, which is "
+                    f"not a commit in this repository")
+        except (OSError, subprocess.SubprocessError):
+            pass
     return problems
 
 

@@ -275,7 +275,7 @@ what counts as blocking are in
 `.pantheon/ship-line.py`'s, and `.pantheon/check-ledger.py` fails the build when one here stops
 matching it.
 
-Test suite: **20,092 passing**, nothing red. The fourteen standing failures this fork
+Test suite: **20,092 passing**, nothing red — measured 2026-10-17 at `d998bd0`, which is how that figure is stated now: it cannot be derived without a 76-minute run, so it names the day and the commit instead of pretending to be current (`B1405`). The fourteen standing failures this fork
 inherited and carried were cleared on 2026-09-12 — eight were a container missing dependencies
 the project already declares, three were stale test stubs hiding behind broad `except` blocks,
 and three were rules pinned to upstream's shape rather than this fork's.

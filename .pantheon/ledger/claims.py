@@ -440,11 +440,12 @@ CLAIMS: Tuple[Claim, ...] = (
     Claim(
         id="tests",
         area="Verification apparatus",
-        headline="Test files 792 -> 1541, and a suite of 20,092 passing with nothing red.",
+        headline="Test files 792 -> 1542, and a suite of 20,092 passing with nothing red.",
         stock="792 test files.",
-        pantheon="1541 test files, 20,092 tests passing, 0 failing, 113 skipped, 2 xfailed.",
+        pantheon=("1542 test files, and 20,092 tests passing, 0 failing, 113 skipped, "
+                  "2 xfailed when the suite was last run whole — 2026-10-17, at `d998bd0`."),
         before="792 test files",
-        after="1541 test files · 20,092",
+        after="1542 test files · 20,092",
         provenance="diffed",
         repro=f"git ls-tree -r --name-only {FORK_POINT} | grep -c '^tests/test_.*\\.py$' && python3 -m pytest -q",
         evidence=("tests",),
@@ -463,8 +464,13 @@ CLAIMS: Tuple[Claim, ...] = (
             "landed without the headline moving — `B44`'s defect one level up, in the "
             "one line whose whole job is to summarise the rest. The file count is a "
             "`git ls-files` away, so `check-ledger.py` now derives it and fails on "
-            "drift; the passing count cannot be checked without running the suite, so "
-            "it is a dated measurement and the date is part of the claim. "
+            "drift. The passing count cannot be checked without running the suite "
+            "(1h16m), so it is a **dated** measurement that names the commit it was "
+            "taken at, and the checker holds it to carrying both. That is a weaker "
+            "claim than the file count and deliberately so: adding one test file is a "
+            "one-line edit and does not pretend to re-measure 20,092 tests, while a "
+            "figure five waves old is visibly five waves old instead of silently "
+            "wrong — which is the whole defect this row is about. "
             "**The suite carried 14 standing failures for the fork's whole life and "
             "now carries none** — and the accounting is worth more than the number: "
             "eight were this container missing dependencies the project already "
