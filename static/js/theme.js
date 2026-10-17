@@ -1719,6 +1719,14 @@ const _THEME_ZONE_MAP = {
   'adv-bubbleBorder':  '.msg .body',
   'adv-sidebarBg':     '.sidebar',
   'adv-brandColor':    '#sidebar-brand-btn',
+  // `P9-13`. The two `ADV_KEYS` this map lacked, which is why hovering those
+  // two rows did nothing and read as the feature being broken. `B21`'s closure
+  // already recorded the map as a documented 12-key subset; it is 14 now and
+  // the subset is gone. `--brand-mix-to` is read at exactly one rule, the
+  // welcome wordmark's gradient, so its zone only exists on a new chat — which
+  // is what the hint below is for.
+  'adv-brandMixTo':    '#welcome-screen .welcome-name',
+  'adv-hamburgerColor': '.hamburger-btn',
   'adv-inputBg':       '#message',
   'adv-inputBorder':   '.chat-input-bar',
   'adv-sendBtnBg':     '.send-btn',
@@ -1728,12 +1736,17 @@ const _THEME_ZONE_MAP = {
   'adv-toggleActive':  '.mode-toggle-btn.active, .admin-switch input:checked + .admin-slider',
 };
 
+//: `P9-13`. Answers **how many** elements it outlined, because zero is a real
+//: answer a person needs: `--brand-mix-to`'s only consumer is the welcome
+//: wordmark, so hovering that row on an open conversation correctly outlines
+//: nothing — and silence cannot be told from a broken feature.
 function _showThemeZoneHighlight(selector) {
   _clearThemeZoneHighlight();
-  if (!selector) return;
+  if (!selector) return 0;
   let els;
   try { els = document.querySelectorAll(selector); }
-  catch { return; }
+  catch { return 0; }
+  let drawn = 0;
   els.forEach(el => {
     // Skip elements inside the theme modal — highlighting itself is noise.
     if (el.closest && el.closest('#theme-modal')) return;
@@ -1746,7 +1759,9 @@ function _showThemeZoneHighlight(selector) {
     overlay.style.width  = (r.width + 4) + 'px';
     overlay.style.height = (r.height + 4) + 'px';
     document.body.appendChild(overlay);
+    drawn += 1;
   });
+  return drawn;
 }
 
 function _clearThemeZoneHighlight() {
@@ -1778,22 +1793,61 @@ export function initThemeZoneHighlight() {
   const root = document.getElementById('theme-tab-customize');
   if (!root || root.dataset.zoneBound === '1') return;
   root.dataset.zoneBound = '1';
+
+  // `P9-13`. One line, under the colour grid, that says what the hover does
+  // and what it means when it does nothing. The feature has worked since it
+  // was written and nothing announced it; the row calls it the best
+  // explainability feature in the app, with no label, legend or hint.
+  //
+  // **Zero outlined is a real answer and has to be said.** `--brand-mix-to`'s
+  // only consumer is the welcome wordmark, so hovering that row with a
+  // conversation open outlines nothing — correctly. A row whose colour has no
+  // zone at all is a third case, and it is named rather than left silent: a
+  // feature that is sometimes quiet is one a person stops trusting.
+  const hint = document.getElementById('theme-zone-hint');
+  const say = (text) => {
+    if (!hint) return;
+    hint.textContent = text || hint.dataset.default || '';
+  };
+  const labelOf = (row) => {
+    const el = row.querySelector('label');
+    const text = (el && el.textContent || '').trim();
+    // Some rows label with an icon and carry the words in `title`.
+    return text || (el && el.getAttribute('title')) || 'this colour';
+  };
+
   root.querySelectorAll('.color-row').forEach(row => {
     const input = row.querySelector('input[type="color"]');
     if (!input) return;
     const sel = _THEME_ZONE_MAP[input.id];
-    if (!sel) return;
-    row.addEventListener('mouseenter', () => _showThemeZoneHighlight(sel));
-    row.addEventListener('mouseleave', _clearThemeZoneHighlight);
-    // Also trigger when the picker actually opens (input focus)
-    input.addEventListener('focus', () => _showThemeZoneHighlight(sel));
-    input.addEventListener('blur', _clearThemeZoneHighlight);
+    const enter = () => {
+      if (!sel) {
+        say(`${labelOf(row)} has no preview — it is not drawn on this screen.`);
+        return;
+      }
+      const drawn = _showThemeZoneHighlight(sel);
+      say(drawn
+        ? `Outlined: ${labelOf(row)}.`
+        : `${labelOf(row)} is not on screen right now, so there is nothing to outline.`);
+    };
+    const leave = () => { _clearThemeZoneHighlight(); say(''); };
+    row.addEventListener('mouseenter', enter);
+    row.addEventListener('mouseleave', leave);
+    // Also trigger when the picker actually opens (input focus), which is the
+    // keyboard path: a person tabbing to a row gets the same answer, and the
+    // hint is `aria-live` so it is heard rather than only seen.
+    input.addEventListener('focus', enter);
+    input.addEventListener('blur', leave);
   });
   // Clear highlight when the modal closes.
   const modal = document.getElementById('theme-modal');
   if (modal) {
     new MutationObserver(() => {
-      if (modal.classList.contains('hidden')) _clearThemeZoneHighlight();
+      if (modal.classList.contains('hidden')) {
+        _clearThemeZoneHighlight();
+        const h = document.getElementById('theme-zone-hint');
+        if (h) h.textContent = h.dataset.default || '';
+      }
     }).observe(modal, { attributes: true, attributeFilter: ['class'] });
   }
 }

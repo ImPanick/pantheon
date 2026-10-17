@@ -17521,6 +17521,25 @@ body:has(.compare-active) .hamburger-btn { display: none !important; }
   0%, 100% { opacity: 0.95; }
   50%      { opacity: 0.55; }
 }
+/* `P9-13`. The one line that says what the hover does, and what it means when
+   it does nothing. Sits under the colour grid rather than beside each row,
+   because a legend repeated nine times is noise and the message is live — it
+   names the element it outlined, or says the element is off screen, or that
+   the colour has no preview at all.
+
+   `min-height` is the point of the rule rather than a detail: the text changes
+   on every hover, and without a reserved line the grid above it would shift
+   by one line-height each time a message appeared or cleared, which turns a
+   help line into a jitter. `--fg-muted` because it is help text and must not
+   compete with the labels it explains; no `--accent`, which `P1-01` keeps for
+   the chrome. */
+.theme-zone-hint {
+  margin: 8px 2px 0;
+  min-height: 2.4em;
+  font-size: 0.72rem;
+  line-height: 1.2;
+  color: var(--fg-muted, color-mix(in srgb, var(--fg) 62%, transparent));
+}
 /* Highlight the color row itself too so the user has a strong visual link
    between the input they're hovering and the zone overlay on the page. */
 #theme-tab-customize .color-row {

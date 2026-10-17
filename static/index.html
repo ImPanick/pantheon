@@ -862,6 +862,17 @@
           <div class="color-row"><label>Border</label><input type="color" id="clr-border"><button class="color-reset-btn" data-reset="border" title="Reset this color" aria-label="Reset color">&#x21BA;</button></div>
           <div class="color-row"><label>Accent</label><input type="color" id="clr-red"><button class="color-reset-btn" data-reset="red" title="Reset this color" aria-label="Reset color">&#x21BA;</button></div>
         </div>
+        <!-- `P9-13`. The zone highlighter has worked since it was written and
+             nothing said so: hover a colour and the element it controls is
+             outlined on the live page behind this modal. One line, live, and it
+             answers the other half too — when a hover outlines nothing, this
+             says whether the element is off screen or whether that colour has
+             no preview, because silence cannot tell those apart from broken.
+             `aria-live="polite"` so a screen reader hears the change rather
+             than only a sighted user seeing the outline. -->
+        <p class="theme-zone-hint" id="theme-zone-hint" aria-live="polite"
+           data-default="Hover a colour to outline what it changes on the page behind."
+           >Hover a colour to outline what it changes on the page behind.</p>
       </div>
       <div class="theme-adv-toggle" id="theme-adv-toggle">
         <span class="theme-adv-arrow">&#x25B6;</span> More Colors
