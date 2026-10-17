@@ -248,15 +248,15 @@ proved it dead.
 
 ## Status
 
-**1409 tracked tasks, 1004 done.** The tracker is [`.pantheon/ROADMAP.md`](.pantheon/ROADMAP.md) and
+**1409 tracked tasks, 1006 done.** The tracker is [`.pantheon/ROADMAP.md`](.pantheon/ROADMAP.md) and
 it is the only place work is tracked — one list, one progress area, validated by a script that
 recounts every phase row against its own ticks. It exists because the summary line was once wrong
 by nineteen and carried forward unread from entry to entry, because each author copied the line
 above.
 
 **Read that number with the trend beside it.** Over the last ten waves, *done* went
-**71.3% → 71.3%** and *open* went **357 → 405**: 163 rows filed against 115 closed, a
-file-to-close ratio of **1.417**. Most of it is `P23`, the audits' fixes — built by eight lanes, driven by the owner's
+**72.0% → 71.4%** and *open* went **357 → 403**: 134 rows filed against 88 closed, a
+file-to-close ratio of **1.523**. Most of it is `P23`, the audits' fixes — built by eight lanes, driven by the owner's
 walk twice on the merged tree and closed on 2026-10-07 — and what came straight after it: the owner's rulings that
 evening, and then `v0.2.0` shipping and the owner running it on their own install. Their two reports of 2026-10-09
 alone took thirteen measured causes across seven lanes, and their ruling the same evening took three more lanes and a

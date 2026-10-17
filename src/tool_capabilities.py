@@ -836,6 +836,31 @@ def _replies_in_numbers(tool_name: str, content: Any) -> bool:
         return False
 
 
+def _is_destructive_call(tool_name: Any, content: Any) -> bool:
+    """Does this exact call carry `DESTRUCTIVE`, arguments included?
+
+    `B1341` / `D-2026-10-17-01`. One statement of Auto's single exception, so
+    the gate does not re-derive it (`Law 7`). It asks
+    `capabilities_for_action` rather than the tool-level registration, because
+    `_ACTION_DESTRUCTIVE` makes destructiveness a property of the action for
+    nine multiplexed tools — `manage_memory action=delete` is destructive and
+    `action=add` is not, and a tool-level check would miss every one of them.
+
+    Fails **closed** on an unreadable call: a call whose classification cannot
+    be resolved is treated as destructive, so Auto asks. That is the safe
+    direction for a one-line exception whose whole purpose is that the person
+    sees an irreversible step before it happens.
+    """
+    try:
+        return ToolEffect.DESTRUCTIVE in capabilities_for_action(tool_name, content).effects
+    except Exception:  # noqa: BLE001
+        logger.debug(
+            "destructive check unreadable for %r; asking rather than auto-approving",
+            tool_name, exc_info=True,
+        )
+        return True
+
+
 def capabilities_for_action(tool_name: Any, content: Any) -> ToolCapabilities:
     """Classify a sealed multiplexed action; ambiguous actions fail high."""
     base = capabilities_for_tool(tool_name)
@@ -1778,11 +1803,44 @@ class ToolRunSecurityContext:
         decision = self._ladder_decision_for(tool_name, content)
         if decision.allowed or not self.auto_approved:
             return decision
-        # The owner's deliberate trade, and the only line that makes it:
-        # *"With Auto on, in that chat, a privileged effect that follows
-        # outside content runs without a person seeing it first."* There is no
-        # exception list here on purpose — a destructive effect runs too. If one
-        # should not, that is a row for the owner, not a quiet `if`.
+
+        # `B1341` / `D-2026-10-17-01`: **Auto has exactly one exception, and it
+        # is `DESTRUCTIVE`.**
+        #
+        # This block used to carry the opposite note — *"There is no exception
+        # list here on purpose — a destructive effect runs too. If one should
+        # not, that is a row for the owner, not a quiet `if`"* — and
+        # `D-2026-10-09-01` §2 shipped Auto that way deliberately, on the
+        # argument that a mode which keeps some asks is a mode nobody can
+        # describe in one sentence. The owner has now ruled the other way,
+        # because there **is** a one-sentence description: *Auto runs
+        # everything without asking, except what cannot be undone.*
+        #
+        # What decides it is the asymmetry rather than a general preference for
+        # caution. The exception costs one extra card on a rare action; its
+        # absence costs an unrecoverable loss when an injected instruction
+        # lands in a chat that was set to Auto weeks ago and forgotten.
+        # `DESTRUCTIVE` is the only class whose blast radius is not bounded by
+        # the action's own arguments and whose result cannot be undone from
+        # inside Pantheon.
+        #
+        # Asked of `capabilities_for_action`, not of `decision.tripped_effects`
+        # (`Law 7`). The tripped list is built differently on each refusal path,
+        # and destructiveness is frequently a property of the **arguments**
+        # rather than the tool: `_ACTION_DESTRUCTIVE` is why
+        # `manage_memory action=delete` and `bulk_email action=delete` are
+        # destructive while the same tools' other actions are not. A check
+        # against the string list would have auto-approved exactly those.
+        #
+        # This is still not a second rung and moves no control: it narrows one
+        # opt-out, in the direction of asking more rather than less, and a chat
+        # that is not set to Auto is unaffected in either direction.
+        if _is_destructive_call(tool_name, content):
+            logger.info(
+                "[approval] %s is destructive; asking even though this chat is "
+                "set to Auto (B1341)", tool_name,
+            )
+            return decision
         #
         # Nothing about the refusal is discarded except the refusal: the
         # effects that tripped and how well the tool is understood ride along

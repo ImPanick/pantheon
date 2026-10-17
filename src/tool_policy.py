@@ -523,8 +523,32 @@ def known_tool_names() -> Set[str]:
 # `.difference_update()` in the loop keeps working byte for byte — and it now
 # carries the predicate and the reasons. `lift()` is the `Law 1` guarantee
 # expressed as a property of the type rather than as a thing thirteen call
-# sites have to remember: **a privilege, a policy, a switched-off feature, plan
-# mode and a step's own list cannot be lifted by a later clamp.**
+# sites have to remember: **a privilege, a policy, a switched-off feature, a
+# workstation an admin turned off, the route's own set and a step's own list
+# cannot be lifted by a later clamp.**
+#
+# `B1399`. That sentence named **five** reasons while `LIFTABLE_REASONS` below
+# made **seven** unliftable, and the two it did not name were
+# `WITHHELD_BY_CALLER` and `WITHHELD_BY_WORKSTATION`. The gap was not
+# cosmetic — `src/agent_loop.py` tags the route's whole `disabled_tools` kwarg
+# `because=WITHHELD_BY_CALLER`, so the `pantheon-qwen3` notes clamp can lift
+# **nothing the route passed in**, which is every name PR `#6020` wrote it to
+# lift, and that clamp became dead code with no commit deciding it.
+#
+# The sentence is corrected here and the **behaviour is deliberately not**.
+# Widening the liftable set was tried and measurement refused it: `caller` is
+# one bucket for two different facts. It holds a neutral starting set *and*
+# every deliberate route restriction — incognito's `manage_memory`,
+# `search_chats` and `manage_skills`, the email reader's `send_email` and
+# `create_document`, and chat-mode compare's `manage_tasks`, which is one of
+# the exact three names both `lift()` call sites pass. Making the bucket
+# liftable would let the notes clamp re-enable `manage_tasks` in a mode whose
+# own comment reads *"disable ALL agent tools"*.
+#
+# The fix is attribution at the route — the deliberate sets withheld
+# `because=WITHHELD_BY_POLICY`, only the remainder as `caller` — and that is
+# the owner's call because it touches the chat route beside the privacy
+# controls. `B1399` carries the measurement and stays open for it.
 
 #: Why a name is withheld from a turn. An enum rather than a flag (`Law 10`):
 #: "it is withheld" and "it is withheld because this person may not use it" are
@@ -550,9 +574,11 @@ WITHHELD_REASONS = frozenset({
 
 #: The reasons a later clamp may lift. Everything outside this set is a
 #: privilege decision (`blocked_tools_for_owner`, `B70`'s token cap), a policy
-#: the route composed, a capability an admin switched off (`H05`), plan mode's
-#: read-only allowlist or a workflow step's own list (`P22-16`) — and
-#: `FORBIDDEN.md` Part 2 holds three of those five.
+#: the route composed, a capability an admin switched off (`H05`), a
+#: workstation an admin turned off, the route's own `disabled_tools` or a
+#: workflow step's own list (`P22-16`) — and `FORBIDDEN.md` Part 2 holds three
+#: of those six. `B1399` is why all six are now named: the comment above this
+#: set used to name five while the code enforced seven.
 LIFTABLE_REASONS = frozenset({WITHHELD_BY_TURN, WITHHELD_UNATTRIBUTED})
 
 

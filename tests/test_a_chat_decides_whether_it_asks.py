@@ -191,16 +191,24 @@ def test_a_step_auto_never_touched_does_not_claim_it_ran_under_auto():
     assert decision.auto_approved is False
 
 
-def test_auto_answers_every_stop_condition_and_not_a_chosen_few():
-    """*"do not half-build it by keeping some asks 'to be safe'"*.
+def test_auto_answers_every_stop_condition_except_a_destructive_one():
+    """`B1341` / `D-2026-10-17-01` gave Auto its one exception.
 
-    Driven over the ladder: every rung, tainted and clean, plus the
-    self-escalation door (`MORE_REACH`) which asks in **every** run — the one a
-    half-built Auto would have left stopping.
+    This case used to assert *"not a chosen few"* over **everything**, on
+    `D-2026-10-09-01` §2's rule that Auto keeps no asks at all — *"do not
+    half-build it by keeping some asks 'to be safe'"*. The owner has now ruled
+    that `DESTRUCTIVE` is the single exception, because there is a one-sentence
+    description of the mode with it in: *Auto runs everything without asking,
+    except what cannot be undone.*
+
+    So the property splits in two, and both halves are driven over every rung,
+    tainted and clean:
+
+      * every privileged effect that is **not** destructive is still
+        auto-approved — no chosen few among those, which is the half of the
+        original ruling that stands;
+      * a destructive call still raises the card.
     """
-    # The executor's own reading of the command (`src/ui_switches.switch_request`),
-    # so this is the spelling `do_ui_control` would act on.
-    escalation = ("ui_control", "toggle bash on")
     for rung, _conditions in TRUST_LADDER:
         for tainted in (False, True):
             run = ToolRunSecurityContext(rung=rung, auto_approved=True)
@@ -208,10 +216,98 @@ def test_auto_answers_every_stop_condition_and_not_a_chosen_few():
                 run.observe_prompt_context([HOSTILE_PAGE])
             for tool in PRIVILEGED:
                 assert run.decision_for(tool).allowed is True, (rung, tainted, tool)
-            assert run.decision_for(*escalation).allowed is True, (rung, tainted)
 
-    # And the same escalation is refused in Manual, at every rung — otherwise
-    # the case above would pass for a reason that has nothing to do with Auto.
+
+#: Destructive calls, one per shape the classification can take: registered at
+#: the tool level, decided by the **action** (`_ACTION_DESTRUCTIVE`), and —
+#: measured rather than assumed — the self-escalation door, because
+#: `capabilities_for_action` ranks a switch by what the switch hands over
+#: (`P7-02`), and a self-granted shell hands over `host_shell`'s
+#: `DESTRUCTIVE`. That one is a consequence of the ruling rather than something
+#: it named, and it is the right one: if Auto stops to ask before deleting one
+#: email, it should certainly stop before granting itself the shell that could
+#: delete everything.
+DESTRUCTIVE_CALLS = (
+    ("delete_email", '{"uid": "5"}'),
+    ("manage_memory", '{"action": "delete"}'),
+    ("bulk_email", '{"action": "delete", "all_unread": true}'),
+    ("ui_control", "toggle bash on"),
+)
+
+#: The same tools' non-destructive actions, so the case above cannot pass by
+#: refusing a whole tool rather than the action that earns it.
+SURVIVING_CALLS = (
+    ("manage_memory", '{"action": "add", "text": "x"}'),
+    ("bulk_email", '{"action": "mark_read"}'),
+    ("ui_control", "set_theme dark"),
+)
+
+
+@pytest.mark.parametrize("tool,content", DESTRUCTIVE_CALLS,
+                         ids=[c[0] + ":" + c[1][:18] for c in DESTRUCTIVE_CALLS])
+def test_a_destructive_call_still_asks_in_a_chat_set_to_auto(tool, content):
+    """The exception, stated so it cannot become a second rung.
+
+    Auto overrides the ladder's **refusals**; it is not itself a control. So
+    the property is not *"a destructive call is always refused"* — at a
+    permissive rung on a clean run the ladder allows these, and Manual allows
+    them too, and making Auto refuse there would be a new rung rather than an
+    exception (`D-2026-10-09-01` §2: Auto *"is one flag beside the ladder and
+    not a fourth rung"*). The first draft of this case asserted exactly that
+    and was wrong in three of its cells.
+
+    What the ruling actually says, in two halves:
+
+      * wherever Manual would have **refused** a destructive call, Auto refuses
+        it too — the override does not apply;
+      * everywhere else Auto changes nothing, so the decision matches Manual's.
+    """
+    for rung, _conditions in TRUST_LADDER:
+        for tainted in (False, True):
+            manual = ToolRunSecurityContext(rung=rung)
+            auto = ToolRunSecurityContext(rung=rung, auto_approved=True)
+            if tainted:
+                manual.observe_prompt_context([HOSTILE_PAGE])
+                auto.observe_prompt_context([HOSTILE_PAGE])
+            m = manual.decision_for(tool, content)
+            a = auto.decision_for(tool, content)
+            # Auto moved nothing for this call, in either direction.
+            assert a.allowed == m.allowed, (rung, tainted, tool, content)
+            assert a.auto_approved is not True, (rung, tainted, tool)
+            if not m.allowed:
+                assert a.allowed is False, (rung, tainted, tool, content)
+
+    # And the case is not vacuous: there is at least one cell where Manual
+    # refuses this call, so the exception is doing work somewhere.
+    refused_somewhere = False
+    for rung, _conditions in TRUST_LADDER:
+        for tainted in (False, True):
+            run = ToolRunSecurityContext(rung=rung)
+            if tainted:
+                run.observe_prompt_context([HOSTILE_PAGE])
+            if not run.decision_for(tool, content).allowed:
+                refused_somewhere = True
+    assert refused_somewhere, (
+        f"Manual never refuses {tool} {content!r} at any rung, so this case "
+        "proves nothing about the Auto exception")
+
+
+@pytest.mark.parametrize("tool,content", SURVIVING_CALLS,
+                         ids=[c[0] + ":" + c[1][:18] for c in SURVIVING_CALLS])
+def test_a_non_destructive_action_of_the_same_tool_is_still_auto_approved(tool, content):
+    """The exception is the **action**, not the tool. Without this case the one
+    above would pass just as well for an implementation that blocked
+    `manage_memory` outright, which would be a second rung by accident."""
+    for rung, _conditions in TRUST_LADDER:
+        run = ToolRunSecurityContext(rung=rung, auto_approved=True)
+        run.observe_prompt_context([HOSTILE_PAGE])
+        assert run.decision_for(tool, content).allowed is True, (rung, tool, content)
+
+
+def test_the_escalation_door_is_refused_in_manual_too():
+    """Otherwise the destructive cases above could pass for a reason that has
+    nothing to do with Auto."""
+    escalation = ("ui_control", "toggle bash on")
     for rung, _conditions in TRUST_LADDER:
         held = ToolRunSecurityContext(rung=rung).decision_for(*escalation)
         assert held.allowed is False, rung
@@ -232,6 +328,13 @@ def test_turning_auto_off_restores_the_chat_exactly():
                 assert a.allowed is True, (rung, tainted, tool)
                 # Auto flipped it only where Manual said no.
                 assert a.auto_approved is (not m.allowed), (rung, tainted, tool)
+            # `B1341`: and for a destructive call the two agree, because Auto
+            # no longer moves that one. Turning Auto off still restores the
+            # chat byte-for-byte — there is simply one call it never changed.
+            for tool, content in DESTRUCTIVE_CALLS:
+                m = manual.decision_for(tool, content)
+                a = auto.decision_for(tool, content)
+                assert a.allowed == m.allowed, (rung, tainted, tool)
 
 
 def test_the_ladder_itself_is_untouched():
