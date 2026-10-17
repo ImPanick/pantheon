@@ -72,6 +72,7 @@ from pathlib import Path
 import pytest
 
 from test_a_draft_skill_is_uncatalogued_not_inactive import js_function  # noqa: E402
+from tests.helpers.motion_stub import motion_stub  # noqa: E402
 from test_tool_effect_surfaces_js import _DOM, _make_sandbox, _run  # noqa: E402
 from tests.helpers.source_text import blank_text  # B290
 
@@ -106,7 +107,11 @@ _STUBS = {
         "export function topToolWindowZ(){ return 1; }\nexport function topPortalZ(){ return 1; }\n"
         "export function toolWindowZ(){ return NaN; }\n"  # `B1068`: `ui.js` imports it
     ),
-    "motion.js": "export function prefersReducedMotion(){ return false; }\n",
+    # Derived from the real module, not listed here: a one-line stub exporting
+    # only `prefersReducedMotion` died with "does not provide an export named
+    # 'scrollBehavior'" the day `P1-15` gave `ui.js` a second import, in all
+    # sixteen cases in this file (`Law 7`).
+    "motion.js": motion_stub(),
 }
 
 _SHIM = r"""

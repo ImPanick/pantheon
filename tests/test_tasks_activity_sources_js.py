@@ -33,6 +33,7 @@ from pathlib import Path
 import pytest
 
 from tests.helpers.esc_stub import ui_default_stub  # B874
+from tests.helpers.motion_stub import motion_stub  # P1-15
 
 ROOT = Path(__file__).resolve().parents[1]
 TASKS_JS = ROOT / "static" / "js" / "tasks.js"
@@ -65,6 +66,11 @@ _STUBS = {
     # `P23-01`: the real back stack (no imports, no work at load) — Tasks notes
     # itself as the Workbench's opener through it.
     "backStack.js": (ROOT / "static" / "js" / "backStack.js").read_text(encoding="utf-8"),
+    # `P1-15` gave `tasks.js` an `import … from './motion.js'`, and this
+    # sandbox stubs its imports by hand, so the missing file took all 13
+    # cases down with `ERR_MODULE_NOT_FOUND`. Derived from the real module
+    # (`tests/helpers/motion_stub.py`) so the next export cannot repeat it.
+    "motion.js": motion_stub(),
 }
 
 _SHIM = r"""

@@ -6,20 +6,27 @@
 **259 declarations, 64 distinct values** in `static/style.css`, range −1 to
 1,000,000. Re-measured 2026-10-17, and three of those four numbers had moved:
 
-  * **349** hard-coded literals, not 259, and the scope is the reason — the row
-    says *"`static/style.css` only"*, and 69 of them are not in it. They are in
-    29 files, `slashCommands.js` (12), `emailLibrary.js` (6), `document.js` (5)
-    and `index.html` (3) among them;
+  * **355** hard-coded literals, not 259, and the scope is the reason — the row
+    says *"`static/style.css` only"*, and **76** of them are not in it. They are
+    in 29 files, `slashCommands.js` (12), `document.js` (6),
+    `emailLibrary.js` (6), `notes.js` (5) and `settings.js` (5) among them.
+
+    *That count was 349 until this file stopped blanking comments by hand.* The
+    first draft carried `re.sub(r"/\*.*?\*/", ...)` plus a `//` rule, which is
+    `B290`'s defect for the fourth time: it blanked live code in a dozen JS
+    modules and hid **6** real sites, and under-reported the derived ones by 4.
+    `tests/test_one_comment_blanker.py` failed it the same day. See
+    `_strip_comments` below;
   * **74** distinct values;
   * range **−1 to 2,147,483,646** — `static/app.js`'s drop shield, two short of
     `INT32_MAX`, with `#toast.toast` at 2,147,483,000 just under it.
 
 And one thing the row could not have known, which is the most useful fact here:
-**60 further sites are already derived** rather than literal. `topPortalZ()`,
+**64 further sites are already derived** rather than literal. `topPortalZ()`,
 `nextToolWindowZ()` and `topToolWindowZ()` in `static/js/toolWindowZOrder.js`
 read the live stack, so the top of the ladder is computed per open
-window and cannot be written down. That is why the population is **420 sites,
-349 of them literal** — and why a tier table alone can never be the whole
+window and cannot be written down. That is why the population is **430 sites,
+355 of them literal** — and why a tier table alone can never be the whole
 answer: the window stack's height is a runtime value.
 
 **What this checker does, and what it deliberately does not.**
@@ -105,28 +112,39 @@ BASELINE = {
 
 #: Sites recorded on 2026-10-17, so a conversion to `topPortalZ()` shows up as
 #: progress rather than as drift. Literals may fall; they may not rise.
-BASELINE_LITERALS = 348
-BASELINE_DERIVED = 60
+BASELINE_LITERALS = 355
+BASELINE_DERIVED = 64
 
 
-def _strip_comments(text: str, is_css: bool) -> str:
-    """Blank comments out **in place**, so every offset stays valid.
+#: The repository's one comment blanker, loaded rather than reimplemented.
+#:
+#: `B290`, and the first draft of this file was the fourth copy of the defect it
+#: names: `re.sub(r"/\*.*?\*/", ...)` cannot tell a comment from a string, so
+#: `input.accept = 'image/*,video/*'` in `static/js/gallery.js` opens a
+#: "comment" that the next `*/` anywhere in the file closes — 7,277 lines of
+#: live code across 15 modules, blanked. `tests/test_one_comment_blanker.py`
+#: caught it the same day (`Law 14`), which is what that test is for.
+#:
+#: It blanks in place, so every offset and line number this file reports is the
+#: line number in the file. `mode_for` picks js / css / html from the name, and
+#: in `html` mode it blanks `<script>` bodies as JavaScript — so a `z-index`
+#: written inline in markup is still a site, and only the comments around it go.
+def _load_blanker():
+    import importlib.util
 
-    Deleting them instead would shift every site after the first comment, and
-    the offsets are what makes a site reportable by line.
-    """
-    out = list(text)
-    for match in re.finditer(r"/\*.*?\*/", text, re.S):
-        for i in range(match.start(), match.end()):
-            if out[i] != "\n":
-                out[i] = " "
-    if not is_css:
-        # `//` only where it cannot be a protocol or a regex — a false positive
-        # here hides a real site, which is worse than carrying a commented one.
-        for match in re.finditer(r"(?<![:\w/])//[^\n]*", text):
-            for i in range(match.start(), match.end()):
-                out[i] = " "
-    return "".join(out)
+    path = ROOT / ".pantheon" / "check-specifiers.py"
+    spec = importlib.util.spec_from_file_location("_zindex_check_specifiers", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+_BLANKER = _load_blanker()
+
+
+def _strip_comments(text: str, path) -> str:
+    """`text` with its comments replaced by spaces, offsets unchanged."""
+    return _BLANKER.strip_comments(text, mode=_BLANKER.mode_for(Path(path)))
 
 
 def sites_in(rel: str) -> list:
@@ -141,7 +159,7 @@ def sites_in(rel: str) -> list:
     """
     path = ROOT / rel
     raw = path.read_text(encoding="utf-8", errors="ignore")
-    text = _strip_comments(raw, path.suffix == ".css")
+    text = _strip_comments(raw, path)
     found = []
     for match in CONTEXT.finditer(text):
         tail = text[match.end():match.end() + 90]

@@ -78,6 +78,7 @@ import pytest
 
 from test_a_draft_skill_is_uncatalogued_not_inactive import js_function  # noqa: E402
 from test_tool_effect_surfaces_js import _make_sandbox, _run  # noqa: E402
+from tests.helpers.motion_stub import motion_stub  # noqa: E402
 from tests.helpers.source_text import blank_text  # B290
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -112,7 +113,9 @@ _STUBS = {
         "export function topToolWindowZ(){ return 1; }\nexport function topPortalZ(){ return 1; }\n"
         "export function toolWindowZ(){ return NaN; }\n"  # `B1068`: `ui.js` imports it
     ),
-    "motion.js": "export function prefersReducedMotion(){ return false; }\n",
+    # Derived from the real module (`tests/helpers/motion_stub.py`), so an
+    # export added to `static/js/motion.js` cannot break this sandbox.
+    "motion.js": motion_stub(),
 }
 
 _SHIM = r"""

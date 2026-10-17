@@ -8,7 +8,7 @@ literals, **74** distinct, range **−1 to 2,147,483,646** — and the reason th
 first one moved is the row's own scope line, *"`static/style.css` only"*: 69 of
 the 349 are in 28 other files.
 
-The part the row could not have known is the useful one. **Sixty further sites
+The part the row could not have known is the useful one. **Sixty-four further sites
 are already derived**: `topPortalZ()`, `nextToolWindowZ()` and
 `topToolWindowZ()` read the live stack, so the top of the ladder is a runtime
 value and no table can hold it. That is why a tier table is a *vocabulary*
@@ -110,8 +110,8 @@ def test_the_baseline_names_only_values_inside_their_own_tier():
 def test_the_scan_finds_the_population_it_claims(sites, literals):
     """Non-vacuity. A scan that finds nothing passes every test below it."""
     derived = [s for s in sites if s["kind"] == "derived"]
-    assert len(literals) >= 300, f"only {len(literals)} literals found"
-    assert len(derived) >= 50, f"only {len(derived)} derived sites found"
+    assert len(literals) >= 340, f"only {len(literals)} literals found"
+    assert len(derived) >= 60, f"only {len(derived)} derived sites found"
     assert len({s["file"] for s in literals}) >= 20
 
 
@@ -139,16 +139,28 @@ def test_the_vendored_bundles_are_not_ours_to_tier(sites):
     assert not [s for s in sites if s["file"].startswith("static/lib/")]
 
 
-def test_a_comment_cannot_hold_a_z_index():
-    """Offsets have to survive comment stripping, and the stripper replaces
-    rather than deletes for exactly that reason. `modalManager.js`'s comment
-    names `10020` in prose; the scan must not read it as a site."""
-    blanked = CZ._strip_comments("a/* z-index: 4242; */b", is_css=True)
+def test_a_comment_cannot_hold_a_z_index_and_a_string_cannot_open_one(tmp_path):
+    """Offsets have to survive comment stripping, and a string must not open a
+    comment — the two halves of `B290`, which this checker shipped wrong once.
+
+    The hand-written version read `'image/*,video/*'` as the start of a comment
+    and ate everything to the next `*/`, hiding six real sites in JS modules.
+    The second assertion here is that exact string.
+    """
+    css = tmp_path / "x.css"
+    blanked = CZ._strip_comments("a/* z-index: 4242; */b", css)
     assert len(blanked) == len("a/* z-index: 4242; */b")
     assert "4242" not in blanked
     assert blanked.startswith("a") and blanked.endswith("b")
-    kept = CZ._strip_comments("const u = 'https://x/y';\n", is_css=False)
-    assert "https://x/y" in kept, "a protocol's // is not a comment"
+
+    js = tmp_path / "x.js"
+    live = "input.accept = 'image/*,video/*';\nel.style.zIndex = '4242';\n/* gone */\n"
+    kept = CZ._strip_comments(live, js)
+    assert "4242" in kept, (
+        "a string literal opened a comment and ate the site after it — B290")
+    assert "gone" not in kept, "a real comment survived"
+    kept_url = CZ._strip_comments("const u = 'https://x/y';\n", js)
+    assert "https://x/y" in kept_url, "a protocol's // is not a comment"
 
 
 # ── what the checker catches ───────────────────────────────────────────────
@@ -235,7 +247,7 @@ def test_the_toast_is_not_left_on_a_literal_the_window_counter_can_reach():
     """`P1-11`, `B1056`. Read from the stylesheet, against the `top` tier's own
     floor, rather than against the number — so raising the tier moves this
     with it and a toast dropped back to 9999 fails."""
-    css = CZ._strip_comments(STYLE.read_text(encoding="utf-8"), is_css=True)
+    css = CZ._strip_comments(STYLE.read_text(encoding="utf-8"), STYLE)
     rule = re.search(r"\n    \.toast \{(.*?)\n    \}", css, re.S)
     assert rule, "the `.toast` rule has moved; re-derive this test"
     value = re.search(r"z-index:\s*(\d+)", rule.group(1))
@@ -253,7 +265,7 @@ def test_the_id_qualified_override_is_gone_not_merely_out_ranked():
     # Comment-stripped, because the rule this test forbids is *named* in the
     # comment that replaced it — the first draft of this test read its own
     # explanation as the defect.
-    css = CZ._strip_comments(STYLE.read_text(encoding="utf-8"), is_css=True)
+    css = CZ._strip_comments(STYLE.read_text(encoding="utf-8"), STYLE)
     assert "#toast.toast" not in css, (
         "the id-qualified toast rule is back — put the value on `.toast` instead, "
         "or the base rule is dead again")

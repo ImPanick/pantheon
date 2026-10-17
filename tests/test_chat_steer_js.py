@@ -38,6 +38,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.helpers.motion_stub import motion_stub
+
 ROOT = Path(__file__).resolve().parents[1]
 CHAT_STREAM = ROOT / "static" / "js" / "chatStream.js"
 pytestmark = pytest.mark.skipif(not shutil.which("node"), reason="node binary not on PATH")
@@ -208,6 +210,12 @@ export default {
 };
 """,
     "document.js": "export default {};\n",
+    # `P1-15` gave `chatStream.js` an `import … from './motion.js'`, and this
+    # sandbox copies one module and stubs its imports by hand — no
+    # `_copy_unstubbed_imports` — so the missing file took all 24 cases down
+    # with `ERR_MODULE_NOT_FOUND`. Derived from the real module so the next
+    # export cannot do it again (`tests/helpers/motion_stub.py`).
+    "motion.js": motion_stub(),
 }
 
 

@@ -32,6 +32,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.helpers.motion_stub import motion_stub
+
 from test_tool_effect_surfaces_js import _DOM, _make_sandbox  # noqa: E402
 
 _REPO = Path(__file__).resolve().parent.parent
@@ -132,11 +134,7 @@ export default {
     "tileManager.js": "export function snapModalToZone() {}\n",
     # The real one reads `matchMedia`; the point of these tests is the canvas,
     # so motion is pinned off and P1-12 owns the reduced-motion path.
-    "motion.js": (
-        "export function prefersReducedMotion() { return false; }\n"
-        "export function scrollBehavior() { return 'smooth'; }\n"
-        "export function onMotionPreferenceChange() {}\n"
-    ),
+    "motion.js": motion_stub(),
 }
 
 
@@ -216,11 +214,7 @@ def test_reduced_motion_stops_the_animator_and_keeps_the_theme(tmp_path_factory)
     # that line in a try/catch — working code, failing test. The behaviour is
     # what matters: no canvas starts, and the person keeps their theme.
     stubs = dict(_STUBS)
-    stubs["motion.js"] = (
-        "export function prefersReducedMotion() { return true; }\n"
-        "export function scrollBehavior() { return 'auto'; }\n"
-        "export function onMotionPreferenceChange() {}\n"
-    )
+    stubs["motion.js"] = motion_stub(reduced=True)
     still = _make_sandbox(tmp_path_factory.mktemp("bgcanvasstill"), _THEME, _SHIM, stubs)
     out = _apply(still, "synapse", "ok")
     assert out["threw"] is None
