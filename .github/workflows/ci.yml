@@ -204,6 +204,31 @@ jobs:
       # number is how the product reached 2,147,483,000 in the first place.
       - name: check-zindex
         run: python3 .pantheon/check-zindex.py
+      # `P1-13`. Elevation was two idioms that do not look alike: 127 shadows
+      # hard-coded `rgba(0,0,0,α)` across 25 distinct alphas — three of them the
+      # same number spelled twice — and 41 more used `color-mix(in srgb,
+      # var(--fg) N%, transparent)`, which is a dark shadow on the 8 light
+      # palettes and a light GLOW on the other 15. `D-2026-10-17-02` §1 ruled
+      # elevation is a shadow everywhere, so all 168 now read one of four
+      # `light-dark()` inks whose dark arm is the literal the file was tuned
+      # with. This holds the three things that can rot: a shadow carrying its
+      # own ink again, a token's dark arm moving (which would un-pin the 15 dark
+      # palettes), and the light arm's `dark / 5` drifting from what matching
+      # the CIE L* step on the live palettes actually derives.
+      - name: check-elevation
+        run: python3 .pantheon/check-elevation.py
+      # `B782`. An inline `<svg>` with a 24-unit viewBox scales its stroke by
+      # `size / 24`, so a stroke-2 glyph at 11px paints 0.917 device pixels —
+      # a line the browser smears across two pixels or drops one side of. 117
+      # glyphs were under that floor; `D-2026-10-17-02` §4 ruled them fixed by
+      # moving whichever of size and stroke is the RARER value, onto one the
+      # tree already uses, so both ladders got shorter (19 sizes -> 18, 14
+      # stroke widths -> 11) instead of one growing. This fails a glyph under
+      # one device pixel and a caller of `langIcon()` asking for a size that
+      # would be; it reports the two ladders and deliberately fails neither,
+      # because `B291` measured that the variation is not uniformly drift.
+      - name: check-icon-floor
+        run: python3 .pantheon/check-icon-floor.py
       # B74. The register above says a tool name must be in every register; this
       # one says the registers have to AGREE. Thirteen tools are served by an
       # MCP server and declared to Pantheon, each spelled out twice, and no pair

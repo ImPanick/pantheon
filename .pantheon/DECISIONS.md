@@ -2971,6 +2971,41 @@ reasoning still has to be written down, and the owner can overturn any of these 
    way and twelve of sixteen palettes resolved every one of them to the hex they already had. The 43 ink-form uses
    convert too, because one idiom is the point (`Law 13`) and leaving two is this row's own defect.
 
+   **Implemented the same day, and the light arm turned out to be derivable rather than a matter of taste.** A black
+   overlay at alpha α drops a panel's relative luminance to `Y(1-α)` *exactly* — compositing is linear in channel
+   space and relative luminance is a linear combination of linearised channels — so the only question is what to
+   hold constant between the two arms. Matching the **contrast ratio** was tried first and is wrong: today's dark
+   shadows reach only **1.01:1 to 1.08:1** against a near-black panel, so a light arm matched to that would be
+   invisible. A shadow is a lightness step, not a boundary, and 1.4.11 has nothing to say about it. Matching the
+   **perceptual** step instead — CIE `L*`, which is uniform where `Y` is not — puts the light arm at **one fifth**
+   of the dark arm: 0.206, 0.205, 0.203 and 0.200 across the four tiers. The same number four times to within 3.2%,
+   so the four light arms are written as `dark / 5` rather than four separately derived magic values, and
+   `.pantheon/check-elevation.py` re-derives the ratio from the live palettes and fails past 5% drift. That ratio is
+   also the measurement that explains the defect the row opened with: on a near-white panel the same α removes five
+   times the lightness it removes on a near-black one, which is what a grey smudge *is*.
+
+   **The four tiers, with the old values and the new one, as the row's `Verify:` line asks.** The alphas collapse by
+   nearest neighbour **in log space**, because a shadow's alpha is perceived as a ratio and not as a distance — the
+   boundaries are geometric means (0.109, 0.230, 0.394), not arithmetic ones (0.12, 0.24, 0.405):
+
+   | token | light | dark | collapsed from | uses |
+   | --- | --- | --- | --- | --- |
+   | `--shadow-ink-1` | 0.014 | **0.07** | 0.05, 0.06, 0.07, 0.10 | 10 |
+   | `--shadow-ink-2` | 0.034 | **0.17** | 0.12, 0.14, 0.15, 0.16, 0.18, 0.20, 0.22 | 47 |
+   | `--shadow-ink-3` | 0.062 | **0.31** | 0.24, 0.25, 0.28, 0.30, 0.32, 0.34, 0.35, 0.38 | 69 |
+   | `--shadow-ink-4` | 0.100 | **0.50** | 0.40, 0.42, 0.45, 0.50, 0.55, 0.60, 0.66 | 42 |
+
+   No occurrence moves by more than **1.43×** and the occurrence-weighted mean move is **1.154×**. A linear rule
+   would drop 0.12, 0.24 and 0.40 a tier — 23 occurrences — and its worst move is **1.71×**, which is the whole
+   argument for the geometric boundaries and is held by a test rather than by this paragraph.
+
+   **What was deliberately not swept, and it is the thing a blind sweep would have broken.** Sixty-odd shadows are
+   painted in `--red`, `--accent`, `--color-error`, `--color-success` and the cookbook's server tint. Those are
+   focus rings and state glows, not elevation, and converting them to a black ink would have turned every focus ring
+   into a drop shadow. The 236 distinct **geometries** are also untouched: every site keeps its own offsets and blur,
+   and these tokens are the shadow's ink. Collapsing geometry to four whole shadows is the other half of the row and
+   it needs eyes, which is a review and not a sweep.
+
 2. **`B1399` — attribution at the route, not a wider liftable set.** `D-2026-10-17-01` §1's remedy was tried and
    reverted. `stream_agent_loop` already builds a `TurnToolAccess` from its `disabled_tools` kwarg, so it accepts a
    pre-built one and `routes/chat_routes.py` withholds its **deliberate** sets `because=WITHHELD_BY_POLICY` and
@@ -2980,13 +3015,25 @@ reasoning still has to be written down, and the owner can overturn any of these 
    not *the clamp works* — it is that **every** contribution to `disabled_tools` in `chat_routes.py` is attributed,
    derived from the source rather than listed, so a sixth restriction added later fails rather than leaking.
 
-3. **`B1404` — a second token for the 176 control boundaries, not one lifted `--border` for all 961.** Classified:
-   of 961 declaration×selector pairs reading `var(--border)`, **176** name an interactive element and **785** are
-   panel edges, card outlines, dividers and table rules. WCAG 1.4.11 asks 3:1 of a UI component boundary and does
-   not ask it of a decorative edge, so lifting all 961 would change four fifths of the population for a rule that
-   does not apply to it — and would flatten the difference between a text field and a panel edge on 23 palettes,
-   which is what `D-2026-08-26-03` protects them from. `P1-09`'s proof says a compliant border exists on every
-   palette by construction, so this is fixable rather than blocked, unlike `B15`.
+3. **`B1404` — a second token for the control boundaries, not one lifted `--border` for all of them.** Of the
+   stylesheet's border reads, **139** declaration×selector pairs name an interactive element and **932** are panel
+   edges, card outlines, dividers and table rules. WCAG 1.4.11 asks 3:1 of a UI component boundary and does not ask
+   it of a decorative edge, so lifting the whole population would change seven eighths of it for a rule that does
+   not apply — and would flatten the difference between a text field and a panel edge on 23 palettes, which is what
+   `D-2026-08-26-03` protects them from. `P1-09`'s proof says a compliant border exists on every palette by
+   construction, so this is fixable rather than blocked, unlike `B15`.
+
+   **This ruling shipped two wrong censuses before the right one, and the correction is the more useful record.**
+   The first said 176/785 of 961: inflated 39% because the classifier asked `\b(input|textarea|select|button)\b`
+   of the raw selector, and `-` is a word boundary in a regex, so `.chat-input-bar` and `.input-divider` counted as
+   text fields. The second said 127/834, measured after that fix but before the sweep, and then counted a different
+   unit — the sweep's converted spelling `var(--border-control, var(--border))` *contains* the plain one, so a
+   census that greps for `var(--border)` double-counts every read it fixed. The figures above are the third
+   measurement and the last one that will be typed anywhere: `_css_border_read_census()` in `check-contrast.py`
+   recomputes the split on every CI run and the audit prints it, `_is_control_selector()` is the one place the two
+   buckets are told apart (`Law 7` — the two callers disagreed by 39% while they each had their own copy), and
+   `test_the_census_is_computed_not_quoted` fails if a three-digit figure reappears in the classifier's docstring.
+   A census in prose is a census nobody recomputes; this one was wrong in prose twice in one day.
 
 4. **`P5-13`, `P5-14`, `B394`, `B782` — the sub-pixel floor is fixed by raising the SIZE, and the ladders are
    deliberately not collapsed.** Two separate answers, and `B782`'s own measurement decides the first. **115 glyphs
