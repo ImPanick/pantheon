@@ -198,6 +198,40 @@ function deriveSyntaxColors(colors) {
   };
 }
 
+// `P1-08`. WCAG 2.x relative luminance, and the one foreground choice made
+// from it. Kept here beside `applyColors` rather than in `color/hex.js`,
+// because `.pantheon/check-contrast.py` audits the same formula over the same
+// `THEMES` and the two have to be readable against each other (`Law 7`);
+// `tests/test_the_button_clears_the_floor_js.py` runs this function and that
+// script on every palette and fails if they disagree.
+function _srgbChannel(v) {
+  return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+}
+
+export function relativeLuminance(hex) {
+  const rgb = hexToRgb(hex);
+  if (!rgb) return 0;
+  const [r, g, b] = [rgb.r, rgb.g, rgb.b].map((c) => _srgbChannel(c / 255));
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+export function contrastRatio(a, b) {
+  const la = relativeLuminance(a);
+  const lb = relativeLuminance(b);
+  const hi = Math.max(la, lb);
+  const lo = Math.min(la, lb);
+  return (hi + 0.05) / (lo + 0.05);
+}
+
+//: Whichever of black or white is legible on `accentHex`. The endpoints of the
+//: luminance range, so the winner is the best any foreground can do — and the
+//: audit says the winner always clears 4.5:1 on every shipped palette.
+export function onAccentFor(accentHex) {
+  return contrastRatio('#000000', accentHex) >= contrastRatio('#ffffff', accentHex)
+    ? '#000000'
+    : '#ffffff';
+}
+
 // Advanced picker key → CSS variable mapping
 const ADV_KEYS = [
   { key: 'userBubbleBg',       css: '--user-bubble-bg',    label: 'User Chat Bubble', group: 'Chat Bubbles' },
@@ -333,6 +367,33 @@ export function applyColors(colors) {
   // `tests/test_accent_token_js.py` measures rather than trusts them.
   const _accent = colors.accent || colors.red;
   if (_accent) s.setProperty('--accent', _accent);
+
+  // `P1-08` / `D-2026-09-08-01`. **The foreground that is legible on this
+  // theme's accent, computed rather than assumed to be white.**
+  //
+  // `.send-btn` and 18 other rules hard-coded `color:#fff` on an accent
+  // background. Re-measured 2026-10-17 with `.pantheon/check-contrast.py`
+  // across all **23** palettes (the row said sixteen; seven have been added
+  // since, which is why the audit reads `THEMES` instead of a count): white on
+  // the accent clears WCAG 4.5:1 on **five** of them and misses on eighteen —
+  // `terminal` at **1.37**, `grove` 1.81, `channel` 1.86, `guild` 1.94, `ume`
+  // 1.97, `paper` 2.24, down the list.
+  //
+  // Picking whichever of black or white actually clears is not a compromise
+  // between them; it is the maximum any foreground can reach on a given
+  // background, so if this fails the floor no colour would have passed. The
+  // measurement says it never fails: the worst case across every palette is
+  // `claude` at **5.18**, and — the part that matters — it clears on `cute`
+  // (**7.84**) and `retrowave` (**5.48**) too, the two themes `B15` records as
+  // having no legible foreground against their own panel. A filled button with
+  // a computed foreground is therefore the only one of the five designs
+  // measured that reaches the floor on all 23, which is the answer to the
+  // ruling's *"a different button design is the only fix available there"*.
+  //
+  // Black and white only. A derived mid-tone would have to be re-checked per
+  // theme and could not be reasoned about from this file; these two are the
+  // endpoints of the luminance range and one of them always wins.
+  if (_accent) s.setProperty('--on-accent', onAccentFor(_accent));
 
   // Keep the mobile browser toolbar / status bar matched to the theme bg
   // (same as the early head-script does on first paint).

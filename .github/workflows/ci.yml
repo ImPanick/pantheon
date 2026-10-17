@@ -183,6 +183,17 @@ jobs:
       # use while the fence parser dropped every call without an error.
       - name: check-tool-surface
         run: python3 .pantheon/check-tool-surface.py
+      # `P1-09`, `P10-04`. The contrast audit, over whatever `THEMES` holds
+      # rather than over a count — the phase row said "all 16 themes" and there
+      # are 23, because seven were added after it was written. Three things,
+      # each one a measured defect this closes: every palette's own body text
+      # clears WCAG 4.5:1 or is recorded as `B15`'s; every button design the
+      # person may choose clears it on every palette BY CONSTRUCTION
+      # (`D-2026-09-08-01`), which today means exactly one design is offered
+      # and the two that are merely blocked on `B15` say so; and no CSS rule
+      # paints a hard-coded white on an accent background, which 46 of them did.
+      - name: check-contrast
+        run: python3 .pantheon/check-contrast.py
       # B74. The register above says a tool name must be in every register; this
       # one says the registers have to AGREE. Thirteen tools are served by an
       # MCP server and declared to Pantheon, each spelled out twice, and no pair

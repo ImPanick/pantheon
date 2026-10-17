@@ -404,19 +404,20 @@ CLAIMS: Tuple[Claim, ...] = (
     Claim(
         id="checkers",
         area="Verification apparatus",
-        headline="Twenty-four checkers in CI, each one built from a defect that actually shipped.",
+        headline="Twenty-five checkers in CI, each one built from a defect that actually shipped.",
         stock="No repository-level checkers.",
         pantheon=(
-            "`.pantheon/release-gate.py` runs all twenty-four, reading the list from "
+            "`.pantheon/release-gate.py` runs all twenty-five, reading the list from "
             "`ci.yml` rather than keeping a second copy of it."
         ),
         before="0",
-        after="24",
+        after="25",
         provenance="counted",
         repro="python3 .pantheon/release-gate.py --fast",
         evidence=(".pantheon/release-gate.py", ".github/workflows/ci.yml"),
-        rows=("P3-13", "P3-14", "P3-17", "P3-23", "P11-02b", "B74", "B111",
-              "B161", "B320", "B330", "D-2026-09-10-03"),
+        rows=("P3-13", "P3-14", "P3-17", "P3-23", "P10-04", "P11-02b", "B74",
+              "B111", "B161", "B320", "B330", "D-2026-09-08-01",
+              "D-2026-09-10-03"),
         how=(
             "**Not one of these was designed in advance.** Each replaced a paragraph "
             "that had already failed to prevent the same defect twice or more — a tool "
@@ -424,6 +425,10 @@ CLAIMS: Tuple[Claim, ...] = (
             "undeclared environment variable, a module imported under three specifiers, "
             "a run status written as a bare string literal at fifteen sites, an extension-to-language map hand-copied into the browser four times while the server derived it once, thirty-one Python dependencies with no version between them and a Dependabot config that could therefore never bump one. "
             "And a vendored library whose version lived in prose and drifted eighteen releases before anybody looked. "
+            "And a contrast floor that was ruled on, measured once by hand, and then "
+            "re-measured by hand every time anyone asked — against a palette count "
+            "the ruling itself had already outgrown: sixteen on paper, twenty-three "
+            "in `THEMES`. "
             "The rule that gets written down is the rule that gets forgotten; the rule "
             "that runs in CI is the rule. The gate reads its own checker list out of "
             "`ci.yml` so the two cannot disagree."

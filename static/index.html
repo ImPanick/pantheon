@@ -52,6 +52,31 @@
         // this. Counts re-derived 2026-09-18; they move as style.css grows.
         var _ac = c.accent || c.red;
         if (_ac) s.setProperty('--accent', _ac);
+        // `P1-08`, mirrored from `applyColors()` in static/js/theme.js. The
+        // send button and 18 other rules take their foreground from
+        // `--on-accent`; without this they paint with the stylesheet fallback
+        // until the module boots, which is the unreadable white-on-accent
+        // flash this row exists to end. Black or white, whichever clears —
+        // the endpoints of the luminance range, so the winner is the best any
+        // foreground can do. Measured on all 23 palettes by
+        // `.pantheon/check-contrast.py`: worst case `claude` at 5.18:1.
+        if (_ac) {
+          var _lum = function (hx) {
+            var h = String(hx).replace('#', '');
+            if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+            var ch = [0, 2, 4].map(function (i) {
+              var v = parseInt(h.substr(i, 2), 16) / 255;
+              return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+            });
+            return 0.2126 * ch[0] + 0.7152 * ch[1] + 0.0722 * ch[2];
+          };
+          var _l = _lum(_ac);
+          // Black wins a tie, exactly as `onAccentFor()` does: contrast with
+          // black is (L+0.05)/0.05 and with white is 1.05/(L+0.05), so black
+          // is at least as good precisely when (L+0.05)^2 >= 0.0525. One
+          // inequality, no division, and the same branch on both sides.
+          s.setProperty('--on-accent', ((_l + 0.05) * (_l + 0.05)) >= 0.0525 ? '#000000' : '#ffffff');
+        }
         // Set --brand-color now (= custom brand or the theme red) so the
         // loading-screen ASCII wave shows its final colour from the first
         // paint. Otherwise it starts on --red and visibly switches once the
