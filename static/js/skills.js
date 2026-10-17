@@ -28,6 +28,7 @@ import { PLAY_GLYPH, chevronIcon } from './icons.js';
 import { approvalBox } from './approvalBox.js';
 import { SKILL_GATE_NOTE } from './skillGateNote.js';
 
+import { scrollBehavior } from './motion.js';
 const API = window.location.origin;
 let skills = [];
 let builtinSkills = [];   // read-only agent tool capabilities (TOOL_SECTIONS)
@@ -274,7 +275,7 @@ function _focusSkillRow(m, name) {
   setTimeout(() => {
     const card = _findSkillCard(name, m);
     if (!card) return;
-    card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    card.scrollIntoView({ behavior: scrollBehavior(), block: 'center' });
     card.classList.add('skill-row-flash');
     setTimeout(() => card.classList.remove('skill-row-flash'), 2000);
     // Expand it so the linked skill opens to its SKILL.md directly.
@@ -2291,7 +2292,7 @@ function _highlightAuditCard(name) {
   for (const card of _skillCardsNamed(name)) {
     card.classList.add('skill-audit-active');
     _setCardRunning(card, true);
-    card.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    card.scrollIntoView({ block: 'nearest', behavior: scrollBehavior() });
   }
 }
 

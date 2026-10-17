@@ -688,7 +688,22 @@ if (window.visualViewport) {
       document.body.style.paddingTop = '5vh';
       // Keep the active input visible without jumping the whole card to the top
       if (document.activeElement && document.activeElement.tagName === 'INPUT') {
-        document.activeElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        // `P1-15`. No `behavior` at all, rather than a second copy of the
+        // media query. Everywhere else the answer is `scrollBehavior()` from
+        // static/js/motion.js, which 50 sites now import; this block is not a
+        // module (the module block starts further down) and the handler has to
+        // be attached before one is fetched, so it cannot import it.
+        //
+        // The third option is the right one here: the scroll is not a flourish.
+        // It exists because the on-screen keyboard has just covered the field
+        // the person is typing in, and putting that field back in view is the
+        // correctness action — instantly is *better*, not merely acceptable, and
+        // it is what every browser does with no `behavior` given. So this site
+        // is removed rather than guarded, and
+        // `test_the_one_copy_of_the_query_outside_a_module_is_the_one_that_has_to_be`
+        // keeps holding that `index.html`'s boot loader is the only page-level
+        // copy of the query — which it should, because it is.
+        document.activeElement.scrollIntoView({ block: 'center' });
       }
     } else {
       document.body.style.paddingTop = '';

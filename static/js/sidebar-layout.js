@@ -3,6 +3,8 @@
 // Sidebar Layout — icon rail, hamburger cycling, mobile backdrop & swipe
 // ============================================
 
+import { scrollBehavior } from './motion.js';
+
 let _syncRailSideFn = null;
 
 /**
@@ -282,7 +284,7 @@ export function initSidebarLayout(Storage, opts) {
       syncRailSide();
       const section = document.getElementById(sectionId);
       if (section) {
-        section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        section.scrollIntoView({ behavior: scrollBehavior(), block: 'start' });
         section.classList.remove('collapsed');
       }
     });

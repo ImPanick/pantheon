@@ -7,6 +7,7 @@ import { getModelCost } from '../chatRenderer.js?v=20261009census';
 import uiModule from '../ui.js';
 import { VOTES_STORAGE_KEY, VOTES_MAX } from './icons.js';
 import { showScoreboard } from './scoreboard.js';
+import { prefersReducedMotion } from '../motion.js';
 
 var escapeHtml = uiModule.esc;
 
@@ -258,6 +259,20 @@ function handleVote(winnerIdx) {
 
 /** Spawn confetti particles from a point. */
 function spawnConfetti(cx, cy, count) {
+  // `P1-15`. The only `element.animate()` call in the product, and the Web
+  // Animations API is invisible to both guards that exist: `P1-12`'s
+  // `!important` transition override in `style.css` governs CSS animations, and
+  // `scroll-behavior` governs scrolls. A keyframe list handed to `animate()` is
+  // neither.
+  //
+  // The answer here is not *animate it instantly* — it is **do not spawn it**.
+  // 100 particles thrown across the viewport is the exact thing
+  // `prefers-reduced-motion` is asking about, and a confetti burst that
+  // teleports to its end state is 100 divs appearing and vanishing, which is
+  // worse than none. Nothing else depends on the pieces: all three callers are
+  // the celebration, and each piece removes itself. So the whole effect is the
+  // motion, and skipping it is the reduced form.
+  if (prefersReducedMotion()) return;
   const colors = ['#ffd700', '#ff6b6b', '#5b8def', '#51cf66', '#ff922b', '#cc5de8', '#22b8cf', '#fff'];
   for (let i = 0; i < count; i++) {
     const el = document.createElement('div');

@@ -15,6 +15,7 @@ import { topToolWindowZ, topPortalZ } from './toolWindowZOrder.js';
 import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
 import { chevronIcon, stopIcon } from './icons.js';
 
+import { scrollBehavior } from './motion.js';
 const API_BASE = window.location.origin;
 let _open = false;
 let _notes = [];
@@ -314,7 +315,7 @@ function _flushPendingHighlights() {
   // Bring the first one into view so it can't get buried below the fold.
   if (firstCard) {
     requestAnimationFrame(() => {
-      try { firstCard.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
+      try { firstCard.scrollIntoView({ block: 'center', behavior: scrollBehavior() }); }
       catch { firstCard.scrollIntoView(); }
     });
   }
@@ -5095,7 +5096,7 @@ function _editNote(id) {
     requestAnimationFrame(() => _applyMasonry(_body));
   }
   requestAnimationFrame(() => {
-    try { form.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
+    try { form.scrollIntoView({ block: 'center', behavior: scrollBehavior() }); }
     catch { form.scrollIntoView(); }
   });
   // Pick the most useful field to focus. On phones especially, the user
@@ -5749,7 +5750,7 @@ async function openNote(noteId) {
     const card = document.querySelector(`.note-card[data-note-id="${noteId}"]`)
       || document.querySelector(`.note-card[data-note-id^="${noteId.slice(0, 8)}"]`);
     if (card) {
-      try { card.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (_) {}
+      try { card.scrollIntoView({ behavior: scrollBehavior(), block: 'center' }); } catch (_) {}
       card.classList.add('note-card-flash');
       setTimeout(() => card.classList.remove('note-card-flash'), 1600);
       return true;

@@ -17,6 +17,7 @@
 // BUILTIN_ACTIONS + src/cookbook_serve_lifecycle.py + its
 // registration line in app.py.
 
+
 try { (function () {
   function _safe(fn) {
     return function () {
@@ -182,7 +183,22 @@ try { (function () {
     const form = tmp.firstElementChild;
     anchor.appendChild(form);
     setTimeout(() => {
-      try { form.scrollIntoView({ behavior: "smooth", block: "nearest" }); } catch (_) {}
+      // `P1-15`. No `behavior` at all. This file is the one script in the
+    // product loaded as a CLASSIC script (`index.html`: `<script
+    // src="/static/js/cookbookSchedule.js">`, no `type="module"`), so it
+    // cannot import `scrollBehavior()` from static/js/motion.js the way the
+    // other 49 sites do — an `import` here is `Cannot use import statement
+    // outside a module`, which is how this was found. It has no exports and
+    // publishes no globals, so it could be converted; that is a change to how
+    // a module is loaded and does not belong in a motion sweep.
+    //
+    // The second copy of the media query that would otherwise go here is
+    // forbidden by `test_one_module_owns_the_media_query_string`, and rightly.
+    // So the site is removed instead: this scroll brings a form that has just
+    // been opened into view, which is a correctness action rather than a
+    // flourish, and instantly is what every browser does when no `behavior`
+    // is given.
+    try { form.scrollIntoView({ block: "nearest" }); } catch (_) {}
     }, 50);
     wireForm(form, cfg);
   }

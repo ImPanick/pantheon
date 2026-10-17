@@ -15,6 +15,7 @@ import { _hwfitCache } from './cookbook-hwfit.js';
 import { topPortalZ } from './toolWindowZOrder.js';
 import { chevronIcon, playIcon } from './icons.js';
 
+import { scrollBehavior } from './motion.js';
 // Shared state/functions injected by init()
 let _envState;
 let _sshCmd;
@@ -1831,7 +1832,7 @@ function _rerenderCachedModels() {
       item.insertAdjacentHTML('beforeend', panelHtml);
       const panel = item.querySelector('.hwfit-serve-panel');
       // Scroll the serve panel into view within its nearest scrollable ancestor
-      requestAnimationFrame(() => panel.scrollIntoView({ block: 'nearest', behavior: 'smooth' }));
+      requestAnimationFrame(() => panel.scrollIntoView({ block: 'nearest', behavior: scrollBehavior() }));
       // Firefox-mobile fallback: the CSS that grows the cached-list and
       // expanded card uses :has(.doclib-card-expanded), which Firefox
       // mobile doesn't support — so the panel stays collapsed and the
@@ -4036,7 +4037,7 @@ export async function openServePanelForRepo(repo, fields) {
       } else if (!card.classList.contains('doclib-card-expanded')) {
         card.click();
       }
-      try { card.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch {}
+      try { card.scrollIntoView({ behavior: scrollBehavior(), block: 'center' }); } catch {}
       return true;
     }
     await new Promise(r => setTimeout(r, 100));
@@ -4306,7 +4307,7 @@ function _openRunningTabForRepo(repo) {
       return title === repo || title === (repo.split('/').pop() || '');
     });
     if (match) {
-      try { match.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (_) {}
+      try { match.scrollIntoView({ behavior: scrollBehavior(), block: 'center' }); } catch (_) {}
       match.classList.add('cookbook-task-flash');
       setTimeout(() => match.classList.remove('cookbook-task-flash'), 1600);
     }

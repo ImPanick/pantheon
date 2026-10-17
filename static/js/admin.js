@@ -16,6 +16,7 @@ import { readRefusal } from './workbench/refusal.js';
 // Same specifier as `app.js` (no query): one instance of the table's state.
 import { hidesLine, toolVisibilityState } from './ui_visibility.js';
 
+import { scrollBehavior } from './motion.js';
 let initialized = false;
 let modalEl = null;
 // When the user adds an endpoint, store its id so the next render of
@@ -1436,7 +1437,7 @@ function initEndpointForm() {
         // before we try to scroll into it.
         requestAnimationFrame(() => {
           const target = document.querySelector(scrollTo);
-          if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          if (target) target.scrollIntoView({ behavior: scrollBehavior(), block: 'start' });
         });
       }
       return;

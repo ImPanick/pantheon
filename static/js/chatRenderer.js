@@ -22,6 +22,7 @@ import { CHECKLIST_SURFACES, checklistProgress, stepChipClass } from './checklis
 import { buildAllowRuleChooser } from './trustLadder.js';
 // `P4-10`. Why the agent stopped itself — the same line the live stream draws.
 import { renderAgentStop, renderAgentNote, withdrawContinueOffers, compactionFromRecord } from './agentStops.js';
+import { scrollBehavior } from './motion.js';
 import { applyAgentThreadNode, verifierCardOptions, approvalOutcome,
          blockedCardOptions, toolOutputPanesHtml, screenshotSummary } from './agentThread.js';
 // `B1247` (fx2-chat). One agent turn, one reply.
@@ -3287,7 +3288,7 @@ export function displayMetrics(messageElement, metrics) {
                 const msgs = document.querySelectorAll('#chat-history .msg');
                 for (const m of msgs) {
                   if (m.querySelector('.body')?.textContent.includes('Conversation compacted')) {
-                    m.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    m.scrollIntoView({ behavior: scrollBehavior(), block: 'center' });
                     break;
                   }
                 }
@@ -3915,7 +3916,7 @@ export function renderAskUserCard(payload, options) {
 
   chatBox.appendChild(card);
   if (renderOptions.scroll !== false) {
-    card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    card.scrollIntoView({ behavior: scrollBehavior(), block: 'nearest' });
   }
   if (renderOptions.focus !== false) {
     try { card.focus(); } catch (_) {}

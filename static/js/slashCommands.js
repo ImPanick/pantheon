@@ -37,6 +37,7 @@ import { KEYBIND_DEFAULTS, KEYBIND_LABELS } from './keyboard-shortcuts.js';
 // bug this import was meant to fix. `check-specifiers.py` caught it.
 import { TOGGLE_CHECKBOX_IDS } from './chatStream.js?v=20261009census';
 
+import { scrollBehavior } from './motion.js';
 // ── Module state ──────────────────────────────────────────────────────
 
 let API_BASE = '';
@@ -2418,7 +2419,7 @@ async function _cmdDemo(args, ctx) {
       const halos = breathing ? targets.map(makeHalo) : [];
       // Reset tooltip into the "pre-fade" state so the new step phases in.
       tooltip.classList.remove('tour-fade-in');
-      targets[0].scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      targets[0].scrollIntoView({ behavior: scrollBehavior(), block: 'nearest' });
 
       tooltip.innerHTML = `<div class="tour-text">${text}</div>
         ${breathing ? '<div style="font-size:0.72rem;opacity:0.35;margin-bottom:6px">Click the highlighted element to continue</div>' : ''}
@@ -2770,7 +2771,7 @@ async function _cmdTourCompare(args, ctx) {
       const target = document.querySelector(sel);
       if (!target) return resolve('skip');
       _halos.push(_makeHalo(target));
-      target.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      target.scrollIntoView({ behavior: scrollBehavior(), block: 'nearest' });
 
       tooltip.classList.remove('tour-fade-in');
       const hint = advanceOnClick
@@ -3060,7 +3061,7 @@ async function _cmdTourCookbook(args, ctx) {
       const target = document.querySelector(sel);
       if (!target) return resolve('skip');
       _halos.push(_makeHalo(target));
-      target.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      target.scrollIntoView({ behavior: scrollBehavior(), block: 'nearest' });
 
       tooltip.classList.remove('tour-fade-in');
       tooltip.innerHTML =
@@ -3297,7 +3298,7 @@ async function _cmdTourTheme(args, ctx) {
         _halos.push(_makeHalo(target));
         const extra = extraSel ? document.querySelector(extraSel) : null;
         if (extra) _halos.push(_makeHalo(extra));
-        target.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        target.scrollIntoView({ behavior: scrollBehavior(), block: 'nearest' });
 
         tooltip.classList.remove('tour-fade-in');
         tooltip.innerHTML =
@@ -3542,7 +3543,7 @@ async function _cmdTourSettings(args, ctx) {
         const target = document.querySelector(sel);
         if (!target) return resolve('skip');
         _halos.push(_makeHalo(target));
-        target.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        target.scrollIntoView({ behavior: scrollBehavior(), block: 'nearest' });
 
         tooltip.classList.remove('tour-fade-in');
         tooltip.innerHTML =
@@ -3776,7 +3777,7 @@ async function _cmdTourGallery(args, ctx) {
         const target = document.querySelector(sel);
         if (!target) return resolve('skip');
         _halos.push(_makeHalo(target));
-        target.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        target.scrollIntoView({ behavior: scrollBehavior(), block: 'nearest' });
 
         tooltip.classList.remove('tour-fade-in');
         tooltip.innerHTML =
@@ -3990,7 +3991,7 @@ async function _cmdTourNotes(args, ctx) {
         const target = document.querySelector(sel);
         if (!target) return resolve('skip');
         _halos.push(_makeHalo(target));
-        target.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        target.scrollIntoView({ behavior: scrollBehavior(), block: 'nearest' });
 
         tooltip.classList.remove('tour-fade-in');
         tooltip.innerHTML =
@@ -4191,7 +4192,7 @@ async function _cmdTourBrain(args, ctx) {
         const target = document.querySelector(sel);
         if (!target) return resolve('skip');
         _halos.push(_makeHalo(target));
-        target.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        target.scrollIntoView({ behavior: scrollBehavior(), block: 'nearest' });
 
         tooltip.classList.remove('tour-fade-in');
         tooltip.innerHTML =
@@ -4389,7 +4390,7 @@ async function _runTaskTour(steps, doneText, opts) {
       setTimeout(() => {
         const target = document.querySelector(step.sel);
         if (!target) return resolve('skip');
-        target.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        target.scrollIntoView({ behavior: scrollBehavior(), block: 'nearest' });
         halos.push(makeHalo(target));
         tooltip.classList.remove('tour-fade-in');
         tooltip.innerHTML =
@@ -4636,7 +4637,7 @@ async function _cmdTourResearch(args, ctx) {
       const target = document.querySelector(sel);
       if (!target) return resolve('skip');
       _halos.push(_makeHalo(target));
-      target.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      target.scrollIntoView({ behavior: scrollBehavior(), block: 'nearest' });
 
       tooltip.classList.remove('tour-fade-in');
       tooltip.innerHTML =
@@ -4853,7 +4854,7 @@ async function _cmdTourLibrary(args, ctx) {
       const target = document.querySelector(sel);
       if (!target) return resolve(optional ? 'next' : 'skip');
       _halos.push(_makeHalo(target));
-      target.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      target.scrollIntoView({ behavior: scrollBehavior(), block: 'nearest' });
 
       tooltip.classList.remove('tour-fade-in');
       tooltip.innerHTML =
@@ -5058,7 +5059,7 @@ function _showSetupSpotlight(selector, duration = 1800, options = {}) {
   _ensureSetupSpotlightStyles();
   const target = _visibleSetupTarget(selector);
   if (!target) return Promise.resolve();
-  target.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+  target.scrollIntoView({ behavior: scrollBehavior(), block: 'nearest', inline: 'nearest' });
   const halo = document.createElement('div');
   halo.className = 'setup-spotlight-halo';
   if (options.breathe) halo.classList.add('breathing');

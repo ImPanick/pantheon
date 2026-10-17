@@ -543,8 +543,18 @@ def test_the_scroll_lerp_asks_before_it_animates():
         "the reduced-motion path should use the instant scroller that already "
         "sits beside it rather than a second one"
     )
-    assert "import { prefersReducedMotion } from './motion.js';" in UI_JS, (
+    # The *binding*, not the exact spelling of the import line. This read
+    # `"import { prefersReducedMotion } from './motion.js';"` and broke when
+    # `P1-15` added `scrollBehavior` to the same line — a passing file failing a
+    # test about a thing that had not changed. What the rule is about is where
+    # the answer comes from, so that is what is matched.
+    assert re.search(
+        r"^import \{[^}]*\bprefersReducedMotion\b[^}]*\} from '\./motion\.js';$",
+        UI_JS, re.M), (
         "one module owns the query (`P1-12`); ui.js must not grow a second copy"
+    )
+    assert "matchMedia" not in UI_JS or "prefers-reduced-motion" not in UI_JS, (
+        "ui.js is asking matchMedia about motion itself; import it instead"
     )
 
 

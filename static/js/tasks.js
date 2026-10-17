@@ -29,6 +29,7 @@ import {
 import { bindMenuDismiss, dismissOrRemove, registerMenuDismiss } from './escMenuStack.js';
 import backStack from './backStack.js';   // `P23-01`
 import { PLAY_GLYPH, playIcon, stopIcon, WORKFLOW_GLYPH } from './icons.js';
+import { scrollBehavior } from './motion.js';
 import {
   runStatusLabel, runStaleLabel, runStatusTone, runStatusDotClass, isRunFinished,
   runLeftNoAnswer,
@@ -3359,7 +3360,7 @@ function _focusTask(taskId) {
   setTimeout(() => {
     const card = document.querySelector(`.task-card[data-id="${taskId}"], [data-id="${taskId}"]`);
     if (!card) return;
-    card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    card.scrollIntoView({ behavior: scrollBehavior(), block: 'center' });
     card.classList.add('task-card-flash');
     setTimeout(() => card.classList.remove('task-card-flash'), 2000);
   }, 150);

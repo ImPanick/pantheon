@@ -38,6 +38,7 @@ import spinnerModule from './spinner.js';
 import { _loadTasks, _tmuxGracefulKill, _nextAvailablePort, _taskPort } from './cookbookRunning.js';
 import { openCookbookDependencies } from './cookbook-diagnosis.js';
 
+import { scrollBehavior } from './motion.js';
 // Map a serve-backend code (vllm / sglang / llamacpp / mlx) → the package name
 // the Dependencies API reports. Used to look up "is this backend installed
 // on the target server" before firing a launch.
@@ -1043,7 +1044,7 @@ function _renderHwVisibilityWarning(sys) {
     const manualBtn = document.getElementById('hwfit-hw-manual-btn');
     if (manualBtn) manualBtn.textContent = 'CANCEL';
     document.getElementById('hwfit-hw-manual-btn')?.scrollIntoView?.({
-      behavior: 'smooth',
+      behavior: scrollBehavior(),
       block: 'center',
     });
   });
@@ -1494,7 +1495,7 @@ export function _hwfitRenderList(el, models) {
           // download card sits far above the (long) hwfit list.
           dlInput.classList.add('cookbook-dl-flash');
           setTimeout(() => dlInput.classList.remove('cookbook-dl-flash'), 800);
-          dlInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          dlInput.scrollIntoView({ behavior: scrollBehavior(), block: 'center' });
         }
         return;
       }

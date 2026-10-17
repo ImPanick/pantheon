@@ -10,7 +10,7 @@ import * as Modals from './modalManager.js?v=20261009census';
 import spinnerModule from './spinner.js';
 import { registerMenuDismiss, dismissTopMenu, dismissOrRemove } from './escMenuStack.js';
 import { nextToolWindowZ, topToolWindowZ, toolWindowZ } from './toolWindowZOrder.js';
-import { prefersReducedMotion } from './motion.js';
+import { prefersReducedMotion, scrollBehavior } from './motion.js';
 import { esc } from './util/escapeHtml.js';
 import backStack from './backStack.js';
 
@@ -1567,7 +1567,7 @@ if ('ontouchstart' in window || window.innerWidth <= 768) {
         const margin = 24;
         const fullyVisible = r.top >= margin && r.bottom <= vh - margin;
         if (fullyVisible) return;
-        el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        el.scrollIntoView({ block: 'center', behavior: scrollBehavior() });
       } catch {
         try { el.scrollIntoView(); } catch {}
       }

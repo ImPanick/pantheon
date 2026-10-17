@@ -22,6 +22,7 @@ import { _matchesCombo } from './keyboard-shortcuts.js';   // H20: Find reads th
 import { topPortalZ } from './toolWindowZOrder.js';
 import { chevronIcon, playIcon } from './icons.js';
 
+import { scrollBehavior } from './motion.js';
   let API_BASE = '';
   let isOpen = false;
   let _hlDebounce = null;
@@ -412,8 +413,8 @@ import { chevronIcon, playIcon } from './icons.js';
     const leftBtn = document.getElementById('doc-tab-left');
     const rightBtn = document.getElementById('doc-tab-right');
     if (scrollArea && leftBtn && rightBtn) {
-      leftBtn.addEventListener('click', () => scrollArea.scrollBy({ left: -120, behavior: 'smooth' }));
-      rightBtn.addEventListener('click', () => scrollArea.scrollBy({ left: 120, behavior: 'smooth' }));
+      leftBtn.addEventListener('click', () => scrollArea.scrollBy({ left: -120, behavior: scrollBehavior() }));
+      rightBtn.addEventListener('click', () => scrollArea.scrollBy({ left: 120, behavior: scrollBehavior() }));
       updateArrowVisibility(scrollArea, leftBtn, rightBtn);
       scrollArea.addEventListener('scroll', () => updateArrowVisibility(scrollArea, leftBtn, rightBtn));
     }
@@ -810,7 +811,7 @@ import { chevronIcon, playIcon } from './icons.js';
         a.title = `Jump to page ${p}`;
         a.className = _smallBtnClass;
         a.style.cssText = _smallBtnStyle;
-        a.addEventListener('click', () => pageAnchors[p]?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+        a.addEventListener('click', () => pageAnchors[p]?.scrollIntoView({ behavior: scrollBehavior(), block: 'start' }));
         jumpBar.appendChild(a);
       }
       const sep = document.createElement('span');
@@ -821,14 +822,14 @@ import { chevronIcon, playIcon } from './icons.js';
       topBtn.textContent = '↑ Top';
       topBtn.className = _smallBtnClass;
       topBtn.style.cssText = _smallBtnStyle;
-      topBtn.addEventListener('click', () => body.scrollTo({ top: 0, behavior: 'smooth' }));
+      topBtn.addEventListener('click', () => body.scrollTo({ top: 0, behavior: scrollBehavior() }));
       jumpBar.appendChild(topBtn);
       const botBtn = document.createElement('button');
       botBtn.textContent = '↓ Bottom';
       botBtn.title = 'Jump to the last page (signature fields are usually here)';
       botBtn.className = _smallBtnClass;
       botBtn.style.cssText = _smallBtnStyle;
-      botBtn.addEventListener('click', () => body.scrollTo({ top: body.scrollHeight, behavior: 'smooth' }));
+      botBtn.addEventListener('click', () => body.scrollTo({ top: body.scrollHeight, behavior: scrollBehavior() }));
       jumpBar.appendChild(botBtn);
       body.appendChild(jumpBar);
 
@@ -6925,8 +6926,8 @@ import { chevronIcon, playIcon } from './icons.js';
       scrollLeftBtn.style.display = (overflowing && itemsWrap.scrollLeft > 1) ? 'flex' : 'none';
       scrollRightBtn.style.display = (overflowing && itemsWrap.scrollLeft < maxScroll - 1) ? 'flex' : 'none';
     }
-    scrollLeftBtn?.addEventListener('click', () => itemsWrap.scrollTo({ left: 0, behavior: 'smooth' }));
-    scrollRightBtn?.addEventListener('click', () => itemsWrap.scrollTo({ left: itemsWrap.scrollWidth, behavior: 'smooth' }));
+    scrollLeftBtn?.addEventListener('click', () => itemsWrap.scrollTo({ left: 0, behavior: scrollBehavior() }));
+    scrollRightBtn?.addEventListener('click', () => itemsWrap.scrollTo({ left: itemsWrap.scrollWidth, behavior: scrollBehavior() }));
     itemsWrap?.addEventListener('scroll', updateScrollArrows, { passive: true });
     if (itemsWrap) {
       let swipeStartX = 0;
@@ -6948,7 +6949,7 @@ import { chevronIcon, playIcon } from './icons.js';
         const maxScroll = Math.max(0, itemsWrap.scrollWidth - itemsWrap.clientWidth);
         const page = Math.max(90, Math.round(itemsWrap.clientWidth * 0.75));
         const nextLeft = Math.max(0, Math.min(maxScroll, swipeStartScroll - Math.sign(dx) * page));
-        itemsWrap.scrollTo({ left: nextLeft, behavior: 'smooth' });
+        itemsWrap.scrollTo({ left: nextLeft, behavior: scrollBehavior() });
       }, { passive: true });
     }
     if (window.ResizeObserver && itemsWrap) {

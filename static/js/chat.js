@@ -14,7 +14,7 @@ import sessionModule from './sessions.js';
 import chatRenderer, { buildDiffHtml } from './chatRenderer.js?v=20261009census';
 import chatStream from './chatStream.js?v=20261009census';
 import { addAITTSButton } from './tts-ai.js';
-import { prefersReducedMotion } from './motion.js';
+import { prefersReducedMotion, scrollBehavior } from './motion.js';
 import markdownModule from './markdown.js';
 import spinnerModule from './spinner.js';
 import presetsModule from './presets.js';
@@ -4591,7 +4591,7 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
                   // turn's first bubble, as it always did.
                   const note = renderAgentNote(_chatBox, json, { reply: holder });
                   if (note) {
-                    try { note.scrollIntoView({ block: 'end', behavior: 'smooth' }); } catch (_) { uiModule.scrollHistory && uiModule.scrollHistory(); }
+                    try { note.scrollIntoView({ block: 'end', behavior: scrollBehavior() }); } catch (_) { uiModule.scrollHistory && uiModule.scrollHistory(); }
                   }
                 }
               } else if (json.type === 'model_actual') {
@@ -8938,7 +8938,7 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
         const thread = node.closest('.agent-thread');
         const pendingCard = thread?.nextElementSibling;
         if (pendingCard?.classList.contains('ask-user-card')) {
-          requestAnimationFrame(() => pendingCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' }));
+          requestAnimationFrame(() => pendingCard.scrollIntoView({ behavior: scrollBehavior(), block: 'nearest' }));
         }
       }
     });

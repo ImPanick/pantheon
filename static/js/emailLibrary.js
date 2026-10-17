@@ -36,6 +36,7 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
 import backStack from './backStack.js';   // `P23-01`
 import { chevronIcon } from './icons.js';
 
+import { scrollBehavior } from './motion.js';
 const API_BASE = window.location.origin;
 let _emailUnreadChipClickWired = false;
 let _libLoadSeq = 0;
@@ -1225,7 +1226,7 @@ async function _deleteEmailAndAdvance(em, card, opts = {}) {
   const nextEm = state._libEmails.find(e => String(e.uid) === String(nextUid));
   if (nextCard && nextEm) {
     await _toggleCardPreview(nextCard, nextEm);
-    nextCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    nextCard.scrollIntoView({ behavior: scrollBehavior(), block: 'nearest' });
   } else {
     document.getElementById('email-lib-modal')?.classList.remove('email-reading');
   }
@@ -1565,8 +1566,8 @@ function _showUnsubscribeCleanupPrompt(modal, candidates) {
 async function _openUnsubscribeReviewModal(anchor) {
   const existing = document.getElementById('email-unsubscribe-review-modal');
   if (existing) {
-    existing.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' });
-    existing.querySelector('.email-unsub-status')?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' });
+    existing.scrollIntoView?.({ behavior: scrollBehavior(), block: 'nearest' });
+    existing.querySelector('.email-unsub-status')?.scrollIntoView?.({ behavior: scrollBehavior(), block: 'nearest' });
     return;
   }
   const modal = document.createElement('div');
@@ -4189,7 +4190,7 @@ function _acceptSuggestion(s) {
     const em = (state._libEmails || []).find(x => String(x.uid) === String(s.uid))
             || (_libPreSearchEmails || []).find(x => String(x.uid) === String(s.uid));
     if (card && em) {
-      card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      card.scrollIntoView({ behavior: scrollBehavior(), block: 'nearest' });
       _toggleCardPreview(card, em);
     }
     return;
@@ -5358,7 +5359,7 @@ function _createCard(em) {
     if (!nextEm) return;
     await _toggleCardPreview(card, em);
     await _toggleCardPreview(sibling, nextEm);
-    sibling.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    sibling.scrollIntoView({ behavior: scrollBehavior(), block: 'nearest' });
   });
   // Just the nav arrows here — the per-card `.memory-item-actions` menu
   // at the bottom of the card stays visible while expanded (see the CSS
@@ -5591,7 +5592,7 @@ async function _toggleCardPreview(card, em) {
   // the layout to settle (minHeight just changed) before scrolling so
   // the browser scrolls toward the post-expansion position.
   requestAnimationFrame(() => {
-    try { card.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (_) {}
+    try { card.scrollIntoView({ behavior: scrollBehavior(), block: 'start' }); } catch (_) {}
   });
   if (!wasReadAtStart) {
     // Keep the current optimistic visual update, but let the read request below
@@ -7882,7 +7883,7 @@ function _showReaderMoreMenu(em, card, reader, anchor) {
     const nextEm = state._libEmails.find(e => String(e.uid) === String(nextUid));
     if (nextCard && nextEm) {
       _toggleCardPreview(nextCard, nextEm);
-      nextCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      nextCard.scrollIntoView({ behavior: scrollBehavior(), block: 'nearest' });
     }
   };
 

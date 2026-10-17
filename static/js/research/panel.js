@@ -11,6 +11,7 @@ import { chevronIcon, playIcon } from '../icons.js';
 import { esc } from '../util/escapeHtml.js';
 import { promptRunMode as openRunModePicker } from '../runModePicker.js?v=20261009census';
 
+import { scrollBehavior } from '../motion.js';
 // Rotating research textarea placeholders — pick one at random each
 // time the panel is rendered so the example keeps feeling fresh.
 const _RESEARCH_HINTS = [
@@ -337,7 +338,7 @@ function _focusJob(jobId) {
   const tryFocus = () => {
     const card = document.querySelector(`[data-job-id="${jobId}"]`);
     if (card) {
-      card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      card.scrollIntoView({ behavior: scrollBehavior(), block: 'center' });
       card.classList.add('research-card-flash');
       setTimeout(() => card.classList.remove('research-card-flash'), 2000);
       return;
@@ -568,7 +569,7 @@ function _editJob(job) {
   // Remove the old job so clicking Start/Queue makes a fresh one
   jobs.removeJob(job.id);
   // Scroll the form into view
-  queryEl?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  queryEl?.scrollIntoView({ behavior: scrollBehavior(), block: 'center' });
 }
 
 async function _handleStart() {

@@ -2014,6 +2014,7 @@ function _makeGalleryDraggable(content) {
 import * as Modals from './modalManager.js?v=20261009census';
 import { chevronIcon } from './icons.js';
 
+import { scrollBehavior } from './motion.js';
 export function openGallery() {
   // If already minimized — restore in place, preserve all state
   if (Modals.isRegistered('gallery-modal') && Modals.isMinimized('gallery-modal')) {
@@ -3099,7 +3100,7 @@ export async function openGalleryImage(imageId) {
     _openDetail(img);
     const card = document.querySelector(`.gallery-card[data-id="${CSS.escape(String(imageId))}"]`);
     if (card) {
-      card.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      card.scrollIntoView({ block: 'center', behavior: scrollBehavior() });
       card.classList.add('gallery-card-focus');
       setTimeout(() => card.classList.remove('gallery-card-focus'), 1600);
     }

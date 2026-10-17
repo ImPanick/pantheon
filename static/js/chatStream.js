@@ -10,6 +10,7 @@ import markdownModule from './markdown.js';
 import sessionModule from './sessions.js';
 import documentModule from './document.js?v=20261009approvalcensus';
 
+import { scrollBehavior } from './motion.js';
 // Tool approvals are control-plane submits for the current chat. chat.js
 // deliberately leaves the composer untouched, then programmatically clicks the
 // shared send button after it records the sealed approval id/decision. That
@@ -723,7 +724,7 @@ export function handleUIControl(uiData) {
       var target = document.querySelector(uiData.selector);
       if (target) {
         target.classList.add('pantheon-highlight');
-        target.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        target.scrollIntoView({ behavior: scrollBehavior(), block: 'nearest' });
         if (uiData.label) {
           var lbl = document.createElement('div');
           lbl.className = 'pantheon-hl-label';
