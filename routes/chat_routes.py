@@ -102,6 +102,11 @@ from src.action_intents import ToolIntent, classify_tool_intent as _classify_too
 from src.image_model_ids import looks_like_image_generation_model
 from src.tool_policy import (
     WEB_TOOL_NAMES,
+    WITHHELD_BY_FEATURE,
+    WITHHELD_BY_PLAN_MODE,
+    WITHHELD_BY_POLICY,
+    WITHHELD_BY_PRIVILEGE,
+    RouteWithholds,
     build_effective_tool_policy,
     is_web_search_explicitly_denied,
     web_search_enabled_for_turn,
@@ -2163,15 +2168,31 @@ def setup_chat_routes(
         finally:
             _doc_db.close()
 
-        # Build disabled-tools set from frontend toggles + user privileges
-        disabled_tools = set()
+        # Build disabled-tools set from frontend toggles + user privileges.
+        #
+        # `B1399` / `D-2026-10-17-02` §2. Every contribution below names **why**,
+        # through `RouteWithholds`, whose `because` is positional and required.
+        # This block composed a plain `set` across sixteen `update()` calls, and
+        # `stream_agent_loop` tagged the whole result `WITHHELD_BY_CALLER` — one
+        # bucket holding a neutral starting set *and* every deliberate privacy
+        # restriction here. That is why `caller` could not be liftable, and why
+        # `#6020`'s `pantheon-qwen3` notes clamp had quietly become dead code.
+        #
+        # The attribution has to be **exhaustive** or it is worse than nothing: a
+        # deliberate set that is forgotten lands in `caller`, which is liftable
+        # now. `tests/test_a_route_says_why_it_withheld.py` reads this function
+        # and fails on a bare `set()`/`update()`/`add()` denylist, so a
+        # seventeenth restriction cannot arrive unattributed.
+        _withholds = RouteWithholds()
         # B70. Minting is admin-only, so every owner-keyed check below answers
         # "admin" for a token. Cap it at the non-admin policy instead;
         # `stream_agent_loop` repeats this from `delegated_credential` so the
         # cap holds even for a caller that does not come through this route.
         _delegated_credential = is_delegated_credential(request)
         if _delegated_credential:
-            disabled_tools.update(delegated_credential_blocked_tools())
+            # A cap on what a minted token may do: a privilege decision, and
+            # `FORBIDDEN.md` Part 2 holds it.
+            _withholds.deny(delegated_credential_blocked_tools(), WITHHELD_BY_PRIVILEGE)
         # Only disable bash when the caller *explicitly* set it to a falsy
         # value. When unset (None), defer to per-user privilege checks below.
         # Web search is per-turn opt-in: either the chat pre-search setting
@@ -2193,17 +2214,17 @@ def setup_chat_routes(
             # consequential of the two, so it must never be the one still on.
             # `P20-04`: the workstation's desktop has a terminal one click away,
             # so `computer` is a way to run commands too and goes with them.
-            disabled_tools.update({"bash", "host_shell", "computer"})
+            _withholds.deny({"bash", "host_shell", "computer"}, WITHHELD_BY_POLICY)
         _explicit_web_intent = _explicit_web_intent or bool(_tool_intent and _tool_intent.category == "web")
         if is_web_search_explicitly_denied(allow_web_search) or not _search_enabled:
-            disabled_tools.update(WEB_TOOL_NAMES)
+            _withholds.deny(WEB_TOOL_NAMES, WITHHELD_BY_POLICY)
         if _explicit_web_intent:
             # A direct lookup/search request should not drift into personal
             # tools or shell fallbacks. It can only use web_search/web_fetch
             # when the request's explicit web setting enabled them.
             # `computer` (`P20-04`): a desktop with a browser on it is the
             # drift this list exists to stop, one tool wider.
-            disabled_tools.update({
+            _withholds.deny({
                 "bash", "host_shell", "python", "computer",
                 "search_chats", "manage_skills", "manage_memory",
                 "read_file", "write_file", "edit_file",
@@ -2211,18 +2232,23 @@ def setup_chat_routes(
                 "send_email", "reply_to_email",
                 "manage_notes", "manage_calendar", "manage_tasks",
                 "api_call",
-            })
+            }, WITHHELD_BY_POLICY)
+            # Composition, not a clamp: this branch denied the web tools above
+            # and takes them back out when the chat's own setting enabled them.
+            # `RouteWithholds.allow` is for exactly this and does not consult
+            # `LIFTABLE_REASONS`, because nothing here is later than anything
+            # else — that rule is about a clamp reaching a decision already made.
             if _search_enabled:
-                disabled_tools.difference_update(WEB_TOOL_NAMES)
+                _withholds.allow(WEB_TOOL_NAMES)
             else:
-                disabled_tools.update(WEB_TOOL_NAMES)
+                _withholds.deny(WEB_TOOL_NAMES, WITHHELD_BY_POLICY)
         elif _search_enabled:
-            disabled_tools.difference_update(WEB_TOOL_NAMES)
+            _withholds.allow(WEB_TOOL_NAMES)
 
         # Nobody/incognito mode: deny tools that would expose the user's
         # persistent memory, past chats, or other identity-linked data.
         if incognito:
-            disabled_tools.update({
+            _withholds.deny({
                 "manage_memory",      # persistent memory store
                 "search_chats",       # past chat history
                 "manage_skills",      # skill presets tied to user
@@ -2231,7 +2257,7 @@ def setup_chat_routes(
                 "manage_session",
                 "send_to_session",
                 "chat_with_model",
-            })
+            }, WITHHELD_BY_POLICY)
 
         # Active email reader open → strip the tools that let the agent drift
         # away from the visible email or skip review. The only allowed compose
@@ -2240,13 +2266,13 @@ def setup_chat_routes(
         # the model from falling back to direct SMTP when it botches a draft
         # call, and prevents fake email-shaped documents.
         if active_email_ctx and active_email_ctx.get("uid"):
-            disabled_tools.update({
+            _withholds.deny({
                 "create_document",
                 "send_email",
                 "reply_to_email",
                 "mcp__email__send_email",
                 "mcp__email__reply_to_email",
-            })
+            }, WITHHELD_BY_POLICY)
 
         # Enforce per-user privileges
         _privs = {}
@@ -2259,9 +2285,10 @@ def setup_chat_routes(
                 # when this person's shell and files run in their workstation,
                 # `can_use_workstation` is the grant that governs them.
                 from src.agent_tools.workstation_tools import lifted_tools as _ws_lifted
-                disabled_tools.update({"bash", "python", "read_file", "write_file"} - _ws_lifted(_user))
+                _withholds.deny({"bash", "python", "read_file", "write_file"} - _ws_lifted(_user),
+                                WITHHELD_BY_PRIVILEGE)
             if not _privs.get("can_use_browser", True):
-                disabled_tools.update(_BROWSER_MCP_TOOLS)
+                _withholds.deny(_BROWSER_MCP_TOOLS, WITHHELD_BY_PRIVILEGE)
             if not _privs.get("can_use_documents", True):
                 # `B995`. `manage_documents` joined these when it opened to
                 # non-admins: before, the non-admin blocklist withheld it from
@@ -2269,12 +2296,12 @@ def setup_chat_routes(
                 # document editor switched off would otherwise have had their
                 # agent filing and deleting what the library's own write routes
                 # refuse them (`require_privilege("can_use_documents")`).
-                disabled_tools.update({"create_document", "edit_document", "update_document",
-                                       "suggest_document", "manage_documents"})
+                _withholds.deny({"create_document", "edit_document", "update_document",
+                                 "suggest_document", "manage_documents"}, WITHHELD_BY_PRIVILEGE)
             if not _privs.get("can_generate_images", True):
-                disabled_tools.add("generate_image")
+                _withholds.deny("generate_image", WITHHELD_BY_PRIVILEGE)
             if not _privs.get("can_manage_memory", True):
-                disabled_tools.update({"manage_memory", "manage_skills"})
+                _withholds.deny({"manage_memory", "manage_skills"}, WITHHELD_BY_PRIVILEGE)
             if not _privs.get("can_use_research", True):
                 _research_flags["do"] = False
             if not _privs.get("can_use_agent", True):
@@ -2284,7 +2311,9 @@ def setup_chat_routes(
         from src.settings import get_setting
         _global_disabled = get_setting("disabled_tools", [])
         if _global_disabled and isinstance(_global_disabled, list):
-            disabled_tools.update(_global_disabled)
+            # A capability an admin switched off install-wide, which is what
+            # `WITHHELD_BY_FEATURE` names (`H05`).
+            _withholds.deny(_global_disabled, WITHHELD_BY_FEATURE)
 
         # Light auto-escalation: the user is in chat mode and just expressed a
         # notes/calendar/email intent. Grant the relevant managers but withhold
@@ -2300,7 +2329,10 @@ def setup_chat_routes(
             browser_tools=_BROWSER_MCP_TOOLS,
             shell_granted=_escalation_shell_granted,
         )
-        disabled_tools.update(_escalation_withheld)
+        # What the light promotion deliberately did not grant. A decision this
+        # route made, so `policy`: a later clamp must not hand back the shell a
+        # promotion withheld on purpose.
+        _withholds.deny(_escalation_withheld, WITHHELD_BY_POLICY)
         # `P4-18`. Built once, here, where both halves are known: the reasons
         # the six promotion sites recorded and the tools the promotion took
         # away. Streamed below and saved with the message, so a reloaded thread
@@ -2313,7 +2345,8 @@ def setup_chat_routes(
 
         # Disable document tools in compare sessions — they break the pane UI
         if sess.name and sess.name.startswith("[CMP]"):
-            disabled_tools.update({"create_document", "edit_document", "update_document"})
+            _withholds.deny({"create_document", "edit_document", "update_document"},
+                            WITHHELD_BY_POLICY)
 
         # Compare mode: disable tools based on compare type
         if compare_mode:
@@ -2324,10 +2357,15 @@ def setup_chat_routes(
                 "pipeline", "manage_session", "manage_memory", "list_models",
                 "generate_image", "ui_control",
             }
-            disabled_tools.update(_compare_strip)
-            # In chat mode compare, disable ALL agent tools (no bash, python, file ops)
+            _withholds.deny(_compare_strip, WITHHELD_BY_POLICY)
+            # In chat mode compare, disable ALL agent tools (no bash, python, file ops).
+            # `manage_tasks` here is the exact name `#6020`'s notes clamp lifts,
+            # and it is the reason this attribution had to come before `caller`
+            # became liftable (`B1399`): in `caller` the clamp would re-enable it
+            # in a mode whose own comment says to disable everything.
             if chat_mode == 'chat':
-                disabled_tools.update({"bash", "python", "read_file", "write_file", "web_search", "web_fetch", "search_chats", "manage_tasks"})
+                _withholds.deny({"bash", "python", "read_file", "write_file", "web_search",
+                                 "web_fetch", "search_chats", "manage_tasks"}, WITHHELD_BY_POLICY)
 
         # Plan mode: investigate read-only, propose a plan, don't mutate. Block
         # every tool not on the read-only allowlist. (stream_agent_loop enforces
@@ -2335,13 +2373,18 @@ def setup_chat_routes(
         # belt-and-suspenders.)
         if plan_mode:
             from src.tool_security import plan_mode_disabled_tools
-            disabled_tools.update(plan_mode_disabled_tools())
+            _withholds.deny(plan_mode_disabled_tools(), WITHHELD_BY_PLAN_MODE)
 
         tool_policy = build_effective_tool_policy(
-            disabled_tools=disabled_tools,
+            disabled_tools=_withholds.names(),
             last_user_message=message,
         )
-        disabled_tools = tool_policy.all_disabled_names()
+        # `B1399`. The names the **policy layer** added on top are the policy's,
+        # not the caller's — a guide-only turn disables every tool in the
+        # product — so `finish` attributes them and keeps the route's own
+        # reasons. What comes out is a `TurnToolAccess` the loop uses as it
+        # stands, rather than a bare set it re-tags `caller`.
+        disabled_tools = _withholds.finish(tool_policy.all_disabled_names())
         research_blocked_by_policy = bool(
             tool_policy.blocks("trigger_research")
             or tool_policy.blocks("manage_research")

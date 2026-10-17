@@ -7,7 +7,7 @@ import logging
 import re
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import Iterable, Mapping, Optional, Set, Tuple
+from typing import Dict, Iterable, Mapping, Optional, Set, Tuple
 
 _logger = logging.getLogger(__name__)
 
@@ -535,20 +535,29 @@ def known_tool_names() -> Set[str]:
 # **nothing the route passed in**, which is every name PR `#6020` wrote it to
 # lift, and that clamp became dead code with no commit deciding it.
 #
-# The sentence is corrected here and the **behaviour is deliberately not**.
-# Widening the liftable set was tried and measurement refused it: `caller` is
-# one bucket for two different facts. It holds a neutral starting set *and*
-# every deliberate route restriction — incognito's `manage_memory`,
+# Widening the liftable set was tried first and measurement refused it:
+# `caller` was one bucket for two different facts. It held a neutral starting
+# set *and* every deliberate route restriction — incognito's `manage_memory`,
 # `search_chats` and `manage_skills`, the email reader's `send_email` and
 # `create_document`, and chat-mode compare's `manage_tasks`, which is one of
 # the exact three names both `lift()` call sites pass. Making the bucket
-# liftable would let the notes clamp re-enable `manage_tasks` in a mode whose
-# own comment reads *"disable ALL agent tools"*.
+# liftable in that state would have let the notes clamp re-enable
+# `manage_tasks` in a mode whose own comment reads *"disable ALL agent tools"*.
 #
-# The fix is attribution at the route — the deliberate sets withheld
-# `because=WITHHELD_BY_POLICY`, only the remainder as `caller` — and that is
-# the owner's call because it touches the chat route beside the privacy
-# controls. `B1399` carries the measurement and stays open for it.
+# **Fixed 2026-10-17 by attribution at the route** (`D-2026-10-17-02` §2), not
+# by a wider liftable set. `routes/chat_routes.py` composes its denylist through
+# `RouteWithholds` below, which **requires a reason for every name** — so the
+# deliberate sets carry `policy`, `privilege`, `feature` or `plan_mode` and
+# only the genuinely neutral remainder is `caller`. `caller` is liftable now
+# and `#6020`'s `pantheon-qwen3` notes clamp works again.
+#
+# **The risk this moves to is exhaustiveness, and it is the whole risk**: a
+# deliberate set the route forgets to attribute becomes liftable, which is a
+# privacy control defeated by an omission. That is why `RouteWithholds` has no
+# default reason — the parameter is positional and required — and why
+# `tests/test_a_route_says_why_it_withheld.py` asserts the route composes its
+# denylist through nothing else, derived from the source, so a sixth
+# restriction added later fails rather than leaking.
 
 #: Why a name is withheld from a turn. An enum rather than a flag (`Law 10`):
 #: "it is withheld" and "it is withheld because this person may not use it" are
@@ -575,11 +584,21 @@ WITHHELD_REASONS = frozenset({
 #: The reasons a later clamp may lift. Everything outside this set is a
 #: privilege decision (`blocked_tools_for_owner`, `B70`'s token cap), a policy
 #: the route composed, a capability an admin switched off (`H05`), a
-#: workstation an admin turned off, the route's own `disabled_tools` or a
-#: workflow step's own list (`P22-16`) — and `FORBIDDEN.md` Part 2 holds three
-#: of those six. `B1399` is why all six are now named: the comment above this
-#: set used to name five while the code enforced seven.
-LIFTABLE_REASONS = frozenset({WITHHELD_BY_TURN, WITHHELD_UNATTRIBUTED})
+#: workstation an admin turned off, plan mode or a workflow step's own list
+#: (`P22-16`) — and `FORBIDDEN.md` Part 2 holds three of those six.
+#:
+#: `WITHHELD_BY_CALLER` joined this set on 2026-10-17 (`B1399`,
+#: `D-2026-10-17-02` §2) and the order of the two changes is the whole of the
+#: safety argument: it is liftable **because** the route now attributes its
+#: deliberate sets to `policy`, `privilege`, `feature` and `plan_mode` through
+#: `RouteWithholds`, so what remains in `caller` is a neutral starting set and
+#: nothing else. Lifting it before that attribution existed was tried, broke
+#: `test_the_caller_s_own_set_is_recorded_as_the_caller_s`, and that test was
+#: right. Do not widen this set without the matching attribution; the two are
+#: one change.
+LIFTABLE_REASONS = frozenset({
+    WITHHELD_BY_TURN, WITHHELD_UNATTRIBUTED, WITHHELD_BY_CALLER,
+})
 
 
 class TurnToolAccess(set):
@@ -744,6 +763,95 @@ def turn_tool_access(disabled_tools, *, because=WITHHELD_UNATTRIBUTED) -> TurnTo
     if isinstance(disabled_tools, TurnToolAccess):
         return disabled_tools
     return TurnToolAccess(disabled_tools or (), because=because)
+
+
+class RouteWithholds:
+    """A route's denylist under composition, with a reason on every name.
+
+    `B1399` / `D-2026-10-17-02` §2. `routes/chat_routes.py` composed its
+    denylist as a plain `set` across sixteen `update()` calls and three
+    `difference_update()` calls, and `stream_agent_loop` then tagged the whole
+    result `WITHHELD_BY_CALLER` — one bucket holding a neutral starting set
+    *and* every deliberate privacy restriction. That is why `caller` could not
+    be liftable, and why `#6020`'s notes clamp had become dead code.
+
+    **Why a type and not a convention.** The attribution has to be exhaustive
+    or it is worse than nothing: a deliberate set that is forgotten becomes
+    liftable, which is a privacy control defeated by an omission. So:
+
+    * ``because`` is **positional and required** — there is no reason to
+      forget, because there is no default to fall through to;
+    * composition churn goes through :meth:`allow`, so the route can still add
+      the web tools and take them back out (it does, three times) without the
+      add needing to be liftable;
+    * :meth:`finish` is the only way out, and it is what attributes the names
+      the **policy layer** added on top — `build_effective_tool_policy` can
+      disable every tool in the product on a guide-only turn, and those are the
+      policy's, not the caller's.
+
+    Everything the route does not attribute at all ends up `caller`, which is
+    liftable — so this type's correctness is exactly the claim that a name
+    reaching `caller` is a name nobody decided anything about.
+    """
+
+    __slots__ = ("_why",)
+
+    def __init__(self):
+        self._why: Dict[str, Set[str]] = {}
+
+    # ── the writers ───────────────────────────────────────────────────────
+    def deny(self, names, because) -> "RouteWithholds":
+        """Withhold ``names`` for ``because``. Chainable, so a site is one line."""
+        if because not in WITHHELD_REASONS:
+            raise ValueError(f"unknown withholding reason: {because!r}")
+        if isinstance(names, str):
+            names = (names,)
+        for name in (names or ()):
+            if isinstance(name, str) and name:
+                self._why.setdefault(name, set()).add(because)
+        return self
+
+    def allow(self, names) -> "RouteWithholds":
+        """Take ``names`` back off the list, whatever they were denied for.
+
+        This is composition, not a clamp: the route denies the web tools and
+        then allows them again on the branch where the chat's own setting
+        enabled them. `TurnToolAccess.lift` deliberately refuses an unliftable
+        reason; that rule is about a **later** clamp reaching a decision that is
+        already made, and nothing here is later than anything else.
+        """
+        if isinstance(names, str):
+            names = (names,)
+        for name in (names or ()):
+            self._why.pop(name, None)
+        return self
+
+    # ── the readers ───────────────────────────────────────────────────────
+    def names(self) -> Set[str]:
+        """The denylist as a plain set, for the policy layer to compose with."""
+        return set(self._why)
+
+    def reasons_for(self, name) -> frozenset:
+        return frozenset(self._why.get(name, ()))
+
+    def finish(self, all_disabled) -> "TurnToolAccess":
+        """The turn's `TurnToolAccess`, attributed.
+
+        ``all_disabled`` is what the policy layer answered — normally
+        ``build_effective_tool_policy(...).all_disabled_names()``. A name this
+        route denied keeps its reasons; a name only the policy layer added is
+        `policy`, because that is literally what added it; a name in neither is
+        not withheld at all.
+        """
+        access = TurnToolAccess()
+        for name in sorted({str(n) for n in (all_disabled or ()) if n}):
+            why = self._why.get(name)
+            if why:
+                for because in sorted(why):
+                    access.withhold((name,), because=because)
+            else:
+                access.withhold((name,), because=WITHHELD_BY_POLICY)
+        return access
 
 
 def build_effective_tool_policy(

@@ -87,6 +87,10 @@ class Turn:
     def __init__(self):
         self.prompts: list = []      # (tool_names, disabled) per `_assemble_prompt`
         self.loop_caps: list = []    # the loop's own set, per `_build_base_prompt`
+        # `B1399`. The live object, not a copy of its members: the reasons are
+        # the thing under test once `caller` is liftable, and `set(...)` drops
+        # them. `loop_caps` stays as it was, because every case above reads it.
+        self.loop_access: list = []
         self.schemas: list = []      # the `tools` array per request
         self.events: list = []
 
@@ -118,7 +122,8 @@ class Turn:
 def run_turn(monkeypatch, tmp_path, *, owner, user="what is the capital of france?",
              relevant_tools=("ask_user", "update_plan"), model="mistral-7b",
              plan_mode=False, guide_only=False, delegated=False,
-             image_gen=False, skills=False, settings=None) -> Turn:
+             image_gen=False, skills=False, settings=None,
+             disabled_tools=None) -> Turn:
     """Drive `stream_agent_loop` once. Nothing is inherited from the container.
 
     `signed_in` is the one way a test in this tree is a person
@@ -156,6 +161,7 @@ def run_turn(monkeypatch, tmp_path, *, owner, user="what is the capital of franc
 
     def base_spy(disabled_tools, *a, **k):
         rec.loop_caps.append(set(disabled_tools or ()))
+        rec.loop_access.append(disabled_tools)
         return real_base(disabled_tools, *a, **k)
 
     monkeypatch.setattr(al, "_build_base_prompt", base_spy, raising=False)
@@ -189,6 +195,10 @@ def run_turn(monkeypatch, tmp_path, *, owner, user="what is the capital of franc
             plan_mode=plan_mode,
             delegated_credential=delegated,
             tool_policy=policy,
+            # `B1399`. A caller that already attributed its names hands the
+            # `TurnToolAccess` over and the loop keeps it; this lets a case
+            # drive that seam instead of asserting it off the source.
+            **({"disabled_tools": disabled_tools} if disabled_tools is not None else {}),
         ):
             if chunk.startswith("data: ") and not chunk.startswith("data: [DONE]"):
                 try:
@@ -533,14 +543,43 @@ def test_an_unknown_withholding_reason_is_refused():
 
 
 def test_the_caller_s_own_set_is_recorded_as_the_caller_s(monkeypatch, tmp_path):
-    """The route's `disabled_tools` is the first writer and is attributed, so a
-    name the chat route switched off (incognito's `manage_skills`, the explicit
-    web turn's) cannot be lifted by a per-turn clamp either."""
+    """The route's deliberate sets cannot be lifted by a per-turn clamp.
+
+    **Rewritten 2026-10-17 and the property is the same one.** This asserted
+    `WITHHELD_BY_CALLER not in LIFTABLE_REASONS`, which was the *mechanism* that
+    held the property at the time — and it is the assertion that caught
+    `D-2026-10-17-01` §1's approved recommendation and proved it wrong, because
+    `caller` then held the route's deliberate restrictions in the same bucket as
+    a neutral starting set.
+
+    `D-2026-10-17-02` §2 fixed the bucket instead of widening the rule:
+    `routes/chat_routes.py` composes through `RouteWithholds`, so incognito's
+    `manage_skills` is `policy` and the neutral remainder is `caller`. `caller`
+    is liftable now and **a name the chat route switched off still cannot be
+    lifted** — for a better reason. Both halves are asserted here, because
+    *liftable* alone would be the defect and *unliftable* alone is no longer
+    true.
+    """
     turn = run_turn(monkeypatch, tmp_path, owner=ADMIN, relevant_tools=WIDE)
-    assert WITHHELD_BY_CALLER not in LIFTABLE_REASONS
-    access = TurnToolAccess({"manage_skills"}, because=WITHHELD_BY_CALLER)
-    access.difference_update({"manage_skills"})
-    assert "manage_skills" in access
+    assert WITHHELD_BY_CALLER in LIFTABLE_REASONS
+
+    from src.tool_policy import RouteWithholds, WITHHELD_BY_POLICY
+
+    deliberate = RouteWithholds().deny({"manage_skills"}, WITHHELD_BY_POLICY)
+    access = deliberate.finish({"manage_skills", "manage_notes"})
+    access.difference_update({"manage_skills", "manage_notes"})
+    assert "manage_skills" in access, (
+        "a restriction the route made deliberately was lifted by a clamp")
+    assert "manage_notes" in access, (
+        "the policy layer's own additions are `policy` too, so this one has to "
+        "survive a clamp as well — if it did not, `finish` is attributing them "
+        "as the caller's")
+
+    neutral = TurnToolAccess({"manage_calendar"}, because=WITHHELD_BY_CALLER)
+    neutral.difference_update({"manage_calendar"})
+    assert "manage_calendar" not in neutral, (
+        "a neutral caller set is not liftable, so `#6020`'s notes clamp is "
+        "still dead code")
     assert turn.prompt_cap == turn.cap
 
 

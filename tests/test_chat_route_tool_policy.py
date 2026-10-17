@@ -112,8 +112,14 @@ def test_disabled_tools_respects_missing_vs_explicit_toggles():
     assert "web_search_enabled_for_turn(allow_web_search, use_web)" in source, (
         "web tools must be gated through the explicit per-turn web setting"
     )
-    assert "disabled_tools.update(WEB_TOOL_NAMES)" in source, (
-        "disabled_tools must add web_search/web_fetch when web is not explicitly enabled"
+    # `B1399` changed the spelling, not the rule: the route composes its
+    # denylist through `RouteWithholds`, which requires a reason. The old
+    # assertion read `disabled_tools.update(WEB_TOOL_NAMES)` and would have
+    # passed over a bare unattributed `update` — which is now the defect
+    # `tests/test_a_route_says_why_it_withheld.py` forbids outright.
+    assert "_withholds.deny(WEB_TOOL_NAMES, WITHHELD_BY_POLICY)" in source, (
+        "the route must withhold web_search/web_fetch — with a reason — when web "
+        "is not explicitly enabled"
     )
     assert "_forced_tools = set(WEB_TOOL_NAMES)" in source, (
         "web tools should only be forced visible from the explicit web setting"

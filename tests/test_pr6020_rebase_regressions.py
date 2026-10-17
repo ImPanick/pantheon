@@ -90,17 +90,14 @@ def _run_probe(messages, *, relevant_tools, **kwargs):
     )
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "B1399: `lift()` is stricter than its own contract. src/tool_policy.py "
-    "says five reasons cannot be lifted by a later clamp — a privilege, a "
-    "policy, a switched-off feature, plan mode, a step's own list — but "
-    "LIFTABLE_REASONS makes seven unliftable, and agent_loop:6417 tags the "
-    "route's whole disabled_tools kwarg WITHHELD_BY_CALLER. So the "
-    "pantheon-qwen3 notes clamp can lift nothing the route passed in, which "
-    "is every name it exists to lift. Bisected to 45a4ed8 (fx11-cap); passes "
-    "on 0bd089d. Marked xfail rather than rewritten because whether a "
-    "model-specific clamp may override the route's list is the owner's call, "
-    "and strict=True means the ruling shows up here either way."))
+# `B1399` is **closed** (`D-2026-10-17-02` §2) and these two cases pass. They
+# carried `@pytest.mark.xfail(strict=True)` from 2026-10-14, whose own reason
+# said *"strict=True means the ruling shows up here either way"* — and it did:
+# the ruling landed and both reported `XPASS(strict)`, which pytest counts as a
+# failure, which is exactly the signal that was wanted. The fix is attribution
+# at the route (`RouteWithholds` in `src/tool_policy.py`), so `caller` holds a
+# neutral starting set and is liftable, and `#6020`'s `pantheon-qwen3` notes
+# clamp re-enables the three personal managers again.
 def test_pantheon_notes_mode_clamps_and_reenables_all_personal_managers(monkeypatch):
     prompt_calls, _ = _install_route_probe(monkeypatch)
 
@@ -233,17 +230,14 @@ def test_non_qwen_fallback_keeps_requested_temperature(monkeypatch):
     assert request["kwargs"]["temperature"] == 1.2
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "B1399: `lift()` is stricter than its own contract. src/tool_policy.py "
-    "says five reasons cannot be lifted by a later clamp — a privilege, a "
-    "policy, a switched-off feature, plan mode, a step's own list — but "
-    "LIFTABLE_REASONS makes seven unliftable, and agent_loop:6417 tags the "
-    "route's whole disabled_tools kwarg WITHHELD_BY_CALLER. So the "
-    "pantheon-qwen3 notes clamp can lift nothing the route passed in, which "
-    "is every name it exists to lift. Bisected to 45a4ed8 (fx11-cap); passes "
-    "on 0bd089d. Marked xfail rather than rewritten because whether a "
-    "model-specific clamp may override the route's list is the owner's call, "
-    "and strict=True means the ruling shows up here either way."))
+# `B1399` is **closed** (`D-2026-10-17-02` §2) and these two cases pass. They
+# carried `@pytest.mark.xfail(strict=True)` from 2026-10-14, whose own reason
+# said *"strict=True means the ruling shows up here either way"* — and it did:
+# the ruling landed and both reported `XPASS(strict)`, which pytest counts as a
+# failure, which is exactly the signal that was wanted. The fix is attribution
+# at the route (`RouteWithholds` in `src/tool_policy.py`), so `caller` holds a
+# neutral starting set and is liftable, and `#6020`'s `pantheon-qwen3` notes
+# clamp re-enables the three personal managers again.
 def test_qwen_notes_fallback_reenables_personal_managers(monkeypatch):
     """The answering candidate's notes mode must unblock the managers for
     execution, not just enable them in its own route schemas."""

@@ -6441,7 +6441,17 @@ async def stream_agent_loop(
     # (alias-aware, the dispatcher's rule) and **why** each name is withheld —
     # so a per-turn clamp cannot lift a privilege cap. The measurement and the
     # three defects are in `src/tool_policy.py` above the class.
-    disabled_tools = TurnToolAccess(disabled_tools or [], because=WITHHELD_BY_CALLER)
+    #
+    # `B1399` / `D-2026-10-17-02` §2. **A caller that already attributed its
+    # names keeps them.** `routes/chat_routes.py` composes its denylist through
+    # `RouteWithholds` and hands over a `TurnToolAccess` whose deliberate sets
+    # are `policy`, `privilege`, `feature` and `plan_mode`; re-wrapping it here
+    # would flatten all of that back into one `caller` bucket, which is the
+    # defect the row names. Any other caller still passes a plain iterable and
+    # still gets `caller` — now liftable, and correctly so, because for those
+    # callers it *is* a neutral starting set (`Law 1`).
+    if not isinstance(disabled_tools, TurnToolAccess):
+        disabled_tools = TurnToolAccess(disabled_tools or [], because=WITHHELD_BY_CALLER)
     route_descriptors = list(route_descriptors or [])
     while len(route_descriptors) < 1 + len(fallbacks or []):
         route_descriptors.append({})

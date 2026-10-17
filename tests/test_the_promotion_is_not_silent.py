@@ -79,7 +79,9 @@ def test_the_route_withholds_exactly_what_it_reports():
     # the tools reported cannot be two different sets — which is the shape of
     # every defect this phase has been closing.
     assert "_escalation_withheld = escalation_withholds(" in _ROUTES
-    assert "disabled_tools.update(_escalation_withheld)" in _ROUTES
+    # `B1399`: attributed `policy`, because a later clamp must not hand back
+    # the shell a promotion withheld on purpose.
+    assert "_withholds.deny(_escalation_withheld, WITHHELD_BY_POLICY)" in _ROUTES
 
 
 @pytest.mark.parametrize("phrase", [

@@ -142,4 +142,4 @@ def test_the_approval_replay_keeps_its_own_grant():
 def test_the_route_reports_the_refusal_it_enforces():
     source, _ = _chat_stream_node()
     assert "shell_granted=_escalation_shell_granted," in source
-    assert "disabled_tools.update(_escalation_withheld)" in source
+    assert "_withholds.deny(_escalation_withheld, WITHHELD_BY_POLICY)" in source

@@ -346,7 +346,12 @@ def test_one_switch_governs_both_shells():
         if not isinstance(node, ast.If) or "allow_bash" not in ast.unparse(node.test):
             continue
         body = ast.unparse(node)
-        if "disabled_tools" in body and "host_shell" in body:
+        # `B1399` renamed the structure the route composes its denylist in —
+        # `_withholds`, a `RouteWithholds`, which requires a reason per name.
+        # Either spelling satisfies this rule, whose subject is that the two
+        # shells travel together and not which variable holds them.
+        if ("host_shell" in body
+                and ("disabled_tools" in body or "_withholds" in body)):
             found = True
     assert found, (
         "turning the shell toggle off does not disable host_shell — the host "
