@@ -1395,7 +1395,7 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
   function _queuedBubbleHtml(item) {
     const n = (item.attachments && item.attachments.length) || 0;
     const play = playIcon({ size: 8 });
-    const clip = '<svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M21 12.8L12.2 21.6a5 5 0 0 1-7-7L14 5.7a3.3 3.3 0 0 1 4.7 4.7l-8.8 8.8a1.7 1.7 0 0 1-2.4-2.4l8.2-8.1"/></svg>';
+    const clip = '<svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><path d="M21 12.8L12.2 21.6a5 5 0 0 1-7-7L14 5.7a3.3 3.3 0 0 1 4.7 4.7l-8.8 8.8a1.7 1.7 0 0 1-2.4-2.4l8.2-8.1"/></svg>';
     // `B13`: the pill said "Queued" while the docked panel said "Waiting" about
     // this same message, three inches below it. One word, from `runStatus.js`,
     // asked for as a message — which is what a composer queue item is.
