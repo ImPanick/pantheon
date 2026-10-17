@@ -872,8 +872,17 @@ def test_the_hand_keeps_to_the_palette_and_the_global_focus_ring():
     )
     tokens = set(re.findall(r"var\((--[a-z0-9-]+)", css))
     palette = {"--bg", "--fg", "--panel", "--border", "--red"}
+    # `P1-13`'s elevation inks are not a sixth colour: they are black at one of
+    # four derived alphas, and what they replaced here was a hard-coded
+    # `rgba(0,0,0,α)` this test could not see because it is not a `var()`. So
+    # the sweep made this section more palette-aware, not less — but they are
+    # named rather than pattern-matched, so a real sixth colour still fails.
+    elevation = {f"--shadow-ink-{n}" for n in range(1, 5)}
     own = {t for t in tokens if t.startswith("--hand-") or t in ("--slot", "--z")}
-    assert tokens - own <= palette, f"colours outside the five: {sorted(tokens - own - palette)}"
+    assert tokens - own <= palette | elevation, (
+        f"colours outside the five: {sorted(tokens - own - palette - elevation)}")
+    assert not re.search(r"rgba\(\s*0\s*,\s*0\s*,\s*0", css), (
+        "the hand hard-codes a shadow ink again (`P1-13`)")
 
 
 def test_reduced_motion_deals_the_hand_without_the_slide():

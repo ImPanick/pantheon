@@ -297,6 +297,54 @@
   --focus-ring: var(--red, #e06c75);
   --focus-ring-width: 2px;
   --focus-ring-offset: 2px;
+
+  /* ── Elevation: four inks, one idiom (`P1-13`, ruled in `D-2026-10-17-02`) ──
+     Before this, elevation was two idioms that do not look alike. 127 shadows
+     hard-coded `rgba(0,0,0,α)` across 25 distinct alphas — three of them the
+     same number spelled twice (`.38` beside `0.38`) — and 41 more used
+     `color-mix(in srgb, var(--fg) N%, transparent)`, which is *ink at low
+     alpha*: a dark shadow on the 8 light palettes and a **light glow** on the
+     other 15, because `--fg` is lighter than `--panel` there. A rim light does
+     read as elevation on dark UI, and that is why this was a question. It is
+     ruled against because it makes *elevation* mean two different things
+     depending on the palette, so no one sentence describes what a raised
+     surface looks like in this product.
+
+     So elevation is a shadow everywhere, scoped by surface — `B22`'s pattern,
+     keyed off the same `color-scheme` the palette writers already set, with
+     the **dark arm carrying the literal the file was tuned with**.
+
+     The light arm is derived, not chosen. A black overlay at alpha α drops a
+     panel's relative luminance to `Y(1-α)`; matching the **perceptual**
+     lightness step (CIE `L*`, which is uniform where `Y` is not) on the median
+     light panel against the median dark panel puts the light arm at
+     **one fifth** of the dark arm — 0.206, 0.205, 0.203 and 0.200 across the
+     four tiers, which is the same number four times to within 3.2%, so the
+     four light arms are `dark / 5` exactly rather than four separately derived
+     magic values. That is why the smudge happens at all: on a near-white panel
+     the same α removes five times the lightness it removes on a near-black one.
+     `.pantheon/check-elevation.py` re-derives the ratio from the live palettes
+     and fails if it drifts past 5%, so this paragraph cannot quietly stop being
+     true (matching the *contrast ratio* instead was tried and is wrong: today's
+     dark shadows reach only 1.01:1 to 1.08:1 against a near-black panel, so a
+     light arm matched to that would be invisible).
+
+     Four tiers, not 25. The alphas collapse by nearest neighbour **in log
+     space**, because a shadow's alpha is perceived as a ratio and not as a
+     distance — the boundaries are geometric means, so no occurrence moves by
+     more than **1.43×** and the occurrence-weighted mean move is **1.154×**.
+     A linear rule would drop 0.12, 0.24 and 0.4 a tier (23 occurrences) and
+     its worst move is 1.71×. Old and new per tier are
+     recorded in `D-2026-10-17-02` §1 and re-derived by
+     `.pantheon/check-elevation.py`, which also fails a 26th alpha.
+
+     These are the shadow's **ink**, not whole shadows: every site keeps its
+     own offsets and blur. Collapsing 236 geometries to four is the next step
+     and it needs eyes, which is a review and not a sweep. */
+  --shadow-ink-1: light-dark(rgba(0, 0, 0, 0.014), rgba(0, 0, 0, 0.07));
+  --shadow-ink-2: light-dark(rgba(0, 0, 0, 0.034), rgba(0, 0, 0, 0.17));
+  --shadow-ink-3: light-dark(rgba(0, 0, 0, 0.062), rgba(0, 0, 0, 0.31));
+  --shadow-ink-4: light-dark(rgba(0, 0, 0, 0.100), rgba(0, 0, 0, 0.50));
 }
 
 :root.light {
@@ -652,7 +700,7 @@ body.bg-pattern-sparkles {
       position: fixed;
       background: var(--panel); border: 1px solid var(--border);
       border-radius: 8px; padding: 4px; min-width: 120px;
-      box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+      box-shadow: 0 4px 16px var(--shadow-ink-4);
       z-index: 300;
       color: var(--fg);
     }
@@ -733,7 +781,7 @@ body.bg-pattern-sparkles {
       min-height: 0;
       margin: 0;
       padding: 0;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+      box-shadow: 0 4px 12px var(--shadow-ink-1);
       backdrop-filter: blur(10px);
       border: 1px solid color-mix(in srgb, var(--fg) 11%, transparent);
       position: relative;
@@ -1227,7 +1275,7 @@ body.bg-pattern-sparkles {
       border-radius: 999px;
       color: var(--fg); font-family: inherit; font-size: 12px;
       cursor: grab; touch-action: none; user-select: none;
-      box-shadow: 0 4px 14px rgba(0,0,0,0.35);
+      box-shadow: 0 4px 14px var(--shadow-ink-3);
       transition: transform 0.28s var(--ease-signature), background 0.15s, border-color 0.15s;
       animation: dock-chip-in 0.25s var(--ease-signature) both;
     }
@@ -1238,7 +1286,7 @@ body.bg-pattern-sparkles {
     .minimized-dock-chip:active { cursor: grabbing; }
     .minimized-dock-chip.dragging {
       cursor: grabbing; z-index: 1000;
-      box-shadow: 0 8px 24px rgba(0,0,0,0.55);
+      box-shadow: 0 8px 24px var(--shadow-ink-4);
       transition: none;
       opacity: 0.95;
     }
@@ -1246,12 +1294,12 @@ body.bg-pattern-sparkles {
     #minimized-dock.dock-dragging { cursor: grabbing; }
     #minimized-dock.dock-dragging .minimized-dock-chip {
       transition: none;
-      box-shadow: 0 8px 24px rgba(0,0,0,0.45);
+      box-shadow: 0 8px 24px var(--shadow-ink-4);
     }
     /* Subtle visual cue that edge chips drag the whole dock */
     #minimized-dock .minimized-dock-chip:first-child:not(:only-child),
     #minimized-dock .minimized-dock-chip:last-child:not(:only-child) {
-      box-shadow: 0 4px 14px rgba(0,0,0,0.35),
+      box-shadow: 0 4px 14px var(--shadow-ink-3),
                   inset 0 0 0 1px color-mix(in srgb, var(--accent, var(--red)) 25%, transparent);
     }
     .minimized-dock-chip svg { opacity: 0.7; flex-shrink: 0; }
@@ -1327,7 +1375,7 @@ body.bg-pattern-sparkles {
         box-shadow: 0 0 0 2px var(--bg);
       }
       .minimized-dock-chip.chip-free-drag {
-        box-shadow: 0 8px 22px rgba(0,0,0,0.55),
+        box-shadow: 0 8px 22px var(--shadow-ink-4),
                     0 0 0 2px color-mix(in srgb, var(--accent, var(--red)) 50%, transparent) !important;
       }
       /* Long-press hint — chip swells and settles while the detach timer
@@ -1363,7 +1411,7 @@ body.bg-pattern-sparkles {
       @keyframes chip-long-press-pulse {
         0%, 100% { transform: scale(1); }
         50%      { transform: scale(1.42);
-                   box-shadow: 0 14px 42px rgba(0,0,0,0.66),
+                   box-shadow: 0 14px 42px var(--shadow-ink-4),
                                0 0 0 16px color-mix(in srgb, var(--accent, var(--red)) 42%, transparent),
                                0 0 72px color-mix(in srgb, #7dd3fc 44%, transparent),
                                0 0 118px color-mix(in srgb, #f0abfc 32%, transparent); }
@@ -1378,7 +1426,7 @@ body.bg-pattern-sparkles {
          modal. Tap it to minimize. */
       .minimized-dock-chip.chip-active {
         border-color: var(--accent, var(--red)) !important;
-        box-shadow: 0 4px 14px rgba(0,0,0,0.35),
+        box-shadow: 0 4px 14px var(--shadow-ink-3),
                     0 0 0 2px color-mix(in srgb, var(--accent, var(--red)) 35%, transparent);
       }
       .minimized-dock-chip.chip-active svg { opacity: 1; }
@@ -1525,7 +1573,7 @@ body.bg-pattern-sparkles {
       background: var(--panel);
       padding: 2px 6px;
       border-radius: 4px;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.25);
+      box-shadow: 0 2px 6px var(--shadow-ink-3);
       z-index: 20;
       transition: opacity 0.25s ease, transform 0.25s var(--ease-signature);
     }
@@ -2226,7 +2274,7 @@ body.bg-pattern-sparkles {
     input, textarea, button, select {
       background:var(--bg);
       color:var(--fg);
-      border:1px solid var(--border);
+      border:1px solid var(--border-control, var(--border));
       font-family:inherit;
       padding:6.9px;
       border-radius: 4px;
@@ -2557,7 +2605,7 @@ body.bg-pattern-sparkles {
     .incognito-btn {
       pointer-events: auto;
       background: none;
-      border: 1px solid var(--border);
+      border: 1px solid var(--border-control, var(--border));
       color: var(--fg);
       opacity: 0.25;
       cursor: pointer;
@@ -2882,7 +2930,7 @@ body.bg-pattern-sparkles {
       margin-left: 4px;
     }
     .rag-upload-zone {
-      border: 2px dashed var(--border);
+      border: 2px dashed var(--border-control, var(--border));
       border-radius: 6px;
       padding: 12px;
       text-align: center;
@@ -3892,7 +3940,7 @@ body.bg-pattern-sparkles {
       height: 22px;
       max-width: 150px;
       border-radius: 6px;
-      border: 1px solid var(--input-border, var(--border));
+      border: 1px solid var(--input-border, var(--border-control, var(--border)));
       background: var(--bg);
       color: var(--fg);
       font: inherit;
@@ -4123,7 +4171,7 @@ body.bg-pattern-sparkles {
          not only briefly while typing. */
       background: color-mix(in srgb, var(--send-btn-bg, var(--red)) 30%, var(--panel, #2a2a2a));
       color: var(--fg);
-      border: 1px solid var(--border);
+      border: 1px solid var(--border-control, var(--border));
       transition: width 0.3s var(--ease-signature), background 0.25s, border-color 0.25s, color 0.25s, border-radius 0.3s;
     }
     .send-btn.mic-mode:hover,
@@ -4673,7 +4721,7 @@ body.bg-pattern-sparkles {
       transition: background 0.15s, color 0.15s, border-color 0.15s;
     }
     .model-picker-btn:hover {
-      border-color: var(--border);
+      border-color: var(--border-control, var(--border));
       background: color-mix(in srgb, var(--fg) 8%, transparent);
       color: var(--fg);
     }
@@ -4706,7 +4754,7 @@ body.bg-pattern-sparkles {
       background: var(--panel);
       border: 1px solid var(--border);
       border-radius: 8px;
-      box-shadow: 0 -4px 20px rgba(0,0,0,0.4);
+      box-shadow: 0 -4px 20px var(--shadow-ink-4);
       padding: 6px;
       animation: picker-roll-up 0.2s ease-out;
       transform-origin: bottom right;
@@ -4744,7 +4792,7 @@ body.bg-pattern-sparkles {
       box-sizing: border-box;
       padding: 6px 30px 6px 8px;
       font-size: 0.82em;
-      border: 1px solid var(--border);
+      border: 1px solid var(--border-control, var(--border));
       border-radius: 4px;
       background: var(--bg);
       color: var(--fg);
@@ -4797,7 +4845,7 @@ body.bg-pattern-sparkles {
       justify-content: center;
       width: 30px;
       height: 30px;
-      border: 1px solid var(--border);
+      border: 1px solid var(--border-control, var(--border));
       border-radius: 4px;
       background: color-mix(in srgb, var(--fg) 4%, transparent);
       color: color-mix(in srgb, var(--fg) 66%, transparent);
@@ -5048,7 +5096,7 @@ body.bg-pattern-sparkles {
       border-radius: 10px;
       padding: 4px;
       min-width: 170px;
-      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+      box-shadow: 0 4px 16px var(--shadow-ink-3);
       z-index: 1000;
       /* Container spring-in: the rounded panel scales/grows out of the
          chevron's position before the menu items domino in on top. */
@@ -5191,7 +5239,7 @@ body.bg-pattern-sparkles {
     .toggle .slider:before {
       position:absolute; content:""; height:12px; width:12px; left:2px; top:2px;
       background:var(--panel); border-radius:50%; transform:translateX(0); transition:transform .08s;
-      box-shadow:0 1px 2px rgba(0,0,0,0.25);
+      box-shadow:0 1px 2px var(--shadow-ink-3);
     }
     .toggle input:checked + .slider { background:var(--red); }
     .toggle input:checked + .slider:before { transform:translateX(14px); }
@@ -5265,7 +5313,7 @@ body.bg-pattern-sparkles {
       border: 1px solid var(--border);
       border-radius: 8px;
       padding: 12px 14px;
-      box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+      box-shadow: 0 4px 20px var(--shadow-ink-4);
       min-width: 220px;
       max-width: 280px;
       font-size: 0.85rem;
@@ -5355,7 +5403,7 @@ body.bg-pattern-sparkles {
       max-height: 50vh;
       overflow-y: auto;
       z-index: 300;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      box-shadow: 0 4px 12px var(--shadow-ink-3);
       font-size: 0.75rem;
     }
     .memory-used-row,
@@ -5503,7 +5551,7 @@ body.bg-pattern-sparkles {
       border:1px solid var(--border);
       border-radius:6px;
       padding:4px;
-      box-shadow:0 4px 16px rgba(0,0,0,0.4);
+      box-shadow:0 4px 16px var(--shadow-ink-4);
       z-index:100;
       min-width:150px;
     }
@@ -5754,7 +5802,7 @@ body.bg-pattern-sparkles {
       padding:10px 14px;
       font-size:0.8rem;
       color:var(--fg);
-      box-shadow:0 8px 24px rgba(0,0,0,0.4);
+      box-shadow:0 8px 24px var(--shadow-ink-4);
       min-width:180px;
       line-height:1.7;
     }
@@ -6107,7 +6155,7 @@ body.bg-pattern-sparkles {
          declaration and the id a hack maintaining it. The `top` tier is in
          `.pantheon/check-zindex.py`. */
       z-index: 2147483000; pointer-events: none;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+      box-shadow: 0 4px 12px var(--shadow-ink-2);
       backdrop-filter: blur(12px);
       max-width: min(360px, calc(100vw - 32px));
       min-width: min(220px, calc(100vw - 32px));
@@ -6301,7 +6349,7 @@ body.bg-pattern-sparkles {
         z-index: 400;
         width: 80% !important;
         max-width: 340px;
-        box-shadow: 4px 0 20px rgba(0,0,0,0.5);
+        box-shadow: 4px 0 20px var(--shadow-ink-4);
         transition: transform 0.25s ease, opacity 0.25s ease !important;
         opacity: 1 !important;
         overflow: visible !important;
@@ -6323,7 +6371,7 @@ body.bg-pattern-sparkles {
       }
       .sidebar.right-side {
         left: auto; right: 0;
-        box-shadow: -4px 0 20px rgba(0,0,0,0.5);
+        box-shadow: -4px 0 20px var(--shadow-ink-4);
       }
       html.pan-sidebar-off .sidebar,
       html.pan-mobile-startup-sidebar-hidden .sidebar {
@@ -6460,11 +6508,11 @@ body.bg-pattern-sparkles {
         top: 0; bottom: 0; left: 0;
         z-index: 200;
         width: 48px;
-        box-shadow: 2px 0 12px rgba(0,0,0,0.4);
+        box-shadow: 2px 0 12px var(--shadow-ink-4);
       }
       .icon-rail.mobile-mini.right-side {
         left: auto; right: 0;
-        box-shadow: -2px 0 12px rgba(0,0,0,0.4);
+        box-shadow: -2px 0 12px var(--shadow-ink-4);
       }
       /* Chat bubbles — AI stretches full width, user stays compact */
       .msg { font-size: 0.85em; }
@@ -7250,7 +7298,7 @@ body.bg-pattern-sparkles {
       border-radius: 10px;
       background: color-mix(in srgb, var(--panel, var(--bg)) 72%, transparent);
       padding: 10px 12px 12px;
-      box-shadow: 0 8px 22px rgba(0, 0, 0, 0.14);
+      box-shadow: 0 8px 22px var(--shadow-ink-2);
     }
     .session-skeleton-bubble.is-user {
       align-self: flex-end;
@@ -7354,7 +7402,7 @@ body.bg-pattern-sparkles {
       position:relative;
       overflow-y:auto;
       border-radius:10px;
-      box-shadow:0 8px 32px rgba(0,0,0,0.45);
+      box-shadow:0 8px 32px var(--shadow-ink-4);
       pointer-events:auto;
       animation: modal-enter 0.25s ease-out both;
     }
@@ -7533,7 +7581,7 @@ body.bg-pattern-sparkles {
       font-size:12px;
       color:var(--fg);
       max-width:220px;
-      box-shadow:0 -2px 8px rgba(0,0,0,0.25);
+      box-shadow:0 -2px 8px var(--shadow-ink-3);
       transition:background 0.15s;
     }
     .modal-dock-item:hover { background:var(--bg); }
@@ -7651,7 +7699,7 @@ body.bg-pattern-sparkles {
       /* Asymmetric padding nudges the label UP ~2px from where it was (more
          bottom than top padding), so the confirm-dialog text isn't sitting low. */
       padding:3px 16px 5px; border-radius:4px; font-size:0.85rem;
-      cursor:pointer; border:1px solid var(--border);
+      cursor:pointer; border:1px solid var(--border-control, var(--border));
       font-family:inherit;
     }
     @media (max-width: 820px) {
@@ -7810,7 +7858,7 @@ body.bg-pattern-sparkles {
       inset: 0;
       border-radius: 10px;
       padding: 1px;
-      background: linear-gradient(to bottom, var(--border), color-mix(in srgb, var(--border) 30%, transparent));
+      background: linear-gradient(to bottom, var(--border-control, var(--border)), color-mix(in srgb, var(--border-control, var(--border)) 30%, transparent));
       -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
       mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
       -webkit-mask-composite: xor;
@@ -7947,7 +7995,7 @@ body.bg-pattern-sparkles {
       -webkit-appearance: none;
       width: 18px;
       height: 18px;
-      border: 2px solid var(--border);
+      border: 2px solid var(--border-control, var(--border));
       border-radius: 50%;
       outline: none;
       margin: 0;
@@ -7995,7 +8043,7 @@ body.bg-pattern-sparkles {
     .preset-btn.active {
       background: var(--panel);
       border-color: var(--fg);
-      box-shadow: 0 0 0 1px var(--fg), 0 0 8px color-mix(in srgb, var(--fg) 16%, transparent);
+      box-shadow: 0 0 0 1px var(--fg), 0 0 8px var(--shadow-ink-2);
       font-weight: 600;
     }
     
@@ -8036,7 +8084,7 @@ body.bg-pattern-sparkles {
     #custom-preset-modal .modal-body textarea,
     #custom-preset-modal .modal-body input[type="text"] {
       background: var(--panel);
-      border: 1px solid var(--border);
+      border: 1px solid var(--border-control, var(--border));
       border-radius: 6px;
       color: var(--fg);
       padding: 8px 10px;
@@ -8067,7 +8115,7 @@ body.bg-pattern-sparkles {
       border-radius: 6px;
       font-size: 12px;
       font-weight: 500;
-      border: 1px solid var(--border);
+      border: 1px solid var(--border-control, var(--border));
       background: none;
       color: var(--fg);
       cursor: pointer;
@@ -8155,7 +8203,7 @@ body.bg-pattern-sparkles {
       background: var(--panel);
       border-radius: 50%;
       transition: transform 0.2s;
-      box-shadow: 0 1px 2px rgba(0,0,0,0.25);
+      box-shadow: 0 1px 2px var(--shadow-ink-3);
     }
     .vis-row input:checked + .vis-switch {
       background: var(--red);
@@ -8182,7 +8230,7 @@ body.bg-pattern-sparkles {
       cursor: pointer;
       color: var(--fg);
       background: none;
-      border: 1px solid var(--border);
+      border: 1px solid var(--border-control, var(--border));
       transition: background 0.12s, border-color 0.12s;
     }
     .vis-action-btn:hover {
@@ -8192,7 +8240,7 @@ body.bg-pattern-sparkles {
          site, and `P1-01`'s count is quoted in two comments and pinned by two
          tests — worth moving for a real need, not for a hover border. */
       background: color-mix(in srgb, var(--fg) 8%, transparent);
-      border-color: color-mix(in srgb, var(--fg) 30%, var(--border));
+      border-color: color-mix(in srgb, var(--fg) 30%, var(--border-control, var(--border)));
     }
     .vis-action-btn:disabled {
       opacity: 0.45;
@@ -8298,7 +8346,7 @@ body.bg-pattern-sparkles {
       width: 240px;
       font-size: 0.78rem;
       line-height: 1.5;
-      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.32);
+      box-shadow: 0 6px 20px var(--shadow-ink-3);
       opacity: 0;
       transform: translateY(-4px);
       transition: opacity 0.28s ease-out, transform 0.28s ease-out;
@@ -8433,7 +8481,7 @@ body.bg-pattern-sparkles {
       background: var(--panel);
       border: 1px solid var(--border);
       border-radius: 10px;
-      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3), 0 0 0 1px color-mix(in srgb, var(--fg) 5%, transparent);
+      box-shadow: 0 8px 24px var(--shadow-ink-3), 0 0 0 1px var(--shadow-ink-1);
       z-index: 1000;
       display: none;
       min-width: 220px;
@@ -8643,7 +8691,7 @@ body.bg-pattern-sparkles {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+      box-shadow: 0 4px 12px var(--shadow-ink-2);
     }
     
     #recording-indicator.hidden {
@@ -8733,7 +8781,7 @@ pre { background: var(--code-bg, var(--hl-bg, #282c34)) !important; }
       background: var(--bg);
       border: 1px solid var(--border);
       border-radius: 12px;
-      box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5), 0 0 0 1px color-mix(in srgb, var(--fg) 6%, transparent);
+      box-shadow: 0 16px 48px var(--shadow-ink-4), 0 0 0 1px var(--shadow-ink-1);
       overflow: hidden;
       display: flex;
       flex-direction: column;
@@ -8743,7 +8791,7 @@ pre { background: var(--code-bg, var(--hl-bg, #282c34)) !important; }
       width: 100%;
       background: transparent;
       border: none;
-      border-bottom: 1px solid var(--border);
+      border-bottom: 1px solid var(--border-control, var(--border));
       outline: none;
       color: var(--fg);
       font-size: 16px;
@@ -8903,7 +8951,7 @@ pre { background: var(--code-bg, var(--hl-bg, #282c34)) !important; }
     .color-row label { font-size: 13px; font-weight: 500; color: var(--fg); opacity: 0.7; flex: 1; }
     .color-row input[type="color"],
     .color-row input.cp-swatch-input {
-      width: 24px; height: 24px; border: 1px solid var(--border); border-radius: 50%;
+      width: 24px; height: 24px; border: 1px solid var(--border-control, var(--border)); border-radius: 50%;
       background: none; cursor: pointer; padding: 0; flex-shrink: 0;
       overflow: hidden;
       -webkit-appearance: none;
@@ -8953,7 +9001,7 @@ pre { background: var(--code-bg, var(--hl-bg, #282c34)) !important; }
       display: flex;
       align-items: center;
       justify-content: center;
-      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+      box-shadow: 0 1px 3px var(--shadow-ink-3);
       transition: transform 0.12s, background 0.12s;
     }
     .theme-delete-btn:hover {
@@ -8972,7 +9020,7 @@ pre { background: var(--code-bg, var(--hl-bg, #282c34)) !important; }
       display: flex; gap: 6px; margin-top: 8px;
     }
     .theme-save-row input {
-      flex: 1; padding: 5px 8px; border: 1px solid var(--border); border-radius: 6px;
+      flex: 1; padding: 5px 8px; border: 1px solid var(--border-control, var(--border)); border-radius: 6px;
       background: var(--bg); color: var(--fg); font-size: 12px; font-family: inherit;
     }
     .theme-save-row input:focus { outline: none; border-color: var(--red); }
@@ -8989,7 +9037,7 @@ pre { background: var(--code-bg, var(--hl-bg, #282c34)) !important; }
     /* Import/Export */
     .theme-io-row { display: flex; gap: 6px; margin-top: 6px; }
     .theme-io-btn {
-      flex: 1; padding: 5px 10px; border: 1px solid var(--border); border-radius: 6px;
+      flex: 1; padding: 5px 10px; border: 1px solid var(--border-control, var(--border)); border-radius: 6px;
       background: transparent; color: var(--fg); cursor: pointer;
       font-size: 12px; opacity: 0.7; transition: all 0.15s; font-family: inherit;
     }
@@ -9003,7 +9051,7 @@ pre { background: var(--code-bg, var(--hl-bg, #282c34)) !important; }
     .theme-font-row .theme-io-btn { flex: 0 0 auto; padding: 2px 10px; }
     .theme-import-area {
       width: 100%; margin-top: 6px; padding: 6px 8px;
-      border: 1px solid var(--border); border-radius: 6px;
+      border: 1px solid var(--border-control, var(--border)); border-radius: 6px;
       background: var(--bg); color: var(--fg); font-size: 0.7rem;
       font-family: inherit; resize: vertical; min-height: 48px;
     }
@@ -9016,7 +9064,7 @@ pre { background: var(--code-bg, var(--hl-bg, #282c34)) !important; }
     .theme-fd-group { flex: 1; display: flex; flex-direction: column; gap: 3px; }
     .theme-fd-label { font-size: 12px; font-weight: 500; color: var(--fg); opacity: 0.6; }
     .theme-fd-select {
-      padding: 5px 8px; border: 1px solid var(--border); border-radius: 6px;
+      padding: 5px 8px; border: 1px solid var(--border-control, var(--border)); border-radius: 6px;
       background: var(--bg); color: var(--fg); font-size: 12px;
       font-family: inherit; cursor: pointer;
     }
@@ -9035,10 +9083,10 @@ pre { background: var(--code-bg, var(--hl-bg, #282c34)) !important; }
       accent-color: var(--red);
     }
     .theme-fd-range::-webkit-slider-runnable-track {
-      height: 4px; background: var(--border); border-radius: 2px;
+      height: 4px; background: var(--border-control, var(--border)); border-radius: 2px;
     }
     .theme-fd-range::-moz-range-track {
-      height: 4px; background: var(--border); border-radius: 2px;
+      height: 4px; background: var(--border-control, var(--border)); border-radius: 2px;
     }
     .theme-fd-range::-webkit-slider-thumb {
       -webkit-appearance: none; appearance: none;
@@ -9093,7 +9141,7 @@ pre { background: var(--code-bg, var(--hl-bg, #282c34)) !important; }
       text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 4px;
     }
     .theme-adv-clear-btn {
-      margin-top: 6px; width: 100%; padding: 5px; border: 1px solid var(--border);
+      margin-top: 6px; width: 100%; padding: 5px; border: 1px solid var(--border-control, var(--border));
       border-radius: 6px; background: transparent; color: var(--fg); opacity: 0.5;
       cursor: pointer; font-size: 12px; font-family: inherit; transition: opacity 0.15s;
     }
@@ -9450,7 +9498,7 @@ pre { background: var(--code-bg, var(--hl-bg, #282c34)) !important; }
       background: var(--panel);
       border: 1px solid var(--border);
       border-radius: 6px;
-      box-shadow: 0 -4px 16px rgba(0,0,0,0.3);
+      box-shadow: 0 -4px 16px var(--shadow-ink-3);
       padding: 4px;
       z-index: 1000;
     }
@@ -9499,7 +9547,7 @@ pre { background: var(--code-bg, var(--hl-bg, #282c34)) !important; }
       background: var(--panel);
       border: 1px solid color-mix(in srgb, var(--color-success, #4caf50) 50%, transparent);
       border-radius: 8px;
-      box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.2);
+      box-shadow: 0 6px 18px var(--shadow-ink-4), 0 1px 2px var(--shadow-ink-2);
       color: var(--fg);
       width: fit-content;
       z-index: 5;
@@ -9552,7 +9600,7 @@ pre { background: var(--code-bg, var(--hl-bg, #282c34)) !important; }
     .compare-probe-card {
       background: var(--panel); border-radius: 12px; padding: 20px 24px;
       display: flex; flex-direction: column; align-items: center; gap: 12px;
-      min-width: 280px; max-width: 90vw; box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+      min-width: 280px; max-width: 90vw; box-shadow: 0 8px 32px var(--shadow-ink-3);
       overflow: hidden;
     }
     .compare-probe-title {
@@ -9752,7 +9800,7 @@ pre { background: var(--code-bg, var(--hl-bg, #282c34)) !important; }
       background: var(--bg);
       border: 1px solid var(--border);
       border-radius: 8px;
-      box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+      box-shadow: 0 4px 16px var(--shadow-ink-3);
       padding: 4px;
     }
     .pane-model-item {
@@ -9924,7 +9972,7 @@ pre { background: var(--code-bg, var(--hl-bg, #282c34)) !important; }
       max-height: 300px;
       overflow-y: auto;
       min-width: 220px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      box-shadow: 0 4px 12px var(--shadow-ink-3);
       padding: 4px;
     }
     .add-pane-search {
@@ -9956,7 +10004,7 @@ pre { background: var(--code-bg, var(--hl-bg, #282c34)) !important; }
     .compare-reset-toggle {
       display: flex; flex-direction: column; align-items: center; justify-content: center;
       width: 56px; height: auto; flex: 1 1 0;
-      padding: 5px 4px 4px; border: 1px solid var(--border); border-radius: 6px;
+      padding: 5px 4px 4px; border: 1px solid var(--border-control, var(--border)); border-radius: 6px;
       cursor: pointer; user-select: none; transition: all 0.15s;
       background: none; color: var(--fg); opacity: 0.35;
       flex-shrink: 0; gap: 0;
@@ -10447,7 +10495,7 @@ button.hamburger {
   border-radius: 8px;
   padding: 12px;
   margin-bottom: 12px;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  box-shadow: 0 2px 4px var(--shadow-ink-1);
 }
 
 .agent-toggle label {
@@ -10652,7 +10700,7 @@ button.hamburger {
   border-radius: 8px;
   padding: 12px;
   margin-top: 12px;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  box-shadow: 0 2px 4px var(--shadow-ink-1);
 }
 
 .chat-controls-row {
@@ -10721,7 +10769,7 @@ button.hamburger {
   background-color: var(--panel);
   border-radius: 50%;
   transition: transform 0.08s;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.25);
+  box-shadow: 0 1px 2px var(--shadow-ink-3);
 }
 
 .toggle-switch input:checked + .toggle-slider {
@@ -10891,7 +10939,7 @@ button.hamburger {
   margin: 4px 0;
 }
 .attach-image-preview img {
-  box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+  box-shadow: 0 1px 4px var(--shadow-ink-2);
   /* Same border as the chat bubbles. */
   border: 1px solid var(--bubble-border, var(--border));
 }
@@ -10929,7 +10977,7 @@ button.hamburger {
 .thumb.thumb-image button:hover {
   transform: scale(1.12);
   filter: brightness(1.12);
-  box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+  box-shadow: 0 2px 8px var(--shadow-ink-3);
 }
 .thumb.thumb-image button:active {
   transform: scale(0.96);
@@ -10952,7 +11000,7 @@ button.hamburger {
   background: var(--panel, #111);
   border: 1px solid var(--border);
   border-radius: 8px;
-  box-shadow: 0 18px 50px rgba(0,0,0,0.45);
+  box-shadow: 0 18px 50px var(--shadow-ink-4);
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -10978,7 +11026,7 @@ button.hamburger {
 .attach-crop-box {
   position: absolute;
   border: 2px solid var(--accent, var(--red));
-  box-shadow: 0 0 0 9999px rgba(0,0,0,0.42);
+  box-shadow: 0 0 0 9999px var(--shadow-ink-4);
   cursor: move;
   touch-action: none;
   box-sizing: border-box;
@@ -11112,7 +11160,7 @@ button.hamburger {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 4px 12px var(--shadow-ink-2);
 }
 
 #recording-indicator.hidden {
@@ -12033,7 +12081,7 @@ body.fullwidth-chat .chat-history {
 .agent-thread-cmd-copy:focus-visible {
   opacity: 1;
   color: var(--fg);
-  border-color: var(--border);
+  border-color: var(--border-control, var(--border));
 }
 .agent-thread-cmd-copy.copied {
   opacity: 1;
@@ -13010,7 +13058,7 @@ details a:hover {
   appearance: none;
   width: 100%;
   height: 6px;
-  background: var(--border);
+  background: var(--border-control, var(--border));
   border-radius: 4px;
   outline: none;
   margin-bottom: 4px;
@@ -13030,7 +13078,7 @@ details a:hover {
   background: var(--red, var(--fg));
   cursor: pointer;
   border: 2px solid var(--panel);
-  box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+  box-shadow: 0 1px 4px var(--shadow-ink-2);
 }
 
 .preset-range::-moz-range-thumb {
@@ -13040,7 +13088,7 @@ details a:hover {
   background: var(--red, var(--fg));
   cursor: pointer;
   border: 2px solid var(--panel);
-  box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+  box-shadow: 0 1px 4px var(--shadow-ink-2);
 }
 
 .preset-range::-webkit-slider-runnable-track {
@@ -13050,7 +13098,7 @@ details a:hover {
 
 .preset-range::-moz-range-track {
   height: 6px;
-  background: var(--border);
+  background: var(--border-control, var(--border));
   border-radius: 4px;
 }
 
@@ -13169,7 +13217,7 @@ details a:hover {
   bottom: 14px;
   right: 6px;
   background: var(--panel);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-control, var(--border));
   border-radius: 4px;
   color: var(--color-muted);
   font-size: 11px;
@@ -13273,7 +13321,7 @@ details a:hover {
 }
 .char-template-select {
   background: var(--panel);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-control, var(--border));
   border-radius: 6px;
   color: var(--fg);
   padding: 6px 8px;
@@ -13287,7 +13335,7 @@ details a:hover {
 }
 .char-action-btn {
   background: none;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-control, var(--border));
   border-radius: 6px;
   color: var(--color-muted);
   font-size: 11px;
@@ -13839,7 +13887,7 @@ details a:hover {
   height: 28px;
   padding: 0 10px;
   border-radius: 6px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-control, var(--border));
   background: var(--bg);
   color: var(--fg);
   font-family: inherit;
@@ -13902,7 +13950,7 @@ textarea.memory-add-input {
 
 .memory-toolbar-btn {
   background: none;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-control, var(--border));
   color: color-mix(in srgb, var(--fg) 60%, transparent);
   font-size: 11px;
   height: 24px;
@@ -14001,7 +14049,7 @@ textarea.memory-add-input {
   gap: 6px;
   background: var(--bg);
   color: var(--fg);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-control, var(--border));
   border-radius: 6px;
   font-family: inherit;
   font-size: 11px;
@@ -14011,7 +14059,7 @@ textarea.memory-add-input {
   text-align: left;
   transition: border-color 0.12s, background 0.12s;
 }
-.memory-sort-btn:hover { border-color: color-mix(in srgb, var(--accent, var(--red)) 50%, var(--border)); }
+.memory-sort-btn:hover { border-color: color-mix(in srgb, var(--accent, var(--red)) 50%, var(--border-control, var(--border))); }
 .memory-sort-btn:focus-visible {
   outline: none;
   border-color: var(--accent, var(--red));
@@ -14050,7 +14098,7 @@ textarea.memory-add-input {
   background: var(--panel, var(--bg));
   border: 1px solid var(--border);
   border-radius: 8px;
-  box-shadow: 0 6px 20px rgba(0,0,0,0.22);
+  box-shadow: 0 6px 20px var(--shadow-ink-2);
   padding: 4px;
 }
 .memory-sort-item {
@@ -14262,7 +14310,7 @@ textarea.memory-add-input {
   max-width: 6px;
   max-height: 6px;
   padding: 0;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-control, var(--border));
   border-radius: 50%;
   background: transparent;
   cursor: pointer;
@@ -14295,7 +14343,7 @@ textarea.memory-add-input {
   margin-top: 6px;
   padding: 0 8px;
   border-radius: 6px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-control, var(--border));
   background: var(--bg);
   color: var(--fg);
   font-family: inherit;
@@ -14603,7 +14651,7 @@ textarea.memory-add-input {
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 4px;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+  box-shadow: 0 4px 16px var(--shadow-ink-3);
   min-width: auto;
   width: max-content;
 }
@@ -14770,7 +14818,7 @@ textarea.memory-add-input {
 
 .memory-cat-chip {
   background: none;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-control, var(--border));
   color: color-mix(in srgb, var(--fg) 60%, transparent);
   font-size: 10px;
   height: 22px;
@@ -14829,7 +14877,7 @@ textarea.memory-add-input {
   top: 3px;
   background: var(--bg);
   color: var(--fg);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-control, var(--border));
   border-radius: 6px;
   font-family: inherit;
   font-size: 11px;
@@ -14846,7 +14894,7 @@ textarea.memory-add-input {
   transition: border-color 0.12s, background 0.12s;
 }
 .memory-sort-select:hover {
-  border-color: color-mix(in srgb, var(--accent, var(--red)) 50%, var(--border));
+  border-color: color-mix(in srgb, var(--accent, var(--red)) 50%, var(--border-control, var(--border)));
 }
 .memory-sort-select:focus {
   outline: none;
@@ -14963,7 +15011,7 @@ textarea.memory-add-input {
   background: var(--panel, var(--bg));
   border: 1px solid var(--border);
   border-radius: 8px;
-  box-shadow: 0 6px 20px rgba(0,0,0,0.22);
+  box-shadow: 0 6px 20px var(--shadow-ink-2);
   padding: 4px;
   display: flex;
   flex-direction: column;
@@ -15348,7 +15396,7 @@ textarea.memory-add-input {
   flex-direction: column;
   background: var(--bg);
   border-left: 1px solid var(--border);
-  box-shadow: -10px 0 22px rgba(0, 0, 0, 0.16);
+  box-shadow: -10px 0 22px var(--shadow-ink-2);
   overflow: hidden;
   height: 100%;
   position: relative;
@@ -15794,7 +15842,7 @@ textarea.memory-add-input {
   background: var(--bg);
   border: 1px solid var(--border); border-radius: 8px;
   padding: 4px;
-  box-shadow: 0 10px 28px rgba(0,0,0,0.32);
+  box-shadow: 0 10px 28px var(--shadow-ink-3);
   max-height: 60vh; overflow-y: auto;
   z-index: 10000;
   min-width: 160px;
@@ -15918,7 +15966,7 @@ textarea.memory-add-input {
   border-radius: 4px;
   padding: 4px 0;
   min-width: 140px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  box-shadow: 0 4px 12px var(--shadow-ink-3);
 }
 .doc-overflow-menu.open { display: block; }
 .doc-overflow-item {
@@ -16272,7 +16320,7 @@ textarea.memory-add-input {
   padding: 4px;
   min-width: 0;
   width: max-content;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+  box-shadow: 0 8px 24px var(--shadow-ink-3);
   backdrop-filter: blur(12px);
 }
 .md-toolbar-overflow-menu.open {
@@ -16714,14 +16762,14 @@ mark.doc-find-mark.current {
   border-radius: 6px;
   font-size: 12px;
   color: var(--fg);
-  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+  box-shadow: 0 4px 12px var(--shadow-ink-2);
   backdrop-filter: blur(12px);
   animation: modal-enter 0.15s ease-out;
 }
 .import-prompt-banner span { flex: 1; }
 .import-prompt-banner button {
   padding: 3px 12px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-control, var(--border));
   border-radius: 5px;
   background: none;
   color: var(--fg);
@@ -16767,7 +16815,7 @@ mark.doc-find-mark.current {
   border-radius: 10px;
   padding: 12px 12px 10px;
   font-size: 12px;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.25);
+  box-shadow: 0 4px 20px var(--shadow-ink-3);
   animation: suggestion-enter 0.25s ease-out;
   z-index: 250;
   overflow: visible;
@@ -17146,7 +17194,7 @@ mark.doc-find-mark.current {
   display: flex;
   flex-direction: column;
   z-index: 200;
-  box-shadow: 4px 0 16px rgba(0,0,0,0.35);
+  box-shadow: 4px 0 16px var(--shadow-ink-3);
   animation: version-slide-in 0.2s ease-out;
   /* Match the app modal aesthetic so nothing inherits the large body font. */
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -17172,7 +17220,7 @@ mark.doc-find-mark.current {
     border-left: none;
     border-top: 1px solid var(--border);
     border-radius: 14px 14px 0 0;
-    box-shadow: 0 -4px 16px rgba(0,0,0,0.3);
+    box-shadow: 0 -4px 16px var(--shadow-ink-3);
     /* It's a bottom sheet on mobile — slide UP from the bottom, not in from
        the left (the desktop animation looked like a black box janking in). */
     animation: version-slide-up 0.2s ease-out;
@@ -17446,7 +17494,7 @@ body:has(.compare-active) .hamburger-btn { display: none !important; }
   margin-left: auto;
   margin-right: 6px;
   padding: 2px 9px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-control, var(--border));
   border-radius: 999px;
   opacity: 0.65;
   transition: opacity 0.15s, border-color 0.15s, background 0.15s, color 0.15s;
@@ -17538,7 +17586,7 @@ body:has(.compare-active) .hamburger-btn { display: none !important; }
   min-height: 2.4em;
   font-size: 0.72rem;
   line-height: 1.2;
-  color: var(--fg-muted, color-mix(in srgb, var(--fg) 62%, transparent));
+  color: var(--fg-muted);
 }
 /* Highlight the color row itself too so the user has a strong visual link
    between the input they're hovering and the zone overlay on the page. */
@@ -17743,7 +17791,7 @@ body:has(.doc-version-panel:not(.hidden)) .hamburger-btn {
   background: var(--panel);
   border-radius: 50%;
   transition: transform 0.08s;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.25);
+  box-shadow: 0 1px 2px var(--shadow-ink-3);
 }
 .admin-switch input:checked + .admin-slider {
   background: var(--red);
@@ -18103,7 +18151,7 @@ body:has(.doc-version-panel:not(.hidden)) .hamburger-btn {
   width: 100%;
   display: flex; align-items: center; gap: 8px;
   background: var(--bg); color: var(--fg);
-  border: 1px solid var(--border); border-radius: 6px;
+  border: 1px solid var(--border-control, var(--border)); border-radius: 6px;
   padding: 5px 8px; font-family: inherit; font-size: 12px;
   cursor: pointer; text-align: left;
 }
@@ -18115,7 +18163,7 @@ body:has(.doc-version-panel:not(.hidden)) .hamburger-btn {
   border-bottom-left-radius: 0;
   justify-content: space-between;
 }
-.adm-provider-btn:hover { border-color: color-mix(in srgb, var(--fg) 30%, var(--border)); }
+.adm-provider-btn:hover { border-color: color-mix(in srgb, var(--fg) 30%, var(--border-control, var(--border))); }
 .adm-provider-current { flex: 1; display: flex; align-items: center; gap: 8px; min-width: 0; }
 .adm-provider-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .adm-provider-logo {
@@ -18157,7 +18205,7 @@ span[id$="-logo"] svg:not([width]) {
   max-height: 280px; overflow-y: auto;
   background: var(--panel);
   border: 1px solid var(--border); border-radius: 6px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  box-shadow: 0 4px 16px var(--shadow-ink-3);
   padding: 4px;
 }
 .adm-provider-menu.hidden { display: none; }
@@ -18228,7 +18276,7 @@ span[id$="-logo"] svg:not([width]) {
   outline: none;
 }
 .mcp-tools-search:focus {
-  border-color: color-mix(in srgb, var(--accent) 60%, var(--border));
+  border-color: color-mix(in srgb, var(--accent) 60%, var(--border-control, var(--border)));
 }
 .mcp-tools-count {
   font-size: 11px;
@@ -18288,7 +18336,7 @@ span[id$="-logo"] svg:not([width]) {
 }
 .admin-btn-sm {
   padding: 3px 8px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-control, var(--border));
   border-radius: 6px;
   background: var(--panel);
   color: var(--fg);
@@ -18296,7 +18344,7 @@ span[id$="-logo"] svg:not([width]) {
   font-size: 11px;
 }
 .admin-btn-sm:hover {
-  background: var(--border);
+  background: var(--border-control, var(--border));
   border-color: var(--red);
 }
 .admin-spinner {
@@ -18325,7 +18373,7 @@ span[id$="-logo"] svg:not([width]) {
   height: 32px;
   box-sizing: border-box;
   background: var(--bg);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-control, var(--border));
   border-radius: 6px;
   color: var(--fg);
   font-family: inherit;
@@ -18351,7 +18399,7 @@ span[id$="-logo"] svg:not([width]) {
 .admin-model-form select {
   padding: 5px 8px;
   background: var(--bg);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-control, var(--border));
   border-radius: 6px;
   color: var(--fg);
   font-size: 12px;
@@ -18516,7 +18564,7 @@ span[id$="-logo"] svg:not([width]) {
   flex: 1;
   padding: 5px 8px;
   background: var(--bg);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-control, var(--border));
   border-radius: 6px;
   color: var(--fg);
   font-size: 12px;
@@ -18586,7 +18634,7 @@ span[id$="-logo"] svg:not([width]) {
 /* Selects in admin cards */
 .admin-card select {
   background: var(--bg);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-control, var(--border));
   border-radius: 6px;
   color: var(--fg);
   font-size: 12px;
@@ -19020,7 +19068,7 @@ span.doclib-folder-crumb { cursor: default; }
     font-weight: 600;
     line-height: 1;
     cursor: pointer;
-    box-shadow: 0 6px 18px rgba(0,0,0,.38), 0 2px 6px rgba(0,0,0,.28);
+    box-shadow: 0 6px 18px var(--shadow-ink-3), 0 2px 6px var(--shadow-ink-3);
     z-index: 30;
     pointer-events: auto;
     /* This (base) transition governs the EXPAND — slower + graceful. */
@@ -19076,7 +19124,7 @@ span.doclib-folder-crumb { cursor: default; }
   #email-lib-modal .email-lib-fab:active {
     transform: scale(0.93);
     filter: brightness(0.92);
-    box-shadow: 0 3px 10px rgba(0,0,0,.4);
+    box-shadow: 0 3px 10px var(--shadow-ink-4);
   }
 }
 @keyframes emailFabPop {
@@ -19184,7 +19232,7 @@ span.doclib-folder-crumb { cursor: default; }
   width: var(--email-doc-split-email-w, 420px) !important;
   max-width: var(--email-doc-split-email-w, 420px) !important;
   border-right: 1px solid var(--border);
-  box-shadow: 4px 0 14px rgba(0, 0, 0, 0.18);
+  box-shadow: 4px 0 14px var(--shadow-ink-2);
   border-radius: 0;
 }
 @media (min-width: 769px) {
@@ -19258,7 +19306,7 @@ body.right-dock-active:not(.email-doc-split-active) .doc-editor-pane {
 }
 .modal.modal-right-docked .modal-content {
   border-left: 1px solid var(--border);
-  box-shadow: -4px 0 14px rgba(0, 0, 0, 0.18);
+  box-shadow: -4px 0 14px var(--shadow-ink-2);
   border-radius: 0;
 }
 .modal.modal-left-docked {
@@ -19267,7 +19315,7 @@ body.right-dock-active:not(.email-doc-split-active) .doc-editor-pane {
 }
 .modal.modal-left-docked .modal-content {
   border-right: 1px solid var(--border);
-  box-shadow: 4px 0 14px rgba(0, 0, 0, 0.18);
+  box-shadow: 4px 0 14px var(--shadow-ink-2);
   border-radius: 0;
   /* Pin transitions OFF on the dock's positioning properties. The wide
      sidebar collapse/expand changes --sidebar-w instantly, which means
@@ -19491,7 +19539,7 @@ body.right-dock-active:not(.email-doc-split-active) .doc-editor-pane {
   /* Neutral frame on the active email — the accent border + glow felt
      overbearing on desktop; the size jump alone is enough signal. */
   border: 1px solid var(--border) !important;
-  box-shadow: 0 6px 18px rgba(0,0,0,0.12) !important;
+  box-shadow: 0 6px 18px var(--shadow-ink-2) !important;
   animation: none !important;
 }
 /* Desktop-only, ONLY on the currently-expanded email card. Nudges the title
@@ -20672,7 +20720,7 @@ body:not(.email-doc-split-active) #email-lib-modal.email-lib-fullscreen:not(.mod
   background: var(--panel, var(--bg));
   border: 1px solid var(--border);
   border-radius: 8px;
-  box-shadow: 0 6px 20px rgba(0,0,0,0.22);
+  box-shadow: 0 6px 20px var(--shadow-ink-2);
   display: flex;
   flex-direction: column;
   gap: 1px;
@@ -21159,7 +21207,7 @@ body:not(.email-doc-split-active) #email-lib-modal.email-lib-fullscreen:not(.mod
   appearance: none;
   width: 13px;
   height: 13px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-control, var(--border));
   border-radius: 4px;
   background: var(--bg);
   cursor: pointer;
@@ -21730,7 +21778,7 @@ body.gallery-selecting .gallery-dl-btn,
   width: min(560px, 92vw);
   max-height: 88vh;
   display: flex; flex-direction: column; gap: 8px;
-  box-shadow: 0 14px 40px rgba(0,0,0,0.4);
+  box-shadow: 0 14px 40px var(--shadow-ink-4);
 }
 .vision-editor-title {
   font-size: 13px; font-weight: 600; color: var(--fg);
@@ -21780,7 +21828,7 @@ body.gallery-selecting .gallery-dl-btn,
 .attach-lightbox img {
   max-width: 100%; max-height: 100%;
   border-radius: 6px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 8px 32px var(--shadow-ink-4);
   object-fit: contain;
 }
 .attach-lightbox-err {
@@ -22029,7 +22077,7 @@ body.gallery-selecting .gallery-dl-btn,
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 8px;
-  box-shadow: 0 4px 14px color-mix(in srgb, var(--fg) 18%, transparent);
+  box-shadow: 0 4px 14px var(--shadow-ink-2);
   z-index: 12;
   display: flex;
   flex-direction: column;
@@ -23115,7 +23163,7 @@ body.gallery-selecting .gallery-dl-btn,
   background: var(--panel, #1a1a1a);
   border: 1px solid var(--border);
   border-radius: 6px;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+  box-shadow: 0 8px 24px var(--shadow-ink-4);
   font-family: 'Fira Code', monospace;
   font-size: 11px;
   color: var(--fg);
@@ -24489,7 +24537,7 @@ body.gallery-selecting .gallery-dl-btn,
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 4px;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+  box-shadow: 0 4px 16px var(--shadow-ink-3);
   min-width: auto;
   width: max-content;
 }
@@ -24521,7 +24569,7 @@ body.gallery-selecting .gallery-dl-btn,
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 16px;
-  box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+  box-shadow: 0 10px 30px var(--shadow-ink-3);
   display: flex; flex-direction: column; gap: 10px;
 }
 .cookbook-edit-title {
@@ -25123,7 +25171,7 @@ body.gallery-selecting .gallery-dl-btn,
   border-radius: 50%;
   background: var(--fg);
   border: 2px solid var(--panel);
-  box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+  box-shadow: 0 1px 4px var(--shadow-ink-3);
   cursor: pointer;
   transition: transform 0.1s, box-shadow 0.1s;
 }
@@ -25141,7 +25189,7 @@ body.gallery-selecting .gallery-dl-btn,
   border-radius: 50%;
   background: var(--fg);
   border: 2px solid var(--panel);
-  box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+  box-shadow: 0 1px 4px var(--shadow-ink-3);
   cursor: pointer;
 }
 .cookbook-slider::-moz-range-progress {
@@ -25204,7 +25252,7 @@ body.gallery-selecting .gallery-dl-btn,
   height: 12px;
   border-radius: 50%;
   background: var(--panel);
-  box-shadow: 0 1px 2px rgba(0,0,0,0.25);
+  box-shadow: 0 1px 2px var(--shadow-ink-3);
   transition: transform 0.08s;
 }
 .cookbook-checkbox:checked {
@@ -25808,7 +25856,7 @@ body.gallery-selecting .gallery-dl-btn,
   max-height: 24px;
   line-height: 24px;
   box-sizing: border-box;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-control, var(--border));
   border-radius: 4px;
   background: var(--bg);
   color: var(--fg);
@@ -25938,7 +25986,7 @@ body.gallery-selecting .gallery-dl-btn,
 }
 .cookbook-srv-color-item:hover,
 .cookbook-srv-color-item.active {
-  border-color: color-mix(in srgb, var(--swatch-color, var(--accent, var(--red))) 55%, var(--border));
+  border-color: color-mix(in srgb, var(--swatch-color, var(--accent, var(--red))) 55%, var(--border-control, var(--border)));
   background: color-mix(in srgb, var(--swatch-color, var(--accent, var(--red))) 18%, var(--bg));
 }
 .cookbook-srv-color-item-dot {
@@ -26157,7 +26205,7 @@ body.gallery-selecting .gallery-dl-btn,
   font-family: inherit;
   background: var(--bg);
   color: var(--fg);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-control, var(--border));
   border-radius: 4px;
   box-sizing: border-box;
 }
@@ -26190,7 +26238,7 @@ body.gallery-selecting .gallery-dl-btn,
 }
 .hwfit-advanced-btn.active {
   color: var(--accent, var(--red));
-  border-color: color-mix(in srgb, var(--accent, var(--red)) 55%, var(--border));
+  border-color: color-mix(in srgb, var(--accent, var(--red)) 55%, var(--border-control, var(--border)));
   background: color-mix(in srgb, var(--accent, var(--red)) 12%, transparent);
 }
 /* Lower-opacity "Search models..." placeholder so it reads as a hint, not
@@ -26317,7 +26365,7 @@ body.gallery-selecting .gallery-dl-btn,
   background: var(--panel, var(--bg));
   border: 1px solid var(--border);
   border-radius: 6px;
-  box-shadow: 0 6px 20px rgba(0,0,0,0.22);
+  box-shadow: 0 6px 20px var(--shadow-ink-2);
 }
 .hwfit-engine-item,
 .hwfit-usecase-item {
@@ -26532,7 +26580,7 @@ body.gallery-selecting .gallery-dl-btn,
 .hwfit-manual-panel input,
 .hwfit-manual-panel button {
   height: 24px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-control, var(--border));
   background: var(--bg);
   color: var(--fg);
   border-radius: 4px;
@@ -26662,7 +26710,7 @@ body.gallery-selecting .gallery-dl-btn,
 }
 .hwfit-panel-fields input, .hwfit-panel-fields select,
 .hwfit-adv-grid input, .hwfit-adv-grid select {
-  background: var(--bg); border: 1px solid var(--border); border-radius: 4px;
+  background: var(--bg); border: 1px solid var(--border-control, var(--border)); border-radius: 4px;
   color: var(--fg); font-size: 11px; padding: 3px 6px; font-family: inherit;
   outline: none; transition: border-color 0.15s;
 }
@@ -28328,7 +28376,7 @@ select.task-form-input { text-overflow: ellipsis; }
   font-family: inherit;
   font-size: 12px;
   background: var(--bg);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-control, var(--border));
   border-radius: 6px;
   color: var(--fg);
   transition: border-color 0.15s;
@@ -28622,7 +28670,7 @@ details.hwfit-serve-advanced > .hwfit-serve-checks:last-of-type {
   margin-top: 2px;
   font-size: 11px;
   padding: 3px 9px;
-  border: 1px dashed var(--border);
+  border: 1px dashed var(--border-control, var(--border));
   border-radius: 6px;
   background: transparent;
   color: color-mix(in srgb, var(--fg) 65%, transparent);
@@ -28637,7 +28685,7 @@ details.hwfit-serve-advanced > .hwfit-serve-checks:last-of-type {
   flex: 1;
   padding: 5px 8px;
   background: var(--bg);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-control, var(--border));
   border-radius: 6px;
   color: var(--fg);
   font-family: inherit;
@@ -28694,7 +28742,7 @@ details.hwfit-serve-advanced > .hwfit-serve-checks:last-of-type {
   background: var(--panel) !important;
   border: 1px solid var(--border) !important;
   border-radius: 8px !important;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.4) !important;
+  box-shadow: 0 4px 16px var(--shadow-ink-4) !important;
   backdrop-filter: none !important;
 }
 .sort-dropdown-item {
@@ -29532,7 +29580,7 @@ details.hwfit-serve-advanced > .hwfit-serve-checks:last-of-type {
 .gallery-album-card:hover {
   transform: translateY(-2px);
   border-color: var(--red);
-  box-shadow: 0 4px 14px color-mix(in srgb, var(--fg) 12%, transparent);
+  box-shadow: 0 4px 14px var(--shadow-ink-2);
 }
 .gallery-album-menu-btn {
   position: absolute;
@@ -29565,7 +29613,7 @@ details.hwfit-serve-advanced > .hwfit-serve-checks:last-of-type {
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 8px;
-  box-shadow: 0 4px 14px color-mix(in srgb, var(--fg) 18%, transparent);
+  box-shadow: 0 4px 14px var(--shadow-ink-2);
   display: flex; flex-direction: column;
   padding: 4px;
   z-index: 3;
@@ -30246,7 +30294,7 @@ details.hwfit-serve-advanced > .hwfit-serve-checks:last-of-type {
 .ge-ai-command-collapsed:focus-within {
   bottom: 10px;
   opacity: 0.94;
-  border-color: color-mix(in srgb, var(--accent, var(--red)) 42%, var(--border));
+  border-color: color-mix(in srgb, var(--accent, var(--red)) 42%, var(--border-control, var(--border)));
   box-shadow: 0 8px 22px color-mix(in srgb, #000 24%, transparent);
 }
 .ge-ai-command-collapsed .ge-ai-command-toggle {
@@ -30426,7 +30474,7 @@ details.hwfit-serve-advanced > .hwfit-serve-checks:last-of-type {
   border-radius: 10px;
   background: var(--panel);
   border: 1px solid var(--border);
-  box-shadow: 0 4px 14px color-mix(in srgb, var(--fg) 18%, transparent);
+  box-shadow: 0 4px 14px var(--shadow-ink-2);
 }
 .ge-loading-overlay .ge-loading-text {
   font-size: 12px;
@@ -30450,7 +30498,7 @@ details.hwfit-serve-advanced > .hwfit-serve-checks:last-of-type {
   border: 1px solid var(--border);
   border-radius: 10px;
   padding: 14px 18px 12px;
-  box-shadow: 0 8px 30px color-mix(in srgb, var(--fg) 25%, transparent);
+  box-shadow: 0 8px 30px var(--shadow-ink-3);
   width: min(720px, 92vw);
   max-height: 86vh;
   overflow-y: auto;
@@ -30524,7 +30572,7 @@ details.hwfit-serve-advanced > .hwfit-serve-checks:last-of-type {
   /* Cursor is managed entirely by JS so each tool can show its own
      icon (move arrow, circle overlay, etc.) without CSS fighting it. */
   image-rendering: pixelated;
-  box-shadow: 0 2px 12px rgba(0,0,0,0.3);
+  box-shadow: 0 2px 12px var(--shadow-ink-3);
   background: repeating-conic-gradient(#808080 0% 25%, #a0a0a0 0% 50%) 50% / 16px 16px;
 }
 
@@ -30585,7 +30633,7 @@ details.hwfit-serve-advanced > .hwfit-serve-checks:last-of-type {
   background: color-mix(in srgb, var(--panel) 96%, transparent);
   border: 1px solid var(--border);
   border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  box-shadow: 0 2px 8px var(--shadow-ink-3);
   backdrop-filter: blur(6px);
   user-select: none;
 }
@@ -30716,7 +30764,7 @@ details.hwfit-serve-advanced > .hwfit-serve-checks:last-of-type {
   padding: 0;
   background: transparent;
   color: var(--fg-muted);
-  border: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border-control, var(--border)) 60%, transparent);
   font-size: 7px;
   line-height: 1;
   cursor: pointer;
@@ -30730,7 +30778,7 @@ details.hwfit-serve-advanced > .hwfit-serve-checks:last-of-type {
 .ge-transform-spin button:hover {
   background: color-mix(in srgb, var(--accent, var(--red)) 25%, transparent);
   color: var(--fg);
-  border-color: color-mix(in srgb, var(--accent, var(--red)) 55%, var(--border));
+  border-color: color-mix(in srgb, var(--accent, var(--red)) 55%, var(--border-control, var(--border)));
 }
 .ge-transform-spin button:active {
   background: color-mix(in srgb, var(--accent, var(--red)) 55%, transparent);
@@ -30771,7 +30819,7 @@ details.hwfit-serve-advanced > .hwfit-serve-checks:last-of-type {
 .ge-transform-aspect-btn.active {
   opacity: 1;
   color: var(--accent, var(--red));
-  border-color: color-mix(in srgb, var(--accent, var(--red)) 50%, var(--border));
+  border-color: color-mix(in srgb, var(--accent, var(--red)) 50%, var(--border-control, var(--border)));
 }
 /* Quick-action cluster (flip H, flip V, rotate 90°) — sits between the
    rotation input and the Apply button. Each button matches the input
@@ -30831,7 +30879,7 @@ details.hwfit-serve-advanced > .hwfit-serve-checks:last-of-type {
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 8px;
-  box-shadow: 0 4px 14px color-mix(in srgb, var(--fg) 25%, transparent);
+  box-shadow: 0 4px 14px var(--shadow-ink-3);
 }
 .ge-inpaint-popup-input {
   width: 240px;
@@ -31104,7 +31152,7 @@ details.hwfit-serve-advanced > .hwfit-serve-checks:last-of-type {
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 3px;
-  box-shadow: 0 4px 14px color-mix(in srgb, var(--fg) 25%, transparent);
+  box-shadow: 0 4px 14px var(--shadow-ink-3);
   z-index: 50;
   display: flex;
   flex-direction: column;
@@ -31310,7 +31358,7 @@ details.hwfit-serve-advanced > .hwfit-serve-checks:last-of-type {
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 8px;
-  box-shadow: 0 12px 32px rgba(0,0,0,0.45);
+  box-shadow: 0 12px 32px var(--shadow-ink-4);
   display: flex;
   flex-direction: column;
   font-size: 11px;
@@ -31400,7 +31448,7 @@ details.hwfit-serve-advanced > .hwfit-serve-checks:last-of-type {
   backdrop-filter: blur(14px) saturate(140%);
   -webkit-backdrop-filter: blur(14px) saturate(140%);
   border: 1px solid color-mix(in srgb, var(--fg) 12%, transparent);
-  box-shadow: 0 12px 40px rgba(0,0,0,0.55);
+  box-shadow: 0 12px 40px var(--shadow-ink-4);
 }
 
 /* FX dropdown menu from the layer-row fx icon. */
@@ -31888,7 +31936,7 @@ details.hwfit-serve-advanced > .hwfit-serve-checks:last-of-type {
 .ge-adj-cb-row .ge-adj-cb-dot {
   width: 10px; height: 10px; border-radius: 50%;
   display: inline-block; flex-shrink: 0;
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--fg) 20%, transparent);
+  box-shadow: 0 0 0 1px var(--shadow-ink-2);
 }
 .ge-adj-cb-tone-picker {
   margin: 0 0 8px;
@@ -32228,7 +32276,7 @@ details.hwfit-serve-advanced > .hwfit-serve-checks:last-of-type {
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 8px;
-  box-shadow: 0 4px 14px color-mix(in srgb, var(--fg) 18%, transparent);
+  box-shadow: 0 4px 14px var(--shadow-ink-2);
   z-index: 10005;
   display: flex;
   flex-direction: column;
@@ -32261,7 +32309,7 @@ details.hwfit-serve-advanced > .hwfit-serve-checks:last-of-type {
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 8px;
-  box-shadow: 0 4px 14px color-mix(in srgb, var(--fg) 18%, transparent);
+  box-shadow: 0 4px 14px var(--shadow-ink-2);
   z-index: 12;
   display: flex;
   flex-direction: column;
@@ -32336,7 +32384,7 @@ details.hwfit-serve-advanced > .hwfit-serve-checks:last-of-type {
   background: color-mix(in srgb, var(--panel) 95%, transparent);
   border: 1px solid var(--border);
   border-radius: 8px;
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 6px 18px var(--shadow-ink-3);
   backdrop-filter: blur(10px);
   padding: 12px;
   display: flex;
@@ -32441,7 +32489,7 @@ details.hwfit-serve-advanced > .hwfit-serve-checks:last-of-type {
   padding: 8px 10px;
   background: var(--bg);
   color: var(--fg);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-control, var(--border));
   border-radius: 6px;
   font: inherit;
   font-size: 14px;
@@ -32569,7 +32617,7 @@ button .spinner-whirlpool {
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 8px;
-  box-shadow: 0 6px 18px color-mix(in srgb, var(--fg) 30%, transparent);
+  box-shadow: 0 6px 18px var(--shadow-ink-3);
   pointer-events: none;
   display: none;
 }
@@ -32604,7 +32652,7 @@ button .spinner-whirlpool {
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 8px;
-  box-shadow: 0 4px 14px color-mix(in srgb, var(--fg) 18%, transparent);
+  box-shadow: 0 4px 14px var(--shadow-ink-2);
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -32859,7 +32907,7 @@ button .spinner-whirlpool {
 }
 .ge-layer-item.dragging {
   background: var(--panel);
-  box-shadow: 0 4px 14px color-mix(in srgb, var(--fg) 25%, transparent);
+  box-shadow: 0 4px 14px var(--shadow-ink-3);
   border-radius: 4px;
 }
 .ge-layer-btn {
@@ -32886,14 +32934,14 @@ button .spinner-whirlpool {
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 6px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+  box-shadow: 0 2px 8px var(--shadow-ink-3);
 }
 .ge-crop-apply input[type="number"] {
   width: 56px;
   padding: 3px 4px;
   background: var(--bg);
   color: var(--fg);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-control, var(--border));
   border-radius: 4px;
   font: inherit;
   font-size: 11px;
@@ -32967,7 +33015,7 @@ button .spinner-whirlpool {
     border: 1px solid var(--border);
     border-radius: 8px;
     background: var(--panel);
-    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.42);
+    box-shadow: 0 12px 36px var(--shadow-ink-4);
   }
   .ge-inpaint-section.ge-inpaint-popover .ge-inpaint-popover-head {
     display: flex;
@@ -33148,7 +33196,7 @@ button .spinner-whirlpool {
     border-left: none;
     border-top: 1px solid var(--border);
     border-radius: 12px 12px 0 0;
-    box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.35);
+    box-shadow: 0 -8px 24px var(--shadow-ink-3);
     z-index: 50;
     flex-shrink: 0;
     /* Peek height grows with the layer count up to a cap. JS sets the
@@ -33364,7 +33412,7 @@ button .spinner-whirlpool {
     font-size: 18px !important;
     font-weight: 700;
     line-height: 1 !important;
-    border: 1px solid var(--border) !important;
+    border: 1px solid var(--border-control, var(--border)) !important;
     border-radius: 6px !important;
     flex-shrink: 0;
     display: inline-flex !important;
@@ -33376,7 +33424,7 @@ button .spinner-whirlpool {
   .ge-transform-spin button:first-child,
   .ge-transform-spin button:last-child {
     border-radius: 6px !important;
-    border-bottom: 1px solid var(--border) !important;
+    border-bottom: 1px solid var(--border-control, var(--border)) !important;
   }
   /* Graphic-editor adjustment buttons use text glyphs that sit visually low —
      lift them to match the +/- button alignment. */
@@ -33456,7 +33504,7 @@ button .spinner-whirlpool {
     left: 8px;
     background: var(--panel);
     z-index: 8;
-    box-shadow: 8px 0 10px -10px color-mix(in srgb, var(--fg) 55%, transparent);
+    box-shadow: 8px 0 10px -10px var(--shadow-ink-4);
   }
   .ge-topbar .ge-btn,
   .ge-topbar .ge-btn-sm {
@@ -33493,7 +33541,7 @@ button .spinner-whirlpool {
     max-height: min(60dvh, 420px);
     border-radius: 12px 12px 0 0 !important;
     z-index: 10001 !important;
-    box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.35);
+    box-shadow: 0 -8px 24px var(--shadow-ink-3);
   }
   #ge-history-panel .ge-history-head { cursor: default; }
   #ge-shortcuts-btn {
@@ -33518,7 +33566,7 @@ button .spinner-whirlpool {
     background: var(--panel);
     border: 1px solid var(--border);
     border-radius: 12px 12px 0 0 !important;
-    box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.35);
+    box-shadow: 0 -8px 24px var(--shadow-ink-3);
     z-index: 10005;
     animation: ge-controls-slide-up 0.2s ease-out;
   }
@@ -33570,7 +33618,7 @@ button .spinner-whirlpool {
     border-top: 1px solid var(--border);
     background: var(--panel);
     border-radius: 12px 12px 0 0;
-    box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.35);
+    box-shadow: 0 -8px 24px var(--shadow-ink-3);
     max-height: 60vh;
     overflow-y: auto;
     padding: 18px 16px 24px;
@@ -33677,7 +33725,7 @@ button .spinner-whirlpool {
 .email-field input {
   flex: 1;
   background: transparent;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-control, var(--border));
   border-radius: 4px;
   padding: 5px 8px;
   font-size: 13px;
@@ -34289,7 +34337,7 @@ button .spinner-whirlpool {
     padding-left: 22px;
     /* Soft shadow on the left edge so the overlap reads as the
        cluster "floating over" the chip. */
-    box-shadow: -6px 0 12px -6px rgba(0, 0, 0, 0.25);
+    box-shadow: -6px 0 12px -6px var(--shadow-ink-3);
   }
 }
 /* Mobile: drop the box-shadow AND the left-edge gradient fade —
@@ -34440,7 +34488,7 @@ button .spinner-whirlpool {
   border-radius: 8px;
   background: color-mix(in srgb, var(--bg) 96%, var(--fg) 4%);
   color: var(--fg);
-  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.42);
+  box-shadow: 0 14px 34px var(--shadow-ink-4);
   font-size: 12px;
   line-height: 1.35;
   pointer-events: auto;
@@ -34723,7 +34771,7 @@ button .spinner-whirlpool {
   transform: translateY(-4px);
   height: 24px;
   padding: 0 8px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-control, var(--border));
   border-radius: 6px;
   background: color-mix(in srgb, var(--fg) 5%, transparent);
   color: inherit;
@@ -34732,7 +34780,7 @@ button .spinner-whirlpool {
   cursor: pointer;
 }
 .email-inline-image-load-all button:hover {
-  border-color: color-mix(in srgb, var(--accent-primary, var(--red)) 55%, var(--border));
+  border-color: color-mix(in srgb, var(--accent-primary, var(--red)) 55%, var(--border-control, var(--border)));
   color: var(--accent-primary, var(--red));
 }
 @media (max-width: 520px) {
@@ -35274,7 +35322,7 @@ button .spinner-whirlpool {
      fallback only kicks in when JS hasn't assigned one. */
   background: color-mix(in srgb, var(--fg) 14%, transparent);
   color: #fff;
-  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.22);
+  text-shadow: 0 1px 0 var(--shadow-ink-2);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -35494,7 +35542,7 @@ body.doc-find-active mark.doc-find-mark.current {
 .emoji-picker {
   width: min(300px, 92vw); max-height: min(300px, 55vh);
   background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+  box-shadow: 0 8px 24px var(--shadow-ink-3);
   display: flex; flex-direction: column; overflow: hidden;
 }
 .emoji-picker-search {
@@ -35702,7 +35750,7 @@ body.doc-find-active mark.doc-find-mark.current {
 .email-dropdown {
   position: absolute; right: 0; top: 100%; z-index: 9999;
   min-width: 120px; background: var(--bg); border: 1px solid var(--border);
-  border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); padding: 4px 0;
+  border-radius: 6px; box-shadow: 0 4px 12px var(--shadow-ink-3); padding: 4px 0;
 }
 .email-loading { padding: 16px; text-align: center; font-size: 12px; opacity: 0.5; }
 .email-load-more { padding: 8px; text-align: center; }
@@ -35912,7 +35960,7 @@ body.doc-find-active mark.doc-find-mark.current {
   box-shadow:
     0 0 0 1px color-mix(in srgb, var(--accent, var(--red)) 22%, transparent),
     0 0 18px color-mix(in srgb, var(--accent, var(--red)) 18%, transparent),
-    var(--shadow-lg, 0 18px 50px rgba(0, 0, 0, 0.35));
+    var(--shadow-lg, 0 18px 50px var(--shadow-ink-3));
 }
 #email-lib-modal .email-lib-header-actions .minimize-btn {
   position: relative;
@@ -36038,7 +36086,7 @@ body.doc-find-active mark.doc-find-mark.current {
 .email-field { display: flex; align-items: center; gap: 8px; position: relative; }
 .email-field label { font-size: 11px; font-weight: 600; color: var(--fg); opacity: 0.5; min-width: 50px; text-align: right; flex-shrink: 0; }
 .email-field input {
-  flex: 1; width: 100%; background: transparent; border: 1px solid var(--border); border-radius: 4px;
+  flex: 1; width: 100%; background: transparent; border: 1px solid var(--border-control, var(--border)); border-radius: 4px;
   padding: 5px 8px; font-size: 13px; font-family: inherit; color: var(--fg); outline: none;
   min-width: 0;
 }
@@ -36161,7 +36209,7 @@ body.doc-find-active mark.doc-find-mark.current {
 .email-more-menu {
   position: absolute; bottom: 100%; right: 0; margin-bottom: 6px;
   min-width: 160px; background: var(--bg); border: 1px solid var(--border);
-  border-radius: 6px; box-shadow: 0 -4px 12px rgba(0,0,0,0.2); padding: 4px;
+  border-radius: 6px; box-shadow: 0 -4px 12px var(--shadow-ink-2); padding: 4px;
   z-index: 100;
 }
 .email-send-btn {
@@ -36398,7 +36446,7 @@ body.doc-find-active mark.doc-find-mark.current {
   border-radius: 7px;
   background: var(--bg);
   color: var(--fg);
-  box-shadow: 0 12px 30px rgba(0,0,0,0.28);
+  box-shadow: 0 12px 30px var(--shadow-ink-3);
   overflow: hidden;
 }
 .email-pantheon-attach-local {
@@ -36432,7 +36480,7 @@ body.doc-find-active mark.doc-find-mark.current {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-control, var(--border));
   border-radius: 5px;
   background: transparent;
   color: var(--fg);
@@ -36444,7 +36492,7 @@ body.doc-find-active mark.doc-find-mark.current {
 .email-pantheon-attach-tabs button.active {
   opacity: 1;
   color: var(--accent-primary, var(--red));
-  border-color: color-mix(in srgb, var(--accent-primary, var(--red)) 45%, var(--border));
+  border-color: color-mix(in srgb, var(--accent-primary, var(--red)) 45%, var(--border-control, var(--border)));
   background: color-mix(in srgb, var(--accent-primary, var(--red)) 8%, transparent);
 }
 .email-pantheon-attach-tabs button svg {
@@ -36463,7 +36511,7 @@ body.doc-find-active mark.doc-find-mark.current {
   color: color-mix(in srgb, var(--fg) 48%, transparent);
 }
 .email-pantheon-attach-search-wrap:focus-within {
-  border-color: color-mix(in srgb, var(--accent-primary, var(--red)) 45%, var(--border));
+  border-color: color-mix(in srgb, var(--accent-primary, var(--red)) 45%, var(--border-control, var(--border)));
   color: var(--accent-primary, var(--red));
   background: color-mix(in srgb, var(--accent-primary, var(--red)) 6%, transparent);
 }
@@ -36657,7 +36705,7 @@ body.doc-find-active mark.doc-find-mark.current {
 .email-autocomplete {
   position: absolute; top: 100%; left: 58px; right: 0; z-index: 1000;
   background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.2); max-height: 240px; overflow-y: auto;
+  box-shadow: 0 4px 12px var(--shadow-ink-2); max-height: 240px; overflow-y: auto;
   margin-top: 2px;
 }
 .contact-suggestion {
@@ -36926,7 +36974,7 @@ body.doc-find-active mark.doc-find-mark.current {
 .email-settings-page textarea {
   width: 100%;
   min-width: 0;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-control, var(--border));
   border-radius: 6px;
   background: var(--panel, var(--bg));
   color: var(--fg);
@@ -37218,7 +37266,7 @@ body.notes-drag-mode .note-card::after {
    it so it reads as the "live" element being moved. */
 body.notes-drag-mode .note-card.note-card-dragging {
   transform: scale(1.06);
-  box-shadow: 0 16px 40px rgba(0,0,0,0.45);
+  box-shadow: 0 16px 40px var(--shadow-ink-4);
   opacity: 1;
   filter: none;
   z-index: 10001;
@@ -37414,7 +37462,7 @@ body.notes-drag-mode .note-card-pin svg {
 /* Lifted row + placeholder while dragging a checklist item. Mirrors
    the card-drag look so the two interactions feel consistent. */
 .note-cl-row-dragging {
-  box-shadow: 0 12px 28px rgba(0,0,0,0.4);
+  box-shadow: 0 12px 28px var(--shadow-ink-4);
   background: var(--bg);
   border-radius: 8px;
   opacity: 0.98;
@@ -37663,7 +37711,7 @@ body.notes-drag-mode .note-card-pin svg {
   overflow: hidden;
   width: min(880px, 92vw);
   height: min(80vh, 820px);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 8px 32px var(--shadow-ink-4);
   box-sizing: border-box;
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   letter-spacing: -0.015em;
@@ -37675,13 +37723,13 @@ body.notes-drag-mode .note-card-pin svg {
 .notes-pane.modal-right-docked {
   border-left: 1px solid var(--border);
   border-radius: 0;
-  box-shadow: -4px 0 14px rgba(0, 0, 0, 0.18);
+  box-shadow: -4px 0 14px var(--shadow-ink-2);
   transition: none !important;
 }
 .notes-pane.modal-left-docked {
   border-right: 1px solid var(--border);
   border-radius: 0;
-  box-shadow: 4px 0 14px rgba(0, 0, 0, 0.18);
+  box-shadow: 4px 0 14px var(--shadow-ink-2);
   transition: none !important;
 }
 @keyframes notes-pane-enter {
@@ -37872,7 +37920,7 @@ body.notes-drag-mode .note-card-pin svg {
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+  box-shadow: 0 8px 24px var(--shadow-ink-3);
   padding: 4px;
   min-width: 168px;
   font-size: 12px;
@@ -37999,12 +38047,12 @@ body.notes-drag-mode .note-card-pin svg {
 @keyframes note-reminder-pulse {
   0%, 100% {
     box-shadow:
-      inset 0 2px 0 0 color-mix(in srgb, var(--fg) 14%, transparent),
+      inset 0 2px 0 0 var(--shadow-ink-2),
       0 0 0 0 color-mix(in srgb, var(--accent, var(--red)) 0%, transparent);
   }
   50% {
     box-shadow:
-      inset 0 2px 0 0 color-mix(in srgb, var(--fg) 14%, transparent),
+      inset 0 2px 0 0 var(--shadow-ink-2),
       0 0 0 5px color-mix(in srgb, var(--accent, var(--red)) 26%, transparent),
       0 0 18px color-mix(in srgb, var(--accent, var(--red)) 30%, transparent);
   }
@@ -38020,13 +38068,13 @@ body.notes-drag-mode .note-card-pin svg {
 @keyframes note-reminder-glow {
   0%, 100% {
     box-shadow:
-      inset 0 2px 0 0 color-mix(in srgb, var(--fg) 14%, transparent),
+      inset 0 2px 0 0 var(--shadow-ink-2),
       0 0 0 3px color-mix(in srgb, var(--accent, var(--red)) 14%, transparent),
       0 0 14px color-mix(in srgb, var(--accent, var(--red)) 18%, transparent);
   }
   50% {
     box-shadow:
-      inset 0 2px 0 0 color-mix(in srgb, var(--fg) 14%, transparent),
+      inset 0 2px 0 0 var(--shadow-ink-2),
       0 0 0 6px color-mix(in srgb, var(--accent, var(--red)) 22%, transparent),
       0 0 26px color-mix(in srgb, var(--accent, var(--red)) 30%, transparent);
   }
@@ -38097,7 +38145,7 @@ body.notes-drag-mode .note-card-pin svg {
 .note-card-edit-corner:focus-visible {
   opacity: 1 !important;
   background: color-mix(in srgb, var(--accent) 18%, var(--panel)) !important;
-  border-color: color-mix(in srgb, var(--accent) 50%, var(--border)) !important;
+  border-color: color-mix(in srgb, var(--accent) 50%, var(--border-control, var(--border))) !important;
 }
 @media (hover: none) {
   .note-card-edit-corner {
@@ -38139,7 +38187,7 @@ body.notes-drag-mode .note-card-pin svg {
 .note-card-copy-corner:focus-visible {
   opacity: 1 !important;
   background: color-mix(in srgb, var(--accent, var(--red)) 18%, var(--panel)) !important;
-  border-color: color-mix(in srgb, var(--accent, var(--red)) 50%, var(--border)) !important;
+  border-color: color-mix(in srgb, var(--accent, var(--red)) 50%, var(--border-control, var(--border))) !important;
 }
 @media (hover: none) {
   .note-card-copy-corner {
@@ -38161,7 +38209,7 @@ body.notes-mobile-mode.notes-drag-mode .note-card-pin.active {
 .note-card-unarchive-corner:hover,
 .note-card-unarchive-corner:focus-visible {
   background: color-mix(in srgb, var(--accent) 22%, transparent) !important;
-  border-color: color-mix(in srgb, var(--accent) 50%, var(--border)) !important;
+  border-color: color-mix(in srgb, var(--accent) 50%, var(--border-control, var(--border))) !important;
   color: var(--accent);
 }
 
@@ -38200,7 +38248,7 @@ body.notes-mobile-mode.notes-drag-mode .note-card-pin.active {
 .note-card-done:focus-visible {
   opacity: 1 !important;
   background: color-mix(in srgb, var(--green, #98c379) 22%, var(--panel)) !important;
-  border-color: color-mix(in srgb, var(--green, #98c379) 50%, var(--border)) !important;
+  border-color: color-mix(in srgb, var(--green, #98c379) 50%, var(--border-control, var(--border))) !important;
 }
 @media (hover: none) {
   .note-card-done {
@@ -38240,7 +38288,7 @@ body.notes-mobile-mode.notes-drag-mode .note-card-pin.active {
 .note-card-corner-copy:hover,
 .note-card-corner-copy:focus-visible {
   background: color-mix(in srgb, var(--accent) 18%, var(--panel));
-  border-color: color-mix(in srgb, var(--accent) 50%, var(--border));
+  border-color: color-mix(in srgb, var(--accent) 50%, var(--border-control, var(--border)));
   color: var(--accent);
 }
 .note-card-corner-copy:hover svg { opacity: 1; }
@@ -38286,7 +38334,7 @@ body.notes-mobile-mode.notes-drag-mode .note-card-pin.active {
 .note-card-corner-trash:hover,
 .note-card-corner-trash:focus-visible {
   background: color-mix(in srgb, var(--red) 18%, var(--panel));
-  border-color: color-mix(in srgb, var(--red) 50%, var(--border));
+  border-color: color-mix(in srgb, var(--red) 50%, var(--border-control, var(--border)));
   color: var(--red);
 }
 .note-card-corner-trash:hover svg,
@@ -38294,7 +38342,7 @@ body.notes-mobile-mode.notes-drag-mode .note-card-pin.active {
 .note-card-corner-unarchive:hover,
 .note-card-corner-unarchive:focus-visible {
   background: color-mix(in srgb, var(--accent) 18%, var(--panel));
-  border-color: color-mix(in srgb, var(--accent) 50%, var(--border));
+  border-color: color-mix(in srgb, var(--accent) 50%, var(--border-control, var(--border)));
   color: var(--accent);
 }
 @media (hover: none) {
@@ -38381,7 +38429,7 @@ body.notes-mobile-mode.notes-drag-mode .note-card-pin.active {
 .note-card-pin.active {
   display: flex;
   background: color-mix(in srgb, var(--accent, var(--red)) 12%, var(--bg));
-  border-color: color-mix(in srgb, var(--accent, var(--red)) 45%, var(--border));
+  border-color: color-mix(in srgb, var(--accent, var(--red)) 45%, var(--border-control, var(--border)));
   color: var(--accent, var(--red));
   opacity: 1;
 }
@@ -38425,7 +38473,7 @@ body.notes-mobile-mode.notes-drag-mode .note-card-pin.active {
   background: var(--panel, var(--bg));
   border: 1px solid var(--border);
   border-radius: 6px;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+  box-shadow: 0 4px 16px var(--shadow-ink-3);
   padding: 4px 0;
   min-width: 140px;
   font-size: 12px;
@@ -38882,7 +38930,7 @@ body.notes-mobile-mode.notes-drag-mode .note-card-pin.active {
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 8px;
-  box-shadow: 0 6px 24px rgba(0,0,0,0.25);
+  box-shadow: 0 6px 24px var(--shadow-ink-3);
   /* Above the fullscreen note overlay (z-index: 10500) — otherwise the
      reminder picker opens hidden behind it on mobile and reads as
      "broken". */
@@ -39156,7 +39204,7 @@ body.notes-mobile-mode.notes-drag-mode .note-card-pin.active {
   opacity: 1;
   background: color-mix(in srgb, var(--accent) 18%, transparent);
   color: var(--accent);
-  border-color: color-mix(in srgb, var(--accent) 50%, var(--border));
+  border-color: color-mix(in srgb, var(--accent) 50%, var(--border-control, var(--border)));
 }
 .notes-search-bar .memory-search-input {
   flex: 1;
@@ -39169,7 +39217,7 @@ body.notes-mobile-mode.notes-drag-mode .note-card-pin.active {
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23e06c75' stroke-opacity='0.85' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='11' cy='11' r='8'/><line x1='21' y1='21' x2='16.65' y2='16.65'/></svg>");
   background-repeat: no-repeat;
   background-position: 9px center;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-control, var(--border));
   border-radius: 6px;
   color: var(--fg);
   font-family: inherit;
@@ -39448,7 +39496,7 @@ body.notes-mobile-mode.notes-drag-mode .note-card-pin.active {
 }
 .note-form-goal-desc:focus {
   outline: none;
-  border-color: color-mix(in srgb, var(--accent-warm) 60%, var(--border));
+  border-color: color-mix(in srgb, var(--accent-warm) 60%, var(--border-control, var(--border)));
 }
 .note-form-goal-actions {
   display: flex;
@@ -39633,7 +39681,7 @@ body.notes-mobile-mode.notes-drag-mode .note-card-pin.active {
   opacity: 0.6;
   transition: opacity 0.15s, border-color 0.15s;
 }
-.note-form-label:hover, .note-form-label:focus { opacity: 1; border-color: var(--border); }
+.note-form-label:hover, .note-form-label:focus { opacity: 1; border-color: var(--border-control, var(--border)); }
 .note-form-label.flash-once {
   animation: noteLabelFlash 0.6s ease-out;
 }
@@ -39745,7 +39793,7 @@ body.notes-mobile-mode.notes-drag-mode .note-card-pin.active {
   opacity: 0.92;
   cursor: grabbing;
   transform: scale(1.03) rotate(-0.6deg);
-  box-shadow: 0 14px 32px rgba(0,0,0,0.4), 0 0 0 2px var(--accent, var(--red));
+  box-shadow: 0 14px 32px var(--shadow-ink-4), 0 0 0 2px var(--accent, var(--red));
   border-color: var(--accent, var(--red)) !important;
   background: color-mix(in srgb, var(--accent, var(--red)) 6%, var(--panel)) !important;
   z-index: 10;
@@ -39885,7 +39933,7 @@ body.notes-mobile-mode.notes-drag-mode .note-card-pin.active {
   transition: opacity 0.15s, border-color 0.15s;
 }
 .note-cl-quickadd-input::placeholder { color: var(--fg); opacity: 0.5; }
-.note-cl-quickadd-input:focus { opacity: 1; border-top-color: var(--border); }
+.note-cl-quickadd-input:focus { opacity: 1; border-top-color: var(--border-control, var(--border)); }
 .note-card-selectmode .note-cl-quickadd { display: none !important; }
 .note-checkbox {
   display: flex;
@@ -40055,7 +40103,7 @@ body.notes-mobile-mode.notes-drag-mode .note-card-pin.active {
 /* 3D top-edge highlight — an inset 2px stripe inside every note card that
    reads as a lifted "glassy" lip. Each colored note gets a stronger stripe
    in its own hue so the colour reads even before you focus on the card. */
-.note-card { box-shadow: inset 0 2px 0 0 color-mix(in srgb, var(--fg) 14%, transparent); }
+.note-card { box-shadow: inset 0 2px 0 0 var(--shadow-ink-2); }
 .note-color-red    { box-shadow: inset 0 2px 0 0 color-mix(in srgb, var(--red) 55%, transparent); }
 .note-color-orange { box-shadow: inset 0 2px 0 0 color-mix(in srgb, #d19a66 60%, transparent); }
 .note-color-yellow { box-shadow: inset 0 2px 0 0 color-mix(in srgb, var(--hl-string) 60%, transparent); }
@@ -40276,7 +40324,7 @@ body.notes-mobile-mode.notes-drag-mode .note-card-pin.active {
 }
 .note-form-text-btn.danger:hover {
   background: color-mix(in srgb, var(--red) 14%, transparent);
-  border-color: color-mix(in srgb, var(--red) 45%, var(--border));
+  border-color: color-mix(in srgb, var(--red) 45%, var(--border-control, var(--border)));
   color: var(--red);
 }
 .note-form-icon-btn {
@@ -40540,7 +40588,7 @@ body.notes-mobile-mode.notes-drag-mode .note-card-pin.active {
   opacity: 1;
   background: color-mix(in srgb, var(--accent) 18%, transparent);
   color: var(--accent);
-  border-color: color-mix(in srgb, var(--accent) 50%, var(--border));
+  border-color: color-mix(in srgb, var(--accent) 50%, var(--border-control, var(--border)));
 }
 /* Reflect the chosen size in the icon itself, so the user sees at a glance
    which size (S/M/L) is active without needing the tiny badge. */
@@ -40569,7 +40617,7 @@ body.notes-mobile-mode.notes-drag-mode .note-card-pin.active {
   opacity: 0.4;
   transition: opacity 0.15s, border-color 0.15s;
 }
-.note-form-due:hover, .note-form-due:focus { opacity: 0.9; border-color: var(--border); }
+.note-form-due:hover, .note-form-due:focus { opacity: 0.9; border-color: var(--border-control, var(--border)); }
 .note-form-due:not([value=""]) { opacity: 0.85; border-style: solid; }
 
 .note-form-actions {
@@ -40767,7 +40815,7 @@ body.notes-mobile-mode.notes-drag-mode .note-card-pin.active {
    per-keystroke JS, so typing never triggers a re-render / focus loss). */
 .cal-quickadd-input:not(:placeholder-shown) ~ .cal-quickadd-hint { display: none; }
 .cal-quickadd-row:focus-within {
-  border-color: color-mix(in srgb, var(--accent, var(--fg)) 55%, var(--border));
+  border-color: color-mix(in srgb, var(--accent, var(--fg)) 55%, var(--border-control, var(--border)));
   background: color-mix(in srgb, var(--fg) 5%, var(--bg));
 }
 .cal-quickadd-icon {
@@ -40799,7 +40847,7 @@ body.notes-mobile-mode.notes-drag-mode .note-card-pin.active {
 .cal-toolbar-nav { display:inline-flex; align-items:center; gap:4px; flex-wrap:wrap; }
 .cal-toolbar-right { display:inline-flex; align-items:center; gap:6px; margin-left:auto; flex-wrap:wrap; margin-top:6px; }
 .cal-title { font-size:13px; font-weight:600; white-space:nowrap; height:24px; line-height:30px; padding:0 6px; display:inline-block; vertical-align:middle; box-sizing:border-box; }
-button.cal-nav { background:color-mix(in srgb, var(--fg) 6%, transparent); border:1px solid var(--border); color:var(--fg); border-radius:5px; padding:0 8px; height:24px; line-height:22px; cursor:pointer; font-size:11px; font-family:inherit; box-sizing:border-box; vertical-align:middle; }
+button.cal-nav { background:color-mix(in srgb, var(--fg) 6%, transparent); border:1px solid var(--border-control, var(--border)); color:var(--fg); border-radius:5px; padding:0 8px; height:24px; line-height:22px; cursor:pointer; font-size:11px; font-family:inherit; box-sizing:border-box; vertical-align:middle; }
 button.cal-nav:hover { background:color-mix(in srgb, var(--fg) 12%, transparent); }
 button.cal-today-btn { font-size:10px; opacity:0.5; }
 button.cal-add-btn { background:var(--accent); color: var(--on-accent, #fff); border:none; border-radius:50%; width:24px; height:24px; line-height:22px; font-size:18px; cursor:pointer; flex-shrink:0; padding:0; box-sizing:border-box; font-family:inherit; vertical-align:middle; text-align:center; }
@@ -40807,7 +40855,7 @@ button.cal-add-btn.cal-add-btn-text {
   width:auto; min-width:0;
   background: color-mix(in srgb, var(--fg) 8%, transparent);
   color: var(--fg);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-control, var(--border));
   border-radius: 12px;
   padding: 0 10px 0 6px;
   display: inline-flex;
@@ -41633,9 +41681,9 @@ button.cal-view-btn {
   margin-bottom:2px;
   min-height:17px;
   background:color-mix(in srgb, var(--fg) 5%, transparent);
-  box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--fg) 7%, transparent);
+  box-shadow:inset 0 0 0 1px var(--shadow-ink-1);
 }
-.cal-event-row:hover { background:color-mix(in srgb, var(--fg) 10%, transparent); box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--fg) 14%, transparent); }
+.cal-event-row:hover { background:color-mix(in srgb, var(--fg) 10%, transparent); box-shadow:inset 0 0 0 1px var(--shadow-ink-2); }
 .cal-event-row-dot { width:6px; height:6px; border-radius:50%; flex-shrink:0; box-shadow:0 0 0 1px color-mix(in srgb, var(--bg) 80%, transparent); }
 .cal-event-row-time { font-size:10px; opacity:0.72; font-variant-numeric:tabular-nums; flex-shrink:0; font-weight:600; }
 .cal-event-row-name { font-size:10px; opacity:0.96; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex:1; min-width:0; font-weight:600; }
@@ -41722,8 +41770,8 @@ button.cal-view-btn {
 }
 .cal-detail-header { display:flex; justify-content:space-between; align-items:center; font-size:12px; font-weight:600; margin-bottom:6px; padding-right:8px; }
 .cal-empty { font-size:11px; opacity:0.3; padding:4px 0; }
-.cal-event-item { display:flex; gap:9px; padding:8px 9px; border-radius:6px; cursor:pointer; align-items:flex-start; background:color-mix(in srgb, var(--fg) 3.5%, transparent); box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--fg) 6%, transparent); margin-bottom:4px; }
-.cal-event-item:hover { background:color-mix(in srgb, var(--fg) 8%, transparent); box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--fg) 12%, transparent); }
+.cal-event-item { display:flex; gap:9px; padding:8px 9px; border-radius:6px; cursor:pointer; align-items:flex-start; background:color-mix(in srgb, var(--fg) 3.5%, transparent); box-shadow:inset 0 0 0 1px var(--shadow-ink-1); margin-bottom:4px; }
+.cal-event-item:hover { background:color-mix(in srgb, var(--fg) 8%, transparent); box-shadow:inset 0 0 0 1px var(--shadow-ink-2); }
 .cal-event-dot { width:9px; height:9px; border-radius:50%; flex-shrink:0; margin-top:4px; box-shadow:0 0 0 1px color-mix(in srgb, var(--bg) 80%, transparent); }
 .cal-event-info { flex:1; min-width:0; }
 .cal-event-name { font-size:13px; font-weight:700; line-height:1.25; color:color-mix(in srgb, var(--fg) 96%, transparent); overflow-wrap:anywhere; }
@@ -41939,7 +41987,7 @@ button.cal-view-btn {
   cursor: pointer;
   overflow: hidden;
   z-index: 2;
-  box-shadow: 0 2px 6px color-mix(in srgb, #000 14%, transparent), inset 0 0 0 1px color-mix(in srgb, var(--fg) 7%, transparent);
+  box-shadow: 0 2px 6px color-mix(in srgb, #000 14%, transparent), inset 0 0 0 1px var(--shadow-ink-1);
   transition: filter 0.12s, transform 0.12s;
   box-sizing: border-box;
 }
@@ -41987,7 +42035,7 @@ button.cal-view-btn {
    siblings so the drop target reads clearly. */
 .cal-wk-block-ghost {
   z-index: 6 !important;
-  box-shadow: 0 4px 12px color-mix(in srgb, var(--fg) 24%, transparent) !important;
+  box-shadow: 0 4px 12px var(--shadow-ink-3) !important;
   cursor: grabbing;
 }
 .cal-wk-block { cursor: grab; }
@@ -42078,11 +42126,11 @@ button.cal-view-btn {
   align-items:center;
   position:relative;
   background:color-mix(in srgb, var(--fg) 3.5%, transparent);
-  box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--fg) 6%, transparent);
+  box-shadow:inset 0 0 0 1px var(--shadow-ink-1);
 }
 .cal-agenda-event:hover {
   background:color-mix(in srgb, var(--fg) 8%, transparent);
-  box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--fg) 12%, transparent);
+  box-shadow:inset 0 0 0 1px var(--shadow-ink-2);
 }
 .cal-agenda-event .cal-event-more,
 .cal-event-item .cal-event-more { opacity:0; transition:opacity 0.15s; }
@@ -42102,7 +42150,7 @@ button.cal-view-btn {
 .assistant-field select,
 .assistant-field textarea {
   background: color-mix(in srgb, var(--fg) 5%, var(--bg));
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-control, var(--border));
   border-radius: 5px;
   padding: 7px 10px;
   color: var(--fg);
@@ -42132,7 +42180,7 @@ button.cal-view-btn {
 .assistant-checkin-head input[type="text"],
 .assistant-checkin-head input[type="time"] {
   background: color-mix(in srgb, var(--fg) 5%, var(--bg));
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-control, var(--border));
   border-radius: 4px;
   padding: 4px 8px;
   color: var(--fg);
@@ -42301,7 +42349,7 @@ button.cal-event-more:hover { opacity:1 !important; }
      back to the theme's neutral border so the card looks like normal. */
   border: 1px solid var(--border);
   border-radius: 14px;
-  box-shadow: 0 8px 24px color-mix(in srgb, var(--fg) 6%, transparent);
+  box-shadow: 0 8px 24px var(--shadow-ink-1);
   transition: border-color 0.18s, box-shadow 0.18s;
 }
 /* When a colour is picked, lift the card with a soft tinted border + glow
@@ -42559,7 +42607,7 @@ select.cal-input { appearance:auto; }
 textarea.cal-input { resize:vertical; font-family:inherit; }
 .cal-form-row { display:flex; gap:8px; align-items:center; }
 .cal-form-actions { display:flex; gap:8px; justify-content:flex-end; margin-top:4px; }
-button.cal-btn { background:color-mix(in srgb, var(--fg) 8%, transparent); border:1px solid var(--border); color:var(--fg); border-radius:5px; padding:0 14px; height:28px; font-size:11px; font-weight:500; cursor:pointer; font-family:inherit; display:inline-flex; align-items:center; justify-content:center; box-sizing:border-box; transition:background 0.15s, border-color 0.15s; }
+button.cal-btn { background:color-mix(in srgb, var(--fg) 8%, transparent); border:1px solid var(--border-control, var(--border)); color:var(--fg); border-radius:5px; padding:0 14px; height:28px; font-size:11px; font-weight:500; cursor:pointer; font-family:inherit; display:inline-flex; align-items:center; justify-content:center; box-sizing:border-box; transition:background 0.15s, border-color 0.15s; }
 button.cal-btn:hover { background:color-mix(in srgb, var(--fg) 14%, transparent); }
 button.cal-btn.cal-btn-primary { background:var(--accent, var(--red)); color:var(--bg); border-color:var(--accent, var(--red)); }
 button.cal-btn.cal-btn-primary:hover { opacity:0.9; background:var(--accent, var(--red)); }
@@ -42756,7 +42804,7 @@ body.research-panel-view #research-divider { display:none; }
   font-size: 11px; padding: 4px 6px;
   background: var(--bg);
   color: var(--fg);
-  border: 1px solid var(--border); border-radius: 4px;
+  border: 1px solid var(--border-control, var(--border)); border-radius: 4px;
 }
 .research-controls-row {
   display:flex; align-items:center; gap:10px; margin-top:10px;
@@ -42860,7 +42908,7 @@ body.research-panel-view #research-divider { display:none; }
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+  box-shadow: 0 8px 24px var(--shadow-ink-3);
   padding: 5px;
   font-size: 13px;
   animation: rrm-pop-in 0.12s ease-out both;
@@ -43390,7 +43438,7 @@ input.cp-swatch-input::selection { background: transparent; }
   border: 1px solid var(--border, #333);
   border-radius: 8px;
   padding: 10px;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.45);
+  box-shadow: 0 8px 24px var(--shadow-ink-4);
   font-family: inherit; color: var(--fg, #eee); font-size: 12px;
   user-select: none;
 }
@@ -43418,7 +43466,7 @@ input.cp-swatch-input::selection { background: transparent; }
   margin: -6px 0 0 -6px;
   border: 2px solid #fff;
   border-radius: 50%;
-  box-shadow: 0 0 0 1px rgba(0,0,0,0.6), 0 1px 3px rgba(0,0,0,0.5);
+  box-shadow: 0 0 0 1px var(--shadow-ink-4), 0 1px 3px var(--shadow-ink-4);
   pointer-events: none;
 }
 .cp-hue {
@@ -43436,7 +43484,7 @@ input.cp-swatch-input::selection { background: transparent; }
   margin: -9px 0 0 -5px;
   border: 2px solid #fff;
   border-radius: 3px;
-  box-shadow: 0 0 0 1px rgba(0,0,0,0.6), 0 1px 3px rgba(0,0,0,0.5);
+  box-shadow: 0 0 0 1px var(--shadow-ink-4), 0 1px 3px var(--shadow-ink-4);
   pointer-events: none;
 }
 .cp-row {
@@ -43522,7 +43570,7 @@ input.cp-swatch-input::selection { background: transparent; }
 .pdf-export-overlay select.pdf-export-input,
 .pdf-export-overlay input.pdf-export-input {
   padding: 4px 6px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-control, var(--border));
   background: var(--bg);
   color: var(--fg);
   border-radius: 4px;
@@ -43639,7 +43687,7 @@ input.cp-swatch-input::selection { background: transparent; }
   background: #fff;
   color: #1a1a1a;
   padding: 28px 32px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 4px 16px var(--shadow-ink-4);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   font-size: 14px;
@@ -43664,7 +43712,7 @@ input.cp-swatch-input::selection { background: transparent; }
 .pdf-export-overlay input[type="checkbox"] {
   width: 14px;
   height: 14px;
-  border: 1.5px solid var(--border);
+  border: 1.5px solid var(--border-control, var(--border));
   background: var(--bg);
 }
 .pdf-export-overlay input[type="checkbox"]:checked {
@@ -43781,7 +43829,7 @@ body.theme-frosted .cookbook-pane,
 body.theme-frosted .doc-pane,
 body.theme-frosted .doc-pane-floating {
   box-shadow:
-    0 14px 36px rgba(0, 0, 0, 0.5),
+    0 14px 36px var(--shadow-ink-4),
     inset 0 1px 0 color-mix(in srgb, var(--fg, #fff) 14%, transparent),
     inset 0 -1px 0 color-mix(in srgb, #000 14%, transparent) !important;
 }
@@ -43979,7 +44027,7 @@ body.theme-frosted .modal {
   background: var(--panel, var(--bg));
   border: 1px solid var(--border, rgba(255,255,255,0.08));
   border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+  box-shadow: 0 8px 24px var(--shadow-ink-3);
   font-size: 13px;
   color: var(--fg, #e6e6e6);
   overflow-y: auto;
@@ -45430,7 +45478,7 @@ body.theme-frosted .modal {
 .settings-system-logs-search {
   padding: 6px 8px;
   background: var(--bg);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-control, var(--border));
   border-radius: 4px;
   color: var(--fg);
   font-family: inherit;
@@ -45441,7 +45489,7 @@ body.theme-frosted .modal {
 .settings-system-logs-select {
   padding: 5px 8px;
   background: var(--bg);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-control, var(--border));
   border-radius: 4px;
   color: var(--fg);
   font-family: inherit;
@@ -45479,7 +45527,7 @@ body.theme-frosted .modal {
   white-space: pre-wrap;
   word-break: break-all;
   color: #d1d4e0;
-  box-shadow: inset 0 2px 8px rgba(0,0,0,0.5);
+  box-shadow: inset 0 2px 8px var(--shadow-ink-4);
 }
 /* Remote images the reader did not ask for (P16-08). Deliberately plain: this
    is a control, not a decoration, and it must read as "nothing has loaded yet"
@@ -45671,7 +45719,7 @@ body.theme-frosted .modal {
   width: calc(100% - 24px);
   margin: 0 12px 10px;
   padding: 8px 10px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-control, var(--border));
   border-radius: 4px;
   background: color-mix(in srgb, var(--fg) 3%, transparent);
   color: var(--fg);
@@ -45756,7 +45804,7 @@ body.theme-frosted .modal {
   min-width: 0;
   height: 32px;
   padding: 5px 9px 5px 29px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-control, var(--border));
   border-radius: 6px;
   outline: none;
   background: var(--bg);
@@ -45797,7 +45845,7 @@ body.theme-frosted .modal {
   border: 1px solid var(--border);
   border-radius: 7px;
   background: var(--panel);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+  box-shadow: 0 8px 24px var(--shadow-ink-3);
 }
 
 .settings-search-result {
@@ -45887,7 +45935,7 @@ body.settings-sidebar-resize-active {
   align-items: center;
   justify-content: center;
   padding: 0;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-control, var(--border));
   border-radius: 50%;
   background: var(--panel);
   color: var(--fg);
@@ -46789,7 +46837,7 @@ body.settings-sidebar-resize-active {
   pointer-events: auto;
   transform: translate(-50%, -50%);
   z-index: 1;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-control, var(--border));
   border-radius: 6px;
   background: var(--panel);
   color: var(--fg);
@@ -47057,7 +47105,7 @@ button.task-card-toggle {
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 6px;
-  box-shadow: 0 1px 3px color-mix(in srgb, var(--fg) 14%, transparent);
+  box-shadow: 0 1px 3px var(--shadow-ink-2);
   cursor: grab;
   user-select: none;
   pointer-events: auto;
@@ -47111,13 +47159,13 @@ button.task-card-toggle {
 .wb-node[data-outcome="ok"] .wb-node-mark { color: var(--green); }
 .wb-node[data-outcome="error"] .wb-node-mark { color: var(--red); }
 .wb-node[data-paused="true"] { opacity: 0.72; }
-.wb-node-chain { box-shadow: 0 0 0 3px color-mix(in srgb, var(--fg) 28%, transparent); }
+.wb-node-chain { box-shadow: 0 0 0 3px var(--shadow-ink-3); }
 .wb-node-selected,
 .wb-node-target { box-shadow: 0 0 0 2px var(--fg); }
 .wb-node-dragging {
   z-index: 2;
   cursor: grabbing;
-  box-shadow: 0 6px 18px color-mix(in srgb, var(--fg) 24%, transparent);
+  box-shadow: 0 6px 18px var(--shadow-ink-3);
 }
 .wb-node-missing { border-style: dashed; opacity: 0.6; cursor: default; }
 .wb-port {
@@ -47217,7 +47265,7 @@ button.task-card-toggle {
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 8px;
-  box-shadow: 0 8px 24px color-mix(in srgb, var(--fg) 18%, transparent);
+  box-shadow: 0 8px 24px var(--shadow-ink-2);
 }
 .wb-connect-head { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
 .wb-connect-field { display: flex; flex-direction: column; gap: 2px; }
@@ -47226,7 +47274,7 @@ button.task-card-toggle {
   font: inherit;
   color: var(--fg);
   background: var(--bg);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-control, var(--border));
   border-radius: 4px;
   padding: 3px 4px;
 }
@@ -47345,7 +47393,7 @@ button.task-card-toggle {
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 8px;
-  box-shadow: 0 8px 24px color-mix(in srgb, var(--fg) 18%, transparent);
+  box-shadow: 0 8px 24px var(--shadow-ink-2);
 }
 .wb-plan-head { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
 .wb-plan-when { margin: 0; font-size: 11px; color: var(--color-muted-alt); overflow-wrap: anywhere; }
@@ -47374,7 +47422,7 @@ button.task-card-toggle {
 .wb-node-moving {
   z-index: 2;
   cursor: move;
-  box-shadow: 0 6px 18px color-mix(in srgb, var(--fg) 24%, transparent);
+  box-shadow: 0 6px 18px var(--shadow-ink-3);
 }
 /* ===== wf-ui — `P22-05`…`P22-08`, `B1062` (P22 wave C, Slice B) =====
    The Automations room's shelf (the tasks and chains, then every workflow), a
@@ -47573,7 +47621,7 @@ button.task-card-toggle {
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 8px;
-  box-shadow: 0 8px 24px color-mix(in srgb, var(--fg) 18%, transparent);
+  box-shadow: 0 8px 24px var(--shadow-ink-2);
 }
 .wf-versions-head { margin: 0; font-weight: 700; }
 .wf-versions-note { margin: 0; font-size: 11px; color: var(--color-muted-alt); }
@@ -47633,7 +47681,7 @@ button.task-card-toggle {
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 8px;
-  box-shadow: 0 8px 24px color-mix(in srgb, var(--fg) 18%, transparent);
+  box-shadow: 0 8px 24px var(--shadow-ink-2);
 }
 .wf-palette-head { margin: 0 0 2px; font-weight: 700; }
 .wf-palette-kind {
@@ -47869,7 +47917,7 @@ button.task-card-toggle {
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 8px;
-  box-shadow: 0 8px 24px color-mix(in srgb, var(--fg) 18%, transparent);
+  box-shadow: 0 8px 24px var(--shadow-ink-2);
 }
 .wf-picker-head { margin: 0; font-weight: 700; }
 .wf-picker-lede,
@@ -48010,7 +48058,7 @@ button.task-card-toggle {
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 10px;
-  box-shadow: 0 12px 32px color-mix(in srgb, var(--fg) 22%, transparent);
+  box-shadow: 0 12px 32px var(--shadow-ink-2);
 }
 .wf-approval-title { margin: 0; font-size: 14px; overflow-wrap: anywhere; }
 .wf-approval-sub,
@@ -48806,7 +48854,7 @@ body.plan-mode-active .chat-input-top > .model-picker-wrap:has(> .model-picker-m
   line-height: 1.2;
   overflow: hidden;
   cursor: pointer;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.32);
+  box-shadow: 0 2px 6px var(--shadow-ink-3);
   touch-action: manipulation;
   -webkit-touch-callout: none;
   user-select: none;
@@ -48867,18 +48915,18 @@ body.plan-mode-active .chat-input-top > .model-picker-wrap:has(> .model-picker-m
 }
 .attach-hand .hand-card.is-selected .hand-card-btn,
 .attach-hand .hand-card:focus-within .hand-card-btn {
-  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.38);
+  box-shadow: 0 8px 18px var(--shadow-ink-3);
 }
 .attach-hand .hand-card.is-selected .hand-card-btn {
   border-color: var(--fg);
-  box-shadow: 0 0 0 1px var(--fg), 0 8px 18px rgba(0, 0, 0, 0.38);
+  box-shadow: 0 0 0 1px var(--fg), 0 8px 18px var(--shadow-ink-3);
 }
 @media (hover: hover) {
   .attach-hand .hand-card:hover { z-index: 41; }
   .attach-hand .hand-card:hover > .hand-card-lift {
     transform: translateY(calc(-1 * var(--hand-lift))) scale(1.06);
   }
-  .attach-hand .hand-card:hover .hand-card-btn { box-shadow: 0 8px 18px rgba(0, 0, 0, 0.38); }
+  .attach-hand .hand-card:hover .hand-card-btn { box-shadow: 0 8px 18px var(--shadow-ink-3); }
 }
 /* The count, on the front card. */
 .attach-hand .hand-count {
@@ -48921,7 +48969,7 @@ body.plan-mode-active .chat-input-top > .model-picker-wrap:has(> .model-picker-m
   font-size: 14px;
   line-height: 1;
   cursor: pointer;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 1px 4px var(--shadow-ink-3);
   opacity: 0;
   transform: scale(0.6);
   pointer-events: none;
@@ -48960,7 +49008,7 @@ body.plan-mode-active .chat-input-top > .model-picker-wrap:has(> .model-picker-m
   font-weight: 700;
   line-height: 20px;
   cursor: pointer;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 1px 4px var(--shadow-ink-3);
   pointer-events: auto;
 }
 /* While the message sends, the cards are the upload's (`uploadPending`) — and
@@ -48979,7 +49027,7 @@ body.plan-mode-active .chat-input-top > .model-picker-wrap:has(> .model-picker-m
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 6px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 4px 16px var(--shadow-ink-4);
 }
 .hand-menu-item {
   display: flex;
@@ -49029,7 +49077,7 @@ body.plan-mode-active .chat-input-top > .model-picker-wrap:has(> .model-picker-m
   color: var(--fg);
   border: 1px solid var(--border);
   border-radius: 8px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 8px 32px var(--shadow-ink-4);
   overflow: hidden;
 }
 .hand-preview .hand-preview-head {
@@ -49119,7 +49167,7 @@ body.plan-mode-active .chat-input-top > .model-picker-wrap:has(> .model-picker-m
   flex-shrink: 0;
   min-height: 44px;
   padding: 0 10px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-control, var(--border));
   border-radius: 12px;
   background: color-mix(in srgb, var(--fg) 7%, transparent);
   color: var(--fg);
@@ -49170,7 +49218,7 @@ body.plan-mode-active .chat-input-top > .model-picker-wrap:has(> .model-picker-m
   border: 1px solid var(--border);
   border-bottom: none;
   border-radius: 16px 16px 0 0;
-  box-shadow: 0 -6px 28px rgba(0, 0, 0, 0.34);
+  box-shadow: 0 -6px 28px var(--shadow-ink-3);
   animation: turn-sheet-rise 0.22s var(--ease-signature);
 }
 @keyframes turn-sheet-rise {
@@ -49217,7 +49265,7 @@ body.plan-mode-active .chat-input-top > .model-picker-wrap:has(> .model-picker-m
   box-sizing: border-box;
   padding: 6px 8px;
   border: none;
-  border-top: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--border-control, var(--border)) 70%, transparent);
   border-radius: 0;
   background: none;
   color: var(--fg);
@@ -49287,7 +49335,7 @@ body.plan-mode-active .chat-input-top > .model-picker-wrap:has(> .model-picker-m
   width: 44px;
   height: 26px;
   border-radius: 13px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-control, var(--border));
   background: color-mix(in srgb, var(--fg) 10%, transparent);
   position: relative;
   transition: background 0.18s ease;

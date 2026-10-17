@@ -38,6 +38,7 @@ it cannot quietly move the floor.
 from __future__ import annotations
 
 import json
+import math as _math
 import re
 import sys
 from pathlib import Path
@@ -198,6 +199,175 @@ def on_accent_for(accent: str) -> str:
             else "#ffffff")
 
 
+#: `B1404`. The control-boundary border, as `controlBorderFor()` in
+#: `static/js/theme.js` computes it. One implementation in each language and a
+#: test that runs both over every palette — the same arrangement `P1-08` uses
+#: for `--on-accent`, and for the same reason: a formula copied is a formula
+#: that rots.
+def control_border_for(border: str, panel: str, fg: str, floor: float = LARGE_FLOOR) -> str:
+    """The least mix of `fg` into `border` that clears `floor` against `panel`."""
+    def rgb(value: str):
+        digits = str(value or "").lstrip("#")
+        if len(digits) == 3:
+            digits = "".join(c * 2 for c in digits)
+        if len(digits) != 6:
+            return None
+        return tuple(int(digits[i:i + 2], 16) for i in (0, 2, 4))
+
+    b, f = rgb(border), rgb(fg)
+    if not b or not f or not panel:
+        return border
+    # `floor(v + 0.5)`, not `round(v)`: a channel can land exactly on `.5`
+    # (`video` does, at 15% and again at 55%), and Python rounds a tie to the
+    # even number while `Math.round` in the browser rounds it up. The browser
+    # is what paints, so the audit rounds the browser's way — otherwise the two
+    # derivations disagree by one hex digit on the palettes that hit a tie, and
+    # `test_the_module_and_the_audit_compute_the_same_border` is what caught it.
+    half_up = lambda v: _math.floor(v + 0.5)
+    for pct in range(0, 101):
+        t = pct / 100
+        mixed = "#" + "".join(
+            f"{max(0, min(255, half_up(f[i] * t + b[i] * (1 - t)))):02x}" for i in range(3))
+        if contrast(mixed, panel) >= floor:
+            return mixed
+    return fg
+
+
+CONTROL_TAGS = {"input", "textarea", "select", "button"}
+
+
+def _interactive_classes() -> set:
+    """Every class the shipped markup puts on something focusable."""
+    import re as _re
+
+    html = _blank(ROOT / "static" / "index.html")
+    out = set()
+    for tag_match in _re.finditer(r"<(\w+)([^>]*)>", html):
+        tag, attrs = tag_match.group(1).lower(), tag_match.group(2)
+        if tag not in ("input", "textarea", "select", "button", "a") \
+                and "tabindex" not in attrs and "contenteditable" not in attrs:
+            continue
+        found = _re.search(r'class="([^"]*)"', attrs)
+        if found:
+            out.update(c for c in found.group(1).split() if c)
+    return out
+
+
+def _is_control_selector(selector: str, interactive_classes: set) -> bool:
+    """Whether `selector` paints a boundary WCAG 1.4.11 asks 3:1 of.
+
+    One rule, one place (`Law 7`): the reader list and the census both ask this,
+    and when they asked it separately the census was 39% wrong. A bare
+    **element tag**, not a word inside a class name — `\b(input|…)\b` matched
+    `.chat-input-bar` and `.input-divider`, because `-` is a word boundary in a
+    regex. Classes, ids, attributes and pseudos are stripped first, so what is
+    left is the element part of each compound selector.
+    """
+    import re as _re
+
+    bare = _re.sub(r"[.#][A-Za-z0-9_-]+", " ", selector)
+    bare = _re.sub(r"\[[^\]]*\]", " ", bare)
+    bare = _re.sub(r"::?[A-Za-z-]+(\([^)]*\))?", " ", bare)
+    tags = {t for t in _re.split(r"[\s>+~,]+", bare) if t}
+    classes = set(_re.findall(r"\.([A-Za-z0-9_-]+)", selector))
+    return (bool(tags & CONTROL_TAGS)
+            or bool(classes & interactive_classes)
+            or ":focus" in selector
+            or "[contenteditable" in selector)
+
+
+def _css_control_border_readers() -> list:
+    """Rules that read `--border` on a selector that names an interactive element.
+
+    A selector counts as a control when it names an `input`, `textarea`,
+    `select` or `button` **tag**, carries a class the shipped markup puts on a
+    focusable element, or mentions `:focus` or `[contenteditable]`. WCAG 1.4.11
+    asks 3:1 of those boundaries and nothing of panel edges, card outlines,
+    dividers and table rules.
+
+    The census itself is **not written down here**. `B1404` first shipped one in
+    this docstring and it was wrong twice over — inflated 39% by the hyphen bug
+    below, then stale the moment the sweep ran — so the audit prints the split
+    on every run instead (`_css_border_read_census`) and this says only how the
+    two buckets are told apart. A figure in a comment is a figure nobody
+    recomputes.
+
+    This is a **candidate** split and says so: it reads the selector and the
+    markup's focusable classes, so a card focusable only at runtime lands in the
+    wrong bucket. It is a list to walk, not a verdict.
+    """
+    import re as _re
+
+    css = _blank(ROOT / "static" / "style.css")
+    interactive_classes = _interactive_classes()
+    out = []
+    for rule in _re.finditer(r"([^{}]+)\{([^{}]*)\}", css):
+        selectors, body = rule.group(1), rule.group(2)
+        if "--border" not in body:
+            continue
+        # The converted form **contains** the plain one —
+        # `var(--border-control, var(--border))` — so it has to be taken out
+        # before asking whether a plain read is left. Without this the audit
+        # counts every converted rule as still unconverted, which is how the
+        # first sweep appeared to have done nothing.
+        bare = body.replace("var(--border-control, var(--border))", "")
+        bare = _re.sub(r"var\(\s*--border-control\s*,", "", bare)
+        reads_plain = bool(_re.search(r"var\(\s*--border\s*[,)]", bare))
+        for selector in selectors.split(","):
+            selector = selector.strip().split("\n")[-1].strip()
+            if not selector:
+                continue
+            control = _is_control_selector(selector, interactive_classes)
+            if control and reads_plain:
+                out.append(selector[:70])
+    return out
+
+
+def _css_border_read_census() -> tuple:
+    """`(control, decorative)` border reads in the stylesheet, counted today.
+
+    Counted over the **converted** spelling as well as the plain one, so the
+    total does not move when a read is swept from `var(--border)` to
+    `var(--border-control, var(--border))`. Without that normalisation the
+    converted form counts twice — it contains the plain one — and the census
+    appears to grow every time a control is fixed.
+    """
+    import re as _re
+
+    MARK = "\u0000border-read\u0000"
+    css = _blank(ROOT / "static" / "style.css")
+    interactive = _interactive_classes()
+    control = decorative = 0
+    for rule in _re.finditer(r"([^{}]+)\{([^{}]*)\}", css):
+        selectors, body = rule.group(1), rule.group(2)
+        norm = body.replace("var(--border-control, var(--border))", MARK)
+        norm = _re.sub(r"var\(\s*--border\s*[,)]", MARK, norm)
+        reads = norm.count(MARK)
+        if not reads:
+            continue
+        for selector in selectors.split(","):
+            selector = selector.strip().split("\n")[-1].strip()
+            if not selector:
+                continue
+            if _is_control_selector(selector, interactive):
+                control += reads
+            else:
+                decorative += reads
+    return control, decorative
+
+
+def _blank(path):
+    """The repository's one comment blanker, loaded not reimplemented (`B290`)."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "_contrast_check_specifiers", ROOT / ".pantheon" / "check-specifiers.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.strip_comments(path.read_text(encoding="utf-8"),
+                                 mode=module.mode_for(path))
+
+
 def _css_white_on_accent() -> list:
     """Rules that still paint a hard-coded white on an accent background.
 
@@ -303,6 +473,39 @@ def main() -> int:
             f"the arithmetic behind P1-09 has changed: the best of black and "
             f"white now bottoms out at {floor:.4f}:1, under the {BODY_FLOOR}:1 "
             f"floor — a guard inside applyColors() is needed after all")
+
+    # `B1404`. The control-boundary border, and the two things that can go
+    # wrong with it: the derivation stops clearing the floor on a palette, or a
+    # control goes back to reading the decorative `--border`.
+    control_fails = []
+    for name, palette in sorted(themes().items()):
+        border, panel, fg = palette.get("border"), palette.get("panel"), palette.get("fg")
+        if not (border and panel and fg):
+            continue
+        value = control_border_for(border, panel, fg)
+        ratio = round(contrast(value, panel), 2)
+        if ratio < LARGE_FLOOR:
+            control_fails.append(f"{name}: control border {value} only reaches {ratio}:1")
+    print(f"\ncontrol-boundary border — {len(themes())} palettes, "
+          f"{LARGE_FLOOR}:1 against their own panel: "
+          f"{'all clear' if not control_fails else f'{len(control_fails)} fail'}")
+    if control_fails:
+        problems.extend(control_fails)
+
+    control_reads, decorative_reads = _css_border_read_census()
+    print(f"  border reads in the stylesheet: {control_reads} on a control "
+          f"boundary, {decorative_reads} decorative "
+          f"({control_reads + decorative_reads} total)")
+
+    plain = _css_control_border_readers()
+    print(f"controls still reading the decorative `--border`: {len(plain)} selector(s)")
+    for selector in plain[:10]:
+        print(f"  E {selector}")
+    if plain:
+        problems.append(
+            f"{len(plain)} control-boundary selector(s) read `var(--border)`, which "
+            f"misses {LARGE_FLOOR}:1 on 22 of 23 palettes; use "
+            f"`var(--border-control, var(--border))`")
 
     stray = _css_white_on_accent()
     print(f"\nhard-coded white on an accent background: {len(stray)} rule(s)")

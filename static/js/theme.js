@@ -223,6 +223,58 @@ export function contrastRatio(a, b) {
   return (hi + 0.05) / (lo + 0.05);
 }
 
+//: `B1404`. **A control's boundary, strengthened only as far as the floor
+//: needs.** WCAG 1.4.11 asks 3:1 of a UI component boundary against its
+//: background; measured over all 23 palettes, `--border` misses that against
+//: `--panel` on **22** of them — `organs` at 1.21, `claude` 1.49, `light`
+//: 1.47 — and the best, `cyberpunk`, reaches only 3.82.
+//:
+//: 1.4.11 asks nothing of a decorative edge, and 785 of the 961 `var(--border)`
+//: sites are exactly that: panel edges, card outlines, dividers, table rules.
+//: So this is a **second** token for the 176 that are control boundaries, not a
+//: lifted `--border` for all of them — lifting one would flatten the difference
+//: between a text field and a panel edge on every palette, which is what
+//: `D-2026-08-26-03` protects the themes from (`D-2026-10-17-02` §3).
+//:
+//: Mixed **toward the theme's own `--fg`**, by the smallest amount that clears
+//: the floor, so a palette keeps its border's character where it can afford to:
+//: `cyberpunk` needs 0%, `copper` 4%, `forest` 10%, `ume` 14%. The two that
+//: move a long way are `cute` (84%) and `retrowave` (68%), and that is `B15`
+//: showing through — a palette whose border is 1.5:1 on its own panel has to
+//: move a long way to become visible, and the alternative is a control nobody
+//: can find.
+//:
+//: There is **no first-paint mirror** of this, deliberately, unlike `--accent`
+//: and `--on-accent`. The stylesheet reads it as
+//: `var(--border-control, var(--border))`, so before the module boots a control
+//: paints with today's border — one frame of a *weaker* outline, which is the
+//: appearance that shipped yesterday, not an illegible one. `--on-accent`
+//: needed its mirrors because its fallback was white on a yellow button.
+export function controlBorderFor(borderHex, panelHex, fgHex, floor = 3) {
+  const rgb = (hex) => {
+    const h = String(hex || '').replace('#', '');
+    const d = h.length === 3 ? h[0] + h[0] + h[1] + h[1] + h[2] + h[2] : h;
+    return d.length === 6 ? hexToRgb('#' + d) : null;
+  };
+  const b = rgb(borderHex);
+  const f = rgb(fgHex);
+  if (!b || !f || !panelHex) return borderHex;
+  const at = (pct) => {
+    const t = pct / 100;
+    const ch = (x, y) => Math.round(y * t + x * (1 - t));
+    return '#' + [ch(b.r, f.r), ch(b.g, f.g), ch(b.b, f.b)]
+      .map((v) => Math.max(0, Math.min(255, v)).toString(16).padStart(2, '0')).join('');
+  };
+  // One percent at a time from *nothing added*, so the answer is the least
+  // change that clears the floor rather than a fixed ratio that overshoots 21
+  // of the 23. A hundred cheap comparisons, once per theme switch.
+  for (let pct = 0; pct <= 100; pct += 1) {
+    const candidate = at(pct);
+    if (contrastRatio(candidate, panelHex) >= floor) return candidate;
+  }
+  return fgHex;
+}
+
 //: Whichever of black or white is legible on `accentHex`. The endpoints of the
 //: luminance range, so the winner is the best any foreground can do — and the
 //: audit says the winner always clears 4.5:1 on every shipped palette.
@@ -394,6 +446,15 @@ export function applyColors(colors) {
   // theme and could not be reasoned about from this file; these two are the
   // endpoints of the luminance range and one of them always wins.
   if (_accent) s.setProperty('--on-accent', onAccentFor(_accent));
+
+  // `B1404`. The control-boundary border, 3:1 against this theme's own panel.
+  // Only set when the palette gives us all three inputs; the stylesheet's
+  // `var(--border-control, var(--border))` carries it otherwise, which is
+  // today's appearance rather than a broken one.
+  if (colors.border && colors.panel && colors.fg) {
+    s.setProperty('--border-control',
+                  controlBorderFor(colors.border, colors.panel, colors.fg));
+  }
 
   // Keep the mobile browser toolbar / status bar matched to the theme bg
   // (same as the early head-script does on first paint).

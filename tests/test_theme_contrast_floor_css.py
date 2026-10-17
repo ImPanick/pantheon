@@ -405,7 +405,13 @@ def test_scoping_a_token_did_not_move_it_on_the_surface_it_was_tuned_for(palette
 
     root = _root_expressions()
     scoped = {t for t, v in root.items() if v.startswith("light-dark(")}
-    assert scoped == set(dark_tuned) | set(light_tuned), sorted(scoped)
+    # `P1-13` put a second `light-dark()` family in `:root` — four elevation
+    # inks, which are black in both arms at two alphas and carry no hue to
+    # scope. They are named here rather than filtered by shape, so a token that
+    # arrives in neither family still fails this line.
+    elevation = {f"shadow-ink-{n}" for n in range(1, 5)}
+    assert scoped == set(dark_tuned) | set(light_tuned) | elevation, sorted(scoped)
+    scoped -= elevation
 
     light = set(_light(palettes))
     assert light == {"cute", "lavender", "light", "paper", "notebook", "codehost", "video", "mintchat"}, sorted(light)
@@ -451,9 +457,26 @@ def test_a_light_arm_is_the_dark_arm_at_a_different_lightness(palettes):
     for token, expr in _root_expressions().items():
         if not expr.startswith("light-dark("):
             continue
+        # `P1-13`'s elevation inks are the other `light-dark()` family in this
+        # file: black in both arms, differing only in alpha, so "same hue" is
+        # trivially true and the rule worth holding is that the light arm is the
+        # *softer* one — a shadow that reads as a grey smudge on a white panel
+        # is the defect that row exists to end. Each family gets its own rule
+        # rather than one family getting a pass.
+        ink = re.fullmatch(r"light-dark\(\s*rgba\(\s*0\s*,\s*0\s*,\s*0\s*,\s*([0-9.]+)\s*\)"
+                           r"\s*,\s*rgba\(\s*0\s*,\s*0\s*,\s*0\s*,\s*([0-9.]+)\s*\)\s*\)", expr)
+        if ink:
+            light_alpha, dark_alpha = float(ink.group(1)), float(ink.group(2))
+            assert light_alpha < dark_alpha, (
+                f"--{token}: the light arm's alpha {light_alpha} is not below "
+                f"the dark arm's {dark_alpha}, so the light palettes keep the "
+                f"smudge this token was introduced to remove")
+            continue
         arms = re.fullmatch(r"light-dark\(\s*(#[0-9a-fA-F]{3,8})\s*,\s*"
                             r"(#[0-9a-fA-F]{3,8})\s*\)", expr)
-        assert arms, f"--{token}: {expr!r} — both arms should be plain hex"
+        assert arms, (
+            f"--{token}: {expr!r} — a scoped token is either two plain hex arms "
+            f"(a colour) or two black alphas (an elevation ink); this is neither")
         lh, ls_ = hs(_rgb(arms.group(1)))
         dh, ds = hs(_rgb(arms.group(2)))
         hue_gap = min(abs(lh - dh), 360 - abs(lh - dh))

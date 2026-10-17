@@ -483,7 +483,7 @@ def test_fg_muted_resolves_on_all_sixteen_palettes():
 
 
 def test_the_three_populations_hold_at_their_counts():
-    """96 bare, 8 with a fallback, 104 in all (101 before `P21-01`).
+    """97 bare, 8 with a fallback, 105 in all (101 before `P21-01`).
 
     The bare count is the row's deliverable and the fallback count is where a
     third class would hide, so both are pinned by spelling as well as by total.
@@ -497,11 +497,19 @@ def test_the_three_populations_hold_at_their_counts():
     # `color:` sites to the document library's folder row — its path separator
     # and two of its counts. All three are text, so all three inherit when the
     # token is missing, which is the population this row already accepts.
-    assert len(uses) == 104, f"expected 104 uses of --fg-muted, found {len(uses)}"
+    #
+    # 104 -> 105 and 96 -> 97 bare: `P9-13` (20dc3fe) added `.theme-zone-hint`,
+    # the theme zone highlighter's help line. **It arrived as a NINTH fallback
+    # spelling** — `var(--fg-muted, color-mix(in srgb, var(--fg) 62%,
+    # transparent))` — which is exactly what `:root` defines `--fg-muted` to be,
+    # so the fallback was dead on arrival and this case went red the day it
+    # landed and was not run. That is the third class this test exists to catch,
+    # caught. The fallback is gone and the site is bare like the other 96.
+    assert len(uses) == 105, f"expected 105 uses of --fg-muted, found {len(uses)}"
 
     bare = [expr for _, expr in uses if not _fallback(expr)]
-    assert len(bare) == 96, (
-        f"expected 93 bare `var(--fg-muted)` uses, found {len(bare)}. If a site "
+    assert len(bare) == 97, (
+        f"expected 97 bare `var(--fg-muted)` uses, found {len(bare)}. If a site "
         "was legitimately added or removed, move this number and say which in "
         "the commit — do not widen the assertion."
     )
@@ -519,7 +527,7 @@ def test_the_three_populations_hold_at_their_counts():
 
 
 def test_the_bare_uses_split_across_properties_as_measured():
-    """90 `color`, 4 `border-color`, 2 `background` (87 before `P21-01`).
+    """91 `color`, 4 `border-color`, 2 `background` (87 before `P21-01`).
 
     Worth pinning separately from the total because the three do different
     things when the token is undefined and the row's framing only covers one
@@ -541,7 +549,9 @@ def test_the_bare_uses_split_across_properties_as_measured():
         assert match, f"line {line}: could not read the property for {expr!r}"
         tally[match.group(1)] = tally.get(match.group(1), 0) + 1
     # `color` 87 -> 90: `P21-01`'s three folder-row sites (see above).
-    assert tally == {"color": 90, "border-color": 4, "background": 2}, tally
+    # `color` 90 -> 91: `P9-13`'s `.theme-zone-hint`, moved out of the fallback
+    # population by the case above. Help text, so it inherits if the token goes.
+    assert tally == {"color": 91, "border-color": 4, "background": 2}, tally
 
 
 def test_the_javascript_uses_are_recorded_but_not_this_rows_work():
