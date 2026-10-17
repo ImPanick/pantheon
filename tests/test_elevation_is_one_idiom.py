@@ -44,10 +44,13 @@ of the row and it needs eyes.
 from __future__ import annotations
 
 import importlib.util
+import json
 import math
 import re
+import shutil
 import subprocess
 import sys
+import textwrap
 from collections import Counter
 from pathlib import Path
 
@@ -273,3 +276,127 @@ def test_the_checker_loads_the_one_comment_blanker():
         "the checker no longer loads the repository's blanker")
     assert "re.sub(r\"/\\*" not in source and "/\\*.*?\\*/" not in source, (
         "the checker has grown its own comment stripper")
+
+
+# ── The browser ─────────────────────────────────────────────────────────────
+
+def _browser():
+    """The harness `tests/test_the_command_palette_in_a_browser.py` uses, in the
+    one shape that matters here: `executablePath` is passed explicitly, because
+    this environment's Chromium is preinstalled outside Playwright's own cache
+    and `chromium.launch()` with no path reports it as not downloaded."""
+    node = shutil.which("node")
+    if not node:
+        return None, None, "node binary not on PATH"
+    probe = subprocess.run(
+        [node, "-e",
+         "const { chromium } = require('playwright');"
+         "const fs = require('fs');"
+         "const p = chromium.executablePath();"
+         "process.stdout.write(fs.existsSync(p) ? p : '');"],
+        capture_output=True, text=True, timeout=60)
+    if probe.returncode != 0:
+        return None, None, "the playwright node package is not installed"
+    path = probe.stdout.strip()
+    if not path:
+        for candidate in ("/opt/pw-browsers/chromium",
+                          "/opt/pw-browsers/chromium-1194/chrome-linux/chrome"):
+            if Path(candidate).exists():
+                path = candidate
+                break
+    if not path:
+        return None, None, "playwright has no Chromium available"
+    return node, path, None
+
+
+NODE, CHROME, _SKIP = _browser()
+
+
+@pytest.mark.skipif(NODE is None, reason=_SKIP or "")
+def test_a_browser_resolves_both_arms_the_way_the_ruling_promised(tmp_path):
+    """The claim no amount of reading the stylesheet can settle.
+
+    `light-dark()` is a *used-value* function: if the engine did not support
+    it, the declaration would be invalid and the shadow would **disappear**
+    rather than fall back — a silent visual regression that every text-reading
+    test in this file would call green. So the two promises are driven in a
+    real engine: on `color-scheme: dark` the ink resolves to the literal the
+    file was tuned with (which is what "the 15 dark palettes are pixel-
+    identical" means), and on `color-scheme: light` it resolves to the softer
+    arm.
+
+    `B1404`'s fallback chain rides along, because it is the same question in
+    the same frame: `var(--border-control, var(--border))` has to resolve to
+    today's border while `--border-control` is unset, which is why that row
+    needs no first-paint mirror."""
+    tiers = {t: d for t, d in zip(range(1, len(CE.TIERS) + 1), CE.TIERS)}
+    defined = CE.token_definitions()
+    rules = "\n".join(
+        f"  --shadow-ink-{t}: light-dark(rgba(0,0,0,{defined[t][0]}), rgba(0,0,0,{defined[t][1]}));"
+        for t in tiers)
+    boxes = "\n".join(f'<div id="d{t}"></div>' for t in tiers)
+    light_boxes = "\n".join(f'<div id="l{t}"></div>' for t in tiers)
+    page = textwrap.dedent(f"""\
+        <!doctype html><html><head><style>
+        :root {{ color-scheme: dark; --border: #2a2d31;
+        {rules}
+        }}
+        .light {{ color-scheme: light; }}
+        div {{ box-shadow: 0 4px 12px var(--shadow-ink-1); }}
+        """ + "".join(
+            f"#d{t}, #l{t} {{ box-shadow: 0 4px 12px var(--shadow-ink-{t}); }}\n"
+            for t in tiers) + f"""
+        #edge {{ border: 1px solid var(--border-control, var(--border)); }}
+        </style></head><body>
+        {boxes}<div class="light">{light_boxes}</div><div id="edge"></div>
+        </body></html>
+        """)
+    page_file = tmp_path / "ladder.html"
+    page_file.write_text(page, encoding="utf-8")
+
+    script = tmp_path / "drive.js"
+    script.write_text(textwrap.dedent("""\
+        const { chromium } = require('playwright');
+        (async () => {
+          const browser = await chromium.launch({
+            args: ['--no-sandbox'], executablePath: process.argv[3] });
+          const page = await browser.newPage();
+          await page.goto('file://' + process.argv[2]);
+          const out = await page.evaluate(() => {
+            const read = (id) => {
+              const el = document.getElementById(id);
+              return el ? getComputedStyle(el).boxShadow : null;
+            };
+            const o = {};
+            for (let t = 1; t <= 4; t += 1) { o['d' + t] = read('d' + t); o['l' + t] = read('l' + t); }
+            o.edge = getComputedStyle(document.getElementById('edge')).borderColor;
+            return o;
+          });
+          process.stdout.write(JSON.stringify(out));
+          await browser.close();
+        })();
+        """), encoding="utf-8")
+
+    run = subprocess.run([NODE, str(script), str(page_file), CHROME],
+                         capture_output=True, text=True, timeout=240)
+    assert run.returncode == 0, run.stdout + run.stderr
+    got = json.loads(run.stdout)
+
+    for tier, dark in tiers.items():
+        shadow = got[f"d{tier}"]
+        assert shadow and shadow != "none", (
+            f"--shadow-ink-{tier} painted nothing on a dark scheme — `light-dark()` "
+            f"is not supported by this engine, so every swept shadow has vanished")
+        assert f"rgba(0, 0, 0, {dark:g})" in shadow, (
+            f"on `color-scheme: dark`, --shadow-ink-{tier} resolved to {shadow!r} "
+            f"and not to the tuned literal {dark:g}")
+        light = got[f"l{tier}"]
+        assert light and light != "none", f"--shadow-ink-{tier} painted nothing on light"
+        assert f"rgba(0, 0, 0, {dark:g})" not in light, (
+            f"on `color-scheme: light`, --shadow-ink-{tier} still resolved to the dark "
+            f"arm {dark:g} — the 8 light palettes keep the smudge")
+
+    assert got["edge"] == "rgb(42, 45, 49)", (
+        f"`var(--border-control, var(--border))` resolved to {got['edge']!r} with "
+        "--border-control unset; `B1404` has no first-paint mirror because that "
+        "chain is meant to give today's border for one frame")
