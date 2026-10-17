@@ -9,7 +9,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/licence-AGPL--3.0--or--later-blue" alt="AGPL-3.0-or-later">
   <img src="https://img.shields.io/badge/status-early-orange" alt="Early">
-  <img src="https://img.shields.io/badge/tests-20%2C102%20passing-brightgreen" alt="20,102 tests passing">
+  <img src="https://img.shields.io/badge/tests-20%2C200%20passing-brightgreen" alt="20,200 tests passing">
   <img src="https://img.shields.io/badge/docker-compose-2496ED?logo=docker&logoColor=white" alt="Docker Compose">
   <img src="https://img.shields.io/badge/python-FastAPI-009688?logo=fastapi&logoColor=white" alt="FastAPI">
   <img src="https://img.shields.io/badge/forked%20from-Odysseus-6E5494?logo=github&logoColor=white" alt="Forked from Odysseus">
@@ -275,7 +275,7 @@ what counts as blocking are in
 `.pantheon/ship-line.py`'s, and `.pantheon/check-ledger.py` fails the build when one here stops
 matching it.
 
-Test suite: **20,102 passing**, nothing red — measured 2026-10-17 at `fc5770f`, which is how that figure is stated now: it cannot be derived without a 76-minute run, so it names the day and the commit instead of pretending to be current (`B1405`). The fourteen standing failures this fork
+Test suite: **20,200 passing**, nothing red — measured 2026-10-17 at `6803031`, which is how that figure is stated now: it cannot be derived without a 76-minute run, so it names the day and the commit instead of pretending to be current (`B1405`). The fourteen standing failures this fork
 inherited and carried were cleared on 2026-09-12 — eight were a container missing dependencies
 the project already declares, three were stale test stubs hiding behind broad `except` blocks,
 and three were rules pinned to upstream's shape rather than this fork's.
