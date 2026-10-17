@@ -64,8 +64,9 @@ APOLOGY = "couldn't pull a clean answer together"
 def window(monkeypatch):
     """The context-window query is a socket too: answer it, and keep its cache
     out of every other test's way."""
+    # `B1369`: three values — window, proven, and where it came from.
     monkeypatch.setattr(model_context, "_query_context_length",
-                        lambda url, model: (32_768, True))
+                        lambda url, model: (32_768, True, model_context.BASIS_REPORTED))
     monkeypatch.setattr(model_context, "_context_cache", {})
 
 

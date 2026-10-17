@@ -44,8 +44,9 @@ TASKS_SAID = "### manage_tasks: list\nNo scheduled tasks yet."
 
 @pytest.fixture(autouse=True)
 def window(monkeypatch):
+    # `B1369`: three values — window, proven, and where it came from.
     monkeypatch.setattr(model_context, "_query_context_length",
-                        lambda url, model: (32_768, True))
+                        lambda url, model: (32_768, True, model_context.BASIS_REPORTED))
     monkeypatch.setattr(model_context, "_context_cache", {})
 
 

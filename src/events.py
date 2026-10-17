@@ -738,6 +738,11 @@ def record_run_config(*, sampling: Optional[Dict[str, Any]] = None,
             "cost_tokens": int(suite.get("cost_tokens") or 0),
             "window": int(suite.get("window") or 0),
             "window_known": bool(suite.get("window_known")),
+            # `B1369`. Which of the two things `window_known` used to mean —
+            # `reported`, `known_table` or `fallback`. Empty on a receipt
+            # written before the basis existed, which is a different statement
+            # from `fallback` and deliberately not folded into it.
+            "basis": str(suite.get("basis") or ""),
             "over_room": bool(suite.get("over_room")),
         }
     if skills is not None:

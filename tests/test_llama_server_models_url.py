@@ -52,7 +52,11 @@ def test_model_context_queries_models_for_v1_base(monkeypatch):
 
     monkeypatch.setattr(model_context.httpx, "get", fake_get)
 
-    assert model_context._query_context_length("http://127.0.0.1:8080/v1", "qwen3") == (32768, True)
+    # `B1369`: the basis is `reported`, because this value came out of the
+    # endpoint's own `/v1/models` entry rather than the name table — which is
+    # the distinction the third element exists to make.
+    assert model_context._query_context_length("http://127.0.0.1:8080/v1", "qwen3") == (
+        32768, True, model_context.BASIS_REPORTED)
     assert seen == [
         "http://127.0.0.1:8080/slots",
         "http://127.0.0.1:8080/v1/models",

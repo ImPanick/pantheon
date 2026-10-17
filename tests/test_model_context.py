@@ -211,7 +211,10 @@ class TestGetContextLength:
 
         def fake_query(endpoint_url, model):
             calls.append((endpoint_url, model))
-            return (8192, True) if len(calls) == 1 else (27000, True)
+            # `B1369`: three values now — the window, whether it is proven, and
+            # which of the two things that used to mean.
+            return ((8192, True, model_context.BASIS_REPORTED) if len(calls) == 1
+                    else (27000, True, model_context.BASIS_REPORTED))
 
         monkeypatch.setattr(model_context, "_query_context_length", fake_query)
 
@@ -230,7 +233,8 @@ class TestGetContextLength:
 
         def fake_query(endpoint_url, model):
             calls.append((endpoint_url, model))
-            return (200000, True) if len(calls) == 1 else (12345, True)
+            return ((200000, True, model_context.BASIS_REPORTED) if len(calls) == 1
+                    else (12345, True, model_context.BASIS_REPORTED))
 
         monkeypatch.setattr(model_context, "_query_context_length", fake_query)
 

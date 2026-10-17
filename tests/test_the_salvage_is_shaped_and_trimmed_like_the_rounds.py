@@ -210,7 +210,8 @@ async def _forced_turn_with_a_picture(chain, monkeypatch, model):
     """One Agent-mode turn through the real chat route, loop, fallback wrapper
     and payload builders, with a tool picture in the conversation, going round
     in circles until the loop breaker forces an answer. Returns what was sent."""
-    monkeypatch.setattr(model_context, "_query_context_length", lambda url, m: (32_768, True))
+    monkeypatch.setattr(model_context, "_query_context_length",   # `B1369`
+                        lambda url, m: (32_768, True, model_context.BASIS_REPORTED))
     monkeypatch.setattr(model_context, "_context_cache", {})
     # The endpoint's own answer to "can this model see" is a request to it.
     monkeypatch.setattr(chat_helpers, "endpoint_supports_vision", lambda url, m: None)

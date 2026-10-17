@@ -1169,11 +1169,18 @@ def plan_turn_tool_suite(
     built-ins, every registered MCP tool, the skill-invoking tools — and the
     whole set is offered whenever it fits the model's **proven** window with
     working room left. The window is read the way Pantheon already reads it
-    (`model_context.budget_context_for_model`, which answers 0 rather than a
+    (`model_context.budget_context_basis`, which answers 0 rather than a
     bare 128K fallback, and `context_budget.agent_input_budget` —
     `CHAT-M-4`'s work) and **never from the model's name**
     (`D-2026-10-07-02` §1). An unknown window takes the conservative branch and
     the returned `reason` says so.
+
+    `B1369`: the same call also returns **where** the window came from, and the
+    suite carries it to the receipt as `run_config.suite.basis`. That is not a
+    second rule about what to do — `known_table` still counts as proven, and
+    whether it should is the owner's call — it is the receipt being able to
+    answer *was this turn's room measured, or guessed from the model's name?*
+    after the fact, which it could not.
 
     Privileges are untouched: `disabled_tools` already carries
     `blocked_tools_for_owner`, the delegated-credential cap, the feature flags,
@@ -1183,7 +1190,7 @@ def plan_turn_tool_suite(
     afterwards.
     """
     from src.context_budget import tool_suite_room
-    from src.model_context import budget_context_for_model
+    from src.model_context import budget_context_basis
     from src.tool_index import (
         ALWAYS_AVAILABLE,
         ToolIndex,
@@ -1223,7 +1230,10 @@ def plan_turn_tool_suite(
                 + int(mcp_costs.get(name, 0))
                 + int(prose_costs.get(name, 0)))
 
-    window = budget_context_for_model(endpoint_url or "", model or "", fallback=0)
+    # `B1369`. The same branch as `budget_context_for_model`, plus where the
+    # number came from, so the receipt can say whether this turn's room was
+    # measured off a server's answer or guessed from the model's name.
+    window, window_basis = budget_context_basis(endpoint_url or "", model or "", fallback=0)
     room = tool_suite_room(window, get_setting_fn or get_setting)
 
     domains = [str(d) for d in (domains or ())]
@@ -1251,6 +1261,7 @@ def plan_turn_tool_suite(
         room=room["room"],
         window=room["window"],
         window_known=room["window_known"],
+        window_basis=window_basis,
         pinned=pinned,
         mcp=mcp_names & candidates,
         keyword_picks=keyword_picks,

@@ -37,6 +37,7 @@ import time
 import pytest
 
 import src.agent_loop as al
+import src.model_context as mc
 import src.tool_index as ti
 from src.context_budget import (
     DEFAULT_BUDGET,
@@ -103,8 +104,16 @@ def _base(monkeypatch, mgr=None, window=W128K, settings=None):
     monkeypatch.setattr(al, "blocked_tools_for_owner", lambda owner: set(), raising=False)
     monkeypatch.setattr(al, "get_mcp_manager", lambda: mgr, raising=False)
     monkeypatch.setattr(al, "_load_mcp_disabled_map", lambda: {}, raising=False)
-    monkeypatch.setattr("src.model_context.budget_context_for_model",
-                        lambda url, model, fallback=0: window)
+    # `B1369`. The loop reads `budget_context_basis` — the window AND where it
+    # came from, from one branch so the two cannot disagree. Patching the older
+    # two-value helper here left this file's window unset the moment the loop
+    # moved, which is how that change was caught: five cases went red reporting
+    # *"this endpoint did not report its context window"*.
+    monkeypatch.setattr(
+        "src.model_context.budget_context_basis",
+        lambda url, model, fallback=0: (
+            window,
+            mc.BASIS_REPORTED if window else mc.BASIS_FALLBACK))
 
 
 def _drive(monkeypatch, rounds, *, message=OWNER_QUESTION, model=UNKNOWN_MODEL,

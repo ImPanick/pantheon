@@ -71,15 +71,21 @@ def test_nondefault_value_is_an_explicit_cap():
 
 def test_get_context_length_known_surfaces_endpoint_proven_vs_fallback():
     mc._context_cache.clear()
-    with patch.object(mc, "_query_context_length", return_value=(131072, True)):
+    # `B1369` gave the query a third element. `get_context_length_known` keeps
+    # its two-value contract on purpose — a dozen callers hold it — so these
+    # assertions are unchanged except for the stub's shape.
+    with patch.object(mc, "_query_context_length",
+                      return_value=(131072, True, mc.BASIS_REPORTED)):
         assert mc.get_context_length_known("http://proven/v1", "m1") == (131072, True)
     mc._context_cache.clear()
-    with patch.object(mc, "_query_context_length", return_value=(mc.DEFAULT_CONTEXT, False)):
+    with patch.object(mc, "_query_context_length",
+                      return_value=(mc.DEFAULT_CONTEXT, False, mc.BASIS_FALLBACK)):
         ctx, known = mc.get_context_length_known("http://unknown/v1", "m2")
         assert ctx == mc.DEFAULT_CONTEXT and known is False
     # get_context_length keeps its plain-int contract for existing callers
     mc._context_cache.clear()
-    with patch.object(mc, "_query_context_length", return_value=(64000, True)):
+    with patch.object(mc, "_query_context_length",
+                      return_value=(64000, True, mc.BASIS_REPORTED)):
         assert mc.get_context_length("http://proven/v1", "m3") == 64000
 
 

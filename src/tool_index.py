@@ -892,6 +892,16 @@ class ToolSuite:
     cost: int = 0
     window: int = 0
     window_known: bool = True
+    # `B1369`. **Where `window` came from.** One of `model_context.CONTEXT_BASES`
+    # — `reported` (an endpoint said so), `known_table` (a substring of the
+    # model's *name* matched `KNOWN_CONTEXT_WINDOWS`) or `fallback`. `window_known`
+    # was True for the first two indistinguishably, so a narrowed turn could not
+    # be read back to say whether the room it narrowed against was measured or
+    # guessed from a name. Carried as data: the vocabulary belongs to the module
+    # that decides it, and `test_the_window_says_where_it_came_from` asserts this
+    # field only ever holds one of those three rather than this file keeping a
+    # second copy of the list (`Law 7`).
+    window_basis: str = ""
     pinned: Tuple[str, ...] = ()
     over_room: bool = False
 
@@ -906,6 +916,7 @@ class ToolSuite:
             "cost_tokens": int(self.cost),
             "window": int(self.window),
             "window_known": bool(self.window_known),
+            "basis": str(self.window_basis or ""),
             "over_room": bool(self.over_room),
         }
 
@@ -1019,6 +1030,7 @@ def plan_tool_suite(
     room: int,
     window: int = 0,
     window_known: bool = True,
+    window_basis: str = "",
     pinned: Iterable[str] = (),
     mcp: Iterable[str] = (),
     keyword_picks: Iterable[str] = (),
@@ -1051,6 +1063,7 @@ def plan_tool_suite(
             candidates=frozenset(pool), offered=frozenset(pool), withheld=(),
             partial=False, reason=SUITE_REASON_WHOLE, room=room, cost=whole_cost,
             window=int(window or 0), window_known=bool(window_known),
+            window_basis=str(window_basis or ""),
             pinned=tuple(sorted(pinned_in)),
         )
 
@@ -1076,7 +1089,8 @@ def plan_tool_suite(
         partial=bool(pool - offered),
         reason=SUITE_REASON_WINDOW if window_known else SUITE_REASON_WINDOW_UNKNOWN,
         room=room, cost=spent, window=int(window or 0),
-        window_known=bool(window_known), pinned=tuple(sorted(pinned_in)),
+        window_known=bool(window_known), window_basis=str(window_basis or ""),
+        pinned=tuple(sorted(pinned_in)),
         over_room=spent > room,
     )
 

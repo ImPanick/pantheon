@@ -173,6 +173,41 @@ def is_local_endpoint(url: str) -> bool:
 DEFAULT_CONTEXT = 128000
 REQUEST_TIMEOUT = 5
 
+# `B1369`. **Where the number came from**, which `known` could not say.
+#
+# `known` was True for two different things: a window an endpoint actually
+# reported, and a *substring match on the model's name* in
+# `KNOWN_CONTEXT_WINDOWS`. Measured on 2026-10-14:
+# `budget_context_for_model("http://127.0.0.1:9/v1", "gemma-4-26b")` answered
+# **262,144** with nothing listening on that port, because `"gemma"` is a key in
+# the table. Every caller that scales a budget off the window — the agent's trim
+# budget, the context wheel, the tool suite's room — was therefore unable to
+# tell a measurement from a guess about a name, which is at least adjacent to
+# `D-2026-10-07-02` §1's rule that a capability is never read off a model's name.
+#
+# Three values, not a second boolean (`Law 10`): a flag would have to be read
+# together with `known` to mean anything, and the pair has four states of which
+# one is impossible.
+#
+#   `reported`    — an endpoint said so: llama.cpp `/slots` `n_ctx`, a
+#                   `/v1/models` entry, or a proxy catalogue.
+#   `known_table` — a substring of the model's name matched
+#                   `KNOWN_CONTEXT_WINDOWS`. True of the name, not of the server.
+#   `fallback`    — neither, so the value is the bare `DEFAULT_CONTEXT`.
+#
+# **This changes no behaviour.** `budget_context_for_model` still treats
+# `known_table` as proven, because whether it should is the owner's call and the
+# row says so; what changes is that a caller can now ask, and the run receipt
+# records the answer. `known` remains exactly `basis != BASIS_FALLBACK`, and
+# `test_the_window_says_where_it_came_from` asserts that rather than leaving two
+# fields free to disagree (`Law 7`).
+BASIS_REPORTED = "reported"
+BASIS_KNOWN_TABLE = "known_table"
+BASIS_FALLBACK = "fallback"
+
+#: Every value a basis may take, in descending order of how much it proves.
+CONTEXT_BASES = (BASIS_REPORTED, BASIS_KNOWN_TABLE, BASIS_FALLBACK)
+
 # Known context windows for major API models (used as fallback when /models
 # endpoint doesn't report context_length).
 # Substring matching — use the shortest unique prefix so variants get caught.
@@ -302,17 +337,20 @@ KNOWN_CONTEXT_WINDOWS = {
 # ---------------------------------------------------------------------------
 # Cache
 # ---------------------------------------------------------------------------
-_context_cache: Dict[Tuple[str, str], Tuple[int, bool]] = {}
+_context_cache: Dict[Tuple[str, str], Tuple[int, bool, str]] = {}
 
 
-def _get_context_length_cached(endpoint_url: str, model: str) -> Tuple[int, bool]:
-    """Return (context_length, known). ``known`` is False only when the value is a
-    bare DEFAULT_CONTEXT fallback (no endpoint report and not in the known table)."""
+def _get_context_length_cached(endpoint_url: str, model: str) -> Tuple[int, bool, str]:
+    """Return ``(context_length, known, basis)``.
+
+    ``known`` is False only when the value is a bare DEFAULT_CONTEXT fallback (no
+    endpoint report and not in the known table); ``basis`` says which of the two
+    things ``known`` means (`B1369`, see `CONTEXT_BASES`)."""
     with _rows_read_once():   # `P23-04` (PERF-M-14)
         return _get_context_length_once(endpoint_url, model)
 
 
-def _get_context_length_once(endpoint_url: str, model: str) -> Tuple[int, bool]:
+def _get_context_length_once(endpoint_url: str, model: str) -> Tuple[int, bool, str]:
     configured_kind = _configured_endpoint_kind(endpoint_url)
     is_local = is_local_endpoint(endpoint_url)
     # Key on (endpoint_url, model): the same model id can be served by two
@@ -323,14 +361,14 @@ def _get_context_length_once(endpoint_url: str, model: str) -> Tuple[int, bool]:
     if not is_local and cache_key in _context_cache:
         return _context_cache[cache_key]
 
-    ctx, known = _query_context_length(endpoint_url, model)
+    ctx, known, basis = _query_context_length(endpoint_url, model)
     # Only cache non-default values to allow retry on next request.
     # Local endpoints can restart with a different --max-model-len while keeping
     # the same model id, so always re-query them instead of serving stale cache.
     if not is_local and (ctx != DEFAULT_CONTEXT or configured_kind in ("api", "proxy")):
-        _context_cache[cache_key] = (ctx, known)
-    logger.info(f"Context length for {model}: {ctx}")
-    return ctx, known
+        _context_cache[cache_key] = (ctx, known, basis)
+    logger.info(f"Context length for {model}: {ctx} ({basis})")
+    return ctx, known, basis
 
 
 def get_context_length(endpoint_url: str, model: str) -> int:
@@ -348,7 +386,23 @@ def get_context_length_known(endpoint_url: str, model: str) -> Tuple[int, bool]:
     discovered (endpoint-reported or in the known-models table) rather than the bare
     DEFAULT_CONTEXT fallback. Callers that *scale* a budget off the window must not
     trust an unknown value — a fallback 128K isn't proof the model holds 128K
-    (review on #4122)."""
+    (review on #4122).
+
+    Kept at two values on purpose: this is the contract a dozen callers already
+    hold, and `B1369` is about making the provenance *askable*, not about making
+    every caller handle it. `get_context_length_basis` is the three-value form."""
+    ctx, known, _basis = _get_context_length_cached(endpoint_url, model)
+    return ctx, known
+
+
+def get_context_length_basis(endpoint_url: str, model: str) -> Tuple[int, bool, str]:
+    """``(context_length, known, basis)`` — the window and where it came from.
+
+    `B1369`. For callers that scale something off the window and want to record
+    what they scaled off: a window an endpoint reported is evidence about the
+    server, and a window matched from the model's *name* is not. The run receipt
+    stores it (`ToolSuite.window_basis` → `run_config.suite.basis`) so a
+    narrowed turn can be read back and the question answered after the fact."""
     return _get_context_length_cached(endpoint_url, model)
 
 
@@ -367,6 +421,21 @@ def budget_context_for_model(endpoint_url: str, model: str, *, fallback: int = 0
         return ctx if known else 0
     except Exception:
         return fallback
+
+
+def budget_context_basis(endpoint_url: str, model: str, *, fallback: int = 0) -> Tuple[int, str]:
+    """``budget_context_for_model`` plus the basis of the number it returned.
+
+    `B1369`. The same branch, so the two can never disagree (`Law 7`) — when
+    the window is not proven this returns `(0, BASIS_FALLBACK)`, because 0 is
+    not a window that came from anywhere. On probe error it returns the
+    caller's ``fallback`` with `BASIS_FALLBACK`, matching
+    ``budget_context_for_model``'s own behaviour rather than inventing one."""
+    try:
+        ctx, known, basis = get_context_length_basis(endpoint_url, model)
+        return (ctx, basis) if known else (0, BASIS_FALLBACK)
+    except Exception:
+        return fallback, BASIS_FALLBACK
 
 
 def _lookup_known(model: str) -> Optional[int]:
@@ -465,9 +534,19 @@ def _proxy_catalog_context(endpoint_url: str, model: str) -> Optional[int]:
     return None
 
 
-def _query_context_length(endpoint_url: str, model: str) -> Tuple[int, bool]:
-    """Query the model API for context length. Returns (context_length, known) where
-    ``known`` is False only for the bare DEFAULT_CONTEXT fallback."""
+def _query_context_length(endpoint_url: str, model: str) -> Tuple[int, bool, str]:
+    """Query the model API for context length.
+
+    Returns ``(context_length, known, basis)``. ``known`` is False only for the
+    bare ``DEFAULT_CONTEXT`` fallback; ``basis`` is one of `CONTEXT_BASES` and
+    says **which** of the two things `known` used to mean (`B1369`).
+
+    The arity is deliberately strict rather than tolerant. A caller — or a test
+    monkeypatching this — that still returns a 2-tuple raises here, loudly. The
+    alternative, defaulting the basis when it is missing, would answer *we do
+    not know where this came from* in exactly the shape this row exists to
+    remove: a number whose provenance cannot be told.
+    """
     known = _lookup_known(model)
     api_ctx = None
     configured_kind = _configured_endpoint_kind(endpoint_url)
@@ -478,7 +557,7 @@ def _query_context_length(endpoint_url: str, model: str) -> Tuple[int, bool]:
     if configured_kind in ("api", "proxy"):
         if known:
             logger.info(f"Using known context window for {model}: {known}")
-            return known, True
+            return known, True, BASIS_KNOWN_TABLE
         # Not in the known table: read the real window from the catalog (cached
         # once per endpoint) instead of capping every unknown model at the
         # default — that under-reported large windows on aggregators like
@@ -486,8 +565,8 @@ def _query_context_length(endpoint_url: str, model: str) -> Tuple[int, bool]:
         api_ctx = _proxy_catalog_context(endpoint_url, model)
         if api_ctx:
             logger.info(f"Proxy catalog reports context window for {model}: {api_ctx}")
-            return api_ctx, True
-        return DEFAULT_CONTEXT, False
+            return api_ctx, True, BASIS_REPORTED
+        return DEFAULT_CONTEXT, False, BASIS_FALLBACK
 
     # Try llama.cpp /slots endpoint first — reports actual serving context
     if is_local_endpoint(endpoint_url):
@@ -500,7 +579,7 @@ def _query_context_length(endpoint_url: str, model: str) -> Tuple[int, bool]:
                     n_ctx = slots[0].get("n_ctx")
                     if n_ctx and isinstance(n_ctx, int) and n_ctx > 0:
                         logger.info(f"llama.cpp /slots reports n_ctx={n_ctx} for {model}")
-                        return n_ctx, True
+                        return n_ctx, True, BASIS_REPORTED
         except Exception:
             pass
 
@@ -512,8 +591,8 @@ def _query_context_length(endpoint_url: str, model: str) -> Tuple[int, bool]:
     if is_copilot_base(endpoint_url):
         if known:
             logger.info(f"Using known context window for {model}: {known}")
-            return known, True
-        return DEFAULT_CONTEXT, False
+            return known, True, BASIS_KNOWN_TABLE
+        return DEFAULT_CONTEXT, False, BASIS_FALLBACK
 
     from src.endpoint_resolver import build_models_url
 
@@ -538,18 +617,23 @@ def _query_context_length(endpoint_url: str, model: str) -> Tuple[int, bool]:
         _is_local = is_local_endpoint(endpoint_url)
         if _is_local and api_ctx < known:
             logger.info(f"Local endpoint reports {api_ctx} for {model} (known max: {known}) — using API value")
-            return api_ctx, True
+            return api_ctx, True, BASIS_REPORTED
         result = max(api_ctx, known)
         if api_ctx < known:
             logger.info(f"API reported {api_ctx} for {model}, using known {known} instead")
-        return result, True
+        # The basis follows the number that WON, not the fact that both were
+        # found. When the table out-bids the endpoint, the window being
+        # returned is the one derived from the model's name — which is the
+        # whole distinction this row is about, and the one place it would have
+        # been easy to label as `reported` because an endpoint did answer.
+        return result, True, (BASIS_REPORTED if result == api_ctx else BASIS_KNOWN_TABLE)
     if api_ctx:
-        return api_ctx, True
+        return api_ctx, True, BASIS_REPORTED
     if known:
         logger.info(f"Using known context window for {model}: {known}")
-        return known, True
+        return known, True, BASIS_KNOWN_TABLE
 
-    return DEFAULT_CONTEXT, False
+    return DEFAULT_CONTEXT, False, BASIS_FALLBACK
 
 
 def estimate_tokens(messages: List[Dict]) -> int:
