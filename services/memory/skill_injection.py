@@ -105,6 +105,33 @@ MATCHED_CUT_WHAT_OMITTED = ("{omitted} further matched procedure(s) were left ou
                             "of this block, and any procedure above may be cut short")
 MATCHED_CUT_WHAT_SHORT = "The procedure above is cut short"
 
+#: `B1375`, on the owner's ruling. **What the model is told about one skill
+#: whose procedure was shortened rather than dropped.**
+#:
+#: `B1362` gave these bodies a budget and bounded them by dropping whole
+#: skills from the tail. That is a real improvement over the trimmer eating the
+#: conversation, and it is still a choice between two losses: with twelve
+#: matched procedures against a 12,000-character budget, ten of them reached
+#: the model as a count — *"10 further matched procedure(s) were left out"* —
+#: and the model could not even know what they were called, let alone decide
+#: whether it wanted one.
+#:
+#: So a skill that does not fit whole is shortened to its opening steps instead
+#: of dropped. Every matched skill keeps its name, its description, its *when
+#: to use* and the start of its procedure, and this line says exactly how much
+#: is missing and how to get it. The procedure is a **list**, so these are real
+#: steps and the count is exact — not a character cut dressed up as steps.
+MATCHED_STEPS_ELIDED = ("  _…{remaining} more step(s) in the full SKILL.md. "
+                        "`manage_skills` action=view name={name}._")
+MATCHED_STEPS_ELIDED_NO_FETCH = ("  _…{remaining} more step(s) not shown, and the "
+                                 "full SKILL.md cannot be fetched on this turn._")
+#: And what the block-level note says when that is what happened. `Law 10`:
+#: *"left out"* and *"shortened"* are different events and a note that reports
+#: the wrong one is worse than a shorter note — the same call
+#: `MATCHED_CUT_WHAT_SHORT` was added for.
+MATCHED_CUT_WHAT_SHORTENED = ("{shortened} matched procedure(s) are shown as their "
+                              "opening steps only")
+
 #: The fields `render_skill_index_block` actually reads. `status` only decides
 #: whether the `*(draft)*` badge is drawn; its value is never printed.
 INJECTED_FIELDS: tuple = ("name", "description", "category", "status")
@@ -262,13 +289,22 @@ def render_skill_index_block(index: Optional[Sequence[Dict]],
     return block
 
 
-def _render_one_body(sk: Dict) -> str:
+def _render_one_body(sk: Dict, *, max_steps: Optional[int] = None,
+                    can_fetch: bool = True) -> str:
     """One matched skill, in the shape the prompt has always used.
 
     `B1362`. Moved verbatim out of `agent_loop._build_system_prompt` — the
     headings, the `_(learned from X)_` tag, the numbered procedure and the
     semicolon-joined pitfalls are the wording the model has been reading, and a
     budget is not an excuse to reword a prompt in the same change.
+
+    `B1375`. `max_steps` renders the procedure's **first N steps** and one line
+    saying how many remain and how to fetch them. The procedure is a list, so
+    the count is exact; nothing here cuts a step in half. Everything above the
+    procedure — the name, the description, the *when to use* — is always kept,
+    because those are what the model needs to decide whether it wants the rest.
+    The pitfalls go with the elided steps: a pitfall about step 9 read without
+    step 9 is worse than no pitfall.
     """
     lines: List[str] = []
     src_tag = ""
@@ -280,15 +316,24 @@ def _render_one_body(sk: Dict) -> str:
         lines.append(str(sk["description"]))
     if sk.get("when_to_use"):
         lines.append(f"_When to use:_ {sk['when_to_use']}")
-    proc = sk.get("procedure") or []
-    if proc:
+    proc = [str(step) for step in (sk.get("procedure") or [])]
+    shown = proc if max_steps is None else proc[:max(int(max_steps), 0)]
+    remaining = len(proc) - len(shown)
+    if shown:
         lines.append("Procedure:")
-        for i, step in enumerate(proc, 1):
+        for i, step in enumerate(shown, 1):
             lines.append(f"  {i}. {step}")
+    if remaining > 0:
+        tpl = MATCHED_STEPS_ELIDED if can_fetch else MATCHED_STEPS_ELIDED_NO_FETCH
+        lines.append(tpl.format(remaining=remaining, name=sk.get("name", "?")))
     pitfalls = sk.get("pitfalls") or []
-    if pitfalls:
+    if pitfalls and remaining <= 0:
         lines.append("Pitfalls: " + "; ".join(str(p) for p in pitfalls))
     return "\n".join(lines)
+
+
+def _step_count(sk: Dict) -> int:
+    return len(sk.get("procedure") or [])
 
 
 def render_matched_skills_block(skills: Optional[Sequence[Dict]],
@@ -340,55 +385,99 @@ def render_matched_skills_block(skills: Optional[Sequence[Dict]],
     head = [MATCHED_HEADING, MATCHED_PREAMBLE if can_fetch else MATCHED_PREAMBLE_NO_FETCH]
     note_tpl = MATCHED_TRUNCATION_NOTE if can_fetch else MATCHED_TRUNCATION_NOTE_NO_FETCH
 
-    def assemble(bodies: List[str], omitted: int, cut: bool) -> str:
+    def assemble(bodies: List[str], omitted: int, cut: bool,
+                 shortened: int = 0) -> str:
         parts = list(head) + bodies
-        if omitted or cut:
-            what = (MATCHED_CUT_WHAT_OMITTED.format(omitted=omitted) if omitted
-                    else MATCHED_CUT_WHAT_SHORT)
+        if omitted or cut or shortened:
+            if omitted:
+                what = MATCHED_CUT_WHAT_OMITTED.format(omitted=omitted)
+            elif shortened:
+                what = MATCHED_CUT_WHAT_SHORTENED.format(shortened=shortened)
+            else:
+                what = MATCHED_CUT_WHAT_SHORT
             parts.append(note_tpl.format(what=what))
         return "\n".join(parts)
 
     bodies = [_render_one_body(s) for s in entries]
     block = assemble(bodies, 0, False)
     applied = [str(s.get("name")) for s in entries]
+    shortened: List[str] = []
     truncated = False
     omitted = 0
     if budget_chars and len(block) > int(budget_chars):
         budget = int(budget_chars)
-        keep = 0
-        # Drop whole bodies from the tail until the head, the note and what is
-        # left fit. `keep == 0` still renders the first body's opening lines:
-        # a heading with nothing under it says the match found nothing, which is
-        # a worse answer than a short procedure (the same call `P8-21` made for
-        # the catalogue's last surviving entry).
-        for n in range(len(bodies), 0, -1):
-            if len(assemble(bodies[:n], len(bodies) - n, False)) <= budget:
-                keep = n
-                break
-        if keep == len(bodies):
-            keep -= 1   # the untruncated form was already over budget
-        omitted = len(bodies) - keep
         truncated = True
-        applied = [str(s.get("name")) for s in entries[:max(keep, 1)]]
-        if keep == 0:
-            # Cut the single best match at a line boundary.
-            room = budget - len(assemble([], omitted - 1, True))
-            kept_lines: List[str] = []
-            used = 0
-            for line in bodies[0].split("\n"):
-                if used + len(line) + 1 > max(room, 0):
-                    break
-                kept_lines.append(line)
-                used += len(line) + 1
-            if not kept_lines:
-                kept_lines = [bodies[0].split("\n", 2)[1] if "\n" in bodies[0] else bodies[0]]
-            block = assemble(["\n".join(kept_lines)], omitted - 1, True)
+
+        # `B1375`, on the owner's ruling. **Shorten before dropping.**
+        #
+        # This used to drop whole bodies from the tail until the rest fit, so
+        # with twelve matched procedures against a 12,000-character budget ten
+        # of them reached the model as the number ten — it could not know what
+        # they were called, and so could not decide whether it wanted one. The
+        # ladder now has a rung in between: every matched skill keeps its name,
+        # description and *when to use*, and its procedure is cut to its first
+        # N steps with a line saying how many remain and how to fetch them.
+        #
+        # One `N` for every skill rather than a share each, and the reason is
+        # the failure it avoids: a per-skill share spends the whole budget on
+        # whichever procedure happens to be longest, so the twelfth match gets
+        # nothing while the first gets forty steps. A single N is also one
+        # number a reader can check against the block.
+        #
+        # Walked downwards from the longest procedure, which is the only bound
+        # that matters — `max_steps` above that is the whole body and `assemble`
+        # is cheap (a join over a dozen strings).
+        longest = max((_step_count(s) for s in entries), default=0)
+        for n in range(longest - 1, 0, -1):
+            trial = [_render_one_body(s, max_steps=n, can_fetch=can_fetch)
+                     for s in entries]
+            cut_names = [str(s.get("name")) for s in entries if _step_count(s) > n]
+            if len(assemble(trial, 0, False, shortened=len(cut_names))) <= budget:
+                block = assemble(trial, 0, False, shortened=len(cut_names))
+                applied = [str(s.get("name")) for s in entries]
+                shortened = cut_names
+                break
         else:
-            block = assemble(bodies[:keep], omitted, False)
+            # Even one step each does not fit, so fall back to dropping whole
+            # bodies from the tail — `B1362`'s behaviour, unchanged, and the
+            # floor this row does not move. `keep == 0` still renders the first
+            # body's opening lines: a heading with nothing under it says the
+            # match found nothing, which is a worse answer than a short
+            # procedure (the same call `P8-21` made for the catalogue's last
+            # surviving entry).
+            keep = 0
+            for n in range(len(bodies), 0, -1):
+                if len(assemble(bodies[:n], len(bodies) - n, False)) <= budget:
+                    keep = n
+                    break
+            if keep == len(bodies):
+                keep -= 1   # the untruncated form was already over budget
+            omitted = len(bodies) - keep
+            applied = [str(s.get("name")) for s in entries[:max(keep, 1)]]
+            if keep == 0:
+                # Cut the single best match at a line boundary.
+                room = budget - len(assemble([], omitted - 1, True))
+                kept_lines: List[str] = []
+                used = 0
+                for line in bodies[0].split("\n"):
+                    if used + len(line) + 1 > max(room, 0):
+                        break
+                    kept_lines.append(line)
+                    used += len(line) + 1
+                if not kept_lines:
+                    kept_lines = [bodies[0].split("\n", 2)[1] if "\n" in bodies[0] else bodies[0]]
+                block = assemble(["\n".join(kept_lines)], omitted - 1, True)
+            else:
+                block = assemble(bodies[:keep], omitted, False)
 
     if isinstance(report, dict):
         report.update({"skill_bodies_chars": len(block),
                        "skill_bodies_truncated": bool(truncated),
                        "skill_bodies_omitted": int(omitted),
-                       "skill_bodies_applied": applied})
+                       "skill_bodies_applied": applied,
+                       # `B1375`. Which procedures reached the model as their
+                       # opening steps. `applied` says whose text arrived and
+                       # `omitted` how many did not; neither could say *this
+                       # one arrived, in part*, which is now the common case.
+                       "skill_bodies_shortened": list(shortened)})
     return block

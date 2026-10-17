@@ -4425,6 +4425,11 @@ def _build_system_prompt(
                     context_report.setdefault("skill_bodies_truncated", False)
                     context_report.setdefault("skill_bodies_omitted", 0)
                     context_report.setdefault("skill_bodies_applied", [])
+                    # `B1375`. Present on every turn, so a reader can tell
+                    # "nothing was shortened" from "this receipt predates the
+                    # field" — the distinction `skill_bodies_omitted` already
+                    # gets for free by being a number.
+                    context_report.setdefault("skill_bodies_shortened", [])
                 if relevant_skills:
                     # Bump the "uses" counter on every skill we actually surface
                     # to the agent — otherwise every skill shows "0 times" no
@@ -4449,9 +4454,19 @@ def _build_system_prompt(
                         # to follow step by step. The renderer knows, because it
                         # is the thing that decided what fitted.
                         _applied = set(_body_report.get("skill_bodies_applied") or [])
+                        # `B1375`. Under progressive disclosure almost every
+                        # match is `applied` — its name, description and opening
+                        # steps reached the model — so `applied` alone would now
+                        # answer *yes* for a procedure the turn saw nine steps
+                        # of out of twenty. The two facts are recorded as two
+                        # fields (`Law 10`) rather than one that means less than
+                        # it used to.
+                        _shortened = set(_body_report.get("skill_bodies_shortened") or [])
                         for _row in context_report.get("skill_index") or []:
                             if isinstance(_row, dict) and _row.get("name") in _applied:
                                 _row["applied"] = True
+                                if _row.get("name") in _shortened:
+                                    _row["shortened"] = True
                 # SECURITY: do NOT concatenate the skills block into the
                 # trusted system role. Skill content (name, description,
                 # when_to_use, procedure, pitfalls) is user-editable via

@@ -631,21 +631,34 @@ def test_the_receipt_names_only_the_skills_whose_lines_fitted(store, monkeypatch
         assert not _named_in_index(block, name)
 
 
-@pytest.mark.parametrize("budget", [4000, 900])
-def test_a_cut_of_one_procedure_does_not_claim_others_were_dropped(budget):
-    """`Law 10`. One matched skill cut at a line boundary is not *"0 further
-    procedures were left out"*, which is what a single note template said."""
+@pytest.mark.parametrize("budget,expect", [(4000, "shortened"), (900, "short")])
+def test_a_cut_of_one_procedure_does_not_claim_others_were_dropped(budget, expect):
+    """`Law 10`. One matched skill that did not fit whole is not *"0 further
+    procedures were left out"*, which is what a single note template said.
+
+    **`B1375` moved where the branches start and the property is unchanged.**
+    At 4,000 the procedure is now *shortened* to its opening steps rather than
+    line-cut, so the note is `MATCHED_CUT_WHAT_SHORTENED`; at 900 not even one
+    step fits and the line cut is still the floor. Both are asserted, and the
+    thing neither may ever say is the `0 further` sentence.
+    """
     long_skill = {"name": "incident-runbook", "description": "d",
                   "procedure": [LONG_STEP * 6 for _ in range(10)]}
     report: dict = {}
     block = skill_injection.render_matched_skills_block(
         [long_skill], budget_chars=budget, report=report)
     assert skill_injection.MATCHED_CAP_PHRASE in block
-    assert skill_injection.MATCHED_CUT_WHAT_SHORT in block
     assert "0 further matched procedure" not in block
     assert len(block) <= budget
     assert report["skill_bodies_truncated"] is True
     assert report["skill_bodies_applied"] == ["incident-runbook"]
+    if expect == "shortened":
+        assert skill_injection.MATCHED_CUT_WHAT_SHORTENED.format(shortened=1) in block
+        assert report["skill_bodies_shortened"] == ["incident-runbook"]
+        assert report["skill_bodies_omitted"] == 0
+    else:
+        assert skill_injection.MATCHED_CUT_WHAT_SHORT in block
+        assert report["skill_bodies_shortened"] == []
 
 
 def test_a_budget_too_small_for_the_note_still_ships_the_note():
@@ -665,12 +678,24 @@ def test_a_budget_too_small_for_the_note_still_ships_the_note():
 
 
 def test_a_cut_that_dropped_whole_procedures_counts_them():
+    """The last resort, and `B1375` made it genuinely last.
+
+    This used to fire at 6,000 characters against four six-step procedures;
+    shortening now fits all four there, so reaching the drop branch takes a
+    shape with **nothing to shorten** — one enormous step each, where
+    `max_steps` has no smaller value to try. That is the honest construction
+    rather than a smaller budget, because what is being tested is the branch,
+    not the number: when whole procedures really are dropped, the note counts
+    them and the receipt agrees.
+    """
     bodies = [{"name": f"p{i}", "description": "d",
-               "procedure": [LONG_STEP * 4 for _ in range(6)]} for i in range(4)]
+               "procedure": ["Z" * 2000]} for i in range(4)]
     report: dict = {}
     block = skill_injection.render_matched_skills_block(
-        bodies, budget_chars=6000, report=report)
+        bodies, budget_chars=5000, report=report)
     assert report["skill_bodies_omitted"] > 0
+    assert report["skill_bodies_shortened"] == [], (
+        "nothing can be shortened when every procedure is one step")
     assert f"{report['skill_bodies_omitted']} further matched procedure" in block
     assert len(report["skill_bodies_applied"]) == 4 - report["skill_bodies_omitted"]
 
