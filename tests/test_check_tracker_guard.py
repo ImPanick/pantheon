@@ -24,12 +24,22 @@ import pytest
 PANTHEON = Path(__file__).resolve().parent.parent / ".pantheon"
 CHECKER = PANTHEON / "check-tracker.py"
 ROADMAP = PANTHEON / "ROADMAP.md"
+DECISIONS = PANTHEON / "DECISIONS.md"
 
 
-def _run(tmp_path: Path, roadmap_text: str):
-    """Run the real checker against a bent copy of the tracker."""
+def _run(tmp_path: Path, roadmap_text: str, decisions_text: str = None):
+    """Run the real checker against a bent copy of the tracker.
+
+    `decisions_text` writes a `DECISIONS.md` beside it. `B1406`'s rule resolves
+    the tracker's `D-…` citations against that file and **skips when the file is
+    absent** — which this sandbox was, for every case here, so the rule could
+    not be exercised at all until this parameter existed. A rule a guard file
+    cannot reach is a rule nothing is guarding.
+    """
     shutil.copy(CHECKER, tmp_path / "check-tracker.py")
     (tmp_path / "ROADMAP.md").write_text(roadmap_text, encoding="utf-8")
+    if decisions_text is not None:
+        (tmp_path / "DECISIONS.md").write_text(decisions_text, encoding="utf-8")
     proc = subprocess.run(
         [sys.executable, str(tmp_path / "check-tracker.py")],
         capture_output=True, text=True, cwd=tmp_path,
@@ -112,3 +122,51 @@ def test_a_task_filed_under_the_wrong_phase_is_named(tmp_path, roadmap):
     wrong = m.group(0).replace(f"**{m.group(1)}-", "**P99-")
     code, out = _run(tmp_path, roadmap.replace(m.group(0), wrong, 1))
     assert code == 1, f"a task filed under a phase that does not exist was accepted:\n{out}"
+
+
+# ── `B1406`: a decision id the tracker cites has to exist ──────────────────
+
+
+@pytest.fixture(scope="module")
+def decisions() -> str:
+    return DECISIONS.read_text(encoding="utf-8")
+
+
+def test_the_real_tracker_and_the_real_decisions_agree(tmp_path, roadmap, decisions):
+    """The gate `test_the_real_tracker_is_green` could not be, because the
+    sandbox had no `DECISIONS.md` and the rule skips without one — so that case
+    passed while saying nothing about this rule. `D-2026-10-17-01` was cited by
+    five rows and defined nowhere for a day."""
+    code, out = _run(tmp_path, roadmap, decisions)
+    assert code == 0, f"the tracker cites a decision that is not written down:\n{out}"
+    assert "tracker OK" in out
+
+
+def test_a_cited_decision_that_is_not_written_down_is_caught(tmp_path, roadmap, decisions):
+    bent = decisions.replace("## D-2026-10-17-01 ", "## D-2026-10-17-91 ", 1)
+    assert bent != decisions, "the id this case bends is gone; pick another"
+    code, out = _run(tmp_path, roadmap, bent)
+    assert code == 1
+    assert "D-2026-10-17-01 is cited at line" in out
+    assert "defined nowhere in DECISIONS.md" in out
+
+
+def test_a_mistyped_citation_in_the_tracker_is_caught_too(tmp_path, roadmap, decisions):
+    """The same rule from the other side: a row citing a ruling that does not
+    exist, which is what a transposed digit looks like."""
+    bent = roadmap.replace("D-2026-10-17-01", "D-2026-10-18-01", 1)
+    assert bent != roadmap
+    code, out = _run(tmp_path, bent, decisions)
+    assert code == 1
+    assert "D-2026-10-18-01 is cited at line" in out
+
+
+def test_the_rule_skips_when_there_is_no_decisions_file_and_that_is_deliberate(
+        tmp_path, roadmap):
+    """A historical or synthetic tracker driven on its own must not fail for
+    want of a file it was never shipped with — `check-tracker.py` takes a path
+    so a test can drive it over one. The skip is a decision, so it is asserted
+    rather than left to be rediscovered as a hole."""
+    code, out = _run(tmp_path, roadmap)
+    assert code == 0, out
+    assert "defined nowhere" not in out

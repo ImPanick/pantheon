@@ -2905,3 +2905,108 @@ defect-log leak after the first hand-written sweep missed it. The invariant, mea
 decision: `known_tool_names()` 85, `selectable_tool_names()` 81, function schemas 75. The six of §1 are exactly
 `selectable − schemas`, and the three of §4 are three of the four in `known − selectable`; the fourth,
 `builtin_browser`, is a server id and not a tool, which is the one exemption the property carries.
+
+## D-2026-10-17-01 — Auto's one exception, the window's provenance, a shortened procedure, and two deliberate defers
+
+**Written down 2026-10-17, after the fact and that is the defect.** This id is cited by five rows and was defined
+nowhere: the ruling was given, applied to all five, and never recorded, so a reader could see *what was done* and
+not *what was decided*. Nothing checked it either — `check-ledger.py` validated the **ledger's** citations against
+`ROADMAP.md` and `DECISIONS.md` together, which cannot notice a tracker citing a decision that does not exist.
+That gap is `B1406` and is closed in the same change as this entry. The five rulings, as they were given:
+
+1. **`B1399` — `WITHHELD_BY_CALLER` becomes liftable** (*and the recommendation was wrong*). Approved as proposed,
+   and implementing it is how it was found to be wrong: `caller` is not the neutral starting set the
+   recommendation assumed. `stream_agent_loop` tags one flat `disabled_tools` set `WITHHELD_BY_CALLER` and
+   `routes/chat_routes.py` puts deliberate restrictions in the same bucket — incognito's `manage_memory`,
+   `search_chats` and `manage_skills`, the email reader's `send_email` and `create_document`, and chat-mode
+   compare's **`manage_tasks`**, which collides directly with the three names both `lift()` sites pass. Reverted.
+   The half that landed is the contract sentence naming all six unliftable reasons instead of five. The fix is
+   attribution at the route, which `D-2026-10-17-02` §2 rules on.
+
+2. **`B1369` — the context window says where it came from.** `(ctx, known, basis)` with `basis` one of `reported` /
+   `known_table` / `fallback`, threaded through the cache and recorded at `run_config.suite.basis`. No behaviour
+   changes: a name-table window still counts as proven, because *whether it should* is a separate question and this
+   ruling did not answer it. What changes is that the receipt can be read back and asked.
+
+3. **`B1375` — progressive disclosure, the third of the three answers the row described.** A matched procedure that
+   does not fit the budget is shortened to its opening steps and told how to fetch the rest, rather than dropped.
+   The row offered *cut it and say so* (what shipped) and *let it through and spend the conversation* (what shipped
+   before), and named a third that was more work; the third is the ruling.
+
+4. **`B1341` — Auto has exactly one exception and it is `DESTRUCTIVE`.** This partly reverses `D-2026-10-09-01` §2's
+   *no exception list*, and the reversal is the point: that ruling's argument was that a mode keeping some asks
+   cannot be described in one sentence, and there is a one-sentence description with the exception in — *Auto runs
+   everything without asking, except what cannot be undone.* The asymmetry decides it. The exception costs one card
+   on a rare action; its absence costs an unrecoverable loss when an injected instruction lands in a chat set to
+   Auto weeks ago.
+
+5. **`B1342` — the admin's own Auto privilege is a deliberate defer, not a gap.** On a single-owner install the
+   admin *is* the person: they can decline to turn Auto on, and clearing `can_auto_approve` for every account
+   already forbids it to every non-admin. What is uncovered is a shared or compliance install, and there is no
+   second account. The row's design answer — a **floor** rather than a default, which is the one shape that cannot
+   be read as an install-wide *enable* — is recorded for whenever there is one.
+
+
+## D-2026-10-17-02 — the five open design and attribution questions, ruled by the agent at the owner's instruction
+
+**Asked and answered 2026-10-17.** Five rows were put to the owner with a recommendation on each and the owner
+handed the whole set back: *"You go and just pick - eventually all of these need done anyway."* So these are ruled
+here, with the argument attached, rather than applied quietly — because **§4 is a question a previous agent
+deliberately refused to answer**. `B291` wrote: *"the row's own `Verify` asks for a written decision, which is the
+owner's and not an agent's"*, and it was right to refuse with the authority it had. The authority has changed; the
+reasoning still has to be written down, and the owner can overturn any of these by reading them.
+
+1. **`P1-13` — elevation is a shadow everywhere, scoped by surface, not ink at low alpha.** Two theme-aware forms
+   are already in `style.css` and they do not look alike. `color-mix(in srgb, var(--fg) N%, transparent)` — the
+   house form, 43 uses — is *ink at low alpha*, so it is a dark shadow on the 8 light palettes and a **light glow**
+   on the other **15**, because `--fg` is lighter than `--panel` there (`claude` 0.904 against 0.029). A rim light
+   does read as elevation on dark UI, and that is why this was a real question rather than an obvious one. It is
+   ruled against for two reasons. **It makes *elevation* mean two different things depending on the palette**, so
+   no one sentence describes what a raised surface looks like in this product. And **it cannot be landed without a
+   visual review of 23 palettes**, because converting 126 declarations to it changes every raised surface on
+   fifteen of them. The other form —
+   `light-dark(rgba(0,0,0,α_light), rgba(0,0,0,α))`, keyed off the `color-scheme` all three palette writers already
+   set — takes **today's literal as its dark arm**, so the 15 dark palettes are pixel-identical and only the 8 light
+   ones soften. That is `B22`'s pattern, and `B22` is the precedent: it scoped fifteen semantic tokens exactly this
+   way and twelve of sixteen palettes resolved every one of them to the hex they already had. The 43 ink-form uses
+   convert too, because one idiom is the point (`Law 13`) and leaving two is this row's own defect.
+
+2. **`B1399` — attribution at the route, not a wider liftable set.** `D-2026-10-17-01` §1's remedy was tried and
+   reverted. `stream_agent_loop` already builds a `TurnToolAccess` from its `disabled_tools` kwarg, so it accepts a
+   pre-built one and `routes/chat_routes.py` withholds its **deliberate** sets `because=WITHHELD_BY_POLICY` and
+   only the neutral remainder as `caller`. `LIFTABLE_REASONS` then gains `caller` safely, which restores `#6020`'s
+   `pantheon-qwen3` notes clamp. **The risk is exhaustiveness and it is the whole risk**: a deliberate set that the
+   route forgets to attribute becomes liftable, which is a privacy control defeated by an omission. So the test is
+   not *the clamp works* — it is that **every** contribution to `disabled_tools` in `chat_routes.py` is attributed,
+   derived from the source rather than listed, so a sixth restriction added later fails rather than leaking.
+
+3. **`B1404` — a second token for the 176 control boundaries, not one lifted `--border` for all 961.** Classified:
+   of 961 declaration×selector pairs reading `var(--border)`, **176** name an interactive element and **785** are
+   panel edges, card outlines, dividers and table rules. WCAG 1.4.11 asks 3:1 of a UI component boundary and does
+   not ask it of a decorative edge, so lifting all 961 would change four fifths of the population for a rule that
+   does not apply to it — and would flatten the difference between a text field and a panel edge on 23 palettes,
+   which is what `D-2026-08-26-03` protects them from. `P1-09`'s proof says a compliant border exists on every
+   palette by construction, so this is fixable rather than blocked, unlike `B15`.
+
+4. **`P5-13`, `P5-14`, `B394`, `B782` — the sub-pixel floor is fixed by raising the SIZE, and the ladders are
+   deliberately not collapsed.** Two separate answers, and `B782`'s own measurement decides the first. **115 glyphs
+   paint a stroke under one device pixel**, 102 of them an 11px glyph at stroke 2 — 0.917px. The fix has two
+   directions and they are not symmetric: raising the stroke **adds** a width to a population `P5-13` exists to
+   shrink, while raising 11 → 12 **removes** a size, clears the floor exactly, and lands on a size the tree already
+   uses 146 times. One direction makes the ladder shorter and the other makes it longer, so the floor is fixed by
+   size and the stroke widths are not touched. **The ladders themselves stay as they are**, and `B291`'s evidence is
+   why: its three 8px chevrons carry `stroke-width: 3.5` *because* 2.5 at that size paints 0.83px, which is correct
+   compensation that a flattening pass would destroy — so *"the variation is not uniformly drift"* is a measured
+   claim, not a caution, and collapsing 24 widths and 13 strokes onto three and one would delete the compensation
+   along with the drift. `P5-14`'s 27 type steps are refused on the same ground plus one of its own: a ramp drawn
+   over 1,382 declarations changes the size of text on every screen at once, which is the one change no test can
+   verify and no reader can review. What is delivered is the **floor** — a checker that fails a glyph painting under
+   one device pixel — and the ladders are left for a sitting with eyes on the screen.
+
+5. **`P11` and `P12` are deferred the way `B1342` was** — closed as deliberate, with the design recorded. Ten open
+   rows of OIDC, SCIM, claim-to-role mapping, multi-process sessions and per-user rate limiting, on an install with
+   **one account**. `B1342`'s reasoning applies to all of them and is the precedent: building a privilege floor for
+   a user who does not exist is speculative work, and leaving the rows open makes them read as a gap in a product
+   that is not missing anything a person can use. They are closed with every design answer kept, so nothing has to
+   be rediscovered when there is a second account. This is the one of the five that **removes** work rather than
+   adding it, and it is the reason the other four could be taken at once.

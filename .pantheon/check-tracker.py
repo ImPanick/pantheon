@@ -367,6 +367,33 @@ def main(path=None) -> int:
                     f"{shown} — tick it, or say in the entry what is still open"
                 )
 
+    # `B1406`. A decision id this tracker cites, against the file that defines
+    # decisions. `D-2026-10-17-01` was cited by **five** rows and defined
+    # nowhere: the ruling was given, applied to all five, and never written
+    # down, so a reader could see what was done and not what was decided.
+    #
+    # Nothing caught it, and the near-miss is instructive. `check-ledger.py`
+    # resolves the **ledger's** citations against `ROADMAP.md` and
+    # `DECISIONS.md` *together*, which by construction cannot notice a tracker
+    # citing a decision that does not exist — the tracker is one of the two
+    # files it treats as the answer. So the check belongs here, where the
+    # citation lives, and it is the same shape as the `§ Progress` rule above:
+    # a citation that cannot be resolved is a fault, and both ends are named.
+    decisions = path.parent / "DECISIONS.md"
+    if decisions.exists():
+        defined = set(re.findall(r"^## (D-\d{4}-\d{2}-\d{2}-\d{2})",
+                                 decisions.read_text(encoding="utf-8"), re.M))
+        cited = {}
+        for i, line in enumerate(lines, 1):
+            for dec in re.findall(r"\bD-\d{4}-\d{2}-\d{2}-\d{2}\b", line):
+                cited.setdefault(dec, i)
+        for dec, line_no in sorted(cited.items()):
+            if dec not in defined:
+                bad.append(
+                    f"{dec} is cited at line {line_no} and defined nowhere in "
+                    f"DECISIONS.md — write the ruling down, or correct the id"
+                )
+
     total = sum(sum(v[k] for k in MARKS.values()) for v in per.values())
     if bad:
         print(f"tracker DRIFTED — {len(bad)} row(s) wrong, {total} tasks counted\n")

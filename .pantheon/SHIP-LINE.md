@@ -178,6 +178,23 @@ gate — 104 characters of a 6,000-token budget and no consumer — and `ship-li
 
 **Direction as of 2026-10-14, after the third tracker pass: the open count is rising.**
 
+Re-measured 2026-10-17, after the design-system wave and the owner handing back five decisions
+(`D-2026-10-17-02`): **59 filed, 66 closed — a ratio of 0.894**, open 392 → 385, done 71.1 % → 72.8 %.
+**This is the first window in this record where closing outran filing, and it is honest about why.**
+Twenty-one rows closed across the two intervals and one was filed (`B1404`), but ten of the
+twenty-one are `P11` and `P12` — OIDC, SCIM, claim-to-role mapping, multi-process sessions,
+per-user rate limiting — **deferred, not built**, on `B1342`'s reasoning: every one of them builds a
+control for a second account that does not exist in this install. So the ratio moved partly because
+work was done and partly because ten rows stopped claiming to be work. Both are real and they are
+not the same thing, which is exactly what `§ 1`'s own thermometer paragraph warns about in the
+other direction: a count that falls when you redefine the question is no more a forecast than one
+that rises when you look harder. The eleven rows that were *built* — the contrast spine, the z
+ladder, reduced-motion scrolls, progressive disclosure for matched skills, the window's provenance,
+the zone highlighter, and three ledger and tracker checks found by using the previous ones — are
+the part of this interval that would survive re-opening `P11`.
+
+**Direction as of 2026-10-17: the open count is falling.**
+
 ### A second number, which is the one that moves
 
 Of the last 40 `B` rows filed — `B360` through `B455`, four waves of sweeps plus
