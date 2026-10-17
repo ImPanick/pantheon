@@ -5,7 +5,7 @@ import json
 import time
 from typing import Dict, Any
 
-from src.constants import MAX_OUTPUT_CHARS
+from src.constants import MAX_FETCH_OUTPUT_CHARS, MAX_OUTPUT_CHARS
 
 class WebSearchTool:
     async def execute(self, content: str, ctx: dict) -> dict:
@@ -184,6 +184,26 @@ class WebFetchTool:
             _no_cap = _unlimited()
         except Exception:
             _no_cap = False
-        if not _no_cap and len(output) > MAX_OUTPUT_CHARS:
-            output = output[:MAX_OUTPUT_CHARS] + "\n\n[...truncated]"
+        # `B1403`. A fetched page gets its own, larger budget, and when it is
+        # still too long the notice **leads** — the same reasoning the
+        # `size_note` above already follows, for the same reason: a marker at
+        # the end of 30,000 characters is a marker the model has long since
+        # stopped reading, and the one thing it must not do is fill the missing
+        # tail from memory. Measured: at the old shared 10,000 an official news
+        # article arrived as its own table of contents plus release-date
+        # preamble, with the `Loot` section the person asked about past the cut
+        # and `[...truncated]` as the last four words. The model invented the
+        # rest and said it was sourced.
+        if not _no_cap and len(output) > MAX_FETCH_OUTPUT_CHARS:
+            _kept = MAX_FETCH_OUTPUT_CHARS
+            _total = len(output)
+            _cut_note = (
+                f"[TRUNCATED: this page is {_total:,} characters and you are "
+                f"reading the first {_kept:,}. The rest is NOT below. If what "
+                "you need is in a later section, say so and fetch that section "
+                "directly — a URL with its anchor, or a narrower page. Do not "
+                "fill in the missing part from memory, and do not describe "
+                "anything you have not read here as sourced.]\n\n"
+            )
+            output = _cut_note + output[:_kept] + "\n\n[...truncated — see the notice at the top]"
         return {"output": output, "exit_code": 0}

@@ -106,6 +106,7 @@ from src.agent_stops import (
     loop_breaker_stop,
     no_new_information_stop,
     unkept_promise_stop,
+    fabricated_retrieval_stop,
 )
 from src.run_limits import CAPS_FROM_CALLER, RunLimits, bind_run_limits
 from src.interactive_gate import bind_tool_call_started_by  # `B1061`
@@ -7913,6 +7914,12 @@ async def stream_agent_loop(
     # `P4-10`. The guard stops this turn, for the metrics envelope — the same
     # events the stream carried, so a reloaded thread says what the live one did.
     _agent_stops: list = []
+    # `B1400`. Every tool type dispatched this turn, for the claimed-retrieval
+    # supervisor's "did a web tool actually run" question.
+    _tool_types_this_turn: set = set()
+    _retrieval_claim_nudges = 0
+    _MAX_RETRIEVAL_CLAIM_NUDGES = 1
+    _retrieval_claims: list = []
     # `B921`. The compaction the answering candidate committed, as the turn's
     # metrics carry it (`context_compacted` and `P4-13`'s four figures). Empty
     # when the loop did not shape the context (`_committed_compaction_frame`).
@@ -7941,6 +7948,48 @@ async def stream_agent_loop(
         r"\b[^.\n]{0,140}",
         re.IGNORECASE,
     )
+    # `B1400`. The third supervisor, and the one about **truthfulness** rather
+    # than about a stall. `_INTENT_RE` above matches a promise — *"let me
+    # search"* — in a reply under 400 characters with no fenced block. A
+    # fabricated search fails all three of those tests at once: it is **past
+    # tense** (*"I have searched across recent news"*), it is **long**, because
+    # the fabrication is a whole report, and it is full of markdown. So nothing
+    # looked at it.
+    #
+    # Measured from the owner's own LM Studio request logs (2026-10-16,
+    # `gemma-4-26b-a4b` at q4): `web_search` was in the `tools` array of **all
+    # six** requests, every completion came back `"tool_calls": []`, and the
+    # reply opened *"I have searched across recent news and development
+    # discussions"*. The model's own reasoning for that turn contained
+    # *"Simulated based on standard OSRS raid structure/news patterns"*. It knew.
+    #
+    # Deliberately narrow, because this one accuses the model of lying and a
+    # false positive would be worse than a miss:
+    #
+    #   * first person and **completed** — "I searched", "my search found",
+    #     "after searching". Not "let me search" (the intent supervisor's) and
+    #     not "based on the article you provided", which is a true statement
+    #     about material the person supplied;
+    #   * only when **no web tool ran this turn at all**, so a round that
+    #     really did search and then summarised is never touched;
+    #   * `search`/`look up`/`browse`/`check online` and their kin — a verb
+    #     that only means going out to a source.
+    _CLAIMED_RETRIEVAL_RE = re.compile(
+        r"\b(?:"
+        r"i\s+(?:have\s+|just\s+|already\s+)?(?:searched|browsed|googled)"
+        r"|i'?ve\s+(?:searched|browsed|googled|looked\s+(?:it\s+)?up)"
+        r"|i\s+(?:have\s+)?looked\s+(?:it\s+up|online|around|through\s+the\s+web)"
+        r"|i\s+(?:have\s+)?checked\s+(?:online|the\s+web|the\s+internet|recent\s+news)"
+        r"|i\s+(?:have\s+)?(?:ran|run|performed|did)\s+(?:a\s+)?(?:web\s+)?search"
+        r"|(?:based\s+on|from|per)\s+my\s+(?:web\s+)?(?:search|searches|research|browsing)"
+        r"|my\s+(?:web\s+)?(?:search|searches|research)\s+(?:found|returned|shows|showed|turned\s+up)"
+        r"|after\s+(?:searching|browsing)\b"
+        r"|having\s+searched\b"
+        r"|i\s+found\s+(?:online|on\s+the\s+web|on\s+the\s+internet)"
+        r")\b[^.\n]{0,140}",
+        re.IGNORECASE,
+    )
+
     # `B1327`. A turn handed back as a question: the model offering to take a
     # step instead of taking it. Every arm needs a verb after the offer, so an
     # innocuous sign-off ("let me know if you need anything else") does not
@@ -9550,6 +9599,74 @@ async def stream_agent_loop(
                     "on round %d: %r",
                     _handback_nudges, round_num, _handback_match.group(0).strip(),
                 )
+
+            # ── Claimed-retrieval supervisor ─────────────────────────
+            # `B1400`. The turn is about to end having said it searched. If no
+            # web tool ran this turn, that sentence is false, and the report
+            # under it was written from memory.
+            #
+            # Placed here, on the no-tool-call path, because that is the only
+            # shape the defect takes: a round that *did* call a tool is not
+            # claiming anything it did not do. Checked against
+            # `WEB_TOOL_NAMES` (`src/tool_policy`) rather than a list written
+            # here, so a third web tool tomorrow counts with nobody editing
+            # this (`Law 7`, `Law 14`).
+            _claim_match = (
+                _CLAIMED_RETRIEVAL_RE.search(_intent_text)
+                if (_intent_text and not plan_mode) else None
+            )
+            _web_ran = bool(_tool_types_this_turn & set(WEB_TOOL_NAMES))
+            if _claim_match is not None and not _web_ran:
+                _claim_phrase = _claim_match.group(0).strip()
+                _retrieval_claims.append(_claim_phrase)
+                _web_offered = bool(
+                    set(WEB_TOOL_NAMES) & set(_relevant_tools or ())
+                    and not (set(WEB_TOOL_NAMES) <= set(disabled_tools or ()))
+                )
+                if _retrieval_claim_nudges < _MAX_RETRIEVAL_CLAIM_NUDGES and _web_offered:
+                    # One push, and it is worded as the correction it is: the
+                    # model is not being asked to go further, it is being told
+                    # it said something untrue and given the way to make it
+                    # true. A second push is not offered — a model that
+                    # repeats the claim is telling us what it is.
+                    _retrieval_claim_nudges += 1
+                    logger.warning(
+                        "[agent] claimed retrieval with no web call on round %d: %r",
+                        round_num, _claim_phrase,
+                    )
+                    messages.append(_in_turn({
+                        "role": "system",
+                        "content": (
+                            f"You wrote: \"{_claim_phrase}\" — but no search or "
+                            "fetch ran this turn. That sentence is not true, and "
+                            "anything you wrote under it came from memory rather "
+                            "than from a source, which is the one thing you must "
+                            "never do.\n"
+                            "Fix it one of two ways, this turn:\n"
+                            "1. Actually call `web_search` (and `web_fetch` for a "
+                            "page you need the body of), then answer from what "
+                            "comes back; or\n"
+                            "2. If you are not going to search, say plainly that "
+                            "you did not and that the answer is from memory, and "
+                            "remove every specific you cannot source.\n"
+                            "Do not repeat the claim."
+                        ),
+                    }))
+                    continue
+                logger.warning(
+                    "[agent] claimed retrieval stands after %d nudge(s) on round %d: %r "
+                    "(web offered: %s)",
+                    _retrieval_claim_nudges, round_num, _claim_phrase, _web_offered,
+                )
+                _stop = fabricated_retrieval_stop(
+                    round_num=round_num,
+                    phrases=list(_retrieval_claims),
+                    nudges=_retrieval_claim_nudges,
+                    tools_were_available=_web_offered,
+                )
+                _agent_stops.append(_stop)
+                yield f"data: {json.dumps(_stop)}\n\n"
+
             break  # no tools — done
 
         # ── Loop-breaker (Terminus-style stall detector) ──────────────
@@ -9571,6 +9688,10 @@ async def stream_agent_loop(
         _recent_call_sigs.append(_sig)
         for _b in tool_blocks:
             _call_freq[call_signature(_b.tool_type, _b.content)] += 1
+            # `B1400`. The same walk, by tool *type*, so the claimed-retrieval
+            # supervisor can ask "did a web tool run this turn" without
+            # re-deriving it from `call_signature`'s digest (`Law 7`).
+            _tool_types_this_turn.add(_b.tool_type)
         # "Real" answer text = round text minus <think> blocks. Empty-think
         # rounds (just "<think>\n\n</think>" + a tool call) must not read as
         # progress, so strip think before checking.

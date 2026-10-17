@@ -51,6 +51,12 @@ KIND_NO_PROGRESS = "no_progress"
 KIND_UNKEPT_PROMISE = "unkept_promise"
 #: `P7-12`. Rounds that brought nothing new — the information ledger's stop.
 KIND_NO_NEW_INFORMATION = "no_new_information"
+#: `B1400`. A turn that said it had searched or fetched when nothing did.
+#: Distinct from `KIND_UNKEPT_PROMISE` in the thing it is about: an unkept
+#: promise is a **stall** — the model said it *would* act and then stopped —
+#: and this is a **false statement about the past**, which is worse, because a
+#: stall is visible to the person and a fabricated search reads as an answer.
+KIND_FABRICATED_RETRIEVAL = "fabricated_retrieval"
 
 #: `P7-12`. How many rounds in a row may bring nothing new before the loop
 #: stops them. Four, the stall detector's own number: the ledger is a sharper
@@ -324,6 +330,61 @@ def unkept_promise_stop(
         "next": (
             "Nothing was run. Ask again and name the exact command or file, "
             "or pick a model that is better at calling tools."
+        ),
+    }
+
+
+def fabricated_retrieval_stop(
+    *,
+    round_num: int,
+    phrases: Sequence[Any],
+    nudges: int,
+    tools_were_available: bool,
+) -> Dict[str, Any]:
+    """The turn claimed a search or a fetch that never ran. `B1400`.
+
+    Measured from a real session (LM Studio request logs, 2026-10-16, a
+    `gemma-4-26b-a4b` at q4): `web_search` was in the request's `tools` array on
+    **every one of six requests**, the model emitted `"tool_calls": []` on all
+    of them, and its reply said *"I have searched across recent news and
+    development discussions"*. Its own reasoning had already written
+    *"Simulated based on standard OSRS raid structure/news patterns"*. Nothing
+    in the loop looked at the gap between those two sentences, so the
+    fabrication reached the person formatted as a research result.
+
+    This is the stop that says so **in the chat**, which is the point: the
+    nudge above it can fail, and when it does the person must not be left
+    holding a report of a search that did not happen. `next` differs on whether
+    the tool was even offered, because *"call it then"* is useless advice to a
+    turn that had no web tool and the honest answer there is for the model to
+    say it cannot look.
+    """
+    announced = [_one_line(str(p), PHRASE_LIMIT) for p in phrases if str(p).strip()]
+    last = announced[-1] if announced else ""
+    message = (
+        f"The assistant said it had searched or looked something up "
+        f"({last!r}) and no search or fetch ran this turn. "
+        "What followed it was written from memory, not from a source."
+        if last else
+        "The assistant described a search that did not run this turn."
+    )
+    return {
+        "type": "fabricated_retrieval",
+        "reason": "claimed_retrieval_without_a_call",
+        "kind": KIND_FABRICATED_RETRIEVAL,
+        "round": round_num,
+        "nudges": nudges,
+        "announced": announced,
+        "matched": last,
+        "tools_were_available": bool(tools_were_available),
+        "message": message,
+        "next": (
+            "Ask again and say \"search first, then answer\" — the web tools were "
+            "offered and not used, which is a sign this model will not call them. "
+            "A model that cannot call tools cannot do research."
+            if tools_were_available else
+            "The web tools were switched off for this turn, so nothing could have "
+            "been searched. Turn Web on and ask again."
         ),
     }
 

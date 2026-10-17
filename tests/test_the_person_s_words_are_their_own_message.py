@@ -210,17 +210,139 @@ def test_nothing_pantheon_adds_is_inside_the_person_s_message(monkeypatch):
 
 def test_the_register_is_its_own_message_and_says_who_wrote_it(monkeypatch):
     """`src/chat_processor.py:591` used to return a bare `{"role": "user"}`, so
-    the merge glued "How to pitch this reply: …" onto the person's turn."""
+    the merge glued "How to pitch this reply: …" onto the person's turn.
+
+    `B1401` changed where the header sits without changing what this case is
+    about. Pantheon's own framing blocks now merge into one message, so the
+    register's `APPLICATION NOTE` header is a **labelled section inside a
+    framing-only message** rather than the first line of a message of its own.
+    What this case exists to hold is unchanged and is asserted below: the
+    register appears once, it is Pantheon's framing and not the person's turn,
+    it still carries its own header, and none of the person's words are in it.
+    """
     messages, _ = _turn(monkeypatch)
     register = [t for t in _user_texts(messages) if "How to pitch this reply" in t]
     assert len(register) == 1
-    assert register[0].startswith("APPLICATION NOTE\n")
+    # Still labelled, and the label is still at the start of a line — what
+    # makes it readable as a block rather than as prose from the person.
+    assert "\nAPPLICATION NOTE\n" in register[0] or register[0].startswith("APPLICATION NOTE\n")
+    # Still framing rather than the person's words, asked of the predicate the
+    # merge itself uses (`Law 7`) rather than of a header spelling.
+    from src.prompt_security import is_framed_context_content
+
+    assert is_framed_context_content(register[0])
     # the register the owner's export quotes, intact
     assert "Keep this reply shorter than usual." in register[0]
     assert "Skip the caveats and preamble; lead with the answer." in register[0]
     # and nothing of the person's in it
     assert PERSON_SAID not in register[0]
     assert EARLIER_TURN not in register[0]
+
+
+def test_pantheons_own_framing_is_one_block_not_four(monkeypatch):
+    """`B1401`. The boundary turn is a seam, not a filler.
+
+    `FIX-2026-10-09` item 1 stopped Pantheon's framing being glued to the
+    person's words by putting an `assistant` turn reading "Reference context
+    received." between them. That was right about the seam and wrong about the
+    run: one boundary went in per framing block, and in the owner's LM Studio
+    logs (2026-10-16) **5 of 6, 5 of 7, 4 of 7 and 6 of 10** assistant turns
+    across one session were that one sentence — 60% to 83% of everything the
+    model could see itself having said.
+
+    It is a few-shot prime for passivity, and the model reasoned itself into it
+    out loud: *"the last few messages from me have been 'Reference context
+    received.' This is because I am acting as an AI assistant following a
+    specific instruction set where many of the inputs are reference material or
+    application notes."* It read its own padding as a job description, on a turn
+    where the person had asked it to go and search.
+
+    The property, stated exactly: **consecutive blocks of Pantheon's own
+    framing are one message.** An untrusted block is excluded on purpose and
+    keeps its own seams — its envelope is a security control with guard markers
+    and nothing is merged into it for tidiness — so the count below is about
+    own material, manifests and turn notes, which is where the run came from.
+    """
+    from src.prompt_security import (
+        is_framed_context_content,
+        is_untrusted_context_content,
+    )
+
+    messages, _ = _turn(monkeypatch)
+
+    def _own_framing(msg):
+        if msg.get("role") != "user":
+            return False
+        c = msg.get("content")
+        return is_framed_context_content(c) and not is_untrusted_context_content(c)
+
+    own = [m for m in messages if _own_framing(m)]
+    assert own, "no framing at all — this case would prove nothing"
+
+    # The property is about **adjacency**, which is what merges: no two
+    # own-framing blocks may sit next to each other, with or without a boundary
+    # between them. An untrusted block legitimately splits a run — it keeps its
+    # own seams — so counting the blocks would assert the fixture's shape
+    # rather than the rule.
+    def _is_boundary(msg):
+        return (msg.get("role") == "assistant"
+                and str(msg.get("content") or "").strip() == "Reference context received.")
+
+    unmerged = []
+    for i, msg in enumerate(messages):
+        if not _own_framing(msg):
+            continue
+        for nxt in messages[i + 1:]:
+            if _is_boundary(nxt):
+                continue
+            if _own_framing(nxt):
+                unmerged.append((str(msg.get("content")).split("\n")[0],
+                                 str(nxt.get("content")).split("\n")[0]))
+            break
+    assert unmerged == [], (
+        "adjacent own-framing blocks were not merged: " + repr(unmerged))
+
+    # And nothing was dropped to achieve it: both notes still reach the model.
+    everything = "\n".join(str(m.get("content")) for m in own)
+    assert "How to pitch this reply" in everything
+    assert "Current date and time" in everything
+    # And the seam against the person still holds, which is item 1's property.
+    person = [t for t in _user_texts(messages) if PERSON_SAID in t][0]
+    assert "How to pitch this reply" not in person
+    assert "SAVED MATERIAL" not in person
+
+
+def test_a_turn_of_pure_framing_gets_exactly_one_boundary(monkeypatch):
+    """The measured shape, driven through the sanitiser directly.
+
+    The session that produced the owner's report carried saved material, a
+    date note and a delivery-register note with no fetched page among them —
+    four framing blocks and four boundaries, against one real assistant turn.
+    This is that shape, asserted at one boundary.
+    """
+    from src.llm_core import _sanitize_llm_messages
+    from src.prompt_security import own_context_message
+
+    def note(text):
+        return {"role": "user", "content": "APPLICATION NOTE\nAdded by Pantheon. " + text}
+
+    out = _sanitize_llm_messages([
+        {"role": "system", "content": "policy"},
+        own_context_message("saved memory: pinned context", "Joseph plays OSRS."),
+        note("How to pitch this reply: keep it short."),
+        note("## Current date and time\nToday is Friday."),
+        own_context_message("skills", "raid-notes"),
+        {"role": "user", "content": "Waiting for your results"},
+    ])
+    boundaries = [
+        m for m in out
+        if m.get("role") == "assistant"
+        and str(m.get("content") or "").strip() == "Reference context received."
+    ]
+    assert len(boundaries) == 1, [m.get("content") for m in out]
+    # The person's turn is still last and still theirs alone.
+    assert out[-1]["role"] == "user"
+    assert out[-1]["content"] == "Waiting for your results"
 
 
 def test_the_date_is_its_own_message_and_says_who_wrote_it(monkeypatch):

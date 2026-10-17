@@ -96,8 +96,32 @@ FASTEMBED_CACHE_DIR = os.getenv("FASTEMBED_CACHE_PATH") or os.path.join(DATA_DIR
 
 # Agent tool output limits (single source of truth — imported by tool_execution.py,
 # tool_implementations.py, agent_tools.py, and any other module that needs them)
-MAX_OUTPUT_CHARS = 10_000       # cap for bash/python/web_search/web_fetch output
+MAX_OUTPUT_CHARS = 10_000       # cap for bash/python/web_search output
 MAX_READ_CHARS = 20_000         # cap for read_file / document preview
+
+# `B1403`. `web_fetch` had its own 10,000 and it was the wrong number, because
+# a fetched page is not tool *output* — it is the document the person pointed
+# at, and the only reason the turn is happening.
+#
+# Measured from the owner's LM Studio request logs (2026-10-16): they pasted an
+# official news URL and asked for the raid's mobs and rewards. Pantheon fetched
+# it correctly and injected **10,116 characters** — 10,000 of page plus the
+# header — and the cut landed before the article's own `Loot` section. So what
+# reached the model was a table of contents that *promised* loot, 10 KB of
+# release-date preamble, and `[...truncated]` as the last four words. It then
+# invented a reward currency and presented it as sourced.
+#
+# A local 32k-window model cannot be handed an arbitrarily large page, so this
+# is a budget rather than a removal: 30,000 characters is roughly 7,500 tokens,
+# three times the old room, and enough for the long-form articles this tool is
+# pointed at. A page past it is still cut — and `B1403`'s other half is that
+# the notice now *leads* the output and says what to do, because a marker at
+# the end of 10 KB is a marker nobody reads.
+#
+# `read_file`'s 20,000 is deliberately lower and stays: a file is on disk and
+# can be re-read in ranges, whereas a fetch costs a network round trip and the
+# model cannot ask for "the rest of page 2".
+MAX_FETCH_OUTPUT_CHARS = 30_000
 MAX_DIFF_LINES = 400            # cap for edit_file unified-diff display
 
 # web_fetch response-size policy (#3812). MAX_OUTPUT_CHARS above only trims

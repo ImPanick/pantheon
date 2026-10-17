@@ -710,13 +710,35 @@ _REGISTER_LINES = {
 }
 
 # The guard rides in the message itself rather than living only in this file's
-# comments, because the model is the component that has to honour it. Two
-# clauses, and they are the decision's two hard limits: delivery only, and no
-# commentary on the person.
+# comments, because the model is the component that has to honour it. Three
+# clauses now, and they are the decision's hard limits: delivery only, no
+# commentary on the person, and — `B1402` — brevity is never a licence to skip
+# the work.
+#
+# That third clause is measured, not defensive. In the owner's session of
+# 2026-10-16 the pressure reading was **correct**: they had written *"I
+# shouldn't have to tell you to use internet search tools"* and *"Holy shit -
+# here.. Some spoon feeding for you"*. So the register fired and the model was
+# told *"Keep this reply shorter than usual. Skip the caveats and preamble;
+# lead with the answer. Make the obvious call rather than asking a clarifying
+# question."*
+#
+# Every line of that is right about delivery and wrong about what to do next,
+# because the thing the person was impatient **about** was the work not being
+# done. The model took it as permission to answer fast from memory: it claimed
+# to have searched, searched nothing, and invented a reward table. The register
+# did not cause that — the model did — but it pointed at the cliff, and the
+# feature's own rule (*"the move under pressure is shorter, not softer"*) only
+# holds when the answer exists to be shortened. When it has to be fetched
+# first, shorter means **fewer words about the same sourced answer**, never
+# fewer steps to get it.
 REGISTER_GUARD = (
     "This is about delivery only. It does not change any fact, qualifier or "
     "recommendation, and you must not mention it or comment on the user's "
-    "state."
+    "state. It never means do less work: if answering needs a tool call, a "
+    "search or a file read, do that first and keep the writing short — an "
+    "unsourced answer delivered quickly is the slowest possible reply, "
+    "because it is wrong."
 )
 
 

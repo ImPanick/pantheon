@@ -2090,10 +2090,47 @@ def _sanitize_llm_messages(messages: List[Dict]) -> List[Dict]:
             # date/time ahead of the latest turn; the agent loop appends tool
             # context after it). Two genuine consecutive person turns still
             # merge — those are both the person's words.
-            if (
-                _is_framed_context_content(last.get("content"))
-                or _is_framed_context_content(item.get("content"))
-            ):
+            # `B1401`. Two of Pantheon's **own** framing blocks in a row merge
+            # into one, so only the seam against the person's words gets a
+            # boundary. The rule above was *"either side is framing → boundary"*,
+            # which was right about the seam and wrong about the run: a turn
+            # carrying the person's saved material, a capability manifest and
+            # two application notes produced **four** boundaries, and every one
+            # of them is an `assistant` turn reading "Reference context
+            # received."
+            #
+            # Measured in the owner's LM Studio request logs (2026-10-16):
+            # across the four real requests of that session, **5 of 6, 5 of 7,
+            # 4 of 7 and 6 of 10** assistant turns were that sentence — 60% to
+            # 83% of everything the model could see itself having said. It is a
+            # few-shot prime for exactly the behaviour the owner reported, and
+            # the model said so in its own reasoning: *"the last few messages
+            # from me have been 'Reference context received.' This is because I
+            # am acting as an AI assistant following a specific instruction set
+            # where many of the inputs are reference material or application
+            # notes."* It read its own padding as a description of its job.
+            #
+            # `FIX-2026-10-09` item 1's property is kept exactly: framing is
+            # still never glued to the person's words, in either direction. What
+            # changes is that framing glued to **framing** is one block, which
+            # is what it already was conceptually — all of it is Pantheon
+            # talking, added for this turn, and none of it is a turn the person
+            # took.
+            #
+            # An **untrusted** block is excluded from the merge on either side
+            # and keeps its own boundary. Its envelope is a security control
+            # with guard markers, and merging anything into the message that
+            # carries it is not a thing to do for tidiness (`FORBIDDEN.md`
+            # Part 2). So this collapses own material, manifests and notes, and
+            # leaves a fetched page or a tool result standing alone.
+            _last_framed = _is_framed_context_content(last.get("content"))
+            _item_framed = _is_framed_context_content(item.get("content"))
+            _either_untrusted = (
+                _is_untrusted_context_content(last.get("content"))
+                or _is_untrusted_context_content(item.get("content"))
+            )
+            _both_own_framing = _last_framed and _item_framed and not _either_untrusted
+            if (_last_framed or _item_framed) and not _both_own_framing:
                 merged.append({"role": "assistant", "content": _REFERENCE_CONTEXT_BOUNDARY})
                 merged.append(item)
                 continue
