@@ -9,7 +9,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/licence-AGPL--3.0--or--later-blue" alt="AGPL-3.0-or-later">
   <img src="https://img.shields.io/badge/status-early-orange" alt="Early">
-  <img src="https://img.shields.io/badge/tests-14%2C154%20passing-brightgreen" alt="14,154 tests passing">
+  <img src="https://img.shields.io/badge/tests-20%2C092%20passing-brightgreen" alt="20,092 tests passing">
   <img src="https://img.shields.io/badge/docker-compose-2496ED?logo=docker&logoColor=white" alt="Docker Compose">
   <img src="https://img.shields.io/badge/python-FastAPI-009688?logo=fastapi&logoColor=white" alt="FastAPI">
   <img src="https://img.shields.io/badge/forked%20from-Odysseus-6E5494?logo=github&logoColor=white" alt="Forked from Odysseus">
@@ -248,25 +248,25 @@ proved it dead.
 
 ## Status
 
-**1414 tracked tasks, 1017 done.** The tracker is [`.pantheon/ROADMAP.md`](.pantheon/ROADMAP.md) and
+**1415 tracked tasks, 1018 done.** The tracker is [`.pantheon/ROADMAP.md`](.pantheon/ROADMAP.md) and
 it is the only place work is tracked — one list, one progress area, validated by a script that
 recounts every phase row against its own ticks. It exists because the summary line was once wrong
 by nineteen and carried forward unread from entry to entry, because each author copied the line
 above.
 
 **Read that number with the trend beside it.** Over the last ten waves, *done* went
-**71.3% → 71.9%** and *open* went **387 → 397**: 67 rows filed against 57 closed, a
-file-to-close ratio of **1.175**. Most of it is `P23`, the audits' fixes — built by eight lanes, driven by the owner's
+**71.3% → 71.9%** and *open* went **387 → 397**: 68 rows filed against 58 closed, a
+file-to-close ratio of **1.172**. Most of it is `P23`, the audits' fixes — built by eight lanes, driven by the owner's
 walk twice on the merged tree and closed on 2026-10-07 — and what came straight after it: the owner's rulings that
 evening, and then `v0.2.0` shipping and the owner running it on their own install. Their two reports of 2026-10-09
 alone took thirteen measured causes across seven lanes, and their ruling the same evening took three more lanes and a
 third report, which is the shape of this whole number: a release in use finds in one morning what sweeps over the
-same code did not. The largest interval in this window is the `fx9`–`fx11` wave against the owner's *“the LLM's use of tools is still very much intermittent”*: 50 rows filed and 29 of them shipped before they had a row at all — the fix had landed and the tracker had not, which is a reconciliation and not a change in the rate. The four intervals since are what the window looks like without one: **+1, +0, +1 and +0 filed against +1, +4, +2 and +3 closed**, so *open* has fallen in each of the last four. The newest is the design-system spine plus the first of the owner's `D-2026-10-17-01` rulings — seven rows closed (`P1-08`, `P1-09`, `P1-10`, `P1-11`, `P1-15`, `P10-04`, `B1369`) against one row filed (`B1404`), and that one filed deliberately: a `--border` measurement that holds on 22 of 23 palettes is a design intent to confirm before it is a defect to fix. That ruling (`D-2026-10-09-01`) is also the first to **amend** a `FORBIDDEN.md` Part 2 security
+same code did not. The largest interval in this window is the `fx9`–`fx11` wave against the owner's *“the LLM's use of tools is still very much intermittent”*: 50 rows filed and 29 of them shipped before they had a row at all — the fix had landed and the tracker had not, which is a reconciliation and not a change in the rate. The four intervals since are what the window looks like without one: **+1, +0, +1 and +0 filed against +1, +4, +2 and +3 closed**, so *open* has fallen in each of the last four. The newest is the design-system spine plus the first of the owner's `D-2026-10-17-01` rulings — eight rows closed (`P1-08`, `P1-09`, `P1-10`, `P1-11`, `P1-15`, `P10-04`, `B1369`, `B1405`) against one row filed (`B1404`), and that one filed deliberately: a `--border` measurement that holds on 22 of 23 palettes is a design intent to confirm before it is a defect to fix. That ruling (`D-2026-10-09-01`) is also the first to **amend** a `FORBIDDEN.md` Part 2 security
 control — one row of that table's twenty-five: a chat can be set to **Auto**, where the person is not asked before a
 privileged effect that follows outside content. What that gives up, and what it leaves untouched, are written out in
 [`.pantheon/SHIP-LINE.md`](.pantheon/SHIP-LINE.md)'s register under `B1338`. The open count falls only when closing outruns filing, and in
 most waves it does not — most rows are defects found by sweeps over code that was already here,
-not new work invented — so this reading is a good stretch, not a promise. What matters more is a different number: of the last 40 backlog rows filed (`B1365`–`B1404`), **none** is
+not new work invented — so this reading is a good stretch, not a promise. What matters more is a different number: of the last 40 backlog rows filed (`B1366`–`B1405`), **none** is
 on the ship line's open list — the short list of rows that stop a stranger relying on this
 repository now that it is public (measured 2026-10-02, and read again on 2026-10-07, 2026-10-08, 2026-10-09 and twice on 2026-10-14 for every row filed since): `B1179`, found at wave G's merge, was met
 the same day, and every gate the list named is met. The series, the classification and
@@ -275,7 +275,7 @@ what counts as blocking are in
 `.pantheon/ship-line.py`'s, and `.pantheon/check-ledger.py` fails the build when one here stops
 matching it.
 
-Test suite: **14,154 passing**, nothing red. The fourteen standing failures this fork
+Test suite: **20,092 passing**, nothing red. The fourteen standing failures this fork
 inherited and carried were cleared on 2026-09-12 — eight were a container missing dependencies
 the project already declares, three were stale test stubs hiding behind broad `except` blocks,
 and three were rules pinned to upstream's shape rather than this fork's.

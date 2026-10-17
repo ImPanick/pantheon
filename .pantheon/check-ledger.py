@@ -216,6 +216,57 @@ _HEADLINE = re.compile(r"^([A-Z][A-Z -]*?)\s+(\d[\d,]*)$")
 _LEADING_NUMBER = re.compile(r"(\d[\d,]*)")
 
 
+def _test_file_count_problems() -> list:
+    """The `tests` claim's **current** file count, against the tree.
+
+    Re-measured 2026-10-17: the claim said *1,182 test files and 14,154
+    passing* and the tree held **1,541** with the suite answering **20,092**.
+    **353 files had landed without the headline moving**, which is `B44`'s
+    defect one level up — the one line whose whole job is to summarise the rest,
+    drifting unread because nothing compared it to the thing it summarises.
+    `_checker_count_problems` already does exactly this for the checker count;
+    this is the same rule for the number a sceptic reads first.
+
+    Only the *current* half is derived. The `792` before-figure is a count at
+    the fork point and that commit is not in every clone — `git ls-tree
+    b4d1293` fails here — so re-deriving it would make this check pass or fail
+    on how the repository was cloned. And the **passing** count cannot be
+    derived without running the suite (1h16m), so it stays a dated measurement
+    with the date inside the claim: a stale number is then visible as an old
+    date rather than invisible as a wrong count.
+    """
+    by_id = {c.id: c for c in C.CLAIMS}
+    claim = by_id.get("tests")
+    if claim is None:
+        return ["the tests claim is gone — the ledger no longer states the suite's size"]
+    try:
+        listing = subprocess.run(["git", "ls-files"], cwd=ROOT, text=True,
+                                 capture_output=True, timeout=60)
+    except (OSError, subprocess.SubprocessError):
+        return []
+    if listing.returncode != 0:
+        return []
+    live = sum(1 for line in listing.stdout.splitlines()
+               if re.fullmatch(r"tests/test_.*\.py", line.strip()))
+    if not live:
+        return []
+    problems = []
+    # `after` is `"<N> test files · <M>"`; the headline and prose restate N.
+    stated = re.match(r"(\d[\d,]*) test files", claim.after.strip())
+    if stated is None:
+        return ["tests: the `after` no longer starts with a test-file count"]
+    if int(stated.group(1).replace(",", "")) != live:
+        problems.append(
+            f"tests says {stated.group(1)} test files and `git ls-files` counts "
+            f"{live} — re-run the suite and restate both figures together, "
+            f"because a file count that moved without the passing count is the "
+            f"drift this check exists for")
+    for where, text in (("headline", claim.headline), ("pantheon", claim.pantheon)):
+        if str(live) not in text.replace(",", ""):
+            problems.append(f"tests: the {where} does not state {live} test files")
+    return problems
+
+
 def _repro_inline(repro: str):
     """The code of a repro whose first command is `python3 -c "<code>"`, or None."""
     try:
@@ -635,6 +686,7 @@ def verify() -> list:
     problems.extend(_readme_trend_problems())
     problems.extend(_upstream_gap_problems())
     problems.extend(_checker_count_problems())
+    problems.extend(_test_file_count_problems())
     problems.extend(_repro_problems()[0])
     problems.extend(_fork_date_problems())
 

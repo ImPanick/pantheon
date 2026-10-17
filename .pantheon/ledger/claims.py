@@ -440,11 +440,11 @@ CLAIMS: Tuple[Claim, ...] = (
     Claim(
         id="tests",
         area="Verification apparatus",
-        headline="Test files 792 -> 1182, and a suite of 14,154 passing with nothing red.",
+        headline="Test files 792 -> 1541, and a suite of 20,092 passing with nothing red.",
         stock="792 test files.",
-        pantheon="1182 test files, 14,154 tests passing, 0 failing.",
+        pantheon="1541 test files, 20,092 tests passing, 0 failing, 113 skipped, 2 xfailed.",
         before="792 test files",
-        after="1182 test files · 14,154",
+        after="1541 test files · 20,092",
         provenance="diffed",
         repro=f"git ls-tree -r --name-only {FORK_POINT} | grep -c '^tests/test_.*\\.py$' && python3 -m pytest -q",
         evidence=("tests",),
@@ -456,6 +456,15 @@ CLAIMS: Tuple[Claim, ...] = (
             "that a passing test was proving nothing — a window that matched the next "
             "block's code, a scan satisfied by a name inside `if False:`. "
             "**Proximity is not reachability**, and only a mutation run says so. "
+            "**Re-measured 2026-10-17 and both figures were badly stale**: the claim "
+            "said *1,182 test files and 14,154 passing*, last set when that was true, "
+            "while the tree held **1,541** and the suite answered **20,092 passing, "
+            "113 skipped, 2 xfailed, nothing red** in 1h16m. 353 of those files had "
+            "landed without the headline moving — `B44`'s defect one level up, in the "
+            "one line whose whole job is to summarise the rest. The file count is a "
+            "`git ls-files` away, so `check-ledger.py` now derives it and fails on "
+            "drift; the passing count cannot be checked without running the suite, so "
+            "it is a dated measurement and the date is part of the claim. "
             "**The suite carried 14 standing failures for the fork's whole life and "
             "now carries none** — and the accounting is worth more than the number: "
             "eight were this container missing dependencies the project already "
