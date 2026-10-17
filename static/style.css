@@ -30,6 +30,42 @@
  * is corrected rather than deleted.
  */
 
+
+/* ── The z ladder ──  `P1-10`, enforced by `.pantheon/check-zindex.py`
+ *
+ * Seven tiers, plus `below`, which is not a tier but the absence of one. Pick
+ * the tier first and a value inside it second, and reuse a value the tier
+ * already has unless the element genuinely needs its own layer:
+ *
+ *   below      -1           behind the content — a backdrop, a hit-target
+ *   base        0 …      8  in-flow layering inside one component
+ *   raised     10 …     48  a raised part of a component — handle, badge, strip
+ *   sticky     50 …    155  chrome that stays put — rails, headers, composer
+ *   popover   170 …    500  anchored popovers, and the modal base (`.modal` 250)
+ *   window   1000 …   9999  tool windows and dialogs
+ *   overlay 10000 …  10500  portaled above every window — dropdowns, dock chips
+ *   top     12000 …         the toast and the drag shields
+ *
+ * **Above `window`, prefer no number at all.** `topPortalZ()` and
+ * `nextToolWindowZ()` in `static/js/toolWindowZOrder.js` read the live stack,
+ * and 60 sites already use them. The modal bring-to-front counter climbs for as
+ * long as a session lasts, so any literal in or above `window` is eventually
+ * overtaken — which is `#4720`, and why `tests/test_portal_dropdown_z_js.py`
+ * forbids the `100000` that was tried as a fix.
+ *
+ * `top` has no ceiling for the same reason: the toast is at 2,147,483,000
+ * because `B1056` measured the tour hint covering it at 9,999, and a toast is
+ * what the person is being told right now. That number is a symptom — the cure
+ * is a bounded counter, not a bigger literal — and until then it is correct.
+ *
+ * The checker fails a literal outside every tier and a **new** distinct value;
+ * the population may shrink but not grow. Measured 2026-10-17: 349 literals,
+ * 74 distinct, in 29 files. Collapsing the 74 onto 7 is the other half of
+ * `P1-10` and needs eyes, because two elements that differ today would tie, and
+ * a tie is settled by DOM order — which `static/js/ui.js`'s own comment calls
+ * unpredictable.
+ */
+
 :root {
   /* Which way the browser paints its own controls, and which arm `light-dark()`
      resolves to, BEFORE `theme.js` boots and when scripting is off entirely.
@@ -6052,7 +6088,25 @@ body.bg-pattern-sparkles {
       transform: translateX(120%);
       transition: opacity .35s cubic-bezier(0.22, 1, 0.36, 1),
                   transform .45s cubic-bezier(0.22, 1, 0.36, 1);
-      z-index: 9999; pointer-events: none;
+      /* `B1056`, `P1-11`. The first-run tour hint takes its z from the live
+         stack (`toolWindowZOrder.js:topPortalZ`, at least 10031), and this sat
+         at 9999 under it: measured, the loop refusal's last line ("Remove one
+         of those links to save it.") was hidden behind the hint from x=1134. A
+         toast is what the person is being told right now, so it sits above
+         every window, every portaled overlay and the confirm dialog (99999) —
+         at the top of the z range, because the window counter climbs for as
+         long as a session lasts and a literal it can reach is the `#4720`
+         defect again (`tests/test_portal_dropdown_z_js.py`). It takes no
+         clicks but its own button, so it covers nothing it could block.
+
+         `P1-11` moved it here from `#toast.toast`, which `B1056` had added
+         below to out-rank this `9999` by id. There is exactly one toast
+         element in the product (`<div id="toast" class="toast">` in
+         index.html), so the computed value is the same either way — but the
+         `9999` it beat was still sitting here, which made this rule a dead
+         declaration and the id a hack maintaining it. The `top` tier is in
+         `.pantheon/check-zindex.py`. */
+      z-index: 2147483000; pointer-events: none;
       box-shadow: 0 4px 12px rgba(0,0,0,0.2);
       backdrop-filter: blur(12px);
       max-width: min(360px, calc(100vw - 32px));
@@ -47303,18 +47357,6 @@ button.task-card-toggle {
   cursor: move;
   box-shadow: 0 6px 18px color-mix(in srgb, var(--fg) 24%, transparent);
 }
-/* `B1056`. The first-run tour hint takes its z from the live stack
-   (`toolWindowZOrder.js:topPortalZ`, at least 10031), and the toast sat at
-   9999 under it: measured, the loop refusal's last line ("Remove one of those
-   links to save it.") was hidden behind the hint from x=1134. A toast is what
-   the person is being told right now, so it sits above every window, every
-   portaled overlay and the confirm dialog (99999) — at the top of the z range,
-   because the window counter climbs for as long as a session lasts and a
-   literal it can reach is the `#4720` defect again
-   (`tests/test_portal_dropdown_z_js.py`). It takes no clicks but its own
-   button, so it covers nothing it could block. */
-#toast.toast { z-index: 2147483000; }
-
 /* ===== wf-ui — `P22-05`…`P22-08`, `B1062` (P22 wave C, Slice B) =====
    The Automations room's shelf (the tasks and chains, then every workflow), a
    workflow's toolbar and its Edit | Runs, the unsaved-changes question, the

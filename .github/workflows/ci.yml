@@ -194,6 +194,16 @@ jobs:
       # paints a hard-coded white on an accent background, which 46 of them did.
       - name: check-contrast
         run: python3 .pantheon/check-contrast.py
+      # `P1-10`. A ratchet, not a remap. 349 hard-coded z-index literals across
+      # 29 files, 74 distinct values, range -1 to 2,147,483,646 — and the row
+      # measured 259 in `style.css` alone, so 69 of them were outside its scope
+      # entirely. Nothing is renumbered: a value that moves is a stacking change
+      # nobody here can see, and the row's own Verify line says "nothing moves
+      # visually". What this holds is that every literal lands inside one of
+      # seven named tiers, and that no NEW distinct value appears — a new magic
+      # number is how the product reached 2,147,483,000 in the first place.
+      - name: check-zindex
+        run: python3 .pantheon/check-zindex.py
       # B74. The register above says a tool name must be in every register; this
       # one says the registers have to AGREE. Thirteen tools are served by an
       # MCP server and declared to Pantheon, each spelled out twice, and no pair
