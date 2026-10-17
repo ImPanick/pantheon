@@ -239,15 +239,23 @@ def _test_file_count_problems() -> list:
     claim = by_id.get("tests")
     if claim is None:
         return ["the tests claim is gone — the ledger no longer states the suite's size"]
+    # Tracked **and** untracked-not-ignored, which is the whole of the fix for
+    # how this first bit: `git ls-files` alone reads the index, so a new test
+    # file is invisible until `git add` and the check fires at commit time
+    # instead of when the author could fix it in one edit. It fired in a
+    # worktree at the gate, 76 minutes into a suite run, for a file that had
+    # existed for an hour. The claim is about the suite, and a file sitting in
+    # `tests/` is a file the suite runs whether or not it is staged.
     try:
-        listing = subprocess.run(["git", "ls-files"], cwd=ROOT, text=True,
-                                 capture_output=True, timeout=60)
+        listing = subprocess.run(
+            ["git", "ls-files", "--cached", "--others", "--exclude-standard"],
+            cwd=ROOT, text=True, capture_output=True, timeout=60)
     except (OSError, subprocess.SubprocessError):
         return []
     if listing.returncode != 0:
         return []
-    live = sum(1 for line in listing.stdout.splitlines()
-               if re.fullmatch(r"tests/test_.*\.py", line.strip()))
+    live = len({line.strip() for line in listing.stdout.splitlines()
+                if re.fullmatch(r"tests/test_.*\.py", line.strip())})
     if not live:
         return []
     problems = []
@@ -257,9 +265,9 @@ def _test_file_count_problems() -> list:
         return ["tests: the `after` no longer starts with a test-file count"]
     if int(stated.group(1).replace(",", "")) != live:
         problems.append(
-            f"tests says {stated.group(1)} test files and `git ls-files` counts "
+            f"tests says {stated.group(1)} test files and the tree holds "
             f"{live} — restate the file count (it is one edit; the passing figure "
-            f"below is dated and does not have to move with it)")
+            f"is dated and does not have to move with it)")
     for where, text in (("headline", claim.headline), ("pantheon", claim.pantheon)):
         if str(live) not in text.replace(",", ""):
             problems.append(f"tests: the {where} does not state {live} test files")
