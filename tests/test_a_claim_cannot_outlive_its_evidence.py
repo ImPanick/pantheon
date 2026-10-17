@@ -252,13 +252,46 @@ def test_the_readme_trend_is_the_ship_lines_own(checker):
 
 
 def test_a_copied_trend_and_a_stale_checker_count_are_caught(checker, tmp_path, monkeypatch):
+    """Three mutations, each asserted to have *applied* before its problem is
+    expected.
+
+    **This test rotted on 2026-10-17 and the sibling above had already written
+    down how.** The checker-count mutation was typed — `"Twenty-four checkers
+    run in CI"` → `"Twenty-three …"` — and the day `check-contrast.py` became
+    the twenty-fifth, the `.replace` matched nothing, the README stayed valid,
+    the checker reported no problem about it, and the final assertion failed for
+    the opposite of the reason it was written. That is the third time in three
+    adjacent tests, which is enough to say the shape is the defect: a mutation
+    test that does not check its own mutation landed is a test that reports the
+    tree broken when it is the test that is stale.
+
+    So the count is derived from `ci.yml` the way `_readme_trend_problems()`
+    derives it, and each `.replace` is asserted to have changed the text. A
+    stale literal now fails as *"this mutation no longer applies"* rather than
+    as *"the checker missed something"*.
+    """
     # Whitespace flattened, as the checker reads it: the README wraps its prose.
     readme = " ".join(README.read_text(encoding="utf-8").split())
     t = checker._ship_line().trend_summary(checker.TRACKER.read_text(encoding="utf-8"))
-    stale = (readme.replace(f"**{t['done_from']}% → {t['done_to']}%**", "**49.7% → 63.0%**")
-                   .replace(f"ratio of **{t['ratio']}**", "ratio of **1.185**")
-                   .replace("Twenty-four checkers run in CI", "Twenty-three checkers run in CI"))
+    live = len(re.findall(r"^\s*- name: check-[\w-]+\s*$",
+                          (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"),
+                          re.M))
+    assert live >= 2, "ci.yml lists no checkers — nothing to go stale about"
+
+    mutations = (
+        (f"**{t['done_from']}% → {t['done_to']}%**", "**49.7% → 63.0%**"),
+        (f"ratio of **{t['ratio']}**", "ratio of **1.185**"),
+        (f"{checker._count_word(live, capital=True)} checkers run in CI",
+         f"{checker._count_word(live - 1, capital=True)} checkers run in CI"),
+    )
+    stale = readme
+    for current, wrong in mutations:
+        assert current in stale, (
+            f"the README no longer says {current!r}, so this mutation cannot "
+            "apply — the literal is stale, not the checker")
+        stale = stale.replace(current, wrong)
     assert stale != readme
+
     fake = tmp_path / "README.md"
     fake.write_text(stale, encoding="utf-8")
     monkeypatch.setattr(checker, "README", fake)
