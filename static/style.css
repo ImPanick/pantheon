@@ -15183,6 +15183,282 @@ textarea.memory-add-input {
   content: '\00b7  ';
 }
 
+/* ── `P13-07`. The Brain's reading surface ───────────────────────────────────
+   No canvas and no force layout, which is the row's own instruction twice over
+   and the reason `P3-19` is moot: what a person wants from a memory graph is
+   not to look at it, it is to answer *what does this remember about one
+   project, and how do I fix the bit that is wrong*. So: a card, a list, six
+   filters and a detail pane.
+
+   Every colour here is a palette token. No `--accent`: the theme editor owns
+   that one and all 23 palettes depend on it staying unclaimed (`P1-01`). */
+
+.brain-explore-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  padding: 9px 11px;
+  border: 1px solid var(--border-control, var(--border));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--fg) 3%, transparent);
+}
+.brain-explore-card-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+  font-size: 0.74rem;
+  line-height: 1.35;
+}
+#brain-explore-card-sub {
+  color: var(--fg-muted);
+}
+.brain-explore-card-btn {
+  flex-shrink: 0;
+  padding: 5px 11px;
+  border: 1px solid var(--border-control, var(--border));
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--fg);
+  font-size: 0.74rem;
+  cursor: pointer;
+}
+.brain-explore-card-btn:hover {
+  background: color-mix(in srgb, var(--fg) 8%, var(--panel));
+}
+
+.brain-explore-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.brain-explore-title {
+  margin: 0;
+  font-size: 0.92rem;
+}
+.brain-explore-back {
+  padding: 3px 8px;
+  border: 1px solid var(--border-control, var(--border));
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--fg);
+  font-size: 0.72rem;
+  cursor: pointer;
+}
+/* The freshness sentence. `P13-07` asks the surface to state plainly how fresh
+   the analysis is, so it sits above the filters where it is read before
+   anything is narrowed — not in a corner beside a timestamp. */
+.brain-explore-fresh {
+  margin: 6px 0 10px;
+  font-size: 0.72rem;
+  line-height: 1.4;
+  color: var(--fg-muted);
+}
+
+.brain-explore-search {
+  width: 100%;
+  padding: 6px 9px;
+  border: 1px solid var(--border-control, var(--border));
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 0.78rem;
+}
+.brain-filter-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.brain-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.brain-filter {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.brain-filter-label {
+  font-size: 0.64rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--fg-muted);
+}
+.brain-filter-select {
+  padding: 4px 6px;
+  border: 1px solid var(--border-control, var(--border));
+  border-radius: 5px;
+  background: var(--panel);
+  color: var(--fg);
+  font-size: 0.72rem;
+  color-scheme: inherit;  /* P3-09 — follow the root, which theme.js sets */
+}
+.brain-explore-count {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0 4px;
+  font-size: 0.7rem;
+  color: var(--fg-muted);
+}
+.brain-explore-clear {
+  padding: 2px 7px;
+  border: 1px solid var(--border-control, var(--border));
+  border-radius: 5px;
+  background: transparent;
+  color: var(--fg);
+  font-size: 0.68rem;
+  cursor: pointer;
+}
+
+.brain-explore-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+  min-height: 0;
+}
+.brain-explore-row {
+  padding: 7px 9px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.brain-explore-row:hover {
+  background: color-mix(in srgb, var(--fg) 5%, transparent);
+}
+.brain-explore-row-text {
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+.brain-explore-row-meta {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 3px;
+}
+.brain-explore-row-age {
+  font-size: 9px;
+  color: var(--fg-muted);
+}
+.brain-explore-empty {
+  padding: 14px 2px;
+  font-size: 0.74rem;
+  color: var(--fg-muted);
+}
+
+.brain-detail {
+  margin: 2px 0 8px;
+  padding: 10px 11px;
+  border: 1px solid var(--border-control, var(--border));
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--fg) 4%, transparent);
+}
+.brain-detail-text {
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+.brain-detail-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+  margin-top: 7px;
+}
+.brain-detail-project,
+.brain-detail-chip {
+  padding: 1px 6px;
+  border: 1px solid var(--border-control, var(--border));
+  border-radius: 999px;
+  font-size: 9px;
+  white-space: nowrap;
+  color: var(--fg-muted);
+}
+/* The project reads as the stronger of the two, because it is the one a
+   reader filtered by to get here. */
+.brain-detail-project {
+  color: var(--fg);
+}
+.brain-detail-edges {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 9px;
+  padding-top: 8px;
+  border-top: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+}
+.brain-detail-edge {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+.brain-edge-type {
+  flex-shrink: 0;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--fg-muted);
+}
+/* A contradiction is the one a reader most needs and the one the retriever
+   already surfaces both sides of (`P13-02`), so it is the only edge type that
+   carries a colour — and it borrows the error token rather than claiming one,
+   because "these two disagree" is the same class of fact. */
+.brain-edge-contradicts .brain-edge-type {
+  color: var(--color-error, var(--red));
+}
+.brain-edge-text {
+  min-width: 0;
+}
+.brain-edge-note {
+  font-style: italic;
+  color: var(--fg-muted);
+}
+.brain-detail-actions {
+  display: flex;
+  gap: 7px;
+  margin-top: 10px;
+}
+.brain-detail-btn {
+  padding: 4px 10px;
+  border: 1px solid var(--border-control, var(--border));
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--fg);
+  font-size: 0.72rem;
+  cursor: pointer;
+}
+.brain-detail-btn:hover {
+  background: color-mix(in srgb, var(--fg) 8%, var(--panel));
+}
+/* Retire is not delete, so it is not painted like one: the destructive colour
+   belongs to the button that destroys. The title says what it keeps. */
+.brain-detail-retire {
+  color: var(--fg-muted);
+}
+.brain-detail-edit {
+  width: 100%;
+  min-height: 4.5em;
+  padding: 7px 9px;
+  border: 1px solid var(--border-control, var(--border));
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+  font-size: 0.78rem;
+  resize: vertical;
+}
+.brain-detail-said {
+  margin-top: 8px;
+  font-size: 0.72rem;
+  color: var(--fg-muted);
+}
+
 /* Empty state */
 .memory-empty {
   padding: 24px 16px;

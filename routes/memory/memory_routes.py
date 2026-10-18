@@ -989,6 +989,60 @@ def setup_memory_routes(memory_manager: MemoryManager, session_manager: SessionM
                 logger.debug("memory_added event dispatch failed", exc_info=True)
         return result
 
+    @router.post("/{memory_id}/archive")
+    def archive_memory_item(request: Request, memory_id: str,
+                            reason: str = Form(None)):
+        """Retire a memory without destroying it. `P13-07`.
+
+        `MemoryManager.archive` has existed since `P13-04` and **nothing could
+        ask for it**: the audit's forecast called it, and a person looking at a
+        memory they wanted to stop surfacing had only `DELETE`. That is the
+        unwired half again, and it matters here because *retire* and *delete*
+        are different answers: the row asks a reader to be able to *"correct
+        it, retire it"*, and a memory that was true last year is not a memory
+        that was never true. Archiving keeps the text, the confidence, the
+        provenance, the mentions and the edges exactly as they were and simply
+        stops `live()` returning it.
+
+        Beside `/pin` and `/commit` rather than folded into `PUT`, for the
+        reason `/commit` gives: an edit alters what a memory says, and this
+        alters whether it is allowed to say anything at all.
+
+        `reason` is optional and recorded, because *"the store decided"* is not
+        an answer anybody can act on — `archive()` says so itself — and a
+        person retiring a memory by hand has a reason the audit never has.
+        """
+        from src.auth_helpers import require_privilege
+        require_privilege(request, "can_manage_memory")
+
+        user = _owner(request)
+        # The same shape every other mutating route here uses: unscoped read
+        # plus `_verify_memory_owner`, and `_load_for_update` so an unreadable
+        # store is a 503 rather than a 404.
+        entry = next((m for m in _load_for_update(memory_manager)
+                      if m.get("id") == memory_id), None)
+        if entry is None:
+            raise HTTPException(404, f"Memory item {memory_id} not found")
+        _verify_memory_owner(entry, user)
+
+        changed = memory_manager.archive(
+            [memory_id], reason=(reason or "retired by hand"))
+        # `archive()` refuses anything not currently committed, and a refusal
+        # is an answer rather than an error — the same call `/commit` makes.
+        # "Already archived" is the most useful thing the panel can say, and a
+        # 4xx would make it show a failure banner instead.
+        if not changed:
+            return {"archived": False,
+                    "reason": "that memory is not currently committed, so "
+                              "there is nothing to retire"}
+        if memory_vector and getattr(memory_vector, "healthy", False):
+            try:
+                memory_vector.remove(memory_id)
+            except Exception as exc:
+                logger.warning("Memory vector remove failed for %s: %s",
+                               memory_id, exc)
+        return {"archived": True, "memory": changed[0]}
+
     # Wildcard routes MUST come last — otherwise they swallow /import, /search, etc.
     @router.get("/{memory_id}")
     def get_memory_item(request: Request, memory_id: str):

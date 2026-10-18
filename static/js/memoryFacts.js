@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // `P13-01` / `B643`. What a memory's numbers mean, as data.
 //
 // This module imports **nothing**, deliberately, and that is why it exists.

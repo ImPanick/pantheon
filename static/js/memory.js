@@ -1488,7 +1488,10 @@ function startInlineEdit(item, memory) {
   });
 }
 
-async function saveInlineEdit(id, newText, newCategory) {
+/** The one writer of a correction. `P13-07` reuses it rather than sending its
+ *  own `PUT`: a second place that saves an edit is a second place to forget to
+ *  reload the list, re-index the vector or report a refusal (`Law 14`). */
+export async function saveInlineEdit(id, newText, newCategory) {
   newText = newText.trim();
   if (!newText) return;
 
@@ -2041,6 +2044,26 @@ var showError = uiModule.showError;
 document.addEventListener('DOMContentLoaded', () => {
   _wireMemoryDrag();
 
+  // `P13-07`. The card at the foot of the memories list is the surface's one
+  // door. Imported lazily on the click rather than at module scope, for two
+  // reasons: a surface that is deliberately *not on open* should not cost
+  // anything to boot, and `brainExplore.js` reads this module through
+  // `window.memoryModule`, so a static import here would be the
+  // `memory.js` <-> `brainExplore.js` cycle that `memoryFacts.js` exists to
+  // avoid in the other direction.
+  const exploreBtn = document.getElementById('brain-explore-open');
+  if (exploreBtn) {
+    exploreBtn.addEventListener('click', async () => {
+      try {
+        const surface = await import('./brainExplore.js');
+        await surface.showExplore(true);
+      } catch (err) {
+        showError('Could not open the memory explorer');
+        console.warn('[P13-07] explore surface failed to load', err);
+      }
+    });
+  }
+
   // `B1070`. Every door into the Brain — the sidebar row, the rail, `/memory`,
   // the shortcut, a chat's "memories used" row — un-hides this window, so the
   // window itself is what asks for its list.
@@ -2137,7 +2160,8 @@ const memoryModule = {
   describeMemoryTidy,
   importMemories,
   exportMemories,
-  revealMemory
+  revealMemory,
+  saveInlineEdit
 };
 
 export default memoryModule;
