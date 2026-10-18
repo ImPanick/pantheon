@@ -503,7 +503,6 @@ STILL_BALANCES_BY_HAND = {
     "tests/test_keybind_registry.py",
     "tests/test_keyframes_are_unique_and_resolved.py",
     "tests/test_local_endpoint_api_key_js.py",
-    "tests/test_mentions_are_not_uses.py",
     "tests/test_one_icon_table.py",
     "tests/test_one_run_mode_picker_js.py",
     "tests/test_reduced_motion_guard.py",

@@ -241,7 +241,13 @@ def test_the_panel_starts_hidden():
 
 def test_one_card_is_the_only_door():
     html = blank(INDEX)
+    # The button, not the card: the card's wrapper carried an id in the first
+    # draft and nothing read it — the CSS targets the class — so `P3-12`'s
+    # orphan-id itemisation flagged it on the full suite and it is gone. An id
+    # nothing reads is the thing that itemisation exists to find.
     assert html.count('id="brain-explore-open"') == 1, "the door is not unique"
+    assert 'id="brain-explore-card"' not in html, (
+        "the card's wrapper has an id again and nothing reads it")
     js = blank(MEMJS)
     assert "brain-explore-open" in js, "nothing wires the card"
     assert "import('./brainExplore.js')" in js, (
