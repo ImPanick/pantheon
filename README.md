@@ -248,25 +248,25 @@ proved it dead.
 
 ## Status
 
-**1416 tracked tasks, 1035 done.** The tracker is [`.pantheon/ROADMAP.md`](.pantheon/ROADMAP.md) and
+**1417 tracked tasks, 1037 done.** The tracker is [`.pantheon/ROADMAP.md`](.pantheon/ROADMAP.md) and
 it is the only place work is tracked — one list, one progress area, validated by a script that
 recounts every phase row against its own ticks. It exists because the summary line was once wrong
 by nineteen and carried forward unread from entry to entry, because each author copied the line
 above.
 
 **Read that number with the trend beside it.** Over the last ten waves, *done* went
-**71.4% → 73.1%** and *open* went **394 → 381**: 39 rows filed against 52 closed, a
-file-to-close ratio of **0.750** — the first window in this record where closing outran filing. Most of it is `P23`, the audits' fixes — built by eight lanes, driven by the owner's
+**70.9% → 73.2%** and *open* went **409 → 380**: 10 rows filed against 39 closed, a
+file-to-close ratio of **0.256** — the first window in this record where closing outran filing. Most of it is `P23`, the audits' fixes — built by eight lanes, driven by the owner's
 walk twice on the merged tree and closed on 2026-10-07 — and what came straight after it: the owner's rulings that
 evening, and then `v0.2.0` shipping and the owner running it on their own install. Their two reports of 2026-10-09
 alone took thirteen measured causes across seven lanes, and their ruling the same evening took three more lanes and a
 third report, which is the shape of this whole number: a release in use finds in one morning what sweeps over the
-same code did not. The largest interval in this window is the `fx9`–`fx11` wave against the owner's *“the LLM's use of tools is still very much intermittent”*: 50 rows filed and 29 of them shipped before they had a row at all — the fix had landed and the tracker had not, which is a reconciliation and not a change in the rate. The four intervals since are what the window looks like without one: **+4, +2, +1 and +0 filed against +4, +10, +12 and +3 closed**, so *open* has fallen or held in each. The newest three are the design-system spine, the owner handing back a set of five decisions (`D-2026-10-17-02`), and that ruling's own last three rows — twenty-four rows closed against one filed, and the middle interval is the one that moved the ratio under 1.000, because deferring `P11` and `P12` closed ten rows of SSO and rate limiting that build controls for an account this install does not have. The one row filed in the window was filed deliberately and has since been closed by the ruling that handed it back: a `--border` measurement that holds on 22 of 23 palettes is a design intent to confirm before it is a defect to fix, and once confirmed it took a second token rather than a lifted one (`B1404`). That ruling (`D-2026-10-09-01`) is also the first to **amend** a `FORBIDDEN.md` Part 2 security
+same code did not. **The window has just turned over, and the ratio moved a long way because of what left it rather than what entered.** Until this wave it held the `fx9`–`fx11` interval against the owner's *“the LLM's use of tools is still very much intermittent”*: 50 rows filed, 29 of them for fixes that had already shipped before they had a row at all, which was a reconciliation and not a change in the rate. That interval has now aged out of the last ten, and the ratio fell from 0.750 to **0.256** without a single row being closed differently — which is the honest caveat on a ten-interval window and the reason the figure is restated with its range rather than quoted alone. What is left is ten intervals of ordinary work: **+1, +0, +1, +0, +4, +2, +1, +0 and +1 filed against +1, +1, +4, +2, +4, +10, +12, +3 and +2 closed**, so *open* has fallen or held in every one of them. The three largest closes are the design-system spine, the owner handing back a set of five decisions (`D-2026-10-17-02`), and that ruling's own rows — and the biggest single reason the count dropped is that deferring `P11` and `P12` closed ten rows of SSO and rate limiting that build controls for an account this install does not have. Of the ten rows filed, the ones worth naming were both filed deliberately and both closed by the work that found them: a `--border` measurement that holds on 22 of 23 palettes is a design intent to confirm before it is a defect to fix (`B1404`), and a model answering `1e999` became the most confident memory in the Brain (`B1407`). That ruling (`D-2026-10-09-01`) is also the first to **amend** a `FORBIDDEN.md` Part 2 security
 control — one row of that table's twenty-five: a chat can be set to **Auto**, where the person is not asked before a
 privileged effect that follows outside content. What that gives up, and what it leaves untouched, are written out in
 [`.pantheon/SHIP-LINE.md`](.pantheon/SHIP-LINE.md)'s register under `B1338`. The open count falls only when closing outruns filing, and in
 most waves it does not — most rows are defects found by sweeps over code that was already here,
-not new work invented — so this reading is a good stretch, not a promise. What matters more is a different number: of the last 40 backlog rows filed (`B1367`–`B1406`), **none** is
+not new work invented — so this reading is a good stretch, not a promise. What matters more is a different number: of the last 40 backlog rows filed (`B1368`–`B1407`), **none** is
 on the ship line's open list — the short list of rows that stop a stranger relying on this
 repository now that it is public (measured 2026-10-02, and read again on 2026-10-07, 2026-10-08, 2026-10-09 and twice on 2026-10-14 for every row filed since): `B1179`, found at wave G's merge, was met
 the same day, and every gate the list named is met. The series, the classification and

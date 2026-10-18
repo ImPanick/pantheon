@@ -14,6 +14,11 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
 import * as Modals from './modalManager.js?v=20261009census';
 // C-ERR: a refused response is read once, by the one reader.
 import { readRefusal } from './workbench/refusal.js';
+// `P13-01`. The memory pills live in a module that imports nothing, because
+// `chatRenderer.js` needs them too and cannot import this file —
+// `memory.js` -> `sessions.js` -> `chatRenderer.js` is a cycle.
+import { memoryCountPills, memoryConfidencePill } from './memoryFacts.js';
+import { scrollBehavior } from './motion.js';
 
 var escapeHtml = uiModule.esc;
 
@@ -52,43 +57,6 @@ const _MEMORY_SORT_ICONS = {
   // where `uses` is about what the assistant keeps reaching for.
   mentions: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 9a2 2 0 0 1-2 2H6l-4 4V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2z"/><path d="M18 9h2a2 2 0 0 1 2 2v11l-4-4h-6a2 2 0 0 1-2-2v-1"/></svg>',
 };
-
-// `P13-15`. The two count pills, as data.
-//
-// `uses` counts how often the SYSTEM reached for this memory and put it in a
-// prompt. `mention_sessions` counts how many separate conversations the PERSON
-// raised it in. A memory the assistant keeps injecting and a memory you keep
-// bringing up are different kinds of important, and one number cannot mean
-// both — so they are two pills, built from two fields, and each title says
-// which is which. A bare "11×" beside a bare "said in 3" is a riddle.
-//
-// Exported as data rather than built inline so a test can run it instead of
-// reading it (`Law 20`). `B61` is why: a mutation that computed a value
-// correctly and never put it on screen survived every test of the helper.
-export function memoryCountPills(memory) {
-  const uses = Number((memory && memory.uses) || 0);
-  const sessions = Number((memory && memory.mention_sessions) || 0);
-  const pills = [];
-  if (uses > 0) {
-    pills.push({
-      className: 'memory-item-uses',
-      text: `${uses}×`,
-      title: `Injected into chat context ${uses} time${uses === 1 ? '' : 's'}`,
-    });
-  }
-  // Two or more: one conversation is not a pattern, and "said in 1" beside a
-  // memory that was created by being said once is noise.
-  if (sessions > 1) {
-    pills.push({
-      className: 'memory-item-mentions',
-      text: `said in ${sessions}`,
-      title: `You have brought this up in ${sessions} separate chats`
-        + ` — which is why it ranks a little higher. Different from the ${uses}× above,`
-        + ` which counts how often it was injected into a chat.`,
-    });
-  }
-  return pills;
-}
 
 function _memorySortIcon(value) {
   return _MEMORY_SORT_ICONS[value] || _MEMORY_SORT_ICONS.newest;
@@ -1245,7 +1213,12 @@ export function renderMemoryList() {
       meta.appendChild(reasonSpan);
     }
 
-    for (const pill of memoryCountPills(memory)) {
+    // `P13-01` / `B643`. Confidence goes where it can be CORRECTED, which is
+    // this list and not only the chat pill: a confidence a person cannot see
+    // is a confidence they cannot fix. It is first because it qualifies the
+    // memory itself, where the two counts beside it are about its history.
+    for (const pill of [memoryConfidencePill(memory), ...memoryCountPills(memory)]) {
+      if (!pill) continue;   // not recorded — no pill, not an empty one
       const span = document.createElement('span');
       span.className = pill.className;
       span.textContent = pill.text;
@@ -1946,6 +1919,34 @@ async function handleImportFile(file) {
 
 // ---- The Brain's tabs, and its door to Skills — `P23-02` ----
 
+/** Open the Brain on one memory: `P13-10`'s id, finally used.
+ *
+ *  That row put `id` on the used-memory payload *"so the panel can open the
+ *  memory the pill names rather than matching on text"*, and then nothing
+ *  passed it — clicking a row in the chat pill opened the window at whatever
+ *  it last showed, which is the behaviour the id was added to replace.
+ *
+ *  Deliberately the same shape as `_focusSkillRow` in `skills.js`: load if the
+ *  list is cold, scroll with `scrollBehavior()` so reduced motion is honoured
+ *  (`P1-15`), flash the row with the shared `anchor-item-flash` animation, and
+ *  give up quietly if the memory is gone. A reader who knows one knows this.
+ *
+ *  Returns whether the row was found, so a test can drive it (`Law 20`).
+ */
+export async function revealMemory(id) {
+  if (id === null || id === undefined || id === '') return false;
+  showBrainTab('browse');
+  try { await loadMemoriesIfUnknown(); } catch (_) {}
+  const wanted = String(id);
+  const row = document.querySelector(
+    `.memory-item[data-memory-id="${(window.CSS && CSS.escape) ? CSS.escape(wanted) : wanted}"]`);
+  if (!row) return false;
+  try { row.scrollIntoView({ behavior: scrollBehavior(), block: 'center' }); } catch (_) {}
+  row.classList.add('memory-row-flash');
+  setTimeout(() => row.classList.remove('memory-row-flash'), 2000);
+  return true;
+}
+
 const BRAIN_ID = 'memory-modal';
 
 /** The four tabs, in strip order. Scoped to the Brain: `.memory-tab` is also
@@ -2135,7 +2136,8 @@ const memoryModule = {
   tidyMemories,
   describeMemoryTidy,
   importMemories,
-  exportMemories
+  exportMemories,
+  revealMemory
 };
 
 export default memoryModule;

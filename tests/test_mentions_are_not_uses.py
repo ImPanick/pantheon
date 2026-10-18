@@ -33,6 +33,11 @@ from src.memory import MemoryManager
 
 _REPO = Path(__file__).resolve().parents[1]
 _MEMJS = _REPO / "static" / "js" / "memory.js"
+# `P13-01` moved the pill builders into a module that imports nothing, so that
+# `chatRenderer.js` could use them too without the
+# `memory.js` -> `sessions.js` -> `chatRenderer.js` cycle. The definitions are
+# there; the call site this file also checks is still in `memory.js`.
+_FACTSJS = _REPO / "static" / "js" / "memoryFacts.js"
 
 
 @pytest.fixture
@@ -248,7 +253,7 @@ def test_recency_and_durability_share_one_slice_rather_than_taking_two():
 
 
 _PILLS_HARNESS = """
-    __FN__
+    import { memoryCountPills } from '__FACTS__';
     console.log(JSON.stringify(memoryCountPills(__MEMORY__)));
 """
 
@@ -259,20 +264,19 @@ def _pills(memory) -> list:
     `Law 20`, and `B61`'s lesson before it could bite twice: a helper can be
     perfect and the pill still show nothing, so what the Brain says has to be
     data a test executes.
+
+    **Imported rather than extracted.** This used to find the function in
+    `memory.js` by regex, brace-match its body, strip the `export` and paste
+    the text into a script — because `memory.js` cannot be imported outside a
+    browser, it reaches for `window` and `document` at module scope. `P13-01`
+    moved the builders into a module that imports nothing, so the real export
+    can simply be loaded, and the brace matcher and its two failure modes are
+    gone with it. The module being importable is the point of it.
     """
     import subprocess
     import textwrap
 
-    js = _MEMJS.read_text(encoding="utf-8")
-    m = re.search(r"\nexport function memoryCountPills\(memory\) \{", js)
-    assert m, "memoryCountPills not found in memory.js"
-    start, i, depth = m.start() + 1, m.end(), 1
-    while i < len(js) and depth:
-        depth += (js[i] == "{") - (js[i] == "}")
-        i += 1
-    assert depth == 0, "memoryCountPills body did not close"
-    fn = re.sub(r"^export\s+", "", js[start:i])
-    script = (_PILLS_HARNESS.replace("__FN__", fn)
+    script = (_PILLS_HARNESS.replace("__FACTS__", _FACTSJS.as_posix())
               .replace("__MEMORY__", json.dumps(memory)))
     proc = subprocess.run(["node", "--input-type=module"], input=textwrap.dedent(script),
                           capture_output=True, text=True, cwd=str(_REPO), timeout=30)
@@ -567,5 +571,9 @@ def test_the_renderer_calls_the_builder_rather_than_counting_for_itself():
     assert calls.count("memory") >= 1, "the renderer stopped asking for the pills"
     # And nothing else may count them. A second site reading `uses` or
     # `mention_sessions` into a span is how the Brain grows a third number.
-    body = code[code.index("for (const pill of memoryCountPills"):]
+    # `P13-01` put the confidence pill in the same loop, so the anchor is the
+    # loop rather than the call that used to open it.
+    loop = re.search(r"for \(const pill of .*?memoryCountPills", code)
+    assert loop, "the pill loop is gone from the Brain list"
+    body = code[loop.start():]
     assert "mention_sessions" not in body.split("function ")[0]

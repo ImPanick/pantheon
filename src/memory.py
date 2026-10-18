@@ -166,6 +166,15 @@ def normalise_confidence(value, default=None):
         return default
     if number != number:  # NaN — float("nan") parses and then poisons any compare
         return default
+    # Infinity is not "very sure", it is not a number at all — and it arrives
+    # the same way NaN does, straight out of a model: `json.loads("1e999")` is
+    # `inf`, so a model answering an absurd number got **1.0, the most
+    # confident memory on the page**, through the clamp below. That is the
+    # invented number this docstring exists to refuse, so it is refused here
+    # beside NaN for the same reason rather than clamped with 1.5. Found by
+    # `P13-01`'s browser mirror disagreeing with this function over a table.
+    if number in (float("inf"), float("-inf")):
+        return default
     return round(min(max(number, 0.0), 1.0), 3)
 
 

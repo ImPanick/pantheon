@@ -23,6 +23,7 @@ import { buildAllowRuleChooser } from './trustLadder.js';
 // `P4-10`. Why the agent stopped itself — the same line the live stream draws.
 import { renderAgentStop, renderAgentNote, withdrawContinueOffers, compactionFromRecord } from './agentStops.js';
 import { scrollBehavior } from './motion.js';
+import { memoryConfidencePill } from './memoryFacts.js';
 import { applyAgentThreadNode, verifierCardOptions, approvalOutcome,
          blockedCardOptions, toolOutputPanesHtml, screenshotSummary } from './agentThread.js';
 // `B1247` (fx2-chat). One agent turn, one reply.
@@ -2399,11 +2400,42 @@ export function createMsgFooter(msgElement) {
           eng.textContent = MEMORY_ENGINE_LABELS[m.engine] || m.engine;
           row.appendChild(eng);
         }
+        // `P13-01`. The payload has carried `confidence` since the server half
+        // landed and nothing read it, which is the unwired half `Law 13` is
+        // about. Nothing at all for a memory that has none: a memory written
+        // before the field existed, and one a person typed in, both read
+        // `None`, and a pill reading `80%` over a record nobody assessed is
+        // the `PandAtlas` failure this phase's preamble cites.
+        const conf = memoryConfidencePill(m);
+        if (conf) {
+          const span = document.createElement('span');
+          span.className = 'memory-used-confidence';
+          span.textContent = conf.text;
+          span.title = conf.title;
+          row.appendChild(span);
+        }
+        // `P13-10`. The reason the scorer already wrote. It was on the wire
+        // with the confidence and equally unread — and it is the one line that
+        // answers *why this memory and not another*, which a reader asks
+        // before they ask how sure anything was.
+        if (m.reason) {
+          const why = document.createElement('div');
+          why.className = 'memory-used-why';
+          why.textContent = m.reason;
+          row.appendChild(why);
+        }
         row.addEventListener('click', (ev) => {
           ev.stopPropagation();
           closeDetail();
+          // `P13-10` put the id on the payload "so the panel can open the
+          // memory the pill names rather than matching on text", and then
+          // nothing passed it: this opened the window at whatever it last
+          // showed. With an id it opens on the memory you clicked.
           const memModal = document.getElementById('memory-modal');
           if (memModal) memModal.classList.remove('hidden');
+          if (m.id && window.memoryModule?.revealMemory) {
+            try { window.memoryModule.revealMemory(m.id); } catch (_) {}
+          }
         });
         detail.appendChild(row);
       });

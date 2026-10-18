@@ -5449,6 +5449,40 @@ body.bg-pattern-sparkles {
       color: var(--fg);
       opacity: 0.45;
     }
+    /* `P13-01`. How sure the extractor was. Monospace so it reads as a
+       measurement rather than a label, and dimmer than the engine beside it,
+       because which index found a memory is a fact and how sure anything was
+       that it is true is a self-report. `margin-left: auto` is the engine's
+       job; this follows it. */
+    .memory-used-confidence {
+      flex-shrink: 0;
+      padding-left: 8px;
+      font-size: 0.66rem;
+      font-family: monospace;
+      white-space: nowrap;
+      color: var(--fg);
+      opacity: 0.4;
+    }
+    /* `P13-10`. The scorer's own reason, on its own line under the text: it is
+       a sentence, not a chip, and squeezing it onto the row would push the
+       memory's own words out of the way for an explanation of them.
+
+       The wrap is scoped to THIS row rather than added to the shared rule
+       above, which `.skills-used-row`, `.promoted-row` and
+       `.fallback-chain-row` also use: none of those three has a second line to
+       drop, and letting them wrap would change three layouts to fix one. */
+    .memory-used-row {
+      flex-wrap: wrap;
+    }
+    .memory-used-why {
+      flex-basis: 100%;
+      padding-left: 18px;
+      font-size: 0.66rem;
+      font-style: italic;
+      line-height: 1.3;
+      color: var(--fg);
+      opacity: 0.45;
+    }
     /* `P4-16`. The skills badge carries a category *word*, not the memory
        pill's single glyph, so it is the one part of the shared rule set that
        cannot be shared. `--color-success` marks a procedure the teacher wrote
@@ -15128,6 +15162,19 @@ textarea.memory-add-input {
   font-size: 9px;
   white-space: nowrap;
   color: color-mix(in srgb, var(--fg) 45%, transparent);
+}
+
+/* `P13-01`. Monospace like `.memory-item-uses`, because it is a number and not
+   a phrase — but it is the only one of the three that qualifies the memory
+   rather than counting its history, so it carries no leading separator and
+   sits first. Dimmer than `uses` deliberately: a self-report at the moment of
+   extraction is the weakest of the three claims on the row, and it should not
+   be the brightest thing on it. */
+.memory-confidence {
+  font-size: 9px;
+  font-family: monospace;
+  white-space: nowrap;
+  color: color-mix(in srgb, var(--fg) 40%, transparent);
 }
 
 .memory-item-source::before,
@@ -31747,7 +31794,12 @@ details.hwfit-serve-advanced > .hwfit-serve-checks:last-of-type {
 }
 .task-card-flash,
 .skill-row-flash,
-.research-card-flash {
+.research-card-flash,
+/* `P13-10`. The chat pill's "open the memory this names" lands here. Same
+   animation as the skills and research anchors, because it answers the same
+   question — *the thing you clicked is this one* — and a third flash of its
+   own would be a third idiom for one idea. */
+.memory-row-flash {
   animation: anchor-item-flash 2s ease-out;
   border-radius: 6px;
 }
