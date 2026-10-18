@@ -178,6 +178,87 @@ def normalise_confidence(value, default=None):
     return round(min(max(number, 0.0), 1.0), 3)
 
 
+#: The longest a project slug may be. A label is a name, not a sentence: an
+#: extractor that answers "the theming work we discussed on Tuesday" has
+#: described a memory rather than named a project, and letting that become a
+#: project makes a list of one-row projects nobody can filter by.
+PROJECT_SLUG_MAX = 48
+
+
+def project_slug(label) -> Optional[str]:
+    """The identity of a project, from whatever a producer called it.
+
+    `P13-00b`. Long-term knowledge should attach to the thing it is about and
+    survive every session boundary, model swap and restart — and the thing it
+    attaches to has to be the *same* thing next time, which a free-text label
+    is not: `Pantheon`, `pantheon` and `the Pantheon harness` are one project
+    typed three ways, and storing the label alone makes them three.
+
+    So a memory carries both: this slug, which filters and retrieval key off,
+    and the label as it was written, which is what a person reads. There is
+    exactly **one** implementation of this rule and it is server-side — the
+    Brain sends a raw label and is offered the labels the store already knows,
+    so no browser copy exists to drift out of step. That is deliberate: this
+    phase already carries two mirrored rules (`normalise_confidence` and
+    `MEMORY_ENGINE_LABELS`), each of which has cost a real defect, and a third
+    was avoidable here by moving the work rather than copying it.
+
+    `None` for anything that is not a usable name, including a label that is
+    only punctuation and one long enough to be a sentence.
+    """
+    if label is None or isinstance(label, bool):
+        return None
+    text = str(label).strip().lower()
+    if not text:
+        return None
+    slug = re.sub(r"[^a-z0-9]+", "-", text).strip("-")
+    if not slug or len(slug) > PROJECT_SLUG_MAX:
+        return None
+    return slug
+
+
+def project_index(entries) -> dict:
+    """`{slug: {label, memories, first_seen, last_seen}}` over a corpus.
+
+    `P13-00b`. Canonicalising the display name needs the whole corpus, which
+    `add_entry` does not have — it stores the label it was handed — so the one
+    name a reader sees per project is chosen here, where every record is
+    visible. The **earliest** label wins rather than the commonest: a project's
+    name is what it was called when it started, and letting a majority rename
+    it means a filter silently changes its own label as memories accumulate.
+
+    Counts and dates come with it because `P13-07`'s surface has to *"state
+    plainly how fresh the analysis is"*, and a project list that cannot say
+    when it last learned anything cannot.
+    """
+    index: dict = {}
+    for entry in entries or []:
+        if not isinstance(entry, dict):
+            continue
+        slug = entry.get("project")
+        if not slug:
+            continue
+        stamp = entry.get("timestamp") or 0
+        known = index.get(slug)
+        if known is None:
+            index[slug] = {
+                "label": entry.get("project_label") or slug,
+                "memories": 1,
+                "first_seen": stamp,
+                "last_seen": stamp,
+            }
+            continue
+        known["memories"] += 1
+        if stamp and stamp < known["first_seen"]:
+            known["first_seen"] = stamp
+            # The earliest label, which means it moves when an earlier record
+            # arrives — an import, or a corpus read out of order.
+            known["label"] = entry.get("project_label") or slug
+        if stamp > known["last_seen"]:
+            known["last_seen"] = stamp
+    return index
+
+
 # ── Provenance ────────────────────────────────────────────────────────────────
 
 # The user's own words are copied onto the record, so they are bounded. Long
@@ -589,6 +670,21 @@ class MemoryManager:
                 entry["confidence"] = normalise_confidence(entry["confidence"])
             if "provenance" not in entry:
                 entry["provenance"] = None
+            # `P13-00b`. "Not recorded", like its three neighbours above and
+            # for the same reason: every memory predates the project concept,
+            # and the store cannot know which project a fact was about before
+            # anything was asking. Guessing one from the text is the invented
+            # value this whole block refuses. Re-slugged rather than trusted,
+            # so a hand-edited or imported label is grouped with the project it
+            # names instead of becoming a project of its own.
+            if entry.get("project_label") and not entry.get("project"):
+                entry["project"] = project_slug(entry.get("project_label"))
+            entry["project"] = project_slug(entry.get("project"))
+            if not entry.get("project"):
+                entry["project"] = None
+                entry["project_label"] = None
+            elif not entry.get("project_label"):
+                entry["project_label"] = entry["project"]
             # `P13-05`. The one field here whose honest default is a VALUE and
             # not "not recorded", and the difference is worth stating because
             # the three above it went the other way. `confidence`, `provenance`
@@ -654,7 +750,7 @@ class MemoryManager:
     
     def add_entry(self, text: str, source: str = "user", category: str = "fact",
                   owner: str = None, confidence=None, provenance: Dict = None,
-                  status: str = None, kind: str = None) -> Dict:
+                  status: str = None, kind: str = None, project=None) -> Dict:
         """Add a new memory entry.
 
         `confidence` (`P13-01`) is how sure the producer was, 0..1, or `None`
@@ -673,6 +769,14 @@ class MemoryManager:
         asking them to perform it twice is a modal dialog rather than a quality
         gate. The producer that passes `proposed` is background extraction,
         because that is the one that was never asked.
+
+        `project` (`P13-00b`) is the thing this memory is **about**, written
+        however the producer wrote it. It is stored twice on purpose: the slug
+        under `project`, which filters and retrieval key off, and the label
+        under `project_label`, which is what a person reads. A label that is
+        not a usable name — punctuation, or long enough to be a sentence
+        rather than a name — stores neither, because a project nobody can name
+        is a project nobody can filter by.
         """
         if not text.strip():
             raise ValueError("Memory text cannot be empty")
@@ -719,6 +823,13 @@ class MemoryManager:
             # backfills.
             "committed_at": None,
             "committed_by": None,
+            # `P13-00b`. Both, or neither: a slug with no label cannot be
+            # shown and a label with no slug cannot be grouped, so a label
+            # that does not survive `project_slug` stores nothing rather than
+            # half a project.
+            "project": project_slug(project),
+            "project_label": (str(project).strip()
+                              if project_slug(project) else None),
             "edges": [],
         }
         if owner:

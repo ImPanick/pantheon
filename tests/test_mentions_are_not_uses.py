@@ -415,11 +415,19 @@ class _Manager:
         return [r for r in subset if r.get("text", "").strip().lower() == t]
 
     def add_entry(self, text, source="auto", category="fact", owner=None,
-                  confidence=None, provenance=None, status=None):
-        # `P13-01` / `P13-03` / `P13-05` widened the real constructor; the
-        # double mirrors it rather than swallowing extra kwargs, so the day a
-        # caller passes something this fake cannot represent, the fake says so.
-        # It said so, on `status`, which is why this line moved.
+                  confidence=None, provenance=None, status=None, kind=None,
+                  project=None):
+        # `P13-01` / `P13-03` / `P13-05` / `P13-00b` widened the real
+        # constructor; the double mirrors it rather than swallowing extra
+        # kwargs, so the day a caller passes something this fake cannot
+        # represent, the fake says so. It said so on `status`, and again on
+        # `project` — and the second time showed what the tripwire is really
+        # worth: `extract_and_store` wraps its whole body in
+        # `except Exception`, so the `TypeError` cost the batch **every** fact
+        # and logged "Memory extraction failed" while the test read as a
+        # cross-tenant dedup bug. `kind` is here too though no caller passes it
+        # yet, so the next one to do so finds the double ready instead of
+        # finding this out the same way.
         self._n += 1
         entry = {"id": f"new-{self._n}", "text": text, "owner": owner,
                  "source": source, "category": category,

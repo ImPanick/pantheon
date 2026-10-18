@@ -25,7 +25,7 @@ def _strip_list_prefix(text: str) -> str:
     return _LIST_PREFIX_RE.sub("", text, count=1).strip()
 
 from services.memory import MemoryManager, MemoryStoreUnreadable
-from src.memory import archive_forecast, new_provenance
+from src.memory import archive_forecast, new_provenance, project_index
 from core.session_manager import SessionManager
 from src.request_models import MemoryAddRequest
 from core.database import SessionLocal
@@ -478,6 +478,32 @@ def setup_memory_routes(memory_manager: MemoryManager, session_manager: SessionM
             row["archive"] = archive_forecast(
                 row, superseded=row.get("id") in stale)
         return {"memory": rows, "style": _style_block(memory_manager, user)}
+
+    @router.get("/projects")
+    def api_get_memory_projects(request: Request):
+        """The projects this Brain knows about, with counts and dates.
+
+        `P13-00b`. Derived from the corpus on every call and never stored — the
+        same call `archive` above makes, for the same reason: a stored project
+        list is a second copy of a fact the memories already carry, and it is
+        wrong the moment one is edited (`Law 7`, `Law 8`).
+
+        It serves two jobs at once, which is why it carries dates. `P13-07`'s
+        surface filters by project and has to *"state plainly how fresh the
+        analysis is"*, and `last_seen` is that sentence's only honest source.
+        And the Brain offers these labels rather than a free-text box, which is
+        what keeps `Pantheon` and `pantheon` from becoming two projects: the
+        slug is computed in exactly one place, on the server, and the browser
+        never needs a copy of that rule to drift out of step with.
+        """
+        user = _owner(request)
+        index = project_index(memory_manager.load(owner=user))
+        projects = [dict(slug=slug, **fields) for slug, fields in index.items()]
+        # Busiest first: a project list is read to find a project, and the one
+        # with the most memories is the likeliest answer. Ties break on the
+        # label so the order is stable between calls rather than dict order.
+        projects.sort(key=lambda row: (-row["memories"], row["label"].lower()))
+        return {"projects": projects}
 
     @router.post("/search")
     def search_memories(request: Request, query: str = Form(...), session_id: str = Form(None), category: str = Form(None)):

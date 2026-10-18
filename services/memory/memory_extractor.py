@@ -131,8 +131,8 @@ EXTRACT_SYSTEM_PROMPT = (
     "- Each fact must be a single short sentence (under 15 words)\n"
     "- If a fact is similar to something likely already known, skip it\n"
     "- If nothing durable was revealed, return []\n\n"
-    "Return a JSON array of objects with 'text', 'category', 'confidence' and "
-    "'quote' fields.\n"
+    "Return a JSON array of objects with 'text', 'category', 'confidence', "
+    "'quote' and 'project' fields.\n"
     "Categories: 'identity', 'preference', 'fact', 'contact', 'project', 'goal'\n"
     # `P13-01`. The same question the skill extractor has always asked, asked
     # of a fact instead of a procedure.
@@ -142,6 +142,16 @@ EXTRACT_SYSTEM_PROMPT = (
     # — see `_verified_quote`. Asking for it costs nothing when the model
     # cannot supply one, and an unverifiable quote is discarded rather than
     # believed.
+    # `P13-00b`. What the fact is ABOUT, so long-term knowledge attaches to the
+    # thing rather than to the session that happened to reveal it. Omitting it
+    # is the right answer most of the time and the prompt says so: a project
+    # invented for a general preference is worse than no project, because it
+    # makes a filter that hides the preference from every other project.
+    "- 'project': the name of the project, repository or piece of work this "
+    "fact is about, if the user named one. Use their own name for it, and the "
+    "SAME name every time. Omit the field entirely for anything general — a "
+    "preference, a contact, a fact about the person. Most facts have no "
+    "project.\n"
     "- 'quote': the user's own words this came from, copied EXACTLY from the "
     "transcript above. Do not paraphrase and do not invent one.\n\n"
     "Return ONLY valid JSON, no markdown fences."
@@ -488,9 +498,10 @@ def store_imported(memory_manager, facts, provider: str, *, owner: str = None,
             text = str(fact.get("text") or "").strip()
             category = fact.get("category") or "fact"
             raw_confidence = fact.get("confidence")
+            project = fact.get("project")
         else:
             text = str(fact or "").strip()
-            category, raw_confidence = "fact", None
+            category, raw_confidence, project = "fact", None, None
         if len(text) < MIN_TEXT_CHARS:
             continue
 
@@ -517,6 +528,7 @@ def store_imported(memory_manager, facts, provider: str, *, owner: str = None,
             confidence=confidence,
             provenance=new_provenance(producer, quote=None),
             status=STATUS_PROPOSED,
+            project=project,
         )
         # `quote` is left unrecorded on purpose. `P13-03` verifies a citation
         # against the transcript before storing it because a model asked to
@@ -929,9 +941,16 @@ async def extract_and_store(
                 confidence = DEFAULT_CONFIDENCE
                 producer = PRODUCER_LLM
                 message_index, quote = None, None
+                project = None
             elif isinstance(fact, dict):
                 fact_text = fact.get("text", "").strip()
                 category = fact.get("category", "fact")
+                # `P13-00b`. Absent is the common and correct answer, and it is
+                # stored as absent: `project_slug` refuses anything that is not
+                # a usable name, so a model answering "n/a" or a whole sentence
+                # files the memory under no project rather than under a project
+                # of one.
+                project = fact.get("project")
                 # `P13-01`. A model that answered the question is believed; one
                 # that did not is given the same benefit of the doubt the skill
                 # extractor gives it, and one that answered with nonsense falls
@@ -1011,6 +1030,7 @@ async def extract_and_store(
                 # here — one fact, one place (`Law 7`).
                 provenance=new_provenance(producer, message_index, quote),
                 status=_status,
+                project=project,
             )
             # Auto-pin identity facts (name, job, location) — core context.
             # A proposal can carry `pinned` and still not surface: `live()`

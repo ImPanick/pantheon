@@ -259,6 +259,75 @@ def _intent_boost(intent: str | None, memory: dict) -> float:
     return 1.0
 
 
+#: `P13-00b`. How much naming a project lifts that project's memories. Below
+#: `identity`'s 1.4 and level with `contact` and `task`, because naming a
+#: project is a strong cue about *which* memories matter and says nothing about
+#: which *kind* — "what did we decide about Pantheon's theming" is answered by
+#: a theming memory, and the project only breaks the tie against the identical
+#: decision on another project.
+_PROJECT_BOOST = 1.3
+
+
+def _query_project(query: str, memories: list) -> str | None:
+    """The project a question names, or `None`.
+
+    `P13-00b`'s `Verify` is *"start a new session months later, ask about a
+    project, and the answer carries what was learned before"*, so the project a
+    turn is about has to be readable from the turn. It is read from the
+    **question against the corpus** rather than from session state, which is
+    the choice worth recording: a session-scoped "current project" has to be
+    set by somebody and is wrong whenever a person changes subject mid-chat,
+    and inferring it from the text in general is the kind of guess that goes
+    wrong quietly. Matching a name the store already knows is neither — the
+    only projects that can be named are ones a memory already claims.
+
+    Longest label first, so `pantheon-harness` wins over `pantheon` on a query
+    that contains both; otherwise the shorter name inside the longer one would
+    always answer first.
+    """
+    lowered = (query or "").lower()
+    if not lowered:
+        return None
+    known = {}
+    for memory in memories or []:
+        if not isinstance(memory, dict):
+            continue
+        slug = memory.get("project")
+        if not slug:
+            continue
+        for name in (memory.get("project_label") or "", slug):
+            name = str(name).strip().lower()
+            if name:
+                known[name] = slug
+    for name in sorted(known, key=len, reverse=True):
+        if name in lowered:
+            return known[name]
+    return None
+
+
+def _project_boost(project: str | None, memory: dict) -> float:
+    """`_PROJECT_BOOST` for a memory of the named project, else 1.0.
+
+    **A memory of another project is not demoted and never excluded.** That is
+    the same restraint `co_occurs` shows in `_apply_edges` and the same one
+    `D-2026-08-26-03` protects the palettes with: scoping a search to one
+    project would hide the fact that the identical decision was taken
+    elsewhere, which is usually the most useful thing a reader could be told.
+    A memory with no project at all is neutral too — nearly every memory
+    written before `P13-00b` has none, and penalising them would make the whole
+    corpus rank below whatever was tagged first.
+
+    Because this multiplies the keyword score, it sharpens and cannot invent: a
+    memory that shares no words with the question scores zero either way, so
+    naming a project pulls up what already matched rather than surfacing
+    everything ever filed under it. A project is a filter on the Brain's page
+    (`P13-07`); here it is a tiebreaker.
+    """
+    if not project:
+        return 1.0
+    return _PROJECT_BOOST if memory.get("project") == project else 1.0
+
+
 # ── scoring ───────────────────────────────────────────────────────────────────
 
 
@@ -379,6 +448,10 @@ def _rank(query, memories, k, vector, report, now):
     n_docs = max(len(memories), _MIN_IDF_CORPUS)
 
     intent = _query_intent(query)
+    # `P13-00b`. Read once per run, not per memory: it is a property of the
+    # question and the corpus, and asking it inside the loop would walk every
+    # memory once per memory.
+    project = _query_project(query, memories)
     ranked = []
     # `P13-02`. Every memory's score and reason, cleared or not. A contradiction
     # partner has to be able to surface beside the memory it contradicts even
@@ -395,6 +468,11 @@ def _rank(query, memories, k, vector, report, now):
                             doc_freq, n_docs, avg_len)
         keyword = min(raw / _KEYWORD_SCALE, 1.0) if raw > 0 else 0.0
         boost = _intent_boost(intent, memory)
+        # `P13-00b`. Multiplied in with the intent boost rather than added, and
+        # capped by the same `min(..., 1.0)`: two multiplicative boosts cannot
+        # between them lift a keyword score past the one it would have had on a
+        # verbatim match, which is what an additive second boost would do.
+        boost *= _project_boost(project, memory)
         keyword = min(keyword * boost, 1.0)
 
         days_old = max((now - (memory.get("timestamp") or 0)) / 86400, 0)
