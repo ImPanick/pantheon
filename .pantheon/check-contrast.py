@@ -323,6 +323,57 @@ def _css_control_border_readers() -> list:
     return out
 
 
+#: `B1408`. The alpha below which text mixed toward `transparent` misses 4.5:1
+#: on at least one shipped palette, measured over the 21 that are not `B15`'s.
+#: It is this high because mixing toward transparent lets the **background**
+#: through: at 80% the worst palette (`light`) still only reaches 4.36:1.
+TRANSPARENT_TEXT_FLOOR_PCT = 82.0
+
+#: The population as it stood when the rule was written. A ratchet, not a
+#: remap (`P3-20`): 191 declarations cannot be swept without eyes on 23
+#: palettes, and the thing worth preventing is the 192nd.
+#:
+#: **Exactly** the current count, not one above it. The first draft said 192 —
+#: the number measured before this row fixed its own new rule — which would
+#: have let one new under-floor site in free. A ratchet with slack in it is a
+#: ratchet that ratchets nothing.
+BASELINE_TRANSPARENT_TEXT = 191
+
+
+def _css_transparent_text() -> list:
+    """`color:` declarations that paint text by mixing a token toward transparent.
+
+    `B1408`. `--fg-muted` mixes toward `--color-muted`, an **opaque** colour,
+    which is why `P1-03` could pin it at 4.5:1 on fourteen palettes. Mixing
+    toward `transparent` instead lets the background through, so the result is
+    not a dimmer foreground — it is a foreground partly replaced by whatever is
+    behind it, and no alpha under 82% clears the body floor anywhere.
+
+    Found while adding a confidence label for `P13-01`: it shipped at 40%,
+    which measures **1.90:1** on `light`. The two pills beside it, written by
+    `P13-15`, are at 45% and 55% and fail the same way — and this audit could
+    not see any of them, because everything else it checks is a palette token
+    against a surface and these are arbitrary rules with an alpha in them.
+
+    Reported as a count rather than a list, and ratcheted rather than failed:
+    sweeping 192 declarations onto `--fg-muted` flattens a 30-step de-emphasis
+    ladder that somebody built on purpose, and that needs a person looking at
+    screens. What this stops is the ladder growing a 31st step.
+    """
+    import re as _re
+
+    css = _blank(ROOT / "static" / "style.css")
+    out = []
+    pattern = _re.compile(
+        r"(?:^|[;{])\s*color\s*:\s*color-mix\(\s*in srgb,\s*var\(--([a-z0-9-]+)\)"
+        r"\s*([0-9.]+)%\s*,\s*transparent\s*\)", _re.M)
+    for match in pattern.finditer(css):
+        token, pct = match.group(1), float(match.group(2))
+        if pct < TRANSPARENT_TEXT_FLOOR_PCT:
+            out.append((token, pct))
+    return out
+
+
 def _css_border_read_census() -> tuple:
     """`(control, decorative)` border reads in the stylesheet, counted today.
 
@@ -491,6 +542,22 @@ def main() -> int:
           f"{'all clear' if not control_fails else f'{len(control_fails)} fail'}")
     if control_fails:
         problems.extend(control_fails)
+
+    thin_text = _css_transparent_text()
+    print(f"\ntext mixed toward transparent under {TRANSPARENT_TEXT_FLOOR_PCT:g}%: "
+          f"{len(thin_text)} declaration(s) (`B1408`, ratchet at "
+          f"{BASELINE_TRANSPARENT_TEXT})")
+    if len(thin_text) > BASELINE_TRANSPARENT_TEXT:
+        fresh = sorted({pct for _t, pct in thin_text})
+        problems.append(
+            f"{len(thin_text)} `color:` declarations mix a token toward "
+            f"`transparent` below {TRANSPARENT_TEXT_FLOOR_PCT:g}%, and "
+            f"{BASELINE_TRANSPARENT_TEXT} is the recorded population — a new one "
+            f"has been added. Mixing text toward transparent lets the background "
+            f"through and misses 4.5:1 on at least one palette at every alpha "
+            f"under {TRANSPARENT_TEXT_FLOOR_PCT:g}%; use `var(--fg-muted)`, which "
+            f"mixes toward an opaque colour and is pinned at the floor by "
+            f"`P1-03`. Alphas present: {', '.join(f'{p:g}%' for p in fresh[:12])}")
 
     control_reads, decorative_reads = _css_border_read_census()
     print(f"  border reads in the stylesheet: {control_reads} on a control "

@@ -281,7 +281,11 @@ def test_both_pill_styles_exist_and_are_theme_aware():
         assert selector in css, f"{selector} has no style"
     block = css[css.index(".memory-used-confidence"):]
     block = block[:block.index("}")]
-    assert "var(--fg)" in block, "the chat pill's confidence is painted a literal colour"
+    # `var(--fg-muted)` since `B1408`: the first draft used `var(--fg)` at
+    # `opacity: 0.4`, which measures 1.90:1 on `light`. Still a palette token
+    # — which is what this case is about — and now one pinned at the floor.
+    assert "var(--fg-muted)" in block, (
+        "the chat pill's confidence is painted a literal colour")
 
 
 # ── The id, finally used ───────────────────────────────────────────────────
@@ -312,3 +316,63 @@ def test_revealing_a_memory_honours_reduced_motion():
     assert "scrollBehavior()" in body, (
         "revealMemory scrolls with a hard-coded behaviour")
     assert "scrollIntoView" in body
+
+
+# ── `B1408`: text mixed toward transparent ─────────────────────────────────
+
+def test_the_confidence_label_does_not_mix_itself_toward_transparent():
+    """`B1408`, found by this row shipping the defect.
+
+    The label's first draft was
+    `color-mix(in srgb, var(--fg) 40%, transparent)`, which measures **1.90:1**
+    on `light` — a WCAG failure on a number whose whole job is to be read.
+    Mixing text toward `transparent` does not dim the foreground, it *replaces
+    part of it with the background*, and over the 21 non-`B15` palettes no
+    alpha under **82%** clears 4.5:1.
+
+    `--fg-muted` is the idiom that works and the product already had it:
+    `color-mix(in srgb, var(--fg) 45%, var(--color-muted))` mixes toward an
+    **opaque** colour, which is why `P1-03` could pin it at the floor. The
+    de-emphasis survives and the text stays legible, which the alpha form
+    cannot manage at once."""
+    css = blank(STYLE)
+    for selector in (".memory-confidence", ".memory-used-confidence"):
+        rule = css[css.index(selector + " {"):]
+        rule = rule[:rule.index("}")]
+        assert "transparent" not in rule, (
+            f"{selector} mixes its text toward transparent")
+        assert "opacity" not in rule, (
+            f"{selector} dims its text with opacity, which lets the "
+            "background through exactly as a transparent mix does")
+        assert "var(--fg-muted)" in rule, (
+            f"{selector} does not use the one token pinned at the floor")
+
+
+def test_the_audit_ratchets_the_rest_of_the_population():
+    """191 more declarations do the same thing and cannot be swept without eyes
+    on 23 palettes — they are a 30-step de-emphasis ladder somebody built on
+    purpose. So the audit counts them and fails a **new** one, which is
+    `check-zindex`'s pattern and `P3-20`'s rule: the ratchet is the value, not
+    the number."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "_contrast_for_b1408", ROOT / ".pantheon" / "check-contrast.py")
+    module = importlib.util.module_from_spec(spec)
+    argv = sys.argv
+    sys.argv = ["check-contrast", "--imported-by-test"]
+    try:
+        spec.loader.exec_module(module)
+    except SystemExit:
+        pass
+    finally:
+        sys.argv = argv
+
+    found = module._css_transparent_text()
+    assert len(found) == module.BASELINE_TRANSPARENT_TEXT, (
+        f"{len(found)} declarations mix text toward transparent and the "
+        f"ratchet records {module.BASELINE_TRANSPARENT_TEXT}")
+    # Exactly the count, with no slack: a ratchet one above the truth lets a
+    # new site in free, which the first draft of this rule did.
+    assert module.TRANSPARENT_TEXT_FLOOR_PCT == 82.0
+    assert all(pct < 82.0 for _token, pct in found)

@@ -5460,8 +5460,11 @@ body.bg-pattern-sparkles {
       font-size: 0.66rem;
       font-family: monospace;
       white-space: nowrap;
-      color: var(--fg);
-      opacity: 0.4;
+      /* `--fg-muted` rather than `--fg` at `opacity: 0.4`, which is the same
+         defect as mixing toward transparent wearing different clothes: the
+         background shows through either way. 0.4 measured 1.90:1 on `light`.
+         See `.memory-confidence` above and `B1408`. */
+      color: var(--fg-muted);
     }
     /* `P13-10`. The scorer's own reason, on its own line under the text: it is
        a sentence, not a chip, and squeezing it onto the row would push the
@@ -15174,7 +15177,15 @@ textarea.memory-add-input {
   font-size: 9px;
   font-family: monospace;
   white-space: nowrap;
-  color: color-mix(in srgb, var(--fg) 40%, transparent);
+  /* `var(--fg-muted)`, not `color-mix(var(--fg) N%, transparent)`. Mixing text
+     toward **transparent** lets the background through and destroys contrast:
+     measured over the 21 non-`B15` palettes, no alpha under **82%** clears
+     4.5:1, and this rule shipped its first draft at 40% — 1.90:1 on `light`.
+     `--fg-muted` mixes toward `--color-muted`, an opaque colour, which is why
+     `P1-03` could pin it at the floor. The de-emphasis is real and the text is
+     still legible, which the alpha form cannot manage at once. `B1408` is the
+     other 192 sites. */
+  color: var(--fg-muted);
 }
 
 .memory-item-source::before,
