@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Fast-forward this clone from a git bundle, then say what to do next.
 #
 # `B1409`. This script is **committed** for one reason: for several waves it
