@@ -21,6 +21,75 @@ from src.prompt_security import (
 
 logger = logging.getLogger(__name__)
 
+#: `B711`. The key a saved-memory preface message carries its own contents on.
+#: Read by `src.agent_loop._minimal_saved_memory_message`, which used to
+#: reconstruct this list by regex-stripping the block's labels and collecting
+#: its `- ` lines — a second implementation of *what is in this message*, built
+#: out of the prose the first one had just written (`Law 14`).
+#:
+#: **Two things that parse got wrong, both measured rather than argued.** A
+#: memory whose text runs to a second line arrived with only its first line
+#: kept, because the continuation has no `- ` in front of it — so *"Prefers tea
+#: \n and not coffee"* reached the model as *"Prefers tea"*, which is not a
+#: truncation but a reversal. And two memories with the same text collapsed to
+#: one, because the facts were deduplicated as strings: five memories went in,
+#: four came out, and the trace still named five.
+MEMORY_FACTS_KEY = "memory_facts"
+
+#: How many memories a turn's preface may carry. `B711` lifted it out of
+#: `ChatProcessor` because a second budget had grown beside it: `agent_loop`'s
+#: minimal routes capped their own copy of the same list at a bare `5`, which
+#: is one rule with two values the day somebody tunes either (`Law 14`). The
+#: class still exposes it under the same name, so nothing that reads
+#: `ChatProcessor.MEMORY_CONTEXT_LIMIT` changes.
+MEMORY_CONTEXT_LIMIT = 5
+
+
+def _attach_memory_facts(message: Dict[str, Any], memories: List[Dict]) -> Dict[str, Any]:
+    """Record on `message` which memories its prose was built from.
+
+    Id **and** text, because the two answer different questions and neither
+    substitutes for the other: the text is what a smaller prompt re-states, and
+    the id is what lets a trace say *these exact records* rather than matching
+    on wording that `find_duplicates` already treats as non-unique.
+    """
+    metadata = message.setdefault("metadata", {})
+    metadata[MEMORY_FACTS_KEY] = [
+        {"id": m.get("id"), "text": str(m.get("text") or "")}
+        for m in memories if str(m.get("text") or "").strip()
+    ]
+    return message
+
+
+def memory_bullets(texts) -> str:
+    """A list of memories as a bulleted block, with continuations indented.
+
+    `B711`. The blocks used to be built with `"\n- ".join(...)`, which is
+    correct for single-line memories and silently ambiguous for any other: a
+    memory's own second line arrived flush left with no marker, so the list
+    said *"Prefers tea" / "and not coffee"* where the record said one thing.
+    That cost the agent routes the second line outright — their parser kept
+    only `- ` lines — and it was never unambiguous for the model either, which
+    is the half that stayed after the parser was fixed.
+
+    Two spaces, which is the continuation indent every Markdown list uses and
+    the one a model has seen a million of. **Exactly two, added and nothing
+    else trimmed**: the indent is then removable without knowing anything
+    about the memory, so a reader — a test, or the next route that has to
+    unpick this — gets the record back byte for byte. A renderer that also
+    tidied would be the second editor of the person's own words, and `Law 7`
+    is that there is one.
+    """
+    lines = []
+    for text in texts:
+        body = str(text or "").strip()
+        if not body:
+            continue
+        first, *rest = body.splitlines()
+        lines.append(f"- {first}")
+        lines.extend(f"  {line}" for line in rest)
+    return "\n".join(lines)
+
 
 def _clean_search_query(query: str, max_len: int = 200) -> str:
     """Strip fenced code blocks from a search query while preserving inline
@@ -80,7 +149,8 @@ class ChatProcessor:
 
     # Minimum similarity score for RAG results to be injected
     RAG_SIMILARITY_THRESHOLD = 0.35
-    MEMORY_CONTEXT_LIMIT = 5
+    #: The module constant above, named once (`B711`).
+    MEMORY_CONTEXT_LIMIT = MEMORY_CONTEXT_LIMIT
     PINNED_MEMORY_LIMIT = MEMORY_CONTEXT_LIMIT
 
     def _is_core_memory(self, memory: Dict[str, Any]) -> bool:
@@ -243,7 +313,7 @@ class ChatProcessor:
                                for row in (_pinned_report.get("selected") or ())
                                if row.get("id")}
             if selected_pinned:
-                pinned_text = "\n- ".join([m["text"] for m in selected_pinned])
+                pinned_text = memory_bullets(m["text"] for m in selected_pinned)
                 # `FIX-2026-10-09` item 2. The person's own Brain, in the
                 # person's own install, through the envelope for the person's
                 # own saved material — not the one that warns of "prompt-
@@ -251,13 +321,15 @@ class ChatProcessor:
                 # the web. It is still data and not instructions, so it keeps
                 # the label and the block; the tool gate still arms exactly as
                 # it did (`own_context_message` writes the same metadata).
-                preface.append(own_context_message(
+                _pinned_message = own_context_message(
                     "saved memory: pinned context",
                     (
                         "Pinned memory context. Some pinned memories are only "
-                        f"included when relevant:\n- {pinned_text}"
+                        f"included when relevant:\n{pinned_text}"
                     ),
-                ))
+                )
+                _attach_memory_facts(_pinned_message, selected_pinned)
+                preface.append(_pinned_message)
                 for m in selected_pinned:
                     # `B61`. Pinned is its own engine: nothing ranked these, so
                     # reporting them as a keyword or vector hit is the same lie
@@ -290,16 +362,18 @@ class ChatProcessor:
                 relevant = self._hybrid_retrieve(
                     message, extended, k=remaining_memory_slots, report=recall_report)
                 if relevant:
-                    ext_text = "\n".join([f"- {m['text']}" for m in relevant])
+                    ext_text = memory_bullets(m["text"] for m in relevant)
                     # `FIX-2026-10-09` item 2, same store as the pinned
                     # block above and so the same envelope.
-                    preface.append(own_context_message(
+                    _recall_message = own_context_message(
                         "saved memory: retrieved context",
                         (
                             "Memory context. Do not reference unless the user asks "
                             f"about these topics.\n{ext_text}"
                         ),
-                    ))
+                    )
+                    _attach_memory_facts(_recall_message, relevant)
+                    preface.append(_recall_message)
                     # Indexed, not `.get`. `_hybrid_retrieve` writes `engine` before
                     # every early return, so a missing key means that guarantee broke
                     # — and a default here would paper over it with whichever answer

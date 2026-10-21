@@ -129,6 +129,13 @@ from src.agent_tools.computer_tools import (
     unavailable_reason as _computer_unavailable_reason,
 )
 from src import tool_result_images
+# `B711`. The preface's own limit and the key it records its facts under, from
+# the module that owns both. Two values for one budget is how a cap gets tuned
+# in one place and silently kept in the other (`Law 14`), and this file used to
+# carry the number as a bare `5` written out twice.
+from src.chat_processor import (
+    MEMORY_CONTEXT_LIMIT, MEMORY_FACTS_KEY, memory_bullets,
+)
 from workstation import protocol as _WORKSTATION
 
 logger = logging.getLogger(__name__)
@@ -3183,9 +3190,36 @@ def _is_email_document_obj(active_document) -> bool:
     )
 
 
-def _minimal_saved_memory_message(messages: List[Dict]) -> Optional[Dict]:
-    facts: List[str] = []
-    seen = set()
+def _saved_memory_facts(messages: List[Dict]) -> List[Dict]:
+    """The memories this turn's preface injected, in the order it injected them.
+
+    `B711`. **Read off the messages, not re-derived from their prose.**
+    `build_context_preface` records what it put in each saved-memory block
+    (`chat_processor._attach_memory_facts`), and this reads that list — which
+    is the same list `ChatProcessor._last_used_memories` is built from, so the
+    facts the model is shown on these routes and the facts the trace names are
+    one set by construction rather than by two parsers agreeing.
+
+    The old shape rebuilt the list by stripping the block's own labels and
+    collecting its `- ` lines, and **two measured defects came out of that**,
+    both of which a prose parser cannot avoid:
+
+      * **A multi-line memory lost everything after its first line.** The block
+        joins facts with `"\n- "`, so a memory's own second line carries no
+        marker and was dropped — *"Prefers tea / and not coffee"* reached the
+        model as *"Prefers tea"*. That is a reversal of meaning, not a
+        truncation, and it was invisible because the trace reported the whole
+        memory.
+      * **Two memories with the same text became one.** Facts were
+        deduplicated as strings, so five memories went in and four came out
+        while `memories_used` still named five — and text is exactly the field
+        `find_duplicates` compares *because* it is not unique.
+
+    The prose fallback is kept for a message with no recorded facts, which is
+    any block some other caller built; it has the old shape's limits and says
+    so at its own line.
+    """
+    facts: List[Dict] = []
     for message in messages:
         if not isinstance(message, dict):
             continue
@@ -3193,27 +3227,36 @@ def _minimal_saved_memory_message(messages: List[Dict]) -> Optional[Dict]:
         source = str((metadata or {}).get("source") or "")
         if not source.startswith("saved memory:"):
             continue
+        recorded = (metadata or {}).get(MEMORY_FACTS_KEY)
+        if isinstance(recorded, list) and recorded:
+            for row in recorded:
+                if isinstance(row, dict) and str(row.get("text") or "").strip():
+                    facts.append({"id": row.get("id"),
+                                  "text": str(row["text"]).strip()})
+            continue
+        # No record on this message, so the prose is all there is. Same rule as
+        # before, same two limits, and `id` is unknown rather than guessed.
         content = str(message.get("content") or "")
         content = re.sub(r"(?m)^\s*Source:\s*saved memory:[^\n]*\n?", "", content)
-        content = content.replace("Core facts about the user:", "")
-        content = re.sub(
-            r"Memory context\. Do not reference unless the user asks about these topics\.\s*",
-            "",
-            content,
-        )
         for line in content.splitlines():
             line = line.strip()
-            if not line.startswith("- "):
-                continue
-            fact = line[2:].strip()
-            if not fact or fact in seen:
-                continue
-            seen.add(fact)
-            facts.append(fact)
-            if len(facts) >= 5:
-                break
-        if len(facts) >= 5:
-            break
+            if line.startswith("- ") and line[2:].strip():
+                facts.append({"id": None, "text": line[2:].strip()})
+    return facts
+
+
+def _minimal_saved_memory_message(messages: List[Dict]) -> Optional[Dict]:
+    """The person's own memory, for a route that cannot carry the full preface.
+
+    Capped at `MEMORY_CONTEXT_LIMIT` — **the preface's own limit, imported**,
+    not a second budget written out by hand beside it. It was a bare `5` here
+    and `MEMORY_CONTEXT_LIMIT = 5` there, which is one rule with two values the
+    day somebody tunes either (`Law 14`). Because the two are the same number
+    and the facts are now read off the messages rather than re-parsed, the set
+    this sends is the set the trace names, and
+    `tests/test_the_trace_names_what_was_sent.py` drives both sides to say so.
+    """
+    facts = [row["text"] for row in _saved_memory_facts(messages)][:MEMORY_CONTEXT_LIMIT]
     if not facts:
         return None
     logger.info("[agent-intent] pantheon doc minimal memory facts=%s", len(facts))
@@ -3234,7 +3277,9 @@ def _minimal_saved_memory_message(messages: List[Dict]) -> Optional[Dict]:
             "user facts available in the normal prompt path. Use them when "
             "the user asks for personalization, identity, background, "
             "preferences, or anything about \"me\" or \"my\":\n"
-            + "\n".join(f"- {fact}" for fact in facts)
+            # `B711`. The preface's own renderer, so a multi-line memory reads
+            # the same way on a minimal route as it does on the full one.
+            + memory_bullets(facts)
         ),
     )
 
