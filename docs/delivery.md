@@ -103,9 +103,22 @@ The two ways to make pushing belong to the session rather than to you:
 
 1. **Start the task against the GitHub repository** rather than only a folder,
    so the git proxy has it in scope. This is the one that ends the problem.
-2. **Turn computer use on for this machine**, so the session runs `git push` in
-   your own PowerShell where Credential Manager answers and no token passes
-   through it.
+2. **Computer use, through GitHub Desktop's Push button** — measured working
+   on 2026-10-21, 26 commits, `87207630` → `208f60d6`.
+
+   Not through a terminal. That was this page's first answer and it is wrong:
+   computer use grants terminals and IDEs in **click-only** mode on purpose —
+   *"you can see and left-click, but cannot type, press keys, or paste"* — so a
+   session cannot type `git push` into PowerShell no matter what is enabled,
+   and PowerShell is masked out of screenshots as well. A GUI client's Push
+   button is a *click*, which is allowed, and GitHub Desktop carries its own
+   GitHub sign-in so no credential passes through the session at all.
+
+   Two practical notes from doing it: GitHub Desktop's window is owned by a
+   versioned child process (`…\app-3.5.8\githubdesktop.exe`), which has to be
+   granted separately from the launcher or the window is masked out of every
+   screenshot; and it opens on whatever repository it last had, which may not
+   be this one and may have uncommitted work in it.
 
 A credential helper inside the bridge's Linux VM would also work and is the
 worst of the three: it means a personal access token in plaintext in a

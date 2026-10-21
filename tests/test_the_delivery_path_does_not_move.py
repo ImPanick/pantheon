@@ -216,3 +216,36 @@ def test_the_script_reads_the_bundle_s_own_ref_rather_than_assuming_one(tmp_path
         "it is assuming the ref name again:\n" + run.stdout)
     # And it tidied up after itself, so a later run cannot apply a stale bundle.
     assert not bundle.exists(), "the spent bundle was left behind"
+
+
+def test_the_doc_does_not_recommend_typing_into_a_terminal():
+    """A correction, and the reason it is a case rather than an edit.
+
+    This page's first answer was *"turn computer use on so the session runs
+    `git push` in your own PowerShell"*. It is wrong, and wrong in a way no
+    amount of re-reading would have caught — computer use grants terminals and
+    IDEs in **click-only** mode by design (*"you can see and left-click, but
+    cannot type, press keys, or paste"*), and PowerShell is masked out of
+    screenshots besides. The advice was written into the repository before
+    anybody had tried it.
+
+    What works is a GUI client's Push **button**, because a click is allowed:
+    measured on 2026-10-21, 26 commits through GitHub Desktop. So the case
+    guards the shape of the mistake — a recommendation to type into a shell —
+    rather than the sentence that happened to carry it.
+    """
+    doc = _flat(DOC)
+    lowered = doc.lower()
+    assert "click-only" in lowered, (
+        "the doc does not record that terminals cannot be typed into")
+    for wrong in ("runs `git push` in your own powershell",
+                  "run `git push` in your own powershell",
+                  "types `git push`"):
+        assert wrong not in lowered, (
+            f"the doc recommends {wrong!r}, which computer use refuses")
+    assert "github desktop" in lowered, (
+        "the doc does not name the route that actually works")
+    # Measured, with the commits it moved, so it reads as a thing that was done
+    # rather than a thing that should work.
+    assert "208f60d6" in doc, (
+        "the doc claims the route works without saying when it was measured")
