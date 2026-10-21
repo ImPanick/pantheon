@@ -40,10 +40,10 @@
 # beside the pin. They are the reason the pin may not move past a boundary, and
 # deleting them would lose that reason.
 
-fastapi==0.141.1
+fastapi==0.143.5
 uvicorn==0.54.0
 python-multipart==0.0.32
-python-dotenv==1.2.3
+python-dotenv==1.2.4
 httpx==0.28.1
 # Range before pinning: >=1.0,<2.0. httpcore 2.x is a breaking rewrite of the
 # transport layer httpx sits on; do not move this pin to 2.x without moving
@@ -51,12 +51,12 @@ httpx==0.28.1
 httpcore==1.0.9
 # Floor before pinning: >=2.13.4 (pydantic) and >=2.14.1 (pydantic-settings).
 # Do not pin below those.
-pydantic==2.13.5
-pydantic-settings==2.15.0
-SQLAlchemy==2.1.1
-pypdf==6.19.0
+pydantic==2.14.1
+pydantic-settings==2.16.0
+SQLAlchemy==2.1.5
+pypdf==6.21.1
 beautifulsoup4==4.15.0
-charset-normalizer==3.5.1
+charset-normalizer==3.5.2
 numpy==2.4.6
 # Vector store + local embeddings for RAG, semantic memory, and tool
 # selection. Used on core agent paths, so installed by default — the app
@@ -64,11 +64,11 @@ numpy==2.4.6
 # chromadb-client is the lightweight HTTP client (talks to a standalone
 # ChromaDB service); fastembed runs local ONNX embeddings.
 chromadb-client==1.5.9
-fastembed==0.8.1
+fastembed==0.9.0
 youtube-transcript-api==1.2.4
 # Markdown rendering for research reports (src/visual_report.py).
 # Imported at module-top so it's a hard core dep, not optional.
-markdown==3.11
+markdown==3.11.1
 # HTML sanitizer for rendered research reports (src/visual_report.py). Report
 # content is untrusted (LLM output over crawled pages) and report pages run
 # under a relaxed CSP, so the rendered HTML is allowlist-sanitized.
@@ -82,8 +82,8 @@ python-dateutil==2.9.0.post0
 # CalDAV sync (src/caldav_sync.py). Handles PROPFIND discovery + REPORT
 # fetch across Radicale, Nextcloud, Apple, Fastmail; we'd be reinventing
 # the protocol without it.
-caldav==3.3.1
-cryptography==50.0.1
+caldav==3.5.0
+cryptography==50.0.2
 bcrypt==5.0.0
 # Built-in servers use the v1 low-level Server decorator API. MCP SDK v2 is a
 # breaking rewrite, so keep fresh installs on the maintained v1 line until the
