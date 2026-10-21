@@ -17,13 +17,24 @@ import { readRefusal } from './workbench/refusal.js';
 // `P13-01`. The memory pills live in a module that imports nothing, because
 // `chatRenderer.js` needs them too and cannot import this file —
 // `memory.js` -> `sessions.js` -> `chatRenderer.js` is a cycle.
-import { memoryCountPills, memoryConfidencePill } from './memoryFacts.js';
+import { memoryCountPills, memoryConfidencePill, memoryStatusBadge,
+         memoryStatus, countByStatus, statusChips } from './memoryFacts.js';
+// `B710`. The status clause itself, imported rather than rewritten: Explore
+// narrows by status through the same function, and two readings of this field
+// differ exactly where it matters — on what an unrecognised value means
+// (`Law 7`).
+import { matches as memoryMatchesFilter } from './brainFilter.js';
 import { scrollBehavior } from './motion.js';
 
 var escapeHtml = uiModule.esc;
 
 let memories = [];
 let activeCategory = 'all';
+// `B710`. `any` and not `binding`: the Brain is the place a person goes to see
+// what it knows, and opening it already filtered would hide the proposals this
+// row exists to surface — from a control they have not been shown yet, because
+// the chip row only appears once something is not committed.
+let activeStatus = 'any';
 let sortOrder = 'newest';
 let selectMode = false;
 let selectedIds = new Set();
@@ -227,6 +238,49 @@ function buildCategoryChips() {
   });
 }
 
+/** `B710`. The status chips, drawn. The decision is `statusChips` in
+ *  `memoryFacts.js` — which chips, which counts, whether a row at all — and
+ *  this is the loop that turns it into buttons. Split that way for `Law 20`:
+ *  a test runs the rule instead of reading it, and `B61` is why that matters
+ *  (a helper can be perfect and the page still show nothing).
+ *
+ *  `buildCategoryChips` hides itself on an empty corpus out of the same
+ *  instinct; the rule here applies it to a field rather than to a store.
+ */
+function buildStatusChips() {
+  const container = document.getElementById('memory-status-filters');
+  if (!container) return;
+  const chips = statusChips(memories, activeStatus);
+  if (!chips) {
+    container.replaceChildren();
+    container.hidden = true;
+    // A filter nothing can match is a filter that would empty the list with
+    // no visible cause, so putting the row away puts its state back too.
+    activeStatus = 'any';
+    return;
+  }
+  container.hidden = false;
+  container.replaceChildren();
+  for (const chip of chips) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'memory-cat-chip memory-status-chip'
+      + (chip.active ? ' active' : '')
+      + (chip.value === 'proposed' ? ' memory-status-chip-proposed' : '');
+    btn.dataset.status = chip.value;
+    btn.textContent = chip.label;
+    btn.title = chip.title;
+    btn.setAttribute('aria-pressed', chip.active ? 'true' : 'false');
+    btn.addEventListener('click', () => {
+      activeStatus = chip.value;
+      buildStatusChips();
+      renderMemoryList();
+      updateMemoryCount();
+    });
+    container.appendChild(btn);
+  }
+}
+
 // `PERF-M-8` (P23-02). The Brain's seven switches are read from ONE
 // `GET /api/prefs`, once per page, and set in one pass. They were seven serial
 // single-key reads (`/api/prefs/<key>`, each awaited before the next) on every
@@ -263,6 +317,15 @@ async function syncToggles({ fresh = false } = {}) {
   await syncPrefToggle('auto-memory-toggle', 'auto_memory', 'Auto-extract memories on', 'Auto-extract memories off', false, prefs);
   await syncPrefToggle('auto-skills-toggle', 'auto_skills', 'Auto-draft skills on', 'Auto-draft skills off', false, prefs);
   await syncPrefToggle('auto-approve-skills-toggle', 'auto_approve_skills', 'Auto-publish on', 'Auto-publish off', false, prefs);
+  // `B710`. `auto_approve_memories` has been readable and writable through
+  // `PUT /api/prefs` since `P13-05` and had no control anywhere; this is the
+  // control. The default matches the server's (`memory_extractor` reads it
+  // with `True`), so an install that has never set it shows the switch in the
+  // position it is actually in rather than one the page invented.
+  await syncPrefToggle('auto-approve-memories-toggle', 'auto_approve_memories',
+                       'New memories are used straight away',
+                       'New memories wait for you — see "proposed" in the Brain',
+                       false, prefs);
   await syncPrefSlider('skill-confidence-slider', 'skill_min_confidence', 'skill-confidence-label', 0.85, prefs);
   await syncPrefNumber('skill-max-input', 'skill_max_injected', 3, prefs);
 
@@ -280,6 +343,15 @@ async function syncToggles({ fresh = false } = {}) {
     confSlider.addEventListener('input', refreshSkillGateHints);
   }
   refreshSkillGateHints();
+
+  // `B710`. The same arrangement one row down: the sentence is rewritten when
+  // the switch moves, not only when the Brain reloads.
+  const memApprove = document.getElementById('auto-approve-memories-toggle');
+  if (memApprove && !memApprove.dataset.boundGateHint) {
+    memApprove.dataset.boundGateHint = '1';
+    memApprove.addEventListener('change', refreshMemoryGateHint);
+  }
+  refreshMemoryGateHint();
 
   // Reflect the header toggle into the sidebar dim + the list's opacity.
   // `BRAIN-U-11` (P23-02): the list only. It dimmed the whole `.memory-modal-
@@ -445,6 +517,53 @@ export function skillGateHints({ autoApprove = true, minConfidence = 0.85 } = {}
       : `Drafts are used from ${pct}%; published skills always. A new skill starts at 80%.`,
     coupling: '',
   };
+}
+
+/** `B710`. What *Use new memories straight away* means, in one line.
+ *
+ *  `skillGateHints` a few lines up is the precedent and the argument: a switch
+ *  whose effect shows up somewhere else is a switch a person turns once, sees
+ *  nothing, and concludes is broken. `P8-05` found that with auto-publish, and
+ *  this one is worse — off, extraction keeps running and the Brain keeps
+ *  growing, but **nothing new reaches a chat** until somebody commits it. A
+ *  person who cannot see where the proposals went has watched their assistant
+ *  stop learning.
+ *
+ *  So the off sentence names the place. And when proposals are actually
+ *  waiting it says how many, because a count is the difference between a rule
+ *  and a queue.
+ *
+ *  Pure, and exported, so a test can run it over the four states rather than
+ *  read the page (`Law 20`).
+ */
+export function memoryGateHint({ autoApprove = true, proposed = 0 } = {}) {
+  const waiting = Math.max(0, Number(proposed) || 0);
+  if (autoApprove) {
+    // Still honest when something IS waiting — turning the switch back on does
+    // not commit what was proposed while it was off, and a reader who is not
+    // told that will wonder why the Brain is ignoring six facts.
+    return waiting
+      ? `On: new memories are used as soon as they are written down.`
+        + ` ${waiting} proposed earlier ${waiting === 1 ? 'is' : 'are'} still waiting`
+        + ` — turning this on does not commit ${waiting === 1 ? 'it' : 'them'}.`
+      : 'On: new memories are used as soon as they are written down.';
+  }
+  return waiting
+    ? `Off: new memories wait for you. ${waiting} proposed —`
+      + ` they are in the list above under "proposed", and none reaches a chat yet.`
+    : 'Off: new memories are written down and wait for you to commit them.'
+      + ' They appear in the list above, marked "proposed".';
+}
+
+/** Write the sentence from the live toggle and the corpus the Brain holds. */
+export function refreshMemoryGateHint() {
+  const hint = document.getElementById('auto-approve-memories-hint');
+  if (!hint) return;
+  const toggle = document.getElementById('auto-approve-memories-toggle');
+  hint.textContent = memoryGateHint({
+    autoApprove: toggle ? toggle.checked : true,
+    proposed: countByStatus(memories).proposed,
+  });
 }
 
 /** Write both sentences from the live state of the two controls. */
@@ -616,6 +735,7 @@ export async function loadMemories() {
   }
   memoriesLoading = false;
   buildCategoryChips();
+  buildStatusChips();
   renderMemoryList();
   updateMemoryCount();
   // Always wire toggles, even if memory API failed
@@ -872,6 +992,7 @@ export async function tidyMemories() {
     // Now load the clean state
     memories = afterList;
     buildCategoryChips();
+    buildStatusChips();
     renderMemoryList();
     updateMemoryCount();
 
@@ -1065,6 +1186,13 @@ function getFilteredMemories() {
     filtered = filtered.filter(m => (m.category || 'fact') === activeCategory);
   }
 
+  // `B710`. Explore's own clause, called rather than copied. `matches` applies
+  // every other clause at its `any` default, which passes — so this asks
+  // exactly one question, and asks it the way the other surface does.
+  if (activeStatus !== 'any') {
+    filtered = filtered.filter(m => memoryMatchesFilter(m, { status: activeStatus }, 0));
+  }
+
   const sortSelect = document.getElementById('memory-sort');
   const sort = sortSelect ? sortSelect.value : sortOrder;
   if (sort === 'newest') {
@@ -1122,7 +1250,11 @@ export function renderMemoryList() {
       return;
     }
     const searchTerm = document.getElementById('memory-search')?.value?.trim() || '';
-    if (searchTerm || activeCategory !== 'all') {
+    // `B710` adds the third thing that can empty this list. Without it a
+    // status chip with no survivors reads "No memories yet." over a full
+    // store, which is the false empty state `B1070` is about wearing a
+    // different hat.
+    if (searchTerm || activeCategory !== 'all' || activeStatus !== 'any') {
       memoryList.innerHTML = `<div class="memory-empty">No matches.</div>`;
     } else {
       // Doc 2 § 5, rule 8: one line, and the action beside it.
@@ -1176,6 +1308,21 @@ export function renderMemoryList() {
 
     const meta = document.createElement('div');
     meta.className = 'memory-item-meta';
+
+    // `B710`. First in the strip, and before `pinned`, because it qualifies
+    // every other chip on the row: a confidence, a use count and a pin on a
+    // memory that reaches no chat all mean something different, and a reader
+    // who learns that at the end of the line has read the row wrong.
+    // `null` for a committed memory — see `memoryStatusBadge`.
+    const statusBadge = memoryStatusBadge(memory);
+    if (statusBadge) {
+      const span = document.createElement('span');
+      span.className = statusBadge.className;
+      span.textContent = statusBadge.text;
+      span.title = statusBadge.title;
+      meta.appendChild(span);
+      item.classList.add('memory-item-' + statusBadge.status);
+    }
 
     if (memory.pinned) {
       const pinBadge = document.createElement('span');
@@ -1353,6 +1500,28 @@ function _openMemoryMenu(menuBtn, item, memory) {
     updateBulkCount();
     renderMemoryList();
   });
+  // `B710`. Commit, and **only on a memory that is not committed**. A control
+  // that is present and refuses is how the Brain ends up teaching everybody a
+  // word for a state their store is never in; `commit_memory` already refuses
+  // an already-committed record, so this is the menu agreeing with the gate
+  // rather than a second rule about it (`Law 14`).
+  //
+  // Above Edit, because an edit on a proposal is a different act — the import
+  // path already treats saving one AS committing it — and a reader who meets
+  // Edit first will take the longer way round to the same place.
+  if (memoryStatus(memory) !== 'committed') {
+    const proposed = memoryStatus(memory) === 'proposed';
+    const b = addItem('', '<span class="dropdown-icon" aria-hidden="true">'
+      + '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"'
+      + ' stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
+      + '<polyline points="20 6 9 17 4 12"/></svg></span>'
+      + `<span>${proposed ? 'Commit' : 'Bring back'}</span>`,
+      () => commitMemory(memory.id));
+    b.title = proposed
+      ? 'Start using this. It can reach chats from now on.'
+      : 'Commit it again, so it can reach chats. The gate still refuses a '
+        + 'duplicate of something the Brain already holds.';
+  }
   addItem('', '<span aria-hidden="true">✎</span> Edit', () => startInlineEdit(item, memory));
   addItem('memory-dropdown-delete', '<span aria-hidden="true">✕</span> Delete', () => deleteMemory(memory.id));
   // Mobile-only Cancel — mirrors the email/documents popup pattern. CSS
@@ -1546,6 +1715,11 @@ export function updateMemoryCount() {
   if (activeCategory !== 'all') {
     visible = visible.filter(m => (m.category || 'fact') === activeCategory);
   }
+  // `B710`. The same clause the list applies, so the header cannot say
+  // "7 of 9" over a list of three.
+  if (activeStatus !== 'any') {
+    visible = visible.filter(m => memoryMatchesFilter(m, { status: activeStatus }, 0));
+  }
 
   // `COPY-U-15` (P23-02). A count is said once: the tab carries it, and the
   // header under it is bare — "Memories 7 memories" under a tab reading
@@ -1598,6 +1772,47 @@ export async function editMemory(id) {
   if (!newText || newText === memory.text) return;
 
   await saveInlineEdit(id, newText);
+}
+
+/** `B710`. Bind a proposal, and say what the gate said.
+ *
+ *  **A refusal is an answer, not a failure**, and the route already says so by
+ *  returning 200 with a verdict. The sentence it produces is the most useful
+ *  thing on this path — *the Brain already knows this — "User is allergic to
+ *  shellfish"* names the memory that makes this one redundant — and a
+ *  generic banner would throw it away, which is what `Law 10` is about: a
+ *  refusal and an error are different events and one display cannot mean both.
+ *
+ *  So a refusal is a toast carrying the server's own words, the list is
+ *  reloaded either way (the gate records a restatement on a duplicate, so the
+ *  row a reader is looking at has genuinely changed even when nothing was
+ *  committed), and nothing is phrased as *failed*.
+ */
+export async function commitMemory(id) {
+  try {
+    const res = await fetch(`${window.location.origin}/api/memory/${id}/commit`,
+                            { method: 'POST', credentials: 'same-origin' });
+    if (!res.ok) {
+      // A 404 or a 403 is the one case that genuinely is an error: the gate
+      // never ran. `readRefusal` is the single reader for those (`C-ERR`).
+      throw new Error((await readRefusal(res, 'Could not commit that memory.')).sentence);
+    }
+    const result = await res.json();
+    await loadMemories();
+    if (result && result.verdict === 'committed') {
+      showToast('Committed — it can reach chats now');
+    } else {
+      // Deliberately the server's sentence and not a rewrite of it: the reason
+      // is written for a person, and the one place that phrasing lives is the
+      // gate that made the decision (`Law 7`).
+      showToast((result && result.reason) || 'Not committed.', 6000);
+    }
+    return result;
+  } catch (error) {
+    console.error('Error committing memory:', error);
+    showError((error && error.message) || 'Could not commit that memory.');
+    return null;
+  }
 }
 
 async function togglePin(id, pinned) {
@@ -2156,6 +2371,12 @@ const memoryModule = {
   deleteMemory,
   extractMemory,
   buildCategoryChips,
+  // `B710`. On the module object because Explore reaches the Brain's writers
+  // through `window.memoryModule` and not by importing this file — the cycle
+  // `memoryFacts.js` explains — and a second commit call there would be a
+  // second place to forget to reload the list or to report the gate's words.
+  buildStatusChips,
+  commitMemory,
   tidyMemories,
   describeMemoryTidy,
   importMemories,

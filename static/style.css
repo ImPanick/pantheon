@@ -15144,6 +15144,82 @@ textarea.memory-add-input {
   color: var(--red);
 }
 
+/* `B710`. The commitment badge, `P13-05`'s field made visible.
+   ───────────────────────────────────────────────────────────────────────────
+   Deliberately NOT a `.memory-cat-badge` variant, even though it sits in the
+   same strip and is the same size. A category says what KIND of thing this is;
+   this says whether it is in effect at all, and a reader who learns the second
+   from a chip that looks like the first will read it as one more label. The
+   weight is the whole difference and it is the minimum one that reads.
+
+   Text colour is a SOLID token on both — `var(--warn)` and `var(--fg-muted)`.
+   The badges above mix toward `transparent`, which is `B1408`: mixing text
+   toward `transparent` replaces part of the glyph with whatever is behind it,
+   so the result tracks the background and the same rule measures 1.90:1 on
+   `light` and fine on a dark panel. `--warn` is scoped per surface by `B22`
+   and `--fg-muted` was pinned at the floor by `P1-03`, so both are already
+   answers to this question rather than new guesses at it. */
+.memory-status-badge {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 600;
+  text-transform: lowercase;
+  letter-spacing: 0.02em;
+}
+.memory-status-proposed {
+  background: color-mix(in srgb, var(--warn) 16%, transparent);
+  color: var(--warn);
+}
+.memory-status-archived {
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
+  color: var(--fg-muted);
+}
+
+/* The row itself, because a badge in a strip of six chips is findable and not
+   noticeable. One rule each, and both are about the LEFT EDGE rather than the
+   text: a reader scanning a list sees the edge before they read anything, and
+   nothing in the row's content is dimmed or hidden by its status.
+
+   A retired memory's TEXT is muted and its border is not: it is a memory the
+   Brain is no longer using, so quiet is right. A proposal's text is at full
+   strength, because it is the one a person has to actually read to decide. */
+.memory-item-proposed {
+  border-left: 2px solid color-mix(in srgb, var(--warn) 60%, transparent);
+  padding-left: 8px;
+}
+.memory-item-archived {
+  border-left: 2px solid color-mix(in srgb, var(--fg) 20%, transparent);
+  padding-left: 8px;
+}
+.memory-item-archived .memory-item-text {
+  color: var(--fg-muted);
+}
+
+/* The status chips. They inherit `.memory-cat-chip`'s geometry and override
+   its colour, so the new row is not 4 more members of `B1408`'s census.
+   `proposed` carries the warn colour at rest, which is the one chip a person
+   is meant to notice without being told it exists. */
+.memory-status-filters {
+  margin-top: 4px;
+}
+.memory-status-chip {
+  color: var(--fg-muted);
+}
+.memory-status-chip-proposed {
+  color: var(--warn);
+  border-color: color-mix(in srgb, var(--warn) 45%, transparent);
+}
+.memory-status-chip-proposed:hover {
+  border-color: var(--warn);
+  color: var(--warn);
+}
+.memory-status-chip-proposed.active {
+  background: color-mix(in srgb, var(--warn) 15%, transparent);
+  border-color: color-mix(in srgb, var(--warn) 55%, transparent);
+  color: var(--warn);
+}
+
 /* Source and time metadata */
 .memory-item-source,
 .memory-item-time,
@@ -15451,6 +15527,17 @@ textarea.memory-add-input {
    belongs to the button that destroys. The title says what it keeps. */
 .brain-detail-retire {
   color: var(--fg-muted);
+}
+/* `B710`. Commit is the affirmative act on this pane and the only one that
+   changes what the assistant can say, so it is the one button here that is
+   not quiet. It replaces Retire rather than joining it — each refuses the
+   other's state on the server. */
+.brain-detail-commit {
+  color: var(--warn);
+  border-color: color-mix(in srgb, var(--warn) 50%, transparent);
+}
+.brain-detail-commit:hover {
+  background: color-mix(in srgb, var(--warn) 12%, var(--panel));
 }
 .brain-detail-edit {
   width: 100%;

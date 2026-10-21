@@ -16,7 +16,8 @@
 
 import { apply, emptyFilter, isNarrowed, sessionIndex, freshness, AGE_BANDS,
          CONFIDENCE_BANDS, EDGE_TYPES } from './brainFilter.js';
-import { memoryConfidencePill } from './memoryFacts.js';
+import { memoryConfidencePill, memoryStatusBadge,
+         MEMORY_STATUS_LABELS } from './memoryFacts.js';
 import { scrollBehavior } from './motion.js';
 
 const PANEL = 'memory-panel-explore';
@@ -148,6 +149,16 @@ function _filterBar() {
     [['any', 'any'], ['none', 'unlinked'], ...EDGE_TYPES.map(
       (t) => [t, t.replace('_', ' ')])],
     state.filter.edge, set('edge')));
+  // `B710`. *In use* and not *committed*: the question a reader brings to this
+  // control is "what is actually reaching my chats", which is an effect, and
+  // the vocabulary that produces that effect is allowed to change under it.
+  // The label is the one `memoryFacts.js` owns for the stored value, so the
+  // chip in the Brain list and this option cannot drift apart.
+  row.appendChild(_select('brain-filter-status', 'Status',
+    [['any', 'any'], ['binding', 'in use'],
+     ['proposed', MEMORY_STATUS_LABELS.proposed],
+     ['archived', MEMORY_STATUS_LABELS.archived]],
+    state.filter.status, set('status')));
   bar.appendChild(row);
   return bar;
 }
@@ -184,6 +195,12 @@ function _detail(memory) {
   box.appendChild(text);
 
   const meta = _el('div', 'brain-detail-meta');
+  const badge = memoryStatusBadge(memory);
+  if (badge) {
+    const span = _el('span', badge.className, badge.text);
+    span.title = badge.title;
+    meta.appendChild(span);
+  }
   if (memory.project_label) {
     meta.appendChild(_el('span', 'brain-detail-project', memory.project_label));
   }
@@ -237,30 +254,63 @@ function _detail(memory) {
   });
   actions.appendChild(correct);
 
-  const retire = _el('button', 'brain-detail-btn brain-detail-retire', 'Retire');
-  retire.type = 'button';
-  // Says what it does before it does it. Retire is not delete — the text, the
-  // confidence, the provenance and the edges all stay — and a button that does
-  // not say so reads as the destructive one beside it.
-  retire.title = 'Stop this memory reaching chats. It is kept, not deleted.';
-  retire.addEventListener('click', async () => {
-    retire.disabled = true;
-    try {
-      const res = await fetch(
-        `${window.location.origin}/api/memory/${memory.id}/archive`,
-        { method: 'POST', body: new URLSearchParams({ reason: 'retired from the Brain' }) });
-      const body = res.ok ? await res.json() : null;
-      if (body && body.archived === false && body.reason) {
-        const said = _el('div', 'brain-detail-said', body.reason);
-        box.appendChild(said);
-        return;
+  // `B710`. Which of the two is offered follows the status, because each
+  // refuses the other's state on the server: `archive()` refuses anything not
+  // currently committed and `commit_memory` refuses anything already
+  // committed. Showing both would put a control on screen that can only
+  // produce a refusal — the Brain's own kebab makes the same call, and the
+  // alternative is teaching every reader a word for a state their store is
+  // not in.
+  if (badge) {
+    const proposed = badge.status === 'proposed';
+    const bind = _el('button', 'brain-detail-btn brain-detail-commit',
+                     proposed ? 'Commit' : 'Bring back');
+    bind.type = 'button';
+    bind.title = proposed
+      ? 'Start using this. It can reach chats from now on.'
+      : 'Commit it again, so it can reach chats.';
+    bind.addEventListener('click', async () => {
+      bind.disabled = true;
+      // The Brain's own writer, through `window.memoryModule` — the same
+      // arrangement `Correct` uses two buttons up, and for the same reason:
+      // the gate's refusal sentence is reported in one place (`Law 14`).
+      const brain = window.memoryModule;
+      const result = brain && brain.commitMemory
+        ? await brain.commitMemory(memory.id) : null;
+      if (result && result.verdict !== 'committed' && result.reason) {
+        bind.disabled = false;
+        box.appendChild(_el('div', 'brain-detail-said', result.reason));
       }
-    } catch (_) { /* the reload below shows whatever actually happened */ }
-    state.open = null;
-    await _load();
-    _render();
-  });
-  actions.appendChild(retire);
+      await _load();
+      _render();
+    });
+    actions.appendChild(bind);
+  } else {
+    const retire = _el('button', 'brain-detail-btn brain-detail-retire', 'Retire');
+    retire.type = 'button';
+    // Says what it does before it does it. Retire is not delete — the text, the
+    // confidence, the provenance and the edges all stay — and a button that does
+    // not say so reads as the destructive one beside it.
+    retire.title = 'Stop this memory reaching chats. It is kept, not deleted.';
+    retire.addEventListener('click', async () => {
+      retire.disabled = true;
+      try {
+        const res = await fetch(
+          `${window.location.origin}/api/memory/${memory.id}/archive`,
+          { method: 'POST', body: new URLSearchParams({ reason: 'retired from the Brain' }) });
+        const body = res.ok ? await res.json() : null;
+        if (body && body.archived === false && body.reason) {
+          const said = _el('div', 'brain-detail-said', body.reason);
+          box.appendChild(said);
+          return;
+        }
+      } catch (_) { /* the reload below shows whatever actually happened */ }
+      state.open = null;
+      await _load();
+      _render();
+    });
+    actions.appendChild(retire);
+  }
 
   box.appendChild(actions);
   return box;
@@ -315,6 +365,16 @@ function _render(opts = {}) {
     const line = _el('div', 'brain-explore-row-text', memory.text);
     row.appendChild(line);
     const chips = _el('div', 'brain-explore-row-meta');
+    // `B710`. First, and only when it is not committed — the same rule and the
+    // same helper the Brain list uses, so one memory cannot read as waiting on
+    // one surface and binding on the other.
+    const badge = memoryStatusBadge(memory);
+    if (badge) {
+      const span = _el('span', badge.className, badge.text);
+      span.title = badge.title;
+      chips.appendChild(span);
+      row.classList.add('brain-explore-row-' + badge.status);
+    }
     if (memory.project_label) {
       chips.appendChild(_el('span', 'brain-detail-project', memory.project_label));
     }

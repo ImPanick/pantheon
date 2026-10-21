@@ -1,11 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // `P13-07`. What the Brain's reading surface shows, as data.
 //
-// Imports nothing, for the reason `memoryFacts.js` imports nothing: the
-// surface's DOM lives in `brainExplore.js` and the rule for *which memories
-// match* has to be runnable without one. `B61`'s lesson is the whole argument
-// — a helper can be perfect and the page still show nothing — so the part a
-// test can execute is kept separate from the part that needs a browser.
+// Reaches no DOM, for the reason `memoryFacts.js` reaches none: the surface's
+// markup lives in `brainExplore.js` and the rule for *which memories match*
+// has to be runnable without a browser. `B61`'s lesson is the whole argument —
+// a helper can be perfect and the page still show nothing — so the part a test
+// can execute is kept separate from the part that needs a browser.
+//
+// It imported nothing at all until `B710`, and the one import it has now is
+// the exception that keeps the property: `memoryFacts.js` imports nothing
+// either, so this file still runs under `node` with no DOM. The alternative
+// was a second reading of `status`, whose default decides whether a memory
+// that is reaching every chat is visible on a page (`Law 14`).
+import { memoryStatus } from './memoryFacts.js';
 
 /** Confidence bands, as the surface offers them.
  *
@@ -31,11 +38,32 @@ export const AGE_BANDS = {
 
 export const EDGE_TYPES = ['supersedes', 'contradicts', 'derived_from', 'co_occurs'];
 
+/** The statuses the surface offers, plus the two readings that are not one.
+ *
+ *  `B710`. The clause lives here and not in `memory.js` because **two surfaces
+ *  read it** — the Brain list's chips and Explore's filter bar — and a status
+ *  rule with two implementations is how one of them ends up showing a proposal
+ *  as though it were binding (`Law 7`, `Law 14`). `memory.js` imports
+ *  `matches` for exactly this clause rather than writing a second one.
+ *
+ *  `binding` is not a synonym for `committed` and the difference is the point:
+ *  a reader asking *"what is actually reaching my chats"* is asking about an
+ *  effect, and tomorrow a fourth status could have that effect or lose it. The
+ *  question survives the vocabulary changing; `status === 'committed'` does
+ *  not.
+ */
+export const STATUS_FILTERS = {
+  any: () => true,
+  binding: (status) => status === 'committed',
+  proposed: (status) => status === 'proposed',
+  archived: (status) => status === 'archived',
+};
+
 /** The filter nothing is filtered by — the surface's own starting state. */
 export function emptyFilter() {
   return {
     query: '', project: 'any', confidence: 'any', category: 'any',
-    age: 'any', session: 'any', edge: 'any',
+    age: 'any', session: 'any', edge: 'any', status: 'any',
   };
 }
 
@@ -76,6 +104,14 @@ export function matches(memory, filter, now) {
 
   if (f.category !== 'any' && (memory.category || 'fact') !== f.category) return false;
   if (f.session !== 'any' && (memory.session_id || null) !== f.session) return false;
+
+  // `B710`. `memoryStatus` and not a second reading of the field: the default
+  // for an unrecognised value is load-bearing in a direction (`committed`,
+  // because a record that stops binding is wrong and invisible), and a filter
+  // that defaulted the other way would hide memories that are reaching every
+  // chat. One rule, one place, both surfaces (`Law 7`).
+  const statusTest = STATUS_FILTERS[f.status] || STATUS_FILTERS.any;
+  if (!statusTest(memoryStatus(memory))) return false;
 
   const days = AGE_BANDS[f.age];
   if (days) {

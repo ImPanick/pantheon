@@ -154,3 +154,143 @@ export function memoryCountPills(memory) {
   }
   return pills;
 }
+
+// ── commitment, `P13-05` / `B710` ────────────────────────────────────────────
+//
+// `src/memory_edges.py` has carried three statuses since `P13-05`, retrieval
+// has honoured them since the same day, and **no surface showed any of them**.
+// That is the unwired half `Law 13` is about, and it bites hardest on this
+// field: a proposal a person cannot see is a proposal they cannot reject, and
+// the preference that produces proposals therefore had to ship defaulting
+// **on** — a person who turned it off would have watched the Brain quietly
+// stop learning with nowhere to look.
+//
+// Here rather than in `memory.js` for the reason this module exists: the rule
+// for *what a status means to a reader* has to be runnable without a browser,
+// and the Brain list, the Explore surface and the chat pill all ask it.
+
+/** The three statuses, mirroring `MEMORY_STATUSES` in `src/memory_edges.py`.
+ *
+ *  Two copies because one is Python and one is a browser — the arrangement
+ *  `MEMORY_ENGINE_LABELS` uses in `chatRenderer.js`, and one a test pins by
+ *  driving both over one table. It has earned its keep three times now.
+ *
+ *  **The word a person sees is not the field's value**, and that is deliberate
+ *  in one place: the stored value is `archived`, and every control that
+ *  produces it says *Retire* (`brainExplore.js`, `P13-07`). `Law 7` — the one
+ *  place that maps between the two is this table, so a button and the badge it
+ *  produces cannot drift into saying different things about one record.
+ */
+export const MEMORY_STATUS_LABELS = {
+  committed: 'committed',
+  proposed: 'proposed',
+  archived: 'retired',
+};
+
+/** Python's `status_of` (`src/memory_edges.py`), in a browser.
+ *
+ *  **Unrecognised reads as `committed`, and the direction of that default is
+ *  the decision** — the same one Python makes, for the same reason stated on
+ *  the other side: a record that binds when it should not is wrong and
+ *  obvious, and a record that stops binding is wrong and invisible. In a
+ *  browser it buys a second thing: a `proposed` badge over a memory that is in
+ *  fact reaching every chat would be a lie in the reassuring direction.
+ */
+export function memoryStatus(memory) {
+  if (!memory || typeof memory !== 'object') return 'committed';
+  const value = memory.status;
+  return Object.prototype.hasOwnProperty.call(MEMORY_STATUS_LABELS, value)
+    ? value : 'committed';
+}
+
+/** Whether this memory is allowed to change an answer. Python's `is_committed`. */
+export function memoryBinds(memory) {
+  return memoryStatus(memory) === 'committed';
+}
+
+/** The status badge for one memory, or `null` when there is nothing to say.
+ *
+ *  **Nothing at all for a committed memory**, which is almost all of them. A
+ *  badge on every row is not information, it is a column — and the one reading
+ *  a person needs from this field is *which of these is not what it looks
+ *  like*. Committed is what a memory looks like.
+ */
+export function memoryStatusBadge(memory) {
+  const status = memoryStatus(memory);
+  if (status === 'committed') return null;
+  if (status === 'proposed') {
+    return {
+      status,
+      className: 'memory-status-badge memory-status-proposed',
+      text: MEMORY_STATUS_LABELS.proposed,
+      title: 'Pantheon wrote this down and is not using it yet. It reaches no'
+        + ' chat until you commit it.',
+    };
+  }
+  return {
+    status,
+    className: 'memory-status-badge memory-status-archived',
+    text: MEMORY_STATUS_LABELS.archived,
+    title: 'Retired. It is kept, and it reaches no chat. Committing it again'
+      + ' brings it back.',
+  };
+}
+
+/** `{committed, proposed, archived}` over a corpus, in one pass.
+ *
+ *  Counted rather than filtered-and-measured because the surface needs all
+ *  three at once — the chips say how many are waiting, and whether to appear
+ *  at all.
+ */
+export function countByStatus(memories) {
+  const counts = { committed: 0, proposed: 0, archived: 0 };
+  for (const memory of Array.isArray(memories) ? memories : []) {
+    counts[memoryStatus(memory)] += 1;
+  }
+  return counts;
+}
+
+/** The status chips a corpus deserves, or `null` when it deserves none.
+ *
+ *  **The decision, not the markup.** `memory.js` loops over this and builds
+ *  buttons; everything that can be got wrong is here, where a test runs it
+ *  rather than reads it (`Law 20`). `memoryCountPills` is the precedent and
+ *  `B61` is the argument — a helper can be perfect and the page still show
+ *  nothing, so the half that can be executed is kept executable.
+ *
+ *  `null` and not `[]`: the row is **absent** until the store holds something
+ *  that is not committed. A person who never turns auto-approve off has no
+ *  proposals and is shown no control for them, and the moment extraction
+ *  proposes one a chip appears carrying its count. The alternative is a
+ *  permanently-dimmed filter teaching every reader a word for a state their
+ *  Brain is never in.
+ *
+ *  A status with **no members is not offered**, for the same reason one step
+ *  down: a `retired 0` chip is an invitation to click something that can only
+ *  produce an empty list. `any` and `binding` are always there once the row
+ *  is, because *everything* and *what is actually in use* are the two
+ *  questions that stay askable whatever the corpus holds.
+ */
+export function statusChips(memories, active = 'any') {
+  const rows = Array.isArray(memories) ? memories : [];
+  const counts = countByStatus(rows);
+  if (!(counts.proposed + counts.archived)) return null;
+  const chips = [
+    { value: 'any', label: `all ${rows.length}`,
+      title: 'Everything the Brain holds' },
+    { value: 'binding', label: `in use ${counts.committed}`,
+      title: 'Committed — these are the ones that can reach a chat' },
+  ];
+  if (counts.proposed) {
+    chips.push({ value: 'proposed',
+      label: `${MEMORY_STATUS_LABELS.proposed} ${counts.proposed}`,
+      title: 'Written down and waiting on you. None of these reaches a chat.' });
+  }
+  if (counts.archived) {
+    chips.push({ value: 'archived',
+      label: `${MEMORY_STATUS_LABELS.archived} ${counts.archived}`,
+      title: 'Kept, and reaching no chat. Committing one brings it back.' });
+  }
+  for (const chip of chips) chip.active = chip.value === active;
+  return chips;
+}

@@ -493,6 +493,17 @@
               <div id="memory-category-filters" class="memory-category-filters">
                 <button class="memory-cat-chip active" data-cat="all">all</button>
               </div>
+              <!-- `B710`. Status chips, drawn by `memory.js::buildStatusChips`
+                   and HIDDEN until the store holds something that is not
+                   committed. `P13-05` shipped three statuses that retrieval
+                   has honoured since the day it landed and no surface showed,
+                   so a proposal was a thing a person could not see and
+                   therefore could not reject — which is why the preference
+                   that produces them had to default on. Empty and `hidden`
+                   here rather than absent: the row is a filter over the list
+                   below it and belongs beside the other one in the source,
+                   not appended by script to whatever happens to be last. -->
+              <div id="memory-status-filters" class="memory-category-filters memory-status-filters" hidden></div>
             </div>
             <div id="memory-bulk-bar" class="memory-bulk-bar hidden">
               <label class="memory-bulk-check-all" style="position:relative;top:0px;"><input type="checkbox" id="memory-select-all" /> All</label>
@@ -571,6 +582,21 @@
               <h2 style="margin:0;display:inline-flex;align-items:center;gap:6px"><svg width="13" height="13" viewBox="0 0 24 24" fill="var(--accent, var(--red))" aria-hidden="true"><path d="M12 0L14.59 8.41L23 12L14.59 15.59L12 24L9.41 15.59L1 12L9.41 8.41Z"/></svg>Auto-extract memories</h2>
               <label class="admin-switch" style="flex-shrink:0"><input type="checkbox" id="auto-memory-toggle" aria-label="Auto-extract memories" checked /><span class="admin-slider"></span></label>
             </div>
+          </div>
+          <!-- `B710` / `P13-05`. The switch between *extraction decides* and
+               *extraction proposes*. It has been settable through
+               `PUT /api/prefs/auto_approve_memories` since the server half
+               landed and had no control anywhere, which is why it defaults
+               **on**: off, with nothing to look at, is a Brain that quietly
+               stops learning. The hint below says where the proposals go,
+               because a switch whose effect appears somewhere else is a
+               switch nobody turns twice. -->
+          <div class="admin-card">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:32px">
+              <h2 style="margin:0;display:inline-flex;align-items:center;gap:6px"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--accent, var(--red))" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>Use new memories straight away</h2>
+              <label class="admin-switch" style="flex-shrink:0"><input type="checkbox" id="auto-approve-memories-toggle" aria-label="Use new memories straight away" checked /><span class="admin-slider"></span></label>
+            </div>
+            <p class="memory-desc" id="auto-approve-memories-hint" style="margin:6px 0 0;"></p>
           </div>
         </div>
       </div>

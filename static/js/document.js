@@ -389,7 +389,7 @@ import { scrollBehavior } from './motion.js';
       // Language icon before the title — same family as the meta-line / picker
       // icons. Hidden via :empty CSS when the doc has no useful language.
       const lic = (doc.language && doc.language !== 'text')
-        ? langIcon(doc.language, 12, { style: 'opacity:0.65;flex-shrink:0;color:currentColor;margin-right:4px;' })
+        ? langIcon(doc.language, 11, { style: 'opacity:0.65;flex-shrink:0;color:currentColor;margin-right:4px;' })
         : '';
       const langChip = `<span class="doc-tab-lang">${lic}</span>`;
       html += `<div class="doc-tab${isActive ? ' active' : ''}" draggable="true" data-doc-id="${id}" title="${_esc(title)}">

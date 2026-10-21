@@ -269,13 +269,40 @@ def test_there_is_no_canvas_and_no_force_layout():
 
 # ── The filter core is runnable without a browser ──────────────────────────
 
-def test_the_filter_rule_imports_nothing():
+def test_the_filter_rule_runs_with_no_browser_at_all():
     """`B61`'s lesson as an arrangement: a helper can be perfect and the page
     still show nothing, so the part a test can execute is kept apart from the
-    part that needs a DOM. An import here would make that impossible."""
+    part that needs a DOM.
+
+    **Driven rather than read.** It used to assert the file had no `import`
+    line at all, which is a proxy for the property and not the property —
+    `B710` gave it one import, of `memoryFacts.js`, which reaches no DOM
+    either, and the alternative was a second reading of `status` whose default
+    decides whether a memory that is reaching every chat shows up on a page.
+    So the invariant is stated as what it is for: this module, and everything
+    it pulls in, has to load and answer with no `document` and no `window` in
+    the process — which is also what makes it runnable in a test.
+    """
     source = blank(FILTER)
-    assert re.findall(r"^\s*import\s+.*$", source, re.M) == []
     assert "document." not in source and "window." not in source
+    script = textwrap.dedent("""
+        for (const name of ['document', 'window', 'navigator', 'localStorage']) {
+          Object.defineProperty(globalThis, name, {
+            get() { throw new Error('the filter reached for ' + name); },
+            configurable: true,
+          });
+        }
+        const m = await import('%s');
+        const rows = [{ text: 'a', status: 'proposed' }, { text: 'b' }];
+        console.log(JSON.stringify({
+          all: m.apply(rows, m.emptyFilter(), 0).shown,
+          binding: m.apply(rows, { status: 'binding' }, 0).shown,
+        }));
+    """ % FILTER.as_posix())
+    proc = subprocess.run(["node", "--input-type=module"], input=script,
+                          capture_output=True, text=True, cwd=str(ROOT), timeout=60)
+    assert proc.returncode == 0, proc.stderr
+    assert json.loads(proc.stdout.strip().splitlines()[-1]) == {"all": 2, "binding": 1}
 
 
 def test_the_surface_reuses_the_confidence_pill_rather_than_formatting_again():
@@ -482,10 +509,13 @@ def test_the_surface_opens_over_the_list_and_goes_back(driven):
     assert driven["exploreHiddenAfterBack"] and driven["browseBack"]
 
 
-def test_the_six_filters_are_on_the_page(driven):
+def test_the_seven_filters_are_on_the_page(driven):
+    """Seven since `B710` put commitment on the bar: `P13-05`'s three statuses
+    had been honoured by every retrieval path and shown on no surface."""
     assert driven["filters"] == [
         "brain-filter-project", "brain-filter-confidence", "brain-filter-category",
-        "brain-filter-age", "brain-filter-session", "brain-filter-edge"]
+        "brain-filter-age", "brain-filter-session", "brain-filter-edge",
+        "brain-filter-status"]
 
 
 def test_the_freshness_sentence_reaches_the_page(driven):

@@ -483,7 +483,7 @@ def test_fg_muted_resolves_on_all_sixteen_palettes():
 
 
 def test_the_three_populations_hold_at_their_counts():
-    """110 bare, 8 with a fallback, 118 in all (101 before `P21-01`).
+    """113 bare, 8 with a fallback, 121 in all (101 before `P21-01`).
 
     The bare count is the row's deliverable and the fallback count is where a
     third class would hide, so both are pinned by spelling as well as by total.
@@ -509,6 +509,16 @@ def test_the_three_populations_hold_at_their_counts():
     # one day** — `P9-13`'s hint, `P13-01`'s dead fallback, and these — which
     # is the population pin working rather than failing.
     #
+    # 118 -> 121 and 110 -> 113 bare: `B710`'s three, all `color:` and all
+    # bare — `.memory-status-archived`, `.memory-item-archived
+    # .memory-item-text` and `.memory-status-chip`. The commitment surface had
+    # two things to de-emphasise and the row above settles both: a RETIRED
+    # memory is one the Brain has stopped using, so its text and its badge are
+    # quiet, and the status chips sit under the category chips, which paint
+    # themselves with `color-mix(var(--fg) 60%, transparent)` — a member of
+    # `B1408`'s 191. The new row overrides that rather than joining it, so the
+    # census this file pins went up by three and `B1408`'s went up by none.
+    #
     # 104 -> 105 and 96 -> 97 bare: `P9-13` (20dc3fe) added `.theme-zone-hint`,
     # the theme zone highlighter's help line. **It arrived as a NINTH fallback
     # spelling** — `var(--fg-muted, color-mix(in srgb, var(--fg) 62%,
@@ -516,11 +526,11 @@ def test_the_three_populations_hold_at_their_counts():
     # so the fallback was dead on arrival and this case went red the day it
     # landed and was not run. That is the third class this test exists to catch,
     # caught. The fallback is gone and the site is bare like the other 96.
-    assert len(uses) == 118, f"expected 118 uses of --fg-muted, found {len(uses)}"
+    assert len(uses) == 121, f"expected 121 uses of --fg-muted, found {len(uses)}"
 
     bare = [expr for _, expr in uses if not _fallback(expr)]
-    assert len(bare) == 110, (
-        f"expected 110 bare `var(--fg-muted)` uses, found {len(bare)}. If a site "
+    assert len(bare) == 113, (
+        f"expected 113 bare `var(--fg-muted)` uses, found {len(bare)}. If a site "
         "was legitimately added or removed, move this number and say which in "
         "the commit — do not widen the assertion."
     )
@@ -538,7 +548,7 @@ def test_the_three_populations_hold_at_their_counts():
 
 
 def test_the_bare_uses_split_across_properties_as_measured():
-    """104 `color`, 4 `border-color`, 2 `background` (87 before `P21-01`).
+    """107 `color`, 4 `border-color`, 2 `background` (87 before `P21-01`).
 
     Worth pinning separately from the total because the three do different
     things when the token is undefined and the row's framing only covers one
@@ -566,7 +576,10 @@ def test_the_bare_uses_split_across_properties_as_measured():
     # lands on `border-color` or `background`, which is why those two did not
     # move — and the reason this split is pinned separately is exactly that a
     # new bare use on `background` would be a different kind of change.
-    assert tally == {"color": 104, "border-color": 4, "background": 2}, tally
+    # `color` 104 -> 107: `B710`'s three (see above). All text again, and the
+    # third of them is an override of a chip rule that paints itself the other
+    # way — which is why this census moved and `B1408`'s did not.
+    assert tally == {"color": 107, "border-color": 4, "background": 2}, tally
 
 
 def test_the_javascript_uses_are_recorded_but_not_this_rows_work():
