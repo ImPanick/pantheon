@@ -249,7 +249,7 @@ they are for.*
 > was claimed at the time is worth more than a quietly corrected one (`B44`).
 
 ### An agent that can build, somewhere it is safe to
-`a54e7a9`…`HEAD`. **1428 tracked, 1049 done. 0 new phase rows, 0 regressions. `B1412`, `B1414`, `B1416`, `B1417` and `B1418` closed; `B1413` and `B1415` filed.**
+`a54e7a9`…`78e1562`. **1428 tracked, 1049 done. 0 new phase rows, 0 regressions. `B1412`, `B1414`, `B1416`, `B1417` and `B1418` closed; `B1413` and `B1415` filed.**
 The owner sent a screenshot: an approved plan whose first step reads *"Confirm whether the homepage should be built with plain HTML/CSS/JS or a framework — ask for preference"*, the model's own thinking saying *"We'll use ask_user tool"*, and then a plan card sitting on step one with a spinner and nothing else. Their reading was that the product has no way to put a question on screen — *"a massive shortfall"*.
 **The card already existed and already did both halves they asked for**: a button per option, and under them a free-text *"Other… (type your own answer)"* box. It never got the chance to draw, and the honest thing was to measure why before touching anything rather than build a second one.
 **`B1327` was eating it.** That supervisor — the owner's own *"agents should agent"* ruling — catches a turn whose first act is a question with nothing looked at yet and buys one round of looking by setting `tool_blocks = []`. A capable model asks again and the card ships. **A 20B model does not**: told to look first, it writes prose, and the question it had already composed was gone. Driving the real loop measured it exactly: **0 `ask_user` events and 0 `tool_start` events reached the browser**. No card, no tool bubble, no line — which on a plan step is indistinguishable from a hang.
