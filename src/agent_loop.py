@@ -4053,6 +4053,7 @@ def _build_system_prompt(
     context_report: Optional[Dict[str, Any]] = None,
     schema_offer: str = "native",
     tool_suite=None,
+    approved_plan: Optional[str] = None,
 ) -> List[Dict]:
     """Build agent system prompt, inject MCP/document context, merge consecutive system msgs.
 
@@ -4538,7 +4539,7 @@ def _build_system_prompt(
                 _skill_max_injected = resolve_skill_injection(
                     owner, preference=_prefs.get("skill_max_injected"))
                 relevant_skills = sm.get_relevant_skills(
-                    last_user,
+                    _skill_query(last_user, approved_plan),
                     # `P8-51`: switched-off packages and groups stay out.
                     #
                     # `B1361`. This was `sm.load_active(owner=owner)`, which
@@ -4887,6 +4888,21 @@ def _skill_body_tool_offered(last_user: str, *, suppress_skills: bool,
         return bool(SkillsManager(data_dir or DATA_DIR).load_active(owner=owner))
     except Exception:
         return False
+
+
+def _skill_query(last_user: str, approved_plan: Optional[str] = None) -> str:
+    """What the matched-skill pass is matched against.
+
+    `B1420`. The last user message, and on an execution turn the approved plan
+    as well — the same reading `_classify_agent_request` gives it (`B1414`).
+    The message that starts an execution turn is "yes, go ahead"; the work is
+    in the plan, and a procedure for that work matched against "go ahead"
+    reached the model by keyword luck or not at all.
+    """
+    plan_text = str(approved_plan or "").strip()
+    if not plan_text:
+        return last_user
+    return f"{last_user}\n{plan_text[:3000]}"
 
 
 def _skill_active_toolsets(disabled_tools) -> list:
@@ -7872,6 +7888,7 @@ async def stream_agent_loop(
             context_report=_prompt_report,
             schema_offer=_schema_offer,
             tool_suite=_tool_suite,
+            approved_plan=approved_plan,
         )
         # `P4-16`. Up to a dozen procedures enter a request and until now
         # nothing said which. One source since `B60`: this loop is the only

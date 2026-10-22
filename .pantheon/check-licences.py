@@ -733,6 +733,9 @@ INVENTORY = [
           None, None),
     Entry("Pantheon library README", ["library/README.md"],
           "AGPL-3.0-or-later (this project)", None, None),
+    # `B1419`. The first-party skill layer: written here, shipped beside ECC's.
+    Entry("Pantheon skills", ["library/pantheon/*"],
+          "AGPL-3.0-or-later (this project)", None, None),
 ]
 
 SCOPE_HEADING = "## Licence scope — what applies to what"

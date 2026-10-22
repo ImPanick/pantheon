@@ -109,7 +109,8 @@ async def do_manage_skills(content: str, owner: Optional[str] = None) -> Dict:
     if action == "view":
         if not name:
             return {"error": "name is required for view", "exit_code": 1}
-        md = sm.read_skill_md(name, owner=owner)
+        # `B590`/`B1419`: a shipped skill the catalogue named opens too.
+        md = sm.read_skill_md(name, owner=owner, include_library=True)
         if md is None:
             return {"error": f"Skill {name!r} not found", "exit_code": 1}
         # `P8-21`. The open, recorded here and nowhere else: the index line
@@ -129,7 +130,7 @@ async def do_manage_skills(content: str, owner: Optional[str] = None) -> Dict:
         ref = (args.get("path") or "").strip()
         if not ref:
             return {"error": "path is required for view_ref", "exit_code": 1}
-        text = sm.read_skill_reference(name, ref, owner=owner)
+        text = sm.read_skill_reference(name, ref, owner=owner, include_library=True)
         if text is None:
             return {"error": f"Reference {ref!r} not found under {name!r}", "exit_code": 1}
         return {"results": text}

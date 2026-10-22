@@ -2150,7 +2150,8 @@ def setup_skills_routes(skills_manager: SkillsManager) -> APIRouter:
             raise HTTPException(404, "Skill is not available for slash invocation")
 
         name = match.get("name")
-        md = skills_manager.read_skill_md(name, owner=user)
+        # `B1419`. The index offers shipped skills; their source is the library's.
+        md = skills_manager.read_skill_md(name, owner=user, include_library=True)
         if md is None:
             raise HTTPException(404, "Skill source unavailable")
 
@@ -2187,7 +2188,8 @@ def setup_skills_routes(skills_manager: SkillsManager) -> APIRouter:
         if not match:
             raise HTTPException(404, "Skill not found")
         _verify_owner(match, user)
-        md = skills_manager.read_skill_md(match.get("name"), owner=user)
+        # `B590`. A shipped skill's card reads its own source.
+        md = skills_manager.read_skill_md(match.get("name"), owner=user, include_library=True)
         if md is None:
             raise HTTPException(404, "Skill source unavailable (legacy entry?)")
         return {"name": match.get("name"), "markdown": md}

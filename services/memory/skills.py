@@ -135,6 +135,22 @@ def _copy_skill_dict(d: Dict) -> Dict:
     return {k: (list(v) if isinstance(v, list) else v) for k, v in d.items()}
 
 
+# `B1419`. Pantheon's own skills — written for this product's tools, published,
+# and shipped switched on. A layer of their own, read before ECC's, because
+# they are the install's procedures for its own machine rather than a vendored
+# third-party catalogue: a first-party skill of the same name as an ECC one is
+# the one the model is shown.
+FIRST_PARTY_LIBRARY = "pantheon"
+VENDORED_LIBRARY = "ecc"
+
+
+def _first_party_library_root() -> str:
+    """`<repo>/library/pantheon/skills` — resolved like the vendored root."""
+    here = os.path.dirname(os.path.abspath(__file__))
+    repo = os.path.dirname(os.path.dirname(here))
+    return os.path.join(repo, "library", FIRST_PARTY_LIBRARY, "skills")
+
+
 def _default_library_root() -> str:
     """Where the bundled skill library ships: `<repo>/library/ecc/skills`.
 
@@ -310,6 +326,16 @@ class SkillsManager:
         #     files the user may have edited. A read-only layer that a
         #     same-named user skill shadows has no merge at all.
         self.library_root = library_root if library_root is not None else _default_library_root()
+        # `B1419`. Every read-only layer, first-party first so it shadows the
+        # vendored one. A caller that names its own `library_root` gets that
+        # root alone — that is how a test isolates itself from what ships.
+        self.library_roots: List[Tuple[str, str]] = [
+            (lib, root) for lib, root in (
+                ([(FIRST_PARTY_LIBRARY, _first_party_library_root())]
+                 if library_root is None else [])
+                + [(VENDORED_LIBRARY, self.library_root)])
+            if root
+        ]
         os.makedirs(self.skills_root, exist_ok=True)
 
     # ----------------------------------------------------------------------
@@ -416,12 +442,18 @@ class SkillsManager:
 
     def _iter_library_files(self) -> Iterable[str]:
         """The bundled library. Read-only, and never yielded to a write path."""
-        root_dir = self.library_root
-        if not root_dir or not os.path.isdir(root_dir):
-            return
-        for root, _dirs, files in os.walk(root_dir, followlinks=False):
-            if "SKILL.md" in files:
-                yield os.path.join(root, "SKILL.md")
+        for _lib, path in self._iter_library_layers():
+            yield path
+
+    def _iter_library_layers(self) -> Iterable[Tuple[str, str]]:
+        """`(library, SKILL.md path)` over every read-only layer, in shadowing
+        order — first-party, then vendored (`B1419`)."""
+        for lib, root_dir in self.library_roots:
+            if not os.path.isdir(root_dir):
+                continue
+            for root, _dirs, files in os.walk(root_dir, followlinks=False):
+                if "SKILL.md" in files:
+                    yield lib, os.path.join(root, "SKILL.md")
 
     def library_manifest(self) -> Dict:
         """What the bundled library is, and where it came from. {} if absent."""
@@ -750,21 +782,7 @@ class SkillsManager:
         # The bundled library, second so a user's own skill of the same name
         # shadows it. That shadowing *is* the fork mechanism: save a skill under
         # a bundled name and yours wins, with no merge and nothing to undo.
-        for path in self._iter_library_files():
-            d = self._read_skill_dict(path)
-            if not d or d.get("name") in seen_names:
-                continue
-            u = self._usage_entry(usage, d.get("name"), None)
-            d["uses"] = int(u.get("uses", 0))
-            d["last_used"] = u.get("last_used")
-            d["opens"] = int(u.get("opens", 0))
-            d["last_opened"] = u.get("last_opened")
-            d["source"] = "bundled"
-            d["bundled"] = True
-            d["editable"] = False
-            d["owner"] = None          # bundled skills belong to the install
-            out.append(d)
-            seen_names.add(d.get("name"))
+        out.extend(self._library_entries(usage, seen_names))
 
         # Legacy JSON entries — surfaced as draft, not editable from new flow
         if os.path.exists(self.legacy_file):
@@ -806,6 +824,28 @@ class SkillsManager:
                 pass
         return out
 
+    def _library_entries(self, usage: Dict[str, Dict], shadowed: set) -> List[Dict]:
+        """The read-only layers as skill dicts, skipping any name in `shadowed`
+        (and adding each name it yields to it, so the first layer wins)."""
+        out: List[Dict] = []
+        for lib, path in self._iter_library_layers():
+            d = self._read_skill_dict(path)
+            if not d or d.get("name") in shadowed:
+                continue
+            u = self._usage_entry(usage, d.get("name"), None)
+            d["uses"] = int(u.get("uses", 0))
+            d["last_used"] = u.get("last_used")
+            d["opens"] = int(u.get("opens", 0))
+            d["last_opened"] = u.get("last_opened")
+            d["source"] = "bundled"
+            d["bundled"] = True
+            d["library"] = lib
+            d["editable"] = False
+            d["owner"] = None          # bundled skills belong to the install
+            out.append(d)
+            shadowed.add(d.get("name"))
+        return out
+
     def load(self, owner: Optional[str] = None) -> List[Dict]:
         entries = self.load_all()
         if owner is None:
@@ -837,6 +877,15 @@ class SkillsManager:
         skill stays in view and editable while it is left out of every prompt.
         """
         entries = self.load(owner=owner)
+        if owner is not None:
+            # `B1419`. The install's read-only skills belong to every person
+            # on it. `load(owner)` is the person's *own* store — what they may
+            # edit — and so held none of them, which meant a signed-in person's
+            # model never saw a single shipped skill while the same install
+            # with sign-in off saw all of them. A person's own skill of the same
+            # name still shadows the shipped one.
+            own = {s.get("name") for s in entries}
+            entries = entries + self._library_entries(self._load_usage(), own)
         try:
             off = self.collections.disabled_names(owner)
         except Exception:
@@ -1429,8 +1478,19 @@ class SkillsManager:
     # Reading a single skill (used by the skill_view tool)
     # ----------------------------------------------------------------------
 
-    def read_skill_md(self, name: str, owner: Optional[str] = None) -> Optional[str]:
+    def _readable_skill_path(self, name: str, owner: Optional[str],
+                             include_library: bool) -> Optional[str]:
+        """The person's own file for `name`, else — on a read path that asked
+        for it — the shipped one. `B590`/`B1419`: a write path must never be
+        handed a library file, so the fallback is opt-in per call site."""
         path = self._find_skill_path(name, owner)
+        if path is None and include_library:
+            path = self._library_path(name)
+        return path
+
+    def read_skill_md(self, name: str, owner: Optional[str] = None, *,
+                      include_library: bool = False) -> Optional[str]:
+        path = self._readable_skill_path(name, owner, include_library)
         if path is None:
             return None
         try:
@@ -1439,10 +1499,11 @@ class SkillsManager:
         except Exception:
             return None
 
-    def read_skill_reference(self, name: str, ref_path: str, owner: Optional[str] = None) -> Optional[str]:
+    def read_skill_reference(self, name: str, ref_path: str, owner: Optional[str] = None,
+                             *, include_library: bool = False) -> Optional[str]:
         """Read a sub-file under the skill's directory (references/, etc).
         Refuses path traversal."""
-        path = self._find_skill_path(name, owner)
+        path = self._readable_skill_path(name, owner, include_library)
         if path is None:
             return None
         base = os.path.realpath(os.path.dirname(path))

@@ -49,7 +49,8 @@ def test_a_fresh_install_has_the_whole_library_with_no_network(mgr):
 def test_every_bundled_skill_parses(mgr):
     """The compatibility claim, checked rather than asserted."""
     dirs = [d for d in (LIB / "skills").iterdir() if d.is_dir()]
-    loaded = {s["name"] for s in mgr.load_all() if s.get("bundled")}
+    # `B1419`. Pantheon's own layer ships beside this one; this claim is ECC's.
+    loaded = {s["name"] for s in mgr.load_all() if s.get("library") == "ecc"}
     assert len(loaded) == len(dirs), (
         f"{len(dirs)} skill directories but {len(loaded)} loaded -- "
         f"{len(dirs) - len(loaded)} failed to parse"

@@ -24,6 +24,31 @@ That stripping is an adaptation, so the vendored file is CC BY-SA 4.0 as well.
 Attribution is in `CREDITS.md`; it was **missing entirely** until this landed,
 and the obligation was not new.
 
+## `pantheon/` — Pantheon's own skills
+
+Procedures written for this product's own tools, **published and switched on**
+(`B1419`). Today they are four, for the workstation:
+
+| Skill | Teaches |
+| --- | --- |
+| `workstation-desktop` | the `computer` tool — every action, the 1280×800 frame, the tray, keys, Firefox shortcuts; `references/keys.md` |
+| `workstation-apps-and-windows` | starting, finding, focusing, arranging and closing programs from the shell with `xdotool` |
+| `workstation-shell` | where commands run, `/projects`, root, the network, servers that outlive the call |
+| `workstation-self-test` | build, serve, `curl`, look in Firefox, read the console, fix, report with evidence |
+
+Each declares `requires_toolsets` for the tools it drives, so a turn gets them
+exactly when the loop offers those tools — for these, when the workstation is
+on and this person may use it. Every command in them was run on a desktop built
+from the workstation's own `.jwmrc` and Firefox policy before it was written.
+
+This layer is read **before** `ecc/`, so a first-party skill shadows a vendored
+one of the same name, and a person's own skill of the same name shadows both,
+for that person. It belongs to the install: every person's model is offered it,
+signed in or not. To change one, fork it — the copy is yours and wins (from
+the Workshop with sign-in off; signed-in forking is `B1421`).
+`tests/test_the_workstation_skills_ship_switched_on.py` holds what they say to
+the protocol they describe (screen size, limits, the action list).
+
 ## `ecc/` — 286 skills
 
 From [ECC](https://github.com/affaan-m/ECC) by Affaan Mustafa, **MIT licensed**

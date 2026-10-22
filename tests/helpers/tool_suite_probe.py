@@ -235,8 +235,13 @@ def skills_in_store(data_dir: str, owner: Optional[str]) -> List[str]:
     except Exception:
         return []
     try:
-        return sorted({str(s.get("name")) for s in SkillsManager(data_dir).load(owner=owner)
-                       if s.get("name")})
+        sm = SkillsManager(data_dir)
+        # `B1419`. The install's published shipped skills are offered to every
+        # person too, beside their own store (`load_active` adds them). The
+        # vendored drafts are a catalogue nobody is offered, so not counted.
+        rows = sm.load(owner=owner) + [s for s in sm.load_all()
+                                       if s.get("bundled") and s.get("status") == "published"]
+        return sorted({str(s.get("name")) for s in rows if s.get("name")})
     except Exception:
         return []
 

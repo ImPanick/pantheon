@@ -33,6 +33,16 @@ import src.agent_loop as agent_loop
 from services.memory.skills import SkillsManager
 
 
+@pytest.fixture(autouse=True)
+def _no_shipped_skills(tmp_path, monkeypatch):
+    """`B1419`. These cases are about a person's own skills, so Pantheon's
+    shipped layer — published, and offered whenever its tools are — is held
+    out; `tests/test_the_workstation_skills_ship_switched_on.py` is its file."""
+    import services.memory.skills as _skills
+    monkeypatch.setattr(_skills, "_first_party_library_root",
+                        lambda: str(tmp_path / "no-shipped-skills"))
+
+
 def _write_skill(root: Path, name: str, *, category="general", source="learned",
                  status="published", teacher="", requires=""):
     d = root / category / name

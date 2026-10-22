@@ -50,6 +50,17 @@ import src.constants as constants
 from services.memory import skill_injection
 from services.memory.skills import SkillsManager, invalidate_skill_cache
 
+
+@pytest.fixture(autouse=True)
+def _no_shipped_skills(tmp_path, monkeypatch):
+    """`B1419`. These cases are about a person's own skills, so Pantheon's
+    shipped layer — published, and offered whenever its tools are — is held
+    out; `tests/test_the_workstation_skills_ship_switched_on.py` is its file."""
+    import services.memory.skills as _skills
+    monkeypatch.setattr(_skills, "_first_party_library_root",
+                        lambda: str(tmp_path / "no-shipped-skills"))
+
+
 LONG_STEP = ("Open the vendor console, select the affected tenant, confirm the "
              "region matches the one in the ticket, and copy the correlation id "
              "into the incident channel before touching anything else. ")
