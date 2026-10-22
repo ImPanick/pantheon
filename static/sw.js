@@ -8,7 +8,7 @@
 //   - Other static assets (images/fonts/libs): cache-first with bg refresh.
 //   - API / non-GET: never cached.
 // Bump CACHE_NAME whenever the precache list or SW logic changes.
-const CACHE_NAME = 'pantheon-v452-census';
+const CACHE_NAME = 'pantheon-v453-kept-copy';
 
 // KaTeX resolves these from its own stylesheet, so caching the CSS without them
 // gives offline math fallback glyphs instead of proper typesetting.
@@ -690,6 +690,47 @@ function navigationKey(pathname) {
   return '';
 }
 
+// `B1422`. The kept copy says it is the kept copy.
+//
+// This branch answers a navigation from the cache when the network fails, and
+// for a dropped connection that is the point. When the SERVER is down it is the
+// whole app with nobody signed in: the sidebar's placeholder name ("User"), no
+// chats, a Log out that goes nowhere and a sign-in that answers "Failed to
+// fetch". Measured 2026-10-22 by stopping the server under a signed-in browser,
+// and it is word for word the owner's report — "it sent me in a generic 'user'
+// profile automatically… logging out gave zero functionality to login".
+//
+// The notice is markup, not script: on that path the page's own modules may
+// not be in the cache either (measured: `init.js` was not), and a notice that
+// needs them would be missing exactly when it is needed. Styles are inline,
+// which the page's CSP allows; the link reloads the same address.
+const KEPT_COPY_NOTICE = (path) =>
+  '<div id="kept-copy-notice" role="alert" style="position:fixed;top:40px;left:0;right:0;' +
+  'padding:12px 16px;background:#5a1d1d;color:#fff;font:14px/1.5 ' +
+  'system-ui,sans-serif;box-shadow:0 2px 8px rgba(0,0,0,.4)"><strong>Pantheon\'s server ' +
+  'isn\'t answering.</strong> This is the copy of the page your browser kept, so nothing ' +
+  'on it works — no one is signed in, and chats, settings and sign-in all need the ' +
+  'server. Check that it is running, then <a href="' + path.replace(/[^\w\/.-]/g, '') +
+  '" style="color:#fff;text-decoration:underline">reload</a>.</div>';
+
+async function markKeptCopy(cached, path) {
+  try {
+    const html = await cached.clone().text();
+    // Last in the body, not first: the notice takes no stacking number of its own
+    // (`check-zindex.py`'s ratchet), so it is painted above the page by coming
+    // after everything in it — and it starts 40px down, under the shell's top
+    // bar, which does have one and would otherwise print its title across it.
+    const at = html.toLowerCase().lastIndexOf('</body>');
+    if (at < 0) return cached;
+    const marked = html.slice(0, at) + KEPT_COPY_NOTICE(path) + html.slice(at);
+    const headers = new Headers(cached.headers);
+    headers.delete('content-length');
+    return new Response(marked, { status: 200, statusText: 'OK', headers });
+  } catch (_) {
+    return cached;
+  }
+}
+
 self.addEventListener('install', (e) => {
   e.waitUntil(
     caches.open(CACHE_NAME).then(cache =>
@@ -756,7 +797,7 @@ self.addEventListener('fetch', (e) => {
           return res;
         }).catch(() => caches.open(CACHE_NAME)
           .then(cache => cache.match(key))
-          .then(cached => cached || Response.error()))
+          .then(cached => (cached ? markKeptCopy(cached, url.pathname) : Response.error())))
       );
       return;
     }

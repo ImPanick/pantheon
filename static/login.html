@@ -418,6 +418,29 @@
 <script>
 (async () => {
   const appUrl = window.__pantheonLoginAppUrl || ((path) => path);
+  // `B1422`. A sign-in that cannot reach the server said "Failed to fetch",
+  // and one whose proxy answered with an error page said "Unexpected token
+  // '<'". Neither tells a person that the password is not the problem.
+  // `fetch` rejects with a TypeError only when nothing answered at all.
+  function notJson(res) {
+    if ((res.headers.get('content-type') || '').includes('application/json')) return null;
+    const e = new Error(`HTTP ${res.status}`);
+    e.notPantheon = true;
+    e.httpStatus = res.status;
+    return e;
+  }
+  function reachMessage(err) {
+    if (err && (err.name === 'TypeError' || err instanceof TypeError)) {
+      return "Pantheon's server isn't answering, so nobody can sign in right now — "
+        + 'your password is not the problem. Check that the server is running, then reload.';
+    }
+    if (err && err.notPantheon) {
+      return `Something answered at this address (HTTP ${err.httpStatus}), but it was not `
+        + 'Pantheon — usually a proxy or tunnel whose Pantheon server is down. Check that the '
+        + 'server is running, then reload.';
+    }
+    return (err && err.message) || String(err);
+  }
   // Load version
   try {
     const vr = await fetch(appUrl('/api/version'));
@@ -484,6 +507,8 @@
   const policyPromise = fetch(appUrl('/api/auth/policy'), { credentials: 'same-origin' }).catch(() => null);
   try {
     const statusRes = await fetch(appUrl('/api/auth/status'), { credentials: 'same-origin' });
+    const bad = notJson(statusRes);
+    if (bad) throw bad;
     const data = await statusRes.json();
     if (data.authenticated) {
       window.location.replace(appUrl('/'));
@@ -501,6 +526,9 @@
     }
   } catch (e) {
     setMode('login');
+    // `B1422`. Say now that nobody can sign in, not after a password is typed.
+    errEl.textContent = reachMessage(e);
+    errEl.style.display = 'block';
   }
 
   toggleLink.addEventListener('click', (e) => {
@@ -575,10 +603,12 @@
           credentials: 'same-origin',
           body: JSON.stringify({ username, password })
         });
+        const bad = notJson(res);
+        if (bad) throw bad;
         const data = await res.json();
         if (!res.ok) throw new Error(data.detail || 'Account creation failed');
       } catch (err) {
-        errEl.textContent = err.message;
+        errEl.textContent = reachMessage(err);
         errEl.style.display = 'block';
         submitBtn.disabled = false;
         return;
@@ -617,6 +647,8 @@
         credentials: 'same-origin',
         body: JSON.stringify(loginBody)
       });
+      const bad = notJson(res);
+      if (bad) throw bad;
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || 'Login failed');
       return data;
@@ -641,7 +673,7 @@
       }
       finishLogin();
     } catch (err) {
-      errEl.textContent = err.message;
+      errEl.textContent = reachMessage(err);
       errEl.style.display = 'block';
       submitBtn.disabled = false;
       return;
