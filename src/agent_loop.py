@@ -986,6 +986,34 @@ def _always_available_for_turn(disabled_tools) -> set:
     return turn_tool_access(disabled_tools).allowed_among(ALWAYS_AVAILABLE)
 
 
+def _nothing_looked_at(total_tool_calls: int, tool_events) -> bool:
+    """Whether this turn has run nothing at all, by either route.
+
+    `B1412`. `B1327`'s ask-before-looking nudge asks this, and so does the
+    release that hands back the question it held — and the two must be the
+    same question, because the release's whole argument is *"the same test the
+    nudge applied one round earlier"*. Written out twice they were one rule
+    with two bodies, and the day somebody tightens one the held question starts
+    shipping in a case the nudge had already decided against (`Law 7`).
+
+    The pair is `B1327`'s, unchanged and **not re-justified here**:
+    `B1069`'s resumed turn runs its approved call *outside* this loop and
+    appends to `tool_events` without touching the counter, which is the reason
+    that row gives for reading both. Narrowing it is `B1327`'s call, not this
+    one's — lifting it is about having one body, not about picking a better
+    condition.
+
+    **No case in the suite distinguishes the two halves**, and that is recorded
+    rather than papered over: a mutation run dropping either one leaves every
+    case green, because the harness has no gate-refused call and no resumed
+    approval. Whether `total_tool_calls` earns its place independently is open
+    (`B1413`); it is kept because it is what shipped, and because the failure
+    of guessing wrong here is a question released into a turn that had already
+    answered it.
+    """
+    return total_tool_calls == 0 and not tool_events
+
+
 def _turn_has_something_to_look_with(
     relevant_tools: Optional[Iterable[str]],
     disabled_tools: Optional[Iterable[str]] = None,
@@ -2653,6 +2681,46 @@ _WORKSPACE_CODE_TARGET_RE = re.compile(
     r"|(?:~?/[^\"'\s`<>]+)",
     re.IGNORECASE,
 )
+# `B1416`. **A request to MAKE software, in one pattern.** Its own pair rather
+# than a widening of the two above, and the first draft of this row is the
+# argument: it widened them, and *"Write a detailed design document for a
+# parser's error recovery"* — prose — became file work, because `write` met
+# `error`, a noun those patterns hold for *"fix the error"*. That vocabulary is
+# right where it was built to be used: behind a BOUND workspace, which is
+# itself the strong signal. Unbound, a generic noun is not evidence, so this
+# asks for a verb that means *make* and a noun that names *software to be
+# made*, in that order and close together — the shape of the `files` pattern
+# that already asks *"run … python"*.
+#
+# Measured on the owner's own words — *"We are going to create a web page -
+# single page… node.js and react/tailwind"* — the domains came back `{web}`
+# before this, and qwen called `web_search` for an example because searching
+# was what it had been given.
+#
+# `write` and `design` are not here: they make prose as often as programs.
+# `bootstrap` is not here: it is also a CSS framework, and *"how does tailwind
+# compare to bootstrap?"* would have been a request to build.
+#
+# **The verb's object, not merely a later word.** The first version allowed any
+# sixty characters between them and the false positives were idioms, measured:
+# *"make sure my email to the server team goes out"*, *"make sure the app
+# reminders are on"*, *"start a conversation summary for the project
+# meeting"*, *"I want to build up my savings - what app should I use?"*. So
+# `make sure` and `build up` are excluded by name, `start` is gone (it starts
+# conversations far more often than projects), and the gap is forty
+# characters that may not cross a sentence end, a semicolon or a spaced dash —
+# the noun has to be in the clause the verb governs.
+_BUILD_REQUEST_RE = re.compile(
+    r"\b(?:create|make(?!\s+sure)|build(?!\s+up)|scaffold|generate|init|"
+    r"initiali[sz]e|implement|set\s+up|spin\s+up|stand\s+up|put\s+together)\b"
+    r"(?:(?![.?!\n;]|\s[-\u2013\u2014]\s).){0,40}?"
+    r"\b(?:website|web\s*site|web\s+page|webpage|landing\s+page|single[\s-]+page|"
+    r"homepage|home\s+page|site|app|application|web\s*app|frontend|front[\s-]+end|"
+    r"backend|back[\s-]+end|project|repo|codebase|component|react|next\.?js|vue|"
+    r"svelte|angular|tailwind|node(?:\.?js)?|npm|vite|express|django|flask|fastapi|"
+    r"cli|script|program|api|server)\b",
+    re.IGNORECASE | re.DOTALL,
+)
 _EXPLICIT_WORKSPACE_REFERENCE_RE = re.compile(
     r"\b(?:in|inside|within|from|this|current|active)\s+(?:the\s+)?workspace\b"
     r"|\b(?:this|current|active)\s+(?:workspace|repo|project)\b",
@@ -2711,6 +2779,8 @@ def _looks_like_workspace_coding_request(text: str) -> bool:
     if not text.strip():
         return False
     if re.search(r"\b(?:pull request|pr|diff|patch)\b", text, re.IGNORECASE):
+        return True
+    if _BUILD_REQUEST_RE.search(text):   # `B1416`
         return True
     return bool(_WORKSPACE_CODE_ACTION_RE.search(text) and _WORKSPACE_CODE_TARGET_RE.search(text))
 
@@ -3008,13 +3078,33 @@ def _assistant_requested_followup(messages: List[Dict]) -> bool:
     return False
 
 
-def _classify_agent_request(messages: List[Dict], last_user: str) -> Dict[str, object]:
+def _classify_agent_request(messages: List[Dict], last_user: str,
+                            approved_plan: Optional[str] = None) -> Dict[str, object]:
     """Classify only whether this turn deserves domain tool retrieval.
 
     Normal chat should not inherit old Forge/email/document context. Recent
     context is used only for explicit continuations ("yes", "do it", "1").
     This function does not inject tools directly; selected tools later decide
     which domain rule packs get appended to the system prompt.
+
+    `B1414`. **`approved_plan` is read because on an execution turn the plan
+    is the instruction and the message is not.** *"Execute the approved plan."*
+    names no file, no language and no machine, so every pattern below comes up
+    empty and the turn is classified as having no domain at all — which is how
+    a model asked to build a website was handed `ask_user`, `manage_memory`
+    and `update_plan` and nothing else. The plan it was told to execute said
+    *"Create a new project directory"*, *"scaffold `index.html`,
+    `assets/css/style.css`"* and *"`git init`, add, commit"*, and the `files`
+    pattern a few dozen lines down matches that on three separate words.
+
+    **The plan speaks only when the message says nothing.** It is read on a
+    second pass, and only if the person's own words produced no domain at all:
+    *"Execute the approved plan."* is such a message and *"what is the capital
+    of France?"* is not, so a question asked while a build plan happens to be
+    open keeps its own answer and does not drag in the file tools. That is the
+    `#1707` failure — a keyword force-including a whole family and crowding out
+    the relevant one — and a plan is a much bigger string to over-read than a
+    keyword.
     """
     text = str(last_user or "").strip()
     retry_continuation = _is_contextual_retry_continuation(messages, text)
@@ -3070,6 +3160,22 @@ def _classify_agent_request(messages: List[Dict], last_user: str) -> Dict[str, o
         domains.add("sessions")
     if has(r"\b(file|folder|directory|repo|git|grep|find in files|read file|edit file|shell|terminal|bash)\b"):
         domains.add("files")
+    # `B1416`. **Making software is file work, and nothing here said so.**
+    # Measured on the owner's own words — *"We are going to create a web page
+    # - single page… node.js and react/tailwind"* — the domains came back
+    # `{"web"}`: a request to BUILD a site was classified as a request to
+    # READ ABOUT one, and the transcript shows exactly that, a model calling
+    # `web_search` for *"React Tailwind CSS single page application example"*
+    # because searching was the only thing it had been given.
+    #
+    # `_BUILD_REQUEST_RE` says why it is its own pattern: the workspace pair
+    # holds generic nouns (`error`, `test`, `file`) that are evidence only
+    # behind a bound workspace, and widening it made a design document about
+    # *error recovery* into file work. The workspace test asks this pattern
+    # too, so a bound workspace gains the build verbs without anything
+    # unbound inheriting the generic nouns.
+    if _BUILD_REQUEST_RE.search(q):
+        domains.add("files")
     if has(
         r"\b(run|execute|test|debug|fix|save|create|edit|read|open)\b.{0,40}\b("
         r"python|javascript|typescript|java|c\+\+|cpp|c#|csharp|rust|go|golang|"
@@ -3100,6 +3206,17 @@ def _classify_agent_request(messages: List[Dict], last_user: str) -> Dict[str, o
     if has(r"\bapi[ _]call\b", r"\bintegrations?\b",
            r"\b(?:home ?assistant|miniflux|gitea|linkding|jellyfin)\b"):
         domains.add("integrations")
+
+    # `B1414`. The second pass: the person's words said nothing about any
+    # domain, so the plan they told us to execute is what this turn is about.
+    # Recursive rather than a duplicated sweep, because the sixty patterns
+    # above are the rule and a second copy of them is the defect `P17-14`
+    # already fixed once in this file (`Law 14`). `approved_plan=None` on the
+    # way in, so it happens once.
+    plan_text = str(approved_plan or "").strip()
+    if plan_text and not domains:
+        return _classify_agent_request(
+            messages, f"{text}\n{plan_text[:3000]}".strip(), None)
 
     low_signal = not continuation and not domains
     return {
@@ -6589,7 +6706,7 @@ async def stream_agent_loop(
     _requested_temperature = temperature
     temperature = pan_qwen_route_temperature(temperature, model, explicit_params)
     _pan_memory_identity_turn = _looks_like_memory_identity_turn(_last_user)
-    _intent = _classify_agent_request(messages, _last_user)
+    _intent = _classify_agent_request(messages, _last_user, approved_plan)
     _low_signal_turn = bool(_intent.get("low_signal"))
     # `B60`. The whole answer to "may the skills index ship this turn", in one
     # name. The caller contributes what only it knows (the user's preference,
@@ -7989,6 +8106,13 @@ async def stream_agent_loop(
     # case the owner's ruling names.
     _ask_first_nudges = 0
     _MAX_ASK_FIRST_NUDGES = 1
+    # `B1412`. The question the nudge above held back, kept rather than thrown
+    # away. `B1327` set `tool_blocks = []` and the payload was gone — so a model
+    # that did not ask again left the turn with **no card, no tool bubble and
+    # no line**, which on a plan step reads as a hang and not as a decision.
+    # Released at the end of a turn that looked at nothing and did nothing; see
+    # the release site for why those are the only conditions.
+    _held_ask_user_blocks: list = []
     # `P4-10`. Every action announced without a call this turn, in order, so
     # the stop can quote what the model kept saying rather than a fixed line.
     _intent_phrases: list = []
@@ -9748,7 +9872,48 @@ async def stream_agent_loop(
                 _agent_stops.append(_stop)
                 yield f"data: {json.dumps(_stop)}\n\n"
 
-            break  # no tools — done
+            # `B1412`. A question the ask-before-looking nudge held, released
+            # because the turn is ending with **nothing looked at and nothing
+            # done**.
+            #
+            # `B1327` buys one round of looking and the card ships if the model
+            # asks again. A capable model does. A small one, told to "look
+            # first", writes prose instead — and the question it had already
+            # composed was thrown away, so the turn ended with no card, no tool
+            # bubble and no line. Measured on `gpt-oss-20b` executing an
+            # approved plan whose first step was *"ask for preference"*: 0
+            # `ask_user` events and 0 `tool_start` events reached the browser,
+            # and the plan sat on step one. A supervisor that silently discards
+            # the only user-facing act of a turn is indistinguishable from a
+            # hang (`Law 13`, `Law 15`).
+            #
+            # **The condition is not slack.** If the model ran anything, the
+            # nudge did its job and this question is stale — releasing it would
+            # put a guess on screen that the looking may already have answered,
+            # which is the exact defect `B1327` exists to stop. So it is
+            # released only when the turn looked at nothing, asked through
+            # `_nothing_looked_at` — literally the predicate the nudge applied
+            # one round earlier, so the two cannot drift into disagreeing about
+            # what "nothing" means. The ruling is untouched: the model still
+            # loses the round, still gets told to look, and still has to
+            # produce the card itself if it asks again. What changes is that
+            # silence is no longer one of the outcomes.
+            if (_held_ask_user_blocks
+                    and _nothing_looked_at(total_tool_calls, tool_events)):
+                logger.info(
+                    "[agent] releasing %d held ask_user call(s) on round %d: the "
+                    "turn looked at nothing and did nothing",
+                    len(_held_ask_user_blocks), round_num,
+                )
+                tool_blocks, _held_ask_user_blocks = _held_ask_user_blocks, []
+                # Deliberately NOT a `break`: control falls through to the
+                # execution section below, so the card is built by the one path
+                # that builds every other card — the same `execute_tool_block`,
+                # the same `tool_start`/`tool_output` pair, the same persisted
+                # `tool_event`. A second emitter here would be a second
+                # `ask_user` card shape to keep in step (`Law 14`).
+            else:
+                break  # no tools — done
 
         # ── Loop-breaker (Terminus-style stall detector) ──────────────
         # Stall detector for repeated no-progress tool loops.
@@ -9877,12 +10042,11 @@ async def stream_agent_loop(
                 and not plan_mode
                 and not guide_only
                 and not _force_answer
-                and total_tool_calls == 0
                 # `B1069`'s resumed turn runs its approved call OUTSIDE this
-                # loop, so the counter above can still read 0 while a tool
-                # result is already in the transcript. `tool_events` holds both
-                # paths, and "nothing has been looked at" has to mean both.
-                and not tool_events
+                # loop, so a counter alone can read 0 while a tool result is
+                # already in the transcript. `_nothing_looked_at` holds both
+                # paths, and `B1412`'s release asks it the same question.
+                and _nothing_looked_at(total_tool_calls, tool_events)
                 and _ask_first_nudges < _MAX_ASK_FIRST_NUDGES
                 and all(b.tool_type == "ask_user" for b in tool_blocks)
                 # `B1366`. The turn's offer, not the raw selection set: a name
@@ -9906,6 +10070,12 @@ async def stream_agent_loop(
                     "undone, ask then — with the options the tools showed you."
                 ),
             }))
+            # `B1412`. Held, not discarded. The ruling this nudge serves says a
+            # question the agent could have answered itself is the defect; it
+            # does not say the question should vanish. Keeping it costs nothing
+            # when the model asks again — the release site only fires on a turn
+            # where nothing ran at all.
+            _held_ask_user_blocks = list(tool_blocks)
             tool_blocks = []
             _step = _next_step_frame(round_num)   # `B906`
             if _step:

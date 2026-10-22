@@ -106,6 +106,15 @@ chown "$PUID:$PGID" /app/.cache 2>/dev/null || true
 # mount with its own ownership contract. Repair its mount root so new cache
 # entries are writable, but never traverse or rewrite existing model files.
 chown "$PUID:$PGID" /app/.cache/huggingface 2>/dev/null || true
+# `B1417`. Where projects the agent builds live — `src.tool_execution.
+# projects_root()` — made here, before the ownership repair below, so it
+# exists with the app user's ownership before anything else touches it. With
+# the workstation on it is also bind-mounted into the workstation at /projects
+# (`docker/workstation.yml`), and if that container starts first Docker makes
+# the missing host folder as root; the repair below walks /app/data and puts
+# it back. Made in /app/data rather than beside it so it inherits that
+# volume's persistence and its place in a backup.
+mkdir -p /app/data/projects 2>/dev/null || true
 for dir in /app/data /app/logs /app/.ssh /app/.local; do
     repair_bind_mount_ownership "$dir"
 done

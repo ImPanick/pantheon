@@ -163,16 +163,42 @@ def test_blocks_netrc():
 
 
 def test_allows_project_data(tmp_path):
-    """Paths under project data/ must resolve cleanly."""
+    """Paths under project data/ must resolve cleanly — **in a subdirectory**.
+
+    `B1418` moved this case one level down, and it is worth saying why rather
+    than just moving it: it used to write `data/test-confinement-ok.txt`, a
+    file directly in the data directory, and assert the agent could reach it.
+    That is the exact place every one of the install's records lives —
+    `auth.json`, `app.db`, `memory.json` — and the case was pinning, by
+    example, the exposure that let the model read the install's credentials.
+    Content lives in subdirectories, and that is what this now holds open.
+    """
     from src.tool_execution import _resolve_tool_path
     from src.constants import DATA_DIR
-    target = os.path.join(DATA_DIR, "test-confinement-ok.txt")
-    os.makedirs(DATA_DIR, exist_ok=True)
+    target = os.path.join(DATA_DIR, "projects", "test-confinement-ok.txt")
+    os.makedirs(os.path.dirname(target), exist_ok=True)
     with open(target, "w") as f:
         f.write("ok")
     try:
         resolved = _resolve_tool_path(target)
         assert resolved == os.path.realpath(target)
+    finally:
+        os.unlink(target)
+
+
+def test_a_file_directly_in_project_data_is_the_installs(tmp_path):
+    """`B1418`, the other half of the case above: the top level of the data
+    directory is where the install keeps its records, so a file there is
+    refused even when it is not one of the records this release knows about."""
+    from src.tool_execution import _resolve_tool_path
+    from src.constants import DATA_DIR
+    target = os.path.join(DATA_DIR, "test-confinement-top-level.txt")
+    os.makedirs(DATA_DIR, exist_ok=True)
+    with open(target, "w") as f:
+        f.write("no")
+    try:
+        with pytest.raises(ValueError, match="Pantheon's own records"):
+            _resolve_tool_path(target)
     finally:
         os.unlink(target)
 

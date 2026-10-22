@@ -680,8 +680,22 @@ class GetWorkspaceTool:
                           f"here but is not sandboxed and can reach outside it.)",
                 "exit_code": 0,
             }
+        # `B1417`. **This sentence was the dead end in both of the owner's
+        # transcripts.** It is true, and it gave a model nowhere to go: qwen
+        # called `get_workspace` twice, read *"use absolute paths"*, had no
+        # path to use and concluded *"I don't actually have the capability to
+        # create files"*. A model starting a project needs one fact — where
+        # projects go — and the answer now carries it, made if missing, with
+        # the instruction a person would give: a folder of its own, then work.
+        from src.tool_execution import projects_root
+        root = projects_root()
         return {
-            "output": "No workspace is set. File tools use the default allowed roots; "
-                      "resolve paths from the user or use absolute paths.",
+            "output": (
+                "No workspace is set. New projects go in "
+                f"{root} — create a folder of their own there "
+                f"(for example {root}/my-project) and work inside it. For an "
+                "existing folder the user names, use the path they give."
+            ),
+            "projects_root": root,
             "exit_code": 0,
         }

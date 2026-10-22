@@ -729,14 +729,23 @@ def _mounts(service):
 
 def test_the_overlay_gives_the_workstation_its_volumes_and_nothing_of_the_hosts():
     """No Docker socket, not privileged, no added capability, no published
-    port, and no volume but its own two — asked of compose's own merge of the
-    two files, which is what `docker compose up` runs."""
+    port, and no volume but its own two **and the projects folder** — asked of
+    compose's own merge of the two files, which is what `docker compose up`
+    runs.
+
+    `B1417` added the one host mount and this case names it exactly rather than
+    loosening to "some bind": the source must be the data directory's
+    `projects/` and nothing wider. A bind of `./data` would hand root in the
+    sandbox the install's credentials, memory and database, and this list is
+    the place that would notice first.
+    """
     cfg = _compose()
     ws = cfg["services"]["workstation"]
     assert ws["build"]["context"] == str(ROOT / "workstation")
     assert ws["command"][:2] == ["--system", "ubuntu"]
     assert _mounts(ws) == [("volume", "workstation-homes", "/home", False),
-                           ("volume", "workstation-pairing", P.DEFAULT_PAIRING_DIR, False)]
+                           ("volume", "workstation-pairing", P.DEFAULT_PAIRING_DIR, False),
+                           ("bind", str(ROOT / "data" / "projects"), P.PROJECTS_DIR, False)]
     assert not ws.get("privileged") and not ws.get("cap_add") and not ws.get("ports")
     # `P20-06`: the network namespace is the gate's, another service of the
     # overlay — never the host's (`network_mode: host`) and never shared with

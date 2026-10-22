@@ -96,7 +96,7 @@ def setup_workspace_routes():
 
     @router.get("/browse")
     def browse(request: Request, path: str = Query(default="")):
-        """List subdirectories of `path` (default: home) so the UI can navigate
+        """List subdirectories of `path` (default: the projects folder, `B1417`) so the UI can navigate
         the server filesystem and pick a workspace folder. Directories only.
 
         ADMIN-ONLY: this enumerates the server filesystem, so it is gated the
@@ -115,9 +115,23 @@ def setup_workspace_routes():
 
         # Resolve symlinks so the reported path is canonical and the UI navigates
         # real directories (defends against symlink games in displayed paths).
-        target = os.path.realpath(os.path.expanduser(path.strip() or "~"))
+        #
+        # `B1417`. **Opens on the projects folder, not on `~`.** In the image
+        # `~` is the install directory, so the one control offered for scoping
+        # the agent opened, by default, on `core`, `routes`, `src` and `data` —
+        # the running product — under a caption saying the shell is not
+        # sandboxed. A person may still walk up and pick anything an admin may
+        # pick; what changes is where they start, and where a folder they make
+        # without thinking about it ends up.
+        from src.tool_execution import projects_root
+        start = projects_root()
+        if not os.path.isdir(start):
+            # The data directory refused the folder (read-only volume, a full
+            # disk): the old start rather than a listing of nothing.
+            start = os.path.expanduser("~")
+        target = os.path.realpath(os.path.expanduser(path.strip() or start))
         if not os.path.isdir(target):
-            target = os.path.realpath(os.path.expanduser("~"))
+            target = os.path.realpath(start)
 
         dirs = []
         try:

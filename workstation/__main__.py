@@ -154,6 +154,16 @@ def _public_literal(bind: str) -> bool:
     return not ip.is_unspecified and ip.is_global
 
 
+def shared_roots() -> List[Path]:
+    """`B1417`. The folders the jail admits beside each home: the projects
+    folder, at `P.PROJECTS_DIR` or wherever `P.PROJECTS_DIR_ENV` says. Returned
+    whether or not it exists — the jail checks `is_dir()` on every request, so
+    a mount that arrives after the daemon starts is honoured, and a workstation
+    without it answers as it always did."""
+    raw = os.environ.get(P.PROJECTS_DIR_ENV, "").strip() or P.PROJECTS_DIR
+    return [Path(raw)]
+
+
 def make_system(args: argparse.Namespace) -> System:
     if args.system == "ubuntu":
         # Imported here: the module needs Linux's setfsuid, and `single` runs
@@ -165,10 +175,12 @@ def make_system(args: argparse.Namespace) -> System:
         # `P20-07`: the class says `container`; the command line says what
         # this one is (a VM's machine, or a host it was installed on).
         system.backend = getattr(args, "backend", None) or system.backend
+        system.shared_roots = shared_roots()
         return system
     system = SingleUserSystem(Path(args.homes), skeleton=Path(args.skeleton),
                               backend=getattr(args, "backend", None) or "remote")
     system.set_sudo(args.sudo)
+    system.shared_roots = shared_roots()
     return system
 
 

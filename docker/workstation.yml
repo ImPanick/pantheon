@@ -15,8 +15,31 @@
 #   * the network the admin chose in Settings -> Workstation (full by default,
 #     the owner's answer), held by `workstation-net` below (`P20-06`);
 #   * NO Docker socket, NOT privileged, no added capabilities — and CAP_NET_RAW
-#     taken away — and no Pantheon volume but the pairing one. Its port is not
-#     published: only Pantheon, on the compose network, can reach it.
+#     taken away — and no Pantheon volume but the pairing one **and the
+#     projects folder** (`B1417`, below). Its port is not published: only
+#     Pantheon, on the compose network, can reach it.
+#
+# `B1417`, the projects folder. The agent has to be able to run and test what
+# it builds, and the workstation is where that is safe to do — so the folder
+# projects are made in is shared, and ONLY that folder:
+#
+#   * `./data/projects` on the host is `/app/data/projects` to Pantheon (it is
+#     inside the existing `./data` mount) and `/projects` here. One folder,
+#     three views, and the owner can open it in an editor on their own disk.
+#   * A bind mount of a SUBDIRECTORY exposes that subtree and nothing above
+#     it. `memory.json`, `app.db`, `auth.json` and `./data/ssh` stay out of
+#     reach: they are siblings of `projects/`, not its children. That is the
+#     whole reason the mount is `./data/projects` and never `./data`.
+#   * Root in here may write anything into /projects — the owner allows root
+#     in the sandbox, and the daemon's home jail is documented in
+#     `workstation/agentd.py` as fiction once `sudo` is on. The boundary was
+#     always this container, and it is unchanged by this line.
+#   * The one way this mount could cross back is a symlink root plants in
+#     /projects pointing at a Pantheon path, which Pantheon's own file tools
+#     then follow when the workstation is off. Inside this container such a
+#     link resolves in THIS filesystem, where no Pantheon file exists; on
+#     Pantheon's side `tests/test_projects_are_sandboxed.py` drives that
+#     escape and holds the tools inside the folder.
 services:
   # `P20-06`. The network the workstation has is the one the admin chose, held
   # where the workstation's root cannot reach. This container OWNS the network
@@ -70,6 +93,8 @@ services:
     volumes:
       - workstation-homes:/home
       - workstation-pairing:/workstation-pairing
+      # `B1417`. The projects folder, and only it — see the header.
+      - ${APP_DATA_DIR:-./data}/projects:/projects:z
     # Firefox's content processes share memory through /dev/shm, and Docker's
     # 64 MB default crashes tabs. A tmpfs limit, not memory set aside.
     shm_size: "2gb"

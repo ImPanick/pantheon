@@ -119,6 +119,66 @@ def _is_sensitive_path(resolved: str) -> bool:
     return filename in _SENSITIVE_FILE_PATTERNS_CF
 
 
+#: Said to the model, so it is said the way a person would want it said: what
+#: the path is, and where the work it is trying to do belongs instead.
+_INSTALL_RECORD_REFUSAL = (
+    "path '{path}' is one of Pantheon's own records (its settings, accounts, "
+    "memory or database), which the agent's file tools do not read or write. "
+    "Use the matching tool for memory or settings; put new work in the projects "
+    "folder (get_workspace says where)."
+)
+
+
+def _is_install_record(resolved: str) -> bool:
+    """Whether *resolved* is one of this install's own records. `B1418`.
+
+    **Measured before this existed**, with no workspace bound, through the
+    real `_resolve_tool_path`: `auth.json`, `app.db`, `memory.json`,
+    `settings.json`, `sessions.json` and `user_prefs.json` were all
+    REACHABLE — readable and writable by the model's `read_file` and
+    `write_file`, because the data directory is the default root ("the agent's
+    primary workspace") and the deny list above is about SSH keys and shell
+    rc files. The model could read the install's credentials and overwrite
+    its memory, its settings and its sessions, and nothing between it and the
+    file said no. The owner's word for it was *system-level things which
+    should be protected*.
+
+    **By location, not by name**, and the distinction is what keeps this from
+    being a new bug. A project the agent is building may well have its own
+    `auth.json` or `settings.json`; a name rule would refuse the person's own
+    files to protect the install's. So the rule is two places:
+
+      * **a file directly in the data directory.** Every record the install
+        keeps lives at its top level — the ones named above, the database's
+        `-wal`/`-shm`, `cookbook_state.json`, `note_pings_admin.json`,
+        `memory_tidy_state.json` — and a state file added next year will too.
+        A list of names would drift past it; a location does not. Content
+        lives in subdirectories (`projects/`, `uploads/`, `generated_images/`,
+        and folders a person made), and every one of them stays reachable.
+      * **anything under `ssh/`**, which holds the Cookbook's remote-server
+        identity. `id_ed25519` itself was already refused by name; its
+        `config` and `known_hosts` neighbours were not all covered.
+
+    A new file in the top level is refused as well — a model writing a fresh
+    `notes.txt` beside `auth.json` is indistinguishable from one writing a
+    record, and `projects/` is where new work goes (`B1417`).
+    """
+    from src.constants import DATA_DIR
+    try:
+        data = os.path.normcase(os.path.realpath(DATA_DIR))
+    except OSError:
+        return False
+    target = os.path.normcase(resolved)
+    parent = os.path.dirname(target)
+    if parent == data and not os.path.isdir(resolved):
+        return True
+    ssh = os.path.join(data, "ssh")
+    try:
+        return target == ssh or os.path.commonpath([target, ssh]) == ssh
+    except ValueError:
+        return False
+
+
 def _tool_path_roots() -> list[str]:
     """Return the list of directory roots that read_file / write_file
     may touch. Default: project data/ + system temp dirs. Extra roots
@@ -196,6 +256,8 @@ def _resolve_tool_path(raw_path: str) -> str:
             f"path '{raw_path}' is inside a sensitive directory "
             f"(e.g. .ssh, .gnupg) or matches a sensitive filename"
         )
+    if _is_install_record(resolved):
+        raise ValueError(_INSTALL_RECORD_REFUSAL.format(path=raw_path))
 
     for root in _tool_path_roots():
         if resolved == root:
@@ -231,6 +293,10 @@ def _resolve_tool_path_in_workspace(workspace: str, raw_path: str) -> str:
             f"path '{raw_path}' is inside a sensitive directory "
             f"(e.g. .ssh, .gnupg) or matches a sensitive filename"
         )
+    # `B1418`. In the workspace branch too: a workspace bound to the data
+    # directory itself would otherwise put every record "inside" it.
+    if _is_install_record(resolved):
+        raise ValueError(_INSTALL_RECORD_REFUSAL.format(path=raw_path))
     if resolved != base:
         # normcase so containment holds on case-insensitive filesystems
         # (Windows, default macOS): it lowercases on Windows and is a no-op on
@@ -291,6 +357,45 @@ _tool_person: contextvars.ContextVar = contextvars.ContextVar(
 def get_tool_person() -> Optional[str]:
     """The person the running tool call acts for, or None outside one."""
     return _tool_person.get()
+
+
+#: `B1417`. Where a project the agent is asked to build belongs.
+#:
+#: **The picker opened on `/app`** — this application's own source tree, with
+#: `core`, `routes`, `src`, `services`, `static` and `data` listed as folders
+#: to pick — because the host branch of `/api/workspace/browse` starts at
+#: `path or "~"` and `HOME` is the install directory. The owner's screenshot is
+#: that list, under a caption admitting the shell *"is not sandboxed and can
+#: reach outside it"*. So the one control offered for scoping the agent opened,
+#: by default, on the running product.
+#:
+#: This is the *default*, not a boundary, and the distinction is the whole of
+#: the honest answer: a real boundary for the file and shell tools is the
+#: workstation, where they run inside a machine instead of beside the server
+#: (`workstation_tools.WORKSTATION_TOOLS`) — and the same browse route already
+#: sends anyone with it on to their workstation home. What this fixes is the
+#: fallback for everyone who does not: the picker opens where projects go
+#: rather than where the program lives, and the agent makes its directories
+#: there.
+PROJECTS_DIRNAME = "projects"
+
+
+def projects_root(create: bool = True) -> str:
+    """The folder new projects are made in, under the data directory.
+
+    Beside `memory.json` and `app.db` rather than among them: those are the
+    install's own records and a project tree scribbling into that directory is
+    the same mistake one level down.
+    """
+    from src.constants import DATA_DIR
+    root = os.path.join(DATA_DIR, PROJECTS_DIRNAME)
+    if create:
+        try:
+            os.makedirs(root, exist_ok=True)
+        except OSError:
+            logger.warning("Could not create the projects root at %s", root,
+                           exc_info=True)
+    return root
 
 
 def vet_workspace(raw: str) -> Optional[str]:

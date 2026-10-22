@@ -71,6 +71,19 @@ TOKEN_FILENAME = "token"
 TOKEN_PREFIX = "pws_"
 TOKEN_ENTROPY_BYTES = 32
 
+# ── the shared projects folder, `B1417` ───────────────────────────────────────
+# Where the folder Pantheon makes projects in is mounted inside the workstation
+# (`docker/workstation.yml`: `./data/projects:/projects`), so the agent can run
+# and test what it builds in the one place that is safe to run it.
+#
+# The daemon's jail admits it beside each account's home — and only when it is
+# a real directory, so a workstation started without the mount answers exactly
+# as it did before. It is one more place an agent may work, never a door to
+# anything Pantheon holds: the mount is a subdirectory of Pantheon's data, and a
+# subdirectory bind exposes nothing above it.
+PROJECTS_DIR = "/projects"
+PROJECTS_DIR_ENV = "PANTHEON_WORKSTATION_PROJECTS"
+
 # ── a workstation on another machine (`P20-07`, added) ────────────────────────
 # The token is a bearer secret: whoever reads it off the wire drives every
 # person's account, and with `sudo` on (the default) is root there. The

@@ -193,6 +193,10 @@ class System:
 
     def __init__(self) -> None:
         self.sudo = False
+        # `B1417`. Directories the jail admits beside each account's home. The
+        # projects folder, when it is mounted; empty otherwise. Read at resolve
+        # time and admitted only while each is a real directory.
+        self.shared_roots: List[Path] = []
 
     def ensure(self, account: str) -> Dict:  # pragma: no cover - interface
         raise NotImplementedError
@@ -497,10 +501,22 @@ class Workstation:
         real = Path(os.path.realpath(candidate))
         if not self.system.sudo:
             home_real = Path(os.path.realpath(home))
-            if real != home_real and home_real not in real.parents:
+            # `B1417`. The shared projects folder is a second place to work.
+            # Resolved with `realpath` like the request itself, so a symlink
+            # planted INSIDE it that points out of it lands outside it and is
+            # refused here exactly as one in the home is (`test_a_symlink_out_
+            # of_the_home_is_refused` is the same rule).
+            allowed = [home_real] + [
+                Path(os.path.realpath(root)) for root in self.system.shared_roots
+                if Path(root).is_dir()]
+            if not any(real == root or root in real.parents for root in allowed):
+                shared = [str(r) for r in allowed[1:]]
+                where = (f"your workstation home ({home})"
+                         + (f" or the shared projects folder ({', '.join(shared)})"
+                            if shared else ""))
                 raise WorkstationError(
                     "outside_home",
-                    f"{raw} is outside your workstation home ({home}). Work inside it, or ask an "
+                    f"{raw} is outside {where}. Work inside it, or ask an "
                     "admin to turn sudo on for the workstation.")
         return real
 

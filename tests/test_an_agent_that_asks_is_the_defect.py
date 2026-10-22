@@ -32,6 +32,16 @@ Three things ship, and this file drives each of them:
 `ask_user` is not removed and is not weakened at a real fork: three cases below
 hold the card shipping after a tool has run, after a second ask, and on a turn
 with no other tool.
+
+**`B1412`, added 2026-10-22 from the owner's own screenshot.** The nudge held
+the question by *discarding* it, and a model that did not ask again left the
+turn with no card, no tool bubble and no line — on a plan step, that reads as a
+hang rather than as a decision. The question is now kept and released when the
+turn ends having looked at nothing and done nothing; both conditions are
+load-bearing, because a question released after the model looked is a guess
+about something the looking may already have answered. The ruling is untouched:
+the round is still spent and the model is still told to look. What changes is
+that silence stops being one of the outcomes.
 """
 
 from __future__ import annotations
@@ -409,6 +419,115 @@ def test_a_turn_with_no_other_tool_may_ask_at_once(monkeypatch):
     )
     assert any(e.get("type") == "ask_user" for e in events), events
     assert len(requests) == 1, len(requests)
+
+
+# ── `B1412`: the held question is deferred, not destroyed ──────────────────
+
+
+def test_a_held_question_ships_when_the_turn_looked_at_nothing(monkeypatch):
+    """The owner's screenshot, as a case.
+
+    `B1327` buys one round of looking and the card ships if the model asks
+    again. **A capable model asks again. `gpt-oss-20b` does not** — told to
+    "look first", it writes prose — and the question it had already composed
+    was thrown away with `tool_blocks = []`. Measured on the shipped loop
+    before this: **0 `ask_user` events and 0 `tool_start` events** reached the
+    browser on a turn executing an approved plan whose first step was *"ask
+    for preference"*, so the plan sat on step one with a spinner and nothing
+    on screen said a decision was owed.
+
+    A supervisor that silently discards the only user-facing act of a turn is
+    indistinguishable from a hang (`Law 13`, `Law 15`). The ruling is
+    untouched — the round is still spent, the model is still told to look —
+    but silence stops being one of the outcomes.
+    """
+    _patch_common(monkeypatch)
+    requests, events = _run(
+        monkeypatch,
+        [ASK_BLOCK, "I'll go with plain HTML and CSS."],
+        results={"ask_user": ASK_RESULT},
+        relevant_tools={"read_file", "ask_user", "update_plan"},
+    )
+    assert LOOK_FIRST in _system_text(requests[1]), _system_text(requests[1])
+    assert len(requests) == 2, len(requests)
+    cards = [e for e in events if e.get("type") == "ask_user"]
+    assert len(cards) == 1, events
+    # Through the one path that builds every other card, so the persisted
+    # event, the tool bubble and the card cannot drift apart (`Law 14`).
+    assert any(e.get("type") == "tool_start" and e.get("tool") == "ask_user"
+               for e in events), events
+    assert cards[0]["data"]["question"], cards[0]
+
+
+def test_a_held_question_is_stale_once_the_model_has_looked(monkeypatch):
+    """Both release conditions are load-bearing and neither is slack.
+
+    If the model ran anything, the nudge did its job: the question was a guess
+    about something the looking may have just answered, and putting it on
+    screen afterwards is the exact defect `B1327` exists to stop. So a turn
+    that looked gets no card, even though a question was held earlier in it.
+    """
+    _patch_common(monkeypatch)
+    requests, events = _run(
+        monkeypatch,
+        [ASK_BLOCK, READ_CALL, "alpha.py defines it."],
+        results={"ask_user": ASK_RESULT},
+        relevant_tools={"read_file", "ask_user"},
+    )
+    assert any(e.get("type") == "tool_start" and e.get("tool") == "read_file"
+               for e in events), events
+    assert not any(e.get("type") == "ask_user" for e in events), events
+
+
+def test_a_released_question_is_not_a_second_card(monkeypatch):
+    """The model asked, was pushed, and asked again — so the card ships on
+    round two by the ordinary path. The held copy must not ship a second one:
+    two cards for one question is a worse answer than none."""
+    _patch_common(monkeypatch)
+    _, events = _run(
+        monkeypatch,
+        [ASK_BLOCK, ASK_BLOCK],
+        results={"ask_user": ASK_RESULT},
+        relevant_tools={"read_file", "ask_user"},
+    )
+    assert len([e for e in events if e.get("type") == "ask_user"]) == 1, events
+
+
+def test_the_card_the_person_sees_carries_its_options(monkeypatch):
+    """`Law 15` for this surface. A released card is only worth shipping if it
+    is the same card: the question, and the options a person clicks. The
+    browser's free-text *Other* box is drawn from the card itself, so the
+    payload has to arrive whole for it to have anything to sit under."""
+    _patch_common(monkeypatch)
+    _, events = _run(
+        monkeypatch,
+        [ASK_BLOCK, "Prose instead of asking again."],
+        results={"ask_user": ASK_RESULT},
+        relevant_tools={"read_file", "ask_user"},
+    )
+    card = next(e for e in events if e.get("type") == "ask_user")["data"]
+    assert card["question"] == "Which server would you like me to look at?"
+    assert [o["label"] for o in card["options"]] == ["The running one"]
+
+
+def test_the_nudge_and_the_release_ask_one_question(monkeypatch):
+    """`Law 7`. The release's whole argument is that it applies *the same test
+    the nudge applied one round earlier*, so the two read one predicate.
+    Driven rather than read: narrow what "nothing has been looked at" means and
+    BOTH sites have to move together — the nudge stops firing, so there is
+    nothing held and nothing to release."""
+    _patch_common(monkeypatch)
+    monkeypatch.setattr(al, "_nothing_looked_at", lambda calls, events: False)
+    requests, events = _run(
+        monkeypatch,
+        [ASK_BLOCK, "Prose instead of asking again."],
+        results={"ask_user": ASK_RESULT},
+        relevant_tools={"read_file", "ask_user"},
+    )
+    # No nudge, so the card ships on round one by the ordinary path — and the
+    # release never runs, because nothing was ever held.
+    assert LOOK_FIRST not in _system_text(requests[-1]), _system_text(requests[-1])
+    assert len([e for e in events if e.get("type") == "ask_user"]) == 1, events
 
 
 def test_the_verifier_tells_the_model_to_fix_the_work_not_to_ask(monkeypatch):
