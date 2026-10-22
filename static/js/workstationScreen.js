@@ -73,6 +73,7 @@ const HINT = {
   watching: 'Take over to use the mouse and keyboard yourself. The agent stops until you hand them back.',
   holding: 'Click the picture, then type: your keys go to the workstation.',
   typing: 'Your keys go to the workstation. Shift+Esc gives the keyboard back to this page.',
+  other: "You are watching another person's screen. Only they can take it over or reset it.",
 };
 
 // ── pure parts (exported for the tests) ──────────────────────────────────────
@@ -176,6 +177,9 @@ let _typeTimer = null;
 let _wheel = null;        // { point, dx, dy, mode, timer }
 let _press = null;        // { cx, cy, point }
 let _clicks = null;       // { point, cx, cy, count, timer }
+// `B1424`. Whose screen this window shows: '' is the caller's own; a name is
+// another person's, which only an admin can pick, and only to watch.
+let _watching = '';
 
 function _hidden(node, on) {
   if (node) node.hidden = !!on;
@@ -248,10 +252,12 @@ function _render() {
   if (!_win) return;
   const up = _state === 'up';
   _win.status.dataset.state = up ? 'up' : (_state === 'checking' ? 'checking' : _state);
-  const holding = up && _holder === 'person';
-  _hidden(_win.take, !up || _holder !== 'agent');
+  const holding = _holding();
+  // Another person's screen is watched, never driven: no take over, no hand
+  // back, no reset — those are theirs (`B1424`).
+  _hidden(_win.take, !up || _holder !== 'agent' || !!_watching);
   _hidden(_win.give, !holding);
-  _hidden(_win.reset, !up);
+  _hidden(_win.reset, !up || !!_watching);
   // A picture is shown only while it is the screen as it is: when the
   // workstation stops answering, the last frame goes with it rather than
   // standing under a sentence that says it is down.
@@ -264,6 +270,7 @@ function _render() {
     : 'The workstation screen.');
   let hint = '';
   if (up && _holder === 'agent') hint = HINT.watching;
+  if (up && _watching) hint = `${HINT.other} (${_watching})`;
   if (holding) hint = (document.activeElement === _win.screen) ? HINT.typing : HINT.holding;
   _win.hint.textContent = hint;
   _hidden(_win.hint, !hint);
@@ -331,7 +338,7 @@ function _kick(ms = 0) {
 }
 
 async function _readHolder() {
-  const res = await fetch('/api/workstation/control', { credentials: 'same-origin' });
+  const res = await fetch(`/api/workstation/control${_whose()}`, { credentials: 'same-origin' });
   if (!res.ok) {
     _setRefused(_stateFor(res.status), await _detail(res));
     return false;
@@ -348,7 +355,7 @@ async function _tick() {
   let wait = TIMING.FRAME_MS;
   try {
     const url = '/api/workstation/screen'
-      + (_digest ? `?if_none_match=${encodeURIComponent(_digest)}` : '');
+      + _whose(_digest ? [`if_none_match=${encodeURIComponent(_digest)}`] : []);
     const res = await fetch(url, { credentials: 'same-origin', cache: 'no-store' });
     if (res.status === 304) {
       if (_state !== 'up') _setUp();
@@ -418,7 +425,16 @@ function _flushClicks() {
 }
 
 function _holding() {
-  return _state === 'up' && _holder === 'person';
+  // Watching someone else, their holding the screen is theirs, never ours:
+  // nothing typed here may reach any screen.
+  return !_watching && _state === 'up' && _holder === 'person';
+}
+
+/** `?person=` for the screen being watched, joined to the other parameters. */
+function _whose(params = []) {
+  const q = params.slice();
+  if (_watching) q.push(`person=${encodeURIComponent(_watching)}`);
+  return q.length ? `?${q.join('&')}` : '';
 }
 
 function _pointAt(ev) {
@@ -630,7 +646,23 @@ function _build() {
   actions.appendChild(take);
   actions.appendChild(give);
   actions.appendChild(reset);
+  // `B1424`. For an admin: whose screen. Hidden until the user list answers,
+  // which it does only for an admin (`GET /api/auth/users`).
+  const whoLabel = _el('label', 'wsv-who');
+  whoLabel.hidden = true;
+  const whoText = _el('span', 'wsv-who-text', 'Screen');
+  const who = document.createElement('select');
+  who.className = 'wsv-who-select';
+  who.setAttribute('aria-label', 'Whose workstation screen to watch');
+  const mine = document.createElement('option');
+  mine.value = '';
+  mine.textContent = 'Mine';
+  who.appendChild(mine);
+  who.addEventListener('change', () => { watchPerson(who.value); });
+  whoLabel.appendChild(whoText);
+  whoLabel.appendChild(who);
   bar.appendChild(status);
+  bar.appendChild(whoLabel);
   bar.appendChild(actions);
 
   const stage = _el('div', 'wsv-stage');
@@ -669,7 +701,7 @@ function _build() {
   img.addEventListener('dragstart', (e) => e.preventDefault());
 
   return { modal, content, header, status, statusText, take, give, reset, stage, screen, img,
-    empty, hint };
+    empty, hint, whoLabel, who };
 }
 
 /** Everything the window started, stopped; the screen handed back if this
@@ -695,6 +727,7 @@ function _teardown() {
   _error = false;
   _state = 'checking';
   _soon = false;
+  _watching = '';
   if (modal.parentNode) modal.parentNode.removeChild(modal);
 }
 
@@ -727,6 +760,7 @@ export function openWorkstationScreen({ focus = false } = {}) {
     });
     _render();
     _kick(0);
+    _offerPeople();
   }
   if (focus && _win) {
     // Opened from the keyboard somewhere `a11y.js` does not watch (a tool
@@ -735,6 +769,53 @@ export function openWorkstationScreen({ focus = false } = {}) {
     try { (handle || _win.take).focus(); } catch (_) {}
   }
   return true;
+}
+
+/**
+ * `B1424`. The people an admin may watch, offered in the window's own picker.
+ * Anyone else is refused the list (`403`) and the picker stays hidden.
+ */
+async function _offerPeople() {
+  const win = _win;
+  if (!win) return;
+  let users = [];
+  try {
+    const res = await fetch('/api/auth/users', { credentials: 'same-origin' });
+    if (!res.ok) return;
+    const body = await res.json();
+    users = Array.isArray(body && body.users) ? body.users : [];
+  } catch (_) { return; }
+  if (_win !== win) return;
+  const names = users.map(u => (u && typeof u.username === 'string') ? u.username : '')
+    .filter(Boolean).sort((a, b) => a.localeCompare(b));
+  for (const name of names) {
+    const opt = document.createElement('option');
+    opt.value = name;
+    opt.textContent = name;
+    win.who.appendChild(opt);
+  }
+  win.whoLabel.hidden = names.length === 0;
+}
+
+/** Watch `name`'s screen ('' for one's own). Starts from nothing: their
+ *  picture and who holds their screen are read fresh. */
+export function watchPerson(name) {
+  const next = String(name || '');
+  if (next === _watching) return;
+  if (!_watching && _holder === 'person') handBack();
+  _watching = next;
+  _digest = '';
+  _holder = null;
+  _holderAt = 0;
+  _error = false;
+  if (_win) {
+    if (_win.who.value !== next) _win.who.value = next;
+    _hidden(_win.img, true);
+    _hidden(_win.empty, false);
+    _state = 'checking';
+    _render();
+  }
+  _kick(0);
 }
 
 export function closeWorkstationScreen() {
@@ -779,9 +860,11 @@ if (typeof window !== 'undefined' && window && typeof window.addEventListener ==
 export const _test = {
   TIMING, tick: _tick, shouldPoll: _shouldPoll, onDoor: _onDoor,
   state: () => ({ open: !!_win, state: _state, holder: _holder, digest: _digest,
-    size: { ..._size }, polling: !!_timer || _inFlight }),
+    size: { ..._size }, polling: !!_timer || _inFlight, watching: _watching }),
+  offerPeople: _offerPeople,
   win: () => _win,
   settled: () => _sendChain,
 };
 
-export default { openWorkstationScreen, closeWorkstationScreen, takeOver, handBack, resetToClean };
+export default { openWorkstationScreen, closeWorkstationScreen, takeOver, handBack, resetToClean,
+  watchPerson };

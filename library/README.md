@@ -33,7 +33,7 @@ Procedures written for this product's own tools, **published and switched on**
 | --- | --- |
 | `workstation-desktop` | the `computer` tool — every action, the 1280×800 frame, the tray, keys, Firefox shortcuts; `references/keys.md` |
 | `workstation-apps-and-windows` | starting, finding, focusing, arranging and closing programs from the shell with `xdotool` |
-| `workstation-shell` | where commands run, `/projects`, root, the network, servers that outlive the call |
+| `workstation-shell` | where commands run, the person's own projects folder (`$PANTHEON_PROJECTS`), root, the network, servers that outlive the call |
 | `workstation-self-test` | build, serve, `curl`, look in Firefox, read the console, fix, report with evidence |
 
 Each declares `requires_toolsets` for the tools it drives, so a turn gets them

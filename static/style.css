@@ -46746,6 +46746,16 @@ body.settings-sidebar-resize-active {
 }
 .wsv-status { flex: 1 1 240px; min-width: 0; }
 .wsv-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.wsv-who { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; }
+.wsv-who[hidden] { display: none; }
+.wsv-who-select {
+  font: inherit;
+  color: var(--fg);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 2px 6px;
+}
 .wsv-stage {
   position: relative;
   flex: 1 1 auto;

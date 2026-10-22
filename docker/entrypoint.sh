@@ -64,7 +64,12 @@ is_broad_mount_root() {
 repair_tree_ownership() {
     dir="$1"
     if [ -d "$dir" ]; then
-        find "$dir" -xdev -not -uid "$PUID" -print0 2>/dev/null \
+        # `B1424`. Not inside a person's projects folder: the workstation gives
+        # each one to that person's account (in this group, setgid), and this
+        # walk used to take every file back on every start — after which the
+        # person could no longer change what they had built.
+        find "$dir" -xdev -path "$dir/projects/*" -prune \
+            -o -not -uid "$PUID" -print0 2>/dev/null \
             | xargs -0 -r chown "$PUID:$PGID" 2>/dev/null || true
     fi
 }
@@ -107,7 +112,7 @@ chown "$PUID:$PGID" /app/.cache 2>/dev/null || true
 # entries are writable, but never traverse or rewrite existing model files.
 chown "$PUID:$PGID" /app/.cache/huggingface 2>/dev/null || true
 # `B1417`. Where projects the agent builds live — `src.tool_execution.
-# projects_root()` — made here, before the ownership repair below, so it
+# projects_base()`, one folder per person inside it (`B1424`) — made here, before the ownership repair below, so it
 # exists with the app user's ownership before anything else touches it. With
 # the workstation on it is also bind-mounted into the workstation at /projects
 # (`docker/workstation.yml`), and if that container starts first Docker makes

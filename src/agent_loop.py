@@ -4869,7 +4869,8 @@ def _skills_pref_enabled(owner) -> bool:
 
 
 def _skill_body_tool_offered(last_user: str, *, suppress_skills: bool,
-                             owner=None, data_dir: Optional[str] = None) -> bool:
+                             owner=None, data_dir: Optional[str] = None,
+                             disabled_tools=None) -> bool:
     """Whether `manage_skills` goes into this turn's selected tool set.
 
     `B1360`. The same three questions the loop's tool-set gate asks, in one
@@ -4885,9 +4886,29 @@ def _skill_body_tool_offered(last_user: str, *, suppress_skills: bool,
     try:
         from services.memory.skills import SkillsManager
         from src.constants import DATA_DIR
-        return bool(SkillsManager(data_dir or DATA_DIR).load_active(owner=owner))
+        return bool(_skills_for_turn(SkillsManager(data_dir or DATA_DIR), owner,
+                                     disabled_tools))
     except Exception:
         return False
+
+
+def _skills_for_turn(sm, owner, disabled_tools=None) -> list:
+    """The skills that put `manage_skills` in a turn: the person's own, as
+    ever, and the install's shipped ones this turn may show.
+
+    `B1426`. `load_active` gained the shipped library for every person
+    (`B1419`) — 286 vendored drafts nobody is shown, and four procedures gated on
+    the workstation's tools — so "do they have a skill" became yes on every
+    turn for everyone, and `manage_skills` rode into turns about something else
+    (`tests/test_a_first_message_is_not_a_lesser_message.py`, red on
+    `5a7c75c`). A shipped skill counts only where the catalogue would list it:
+    `injectable_skills`, gated on this turn's tools when they are known.
+    """
+    own = [s for s in sm.load_active(owner=owner) if not s.get("bundled")]
+    active = _skill_active_toolsets(disabled_tools) if disabled_tools is not None else None
+    shipped = [s for s in sm.injectable_skills(owner=owner, active_toolsets=active)
+               if s.get("bundled")]
+    return own + shipped
 
 
 def _skill_query(last_user: str, approved_plan: Optional[str] = None) -> str:
@@ -7474,7 +7495,7 @@ async def stream_agent_loop(
             from src.constants import DATA_DIR
             _skills_on = _skills_pref_enabled(owner)
             _sm = SkillsManager(DATA_DIR)
-            _owner_skills = _sm.load_active(owner=owner) if _skills_on else []
+            _owner_skills = _skills_for_turn(_sm, owner, disabled_tools) if _skills_on else []
             if _owner_skills:
                 _relevant_tools.add("manage_skills")
                 if _retrieval_query:

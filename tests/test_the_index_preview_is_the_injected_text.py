@@ -101,7 +101,12 @@ def library(tmp_path, monkeypatch):
 
 async def _block_the_loop_injects(monkeypatch):
     """The skills catalogue out of one real agent request, not a reconstruction."""
-    monkeypatch.setattr(agent_loop, "get_setting", lambda k, d=None: d, raising=False)
+    # `B1425`: no trim. On an endpoint that reports no window the loop trims to
+    # 6,000 tokens and sheds the skills block to keep the tools' prompt whole;
+    # what this file compares is the text, not what survives a small window.
+    monkeypatch.setattr(agent_loop, "get_setting",
+                        lambda k, d=None: 0 if k == "agent_input_token_budget" else d,
+                        raising=False)
     monkeypatch.setattr(agent_loop, "get_mcp_manager", lambda: None, raising=False)
     monkeypatch.setattr(agent_loop, "estimate_tokens", lambda *a, **k: 10, raising=False)
     monkeypatch.setattr(agent_loop, "blocked_tools_for_owner", lambda o: set(), raising=False)

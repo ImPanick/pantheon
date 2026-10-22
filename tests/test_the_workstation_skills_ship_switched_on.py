@@ -349,9 +349,12 @@ def test_the_limits_it_quotes_are_the_protocols():
     assert f"at most {P.MAX_SCROLL_CLICKS}" in text
 
 
-def test_the_shared_folder_it_names_is_the_protocols():
+def test_the_projects_folder_it_names_is_the_protocols():
+    """`B1424`: each person's own folder, by the variable the daemon sets —
+    never the shared root, which nobody but an admin may list."""
     for name in ("workstation-shell", "workstation-self-test"):
-        assert f"{P.PROJECTS_DIR}/<" in _text(name), name
+        assert f"${P.PROJECTS_ENV}/<" in _text(name), name
+        assert f"{P.PROJECTS_DIR}/<" not in _text(name), name
 
 
 def test_no_skill_tells_the_model_to_use_a_background_job_the_workstation_refuses():
@@ -359,3 +362,30 @@ def test_no_skill_tells_the_model_to_use_a_background_job_the_workstation_refuse
         for line in _text(name).splitlines():
             if "#!bg" in line:
                 assert "refused" in line, (name, line)
+
+
+# ── `B1426`: a shipped skill puts `manage_skills` in a turn only where it shows ─
+
+def test_the_vendored_drafts_do_not_put_the_skills_tool_in_every_turn(store):
+    """286 drafts nobody is shown, and four procedures gated on the screen: on a
+    turn without the workstation, none of them is a reason to offer the tool."""
+    rows = agent_loop._skills_for_turn(store, "alice", {"computer"})
+    assert rows == []
+    assert agent_loop._skill_body_tool_offered(
+        BUILD_REQUEST, suppress_skills=False, owner="alice",
+        data_dir=constants.DATA_DIR, disabled_tools={"computer"}) is False
+
+
+def test_a_turn_that_can_show_them_offers_the_tool_to_open_them(store):
+    rows = agent_loop._skills_for_turn(store, "alice", set())
+    assert {r["name"] for r in rows} == set(SHIPPED)
+    assert agent_loop._skill_body_tool_offered(
+        BUILD_REQUEST, suppress_skills=False, owner="alice",
+        data_dir=constants.DATA_DIR, disabled_tools=set()) is True
+
+
+def test_a_persons_own_drafts_still_count(store):
+    _own_skill(store, "half-done", "alice")
+    store.update_skill("half-done", {"status": "draft"}, owner="alice")
+    names = {r["name"] for r in agent_loop._skills_for_turn(store, "alice", {"computer"})}
+    assert names == {"half-done"}

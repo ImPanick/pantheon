@@ -40,7 +40,10 @@ display and nobody else's, and all through `workstation_for` — so the admin's
 switch, the address and `can_use_workstation` are asked exactly as the agent's
 tools ask them, with the same sentence when one says no:
 
-  GET  /api/workstation/screen   the person's own screen, as one JPEG frame:
+  GET  /api/workstation/screen   the person's own screen, as one JPEG frame
+                                 (an admin may add `?person=<name>` to watch
+                                 someone else's, `B1424`; GET /control too —
+                                 watching only, never their input):
                                  `{mime, data_b64, width, height, digest}`.
                                  `?if_none_match=<digest>` and an unchanged
                                  screen is `304` with no body — the protocol's
@@ -223,10 +226,33 @@ def setup_workstation_routes() -> APIRouter:
         except WorkstationError as e:
             raise _http_error(e)
 
+    def _watched(request: Request, person: str):
+        """`B1424`. `(client, account)` for the screen being watched: the
+        caller's own, or — for an admin, and only to watch — another person's.
+        Nobody else may name a person here; an admin may not type, take over or
+        reset for them (those routes take no `person`)."""
+        person = (person or "").strip()
+        if not person:
+            return _mine(request)
+        require_admin(request)
+        manager = _auth_manager(request)
+        if manager is None:
+            from src.auth_manager_access import shared_auth_manager
+            manager = shared_auth_manager()
+        users = getattr(manager, "users", {}) or {}
+        name = person.lower()
+        if name not in users:
+            raise HTTPException(404, f"There is no person called {person}.")
+        try:
+            return wa.workstation_for(name, auth_manager=manager)
+        except WorkstationError as e:
+            raise _http_error(e)
+
     @router.get("/screen")
-    async def workstation_screen(request: Request, if_none_match: str = ""):
-        """The caller's own screen, one frame; `304` when it has not changed."""
-        client, account = _mine(request)
+    async def workstation_screen(request: Request, if_none_match: str = "", person: str = ""):
+        """The caller's own screen, one frame; `304` when it has not changed.
+        An admin may pass `person` to watch someone else's (`B1424`)."""
+        client, account = _watched(request, person)
         try:
             shot = await client.screenshot(account, fmt=FRAME_FORMAT,
                                            if_none_match=if_none_match or None)
@@ -253,9 +279,10 @@ def setup_workstation_routes() -> APIRouter:
         return {"ok": bool(answer.get("ok")), "action": answer.get("action")}
 
     @router.get("/control")
-    async def workstation_holder(request: Request):
-        """Who has the mouse and keyboard right now."""
-        client, account = _mine(request)
+    async def workstation_holder(request: Request, person: str = ""):
+        """Who has the mouse and keyboard right now — on the caller's screen,
+        or on the one an admin is watching (`B1424`)."""
+        client, account = _watched(request, person)
         try:
             made = await client.ensure(account)
         except WorkstationError as e:

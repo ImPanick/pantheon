@@ -688,7 +688,7 @@ class GetWorkspaceTool:
         # projects go — and the answer now carries it, made if missing, with
         # the instruction a person would give: a folder of its own, then work.
         from src.tool_execution import projects_root
-        root = projects_root()
+        root = projects_root((ctx or {}).get("owner"))  # `B1424`: this person's
         return {
             "output": (
                 "No workspace is set. New projects go in "

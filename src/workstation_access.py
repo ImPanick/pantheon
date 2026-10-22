@@ -45,7 +45,7 @@ from __future__ import annotations
 import logging
 import re
 import time
-from typing import Any, Dict, NamedTuple, Optional, Tuple
+from typing import Any, Dict, List, NamedTuple, Optional, Tuple
 from urllib.parse import urlsplit
 
 from src import workstation_client as wc
@@ -155,6 +155,21 @@ def workstation_owner(owner: Optional[str]) -> Optional[str]:
 def account_of(owner: Optional[str]) -> str:
     """The Unix account this person works as (`protocol.account_name`)."""
     return wc.account_for(workstation_owner(owner))
+
+
+def admin_accounts(auth_manager: Any = None) -> List[str]:
+    """`B1424`. The workstation accounts of every admin, sorted — the list the
+    daemon admits to every person's projects folder (`config`'s `admins`)."""
+    try:
+        if auth_manager is None:
+            from src.auth_manager_access import shared_auth_manager
+            auth_manager = shared_auth_manager()
+        users = getattr(auth_manager, "users", {}) or {}
+        return sorted({account_of(name) for name, rec in users.items()
+                       if isinstance(rec, dict) and rec.get("is_admin") is True})
+    except Exception as e:  # noqa: BLE001 — nobody admitted is the safe answer
+        logger.warning("could not list the admins for the workstation: %s", e)
+        return []
 
 
 def may_use(owner: Optional[str], *, auth_manager: Any = None) -> bool:
@@ -407,6 +422,11 @@ async def sync_config(client: WorkstationClient) -> Dict[str, Any]:
     mode = network_setting()
     if daemon.get("network") != mode:
         daemon.update(await client.config(network=mode))
+    # `B1424`. Who may reach every person's projects folder. Compared like the
+    # two above, so it is pushed only when it changed or the daemon forgot it.
+    admins = admin_accounts()
+    if daemon.get("admins") != admins:
+        daemon.update(await client.config(admins=admins))
     gate = wc.gate_for(client)
     if gate is not None:
         held = await gate.health()

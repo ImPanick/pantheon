@@ -26,6 +26,14 @@
 #   * `./data/projects` on the host is `/app/data/projects` to Pantheon (it is
 #     inside the existing `./data` mount) and `/projects` here. One folder,
 #     three views, and the owner can open it in an editor on their own disk.
+#   * **One folder per person inside it** (`B1424`): `/projects/<name>-<hash>`,
+#     made by the daemon on a person's first use, theirs, in Pantheon's group
+#     (`PANTHEON_WORKSTATION_PAIRING_GID`), `2770`. The daemon's jail admits a
+#     person to their own folder only; the root is `0771`, so nobody can even
+#     list who else works here. Admins (pushed by Pantheon) reach every
+#     folder through their file tools. With sudo on, every agent is root in
+#     this one container and none of that holds — the per-person wall with
+#     root is the VM backend (`docker/workstation-vm.yml`).
 #   * A bind mount of a SUBDIRECTORY exposes that subtree and nothing above
 #     it. `memory.json`, `app.db`, `auth.json` and `./data/ssh` stay out of
 #     reach: they are siblings of `projects/`, not its children. That is the

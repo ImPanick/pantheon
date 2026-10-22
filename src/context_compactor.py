@@ -230,6 +230,11 @@ def _truncate_message_to_token_budget(msg: Dict[str, Any], token_budget: int) ->
     return _truncate_tool_call_args(out, token_budget)
 
 
+#: `B1425`. Pantheon's own context blocks, by `own_context_message`'s source,
+#: that are dropped whole before the leading system prompt is truncated.
+SHED_BEFORE_THE_PROMPT = frozenset({"skills"})
+
+
 def trim_for_context(messages: List[Dict], context_length: int, reserve_tokens: int = 512) -> List[Dict]:
     """Trim system messages to fit within context_length.
 
@@ -286,6 +291,26 @@ def trim_for_context(messages: List[Dict], context_length: int, reserve_tokens: 
             else:
                 break
         return _sanitize_tool_messages(result + protected_msgs + convo_msgs)
+
+    # `B1425`. Before the instructions every tool is called by are cut, shed the
+    # skills block. It is reference — a catalogue and matched procedures, each
+    # one fetchable again by name — and the leading system message is what makes
+    # any tool callable at all. Measured 2026-10-22 under the default 6,000-token
+    # agent budget: with the workstation's shipped skills matched, the fenced
+    # prompt was cut to its first 2,000 characters and the `computer` tool's own
+    # section went with it, while 10,319 characters of procedures about that
+    # tool were kept.
+    #
+    # Only when that is what saves the prompt: if the prompt is cut either way,
+    # the block stays, as it always has — shedding it then would lose both.
+    shed_ids = {id(m) for m in convo_msgs
+                if (m.get("metadata") or {}).get("source") in SHED_BEFORE_THE_PROMPT}
+    if shed_ids:
+        without = [m for m in convo_msgs if id(m) not in shed_ids]
+        if estimate_tokens(essential_system + without) <= budget:
+            logger.info("Shed %d reference message(s) so the system prompt fits uncut",
+                        len(shed_ids))
+            return _sanitize_tool_messages(essential_system + protected_msgs + without)
 
     # Still too big — truncate the first system message (but keep more than 500 chars)
     if essential_system:

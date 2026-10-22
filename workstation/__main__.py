@@ -176,6 +176,8 @@ def make_system(args: argparse.Namespace) -> System:
         # this one is (a VM's machine, or a host it was installed on).
         system.backend = getattr(args, "backend", None) or system.backend
         system.shared_roots = shared_roots()
+        # `B1424`. Each person's projects folder is given to Pantheon's group.
+        system.projects_gid = args.pairing_group
         return system
     system = SingleUserSystem(Path(args.homes), skeleton=Path(args.skeleton),
                               backend=getattr(args, "backend", None) or "remote")

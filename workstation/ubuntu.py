@@ -761,6 +761,11 @@ class UbuntuSystem(System):
         os.chmod(X_SOCKET_DIR, 0o1777)
         self.runtime_root.mkdir(parents=True, exist_ok=True)
         os.setgroups([])
+        # `B1424`. What anyone here makes is the maker's and its group's, and
+        # nobody else's: a person's projects folder is setgid to Pantheon's
+        # group, so with this mask what they build there is Pantheon's to
+        # read and write and no other account's. Inherited by every command.
+        os.umask(0o007)
         write_sudoers(self.sudo, self.sudoers_path)
         self._hold_network(self.network)  # `P20-06`
 
@@ -809,6 +814,40 @@ class UbuntuSystem(System):
             self.runtime_dir(account)
             self._ready.add(account)
         return {"home": str(home), "display": self._display_name(account), "created": created}
+
+    def make_project_dirs(self, account: str) -> List[Path]:
+        """`B1424`. The account's own projects folder: made by root, the
+        account's, in Pantheon's group, `2770`. Put right on every call —
+        Pantheon's start-up repair, or an admin with sudo, may have moved it —
+        but only the folder: what is in it is the person's and is not walked."""
+        uid = self.registry.get(account)
+        name = P.project_folder_of(account)
+        for root in self.shared_roots:
+            root = Path(root)
+            if not root.is_dir():
+                continue
+            real_root = Path(os.path.realpath(root))
+            folder = real_root / name
+            try:
+                # The root itself: Pantheon's group may list and add to it;
+                # anyone else may only pass through it to their own folder, so
+                # nobody learns from `ls /projects` who else works here.
+                if self.projects_gid is not None:
+                    os.chown(real_root, -1, self.projects_gid)
+                os.chmod(real_root, 0o771)
+                if os.path.islink(folder):
+                    logger.warning("projects folder %s is a symlink; left alone and not "
+                                   "admitted", folder)
+                    continue
+                if not os.path.lexists(folder):
+                    folder.mkdir()
+                if uid is not None:
+                    gid = self.projects_gid if self.projects_gid is not None else uid
+                    os.chown(folder, uid, gid, follow_symlinks=False)
+                    os.chmod(folder, 0o2770)
+            except OSError as e:
+                logger.warning("projects folder %s not made ready: %s", folder, e)
+        return self.project_dirs(account)
 
     def wake(self, account: str) -> Optional[str]:
         try:
@@ -868,9 +907,16 @@ class UbuntuSystem(System):
             yield  # root-equivalent by the admin's choice; the jail is lifted too
             return
         uid = self.uid(account)
+        # `B1424`. An account the admin list names acts with the projects
+        # group, which every person's folder is given to — so an admin's file
+        # tools reach other people's projects. Only the daemon's file
+        # operations: an admin's own commands keep their own groups, so the
+        # pairing token (the same group) stays out of their shell's reach.
+        gid = (self.projects_gid if account in self.admin_accounts
+               and self.projects_gid is not None else uid)
         self._acting.account = account
         try:
-            with fs_identity(uid, uid):
+            with fs_identity(uid, gid):
                 yield
         finally:
             self._acting.account = None

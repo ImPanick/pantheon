@@ -197,6 +197,47 @@ class System:
         # projects folder, when it is mounted; empty otherwise. Read at resolve
         # time and admitted only while each is a real directory.
         self.shared_roots: List[Path] = []
+        # `B1424`. Each person works in their own folder under a shared root,
+        # never in the root itself. These accounts — the ones Pantheon's admin
+        # list names, pushed with `config` — are admitted to all of it.
+        self.admin_accounts: frozenset = frozenset()
+        # The group a person's projects folder is given to (`--pairing-group`:
+        # the group Pantheon itself runs as), so Pantheon can read and write
+        # what each person builds and nobody else in the workstation can.
+        self.projects_gid: Optional[int] = None
+
+    def set_admins(self, accounts: Iterable[str]) -> None:
+        self.admin_accounts = frozenset(accounts)
+
+    def project_dirs(self, account: str) -> List[Path]:
+        """`B1424`. The account's own folder under each shared root that is
+        mounted. A folder that is a symlink is not the account's folder — it
+        points somewhere, and admitting it would admit wherever that is."""
+        name = P.project_folder_of(account)
+        out = []
+        for root in self.shared_roots:
+            root = Path(root)
+            if not root.is_dir():
+                continue
+            folder = Path(os.path.realpath(root)) / name
+            if folder.is_dir() and not folder.is_symlink():
+                out.append(folder)
+        return out
+
+    def make_project_dirs(self, account: str) -> List[Path]:
+        """Make the account's folder under each mounted shared root, once; give
+        it to the account (`UbuntuSystem` overrides this with the ownership)."""
+        name = P.project_folder_of(account)
+        for root in self.shared_roots:
+            root = Path(root)
+            if root.is_dir():
+                folder = Path(os.path.realpath(root)) / name
+                if not os.path.lexists(folder):
+                    try:
+                        folder.mkdir()
+                    except OSError as e:
+                        logger.warning("projects folder %s not made: %s", folder, e)
+        return self.project_dirs(account)
 
     def ensure(self, account: str) -> Dict:  # pragma: no cover - interface
         raise NotImplementedError
@@ -426,6 +467,7 @@ class Workstation:
     def settings(self) -> Dict:
         return {"sudo": self.system.sudo, "network": self.system.network,
                 "screen": [P.SCREEN_WIDTH, P.SCREEN_HEIGHT],
+                "admins": sorted(self.system.admin_accounts),  # `B1424`
                 **self.system.network_report()}  # `P20-06`
 
     def config(self, body: Dict) -> Dict:
@@ -440,6 +482,13 @@ class Workstation:
                 raise WorkstationError("bad_request",
                                        f"“network” is one of {', '.join(P.NETWORK_MODES)}.")
             self.system.set_network(body["network"])
+        # `B1424`: who may reach every person's projects folder.
+        if "admins" in body:
+            admins = body["admins"]
+            if (not isinstance(admins, list) or len(admins) > 10_000
+                    or not all(isinstance(a, str) and P.ACCOUNT_RE.match(a) for a in admins)):
+                raise WorkstationError("bad_request", "“admins” is a list of workstation accounts.")
+            self.system.set_admins(admins)
         return self.settings()
 
     def clock(self, body: Dict) -> Dict:
@@ -458,11 +507,13 @@ class Workstation:
 
     def ensure(self, account: str) -> Dict:
         made = self.system.ensure(account)
+        projects = self.system.make_project_dirs(account)  # `B1424`
         display = self.system.wake(account) or made.get("display")
         return {"account": account, "home": made["home"], "display": display,
                 "created": bool(made.get("created")), "sudo": self.system.sudo,
                 "screen": [P.SCREEN_WIDTH, P.SCREEN_HEIGHT],
-                "holder": self.holder(account)["holder"]}
+                "holder": self.holder(account)["holder"],
+                "projects": str(projects[0]) if projects else None}
 
     def reset(self, account: str) -> Dict:
         self.system.reset(account)
@@ -506,13 +557,19 @@ class Workstation:
             # planted INSIDE it that points out of it lands outside it and is
             # refused here exactly as one in the home is (`test_a_symlink_out_
             # of_the_home_is_refused` is the same rule).
-            allowed = [home_real] + [
-                Path(os.path.realpath(root)) for root in self.system.shared_roots
-                if Path(root).is_dir()]
+            #
+            # `B1424`. Not the shared root itself: the account's own folder in
+            # it, or — for an account the admin list names — all of it.
+            if account in self.system.admin_accounts:
+                projects = [Path(os.path.realpath(root)) for root in self.system.shared_roots
+                            if Path(root).is_dir()]
+            else:
+                projects = self.system.project_dirs(account)
+            allowed = [home_real] + projects
             if not any(real == root or root in real.parents for root in allowed):
-                shared = [str(r) for r in allowed[1:]]
+                shared = [str(r) for r in projects]
                 where = (f"your workstation home ({home})"
-                         + (f" or the shared projects folder ({', '.join(shared)})"
+                         + (f" or your projects folder ({', '.join(shared)})"
                             if shared else ""))
                 raise WorkstationError(
                     "outside_home",
@@ -544,6 +601,9 @@ class Workstation:
             raise WorkstationError("bad_request", "“stdin” is text.")
         self.system.ensure(account)
         prefix, env = self.system.run_as(account)
+        projects = self.system.make_project_dirs(account)  # `B1424`
+        if projects:
+            env[P.PROJECTS_ENV] = str(projects[0])
         env = {**env, **env_in}
         with self.system.acting_as(account):
             cwd = self.resolve(account, body.get("cwd"))

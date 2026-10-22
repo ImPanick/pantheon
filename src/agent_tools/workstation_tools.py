@@ -78,6 +78,7 @@ from src.agent_tools import codenav_walk as _codenav
 from src.agent_tools import filesystem_tools as fs
 from src.agent_tools import subprocess_tools as sp
 from src.workstation_client import WorkstationError
+from workstation import protocol as P
 
 logger = logging.getLogger(__name__)
 
@@ -1051,14 +1052,27 @@ async def describe_workspace(owner: Optional[str], workspace: Optional[str]) -> 
         return {"output": f"{workspace}\n(In your workstation. The shell and file tools start in "
                           "this folder and read relative paths from it; it is where they start, "
                           "not a boundary.)", "exit_code": 0}
+    projects = None
     try:
         from src.workstation_access import workstation_for
         client, account = workstation_for(owner)
         where = f"your workstation home ({await _home_path(client, account)})"
+        # `B1424`. Where a new project goes: this person's own folder, which
+        # Pantheon sees too. `ensure` makes it and names it.
+        projects = (await client.ensure(account)).get("projects")
     except WorkstationError:
         where = "your workstation home"
-    return {"output": f"No workspace is set. The shell and file tools run in your workstation and "
-                      f"start in {where}; relative paths are relative to it.", "exit_code": 0}
+    out = (f"No workspace is set. The shell and file tools run in your workstation and "
+           f"start in {where}; relative paths are relative to it.")
+    if projects:
+        out += (f" New projects go in your projects folder, {projects} (also "
+                f"${P.PROJECTS_ENV} in every command) — make a folder of their own there, "
+                "for example {}/my-project. It is yours alone, and Pantheon sees it."
+                .format(projects))
+    answer = {"output": out, "exit_code": 0}
+    if projects:
+        answer["projects_root"] = projects
+    return answer
 
 
 __all__ = ["WORKSTATION_TOOLS", "describe_workspace", "lifted_tools", "routes",

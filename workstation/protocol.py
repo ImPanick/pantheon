@@ -83,6 +83,17 @@ TOKEN_ENTROPY_BYTES = 32
 # subdirectory bind exposes nothing above it.
 PROJECTS_DIR = "/projects"
 PROJECTS_DIR_ENV = "PANTHEON_WORKSTATION_PROJECTS"
+#
+# `B1424`. **One folder per person under it, never one folder for everyone.**
+# The owner, 2026-10-22: *"per-user scoped and instanced. No overlaps, no shared
+# events. Admins should be able to see and access other users' projects."* A
+# person's folder is `PROJECTS_DIR/<project_folder(owner)>` in the workstation
+# and `<data>/projects/<project_folder(owner)>` on Pantheon — the same name on
+# both sides because both read it from here. The jail admits a person's own
+# folder; an account the admin list names (`config`'s `admins`) is admitted to
+# the whole of `PROJECTS_DIR`. Every command a person runs sees its own folder
+# as `$PROJECTS_ENV`.
+PROJECTS_ENV = "PANTHEON_PROJECTS"
 
 # ── a workstation on another machine (`P20-07`, added) ────────────────────────
 # The token is a bearer secret: whoever reads it off the wire drives every
@@ -121,12 +132,15 @@ ROUTES: Dict[str, Tuple[str, str]] = {
     # including a gate's that it shares).
     "health": ("GET", "/v1/health"),
     # Admin settings the daemon enforces itself. Body: any of {"sudo": bool,
-    # "network": one of NETWORK_MODES (`P20-06`, added)}.
+    # "network": one of NETWORK_MODES (`P20-06`, added),
+    # "admins": [account, ...] — the accounts admitted to every person's
+    # projects folder (`B1424`, added)}.
     # Answers the effective settings, the same shape `health` reports them in.
     "config": ("POST", "/v1/config"),
     # Makes the account, its home and its display on first use; a no-op after.
     # {} -> {"account", "home", "display", "created": bool, "sudo": bool,
-    #        "screen": [w, h], "holder": "agent"|"person"}
+    #        "screen": [w, h], "holder": "agent"|"person",
+    #        "projects": the person's own projects folder or null (`B1424`, added)}
     "ensure": ("POST", "/v1/users/{account}/ensure"),
     # The home back to the image's skeleton, the display restarted.
     # {} -> {"account", "reset": true}
@@ -384,6 +398,19 @@ def account_name(owner: Optional[str]) -> str:
     return f"{ACCOUNT_PREFIX}{slug}-{digest}"
 
 
+def project_folder(owner: Optional[str]) -> str:
+    """`B1424`. The name of a person's own projects folder — their account
+    name without its prefix: readable, and as unambiguous as the account."""
+    return account_name(owner)[len(ACCOUNT_PREFIX):]
+
+
+def project_folder_of(account: str) -> str:
+    """The same name, from an account name the daemon was handed."""
+    if not ACCOUNT_RE.match(account or ""):
+        raise ValueError(f"{account!r} is not a workstation account")
+    return account[len(ACCOUNT_PREFIX):]
+
+
 def route_path(name: str, account: Optional[str] = None) -> Tuple[str, str]:
     """`(method, path)` for a route name, refusing a name not in `ROUTES` and
     an account that does not match `ACCOUNT_RE`."""
@@ -416,8 +443,9 @@ __all__ = [
     "ERRORS", "HOLDERS", "INPUT_ACTIONS", "LOCAL_OWNER_SLUG", "MAX_BODY_BYTES",
     "MAX_EXEC_TIMEOUT_S", "MAX_FILE_BYTES", "MAX_LIST_ENTRIES", "MAX_OUTPUT_BYTES",
     "MAX_SCROLL_CLICKS", "MAX_TYPE_CHARS", "MAX_WAIT_MS", "NETWORK_MODES", "PAIRING_DIR_ENV", "PROTOCOL_VERSION",
-    "ROUTES", "SCREEN_HEIGHT", "SCREEN_WIDTH", "SCREENSHOT_FORMATS", "SHELLS", "TOKEN_ENTROPY_BYTES",
+    "PROJECTS_DIR", "PROJECTS_DIR_ENV", "PROJECTS_ENV", "ROUTES", "SCREEN_HEIGHT", "SCREEN_WIDTH", "SCREENSHOT_FORMATS", "SHELLS", "TOKEN_ENTROPY_BYTES",
     "TOKEN_ENV", "TOKEN_FILENAME", "TOKEN_PREFIX", "URL_ENV", "account_name", "error_body",
+    "project_folder", "project_folder_of",
     "route_path",
     # `P20-06`, added
     "DEFAULT_GATE_PAIRING_DIR", "GATE_AGENT_NAME", "GATE_PAIRING_DIR_ENV", "GATE_PORT",

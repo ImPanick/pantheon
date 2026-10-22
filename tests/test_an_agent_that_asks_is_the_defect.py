@@ -174,6 +174,15 @@ def _patch_common(monkeypatch, *, skills=False, blocked=()):
     # the test below that is *about* that interaction turns it on.
     monkeypatch.setattr(al, "_skills_pref_enabled",
                         lambda owner: bool(skills), raising=False)
+    # `B1426`. "Any active skill" used to be met by those 286, which are
+    # vendored drafts the catalogue never lists; it no longer counts them. So
+    # the library this file's skills case is about is stated: one published
+    # procedure of the person's own.
+    if skills:
+        monkeypatch.setattr(al, "_skills_for_turn",
+                            lambda sm, owner, disabled_tools=None: [
+                                {"name": "tidy-logs", "status": "published",
+                                 "requires_toolsets": []}], raising=False)
 
 
 def _run(monkeypatch, round_texts, *, results=None, max_rounds=6,

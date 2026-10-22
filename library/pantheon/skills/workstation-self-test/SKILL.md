@@ -16,14 +16,14 @@ After building or changing anything that runs — a site, a web app, a script, a
 
 ## Procedure
 
-1. Put the project in `/projects/<name>/` and write files with the file tools.
+1. Put the project in `$PANTHEON_PROJECTS/<name>/` — your own projects folder. The file tools take the real path, not the variable: read it once (`echo "$PANTHEON_PROJECTS"`, or `get_workspace`) and write there.
 2. Cheapest check first: the project's tests or a syntax check (`python3 -m py_compile app.py`, `node --check app.js`, `pytest -q`). Fix failures before going on.
-3. Start it detached with a log: `cd /projects/<name> && nohup python3 -m http.server 8000 > /tmp/<name>.log 2>&1 < /dev/null &` (or `nohup npm run dev -- --port 5173 > …`).
+3. Start it detached with a log: `cd "$PANTHEON_PROJECTS/<name>" && nohup python3 -m http.server 8000 > /tmp/<name>.log 2>&1 < /dev/null &` (or `nohup npm run dev -- --port 5173 > …`).
 4. Wait, then fetch: `for i in $(seq 60); do curl -fsS -o /dev/null http://127.0.0.1:8000/ 2>/dev/null && break; sleep 0.5; done; curl -sS -w '\nHTTP %{http_code}\n' http://127.0.0.1:8000/ | tail -n 20`. No answer → read `/tmp/<name>.log`, fix, restart. Check every route you added.
 5. Open it in the desktop's Firefox (workstation-apps-and-windows, step 3), take a `computer` `screenshot`, and click through what you built — links, buttons, forms — with a screenshot after each.
 6. Errors: `ctrl+shift+k` in Firefox shows the console — red lines are JavaScript errors with file and line; `F12` closes it. Server errors are in the log.
 7. Fix, reload (`ctrl+shift+r` skips the cache) and look again; repeat 4–7 until page, console and log are clean.
-8. A picture for the person, no screen needed: `firefox --headless --no-remote --profile "$(mktemp -d)" --window-size=1280,800 --screenshot /projects/<name>/screenshot.png http://127.0.0.1:8000/` (works beside an open Firefox). File tools return text, so you see pages through `computer`.
+8. A picture for the person, no screen needed: `firefox --headless --no-remote --profile "$(mktemp -d)" --window-size=1280,800 --screenshot "$PANTHEON_PROJECTS/<name>/screenshot.png" http://127.0.0.1:8000/` (works beside an open Firefox). File tools return text, so you see pages through `computer`.
 9. Report with evidence — commands run, HTTP codes, what the last screenshot shows, anything unchecked and why — then stop the server unless asked to keep it (`pkill -f '[h]ttp.server 8000'`).
 
 ## Pitfalls

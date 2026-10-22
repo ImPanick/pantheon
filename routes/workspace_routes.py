@@ -124,7 +124,7 @@ def setup_workspace_routes():
         # pick; what changes is where they start, and where a folder they make
         # without thinking about it ends up.
         from src.tool_execution import projects_root
-        start = projects_root()
+        start = projects_root(owner)  # `B1424`: this person's own folder
         if not os.path.isdir(start):
             # The data directory refused the folder (read-only volume, a full
             # disk): the old start rather than a listing of nothing.

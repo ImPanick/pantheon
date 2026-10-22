@@ -380,8 +380,9 @@ def get_tool_person() -> Optional[str]:
 PROJECTS_DIRNAME = "projects"
 
 
-def projects_root(create: bool = True) -> str:
-    """The folder new projects are made in, under the data directory.
+def projects_base(create: bool = True) -> str:
+    """The folder every person's projects folder is in, under the data
+    directory — admins browse it whole (`B1424`).
 
     Beside `memory.json` and `app.db` rather than among them: those are the
     install's own records and a project tree scribbling into that directory is
@@ -394,6 +395,25 @@ def projects_root(create: bool = True) -> str:
             os.makedirs(root, exist_ok=True)
         except OSError:
             logger.warning("Could not create the projects root at %s", root,
+                           exc_info=True)
+    return root
+
+
+def projects_root(owner: Optional[str] = None, create: bool = True) -> str:
+    """`B1424`. **This person's** projects folder: one per person, never one
+    for everyone — `<data>/projects/<protocol.project_folder(owner)>`, the same
+    name the workstation gives the same person's folder under `/projects`, read
+    from the one place both sides read it. The owner, 2026-10-22: *"per-user
+    scoped and instanced. No overlaps."*"""
+    from src.workstation_access import workstation_owner
+    from workstation import protocol as _wp
+    root = os.path.join(projects_base(create=create),
+                        _wp.project_folder(workstation_owner(owner)))
+    if create:
+        try:
+            os.makedirs(root, exist_ok=True)
+        except OSError:
+            logger.warning("Could not create the projects folder at %s", root,
                            exc_info=True)
     return root
 
@@ -1405,9 +1425,10 @@ async def _execute_tool_block_impl(
         result = await describe_workspace(owner, station_workspace)
     elif tool in ("grep", "glob", "ls", "get_workspace"):
         # Code-navigation tools — no MCP server; run the direct implementation.
+        # `B1424`: with the owner, so `get_workspace` names their own folder.
         first_line = content.split(chr(10))[0][:80]
         desc = f"{tool}: {first_line}"
-        result = await _direct_fallback(tool, content, progress_cb=progress_cb) \
+        result = await _direct_fallback(tool, content, progress_cb=progress_cb, owner=owner) \
             or {"error": f"{tool}: execution failed", "exit_code": 1}
     elif tool in ("apply_patch", "todowrite"):
         first_line = content.split(chr(10))[0][:80]

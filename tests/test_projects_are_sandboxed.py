@@ -161,8 +161,11 @@ def test_the_refusal_says_where_the_work_belongs(data_dir):
 # ── B1417: the projects folder ──────────────────────────────────────────────
 
 def test_the_projects_folder_is_made_under_the_data_directory(data_dir):
+    # `B1424`: one folder per person inside it, by the workstation's name.
+    from workstation import protocol as P
+    assert te.projects_base() == os.path.join(str(data_dir), "projects")
     root = te.projects_root()
-    assert root == os.path.join(str(data_dir), "projects")
+    assert root == os.path.join(str(data_dir), "projects", P.project_folder(None))
     assert os.path.isdir(root)
 
 
@@ -194,7 +197,8 @@ def test_the_picker_opens_on_the_projects_folder_not_the_install(data_dir, monke
     builder = getattr(wr, "setup_workspace_routes", None) or getattr(wr, "create_router")
     app.include_router(builder())
     answer = TestClient(app).get("/api/workspace/browse").json()
-    assert answer["path"] == os.path.realpath(te.projects_root())
+    # `B1424`: the caller's own folder in it.
+    assert answer["path"] == os.path.realpath(te.projects_root("admin"))
 
 
 # ── the workstation sees projects/ and nothing else of Pantheon's ───────────
@@ -259,11 +263,12 @@ def test_with_sudo_off_the_projects_folder_is_a_place_to_work(station, tmp_path)
     from src.workstation_client import account_for
     projects = tmp_path / "projects"
     projects.mkdir()
-    (projects / "index.html").write_text("<h1>hi</h1>")
     station.system.shared_roots = [projects]
     client, acct = _client(station), account_for(None)
-    asyncio.run(client.ensure(acct))
-    got = asyncio.run(client.read(acct, str(projects / "index.html")))
+    # `B1424`: the person's own folder in it, made by `ensure`.
+    mine = asyncio.run(client.ensure(acct))["projects"]
+    (Path(mine) / "index.html").write_text("<h1>hi</h1>")
+    got = asyncio.run(client.read(acct, str(Path(mine) / "index.html")))
     assert got["data"] == b"<h1>hi</h1>"
 
 
@@ -275,12 +280,13 @@ def test_a_symlink_out_of_the_projects_folder_is_refused(station, tmp_path):
     projects.mkdir()
     secret = tmp_path / "secret.txt"
     secret.write_text("no")
-    (projects / "escape").symlink_to(secret)
     station.system.shared_roots = [projects]
     client, acct = _client(station), account_for(None)
-    asyncio.run(client.ensure(acct))
+    # `B1424`: planted inside the person's own folder, the one place admitted.
+    mine = Path(asyncio.run(client.ensure(acct))["projects"])
+    (mine / "escape").symlink_to(secret)
     with pytest.raises(WorkstationError) as refused:
-        asyncio.run(client.read(acct, str(projects / "escape")))
+        asyncio.run(client.read(acct, str(mine / "escape")))
     assert refused.value.code == "outside_home"
 
 
