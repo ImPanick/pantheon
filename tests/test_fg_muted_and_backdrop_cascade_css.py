@@ -532,11 +532,13 @@ def test_the_three_populations_hold_at_their_counts():
     # when-line, the page's meta line, an empty line, a run's line). Written
     # first as `color-mix(var(--fg) N%, transparent)`; `check-contrast.py`'s
     # `B1408` ratchet refused them, and this is the token it names.
-    assert len(uses) == 128, f"expected 128 uses of --fg-muted, found {len(uses)}"
+    # 128 -> 130 and 120 -> 122 bare: `P24-21`'s team card's `+N` and `P24-09`'s
+    # passed delivery check, both text that is secondary on purpose.
+    assert len(uses) == 130, f"expected 130 uses of --fg-muted, found {len(uses)}"
 
     bare = [expr for _, expr in uses if not _fallback(expr)]
-    assert len(bare) == 120, (
-        f"expected 120 bare `var(--fg-muted)` uses, found {len(bare)}. If a site "
+    assert len(bare) == 122, (
+        f"expected 122 bare `var(--fg-muted)` uses, found {len(bare)}. If a site "
         "was legitimately added or removed, move this number and say which in "
         "the commit — do not widen the assertion."
     )
@@ -585,8 +587,9 @@ def test_the_bare_uses_split_across_properties_as_measured():
     # `color` 104 -> 107: `B710`'s three (see above). All text again, and the
     # third of them is an override of a chip rule that paints itself the other
     # way — which is why this census moved and `B1408`'s did not.
-    # `color` 107 -> 114: `P24-12`'s seven (see above), all text.
-    assert tally == {"color": 114, "border-color": 4, "background": 2}, tally
+    # `color` 107 -> 114: `P24-12`'s seven (see above), all text. 114 -> 116:
+    # `P24-21`'s `+N` and `P24-09`'s passed check.
+    assert tally == {"color": 116, "border-color": 4, "background": 2}, tally
 
 
 def test_the_javascript_uses_are_recorded_but_not_this_rows_work():

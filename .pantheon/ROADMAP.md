@@ -84,9 +84,9 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P21 | Documents, kept in order | 4 | 0 | 0 | **4** |
 | P22 | The Workbench | 25 | 0 | 0 | **25** |
 | P23 | Alignment — the audits, fixed | 9 | 0 | 0 | **9** |
-| P24 | Agents — the hall of hireable agents | 25 | 11 | 0 | **14** |
+| P24 | Agents — the hall of hireable agents | 25 | 10 | 0 | **15** |
 | Backlog | Bugs and hardening found in flight | 1011 | 350 | 0 | **659** |
-| **Total** | | **1467** | **386** | **5** | **1074** |
+| **Total** | | **1467** | **385** | **5** | **1075** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -250,7 +250,7 @@ they are for.*
 > was claimed at the time is worth more than a quietly corrected one (`B44`).
 
 ### P24 wave B: an agent delivers or says why, the install's brakes, teams, and a trial
-`6f51844`…(this commit). **1467 tracked, 1074 done. 7 more `P24` rows closed (`P24-08`, `-10`, `-12`, `-13`, `-14`, `-15`, `-21`), `P24-09` in part; 0 regressions left standing. `B1431` and `B1432` filed and closed.**
+`6f51844`…(this commit). **1467 tracked, 1075 done. `P24-08`, `P24-10`, `P24-11`, `P24-12`, `P24-13`, `P24-14`, `P24-15` and `P24-21` closed; `P24-09` in part; 0 regressions left standing. `B1431` and `B1432` filed and closed.**
 **A hire now has to deliver.** Each run's `delivers` is checked by code — an answer and its words, a document by title and its sections, drafts against their limit, a file inside the projects folder — and a miss gets one more pass told exactly what is missing; a second miss fails the run and parks the hire with the sentence (`P24-09`, the judge model still open). **The brakes:** runs per day park a hire whose trigger fires all day; *Pause all agents* and *Most agent runs at once* are Settings → Agents, saved like every admin setting and out of the assistant's reach (`P24-10`, `P24-15`). **Teams** are `TEAM.md` files — seven ship — hired in one go with shared inputs asked once (`P24-21`). **Try it once** is a real run of a trial hire whose tasks fire only when asked (`D-2026-10-23-01`). A hire's page answers the questions its runs wait on, in place (`P24-14`).
 **Found by driving it:** an agent's `ask` card parked its run correctly and *Allow once* then refused the very action it approved (`B1431`). **Found by running CI's checker list:** wave A had left `check-auth-map` and `check-env-declared` red (`B1432`).
 
@@ -11142,7 +11142,8 @@ waiting on a connector (wave 3) — laid out the way PandaOS lays out its board.
   **In part, 2026-10-23:** the deterministic half and the repair pass. `src/agents/runtime.check_contract`: an answer and the words it must say, a document by title in this person's documents since the run began and its sections, drafts against their limit, a file inside the projects folder and its words. A miss gets one more pass told exactly what is missing (its first answer handed in as data, unarmed); a second miss fails the run (`AgentDidNotDeliver`) and parks the hire with the sentence. Each run's report keeps its checks; the hire's page lists them ✓/✗. `Verify:` `tests/test_an_agent_delivers_or_says_why.py`. Open for the judge model.
 - [x] **P24-10** **Budgets per hire and an install cap; *Pause all agents*; needs attention with its reason.**
   — **done 2026-10-23** — per hire: `runs_per_day` (a hit parks the hire with its sentence, so a trigger that fires all day stops asking), `max_steps` and `max_minutes` on its tasks; install-wide: `agents_paused` (a run is recorded `skipped` with the sentence; nobody's hire is changed) and `agents_max_concurrent` (1–16, default 2; a run past it is deferred two minutes with its trigger, nothing lost; plain tasks are not counted). The assistant cannot move either (`manage_settings`' self-restraint keys). `Verify:` `tests/test_an_agent_delivers_or_says_why.py`.
-- [ ] **P24-11** **Background runs yield to a person chatting with the same model.**
+- [x] **P24-11** **Background runs yield to a person chatting with the same model.**
+  — **done 2026-10-23** — inherited, now proved: an agent's run is its hire's task's run, so it passes `B1060`'s gate — it waits for Pantheon to be idle before it takes the model slot, a person's own run goes first, and it then runs. The gate is install-wide rather than per model, which is the stronger form of the row. `Verify:` `tests/test_an_agent_yields_to_a_person.py`.
 - [x] **P24-12** **The Agents window.** *Your agents* strip, Teams row, search, section chips with counts, sections
   with *Show more*, **Hired** cards, project pinning; a door in the sidebar and the rail.
   **First cut built 2026-10-22** (`static/js/agents/agentsWindow.js`): *Your agents*, search, section chips with counts, sections with *Show more*, **Hired**, the sidebar and rail doors, `/agents`.

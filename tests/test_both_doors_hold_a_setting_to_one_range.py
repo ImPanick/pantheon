@@ -115,9 +115,11 @@ def test_every_ranged_setting_is_stored_the_same_through_both_doors(monkeypatch,
             if not result.get("response", "").startswith("Set "):
                 # `_SELF_RESTRAINT_KEYS`: refused outright, nothing stored.
                 # `P22-17` adds the parked step's card deadline, for the
-                # same reason (`D-2026-10-02-01` §1).
+                # same reason (`D-2026-10-02-01` §1). `P24-10` adds how many
+                # hired agents may run at once: an agent's own brake.
                 assert key in ("approval_timeout_seconds",
-                               "workflow_approval_timeout_seconds"), (key, result)
+                               "workflow_approval_timeout_seconds",
+                               "agents_max_concurrent"), (key, result)
                 continue
             post({key: value})
             agent_stored = settings.load_settings()[key]

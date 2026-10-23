@@ -275,6 +275,8 @@ function buildFixture(document) {
     // operator's network allowlist by any word. The fixture mirrors the
     // production set, so it gains it here too.
     'networks',
+    // `P24-15`, 2026-10-23. Settings → Agents: the two brakes on hired agents.
+    'agents',
     // `P20-02`, 2026-09-30. The Workstation panel: in the Admin group, visible
     // to a non-admin who may use it (their status and their reset).
     'workstation',
@@ -400,6 +402,7 @@ function moduleSource(relativePath) {
       'users',
       'embeddings',
       'networks',   // `P9-02` — see the fixture list above
+      'agents',     // `P24-15` — see the fixture list above
       'workstation', // `P20-02` — see the fixture list above
       'system',
     ].join(','),

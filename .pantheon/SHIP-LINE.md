@@ -197,6 +197,12 @@ route attribution the one carrying real risk, which is why its own test forbids 
 
 **Direction as of 2026-10-17: the open count is falling.**
 
+Re-measured 2026-10-23, at `P24`'s second wave: the ten newest distinct waves read **50 filed, 38 closed**,
+open **380 → 392**. The rise is a build list rather than defects — opening `P24`, the Agents hall, filed its 25
+rows in one wave, and its first two waves have closed 15 of them. The direction is stated as it reads, not as it is explained.
+
+**Direction as of 2026-10-23: the open count is rising.**
+
 ### A second number, which is the one that moves
 
 Of the last 40 `B` rows filed — `B360` through `B455`, four waves of sweeps plus
