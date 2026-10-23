@@ -4602,6 +4602,24 @@ class TaskScheduler:
             except Exception:
                 crew = None
 
+        # `P24-05`. A hired agent's task: its whole run is assembled from the
+        # hire and its manifest here, at the moment it starts. `None` for every
+        # other task, which then runs exactly as it always has (`Law 1`).
+        from src.agents.runtime import plan_for_task as _agent_plan_for
+        # A caller with no session (the direct-call tests, `Law 1`) has no hire.
+        agent_plan = _agent_plan_for(db, task) if db is not None else None
+        if agent_plan is not None and run_id is not None:
+            _agent_slot = self._state_for(run_id)
+            _agent_slot["allowed_tools"] = list(agent_plan.tools)
+            _agent_slot["suppress_skills"] = True
+            _agent_slot["context_messages"] = (list(_agent_slot.get("context_messages") or ())
+                                               + list(agent_plan.context_messages))
+            _agent_slot["agent"] = {"hire_id": agent_plan.hire_id,
+                                    "ask_effects": sorted(agent_plan.ask_effects),
+                                    "never_effects": sorted(agent_plan.never_effects)}
+            for _line in agent_plan.skill_lines:
+                self._record_run_step(run_id, kind="progress", detail=_line)
+
         # Determine endpoint + model
         endpoint_url = task.endpoint_url
         model = task.model
@@ -4659,6 +4677,8 @@ class TaskScheduler:
             if crew and crew.personality
             else "You are a helpful assistant executing a scheduled task. Use available tools to complete the task thoroughly."
         )
+        if agent_plan is not None:
+            system_prompt = agent_plan.system_prompt
         char_id = (getattr(task, "character_id", None) or "").strip()
         if char_id:
             try:
@@ -4711,17 +4731,22 @@ class TaskScheduler:
         # RAG-select relevant tools for this prompt + always-available assistant tools.
         # Without this, all 40+ tools get sent and models hit their tool limit.
         relevant_tools = None
-        try:
-            from src.tool_index import get_tool_index, ASSISTANT_ALWAYS_AVAILABLE
-            tool_idx = get_tool_index()
-            if tool_idx:
-                rag_tools = tool_idx.get_tools_for_query(task.prompt or "", k=8)
-                relevant_tools = compose_task_relevant_tools(
-                    rag_tools, ASSISTANT_ALWAYS_AVAILABLE, disabled_tools
-                )
-                logger.info(f"[assistant] RAG selected {len(rag_tools)} tools + {len(ASSISTANT_ALWAYS_AVAILABLE)} always-available + shell/file defaults = {len(relevant_tools)} total for '{task.name}'")
-        except Exception as e:
-            logger.warning(f"[assistant] RAG tool selection failed, using all: {e}")
+        if agent_plan is not None:
+            # `P24-05`. An agent's tools are its manifest's, every run — no
+            # retrieval guess adds or drops one (`B1414`/`B1416`).
+            relevant_tools = set(agent_plan.tools) - set(disabled_tools)
+        else:
+            try:
+                from src.tool_index import get_tool_index, ASSISTANT_ALWAYS_AVAILABLE
+                tool_idx = get_tool_index()
+                if tool_idx:
+                    rag_tools = tool_idx.get_tools_for_query(task.prompt or "", k=8)
+                    relevant_tools = compose_task_relevant_tools(
+                        rag_tools, ASSISTANT_ALWAYS_AVAILABLE, disabled_tools
+                    )
+                    logger.info(f"[assistant] RAG selected {len(rag_tools)} tools + {len(ASSISTANT_ALWAYS_AVAILABLE)} always-available + shell/file defaults = {len(relevant_tools)} total for '{task.name}'")
+            except Exception as e:
+                logger.warning(f"[assistant] RAG tool selection failed, using all: {e}")
 
         # `P8-23`. What fired this run, as a message the model can read and must
         # not obey. `None` when nothing triggered it, which is every scheduled
@@ -4777,6 +4802,16 @@ class TaskScheduler:
             result = strip_think(result or "", prose=True, prompt_echo=True).strip() or result
         except Exception:
             pass
+
+        if agent_plan is not None:
+            # `P24-06`. What the run left, and its carry-forward into the
+            # hire's notebook. A report that cannot be kept does not fail a
+            # run that did its job — the run's own record still says so.
+            try:
+                from src.agents.runtime import record_report
+                record_report(db, task, run_id, result or "", self.run_steps(run_id))
+            except Exception:
+                logger.warning("Could not keep the report for %s's run", task.name, exc_info=True)
 
         return result
 
@@ -5024,9 +5059,16 @@ class TaskScheduler:
             _loop_extra["approval_held_by_run"] = True
         if _slot.get("allowed_tools") is not None:
             # `P22-16`. An AI step limited to its own tools (`wf-effects`' policy).
+            # `P24-05` / `P24-07`: a hired agent's run is limited the same way,
+            # and carries its hire's effects table beside the list.
             from src.tool_policy import ToolPolicy
+            _agent = _slot.get("agent") or {}
             _loop_extra["tool_policy"] = ToolPolicy(
-                allowed_tools=frozenset(_slot["allowed_tools"]))
+                allowed_tools=frozenset(_slot["allowed_tools"]),
+                **({"allowed_owner": "this agent's",
+                    "ask_effects": frozenset(_agent.get("ask_effects") or ()),
+                    "never_effects": frozenset(_agent.get("never_effects") or ())}
+                   if _agent else {}))
         if _slot.get("suppress_skills"):
             _loop_extra["suppress_skills"] = True
 

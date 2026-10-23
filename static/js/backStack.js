@@ -50,6 +50,7 @@ export const ROUTES = {
   'memory-modal': 'brain',
   'skills-modal': 'skills',
   'workbench-modal': 'workbench',
+  'agents-modal': 'agents',
   'settings-modal': 'settings',
   'cookbook-modal': 'cookbook',
   'calendar-modal': 'calendar',

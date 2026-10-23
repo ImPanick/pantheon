@@ -265,6 +265,17 @@ class ToolPolicy:
     #: tool added to Pantheon tomorrow is outside it too. `stream_agent_loop`
     #: advertises only what is inside it, after retrieval and every widening.
     allowed_tools: Optional[frozenset] = None
+    #: `P24-05`. Whose list `allowed_tools` is, in the words its refusal uses:
+    #: a workflow step's (the default, every existing caller) or an agent's.
+    allowed_owner: str = "this step's"
+    #: `P24-07`. A hired agent's effects table: actions with one of these
+    #: effects ask before they run (`ask_effects`) or are refused in a sentence
+    #: no approval lifts (`never_effects`). Empty for every other turn, which
+    #: is every existing caller. Read by `ToolRunSecurityContext.decision_for`,
+    #: ahead of the trust ladder and of a chat's Auto, because the hire is the
+    #: person's standing answer about this agent and a chat setting is not.
+    ask_effects: frozenset = frozenset()
+    never_effects: frozenset = frozenset()
 
     def __post_init__(self) -> None:
         # A list or set handed in becomes a frozenset of names, so the policy a
@@ -300,7 +311,7 @@ class ToolPolicy:
 
     def reason_for(self, tool_name: Optional[str]) -> str:
         if tool_name and self.outside_allowed(tool_name):
-            return f"“{tool_name}” is not one of this step's tools."
+            return f"“{tool_name}” is not one of {self.allowed_owner} tools."
         if tool_name and tool_name in self.reasons:
             return self.reasons[tool_name]
         if self.block_all_tool_calls and self.mode == "guide_only":

@@ -219,6 +219,7 @@ function initRailHoverLabels() {
     'rail-tasks': 'Tasks',
     'rail-theme': 'Theme',
     'rail-workbench': 'Workbench',   // P22-02
+    'rail-agents': 'Agents',         // P24-12
     'rail-settings': 'Settings',
   };
   document.querySelectorAll('#icon-rail .icon-rail-btn').forEach(btn => {
@@ -1153,12 +1154,6 @@ function initializeEventListeners() {
   // Tasks tool button
   const toolTasksBtn = el('tool-tasks-btn');
   if (toolTasksBtn) {
-  // Agents buttons (sidebar + rail)
-  const agentsBtns = [el("rail-agents"), el("tool-agents-btn")].filter(Boolean);
-  agentsBtns.forEach(btn => {
-    btn.addEventListener("click", () => {
-    });
-  });
     toolTasksBtn.addEventListener('click', () => {
       if (tasksModule) {
         if (tasksModule.isTasksOpen() && _raiseIfOpen('tasks-modal')) return;
@@ -1187,6 +1182,25 @@ function initializeEventListeners() {
       } catch (err) {
         console.error('The Workbench did not load:', err);
         uiModule.showError('The Workbench did not load. Reload the page and try again.');
+      }
+    });
+  }
+
+  // `P24-12`. The Agents hall's door, the first of the sidebar's Tools, which
+  // `#rail-agents` presses. A toggle like the Workbench's: a minimized window
+  // comes back, an open one is raised, a closed one opens. Fetched on first press.
+  const toolAgentsBtn = el('tool-agents-btn');
+  if (toolAgentsBtn) {
+    toolAgentsBtn.addEventListener('click', async () => {
+      const Modals = await import('./js/modalManager.js?v=20261009census');
+      if (Modals.toggle('agents-modal')) return;
+      try {
+        const ag = await import('./js/agents/agentsWindow.js');
+        if (ag.isAgentsOpen() && _raiseIfOpen('agents-modal')) return;
+        await ag.openAgents();
+      } catch (err) {
+        console.error('Agents did not load:', err);
+        uiModule.showError('Agents did not load. Reload the page and try again.');
       }
     });
   }
@@ -1360,6 +1374,7 @@ function initializeEventListeners() {
   const _loadWorkbench = () => import('./js/workbench/workbench.js').then((m) => { _wbModule = m; return m; });
   const _openWindow = {
     'memory-modal':   () => document.getElementById('tool-memory-btn')?.click(),
+    'agents-modal':   () => import('./js/agents/agentsWindow.js').then((m) => m.openAgents()),
     'skills-modal':   (tab) => import('./js/skills.js').then((m) => m.openSkillsWindow(tab || 'browse')),
     'workbench-modal': (tab) => _loadWorkbench().then((wb) => wb.openWorkbench({
       room: tab || undefined, describeTrigger: tasksModule && tasksModule.scheduleLabel })),
@@ -3989,6 +4004,7 @@ function startPantheonApp() {
     'rail-memory':    'tool-memory-btn',
     'rail-theme':     'tool-theme-btn',
     'rail-workbench': 'tool-workbench-btn',   // P22-02
+    'rail-agents':    'tool-agents-btn',      // P24-12
     'rail-email':     'email-section-title',
   };
   Object.entries(_railToolMap).forEach(([railId, toolId]) => {

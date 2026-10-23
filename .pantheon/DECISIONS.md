@@ -3057,3 +3057,26 @@ reasoning still has to be written down, and the owner can overturn any of these 
    that is not missing anything a person can use. They are closed with every design answer kept, so nothing has to
    be rediscovered when there is a second account. This is the one of the five that **removes** work rather than
    adding it, and it is the reason the other four could be taken at once.
+
+## D-2026-10-22-01 — agents are hireable by everyone, and the plan's eight calls stand on their recommendations
+
+*The owner, 2026-10-22, on the Claude Doc "Pantheon Agents — the plan" (rev 24): **"Fuckin beautiful — let's roll
+into it."** Earlier the same day, in the doc's comment thread on its hiring gate: **"Disagree. All users shall be
+able to view the entire agent catalog, and hire any/all agents they desire. This is not intended to be a multi-tennant
+SaaS — but an internal infra add-on for companies or somebody's home network."***
+
+1. **The product word is *Agents*.** `CrewMember` stays what it is underneath and is not used by a hire (`P24-04`).
+2. **Everyone, any agent.** There is no hiring privilege. A hired agent's tools follow the hirer's own privileges
+   through the resolver every privilege uses, and the hire form names what a run will lack.
+3. **Effects that leave the install ask by default;** the hirer may set *Allow* on their own hire, recorded on every
+   run report. A hirer may only tighten what the manifest declares.
+4. **Code and ops agents run with `sudo` off for unattended runs** until `B1428` is settled; a person's own chat
+   keeps their setting.
+5. **An agent nobody has measured on your model is shown *Not measured*** with *Try it once*, never hidden.
+6. **Reference models for proof runs:** gpt-oss-20b and qwen3-coder on LM Studio, plus a hosted model the owner names.
+7. **An agent's memory is its own by default** — the hire's notebook — and a hire may opt into the person's memory.
+8. **A hire is personal, optionally pinned to a project;** a team pins all its members to one.
+
+Costs: (2) puts every tool decision on the privilege resolver, which already decides chat — so there is nothing new
+to keep in step; (8) differs from PandaOS, where every agent belongs to a project, because a Pantheon person's
+morning brief is not about any one project.

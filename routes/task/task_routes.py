@@ -502,10 +502,15 @@ def setup_task_routes(task_scheduler) -> APIRouter:
             # tasks, built from the SAME rows the list is built from — a second
             # endpoint would be a second query answering the same question, and
             # `check-unreachable.py` counts a route no page fetches.
+            # `P24-06`. Which listed tasks are how a hired agent runs, in one
+            # query — the card says whose they are.
+            from src.agents.hires import labels_for_tasks
+            agent_labels = labels_for_tasks(db, [t.id for t in tasks])
             return {
-                "tasks": [_task_to_dict(t, include_last_run_result=include_last_run,
-                                        last_run=last_runs.get(t.id),
-                                        workflow_id=workflow_ids.get(t.id))
+                "tasks": [{**_task_to_dict(t, include_last_run_result=include_last_run,
+                                           last_run=last_runs.get(t.id),
+                                           workflow_id=workflow_ids.get(t.id)),
+                           "agent": agent_labels.get(t.id)}
                           for t in tasks],
                 "graph": build_task_graph(tasks),
             }
@@ -1073,6 +1078,15 @@ def setup_task_routes(task_scheduler) -> APIRouter:
         finally:
             db.close()
 
+    def _refuse_an_agents_task(db, task) -> None:
+        """`P24-04`. A task a hire compiled to is changed through its hire, or
+        the hire and its tasks would be two answers to when the agent runs
+        (`Law 7`). *Run now* and *Stop* stay here: they change nothing."""
+        from src.agents.hires import hire_for_task, task_belongs_to_agent
+        hire = hire_for_task(db, task.id)
+        if hire is not None:
+            raise HTTPException(409, task_belongs_to_agent(task.name, hire.name))
+
     @router.put("/{task_id}")
     async def update_task(request: Request, task_id: str, req: TaskUpdate):
         user = _owner(request)
@@ -1083,6 +1097,7 @@ def setup_task_routes(task_scheduler) -> APIRouter:
                 raise HTTPException(404, "Task not found")
             if user and task.owner != user:
                 raise HTTPException(403, "Access denied")
+            _refuse_an_agents_task(db, task)
 
             # `P22-05`. A workflow's start stays one, and is called what its
             # workflow is called (the document's name is the one fact; a save
@@ -1221,6 +1236,7 @@ def setup_task_routes(task_scheduler) -> APIRouter:
                 raise HTTPException(404, "Task not found")
             if user and task.owner != user:
                 raise HTTPException(403, "Access denied")
+            _refuse_an_agents_task(db, task)
             if (task.task_type or "") == "workflow":
                 # `P22-05`. Deleting the start alone would leave its document
                 # with nothing to run it. The workflow's own DELETE takes both.
@@ -1251,6 +1267,7 @@ def setup_task_routes(task_scheduler) -> APIRouter:
                 raise HTTPException(404, "Task not found")
             if user and task.owner != user:
                 raise HTTPException(403, "Access denied")
+            _refuse_an_agents_task(db, task)
             task.status = "paused"
             db.commit()
             return {"ok": True, "status": "paused"}
@@ -1267,6 +1284,7 @@ def setup_task_routes(task_scheduler) -> APIRouter:
                 raise HTTPException(404, "Task not found")
             if user and task.owner != user:
                 raise HTTPException(403, "Access denied")
+            _refuse_an_agents_task(db, task)
             _require_admin_for_task_action(user, task.task_type, task.action, db=db, task=task)
             if (task.task_type or "") == "workflow":
                 # `P22-06`. Resuming a workflow's start is switching it on, by

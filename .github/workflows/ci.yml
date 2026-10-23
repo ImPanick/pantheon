@@ -111,7 +111,7 @@ jobs:
           "
 
   wiring-ratchet:
-    name: Wiring ratchet (check-wiring.py --max 25)
+    name: Wiring ratchet (check-wiring.py --max 23)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -243,7 +243,7 @@ jobs:
         run: python3 .pantheon/check-mcp-schemas.py
 
       - name: check-wiring
-        run: python3 .pantheon/check-wiring.py --max 25
+        run: python3 .pantheon/check-wiring.py --max 23
       # Law 14, arrived at by accident. A module imported under two URLs is two
       # modules with two copies of its state, and nothing breaks loudly when it
       # happens — a registry written through one specifier is simply empty when

@@ -173,6 +173,8 @@ const _LABELS = {
   // `P22-02`. The Workbench — the workflow glyph from the shared table, the
   // same picture as its two doors and ⋮ → Workflow on a task card.
   'workbench-modal':   { label: 'Workbench', icon: iconSvg(WORKFLOW_GLYPH, { outline: true }) },
+  // `P24-12`. The Agents hall — its glyph is the doors' (`agents/agentsWindow.js:AGENT_ICON`).
+  'agents-modal':      { label: 'Agents', icon: 'M7 8h10a3 3 0 0 1 3 3v6a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3v-6a3 3 0 0 1 3-3zM12 4v4M9 13h.01M15 13h.01M9.5 16.5h5' },
 };
 
 // ── `P9-11` — background work, on the dock, whether or not its window is open ──
@@ -1929,6 +1931,8 @@ const _AUTO_WIRE = {
   // (`app.js`), and ⋮ → Workflow on a task card — all through
   // `workbench/workbench.js:openWorkbench`.
   'workbench-modal':      { rail: 'rail-workbench', sidebar: 'tool-workbench-btn' },
+  // `P24-12`. Built by `agents/agentsWindow.js:openAgents`, which registers it.
+  'agents-modal':         { rail: 'rail-agents',    sidebar: 'tool-agents-btn' },
 };
 
 function _autoRegister(id) {

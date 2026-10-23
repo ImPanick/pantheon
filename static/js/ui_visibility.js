@@ -22,6 +22,7 @@ export const UI_VIS_MAP = {
   'email-section':       '#email-section, #rail-email',
   'tools-section':       '#tools-section',
   // Per-tool entries pair the sidebar button with its rail launcher.
+  'tool-agents':         '#tool-agents-btn, #rail-agents',         // P24-12
   'tool-assistant':      '#tool-assistant-btn, #rail-assistant',   // B1044
   'tool-calendar':       '#tool-calendar-btn, #rail-calendar',
   'tool-compare':        '#tool-compare-btn, #rail-compare',
@@ -244,6 +245,13 @@ export const TOOL_VISIBILITY = Object.freeze({
     label: 'Theme', doors: ['tool-theme-btn', 'rail-theme'],
     windows: ['theme-modal'], slash: ['tour-theme'], routes: ['/theme'],
     shortcut: 'open_theme', ui: 'tool-theme',
+  }),
+  // `P24-12`. The Agents hall. Everyone may hire any agent
+  // (`D-2026-10-22-01` §2), so no feature, privilege or admin column: what a
+  // hire's runs may call is each person's own privileges, asked per tool.
+  agents: _tool({
+    label: 'Agents', doors: ['tool-agents-btn', 'rail-agents'],
+    windows: ['agents-modal'], routes: ['/agents'], ui: 'tool-agents',
   }),
   workbench: _tool({
     label: 'Workbench', doors: ['tool-workbench-btn', 'rail-workbench'],

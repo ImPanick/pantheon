@@ -483,7 +483,7 @@ def test_fg_muted_resolves_on_all_sixteen_palettes():
 
 
 def test_the_three_populations_hold_at_their_counts():
-    """113 bare, 8 with a fallback, 121 in all (101 before `P21-01`).
+    """120 bare, 8 with a fallback, 128 in all (101 before `P21-01`).
 
     The bare count is the row's deliverable and the fallback count is where a
     third class would hide, so both are pinned by spelling as well as by total.
@@ -526,11 +526,17 @@ def test_the_three_populations_hold_at_their_counts():
     # so the fallback was dead on arrival and this case went red the day it
     # landed and was not run. That is the third class this test exists to catch,
     # caught. The fallback is gone and the site is bare like the other 96.
-    assert len(uses) == 121, f"expected 121 uses of --fg-muted, found {len(uses)}"
+    #
+    # 121 -> 128 and 113 -> 120 bare: `P24-12`'s seven, all `color:` and all
+    # bare — the Agents hall's quiet text (section heads, a card's tagline and
+    # when-line, the page's meta line, an empty line, a run's line). Written
+    # first as `color-mix(var(--fg) N%, transparent)`; `check-contrast.py`'s
+    # `B1408` ratchet refused them, and this is the token it names.
+    assert len(uses) == 128, f"expected 128 uses of --fg-muted, found {len(uses)}"
 
     bare = [expr for _, expr in uses if not _fallback(expr)]
-    assert len(bare) == 113, (
-        f"expected 113 bare `var(--fg-muted)` uses, found {len(bare)}. If a site "
+    assert len(bare) == 120, (
+        f"expected 120 bare `var(--fg-muted)` uses, found {len(bare)}. If a site "
         "was legitimately added or removed, move this number and say which in "
         "the commit — do not widen the assertion."
     )
@@ -548,7 +554,7 @@ def test_the_three_populations_hold_at_their_counts():
 
 
 def test_the_bare_uses_split_across_properties_as_measured():
-    """107 `color`, 4 `border-color`, 2 `background` (87 before `P21-01`).
+    """114 `color`, 4 `border-color`, 2 `background` (87 before `P21-01`).
 
     Worth pinning separately from the total because the three do different
     things when the token is undefined and the row's framing only covers one
@@ -579,7 +585,8 @@ def test_the_bare_uses_split_across_properties_as_measured():
     # `color` 104 -> 107: `B710`'s three (see above). All text again, and the
     # third of them is an override of a chip rule that paints itself the other
     # way — which is why this census moved and `B1408`'s did not.
-    assert tally == {"color": 107, "border-color": 4, "background": 2}, tally
+    # `color` 107 -> 114: `P24-12`'s seven (see above), all text.
+    assert tally == {"color": 114, "border-color": 4, "background": 2}, tally
 
 
 def test_the_javascript_uses_are_recorded_but_not_this_rows_work():

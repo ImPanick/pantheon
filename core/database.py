@@ -1627,6 +1627,78 @@ class TaskRunNode(Base):
     )
 
 
+# ── `P24-03` · a hire is one row; it compiles to tasks ─────────────────────
+#
+# `D-2026-10-22-01`. An agent is a file (`src/agents/manifest.py`); a hire is
+# who switched it on and with what. Three NEW tables and no ALTER of an existing
+# one, so `init_db`'s `create_all` is the whole migration (the move `P22-05`
+# made for workflows). What a hire runs as are ordinary `scheduled_tasks`, tied
+# back by `agent_hire_tasks` — a task deleted by any path that does not know
+# about agents takes its link with it (CASCADE), and the hire simply has one
+# trigger fewer.
+#
+# **No status of a run is stored here.** How a run ended is `task_runs.status`
+# and nothing else (`Law 7`); `agent_run_reports` holds only what a finished
+# run left behind, keyed by that run.
+class AgentHire(TimestampMixin, Base):
+    """One person's hire of one agent."""
+    __tablename__ = "agent_hires"
+
+    id         = Column(String, primary_key=True, index=True)
+    owner      = Column(String, nullable=True, index=True)
+    agent_id   = Column(String, nullable=False, index=True)
+    # The manifest version the hire was made (or last updated) at — an update
+    # to the file never changes a running hire silently.
+    version    = Column(String, nullable=False)
+    # What the hall calls it; the agent's name unless the person renamed it.
+    name       = Column(String, nullable=False)
+    # The filled inputs, as JSON `{key: value}`.
+    inputs     = Column(Text, nullable=False, default="{}")
+    # The person's own tightening of the manifest's effects, as JSON
+    # `{effect: "ask"|"never"|"allow"}` — `allow` only where the manifest
+    # says `ask` (`D-2026-10-22-01` §3); never looser than the file.
+    grants     = Column(Text, nullable=False, default="{}")
+    # on · paused · attention (`HIRE_STATUSES`, `src/agents/hires.py`).
+    status     = Column(String, nullable=False, default="on")
+    # Why, when the status is `attention` — one sentence a person can act on.
+    attention  = Column(Text, nullable=True)
+    # The IANA zone its times mean.
+    tz_name    = Column(String, nullable=True)
+    # `D-2026-10-22-01` §8: pinned to one of the person's projects, or NULL.
+    project    = Column(String, nullable=True)
+    # `P24-05`. The agent's own memory: what its last runs carried forward.
+    notebook   = Column(Text, nullable=True)
+
+
+class AgentHireTask(Base):
+    """Which tasks a hire compiled to — one per trigger."""
+    __tablename__ = "agent_hire_tasks"
+
+    task_id = Column(String, ForeignKey("scheduled_tasks.id", ondelete="CASCADE"),
+                     primary_key=True)
+    hire_id = Column(String, ForeignKey("agent_hires.id", ondelete="CASCADE"),
+                     nullable=False, index=True)
+    # The trigger's position in the manifest, so a recompile replaces like for like.
+    trigger = Column(Integer, nullable=False, default=0)
+
+
+class AgentRunReport(Base):
+    """`P24-06`. What one finished run of a hire left behind."""
+    __tablename__ = "agent_run_reports"
+
+    run_id     = Column(String, ForeignKey("task_runs.id", ondelete="CASCADE"),
+                        primary_key=True)
+    hire_id    = Column(String, ForeignKey("agent_hires.id", ondelete="CASCADE"),
+                        nullable=False, index=True)
+    created_at = Column(DateTime, default=utcnow_naive, nullable=False)
+    # JSON: {answer, read, wrote, refused, asked, carried, contract}
+    report     = Column(Text, nullable=False)
+
+    __table_args__ = (
+        Index('ix_agent_run_reports_hire', 'hire_id', 'created_at'),
+    )
+
+
 class Event(Base):
     """One thing that happened, with the time it happened at (`P14-01`).
 

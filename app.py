@@ -1059,6 +1059,9 @@ app.include_router(setup_task_routes(task_scheduler))
 # `P22-05`…`P22-08`. A workflow's document, versions, switch, runs and step test.
 from routes.workflow.workflow_routes import setup_workflow_routes
 app.include_router(setup_workflow_routes(task_scheduler))
+# `P24-03`. The Agents hall: the catalogue, hires, and their reports.
+from routes.agent_routes import setup_agent_routes
+app.include_router(setup_agent_routes())
 
 from routes.assistant_routes import setup_assistant_routes
 app.include_router(setup_assistant_routes(task_scheduler))
@@ -1230,7 +1233,7 @@ async def serve_library(request: Request):
 PAGE_ROUTES = (
     "notes", "calendar", "cookbook", "forge", "email", "memory", "brain",
     "gallery", "tasks", "library", "settings", "skills", "workbench",
-    "research", "theme", "compare",
+    "research", "theme", "compare", "agents",
 )
 _PAGE_ROUTES_ALREADY_SERVED = {"notes", "calendar", "cookbook", "email", "memory",
                                "gallery", "tasks", "library"}

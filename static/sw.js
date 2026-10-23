@@ -8,7 +8,7 @@
 //   - Other static assets (images/fonts/libs): cache-first with bg refresh.
 //   - API / non-GET: never cached.
 // Bump CACHE_NAME whenever the precache list or SW logic changes.
-const CACHE_NAME = 'pantheon-v453-kept-copy';
+const CACHE_NAME = 'pantheon-v454-agents';
 
 // KaTeX resolves these from its own stylesheet, so caching the CSS without them
 // gives offline math fallback glyphs instead of proper typesetting.
@@ -652,6 +652,7 @@ async function precacheShellGraph(cache, seeds) {
 // (`/settings/shortcuts`), all served the shell by `app.py`'s `PAGE_ROUTES`.
 const SHELL_ROUTES = new Set([
   '/',
+  '/agents',
   '/brain',
   '/calendar',
   '/compare',

@@ -440,12 +440,12 @@ CLAIMS: Tuple[Claim, ...] = (
     Claim(
         id="tests",
         area="Verification apparatus",
-        headline="Test files 792 -> 1561, and a suite of 20,309 passing with nothing red.",
+        headline="Test files 792 -> 1566, and a suite of 20,309 passing with nothing red.",
         stock="792 test files.",
-        pantheon=("1561 test files, and 20,309 tests passing, 0 failing, 113 skipped, "
+        pantheon=("1566 test files, and 20,309 tests passing, 0 failing, 113 skipped, "
                   "0 xfailed when the suite was last run whole — 2026-10-18, at `c66fe54`."),
         before="792 test files",
-        after="1561 test files · 20,309",
+        after="1566 test files · 20,309",
         provenance="diffed",
         repro=f"git ls-tree -r --name-only {FORK_POINT} | grep -c '^tests/test_.*\\.py$' && python3 -m pytest -q",
         evidence=("tests",),
@@ -901,7 +901,7 @@ CLAIMS: Tuple[Claim, ...] = (
     Claim(
         id="wiring",
         area="Dead code and wiring",
-        headline="Unreachable UI 78 -> 120 -> 25 and ratcheted, with 1,524 lines deleted against 340 added.",
+        headline="Unreachable UI 78 -> 120 -> 23 and ratcheted, with 1,524 lines deleted against 340 added.",
         stock="78 wiring defects: markup, handlers and ids that nothing could reach.",
         pantheon="A ratchet in CI that cannot go up.",
         before="78",
@@ -924,9 +924,13 @@ CLAIMS: Tuple[Claim, ...] = (
         # markup that was never written for code that already existed. The
         # ceiling moved down with the count, which is the only direction it
         # is allowed to move.
-        after="25",
+        #
+        # `25 -> 23` on 2026-10-22: `P24-12` drew `#tool-agents-btn` and
+        # `#rail-agents`, two ids an inherited handler in `app.js` had looked up
+        # for markup that was never written (an empty click listener, now gone).
+        after="23",
         provenance="measured",
-        repro="python3 .pantheon/check-wiring.py --max 25",
+        repro="python3 .pantheon/check-wiring.py --max 23",
         evidence=(".pantheon/check-wiring.py",),
         rows=("P3-13", "P3-14", "P3-15"),
         how=(
@@ -936,8 +940,8 @@ CLAIMS: Tuple[Claim, ...] = (
             "version of the same disease: it recursed, found nothing, and reported "
             "**23 routes when the real number was 443**, looking entirely correct while "
             "doing so. The figure above is the ceiling CI holds, not a floor anybody "
-            "reached: `check-wiring.py` reports **25** unresolved lookups today and "
-            "`ci.yml` refuses 26. It said `2` here until `B348`, against its own "
+            "reached: `check-wiring.py` reports **23** unresolved lookups today and "
+            "`ci.yml` refuses 24. It said `2` here until `B348`, against its own "
             "repro command printing `120` — the ledger failing on the ledger."
         ),
     ),

@@ -84,8 +84,9 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P21 | Documents, kept in order | 4 | 0 | 0 | **4** |
 | P22 | The Workbench | 25 | 0 | 0 | **25** |
 | P23 | Alignment — the audits, fixed | 9 | 0 | 0 | **9** |
-| Backlog | Bugs and hardening found in flight | 1007 | 350 | 0 | **655** |
-| **Total** | | **1438** | **375** | **5** | **1056** |
+| P24 | Agents — the hall of hireable agents | 25 | 18 | 0 | **7** |
+| Backlog | Bugs and hardening found in flight | 1009 | 350 | 0 | **657** |
+| **Total** | | **1465** | **393** | **5** | **1065** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -247,6 +248,12 @@ they are for.*
 > `check-tracker.py` now validates the newest entry against the table and fails on drift.
 > Entries below the `P0-31` one keep the figure they were written with: a record of what
 > was claimed at the time is worth more than a quietly corrected one (`B44`).
+
+### P24 opened: the Agents hall, and the first eighteen agents you can hire
+`a28041c`…`RANGE`. **1465 tracked, 1065 done. 25 new phase rows (`P24`), 7 of them closed; 0 regressions left standing. `B1429` and `B1430` filed and closed.**
+The owner asked for PandaOS's hireable agents — a roster of pre-configured agents, each a job done end to end — and read the plan whole (*"let's roll into it"*, `D-2026-10-22-01`). Wave A is built: an agent is one `AGENT.md` with a lint that is the one rule for it (`P24-01`), shipped and per-person layers (`P24-02`), a hire that is one row and compiles to the task engine's own tasks (`P24-03`, `P24-04`), a run assembled from the file at the moment it starts — exactly its tools, its skills, its inputs, its notebook (`P24-05`) — a report per run (`P24-06`), and the hire's effects table enforced before the trust ladder and before a chat's Auto (`P24-07`). Everyone sees the whole catalogue and may hire any agent; a run's tools are still the hirer's own privileges, and the hire form names what it will lack.
+**The hall's first cut** is a window like the workstation screen's: *Your agents*, search, a chip per section, sections with *Show more*, **Hired** cards, an agent's page with its runbook and a typed hire form, and a hire's page with *Run now*, *Pause*, *Fire* and its reports. **All eighteen starters ship** (`library/pantheon/agents/`), lint-clean; their evaluation sets wait on the harness (`P24-16`). Driven in Chromium against `app.py` and a scripted model, never opening Tasks: hire *Morning Brief* at 06:15, *Run now*, report and notebook, *Pause*, a second person's catalogue and hire, the admin's *Everyone*, *Fire* — at 1440×900 dark and 390×844 light, no console error.
+**Found by driving it:** a model that listed a calendar and then answered had a summary of the listing glued to (and, in a saved chat, in place of) its answer — upstream code, every model (`B1429`). **Found by the whole-suite run:** main was red on one hygiene test of `B710`'s (`B1430`). The wiring ratchet came down 25 → 23: two ids an inherited empty handler looked up are now drawn. `/agents` joins the worker's shell routes (`CACHE_NAME` → `pantheon-v454-agents`).
 
 ### Each person's own, and the admins' too
 `cbb60d7`…`4e80d8f`. **1438 tracked, 1056 done. 0 new phase rows, 0 regressions left standing — two of this agent's own from `B1419` found and closed. `B1424`, `B1425` and `B1426` closed; `B1427` and `B1428` filed.**
@@ -11070,6 +11077,88 @@ per render; one window has three names.
   **Built 2026-10-07 (fx-docs, `22de186` `33b71e5` `ed586c6` `816a1fd` `e3a3926` `d6c9a8a` `53c9fe2`; merged as `ff987eb`).** Measured on `9560d50` by the docs auditor and re-measured here: six Replies left six 0-message "Email: Q3 Board Pack – final (v2)" chats; Create POSTed an empty document, so three abandoned Creates were three "Untitled · empty" rows; the scheduled Tidy proposed an unsent "New Email" (junk title) and four reply drafts ("a duplicate"); a send to a dead SMTP port toasted `[Errno 111] Connection refused`; a mailed PDF opened under a `pip install` line after a 503 from `render-pages`; a bare 8-bit "—" in a Subject read "���" — not the surrogates the audit inferred but `unknown-8bit` bytes that `make_header` replaces; four console errors per Library open for highlight.js's missing `csv`; an imported `.txt` stored as markdown (the browser sent `''`, which the server reads as "sniff it"); a 170-byte attachment read "0 KB". **Helper chats:** a chat Pantheon makes for a draft (Reply, Compose, a document typed on the welcome screen) is noted, and when the draft closes — Close, tab ×, chip ×, sent, deleted — with no other tab of it open, the editor asks `DELETE /api/session/{id}?only_if_empty=true`, which counts the stored and live messages itself and keeps a chat anyone wrote in (409); its documents detach into the Library (`delete_session`), and the person is put back on the chat they came from. **Create** opens the ghost "Untitled" tab and stores on the first keystroke (`_autoCreateFromInput`), in the chat that was open. **Drafts** are never judged by any tidy (`document_actions.is_mail_draft`: the scheduled one, the agent's, the library's title rule and its AI pass). **A failed send** is one sentence naming `host:port` and what to check (`_smtp_send_failure`). **PDFs**: `can_render_pages` on the document answer; the editor shows the text at once under *Shown as text. Page view needs an optional component (PyMuPDF) that an admin can install.* **Subjects** decode their 8-bit bytes (UTF-8, else Windows-1252); CSV cards ask highlight.js for nothing it lacks; a file named as text is `text`; sizes under 1 KB read in bytes. Driven at 1440×900 (dark, light) and 390×844 (light): Reply → Close and Reply → tab × leave 3 chats of 3 and land on the chat replied from; Compose → Close the same; three Creates leave 20 documents of 20; the Tidy on 3 reply drafts, a "New Email" and a "test" proposes only "test"; the send says *Couldn't reach the mail server (127.0.0.1:41229)…*; the PDF opens with no `render-pages` request. `Verify:` `tests/test_the_library_and_mail_do_what_they_say.py` — **21 cases** (the real session, document and mail routers under `TestClient` on a real SQLite file, the real scheduled tidy, the real SMTP client against a closed port, the list parser on raw header bytes); 16 fail on `32df791`, the other 5 are controls; **15 of 15 mutations caught**. `tests/test_the_library_and_mail_do_what_they_say_js.py` — **25 cases** under node (functions cut from `document.js`, `emailInbox.js`, `emailLibrary.js`, `documentLibrary.js`; the `.txt` case through the real import door against the live routers); not collectable on `32df791` (the helper-chat functions do not exist there); **24 of 24 mutations caught**.
   **At the merge** (`ff987eb`): `delete_session` takes this lane's `only_if_empty` check beside fx-words' *Unstar the chat before deleting it.*; `document.js`, `emailInbox.js` and `emailLibrary.js` changed, so `a936b5c` moved the approval-path string across its modules together (`20261007approvalp23`). On the merged tree a person's chat switch is a history entry (`P23-01`); Reply's switch into its helper chat and the way back are programmatic (`replaceState`), so after Reply → Close the browser's Back should land before the reply, never on the deleted chat — the drive checks it. Filed: `B1232` … `B1234`; `B1234` needs the owner. fx-words' *✦ Reply* on a new mail, in this lane's `document.js`, is `B1212`.
   — **done 2026-10-07 — driven on the merged tree (`a936b5c`; round 2 on `299bd50`): Reply, then close without sending, leaves no new chat and Back lands before the reply; the Tidy on a world with a draft does not propose it.** Round 2: from `/#week`, Email → reader → Reply → `/email#<helper>` with no new history entry → Close → `/email#week`, the helper chat deleted (its history 404); Back peels the reader and the next Back lands on `/#week` — round 1 had found that Back on the deleted chat's id (`B1242`, `fx2-nav`, `b04a0d1`). The Tidy half is tested, not driven: `tests/test_the_library_and_mail_do_what_they_say.py` (the real scheduled tidy on a world with drafts) passes 21 of 21 on `bd00a3a`, with its 25 node cases. A reply's chat left open while the person switches away keeps its draft, as the owner ruled (`B1234`, `D-2026-10-07-01` §3).
+
+# P24 · Agents — the hall of hireable agents
+
+*Area: `agents`, `tasks`, `ui` · Depends: P22, P20 · Opened 2026-10-22 from the owner: **"there's a platform that has
+'hireable' agents… you scroll through a list of agents that are pre-configured to do specific jobs fully automatic…
+Can we implement a system like this as well as a series of preconfigured agents to run against the LLM?"** The plan
+is the owner's Claude Doc *Pantheon Agents — the plan* (rev 24); the owner read it whole and answered *"let's roll into
+it"* (2026-10-22), which settles its eight decisions on their recommendations — recorded as `D-2026-10-22-01`.*
+
+**What it is.** An agent is one file that describes a job (`AGENT.md`: YAML the product reads, a runbook the model
+reads); a hire is one row saying who switched it on and with what. Everything that runs is built from those two by
+machinery that already exists — the hire compiles to scheduled tasks, and a run of one is an ordinary task run whose
+slot carries the agent's fixed tools, its skills, its inputs and what its last run left (`P22-15`/`P22-16`'s slot,
+reused rather than copied). **Everyone sees the whole catalogue and may hire any agent** (the owner, in the doc's
+comment thread: *"This is not intended to be a multi-tenant SaaS — but an internal infra add-on for companies or
+somebody's home network"*); a hired agent's tools follow the hirer's own privileges, and the hire form names any it
+will lack. The roster is 207 agents in 26 sections — 18 starters (wave 1, five ★), 156 on today's tools (wave 2), 33
+waiting on a connector (wave 3) — laid out the way PandaOS lays out its board.
+
+- [ ] **P24-00** **Acceptance: hire one, watch it work, fire it.** From the sidebar, never opening Tasks: open
+  Agents, find *Morning Brief* under Personal & Home, hire it with a time, press *Run now*; the run ends with a report
+  that says what it read and what it left, on the agent's own page; *Pause* stops its schedule and *Fire* removes
+  every task it made. A second person sees the same catalogue and none of the first person's hires; an admin sees
+  both under *Everyone*. `Depends:` `P24-01` … `P24-15`. `Verify:` driven on the merged tree at 1440×900 and 390×844,
+  dark and light, against a scripted model.
+- [x] **P24-01** **`AGENT.md`: the frontmatter schema, the parser and a lint.** The skills reader's sibling; the lint
+  refuses an unknown tool, effect, trigger, event, input kind, section or memory mode, each in a sentence naming the
+  field. `Verify:` a manifest with each kind of mistake is refused with that sentence; every shipped manifest lints clean.
+  — **done 2026-10-22** — `src/agents/manifest.py`: a closed YAML subset parsed without PyYAML (the call `skill_format.py` made), and `lint`, which refuses each kind of mistake in a sentence naming the field. `Verify:` `tests/test_an_agent_is_one_file.py` (31 cases, 17 refusals by their sentences; every shipped manifest lints clean).
+- [x] **P24-02** **The two layers.** `library/pantheon/agents/` shipped and read-only, `data/agents/<owner>/` per
+  person, the same id shadowing the shipped one exactly as skills do. `Verify:` a person's copy shadows for them and
+  not for anyone else; a manifest that fails its lint is listed as broken, never hireable.
+  — **done 2026-10-22** — `src/agents/catalogue.py`; a person's folder is `workstation.protocol.project_folder`'s name, so it is the same as their projects folder's. A broken own file is listed broken and does not shadow. `Verify:` the same file's layer cases.
+- [x] **P24-03** **`agent_hires`: the table and owner-scoped routes `/api/agents`** — the catalogue, one agent, hire,
+  update, pause, resume, fire, run now, runs. Another owner's hire is a 404. `Verify:` the route tests, two owners.
+  — **done 2026-10-22** — three new tables (`agent_hires`, `agent_hire_tasks`, `agent_run_reports`; `create_all` is the migration), `routes/agent_routes.py` (seven routes, all spelled in `static/js/agents/agentsApi.js`; *Run now* is the task's own route). Only a person hires, changes or fires (`request_is_a_person`); an admin may open, pause and fire anyone's hire, not change it. `Verify:` `tests/test_a_hire_compiles_to_tasks.py` (11).
+- [x] **P24-04** **Compile and recompile.** A hire becomes one scheduled task per trigger (a schedule, a cron, an
+  event, a webhook; *by hand* is the webhook task, which is how the task engine already says "fires when asked"),
+  each linked to its hire by `agent_hire_tasks`; firing removes them, pausing pauses them, an edit recompiles them.
+  No crew member is made: the hire itself is what a run reads, so there is one answer to "what is this agent" (`Law 7`).
+  — **done 2026-10-22** — `src/agents/hires.py:compile_hire`: daily/weekly → cron in the hire's zone, cron, event (`every`), webhook/hand → the webhook task. A recompile updates task *n* in place so its runs stay. The Tasks window labels an agent's task and refuses to change, pause or delete it (409, the sentence names Agents; *Run now* stays).
+- [x] **P24-05** **Run assembly.** A run of a hire's task is offered exactly the manifest's tools (the slot's
+  `allowed_tools`, no retrieval guessing — `B1414`/`B1416`), follows its skills whole with injection suppressed, reads
+  its inputs and what its last run carried forward as untrusted context, keeps the run budget, and may wait on a card
+  (`P22-17`). *Own memory* is the hire's notebook: the run's *Carry forward* section, kept on the hire, read next run.
+  — **done 2026-10-22** — `src/agents/runtime.py:plan_for_task`, asked by `_execute_llm_task` (`None` for every other task, `Law 1`): the system prompt, exactly the manifest's tools (`relevant_tools` and the slot's `allowed_tools`), skills followed whole (first-party and own skills unarmed, vendored armed), inputs and notebook as context, runs-per-day, a moved-on or missing file parks the hire with its reason. `Verify:` `tests/test_a_hired_agent_runs_as_its_file_says.py` (16), and driven: the scripted model was offered exactly Morning Brief's four tools.
+- [x] **P24-06** **The run report.** One record per finished run, keyed by the task run (whose status stays the one
+  answer to how it ended): the answer, what it read and wrote, what it was refused, what it carried forward. The Tasks
+  list labels each compiled task with its agent.
+  — **done 2026-10-22** — `record_report`: the answer, its *Report* section, read and wrote (by the call's own effects — a calendar listing reads), refused, and *Carry forward* into the notebook ("nothing" keeps it).
+- [x] **P24-07** **The effects table per hire, enforced before anything runs.** Per `ToolEffect`: `allow`, `ask` or
+  `never`; the hirer may only tighten; `never` is refused in a sentence.
+  — **done 2026-10-22** — `ToolPolicy.ask_effects`/`never_effects` → `ToolRunSecurityContext._hire_decision_for`, asked before the ladder and before Auto; an effect the file is silent on asks unless it only reads; `never` takes the tool off the list and refuses a call in a sentence no card lifts. With no hire the gate answers byte-for-byte as before (asserted per tool, tainted and not). The floor after untrusted content stays the ladder's.
+- [ ] **P24-08** **`ask` parks the run on the waiting list and notifies; answering resumes it.**
+  **In part, 2026-10-22:** an agent's run is a plain task run, so an `ask` card parks it on the waiting list through `P22-17`'s path (`may_wait`); not yet driven end to end for an agent.
+- [ ] **P24-09** **The contract checker.** `delivers` checked deterministically first, an optional judge model second,
+  one repair pass.
+- [ ] **P24-10** **Budgets per hire and an install cap; *Pause all agents*; needs attention with its reason.**
+- [ ] **P24-11** **Background runs yield to a person chatting with the same model.**
+- [ ] **P24-12** **The Agents window.** *Your agents* strip, Teams row, search, section chips with counts, sections
+  with *Show more*, **Hired** cards, project pinning; a door in the sidebar and the rail.
+  **First cut built 2026-10-22** (`static/js/agents/agentsWindow.js`): *Your agents*, search, section chips with counts, sections with *Show more*, **Hired**, the sidebar and rail doors, `/agents`. Open for the Teams row (`P24-21`) and project pinning.
+- [ ] **P24-13** **The agent page and the hire form**, typed pickers per input kind, the tools the hirer will lack
+  named; *Try it once* as a dry run.
+  **First cut built 2026-10-22:** the agent page (what it may do, in words; the tools this person's runs will lack; the runbook) and the hire form's typed pickers. Open for *Try it once*.
+- [ ] **P24-14** **My agents and an agent's own page**: runs, reports, waiting questions, notebook, settings.
+  **First cut built 2026-10-22:** a hire's page — *Run now*, *Pause*/*Switch on*, *Fire…* (asks first), *Update to*, settings, the notebook, runs with their reports. Open for the waiting questions.
+- [ ] **P24-15** **Settings → Agents (install-wide ceilings), the admin *Everyone* view.**
+  **In part, 2026-10-22:** the admin *Everyone* view (`?everyone=1`) is built; Settings → Agents is not.
+- [ ] **P24-16** **The scripted-model evaluation harness and its fixture worlds** (mail, documents, recorded web,
+  workstation).
+- [ ] **P24-17** **The five starred agents**, each with runbook, skills, evaluation set and sample report.
+  **In part, 2026-10-22:** the five starred manifests ship with their runbooks; evaluation sets and sample reports wait on `P24-16`.
+- [ ] **P24-18** **Proof runs against a real endpoint, the result rows, the fit badge.**
+- [ ] **P24-19** **The other thirteen starters.**
+  **In part, 2026-10-22:** all thirteen manifests ship and lint clean; evaluation sets and sample reports wait on `P24-16`.
+- [ ] **P24-20** ***New agent*, *Describe it*, *Customise*, versions and the update offer.**
+- [ ] **P24-21** **Teams**: `TEAM.md`, the Teams row, *Hire all* as one hire per member, shared inputs asked once.
+- [ ] **P24-22** **The skills library in the same layout**: *Your skills* strip, section chips, **Installed** cards.
+- [ ] **P24-23** **Wave 2 of the roster**: 156 agents on today's tools, filed a section at a time, each with runbook,
+  evaluation set and sample report.
+- [ ] **P24-24** **Wave 3 of the roster**: 33 agents, each released when the connector in its *Needs* cell lands.
 
 - [x] **B69** **There are two complete email-account forms and one of them is mounted nowhere.**
   Found by `P18-07` 2026-09-11, after `P18-01` and the first pass of `P18-07` were both written
@@ -22644,4 +22733,6 @@ this is the same thing happening to the row that corrected the store.
 - [x] **B1426** **The vendored library put `manage_skills` in every signed-in turn.** Also `B1419`'s, and also missed by its sweep: `load_active` gained the shipped library for every person, the loop asks *"does this person have a skill?"* of it, and 286 vendored drafts nobody is shown made the answer yes on every turn — `tests/test_a_first_message_is_not_a_lesser_message.py::test_the_owners_question_does_not_force_the_management_tools_in`, green on `d0dd72c`, red on `5a7c75c`. `_skills_for_turn` is now the one answer, read by the loop and by the predicate its tests reach: a person's own skills as before, and a shipped one only where `injectable_skills` would list it on this turn. `CI:` that case, and three in `tests/test_the_workstation_skills_ship_switched_on.py`; 4 mutations caught. — found while doing `B1424` — agent:`fx13-design-system`
 - [ ] **B1427** **On the VM backend, a person's machine has no projects folder Pantheon can see.** `B1417` and `B1424` are the container backend's: `docker/workstation-vm.yml` mounts nothing into the machines, so what an agent builds in its VM stays there, and an admin cannot reach it except through that person's own tools. The shape is probably a per-machine share of `projects/<that person's folder>` (virtio-9p or virtiofs) made at start — one folder per machine, never the root, which keeps the hypervisor wall the VM backend exists for. `Verify:` on the VM backend, an agent builds a site in `$PANTHEON_PROJECTS` and the person opens it from `data/projects/<their folder>` on the host. — found while doing `B1424` — agent:`fx13-design-system`
 - [ ] **B1428** **"Root in the sandbox" and "no overlaps" cannot both hold in the one shared container — the owner's call.** Both are the owner's (2026-10-21: *"Root inside that sandbox allowed"*; 2026-10-22: *"No overlaps"*). In the container backend every person is a Unix account in one machine, so with `sudo` on — the shipped default — an agent is root there and can read every home and every projects folder; `B1424`'s walls hold with `sudo` off. The VM backend gives each person a machine of their own, root included, and is the shape that gives both — once `B1427` gives it the projects folder. The three answers: sudo off by default in the container; the VM backend as the default where KVM exists; or keep both and say so in the panel, which it does not yet. `Verify:` whichever is chosen, two people with root cannot read each other's work. — found while doing `B1424` — agent:`fx13-design-system`
+- [x] **B1429** **A model that listed something and then answered lost its answer.** Found by driving `P24`'s *Morning Brief*: it called `manage_calendar` `list_events`, wrote its brief, and the run's answer came back as the brief with the calendar's own line glued to its end (`…on weekdaysNo events between …`), which then became the agent's notebook. The end of `stream_agent_loop` replaced the reply with a deterministic summary of the turn's last calendar, notes, tasks or mail listing and streamed it as one more delta — so a task run (which sums deltas) got both, and a chat's saved reply was the summary alone. Upstream code, unchanged since the import; the summaries were written for Pantheon's own small finetune and ran for every model. Now they stand in only for that finetune, or when the model said nothing. `Verify:` `tests/test_a_models_own_answer_survives_a_listing.py` (2; the first red on `a28041c`). — found while doing `P24-05` — agent:`fx14-agents` — **done 2026-10-22**
+- [x] **B1430** **`test_one_esc_stub_js.py` was red on `a28041c`.** `B710`'s `tests/test_a_proposal_is_visible_before_it_binds.py` wrote its own `esc` into its `ui.js` stub — one that returns its input, the kind `B874` banned — so the suite's own hygiene check failed on main. The stub is `ui_default_stub` now, with the shipped escaper. `Verify:` both files green. — found by the whole-suite run for `P24` — agent:`fx14-agents` — **done 2026-10-22**
 

@@ -1669,6 +1669,12 @@ class ToolRunSecurityContext:
     # the ladder is unchanged — which is also what makes "turn Auto off and the
     # chat is exactly as it was" true by construction.
     auto_approved: bool = False
+    # `P24-07`. A hired agent's effects table, from its run's `ToolPolicy`:
+    # an action carrying one of `hire_never_effects` is refused and no
+    # approval lifts it; one carrying `hire_ask_effects` asks. Both empty for
+    # every run that is not an agent's, which is every existing caller.
+    hire_ask_effects: frozenset = frozenset()
+    hire_never_effects: frozenset = frozenset()
 
     def __post_init__(self) -> None:
         """`P7-08`. A run that starts tainted still has to be able to say so.
@@ -1800,6 +1806,13 @@ class ToolRunSecurityContext:
                 ),
                 classification=TOOL_CLASSIFICATION_UNAVAILABLE,
             )
+        hired = self._hire_decision_for(tool_name, content)
+        if hired is not None:
+            # `P24-07`. Before the ladder and before Auto: what a hire says
+            # about an effect is the person's standing answer about this agent.
+            # An approved action never reaches here — an exact grant is claimed
+            # by the dispatcher instead of asking (`tool_execution`).
+            return hired
         decision = self._ladder_decision_for(tool_name, content)
         if decision.allowed or not self.auto_approved:
             return decision
@@ -1857,6 +1870,36 @@ class ToolRunSecurityContext:
             classification=decision.classification,
             auto_approved=True,
         )
+
+    def _hire_decision_for(self, tool_name: Any, content: Any = None):
+        """`P24-07`. A hired agent's effects table, or `None` when it has
+        nothing to say about this action (which is every non-agent run)."""
+        if not (self.hire_ask_effects or self.hire_never_effects):
+            return None
+        capabilities = capabilities_for_action(tool_name, content)
+        effects = {effect.value for effect in capabilities.effects}
+        never = effects & set(self.hire_never_effects)
+        if never:
+            return ToolGateDecision(
+                False,
+                (f"This agent's hire never allows {', '.join(sorted(never))}, so "
+                 f"'{tool_name}' was not run. Change the hire's effects in Agents to allow it."),
+                tripped_effects=tuple(describe_effects(
+                    frozenset(e for e in capabilities.effects if e.value in never)).get("effects", ())),
+                classification=TOOL_CLASSIFICATION_UNAVAILABLE,
+            )
+        ask = effects & set(self.hire_ask_effects)
+        if ask or not capabilities.known:
+            tripped = frozenset(e for e in capabilities.effects if e.value in ask)
+            return ToolGateDecision(
+                False,
+                (f"This agent's hire asks before {', '.join(sorted(ask)) or 'an action it cannot classify'}: "
+                 f"'{tool_name}' waits for your yes."),
+                tripped_effects=tuple(describe_effects(tripped).get("effects", ())),
+                classification=(TOOL_CLASSIFICATION_RECOGNISED if capabilities.known
+                                else TOOL_CLASSIFICATION_UNRECOGNISED),
+            )
+        return None
 
     def _ladder_decision_for(self, tool_name: Any, content: Any = None) -> ToolGateDecision:
         """The trust ladder's own answer — `P7-02`, `P7-03`, `P7-04`, `P7-13`.

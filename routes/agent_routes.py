@@ -1,0 +1,302 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+"""`P24-03` · The Agents hall, over HTTP.
+
+    GET    /api/agents                         the catalogue, its sections, and my hires
+                                               (?everyone=1: an admin's view of every hire)
+    GET    /api/agents/{agent_id}              one agent, as this person would hire it
+    POST   /api/agents/{agent_id}/hire         hire it
+    GET    /api/agents/hires/{hire_id}         one hire: its runs and their reports
+    PUT    /api/agents/hires/{hire_id}         change it, or {update: true} to its new version
+    POST   /api/agents/hires/{hire_id}/status  {status: on | paused}
+    DELETE /api/agents/hires/{hire_id}         fire it, and every task it made
+
+**What is reused, not added** (`Law 14`): *Run now* and *Stop* are the hire's
+tasks' own routes (`POST /api/tasks/{id}/run`, `/stop`) and a run's step log is
+`GET /api/tasks/{id}/runs`. A second door for either would be a second place
+to keep the one-run-at-a-time rule.
+
+**Everyone sees the whole catalogue and may hire any agent**
+(`D-2026-10-22-01` §2). A hire is its person's: another person's is a 404 —
+except to an admin, who may open, pause and fire any hire (`B1424`'s rule for
+the workstation, the plan's § 6). **Only a person** hires, changes or fires
+(`request_is_a_person`): an API token or the assistant's own loopback could
+otherwise hire an agent with more reach than the turn that asked for it.
+
+Every refusal is `{detail: "<sentence>"}` (`Law 15`); a body is read by hand,
+under a ceiling, so a malformed one is answered in a sentence too.
+
+**The route ceiling** (`check-unreachable.py --max-routes 90`): every path
+here is spelled in `static/js/agents/agentsApi.js`, its one caller.
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+from typing import Any, Dict, Optional
+
+from fastapi import APIRouter, Request
+from fastapi.responses import JSONResponse
+
+from core.database import SessionLocal
+from src.auth_helpers import get_current_user, request_is_a_person
+from src.agents import hires as H
+from src.agents.catalogue import catalogue, get_agent
+from src.agents.manifest import FAMILIES, SECTIONS
+
+logger = logging.getLogger(__name__)
+
+BODY_MAX_BYTES = 64 * 1024
+ONLY_A_PERSON = ("Only a person signed in to Pantheon can hire, change or fire an agent — "
+                 "not an API token or the assistant.")
+NO_SUCH_AGENT = "There is no agent called that in the hall."
+NO_SUCH_HIRE = "There is no such hire."
+RUNS_SHOWN = 30
+
+
+def _refused(sentence: str, status: int = 400) -> JSONResponse:
+    return JSONResponse({"detail": sentence}, status_code=status)
+
+
+async def _body(request: Request) -> Dict[str, Any]:
+    try:
+        declared = int(request.headers.get("content-length") or 0)
+    except (TypeError, ValueError):
+        declared = 0
+    if declared > BODY_MAX_BYTES:
+        raise H.HireRefused("The request is larger than 64 KiB, so it was not read.", 413)
+    raw = bytearray()
+    async for chunk in request.stream():
+        raw.extend(chunk)
+        if len(raw) > BODY_MAX_BYTES:
+            raise H.HireRefused("The request is larger than 64 KiB, so it was not read.", 413)
+    if not bytes(raw).strip():
+        return {}
+    try:
+        body = json.loads(bytes(raw))
+    except (TypeError, ValueError):
+        raise H.HireRefused("The request body must be JSON.") from None
+    if not isinstance(body, dict):
+        raise H.HireRefused("The request body must be a JSON object.")
+    return body
+
+
+def _is_admin(user: Optional[str]) -> bool:
+    from src.tool_security import owner_is_admin_or_single_user
+    return bool(user) and owner_is_admin_or_single_user(user)
+
+
+def _hire_or_none(db, hire_id: str, user: Optional[str]):
+    from core.database import AgentHire
+    hire = db.query(AgentHire).filter(AgentHire.id == hire_id).first()
+    if hire is None:
+        return None
+    if hire.owner != user and not _is_admin(user):
+        return None
+    return hire
+
+
+def _runs(db, hire) -> list:
+    from core.database import AgentRunReport, TaskRun
+    ids = H.task_ids_of(db, hire.id)
+    if not ids:
+        return []
+    runs = (db.query(TaskRun).filter(TaskRun.task_id.in_(ids))
+            .order_by(TaskRun.started_at.desc()).limit(RUNS_SHOWN).all())
+    reports = {r.run_id: r for r in db.query(AgentRunReport).filter(
+        AgentRunReport.run_id.in_([r.id for r in runs])).all()} if runs else {}
+    out = []
+    for r in runs:
+        rep = reports.get(r.id)
+        try:
+            report = json.loads(rep.report) if rep else None
+        except ValueError:
+            report = None
+        out.append({
+            "id": r.id, "task_id": r.task_id, "status": r.status,
+            "started_at": r.started_at.isoformat() + "Z" if r.started_at else None,
+            "finished_at": r.finished_at.isoformat() + "Z" if r.finished_at else None,
+            "error": r.error, "model": r.model, "report": report,
+        })
+    return out
+
+
+def setup_agent_routes() -> APIRouter:
+    router = APIRouter(prefix="/api/agents", tags=["agents"])
+
+    @router.get("")
+    def list_agents(request: Request, everyone: int = 0):
+        from core.database import AgentHire
+        user = get_current_user(request)
+        agents, broken = catalogue(user)
+        db = SessionLocal()
+        try:
+            q = db.query(AgentHire)
+            show_all = bool(everyone) and _is_admin(user)
+            if not show_all:
+                q = q.filter(AgentHire.owner == user)
+            rows = q.order_by(AgentHire.created_at).all()
+            by_id = {m.id: m for m in agents}
+            hires = []
+            for h in rows:
+                m = by_id.get(h.agent_id) if h.owner == user else get_agent(h.owner, h.agent_id)
+                hires.append(H.hire_to_dict(db, h, m))
+        finally:
+            db.close()
+        return {
+            "families": [{"id": f, "label": label} for f, label in FAMILIES],
+            "sections": [{"id": s, "label": label, "family": fam,
+                          "count": sum(1 for m in agents if m.section == s)}
+                         for s, label, fam in SECTIONS],
+            "agents": [m.to_public() for m in agents],
+            "broken": broken,
+            "hires": hires,
+            "everyone": show_all,
+            "me": user,
+            "is_admin": _is_admin(user),
+        }
+
+    @router.get("/hires/{hire_id}")
+    def one_hire(request: Request, hire_id: str):
+        user = get_current_user(request)
+        db = SessionLocal()
+        try:
+            hire = _hire_or_none(db, hire_id, user)
+            if hire is None:
+                return _refused(NO_SUCH_HIRE, 404)
+            m = get_agent(hire.owner, hire.agent_id)
+            out = H.hire_to_dict(db, hire, m)
+            out["runs"] = _runs(db, hire)
+            out["agent"] = m.to_public() if m else None
+            return out
+        finally:
+            db.close()
+
+    @router.put("/hires/{hire_id}")
+    async def change_hire(request: Request, hire_id: str):
+        if not request_is_a_person(request):
+            return _refused(ONLY_A_PERSON, 403)
+        user = get_current_user(request)
+        try:
+            body = await _body(request)
+        except H.HireRefused as r:
+            return _refused(r.sentence, r.status)
+        db = SessionLocal()
+        try:
+            hire = _hire_or_none(db, hire_id, user)
+            if hire is None or hire.owner != user:
+                # Watching another person's hire is an admin's; changing it is not.
+                return _refused(NO_SUCH_HIRE if hire is None else
+                                "This hire is someone else's. You can pause or fire it, not change it.",
+                                404 if hire is None else 403)
+            m = get_agent(hire.owner, hire.agent_id)
+            if m is None:
+                return _refused("This agent's file is gone or broken, so the hire cannot be changed. "
+                                "Fire it, or put the file back.", 409)
+            H.update_hire(db, hire, m, inputs=body.get("inputs"), grants=body.get("grants"),
+                          tz_name=body["tz_name"] if "tz_name" in body else ...,
+                          project=body["project"] if "project" in body else ...,
+                          name=body.get("name"), to_version=bool(body.get("update")))
+            if body.get("update") and hire.status == "attention":
+                H.set_status(db, hire, m, "on")
+            db.commit()
+            return H.hire_to_dict(db, hire, m)
+        except H.HireRefused as r:
+            db.rollback()
+            return _refused(r.sentence, r.status)
+        finally:
+            db.close()
+
+    @router.post("/hires/{hire_id}/status")
+    async def hire_status(request: Request, hire_id: str):
+        if not request_is_a_person(request):
+            return _refused(ONLY_A_PERSON, 403)
+        user = get_current_user(request)
+        try:
+            body = await _body(request)
+        except H.HireRefused as r:
+            return _refused(r.sentence, r.status)
+        db = SessionLocal()
+        try:
+            hire = _hire_or_none(db, hire_id, user)
+            if hire is None:
+                return _refused(NO_SUCH_HIRE, 404)
+            status = body.get("status")
+            if status == "on" and hire.owner != user:
+                return _refused("Only the person who hired it can switch it back on.", 403)
+            m = get_agent(hire.owner, hire.agent_id)
+            if m is None:
+                if status == "on":
+                    return _refused("This agent's file is gone or broken, so it cannot run. "
+                                    "Fire it, or put the file back.", 409)
+                H.needs_attention(db, hire, "Paused by hand; its agent file is gone or broken.")
+            else:
+                if status == "on" and m.version != hire.version:
+                    return _refused(f"{m.name} is at {m.version} now. Update the hire first.", 409)
+                H.set_status(db, hire, m, status)
+            if hire.owner != user:
+                logger.info("[agents] %s set %s's hire %s to %s", user, hire.owner, hire.id, status)
+            db.commit()
+            return H.hire_to_dict(db, hire, m)
+        except H.HireRefused as r:
+            db.rollback()
+            return _refused(r.sentence, r.status)
+        finally:
+            db.close()
+
+    @router.delete("/hires/{hire_id}")
+    def fire_hire(request: Request, hire_id: str):
+        if not request_is_a_person(request):
+            return _refused(ONLY_A_PERSON, 403)
+        user = get_current_user(request)
+        db = SessionLocal()
+        try:
+            hire = _hire_or_none(db, hire_id, user)
+            if hire is None:
+                return _refused(NO_SUCH_HIRE, 404)
+            name, owner = hire.name, hire.owner
+            gone = H.fire(db, hire)
+            db.commit()
+            if owner != user:
+                logger.info("[agents] %s fired %s's hire %s", user, owner, hire_id)
+            return {"ok": True, "fired": name, "tasks_removed": gone}
+        finally:
+            db.close()
+
+    @router.get("/{agent_id}")
+    def one_agent(request: Request, agent_id: str):
+        user = get_current_user(request)
+        m = get_agent(user, agent_id)
+        if m is None:
+            return _refused(NO_SUCH_AGENT, 404)
+        out = m.to_public()
+        out["lacking"] = H.lacking_tools(m, user)
+        out["effects"] = H.manifest_effects(m)
+        return out
+
+    @router.post("/{agent_id}/hire")
+    async def hire_agent(request: Request, agent_id: str):
+        if not request_is_a_person(request):
+            return _refused(ONLY_A_PERSON, 403)
+        user = get_current_user(request)
+        try:
+            body = await _body(request)
+        except H.HireRefused as r:
+            return _refused(r.sentence, r.status)
+        m = get_agent(user, agent_id)
+        if m is None:
+            return _refused(NO_SUCH_AGENT, 404)
+        db = SessionLocal()
+        try:
+            hire = H.make_hire(db, owner=user, manifest=m, inputs=body.get("inputs"),
+                               grants=body.get("grants"), tz_name=body.get("tz_name"),
+                               project=body.get("project"), name=body.get("name"))
+            db.commit()
+            return H.hire_to_dict(db, hire, m)
+        except H.HireRefused as r:
+            db.rollback()
+            return _refused(r.sentence, r.status)
+        finally:
+            db.close()
+
+    return router

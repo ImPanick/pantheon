@@ -6608,6 +6608,9 @@ async def stream_agent_loop(
         delegated_credential=bool(delegated_credential),
         rung=_run_rung,
         auto_approved=_auto_approved,
+        # `P24-07`. A hired agent's effects table rides in on its policy.
+        hire_ask_effects=frozenset(getattr(tool_policy, "ask_effects", ()) or ()),
+        hire_never_effects=frozenset(getattr(tool_policy, "never_effects", ()) or ()),
         allow_rule_lookup=(
             _resolve_allow_rule_lookup(owner, session_id)
             if rung_consults_allow_rules(_run_rung)
@@ -11069,7 +11072,14 @@ async def stream_agent_loop(
         ):
             full_response = "I couldn't make that change because no matching tool action completed."
     _response_before_tool_summary = full_response
-    if tool_events:
+    # `B1429`. The deterministic list summaries below were written for
+    # Pantheon's own small finetune, whose words after a listing were not
+    # trusted; they ran for every model, so any model that listed a calendar,
+    # notes, tasks or mail and then wrote its answer had that answer replaced
+    # in the saved reply (and, on a task's run, glued to the summary). They now
+    # stand in only for that finetune, or when the model said nothing itself.
+    _summary_may_replace = bool(_pan_qwen_finetune_model) or not full_response.strip()
+    if tool_events and _summary_may_replace:
         for _ev in reversed(tool_events):
             _tool_name = _resolved_tool_event_name(_ev)
             _tool_action = ""

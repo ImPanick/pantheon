@@ -189,7 +189,9 @@ def test_with_the_sidebar_open_the_rail_is_hidden_and_the_row_is_not(doors):
     assert doors["desk"]["railShown"] is False
     assert doors["desk"]["rowShown"] is True
     assert doors["desk"]["rowText"] == "Assistant"
-    assert doors["desk"]["firstTool"] == "tool-assistant-btn"   # A before B, as on the rail
+    # A before B, as on the rail — and `P24-12`'s Agents before the Assistant
+    # (Ag before As), the one row added above it since.
+    assert doors["desk"]["firstTool"] == "tool-agents-btn"
 
 
 def test_the_row_opens_the_assistants_own_chat(doors):
