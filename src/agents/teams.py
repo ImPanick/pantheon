@@ -137,17 +137,51 @@ def get_team(owner: Optional[str], team_id: str, agent_ids, **kw) -> Optional[Te
     return next((t for t in found if t.id == team_id), None)
 
 
+def member_key(member_id: str, key: str) -> str:
+    """The form's key for a member's own input when its key collides."""
+    return f"{member_id}.{key}"
+
+
 def team_inputs(team: Team, manifests: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """The team's form: every member's inputs, one per key, first member wins."""
+    """The team's form: every member's inputs, a shared key asked once.
+
+    A key is shared only when the members mean the same thing by it — the same
+    kind and the same label. Two members that both ask `at` but mean *when it
+    arrives* and *when it wraps up* are not one question: the later one is
+    asked as its own field (`<member>.<key>`), labelled with its agent's name,
+    so a morning brief and an evening wrap are not given one time."""
     out: List[Dict[str, Any]] = []
-    seen = set()
+    seen: Dict[str, Tuple[Any, Any]] = {}
     for mid in team.members:
         m = manifests.get(mid)
         for spec in (m.inputs if m else ()):
-            if spec["key"] in seen:
-                continue
-            seen.add(spec["key"])
-            out.append(dict(spec))
+            sig = (spec.get("kind"), spec.get("label"))
+            if spec["key"] not in seen:
+                seen[spec["key"]] = sig
+                out.append(dict(spec))
+            elif seen[spec["key"]] != sig:
+                own = dict(spec)
+                own["key"] = member_key(mid, spec["key"])
+                own["label"] = f"{m.name}: {spec.get('label')}"
+                out.append(own)
+    return out
+
+
+def member_values(team: Team, manifests: Dict[str, Any], member_id: str,
+                  values: Dict[str, Any]) -> Dict[str, Any]:
+    """What one member is hired with from the team form's values: its own
+    field where its key collided, the shared field otherwise."""
+    m = manifests.get(member_id)
+    asked = {i["key"] for i in team_inputs(team, manifests)}
+    out: Dict[str, Any] = {}
+    for spec in (m.inputs if m else ()):
+        own = member_key(member_id, spec["key"])
+        if own in asked:
+            # Its own field, and only that: the shared one means something else.
+            if own in values:
+                out[spec["key"]] = values[own]
+        elif spec["key"] in values:
+            out[spec["key"]] = values[spec["key"]]
     return out
 
 

@@ -77,11 +77,11 @@ def test_everyone_sees_the_whole_catalogue_in_sections(client):
     alice = call(client, "GET", "/api/agents").json()
     bob = call(client, "GET", "/api/agents", user="bob").json()
     assert [a["id"] for a in alice["agents"]] == [a["id"] for a in bob["agents"]]
-    assert len(alice["agents"]) == 18 and alice["broken"] == []
+    assert len(alice["agents"]) == 173 and alice["broken"] == []    # 18 starters + wave 2 (`P24-23`)
     sections = {s["id"]: s for s in alice["sections"]}
     assert len(sections) == 26
-    assert sections["email"]["count"] == 3 and sections["email"]["label"] == "Email & Inbox"
-    assert sum(s["count"] for s in alice["sections"]) == 18
+    assert sections["email"]["count"] == 9 and sections["email"]["label"] == "Email & Inbox"
+    assert sum(s["count"] for s in alice["sections"]) == 173
     assert [f["label"] for f in alice["families"]] == ["Everyday", "Knowledge", "Engineering", "Business"]
     brief = next(a for a in alice["agents"] if a["id"] == "morning-brief")
     assert brief["starts_on"] == "daily at 07:30" and brief["runbook"].startswith("1. ")

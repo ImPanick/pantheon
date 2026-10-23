@@ -70,7 +70,7 @@ def test_every_shipped_team_reads_and_names_only_agents_the_hall_has():
     agents, _ = catalogue(None)
     found, broken = T.teams(None, [m.id for m in agents])
     assert broken == []
-    assert len(found) >= 7
+    assert len(found) == 14
     for team in found:
         assert 2 <= len(team.members) <= T.TEAM_MAX_MEMBERS
 
@@ -101,23 +101,41 @@ def test_the_teams_form_asks_a_shared_key_once():
     by_id = {m.id: m for m in agents}
     team = next(t for t in T.teams(None, by_id)[0] if t.id == "code-health")
     keys = [i["key"] for i in T.team_inputs(team, by_id)]
-    assert keys == ["folder", "test_command"], "two members ask for both; the form asks once"
+    assert keys[:2] == ["folder", "test_command"] and keys.count("folder") == 1, \
+        "five members ask for the repository; the form asks once"
+
+
+def test_a_key_two_members_mean_differently_is_asked_of_each():
+    """Morning Brief's `at` is when it arrives; Evening Wrap's is when it wraps
+    up. One field would give both one time."""
+    agents, _ = catalogue(None)
+    by_id = {m.id: m for m in agents}
+    team = next(t for t in T.teams(None, by_id)[0] if t.id == "chief-of-staff")
+    fields = {i["key"]: i["label"] for i in T.team_inputs(team, by_id)}
+    assert fields == {"at": "When it arrives", "evening-wrap.at": "Evening Wrap: When it wraps up",
+                      "weekly-review.at": "Weekly Review: When it arrives on Fridays"}
+    values = {"at": "06:30", "evening-wrap.at": "18:30"}
+    assert T.member_values(team, by_id, "morning-brief", values) == {"at": "06:30"}
+    assert T.member_values(team, by_id, "evening-wrap", values) == {"at": "18:30"}
+    assert T.member_values(team, by_id, "weekly-review", values) == {}, "its own default stands"
 
 
 # ── *Hire all* ──────────────────────────────────────────────────────────────
 
 def test_hire_all_makes_one_hire_per_member_each_with_its_own_keys(client, wf_db):
     res = call(client, "POST", "/api/agents/teams/research-desk/hire",
-               json={"inputs": {"topics": ["solar"], "at": "07:30", "pages": ["https://example.org"],
-                                 "question": "What is new in perovskites?"}})
+               json={"inputs": {"topics": ["solar"], "at": "07:30", "companies": ["Acme, acme.example"],
+                                "question": "What is new in perovskites?", "document": "Draft"}})
     assert res.status_code == 200, res.text
     out = res.json()
     assert out["team"] == "Research Desk" and out["kept"] == []
-    assert sorted(h["agent_id"] for h in out["hired"]) == ["deep-researcher", "release-watcher", "topic-watcher"]
+    assert sorted(h["agent_id"] for h in out["hired"]) == [
+        "competitor-tracker", "deep-researcher", "fact-checker", "paper-reader", "topic-watcher"]
     db = wf_db()
     import json
     inputs = {h.agent_id: json.loads(h.inputs) for h in db.query(AgentHire).all()}
-    assert set(inputs["release-watcher"]) == {"pages"}, "a member is given only the keys it asks for"
+    assert set(inputs["competitor-tracker"]) == {"companies"}, "a member is given only the keys it asks for"
+    assert inputs["paper-reader"]["topics"] == ["solar"], "a shared key reaches every member that asks it"
     assert inputs["topic-watcher"]["topics"] == ["solar"]
 
 
@@ -129,6 +147,8 @@ def test_a_member_already_hired_is_kept_as_it_is(client, wf_db):
     db = wf_db()
     briefs = db.query(AgentHire).filter(AgentHire.agent_id == "morning-brief").all()
     assert len(briefs) == 1 and '"05:00"' in briefs[0].inputs
+    wrap = db.query(AgentHire).filter(AgentHire.agent_id == "evening-wrap").one()
+    assert '"09:00"' not in wrap.inputs, "the brief's time is not the wrap's"
 
 
 def test_one_members_refusal_leaves_no_hire_behind(client, wf_db):
@@ -142,9 +162,9 @@ def test_one_members_refusal_leaves_no_hire_behind(client, wf_db):
 def test_the_hall_lists_teams_with_what_is_hired(client):
     call(client, "POST", "/api/agents/model-steward/hire", json={})
     data = call(client, "GET", "/api/agents").json()
-    home = next(t for t in data["teams"] if t["id"] == "home-lab")
-    assert home["hired"] == 1
-    assert [m["hired"] for m in home["members"]] == [False, False, True]
+    lab = next(t for t in data["teams"] if t["id"] == "model-lab")
+    assert lab["hired"] == 1
+    assert [m["hired"] for m in lab["members"]] == [True, False, False, False]
     assert data["broken_teams"] == []
     assert data["ceilings"] == {"paused": False, "max_concurrent": 2}
 

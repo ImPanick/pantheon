@@ -7,7 +7,7 @@ icon: package
 version: 1.0.0
 wave: 1
 inputs:
-  - {key: folder, kind: folder, label: "The project's folder, inside your projects folder"}
+  - {key: folder, kind: folder, label: "The repository's folder, inside your projects folder"}
   - {key: test_command, kind: text, label: The command that runs its tests, default: pytest -q}
 triggers:
   - {on: weekly, day: mon, at: "03:00"}

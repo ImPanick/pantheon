@@ -1,8 +1,7 @@
 ---
 id: research-desk
 name: Research Desk
-tagline: Watch the topics you care about and answer the questions they raise.
-members: [topic-watcher, release-watcher, deep-researcher]
+tagline: "Staying ahead of a field: your topics, new papers, your competitors, and answers you can check."
+members: [topic-watcher, deep-researcher, paper-reader, competitor-tracker, fact-checker]
 ---
-A daily digest of your topics, a note when the pages you follow change, and a
-researcher you can hand a question to.
+Each member is its own hire with its own settings and reports; they do not hand work to each other.

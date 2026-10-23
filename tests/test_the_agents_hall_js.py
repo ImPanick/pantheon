@@ -236,7 +236,7 @@ def test_a_section_past_one_row_shows_more_on_request(sandbox):
         await press(more);
         out({ before, label, after: email().querySelectorAll('.agents-card').length });
     """)
-    assert out == {"before": 7, "label": "Show more (4)", "after": 11}
+    assert out == {"before": 6, "label": "Show more (5)", "after": 11}
 
 
 # ── hiring ──────────────────────────────────────────────────────────────────

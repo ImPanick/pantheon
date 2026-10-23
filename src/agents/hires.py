@@ -515,7 +515,8 @@ def hire_team(db, *, owner: Optional[str], team, manifests: Dict[str, Manifest],
             raise HireRefused(f"{team.name} names {mid}, which the hall does not have.", 409)
         if mid in already:
             continue
-        mine = {k: v for k, v in values.items() if any(i["key"] == k for i in m.inputs)}
+        from src.agents.teams import member_values
+        mine = member_values(team, manifests, mid, values)
         try:
             check_inputs(m, mine)
         except HireRefused as refused:

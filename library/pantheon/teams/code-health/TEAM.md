@@ -1,8 +1,7 @@
 ---
 id: code-health
 name: Code Health
-tagline: A repository that is tested nightly and kept current weekly.
-members: [repo-doctor, dependency-watch]
+tagline: "One repository kept green: tested nightly, reviewed, covered, current, and free of committed secrets."
+members: [repo-doctor, dependency-watch, code-reviewer, test-writer, flaky-test-hunter, secret-sniffer]
 ---
-Both read the same folder and run the same test command — asked once. The
-doctor runs the tests every night; the watch checks dependencies every week.
+Each member is its own hire with its own settings and reports; they do not hand work to each other.

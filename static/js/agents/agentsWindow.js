@@ -37,7 +37,7 @@ import * as Api from './agentsApi.js';
 export const MODAL_ID = 'agents-modal';
 
 /** How many cards a section shows before *Show more* — the board's one row. */
-export const SECTION_PREVIEW = 7;
+export const SECTION_PREVIEW = 6;
 /** How many hires the strip shows before *Show more*. */
 export const STRIP_PREVIEW = 7;
 
@@ -66,7 +66,7 @@ export const EFFECT_WORDS = {
 export const RULE_WORDS = { allow: 'without asking', ask: 'asks you first', never: 'never' };
 export const STATUS_WORDS = { on: 'On', paused: 'Paused', attention: 'Needs you', trial: 'Trial' };
 /** How many teams the row shows before *Show more* — the board's one row. */
-export const TEAMS_PREVIEW = 7;
+export const TEAMS_PREVIEW = 6;
 const RUN_WORDS = {
   queued: 'Queued', running: 'Running', success: 'Done', error: 'Failed', skipped: 'Skipped',
   aborted: 'Stopped', waiting: 'Waiting for you',
