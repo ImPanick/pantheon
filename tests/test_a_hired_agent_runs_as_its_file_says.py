@@ -258,3 +258,20 @@ def test_a_call_that_only_lists_is_reported_as_a_read():
     ])
     assert r["read"] == ["manage_calendar"]
     assert r["wrote"] == ["manage_notes", "manage_tasks"], "no arguments on the step: the tool's whole reach"
+
+
+def test_the_loop_carries_the_hires_effects_into_its_gate(monkeypatch):
+    """The real `stream_agent_loop`, handed a hire's policy: a call with an
+    `ask` effect waits for a yes — it is not run — and says why."""
+    from src.tool_policy import ToolPolicy
+    from tests.test_an_ai_step_uses_only_its_tools import _base, _drive
+    _base(monkeypatch)
+    executed = []
+    policy = ToolPolicy(allowed_tools=["send_email"], allowed_owner="this agent's",
+                        ask_effects=frozenset({"external_side_effect"}))
+    events, _ = _drive(monkeypatch, [[("send_email", {"to": "a@example.com", "subject": "hi",
+                                                       "body": "x"})], "Sent."],
+                       policy=policy, executed=executed, message="Email them")
+    assert executed == [], "the hire said ask, and the call ran"
+    said = json.dumps(events)
+    assert "This agent's hire asks before external_side_effect" in said

@@ -269,3 +269,24 @@ def test_an_update_to_the_file_waits_for_the_person(client, wf_db, monkeypatch):
     assert shown["update_to"] == "1.1.0"
     updated = call(client, "PUT", f"/api/agents/hires/{h['id']}", json={"update": True}).json()
     assert updated["version"] == "1.1.0" and updated["update_to"] is None
+
+
+def test_a_file_that_says_never_cannot_be_loosened_by_a_hire(client, tmp_path):
+    """Only `ask` → `allow` loosens (`D-2026-10-22-01` §3); `never` stays the
+    file's, whatever the hire form sends."""
+    import os
+    from src.agents.catalogue import own_root
+    root = os.path.join(own_root("alice", str(tmp_path)), "careful-reader")
+    os.makedirs(root)
+    with open(os.path.join(root, "AGENT.md"), "w", encoding="utf-8") as fh:
+        fh.write("---\nid: careful-reader\nname: Careful Reader\ntagline: Reads, never fetches.\n"
+                 "section: research\nversion: 1.0.0\ntriggers:\n  - {on: hand}\n"
+                 "tools: [web_search, web_fetch]\neffects: {network_egress: never}\nmemory: none\n---\n"
+                 "1. Search for the topic and say what you found, with the source.\n")
+    for loosened in ("ask", "allow"):
+        res = call(client, "POST", "/api/agents/careful-reader/hire",
+                   json={"grants": {"network_egress": loosened}})
+        assert res.status_code == 400, res.text
+        assert res.json()["detail"] == ("Careful Reader says “network_egress” is never; a hire can "
+                                        "make that stricter, not looser.")
+    assert call(client, "POST", "/api/agents/careful-reader/hire", json={}).status_code == 200
