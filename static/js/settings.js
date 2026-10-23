@@ -145,6 +145,13 @@ function onSettingsPanelActivated(tab) {
       .catch((e) => console.error('Networks panel failed to load', e));
   }
 
+  // `P24-15`. Same shape: two settings read on activation.
+  if (tab === 'agents') {
+    import('./agentsSettings.js')
+      .then((mod) => mod.open())
+      .catch((e) => console.error('Agents panel failed to load', e));
+  }
+
   // `P20-02`. Same shape again: it asks the workstation whether it answers,
   // which is a request to another machine, and nobody should pay for that by
   // opening Settings to change a theme.

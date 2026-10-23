@@ -61,7 +61,8 @@ export const hall = {
              { key: 'topics', kind: 'list', label: 'Topics to watch' },
              { key: 'at', kind: 'time', label: 'When', default: '07:00' },
              { key: 'deep', kind: 'boolean', label: 'Go deep', optional: true }] })],
-  broken: [], hires: [], everyone: false,
+  broken: [], hires: [], everyone: false, teams: [], projects: [],
+  ceilings: { paused: false, max_concurrent: 2 },
 };
 export const hallServer = { calls: [], refuse: {} };
 const hireOf = (agentId, owner = 'alice') => ({
@@ -95,6 +96,24 @@ globalThis.fetch = async (url, opts = {}) => {
     const h = hall.hires.find((x) => x.id === m[1]);
     hall.hires = hall.hires.filter((x) => x !== h);
     return reply(200, { ok: true, fired: h.name, tasks_removed: 1 });
+  }
+  m = key.match(/^POST \/api\/agents\/teams\/(.+)\/hire$/);
+  if (m) {
+    const t = hall.teams.find((x) => x.id === m[1]);
+    const made = t.members.filter((x) => !x.hired).map((x) => hireOf(x.id));
+    hall.hires.push(...made);
+    t.members.forEach((x) => { x.hired = true; });
+    t.hired = t.members.length;
+    return reply(200, { team: t.name, hired: made, kept: [] });
+  }
+  m = key.match(/^POST \/api\/agents\/(.+)\/try$/);
+  if (m) { const h = { ...hireOf(m[1]), status: 'trial', started: true }; hall.hires.push(h); return reply(200, h); }
+  if (key === 'GET /api/tasks/waiting') return reply(200, { waiting: hallServer.waiting || [] });
+  m = key.match(/^POST \/api\/tasks\/(.+)\/runs\/(.+)\/answer$/);
+  if (m) {
+    hallServer.waiting = [];
+    return reply(200, { outcome: body.decision === 'deny' ? 'denied' : 'resumed',
+                        sentence: body.decision === 'deny' ? 'Denied by alice.' : 'Allowed once by alice.' });
   }
   m = key.match(/^POST \/api\/agents\/(.+)\/hire$/);
   if (m) { const h = hireOf(m[1]); hall.hires.push(h); return reply(200, h); }
@@ -248,7 +267,7 @@ def test_an_agents_page_says_what_it_may_do_and_the_form_hires_it(sandbox):
                               ["deep", "INPUT", "checkbox", ""]]
     assert out["post"] == {"url": "/api/agents/topic-watcher/hire", "method": "POST", "body": {
         "inputs": {"topics": ["solar", "wind", "tides"], "at": "07:00", "deep": True},
-        "tz_name": "Australia/Sydney"}}
+        "tz_name": "Australia/Sydney", "project": None}}
     assert out["view"] == "hire" and out["note"].startswith("Topic Watcher is hired.")
 
 
@@ -287,7 +306,7 @@ def test_run_now_pause_and_fire(sandbox):
               writes: server.calls.filter((c) => c.method !== 'GET').map((c) => [c.method, c.url, c.body]) });
     """)
     assert out["first"] == ["Run now", "Pause", "Fire…"]
-    assert out["afterPause"] == ["Run now", "Switch on", "Fire…"]
+    assert out["afterPause"] == ["Switch on", "Fire…"], "a paused hire's task does not run, so it is not offered"
     assert out["keptOnNo"] == 1 and out["left"] == 0 and out["view"] == "hall"
     assert out["note"] == "Meeting Catcher is fired; 1 task removed."
     assert out["writes"] == [
@@ -326,3 +345,126 @@ def test_text_from_a_manifest_is_drawn_as_letters(sandbox):
               tag: card.querySelectorAll('.agents-card-tag')[0].textContent });
     """)
     assert out == {"text": "<img src=x onerror=alert(1)>", "html": "", "tag": "<b>bold</b>"}
+
+
+# ── wave B: teams, a trial, questions, checks, the brakes ───────────────────
+
+_TEAM = """
+hall.teams = [{ id: 'inbox-zero', name: 'Inbox Zero', tagline: 'A clear mailbox.', about: 'Two hires.',
+  members: [{ id: 'inbox-triage', name: 'Inbox Triage', hired: false },
+            { id: 'meeting-catcher', name: 'Meeting Catcher', hired: false }],
+  inputs: [{ key: 'vip', kind: 'list', label: 'People who matter', optional: true }], hired: 0 }];
+"""
+
+
+def test_team_action_words(sandbox):
+    out = _hall(sandbox, """
+        const t = (hired, n) => ({ hired, members: Array.from({ length: n }, (_, i) => ({ id: String(i) })) });
+        out([mod.teamAction(t(0, 3)), mod.teamAction(t(1, 3)), mod.teamAction(t(3, 3))]);
+    """)
+    assert out == ["Hire all", "+2", "All hired"]
+
+
+def test_a_team_is_hired_from_its_page_with_its_shared_inputs_and_a_project(sandbox):
+    out = _hall(sandbox, _TEAM + """
+        hall.projects = ['shop', 'blog'];
+        await mod.openAgents(); await settle(30);
+        const card = q('.agents-team-card')[0];
+        const onCard = [card.dataset.team, texts(card, 'agents-team-action')[0], card.querySelectorAll('.agents-avatar-small').length];
+        await press(card);
+        const members = q('.agents-card').filter((c) => c.dataset.agent).map((c) => c.dataset.agent);
+        q('[data-input="vip"]')[0].value = 'ana@example.com';
+        q('[data-project]')[0].value = 'shop';
+        fire(q('.agents-form')[0], 'submit'); await settle(60);
+        out({ onCard, members, post: server.calls.find((c) => c.method === 'POST'),
+              note: win().note.textContent, view: mod._test.state().view,
+              action: texts(body(), 'agents-team-action') });
+    """)
+    assert out["onCard"] == ["inbox-zero", "Hire all", 2]
+    assert out["members"] == ["inbox-triage", "meeting-catcher"]
+    assert out["post"] == {"url": "/api/agents/teams/inbox-zero/hire", "method": "POST", "body": {
+        "inputs": {"vip": ["ana@example.com"]}, "tz_name": "Australia/Sydney", "project": "shop"}}
+    assert out["note"] == "Inbox Zero: 2 agents hired." and out["view"] == "hall"
+    assert out["action"] == ["All hired"]
+
+
+def test_try_it_once_makes_a_trial_whose_page_offers_hire_and_discard(sandbox):
+    out = _hall(sandbox, """
+        await mod.openAgents(); await settle(30);
+        await press(q('.agents-card').find((c) => c.dataset.agent === 'meeting-catcher'));
+        await press(q('.agents-try')[0]); await settle(40);
+        const buttons = q('.agents-actions')[0].querySelectorAll('button').map((b) => b.textContent);
+        mod._test.stopPoll && mod._test.stopPoll();
+        out({ post: server.calls.find((c) => c.method === 'POST'), buttons,
+              status: texts(body(), 'agents-status'), note: win().note.textContent });
+    """)
+    assert out["post"]["url"] == "/api/agents/meeting-catcher/try"
+    assert out["buttons"] == ["Run now", "Hire", "Discard…"]
+    assert out["status"] == ["Trial"]
+    assert out["note"].startswith("Trying Meeting Catcher once.")
+
+
+def test_a_question_its_run_waits_on_is_answered_in_place(sandbox):
+    out = _hall(sandbox, """
+        hall.hires = [hireOf('meeting-catcher')];
+        server.waiting = [
+          { task_id: 't-meeting-catcher', run_id: 'r1', tool_label: 'bash',
+            approval: { approval_id: 'ap-1', description: 'Runs a command.',
+                        action: { tool: 'bash', content: 'printf <b>hi</b>' } } },
+          { task_id: 't-someone-else', run_id: 'r2', tool_label: 'send_email', approval: { approval_id: 'ap-2' } },
+        ];
+        await mod.openAgents(); await settle(30);
+        await press(q('.agents-hire-card')[0]);
+        const asked = { what: texts(body(), 'agents-question-what'),
+                        shown: q('.agents-question')[0].querySelectorAll('.agents-pre')[0].textContent };
+        await press(q('.agents-question')[0].querySelectorAll('button').find((b) => b.textContent === 'Allow once'));
+        await settle(40);
+        out({ asked, post: server.calls.find((c) => c.method === 'POST'), note: win().note.textContent,
+              after: q('.agents-question').length });
+    """)
+    assert out["asked"] == {"what": ["It wants to use bash."], "shown": "printf <b>hi</b>"}, \
+        "only this hire's own question, its action as letters"
+    assert out["post"] == {"url": "/api/tasks/t-meeting-catcher/runs/r1/answer", "method": "POST",
+                           "body": {"approval_id": "ap-1", "decision": "approve_task"}}
+    assert out["note"] == "Allowed once by alice." and out["after"] == 0
+
+
+def test_a_runs_checks_are_listed_with_its_report(sandbox):
+    out = _hall(sandbox, """
+        const h = hireOf('meeting-catcher');
+        h.runs = [{ id: 'r1', status: 'error', started_at: '2026-10-23T06:00:00Z', error: 'It did not deliver.',
+                    report: { answer: 'x', summary: '', read: [], wrote: [], refused: [], repaired: true,
+                      checks: [{ check: 'the answer', ok: true, detail: 'It answered.' },
+                               { check: 'a document', ok: false, detail: 'No document was written in this run.' }] } }];
+        hall.hires = [h];
+        await mod.openAgents(); await settle(30);
+        await press(q('.agents-hire-card')[0]);
+        out({ ok: texts(body(), 'agents-check-ok'), failed: texts(body(), 'agents-check-failed'),
+              repaired: texts(body(), 'agents-small').filter((t) => t.includes('one more try')) });
+    """)
+    assert out == {"ok": ["✓ It answered."], "failed": ["✗ No document was written in this run."],
+                   "repaired": ["It took one more try to deliver."]}
+
+
+@pytest.mark.parametrize("admin,tail", [(True, " in Settings → Agents."), (False, ".")])
+def test_the_hall_says_when_an_admin_paused_every_agent(sandbox, admin, tail):
+    out = _hall(sandbox, f"""
+        hall.ceilings.paused = true; hall.is_admin = {str(admin).lower()};
+        await mod.openAgents(); await settle(30);
+        out(texts(body(), 'agents-paused-all'));
+    """)
+    assert out == ["An admin has paused all agents: nothing runs until they are switched back on" + tail]
+
+
+def test_a_skipped_run_says_why(sandbox):
+    out = _hall(sandbox, """
+        const h = hireOf('meeting-catcher');
+        h.runs = [{ id: 'r1', status: 'skipped', started_at: '2026-10-23T06:00:00Z', error: null, report: null,
+                    said: 'An admin has paused all agents (Settings → Agents), so this run did not start.' }];
+        hall.hires = [h];
+        await mod.openAgents(); await settle(30);
+        await press(q('.agents-hire-card')[0]);
+        out({ line: texts(body(), 'agents-run-line'), status: texts(body(), 'agents-run-status') });
+    """)
+    assert out["status"] == ["Skipped"]
+    assert out["line"] == ["An admin has paused all agents (Settings → Agents), so this run did not start."]

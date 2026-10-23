@@ -64,7 +64,9 @@ export const EFFECT_WORDS = {
   destructive: 'delete things',
 };
 export const RULE_WORDS = { allow: 'without asking', ask: 'asks you first', never: 'never' };
-export const STATUS_WORDS = { on: 'On', paused: 'Paused', attention: 'Needs you' };
+export const STATUS_WORDS = { on: 'On', paused: 'Paused', attention: 'Needs you', trial: 'Trial' };
+/** How many teams the row shows before *Show more* — the board's one row. */
+export const TEAMS_PREVIEW = 7;
 const RUN_WORDS = {
   queued: 'Queued', running: 'Running', success: 'Done', error: 'Failed', skipped: 'Skipped',
   aborted: 'Stopped', waiting: 'Waiting for you',
@@ -79,6 +81,7 @@ let _query = '';
 let _section = '';          // '' = All
 let _expanded = new Set();  // section ids showing every card
 let _stripAll = false;
+let _teamsAll = false;
 let _everyone = false;
 let _busy = false;
 
@@ -221,6 +224,7 @@ function _render() {
   }
   if (_view.kind === 'agent') _renderAgent(_view.agent);
   else if (_view.kind === 'hire') _renderHire(_view.hire);
+  else if (_view.kind === 'team') _renderTeam(_view.team);
   else _renderHall();
 }
 
@@ -234,6 +238,13 @@ function _renderHall() {
   const body = _win.body;
   const hires = _data.hires || [];
   const agents = _data.agents || [];
+
+  // `P24-10`. Said where the agents are, not only in Settings.
+  if (_data.ceilings && _data.ceilings.paused) {
+    body.appendChild(_el('p', 'agents-attention agents-paused-all',
+      'An admin has paused all agents: nothing runs until they are switched back on'
+      + (_data.is_admin ? ' in Settings → Agents.' : '.')));
+  }
 
   // Your agents
   const strip = _el('section', 'agents-strip');
@@ -266,6 +277,23 @@ function _renderHall() {
     strip.appendChild(grid);
   }
   body.appendChild(strip);
+
+  // `P24-21`. Teams: bundles hired in one go.
+  const teams = _data.teams || [];
+  if (teams.length && !_everyone) {
+    const row = _el('section', 'agents-teams');
+    const th = _el('div', 'agents-section-head');
+    th.appendChild(_el('h5', 'agents-h', 'Teams'));
+    if (teams.length > TEAMS_PREVIEW) {
+      th.appendChild(_button('agents-link', _teamsAll ? 'Show less' : `Show more (${teams.length - TEAMS_PREVIEW})`,
+        () => { _teamsAll = !_teamsAll; _render(); }));
+    }
+    row.appendChild(th);
+    const grid = _el('div', 'agents-grid');
+    (_teamsAll ? teams : teams.slice(0, TEAMS_PREVIEW)).forEach((t) => grid.appendChild(_teamCard(t)));
+    row.appendChild(grid);
+    body.appendChild(row);
+  }
 
   // Search and chips
   const tools = _el('div', 'agents-tools');
@@ -352,6 +380,117 @@ function _agentCard(a, hired) {
   card.appendChild(_el('span', 'agents-card-tag', a.tagline));
   card.appendChild(_el('span', 'agents-card-when', a.starts_on));
   return card;
+}
+
+/** What a team card says it will do when pressed, in the board's words. */
+export function teamAction(team) {
+  const total = (team.members || []).length;
+  if (team.hired >= total) return 'All hired';
+  if (team.hired > 0) return `+${total - team.hired}`;
+  return 'Hire all';
+}
+
+function _teamCard(t) {
+  const card = _button('agents-card agents-team-card', '', () => { _view = { kind: 'team', team: t }; _say(''); _render(); });
+  card.dataset.team = t.id;
+  const top = _el('div', 'agents-card-top');
+  const faces = _el('span', 'agents-faces');
+  (t.members || []).slice(0, 3).forEach((m) => faces.appendChild(_el('span', 'agents-avatar agents-avatar-small', _initial(m.name))));
+  if ((t.members || []).length > 3) faces.appendChild(_el('span', 'agents-more', `+${t.members.length - 3}`));
+  top.appendChild(faces);
+  card.appendChild(top);
+  card.appendChild(_el('span', 'agents-card-name', t.name));
+  card.appendChild(_el('span', 'agents-card-tag', t.tagline));
+  const foot = _el('span', 'agents-card-when', `${(t.members || []).length} agents · `);
+  foot.appendChild(_el('span', 'agents-team-action', teamAction(t)));
+  card.appendChild(foot);
+  return card;
+}
+
+function _projectField(value) {
+  const projects = (_data && _data.projects) || [];
+  if (!projects.length) return null;
+  const row = _el('label', 'agents-field');
+  row.appendChild(_el('span', 'agents-field-label', 'Project (optional)'));
+  const sel = document.createElement('select');
+  sel.className = 'agents-input';
+  sel.dataset.project = '1';
+  const none = document.createElement('option');
+  none.value = '';
+  none.textContent = 'None — a folder of its own';
+  sel.appendChild(none);
+  projects.forEach((p) => {
+    const o = document.createElement('option');
+    o.value = p;
+    o.textContent = p;
+    sel.appendChild(o);
+  });
+  sel.value = value || '';
+  row.appendChild(sel);
+  return row;
+}
+
+function _readProject(form) {
+  const sel = form.querySelector('[data-project]');
+  return sel ? (sel.value || null) : undefined;
+}
+
+function _renderTeam(t) {
+  const body = _win.body;
+  body.appendChild(_back());
+  const page = _el('article', 'agents-page');
+  const head = _el('div', 'agents-page-head');
+  const words = _el('div', 'agents-page-words');
+  words.appendChild(_el('h3', 'agents-page-name', t.name));
+  words.appendChild(_el('p', 'agents-page-tag', t.tagline));
+  if (t.about) words.appendChild(_el('p', 'agents-page-meta', t.about));
+  head.appendChild(words);
+  page.appendChild(head);
+  page.appendChild(_el('h5', 'agents-h', 'Its agents'));
+  const list = _el('div', 'agents-grid');
+  (t.members || []).forEach((m) => {
+    const a = (_data.agents || []).find((x) => x.id === m.id);
+    if (a) list.appendChild(_agentCard(a, m.hired));
+  });
+  page.appendChild(list);
+  page.appendChild(_el('p', 'agents-small',
+    'Hire all makes one hire per agent you have not hired, each with its own settings and reports. '
+    + 'They do not hand work to each other.'));
+  const left = (t.members || []).filter((m) => !m.hired).length;
+  if (!left) {
+    page.appendChild(_el('p', 'agents-empty', 'You have hired every agent in this team.'));
+    body.appendChild(page);
+    return;
+  }
+  const form = _el('form', 'agents-form');
+  form.appendChild(_el('h5', 'agents-h', `Hire ${left === (t.members || []).length ? 'all' : `the other ${left}`}`));
+  (t.inputs || []).forEach((spec) => form.appendChild(_inputField(spec)));
+  const proj = _projectField();
+  if (proj) form.appendChild(proj);
+  const tz = _tz();
+  if (tz) form.appendChild(_el('p', 'agents-small', `Times are in ${tz}.`));
+  const go = _el('button', 'agents-primary', 'Hire all');
+  go.type = 'submit';
+  form.appendChild(go);
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (_busy) return;
+    _busy = true;
+    go.disabled = true;
+    const res = await Api.hireTeam(t.id, { inputs: readInputs(t.inputs, form), tz_name: tz || null,
+      project: _readProject(form) || null });
+    _busy = false;
+    go.disabled = false;
+    if (!_win) return;
+    if (!res.ok) { _say(res.refusal.sentence, { error: true }); return; }
+    await _load();
+    const n = (res.data.hired || []).length;
+    _say(`${t.name}: ${n} agent${n === 1 ? '' : 's'} hired.`);
+    _view = { kind: 'hall' };
+    _render();
+  });
+  page.appendChild(form);
+  body.appendChild(page);
 }
 
 function _hireCard(h) {
@@ -468,17 +607,40 @@ function _renderAgent(a) {
   const form = _el('form', 'agents-form');
   form.appendChild(_el('h5', 'agents-h', `Hire ${a.name}`));
   (a.inputs || []).forEach((spec) => form.appendChild(_inputField(spec)));
+  const proj = _projectField();
+  if (proj) form.appendChild(proj);
   const tz = _tz();
   if (tz) form.appendChild(_el('p', 'agents-small', `Times are in ${tz}.`));
+  const buttons = _el('div', 'agents-actions');
   const go = _el('button', 'agents-primary', 'Hire');
   go.type = 'submit';
-  form.appendChild(go);
+  buttons.appendChild(go);
+  // `P24-13`. Try it once: hired as a trial, run now, its schedule off until
+  // the person chooses Hire.
+  const tryBtn = _button('agents-btn agents-try', 'Try it once', async () => {
+    if (_busy) return;
+    _busy = true;
+    tryBtn.disabled = true;
+    const res = await Api.tryAgent(a.id, { inputs: readInputs(a.inputs, form), tz_name: tz || null,
+      project: _readProject(form) || null });
+    _busy = false;
+    tryBtn.disabled = false;
+    if (!_win) return;
+    if (!res.ok) { _say(res.refusal.sentence, { error: true }); return; }
+    await _load();
+    _say(`Trying ${res.data.name} once. Its report appears below when it finishes; `
+      + 'nothing runs on a schedule until you choose Hire.');
+    _openHire(res.data.id, { keepNote: true });
+  });
+  buttons.appendChild(tryBtn);
+  form.appendChild(buttons);
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     if (_busy) return;
     _busy = true;
     go.disabled = true;
-    const res = await Api.hireAgent(a.id, { inputs: readInputs(a.inputs, form), tz_name: tz || null });
+    const res = await Api.hireAgent(a.id, { inputs: readInputs(a.inputs, form), tz_name: tz || null,
+      project: _readProject(form) || null });
     _busy = false;
     go.disabled = false;
     if (!_win) return;
@@ -493,13 +655,58 @@ function _renderAgent(a) {
 
 // ── a hire's page ───────────────────────────────────────────────────────────
 
+function _waitingRow(q) {
+  const row = _el('div', 'agents-question');
+  const card = q.approval || {};
+  const action = card.action || {};
+  row.appendChild(_el('p', 'agents-question-what',
+    `It wants to use ${q.tool_label || action.tool || q.label || 'a tool'}.`));
+  if (card.description) row.appendChild(_el('p', 'agents-small', card.description));
+  if (action.display || action.content) {
+    row.appendChild(_el('pre', 'agents-pre', String(action.display || action.content).slice(0, 2000)));
+  }
+  if (!card.approval_id) {
+    row.appendChild(_el('p', 'agents-small', 'This question cannot be answered any more; the run will end.'));
+    return row;
+  }
+  const bar = _el('div', 'agents-actions');
+  const answer = (decision) => _act(() => Api.answer(q.task_id, q.run_id, card.approval_id, decision),
+    { sentence: (d) => (d && d.sentence) || (decision === 'deny' ? 'Denied.' : 'Allowed once.') });
+  bar.appendChild(_button('agents-primary', 'Allow once', () => answer('approve_task')));
+  bar.appendChild(_button('agents-btn', 'Deny', () => answer('deny')));
+  row.appendChild(bar);
+  return row;
+}
+
+/** How often a hire's page asks again while one of its runs is going. */
+export const RUN_POLL_MS = 3000;
+let _pollTimer = null;
+
+function _stopPoll() { if (_pollTimer) { clearTimeout(_pollTimer); _pollTimer = null; } }
+
 async function _openHire(hireId, { keepNote = false } = {}) {
   if (!keepNote) _say('');
+  _stopPoll();
   const res = await Api.getHire(hireId);
   if (!_win) return;
   if (!res.ok) { _say(res.refusal.sentence, { error: true }); return; }
+  // `P24-14`. The questions its runs wait on, from the task engine's own list
+  // (`GET /api/tasks/waiting`), answered in place.
+  const ids = new Set((res.data.tasks || []).map((t) => t.id));
+  const waiting = await Api.waiting();
+  if (!_win) return;
+  res.data.waiting = waiting.ok ? ((waiting.data && waiting.data.waiting) || [])
+    .filter((q) => ids.has(q.task_id)) : [];
   _view = { kind: 'hire', hire: res.data };
   _render();
+  const going = (res.data.runs || []).some((r) => r.status === 'running' || r.status === 'queued')
+    || (res.data.status === 'trial' && !(res.data.runs || []).length);
+  if (going) {
+    _pollTimer = setTimeout(() => {
+      _pollTimer = null;
+      if (_win && _view.kind === 'hire' && _view.hire.id === hireId) _openHire(hireId, { keepNote: true });
+    }, RUN_POLL_MS);
+  }
 }
 
 async function _act(fn, { reload = true, sentence } = {}) {
@@ -522,8 +729,8 @@ function _runRow(run) {
   sum.appendChild(_el('span', 'agents-run-when', _when(run.started_at)));
   if (run.report && run.report.summary) {
     sum.appendChild(_el('span', 'agents-run-line', run.report.summary.split('\n')[0].replace(/^[-*]\s*/, '')));
-  } else if (run.error) {
-    sum.appendChild(_el('span', 'agents-run-line', run.error));
+  } else if (run.error || run.said) {
+    sum.appendChild(_el('span', 'agents-run-line', run.error || run.said));
   }
   row.appendChild(sum);
   const r = run.report;
@@ -532,9 +739,17 @@ function _runRow(run) {
     if (r.wrote && r.wrote.length) row.appendChild(_el('p', 'agents-small', `Wrote with: ${r.wrote.join(', ')}`));
     (r.refused || []).forEach((x) => row.appendChild(_el('p', 'agents-small agents-refused',
       `Refused ${x.tool}: ${x.reason}`)));
+    if ((r.checks || []).length) {
+      // `P24-09`. What it had to leave behind, checked by code.
+      const ul = _el('ul', 'agents-checks');
+      r.checks.forEach((c) => ul.appendChild(_el('li', c.ok ? 'agents-check-ok' : 'agents-check-failed',
+        `${c.ok ? '✓' : '✗'} ${c.detail}`)));
+      row.appendChild(ul);
+      if (r.repaired) row.appendChild(_el('p', 'agents-small', 'It took one more try to deliver.'));
+    }
     row.appendChild(_el('pre', 'agents-pre', r.answer || ''));
-  } else if (run.error) {
-    row.appendChild(_el('p', 'agents-small', run.error));
+  } else if (run.error || run.said) {
+    row.appendChild(_el('p', 'agents-small', run.error || run.said));
   } else {
     row.appendChild(_el('p', 'agents-small', 'No report: the run has not finished, or it left none.'));
   }
@@ -562,41 +777,61 @@ function _renderHire(h) {
 
   const bar = _el('div', 'agents-actions');
   const firstTask = (h.tasks || [])[0];
-  if (firstTask && !h.missing) {
+  // A paused hire's task does not run (the engine records it skipped), so
+  // *Run now* is offered only where it would run.
+  if (firstTask && !h.missing && (h.status === 'on' || h.status === 'trial')) {
     bar.appendChild(_button('agents-primary', 'Run now', () => _act(() => Api.runNow(firstTask.id),
       { sentence: `${h.name} is running. Its report appears below when it finishes.` })));
+  }
+  if (h.status === 'trial') {
+    bar.appendChild(_button('agents-btn', 'Hire', () => _act(() => Api.setHireStatus(h.id, 'on'),
+      { sentence: `${h.name} is hired. ${h.starts_on ? `It starts on ${h.starts_on}.` : ''}` })));
   }
   if (h.update_to) {
     bar.appendChild(_button('agents-btn', `Update to ${h.update_to}`, () => _act(
       () => Api.changeHire(h.id, { update: true }), { sentence: `Updated to ${h.update_to}.` })));
   }
-  if (h.status === 'on') {
+  if (h.status === 'trial') {
+    // Hire is above; a trial is neither on nor paused.
+  } else if (h.status === 'on') {
     bar.appendChild(_button('agents-btn', 'Pause', () => _act(() => Api.setHireStatus(h.id, 'paused'),
       { sentence: `${h.name} is paused. Nothing runs until you switch it back on.` })));
   } else if (!h.missing) {
     bar.appendChild(_button('agents-btn', 'Switch on', () => _act(() => Api.setHireStatus(h.id, 'on'),
       { sentence: `${h.name} is on.` })));
   }
-  bar.appendChild(_button('agents-btn agents-danger', 'Fire…', async () => {
+  const trial = h.status === 'trial';
+  bar.appendChild(_button('agents-btn agents-danger', trial ? 'Discard…' : 'Fire…', async () => {
     // The app's own question (`ui.js`'s default export, as `workstation.js`
     // asks it); a page where it cannot load asks nothing and fires nothing.
     let ok = false;
     try {
       const uiMod = await import('../ui.js');
       const ui = uiMod.default || uiMod;
-      ok = await ui.styledConfirm(`Fire ${h.name}? Its tasks, runs and reports go with it.`,
-        { title: 'Fire this agent', confirmText: 'Fire', danger: true });
+      ok = await ui.styledConfirm(trial
+        ? `Discard the trial of ${h.name}? Its run and report go with it.`
+        : `Fire ${h.name}? Its tasks, runs and reports go with it.`,
+      { title: trial ? 'Discard this trial' : 'Fire this agent', confirmText: trial ? 'Discard' : 'Fire',
+        danger: true });
     } catch (_) { ok = false; }
     if (ok !== true) return;
     const res = await Api.fireHire(h.id);
     if (!_win) return;
     if (!res.ok) { _say(res.refusal.sentence, { error: true }); return; }
-    _say(`${res.data.fired} is fired; ${res.data.tasks_removed} task${res.data.tasks_removed === 1 ? '' : 's'} removed.`);
+    _say(trial ? `The trial of ${res.data.fired} is discarded.`
+      : `${res.data.fired} is fired; ${res.data.tasks_removed} task${res.data.tasks_removed === 1 ? '' : 's'} removed.`);
     await _load();
     _view = { kind: 'hall' };
     _render();
   }));
   page.appendChild(bar);
+
+  if ((h.waiting || []).length) {
+    const box = _el('section', 'agents-waiting');
+    box.appendChild(_el('h5', 'agents-h', 'Waiting for you'));
+    h.waiting.forEach((q) => box.appendChild(_waitingRow(q)));
+    page.appendChild(box);
+  }
 
   const hooks = (h.tasks || []).filter((t) => t.trigger_type === 'webhook' && t.webhook_token);
   if (hooks.length) {
@@ -615,17 +850,23 @@ function _renderHire(h) {
       `Its runs lack: ${h.lacking.map((x) => x.tool).join(', ')}.`));
   }
 
-  if (h.agent && (h.agent.inputs || []).length && !_everyone) {
+  const ownProjects = (_data && _data.projects) || [];
+  if (h.agent && ((h.agent.inputs || []).length || ownProjects.length) && !_everyone && h.owner === _data.me) {
     const form = _el('details', 'agents-settings');
     form.appendChild(_el('summary', '', 'Settings'));
     const f = _el('form', 'agents-form');
-    h.agent.inputs.forEach((spec) => f.appendChild(_inputField(spec, (h.inputs || {})[spec.key])));
+    (h.agent.inputs || []).forEach((spec) => f.appendChild(_inputField(spec, (h.inputs || {})[spec.key])));
+    const proj = _projectField(h.project);
+    if (proj) f.appendChild(proj);
     const save = _el('button', 'agents-btn', 'Save');
     save.type = 'submit';
     f.appendChild(save);
     f.addEventListener('submit', (e) => {
       e.preventDefault();
-      _act(() => Api.changeHire(h.id, { inputs: readInputs(h.agent.inputs, f) }), { sentence: 'Saved.' });
+      const change = { inputs: readInputs(h.agent.inputs, f) };
+      const project = _readProject(f);
+      if (project !== undefined) change.project = project;
+      _act(() => Api.changeHire(h.id, change), { sentence: 'Saved.' });
     });
     form.appendChild(f);
     page.appendChild(form);
@@ -648,6 +889,7 @@ function _renderHire(h) {
 // ── open, close ─────────────────────────────────────────────────────────────
 
 function _teardown() {
+  _stopPoll();
   if (!_win) return;
   const modal = _win.modal;
   _win = null;
@@ -703,6 +945,7 @@ export const _test = {
     data: _data }),
   openAgent: _openAgent,
   openHire: _openHire,
+  stopPoll: () => _stopPoll(),
   reset: () => { _query = ''; _section = ''; _expanded = new Set(); _stripAll = false; _everyone = false; },
 };
 

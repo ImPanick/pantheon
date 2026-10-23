@@ -67,10 +67,37 @@ export function fireHire(hireId) {
   return _call(`/api/agents/hires/${_id(hireId)}`, { method: 'DELETE' }, 'The hire was not fired.');
 }
 
+/** `P24-13`. *Try it once*: hired as a trial and run now. */
+export function tryAgent(agentId, body) {
+  return _call(`/api/agents/${_id(agentId)}/try`,
+    { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify(body || {}) },
+    'The trial did not start.');
+}
+
+/** `P24-21`. *Hire all*. */
+export function hireTeam(teamId, body) {
+  return _call(`/api/agents/teams/${_id(teamId)}/hire`,
+    { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify(body || {}) },
+    'The team was not hired.');
+}
+
+/** `P24-14`. The questions runs wait on — the task engine's own list. */
+export function waiting() {
+  return _call('/api/tasks/waiting', {}, 'The waiting questions could not be read.');
+}
+
+/** `P24-14`. A waiting question, answered — the task engine's own door. */
+export function answer(taskId, runId, approvalId, decision) {
+  return _call(`/api/tasks/${_id(taskId)}/runs/${_id(runId)}/answer`,
+    { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify({ approval_id: approvalId, decision }) },
+    'The answer was not taken.');
+}
+
 /** *Run now*: the hire's first task's own route (`POST /api/tasks/{id}/run`). */
 export function runNow(taskId) {
   return _call(`/api/tasks/${_id(taskId)}/run`,
     { method: 'POST', headers: JSON_HEADERS, body: '{}' }, 'The run did not start.');
 }
 
-export default { listAgents, getAgent, hireAgent, getHire, changeHire, setHireStatus, fireHire, runNow };
+export default { listAgents, getAgent, hireAgent, getHire, changeHire, setHireStatus, fireHire, runNow,
+  tryAgent, hireTeam, waiting, answer };

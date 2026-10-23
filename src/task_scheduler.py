@@ -4607,7 +4607,7 @@ class TaskScheduler:
         # other task, which then runs exactly as it always has (`Law 1`).
         from src.agents.runtime import plan_for_task as _agent_plan_for
         # A caller with no session (the direct-call tests, `Law 1`) has no hire.
-        agent_plan = _agent_plan_for(db, task) if db is not None else None
+        agent_plan = _agent_plan_for(db, task, run_id) if db is not None else None
         if agent_plan is not None and run_id is not None:
             _agent_slot = self._state_for(run_id)
             _agent_slot["allowed_tools"] = list(agent_plan.tools)
@@ -4804,14 +4804,60 @@ class TaskScheduler:
             pass
 
         if agent_plan is not None:
+            from src.agents import runtime as _agent_rt
+            # `P24-09`. What it had to leave behind, checked by code. One
+            # repair pass with the failed checks named, then the hire is
+            # flagged — never retried forever. A repair that parks on a card
+            # parks the run, as any run does.
+            _since = _agent_rt.run_started_at(db, run_id)
+            checks = _agent_rt.check_contract(db, agent_plan, result or "",
+                                              self.run_steps(run_id), since=_since)
+            repaired = False
+            for _ in range(_agent_rt.REPAIR_PASSES):
+                if not _agent_rt.failed(checks):
+                    break
+                self._record_run_step(run_id, kind="progress",
+                                      detail="Not delivered yet — one more try: "
+                                      + "; ".join(c["detail"] for c in _agent_rt.failed(checks)))
+                try:
+                    again = await self._run_agent_loop(
+                        endpoint_url, model, task, session_id,
+                        system_prompt=system_prompt, disabled_tools=disabled_tools or None,
+                        relevant_tools=relevant_tools, datetime_context_msg=_dt_msg,
+                        override_user_message=_agent_rt.repair_prompt(checks),
+                        run_id=run_id,
+                        # What it answered the first time, as its own words:
+                        # a repair builds on the run rather than starting over.
+                        context_msgs=list(_context_msgs) + [_agent_rt.answer_so_far(result)],
+                    )
+                except Exception:
+                    logger.warning("The repair pass for %s failed", task.name, exc_info=True)
+                    break
+                try:
+                    from src.text_helpers import strip_think
+                    again = strip_think(again or "", prose=True, prompt_echo=True).strip() or again
+                except Exception:
+                    pass
+                result = again or result
+                repaired = True
+                checks = _agent_rt.check_contract(db, agent_plan, result or "",
+                                                  self.run_steps(run_id), since=_since)
             # `P24-06`. What the run left, and its carry-forward into the
             # hire's notebook. A report that cannot be kept does not fail a
             # run that did its job — the run's own record still says so.
             try:
-                from src.agents.runtime import record_report
-                record_report(db, task, run_id, result or "", self.run_steps(run_id))
+                _agent_rt.record_report(db, task, run_id, result or "", self.run_steps(run_id),
+                                        checks=checks, repaired=repaired)
             except Exception:
                 logger.warning("Could not keep the report for %s's run", task.name, exc_info=True)
+            if _agent_rt.failed(checks):
+                from src.agents import hires as _hires
+                sentence = _agent_rt.undelivered_sentence(agent_plan.name, checks)
+                hire = _hires.hire_for_task(db, task.id)
+                if hire is not None:
+                    _hires.needs_attention(db, hire, sentence)
+                    db.commit()
+                raise _agent_rt.AgentDidNotDeliver(sentence)
 
         return result
 

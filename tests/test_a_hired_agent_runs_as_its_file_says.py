@@ -72,8 +72,9 @@ def test_a_run_is_told_its_runbook_and_offered_exactly_its_tools(world):
     factory, sched, seen = world
     db = factory()
     h, m = _hire(db, "morning-brief", inputs={"at": "06:00"})
+    seen["answer"] = "Today: done."
     run_id, answer = _run(sched, db, _task(db, h.id))
-    assert answer.startswith("Done.")
+    assert answer.startswith("Today: done.")
     prompt = seen["system_prompt"]
     assert prompt.startswith("You are Morning Brief, an agent alice hired in Pantheon")
     assert m.runbook in prompt and "## Report" in prompt and "## Carry forward" in prompt
@@ -90,6 +91,7 @@ def test_effects_the_file_is_silent_on_ask_and_a_never_takes_the_tool_away(world
     factory, sched, seen = world
     db = factory()
     h, m = _hire(db, "notes-gardener")
+    seen["answer"] = "Changed: nothing."
     _run(sched, db, _task(db, h.id))
     assert seen["slot"]["agent"]["ask_effects"] == ["destructive"]
     assert seen["slot"]["agent"]["never_effects"] == []
@@ -192,7 +194,9 @@ def test_the_loop_is_handed_the_hires_policy(world, monkeypatch):
     sched._run_agent_loop = lambda *a, **kw: real_loop(sched, *a, **kw)
     db = factory()
     h, _ = _hire(db, "notes-gardener")
-    _run(sched, db, _task(db, h.id))
+    from src.agents.runtime import AgentDidNotDeliver
+    with pytest.raises(AgentDidNotDeliver):         # it said nothing, so it delivered nothing
+        _run(sched, db, _task(db, h.id))
     policy = captured["tool_policy"]
     assert policy.allowed_tools == frozenset({"manage_notes", "manage_documents"})
     assert policy.ask_effects == frozenset({"destructive"}) and policy.never_effects == frozenset()
@@ -275,3 +279,14 @@ def test_the_loop_carries_the_hires_effects_into_its_gate(monkeypatch):
     assert executed == [], "the hire said ask, and the call ran"
     said = json.dumps(events)
     assert "This agent's hire asks before external_side_effect" in said
+
+
+def test_an_ask_can_be_answered_in_a_clean_run_and_a_never_cannot():
+    """`B1431`. The dispatcher replays an approval only into a run whose gate
+    asks for that action (`asks_for`); a hire's `ask` asks in a clean run."""
+    bash = '{"command": "printf hi"}'
+    assert _ctx().asks_for("bash", bash) is False, "premise: a clean run at the default rung asks nothing"
+    assert _ctx(hire_ask_effects=frozenset({"execute_code"})).asks_for("bash", bash) is True
+    assert _ctx(hire_never_effects=frozenset({"execute_code"})).asks_for("bash", bash) is False
+    assert _ctx(hire_ask_effects=frozenset({"execute_code"})).asks_for(
+        "web_search", '{"query": "x"}') is False, "an effect the hire is silent on is not its question"

@@ -3080,3 +3080,16 @@ SaaS — but an internal infra add-on for companies or somebody's home network."
 Costs: (2) puts every tool decision on the privilege resolver, which already decides chat — so there is nothing new
 to keep in step; (8) differs from PandaOS, where every agent belongs to a project, because a Pantheon person's
 morning brief is not about any one project.
+
+## D-2026-10-23-01 — *Try it once* is a real run of a trial hire, not a dry run
+
+*The building agent's call under the owner's standing "close the gaps", 2026-10-23, recorded so it can be overruled.*
+
+`P24-13`'s row said *Try it once* "as a dry run". The task engine's dry run (`P8-33`) plans and executes nothing, and
+for an agent the plan is the one thing a person already sees on its page — the runbook and its tools. What a person
+wants from trying an agent is its report. So *Try it once* makes the hire with status `trial` — every task the
+engine's "fires when asked" with **no webhook token**, so no schedule, event or caller starts it — runs its first
+task now as *Run now* does, and offers *Hire* (which compiles its real triggers) and *Discard*. The run is a real run
+under the hire's effects table: an `ask` effect parks it for a yes (`P24-08`), a `never` is refused, and it counts
+against `runs_per_day`. Cost: a trial can act, within its effects table, where a dry run could not; that is what the
+table is for, and an agent whose effects all *ask* tries itself one question at a time.

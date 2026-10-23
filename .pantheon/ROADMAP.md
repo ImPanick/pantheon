@@ -84,9 +84,9 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P21 | Documents, kept in order | 4 | 0 | 0 | **4** |
 | P22 | The Workbench | 25 | 0 | 0 | **25** |
 | P23 | Alignment — the audits, fixed | 9 | 0 | 0 | **9** |
-| P24 | Agents — the hall of hireable agents | 25 | 18 | 0 | **7** |
-| Backlog | Bugs and hardening found in flight | 1009 | 350 | 0 | **657** |
-| **Total** | | **1465** | **393** | **5** | **1065** |
+| P24 | Agents — the hall of hireable agents | 25 | 11 | 0 | **14** |
+| Backlog | Bugs and hardening found in flight | 1011 | 350 | 0 | **659** |
+| **Total** | | **1467** | **386** | **5** | **1074** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -248,6 +248,11 @@ they are for.*
 > `check-tracker.py` now validates the newest entry against the table and fails on drift.
 > Entries below the `P0-31` one keep the figure they were written with: a record of what
 > was claimed at the time is worth more than a quietly corrected one (`B44`).
+
+### P24 wave B: an agent delivers or says why, the install's brakes, teams, and a trial
+`6f51844`…(this commit). **1467 tracked, 1074 done. 7 more `P24` rows closed (`P24-08`, `-10`, `-12`, `-13`, `-14`, `-15`, `-21`), `P24-09` in part; 0 regressions left standing. `B1431` and `B1432` filed and closed.**
+**A hire now has to deliver.** Each run's `delivers` is checked by code — an answer and its words, a document by title and its sections, drafts against their limit, a file inside the projects folder — and a miss gets one more pass told exactly what is missing; a second miss fails the run and parks the hire with the sentence (`P24-09`, the judge model still open). **The brakes:** runs per day park a hire whose trigger fires all day; *Pause all agents* and *Most agent runs at once* are Settings → Agents, saved like every admin setting and out of the assistant's reach (`P24-10`, `P24-15`). **Teams** are `TEAM.md` files — seven ship — hired in one go with shared inputs asked once (`P24-21`). **Try it once** is a real run of a trial hire whose tasks fire only when asked (`D-2026-10-23-01`). A hire's page answers the questions its runs wait on, in place (`P24-14`).
+**Found by driving it:** an agent's `ask` card parked its run correctly and *Allow once* then refused the very action it approved (`B1431`). **Found by running CI's checker list:** wave A had left `check-auth-map` and `check-env-declared` red (`B1432`).
 
 ### P24 opened: the Agents hall, and the first eighteen agents you can hire
 `a28041c`…`47faa7a`. **1465 tracked, 1065 done. 25 new phase rows (`P24`), 7 of them closed; 0 regressions left standing. `B1429` and `B1430` filed and closed.**
@@ -11130,22 +11135,28 @@ waiting on a connector (wave 3) — laid out the way PandaOS lays out its board.
 - [x] **P24-07** **The effects table per hire, enforced before anything runs.** Per `ToolEffect`: `allow`, `ask` or
   `never`; the hirer may only tighten; `never` is refused in a sentence.
   — **done 2026-10-22** — `ToolPolicy.ask_effects`/`never_effects` → `ToolRunSecurityContext._hire_decision_for`, asked before the ladder and before Auto; an effect the file is silent on asks unless it only reads; `never` takes the tool off the list and refuses a call in a sentence no card lifts. With no hire the gate answers byte-for-byte as before (asserted per tool, tainted and not). The floor after untrusted content stays the ladder's.
-- [ ] **P24-08** **`ask` parks the run on the waiting list and notifies; answering resumes it.**
-  **In part, 2026-10-22:** an agent's run is a plain task run, so an `ask` card parks it on the waiting list through `P22-17`'s path (`may_wait`); not yet driven end to end for an agent.
+- [x] **P24-08** **`ask` parks the run on the waiting list and notifies; answering resumes it.**
+  — **done 2026-10-23** — an agent's run is a plain task run, so its `ask` card parks it through `B1102`'s path; driving it found that Allow never ran the action — the dispatcher replays an approval only into a run whose gate asks, and a clean run's gate did not count the hire's `ask` (`B1431`, fixed in `asks_for`). The hire's page lists the questions its runs wait on (`GET /api/tasks/waiting`, filtered to its tasks) with *Allow once* and *Deny* (the task engine's own answer route). `Verify:` `tests/test_a_hired_agent_waits_for_your_yes.py` (2: parks, Allow runs the sealed action once, Deny runs nothing), `asks_for` pinned beside the gate.
 - [ ] **P24-09** **The contract checker.** `delivers` checked deterministically first, an optional judge model second,
   one repair pass.
-- [ ] **P24-10** **Budgets per hire and an install cap; *Pause all agents*; needs attention with its reason.**
+  **In part, 2026-10-23:** the deterministic half and the repair pass. `src/agents/runtime.check_contract`: an answer and the words it must say, a document by title in this person's documents since the run began and its sections, drafts against their limit, a file inside the projects folder and its words. A miss gets one more pass told exactly what is missing (its first answer handed in as data, unarmed); a second miss fails the run (`AgentDidNotDeliver`) and parks the hire with the sentence. Each run's report keeps its checks; the hire's page lists them ✓/✗. `Verify:` `tests/test_an_agent_delivers_or_says_why.py`. Open for the judge model.
+- [x] **P24-10** **Budgets per hire and an install cap; *Pause all agents*; needs attention with its reason.**
+  — **done 2026-10-23** — per hire: `runs_per_day` (a hit parks the hire with its sentence, so a trigger that fires all day stops asking), `max_steps` and `max_minutes` on its tasks; install-wide: `agents_paused` (a run is recorded `skipped` with the sentence; nobody's hire is changed) and `agents_max_concurrent` (1–16, default 2; a run past it is deferred two minutes with its trigger, nothing lost; plain tasks are not counted). The assistant cannot move either (`manage_settings`' self-restraint keys). `Verify:` `tests/test_an_agent_delivers_or_says_why.py`.
 - [ ] **P24-11** **Background runs yield to a person chatting with the same model.**
-- [ ] **P24-12** **The Agents window.** *Your agents* strip, Teams row, search, section chips with counts, sections
+- [x] **P24-12** **The Agents window.** *Your agents* strip, Teams row, search, section chips with counts, sections
   with *Show more*, **Hired** cards, project pinning; a door in the sidebar and the rail.
-  **First cut built 2026-10-22** (`static/js/agents/agentsWindow.js`): *Your agents*, search, section chips with counts, sections with *Show more*, **Hired**, the sidebar and rail doors, `/agents`. Open for the Teams row (`P24-21`) and project pinning.
-- [ ] **P24-13** **The agent page and the hire form**, typed pickers per input kind, the tools the hirer will lack
+  **First cut built 2026-10-22** (`static/js/agents/agentsWindow.js`): *Your agents*, search, section chips with counts, sections with *Show more*, **Hired**, the sidebar and rail doors, `/agents`.
+  — **done 2026-10-23** — the Teams row (`P24-21`), project pinning (a *Project* select on the hire, team and settings forms, from this person's projects folder), and the *paused by an admin* line. `Verify:` `tests/test_the_agents_hall_js.py` (16).
+- [x] **P24-13** **The agent page and the hire form**, typed pickers per input kind, the tools the hirer will lack
   named; *Try it once* as a dry run.
-  **First cut built 2026-10-22:** the agent page (what it may do, in words; the tools this person's runs will lack; the runbook) and the hire form's typed pickers. Open for *Try it once*.
-- [ ] **P24-14** **My agents and an agent's own page**: runs, reports, waiting questions, notebook, settings.
-  **First cut built 2026-10-22:** a hire's page — *Run now*, *Pause*/*Switch on*, *Fire…* (asks first), *Update to*, settings, the notebook, runs with their reports. Open for the waiting questions.
-- [ ] **P24-15** **Settings → Agents (install-wide ceilings), the admin *Everyone* view.**
-  **In part, 2026-10-22:** the admin *Everyone* view (`?everyone=1`) is built; Settings → Agents is not.
+  **First cut built 2026-10-22:** the agent page (what it may do, in words; the tools this person's runs will lack; the runbook) and the hire form's typed pickers.
+  — **done 2026-10-23** — *Try it once* (`POST /api/agents/{id}/try`) is a real run of a `trial` hire, not a dry run (`D-2026-10-23-01`): its tasks fire only when asked, with no webhook token; its page offers *Hire* and *Discard…*. `Verify:` `tests/test_a_team_is_hired_in_one_go.py` (the route), `tests/test_an_agent_delivers_or_says_why.py` (a trial's tasks, before and after *Hire*), the hall's JS test.
+- [x] **P24-14** **My agents and an agent's own page**: runs, reports, waiting questions, notebook, settings.
+  **First cut built 2026-10-22:** a hire's page — *Run now*, *Pause*/*Switch on*, *Fire…* (asks first), *Update to*, settings, the notebook, runs with their reports.
+  — **done 2026-10-23** — the questions its runs wait on, answered in place (`P24-08`); each run's delivery checks; the page polls while a run is going. *Run now* is offered only where it would run (a paused hire's task is recorded skipped).
+- [x] **P24-15** **Settings → Agents (install-wide ceilings), the admin *Everyone* view.**
+  **In part, 2026-10-22:** the admin *Everyone* view (`?everyone=1`) is built.
+  — **done 2026-10-23** — Settings → Agents (admin-only, in the registry): *Pause all agents* and *Most agent runs at once*, saved through `POST /api/auth/settings` (a non-boolean switch is refused in a sentence; the number is clamped) and drawn back as the server kept them (`static/js/agentsSettings.js`). `Verify:` `tests/test_the_agents_settings_panel_js.py` (5), the settings door in `tests/test_an_agent_delivers_or_says_why.py`.
 - [ ] **P24-16** **The scripted-model evaluation harness and its fixture worlds** (mail, documents, recorded web,
   workstation).
 - [ ] **P24-17** **The five starred agents**, each with runbook, skills, evaluation set and sample report.
@@ -11154,7 +11165,8 @@ waiting on a connector (wave 3) — laid out the way PandaOS lays out its board.
 - [ ] **P24-19** **The other thirteen starters.**
   **In part, 2026-10-22:** all thirteen manifests ship and lint clean; evaluation sets and sample reports wait on `P24-16`.
 - [ ] **P24-20** ***New agent*, *Describe it*, *Customise*, versions and the update offer.**
-- [ ] **P24-21** **Teams**: `TEAM.md`, the Teams row, *Hire all* as one hire per member, shared inputs asked once.
+- [x] **P24-21** **Teams**: `TEAM.md`, the Teams row, *Hire all* as one hire per member, shared inputs asked once.
+  — **done 2026-10-23** — `src/agents/teams.py` (the same two layers; a team naming an agent the hall lacks is listed broken, never offered), seven shipped teams in `library/pantheon/teams/`, `POST /api/agents/teams/{id}/hire` (every member checked before any is written; a member already hired is kept and said so; each member gets only the keys it asks for; one project for all). Members do not hand work to each other. `Verify:` `tests/test_a_team_is_hired_in_one_go.py` (15).
 - [ ] **P24-22** **The skills library in the same layout**: *Your skills* strip, section chips, **Installed** cards.
 - [ ] **P24-23** **Wave 2 of the roster**: 156 agents on today's tools, filed a section at a time, each with runbook,
   evaluation set and sample report.
@@ -22735,4 +22747,6 @@ this is the same thing happening to the row that corrected the store.
 - [ ] **B1428** **"Root in the sandbox" and "no overlaps" cannot both hold in the one shared container — the owner's call.** Both are the owner's (2026-10-21: *"Root inside that sandbox allowed"*; 2026-10-22: *"No overlaps"*). In the container backend every person is a Unix account in one machine, so with `sudo` on — the shipped default — an agent is root there and can read every home and every projects folder; `B1424`'s walls hold with `sudo` off. The VM backend gives each person a machine of their own, root included, and is the shape that gives both — once `B1427` gives it the projects folder. The three answers: sudo off by default in the container; the VM backend as the default where KVM exists; or keep both and say so in the panel, which it does not yet. `Verify:` whichever is chosen, two people with root cannot read each other's work. — found while doing `B1424` — agent:`fx13-design-system`
 - [x] **B1429** **A model that listed something and then answered lost its answer.** Found by driving `P24`'s *Morning Brief*: it called `manage_calendar` `list_events`, wrote its brief, and the run's answer came back as the brief with the calendar's own line glued to its end (`…on weekdaysNo events between …`), which then became the agent's notebook. The end of `stream_agent_loop` replaced the reply with a deterministic summary of the turn's last calendar, notes, tasks or mail listing and streamed it as one more delta — so a task run (which sums deltas) got both, and a chat's saved reply was the summary alone. Upstream code, unchanged since the import; the summaries were written for Pantheon's own small finetune and ran for every model. Now they stand in only for that finetune, or when the model said nothing. `Verify:` `tests/test_a_models_own_answer_survives_a_listing.py` (2; the first red on `a28041c`). — found while doing `P24-05` — agent:`fx14-agents` — **done 2026-10-22**
 - [x] **B1430** **`test_one_esc_stub_js.py` was red on `a28041c`.** `B710`'s `tests/test_a_proposal_is_visible_before_it_binds.py` wrote its own `esc` into its `ui.js` stub — one that returns its input, the kind `B874` banned — so the suite's own hygiene check failed on main. The stub is `ui_default_stub` now, with the shipped escaper. `Verify:` both files green. — found by the whole-suite run for `P24` — agent:`fx14-agents` — **done 2026-10-22**
+- [x] **B1431** **An agent's `ask` card could not be answered.** Found by driving `P24-08`: a hire whose effects table says `execute_code: ask` parked its run on the waiting list as it should, and *Allow once* resumed the run — which then refused the sealed action with "Exact-action approval requires an armed run security context." The dispatcher replays an approval only into a run whose gate asks for that action (`asks_for`), and a clean run's gate at the default rung asks nothing; the hire's `ask` was not counted. `P7-03`'s incident a third time, at the same line. `asks_for` now counts a hire's `ask` (never its `never`, which no card lifts). `Verify:` `tests/test_a_hired_agent_waits_for_your_yes.py` (red before), and `asks_for` pinned in `tests/test_a_hired_agent_runs_as_its_file_says.py`. — found while doing `P24-08` — agent:`fx14-agents` — **done 2026-10-23**
+- [x] **B1432** **`3a1904c` left two of CI's own checkers red.** `check-auth-map.py`: the hall's "may this person act on another's hire" was a new admin decision outside `require_admin` (44 against a ratchet of 43); it is the task routes' own question now (`owner_has_admin_task_privileges` — a hire is a bundle of tasks), 43 again. `check-env-declared.py`: a hire's `status == "on"` read as an inline yes/no, and the manifest's YAML booleans as a fifth vocabulary; both held with a `flag-spelling:` reason (an enum; the skills reader's own file-format boundary). The wave's checker run had used a stale list. `Verify:` both checkers pass. — found by running CI's checker list for this wave — agent:`fx14-agents` — **done 2026-10-23**
 

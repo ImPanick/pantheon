@@ -220,6 +220,18 @@ export const SETTINGS_PANELS = Object.freeze([
                'blocked', 'internet', 'offline'],
   }),
   definePanel({
+    id: 'agents',
+    icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="8" width="16" height="12" rx="3"/><path d="M12 4v4"/><circle cx="12" cy="3" r="1"/><path d="M9 13h.01M15 13h.01M9.5 16.5h5"/></svg>',
+    label: 'Agents',
+    group: 'administration',
+    adminOnly: true,
+    // `P24-15`. The instance's brakes on hired agents: pause them all, and how
+    // many may run at once. `controller` stays 'settings' for the reason
+    // `networks` gives: `settings.js` activates it and lazy-imports its module.
+    keywords: ['agents', 'agent', 'hired', 'hire', 'pause', 'pause all',
+               'stop', 'concurrent', 'at once', 'runs', 'budget'],
+  }),
+  definePanel({
     id: 'workstation',
     icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/><path d="m7 8 3 2-3 2"/><path d="M12 12h4"/></svg>',
     label: 'Workstation',

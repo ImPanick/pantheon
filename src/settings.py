@@ -270,6 +270,14 @@ DEFAULT_SETTINGS = {
     #
     # SETTINGS-ONLY, for the reason spelled out at `events_retention_days`.
     "min_task_interval_minutes": 5,
+    # `P24-10` / `P24-15`. The Agents hall's two install-wide ceilings, admin
+    # only (Settings → Agents) and refused to the agent's `manage_settings`
+    # (`_SELF_RESTRAINT_KEYS`): an agent that could unpause agents, or raise how
+    # many run at once, would be moving its own wall. *Pause all agents* skips
+    # every hire's run with a sentence and keeps their schedules; the cap is
+    # how many runs of any hire go at once — a run past it waits its turn.
+    "agents_paused": False,
+    "agents_max_concurrent": 2,
     # `P22-07`. How much of what one workflow step was handed and what it made
     # is kept on its record, in characters, each. Past it the record keeps a
     # preview and says it was cut (`src/workflow_runs.py`). Resolves with the
@@ -1100,6 +1108,10 @@ def int_setting_ranges() -> dict[str, tuple[int, int]]:
         # LAN is entitled to; a day is the top, because past that the floor
         # is not a floor, it is the schedule.
         "min_task_interval_minutes": (0, 1440),
+        # `P24-10`. At least one agent run at a time, or the cap would be a
+        # second *Pause all agents*; sixteen is past what one served model
+        # answers without every run slowing the rest.
+        "agents_max_concurrent": (1, 16),
         # `B1137`. The background inbox check, in minutes: `0` is off and a
         # day is the top, for the reason the line above gives.
         "email_inbox_check_minutes": (0, 1440),

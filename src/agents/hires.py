@@ -35,7 +35,9 @@ from src.agents.manifest import (
     EFFECT_RULES, Manifest, describe_trigger, describe_triggers, _INPUT_REF_RE, _TIME_RE,
 )
 
-HIRE_STATUSES = ("on", "paused", "attention")
+#: `trial` is *Try it once* (`P24-13`): hired and run once, its schedule off,
+#: until the person chooses *Hire* (→ `on`) or *Discard* (fired).
+HIRE_STATUSES = ("on", "paused", "attention", "trial")
 WORKSTATION_NOT_GRANTED = ("drives the workstation's screen, which your account has not been granted "
                            "(can_use_workstation); an admin can grant it in Settings → Users")
 TASK_PROMPT = "Do the job your runbook describes, now, and finish with your report."
@@ -242,12 +244,20 @@ def compile_hire(db, hire, manifest: Manifest) -> List[str]:
     links = {l.trigger: l for l in db.query(AgentHireTask).filter(AgentHireTask.hire_id == hire.id).all()}
     tasks = {t.id: t for t in db.query(ScheduledTask).filter(
         ScheduledTask.id.in_([l.task_id for l in links.values()])).all()} if links else {}
-    paused = hire.status != "on"
+    # `P24-13`. A trial runs only when asked: every task is the engine's
+    # "fires when asked" with no token, so nothing — no schedule, no event, no
+    # caller of a webhook — starts it but *Try it once* and *Run now*. *Hire*
+    # compiles it again with its real triggers.
+    trial = hire.status == "trial"
+    paused = hire.status != "on" and not trial
     budget = manifest.budget
     ids: List[str] = []
     many = len(manifest.triggers) > 1
     for n, trig in enumerate(manifest.triggers):
         fields = trigger_task_fields(trig, inputs)
+        if trial:
+            fields = {"trigger_type": "webhook", "schedule": None, "cron_expression": None,
+                      "trigger_event": None, "trigger_count": None}
         link = links.pop(n, None)
         task = tasks.get(link.task_id) if link else None
         if task is None:
@@ -269,7 +279,7 @@ def compile_hire(db, hire, manifest: Manifest) -> List[str]:
         task.tz_name = hire.tz_name or None
         for k, v in fields.items():
             setattr(task, k, v)
-        if fields["trigger_type"] == "webhook":
+        if fields["trigger_type"] == "webhook" and not trial:
             task.webhook_token = task.webhook_token or secrets.token_urlsafe(32)
         else:
             task.webhook_token = None
@@ -323,7 +333,7 @@ def labels_for_tasks(db, task_ids) -> Dict[str, Dict[str, str]]:
 
 def make_hire(db, *, owner: Optional[str], manifest: Manifest, inputs: Any = None,
               grants: Any = None, tz_name: Optional[str] = None, project: Optional[str] = None,
-              name: Optional[str] = None):
+              name: Optional[str] = None, status: str = "on"):
     """Hire `manifest` for `owner`. Everything is checked before anything is
     written, so a refused hire leaves nothing behind."""
     from core.database import AgentHire
@@ -333,7 +343,8 @@ def make_hire(db, *, owner: Optional[str], manifest: Manifest, inputs: Any = Non
     proj = check_project(owner, project)
     hire = AgentHire(id=str(uuid.uuid4()), owner=owner, agent_id=manifest.id,
                      version=manifest.version, name=check_name(name, manifest),
-                     inputs=json.dumps(checked), grants=json.dumps(granted), status="on",
+                     inputs=json.dumps(checked), grants=json.dumps(granted),
+                     status=status if status in ("on", "trial") else "on",
                      tz_name=tz, project=proj)
     db.add(hire)
     db.flush()
@@ -484,3 +495,33 @@ def task_belongs_to_agent(task_name: str, hire_name: str) -> str:
     """The Tasks window's sentence for a task an agent runs as."""
     return (f"“{task_name}” is how the agent {hire_name} runs. Change, pause or fire it in "
             f"Agents; Run now works here too.")
+
+
+def hire_team(db, *, owner: Optional[str], team, manifests: Dict[str, Manifest],
+              inputs: Any = None, tz_name: Optional[str] = None,
+              project: Optional[str] = None) -> Dict[str, Any]:
+    """`P24-21`. *Hire all*: one hire per member this person has not hired,
+    each given the shared values for the keys it asks for. Every member is
+    checked before any is written, so a refusal leaves nothing behind."""
+    from core.database import AgentHire
+    values = inputs if isinstance(inputs, dict) else {}
+    already = {h.agent_id for h in db.query(AgentHire).filter(AgentHire.owner == owner).all()}
+    tz = check_tz(tz_name)
+    proj = check_project(owner, project)
+    plan = []
+    for mid in team.members:
+        m = manifests.get(mid)
+        if m is None:
+            raise HireRefused(f"{team.name} names {mid}, which the hall does not have.", 409)
+        if mid in already:
+            continue
+        mine = {k: v for k, v in values.items() if any(i["key"] == k for i in m.inputs)}
+        try:
+            check_inputs(m, mine)
+        except HireRefused as refused:
+            raise HireRefused(f"{m.name}: {refused.sentence}") from None
+        plan.append((m, mine))
+    made = []
+    for m, mine in plan:
+        made.append(make_hire(db, owner=owner, manifest=m, inputs=mine, tz_name=tz, project=proj))
+    return {"hired": made, "kept": [mid for mid in team.members if mid in already]}

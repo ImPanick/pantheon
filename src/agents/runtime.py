@@ -39,8 +39,34 @@ REPORT_HEADING = "## Report"
 CARRY_HEADING = "## Carry forward"
 
 
-class AgentRunRefused(RuntimeError):
-    """A run of a hire that does not start, and the sentence its log says."""
+from src.builtin_actions import TaskDeferred, TaskNoop  # noqa: E402
+
+#: `P24-10`. How long a run that found the install at its limit of agent runs
+#: waits before it asks again — the task engine's own deferral (`TaskDeferred`:
+#: no run row, the task's next time moved), not a failure.
+CAPACITY_RETRY_SECONDS = 120
+#: `P24-09`. A delivery that fails its checks gets exactly this many repair
+#: passes, the failed checks named, and then the hire is flagged.
+REPAIR_PASSES = 1
+ALL_PAUSED = ("An admin has paused all agents (Settings → Agents), so this run did not "
+              "start. Nothing is lost: it runs on its next time once they are switched back on.")
+
+
+class AgentRunRefused(TaskNoop):
+    """A run of a hire that does not start, and the sentence its log says.
+
+    A `TaskNoop`, so the task engine records the run `skipped` with this
+    sentence (`_execute_task_locked`) — it is the hire's state, not a failure
+    of the run, and must not count toward three failures in a row."""
+
+    def __init__(self, sentence: str):
+        super().__init__(sentence)
+        self.sentence = sentence
+
+
+class AgentDidNotDeliver(RuntimeError):
+    """A run whose delivery failed its checks after its repair pass. Raised
+    after the report is kept, so the run ends `error` with this sentence."""
 
     def __init__(self, sentence: str):
         super().__init__(sentence)
@@ -58,6 +84,10 @@ class RunPlan:
     never_effects: frozenset
     context_messages: List[dict] = field(default_factory=list)
     skill_lines: List[str] = field(default_factory=list)
+    delivers: tuple = ()
+    owner: Optional[str] = None
+    inputs: Dict[str, Any] = field(default_factory=dict)
+    project: Optional[str] = None
     memory: str = "own"
 
 
@@ -124,9 +154,35 @@ def runs_today(db, task_ids: List[str]) -> int:
             .count())
 
 
-def plan_for_task(db, task) -> Optional[RunPlan]:
-    """`None` for a task that is not an agent's. Raises `AgentRunRefused` for
-    a hire that cannot run now, and parks the hire with the reason."""
+def agents_paused() -> bool:
+    """`P24-10`. The admin's *Pause all agents* (`agents_paused`)."""
+    from src.settings import get_setting
+    return get_setting("agents_paused", False) is True
+
+
+def max_concurrent() -> int:
+    from src.settings import get_setting
+    try:
+        return max(1, int(get_setting("agents_max_concurrent", 2) or 2))
+    except (TypeError, ValueError):
+        return 2
+
+
+def agent_runs_running(db, *, besides: Optional[str] = None) -> int:
+    """How many runs of any hire are going now, this one apart."""
+    from core.database import AgentHireTask, TaskRun
+    q = (db.query(TaskRun.id).join(AgentHireTask, AgentHireTask.task_id == TaskRun.task_id)
+         .filter(TaskRun.status == "running"))
+    if besides:
+        q = q.filter(TaskRun.id != besides)
+    return q.count()
+
+
+def plan_for_task(db, task, run_id: Optional[str] = None) -> Optional[RunPlan]:
+    """`None` for a task that is not an agent's. Raises `AgentRunRefused` (the
+    run is recorded `skipped` with the sentence) for a hire that cannot run now
+    — parking the hire with the reason where the reason is the hire's — and
+    `TaskDeferred` when the install is at its limit of agent runs."""
     from src.agents import hires as H
     from src.agents.catalogue import get_agent
     from src.prompt_security import own_context_message
@@ -135,6 +191,12 @@ def plan_for_task(db, task) -> Optional[RunPlan]:
     hire = H.hire_for_task(db, getattr(task, "id", None))
     if hire is None:
         return None
+    if agents_paused():
+        raise AgentRunRefused(ALL_PAUSED)
+    if agent_runs_running(db, besides=run_id) >= max_concurrent():
+        raise TaskDeferred(f"{max_concurrent()} agent runs are going already, the most this "
+                           f"install allows at once; {hire.name} runs when one finishes.",
+                           delay_seconds=CAPACITY_RETRY_SECONDS)
     manifest = get_agent(hire.owner, hire.agent_id)
     if manifest is None:
         sentence = (f"{hire.name}'s agent file is gone or no longer passes its check, so it "
@@ -151,8 +213,13 @@ def plan_for_task(db, task) -> Optional[RunPlan]:
     ids = H.task_ids_of(db, hire.id)
     # The run being started is already counted as `running`.
     if runs_today(db, ids) > manifest.budget["runs_per_day"]:
-        raise AgentRunRefused(f"{hire.name} has already run {manifest.budget['runs_per_day']} "
-                              f"times in the last 24 hours, its limit, so this run did not start.")
+        # `P24-10`. A budget hit parks the hire with the reason — the plan's
+        # rule — so a trigger that fires all day stops asking.
+        sentence = (f"{hire.name} has already run {manifest.budget['runs_per_day']} times in the "
+                    f"last 24 hours, its limit, so it is paused. Switch it back on in Agents.")
+        H.needs_attention(db, hire, sentence)
+        db.commit()
+        raise AgentRunRefused(sentence)
 
     effects = H.effective_effects(manifest, H.hire_grants(hire))
     never = frozenset(e for e, r in effects.items() if r == "never")
@@ -182,7 +249,8 @@ def plan_for_task(db, task) -> Optional[RunPlan]:
     return RunPlan(hire_id=hire.id, agent_id=manifest.id, name=hire.name,
                    system_prompt=system_prompt(manifest, hire, owner=hire.owner), tools=tools,
                    ask_effects=ask, never_effects=never, context_messages=msgs,
-                   skill_lines=lines, memory=manifest.memory)
+                   skill_lines=lines, memory=manifest.memory, delivers=manifest.delivers,
+                   owner=hire.owner, inputs=inputs, project=hire.project)
 
 
 # ── The report ──────────────────────────────────────────────────────────────
@@ -245,7 +313,138 @@ def build_report(answer: str, steps: List[dict]) -> Dict[str, Any]:
     }
 
 
-def record_report(db, task, run_id: Optional[str], answer: str, steps: List[dict]) -> Optional[dict]:
+# ── `P24-09` · the contract check ───────────────────────────────────────────
+#
+# `delivers` is checked by code: a model saying "done" counts for nothing. Each
+# check is `{check, ok, detail}` in a person's words; the run report keeps them.
+
+DRAFT_TOOLS = ("draft_email", "draft_email_reply", "ai_draft_email_reply")
+_REF_RE = re.compile(r"\{([a-z][a-z0-9_]{0,31})\}")
+
+
+def _fill(text: str, inputs: Dict[str, Any]) -> str:
+    """`{key}` → the hire's input; any other `{…}` (a date, say) is dropped,
+    so a title is matched on its fixed words."""
+    def sub(m):
+        v = inputs.get(m.group(1))
+        return "" if v is None or isinstance(v, (list, dict)) else str(v)
+    return _REF_RE.sub(sub, text or "").strip()
+
+
+def _missing_words(text: str, words) -> List[str]:
+    low = (text or "").lower()
+    return [w for w in (words or ()) if str(w).lower() not in low]
+
+
+def run_started_at(db, run_id: Optional[str]):
+    from core.database import TaskRun
+    if not run_id:
+        return None
+    row = db.query(TaskRun.started_at).filter(TaskRun.id == run_id).first()
+    return row[0] if row else None
+
+
+def check_contract(db, plan: "RunPlan", answer: str, steps: List[dict], *,
+                   since=None) -> List[Dict[str, Any]]:
+    """Every `delivers` entry, checked. Empty when the manifest declares none."""
+    out: List[Dict[str, Any]] = []
+    for d in plan.delivers or ():
+        kind = d.get("kind")
+        words = d.get("must_contain") or []
+        if kind == "answer":
+            missing = _missing_words(answer, words)
+            if not (answer or "").strip():
+                out.append({"check": "an answer", "ok": False, "detail": "The run ended without an answer."})
+            elif missing:
+                out.append({"check": "the answer's sections", "ok": False,
+                            "detail": f"The answer does not say: {', '.join(missing)}."})
+            else:
+                out.append({"check": "the answer", "ok": True,
+                            "detail": "It answered" + (f", with {', '.join(words)}." if words else ".")})
+        elif kind == "document":
+            from core.database import Document
+            title = _fill(str(d.get("title") or ""), plan.inputs)
+            q = db.query(Document).filter(Document.owner == plan.owner)
+            if since is not None:
+                q = q.filter(Document.updated_at >= since - timedelta(seconds=5))
+            docs = [doc for doc in q.all() if not title or title.lower() in (doc.title or "").lower()]
+            what = f"a document titled “{title}”" if title else "a document"
+            if not docs:
+                out.append({"check": what, "ok": False,
+                            "detail": f"No {what[2:] if what.startswith('a ') else what} was written in this run."})
+                continue
+            best = max(docs, key=lambda doc: doc.updated_at or doc.created_at)
+            missing = _missing_words(best.current_content, words)
+            if missing:
+                out.append({"check": what, "ok": False,
+                            "detail": f"“{best.title}” has no {', '.join(missing)}."})
+            else:
+                out.append({"check": what, "ok": True, "detail": f"“{best.title}” is there."})
+        elif kind == "email_draft":
+            made = sum(1 for st in steps or () if st.get("kind") == "tool"
+                       and st.get("tool") in DRAFT_TOOLS and st.get("status") in ("ok", None))
+            cap = d.get("max")
+            if isinstance(cap, int) and made > cap:
+                out.append({"check": f"at most {cap} drafts", "ok": False,
+                            "detail": f"It made {made} drafts; its limit is {cap}."})
+            else:
+                out.append({"check": "drafts" if cap is None else f"at most {cap} drafts", "ok": True,
+                            "detail": f"It made {made} draft{'' if made == 1 else 's'}."})
+        elif kind == "file":
+            rel = _fill(str(d.get("title") or ""), plan.inputs)
+            from src.tool_execution import projects_root
+            base = projects_root(plan.owner, create=False)
+            if plan.project:
+                base = os.path.join(base, plan.project)
+            path = os.path.normpath(os.path.join(base, rel))
+            inside = path == base or path.startswith(base + os.sep)
+            if not rel or not inside or not os.path.exists(path):
+                out.append({"check": f"the file {rel or '(unnamed)'}", "ok": False,
+                            "detail": f"There is no {rel or 'file'} in the projects folder."})
+                continue
+            text = ""
+            if words and os.path.isfile(path):
+                try:
+                    with open(path, encoding="utf-8", errors="replace") as fh:
+                        text = fh.read(512 * 1024)
+                except OSError:
+                    text = ""
+            missing = _missing_words(text, words)
+            out.append({"check": f"the file {rel}", "ok": not missing,
+                        "detail": (f"{rel} has no {', '.join(missing)}." if missing else f"{rel} is there.")})
+    return out
+
+
+def failed(checks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    return [c for c in checks or () if not c.get("ok")]
+
+
+def repair_prompt(checks: List[Dict[str, Any]]) -> str:
+    lines = "\n".join(f"- {c['detail']}" for c in failed(checks))
+    return ("Your run is not finished: what it had to leave behind is not all there.\n"
+            f"{lines}\n"
+            "Do what is missing now, using your tools, then give your whole answer again, "
+            "ending with your Report section.")
+
+
+def answer_so_far(answer: str) -> dict:
+    """The first pass's answer, handed to the repair pass as data: it may
+    quote mail or a page the run read, so it never arms the gate and is never
+    an instruction."""
+    from src.prompt_security import untrusted_context_message
+    return untrusted_context_message("your answer so far (this run)", (answer or "")[:ANSWER_MAX_CHARS],
+                                     arm_tool_gate=False)
+
+
+def undelivered_sentence(name: str, checks: List[Dict[str, Any]]) -> str:
+    first = failed(checks)[0]["detail"] if failed(checks) else "its checks failed"
+    return (f"{name} did not deliver, even after one more try: {first} It is paused until "
+            f"you look; switch it back on in Agents.")
+
+
+def record_report(db, task, run_id: Optional[str], answer: str, steps: List[dict], *,
+                  checks: Optional[List[Dict[str, Any]]] = None,
+                  repaired: bool = False) -> Optional[dict]:
     """Keep what a finished run left, and move its carry-forward into the
     hire's notebook. Answers the report, or `None` for a task that is not an
     agent's or a run with no record."""
@@ -257,6 +456,8 @@ def record_report(db, task, run_id: Optional[str], answer: str, steps: List[dict
     if db.query(TaskRun.id).filter(TaskRun.id == run_id).first() is None:
         return None
     report = build_report(answer, steps)
+    report["checks"] = list(checks or [])
+    report["repaired"] = bool(repaired)
     row = db.query(AgentRunReport).filter(AgentRunReport.run_id == run_id).first()
     if row is None:
         row = AgentRunReport(run_id=run_id, hire_id=hire.id, report=json.dumps(report))

@@ -770,6 +770,10 @@ async def do_manage_settings(content: str, owner: Optional[str] = None) -> Dict:
             # `B980`: which certificate is trusted decides who receives the
             # token and every command over `https://`.
             "workstation_tls_pin",
+            # `P24-10`. An agent that could unpause all agents, or raise how
+            # many run at once, would be moving its own wall from inside.
+            "agents_paused",
+            "agents_max_concurrent",
         }
         #
         # `trust_rung` is NOT here, and the first version of this set had it.
@@ -815,6 +819,10 @@ async def do_manage_settings(content: str, owner: Optional[str] = None) -> Dict:
         # One sentence per key, because they are not the same kind of thing and
         # a refusal that describes the wrong one reads as a canned excuse.
         _SELF_RESTRAINT_WHY = {
+            "agents_paused":
+                "is the switch a person uses to stop every hired agent at once",
+            "agents_max_concurrent":
+                "is how many hired agents a person lets run at once",
             "agent_email_confirm":
                 "decides whether a person has to approve an email before I send it",
             "agent_verifier_subagent":

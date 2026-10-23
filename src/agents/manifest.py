@@ -173,6 +173,10 @@ def _split_top(s: str, sep: str = ",") -> List[str]:
     return out
 
 
+# flag-spelling: the manifest's YAML subset is the skills reader's sibling and
+# reads a boolean exactly as `services/memory/skill_format.py:_parse_scalar`
+# does (`true`/`yes`, `false`/`no`) — the same file-format boundary, not a
+# fifth vocabulary; its other rules (quotes, flow maps) are its own.
 def _value(raw: str) -> Any:
     raw = raw.strip()
     if raw == "":

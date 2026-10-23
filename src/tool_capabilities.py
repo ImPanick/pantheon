@@ -1774,7 +1774,15 @@ class ToolRunSecurityContext:
         or the card it mints is one nobody can answer: `P7-03`'s incident a
         second time, at the same line of `src/tool_execution.py`.
         """
-        return self.gate_is_armed or self_escalation_for(tool_name, content) is not None
+        if self.gate_is_armed or self_escalation_for(tool_name, content) is not None:
+            return True
+        # `B1431` (`P24-08`). A hired agent's `ask` effect asks in a clean run
+        # too, so its card has to be answerable there: asked of the run alone,
+        # approving it answered "requires an armed run security context" and
+        # the action never ran — `P7-03`'s incident a third time. A `never` is
+        # not a question, and no card lifts it.
+        hired = self._hire_decision_for(tool_name, content)
+        return hired is not None and hired.classification != TOOL_CLASSIFICATION_UNAVAILABLE
 
     def decision_for(self, tool_name: Any, content: Any = None) -> ToolGateDecision:
         """Whether this action runs, or waits for the person.

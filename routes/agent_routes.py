@@ -9,6 +9,13 @@
     PUT    /api/agents/hires/{hire_id}         change it, or {update: true} to its new version
     POST   /api/agents/hires/{hire_id}/status  {status: on | paused}
     DELETE /api/agents/hires/{hire_id}         fire it, and every task it made
+    POST   /api/agents/{agent_id}/try          `P24-13`: Try it once — hired as a trial,
+                                               its schedule off, and run now
+    POST   /api/agents/teams/{team_id}/hire    `P24-21`: Hire all
+
+The two install-wide ceilings (`P24-10`: *Pause all agents*, how many run at
+once) are settings, saved through `POST /api/auth/settings` like every other
+admin setting, and read back here so the hall can say when everything is paused.
 
 **What is reused, not added** (`Law 14`): *Run now* and *Stop* are the hire's
 tasks' own routes (`POST /api/tasks/{id}/run`, `/stop`) and a run's step log is
@@ -82,8 +89,13 @@ async def _body(request: Request) -> Dict[str, Any]:
 
 
 def _is_admin(user: Optional[str]) -> bool:
-    from src.tool_security import owner_is_admin_or_single_user
-    return bool(user) and owner_is_admin_or_single_user(user)
+    """May `user` open, pause and fire another person's hire? A hire is a
+    bundle of that person's tasks, so this is the task routes' own question —
+    may this owner act on someone else's tasks — asked through the same
+    function (`Law 14`), not a further admin decision of the hall's own
+    (`check-auth-map.py`'s ratchet)."""
+    from src.task_action_policy import owner_has_admin_task_privileges
+    return bool(user) and owner_has_admin_task_privileges(user)
 
 
 def _hire_or_none(db, hire_id: str, user: Optional[str]):
@@ -117,11 +129,28 @@ def _runs(db, hire) -> list:
             "started_at": r.started_at.isoformat() + "Z" if r.started_at else None,
             "finished_at": r.finished_at.isoformat() + "Z" if r.finished_at else None,
             "error": r.error, "model": r.model, "report": report,
+            # A skipped or waiting run has no report and no error; its reason
+            # is the engine's sentence in `result` (*all agents are paused*,
+            # *waiting for your yes on …*).
+            "said": (r.result or "")[:500] if r.status in ("skipped", "waiting") else None,
         })
     return out
 
 
-def setup_agent_routes() -> APIRouter:
+def _projects(user: Optional[str]) -> list:
+    """The folders directly in this person's projects folder — what a hire may
+    be pinned to (`D-2026-10-22-01` §8)."""
+    import os
+    from src.tool_execution import projects_root
+    try:
+        root = projects_root(user, create=False)
+        return sorted(e for e in os.listdir(root)
+                      if not e.startswith(".") and os.path.isdir(os.path.join(root, e)))
+    except OSError:
+        return []
+
+
+def setup_agent_routes(task_scheduler=None) -> APIRouter:
     router = APIRouter(prefix="/api/agents", tags=["agents"])
 
     @router.get("")
@@ -143,7 +172,15 @@ def setup_agent_routes() -> APIRouter:
                 hires.append(H.hire_to_dict(db, h, m))
         finally:
             db.close()
+        from src.agents import runtime as R
+        from src.agents.teams import teams as _teams, to_public as _team_public
+        mine = {h["agent_id"] for h in hires if h["owner"] == user}
+        found_teams, broken_teams = _teams(user, by_id.keys())
         return {
+            "teams": [_team_public(t, by_id, mine) for t in found_teams],
+            "broken_teams": broken_teams,
+            "projects": _projects(user),
+            "ceilings": {"paused": R.agents_paused(), "max_concurrent": R.max_concurrent()},
             "families": [{"id": f, "label": label} for f, label in FAMILIES],
             "sections": [{"id": s, "label": label, "family": fam,
                           "count": sum(1 for m in agents if m.section == s)}
@@ -221,6 +258,9 @@ def setup_agent_routes() -> APIRouter:
             hire = _hire_or_none(db, hire_id, user)
             if hire is None:
                 return _refused(NO_SUCH_HIRE, 404)
+            # flag-spelling: not a yes/no. A hire's status is one word of
+            # `HIRE_STATUSES` (`on`, `paused`, …), and `set_status` refuses
+            # any other in a sentence; `1` or `yes` here is a refusal, not on.
             status = body.get("status")
             if status == "on" and hire.owner != user:
                 return _refused("Only the person who hired it can switch it back on.", 403)
@@ -262,6 +302,74 @@ def setup_agent_routes() -> APIRouter:
             return {"ok": True, "fired": name, "tasks_removed": gone}
         finally:
             db.close()
+
+    @router.post("/teams/{team_id}/hire")
+    async def hire_team(request: Request, team_id: str):
+        """`P24-21`. *Hire all*: one hire per member not already hired, every
+        member checked before any is written."""
+        if not request_is_a_person(request):
+            return _refused(ONLY_A_PERSON, 403)
+        user = get_current_user(request)
+        try:
+            body = await _body(request)
+        except H.HireRefused as r:
+            return _refused(r.sentence, r.status)
+        from src.agents.teams import get_team
+        agents, _ = catalogue(user)
+        by_id = {m.id: m for m in agents}
+        team = get_team(user, team_id, by_id.keys())
+        if team is None:
+            return _refused("There is no team called that in the hall.", 404)
+        db = SessionLocal()
+        try:
+            done = H.hire_team(db, owner=user, team=team, manifests=by_id,
+                               inputs=body.get("inputs"), tz_name=body.get("tz_name"),
+                               project=body.get("project"))
+            db.commit()
+            return {"team": team.name,
+                    "hired": [H.hire_to_dict(db, h, by_id.get(h.agent_id)) for h in done["hired"]],
+                    "kept": done["kept"]}
+        except H.HireRefused as r:
+            db.rollback()
+            return _refused(r.sentence, r.status)
+        finally:
+            db.close()
+
+    @router.post("/{agent_id}/try")
+    async def try_agent(request: Request, agent_id: str):
+        """`P24-13`. *Try it once*: the hire is made as a `trial` — its
+        schedule off — and its first task is run now, as *Run now* runs it.
+        The hall then shows the run's report beside *Hire* and *Discard*."""
+        if not request_is_a_person(request):
+            return _refused(ONLY_A_PERSON, 403)
+        if task_scheduler is None:
+            return _refused("Runs cannot be started from here right now.", 503)
+        user = get_current_user(request)
+        try:
+            body = await _body(request)
+        except H.HireRefused as r:
+            return _refused(r.sentence, r.status)
+        m = get_agent(user, agent_id)
+        if m is None:
+            return _refused(NO_SUCH_AGENT, 404)
+        db = SessionLocal()
+        try:
+            hire = H.make_hire(db, owner=user, manifest=m, inputs=body.get("inputs"),
+                               grants=body.get("grants"), tz_name=body.get("tz_name"),
+                               project=body.get("project"), name=body.get("name"),
+                               status="trial")
+            db.commit()
+            first = H.task_ids_of(db, hire.id)[0]
+            out = H.hire_to_dict(db, hire, m)
+        except H.HireRefused as r:
+            db.rollback()
+            return _refused(r.sentence, r.status)
+        finally:
+            db.close()
+        from src.interactive_gate import STARTED_BY_PERSON
+        started = await task_scheduler.run_task_now(first, force=True, started_by=STARTED_BY_PERSON)
+        out["started"] = bool(started)
+        return out
 
     @router.get("/{agent_id}")
     def one_agent(request: Request, agent_id: str):

@@ -50063,6 +50063,33 @@ body.plan-mode-active .chat-input-top > .model-picker-wrap:has(> .model-picker-m
 .agents-run-status { font-weight: 600; }
 .agents-run-error .agents-run-status { color: var(--red); }
 .agents-run-line { color: var(--fg-muted); }
+/* `P24-21` teams, `P24-15` pause-all, `P24-13` try, `P24-14` waiting
+   questions, `P24-09` delivery checks. */
+.agents-teams { display: flex; flex-direction: column; gap: 10px; }
+.agents-faces { display: inline-flex; align-items: center; gap: 2px; }
+.agents-avatar.agents-avatar-small { width: 20px; height: 20px; font-size: 11px; border-radius: 6px; }
+.agents-more { font-size: 11px; color: var(--fg-muted); margin-left: 4px; }
+.agents-team-action { font-weight: 600; color: var(--fg); }
+.agents-paused-all { margin: 0; }
+.agents-waiting {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--border-control, var(--border));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--fg) 4%, var(--panel));
+}
+.agents-question { display: flex; flex-direction: column; gap: 6px; }
+.agents-question + .agents-question { border-top: 1px solid var(--border); padding-top: 8px; }
+.agents-question-what { margin: 0; font-size: 13px; font-weight: 600; }
+.agents-checks { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 2px; font-size: 12px; }
+.agents-check-ok { color: var(--fg-muted); }
+.agents-check-failed { color: var(--red); }
+#agents-settingsResult { margin-top: 8px; }
+/* `.settings-select` grows to fill its row; a number of runs is two digits. */
+#agents-maxInput { flex: 0 0 72px; width: 72px; }
+#agents-settingsResult.agents-settings-error { color: var(--red); }
 @media (prefers-reduced-motion: no-preference) {
   .agents-card { transition: border-color 0.12s ease, background 0.12s ease; }
 }

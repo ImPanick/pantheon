@@ -3543,6 +3543,32 @@
           </div>
         </div>
 
+        <!-- ═══ AGENTS TAB (`P24-15`) ═══
+             The two instance-wide brakes on hired agents. Both are settings
+             (`agents_paused`, `agents_max_concurrent`) saved through
+             `POST /api/auth/settings`, read by `src/agents/runtime.py` before
+             every agent run; drawn by `static/js/agentsSettings.js`. -->
+        <div data-settings-panel="agents" class="hidden">
+          <div class="admin-card">
+            <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6" aria-hidden="true"><rect x="4" y="8" width="16" height="12" rx="3"/><path d="M12 4v4"/><circle cx="12" cy="3" r="1"/><path d="M9 13h.01M15 13h.01M9.5 16.5h5"/></svg>Hired agents</h2>
+            <div class="admin-toggle-row">
+              <div>
+                <div class="admin-toggle-label" id="agents-pausedLabel">Pause all agents</div>
+                <div class="admin-toggle-sub" id="agents-pausedSub">On: no hired agent starts a run, for anyone; each skipped run says why. Their hires and schedules are kept, and switching this off lets them run again at their next time.</div>
+              </div>
+              <label class="admin-switch"><input type="checkbox" id="agents-pausedToggle" aria-labelledby="agents-pausedLabel" aria-describedby="agents-pausedSub"><span class="admin-slider"></span></label>
+            </div>
+            <div class="admin-toggle-row">
+              <div>
+                <div class="admin-toggle-label" id="agents-maxLabel">Most agent runs at once</div>
+                <div class="admin-toggle-sub" id="agents-maxSub">A run that would go past this waits two minutes and tries again; nothing is lost. 1 to 16.</div>
+              </div>
+              <input type="number" id="agents-maxInput" class="settings-select" min="1" max="16" step="1" aria-labelledby="agents-maxLabel" aria-describedby="agents-maxSub">
+            </div>
+            <div id="agents-settingsResult" class="admin-toggle-sub" role="status" hidden></div>
+          </div>
+        </div>
+
         <!-- ═══ WORKSTATION TAB (`P20-02`) ═══
              The Ubuntu machine the agents work in (`D-2026-09-30-03`). Two
              cards and two audiences: the first is for anyone signed in — is it
