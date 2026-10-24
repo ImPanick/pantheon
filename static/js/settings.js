@@ -4011,7 +4011,15 @@ const INTG_TYPES = {
   // the companion app's, a script's — so it could be neither seen nor revoked.
   token:   { label: 'API token', icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="15" r="4"/><path d="M10.85 12.15 19 4"/><path d="m18 5 2 2"/><path d="m15 8 2 2"/></svg>' },
   vault:   { label: 'Vault',   icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>' },
+  // `P27-01`. The person's own logins (Settings → Vault) and git hosts
+  // (Settings → Git), listed with everything else an agent can reach. Their
+  // own panels edit them; this room shows, opens and removes.
+  login:   { label: 'Login',   icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="15.5" r="5.5"/><path d="m21 2-9.6 9.6"/><path d="m15.5 7.5 3 3L22 7l-3-3"/></svg>' },
+  githost: { label: 'Git',     icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="5" r="2"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="9" r="2"/><path d="M6 7v10"/><path d="M18 11c0 4-6 3-11.4 6.4"/></svg>' },
 };
+
+// `P27-01`. How a login may be used, in the words Settings → Vault uses.
+const LOGIN_USE_WORDS = { ask: 'asks each time', chat: 'asks once per chat', allowed: 'agents may use it' };
 
 // Config shared by the Codex Agent and Claude Agent forms. Both use the same
 // scope-gated /api/codex/* backend; this just parameterizes the UI label,
@@ -4103,7 +4111,7 @@ async function initUnifiedIntegrations() {
   }
 
   async function fetchAll() {
-    const [apiRes, calRes, cardRes, contactsRes, emailAccountsRes, mcpRes, vaultRes, tokenRes, calendarsRes] = await Promise.all([
+    const [apiRes, calRes, cardRes, contactsRes, emailAccountsRes, mcpRes, vaultRes, tokenRes, calendarsRes, loginsRes, gitRes] = await Promise.all([
       fetch('/api/auth/integrations', { credentials: 'same-origin' }).then(r => r.ok ? r.json() : { integrations: [] }).catch(() => ({ integrations: [] })),
       fetch('/api/calendar/config/accounts', { credentials: 'same-origin' }).then(r => r.ok ? r.json() : { accounts: [] }).catch(() => ({ accounts: [] })),
       fetch('/api/contacts/config', { credentials: 'same-origin' }).then(r => r.ok ? r.json() : {}).catch(() => ({})),
@@ -4113,6 +4121,9 @@ async function initUnifiedIntegrations() {
       fetch('/api/vault/config', { credentials: 'same-origin' }).then(r => r.ok ? r.json() : {}).catch(() => ({})),
       fetch('/api/tokens', { credentials: 'same-origin' }).then(r => r.ok ? r.json() : []).catch(() => []),
       fetch('/api/calendar/calendars', { credentials: 'same-origin' }).then(r => r.ok ? r.json() : { calendars: [] }).catch(() => ({ calendars: [] })),
+      // `P27-01`. The caller's own: never a password or a token in either answer.
+      fetch('/api/vault/mine', { credentials: 'same-origin' }).then(r => r.ok ? r.json() : { items: [] }).catch(() => ({ items: [] })),
+      fetch('/api/git', { credentials: 'same-origin' }).then(r => r.ok ? r.json() : { hosts: [] }).catch(() => ({ hosts: [] })),
     ]);
     const items = [];
     // API integrations
@@ -4174,6 +4185,17 @@ async function initUnifiedIntegrations() {
         continue;
       }
       items.push({ type: agentType, id: tok.id, name: tok.name || (agentType === 'claude' ? 'Claude Agent' : 'Codex Agent'), detail, enabled: true, data: tok });
+    }
+    // `P27-01`. Logins the agent signs in with, by name, and the git hosts it
+    // pushes to as the person — each with how and when it was last used.
+    for (const it of (loginsRes.items || [])) {
+      const used = it.last_used_at ? `used ${String(it.last_used_at).slice(0, 10)}${it.last_used_by ? ` by ${it.last_used_by}` : ''}` : 'not used yet';
+      const detail = [it.username ? `as ${it.username}` : '', (it.addresses || []).join(', '),
+        LOGIN_USE_WORDS[it.use] || LOGIN_USE_WORDS.ask, used, loginsRes.locked ? 'vault locked' : ''].filter(Boolean).join(' · ');
+      items.push({ type: 'login', id: it.id, name: it.label, detail, enabled: !loginsRes.locked, data: it });
+    }
+    for (const h of (gitRes.hosts || [])) {
+      items.push({ type: 'githost', id: h.host, name: h.host, detail: `token as ${h.username}${h.since ? ` · set ${String(h.since).slice(0, 10)}` : ''}`, enabled: true, data: h });
     }
     // Vaultwarden removed as an integration option.
     return items;
@@ -4278,6 +4300,8 @@ async function initUnifiedIntegrations() {
           else if (type === 'mcp') await fetch(`/api/mcp/servers/${id}`, { method: 'DELETE', credentials: 'same-origin' });
           else if (type === 'codex' || type === 'claude' || type === 'token') await fetch(`/api/tokens/${id}`, { method: 'DELETE', credentials: 'same-origin' });
           else if (type === 'vault') await fetch('/api/vault/logout', { method: 'POST', credentials: 'same-origin' });
+          else if (type === 'login') await fetch(`/api/vault/mine/items/${encodeURIComponent(id)}`, { method: 'DELETE', credentials: 'same-origin' });
+          else if (type === 'githost') await fetch('/api/git', { method: 'PUT', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ hosts: { [id]: null } }) });
         } catch (_) {}
         formEl.style.display = 'none';
         await renderList();
@@ -4297,6 +4321,9 @@ async function initUnifiedIntegrations() {
     else if (type === 'claude') showAgentForm('claude', editId);
     else if (type === 'vault') showVaultForm();
     else if (type === 'token') formEl.style.display = 'none';   // listed to be seen and revoked (`SET-U-9`)
+    // `P27-01`. A login and a git host are edited in their own panels.
+    else if (type === 'login') { formEl.style.display = 'none'; open('vault'); }
+    else if (type === 'githost') { formEl.style.display = 'none'; open('git'); }
   }
 
   // ── API form ──
@@ -6826,6 +6853,8 @@ async function initUnifiedIntegrations() {
       ['carddav', 'Contacts (CardDAV)'],
       ['contacts', 'Contacts Import'],
       ['email', 'Email (IMAP/SMTP)'],
+      ['githost', 'Git host token'],
+      ['login', 'Login, for agents to sign in'],
       ['mcp', 'MCP Tool Server'],
     ];
     const _iconFor = (k) => (INTG_TYPES[k]?.icon || '').replace(/width="14"/, 'width="16"').replace(/height="14"/, 'height="16"');

@@ -836,6 +836,9 @@ _ACTION_CAPABILITIES: Mapping[str, Mapping[str, ToolCapabilities]] = MappingProx
         # `P27-06`. Signing in sends the person's own credentials to a
         # service: outward, under their name, whatever the page.
         "login": _SEND,
+        # `P26-03`. Reading the person's notes and closing one touch only the
+        # notes, which are the person's words to the agent — looking.
+        "notes": _LOOK, "note_done": _LOOK,
     }),
     "git": MappingProxyType({
         "status": _capabilities(ToolEffect.READ_WORKSPACE,
@@ -1780,6 +1783,12 @@ class ToolRunSecurityContext:
     # `D-2026-10-24-02`. A hired agent whose whole kit cannot read the
     # person's private data. False for every other run.
     hire_blind: bool = False
+    # `P27-08`. `(tool_name, content) -> sentence | None`, supplied by the
+    # caller (`src/vault.asks_before`, bound to the run's owner and chat): a
+    # vault login this call signs in with is set to ask — each time, or once
+    # per chat. A callable for the reason `allow_rule_lookup` is one: this
+    # module reads no database. `None` for every caller that does not wire it.
+    vault_use_lookup: Any = None
 
     def __post_init__(self) -> None:
         """`P7-08`. A run that starts tainted still has to be able to say so.
@@ -1881,6 +1890,10 @@ class ToolRunSecurityContext:
         """
         if self.gate_is_armed or self_escalation_for(tool_name, content) is not None:
             return True
+        # `P27-08`. A login set to ask asks in a clean run too, so its card
+        # has to be answerable there (`B1431`'s reason, for a login).
+        if self._vault_use_decision_for(tool_name, content) is not None:
+            return True
         # `B1431` (`P24-08`). A hired agent's `ask` effect asks in a clean run
         # too, so its card has to be answerable there: asked of the run alone,
         # approving it answered "requires an armed run security context" and
@@ -1919,6 +1932,13 @@ class ToolRunSecurityContext:
                 ),
                 classification=TOOL_CLASSIFICATION_UNAVAILABLE,
             )
+        vault = self._vault_use_decision_for(tool_name, content)
+        if vault is not None:
+            # `P27-08`. Before a hire's table and before Auto: how a login may
+            # be used is the person's standing answer about that login, and
+            # Auto is not that answer. An approved action never reaches here —
+            # the exact grant is claimed by the dispatcher instead of asking.
+            return vault
         hired = self._hire_decision_for(tool_name, content)
         if hired is None:
             hired = self._sealed_hire_decision_for(tool_name, content)
@@ -1984,6 +2004,24 @@ class ToolRunSecurityContext:
             tripped_effects=decision.tripped_effects,
             classification=decision.classification,
             auto_approved=True,
+        )
+
+    def _vault_use_decision_for(self, tool_name: Any, content: Any = None):
+        """`P27-08`. A card for a vault login set to ask, or `None`."""
+        if self.vault_use_lookup is None or tool_name not in ("agent_browser", "shell_with_login"):
+            return None
+        try:
+            sentence = self.vault_use_lookup(tool_name, content)
+        except Exception:  # noqa: BLE001 — a lookup that fails asks; it never lets a login through unasked
+            sentence = "The vault could not say how this login may be used, so this asks."
+        if not sentence:
+            return None
+        capabilities = capabilities_for_action(tool_name, content)
+        return ToolGateDecision(
+            False,
+            f"{sentence} '{tool_name}' waits for your yes.",
+            tripped_effects=tuple(describe_effects(capabilities.effects).get("effects", ())),
+            classification=TOOL_CLASSIFICATION_RECOGNISED,
         )
 
     def _sealed_hire_decision_for(self, tool_name: Any, content: Any = None):

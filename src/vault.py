@@ -451,3 +451,137 @@ def scrub(text: str, values: List[str]) -> str:
     for v in sorted({v for v in values if v and len(v) >= 3}, key=len, reverse=True):
         out = out.replace(v, "••••")
     return out
+
+
+# ── the server's Bitwarden vault, by reference (`P27`) ──────────────────────
+
+BW_PREFIX = "bw:"
+
+
+async def resolve(db, owner: Optional[str], ref: Any, *, by: str = "agent",
+                  session: Optional[str] = None) -> Dict[str, Any]:
+    """`for_use`, and also `bw:<id>` — an item in the server's Bitwarden vault,
+    an admin's (`routes/vault/`). Same answer shape either way, so the browser
+    and the shell sign in with either without knowing which. Records the use
+    for this chat (`P27-08`'s *ask once per chat*)."""
+    text = str(ref or "").strip()
+    if text.lower().startswith(BW_PREFIX):
+        got = await _bw_for_use(owner, text[len(BW_PREFIX):].strip())
+    else:
+        got = for_use(db, owner, text, by=by)
+    note_chat_use(owner, session, got["id"])
+    # `P27-08`. Every use is a row in the events table (`P14`, where the audit
+    # trail lives): who, which item, by what, for which addresses — never a value.
+    from src.events import record_event
+    record_event("vault_use", name=got["label"], session_id=session, owner=owner,
+                 detail={"item": got["id"], "by": by, "origins": got["origins"][:4]})
+    return got
+
+
+async def _bw_for_use(owner: Optional[str], item_id: str) -> Dict[str, Any]:
+    # The same question `vault_get` itself is asked — may this person use the
+    # server's vault tools — not a second way of asking who is an admin.
+    from src.tool_security import blocked_tools_for_owner
+    if "vault_get" in blocked_tools_for_owner(owner):
+        raise VaultRefused("bw: items are the server's Bitwarden vault, an admin's. Use a login from "
+                           "your own vault (Settings → Vault).", 404)
+    if not re.fullmatch(r"[A-Za-z0-9-]{6,64}", item_id or ""):
+        raise VaultRefused("“bw:” is followed by the item's id from vault_search.")
+    from src.tools.vault import bw_item
+    item = await bw_item(item_id)
+    if item.get("error"):
+        raise VaultRefused(str(item["error"]), 404)
+    login = item.get("login") or {}
+    origins: List[str] = []
+    for u in login.get("uris") or []:
+        try:
+            o = origin_of(u.get("uri"))
+        except VaultRefused:
+            continue
+        if o not in origins:
+            origins.append(o)
+    otp = ""
+    if login.get("totp"):
+        import pyotp
+        try:
+            otp = pyotp.TOTP(_clean_totp(login["totp"])).now()
+        except VaultRefused:
+            otp = ""   # a code Bitwarden holds in a form this cannot read is not offered; the form says so
+    logger.info("vault: %s used bitwarden item %s", account(owner), item_id)
+    return {"id": BW_PREFIX + item_id, "label": str(item.get("name") or item_id)[:LABEL_MAX],
+            "kind": "login", "origins": origins, "username": login.get("username") or "",
+            "secret": login.get("password") or "", "otp": otp, "use": "ask"}
+
+
+# ── `P27-08`: how each item may be used ─────────────────────────────────────
+
+_chat_uses: Dict[tuple, float] = {}
+CHAT_USES_KEPT = 5000
+
+
+def note_chat_use(owner: Optional[str], session: Optional[str], item_id: str) -> None:
+    if not session:
+        return
+    with _lock:
+        _chat_uses[(account(owner), str(session), item_id)] = time.time()
+        if len(_chat_uses) > CHAT_USES_KEPT:
+            for k, _ in sorted(_chat_uses.items(), key=lambda kv: kv[1])[:len(_chat_uses) - CHAT_USES_KEPT]:
+                _chat_uses.pop(k, None)
+
+
+def used_in_chat(owner: Optional[str], session: Optional[str], item_id: str) -> bool:
+    if not session:
+        return False
+    with _lock:
+        return (account(owner), str(session), item_id) in _chat_uses
+
+
+def refs_in_call(tool_name: Any, content: Any) -> List[str]:
+    """The vault items a tool call names, or [] — the two tools that sign in."""
+    if tool_name not in ("agent_browser", "shell_with_login"):
+        return []
+    try:
+        args = content if isinstance(content, dict) else json.loads(str(content or ""))
+    except ValueError:
+        return []
+    if not isinstance(args, dict):
+        return []
+    if tool_name == "agent_browser":
+        if str(args.get("action") or "").strip().lower() != "login":
+            return []
+        ref = args.get("item") or args.get("login")
+        return [str(ref).strip()] if isinstance(ref, str) and ref.strip() else []
+    logins = args.get("logins", args.get("login"))
+    if isinstance(logins, str):
+        logins = [logins]
+    return [str(x).strip() for x in logins if isinstance(x, str) and x.strip()] if isinstance(logins, list) else []
+
+
+def asks_before(owner: Optional[str], session: Optional[str], tool_name: Any, content: Any) -> Optional[str]:
+    """The sentence a card shows when an item this call names is set to ask —
+    *each time*, or *once per chat* and not yet used in this one — or None.
+    Its caller is the run's gate (`ToolRunSecurityContext.vault_use_lookup`),
+    before Auto and before a hire's table: how a login may be used is the
+    person's standing answer about that login."""
+    refs = refs_in_call(tool_name, content)
+    if not refs:
+        return None
+    from core.database import SessionLocal
+    db = SessionLocal()
+    try:
+        acct = account(owner)
+        for ref in refs:
+            if ref.lower().startswith(BW_PREFIX):
+                return (f"“{ref}” is in the server's Bitwarden vault, and signing in with it asks "
+                        "each time.")
+            row = _find(db, acct, ref)
+            if row is None:
+                continue   # the tool says it is not there, naming what is
+            use = row.use if row.use in USES else "ask"
+            if use == "ask":
+                return f"“{row.label}” is set to ask you each time an agent signs in with it."
+            if use == "chat" and not used_in_chat(owner, session, row.id):
+                return f"“{row.label}” asks once in each chat before an agent signs in with it."
+        return None
+    finally:
+        db.close()

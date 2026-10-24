@@ -248,15 +248,15 @@ proved it dead.
 
 ## Status
 
-**1503 tracked tasks, 1094 done.** The tracker is [`.pantheon/ROADMAP.md`](.pantheon/ROADMAP.md) and
+**1504 tracked tasks, 1100 done.** The tracker is [`.pantheon/ROADMAP.md`](.pantheon/ROADMAP.md) and
 it is the only place work is tracked — one list, one progress area, validated by a script that
 recounts every phase row against its own ticks. It exists because the summary line was once wrong
 by nineteen and carried forward unread from entry to entry, because each author copied the line
 above.
 
 **Read that number with the trend beside it.** Over the last ten waves, *done* went
-**72.7% → 72.8%** and *open* went **400 → 409**: 38 rows filed against 29 closed, a
-file-to-close ratio of **1.310** — and the rise is a phase's build list, not defects: opening `P24`, the Agents hall,
+**73.5% → 73.1%** and *open* went **390 → 404**: 34 rows filed against 20 closed, a
+file-to-close ratio of **1.700** — and the rise is a phase's build list, not defects: opening `P24`, the Agents hall,
 filed its 25 rows at once, and its first waves have closed 18 of its 27, so the 9 still open are its plan — one of them the owner's own audit of every runbook (`P24-27`). Before that wave
 the window read **0.917**, the first in this record where closing outran filing. Most of that is `P23`, the audits' fixes — built by eight lanes, driven by the owner's
 walk twice on the merged tree and closed on 2026-10-07 — and what came straight after it: the owner's rulings that
@@ -268,7 +268,7 @@ control — one row of that table's twenty-five: a chat can be set to **Auto**, 
 privileged effect that follows outside content. What that gives up, and what it leaves untouched, are written out in
 [`.pantheon/SHIP-LINE.md`](.pantheon/SHIP-LINE.md)'s register under `B1338`. The open count falls only when closing outruns filing, and in
 most waves it does not — most rows are defects found by sweeps over code that was already here,
-not new work invented — so this reading is a good stretch, not a promise. What matters more is a different number: of the last 40 backlog rows filed (`B1396`–`B1435`), **none** is
+not new work invented — so this reading is a good stretch, not a promise. What matters more is a different number: of the last 40 backlog rows filed (`B1397`–`B1436`), **none** is
 on the ship line's open list — the short list of rows that stop a stranger relying on this
 repository now that it is public (measured 2026-10-02, and read again on 2026-10-07, 2026-10-08, 2026-10-09 and twice on 2026-10-14 for every row filed since): `B1179`, found at wave G's merge, was met
 the same day, and every gate the list named is met. The series, the classification and

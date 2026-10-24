@@ -50427,6 +50427,50 @@ body.plan-mode-active .chat-input-top > .model-picker-wrap:has(> .model-picker-m
 .abw-stop { color: var(--red); border-color: var(--red); font-weight: 600; }
 .abw-modal.abw-agent-busy .abw-stage { box-shadow: 0 0 0 1px var(--border-control, var(--border)); }
 
+/* ── `P26-01` … `P26-03` · notes pinned to the page ─────────────────────────
+   The pins and marks take the theme's accent from the layer's `color`, which
+   `pageNotes.js` reads from `--accent` (the hand's rule): no new accent site. */
+.abw-notes-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.abw-notes-bar[hidden], .abw-notes-kind[hidden], .abw-notes-send[hidden], .abw-notes-list[hidden] { display: none; }
+.abw-notes-btn, .abw-notes-kind, .abw-note-tool {
+  font: inherit; font-size: 12px; color: var(--fg); background: var(--panel);
+  border: 1px solid var(--border-control, var(--border)); border-radius: 6px; padding: 3px 9px; cursor: pointer;
+}
+.abw-note-mode[aria-pressed="true"] { border-color: currentColor; font-weight: 600; }
+.abw-notes-send { font-weight: 600; }
+.abw-notes-layer { position: absolute; inset: 0; pointer-events: none; }
+.abw-notes-marks { position: absolute; left: 0; top: 0; overflow: visible; }
+.abw-note-mark { fill: none; stroke: currentColor; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+.abw-note-mark.abw-note-done, .abw-note-mark.abw-note-declined { opacity: 0.35; }
+.abw-note-drawing { stroke-dasharray: 6 4; }
+.abw-note-pin {
+  position: absolute; left: -12px; top: -12px; width: 24px; height: 24px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center; font: 700 12px/1 system-ui, sans-serif;
+  color: inherit; background: var(--panel); border: 2px solid currentColor; box-shadow: 0 1px 4px var(--shadow-ink-2);
+  pointer-events: auto; cursor: pointer; padding: 0;
+}
+.abw-note-pin.abw-note-done, .abw-note-pin.abw-note-declined { opacity: 0.45; }
+.abw-page.abw-noting { cursor: crosshair; }
+.abw-note-editor {
+  position: absolute; display: flex; flex-wrap: wrap; gap: 6px; width: 260px; padding: 8px;
+  background: var(--panel); border: 1px solid var(--border-control, var(--border)); border-radius: 8px;
+  box-shadow: 0 6px 18px var(--shadow-ink-4);
+}
+.abw-note-input { flex: 1 1 100%; font: inherit; font-size: 12px; color: var(--fg); background: var(--bg);
+  border: 1px solid var(--border-control, var(--border)); border-radius: 4px; padding: 6px; resize: vertical; }
+.abw-notes-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: 12px; }
+.abw-note-item { border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px; }
+.abw-note-item.abw-note-done, .abw-note-item.abw-note-declined { opacity: 0.7; }
+.abw-note-head { display: flex; gap: 8px; align-items: baseline; }
+.abw-note-num { font-weight: 700; }
+.abw-note-where { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: 0.75; }
+.abw-note-status { opacity: 0.75; }
+.abw-note-text { margin: 4px 0; min-height: 1.2em; outline: none; overflow-wrap: anywhere; }
+.abw-note-text[contenteditable="true"]:focus { box-shadow: 0 0 0 1px var(--border-control, var(--border)); border-radius: 4px; }
+.abw-note-said { margin: 2px 0 4px; font-style: italic; overflow-wrap: anywhere; }
+.abw-note-tools { display: flex; flex-wrap: wrap; gap: 6px; }
+.abw-note-remove { color: var(--red); }
+
 /* ── `P25-09` · an agent offered for the job a message describes ────────── */
 .agent-offer {
   display: flex;

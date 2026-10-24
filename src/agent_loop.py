@@ -220,6 +220,14 @@ def apply_role_floor(rung: Any, owner: Any) -> TrustRung:
     return coerce_trust_rung(rung) if floor is None else stricter_of(rung, floor)
 
 
+def _vault_use_lookup(owner, session_id):
+    """`P27-08`. The run's owner and chat, bound to `src/vault.asks_before`."""
+    def lookup(tool_name, content):
+        from src.vault import asks_before
+        return asks_before(owner, session_id, tool_name, content)
+    return lookup
+
+
 def _resolve_allow_rule_lookup(owner: Any, session_id: Any):
     """The `P7-04` rule store's lookup for this run, or None if there is none.
 
@@ -6646,6 +6654,8 @@ async def stream_agent_loop(
         hire_never_effects=frozenset(getattr(tool_policy, "never_effects", ()) or ()),
         hire_sealed=bool(getattr(tool_policy, "sealed", False)),
         hire_blind=bool(getattr(tool_policy, "blind", False)),
+        # `P27-08`. A vault login set to ask asks, whatever the rung or Auto.
+        vault_use_lookup=_vault_use_lookup(owner, session_id),
         allow_rule_lookup=(
             _resolve_allow_rule_lookup(owner, session_id)
             if rung_consults_allow_rules(_run_rung)

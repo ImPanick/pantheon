@@ -86,12 +86,34 @@ async def do_vault_search(content: str, owner: Optional[str] = None) -> Dict:
         if url:
             parts.append(f"url: {url}")
         lines.append("- " + " · ".join(parts))
-    lines.append("\nUse vault_get(item_id, reason) to retrieve the password.")
+    lines.append("\nTo sign in with one, use agent_browser login or shell_with_login with item "
+                 "\"bw:<its id>\" — you never see the password (`P27`). vault_get describes an item.")
     return {"output": "\n".join(lines), "exit_code": 0}
 
 
+async def bw_item(item_id: str) -> Dict:
+    """One item from the server's Bitwarden vault, or `{"error"}`. The one
+    reader of a Bitwarden secret; its callers are `vault_get` (which says
+    only that one is set) and `src.vault.resolve` (which hands it to the
+    daemon or a command's environment, by reference — `P27`)."""
+    cfg = _load_vault_config()
+    session = cfg.get("session")
+    if not session:
+        return {"error": "The server's Bitwarden vault is locked. An admin unlocks it in Settings."}
+    stdout, stderr, rc = await _run_bw(["get", "item", item_id], session=session)
+    if rc != 0:
+        return {"error": f"bw failed: {stderr[:300]}"}
+    try:
+        return json.loads(stdout)
+    except json.JSONDecodeError:
+        return {"error": "Failed to parse bw output"}
+
+
 async def do_vault_get(content: str, owner: Optional[str] = None) -> Dict:
-    """Retrieve a full vault entry (including password) by item ID. Logs access to assistant chat."""
+    """Describe a vault entry by item ID — never its password, one-time-code
+    secret or notes (`B-P27-vault-get`): the agent signs in with it by
+    reference, `bw:<id>` in `agent_browser login` or `shell_with_login`.
+    Logs access to assistant chat."""
     try:
         args = _parse_tool_args(content)
     except ValueError:
@@ -103,19 +125,9 @@ async def do_vault_get(content: str, owner: Optional[str] = None) -> Dict:
     if not reason:
         return {"error": "reason is required — explain WHY you need this password", "exit_code": 1}
 
-    cfg = _load_vault_config()
-    session = cfg.get("session")
-    if not session:
-        return {"error": "Vault is locked. Unlock first.", "exit_code": 1}
-
-    stdout, stderr, rc = await _run_bw(["get", "item", item_id], session=session)
-    if rc != 0:
-        return {"error": f"bw failed: {stderr[:300]}", "exit_code": 1}
-
-    try:
-        item = json.loads(stdout)
-    except json.JSONDecodeError:
-        return {"error": "Failed to parse bw output", "exit_code": 1}
+    item = await bw_item(item_id)
+    if item.get("error"):
+        return {"error": item["error"], "exit_code": 1}
 
     login = item.get("login") or {}
     name = item.get("name", "?")
@@ -126,24 +138,30 @@ async def do_vault_get(content: str, owner: Optional[str] = None) -> Dict:
         if owner:
             log_to_assistant(
                 owner,
-                f"Retrieved password for **{name}** — reason: {reason}",
+                f"Looked up **{name}** (not its password) — reason: {reason}",
                 category="Vault",
             )
     except Exception:
         pass
 
+    # `P27`. A password in a tool result is in the transcript, in every later
+    # turn's context, and in whatever the model is persuaded to send on. The
+    # item is used by reference instead; this says only what is set.
     output = [
         f"Vault item: {name}",
         f"Username: {login.get('username', '(none)')}",
-        f"Password: {login.get('password', '(none)')}",
+        f"Password: {'set' if login.get('password') else '(none)'}",
     ]
     if login.get("totp"):
-        output.append(f"TOTP secret: {login['totp']}")
+        output.append("One-time codes: set (made at the moment of sign-in)")
     uris = login.get("uris") or []
     if uris:
         output.append("URLs: " + ", ".join(u.get("uri", "") for u in uris))
     if item.get("notes"):
-        output.append(f"Notes: {item['notes']}")
+        output.append("Notes: set (not shown)")
+    output.append(f"To sign in with it: agent_browser login with item \"bw:{item.get('id', item_id)}\", "
+                  f"or shell_with_login with logins [\"bw:{item.get('id', item_id)}\"]. "
+                  "You never see the password, and you never need to.")
 
     return {"output": "\n".join(output), "exit_code": 0}
 

@@ -850,12 +850,15 @@ class Workstation:
         who = body.get("holder") or "agent"
         if who not in P.HOLDERS:
             raise WorkstationError("bad_request", "“holder” is “agent” or “person”.")
-        if who == "agent" and action != "frame" and self.holder(account)["holder"] == "person":
+        if (who == "agent" and action != "frame" and action not in P.NOTE_ACTIONS
+                and self.holder(account)["holder"] == "person"):
             raise WorkstationError(
                 "busy", "A person has taken over this workstation's screen and its browser. Wait "
                         "for them to hand it back, or ask them what they need.")
         try:
             b = self.browsers.get(account)
+            if action in P.NOTE_ACTIONS:
+                return b.note(action, body, who=who)
             if action == "frame":
                 since = body.get("since", 0)
                 since = since if isinstance(since, int) and not isinstance(since, bool) and since >= 0 else 0

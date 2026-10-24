@@ -355,7 +355,7 @@ def test_the_integrations_card_moved_with_its_ids_and_settings_keeps_a_door():
     assert 'id="settings-open-integrations-room"' in settings
     # P23-05: one line under the room, in the voice guide (Doc 2 § 5), and the
     # heading says the room's name (`D-2026-10-03-01`), never just "Integrations".
-    assert "Mail, calendars, MCP servers and APIs." in room
+    assert "Mail, calendars, MCP servers, APIs — and the logins and git hosts your agents sign in with." in room
     assert "</svg>MCP &amp; Integrations</h2>" in room
 
 

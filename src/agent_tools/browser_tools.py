@@ -38,7 +38,10 @@ logger = logging.getLogger(__name__)
 
 TOOL_NAME = "agent_browser"
 SCREENSHOT = "screenshot"
-ACTIONS: Tuple[str, ...] = tuple(a for a in P.BROWSER_ACTIONS if a != "frame") + (SCREENSHOT,)
+# `P26-03`. The agent reads the person's notes and closes them; making,
+# changing and removing a note, and marking notes sent, are the person's.
+PERSON_ONLY = ("frame", "note_add", "note_edit", "note_remove", "notes_sent")
+ACTIONS: Tuple[str, ...] = tuple(a for a in P.BROWSER_ACTIONS if a not in PERSON_ONLY) + (SCREENSHOT,)
 READ_TEXT_MAX = 8_000
 
 BUSY_ADVICE = ("Nothing was done in the browser. Do not keep retrying: ask the person what they "
@@ -96,6 +99,11 @@ def describe(args: Dict[str, Any]) -> str:
         return f"type “{shown}”{where}{' and Enter' if args.get('submit') else ''}"
     if action == "login":
         return f"sign in with “{args.get('item') or '?'}”"
+    if action == "notes":
+        return "read the person's notes" + (" on every page" if args.get("all") else "")
+    if action == "note_done":
+        which = args.get("notes") or args.get("note")
+        return f"{'decline' if args.get('declined') else 'close'} note {which}"
     if action == "press":
         return f"press {args.get('keys')}"
     if action == "scroll":
@@ -131,6 +139,28 @@ def page_text(answer: Dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def notes_text(answer: Dict[str, Any], *, closed: bool = False) -> str:
+    """`P26-03`. The person's notes as the model reads them: each by its
+    number, the element it is pinned to, what the person said, and where the
+    element is now. Done and declined notes are left out of a listing."""
+    notes = [n for n in (answer.get("notes") or []) if n.get("status") in ("open", "sent")]
+    head = "Closed. " if closed else ""
+    if not notes:
+        return head + "No open notes on this page."
+    lines = [f"{head}{len(notes)} open note{'s' if len(notes) != 1 else ''} on {answer.get('url') or 'this page'}:"]
+    for n in notes:
+        a = n.get("anchor") or {}
+        what = f"{a.get('tag') or 'element'}{(' “' + a['text'] + '”') if a.get('text') else ''}"
+        where = (" — that element is no longer on the page" if n.get("lost")
+                 else (f" — scrolled {n['where']}" if n.get("where") in ("above", "below") else ""))
+        drawn = f" ({len(n['shapes'])} drawing{'s' if len(n['shapes']) != 1 else ''})" if n.get("shapes") else ""
+        page = "" if n.get("page") == (answer.get("url") or "").split("#", 1)[0] else f" [on {n.get('page')}]"
+        lines.append(f"Note {n.get('n')}: on {what}{where}{page}{drawn}: {n.get('text') or '(no words)'}")
+    lines.append("When you have done one, or cannot, close it: note_done with its number, and said "
+                 "for what you did or why not (declined: true when you did not).")
+    return "\n".join(lines)
+
+
 def _where_now(answer: Dict[str, Any]) -> str:
     tabs = answer.get("tabs") or []
     tab_line = ""
@@ -158,9 +188,10 @@ class BrowserTool:
             return e.as_result()
         client, account = ready.client, ready.account
         fields = {k: v for k, v in args.items()
-                  if k in ("url", "ref", "x", "y", "text", "submit", "keys", "dx", "dy", "tab", "double")}
+                  if k in ("url", "ref", "x", "y", "text", "submit", "keys", "dx", "dy", "tab", "double",
+                           "note", "notes", "said", "declined", "all")}
         if action == "login":
-            return await _login(client, account, owner, args)
+            return await _login(client, account, owner, args, session=(ctx or {}).get("session_id"))
         try:
             if action == SCREENSHOT:
                 shot = await client.browser(account, "frame")
@@ -177,6 +208,9 @@ class BrowserTool:
         if action == "read":
             return {"output": page_text(answer), "exit_code": 0, "ran_in": "workstation",
                     "url": answer.get("url")}
+        if action in ("notes", "note_done"):
+            return {"output": notes_text(answer, closed=action == "note_done"), "exit_code": 0,
+                    "ran_in": "workstation", "url": answer.get("url")}
         if action == "tabs":
             tabs = answer.get("tabs") or []
             listing = "\n".join(f"{n}. {t.get('url')}{' (this one)' if t.get('current') else ''}"
@@ -187,7 +221,8 @@ class BrowserTool:
                 "exit_code": 0, "ran_in": "workstation", "url": answer.get("url")}
 
 
-async def _login(client, account: str, owner: Optional[str], args: Dict[str, Any]) -> Dict[str, Any]:
+async def _login(client, account: str, owner: Optional[str], args: Dict[str, Any], *,
+                 session: Optional[str] = None) -> Dict[str, Any]:
     """`P27-06`. Sign in on the open page with a login from the person's
     vault, by its name. The values go from the vault to the daemon in one
     request and from there into the page's fields; what comes back to the
@@ -201,7 +236,7 @@ async def _login(client, account: str, owner: Optional[str], args: Dict[str, Any
         return {"error": "`login` needs “item”: the name of a login in the person's vault.", "exit_code": 1}
     db = SessionLocal()
     try:
-        got = V.for_use(db, owner, item, by="agent_browser")
+        got = await V.resolve(db, owner, item, by="agent_browser", session=session)
     except V.VaultRefused as r:
         return {"error": r.sentence, "exit_code": 1}
     finally:

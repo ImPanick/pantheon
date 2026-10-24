@@ -312,11 +312,12 @@ def test_the_vault_is_in_the_retrieval_registry_and_survives_the_prune():
     for name in ("vault_get", "vault_search", "vault_unlock"):
         assert f"builtin_{name}" in kept, name
 
-    # `vault_search` never returns a secret and `vault_get` always does; the
-    # corpus retrieval embeds has to carry that difference, because it is what
-    # a model choosing between them reads.
+    # `vault_search` never returns a secret. `vault_get` did (`B1436`) and
+    # now never does: it says a password is set and how to sign in with the
+    # item by reference — the sentence a model choosing between them reads.
     assert "never" in tool_index.BUILTIN_TOOL_DESCRIPTIONS["vault_search"].lower()
-    assert "secret" in tool_index.BUILTIN_TOOL_DESCRIPTIONS["vault_get"].lower()
+    get = tool_index.BUILTIN_TOOL_DESCRIPTIONS["vault_get"].lower()
+    assert "never the password" in get and "bw:<id>" in get
 
 
 # ── question 4: the owner's own MCP tools ──────────────────────────────────

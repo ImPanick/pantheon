@@ -423,3 +423,93 @@ def test_the_command_runs_with_the_values_and_says_none_of_them(db, tmp_path):
     assert missing["exit_code"] == 1 and "Your vault has: “Svc”." in missing["error"]
     other = asyncio.run(L.run_with_login('{"logins": ["Svc"], "command": "true"}', owner="bob"))
     assert other["exit_code"] == 1 and "There is no item “Svc”" in other["error"]
+
+
+# ── `P27-08`: how each login may be used ────────────────────────────────────
+
+def _gate(owner="alice", session="chat-1", **kw):
+    from src.tool_capabilities import ToolRunSecurityContext
+    return ToolRunSecurityContext(vault_use_lookup=lambda t, c: V.asks_before(owner, session, t, c), **kw)
+
+
+SIGN_IN = json.dumps({"action": "login", "item": "Grafana (agent)"})
+SHELL = json.dumps({"logins": ["Grafana (agent)"], "command": "true"})
+
+
+def test_a_login_set_to_ask_asks_each_time_before_auto_and_in_a_clean_run(db):
+    _login(db())
+    for tool, content in (("agent_browser", SIGN_IN), ("shell_with_login", SHELL)):
+        d = _gate(auto_approved=True).decision_for(tool, content)
+        assert d.allowed is False and d.reason.startswith("“Grafana (agent)” is set to ask you each time")
+        assert _gate().asks_for(tool, content) is True, "its card is answerable in a clean run"
+    assert _gate().decision_for("agent_browser", json.dumps({"action": "read"})).allowed is True, \
+        "an action that names no login is not the vault's question"
+    assert _gate().decision_for("agent_browser", json.dumps({"action": "login", "item": "Nope"})).allowed, \
+        "a name not in the vault asks nothing: the tool says it is not there"
+
+
+def test_once_per_chat_asks_the_first_time_in_each_chat(db):
+    s = db()
+    item = _login(s, use="chat")
+    assert _gate().decision_for("shell_with_login", SHELL).allowed is False
+    asyncio.run(V.resolve(s, "alice", "Grafana (agent)", session="chat-1"))   # the approved first use
+    assert _gate().decision_for("shell_with_login", SHELL).allowed is True
+    assert _gate(session="chat-2").decision_for("shell_with_login", SHELL).allowed is False, "a new chat asks again"
+    assert _gate(owner="bob").decision_for("shell_with_login", SHELL).allowed is True, \
+        "bob has no such login; his call is refused by the tool, not asked about"
+    V.update(s, "alice", item["id"], {"use": "allowed"})
+    assert _gate(session="chat-3").decision_for("shell_with_login", SHELL).allowed is True, \
+        "allowed adds no question of its own; the rung's still apply"
+
+
+def test_a_bitwarden_item_always_asks_and_is_an_admins_only(db, monkeypatch):
+    assert "asks each time" in _gate().decision_for("shell_with_login",
+                                                    json.dumps({"logins": ["bw:abc123"], "command": "true"})).reason
+    import src.tool_security as ts
+    monkeypatch.setattr(ts, "blocked_tools_for_owner", lambda owner: {"vault_get"})
+    with pytest.raises(V.VaultRefused) as nope:
+        asyncio.run(V.resolve(db(), "bob", "bw:abc123"))
+    assert "an admin's" in nope.value.sentence
+
+
+def test_vault_get_says_a_password_is_set_and_never_what_it_is(monkeypatch):
+    import src.tools.vault as T
+
+    async def item(item_id):
+        return {"id": item_id, "name": "Router", "notes": "pin 4321",
+                "login": {"username": "admin", "password": "hunter2-secret", "totp": "JBSWY3DPEHPK3PXP",
+                          "uris": [{"uri": "http://192.168.1.1"}]}}
+    monkeypatch.setattr(T, "bw_item", item)
+    out = asyncio.run(T.do_vault_get(json.dumps({"item_id": "abc123", "reason": "check the router"})))
+    text = out["output"]
+    assert "hunter2-secret" not in text and "JBSWY3DP" not in text and "4321" not in text
+    assert "Password: set" in text and 'item "bw:abc123"' in text
+
+
+def test_the_loop_shows_a_card_for_a_login_set_to_ask_and_runs_one_allowed(db, monkeypatch):
+    from tests.test_an_ai_step_uses_only_its_tools import _base, _drive
+    from src.tool_policy import ToolPolicy
+    s = db()
+    item = _login(s, owner="local")
+    _base(monkeypatch)
+    executed: list = []
+    events, _ = _drive(monkeypatch, [[("shell_with_login", {"logins": ["Grafana (agent)"], "command": "true"})],
+                                     "Done."], policy=ToolPolicy(), executed=executed, message="Check grafana")
+    assert executed == [], "set to ask: the call waited"
+    assert "is set to ask you each time an agent signs in with it" in json.dumps(events)
+    V.update(s, "local", item["id"], {"use": "allowed"})
+    executed.clear()
+    _drive(monkeypatch, [[("shell_with_login", {"logins": ["Grafana (agent)"], "command": "true"})], "Done."],
+           policy=ToolPolicy(), executed=executed, message="Check grafana")
+    assert executed == ["shell_with_login"]
+
+
+def test_every_use_is_recorded_without_its_value(db, monkeypatch):
+    import src.events as ev
+    seen = []
+    monkeypatch.setattr(ev, "record_event", lambda kind, **kw: seen.append((kind, kw)) or True)
+    _login(db())
+    asyncio.run(V.resolve(db(), "alice", "Grafana (agent)", by="agent_browser", session="chat-9"))
+    [(kind, kw)] = seen
+    assert kind == "vault_use" and kw["name"] == "Grafana (agent)" and kw["session_id"] == "chat-9"
+    assert kw["detail"]["by"] == "agent_browser" and PASSWORD not in json.dumps(kw)

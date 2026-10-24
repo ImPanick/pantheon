@@ -165,6 +165,55 @@ FIELD_AT_FN = r"""(which) => {
   return JSON.stringify({ x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) });
 }"""
 
+# `P26-01`. What is under a point, as something that finds it again: a
+# selector (an id when the page has a unique one, else a path of tags and
+# positions), its tag, role and a little of its text — a password field's
+# value never, only its placeholder.
+ANCHOR_FN = r"""(x, y) => {
+  const el = document.elementFromPoint(x, y);
+  if (!el || el === document.documentElement || el === document.body) return '';
+  const esc = (s) => (window.CSS && CSS.escape) ? CSS.escape(s) : s.replace(/[^a-zA-Z0-9_-]/g, '\\$&');
+  const path = (e) => {
+    if (e.id && document.querySelectorAll('#' + esc(e.id)).length === 1) return '#' + esc(e.id);
+    const parts = [];
+    while (e && e.nodeType === 1 && e !== document.documentElement) {
+      let p = e.tagName.toLowerCase();
+      if (e.id && document.querySelectorAll('#' + esc(e.id)).length === 1) { parts.unshift('#' + esc(e.id)); break; }
+      const same = e.parentElement ? [...e.parentElement.children].filter((c) => c.tagName === e.tagName) : [];
+      if (same.length > 1) p += ':nth-of-type(' + (same.indexOf(e) + 1) + ')';
+      parts.unshift(p);
+      e = e.parentElement;
+    }
+    return parts.join(' > ');
+  };
+  const r = el.getBoundingClientRect();
+  const text = (el.getAttribute('aria-label') || el.innerText || el.alt || el.placeholder || el.title || '')
+    .replace(/\s+/g, ' ').trim().slice(0, 80);
+  return JSON.stringify({ selector: path(el), tag: el.tagName.toLowerCase(), role: el.getAttribute('role') || '',
+                          text, box: [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)] });
+}"""
+
+# `P26-01`. Where each anchored element is now, in the viewport's pixels, or
+# null when it is gone. A selector that now finds an element whose text is not
+# the note's is not that element: the text is asked of its tag instead.
+LOCATE_FN = r"""(anchors) => {
+  const same = (el, a) => !a.text || (el.getAttribute('aria-label') || el.innerText || el.alt || el.placeholder || el.title || '')
+    .replace(/\s+/g, ' ').trim().slice(0, 80).startsWith(a.text.slice(0, 30));
+  return JSON.stringify(JSON.parse(anchors).map((a) => {
+    let el = null;
+    try { el = document.querySelector(a.selector); } catch (_) { el = null; }
+    if (el && !same(el, a)) el = null;
+    if (!el && a.text && a.tag) {
+      el = [...document.getElementsByTagName(a.tag)].find((e) => same(e, a)) || null;
+    }
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    if (r.width < 1 && r.height < 1) return null;
+    const where = r.bottom < 0 ? 'above' : (r.top > window.innerHeight ? 'below' : 'here');
+    return { box: [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)], where };
+  }));
+}"""
+
 # WebDriver's key codes for the keys a person names (`press`).
 KEYS = {
     "enter": "", "return": "", "tab": "", "escape": "", "esc": "",
@@ -579,6 +628,68 @@ class AccountBrowser:
                 raise BrowserError("bad_request", f"“{action}” is not a browser action.")
             out.update(self.state(ctx))
             return out
+
+    # -- `P26-01` … `P26-03`: notes pinned to the page ---------------------------
+
+    def notebook(self):
+        from workstation.page_notes import NoteBook
+        if getattr(self, "_notebook", None) is None:
+            self._notebook = NoteBook(self.profile)
+        return self._notebook
+
+    def note(self, action: str, body: Dict, who: str = "person") -> Dict:
+        """One of `P.NOTE_ACTIONS`. Not in the activity feed: a note is the
+        person's words about the page, not something done to it. Answers the
+        notes for the open page (or every page's, `all`), each where its
+        element is now, or `lost`."""
+        from workstation.page_notes import NoteRefused
+        try:
+            with self.lock:
+                if not self.running():
+                    self.stop()
+                    self.start()
+                ctx = self._ctx()
+                url = self.state(ctx).get("url") or ""
+                book = self.notebook()
+                if action == "note_add":
+                    if who != "person":
+                        raise BrowserError("refused", "Notes are the person's to make.")
+                    x, y = _xy(body)
+                    raw = self._eval(ctx, ANCHOR_FN, x, y)
+                    if not raw:
+                        raise BrowserError("refused", "There is nothing on the page there to pin a note to.")
+                    anchor = json.loads(raw)
+                    box = anchor.pop("box")
+                    book.add(url, anchor, str(body.get("text") or ""), [x - box[0], y - box[1]])
+                elif action == "note_edit":
+                    if who != "person":
+                        raise BrowserError("refused", "Notes are the person's to change.")
+                    book.edit(body.get("note"), text=body.get("text"), shapes=body.get("shapes"),
+                              width=P.BROWSER_WIDTH, height=P.BROWSER_HEIGHT)
+                elif action == "note_remove":
+                    if who != "person":
+                        raise BrowserError("refused", "Notes are the person's to remove.")
+                    book.remove(body.get("note"))
+                elif action in ("note_done", "notes_sent"):
+                    ids = body.get("notes") if isinstance(body.get("notes"), list) else [body.get("note")]
+                    if action == "notes_sent":
+                        status = "sent"
+                    elif who == "person" and body.get("status") in ("open", "done", "declined"):
+                        status = body["status"]
+                    else:
+                        status = "declined" if body.get("declined") else "done"
+                    book.mark(ids, status, str(body.get("said") or ""))
+                notes = book.for_page(None if body.get("all") else url)
+                here = [n for n in notes if n["page"] == url.split("#", 1)[0]]
+                if here:
+                    raw = self._eval(ctx, LOCATE_FN, json.dumps([n["anchor"] for n in here]))
+                    for n, at in zip(here, json.loads(raw or "[]")):
+                        n["lost"] = at is None
+                        if at:
+                            n["box"], n["where"] = at["box"], at["where"]
+                return {"ok": True, "action": action, "url": url, "notes": notes}
+        except NoteRefused as e:
+            raise BrowserError("bad_request", e.message) from None
 
     # -- `P27-06`: signing in by reference --------------------------------------
 

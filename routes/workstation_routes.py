@@ -355,8 +355,11 @@ def setup_workstation_routes() -> APIRouter:
             answer = await client.browser(account, action, holder="person", **fields) or {}
         except WorkstationError as e:
             raise _http_error(e)
-        return {"ok": bool(answer.get("ok")), "action": action,
-                "url": str(answer.get("url") or "")[:4000], "title": str(answer.get("title") or "")[:300]}
+        out = {"ok": bool(answer.get("ok")), "action": action,
+               "url": str(answer.get("url") or "")[:4000], "title": str(answer.get("title") or "")[:300]}
+        if isinstance(answer.get("notes"), list):
+            out["notes"] = [_note(n) for n in answer["notes"] if isinstance(n, dict)]
+        return out
 
     return router
 
@@ -379,8 +382,34 @@ def _activity(a: Dict[str, Any]) -> Dict[str, Any]:
 # `P25-06`. What a person's window may ask of their browser, and the fields it
 # may carry; the daemon validates every one (`workstation/browser.py`).
 _BROWSER_PERSON_ACTIONS = ("open", "click", "type", "press", "scroll", "back", "forward",
-                           "reload", "tab_new", "tab_switch", "tab_close")
-_BROWSER_FIELDS = ("url", "x", "y", "text", "submit", "keys", "dx", "dy", "tab", "double")
+                           "reload", "tab_new", "tab_switch", "tab_close",
+                           # `P26-01` … `P26-03`: the person's notes on the page.
+                           "note_add", "note_edit", "note_remove", "notes", "note_done", "notes_sent")
+_BROWSER_FIELDS = ("url", "x", "y", "text", "submit", "keys", "dx", "dy", "tab", "double",
+                   "note", "notes", "shapes", "said", "status", "all")
+
+
+def _note(n: Dict[str, Any]) -> Dict[str, Any]:
+    """`P26-01`. One note, as the window is given it: only what it draws."""
+    def _ints(v, k):
+        return [int(x) for x in v][:k] if isinstance(v, list) and all(
+            isinstance(x, int) and not isinstance(x, bool) for x in v) else None
+    a = n.get("anchor") if isinstance(n.get("anchor"), dict) else {}
+    out = {"id": str(n.get("id") or "")[:80], "n": n.get("n") if isinstance(n.get("n"), int) else 0,
+           "page": str(n.get("page") or "")[:2000], "text": str(n.get("text") or "")[:2000],
+           "status": n.get("status") if n.get("status") in ("open", "sent", "done", "declined") else "open",
+           "said": str(n.get("said") or "")[:600], "lost": bool(n.get("lost")),
+           "anchor": {"tag": str(a.get("tag") or "")[:40], "role": str(a.get("role") or "")[:40],
+                      "text": str(a.get("text") or "")[:80]},
+           "at": _ints(n.get("at"), 2) or [0, 0],
+           "shapes": [{"kind": s.get("kind"), "points": [p for p in (s.get("points") or []) if _ints(p, 2)][:200]}
+                      for s in (n.get("shapes") or []) if isinstance(s, dict)
+                      and s.get("kind") in ("arrow", "circle", "box", "line")][:12]}
+    box = _ints(n.get("box"), 4)
+    if box and len(box) == 4:
+        out["box"] = box
+        out["where"] = n.get("where") if n.get("where") in ("here", "above", "below") else "here"
+    return out
 
 
 __all__ = ["setup_workstation_routes"]

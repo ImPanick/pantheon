@@ -73,7 +73,9 @@ _PREAMBLE = (
     "const win = () => mod._test.win();\n"
     "const open = async () => { mod.openAgentBrowser(); win().img.getBoundingClientRect = () => rect;\n"
     "  await settle(80); };\n"
-    "const acts = () => browser.acts.map((a) => a);\n"
+    # `P26-01`: the window also asks where the page's notes are (`notes`, a
+    # read) — not an act on the page, so not counted among them.
+    "const acts = () => browser.acts.filter((a) => a.action !== 'notes');\n"
     "const done = async () => { await settle(60); await mod._test.settled(); await settle(10); };\n"
     "const out = (o) => { console.log(JSON.stringify(o)); process.exit(0); };\n"
 )

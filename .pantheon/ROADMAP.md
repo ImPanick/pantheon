@@ -86,10 +86,10 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P23 | Alignment — the audits, fixed | 9 | 0 | 0 | **9** |
 | P24 | Agents — the hall of hireable agents | 27 | 8 | 0 | **19** |
 | P25 | The + menu, git per account, the agent browser | 10 | 1 | 0 | **9** |
-| P26 | Design — the studio, and notes on the live page | 10 | 10 | 0 | **0** |
-| P27 | Connections — the hub and the private vault | 11 | 8 | 0 | **3** |
-| Backlog | Bugs and hardening found in flight | 1014 | 350 | 0 | **662** |
-| **Total** | | **1503** | **402** | **5** | **1094** |
+| P26 | Design — the studio, and notes on the live page | 10 | 7 | 0 | **3** |
+| P27 | Connections — the hub and the private vault | 11 | 6 | 0 | **5** |
+| Backlog | Bugs and hardening found in flight | 1015 | 350 | 0 | **663** |
+| **Total** | | **1504** | **397** | **5** | **1100** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -251,6 +251,14 @@ they are for.*
 > `check-tracker.py` now validates the newest entry against the table and fails on drift.
 > Entries below the `P0-31` one keep the figure they were written with: a record of what
 > was claimed at the time is worth more than a quietly corrected one (`B44`).
+
+### P26: notes pinned to the live page
+`1b63b44`…`HEAD`. **1504 tracked, 1100 done. `P26-01`, `P26-02` and `P26-03` closed.**
+In the agent browser a note pins to an element and follows it through reflows and re-renders, says lost when it is gone, takes drawn marks that move with it, and goes to the agent as one message with a crop of each; the agent reads the notes and closes them, and the pins grey as it does.
+
+### P27: the Connections hub, how each login may be used, and vault_get without the password
+`1b63b44`…`HEAD`. **1504 tracked, 1097 done. `P27-01` and `P27-08` closed; `B1436` filed and closed.**
+The Workbench's MCP & Integrations room lists each person's logins and git hosts beside everything else an agent reaches; a login set to ask asks at every rung and in Auto, or once per chat, and every use is an events row; the server's Bitwarden tool no longer hands the model a password — its items are signed in with by reference.
 
 ### P27: a shell command signed in from the vault
 `2b301b4`…`HEAD`. **1503 tracked, 1094 done. `P27-07` closed.**
@@ -11357,20 +11365,23 @@ layer after it; `P26-08`'s branch-and-preview is the seam it will build on, and 
   tweak one, hand it off; it lands as a branch with the notes and tokens beside it. A second account invited as a
   commenter adds a note and cannot edit. `Depends:` `P26-01` … `P26-09`. `Verify:` driven at 1440×900 and 390×844,
   dark and light, against a scripted model and a real workstation.
-- [ ] **P26-01** **Notes on the live page.** In the browser window a *Note* tool (and `N`): hover outlines an element,
+- [x] **P26-01** **Notes on the live page.** In the browser window a *Note* tool (and `N`): hover outlines an element,
   a click pins a numbered note to it; the note keeps what finds it again — a selector, its text, its role and its
   box — so it follows the element when the page reflows and says *lost* when the element is gone, never floating
   over the wrong thing. Notes are listed beside the page, editable and removable. The daemon computes the anchor in the
   page (`WHERE_FN`'s neighbour), not the client. `Verify:` notes survive a reload, a resize and a re-render; a
   removed element's note is marked *lost*.
-- [ ] **P26-02** **Draw over the page.** Arrow, circle, box and free line over the page, kept with the frame they were
+  — **done 2026-10-24** — `workstation/page_notes.py` (a `NoteBook` per account, beside the browser profile so a restart keeps it) and two page functions in `workstation/browser.py`: `ANCHOR_FN` keeps what finds the element again — a unique id or a path of tags and positions, its tag, role and up to 80 characters of its text (a password field's value never) — and `LOCATE_FN` finds each again on every new frame the window shows (at most once a second), refusing a selector that now finds an element whose text is not the note's and asking the text of its tag instead. *Note* (or `N`) in the window: the next click opens a box at the point; the pin is numbered in the theme's accent and follows its element; the list says *scrolled above*/*below* or *no longer on the page*. Six daemon actions (`note_add`, `note_edit`, `note_remove`, `notes`, `note_done`, `notes_sent`), not in the hand's activity feed — a note is the person's words, not an act on the page. `Verify:` `tests/test_notes_are_pinned_to_the_page.py` — a real Firefox: two notes followed through a reflow (both moved 180 px), a re-render (found again by place and text) and a removal (*lost*, and the next note did not jump onto its place); driven in Chromium against the drive site.
+- [x] **P26-02** **Draw over the page.** Arrow, circle, box and free line over the page, kept with the frame they were
   drawn on, removable one by one; a drawing near a note belongs to it. Pointer and touch. `Verify:` a drawing is
   sent as part of the crop it was drawn on, not as coordinates the model must imagine.
-- [ ] **P26-03** **Send the notes to the agent.** *Send N notes* writes one message into the chat: per note the
+  — **done 2026-10-24** — *Draw* on a note, then drag: arrow, circle, box or free line (pointer events, so a finger too), kept relative to the note's element so the mark moves with it, drawn as SVG in the accent over the frame; *Clear marks*. A drawing belongs to the note whose *Draw* is on, not to whichever note is nearest — said rather than guessed. `Verify:` the same file (shapes kept, bounded and refused in sentences; an arrow is its two ends).
+- [x] **P26-03** **Send the notes to the agent.** *Send N notes* writes one message into the chat: per note the
   element (role, text, selector), the person's words, and a crop of the page with the drawing on it; the agent's
   answer marks each note *done* or says why not, and a done note greys on the page. One turn, not N. Notes not sent
   stay as a draft for the page. `Verify:` a scripted model receives every note in order with its crop; a note the
   turn did not address stays open.
+  — **done 2026-10-24** — *Send N notes* writes one message — each note by number, the element, the person's words, how many marks — attaches a crop of the page for each (the element centred, its pin and marks drawn on in the accent), sends it, and marks the notes *sent*. The agent reads them with `agent_browser notes` (each by number and element, where it is now, *lost* when gone) and closes each with `note_done` (`said`, or `declined`); the pin greys, the list shows *Agent: …*, and the person can reopen. Making, changing and removing notes are the person's; the agent's call to make one is refused by the daemon. A note not sent stays on its page. `Verify:` the same file (+2: the message and the crop geometry under node; the agent closing a note through the daemon); driven: two notes and an arrow sent, the chat receiving the words and `note-4.png`.
 - [ ] **P26-04** **The Design window.** Beside the chat, for the project in view: *What will you design?* and
   starting points as cards — *Document*, *Mockup*, *Prototype*, *Motion*, *Slides*, *Dashboard* — each opening a
   short brief (who it is for, the screens, the design system) or *describe it in the chat*; below, the project's
@@ -11430,11 +11441,12 @@ a dedicated account on the service with the role the person picks, and its passw
   the screenshots and the logs contain no password. A second account cannot see or use the item. `Depends:`
   `P27-01` … `P27-10`. `Verify:` driven against a real Grafana in the sandbox; a grep of every store for the password
   finds only ciphertext.
-- [ ] **P27-01** **The Connections hub.** A window (and Settings → Connections) listing every connection the person
+- [x] **P27-01** **The Connections hub.** A window (and Settings → Connections) listing every connection the person
   has, grouped — *Services*, *MCP servers*, *Mail*, *Git*, *Models*, *Logins* — each with its status, a *Test*, when it
   was last used and by which agent, and *Add* from the presets (`INTEGRATION_PRESETS` is the one catalogue, with icons
   and a hint each, as the + menu's rows). Reads the existing registers; no new store. `Verify:` a connection added from
   its old page appears here and the reverse; `check-unreachable` does not rise.
+  — **done 2026-10-24** — the hub already existed, so it was widened, not built again (`Law 14`): the Workbench's *MCP & Integrations* room (`P22-21`, Settings → Integrations is its door) already listed APIs, calendars, contacts, mail, MCP servers, agent tokens and the server's Bitwarden link from their own registers. It now lists each person's **logins** (from `/api/vault/mine`: user name, addresses, how agents may use it, when and by what it was last used, *vault locked*) and **git hosts** (`/api/git`), each opening its own panel and removable from the card; *Add Integration* offers *Login, for agents to sign in* and *Git host token*. No new store and no new route. `Verify:` `tests/test_the_integration_list_draws_names_as_text_js.py` (every card's name and detail drawn as text, the two new kinds included); driven in Chromium at 1440×900 and 390×844.
 - [ ] **P27-02** **Service connections, per account.** Today's integrations file is one global list an admin edits.
   Move it to the `Integration` table, which already has an `owner` column: each person's own, an admin's marked
   *shared* and read-only to others; a one-time migration gives today's entries to the admin who made them, shared.
@@ -11472,10 +11484,11 @@ a dedicated account on the service with the role the person picks, and its passw
   command and is removed after; the command's output is scrubbed of the values before anyone sees it. `Verify:` the
   secret is not in the command line, the shell history, the output, or the workstation's disk after.
   — **done 2026-10-24** — a tool of its own, `shell_with_login {logins, command, cwd?}` (`src/agent_tools/login_shell_tools.py`), rather than a second meaning for `bash`'s one string: the command runs where `git` runs (the same `_Place`) with `$LOGIN_<NAME>_USER`, `_PASSWORD`, `_OTP` (made now), `_URL` — and `$LOGIN_USER`… when one login is named — in that one process's environment; the command line the card and the transcript show carries only the variable names, the shell is not interactive (no history), nothing is written to disk, and the output is scrubbed. Classified as running code that reaches out under the person's name; blocked for non-admins on this machine and lifted with `bash` for a workstation; off with the chat's Shell switch and `disable_tool shell`. `Verify:` `tests/test_the_vault_is_each_persons_own.py` (+2: the command sees the values, its answer none).
-- [ ] **P27-08** **Which agent may use what.** Each connection and vault item says which agents may use it and how —
+- [x] **P27-08** **Which agent may use what.** Each connection and vault item says which agents may use it and how —
   *ask each time* (the default), *ask once per chat*, *allowed* — enforced where the tool runs, not in the prompt.
   Every use is a line in the agent's activity and the Audit Log: who, which item, which address, allowed by what.
   `Verify:` an agent without the grant gets a refusal it can explain; the log names every use.
+  — **done 2026-10-24** — each login says *Ask me each time* (the default), *Ask once per chat* or *May use it* (Settings → Vault). Enforced in the run's gate, not the prompt: `ToolRunSecurityContext.vault_use_lookup` (`src/vault.asks_before`, bound to the run's owner and chat) is asked before a hire's table and before Auto, so a login set to ask asks at every rung and in a clean run, and its card is answerable there; *once per chat* asks until the first approved use in that chat; *may use it* adds no question of its own and the rung's still apply. Items of the server's Bitwarden vault (`bw:<id>`) always ask. Every use is an events row, `vault_use` (who, which item, by what tool, which addresses — never a value), beside the browser's own activity line. **Not done:** grants per agent, by name — a login is today the person's for any of their agents; that is `P27-09`'s list to draw. `Verify:` `tests/test_the_vault_is_each_persons_own.py` (+6, one through the real loop with a scripted model: a card, nothing run; set to *may use it*, it runs).
 - [ ] **P27-09** **Agents reach connections by name.** One tool, `connections` (list what this agent may use, and test
   one), and the existing tools take a connection by its name — `agent_browser login`, the shell's `vault`, git's
   credential, an MCP server — so the model never handles an address and a secret together. Registered in the nine
@@ -11484,6 +11497,8 @@ a dedicated account on the service with the role the person picks, and its passw
   JSON and CSV (and from the server's Bitwarden link when an admin set one), export the person's own, encrypted with
   a passphrase they type. `Verify:` an import never reaches another account; an export is unreadable without the
   passphrase.
+
+- [x] **B1436** **`vault_get` handed the model the password.** Found 2026-10-24 while building `P27-06`. The server's Bitwarden tool (`src/tools/vault.py`, `B1390`'s ruling made it callable) returned `Password: <value>`, the one-time-code secret and the notes in its tool result — into the transcript, every later turn's context, and whatever an injected page could persuade the model to send on. Admin-only (`NON_ADMIN_BLOCKED_TOOLS`), which bounded who, not what. — **done 2026-10-24.** It now says *Password: set*, *One-time codes: set*, *Notes: set (not shown)*, and how to sign in with the item by reference: `bw:<id>` in `agent_browser login` or `shell_with_login` (`src/vault.resolve`, an admin's only, always asking). `vault_search`'s hint, the schema, the index sentence and the blocked-tool reason say the same. `vault_unlock` still takes the master password as an argument (`B1390`'s second written cost) and is untouched. `Verify:` `tests/test_the_vault_is_each_persons_own.py::test_vault_get_says_a_password_is_set_and_never_what_it_is`.
 
 - [x] **B70** **Upstream shipped a security fix through a private advisory fork and we do not have
   it.** Found 2026-09-11 while measuring `P19-06`. Two of the twelve unmerged upstream commits are

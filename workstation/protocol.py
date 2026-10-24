@@ -250,7 +250,15 @@ INPUT_ACTIONS = (
 # origin is one of `origins`; answers {"filled": ["user name", "password", …],
 # "still_asking": bool} and never a value. Only Pantheon's server sends it.
 BROWSER_ACTIONS = ("open", "read", "click", "type", "press", "scroll", "back", "forward",
-                   "reload", "tabs", "tab_new", "tab_switch", "tab_close", "frame", "login")
+                   "reload", "tabs", "tab_new", "tab_switch", "tab_close", "frame", "login",
+                   "note_add", "note_edit", "note_remove", "notes", "note_done", "notes_sent")
+# `P26-01` … `P26-03`, added. Notes pinned to the open page's elements:
+#   note_add {x, y, text} · note_edit {note, text?, shapes?} · note_remove {note}
+#   (a person's only) · notes {all?} · note_done {note | notes, said?, declined?}
+#   · notes_sent {notes}. Each answers {"ok", "action", "url", "notes": [{"id", "n",
+#   "page", "anchor": {"selector", "tag", "role", "text"}, "at", "text", "shapes",
+#   "status": "open"|"sent"|"done"|"declined", "said", "lost"?, "box"?, "where"?}]}.
+NOTE_ACTIONS = ("note_add", "note_edit", "note_remove", "notes", "note_done", "notes_sent")
 BACKENDS = ("container", "vm", "remote")
 # ── what the machine is (`P20-07`, added) ─────────────────────────────────────
 # `health`, for a caller with the token, also answers

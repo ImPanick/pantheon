@@ -25,6 +25,7 @@
 import * as Modals from './modalManager.js?v=20261009census';
 import { makeWindowDraggable } from './windowDrag.js';
 import { keyAction, mapPoint, wheelClicks } from './workstationScreen.js';
+import { createNotes } from './pageNotes.js';
 
 export const MODAL_ID = 'agent-browser-modal';
 
@@ -120,6 +121,7 @@ let _feed = [];             // [{id, label, phase, who}], newest first
 let _stopped = false;
 const FEED_KEPT = 6;
 let _lastUrl = '';
+let _notes = null;           // `P26-01`: the notes layer (`pageNotes.js`)
 
 function _el(tag, cls, text) {
   const n = document.createElement(tag);
@@ -201,6 +203,7 @@ function _showFrame(f) {
   if (!_win || !f || typeof f.data_b64 !== 'string') return;
   if (f.mime !== 'image/png' && f.mime !== 'image/jpeg') return;
   _win.img.src = `data:${f.mime};base64,${f.data_b64}`;
+  if (_notes) _notes.onFrame();   // `P26-01`: where the notes' elements are now
   _digest = typeof f.digest === 'string' ? f.digest : '';
   if (f.width > 0 && f.height > 0) _size = { w: f.width, h: f.height };
   _win.img.hidden = false;
@@ -603,6 +606,9 @@ function _build() {
   feed.setAttribute('aria-label', 'What the browser did');
   feed.hidden = true;
   stage.appendChild(page);
+  // `P26-01` … `P26-03`. Notes on the page: their toolbar and their list.
+  const notesBar = _el('div', 'abw-notes-slot');
+  const notesList = _el('div', 'abw-notes-slot');
   const hint = _el('p', 'abw-hint');
   hint.hidden = true;
 
@@ -610,7 +616,9 @@ function _build() {
   content.appendChild(tabs);
   content.appendChild(bar);
   content.appendChild(strip);
+  content.appendChild(notesBar);
   content.appendChild(stage);
+  content.appendChild(notesList);
   content.appendChild(feed);
   content.appendChild(hint);
   modal.appendChild(content);
@@ -622,12 +630,41 @@ function _build() {
   img.addEventListener('dragstart', (e) => e.preventDefault());
 
   return { modal, content, header, title, tabs, back, forward, reload, address, go, status, statusText,
-    take, give, stop, stage, page, img, empty, hint, hand, caption, feed };
+    take, give, stop, stage, page, img, empty, hint, hand, caption, feed, notesBar, notesList };
+}
+
+/** `P26-03`. Write the notes into the chat as one message, with their
+ *  pictures, and send it. */
+async function _sendToChat(text, files) {
+  const box = document.getElementById('message');
+  if (!box) { _say('There is no chat to send the notes to.', { error: true }); return false; }
+  try {
+    // The same module instance the composer uses (its `?v=`), or the pictures
+    // land in a pending list nothing sends.
+    const fh = await import('./fileHandler.js?v=20261009census');
+    if (files && files.length && typeof fh.addFiles === 'function') await fh.addFiles(files, { skipCrop: true });
+  } catch (_) { /* the words still go; the pictures are a help, not the message */ }
+  box.value = text;
+  box.dispatchEvent(new Event('input', { bubbles: true }));
+  const sendBtn = document.querySelector('.send-btn');
+  if (sendBtn) sendBtn.click();
+  return true;
+}
+
+function _startNotes() {
+  if (!_win || _notes) return;
+  _notes = createNotes({
+    win: _win, size: () => _size, say: (t, o) => _say(t, o), send: _sendToChat, mapPoint,
+    frameInfo: () => ({ title: _win ? _win.title.textContent : '', url: _lastUrl }),
+  });
+  _win.notesBar.appendChild(_notes.bar);
+  _win.notesList.appendChild(_notes.list);
 }
 
 function _teardown() {
   if (!_win) return;
   if (_timer) { clearTimeout(_timer); _timer = null; }
+  if (_notes) { _notes.destroy(); _notes = null; }
   _flushTyped();
   if (_holder === 'person') {
     fetch('/api/workstation/control', {
@@ -671,6 +708,7 @@ export function openAgentBrowser({ url = '', focus = false } = {}) {
       skipSelector: 'button, input, select, label, form', minWidth: 380, minHeight: 300,
     });
     _render();
+    _startNotes();
     _kick(0);
   }
   if (url) openAddress(url);

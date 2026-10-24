@@ -181,7 +181,7 @@ NON_ADMIN_BLOCKED_REASONS: dict = {
     "manage_contact": "writes to the server-wide CardDAV address book",
     "manage_calendar": "writes to the operator's calendar",
     "vault_search": "searches the credential vault's entry names",
-    "vault_get": "returns a stored secret's value",
+    "vault_get": "describes a stored credential and leads to signing in with it as the server's vault",
     "vault_unlock": "unlocks the credential vault for the process",
 
     # ── Persistent state and configuration ──

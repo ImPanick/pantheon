@@ -1875,6 +1875,12 @@ FUNCTION_TOOL_SCHEMAS = [
     # can only obtain by asking the person for it in the chat. `reason` stays
     # required on `vault_get` because the handler refuses without it, and that
     # refusal is the one record of why a secret was read.
+    #
+    # `P27` (2026-10-24) retired the first cost: `vault_get` no longer returns
+    # the password, the one-time-code secret or the notes — it says they are
+    # set, and the agent signs in with the item by reference (`bw:<id>` in
+    # `agent_browser login` or `shell_with_login`), so the value never enters
+    # the transcript.
     {
         "type": "function",
         "function": {
@@ -1882,7 +1888,7 @@ FUNCTION_TOOL_SCHEMAS = [
             "description": (
                 "Search the credential vault by keyword. Returns matching entry "
                 "names and URLs and NEVER returns passwords. Use to find which "
-                "entry to read before calling vault_get."
+                "entry to sign in with (bw:<id>)."
             ),
             "parameters": {
                 "type": "object",
@@ -1898,9 +1904,11 @@ FUNCTION_TOOL_SCHEMAS = [
         "function": {
             "name": "vault_get",
             "description": (
-                "Retrieve one vault entry INCLUDING its secret, by item ID from "
-                "vault_search. Every access is logged to the assistant chat. "
-                "Requires a reason explaining why the secret is needed."
+                "Describe one vault entry by item ID from vault_search: its name, "
+                "user name and URLs, and whether a password is set — never the "
+                "password itself. To sign in with it, use agent_browser login or "
+                "shell_with_login with item \"bw:<id>\". Every access is logged; "
+                "requires a reason."
             ),
             "parameters": {
                 "type": "object",

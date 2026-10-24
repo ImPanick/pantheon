@@ -101,7 +101,7 @@ def command_line(content: Any) -> str:
 
 
 async def run_with_login(content: Any, *, owner: Optional[str], station_workspace: Optional[str] = None,
-                         ) -> Dict[str, Any]:
+                         session_id: Optional[str] = None) -> Dict[str, Any]:
     from core.database import SessionLocal
     from src import vault as V
     from src.agent_tools.git_tools import _GitProblem, _Place, _where
@@ -122,7 +122,7 @@ async def run_with_login(content: Any, *, owner: Optional[str], station_workspac
     items = []
     try:
         for ref in args["logins"]:
-            items.append(V.for_use(db, owner, ref, by=TOOL_NAME))
+            items.append(await V.resolve(db, owner, ref, by=TOOL_NAME, session=session_id))
     except V.VaultRefused as r:
         return {"error": r.sentence, "exit_code": 1, **_where(place)}
     finally:
@@ -153,4 +153,5 @@ class LoginShellTool:
     another way, with the owner in `ctx`."""
 
     async def execute(self, content: str, ctx: Optional[dict] = None) -> Dict[str, Any]:
-        return await run_with_login(content, owner=(ctx or {}).get("owner"))
+        return await run_with_login(content, owner=(ctx or {}).get("owner"),
+                                    session_id=(ctx or {}).get("session_id"))

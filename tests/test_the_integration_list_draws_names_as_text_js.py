@@ -126,6 +126,12 @@ const answers = {
   '/api/tokens': [{ id: 't1', name: 'Codex Agent ' + HOSTILE_NAME, token_prefix: HOSTILE_NAME,
                     scopes: ['todos:read'] }],
   '/api/calendar/calendars': { calendars: [] },
+  // `P27-01`. A login's name and addresses, and a git host, are the person's
+  // own words: drawn as text like everything else here.
+  '/api/vault/mine': { items: [{ id: 'v1', label: HOSTILE_NAME, username: HOSTILE_NAME,
+                                 addresses: [HOSTILE_URL], use: 'ask', last_used_by: HOSTILE_NAME,
+                                 last_used_at: '2026-10-24T10:00:00Z' }], locked: false },
+  '/api/git': { hosts: [{ host: HOSTILE_NAME, username: HOSTILE_NAME, since: null }] },
 };
 globalThis.fetch = async (url) => ({ ok: true, json: async () => answers[url] });
 """ % {"name": json.dumps(HOSTILE_NAME), "url": json.dumps(HOSTILE_URL), "id": json.dumps(HOSTILE_ID)}
@@ -133,7 +139,7 @@ globalThis.fetch = async (url) => ({ ok: true, json: async () => answers[url] })
 
 def _cards(sandbox) -> list:
     out = _run(sandbox, "import uiModule from './ui.js';\n" + _FETCH
-               + _cut("esc", "fetchAll", "renderCard", bindings=("INTG_TYPES",)) + "\n", """
+               + _cut("esc", "fetchAll", "renderCard", bindings=("INTG_TYPES", "LOGIN_USE_WORDS")) + "\n", """
         const items = await fetchAll();
         console.log(JSON.stringify({ cards: items.map((item) => ({ item, html: renderCard(item) })) }));
         """)
@@ -147,7 +153,7 @@ def test_every_source_s_card_draws_its_name_and_detail_as_text(sandbox):
     not a link."""
     cards = _cards(sandbox)
     kinds = sorted({c["item"]["type"] for c in cards})
-    assert kinds == ["api", "caldav", "carddav", "codex", "email", "mcp"], kinds
+    assert kinds == ["api", "caldav", "carddav", "codex", "email", "githost", "login", "mcp"], kinds
     for card in cards:
         item, elements = card["item"], _tree(card["html"])
         drawn = sorted({e["tag"] for e in elements} - _CARD_TAGS)
