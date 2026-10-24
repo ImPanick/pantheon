@@ -823,6 +823,9 @@ _ACTION_CAPABILITIES: Mapping[str, Mapping[str, ToolCapabilities]] = MappingProx
         "tab_close": _LOOK, "scroll": _LOOK,
         "open": _REACH, "back": _REACH, "forward": _REACH, "reload": _REACH, "tab_new": _REACH,
         "click": _SEND, "type": _SEND, "press": _SEND,
+        # `P27-06`. Signing in sends the person's own credentials to a
+        # service: outward, under their name, whatever the page.
+        "login": _SEND,
     }),
     "git": MappingProxyType({
         "status": _capabilities(ToolEffect.READ_WORKSPACE,

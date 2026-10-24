@@ -269,6 +269,8 @@ function buildFixture(document) {
     'account',
     // `P25-02`, 2026-10-24. Settings → Git: everyone's own identity and tokens.
     'git',
+    // `P27-03`, 2026-10-24. Settings → Vault: everyone's own logins.
+    'vault',
     'tools',
     'users',
     'embeddings',
@@ -401,6 +403,7 @@ function moduleSource(relativePath) {
       'shortcuts',
       'account',
       'git',        // `P25-02` — see the fixture list above
+      'vault',      // `P27-03` — see the fixture list above
       'tools',
       'users',
       'embeddings',

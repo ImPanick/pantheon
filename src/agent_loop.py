@@ -1684,8 +1684,9 @@ Blocked paths/routes (refused for safety): /api/auth/, /api/users/, /api/tokens/
         "A real browser in the person's workstation, which they watch in the app — one action "
         "per block: open (url), read (the page's text and its elements numbered [1], [2]…), "
         "click (ref), type (ref, text, submit), press (keys), scroll (dy), back, forward, "
-        "reload, tabs, tab_new (url), tab_switch (tab), tab_close (tab), screenshot. Read again "
-        "after anything that changes the page."
+        "reload, tabs, tab_new (url), tab_switch (tab), tab_close (tab), screenshot, login "
+        "(item: a login's name in the person's vault — the browser fills the form, you never "
+        "see the password). Read again after anything that changes the page."
     ),
     # `P25-03`. The fenced form of the `git` schema, for a model with no
     # native tool channel.

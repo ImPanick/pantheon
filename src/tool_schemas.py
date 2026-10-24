@@ -523,7 +523,10 @@ FUNCTION_TOOL_SCHEMAS = [
                 "tab_close take its number; screenshot shows the page. Read the page again after "
                 "anything that changes it: numbers belong to one reading. Use it for sites that "
                 "need clicking, logging in or forms; for plain reading, web_fetch is quicker. If "
-                "the person has taken over the browser, ask them or wait."
+                "the person has taken over the browser, ask them or wait. To sign in, open the "
+                "service's sign-in page and use login with item, the name of a login in the "
+                "person's vault: the browser fills the form itself and you never see the "
+                "password — never ask the person to type one into the chat."
             ),
             "parameters": {
                 "type": "object",
@@ -531,8 +534,10 @@ FUNCTION_TOOL_SCHEMAS = [
                     "action": {"type": "string",
                                "enum": ["open", "read", "click", "type", "press", "scroll", "back",
                                         "forward", "reload", "tabs", "tab_new", "tab_switch",
-                                        "tab_close", "screenshot"],
+                                        "tab_close", "screenshot", "login"],
                                "description": "What to do."},
+                    "item": {"type": "string",
+                             "description": "login: the name of a login in the person's vault."},
                     "url": {"type": "string", "description": "open, tab_new: the address."},
                     "ref": {"type": "integer", "description": "click, type: the element's number from read."},
                     "text": {"type": "string", "description": "type: what to type."},

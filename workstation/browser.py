@@ -94,7 +94,8 @@ READ_FN = r"""(maxChars, maxEls) => {
     n += 1;
     el.setAttribute('data-pantheon-ref', String(n));
     const tag = el.tagName.toLowerCase();
-    const label = (el.getAttribute('aria-label') || el.innerText || el.value || el.placeholder ||
+    const value = el.type === 'password' ? '' : el.value;   // a filled password is never read out
+    const label = (el.getAttribute('aria-label') || el.innerText || value || el.placeholder ||
                    el.title || el.alt || el.name || '').replace(/\s+/g, ' ').trim().slice(0, 80);
     const item = { ref: n, tag, label };
     if (tag === 'input') item.type = el.type || 'text';
@@ -113,11 +114,55 @@ WHERE_FN = r"""(ref) => {
   if (!el) return '';
   el.scrollIntoView({ block: 'center', inline: 'center' });
   const r = el.getBoundingClientRect();
-  const label = (el.getAttribute('aria-label') || el.innerText || el.value || el.placeholder ||
+  const value = el.type === 'password' ? '' : el.value;
+  const label = (el.getAttribute('aria-label') || el.innerText || value || el.placeholder ||
                  el.title || el.alt || el.name || el.tagName.toLowerCase()).replace(/\s+/g, ' ').trim().slice(0, 60);
   return JSON.stringify({ x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2),
                           editable: !!(el.isContentEditable || /^(input|textarea|select)$/i.test(el.tagName)),
                           label });
+}"""
+
+# `P27-06`. The sign-in form's fields on the open page, for `login`: the
+# visible password field, the user-name field before it in the same form (or
+# alone, on a page that asks for the name first), and a one-time-code field.
+# Each is marked so `_fill` finds it again; nothing here reads a value.
+FIELDS_FN = r"""() => {
+  const shown = (el) => {
+    const r = el.getBoundingClientRect(); const st = getComputedStyle(el);
+    return r.width >= 2 && r.height >= 2 && st.visibility !== 'hidden' && st.display !== 'none' && !el.disabled;
+  };
+  document.querySelectorAll('[data-pantheon-fill]').forEach((e) => e.removeAttribute('data-pantheon-fill'));
+  const inputs = [...document.querySelectorAll('input')].filter(shown);
+  const isOtp = (el) => /one-time-code/i.test(el.autocomplete || '') ||
+    /otp|totp|2fa|mfa|one.?time|verification|auth.?code/i.test((el.name || '') + ' ' + (el.id || '') + ' ' +
+                                                             (el.placeholder || '') + ' ' + (el.getAttribute('aria-label') || ''));
+  const pass = inputs.find((el) => el.type === 'password' && !/new-password/i.test(el.autocomplete || ''));
+  const textual = (el) => /^(text|email|tel|)$/i.test(el.getAttribute('type') || '') && !isOtp(el);
+  let user = null;
+  if (pass) {
+    const scope = pass.form ? [...pass.form.querySelectorAll('input')].filter(shown) : inputs;
+    const before = scope.slice(0, scope.indexOf(pass)).filter(textual);
+    user = before.find((el) => /username|email/i.test(el.autocomplete || '')) || before[before.length - 1] || null;
+  } else {
+    user = inputs.find((el) => textual(el) && /username|email/i.test(el.autocomplete || '')) ||
+           inputs.find((el) => textual(el) && /user|login|email|account|name/i.test((el.name || '') + ' ' + (el.id || '') + ' ' + (el.placeholder || ''))) ||
+           null;
+  }
+  const otp = pass ? null : inputs.find(isOtp) || null;
+  if (user) user.setAttribute('data-pantheon-fill', 'user');
+  if (pass) pass.setAttribute('data-pantheon-fill', 'pass');
+  if (otp) otp.setAttribute('data-pantheon-fill', 'otp');
+  return JSON.stringify({ user: !!user, pass: !!pass, otp: !!otp });
+}"""
+
+# Where a marked field is, after bringing it into view.
+FIELD_AT_FN = r"""(which) => {
+  const el = document.querySelector('[data-pantheon-fill="' + which + '"]');
+  if (!el) return '';
+  el.scrollIntoView({ block: 'center', inline: 'center' });
+  el.focus();
+  const r = el.getBoundingClientRect();
+  return JSON.stringify({ x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) });
 }"""
 
 # WebDriver's key codes for the keys a person names (`press`).
@@ -426,6 +471,8 @@ class AccountBrowser:
             shown = text if len(text) <= 40 else text[:39] + "…"
             into = f" into “{what}”" if x is not None else ""
             return f"Typing “{shown}”{into}{' and pressing Enter' if body.get('submit') else ''}", x, y
+        if action == "login":
+            return f"Signing in with “{str(body.get('label') or 'a saved login')[:80]}”", None, None
         if action == "open":
             return f"Opening {str(body.get('url') or '')[:120]}", None, None
         if action == "read":
@@ -451,6 +498,8 @@ class AccountBrowser:
             if action == "open":
                 self._call("browsingContext.navigate", {"context": ctx, "url": check_url(body.get("url")),
                                                         "wait": "complete"}, timeout=NAV_TIMEOUT_S)
+            elif action == "login":
+                out.update(self._login(ctx, body))
             elif action == "read":
                 raw = self._eval(ctx, READ_FN, READ_MAX_CHARS, ELEMENTS_MAX)
                 out.update(json.loads(raw or "{}"))
@@ -531,6 +580,66 @@ class AccountBrowser:
             out.update(self.state(ctx))
             return out
 
+    # -- `P27-06`: signing in by reference --------------------------------------
+
+    def _fill(self, ctx: str, which: str, value: str) -> None:
+        raw = self._eval(ctx, FIELD_AT_FN, which)
+        if not raw:
+            raise BrowserError("gone", "The sign-in form changed while it was being filled. Nothing was sent.")
+        at = json.loads(raw)
+        self._point(ctx, at["x"], at["y"])
+        self._keys(ctx, _key_actions("ctrl+a") + [{"type": "keyDown", "value": KEYS["backspace"]},
+                                                  {"type": "keyUp", "value": KEYS["backspace"]}])
+        keys: List[Dict[str, str]] = []
+        for ch in value:
+            keys += [{"type": "keyDown", "value": ch}, {"type": "keyUp", "value": ch}]
+        if keys:
+            self._keys(ctx, keys)
+
+    def _login(self, ctx: str, body: Dict) -> Dict:
+        """Fill the open page's sign-in form from a saved login and send it.
+        The values arrive from Pantheon's server for this one call and go
+        only into the page's fields: never into the activity, an answer or an
+        error. Refused on any page whose origin is not one of the login's —
+        a look-alike page is not the service."""
+        origins = body.get("origins")
+        if (not isinstance(origins, list) or not origins or len(origins) > 8
+                or not all(isinstance(o, str) for o in origins)):
+            raise BrowserError("bad_request", "“origins” is the login's addresses.")
+        label = str(body.get("label") or "the login")[:80]
+        values = {"user": body.get("username") or "", "pass": body.get("secret") or "",
+                  "otp": body.get("otp") or ""}
+        if not all(isinstance(v, str) and len(v) <= 4096 for v in values.values()):
+            raise BrowserError("bad_request", "A saved value is too long to type.")
+        here = _origin(self.state(ctx).get("url") or "")
+        if here not in origins:
+            raise BrowserError("refused", f"This page is {here or 'not a web page'}, and “{label}” is for "
+                                          f"{', '.join(origins)}. Nothing was filled: open the service's own "
+                                          "sign-in page first.")
+        names = {"user": "user name", "pass": "password", "otp": "one-time code"}
+        filled: List[str] = []
+        for _ in range(3):
+            found = json.loads(self._eval(ctx, FIELDS_FN) or "{}")
+            did = [w for w in ("user", "pass", "otp")
+                   if found.get(w) and values[w] and names[w] not in filled]
+            if not did:
+                break
+            for w in did:
+                self._fill(ctx, w, values[w])
+                filled.append(names[w])
+            self._keys(ctx, [{"type": "keyDown", "value": KEYS["enter"]}, {"type": "keyUp", "value": KEYS["enter"]}])
+            time.sleep(1.5)
+            if _origin(self.state(ctx).get("url") or "") not in origins:
+                break   # signed in and sent on elsewhere: nothing more to fill here
+        if not filled:
+            raise BrowserError("refused", "No sign-in form was found on this page. Open the page with "
+                                          "the user name or password field, then sign in again.")
+        try:
+            after = json.loads(self._eval(ctx, FIELDS_FN) or "{}")
+        except BrowserError:
+            after = {}   # a page mid-navigation cannot be asked; the next read says where it went
+        return {"filled": filled, "still_asking": bool(after.get("pass") and "password" in filled)}
+
     def _tab(self, body: Dict) -> str:
         want = body.get("tab")
         tabs = [c["context"] for c in self._contexts()]
@@ -560,6 +669,25 @@ class AccountBrowser:
                    "activity": activity, "seq": self.seq}
             out.update(self.state(ctx))
             return out
+
+
+def _origin(url: str) -> str:
+    """`scheme://host[:port]`, default ports dropped — `src/vault.origin_of`'s
+    shape, so the two compare as equal strings."""
+    from urllib.parse import urlsplit
+    try:
+        parts = urlsplit(str(url or ""))
+        port = parts.port
+    except ValueError:
+        return ""
+    scheme, host = (parts.scheme or "").lower(), (parts.hostname or "").lower()
+    if scheme not in ("http", "https") or not host:
+        return ""
+    if ":" in host:
+        host = f"[{host}]"
+    if port is None or (scheme, port) in (("http", 80), ("https", 443)):
+        return f"{scheme}://{host}"
+    return f"{scheme}://{host}:{port}"
 
 
 def _arg(a: Any) -> Dict:

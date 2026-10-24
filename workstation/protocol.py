@@ -245,8 +245,12 @@ INPUT_ACTIONS = (
 # number or a point, type (into an element, and Enter with "submit"), press
 # keys, scroll, go back, forward or reload, list tabs, open, switch to or close
 # one, and a frame of the page for the person's window.
+# `P27-06`, added: `login` {"origins", "label", "username", "secret", "otp"} fills
+# the open page's sign-in form from a saved login, refused unless the page's
+# origin is one of `origins`; answers {"filled": ["user name", "password", …],
+# "still_asking": bool} and never a value. Only Pantheon's server sends it.
 BROWSER_ACTIONS = ("open", "read", "click", "type", "press", "scroll", "back", "forward",
-                   "reload", "tabs", "tab_new", "tab_switch", "tab_close", "frame")
+                   "reload", "tabs", "tab_new", "tab_switch", "tab_close", "frame", "login")
 BACKENDS = ("container", "vm", "remote")
 # ── what the machine is (`P20-07`, added) ─────────────────────────────────────
 # `health`, for a caller with the token, also answers

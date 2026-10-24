@@ -1,0 +1,164 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+"""`P27-03` · Each person's private vault, over HTTP.
+
+    GET    /api/vault/mine                     my items (never a password), locked?, idle time
+    POST   /api/vault/mine/items               add one {kind, label, addresses, username,
+                                               secret, totp?, notes?, use?, agent_account?}
+    PUT    /api/vault/mine/items/{id}          change it (a field left out is kept; "" clears)
+    DELETE /api/vault/mine/items/{id}          remove it
+    POST   /api/vault/mine/items/{id}/reveal   {password} → its values, for the person's own eyes
+    PUT    /api/vault/mine/lock                {idle_minutes?} | {locked: true} | {locked: false, password}
+
+`/api/vault/…` without `mine` is the server's Bitwarden link (`routes/vault/`),
+an admin's; this is everyone's own and no route here reaches another person's.
+**Only a person** writes, reveals or unlocks (`request_is_a_person`): an API
+token or the assistant's loopback choosing which logins exist would be a
+credential choosing its own reach. Reveal and unlock ask for the person's
+password again — a session left open on a shared screen is not enough to read
+a password out of it.
+
+Every refusal is `{detail: "<sentence>"}` (`Law 15`). The route ceiling
+(`check-unreachable.py`): each path is spelled in `static/js/vaultSettings.js`.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+from typing import Any, Dict
+
+from fastapi import APIRouter, Request
+from fastapi.responses import JSONResponse
+
+from core.database import SessionLocal
+from src.auth_helpers import get_current_user, request_is_a_person
+
+BODY_MAX_BYTES = 64 * 1024
+ONLY_A_PERSON = ("Only a person signed in to Pantheon can change, reveal or unlock their vault — "
+                 "not an API token or the assistant.")
+WRONG_PASSWORD = "That is not your Pantheon password. Nothing was shown."
+
+
+def _refused(sentence: str, status: int = 400) -> JSONResponse:
+    return JSONResponse({"detail": sentence}, status_code=status)
+
+
+async def _body(request: Request) -> Dict[str, Any]:
+    raw = bytearray()
+    async for chunk in request.stream():
+        raw.extend(chunk)
+        if len(raw) > BODY_MAX_BYTES:
+            raise ValueError("The request is larger than 64 KiB, so it was not read.")
+    if not bytes(raw).strip():
+        return {}
+    try:
+        body = json.loads(bytes(raw))
+    except (TypeError, ValueError):
+        raise ValueError("The request body must be JSON.") from None
+    if not isinstance(body, dict):
+        raise ValueError("The request body must be a JSON object.")
+    return body
+
+
+async def _password_ok(request: Request, user, password: Any) -> bool:
+    """The person's own password, checked again. An install with no sign-in
+    has no password to ask for: whoever reaches it is its one person."""
+    mgr = getattr(request.app.state, "auth_manager", None)
+    if mgr is None or not getattr(mgr, "is_configured", False) or not user:
+        return True
+    if not isinstance(password, str) or not password:
+        return False
+    return bool(await asyncio.to_thread(mgr.verify_password, user, password))
+
+
+def setup_vault_mine_routes() -> APIRouter:
+    router = APIRouter(prefix="/api/vault/mine", tags=["vault"])
+
+    def _run(fn):
+        from src import vault as V
+        db = SessionLocal()
+        try:
+            return fn(V, db)
+        except V.VaultRefused as r:
+            db.rollback()
+            return _refused(r.sentence, r.status)
+        finally:
+            db.close()
+
+    @router.get("")
+    def my_vault(request: Request):
+        user = get_current_user(request)
+        return _run(lambda V, db: V.listing(db, user))
+
+    @router.post("/items")
+    async def add_item(request: Request):
+        if not request_is_a_person(request):
+            return _refused(ONLY_A_PERSON, 403)
+        try:
+            body = await _body(request)
+        except ValueError as e:
+            return _refused(str(e), 413 if "64 KiB" in str(e) else 400)
+        user = get_current_user(request)
+        return _run(lambda V, db: V.create(db, user, body))
+
+    @router.put("/items/{item_id}")
+    async def change_item(item_id: str, request: Request):
+        if not request_is_a_person(request):
+            return _refused(ONLY_A_PERSON, 403)
+        try:
+            body = await _body(request)
+        except ValueError as e:
+            return _refused(str(e), 413 if "64 KiB" in str(e) else 400)
+        user = get_current_user(request)
+        return _run(lambda V, db: V.update(db, user, item_id, body))
+
+    @router.delete("/items/{item_id}")
+    def remove_item(item_id: str, request: Request):
+        if not request_is_a_person(request):
+            return _refused(ONLY_A_PERSON, 403)
+        user = get_current_user(request)
+
+        def go(V, db):
+            V.remove(db, user, item_id)
+            return {"ok": True}
+        return _run(go)
+
+    @router.post("/items/{item_id}/reveal")
+    async def reveal_item(item_id: str, request: Request):
+        if not request_is_a_person(request):
+            return _refused(ONLY_A_PERSON, 403)
+        try:
+            body = await _body(request)
+        except ValueError as e:
+            return _refused(str(e))
+        user = get_current_user(request)
+        if not await _password_ok(request, user, body.get("password")):
+            return _refused(WRONG_PASSWORD, 403)
+        return _run(lambda V, db: V.reveal(db, user, item_id))
+
+    @router.put("/lock")
+    async def change_lock(request: Request):
+        if not request_is_a_person(request):
+            return _refused(ONLY_A_PERSON, 403)
+        try:
+            body = await _body(request)
+        except ValueError as e:
+            return _refused(str(e))
+        user = get_current_user(request)
+        if body.get("locked") is False and not await _password_ok(request, user, body.get("password")):
+            return _refused("That is not your Pantheon password. The vault stays locked.", 403)
+
+        def go(V, db):
+            if "idle_minutes" in body:
+                V.set_idle(db, user, body.get("idle_minutes"))
+            if body.get("locked") is True:
+                V.lock_now(user)
+            elif body.get("locked") is False:
+                V.unlock(db, user)
+            return V.listing(db, user)
+        return _run(go)
+
+    return router
+
+
+__all__ = ["setup_vault_mine_routes"]

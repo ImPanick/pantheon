@@ -50477,3 +50477,21 @@ body.plan-mode-active .chat-input-top > .model-picker-wrap:has(> .model-picker-m
 .git-host-replace { margin-left: auto; }
 .git-hosts-empty { margin: 0; font-size: 12px; color: var(--fg-muted); }
 #git-settings-result.git-settings-error { color: var(--red); }
+
+/* ── `P27-03` · Settings → Vault (the Git panel's rows, and a few of its own) ─ */
+.git-settings-field input, .git-settings-field select { font: inherit; font-size: 12px; }
+.git-settings-field select {
+  color: var(--fg);
+  background: var(--bg);
+  border: 1px solid var(--border-control, var(--border));
+  border-radius: 4px;
+  padding: 6px 8px;
+}
+.git-settings-row[hidden], .memory-toolbar-btn[hidden] { display: none; }
+.git-settings-check { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; }
+.vault-item .vault-reveal-btn { margin-left: auto; }
+.vault-reveal { flex-basis: 100%; margin: 4px 0 0; }
+.vault-shown { display: grid; grid-template-columns: max-content 1fr; gap: 2px 10px; margin: 0; font-size: 12px; }
+.vault-shown dt { opacity: 0.75; }
+.vault-shown dd { margin: 0; font-family: var(--font-mono, monospace); overflow-wrap: anywhere; user-select: all; }
+#vault-settings-result.git-settings-error { color: var(--red); }

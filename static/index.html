@@ -3625,6 +3625,64 @@
           </div>
         </div>
 
+        <!-- ═══ VAULT TAB (`P27-03`) ═══
+             Each person's own logins, keys and secret notes. The agent signs
+             in with one by its name and never sees its values; the server
+             answers only that a secret is set. Drawn by
+             `static/js/vaultSettings.js` from `GET /api/vault/mine`. -->
+        <div data-settings-panel="vault" class="hidden">
+          <div class="admin-card">
+            <h2><svg width="14" height="14" style="vertical-align:-2px;margin-right:5px;opacity:0.6" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>Your vault</h2>
+            <div id="vault-lock-state" class="admin-toggle-sub"></div>
+            <div class="git-settings-row">
+              <label class="git-settings-field"><span>Lock after</span>
+                <select id="vault-idle">
+                  <option value="0">Never</option><option value="5">5 minutes</option>
+                  <option value="15">15 minutes</option><option value="60">An hour</option>
+                  <option value="240">4 hours</option><option value="1440">A day</option>
+                </select></label>
+              <button type="button" id="vault-lock-now" class="memory-toolbar-btn" hidden>Lock now</button>
+            </div>
+            <div id="vault-unlock-row" class="git-settings-row" hidden>
+              <label class="git-settings-field"><span>Your Pantheon password</span>
+                <input id="vault-unlock-password" type="password" autocomplete="current-password"></label>
+              <button type="button" id="vault-unlock" class="memory-toolbar-btn">Unlock</button>
+            </div>
+            <div id="vault-items-list" class="git-hosts-list"></div>
+          </div>
+          <div class="admin-card">
+            <h2><svg width="14" height="14" style="vertical-align:-2px;margin-right:5px;opacity:0.6" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>Add a login</h2>
+            <div class="git-settings-row">
+              <label class="git-settings-field"><span>Kind</span>
+                <select id="vault-kind"><option value="login">Login</option><option value="key">Key or token</option><option value="note">Secret note</option></select></label>
+              <label class="git-settings-field"><span>Name</span>
+                <input id="vault-label" type="text" maxlength="80" autocomplete="off" placeholder="Grafana (agent)"></label>
+              <label class="git-settings-field"><span>Addresses</span>
+                <input id="vault-addresses" type="text" autocomplete="off" spellcheck="false" placeholder="grafana.lan:3000 or https://example.org"></label>
+            </div>
+            <div class="git-settings-row">
+              <label class="git-settings-field"><span>User name</span>
+                <input id="vault-username" type="text" autocomplete="off" spellcheck="false"></label>
+              <label class="git-settings-field"><span>Password or key</span>
+                <input id="vault-secret" type="password" autocomplete="new-password" spellcheck="false" placeholder="Password or key"></label>
+              <button type="button" id="vault-generate" class="memory-toolbar-btn">Generate</button>
+              <label class="git-settings-field"><span>One-time-code secret <em>(optional)</em></span>
+                <input id="vault-totp" type="password" autocomplete="off" spellcheck="false" placeholder="Optional"></label>
+            </div>
+            <div class="git-settings-row">
+              <label class="git-settings-field"><span>Notes <em>(sealed)</em></span>
+                <input id="vault-notes" type="text" autocomplete="off" maxlength="8000"></label>
+              <label class="git-settings-field"><span>Agents</span>
+                <select id="vault-use"><option value="ask">Ask me each time</option><option value="chat">Ask once per chat</option><option value="allowed">May use it</option></select></label>
+              <label class="git-settings-check"><input id="vault-agent-account" type="checkbox"> An account made for the agent</label>
+              <button type="button" id="vault-save" class="memory-toolbar-btn">Add to vault</button>
+              <button type="button" id="vault-cancel-edit" class="memory-toolbar-btn" hidden>Cancel</button>
+            </div>
+            <div class="admin-toggle-sub">Encrypted with a key of your own. The agent signs in with an item by its name — the browser fills the form itself, and only on the item's own addresses — and never sees the password. Prefer an account made for the agent, with only the role it needs.</div>
+            <div id="vault-settings-result" class="admin-toggle-sub" role="status" hidden></div>
+          </div>
+        </div>
+
         <!-- ═══ AGENTS TAB (`P24-15`) ═══
              The two instance-wide brakes on hired agents. Both are settings
              (`agents_paused`, `agents_max_concurrent`) saved through

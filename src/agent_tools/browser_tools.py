@@ -94,6 +94,8 @@ def describe(args: Dict[str, Any]) -> str:
         shown = text if len(text) <= 40 else text[:39] + "…"
         where = f" into [{args['ref']}]" if args.get("ref") is not None else ""
         return f"type “{shown}”{where}{' and Enter' if args.get('submit') else ''}"
+    if action == "login":
+        return f"sign in with “{args.get('item') or '?'}”"
     if action == "press":
         return f"press {args.get('keys')}"
     if action == "scroll":
@@ -157,6 +159,8 @@ class BrowserTool:
         client, account = ready.client, ready.account
         fields = {k: v for k, v in args.items()
                   if k in ("url", "ref", "x", "y", "text", "submit", "keys", "dx", "dy", "tab", "double")}
+        if action == "login":
+            return await _login(client, account, owner, args)
         try:
             if action == SCREENSHOT:
                 shot = await client.browser(account, "frame")
@@ -181,3 +185,44 @@ class BrowserTool:
                     "exit_code": 0, "ran_in": "workstation"}
         return {"output": f"Did: {describe(args)}. {_where_now(answer)} Read the page to see it.",
                 "exit_code": 0, "ran_in": "workstation", "url": answer.get("url")}
+
+
+async def _login(client, account: str, owner: Optional[str], args: Dict[str, Any]) -> Dict[str, Any]:
+    """`P27-06`. Sign in on the open page with a login from the person's
+    vault, by its name. The values go from the vault to the daemon in one
+    request and from there into the page's fields; what comes back to the
+    model is which fields were filled and where the page went — never a value."""
+    from core.database import SessionLocal
+    from src import vault as V
+    from src.workstation_client import WorkstationError
+
+    item = str(args.get("item") or args.get("login") or "").strip()
+    if not item:
+        return {"error": "`login` needs “item”: the name of a login in the person's vault.", "exit_code": 1}
+    db = SessionLocal()
+    try:
+        got = V.for_use(db, owner, item, by="agent_browser")
+    except V.VaultRefused as r:
+        return {"error": r.sentence, "exit_code": 1}
+    finally:
+        db.close()
+    if got["kind"] != "login":
+        return {"error": f"“{got['label']}” is a {got['kind']}, not a login; it cannot fill a sign-in form.",
+                "exit_code": 1}
+    values = [got["username"], got["secret"], got["otp"]]
+    try:
+        answer = await client.browser(account, "login", origins=got["origins"], label=got["label"],
+                                      username=got["username"], secret=got["secret"], otp=got["otp"]) or {}
+    except WorkstationError as e:
+        if e.code == "busy":
+            return {"error": f"{e.message} {BUSY_ADVICE}", "exit_code": 1, "workstation_error": e.code}
+        res = e.as_result()
+        if isinstance(res.get("error"), str):
+            res["error"] = V.scrub(res["error"], values)
+        return res
+    filled = ", ".join(answer.get("filled") or []) or "nothing"
+    tail = (" The page still shows a password field, so the sign-in may have been refused: read the page."
+            if answer.get("still_asking") else " Read the page to see where it went.")
+    return {"output": V.scrub(f"Signed in with “{got['label']}”: filled the {filled} and sent the form. "
+                              f"{_where_now(answer)}{tail}", values),
+            "exit_code": 0, "ran_in": "workstation", "url": answer.get("url")}

@@ -152,6 +152,13 @@ function onSettingsPanelActivated(tab) {
       .catch((e) => console.error('Git panel failed to load', e));
   }
 
+  // `P27-03`. Same shape: the person's own vault, read on activation.
+  if (tab === 'vault') {
+    import('./vaultSettings.js')
+      .then((mod) => mod.open())
+      .catch((e) => console.error('Vault panel failed to load', e));
+  }
+
   // `P24-15`. Same shape: two settings read on activation.
   if (tab === 'agents') {
     import('./agentsSettings.js')

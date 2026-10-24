@@ -1709,6 +1709,41 @@ class GitCredential(TimestampMixin, Base):
     )
 
 
+class VaultKey(TimestampMixin, Base):
+    """`P27-03`. Each person's own vault key, wrapped by the server's
+    (`src/secret_storage.py`): a copy of the database without the key file
+    reads none of anyone's logins, and one person's key opens no one else's."""
+    __tablename__ = "vault_keys"
+
+    account      = Column(String, primary_key=True)
+    wrapped      = Column(Text, nullable=False)
+    idle_minutes = Column(Integer, nullable=False, default=0)
+
+
+class VaultItem(TimestampMixin, Base):
+    """`P27-03`. One thing in a person's vault: a login, a key or a secret
+    note. The label and the addresses are in the clear — they are how the
+    person and the agent name it, and how a page's origin is checked against
+    it; everything else is encrypted with the person's own key. Never sent to
+    the model; used by reference (`P27-06`, `P27-07`)."""
+    __tablename__ = "vault_items"
+
+    id            = Column(String, primary_key=True)
+    account       = Column(String, nullable=False, index=True)
+    kind          = Column(String, nullable=False, default="login")
+    label         = Column(String, nullable=False)
+    addresses     = Column(Text, nullable=False, default="[]")
+    sealed        = Column(Text, nullable=False)
+    agent_account = Column(Boolean, nullable=False, default=False)
+    use           = Column(String, nullable=False, default="ask")
+    last_used_at  = Column(DateTime, nullable=True)
+    last_used_by  = Column(String, nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint('account', 'label', name='uq_vault_items_account_label'),
+    )
+
+
 class AgentRunReport(Base):
     """`P24-06`. What one finished run of a hire left behind."""
     __tablename__ = "agent_run_reports"

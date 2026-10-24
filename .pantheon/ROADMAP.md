@@ -87,9 +87,9 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P24 | Agents — the hall of hireable agents | 27 | 8 | 0 | **19** |
 | P25 | The + menu, git per account, the agent browser | 10 | 1 | 0 | **9** |
 | P26 | Design — the studio, and notes on the live page | 10 | 10 | 0 | **0** |
-| P27 | Connections — the hub and the private vault | 11 | 11 | 0 | **0** |
+| P27 | Connections — the hub and the private vault | 11 | 9 | 0 | **2** |
 | Backlog | Bugs and hardening found in flight | 1014 | 350 | 0 | **662** |
-| **Total** | | **1503** | **405** | **5** | **1091** |
+| **Total** | | **1503** | **403** | **5** | **1093** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -251,6 +251,10 @@ they are for.*
 > `check-tracker.py` now validates the newest entry against the table and fails on drift.
 > Entries below the `P0-31` one keep the figure they were written with: a record of what
 > was claimed at the time is worth more than a quietly corrected one (`B44`).
+
+### P27: the vault, and signing in from it by name
+`44e71ac`…`HEAD`. **1503 tracked, 1093 done. `P27-03` and `P27-06` closed.**
+Each person has a vault of logins, keys and secret notes sealed with a key of their own, in Settings → Vault; the agent signs in with a login by its name — the daemon fills the form itself, only on the login's own addresses — and never sees the password.
 
 ### P26 and P27 opened: Design, and Connections with a private vault
 `ee381ac`…`HEAD`. **1503 tracked, 1091 done. `P26-00`…`P26-09` and `P27-00`…`P27-10` filed, none closed.**
@@ -11431,13 +11435,14 @@ a dedicated account on the service with the role the person picks, and its passw
   Move it to the `Integration` table, which already has an `owner` column: each person's own, an admin's marked
   *shared* and read-only to others; a one-time migration gives today's entries to the admin who made them, shared.
   `Verify:` person A's key is never in person B's list or tools.
-- [ ] **P27-03** **The vault.** Per account, items of a kind — *login* (addresses, username, password, one-time-code
+- [x] **P27-03** **The vault.** Per account, items of a kind — *login* (addresses, username, password, one-time-code
   secret, notes), *key* (an API token), *note* (a secret text). Encrypted with a key of the person's own, wrapped by
   the server's (`secret_storage`), so a database copy without the key file reads nothing; optionally a vault
   passphrase the server never stores. Locked after an idle time the person sets; unlocking is the person's, in their
   own session. *Reveal* and *copy* ask for the person's password again and are logged. Items are never returned to
   the model, never written to a transcript. `Verify:` a dump of the database and the logs after use contains no
   plaintext secret; another account's request for an item is 404.
+  — **done 2026-10-24** — `src/vault.py`, `routes/vault_mine_routes.py`, Settings → Vault (`static/js/vaultSettings.js`). `VaultKey` (each account's Fernet key, wrapped by the server's) and `VaultItem` (label and origins in the clear, everything else one sealed blob). Addresses are origins: `grafana.lan:3000` is `http://grafana.lan:3000`, a public name https. Six routes under `/api/vault/mine` — `/api/vault/…` without it stays the admin's Bitwarden link; writes, reveal and unlock are a person's only, and reveal and unlock ask for the Pantheon password again. Lock after an idle time (default never; the unlock is in memory, so a restart locks). One-time codes made at the moment of use. **Not built:** the optional passphrase the server never stores — the wrapped key is the server's to open. `Verify:` `tests/test_the_vault_is_each_persons_own.py` (the store, the routes, and a grep of the database file for the password).
 - [ ] **P27-04** **Map an address.** A login's addresses may be a name only the person's network knows: map
   `grafana.lan` to an IP (and port) for that person's workstation — the browser and the shell both resolve it there,
   nowhere else — with a reachability check and, per item and only when chosen, trust for that service's self-signed
@@ -11451,12 +11456,13 @@ a dedicated account on the service with the role the person picks, and its passw
   into a new vault item marked *agent account* — the agent never sees it either. Templates to start: Gitea/Forgejo,
   Grafana, Home Assistant, Nextcloud, Portainer, Jellyfin, a generic *any site* that only stores. `Verify:` the role is
   the one approved; nothing is created without the yes; the admin item is never filled anywhere but its own address.
-- [ ] **P27-06** **Log in by reference — the browser.** `agent_browser` gains `login {item}`: the daemon finds the
+- [x] **P27-06** **Log in by reference — the browser.** `agent_browser` gains `login {item}`: the daemon finds the
   username and password fields on the open page and fills them itself, then submits; a one-time code is generated at
   that moment. It refuses when the page's origin is not one of the item's addresses (a look-alike is not the
   service). While a filled password field is on the page, the frame and the page text the agent reads mask it.
   `Verify:` a page on another origin with the same form is refused; the model's tool result names the item, never its
   value.
+  — **done 2026-10-24** — `agent_browser login {item}`: the server opens the item (`vault.for_use`) and sends the values to the daemon in one request; the daemon (`FIELDS_FN`, `_login`) refuses unless the page's origin is one of the item's, finds the user-name, password and one-time-code fields, types into them as a hand would, presses Enter, and follows a two-step sign-in; it answers which fields it filled and whether a password field is still asking — never a value. `read` and the hand's labels never read a password field's value. The activity says *Signing in with “Grafana (agent)”*. Classified as a push (`_SEND`). `Verify:` the same file — a real Firefox against a served sign-in form that records what it received: a look-alike origin is sent nothing; one-step and two-step sign-ins land; a wrong password is said; the tool's answer, the activity and the page text carry no password.
 - [ ] **P27-07** **Log in by reference — the shell.** `vault` inside a shell command: `git`, `curl`, `ssh`-style tools
   get the item through the environment, a short-lived credential helper or a netrc file that exists only for that
   command and is removed after; the command's output is scrubbed of the values before anyone sees it. `Verify:` the

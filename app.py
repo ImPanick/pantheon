@@ -1160,6 +1160,10 @@ app.include_router(setup_codex_routes(
 ))
 app.include_router(setup_claude_routes())
 
+# `P27-03`: each person's own vault, before the server's Bitwarden link.
+from routes.vault_mine_routes import setup_vault_mine_routes
+app.include_router(setup_vault_mine_routes())
+
 from routes.vault.vault_routes import setup_vault_routes
 app.include_router(setup_vault_routes())
 

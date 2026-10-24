@@ -175,6 +175,16 @@ export const SETTINGS_PANELS = Object.freeze([
     keywords: ['git', 'github', 'gitlab', 'token', 'commit', 'push', 'pull',
                'repository', 'repo', 'version control', 'credentials'],
   }),
+  definePanel({
+    id: 'vault',
+    icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>',
+    label: 'Vault',
+    group: 'account',
+    // `P27-03`. Everyone's own logins, keys and secret notes, which the agent
+    // uses by name and never sees. `settings.js` lazy-imports `vaultSettings.js`.
+    keywords: ['vault', 'password', 'passwords', 'login', 'logins', 'sign in', 'credentials',
+               'secret', 'key', 'token', 'totp', 'one-time code', '2fa'],
+  }),
 
   definePanel({
     id: 'tools',
