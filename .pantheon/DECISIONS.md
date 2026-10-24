@@ -3134,3 +3134,29 @@ a daily digest that needed a yes every morning — though the run holds nothing 
    where today's rules ask.
 
 Cost: a page can steer which other public pages a blind agent fetches — it has nothing private to send them.
+
+## D-2026-10-24-03 — a name only the person's network knows: a proxy that runs as them, within the network mode
+
+*The owner, 2026-10-24, choosing the recommended answer to each of `P27-04`'s four questions.*
+
+`P27-04` needs `grafana.lan` to reach `10.0.0.5` for one person's browser and commands. Firefox has no per-name
+mapping, the workstation's `/etc/hosts` is shared by every account, and a forwarding proxy run by the daemon (root)
+would leave the account's uid behind — on the Ubuntu install the network rules are scoped to the account uid range
+(`netrules.ruleset(uids=…)`, `workstation/ubuntu.py`), so root's connections are outside them.
+
+1. **A per-person forwarding proxy, run as that account's own user** — started the way its Firefox is — so every
+   connection it makes is the person's to the kernel and to the gate, in the container and on the Ubuntu install
+   alike. Firefox reaches it through a PAC file that names the mapped hosts only; commands get it as
+   `HTTP_PROXY`/`HTTPS_PROXY` with `NO_PROXY` for everything else. Before any mapping, Pantheon asks whether the
+   LAN's own DNS already resolves the name; if it does, nothing is mapped.
+2. **Anyone may map names on their own logins, within the workstation's network mode.** The mode is the boundary
+   and stays the only one: a mapping to a private address while the mode is *Internet* or *None* is refused in a
+   sentence naming the admin's setting. A mapping never widens what the workstation may reach.
+3. **A self-signed certificate is pinned on first test.** Testing a mapped HTTPS login shows the certificate's
+   fingerprint; on the person's confirmation that exact certificate is trusted for that login's address only, in
+   the browser and in commands. A changed certificate is refused until confirmed again.
+4. **Tools that are not HTTP get the address itself**: `shell_with_login` adds `$LOGIN_HOST_IP` and `$LOGIN_PORT`, so
+   `psql -h "$LOGIN_HOST_IP"` works; no per-command mount namespace (it would need `CAP_SYS_ADMIN`, which the gate's
+   design withholds from the workstation's root).
+
+Cost: a raw-TCP tool that only takes a host name, and cannot be given an address, still needs the LAN's DNS.

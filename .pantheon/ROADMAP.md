@@ -11469,6 +11469,7 @@ a dedicated account on the service with the role the person picks, and its passw
   certificate. Private addresses stay inside `P17`'s policy for the person: mapping a name never widens what the
   workstation may reach. `Verify:` the mapping is the person's alone; a mapped name is refused when the policy
   forbids its address.
+  **Ruled 2026-10-24 (`D-2026-10-24-03`):** a per-person forwarding proxy run as the account's own user (PAC for Firefox, `HTTP(S)_PROXY` for commands), only after the LAN's DNS is asked first; anyone may map within the network mode, which stays the only boundary; a self-signed certificate is pinned by fingerprint on first test and confirmed by the person; non-HTTP tools get `$LOGIN_HOST_IP` and `$LOGIN_PORT`.
 - [x] **P27-05** **An agent account on the service.** *Set up an agent account* on a login: the person picks a role
   from the service's own (read from it where it has an API, offered from a template where not) and approves; the agent
   uses the person's admin item **by reference** to create a dedicated user with that role through the service's API
