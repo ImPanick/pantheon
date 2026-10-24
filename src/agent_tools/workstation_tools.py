@@ -136,7 +136,8 @@ WORKSPACE_TOOL = "get_workspace"
 #: `P25-03`. `git` runs where the shell runs (`git_tools._Place`): in the
 #: workstation home for exactly the people the nine are lifted for.
 GIT_TOOL = "git"
-LIFTED_TOOLS: FrozenSet[str] = WORKSTATION_TOOLS | {WORKSPACE_TOOL, GIT_TOOL}
+LOGIN_SHELL_TOOL = "shell_with_login"   # `P27-07`: runs where `git` runs
+LIFTED_TOOLS: FrozenSet[str] = WORKSTATION_TOOLS | {WORKSPACE_TOOL, GIT_TOOL, LOGIN_SHELL_TOOL}
 
 
 def lifted_tools(owner: Optional[str]) -> FrozenSet[str]:

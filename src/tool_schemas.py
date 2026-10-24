@@ -554,6 +554,34 @@ FUNCTION_TOOL_SCHEMAS = [
     {
         "type": "function",
         "function": {
+            # `P27-07`. A command with vault logins (`src/agent_tools/login_shell_tools.py`).
+            "name": "shell_with_login",
+            "description": (
+                "Run one shell command, where the person's shell runs, with logins from the "
+                "person's vault in its environment — you name them, you never see them. For a "
+                "login named “Grafana (agent)” the command has $LOGIN_GRAFANA_AGENT_USER, "
+                "$LOGIN_GRAFANA_AGENT_PASSWORD, $LOGIN_GRAFANA_AGENT_OTP (a one-time code, if "
+                "it has one) and $LOGIN_GRAFANA_AGENT_URL; with only one login, also "
+                "$LOGIN_USER, $LOGIN_PASSWORD, $LOGIN_OTP and $LOGIN_URL. Write the variables, "
+                "never a value: curl -u \"$LOGIN_USER:$LOGIN_PASSWORD\" \"$LOGIN_URL/api/health\". "
+                "Output is scrubbed of the values. Never ask the person to paste a password into "
+                "the chat."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "logins": {"type": "array", "items": {"type": "string"},
+                               "description": "Names of logins in the person's vault (1 to 4)."},
+                    "command": {"type": "string", "description": "The shell command, using the $LOGIN_… variables."},
+                    "cwd": {"type": "string", "description": "Folder to run in, relative to the workspace."},
+                },
+                "required": ["logins", "command"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
             # `P25-03`. The person's own git (`src/agent_tools/git_tools.py`).
             "name": "git",
             "description": (

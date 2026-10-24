@@ -1688,6 +1688,15 @@ Blocked paths/routes (refused for safety): /api/auth/, /api/users/, /api/tokens/
         "(item: a login's name in the person's vault — the browser fills the form, you never "
         "see the password). Read again after anything that changes the page."
     ),
+    # `P27-07`. The fenced form of the `shell_with_login` schema.
+    "shell_with_login": (
+        "```shell_with_login\n"
+        '{"logins": ["Grafana (agent)"], "command": "curl -su \\"$LOGIN_USER:$LOGIN_PASSWORD\\" \\"$LOGIN_URL/api/health\\""}\n'
+        "```\n"
+        "One shell command with logins from the person's vault in its environment — you name "
+        "them, you never see them: $LOGIN_<NAME>_USER, _PASSWORD, _OTP, _URL (and $LOGIN_USER… "
+        "when only one is named). Write the variables, never a value; the output is scrubbed."
+    ),
     # `P25-03`. The fenced form of the `git` schema, for a model with no
     # native tool channel.
     "git": (

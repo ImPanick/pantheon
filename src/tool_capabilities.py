@@ -167,6 +167,16 @@ _register(
     result_integrity=ResultIntegrity.WORKSPACE_UNTRUSTED,
 )
 _register(
+    # `P27-07`. A shell command, with the person's own credentials in it:
+    # running code, and whatever it reaches it reaches signed in as them —
+    # outward, under their name, as a push is.
+    {"shell_with_login"},
+    ToolEffect.EXECUTE_CODE,
+    ToolEffect.NETWORK_EGRESS,
+    ToolEffect.EXTERNAL_SIDE_EFFECT,
+    result_integrity=ResultIntegrity.EXTERNAL_UNTRUSTED,
+)
+_register(
     # `P20-04`. Driving a desktop is running code and reaching the network,
     # whatever the click is on: a terminal is one click away on it, so typing
     # into the screen is typing into a shell, and its browser reaches the

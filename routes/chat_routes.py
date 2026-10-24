@@ -2216,7 +2216,8 @@ def setup_chat_routes(
             # consequential of the two, so it must never be the one still on.
             # `P20-04`: the workstation's desktop has a terminal one click away,
             # so `computer` is a way to run commands too and goes with them.
-            _withholds.deny({"bash", "host_shell", "computer"}, WITHHELD_BY_POLICY)
+            # `P27-07`: a command with vault logins in it is a command too.
+            _withholds.deny({"bash", "host_shell", "computer", "shell_with_login"}, WITHHELD_BY_POLICY)
         _explicit_web_intent = _explicit_web_intent or bool(_tool_intent and _tool_intent.category == "web")
         if is_web_search_explicitly_denied(allow_web_search) or not _search_enabled:
             _withholds.deny(WEB_TOOL_NAMES, WITHHELD_BY_POLICY)
@@ -2227,7 +2228,7 @@ def setup_chat_routes(
             # `computer` (`P20-04`): a desktop with a browser on it is the
             # drift this list exists to stop, one tool wider.
             _withholds.deny({
-                "bash", "host_shell", "python", "computer",
+                "bash", "host_shell", "python", "computer", "shell_with_login",
                 "search_chats", "manage_skills", "manage_memory",
                 "read_file", "write_file", "edit_file",
                 "create_document", "edit_document", "update_document",

@@ -1180,7 +1180,7 @@ async def do_manage_settings(content: str, owner: Optional[str] = None) -> Dict:
             # manage_memory, etc.
             from src.settings import get_setting, save_settings, load_settings
             _ALIASES = {
-                "shell": ["bash", "host_shell"],  # `P17-11`: one switch, two places
+                "shell": ["bash", "host_shell", "shell_with_login"],  # `P17-11`, `P27-07`
                 "host": ["host_shell"],
                 # `P20-04`. The workstation's screen, mouse and keyboard; the
                 # bare name `computer` needs no alias.

@@ -34,7 +34,7 @@ from test_the_agents_hands_are_in_the_workstation import (  # noqa: F401 — fix
 
 def test_the_lifted_set_is_the_nine_and_get_workspace_and_nothing_else():
     # `P25-03`: and `git`, which runs where the shell runs (`git_tools._Place`).
-    assert wt.LIFTED_TOOLS == WORKSTATION_TOOLS | {"get_workspace", "git"}
+    assert wt.LIFTED_TOOLS == WORKSTATION_TOOLS | {"get_workspace", "git", "shell_with_login"}
 
 
 def test_a_granted_person_is_answered_about_their_own_workstation_home(ws, settings, people):

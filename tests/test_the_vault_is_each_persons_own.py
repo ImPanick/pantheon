@@ -388,3 +388,38 @@ def test_the_agent_signs_in_by_name_and_never_sees_the_password(daemon_up, servi
 def test_login_asks_wherever_a_push_asks():
     from src.tool_capabilities import capabilities_for_action
     assert capabilities_for_action("agent_browser", "login") == capabilities_for_action("agent_browser", "click")
+
+
+# ── `P27-07`: a shell command, signed in ────────────────────────────────────
+
+def test_a_login_reaches_a_command_as_named_variables():
+    from src.agent_tools import login_shell_tools as L
+    assert L.env_name("Grafana (agent)") == "GRAFANA_AGENT"
+    env, names = L.environment([{"label": "Grafana (agent)", "username": "agent", "secret": PASSWORD,
+                                 "otp": "", "origins": ["http://grafana.lan:3000"]}])
+    assert env["LOGIN_GRAFANA_AGENT_PASSWORD"] == env["LOGIN_PASSWORD"] == PASSWORD
+    assert env["LOGIN_URL"] == "http://grafana.lan:3000" and "LOGIN_OTP" not in env
+    two, _ = L.environment([{"label": "A", "username": "a", "secret": "s1", "origins": []},
+                            {"label": "B", "username": "b", "secret": "s2", "origins": []}])
+    assert "LOGIN_PASSWORD" not in two and two["LOGIN_B_PASSWORD"] == "s2", "two logins: by name only"
+    for bad in ('{"command": "ls"}', '{"logins": [], "command": "ls"}', '{"logins": ["A"]}', "ls"):
+        assert L.parse_args(bad)[1]
+
+
+def test_the_command_runs_with_the_values_and_says_none_of_them(db, tmp_path):
+    from src.agent_tools import login_shell_tools as L
+    s = db()
+    _login(s, owner="root", label="Svc", addresses="127.0.0.1:9", username="agent")
+    s.close()
+    out = asyncio.run(L.run_with_login(json.dumps({
+        "logins": ["Svc"], "command": 'printf "%s|%s|%s\\n" "$LOGIN_USER" "$LOGIN_PASSWORD" "$LOGIN_URL"; '
+                                      'test "$LOGIN_PASSWORD" = "' + PASSWORD + '" && echo matched'}),
+        owner="root"))
+    assert out["exit_code"] == 0, out
+    assert "••••|••••|http://127.0.0.1:9" in out["output"] and "matched" in out["output"]
+    assert PASSWORD not in json.dumps(out), "the command had it; its answer does not"
+    assert "$LOGIN_PASSWORD" in out["output"], "the answer names the variables it was given"
+    missing = asyncio.run(L.run_with_login('{"logins": ["Nope"], "command": "true"}', owner="root"))
+    assert missing["exit_code"] == 1 and "Your vault has: “Svc”." in missing["error"]
+    other = asyncio.run(L.run_with_login('{"logins": ["Svc"], "command": "true"}', owner="bob"))
+    assert other["exit_code"] == 1 and "There is no item “Svc”" in other["error"]

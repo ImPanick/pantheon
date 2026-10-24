@@ -1449,6 +1449,12 @@ async def _execute_tool_block_impl(
         desc = f"agent_browser: {_browser_line(content)}"
         result = await _direct_fallback(tool, content, session_id=session_id, owner=owner) \
             or {"error": "agent_browser: execution failed", "exit_code": 1}
+    elif tool == "shell_with_login":
+        # `P27-07`. By name, with the owner and the turn's workspace: whose
+        # vault, and where their shell runs, are the whole question.
+        from src.agent_tools.login_shell_tools import command_line as _login_line, run_with_login
+        desc = f"shell_with_login: {_login_line(content)}"
+        result = await run_with_login(content, owner=owner, station_workspace=station_workspace)
     elif tool == "git":
         # `P25-03`. By name, with the owner and the turn's workspace: whose git,
         # as whom, and in which folder are the whole question.

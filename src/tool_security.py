@@ -116,6 +116,9 @@ NON_ADMIN_BLOCKED_TOOLS = BUILTIN_EMAIL_TOOLS | {
     # holding every secret, as `bash` does; lifted with `bash` for a person
     # whose tools run in their workstation (`workstation_tools.LIFTED_TOOLS`).
     "git",
+    # `P27-07`. On this machine it runs as the app user, as `bash` does; lifted
+    # with it for a person whose tools run in their workstation.
+    "shell_with_login",
     # `P20-04`. `computer` is deliberately NOT here. What it reaches is the
     # person's own display on the workstation, and who may reach that is
     # `can_use_workstation` — the privilege `P20-02` made for exactly this, off
@@ -140,6 +143,7 @@ NON_ADMIN_BLOCKED_REASONS: dict = {
     # ── Server and runtime access ──
     "bash": "runs arbitrary commands as the app user on the host",
     "git": "runs git as the app user on the host, in any folder it can reach, and pushes from it",
+    "shell_with_login": "runs a command as the app user on the host, with a person's vault logins in it",
     "host_shell": "runs commands on the operator's own machine (`P17-11`)",
     "python": "executes arbitrary Python in the app process's environment",
     "manage_bg_jobs": "lists and kills the shell processes `bash` started",
@@ -381,6 +385,8 @@ _PLAN_MODE_KNOWN_MUTATORS = {
     # `P25-03`. Commits, pulls and pushes. Its status, diff and log only
     # read, but the allowlist is by tool name, as for `computer`.
     "git",
+    # `P27-07`. A shell command, signed in.
+    "shell_with_login",
     # `P20-04`. A click on a desktop can do anything a shell can. Its
     # `screenshot` action only looks, but plan mode's allowlist is by tool
     # name, so the whole tool stays out rather than trusting the action.

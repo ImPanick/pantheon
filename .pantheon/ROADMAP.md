@@ -87,9 +87,9 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P24 | Agents — the hall of hireable agents | 27 | 8 | 0 | **19** |
 | P25 | The + menu, git per account, the agent browser | 10 | 1 | 0 | **9** |
 | P26 | Design — the studio, and notes on the live page | 10 | 10 | 0 | **0** |
-| P27 | Connections — the hub and the private vault | 11 | 9 | 0 | **2** |
+| P27 | Connections — the hub and the private vault | 11 | 8 | 0 | **3** |
 | Backlog | Bugs and hardening found in flight | 1014 | 350 | 0 | **662** |
-| **Total** | | **1503** | **403** | **5** | **1093** |
+| **Total** | | **1503** | **402** | **5** | **1094** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -251,6 +251,10 @@ they are for.*
 > `check-tracker.py` now validates the newest entry against the table and fails on drift.
 > Entries below the `P0-31` one keep the figure they were written with: a record of what
 > was claimed at the time is worth more than a quietly corrected one (`B44`).
+
+### P27: a shell command signed in from the vault
+`2b301b4`…`HEAD`. **1503 tracked, 1094 done. `P27-07` closed.**
+`shell_with_login` runs one command with named vault logins as `$LOGIN_…` variables in its own environment; the transcript shows the names, the output is scrubbed of the values.
 
 ### P27: the vault, and signing in from it by name
 `44e71ac`…`HEAD`. **1503 tracked, 1093 done. `P27-03` and `P27-06` closed.**
@@ -11463,10 +11467,11 @@ a dedicated account on the service with the role the person picks, and its passw
   `Verify:` a page on another origin with the same form is refused; the model's tool result names the item, never its
   value.
   — **done 2026-10-24** — `agent_browser login {item}`: the server opens the item (`vault.for_use`) and sends the values to the daemon in one request; the daemon (`FIELDS_FN`, `_login`) refuses unless the page's origin is one of the item's, finds the user-name, password and one-time-code fields, types into them as a hand would, presses Enter, and follows a two-step sign-in; it answers which fields it filled and whether a password field is still asking — never a value. `read` and the hand's labels never read a password field's value. The activity says *Signing in with “Grafana (agent)”*. Classified as a push (`_SEND`). `Verify:` the same file — a real Firefox against a served sign-in form that records what it received: a look-alike origin is sent nothing; one-step and two-step sign-ins land; a wrong password is said; the tool's answer, the activity and the page text carry no password.
-- [ ] **P27-07** **Log in by reference — the shell.** `vault` inside a shell command: `git`, `curl`, `ssh`-style tools
+- [x] **P27-07** **Log in by reference — the shell.** `vault` inside a shell command: `git`, `curl`, `ssh`-style tools
   get the item through the environment, a short-lived credential helper or a netrc file that exists only for that
   command and is removed after; the command's output is scrubbed of the values before anyone sees it. `Verify:` the
   secret is not in the command line, the shell history, the output, or the workstation's disk after.
+  — **done 2026-10-24** — a tool of its own, `shell_with_login {logins, command, cwd?}` (`src/agent_tools/login_shell_tools.py`), rather than a second meaning for `bash`'s one string: the command runs where `git` runs (the same `_Place`) with `$LOGIN_<NAME>_USER`, `_PASSWORD`, `_OTP` (made now), `_URL` — and `$LOGIN_USER`… when one login is named — in that one process's environment; the command line the card and the transcript show carries only the variable names, the shell is not interactive (no history), nothing is written to disk, and the output is scrubbed. Classified as running code that reaches out under the person's name; blocked for non-admins on this machine and lifted with `bash` for a workstation; off with the chat's Shell switch and `disable_tool shell`. `Verify:` `tests/test_the_vault_is_each_persons_own.py` (+2: the command sees the values, its answer none).
 - [ ] **P27-08** **Which agent may use what.** Each connection and vault item says which agents may use it and how —
   *ask each time* (the default), *ask once per chat*, *allowed* — enforced where the tool runs, not in the prompt.
   Every use is a line in the agent's activity and the Audit Log: who, which item, which address, allowed by what.

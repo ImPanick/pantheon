@@ -24,6 +24,7 @@ from .host_tools import HostShellTool
 from .computer_tools import ComputerTool
 from .git_tools import GitTool
 from .browser_tools import BrowserTool
+from .login_shell_tools import LoginShellTool
 from .subprocess_tools import BashTool, PythonTool
 from .web_tools import WebSearchTool, WebFetchTool
 from .filesystem_tools import ReadFileTool, WriteFileTool, EditFileTool, ApplyPatchTool, LsTool, GlobTool, GrepTool, GetWorkspaceTool
@@ -79,6 +80,9 @@ TOOL_HANDLERS = {
     # `P25-05`. The person's own browser in their workstation. Dispatched by
     # name in `tool_execution`, as `computer` is (it needs the owner).
     "agent_browser": BrowserTool().execute,
+    # `P27-07`. One command with logins from the person's vault in its
+    # environment. Dispatched by name in `tool_execution`, as `git` is.
+    "shell_with_login": LoginShellTool().execute,
 }
 # Config/integration admin tools (manage_endpoints/mcp/webhooks/tokens/settings).
 TOOL_HANDLERS.update(ADMIN_TOOL_HANDLERS)
@@ -137,6 +141,8 @@ TOOL_TAGS = {"bash", "python", "web_search", "web_fetch", "read_file", "write_fi
              "git",
              # `P25-05`. The agent browser: Firefox in the person's workstation.
              "agent_browser",
+             # `P27-07`. A command with vault logins in its environment.
+             "shell_with_login",
              # Email tool names come from BUILTIN_EMAIL_TOOLS (unioned below)
              # so the fence regex, dispatch, and non-admin blocklist all cover
              # the same set.
