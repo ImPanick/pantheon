@@ -12,6 +12,10 @@
     POST   /api/agents/{agent_id}/try          `P24-13`: Try it once — hired as a trial,
                                                its schedule off, and run now
     POST   /api/agents/teams/{team_id}/hire    `P24-21`: Hire all
+    GET    /api/agents/{agent_id}/source       `P24-20`: its file, for *Customise*
+    POST   /api/agents/own                     keep a file as my own ({dry: true}: only check it)
+    DELETE /api/agents/own/{agent_id}          remove my own file (a shipped one is mine again)
+    POST   /api/agents/draft                   *Describe it*: a sentence drafted into a file
 
 The two install-wide ceilings (`P24-10`: *Pause all agents*, how many run at
 once) are settings, saved through `POST /api/auth/settings` like every other
@@ -164,6 +168,11 @@ def _sample(manifest) -> Optional[Dict[str, Any]]:
         return None
 
 
+def _template() -> str:
+    from src.agents.workshop import TEMPLATE
+    return TEMPLATE
+
+
 def setup_agent_routes(task_scheduler=None) -> APIRouter:
     router = APIRouter(prefix="/api/agents", tags=["agents"])
 
@@ -209,6 +218,7 @@ def setup_agent_routes(task_scheduler=None) -> APIRouter:
                          for s, label, fam in SECTIONS],
             "agents": [dict(m.to_public(), fit=_fit(m, model)) for m in agents],
             "fit_model": model,
+            "template": _template(),
             "broken": broken,
             "hires": hires,
             "everyone": show_all,
@@ -439,5 +449,70 @@ def setup_agent_routes(task_scheduler=None) -> APIRouter:
             return _refused(r.sentence, r.status)
         finally:
             db.close()
+
+    # ── `P24-20` · New agent, Describe it, Customise ────────────────────────
+    # A person's own file, in their own layer. Writing one is the person's
+    # act, never a token's or the assistant's: an agent is a standing grant.
+
+    @router.get("/{agent_id}/source")
+    def agent_source(request: Request, agent_id: str):
+        from src.agents import workshop as WS
+        m = get_agent(get_current_user(request), agent_id)
+        if m is None:
+            return _refused(NO_SUCH_AGENT, 404)
+        return {"id": m.id, "source": m.source, "shadows": m.source == "own" and WS.shadows(m.id),
+                "text": WS.source(m)}
+
+    @router.post("/own")
+    async def save_own(request: Request):
+        from src.agents import workshop as WS
+        from src.agents.manifest import ManifestRefused
+        if not request_is_a_person(request):
+            return _refused(ONLY_A_PERSON, 403)
+        try:
+            body = await _body(request)
+        except H.HireRefused as r:
+            return _refused(r.sentence, r.status)
+        text = body.get("text")
+        if not isinstance(text, str) or not text.strip():
+            return _refused("There is no file to keep — write it, or describe it and draft one.")
+        try:
+            if body.get("dry"):
+                m = WS.check(text)
+                return {"ok": True, "id": m.id, "shadows": WS.shadows(m.id),
+                        "sentence": "It passes its check."}
+            m, shadows = WS.save(get_current_user(request), text)
+        except ManifestRefused as refused:
+            return _refused(refused.sentence, 422)
+        return {"ok": True, "id": m.id, "shadows": shadows,
+                "sentence": (f"Kept. Your copy of {m.name} is the one you see and summon; "
+                             f"everyone else still has the shipped one.") if shadows
+                else f"Kept. {m.name} is in the hall, for you."}
+
+    @router.delete("/own/{agent_id}")
+    def remove_own(request: Request, agent_id: str):
+        from src.agents import workshop as WS
+        from src.agents.manifest import ManifestRefused
+        if not request_is_a_person(request):
+            return _refused(ONLY_A_PERSON, 403)
+        try:
+            WS.remove(get_current_user(request), agent_id)
+        except ManifestRefused as refused:
+            return _refused(refused.sentence, 404)
+        return {"ok": True, "back_to_shipped": WS.shadows(agent_id)}
+
+    @router.post("/draft")
+    async def draft_agent(request: Request):
+        from src.agents import workshop as WS
+        if not request_is_a_person(request):
+            return _refused(ONLY_A_PERSON, 403)
+        try:
+            body = await _body(request)
+        except H.HireRefused as r:
+            return _refused(r.sentence, r.status)
+        out = await WS.draft(get_current_user(request), body.get("description"))
+        if not out["ok"] and not out["text"]:
+            return _refused(out["sentence"], 503 if out["sentence"] == WS.NO_MODEL else 400)
+        return out
 
     return router

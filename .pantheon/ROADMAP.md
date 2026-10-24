@@ -84,9 +84,9 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P21 | Documents, kept in order | 4 | 0 | 0 | **4** |
 | P22 | The Workbench | 25 | 0 | 0 | **25** |
 | P23 | Alignment — the audits, fixed | 9 | 0 | 0 | **9** |
-| P24 | Agents — the hall of hireable agents | 27 | 9 | 0 | **18** |
+| P24 | Agents — the hall of hireable agents | 27 | 8 | 0 | **19** |
 | Backlog | Bugs and hardening found in flight | 1014 | 350 | 0 | **662** |
-| **Total** | | **1472** | **384** | **5** | **1081** |
+| **Total** | | **1472** | **383** | **5** | **1082** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -248,6 +248,10 @@ they are for.*
 > `check-tracker.py` now validates the newest entry against the table and fails on drift.
 > Entries below the `P0-31` one keep the figure they were written with: a record of what
 > was claimed at the time is worth more than a quietly corrected one (`B44`).
+
+### P24: write your own agent — *New agent*, *Describe it*, *Customise*
+`d38a68a`…`HEAD`. **1472 tracked, 1082 done. `P24-20` closed.**
+An agent is one file, so the hall's workshop edits that file: a template, a sentence drafted into a whole file by the model (data only, spelled by Pantheon and checked by the one lint, one repair round), or a shipped agent's file customised into the person's own copy — theirs alone, and *Remove my copy* gives the shipped one back.
 
 ### P24: summon an agent into a chat, and the hall says *Summon*
 `60372cf`…`3403e7f`. **1472 tracked, 1081 done. `P24-26` filed and closed; `P24-27` filed for later.**
@@ -11181,7 +11185,8 @@ waiting on a connector (wave 3) — laid out the way PandaOS lays out its board.
   **In part, 2026-10-24:** the rows and the badge. A proof run appends one row per agent and model (pass rate, the cases, median minutes, failures by check) to `<data>/agent_proofs.jsonl`; the repository's reference rows go in `library/pantheon/agents/<id>/proofs.json`. Every card and agent page carries the badge for the model this person's hires run on — *Runs well*, *Runs, slowly*, *Needs a bigger model*, *Not measured* — by model family (`gpt-oss-20b@q4_k_m` is `gpt-oss-20b`) and the file's version. Open for the proof runs themselves: gpt-oss-20b and qwen3-coder on the owner's LM Studio and one hosted ceiling, which this cloud session cannot reach — `python -m src.agents.evals all --endpoint <LM Studio>/v1 --model <name> --runs 5` on the install, then the rows into the ledger.
 - [ ] **P24-19** **The other thirteen starters.**
   **In part, 2026-10-22:** all thirteen manifests ship and lint clean; evaluation sets and sample reports wait on `P24-16`.
-- [ ] **P24-20** ***New agent*, *Describe it*, *Customise*, versions and the update offer.**
+- [x] **P24-20** ***New agent*, *Describe it*, *Customise*, versions and the update offer.**
+  — **done 2026-10-24** — `src/agents/workshop.py`: one file is the whole agent, so the hall's workshop edits that file and the one rule (`manifest.lint`) checks it before it is kept in the person's own layer. **+ New agent** opens the template (served by the hall, one spelling); **Describe it** asks the model for data — never a file — through `workflow_assist.ask_for_json` with Pantheon's own palette (its tools with their effects, sections, input kinds, triggers, events), spells it into `AGENT.md` by `render` (a field nothing reads is never written) and gives one repair round the lint's own sentence; nothing is kept until the person presses Save. **Customise** puts a shipped agent's file in the editor; saved, it is that person's copy only, and **Remove my copy** gives the shipped one back. A save that changes `version` is offered to the person's hires as *Update to* (`P24-04`'s offer, unchanged). Writing, removing and drafting are a person's acts only. `Verify:` `tests/test_an_agent_is_written_by_its_person.py` (11), `tests/test_the_agents_hall_js.py` (+2).
 - [x] **P24-21** **Teams**: `TEAM.md`, the Teams row, *Hire all* as one hire per member, shared inputs asked once.
   — **done 2026-10-23** — `src/agents/teams.py` (the same two layers; a team naming an agent the hall lacks is listed broken, never offered), the plan's fourteen teams once wave 2 landed (seven first) in `library/pantheon/teams/`, `POST /api/agents/teams/{id}/hire` (every member checked before any is written; a member already hired is kept and said so; each member gets only the keys it asks for; one project for all). Members do not hand work to each other. `Verify:` `tests/test_a_team_is_hired_in_one_go.py` (15).
 - [ ] **P24-22** **The skills library in the same layout**: *Your skills* strip, section chips, **Installed** cards.

@@ -63,6 +63,7 @@ export const hall = {
              { key: 'deep', kind: 'boolean', label: 'Go deep', optional: true }] })],
   broken: [], hires: [], everyone: false, teams: [], projects: [],
   ceilings: { paused: false, max_concurrent: 2 },
+  template: '---\nid: my-agent\n---\n1. One numbered step.',
 };
 export const hallServer = { calls: [], refuse: {} };
 const hireOf = (agentId, owner = 'alice') => ({
@@ -114,6 +115,28 @@ globalThis.fetch = async (url, opts = {}) => {
     hallServer.waiting = [];
     return reply(200, { outcome: body.decision === 'deny' ? 'denied' : 'resumed',
                         sentence: body.decision === 'deny' ? 'Denied by alice.' : 'Allowed once by alice.' });
+  }
+  // `P24-20`. The workshop's four doors.
+  m = key.match(/^GET \/api\/agents\/(.+)\/source$/);
+  if (m) {
+    const a = hall.agents.find((x) => x.id === m[1]);
+    return reply(200, { id: a.id, source: a.source, shadows: false, text: `---\nid: ${a.id}\n---\n1. Do it.` });
+  }
+  if (key === 'POST /api/agents/own') {
+    if (body.text.includes('bad')) return reply(422, { detail: 'The id “Bad” is not lower-case words joined by dashes.' });
+    const id = (body.text.match(/id: (\S+)/) || [])[1];
+    if (body.dry) return reply(200, { ok: true, id, shadows: false, sentence: 'It passes its check.' });
+    let a = hall.agents.find((x) => x.id === id);
+    const shadows = !!a;
+    if (!a) { a = agent(id, 'research'); hall.agents.push(a); }
+    a.source = 'own';
+    return reply(200, { ok: true, id, shadows, sentence: shadows ? `Kept. Your copy of ${a.name} is the one you see and summon; everyone else still has the shipped one.` : `Kept. ${a.name} is in the hall, for you.` });
+  }
+  m = key.match(/^DELETE \/api\/agents\/own\/(.+)$/);
+  if (m) { hall.agents.find((x) => x.id === m[1]).source = 'shipped'; return reply(200, { ok: true, back_to_shipped: true }); }
+  if (key === 'POST /api/agents/draft') {
+    if (!body.description) return reply(400, { detail: 'Say what the agent should do.' });
+    return reply(200, { ok: true, text: '---\nid: drafted-one\n---\n1. Drafted.', sentence: 'Drafted. Read every field, then save it.' });
   }
   m = key.match(/^POST \/api\/agents\/(.+)\/hire$/);
   if (m) { const h = hireOf(m[1]); hall.hires.push(h); return reply(200, h); }
@@ -489,3 +512,63 @@ def test_a_card_says_what_was_measured_and_the_page_shows_a_sample(sandbox):
     assert out["cards"] == {"tw": "Runs well", "mc": "Not measured", "none": 0}
     assert out["line"] == "Runs well on gpt-oss-20b: 90% of 10 runs passed, median 2 min."
     assert out["sample"] == "## solar\n- <b>A record</b>", "a report is drawn as letters"
+
+
+# ── `P24-20` · the workshop ─────────────────────────────────────────────────
+
+def test_new_agent_drafts_checks_and_saves_and_the_hall_says_yours(sandbox):
+    out = _hall(sandbox, """
+        await mod.openAgents(); await settle(30);
+        await press(q('.agents-new')[0]);
+        const editor = () => q('.agents-editor')[0];
+        const started = editor().value;
+        const btn = (t) => q('button').find((b) => b.textContent === t);
+        await press(btn('Draft it'));
+        const empty = win().note.textContent;
+        q('.agents-describe-text')[0].value = 'Watch my inbox';
+        await press(btn('Draft it'));
+        const drafted = editor().value;
+        editor().value = '---\\nid: bad\\n---'; fire(editor(), 'input');
+        await press(btn('Check'));
+        const refused = win().note.textContent;
+        editor().value = drafted; fire(editor(), 'input');
+        await press(btn('Save')); await settle(30);
+        const view = mod._test.state().view;
+        const saved = win().note.textContent;
+        await press(q('.agents-back')[0]);
+        const yours = q('.agents-card').filter((c) => c.querySelectorAll('.agents-own').length).map((c) => c.dataset.agent);
+        out({ started, empty, drafted, refused, view, saved, yours,
+              posts: server.calls.filter((c) => c.method === 'POST').map((c) => [c.url, c.body.dry || false]) });
+    """)
+    assert out["started"] == "---\nid: my-agent\n---\n1. One numbered step.", "the server's template, one spelling"
+    assert out["empty"] == "Say what the agent should do."
+    assert "id: drafted-one" in out["drafted"]
+    assert "not lower-case words" in out["refused"]
+    assert out["view"] == "agent" and out["saved"].startswith("Kept. Drafted One is in the hall")
+    assert out["yours"] == ["drafted-one"]
+    assert out["posts"] == [["/api/agents/draft", False], ["/api/agents/draft", False],
+                            ["/api/agents/own", True], ["/api/agents/own", False]]
+
+
+def test_customise_loads_its_file_and_remove_my_copy_gives_the_shipped_one_back(sandbox):
+    out = _hall(sandbox, """
+        await mod.openAgents(); await settle(30);
+        await press(q('.agents-card').find((c) => c.dataset.agent === 'inbox-triage'));
+        const btn = (t) => q('button').find((b) => b.textContent === t);
+        const noRemove = !btn('Remove my copy');
+        await press(btn('Customise'));
+        const text = q('.agents-editor')[0].value;
+        const note = win().note.textContent;
+        await press(btn('Save')); await settle(30);
+        const saved = win().note.textContent;
+        const edit = !!btn('Edit your file');
+        await press(btn('Remove my copy')); await settle(30);
+        out({ noRemove, text, note, saved, edit, removed: win().note.textContent,
+              view: mod._test.state().view });
+    """)
+    assert out["noRemove"] is True, "a shipped agent has no copy of yours to remove"
+    assert out["text"].startswith("---\nid: inbox-triage")
+    assert "Saved, it is yours alone" in out["note"]
+    assert "Your copy of Inbox Triage is the one you see" in out["saved"] and out["edit"] is True
+    assert out["removed"] == "Your copy is removed; Inbox Triage is the shipped one again."
+    assert out["view"] == "hall"

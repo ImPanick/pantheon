@@ -225,6 +225,7 @@ function _render() {
   if (_view.kind === 'agent') _renderAgent(_view.agent);
   else if (_view.kind === 'hire') _renderHire(_view.hire);
   else if (_view.kind === 'team') _renderTeam(_view.team);
+  else if (_view.kind === 'workshop') _renderWorkshop(_view);
   else _renderHall();
 }
 
@@ -305,6 +306,9 @@ function _renderHall() {
   search.value = _query;
   search.addEventListener('input', () => { _query = search.value; _renderCatalogue(); });
   tools.appendChild(search);
+  if (!_everyone) {
+    tools.appendChild(_button('agents-btn agents-new', '+ New agent', () => openWorkshop({ text: null })));
+  }
   body.appendChild(tools);
   const chips = _el('div', 'agents-chips');
   chips.setAttribute('role', 'tablist');
@@ -374,6 +378,7 @@ function _agentCard(a, hired) {
   const top = _el('div', 'agents-card-top');
   top.appendChild(_el('span', 'agents-avatar', _initial(a.name)));
   if (a.starred) top.appendChild(_el('span', 'agents-star', '★'));
+  if (a.source === 'own') top.appendChild(_el('span', 'agents-own', 'Yours'));
   if (hired) top.appendChild(_el('span', 'agents-hired', 'Summoned'));
   card.appendChild(top);
   card.appendChild(_el('span', 'agents-card-name', a.name));
@@ -613,6 +618,21 @@ function _renderAgent(a) {
   rb.appendChild(_el('pre', 'agents-pre', a.runbook));
   page.appendChild(rb);
 
+  // `P24-20`. Customise: its file in the workshop, kept as this person's own.
+  const own = _el('div', 'agents-actions agents-own-actions');
+  own.appendChild(_button('agents-btn', a.source === 'own' ? 'Edit your file' : 'Customise',
+    () => customise(a.id)));
+  if (a.source === 'own') {
+    own.appendChild(_button('agents-btn agents-danger', 'Remove my copy', () => _act(
+      () => Api.removeOwnAgent(a.id), {
+        reload: false,
+        sentence: (d) => (d.back_to_shipped
+          ? `Your copy is removed; ${a.name} is the shipped one again.`
+          : `${a.name} is removed from your hall.`),
+      }).then(() => { if (_win) { _view = { kind: 'hall' }; _render(); } })));
+  }
+  page.appendChild(own);
+
   // `P24-18` / `P24-17`. How it measures, and what a run leaves.
   if (a.fit) {
     const fitLine = _el('p', 'agents-small agents-fit-line');
@@ -679,6 +699,95 @@ function _renderAgent(a) {
     _openHire(res.data.id, { keepNote: true });
   });
   page.appendChild(form);
+  body.appendChild(page);
+}
+
+// ── `P24-20` · the workshop: New agent, Describe it, Customise ─────────────
+
+/** Open the workshop on a file (`text: null` — the server's template, one
+ *  spelling of it: `workshop.TEMPLATE`). */
+export function openWorkshop({ text = null, from = null } = {}) {
+  _say('');
+  _view = { kind: 'workshop', text: text || (_data && _data.template) || '', from };
+  _render();
+}
+
+async function customise(agentId) {
+  const res = await Api.agentSource(agentId);
+  if (!_win) return;
+  if (!res.ok) { _say(res.refusal.sentence, { error: true }); return; }
+  openWorkshop({ text: res.data.text, from: res.data.id });
+  _say(res.data.source === 'own'
+    ? 'Your own file. Save keeps your changes.'
+    : 'A copy of the shipped file. Saved, it is yours alone — everyone else keeps the shipped one.');
+}
+
+function _renderWorkshop(v) {
+  const body = _win.body;
+  body.appendChild(_back());
+  const page = _el('article', 'agents-page agents-workshop');
+  page.appendChild(_el('h3', 'agents-page-name', v.from ? `Customise ${v.from}` : 'New agent'));
+
+  // Describe it.
+  const desc = _el('div', 'agents-describe');
+  desc.appendChild(_el('h5', 'agents-h', 'Describe it'));
+  const say = document.createElement('textarea');
+  say.className = 'agents-input agents-describe-text';
+  say.rows = 3;
+  say.maxLength = 2000;
+  say.placeholder = 'Every weekday at 8, read my unread mail and draft replies to anything from a client…';
+  say.setAttribute('aria-label', 'Describe the agent');
+  desc.appendChild(say);
+  const draftBtn = _button('agents-btn', 'Draft it', async () => {
+    if (_busy) return;
+    _busy = true;
+    draftBtn.disabled = true;
+    _say('Drafting…');
+    const res = await Api.draftAgent(say.value);
+    _busy = false;
+    draftBtn.disabled = false;
+    if (!_win) return;
+    if (!res.ok) { _say(res.refusal.sentence, { error: true }); return; }
+    if (res.data.text) { editor.value = res.data.text; v.text = res.data.text; }
+    _say(res.data.sentence, { error: !res.data.ok });
+  });
+  desc.appendChild(draftBtn);
+  page.appendChild(desc);
+
+  // The file.
+  page.appendChild(_el('h5', 'agents-h', 'Its file'));
+  page.appendChild(_el('p', 'agents-small',
+    'One file is the whole agent: the frontmatter is what it may do, the numbered steps are what the model is told.'));
+  const editor = document.createElement('textarea');
+  editor.className = 'agents-input agents-editor';
+  editor.rows = 22;
+  editor.spellcheck = false;
+  editor.setAttribute('aria-label', "The agent's file");
+  editor.value = v.text;
+  editor.addEventListener('input', () => { v.text = editor.value; });
+  page.appendChild(editor);
+
+  const bar = _el('div', 'agents-actions');
+  bar.appendChild(_button('agents-btn', 'Check', async () => {
+    const res = await Api.saveOwnAgent(editor.value, { dry: true });
+    if (!_win) return;
+    _say(res.ok ? res.data.sentence : res.refusal.sentence, { error: !res.ok });
+  }));
+  const save = _button('agents-primary', 'Save', async () => {
+    if (_busy) return;
+    _busy = true;
+    save.disabled = true;
+    const res = await Api.saveOwnAgent(editor.value);
+    _busy = false;
+    save.disabled = false;
+    if (!_win) return;
+    if (!res.ok) { _say(res.refusal.sentence, { error: true }); return; }
+    await _load();
+    _say(res.data.sentence);
+    _openAgent(res.data.id).then(() => _say(res.data.sentence));
+  });
+  bar.appendChild(save);
+  page.appendChild(bar);
   body.appendChild(page);
 }
 

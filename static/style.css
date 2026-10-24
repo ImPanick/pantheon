@@ -49901,6 +49901,20 @@ body.plan-mode-active .chat-input-top > .model-picker-wrap:has(> .model-picker-m
 }
 .agents-back { align-self: flex-start; }
 .agents-tools { display: flex; gap: 8px; }
+.agents-new { flex: 0 0 auto; }
+.agents-workshop { display: flex; flex-direction: column; gap: 8px; }
+.agents-describe { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.agents-describe-text { width: 100%; box-sizing: border-box; }
+.agents-input.agents-editor {
+  width: 100%;
+  box-sizing: border-box;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 12px;
+  line-height: 1.5;
+  tab-size: 2;
+  white-space: pre;
+  overflow: auto;
+}
 .agents-search {
   flex: 1 1 auto;
   min-width: 0;
@@ -49975,6 +49989,15 @@ body.plan-mode-active .chat-input-top > .model-picker-wrap:has(> .model-picker-m
 }
 .agents-avatar-big { width: 44px; height: 44px; font-size: 20px; border-radius: 12px; }
 .agents-star { font-size: 12px; opacity: 0.8; }
+.agents-own {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 1px 6px;
+  border-radius: 6px;
+  border: 1px dashed var(--border-control, var(--border));
+}
 .agents-hired, .agents-status {
   margin-left: auto;
   font-size: 10px;

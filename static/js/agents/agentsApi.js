@@ -101,3 +101,29 @@ export function runNow(taskId) {
 
 export default { listAgents, getAgent, hireAgent, getHire, changeHire, setHireStatus, fireHire, runNow,
   tryAgent, hireTeam, waiting, answer };
+
+// ── `P24-20` · New agent, Describe it, Customise ──────────────────────────
+
+/** An agent's file as this person sees it — for *Customise*. */
+export function agentSource(agentId) {
+  return _call(`/api/agents/${_id(agentId)}/source`, {}, "That agent's file could not be read.");
+}
+
+/** Keep a file as this person's own; `dry` only checks it. */
+export function saveOwnAgent(text, { dry = false } = {}) {
+  return _call('/api/agents/own',
+    { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify({ text, dry }) },
+    dry ? 'The file was not checked.' : 'The file was not kept.');
+}
+
+/** Remove this person's own file; a shipped agent with its id is theirs again. */
+export function removeOwnAgent(agentId) {
+  return _call(`/api/agents/own/${_id(agentId)}`, { method: 'DELETE' }, 'Your copy was not removed.');
+}
+
+/** *Describe it*: a sentence drafted into a whole file, nothing kept. */
+export function draftAgent(description) {
+  return _call('/api/agents/draft',
+    { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify({ description }) },
+    'The draft was not written.');
+}
