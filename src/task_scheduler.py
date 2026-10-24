@@ -4614,7 +4614,7 @@ class TaskScheduler:
             _agent_slot["suppress_skills"] = True
             _agent_slot["context_messages"] = (list(_agent_slot.get("context_messages") or ())
                                                + list(agent_plan.context_messages))
-            _agent_slot["agent"] = {"hire_id": agent_plan.hire_id,
+            _agent_slot["agent"] = {"hire_id": agent_plan.hire_id, "agent_id": agent_plan.agent_id,
                                     "ask_effects": sorted(agent_plan.ask_effects),
                                     "never_effects": sorted(agent_plan.never_effects),
                                     "sealed": agent_plan.sealed, "blind": agent_plan.blind}
@@ -5118,7 +5118,8 @@ class TaskScheduler:
                     "ask_effects": frozenset(_agent.get("ask_effects") or ()),
                     "never_effects": frozenset(_agent.get("never_effects") or ()),
                     "sealed": bool(_agent.get("sealed")),
-                    "blind": bool(_agent.get("blind"))}
+                    "blind": bool(_agent.get("blind")),
+                    "agent_id": _agent.get("agent_id") or None}
                    if _agent else {}))
         if _slot.get("suppress_skills"):
             _loop_extra["suppress_skills"] = True

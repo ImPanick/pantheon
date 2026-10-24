@@ -167,6 +167,14 @@ _register(
     result_integrity=ResultIntegrity.WORKSPACE_UNTRUSTED,
 )
 _register(
+    # `P27-09`. The logins an agent may use, by name (reading the person's own
+    # vault's labels), and whether one's address answers (reaching it).
+    {"connections"},
+    ToolEffect.READ_PRIVATE,
+    ToolEffect.NETWORK_EGRESS,
+    result_integrity=ResultIntegrity.EXTERNAL_UNTRUSTED,
+)
+_register(
     # `P27-07`. A shell command, with the person's own credentials in it:
     # running code, and whatever it reaches it reaches signed in as them —
     # outward, under their name, as a push is.
@@ -839,6 +847,12 @@ _ACTION_CAPABILITIES: Mapping[str, Mapping[str, ToolCapabilities]] = MappingProx
         # `P26-03`. Reading the person's notes and closing one touch only the
         # notes, which are the person's words to the agent — looking.
         "notes": _LOOK, "note_done": _LOOK,
+    }),
+    # `P27-09`. Listing reads the person's own vault's names; a test reaches
+    # the address — a status line back from a stranger's server.
+    "connections": MappingProxyType({
+        "list": _capabilities(ToolEffect.READ_PRIVATE),
+        "test": _REACH,
     }),
     "git": MappingProxyType({
         "status": _capabilities(ToolEffect.READ_WORKSPACE,

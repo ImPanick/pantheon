@@ -786,6 +786,7 @@ async def _direct_fallback(
     progress_cb: Optional[Callable[[Dict], Awaitable[None]]] = None,
     session_id: Optional[str] = None,
     owner: Optional[str] = None,
+    agent_id: Optional[str] = None,
 ) -> Optional[Dict]:
     _subproc_env = {
         **os.environ,
@@ -801,6 +802,8 @@ async def _direct_fallback(
             "subproc_env": _subproc_env,
             "session_id": session_id,
             "owner": owner,
+            # `P27-09`: which agent this is, for a vault login granted to some.
+            "agent_id": agent_id,
         }
 
         from src.agent_tools import TOOL_HANDLERS
@@ -1447,15 +1450,23 @@ async def _execute_tool_block_impl(
         # `P25-05`. By name, with the owner: whose browser is the question.
         from src.agent_tools.browser_tools import command_line as _browser_line
         desc = f"agent_browser: {_browser_line(content)}"
-        result = await _direct_fallback(tool, content, session_id=session_id, owner=owner) \
+        result = await _direct_fallback(tool, content, session_id=session_id, owner=owner,
+                                        agent_id=getattr(tool_policy, "agent_id", None)) \
             or {"error": "agent_browser: execution failed", "exit_code": 1}
+    elif tool == "connections":
+        # `P27-09`. By name, with the owner, the agent and the workspace: whose
+        # vault, which agent's grants, and where a test runs.
+        from src.agent_tools.connections_tools import command_line as _conn_line, run_connections
+        desc = f"connections: {_conn_line(content)}"
+        result = await run_connections(content, owner=owner, agent_id=getattr(tool_policy, "agent_id", None),
+                                       station_workspace=station_workspace)
     elif tool == "shell_with_login":
         # `P27-07`. By name, with the owner and the turn's workspace: whose
         # vault, and where their shell runs, are the whole question.
         from src.agent_tools.login_shell_tools import command_line as _login_line, run_with_login
         desc = f"shell_with_login: {_login_line(content)}"
         result = await run_with_login(content, owner=owner, station_workspace=station_workspace,
-                                      session_id=session_id)
+                                      session_id=session_id, agent_id=getattr(tool_policy, "agent_id", None))
     elif tool == "git":
         # `P25-03`. By name, with the owner and the turn's workspace: whose git,
         # as whom, and in which folder are the whole question.

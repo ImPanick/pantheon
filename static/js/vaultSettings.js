@@ -16,6 +16,7 @@ const REVEAL_MS = 30_000;
 const USE_WORDS = { ask: 'Asks each time', chat: 'Asks once per chat', allowed: 'Agents may use it' };
 let _wired = false;
 let _editing = null;
+let _agentNames = {};   // `P27-09`: id → name, for the grants list
 
 function _say(text, { error = false } = {}) {
   const out = $('vault-settings-result');
@@ -81,6 +82,53 @@ function _drawLock(data) {
   if (lockNow) lockNow.hidden = !!data.locked || !data.idle_minutes;
 }
 
+let _services = [];   // `P27-05`: the services Pantheon can make an agent account on
+
+/** `P27-05`. From an admin login: make an account for the agent on the
+ *  service, with the role picked here. The press of *Make it* is the yes. */
+function _agentAccountInto(row, item) {
+  if (row.querySelector('.vault-agent-account')) return;
+  const box = _el('div', 'vault-agent-account git-settings-row');
+  const svc = document.createElement('select');
+  svc.setAttribute('aria-label', 'Service');
+  _services.forEach((s) => { const o = document.createElement('option'); o.value = s.id; o.textContent = s.label; svc.appendChild(o); });
+  const role = document.createElement('select');
+  role.setAttribute('aria-label', 'Role');
+  const fillRoles = () => {
+    role.textContent = '';
+    const s = _services.find((x) => x.id === svc.value);
+    (s ? s.roles : []).forEach((r) => { const o = document.createElement('option'); o.value = r; o.textContent = r; role.appendChild(o); });
+  };
+  svc.addEventListener('change', fillRoles);
+  fillRoles();
+  const user = document.createElement('input');
+  user.type = 'text';
+  user.value = 'pantheon-agent';
+  user.spellcheck = false;
+  user.setAttribute('aria-label', 'User name for the agent');
+  const label = (t, el) => { const l = _el('label', 'git-settings-field'); l.appendChild(_el('span', '', t)); l.appendChild(el); return l; };
+  box.appendChild(label('Service', svc));
+  box.appendChild(label('Role', role));
+  box.appendChild(label('Its user name', user));
+  const go = _btn('Make it', 'vault-agent-account-go', async () => {
+    go.disabled = true;
+    _say(`Making ${user.value} on ${item.addresses[0] || 'the service'}…`);
+    const r = await _call('POST', `/items/${encodeURIComponent(item.id)}/agent-account`,
+      { template: svc.value, role: role.value, username: user.value });
+    go.disabled = false;
+    if (!r.ok) { _say(r.sentence, { error: true }); return; }
+    _say(`Made “${r.data.label}” with the role ${role.value}. Its password is in your vault; nobody typed it.`);
+    box.remove();
+    await _refresh();
+  });
+  box.appendChild(go);
+  box.appendChild(_btn('Cancel', '', () => box.remove()));
+  box.appendChild(_el('p', 'admin-toggle-sub vault-agent-account-note',
+    `Pantheon signs in to the service as “${item.label}”, creates the user with this role, and keeps its new password here. A service not listed: make the account in its own admin page and add it as a login.`));
+  row.appendChild(box);
+  svc.focus();
+}
+
 function _revealInto(row, item) {
   if (row.querySelector('.vault-reveal')) return;
   const box = _el('div', 'vault-reveal git-settings-row');
@@ -115,6 +163,7 @@ function _revealInto(row, item) {
 
 /** Draw what the server holds. */
 export function draw(data) {
+  if (data && Array.isArray(data.services)) _services = data.services;
   _drawLock(data || {});
   const list = $('vault-items-list');
   if (!list) return;
@@ -136,10 +185,14 @@ export function draw(data) {
     ].filter(Boolean).join(' · ')));
     const facts = [USE_WORDS[it.use] || USE_WORDS.ask];
     if (it.agent_account) facts.push('agent account');
+    if ((it.agents || []).length) facts.push(`only ${it.agents.map((a) => _agentNames[a] || a).join(', ')}`);
     if (it.has_totp) facts.push('one-time codes');
     if (it.last_used_at) facts.push(`used ${String(it.last_used_at).slice(0, 10)}${it.last_used_by ? ` by ${it.last_used_by}` : ''}`);
     row.appendChild(_el('span', 'git-host-since', facts.join(' · ')));
     row.appendChild(_btn('Reveal', 'vault-reveal-btn', () => _revealInto(row, it)));
+    if (it.kind === 'login' && !it.agent_account && _services.length) {
+      row.appendChild(_btn('Agent account…', 'vault-agent-account-btn', () => _agentAccountInto(row, it)));
+    }
     row.appendChild(_btn('Edit', 'vault-edit-btn', () => _startEdit(it)));
     row.appendChild(_btn('Remove', 'vault-remove-btn', async () => {
       const r = await _call('DELETE', `/items/${encodeURIComponent(it.id)}`);
@@ -163,6 +216,7 @@ function _startEdit(it) {
   $('vault-totp').placeholder = it.has_totp ? 'Leave empty to keep it' : 'Optional';
   $('vault-use').value = it.use || 'ask';
   $('vault-agent-account').checked = !!it.agent_account;
+  _pickAgents(it.agents || []);
   $('vault-save').textContent = 'Save changes';
   $('vault-cancel-edit').hidden = false;
   $('vault-label').focus();
@@ -175,6 +229,7 @@ function _resetForm() {
   if ($('vault-secret')) $('vault-secret').placeholder = 'Password or key';
   if ($('vault-totp')) $('vault-totp').placeholder = 'Optional';
   if ($('vault-agent-account')) $('vault-agent-account').checked = false;
+  _pickAgents([]);
   if ($('vault-save')) $('vault-save').textContent = 'Add to vault';
   if ($('vault-cancel-edit')) $('vault-cancel-edit').hidden = true;
 }
@@ -187,6 +242,7 @@ async function _save() {
     username: $('vault-username').value,
     use: $('vault-use').value,
     agent_account: $('vault-agent-account').checked,
+    agents: _pickedAgents(),
   };
   const secret = $('vault-secret').value;
   const totp = $('vault-totp').value;
@@ -211,6 +267,43 @@ async function _lock(body) {
   if (!r.ok) { _say(r.sentence, { error: true }); return; }
   draw(r.data);
   _say(body.locked === true ? 'Locked.' : body.locked === false ? 'Unlocked.' : 'Saved.');
+}
+
+/** `P27-09`. The person's agents, to grant a login to some of them only. */
+async function _loadAgents() {
+  const sel = $('vault-agents');
+  if (!sel || sel.dataset.loaded) return;
+  let list = [];
+  try {
+    const res = await fetch('/api/agents', { credentials: 'same-origin' });
+    if (res.ok) { const d = await res.json(); list = (d && d.agents) || []; }
+  } catch (_) { list = []; }
+  sel.textContent = '';
+  const chat = document.createElement('option');
+  chat.value = 'chat';
+  chat.textContent = 'The chat itself (no agent)';
+  sel.appendChild(chat);
+  _agentNames = { chat: 'the chat' };
+  list.forEach((a) => {
+    if (!a || !a.id) return;
+    const o = document.createElement('option');
+    o.value = a.id;
+    o.textContent = a.name || a.id;
+    _agentNames[a.id] = a.name || a.id;
+    sel.appendChild(o);
+  });
+  sel.dataset.loaded = '1';
+}
+
+function _pickedAgents() {
+  const sel = $('vault-agents');
+  return sel ? Array.from(sel.options).filter((o) => o.selected).map((o) => o.value) : [];
+}
+
+function _pickAgents(ids) {
+  const sel = $('vault-agents');
+  if (!sel) return;
+  Array.from(sel.options).forEach((o) => { o.selected = ids.includes(o.value); });
 }
 
 async function _refresh() {
@@ -243,6 +336,7 @@ export async function open() {
     if (idle) idle.addEventListener('change', () => _lock({ idle_minutes: Number(idle.value) || 0 }));
   }
   _say('');
+  await _loadAgents();
   _resetForm();
   await _refresh();
 }

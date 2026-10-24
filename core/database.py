@@ -1736,6 +1736,9 @@ class VaultItem(TimestampMixin, Base):
     sealed        = Column(Text, nullable=False)
     agent_account = Column(Boolean, nullable=False, default=False)
     use           = Column(String, nullable=False, default="ask")
+    # `P27-09`. Which of the person's agents may use it: a JSON list of agent
+    # ids (`chat` is the plain chat), or `[]` for every one of them.
+    agents        = Column(Text, nullable=False, default="[]")
     last_used_at  = Column(DateTime, nullable=True)
     last_used_by  = Column(String, nullable=True)
 
@@ -2162,6 +2165,28 @@ def _migrate_add_model_endpoint_refresh_columns():
             conn.close()
         except Exception:
             pass
+
+def _migrate_add_vault_item_agents():
+    """`P27-09`. `vault_items.agents`, for a database `P27-03` made first."""
+    import sqlite3
+    db_path = DATABASE_URL.replace("sqlite:///", "")
+    if not os.path.exists(db_path):
+        return
+    conn = None
+    try:
+        conn = sqlite3.connect(db_path)
+        columns = [row[1] for row in conn.execute("PRAGMA table_info(vault_items)").fetchall()]
+        if columns and "agents" not in columns:
+            conn.execute("ALTER TABLE vault_items ADD COLUMN agents TEXT NOT NULL DEFAULT '[]'")
+        conn.commit()
+    except Exception as e:
+        logging.getLogger(__name__).warning(f"vault_items agents migration failed: {e}")
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass  # closing a connection that never opened: nothing to release
+
 
 def _migrate_add_task_run_model_column():
     """Add model column to task_runs if it doesn't exist (records which model ran)."""
@@ -3529,6 +3554,7 @@ def init_db():
     _migrate_add_supports_tools_column()
     _migrate_add_comparison_vote_meta_column()
     _migrate_add_task_run_model_column()
+    _migrate_add_vault_item_agents()
     _migrate_add_task_run_steps_column()
     _migrate_add_task_run_node_columns()
     _migrate_add_scheduled_task_else_column()

@@ -41,7 +41,8 @@ def db(tmp_path, monkeypatch):
     import src.secret_storage as ss
     engine = create_engine(f"sqlite:///{tmp_path / 'vault.db'}", connect_args={"check_same_thread": False},
                            poolclass=NullPool)
-    cdb.Base.metadata.create_all(engine, tables=[cdb.VaultKey.__table__, cdb.VaultItem.__table__])
+    cdb.Base.metadata.create_all(engine, tables=[cdb.VaultKey.__table__, cdb.VaultItem.__table__,
+                                                 cdb.GitIdentity.__table__, cdb.GitCredential.__table__])
     factory = sessionmaker(bind=engine, autoflush=False, autocommit=False)
     monkeypatch.setattr(cdb, "SessionLocal", factory)
     monkeypatch.setattr(ss, "_KEY_PATH", tmp_path / ".app_key")
@@ -513,3 +514,167 @@ def test_every_use_is_recorded_without_its_value(db, monkeypatch):
     [(kind, kw)] = seen
     assert kind == "vault_use" and kw["name"] == "Grafana (agent)" and kw["session_id"] == "chat-9"
     assert kw["detail"]["by"] == "agent_browser" and PASSWORD not in json.dumps(kw)
+
+
+# ── `P27-09`: which agents may use a login, and the agent's own list ────────
+
+def test_a_login_granted_to_some_agents_is_invisible_to_the_rest(db):
+    s = db()
+    _login(s, agents=["competitor-tracker"])
+    _login(s, label="Shared", addresses="nas.lan")
+    got = asyncio.run(V.resolve(s, "alice", "Grafana (agent)", agent="competitor-tracker"))
+    assert got["secret"] == PASSWORD
+    for agent in (None, "inbox-triage"):
+        with pytest.raises(V.VaultRefused) as nope:
+            asyncio.run(V.resolve(s, "alice", "Grafana (agent)", agent=agent))
+        assert nope.value.status == 404 and "Grafana" not in nope.value.sentence.split("vault.")[1]
+        assert "“Shared”" in nope.value.sentence
+    assert V.asks_before("alice", "c", "shell_with_login", SHELL, agent="inbox-triage") is None, \
+        "not asked about: the tool refuses it as not there"
+    V.update(s, "alice", V.listing(s, "alice")["items"][0]["id"], {"agents": ["chat"]})
+    assert asyncio.run(V.resolve(s, "alice", "Grafana (agent)"))["secret"] == PASSWORD, "chat is the plain chat"
+    with pytest.raises(V.VaultRefused):
+        V.update(s, "alice", V.listing(s, "alice")["items"][0]["id"], {"agents": ["Not An Id!"]})
+
+
+def test_the_connections_tool_lists_names_never_values_and_tests_an_address(db, tmp_path, monkeypatch):
+    import threading
+    import src.tool_security as ts
+    monkeypatch.setattr(ts, "blocked_tools_for_owner", lambda owner: set())   # an admin, on this machine
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+    from src.agent_tools import connections_tools as C
+
+    class _Ok(BaseHTTPRequestHandler):
+        def log_message(self, *a):
+            pass
+
+        def do_GET(self):
+            self.send_response(204)
+            self.end_headers()
+
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), _Ok)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        s = db()
+        _login(s, owner="root", addresses=f"127.0.0.1:{srv.server_address[1]}", totp="JBSWY3DPEHPK3PXP",
+               agent_account=True, use="chat")
+        _login(s, owner="root", label="Other agent's", addresses="x.lan", agents=["someone-else"])
+        s.close()
+        listed = asyncio.run(C.run_connections('{"action": "list"}', owner="root"))
+        out = listed["output"]
+        assert "“Grafana (agent)” (login) — http://127.0.0.1:" in out
+        assert "asks once per chat; an account made for the agent; one-time codes" in out
+        assert "Other agent's" not in out and PASSWORD not in out and "JBSWY3DP" not in out
+        tested = asyncio.run(C.run_connections('{"action": "test", "name": "Grafana (agent)"}', owner="root"))
+        assert tested["exit_code"] == 0 and "answered HTTP 204" in tested["output"], tested
+        hidden = asyncio.run(C.run_connections('{"action": "test", "name": "Other agent\'s"}', owner="root"))
+        assert hidden["exit_code"] == 1 and "There is no login" in hidden["error"]
+        monkeypatch.setattr(ts, "blocked_tools_for_owner", lambda owner: {"bash"})
+        refused = asyncio.run(C.run_connections('{"action": "test", "name": "Grafana (agent)"}', owner="root"))
+        assert "runs from your workstation" in refused["error"], "a non-admin's test never runs on the server"
+    finally:
+        srv.shutdown()
+
+
+def test_connections_list_only_reads_and_a_test_reaches():
+    from src.tool_capabilities import capabilities_for_action
+    assert {e.value for e in capabilities_for_action("connections", '{"action": "list"}').effects} == {"read_private"}
+    assert {e.value for e in capabilities_for_action("connections", '{"action": "test", "name": "x"}').effects} \
+        == {"network_egress"}
+
+
+# ── `P27-05`: an account made for the agent ────────────────────────────────
+
+class _Grafana:
+    """A Grafana admin API, as far as making a user and setting its role."""
+    def __init__(self):
+        import base64
+        import threading
+        from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+        seen = self.seen = []
+        good = "Basic " + base64.b64encode(f"admin:{PASSWORD}".encode()).decode()
+
+        class H(BaseHTTPRequestHandler):
+            def log_message(self, *a):
+                pass
+
+            def _reply(self, code, obj):
+                b = json.dumps(obj).encode()
+                self.send_response(code)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(b)))
+                self.end_headers()
+                self.wfile.write(b)
+
+            def _do(self):
+                n = int(self.headers.get("Content-Length") or 0)
+                body = json.loads(self.rfile.read(n) or b"{}") if n else {}
+                seen.append((self.command, self.path, body))
+                if self.headers.get("Authorization") != good:
+                    return self._reply(401, {"message": "invalid username or password"})
+                if self.command == "POST" and self.path == "/api/admin/users":
+                    return self._reply(200, {"id": 7, "message": "User created"})
+                if self.command == "GET" and self.path.startswith("/api/users/lookup"):
+                    return self._reply(200, {"id": 7, "login": "pantheon-agent"})
+                if self.command == "PATCH" and self.path == "/api/org/users/7":
+                    return self._reply(200, {"message": "Organization user updated"})
+                return self._reply(404, {"message": "not found"})
+
+            do_GET = do_POST = do_PATCH = _do
+
+        self.srv = ThreadingHTTPServer(("127.0.0.1", 0), H)
+        threading.Thread(target=self.srv.serve_forever, daemon=True).start()
+        self.url = f"127.0.0.1:{self.srv.server_address[1]}"
+
+
+@pytest.mark.skipif(not shutil.which("curl"), reason="curl is not installed here")
+def test_an_agent_account_is_made_with_its_role_and_kept_unseen(db, monkeypatch):
+    import src.tool_security as ts
+    from src import agent_accounts as A
+    monkeypatch.setattr(ts, "blocked_tools_for_owner", lambda owner: set())
+    g = _Grafana()
+    try:
+        s = db()
+        admin = _login(s, owner="root", label="Grafana admin", addresses=g.url, username="admin")
+        made = asyncio.run(A.set_up(s, "root", admin["id"], {"template": "grafana", "role": "Viewer",
+                                                              "username": "pantheon-agent"}))
+        assert made["label"] == "Grafana (pantheon-agent)" and made["agent_account"] and made["use"] == "chat"
+        assert made["addresses"] == [f"http://{g.url}"]
+        created = [b for m, p, b in g.seen if m == "POST"][0]
+        assert created["login"] == "pantheon-agent" and len(created["password"]) >= 24
+        assert ("PATCH", "/api/org/users/7", {"role": "Viewer"}) in g.seen, "the role the person picked"
+        kept = asyncio.run(V.resolve(s, "root", "Grafana (pantheon-agent)"))
+        assert kept["secret"] == created["password"], "the vault holds what the service was given"
+        assert created["password"] not in json.dumps(made), "and the answer never shows it"
+
+        V.update(s, "root", admin["id"], {"secret": "wrong-admin-password"})
+        with pytest.raises(A.AccountRefused) as refused:
+            asyncio.run(A.set_up(s, "root", admin["id"], {"template": "grafana", "role": "Editor",
+                                                          "username": "second-agent"}))
+        assert "refused step 1 of 2 (made nothing)" in refused.value.sentence
+        assert "wrong-admin-password" not in refused.value.sentence
+        assert "Grafana (second-agent)" not in V.labels(s, "root"), "nothing kept for an account not made"
+    finally:
+        g.srv.shutdown()
+
+
+@pytest.mark.parametrize("body,words", [
+    ({"template": "jellyfin", "role": "User", "username": "a-agent"}, "is not a service"),
+    ({"template": "grafana", "role": "Owner", "username": "a-agent"}, "roles are Viewer, Editor, Admin"),
+    ({"template": "gitea", "role": "User", "username": "A B"}, "The user name is"),
+])
+def test_a_bad_request_is_refused_before_anything_is_called(db, body, words):
+    from src import agent_accounts as A
+    s = db()
+    admin = _login(s)
+    with pytest.raises(A.AccountRefused) as e:
+        asyncio.run(A.set_up(s, "alice", admin["id"], body))
+    assert words in e.value.sentence
+
+
+def test_a_summoned_agents_turn_carries_its_id_to_the_vault():
+    from src.agents.summon import Summoned
+    from src.tool_policy import ToolPolicy
+    turn = Summoned("competitor-tracker", "Competitor Tracker", ["agent_browser"], frozenset(), frozenset())
+    assert turn.policy(ToolPolicy()).agent_id == "competitor-tracker"
+    assert ToolPolicy().agent_id is None, "the plain chat is no agent"

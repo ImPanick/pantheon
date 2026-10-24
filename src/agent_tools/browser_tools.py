@@ -191,7 +191,8 @@ class BrowserTool:
                   if k in ("url", "ref", "x", "y", "text", "submit", "keys", "dx", "dy", "tab", "double",
                            "note", "notes", "said", "declined", "all")}
         if action == "login":
-            return await _login(client, account, owner, args, session=(ctx or {}).get("session_id"))
+            return await _login(client, account, owner, args, session=(ctx or {}).get("session_id"),
+                                agent=(ctx or {}).get("agent_id"))
         try:
             if action == SCREENSHOT:
                 shot = await client.browser(account, "frame")
@@ -222,7 +223,7 @@ class BrowserTool:
 
 
 async def _login(client, account: str, owner: Optional[str], args: Dict[str, Any], *,
-                 session: Optional[str] = None) -> Dict[str, Any]:
+                 session: Optional[str] = None, agent: Optional[str] = None) -> Dict[str, Any]:
     """`P27-06`. Sign in on the open page with a login from the person's
     vault, by its name. The values go from the vault to the daemon in one
     request and from there into the page's fields; what comes back to the
@@ -236,7 +237,7 @@ async def _login(client, account: str, owner: Optional[str], args: Dict[str, Any
         return {"error": "`login` needs “item”: the name of a login in the person's vault.", "exit_code": 1}
     db = SessionLocal()
     try:
-        got = await V.resolve(db, owner, item, by="agent_browser", session=session)
+        got = await V.resolve(db, owner, item, by="agent_browser", session=session, agent=agent)
     except V.VaultRefused as r:
         return {"error": r.sentence, "exit_code": 1}
     finally:

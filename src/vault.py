@@ -236,9 +236,47 @@ def public(row, sealed: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
             "username": s.get("username") or "",
             "has_secret": bool(s.get("secret")), "has_totp": bool(s.get("totp")),
             "has_notes": bool(s.get("notes")), "agent_account": bool(row.agent_account),
-            "use": row.use if row.use in USES else "ask",
+            "use": row.use if row.use in USES else "ask", "agents": granted(row),
             "last_used_at": _iso(row.last_used_at), "last_used_by": row.last_used_by or None,
             "updated_at": _iso(row.updated_at)}
+
+
+# ── `P27-09`: which agents may use an item ──────────────────────────────────
+
+CHAT_AGENT = "chat"
+AGENTS_MAX = 40
+
+
+def granted(row) -> List[str]:
+    """The agent ids an item is granted to; `[]` is every one of them."""
+    try:
+        got = json.loads(getattr(row, "agents", None) or "[]")
+    except ValueError:
+        return []
+    return [str(a) for a in got if isinstance(a, str)] if isinstance(got, list) else []
+
+
+def may_use(row, agent: Optional[str]) -> bool:
+    """Whether `agent` (a summoned or hired agent's id; None is the plain
+    chat) may use this item. An item not granted is invisible to it."""
+    allowed = granted(row)
+    return not allowed or (agent or CHAT_AGENT) in allowed
+
+
+def _clean_agents(raw: Any) -> List[str]:
+    if raw in (None, "", []):
+        return []
+    if isinstance(raw, str):
+        raw = [a for a in re.split(r"[\s,]+", raw) if a]
+    if not isinstance(raw, list) or len(raw) > AGENTS_MAX:
+        raise VaultRefused(f"“agents” is a list of at most {AGENTS_MAX} agent ids, or empty for every agent.")
+    out: List[str] = []
+    for a in raw:
+        if not isinstance(a, str) or not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,63}", a.strip().lower()):
+            raise VaultRefused(f"“{str(a)[:40]}” is not an agent id.")
+        if a.strip().lower() not in out:
+            out.append(a.strip().lower())
+    return out
 
 
 def _rows(db, acct: str):
@@ -258,9 +296,9 @@ def listing(db, owner: Optional[str]) -> Dict[str, Any]:
             "kinds": list(KINDS), "uses": list(USES)}
 
 
-def labels(db, owner: Optional[str]) -> List[str]:
-    """The names the agent may ask for. Names only."""
-    return [r.label for r in _rows(db, account(owner))]
+def labels(db, owner: Optional[str], agent: Optional[str] = None) -> List[str]:
+    """The names this agent may ask for. Names only."""
+    return [r.label for r in _rows(db, account(owner)) if may_use(r, agent)]
 
 
 def _find(db, acct: str, ref: Any):
@@ -351,7 +389,8 @@ def create(db, owner: Optional[str], body: Dict[str, Any]) -> Dict[str, Any]:
     f = _fernet(db, acct, create=True)
     row = VaultItem(id=uuid.uuid4().hex, account=acct, kind=kind, label=label,
                     addresses=json.dumps(addresses), sealed=_seal(f, sealed),
-                    agent_account=bool(body.get("agent_account")), use=use)
+                    agent_account=bool(body.get("agent_account")), use=use,
+                    agents=json.dumps(_clean_agents(body.get("agents"))))
     db.add(row)
     db.commit()
     touch(db, owner)
@@ -383,6 +422,8 @@ def update(db, owner: Optional[str], item_id: str, body: Dict[str, Any]) -> Dict
         row.use = body["use"]
     if "agent_account" in body:
         row.agent_account = bool(body.get("agent_account"))
+    if "agents" in body:
+        row.agents = json.dumps(_clean_agents(body.get("agents")))
     if row.kind == "login" and not sealed.get("secret"):
         raise VaultRefused("A login needs its password.")
     row.sealed = _seal(f, sealed)
@@ -416,14 +457,18 @@ def reveal(db, owner: Optional[str], item_id: str) -> Dict[str, Any]:
 
 # ── using ───────────────────────────────────────────────────────────────────
 
-def for_use(db, owner: Optional[str], ref: Any, *, by: str = "agent") -> Dict[str, Any]:
+def for_use(db, owner: Optional[str], ref: Any, *, by: str = "agent",
+            agent: Optional[str] = None) -> Dict[str, Any]:
     """The values, for the daemon or a command's environment — the one place
     the agent's side opens a sealed blob. Raises a sentence that names
-    nothing secret: the item it could not find, the labels it could."""
+    nothing secret: the item it could not find, the labels it could. An item
+    not granted to `agent` is one it cannot find (`P27-09`)."""
     acct = account(owner)
     row = _find(db, acct, ref)
+    if row is not None and not may_use(row, agent):
+        row = None
     if row is None:
-        names = labels(db, owner)
+        names = labels(db, owner, agent)
         have = ("Your vault has: " + ", ".join(f"“{n}”" for n in names[:30]) + ".") if names \
             else "Your vault is empty; the person adds logins in Settings → Vault."
         raise VaultRefused(f"There is no item “{str(ref)[:80]}” in the vault. {have}", 404)
@@ -459,7 +504,7 @@ BW_PREFIX = "bw:"
 
 
 async def resolve(db, owner: Optional[str], ref: Any, *, by: str = "agent",
-                  session: Optional[str] = None) -> Dict[str, Any]:
+                  session: Optional[str] = None, agent: Optional[str] = None) -> Dict[str, Any]:
     """`for_use`, and also `bw:<id>` — an item in the server's Bitwarden vault,
     an admin's (`routes/vault/`). Same answer shape either way, so the browser
     and the shell sign in with either without knowing which. Records the use
@@ -468,13 +513,14 @@ async def resolve(db, owner: Optional[str], ref: Any, *, by: str = "agent",
     if text.lower().startswith(BW_PREFIX):
         got = await _bw_for_use(owner, text[len(BW_PREFIX):].strip())
     else:
-        got = for_use(db, owner, text, by=by)
+        got = for_use(db, owner, text, by=by if not agent else f"{agent} ({by})", agent=agent)
     note_chat_use(owner, session, got["id"])
     # `P27-08`. Every use is a row in the events table (`P14`, where the audit
     # trail lives): who, which item, by what, for which addresses — never a value.
     from src.events import record_event
     record_event("vault_use", name=got["label"], session_id=session, owner=owner,
-                 detail={"item": got["id"], "by": by, "origins": got["origins"][:4]})
+                 detail={"item": got["id"], "by": by, "agent": agent or CHAT_AGENT,
+                         "origins": got["origins"][:4]})
     return got
 
 
@@ -557,7 +603,8 @@ def refs_in_call(tool_name: Any, content: Any) -> List[str]:
     return [str(x).strip() for x in logins if isinstance(x, str) and x.strip()] if isinstance(logins, list) else []
 
 
-def asks_before(owner: Optional[str], session: Optional[str], tool_name: Any, content: Any) -> Optional[str]:
+def asks_before(owner: Optional[str], session: Optional[str], tool_name: Any, content: Any,
+                agent: Optional[str] = None) -> Optional[str]:
     """The sentence a card shows when an item this call names is set to ask —
     *each time*, or *once per chat* and not yet used in this one — or None.
     Its caller is the run's gate (`ToolRunSecurityContext.vault_use_lookup`),
@@ -575,7 +622,7 @@ def asks_before(owner: Optional[str], session: Optional[str], tool_name: Any, co
                 return (f"“{ref}” is in the server's Bitwarden vault, and signing in with it asks "
                         "each time.")
             row = _find(db, acct, ref)
-            if row is None:
+            if row is None or not may_use(row, agent):
                 continue   # the tool says it is not there, naming what is
             use = row.use if row.use in USES else "ask"
             if use == "ask":

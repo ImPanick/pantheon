@@ -286,6 +286,10 @@ class ToolPolicy:
     #: then searching and fetching public pages after outside content does not
     #: ask. False for every other turn.
     blind: bool = False
+    #: `P27-09`. The agent this turn is — a summoned or hired one's id — so a
+    #: vault login granted to some agents only is offered to those. `None` is
+    #: the plain chat, which every existing caller is.
+    agent_id: Optional[str] = None
 
     def __post_init__(self) -> None:
         # A list or set handed in becomes a frozenset of names, so the policy a

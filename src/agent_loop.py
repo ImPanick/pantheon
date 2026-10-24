@@ -220,11 +220,11 @@ def apply_role_floor(rung: Any, owner: Any) -> TrustRung:
     return coerce_trust_rung(rung) if floor is None else stricter_of(rung, floor)
 
 
-def _vault_use_lookup(owner, session_id):
-    """`P27-08`. The run's owner and chat, bound to `src/vault.asks_before`."""
+def _vault_use_lookup(owner, session_id, agent_id=None):
+    """`P27-08`. The run's owner, chat and agent, bound to `src/vault.asks_before`."""
     def lookup(tool_name, content):
         from src.vault import asks_before
-        return asks_before(owner, session_id, tool_name, content)
+        return asks_before(owner, session_id, tool_name, content, agent=agent_id)
     return lookup
 
 
@@ -1695,6 +1695,15 @@ Blocked paths/routes (refused for safety): /api/auth/, /api/users/, /api/tokens/
         "reload, tabs, tab_new (url), tab_switch (tab), tab_close (tab), screenshot, login "
         "(item: a login's name in the person's vault — the browser fills the form, you never "
         "see the password). Read again after anything that changes the page."
+    ),
+    # `P27-09`. The fenced form of the `connections` schema.
+    "connections": (
+        "```connections\n"
+        '{"action": "list"}\n'
+        "```\n"
+        "What you may sign in to: list (the person's vault logins granted to you, by name, with "
+        "addresses and whether each asks; their git hosts) or test (name: does that login's "
+        "address answer). Sign in by the name with agent_browser login or shell_with_login."
     ),
     # `P27-07`. The fenced form of the `shell_with_login` schema.
     "shell_with_login": (
@@ -6655,7 +6664,7 @@ async def stream_agent_loop(
         hire_sealed=bool(getattr(tool_policy, "sealed", False)),
         hire_blind=bool(getattr(tool_policy, "blind", False)),
         # `P27-08`. A vault login set to ask asks, whatever the rung or Auto.
-        vault_use_lookup=_vault_use_lookup(owner, session_id),
+        vault_use_lookup=_vault_use_lookup(owner, session_id, getattr(tool_policy, "agent_id", None)),
         allow_rule_lookup=(
             _resolve_allow_rule_lookup(owner, session_id)
             if rung_consults_allow_rules(_run_rung)

@@ -53,7 +53,8 @@ class Summoned:
         if getattr(base, "allowed_tools", None) is not None:
             allowed = allowed & base.allowed_tools
         return replace(base, allowed_tools=allowed, allowed_owner="this agent's",
-                       ask_effects=self.ask_effects, never_effects=self.never_effects)
+                       ask_effects=self.ask_effects, never_effects=self.never_effects,
+                       agent_id=self.agent_id)
 
     def into(self, messages: List[dict]) -> List[dict]:
         """The agent's brief and skills, after the leading system messages."""

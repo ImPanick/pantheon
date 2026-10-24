@@ -554,6 +554,27 @@ FUNCTION_TOOL_SCHEMAS = [
     {
         "type": "function",
         "function": {
+            # `P27-09`. The agent's side of the Connections hub (`src/agent_tools/connections_tools.py`).
+            "name": "connections",
+            "description": (
+                "What you may sign in to: list shows the logins in the person's vault granted to "
+                "you — by name, with their addresses and whether each asks first — and the git "
+                "hosts they keep a token for; test checks that a login's address answers. You never "
+                "see a password: sign in with agent_browser login or shell_with_login by the name."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "action": {"type": "string", "enum": ["list", "test"], "description": "list, or test one."},
+                    "name": {"type": "string", "description": "test: the login's name from list."},
+                },
+                "required": ["action"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
             # `P27-07`. A command with vault logins (`src/agent_tools/login_shell_tools.py`).
             "name": "shell_with_login",
             "description": (

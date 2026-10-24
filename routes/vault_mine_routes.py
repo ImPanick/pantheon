@@ -8,6 +8,10 @@
     DELETE /api/vault/mine/items/{id}          remove it
     POST   /api/vault/mine/items/{id}/reveal   {password} → its values, for the person's own eyes
     PUT    /api/vault/mine/lock                {idle_minutes?} | {locked: true} | {locked: false, password}
+    POST   /api/vault/mine/items/{id}/agent-account
+                                               {template, role, username, label?} — `P27-05`: from
+                                               this admin login, make an account for the agent on
+                                               the service and keep it here (`src/agent_accounts.py`)
 
 `/api/vault/…` without `mine` is the server's Bitwarden link (`routes/vault/`),
 an admin's; this is everyone's own and no route here reaches another person's.
@@ -88,7 +92,32 @@ def setup_vault_mine_routes() -> APIRouter:
     @router.get("")
     def my_vault(request: Request):
         user = get_current_user(request)
-        return _run(lambda V, db: V.listing(db, user))
+
+        def go(V, db):
+            from src.agent_accounts import templates_public
+            return {**V.listing(db, user), "services": templates_public()}
+        return _run(go)
+
+    @router.post("/items/{item_id}/agent-account")
+    async def agent_account(item_id: str, request: Request):
+        """`P27-05`. The person's press is the yes: nothing is made without it."""
+        from src import agent_accounts as A
+        if not request_is_a_person(request):
+            return _refused(ONLY_A_PERSON, 403)
+        try:
+            body = await _body(request)
+        except ValueError as e:
+            return _refused(str(e))
+        user = get_current_user(request)
+        from src import vault as V
+        db = SessionLocal()
+        try:
+            return await A.set_up(db, user, item_id, body)
+        except (A.AccountRefused, V.VaultRefused) as r:
+            db.rollback()
+            return _refused(r.sentence, r.status)
+        finally:
+            db.close()
 
     @router.post("/items")
     async def add_item(request: Request):
