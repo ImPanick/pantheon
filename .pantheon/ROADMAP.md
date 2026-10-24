@@ -85,8 +85,9 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P22 | The Workbench | 25 | 0 | 0 | **25** |
 | P23 | Alignment — the audits, fixed | 9 | 0 | 0 | **9** |
 | P24 | Agents — the hall of hireable agents | 27 | 8 | 0 | **19** |
+| P25 | The + menu, git per account, the agent browser | 7 | 7 | 0 | **0** |
 | Backlog | Bugs and hardening found in flight | 1014 | 350 | 0 | **662** |
-| **Total** | | **1472** | **383** | **5** | **1082** |
+| **Total** | | **1479** | **390** | **5** | **1082** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -248,6 +249,10 @@ they are for.*
 > `check-tracker.py` now validates the newest entry against the table and fails on drift.
 > Entries below the `P0-31` one keep the figure they were written with: a record of what
 > was claimed at the time is worth more than a quietly corrected one (`B44`).
+
+### P25 opened: the + menu nested, git for every account, the agent browser
+`6f1b3a3`…`HEAD`. **1479 tracked, 1082 done. `P25-00`…`P25-06` filed.**
+The owner asked for git per account and a way to call it, a + menu with the breadth of one reference and the nesting of the other, and a browser the agent drives inside the app. Filed as one phase: the menu first, because git and the browser are called from it.
 
 ### P24: write your own agent — *New agent*, *Describe it*, *Customise*
 `d38a68a`…`HEAD`. **1472 tracked, 1082 done. `P24-20` closed.**
@@ -11197,6 +11202,56 @@ waiting on a connector (wave 3) — laid out the way PandaOS lays out its board.
 - [x] **P24-26** **Summon an agent into a chat; *Summon* in the hall.** The owner, 2026-10-24: *"we need a way to attach agents in agent mode. The up arrow here should also have an agents option — and for the Agents menu as well — instead of hire agent we should say Summon — keep it with the mythology theme."*
   — **done 2026-10-24** — the composer's `^` menu has **Agents** beside Workspace (Agent mode only): a picker over the hall, your own agents first, searchable; the one picked is a chip beside the Workspace pill, dismissed by a click, and every Agent-mode send carries it. The chat route narrows the turn to that agent — its runbook as the person's own context, exactly its tools (offered as they are, never guessed from the message), its effects table, the person's own tightening when they have summoned it before (`src/agents/summon.py`); the chat's own gate, Auto and cards are unchanged, and `D-2026-10-24-01`/`-02` are not applied with a person present. The hall says **Summon**, **Summon all**, **Summoned**, and **Dismiss** where it said *Fire*. `Verify:` `tests/test_an_agent_is_summoned_into_a_chat.py` (10); driven in Chromium: Agents → *brief* → Morning Brief, the chip, a send whose model was offered exactly its four tools, the chip dismissed.
 - [ ] **P24-27** **The agent audit: every runbook given real substance, then the roster to full scope.** The owner, 2026-10-24: *"Some of these agents only have like 2 lines of 'how to be {agent}' and it's ridiculously thin. There's no actual substance to it. Expand drastically, and then add even more (to full scope)."* For every one of the 173 (then every one of the plan's 207 and beyond): a runbook a small model can follow and a person would trust — what good output looks like, with an example; the judgement calls named and decided (what counts as urgent, when to stop, what never to do); the edge cases (nothing found, a tool refusing, a source that contradicts another); the exact headings of the deliverable; a skill where the job has a procedure worth keeping; an evaluation set of 5–10 cases through `P24-16`'s harness and a sample report. Then the roster to full scope: wave 3 as connectors land, and the agents the plan's sections still lack. `Depends:` `P24-16`. To be taken once the hall's build rows are done, as the owner asked.
+
+# P25 · The composer's + menu, git for every account, and the agent browser
+
+*Area: `ui`, `chat`, `workstation`, `tools` · Depends: P20, P24 · Opened 2026-10-24 from the owner: **"We need
+per-account git tooling and stuff too - and a way to call on it. To expand our + button too.. we need to take heavy
+inspiration from your own platform as well as OpenAI's ChatGPT/Codex … Don't just straight copy but intelligently create
+something similar. I like the sheer amount of options - but i love how anthropic nests them.. Also this means we need an
+agent browser that's in app.."** The two references the owner sent: a flat list of many verbs with a grey hint beside
+each (*Goal — Set a goal to keep pursuing*, *Plan mode — Turn plan mode on*, a *Plugins* group below), and a short top
+level whose rows open a second menu to the side (*Skills ›*, *Connectors ›*, *Plugins ›* with *Manage* and *Browse* at
+its foot).*
+
+**What it is.** One menu, built from one list (`Law 7`): a short top level of verbs — add a file, a document, a folder —
+then rows that open a submenu beside them (on a phone, a page that slides in with a back row), each submenu ending in
+the door to where that kind of thing is managed. Every row says what it does in a hint, as the first reference does.
+Git is the person's own: an identity and credentials kept per account, encrypted, never shown again, used by git tools
+that run where the person's shell runs (`P20-03`). The agent browser is the person's own Firefox in their workstation,
+driven over WebDriver BiDi by the daemon — the agent's browser tools and the window the person watches are the same
+browser, and the person can take it over (`P20-05`'s rule, not a second one).
+
+- [ ] **P25-00** **Acceptance: from the + menu, without opening Settings mid-way.** Attach a repository from *Git ›*,
+  ask for its status and a commit; the push asks first and goes out as the person's own identity. Open *Browser*,
+  ask the agent to find a page; watch it in the window, take it over, hand it back. On a phone the same menu drills in.
+  `Depends:` `P25-01` … `P25-06`. `Verify:` driven at 1440×900 and 390×844, dark and light, against a scripted model.
+- [ ] **P25-01** **The + menu, nested.** The top level: *Add files*, *Documents*, *Workspace*; then *Agents ›*,
+  *Skills ›*, *Prompts ›*, *Git ›*, *Browser*, and *Modes ›* (Plan, Web, Shell, RAG — the chips' own toggles, their
+  state shown). A submenu opens beside its row on hover, Right or Enter, closes with Left or Escape, filters as you type,
+  and ends with its *Manage …* door (the hall, the skills library, Settings → Git). On a phone a submenu is a page with
+  a back row. Built from one list in `static/js/composerMenu.js`; every existing item keeps its id and its handler.
+- [ ] **P25-02** **Git, per account: an identity and credentials.** Settings → Git: name and email for commits, and
+  hosts with a token each (GitHub, GitLab, Gitea, or any https host), encrypted with `secret_storage`, never sent back —
+  only *set*, the host and when. Each person's own; an admin can switch git off for everyone. A token is handed to a
+  git command for that command only (an askpass that reads it from the environment of that one process), never written
+  to the person's home or a remote URL.
+- [ ] **P25-03** **Git tools.** `git_status`, `git_diff`, `git_log`, `git_branch`, `git_commit`, `git_pull`,
+  `git_push`, `git_clone` — run where the person's shell runs (`P20-03`), in their projects, as their identity. Reads are
+  `read_workspace`; a commit is `write_workspace`; clone and pull reach a host (`network_egress`); a push is also an
+  `external_side_effect` and asks. A repository outside the person's projects is refused in a sentence.
+- [ ] **P25-04** **Calling git.** *Git ›* lists the repositories in the person's projects with branch and changes; one
+  picked is a chip beside Workspace and the turn's git tools default to it. Its rows: *Status*, *Commit…*, *Pull*,
+  *Push*, *New branch…*, *Clone a repository…*, then *Git settings*. `/git` in the composer does the same.
+- [ ] **P25-05** **The agent browser.** Firefox in the person's workstation, driven over WebDriver BiDi by the daemon;
+  tools `browser_open`, `browser_read` (the page's text with numbered elements), `browser_click`, `browser_type`,
+  `browser_press`, `browser_scroll`, `browser_back`, `browser_tabs`, `browser_screenshot`. Reading a page is
+  `network_egress` with untrusted results; typing into a page and pressing Enter in a form ask (`external_side_effect`).
+  Without a workstation the tools are not offered and the window says why.
+- [ ] **P25-06** **The browser window.** A tool window: tabs, the address bar, back, forward, reload, and the page live
+  (frames of the page itself, not the desktop); *Take over* gives the person the page, *Hand back* returns it — the
+  agent's calls are refused while the person holds it. Opened from *+ → Browser*, from *Open in the agent browser* on a
+  link in an answer, and from any browser tool's card.
 
 - [x] **B69** **There are two complete email-account forms and one of them is mounted nowhere.**
   Found by `P18-07` 2026-09-11, after `P18-01` and the first pass of `P18-07` were both written
